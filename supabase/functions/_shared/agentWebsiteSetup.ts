@@ -78,7 +78,8 @@ export const WEBSITE_SETUP_THEME_PRESETS = [
   {
     id: "warm",
     label: "Warm and welcoming",
-    detail: "Sunset orange, Fraunces type, and a soft shimmer as the page opens",
+    detail:
+      "Sunset orange, Fraunces type, and a soft shimmer as the page opens",
     theme: { color: "#eb7825", font: "fraunces", animation: "shimmer_reveal" },
   },
   {
@@ -926,7 +927,10 @@ export function websiteSetupPhone(args: {
   }
   const country = chosenIso === null ? null : phoneCountry(chosenIso);
   if (chosenIso !== null && country === null) {
-    return { ok: false, problem: WEBSITE_SETUP_PHONE_CHOOSE_COUNTRY_FOR_NUMBER };
+    return {
+      ok: false,
+      problem: WEBSITE_SETUP_PHONE_CHOOSE_COUNTRY_FOR_NUMBER,
+    };
   }
   if (namesOwnCountry) {
     const parsed = parsePhoneEntry(text, {
@@ -1073,8 +1077,9 @@ export function websiteSetupLinks(
     if (links[key] && links[key] !== candidate) {
       return {
         ok: false,
-        problem:
-          `That answer has two ${SOCIAL_KEY_LABELS[key]} links. Which one should the Website show?`,
+        problem: `That answer has two ${
+          SOCIAL_KEY_LABELS[key]
+        } links. Which one should the Website show?`,
       };
     }
     links[key] = candidate;
@@ -1201,10 +1206,16 @@ export function websiteSetupCityCountry(
   }
   city = city.replace(/^(?:in|at)\s+/i, "").trim();
   if (!city) {
-    return { ok: false, problem: `I have the country but not the city. ${askAgain}` };
+    return {
+      ok: false,
+      problem: `I have the country but not the city. ${askAgain}`,
+    };
   }
   if (city.length > 120) {
-    return { ok: false, problem: `That city name is too long to show. ${askAgain}` };
+    return {
+      ok: false,
+      problem: `That city name is too long to show. ${askAgain}`,
+    };
   }
   return { ok: true, value: { city, country_code: country.code } };
 }
@@ -2002,7 +2013,8 @@ export function buildWebsiteSetupRetryPresentation(args: {
           id: "nothing-saved",
           tone: "warning",
           title: "Nothing was saved",
-          body: "Answer the same question again and Ari will confirm the exact change before saving.",
+          body:
+            "Answer the same question again and Ari will confirm the exact change before saving.",
         }]),
         ...fieldInteraction(fieldKey, field, completeness),
       ],
@@ -2031,10 +2043,25 @@ export function buildWebsiteSetupFlowRendition(args: {
   partTotal: number;
   partLabel: string;
   problem?: string | null;
+  /**
+   * #2830 P4 — after a refusal, what the owner gave last time: the same card
+   * comes back with it filled in (their own words and choices only), so they
+   * fix what was wrong instead of retyping everything.
+   */
+  draft?: {
+    choices: string[];
+    country: string | null;
+    response: string;
+  } | null;
 }): AriRenditionV2 {
   const { fieldKey, field, completeness, brandId } = args;
   const question = setupQuestion(fieldKey, field);
   const label = fieldLabel(field, fieldKey);
+  const interaction = fieldInteraction(fieldKey, field, completeness);
+  const draft = args.draft ?? null;
+  const blocks = draft
+    ? interaction.map((block) => withDraft(block, draft))
+    : interaction;
   return {
     schema_version: 2,
     rendition_id: `website-setup:field-${fieldKey.replaceAll(".", "-")}`,
@@ -2058,7 +2085,7 @@ export function buildWebsiteSetupFlowRendition(args: {
             "Answer again and Ari will show you the exact change before saving.",
         }]
         : []),
-      ...fieldInteraction(fieldKey, field, completeness),
+      ...blocks,
     ],
     actions: [
       {
@@ -2067,7 +2094,8 @@ export function buildWebsiteSetupFlowRendition(args: {
         style: "primary",
         behavior: {
           type: "submit",
-          message: `Use my answer for ${label}${WEBSITE_SETUP_SUBMISSION_SUFFIX}`,
+          message:
+            `Use my answer for ${label}${WEBSITE_SETUP_SUBMISSION_SUFFIX}`,
         },
       },
       {
@@ -2078,6 +2106,48 @@ export function buildWebsiteSetupFlowRendition(args: {
       },
     ],
   } as AriRenditionV2;
+}
+
+/** Fill one answer block with the owner's previous answer. */
+function withDraft(
+  block: Record<string, unknown>,
+  draft: { choices: string[]; country: string | null; response: string },
+): Record<string, unknown> {
+  if (block.type === "choices" && Array.isArray(block.options)) {
+    const chosen = new Set(draft.choices.map((choice) => choice.toLowerCase()));
+    return {
+      ...block,
+      options: block.options.map((option) => {
+        const entry = object(option);
+        return chosen.has(String(entry.label ?? "").toLowerCase())
+          ? { ...entry, selected: true }
+          : entry;
+      }),
+    };
+  }
+  if (block.type === "input") {
+    const fieldModel = object(block.field);
+    const response = draft.response.trim().slice(0, 2000);
+    if (!response) return block;
+    const country = fieldModel.kind === "phone" && draft.country
+      ? phoneCountry(draft.country)
+      : null;
+    const filled: Record<string, unknown> = { ...fieldModel, value: response };
+    if (country) {
+      delete filled.countryPlaceholder;
+      filled.countryIso = country.code;
+      filled.label = `${
+        fieldLabelOnly(String(fieldModel.label ?? ""))
+      } — ${country.name} (${country.dialCode})`;
+    }
+    return { ...block, field: filled };
+  }
+  return block;
+}
+
+/** "Contact phone — United Kingdom (+44)" → "Contact phone". */
+function fieldLabelOnly(label: string): string {
+  return label.split(" — ")[0];
 }
 
 /** #2830 P4 — the one question Ari asks for a Website field. */

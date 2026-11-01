@@ -1397,3 +1397,272 @@ Deno.test("P4 regression: city and country are asked before the phone and addres
   assert(at("city_country") < at("contact_phone"));
   assert(at("city_country") < at("address"));
 });
+
+// ── Live certification fixes (local Sites stack, 2026-11-01) ───────────────
+
+function renditionOf(artefact: { rendition?: Record<string, unknown> }) {
+  return artefact.rendition as {
+    rendition_id: string;
+    blocks: Array<{
+      type: string;
+      field?: Record<string, unknown>;
+      options?: Array<Record<string, unknown>>;
+    }>;
+  };
+}
+
+Deno.test("cert D1: a typed theme choice resolves on the engine — whole label (even with 'and'), any case or spacing, or its id", async () => {
+  // Live: "Warm and welcoming" was split on "and" and fell through to the
+  // model (66K-token prompt).
+  for (
+    const typed of [
+      "Warm and welcoming",
+      "  warm AND   welcoming. ",
+      "warm",
+    ]
+  ) {
+    assertEquals(websiteTextAnswer("theme", typed), {
+      choices: ["Warm and welcoming"],
+      country: null,
+      response: "",
+    }, typed);
+  }
+  assertEquals(websiteTextAnswer("design_key", "VOYAGE")?.choices, ["Voyage"]);
+  assertEquals(
+    websiteTextAnswer("offerings_selected", "trips and events")
+      ?.choices,
+    ["Trips", "Events"],
+  );
+  assertEquals(websiteTextAnswer("theme", "something else"), null);
+
+  const w = world(["profile_photo", "theme"]);
+  const store = new MemoryStore(OWNER);
+  await step(w, store, await startRun(store), {});
+  w.fields.get("profile_photo")!.state = "verified";
+  let run = await current(store);
+  const theme = asArtefact(await step(w, store, run, choose(run, "check")));
+  assertEquals(theme.artefact.title, "Mingla page theme");
+  // The look card carries its three choices.
+  const choices = renditionOf(theme.artefact).blocks.find((block) =>
+    block.type === "choices"
+  );
+  assertEquals(
+    choices?.options?.map((option) => option.label),
+    ["Warm and welcoming", "Bold and energetic", "Refined and minimal"],
+  );
+  run = await current(store);
+  const typed = await step(w, store, run, {
+    trigger: "turn",
+    ownerText: "Warm and welcoming",
+  });
+  assertEquals(typed.kind, "propose", "never handed to the model");
+  const proposal = typed as Extract<RunnerOutcome, { kind: "propose" }>;
+  assertEquals(
+    (proposal.tool_args.patch as Record<string, unknown>).theme,
+    { color: "#eb7825", font: "fraunces", animation: "shimmer_reveal" },
+  );
+});
+
+Deno.test("cert D1/D2/D3: every agent-chat reply that shows a form card carries its control", async () => {
+  // Live: the first question (description), the look after the logo check
+  // and every refusal reached the owner as bare text.
+  const { flowReplyStructured } = await import("../ariFlows/edge.ts");
+  const w = world(["description"]);
+  const store = new MemoryStore(OWNER);
+  const first = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(first.artefact.title, "Brand story");
+  const structured = flowReplyStructured(first.artefact);
+  assertEquals(
+    (structured.structuredData?.rendition as { rendition_id: string })
+      .rendition_id,
+    first.artefact.artefact_id,
+  );
+  assertEquals(
+    renditionOf(first.artefact).blocks.some((block) => block.type === "input"),
+    true,
+  );
+  assertEquals(flowReplyStructured(null), {});
+  const chat = Deno.readTextFileSync(
+    new URL("supabase/functions/agent-chat/index.ts", ROOT),
+  );
+  assertMatch(chat, /\.\.\.flowReplyStructured\(decision\.artefact\),/);
+});
+
+Deno.test("cert D3: a refusal brings the same field card back with the owner's input kept", async () => {
+  const w = world(["contact_phone"]);
+  const store = new MemoryStore(OWNER);
+  await step(w, store, await startRun(store), {});
+  // No brand country and no chip country: the number can't be read.
+  w.fields.get("city_country")!.value = null;
+  let run = await current(store);
+  const refused = asArtefact(
+    await step(w, store, run, form(run, { response: "07700 900123" })),
+  );
+  assertEquals(refused.artefact.title, "Contact phone");
+  assertEquals(refused.artefact.answer_mode, "form");
+  const input = renditionOf(refused.artefact).blocks.find((block) =>
+    block.type === "input"
+  );
+  assertEquals(input?.field?.value, "07700 900123");
+  assertEquals(input?.field?.kind, "phone");
+  assert(
+    renditionOf(refused.artefact).blocks.some((block) =>
+      block.type === "callout"
+    ),
+    "says nothing was saved",
+  );
+  // With the country picked this time, the corrected answer proposes.
+  run = await current(store);
+  const fixed = await step(
+    w,
+    store,
+    run,
+    form(run, { country: "GB", response: "07700 900123" }),
+  );
+  assertEquals(fixed.kind, "propose");
+});
+
+Deno.test("cert D5: resuming Website setup re-presents the current card at the bottom, same identity", async () => {
+  const { resumeWebsiteReply } = await import("../ariFlows/edge.ts");
+  const w = world(["address"]);
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  const decision = resumeWebsiteReply(await current(store));
+  assertEquals(decision.kind, "reply");
+  if (decision.kind !== "reply") return;
+  // Same artefact id: still the one current card, never a second one.
+  assertEquals(decision.artefact?.artefact_id, card.artefact.artefact_id);
+  assertNotMatch(decision.text, /above/);
+  assertMatch(decision.text, /^Picking up Website setup where we left off\./);
+  const edge = Deno.readTextFileSync(
+    new URL("supabase/functions/_shared/ariFlows/edge.ts", ROOT),
+  );
+  assertNotMatch(edge, /Your next step is/);
+});
+
+Deno.test("cert D6: a logo that is there but can't be used is not called missing, and the handoff stays", async () => {
+  const w = world(["profile_photo"]);
+  const store = new MemoryStore(OWNER);
+  const handoff = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(handoff.artefact.kind, "handoff");
+  const logo = w.fields.get("profile_photo")!;
+  logo.state = "invalid";
+  logo.value = "http://example.test/logo.png";
+  let run = await current(store);
+  const checked = await step(w, store, run, choose(run, "check"));
+  assertEquals(checked.kind, "notice");
+  const notice = checked as Extract<RunnerOutcome, { kind: "notice" }>;
+  assertMatch(
+    notice.text,
+    /^I can see a brand logo, but it isn't usable yet: /,
+  );
+  assertNotMatch(notice.text, /isn't there yet/);
+  assertEquals(notice.represent, true);
+  assertEquals(notice.artefact?.artefact_id, handoff.artefact.artefact_id);
+  // Truly missing still says so.
+  logo.state = "missing";
+  logo.value = null;
+  run = await current(store);
+  const missing = await step(w, store, run, choose(run, "check")) as Extract<
+    RunnerOutcome,
+    { kind: "notice" }
+  >;
+  assertMatch(missing.text, /^I checked; your brand logo isn't there yet\./);
+  assertEquals(missing.represent, true);
+});
+
+Deno.test("cert D7: readback shows the saved link; the receipt reads one clear line; paid readiness never repeats itself", async () => {
+  const { websiteReadbackLine } = await import("../ariFlows/websiteSetup.ts");
+  assertEquals(
+    websiteReadbackLine("social_links", {
+      key: "social_links",
+      label: "Public website or social link",
+      state: "verified",
+      value: { social_links: { website: "https://localtesttrips.test" } },
+    }),
+    "Saved. Website: https://localtesttrips.test.",
+  );
+  assertEquals(
+    websiteReadbackLine("city_country", {
+      key: "city_country",
+      label: "City and country",
+      state: "verified",
+      value: { city: "London", country_code: "GB" },
+    }),
+    "Saved. City and country: London, United Kingdom.",
+  );
+  const { buildToolReceiptRendition } = await import("../ariRendition.ts");
+  const receipt = buildToolReceiptRendition({
+    toolName: "update_brand_context",
+    result: { ok: true },
+    pendingActionId: "pa-1",
+    capabilities: {
+      schema_version: 2,
+      renditions: ["receipt"],
+      blocks: ["key_value", "callout"],
+      // deno-lint-ignore no-explicit-any
+    } as any,
+    envValue: "on",
+  });
+  if (receipt) {
+    const all = JSON.stringify(receipt);
+    assertNotMatch(all, /shown above|below was read back/);
+  }
+  const source = Deno.readTextFileSync(
+    new URL("supabase/functions/_shared/ariRendition.ts", ROOT),
+  );
+  assertNotMatch(source, /"The saved result is shown above\."/);
+  assertNotMatch(
+    source,
+    /"The saved result below was read back from Mingla\."/,
+  );
+});
+
+Deno.test("cert D8: opening Website setup is a structured request — a short neutral bubble, engine-generated, outside the daily cap", async () => {
+  const edge = await import("../ariFlows/edge.ts");
+  assertEquals(edge.WEBSITE_SETUP_KICKOFF_DISPLAY, "Set up my Website");
+  assertEquals(edge.parseWebsiteSetupKickoff({}), { part: null });
+  assertEquals(edge.parseWebsiteSetupKickoff({ part: "brand" }), {
+    part: "brand",
+  });
+  assertEquals(edge.parseWebsiteSetupKickoff({ part: "nope" }), null);
+  assertEquals(edge.parseWebsiteSetupKickoff({ part: "brand", x: 1 }), null);
+  assertEquals(edge.parseWebsiteSetupKickoff("Start Website setup"), null);
+  const instruction = edge.websiteSetupKickoffInstruction({ part: "brand" });
+  assert(isWebsiteSetupRequest(instruction), "the engine reads it as start");
+  assertMatch(instruction, /I'm working on Your brand details\./);
+  // The attempt is stamped as engine-generated.
+  const updates: Record<string, unknown>[] = [];
+  const service = {
+    from(table: string) {
+      assertEquals(table, "agent_turn_attempts");
+      return {
+        update(row: Record<string, unknown>) {
+          updates.push(row);
+          const chain = {
+            eq: () => chain,
+            then: (resolve: (value: { error: null }) => void) =>
+              resolve({ error: null }),
+          };
+          return chain;
+        },
+      };
+    },
+  };
+  // deno-lint-ignore no-explicit-any
+  assert(await edge.markEngineOriginTurn(service as any, OWNER, "att-1"));
+  assertEquals(updates, [{ origin: "engine" }]);
+  const chat = Deno.readTextFileSync(
+    new URL("supabase/functions/agent-chat/index.ts", ROOT),
+  );
+  assertMatch(chat, /body\.message = WEBSITE_SETUP_KICKOFF_DISPLAY;/);
+  assertMatch(
+    chat,
+    /websiteKickoff\s*\?\s*websiteSetupKickoffInstruction\(websiteKickoff\)\s*:\s*requestMessage/,
+  );
+  assertMatch(chat, /if \(!rateLimit\.allowed && !kickoffExempt\)/);
+  assertMatch(
+    chat,
+    /await markEngineOriginTurn\(serviceClient, userId, attemptId\)/,
+  );
+});

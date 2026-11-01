@@ -217,6 +217,12 @@ export type AskSpec = {
   /** #2830 P4 — a form-shaped card (see FlowArtefact.answer_mode). */
   answer_mode?: "form";
   rendition?: Record<string, unknown>;
+  /**
+   * #2830 P4 — what to say when the owner says a handoff is done but the
+   * re-read disagrees, when the probe knows more than "not there yet" (a
+   * logo that is there but can't be used).
+   */
+  not_ready_text?: string;
   record: Omit<FlowStepRecord, "state" | "question_id">;
 };
 

@@ -210,6 +210,17 @@ function phoneWords(e164: string): string {
   }`;
 }
 
+const SOCIAL_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  website: "Website",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  x: "X",
+  facebook: "Facebook",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  threads: "Threads",
+});
+
 const NOT_SHOWN: Readonly<Record<string, string>> = Object.freeze({
   contact_email: "a public contact email",
   contact_phone: "a public phone number",
@@ -258,13 +269,19 @@ export function websiteReadbackLine(fieldKey: string, field: Json): string {
       break;
     }
     case "social_links": {
+      // The saved link itself, named by where it goes ("Website: https://…"),
+      // not just the platform name.
       const links = object(object(value).social_links);
-      const names = Object.entries(links).flatMap(([key, url]) =>
-        str(url)
-          ? [key === "x" ? "X" : key.charAt(0).toUpperCase() + key.slice(1)]
-          : []
+      const saved = Object.entries(links).flatMap(([key, url]) =>
+        str(url) ? [`${SOCIAL_NAMES[key] ?? key}: ${str(url)}`] : []
       );
-      words = names.length > 0 ? listWords(names) : null;
+      if (saved.length > 0) {
+        const shownLinks = listWords(saved);
+        return `Saved. ${
+          shownLinks.length > 240 ? `${shownLinks.slice(0, 237)}…` : shownLinks
+        }.`;
+      }
+      words = null;
       break;
     }
     case "theme": {
@@ -299,17 +316,43 @@ const CHOICE_FIELDS = new Set([
   "theme",
 ]);
 
-function choiceLabels(fieldKey: string): string[] {
+/** A choice card's options: the label the owner sees and the option's id. */
+function choiceOptions(fieldKey: string): { id: string; label: string }[] {
   switch (fieldKey) {
     case "offerings_selected":
-      return PLAN_OFFERING_OPTIONS.map((option) => option.label);
+      return PLAN_OFFERING_OPTIONS.map((option) => ({
+        id: option.key,
+        label: option.label,
+      }));
     case "design_key":
-      return DESIGN_KEYS.map((key) => DESIGNS[key].label);
+      return DESIGN_KEYS.map((key) => ({ id: key, label: DESIGNS[key].label }));
     case "theme":
-      return WEBSITE_SETUP_THEME_PRESETS.map((preset) => preset.label);
+      return WEBSITE_SETUP_THEME_PRESETS.map((preset) => ({
+        id: preset.id,
+        label: preset.label,
+      }));
     default:
       return [];
   }
+}
+
+/** Case-, whitespace- and punctuation-insensitive form of a typed choice. */
+function choiceKey(text: string): string {
+  return text.toLowerCase().replace(/[’']/g, "").replace(/[\s_-]+/g, " ")
+    .replace(/[.!]+$/, "").trim();
+}
+
+/**
+ * The option a typed part names, by its label or its id ("Warm and
+ * welcoming", "warm and  welcoming.", "warm"), or null.
+ */
+function matchChoice(fieldKey: string, part: string): string | null {
+  const key = choiceKey(part);
+  if (!key) return null;
+  const option = choiceOptions(fieldKey).find((candidate) =>
+    choiceKey(candidate.label) === key || choiceKey(candidate.id) === key
+  );
+  return option?.label ?? null;
 }
 
 /**
@@ -336,14 +379,19 @@ export function websiteTextAnswer(
     return null;
   }
   if (CHOICE_FIELDS.has(fieldKey)) {
-    const labels = choiceLabels(fieldKey);
-    const picked = normalized.split(/,|\band\b/i).map((part) => part.trim())
+    // The whole reply first: a label may itself contain "and" ("Warm and
+    // welcoming"), so splitting it would lose the exact choice the card
+    // shows. Only then a list of several choices ("Trips, events").
+    const whole = matchChoice(fieldKey, normalized);
+    if (whole) return { choices: [whole], country: null, response: "" };
+    const picked = normalized.split(/,|\band\b|&/i).map((part) => part.trim())
       .filter(Boolean);
-    const matched = picked.flatMap((part) =>
-      labels.filter((label) => label.toLowerCase() === part.toLowerCase())
-    );
+    const matched = picked.flatMap((part) => {
+      const label = matchChoice(fieldKey, part);
+      return label ? [label] : [];
+    });
     return matched.length > 0 && matched.length === picked.length
-      ? { choices: matched, country: null, response: "" }
+      ? { choices: [...new Set(matched)], country: null, response: "" }
       : null;
   }
   return { choices: [], country: null, response: normalized };
@@ -462,6 +510,26 @@ export function resolveWebsiteFormAnswer(args: {
 
 // ── Steps ──────────────────────────────────────────────────────────────────
 
+/** A saved draft answer (step data is JSON; read it back defensively). */
+function draftOf(value: unknown): FlowAnswerValues | null {
+  const raw = object(value);
+  const choices = Array.isArray(raw.choices)
+    ? raw.choices.filter((choice): choice is string =>
+      typeof choice === "string"
+    ).slice(0, 10)
+    : [];
+  const country = typeof raw.country === "string" &&
+      /^[A-Z]{2}$/.test(raw.country)
+    ? raw.country
+    : null;
+  const response = typeof raw.response === "string"
+    ? raw.response.slice(0, 2000)
+    : "";
+  return choices.length > 0 || country || response.trim()
+    ? { choices, country, response }
+    : null;
+}
+
 /** Brand-context fields whose "not now" keeps them on the to-do list. */
 function canSetAside(field: Json): boolean {
   return field.requirement === "recommended";
@@ -479,6 +547,8 @@ function formAsk(args: {
   problem: string | null;
   attempt: number;
   extraOptions?: { id: string; label: string }[];
+  /** What the owner gave last time, shown again after a refusal. */
+  draft?: FlowAnswerValues | null;
 }): AskSpec {
   const { field, fieldKey } = args;
   const label = websiteSetupFieldLabel(field, fieldKey);
@@ -507,6 +577,7 @@ function formAsk(args: {
       partTotal: PLAN_PARTS.length,
       partLabel: partLabel(args.part),
       problem: args.problem,
+      draft: args.problem ? args.draft ?? null : null,
     }) as unknown as Record<string, unknown>,
     record: { data: { field_key: fieldKey, attempt: args.attempt } },
   };
@@ -537,8 +608,25 @@ function uploadAsk(ctx: FlowContext, fieldKey: string, field: Json): AskSpec {
       can_caller_fix: true,
       who_can_fix: "you",
     },
+    ...(mediaPresentButUnusable(field)
+      ? {
+        not_ready_text: `I can see a ${
+          lowerFirst(label)
+        }, but it isn't usable yet: it isn't saved at a secure web address your Website can show. Upload it again in Brand details and save, then tell me and I'll check.`,
+      }
+      : {}),
     record: { data: { field_key: fieldKey } },
   };
+}
+
+/**
+ * The audit found an upload, but one the Website can't use (state
+ * "invalid": not at a secure https address). Different from "missing": the
+ * owner did upload something, and saying "it isn't there" would be untrue.
+ */
+export function mediaPresentButUnusable(field: Json): boolean {
+  return field.state === "invalid" ||
+    (field.state !== "missing" && !settledField(field) && !!str(field.value));
 }
 
 /** Is the owner still looking at an unconfirmed proposal from this step? */
@@ -656,6 +744,7 @@ function fieldStep(args: {
           problem: sameField ? str(data.problem) : null,
           attempt,
           extraOptions: args.extra?.(key),
+          draft: sameField ? draftOf(data.draft) : null,
         }),
       };
     },
@@ -747,6 +836,8 @@ function fieldStep(args: {
         };
       if (resolved.kind === "stale") return null;
       if (resolved.kind === "retry") {
+        // Nothing is saved; the same card comes back with what was wrong and
+        // what the owner gave, so they correct it rather than retype it.
         return {
           record: {
             state: "asked",
@@ -754,6 +845,7 @@ function fieldStep(args: {
               field_key: fieldKey,
               attempt: attempt + 1,
               problem: resolved.problem,
+              draft: answer.values,
             },
           },
         };

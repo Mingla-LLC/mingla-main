@@ -1195,3 +1195,16 @@ Deno.test("P3 happy: resume returns the open card and writes nothing; flag off r
   });
   assertEquals(off.body, { flow_state: null, artefact: null });
 });
+
+Deno.test("cert D7: the paid-readiness answer lists its blockers once — no closing paragraph repeating them", () => {
+  const answer = buildReadinessAnswer({
+    readiness: readinessFor(freshWorld(), "publish_paid"),
+    action: "publish_paid",
+    brandName: "Lantern",
+  });
+  assertMatch(answer.text, /Ready to sell paid tickets: only the brand owner/);
+  // Live: "Paid selling isn't ready: …" closed the answer, saying the same
+  // blockers a second time.
+  assertNotMatch(answer.text, /Paid selling isn't ready/);
+  assertNotMatch(answer.text, /no bank is connected yet\.?$/);
+});

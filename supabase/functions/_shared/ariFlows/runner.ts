@@ -73,6 +73,11 @@ export type RunnerOutcome =
     text: string;
     artefact: FlowArtefact | null;
     open_route?: string;
+    /**
+     * #2830 P4 — show the current card again under these words (the same
+     * artefact id, so it stays the one answerable card).
+     */
+    represent?: boolean;
     run: FlowRun;
   }
   /** Nothing new (resume / reload): the current card is the answer. */
@@ -587,22 +592,27 @@ async function advanceUnderLease(
       run = await commit({});
       const claimedDone = checking ||
         (input.trigger === "turn" && DONE_CLAIM.test(input.ownerText ?? ""));
+      // The same card comes back at the bottom (same id: still the one
+      // current card, never a second answerable copy).
       if (checking && !open?.handoff) {
         return {
           kind: "notice",
           text:
-            "I checked again and nothing has changed yet. The card above is still open whenever you're ready.",
+            "I checked again and nothing has changed yet. Here's the same step whenever you're ready.",
           artefact: open,
+          represent: true,
           run,
         };
       }
       if (claimedDone && open?.handoff) {
         return {
           kind: "notice",
-          text: `I checked; ${
-            ownerItemNoun(open.handoff.item_label)
-          } isn't there yet. The card above is still open whenever you're ready.`,
+          text: ask.not_ready_text ??
+            `I checked; ${
+              ownerItemNoun(open.handoff.item_label)
+            } isn't there yet. Here's the same step whenever you're ready.`,
           artefact: open,
+          represent: true,
           run,
         };
       }

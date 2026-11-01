@@ -99,7 +99,11 @@ export function buildReadinessAnswer(args: {
       `These would help but can wait: ${listWords(canWait.map(waitLabel))}.`,
     );
   }
-  if (MONEY_ACTIONS.has(action)) {
+  // #2830 P4: the money sentence only when the lines above don't already
+  // say it — when a payment item is listed (blocking or can-wait), the
+  // closing sentence repeated those same blockers in other words.
+  const moneyListed = relevant.some((item) => item.key.startsWith("money."));
+  if (MONEY_ACTIONS.has(action) && !moneyListed) {
     parts.push(readinessMoneySentence(readiness.money));
   }
   return {

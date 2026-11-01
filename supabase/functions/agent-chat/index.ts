@@ -171,9 +171,14 @@ import { buildAriTripCreationCall } from "../_shared/agentTripPlanner.ts";
 import {
   decideFlowTurn,
   flowChoices,
+  flowReplyStructured,
   type FlowStateView,
   isWebsiteSetupRequest,
+  markEngineOriginTurn,
   parseFlowAnswer,
+  parseWebsiteSetupKickoff,
+  WEBSITE_SETUP_KICKOFF_DISPLAY,
+  websiteSetupKickoffInstruction,
   persistFlowRow,
   staleFlowAnswer,
 } from "../_shared/ariFlows/edge.ts";
@@ -281,6 +286,11 @@ interface RequestBody {
   workflow_context?: "website_setup";
   /** #3355 P3: a structured answer bound to the run's current question. */
   flow_answer?: unknown;
+  /**
+   * #2830 P4: opening Website setup — a structured request, never a scripted
+   * message in the owner's name. Its bubble reads "Set up my Website".
+   */
+  website_setup_kickoff?: unknown;
 }
 
 type Response_ =
@@ -1006,6 +1016,24 @@ async function handle(req: Request): Promise<Response> {
   if (flowAnswer && typeof body.message !== "string") {
     body.message = flowAnswer.display_text;
   }
+  const websiteKickoff = body.website_setup_kickoff === undefined
+    ? null
+    : parseWebsiteSetupKickoff(body.website_setup_kickoff);
+  if (
+    body.website_setup_kickoff !== undefined &&
+    (!websiteKickoff || flowAnswer || choiceSubmission ||
+      body.workflow_context !== "website_setup")
+  ) {
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      "website_setup_kickoff is invalid",
+    );
+  }
+  if (websiteKickoff) {
+    // The owner's bubble is the short neutral line, whatever was sent.
+    body.message = WEBSITE_SETUP_KICKOFF_DISPLAY;
+  }
   const attachmentIds = Array.isArray(body.attachment_ids)
     ? body.attachment_ids.filter((id): id is string =>
       typeof id === "string" && UUID_PATTERN.test(id)
@@ -1114,7 +1142,12 @@ async function handle(req: Request): Promise<Response> {
     serviceClient,
     body.client_turn_id,
   );
-  if (!rateLimit.allowed) {
+  // #2830 P4: opening Website setup is engine-generated, not an owner
+  // message: with the engine on it never counts toward (or is refused by)
+  // the daily cap. The in-flight guard still applies.
+  const kickoffExempt = websiteKickoff !== null && flowEngineEnabled() &&
+    !rateLimit.allowed && rateLimit.reason === "rate_limited_daily";
+  if (!rateLimit.allowed && !kickoffExempt) {
     const message = rateLimit.reason === "rate_limited_inflight"
       ? "Another action is currently being processed — please wait a moment"
       : "You've reached today's Ari message limit.";
@@ -1392,6 +1425,9 @@ async function handle(req: Request): Promise<Response> {
   const userMessageId = claimed.message_id;
   const attemptId = claimed.attempt_id;
   const attemptNumber = claimed.attempt_number;
+  if (websiteKickoff && flowEngineEnabled()) {
+    await markEngineOriginTurn(serviceClient, userId, attemptId);
+  }
   // A recovered same-id invocation may observe the winner already running.
   // Only the invocation that atomically changes accepted -> running owns any
   // failure finalization for this attempt.
@@ -1636,7 +1672,9 @@ async function handle(req: Request): Promise<Response> {
     }
 
     let liveChoices: AgentChoicesV2 | null = null;
-    let semanticMessage = requestMessage;
+    let semanticMessage = websiteKickoff
+      ? websiteSetupKickoffInstruction(websiteKickoff)
+      : requestMessage;
     if (choiceSubmission) {
       if (
         !taskState.pending_question ||
@@ -1891,6 +1929,11 @@ async function handle(req: Request): Promise<Response> {
           ...(decision.handoff_route
             ? { handoffRoute: decision.handoff_route }
             : {}),
+          // #2830 P4: a form card's control rides as its rendition on EVERY
+          // path that shows the card (a typed or card answer, a refusal, a
+          // resume), not only after a confirm — without it the question
+          // reached the owner as bare text with nothing to answer with.
+          ...flowReplyStructured(decision.artefact),
           flowArtefact: decision.artefact,
           flowState: decision.state,
         });

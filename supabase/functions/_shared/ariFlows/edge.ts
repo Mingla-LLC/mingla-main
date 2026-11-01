@@ -21,6 +21,7 @@ import { buildReadinessAnswer } from "./readinessAnswer.ts";
 import { SITE_AGENT_READ_ONLY, SITE_AGENT_TOOLS } from "../agentSiteTools.ts";
 import { detectWebsiteSetupIntent } from "../agentWebsiteSetup.ts";
 import { WEBSITE_SETUP_FLOW, WEBSITE_SETUP_FLOW_KEY } from "./websiteSetup.ts";
+import { PLAN_PARTS, type PlanPartKey } from "../siteContracts/sitePlan.ts";
 import {
   runFlowStep,
   type RunnerOutcome,
@@ -167,6 +168,19 @@ export function flowChoices(
         },
     })),
   };
+}
+
+/**
+ * #2830 P4 — the extra structured content an agent-chat reply needs for a
+ * flow card: a form card's control (its rendition). Every row that shows a
+ * form card must carry it, or the owner sees the question with no control.
+ */
+export function flowReplyStructured(
+  artefact: FlowArtefact | null,
+): { structuredData?: Record<string, unknown> } {
+  return artefact?.rendition
+    ? { structuredData: { rendition: artefact.rendition } }
+    : {};
 }
 
 /** Assistant row content for a flow artefact. */
@@ -317,7 +331,9 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
       return {
         kind: "reply",
         text: outcome.text,
-        artefact: null,
+        // #2830 P4: a refusal or "not there yet" brings the same card back
+        // under the words (same artefact id: still the one current card).
+        artefact: outcome.represent ? outcome.artefact : null,
         state,
         ...(outcome.open_route ? { handoff_route: outcome.open_route } : {}),
         classification: "flow_engine",
@@ -460,7 +476,9 @@ export async function decideFlowTurn(
           brandName: args.brand.name,
         }),
       );
-      if (live.flow_key !== WEBSITE_SETUP_FLOW_KEY || decision.kind !== "none") {
+      if (
+        live.flow_key !== WEBSITE_SETUP_FLOW_KEY || decision.kind !== "none"
+      ) {
         return decision;
       }
       // #2830 P4: the engine owns this chat's Website setup. "Start /
@@ -468,15 +486,7 @@ export async function decideFlowTurn(
       // side question for the normal lanes, never the pre-engine Website job.
       const state = flowStateOf(live);
       if (isWebsiteSetupRequest(args.message)) {
-        return {
-          kind: "reply",
-          text: live.current_artefact
-            ? `Picking up Website setup where we left off. Your next step is "${live.current_artefact.title}" above.`
-            : "Picking up Website setup where we left off.",
-          artefact: null,
-          state,
-          classification: "flow_engine",
-        };
+        return resumeWebsiteReply(live);
       }
       return { kind: "side", state };
     }
@@ -525,6 +535,45 @@ export async function decideFlowTurn(
     }
     throw error;
   }
+}
+
+/**
+ * #2830 P4 — opening Website setup is a structured request, not owner words.
+ * The owner's bubble says only this; the server builds the instruction the
+ * pre-engine lane needs (engine off) from the request itself.
+ */
+export const WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website";
+
+export interface WebsiteSetupKickoff {
+  part: PlanPartKey | null;
+}
+
+/** Validate `website_setup_kickoff` ({ part?: plan part key }). */
+export function parseWebsiteSetupKickoff(
+  value: unknown,
+): WebsiteSetupKickoff | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).some((key) => key !== "part")) return null;
+  if (raw.part === undefined || raw.part === null) return { part: null };
+  const part = PLAN_PARTS.find((candidate) => candidate.key === raw.part);
+  return part ? { part: part.key } : null;
+}
+
+/**
+ * The instruction the turn runs on (never shown, never stored as the owner's
+ * words). It starts with "Start Website setup", which the engine reads as
+ * the request to start or resume the run.
+ */
+export function websiteSetupKickoffInstruction(
+  kickoff: WebsiteSetupKickoff,
+): string {
+  const label = kickoff.part
+    ? PLAN_PARTS.find((part) => part.key === kickoff.part)?.label ?? null
+    : null;
+  return `Start Website setup.${
+    label ? ` I'm working on ${label}.` : ""
+  } Check the live setup plan, tell me what's done and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Don't create a draft until setup and brand context are complete.`;
 }
 
 const WEBSITE_KICKOFF =
@@ -580,22 +629,36 @@ async function startWebsiteSetup(
   if (decision.kind === "reply" && started.created) {
     return {
       ...decision,
-      text:
-        `Let's set up your Website for ${args.brand!.name}. I'll go through the plan one part at a time, ask one thing at a time, and save each change only after you approve it.\n\n${decision.text}`,
+      text: `Let's set up your Website for ${
+        args.brand!.name
+      }. I'll go through the plan one part at a time, ask one thing at a time, and save each change only after you approve it.\n\n${decision.text}`,
     };
   }
   if (decision.kind === "none") {
-    return {
-      kind: "reply",
-      text: run.current_artefact
-        ? `Picking up Website setup where we left off. Your next step is "${run.current_artefact.title}" above.`
-        : "Picking up Website setup where we left off.",
-      artefact: null,
-      state: flowStateOf(run),
-      classification: "flow_engine",
-    };
+    return resumeWebsiteReply(run);
   }
   return decision;
+}
+
+/**
+ * #2830 P4 — "start / continue Website setup" on a run that is already open:
+ * the current step comes back at the bottom of the chat, with the SAME card
+ * (same artefact id), so the owner never has to scroll up for it and an
+ * older copy can never be answered twice. No card open (a proposal is
+ * waiting for approval, which is already at the bottom): words only.
+ */
+export function resumeWebsiteReply(run: FlowRun): FlowTurnDecision {
+  const live = LIVE_FLOW_STATUSES.has(run.status);
+  const artefact = live ? run.current_artefact : null;
+  return {
+    kind: "reply",
+    text: artefact
+      ? `Picking up Website setup where we left off.\n\n${artefact.text}`
+      : "Picking up Website setup where we left off.",
+    artefact,
+    state: flowStateOf(run),
+    classification: "flow_engine",
+  };
 }
 
 /** Pre-claim check: a structured answer to a card that is no longer current. */
@@ -695,4 +758,26 @@ export async function persistFlowRow(args: {
     model_version: args.modelVersion,
   });
   return error ? null : id;
+}
+
+/**
+ * #2830 P4 — an engine-generated turn (opening Website setup) is not an
+ * owner message: its attempt is stamped `origin = 'engine'` so the daily cap
+ * never counts it (migration 20280224003355). Best effort: before that
+ * migration the column is missing and the turn simply counts as before.
+ */
+export async function markEngineOriginTurn(
+  service: SupabaseClient,
+  userId: string,
+  attemptId: string,
+): Promise<boolean> {
+  try {
+    const { error } = await service.from("agent_turn_attempts")
+      .update({ origin: "engine" })
+      .eq("id", attemptId)
+      .eq("user_id", userId);
+    return !error;
+  } catch (_error) {
+    return false;
+  }
 }

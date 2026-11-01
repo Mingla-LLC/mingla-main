@@ -736,26 +736,21 @@ export function buildToolReceiptRendition(args: {
     kind: "receipt",
     eyebrow: eventPresentation ? "Event draft" : "Saved in Mingla",
     title: eventPresentation?.title ?? receiptTitle(args.toolName),
+    // #2830 P4 — one clear line. (It used to say the result was "below",
+    // then, in a callout under it, that it was "shown above".)
     body: eventPresentation?.body ??
-      "The saved result below was read back from Mingla.",
+      (genericRows.length > 0
+        ? "Saved and checked in Mingla:"
+        : "Saved and checked in Mingla."),
     tone: "success",
     state: "submitted",
     ...(graphicFor(args.toolName)
       ? { graphic: graphicFor(args.toolName) }
       : {}),
-    blocks: eventPresentation?.blocks ?? [
-      ...(genericRows.length > 0
+    blocks: eventPresentation?.blocks ??
+      (genericRows.length > 0
         ? [{ type: "key_value", version: 1, id: "receipt", rows: genericRows }]
         : []),
-      {
-        type: "callout",
-        version: 1,
-        id: "canonical-result",
-        tone: "success",
-        title: "Recorded in Mingla",
-        body: "The saved result is shown above.",
-      },
-    ].slice(0, MAX_BLOCKS),
   };
 }
 
