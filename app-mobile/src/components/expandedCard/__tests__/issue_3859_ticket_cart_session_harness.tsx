@@ -20,6 +20,7 @@ jest.mock("react-native", () => {
     __esModule: true,
     ActivityIndicator: host("ActivityIndicator"),
     Pressable: host("Pressable"),
+    Switch: host("Switch"),
     Text: host("Text"),
     TextInput: host("TextInput"),
     View: host("View"),
@@ -187,12 +188,18 @@ jest.mock("../../../hooks/useAppLayout", () => ({
 // avoid importing the native Supabase/app-version stack into this render unit.
 // #4174 — money-display render tests set `mockTicketQuote.data` to a server
 // quote; every other suite keeps the inert `null` default.
-export const mockTicketQuote: { data: unknown } = { data: null };
+export const mockTicketQuote: { data: unknown; input: unknown } = {
+  data: null,
+  input: null,
+};
 jest.mock("../../../hooks/useTicketQuote", () => ({
-  useTicketQuote: () => ({
-    query: { data: mockTicketQuote.data, isFetching: false, isError: false },
-    isDebouncing: false,
-  }),
+  useTicketQuote: (input: unknown) => {
+    mockTicketQuote.input = input;
+    return {
+      query: { data: mockTicketQuote.data, isFetching: false, isError: false },
+      isDebouncing: false,
+    };
+  },
 }));
 
 jest.mock("../../../services/postHogService", () => ({

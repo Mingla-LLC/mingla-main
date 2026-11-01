@@ -19,6 +19,7 @@ export interface TicketQuoteInput {
     ticketTypeId: string;
     quantity: number;
     paymentPlanChoice: "full" | "installments";
+    byDate?: Record<string, number>;
   }[];
   eventDateId?: string | null;
   eventDateIds?: readonly string[] | null;

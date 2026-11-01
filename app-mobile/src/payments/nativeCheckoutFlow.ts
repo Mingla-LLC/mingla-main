@@ -121,6 +121,7 @@ export interface NativeCheckoutInput {
     ticketTypeId: string;
     quantity: number;
     paymentPlanChoice?: "full" | "installments";
+    byDate?: Record<string, number>;
   }>;
   buyer: {
     name: string;
@@ -451,11 +452,12 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
     ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
     email: input.buyer.email.trim().toLowerCase(),
     phone: input.buyer.phone.trim(),
-    lines: input.lines.map((line) =>
-      line.paymentPlanChoice === undefined
+    lines: input.lines.map((line) => [
+      ...(line.paymentPlanChoice === undefined
         ? [line.ticketTypeId, line.quantity]
-        : [line.ticketTypeId, line.quantity, line.paymentPlanChoice]
-    ),
+        : [line.ticketTypeId, line.quantity, line.paymentPlanChoice]),
+      ...(line.byDate !== undefined ? [line.byDate] : []),
+    ]),
     paymentPlanChoice: input.paymentPlanChoice ?? null,
     purchaseTermsAccepted: input.purchaseTermsAccepted === true,
     discountCode: input.discountCode?.trim().toUpperCase() ?? null,
@@ -833,6 +835,7 @@ export const useNativeCheckoutFlow = (): ((
             paymentPlanChoice: line.paymentPlanChoice as
               | "full"
               | "installments",
+            ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
           })),
           eventDateId: input.eventDateId ?? null,
           eventDateIds: normalizedEventDateIds(input),
@@ -881,6 +884,7 @@ export const useNativeCheckoutFlow = (): ((
                 ticketTypeId: line.ticketTypeId,
                 quantity: line.quantity,
                 paymentPlanChoice: line.paymentPlanChoice,
+                ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
               }))
               : input.lines,
           // ORCH-1016: trip intake answers → orders.intake_form_data.

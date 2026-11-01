@@ -30,6 +30,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -100,6 +101,16 @@ import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 import { useTicketQuote } from "../../hooks/useTicketQuote";
+import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
+import {
+  type ByDateMap,
+  byDateForDates,
+  byDateTotal,
+  cartLineQuantities,
+  evenByDate,
+  uniformQuantity,
+  withDateQuantity,
+} from "./ticketCartByDate";
 import { postHogService } from "../../services/postHogService";
 import { PhoneInput } from "../onboarding/PhoneInput";
 import {
@@ -278,6 +289,7 @@ export interface TicketCartCheckoutPayload {
     ticketTypeId: string;
     quantity: number;
     paymentPlanChoice: "full" | "installments";
+    byDate?: Record<string, number>;
   }>;
   marketingOptIn: boolean;
   /** Explicit purchase-terms act carried independently of marketing consent. */
@@ -474,6 +486,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
   const { lines, totals, setLineQuantity, reset } =
     useTicketCart(fallbackCurrency);
+  const [sameTicketsForEveryDate, setSameTicketsForEveryDate] =
+    useState<boolean>(true);
+  const [byDateByTicket, setByDateByTicket] = useState<
+    Record<string, ByDateMap>
+  >({});
   // #3859 — purchase acceptance is a required checkout act. Explorer's
   // account-level marketing remains on separately and has no cart control.
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
@@ -579,20 +596,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       );
   }, [lines, intakeSchemasByTier]);
 
-  const quoteLines = useMemo(
-    () =>
-      lines
-        .filter((line) => line.quantity > 0)
-        .map((line) => ({
-          ticketTypeId: line.ticketTypeId,
-          quantity: line.quantity,
-          paymentPlanChoice:
-            planTiersByTicketId?.[line.ticketTypeId] !== undefined
-              ? ("installments" as const)
-              : ("full" as const),
-        })),
-    [lines, planTiersByTicketId],
-  );
   const quoteEventDateIds = useMemo(
     () =>
       multiDaySelection === null
@@ -603,6 +606,38 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             )
             .map((day) => day.id),
     [multiDaySelection],
+  );
+  // issue #3281 decision 7 — only a per-day cart with 2+ chosen dates can split.
+  const canSplitByDate =
+    multiDaySelection !== null &&
+    multiDaySelection.allDaysPass !== true &&
+    multiDaySelection.pricingMode !== "all_days" &&
+    quoteEventDateIds.length >= 2;
+  const perDateActive = canSplitByDate && !sameTicketsForEveryDate;
+  const quoteLines = useMemo(
+    () =>
+      lines
+        .filter((line) => line.quantity > 0)
+        .map((line) => ({
+          ticketTypeId: line.ticketTypeId,
+          ...cartLineQuantities(
+            line,
+            byDateByTicket[line.ticketTypeId],
+            perDateActive ? quoteEventDateIds : null,
+          ),
+          paymentPlanChoice:
+            planTiersByTicketId?.[line.ticketTypeId] !== undefined
+              ? ("installments" as const)
+              : ("full" as const),
+        }))
+        .filter((line) => line.quantity > 0),
+    [
+      byDateByTicket,
+      lines,
+      perDateActive,
+      planTiersByTicketId,
+      quoteEventDateIds,
+    ],
   );
   const quoteInput = useMemo(
     () => ({
@@ -767,6 +802,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       setHighlightUnchosen(false);
       setDiscountCode("");
       setDismissedSaleNotices([]);
+      setSameTicketsForEveryDate(true);
+      setByDateByTicket({});
       setIntakeAnswers({});
       setIntakeErrors({});
       intakeUploadSessionRef.current = createIntakeUploadSessionId();
@@ -1285,34 +1322,127 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     </View>
   );
 
-  const ticketRows = visibleTickets.map((ticket) => {
-    const line = lines.find((l) => l.ticketTypeId === ticket.id);
-    const seed: CartLineSeed = {
-      ticketTypeId: ticket.id,
-      ticketName: ticket.name,
-      unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
-      currency: ticket.currency ?? fallbackCurrency,
-      isFree: ticket.isFree,
-    };
-    return (
-      <QuantityRow
-        key={ticket.id}
-        ticket={ticket}
-        quantity={line?.quantity ?? 0}
-        onQuantityChange={(next: number) => setLineQuantity(seed, next)}
-        CardComponent={ConsumerCartCard}
-        renderPlusIcon={(iconProps: { size: number; color: string }) => (
-          <Icon name="add" size={iconProps.size} color={iconProps.color} />
-        )}
-        formatCurrency={formatMajorCurrency}
-        theme={CONSUMER_TICKET_CART_THEME}
-        fallbackCurrency={fallbackCurrency}
-        installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
-        allowUnboundedNameWrap={multiDaySelection !== null}
-        hideRemainingCount={hideRemainingCount}
-      />
-    );
+  const seedForTicket = (ticket: PublicTicketProps): CartLineSeed => ({
+    ticketTypeId: ticket.id,
+    ticketName: ticket.name,
+    unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
+    currency: ticket.currency ?? fallbackCurrency,
+    isFree: ticket.isFree,
   });
+  const renderQuantityRow = (
+    ticket: PublicTicketProps,
+    key: string,
+    quantity: number,
+    onQuantityChange: (next: number) => void,
+  ): React.ReactElement => (
+    <QuantityRow
+      key={key}
+      ticket={ticket}
+      quantity={quantity}
+      onQuantityChange={onQuantityChange}
+      CardComponent={ConsumerCartCard}
+      renderPlusIcon={(iconProps: { size: number; color: string }) => (
+        <Icon name="add" size={iconProps.size} color={iconProps.color} />
+      )}
+      formatCurrency={formatMajorCurrency}
+      theme={CONSUMER_TICKET_CART_THEME}
+      fallbackCurrency={fallbackCurrency}
+      installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
+      allowUnboundedNameWrap={multiDaySelection !== null}
+      hideRemainingCount={hideRemainingCount}
+    />
+  );
+  const setTicketByDate = (
+    ticket: PublicTicketProps,
+    dateId: string,
+    next: number,
+  ): void => {
+    const byDate = withDateQuantity(byDateByTicket[ticket.id], dateId, next);
+    setByDateByTicket((current) => ({ ...current, [ticket.id]: byDate }));
+    setLineQuantity(
+      seedForTicket(ticket),
+      byDateTotal(byDateForDates(byDate, quoteEventDateIds)),
+    );
+  };
+  const handleSameTicketsForEveryDate = (on: boolean): void => {
+    setSameTicketsForEveryDate(on);
+    // Rebuilt from the cart each time, so a removed ticket keeps no saved counts.
+    const nextByDate: Record<string, ByDateMap> = {};
+    for (const ticket of visibleTickets) {
+      const line = lines.find((l) => l.ticketTypeId === ticket.id);
+      if (line === undefined) continue;
+      if (on) {
+        setLineQuantity(
+          seedForTicket(ticket),
+          uniformQuantity(
+            byDateForDates(byDateByTicket[ticket.id], quoteEventDateIds),
+          ),
+        );
+      } else {
+        nextByDate[ticket.id] = evenByDate(quoteEventDateIds, line.quantity);
+        setLineQuantity(
+          seedForTicket(ticket),
+          byDateTotal(nextByDate[ticket.id]),
+        );
+      }
+    }
+    setByDateByTicket(nextByDate);
+  };
+  // A changed date selection is the one edit that bypasses the steppers, so the
+  // cart follows the map here. Dropping below two dates returns to uniform.
+  useEffect(() => {
+    if (sameTicketsForEveryDate) return;
+    if (!canSplitByDate) setSameTicketsForEveryDate(true);
+    for (const ticket of visibleTickets) {
+      // A reselected date can bring back a line that dropped to zero.
+      const inCart =
+        lines.find((l) => l.ticketTypeId === ticket.id)?.quantity ?? 0;
+      const total = byDateTotal(
+        byDateForDates(byDateByTicket[ticket.id], quoteEventDateIds),
+      );
+      if (total !== inCart) setLineQuantity(seedForTicket(ticket), total);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSplitByDate, quoteEventDateIds]);
+  const ticketRows = perDateActive && multiDaySelection !== null
+    ? multiDaySelection.occurrences
+        .filter((day) => quoteEventDateIds.includes(day.id))
+        .map((day) => (
+          <View
+            key={day.id}
+            style={styles.perDateBlock}
+            testID={`issue-3281-date-${day.id}`}
+          >
+            <Text style={styles.perDateHeading}>
+              {formatOccurrenceLine(day, multiDaySelection.timezone) ??
+                "This date"}
+            </Text>
+            {visibleTickets.map((ticket) => (
+              <View key={`${day.id}-${ticket.id}`}>
+                {ticket.maxPurchaseQty != null && ticket.maxPurchaseQty > 0 ? (
+                  <Text style={styles.perDateHint}>
+                    {`Up to ${ticket.maxPurchaseQty} per date`}
+                  </Text>
+                ) : null}
+                {renderQuantityRow(
+                  ticket,
+                  `${day.id}-${ticket.id}-row`,
+                  byDateByTicket[ticket.id]?.[day.id] ?? 0,
+                  (next) => setTicketByDate(ticket, day.id, next),
+                )}
+              </View>
+            ))}
+          </View>
+        ))
+    : visibleTickets.map((ticket) => {
+        const line = lines.find((l) => l.ticketTypeId === ticket.id);
+        return renderQuantityRow(
+          ticket,
+          ticket.id,
+          line?.quantity ?? 0,
+          (next) => setLineQuantity(seedForTicket(ticket), next),
+        );
+      });
 
   const terminalBody =
     terminalOutcome === null ? null : (
@@ -1438,6 +1568,22 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           />
         ) : null}
         <Text style={styles.sectionLabel}>SELECT YOUR TICKETS</Text>
+        {canSplitByDate ? (
+          <View
+            style={styles.sameTicketsRow}
+            testID="issue-3281-same-tickets-switch"
+          >
+            <Text style={styles.sameTicketsLabel}>
+              Same tickets for every date
+            </Text>
+            <Switch
+              value={sameTicketsForEveryDate}
+              onValueChange={handleSameTicketsForEveryDate}
+              disabled={isSubmitting}
+              accessibilityLabel="Same tickets for every date"
+            />
+          </View>
+        ) : null}
         {multiDaySelection !== null ? (
           <View
             pointerEvents={dayTruthUnavailable ? "none" : "auto"}
@@ -1563,7 +1709,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   {saleLimitedCopy(name, notice.remaining)}
                 </Text>
                 <View style={styles.saleNoticeActions}>
-                  {notice.remaining > 0 && ticket !== undefined ? (
+                  {notice.remaining > 0 &&
+                  ticket !== undefined &&
+                  !perDateActive ? (
                     <Pressable
                       onPress={() => {
                         postHogService.capture("sale_limited_choice", {
@@ -2342,6 +2490,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   unavailableTickets: { opacity: 0.45 },
+  sameTicketsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  sameTicketsLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ffffff",
+    marginRight: 12,
+  },
+  perDateBlock: { marginBottom: 12 },
+  perDateHeading: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#ffffff",
+    marginBottom: 8,
+  },
+  perDateHint: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.52)",
+    marginBottom: 4,
+  },
   discountSection: {
     marginTop: 16,
   },
