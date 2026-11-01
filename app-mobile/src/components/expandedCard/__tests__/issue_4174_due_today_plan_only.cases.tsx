@@ -1,3 +1,6 @@
+// Loaded by issue_3859_expired_session_guard.implementor.happy.render.test.tsx,
+// the registered ticket-cart render suite (jest.issue2774.render.cjs), so these
+// #4174 cases run in CI without another entry in that shared runner config.
 import {
   makeTicketCartProps,
   mockTicketQuote,
