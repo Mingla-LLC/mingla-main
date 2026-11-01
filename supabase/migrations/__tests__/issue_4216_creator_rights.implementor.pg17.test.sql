@@ -268,6 +268,22 @@ INSERT INTO public.gigs(
   current_date+2,current_date+3,current_date+7,'USD','open',
   '42160000-0000-4000-8000-000000000001'
 );
+INSERT INTO public.gig_contracts(
+  id,gig_id,brand_id,creator_account_id,state
+) VALUES(
+  '42160000-0000-4000-8000-00000000000b',
+  '42160000-0000-4000-8000-00000000000a',
+  '42160000-0000-4000-8000-000000000003',
+  '42160000-0000-4000-8000-000000000002','released'
+);
+INSERT INTO public.gig_terms_versions(
+  contract_id,version,fee_minor,booking_fee_minor,currency,format_key,
+  deliverables,post_by,usage_days,shoot_passes,proposed_by
+) VALUES(
+  '42160000-0000-4000-8000-00000000000b',1,10000,1500,'USD',
+  'behind_the_scenes','[{"platform":"instagram","kind":"reel","count":1}]',
+  current_date+7,90,1,'host'
+);
 SET LOCAL session_replication_role=origin;
 DO $restore_test$
 BEGIN
@@ -278,6 +294,17 @@ BEGIN
       AND agreement_document_url IS NULL AND agreement_document_sha256 IS NULL
   ) THEN
     RAISE EXCEPTION '#4216 trigger-bypass restore invented agreement evidence';
+  END IF;
+  IF NOT EXISTS(
+    SELECT 1 FROM public.gig_contracts c
+    JOIN public.gig_terms_versions t
+      ON t.contract_id=c.id AND t.version=1
+    WHERE c.id='42160000-0000-4000-8000-00000000000b'
+      AND c.rights_model='legacy_timed' AND t.rights_model='legacy_timed'
+      AND c.agreement_version IS NULL
+      AND c.creator_agreement_acceptance_id IS NULL
+  ) THEN
+    RAISE EXCEPTION '#4216 restore did not preserve the legacy contract chain';
   END IF;
 END
 $restore_test$;

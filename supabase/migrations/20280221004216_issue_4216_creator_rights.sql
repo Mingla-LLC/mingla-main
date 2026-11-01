@@ -426,6 +426,8 @@ $fn$;
 CREATE TRIGGER issue_4216_contract_rights_guard
 BEFORE INSERT OR UPDATE ON public.gig_contracts
 FOR EACH ROW EXECUTE FUNCTION public.issue_4216_contract_rights_guard();
+ALTER TABLE public.gig_contracts
+  ENABLE ALWAYS TRIGGER issue_4216_contract_rights_guard;
 
 -- Activation is a one-way historical fact. The licence is irrevocable once
 -- the authoritative release path has released the full fixed Creator fee;
@@ -495,6 +497,8 @@ $fn$;
 CREATE TRIGGER issue_4216_terms_rights_guard
 BEFORE INSERT OR UPDATE ON public.gig_terms_versions
 FOR EACH ROW EXECUTE FUNCTION public.issue_4216_terms_rights_guard();
+ALTER TABLE public.gig_terms_versions
+  ENABLE ALWAYS TRIGGER issue_4216_terms_rights_guard;
 
 CREATE OR REPLACE FUNCTION public.issue_4216_proposal_rights_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
