@@ -376,7 +376,7 @@ if (process.argv.includes("--self-test")) {
     ["ledger maps two capabilities to one ari_tool",
       mutate("ledger", '"ari_tool": "create_brand"', '"ari_tool": "create_event"')],
     ["ledger audit capability_count drifts",
-      mutate("ledger", '"capability_count": 187', '"capability_count": 186')],
+      mutate("ledger", '"capability_count": 188', '"capability_count": 187')],
     ["ledger audit status_breakdown drifts",
       mutate("ledger", '"broken": 0', '"broken": 1')],
     ["merge-marker residue in the tester",
