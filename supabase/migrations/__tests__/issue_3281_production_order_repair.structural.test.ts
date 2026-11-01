@@ -55,11 +55,17 @@ function lastBodies(order: string[]): Map<string, string> {
 const isPending = (name: string) =>
   PENDING.some((version) => name.startsWith(version)) ||
   name.startsWith(REPAIR);
+const repairName = files.find((name) => name.startsWith(REPAIR))!;
 const productionOrder = (repair: boolean) => [
-  ...files.filter((name) => !isPending(name)),
+  ...files.filter((name) => !isPending(name) && name < repairName),
   ...files.filter((name) =>
     isPending(name) && (repair || !name.startsWith(REPAIR))
   ),
+  // Migrations created after the repair still run after the repaired
+  // production order. Keeping them here lets future migrations safely
+  // redefine one of the same functions without making this history check
+  // model an order that production never used.
+  ...files.filter((name) => !isPending(name) && name > repairName),
 ];
 
 function differing(order: string[]): string[] {
