@@ -323,8 +323,9 @@ export function phase3dContractDigest(manifest) {
 // #4202: register retained shared-identity event-chat repair in the same three
 // inventories; the existing #4202/#4203 suite owns its executable proof.
 // #4216: re-seal after the Creator rights migration and its declared proof
-// entered the three preserved full-history replay inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9b6578a946734555eb83afc6c3f8d79885e61ae926a4e835b3143fb828fe5a4e";
+// entered the full-history inventories, plus its exact-file exclusion from
+// the deliberately pre-#1931 replay that has no Creator/gig schema.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c43d9c7e234b370865c8f4afe4ea6bfa49001fb2414ef7983dd9625871b447ca";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

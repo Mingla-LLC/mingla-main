@@ -106,8 +106,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // excluded by exact filename from the pre-#1931 replay that omits its #3355
 // control-plane prerequisite.
 // #4216: re-sealed after the Creator rights migration entered the same three
-// full-history replay inventories; its executable proof self-registers locally.
-export const BOOTSTRAP_SHA256 = "f675cc0a17b7a266deae38ea8cb8043169f74c5ccf67adca30f7171f8475d972";
+// full-history replay inventories and gained an exact-file exclusion from the
+// deliberately pre-#1931 replay that has no Creator/gig schema.
+export const BOOTSTRAP_SHA256 = "9793619c2c320ce08028e2bac794ee14619eae6ef26a5c4e8b35b66563dc3ce6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
