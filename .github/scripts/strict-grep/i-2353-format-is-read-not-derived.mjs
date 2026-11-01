@@ -188,7 +188,21 @@ const ISSUE_3827 =
 // (extraGuestCount handed to the guest-privacy leaf); every #2353 hunk rides along.
 const ISSUE_3827_GOING_BOX =
   "supabase/migrations/20271128003827_issue_3827_going_box_privacy_extra_guests.sql";
+// issue #3281 — day-limited tickets copy the draft projection forward so back to
+// draft keeps day ids and ticket day lists; every #2353 hunk rides along.
+const S1_DRAFT_FORMAT_RE =
+  /'format',\s*CASE\s+WHEN\s+lower\(btrim\(COALESCE\(v_event\.theme#>>'\{business_event,format\}'/i;
+const ISSUE_3281_DAY_LIMITED =
+  "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql";
 const SUCCESSORS = {
+  business_event_draft_payload_from_graph: [
+    {
+      file: ISSUE_3281_DAY_LIMITED,
+      carries: [
+        { id: "S1 format read from the stored string", re: S1_DRAFT_FORMAT_RE },
+      ],
+    },
+  ],
   business_update_live_event: [
     {
       file: ISSUE_3827,
