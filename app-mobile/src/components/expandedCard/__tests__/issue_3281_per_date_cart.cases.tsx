@@ -140,6 +140,36 @@ describe("issue #3281 — Explorer per-date quantities", () => {
     expect(quoteLine().byDate).toBeUndefined();
   });
 
+  test("a ticket removed while uniform keeps no saved counts", () => {
+    const renderer = mountTicketCart(props(DAYS));
+    setSwitch(renderer, false);
+    setDate(renderer, "day-1", 3);
+    setSwitch(renderer, true);
+    TestRenderer.act(() => {
+      renderer.root
+        .findAllByType("QuantityRow" as never)[0]
+        .props.onQuantityChange(0);
+    });
+    setSwitch(renderer, false);
+    expect(dateRow(renderer, "day-1").props.quantity).toBe(0);
+    expect((mockTicketQuote.input as { lines: Line[] }).lines).toEqual([]);
+  });
+
+  test("reselecting a date brings its tickets back into the cart", () => {
+    const renderer = mountTicketCart(props(DAYS));
+    setSwitch(renderer, false);
+    setDate(renderer, "day-2", 0);
+    setDate(renderer, "day-3", 0);
+    updateTicketCart(renderer, props(["day-2", "day-3"]));
+    expect((mockTicketQuote.input as { lines: Line[] }).lines).toEqual([]);
+    updateTicketCart(renderer, props(DAYS));
+    expect(dateRow(renderer, "day-1").props.quantity).toBe(2);
+    expect(quoteLine()).toMatchObject({
+      quantity: 2,
+      byDate: { "day-1": 2 },
+    });
+  });
+
   test("closing the sheet forgets the split", () => {
     const renderer = mountTicketCart(props(DAYS));
     setSwitch(renderer, false);

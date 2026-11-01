@@ -1366,6 +1366,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   };
   const handleSameTicketsForEveryDate = (on: boolean): void => {
     setSameTicketsForEveryDate(on);
+    // Rebuilt from the cart each time, so a removed ticket keeps no saved counts.
+    const nextByDate: Record<string, ByDateMap> = {};
     for (const ticket of visibleTickets) {
       const line = lines.find((l) => l.ticketTypeId === ticket.id);
       if (line === undefined) continue;
@@ -1377,11 +1379,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           ),
         );
       } else {
-        const byDate = evenByDate(quoteEventDateIds, line.quantity);
-        setByDateByTicket((current) => ({ ...current, [ticket.id]: byDate }));
-        setLineQuantity(seedForTicket(ticket), byDateTotal(byDate));
+        nextByDate[ticket.id] = evenByDate(quoteEventDateIds, line.quantity);
+        setLineQuantity(
+          seedForTicket(ticket),
+          byDateTotal(nextByDate[ticket.id]),
+        );
       }
     }
+    setByDateByTicket(nextByDate);
   };
   // A changed date selection is the one edit that bypasses the steppers, so the
   // cart follows the map here. Dropping below two dates returns to uniform.
@@ -1389,12 +1394,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     if (sameTicketsForEveryDate) return;
     if (!canSplitByDate) setSameTicketsForEveryDate(true);
     for (const ticket of visibleTickets) {
-      const line = lines.find((l) => l.ticketTypeId === ticket.id);
-      if (line === undefined) continue;
+      // A reselected date can bring back a line that dropped to zero.
+      const inCart =
+        lines.find((l) => l.ticketTypeId === ticket.id)?.quantity ?? 0;
       const total = byDateTotal(
         byDateForDates(byDateByTicket[ticket.id], quoteEventDateIds),
       );
-      if (total !== line.quantity) setLineQuantity(seedForTicket(ticket), total);
+      if (total !== inCart) setLineQuantity(seedForTicket(ticket), total);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSplitByDate, quoteEventDateIds]);
