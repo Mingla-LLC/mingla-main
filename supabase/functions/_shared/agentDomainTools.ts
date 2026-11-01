@@ -304,10 +304,16 @@ const discardEventDraft = writeTool(
 
 const upsertTicketTier = writeTool(
   "upsert_ticket_tier",
-  "Create or sparsely update a complete canonical ticket tier. Currency is derived by the server; paid tiers require payout readiness.",
+  "Create or sparsely update a complete canonical ticket tier. For a new tier, omit tier_id; only pass an existing tier_id returned by a read when updating. Never invent a tier_id. Currency is derived by the server; paid tiers require payout readiness.",
   {
     event_id: UUID,
-    tier_id: { type: "string", minLength: 1, maxLength: 100 },
+    tier_id: {
+      type: "string",
+      minLength: 1,
+      maxLength: 100,
+      description:
+        "Omit this field when adding a new tier. For updates, use only an existing tier_id returned by a read; never invent one.",
+    },
     name: STR,
     price_cents: { type: "integer", minimum: 0 },
     is_free: { type: "boolean" },
@@ -744,20 +750,69 @@ function tripGraphExecutor(
   };
 }
 
+/**
+ * Bind an update of a new trip's Standard placeholder BEFORE Ari persists the
+ * approval card. This keeps the exact user-approved args and operation receipt
+ * identical; no executor may rewrite a confirmed payload later.
+ */
+export async function bindTripStandardPlaceholderProposal(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: any,
+): Promise<Record<string, unknown>> {
+  if (toolName !== "manage_trip_tiers") return args;
+  const items = args.items as unknown[];
+  const requested = items.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    return record.deleted !== true && !isUuid(record.ticket_type_id) &&
+        typeof record.tier_name === "string" &&
+        record.tier_name.trim().toLocaleLowerCase() === "standard"
+      ? [record]
+      : [];
+  });
+  if (requested.length !== 1) return args;
+
+  const { data, error } = await client.rpc(
+    "ari_resolve_trip_standard_placeholder",
+    {
+      p_event_id: args.event_id,
+    },
+  );
+  if (error) {
+    throw new ToolError(
+      "TRIP_READ_FAILED",
+      "I couldn't verify the existing Standard package, so I stopped before changing it.",
+    );
+  }
+  if (!isUuid(data)) return args;
+  return {
+    ...args,
+    items: items.map((item) =>
+      item === requested[0] ? { ...requested[0], ticket_type_id: data } : item
+    ),
+  };
+}
+
 const createTrip = writeTool(
   "create_trip",
-  "Create a draft trip under an owned brand. Produces the complete canonical draft graph — event, placeholder Standard package and its pricing tier — so it opens identically in the manual trip wizard.",
+  "Create a private draft trip under an owned brand. Include timezone, start_date, end_date, destination_text and max_guests whenever the user supplied them. Date-only boundaries are stored at local midnight in the supplied timezone. Do not invent price, itinerary, coordinates or departure details. Produces the canonical draft graph so it opens identically in the manual trip wizard.",
   {
     brand_id: UUID,
     title: STR,
     description: { type: "string" },
+    timezone: { type: "string", minLength: 1, maxLength: 100 },
+    start_date: { type: "string", format: "date" },
+    end_date: { type: "string", format: "date" },
+    destination_text: { type: "string", minLength: 1, maxLength: 240 },
+    max_guests: { type: "integer", minimum: 1, maximum: 100000 },
     provenance: {
       type: "object",
       description:
         "Opaque origin marker (issue #1753 owns quote-to-draft mapping). Never invent one.",
     },
   },
-  ["brand_id", "title"],
+    ["brand_id", "title"],
   async (args, client, userId, context) => {
     requireBrand(args, client, userId);
     return await executeTripWrite("create_trip", args, client, context);
@@ -822,7 +877,7 @@ const manageTripInclusions = writeTool(
 
 const manageTripTiers = writeTool(
   "manage_trip_tiers",
-  "Create, update or remove trip packages, including deposit and instalment metadata. Money-bearing: always show the currency and the before/after amounts in the proposal. A package that has sold cannot be removed.",
+  "Create, update or remove trip packages, including deposit and instalment metadata. On a new trip, updating its sole untouched free Standard placeholder replaces that placeholder instead of adding a duplicate. Money-bearing: always show the currency and the before/after amounts in the proposal. A package that has sold cannot be removed.",
   tripGraphGroupSchema({
     type: "object",
     additionalProperties: false,
@@ -2986,8 +3041,9 @@ const draftCampaign = writeTool(
   // subject line and an HTML body under `body_html`.
   "Create a marketing campaign draft (RLS insert). Does not send. " +
     "`body` is the message content: for email it is the HTML body and `subject` " +
-    "is the subject line (both required); for sms it is the plain-text body and " +
-    "`subject` is ignored. Only 'email' and 'sms' can be sent.",
+    "is the subject line (both required); for sms it is the plain-text body, " +
+    "`subject` should repeat the campaign title and is ignored. Include `channel`; " +
+    "only 'email' and 'sms' can be sent.",
   {
     brand_id: UUID,
     title: STR,
@@ -2995,7 +3051,7 @@ const draftCampaign = writeTool(
     subject: { type: "string" },
     channel: { type: "string", enum: ["email", "sms"] },
   },
-  ["brand_id", "title"],
+  ["brand_id", "title", "body", "subject", "channel"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     // issue #2291 (M2) — `rcs` was accepted here and by the DB CHECK, but
@@ -7124,6 +7180,35 @@ const getCampaignReport = writeTool(
   },
 );
 
+const getCampaignDraft = writeTool(
+  "get_campaign_draft",
+  "Read one saved marketing campaign draft, including its subject and message content, so you can review the exact saved copy. Draft-only, brand-scoped, and never returns recipient details.",
+  { campaign_id: UUID },
+  ["campaign_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("marketing_campaigns")
+      .select(
+        "id, brand_id, name, channel, status, channel_payload, scheduled_for, created_at, updated_at",
+      )
+      .eq("id", args.campaign_id)
+      .eq("status", "draft")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!data) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Saved campaign draft not found or access denied.",
+      );
+    }
+    await assertAgentReadBrand(client, userId, data.brand_id as string);
+    return data;
+  },
+);
+
 // ----------------------------------------------------------------------------
 // #1983 — profile avatar, Ari history, notifications inbox, support inbox
 // ----------------------------------------------------------------------------
@@ -8624,6 +8709,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   manageMarketingAudiences,
   manageMarketingTemplates,
   getCampaignReport,
+  getCampaignDraft,
   editProfileAvatar,
   manageAriHistory,
   manageBusinessNotifications,
@@ -8657,6 +8743,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
+  "get_campaign_draft",
   "get_ad_campaign_report",
   // #1980 — Growth Tool report read (growth-tools-report app lane).
   "get_growth_tool_report",

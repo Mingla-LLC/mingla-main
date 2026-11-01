@@ -12,6 +12,10 @@ import type {
 import { isUuid, ToolError } from "./agentToolHelpers.ts";
 import { assertAgentReadBrand } from "./agentTenantScope.ts";
 import { assertSiteToolArgs } from "./agentSiteTools.ts";
+import {
+  campaignDraftCopyIssues,
+  campaignDraftPayloadIssues,
+} from "./campaignPayloadContract.ts";
 
 type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
@@ -211,6 +215,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_marketing_audiences: role("marketing_manager", "optional_brand"),
   manage_marketing_templates: role("marketing_manager", "optional_brand"),
   get_campaign_report: role("marketing_manager", "campaign"),
+  get_campaign_draft: role("marketing_manager", "campaign"),
   // #1983 — self-scoped account / inbox / support.
   edit_profile_avatar: role("self", "none"),
   manage_ari_history: role("self", "none"),
@@ -628,6 +633,7 @@ export async function authorizeAgentTool(
   args: Record<string, unknown>,
   userClient: SupabaseClient,
   userId: string,
+  trustedUserText?: string,
 ): Promise<AuthContext> {
   if (!isUuid(userId)) {
     throw new ToolError("ROLE_DENIED", "Authentication is required");
@@ -648,7 +654,7 @@ export async function authorizeAgentTool(
       "Ari's permission contract is unavailable",
     );
   }
-  validateBeforeAuthorization(tool, args);
+  validateBeforeAuthorization(tool, args, trustedUserText);
   const brandId = await resolveBrand(tool.name, expected, args, userClient);
   if (expected.resource === "optional_brand" && brandId === null) {
     return { brandId: null, resource: expected.resource };
@@ -764,6 +770,7 @@ export async function authorizeAgentTool(
 function validateBeforeAuthorization(
   tool: Pick<AgentToolDefinition, "name" | "parameters">,
   args: Record<string, unknown>,
+  trustedUserText?: string,
 ): void {
   const schema = tool.parameters as any;
   if (!args || typeof args !== "object" || Array.isArray(args)) {
@@ -772,6 +779,9 @@ function validateBeforeAuthorization(
   // #2829 W9b — Sites proposals are checked against the block catalogue,
   // their citations and (reviews) the owner's pasted text before a card shows.
   assertSiteToolArgs(tool.name, args);
+  if (tool.name === "draft_campaign") {
+    validateAriCampaignDraftProposal(args, trustedUserText);
+  }
   for (const key of schema.required ?? []) {
     if (args[key] === undefined || args[key] === null || args[key] === "") {
       const values = schema.properties?.[key]?.enum;
@@ -810,6 +820,20 @@ function validateBeforeAuthorization(
     const value = args[key];
     if (value === undefined || value === null) continue;
     validateSchemaValue(value, rule, key);
+  }
+}
+
+/** Campaign approval cards must already satisfy the channel's content contract. */
+export function validateAriCampaignDraftProposal(
+  args: Record<string, unknown>,
+  trustedUserText?: string,
+): void {
+  const issues = [
+    ...campaignDraftPayloadIssues(args),
+    ...(trustedUserText ? campaignDraftCopyIssues(args, trustedUserText) : []),
+  ];
+  if (issues.length > 0) {
+    throw new ToolError("INVALID_ARGS", issues.join(" "));
   }
 }
 

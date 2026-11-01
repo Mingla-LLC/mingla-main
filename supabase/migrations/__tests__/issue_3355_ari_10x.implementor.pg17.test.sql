@@ -206,6 +206,111 @@ BEGIN
 END
 $owner_state$;
 
+RESET ROLE;
+DO $trip_placeholder$
+DECLARE
+  v_user uuid;
+  v_stranger uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_event uuid := gen_random_uuid();
+  v_ticket uuid := gen_random_uuid();
+  v_resolved uuid;
+  v_trip_operation uuid := gen_random_uuid();
+  v_trip_args jsonb;
+  v_trip_result jsonb;
+  v_created_trip uuid;
+  v_created_date public.event_dates%ROWTYPE;
+BEGIN
+  SELECT id INTO v_user FROM t3355_ids WHERE key = 'user';
+  INSERT INTO auth.users(id, email) VALUES (v_stranger, 'ari3355-stranger@example.com');
+  INSERT INTO public.creator_accounts(id) VALUES (v_user);
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (v_brand, v_user, 'Trip Placeholder Test', 'trip-placeholder-test', 'USD');
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, currency)
+  VALUES (v_event, v_brand, v_user, 'Placeholder Trip', 'placeholder-trip', 'trip', 'draft', 'draft', 'USD');
+  INSERT INTO public.ticket_types(
+    id, event_id, name, price_cents, currency, quantity_total, is_unlimited,
+    is_free, min_purchase_qty, available_online, available_in_person, display_order
+  ) VALUES (v_ticket, v_event, 'Standard', 0, 'USD', 1, false, true, 1, true, false, 0);
+  INSERT INTO public.trip_pricing_tiers(event_id, ticket_type_id, tier_name, tier_metadata)
+  VALUES (v_event, v_ticket, 'Standard', '{}');
+
+  PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
+  v_resolved := public.ari_resolve_trip_standard_placeholder(v_event);
+  IF v_resolved IS DISTINCT FROM v_ticket THEN
+    RAISE EXCEPTION 'unique untouched placeholder was not resolved';
+  END IF;
+
+  INSERT INTO public.ticket_types(
+    id, event_id, name, price_cents, currency, quantity_total, is_unlimited,
+    is_free, min_purchase_qty, available_online, available_in_person, display_order
+  ) VALUES (gen_random_uuid(), v_event, 'Standard', 0, 'USD', 1, false, true, 1, true, false, 1);
+  INSERT INTO public.trip_pricing_tiers(event_id, ticket_type_id, tier_name, tier_metadata)
+  SELECT v_event, id, 'Standard', '{}' FROM public.ticket_types
+   WHERE event_id = v_event AND id <> v_ticket AND deleted_at IS NULL;
+  IF public.ari_resolve_trip_standard_placeholder(v_event) IS NOT NULL THEN
+    RAISE EXCEPTION 'ambiguous placeholders must not resolve';
+  END IF;
+
+  -- #3355 complete-trip creation must reach the canonical Ari executor and
+  -- preserve explicit date-only boundaries in the requested local timezone.
+  v_trip_args := jsonb_build_object(
+    'brand_id', v_brand,
+    'title', 'Ari local date-only trip',
+    'description', 'Lagos wellness retreat',
+    'timezone', 'Africa/Lagos',
+    'start_date', '2027-01-08',
+    'end_date', '2027-01-10',
+    'destination_text', 'Lagos',
+    'max_guests', 20
+  );
+  INSERT INTO public.agent_pending_actions(
+    id, user_id, tool_name, tool_args, status, source, related_brand_id,
+    server_proposed_at, execution_attested_at
+  ) VALUES (
+    v_trip_operation, v_user, 'create_trip', v_trip_args, 'executing',
+    'hub_experience', v_brand, now(), now()
+  );
+  v_trip_result := public.ari_execute_trip_operation(
+    v_trip_operation, 'create_trip', v_trip_args
+  );
+  v_created_trip := (v_trip_result #>> '{event,id}')::uuid;
+  IF v_created_trip IS NULL THEN
+    RAISE EXCEPTION 'Ari trip executor returned no created trip';
+  END IF;
+  SELECT * INTO STRICT v_created_date FROM public.event_dates
+   WHERE event_id = v_created_trip AND is_master;
+  IF (SELECT status FROM public.events WHERE id = v_created_trip) <> 'draft'
+     OR (SELECT visibility FROM public.events WHERE id = v_created_trip) <> 'draft' THEN
+    RAISE EXCEPTION 'Ari trip executor did not keep the trip private';
+  END IF;
+  IF v_created_date.timezone <> 'Africa/Lagos'
+     OR v_created_date.start_at IS DISTINCT FROM
+          ('2027-01-08 00:00:00'::timestamp AT TIME ZONE 'Africa/Lagos')
+     OR v_created_date.end_at IS DISTINCT FROM
+          ('2027-01-10 00:00:00'::timestamp AT TIME ZONE 'Africa/Lagos') THEN
+    RAISE EXCEPTION 'Ari trip date-only range was not saved at local midnight';
+  END IF;
+  IF (SELECT quantity_total FROM public.ticket_types
+       WHERE event_id = v_created_trip AND name = 'Standard') <> 20 THEN
+    RAISE EXCEPTION 'Ari trip guest limit was not saved';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.trip_days WHERE event_id = v_created_trip) THEN
+    RAISE EXCEPTION 'Ari invented itinerary content for the trip';
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub', v_stranger::text, true);
+  BEGIN
+    PERFORM public.ari_resolve_trip_standard_placeholder(v_event);
+    RAISE EXCEPTION 'unauthorized caller resolved a placeholder';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'insufficient_event_permission' THEN RAISE; END IF;
+  END;
+END
+$trip_placeholder$;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', (SELECT id::text FROM t3355_ids WHERE key = 'user'), true);
+
 DO $admin_guard$
 DECLARE
   v_denied boolean := false;

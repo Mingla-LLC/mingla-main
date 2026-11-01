@@ -33,6 +33,19 @@ const TOOLSET_KEYS = [
 ] as const;
 
 const LOCAL_CAPABILITIES = [
+  ["list_events", "List the signed-in host's events and their saved details."],
+  ["update_event", "Prepare an approved change to an event the host owns."],
+  ["update_brand", "Prepare an approved change to a brand the host owns."],
+  [
+    "delete_brand",
+    "Request recoverable deletion of an owned brand after confirmation.",
+  ],
+  ["manage_brand_hours", "Read or update a brand venue's opening hours."],
+  ["list_brand_audit_log", "Read recent audit activity for an owned brand."],
+  [
+    "manage_brand_discovery_currency",
+    "Read or manage a brand's discovery currency settings.",
+  ],
   [
     "search_public_web",
     "Research public web sources with dates and citations.",
@@ -354,21 +367,44 @@ function catalogue(): Array<{ name: string; description: string }> {
   return [...new Map(all.map((item) => [item.name, item])).values()];
 }
 
-function capabilitySearch(
+const CAPABILITY_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
+  tag: ["mark", "label"],
+  tags: ["mark", "label"],
+  waiter: ["waitlist"],
+  waiters: ["waitlist"],
+  order: ["reservation", "booking"],
+};
+
+function capabilityTerms(query: string): string[] {
+  return [...new Set(query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [])];
+}
+
+/** Rank actual tool capabilities and require multiword intent coverage. */
+export function searchAriCapabilities(
   query: string,
   limit = 12,
 ): Array<{ name: string; description: string; score: number }> {
-  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((term) =>
-    term.length > 2
-  );
+  const terms = capabilityTerms(query);
+  const minimumCoverage = terms.length <= 1 ? 1 : 2;
   return catalogue().map((item) => {
-    const haystack = `${item.name} ${item.description}`.toLowerCase();
+    const haystack = new Set(
+      `${item.name} ${item.description}`.toLowerCase().match(/[a-z0-9]{3,}/g) ??
+        [],
+    );
+    let matchedTerms = 0;
+    let score = 0;
+    for (const term of terms) {
+      const exact = haystack.has(term);
+      const synonym = (CAPABILITY_SYNONYMS[term] ?? []).some((variant) =>
+        haystack.has(variant)
+      );
+      if (exact || synonym) matchedTerms += 1;
+      if (exact) score += 2;
+      else if (synonym) score += 1;
+    }
     return {
       ...item,
-      score: terms.reduce(
-        (total, term) => total + (haystack.includes(term) ? 1 : 0),
-        0,
-      ),
+      score: matchedTerms >= minimumCoverage ? score : 0,
     };
   }).filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
@@ -564,7 +600,10 @@ const searchCapabilities: AgentToolDefinition = {
   },
   executor: async (args) => ({
     query: requiredText(args.query, "query", 300),
-    matches: capabilitySearch(String(args.query), Number(args.limit ?? 12)),
+    matches: searchAriCapabilities(
+      String(args.query),
+      Number(args.limit ?? 12),
+    ),
     total_capabilities: catalogue().length,
   }),
 };

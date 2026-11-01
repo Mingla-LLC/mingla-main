@@ -475,7 +475,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 }
               })();
             }
-            setLocalError(ariChatErrorCopy(result.code));
+            // The failed user turn already owns the same safe copy and its
+            // Retry/Edit/Discard controls. Keep the explanation on that row;
+            // a second global toast obscures the thread and repeats the error.
           }
           return;
         }

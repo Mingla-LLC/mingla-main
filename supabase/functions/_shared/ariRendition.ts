@@ -66,9 +66,47 @@ const MAX_BLOCKS = 18;
 const MAX_ROWS = 12;
 const MAX_TEXT = 500;
 const MAX_BODY = 1_500;
+const INTERNAL_REASONING_TOOLS = new Set([
+  "search_capabilities",
+  "request_tools",
+]);
+const PUBLIC_RESEARCH_TOOLS = new Set([
+  "search_public_web",
+  "read_public_url",
+  "inspect_public_social_profile",
+  "fetch_public_listing_page",
+]);
+const READ_TITLES: Readonly<Record<string, { title: string; body: string }>> = {
+  list_events: {
+    title: "Your events",
+    body: "Here are the events Ari found in your workspace.",
+  },
+  list_brands: {
+    title: "Your brands",
+    body: "Here are the brands available to you in Mingla.",
+  },
+  search_public_web: {
+    title: "Public research",
+    body: "Here is what Ari found in public sources.",
+  },
+  read_public_url: {
+    title: "Page research",
+    body: "Here is a summary of the public page Ari read.",
+  },
+  inspect_public_social_profile: {
+    title: "Public profile research",
+    body: "Here is what Ari could verify from the public profile.",
+  },
+  fetch_public_listing_page: {
+    title: "Listing research",
+    body: "Here is what Ari found on the public listing page.",
+  },
+};
 const SENSITIVE_KEY =
   /(token|secret|password|credential|authorization|cookie|private[_-]?key|ssn|bank|account[_-]?number)/i;
 const IDENTIFIER_KEY = /(^|_)(id|uuid)$/i;
+const INTERNAL_METADATA_KEY =
+  /^(checked_at|fetched_at|retrieved_at|generated_at|fresh_at|cache_hit|cache_key|trace_id|request_id)$/i;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -152,6 +190,7 @@ function humanize(value: string): string {
 function safePrimitive(key: string, value: unknown): string | null {
   if (
     SENSITIVE_KEY.test(key) || IDENTIFIER_KEY.test(key) ||
+    INTERNAL_METADATA_KEY.test(key) ||
     /(url|link|source)$/i.test(key)
   ) return null;
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -217,7 +256,10 @@ function findHttpsSources(
           seen.add(parsed.toString());
           found.push({
             id: `source-${found.length + 1}`,
-            label: parsed.hostname.replace(/^www\./, ""),
+            label: boundedText(
+              object.title ?? object.label ?? object.name,
+              120,
+            ) ?? parsed.hostname.replace(/^www\./, ""),
             url: parsed.toString(),
           });
         } catch {
@@ -234,7 +276,7 @@ function findHttpsSources(
 
 function resultBlocks(
   result: unknown,
-  checkedAt: string,
+  isResearch: boolean,
 ): Record<string, unknown>[] {
   const blocks: Record<string, unknown>[] = [];
   const rows = safeRows(result);
@@ -268,19 +310,26 @@ function resultBlocks(
       });
     }
   }
-  const sources = findHttpsSources(result);
-  if (sources.length > 0) {
-    blocks.push({ type: "sources", version: 1, id: "sources", items: sources });
+  if (isResearch) {
+    const sources = findHttpsSources(result);
+    if (sources.length > 0) {
+      blocks.push({
+        type: "sources",
+        version: 1,
+        id: "sources",
+        items: sources,
+      });
+    }
+    blocks.push({
+      type: "callout",
+      version: 1,
+      id: "freshness",
+      tone: "default",
+      title: "Checked just now",
+      body:
+        "Public information can change. Open a source to verify current details.",
+    });
   }
-  blocks.push({
-    type: "callout",
-    version: 1,
-    id: "freshness",
-    tone: "default",
-    title: "Freshness",
-    body:
-      `Checked ${checkedAt}. Open linked sources to verify time-sensitive details.`,
-  });
   return blocks.slice(0, MAX_BLOCKS);
 }
 
@@ -351,8 +400,64 @@ function genericReceiptRows(
   return rows;
 }
 
+function ticketTierReceiptRows(
+  result: unknown,
+): { label: string; value: string }[] {
+  const top = record(result);
+  if (!top) return [];
+  const tier = record(top.tier) ??
+    (Array.isArray(top.tiers) ? record(top.tiers[0]) : null) ?? top;
+  const rows: { label: string; value: string }[] = [];
+  const name = receiptScalar(tier.name);
+  if (name) rows.push({ label: "Name", value: name });
+
+  const isFree = tier.isFree === true || tier.is_free === true;
+  const currency = receiptScalar(top.effective_currency ?? top.currency);
+  const priceCents = typeof tier.price_cents === "number" &&
+      Number.isFinite(tier.price_cents)
+    ? tier.price_cents
+    : typeof tier.priceGbp === "number" && Number.isFinite(tier.priceGbp)
+    ? Math.round(tier.priceGbp * 100)
+    : null;
+  if (isFree) {
+    rows.push({ label: "Price", value: "Free" });
+  } else if (priceCents !== null) {
+    const amount = new Intl.NumberFormat("en", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(priceCents / 100);
+    rows.push({
+      label: "Price",
+      value: currency ? `${currency} ${amount}` : amount,
+    });
+  }
+
+  if (tier.isUnlimited === true || tier.is_unlimited === true) {
+    rows.push({ label: "Capacity", value: "Unlimited" });
+  } else if (
+    typeof tier.capacity === "number" &&
+    Number.isInteger(tier.capacity) && tier.capacity > 0
+  ) {
+    rows.push({ label: "Capacity", value: String(tier.capacity) });
+  } else if (
+    typeof tier.quantity_total === "number" &&
+    Number.isInteger(tier.quantity_total) && tier.quantity_total > 0
+  ) {
+    rows.push({ label: "Capacity", value: String(tier.quantity_total) });
+  }
+
+  const visibility = tier.is_disabled === true
+    ? "Disabled"
+    : tier.is_hidden === true
+    ? "Hidden"
+    : receiptScalar(tier.visibility, true) ?? "Public";
+  rows.push({ label: "Visibility", value: visibility });
+  return rows.slice(0, 6);
+}
+
 function formatEventSchedule(
   startAt: unknown,
+  endAt: unknown,
   timezone: unknown,
 ): string | null {
   const start = boundedText(startAt, 80);
@@ -361,16 +466,40 @@ function formatEventSchedule(
   const instant = new Date(start);
   if (Number.isNaN(instant.getTime())) return null;
   try {
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    }).format(instant);
+    const formatDateTime = (value: Date) =>
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        ...(zone === "Africa/Lagos" ? {} : { timeZoneName: "short" as const }),
+      }).format(value);
+    const startText = `${formatDateTime(instant)}${
+      zone === "Africa/Lagos" ? " WAT" : ""
+    }`;
+    const end = boundedText(endAt, 80);
+    if (!end) return startText;
+    const endInstant = new Date(end);
+    if (Number.isNaN(endInstant.getTime())) return startText;
+    const dayKey = (value: Date) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(value);
+    const endText = dayKey(instant) === dayKey(endInstant)
+      ? new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        hour: "numeric",
+        minute: "2-digit",
+        ...(zone === "Africa/Lagos" ? {} : { timeZoneName: "short" as const }),
+      }).format(endInstant)
+      : formatDateTime(endInstant);
+    return `${startText} – ${endText}${zone === "Africa/Lagos" ? " WAT" : ""}`;
   } catch {
     return null;
   }
@@ -394,7 +523,13 @@ function eventReceiptPresentation(args: {
   const timezone = receiptScalar(
     when?.timezone ?? event.timezone ?? args.toolArgs?.timezone,
   );
-  const schedule = formatEventSchedule(args.toolArgs?.start_at, timezone);
+  const schedule = formatEventSchedule(
+    args.toolArgs?.start_at,
+    args.toolArgs?.end_at,
+    timezone,
+  );
+  const location = receiptScalar(args.toolArgs?.location_text);
+  const description = receiptScalar(args.toolArgs?.description);
   const requestedVisibility = receiptScalar(
     businessDraft?.requestedVisibility ?? args.toolArgs?.visibility,
     true,
@@ -425,6 +560,8 @@ function eventReceiptPresentation(args: {
     { label: "Event", value: title },
     { label: "Status", value: "Draft — not published" },
     ...(schedule ? [{ label: "Date and time", value: schedule }] : []),
+    ...(location ? [{ label: "Location", value: location }] : []),
+    ...(description ? [{ label: "Event copy", value: description }] : []),
     ...(args.brandName
       ? [{ label: "Brand", value: args.brandName.slice(0, 120) }]
       : []),
@@ -453,7 +590,10 @@ function eventReceiptPresentation(args: {
         id: "next-step",
         tone: "default",
         title: "Next",
-        body: ticketRows.length > 0
+        body: ticketRows.length > 0 && args.toolArgs?.end_at && location &&
+            description
+          ? "Review the saved details and add a cover before publishing."
+          : ticketRows.length > 0
           ? "Add the remaining event details and cover before publishing."
           : "Add the remaining event details, tickets and cover before publishing.",
       },
@@ -477,19 +617,26 @@ export function buildToolReadRendition(args: {
   envValue?: string;
 }): AriRenditionV2 | null {
   if (!canRenderAriV2(args.capabilities, args.envValue)) return null;
-  const checkedAt = boundedText(args.checkedAt, 80) ?? new Date().toISOString();
+  // Toolset negotiation and capability search are private reasoning steps. A
+  // user should see Ari's answer, never its internal discovery payload.
+  if (INTERNAL_REASONING_TOOLS.has(args.toolName)) return null;
+  const research = PUBLIC_RESEARCH_TOOLS.has(args.toolName);
+  const presentation = READ_TITLES[args.toolName];
   return {
     schema_version: 2,
     rendition_id: stableRenditionId("read", args.toolName),
     kind: "result",
-    eyebrow: "Workspace result",
-    title: humanize(args.toolName),
-    body: "Ari checked the available records and organized the result below.",
+    eyebrow: research ? "Public research" : "Mingla workspace",
+    title: presentation?.title ?? humanize(args.toolName),
+    body: presentation?.body ??
+      (research
+        ? "Here is the information Ari found."
+        : "Here are the matching records from your Mingla workspace."),
     state: "ready",
     ...(graphicFor(args.toolName)
       ? { graphic: graphicFor(args.toolName) }
       : {}),
-    blocks: resultBlocks(args.result, checkedAt),
+    blocks: resultBlocks(args.result, research),
   };
 }
 
@@ -507,7 +654,9 @@ export function buildToolReceiptRendition(args: {
   const eventPresentation = args.toolName === "create_event"
     ? eventReceiptPresentation(args)
     : null;
-  const genericRows = genericReceiptRows(args.result);
+  const genericRows = args.toolName === "upsert_ticket_tier"
+    ? ticketTierReceiptRows(args.result)
+    : genericReceiptRows(args.result);
   return {
     schema_version: 2,
     // The receipt identity links the premium card to the canonical tool row so
@@ -533,8 +682,7 @@ export function buildToolReceiptRendition(args: {
         id: "canonical-result",
         tone: "success",
         title: "Recorded in Mingla",
-        body:
-          "This reflects the canonical saved result. Internal identifiers are available only in the engineering trace.",
+        body: "The saved result is shown above.",
       },
     ].slice(0, MAX_BLOCKS),
   };

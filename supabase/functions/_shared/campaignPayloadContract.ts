@@ -58,14 +58,22 @@ export function campaignPayloadIssues(payload: unknown): string[] {
   if (!isPlainObject(payload)) {
     return [
       `channel_payload must be an object, got ${
-        payload === null ? "null" : Array.isArray(payload) ? "array" : typeof payload
+        payload === null
+          ? "null"
+          : Array.isArray(payload)
+          ? "array"
+          : typeof payload
       }`,
     ];
   }
 
   const kind = payload.kind;
   if (typeof kind !== "string" || kind.length === 0) {
-    return [`unsupported channel kind: ${kind === undefined ? "(missing)" : String(kind)}`];
+    return [
+      `unsupported channel kind: ${
+        kind === undefined ? "(missing)" : String(kind)
+      }`,
+    ];
   }
 
   const issues: string[] = [];
@@ -103,6 +111,93 @@ export function campaignPayloadIssues(payload: unknown): string[] {
       issues.push(`unsupported channel kind: ${kind}`);
   }
   return issues;
+}
+
+/** Validate Ari's draft tool arguments before an approval card is created. */
+export function campaignDraftPayloadIssues(args: unknown): string[] {
+  if (!isPlainObject(args)) {
+    return ["Campaign draft details must be provided as an object."];
+  }
+  const channel = args.channel === undefined ? "email" : args.channel;
+  if (channel === "email") {
+    return campaignPayloadIssues({
+      kind: "email",
+      subject: args.subject,
+      body_html: args.body,
+    });
+  }
+  if (channel === "sms") {
+    return campaignPayloadIssues({ kind: "sms", body: args.body });
+  }
+  return campaignPayloadIssues({ kind: channel, body: args.body });
+}
+
+/** Reject common factual, offer and urgency claims the host never supplied. */
+export function campaignDraftCopyIssues(
+  args: unknown,
+  trustedUserText: string,
+): string[] {
+  if (!isPlainObject(args) || !trustedUserText.trim()) return [];
+  const rawCopy = [args.title, args.subject, args.body]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  const copy = rawCopy.replace(/<[^>]*>/g, " ");
+  const claims: Array<[string, RegExp]> = [
+    ["event history", /\b(?:back again|is back|returns? to|returning)\b/i],
+    [
+      "scarcity or urgency",
+      /\b(?:before it sells out|selling out|sold out|limited spots?|last chance|be one of the first|first \d+ people|priority (?:entry|access))\b/i,
+    ],
+    [
+      "unverified performance details",
+      /\blive\s+(?:music|bands?|djs?|performances?|artists?|sets?)\b/i,
+    ],
+    ["unverified event setting", /\bunder the stars\b/i],
+  ];
+  const issues = claims.flatMap(([label, pattern]) => {
+    const match = copy.match(pattern)?.[0];
+    return match && !pattern.test(trustedUserText)
+      ? [`Remove the unsupported ${label} claim (“${match}”).`]
+      : [];
+  });
+  const urls = rawCopy.match(/https?:\/\/[^\s<>"']+/gi) ?? [];
+  for (const url of urls) {
+    if (!trustedUserText.includes(url)) {
+      issues.push(`Use no campaign link the host did not provide (“${url}”).`);
+    }
+  }
+  return issues;
+}
+
+/** Build a plain, source-grounded draft when a model proposal adds risky claims. */
+export function buildGroundedCampaignDraft(
+  args: Record<string, unknown>,
+  trustedUserText: string,
+  brandName: string,
+): Record<string, unknown> | null {
+  const eventMatch = trustedUserText.match(/\bpromote\s+(.+?)\s+to\b/i);
+  const eventName = eventMatch?.[1]?.trim().replace(/^["“”']+|["“”']+$/g, "") ||
+    null;
+  const offerMatch = trustedUserText.match(
+    /\b(?:early[- ]bird access|group admission|two-person entry|gear checklist)\b/i,
+  );
+  const offer = offerMatch?.[0] ?? null;
+  const channel = args.channel;
+  if (
+    !eventName || !offer || !brandName.trim() ||
+    (channel !== "email" && channel !== "sms")
+  ) return null;
+
+  const safeTitle = `${eventName} — ${offer}`;
+  const body = channel === "email"
+    ? `<p>Hello,</p><p>Join ${brandName} for ${eventName}.</p><p>Ask ${brandName} about the ${offer} offer.</p>`
+    : `Join ${brandName} for ${eventName}. Ask ${brandName} about the ${offer} offer.`;
+  return {
+    ...args,
+    title: safeTitle,
+    subject: safeTitle,
+    body,
+  };
 }
 
 /** Convenience predicate for call sites that only need a yes/no. */

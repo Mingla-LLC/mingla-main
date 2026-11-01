@@ -282,6 +282,156 @@ export function applyTierPatch(
   return next;
 }
 
+/**
+ * Ground create-only ticket flags in the user's message. Small local models
+ * sometimes omit booleans required by the canonical draft even when the
+ * amount and capacity are explicit. Derive only those mechanical flags, and
+ * discard a model-invented tier id for a clearly requested new tier.
+ */
+export function groundNewTicketTierFields(
+  args: Record<string, unknown>,
+  requestText: string,
+): Record<string, unknown> {
+  const newTierRequested =
+    /\b(?:add|create)\s+(?:one|a|an|new)\b[\s\S]{0,100}\b(?:ticket(?:\s+tier)?|tier)\b/i
+      .test(requestText);
+  if (!newTierRequested) return args;
+
+  const grounded = { ...args };
+  delete grounded.tier_id;
+
+  const requestedPrice = /(?:[$£€₦]\s*\d|\b(?:USD|GBP|EUR|NGN|Naira)\s*\d)/i
+    .test(requestText);
+  if (typeof grounded.is_free !== "boolean") {
+    const explicitlyFree = /\b(?:free|complimentary|no[\s-]+charge)\b/i
+      .test(requestText) && !/\bnot\s+free\b/i.test(requestText);
+    if (explicitlyFree) {
+      grounded.is_free = true;
+    } else if (requestedPrice && typeof grounded.price_cents === "number") {
+      grounded.is_free = grounded.price_cents === 0;
+    }
+  }
+
+  const requestedCapacity = requestText.match(
+    /\bcapacity(?:\s+(?:for|of|at))?\s+(\d+)\b/i,
+  ) ?? requestText.match(/\bfor\s+(\d+)\s+(?:guests?|people|attendees)\b/i);
+  if (typeof grounded.is_unlimited !== "boolean") {
+    if (/\b(?:unlimited|uncapped|no\s+capacity\s+limit)\b/i.test(requestText)) {
+      grounded.is_unlimited = true;
+    } else if (
+      requestedCapacity && typeof grounded.capacity === "number" &&
+      grounded.capacity === Number(requestedCapacity[1])
+    ) {
+      grounded.is_unlimited = false;
+    }
+  }
+  return grounded;
+}
+
+/**
+ * True only when the request explicitly asks for a new ticket tier and gives
+ * the event, tier name, paid price, and finite capacity. This lets the
+ * orchestration layer require the ordinary approval proposal instead of
+ * accepting a model-written "type CONFIRM" message as a completed plan.
+ */
+export function isFullySpecifiedTicketTierWriteRequest(text: string): boolean {
+  const newTierRequested =
+    /\b(?:add|create)\s+(?:one|a|an|new)\b[\s\S]{0,100}\bticket(?:\s+tier)?\b/i
+      .test(text);
+  const namedTier =
+    /\b(?:add|create)\s+(?:one|a|an|new)\s+.{1,60}\s+(?:ticket(?:\s+tier)?|tier)\b/i
+      .test(text);
+  const namedEvent =
+    /\b(?:for|to)\s+(?:the\s+)?(?:saved\s+)?(?:private\s+)?draft\s+[“‘\"'][^”’\"']{2,100}[”’\"']/i
+      .test(text) ||
+    /\b(?:for|to)\s+(?:the\s+)?event\s+[“‘\"'][^”’\"']{2,100}[”’\"']/i
+      .test(text) ||
+    /\b(?:event|draft)\s+(?:called\s+)?[“‘\"']?[\w][^.!?;,\n”’\"']{1,80}/i
+      .test(text);
+  const explicitPrice =
+    /(?:[$£€₦]\s*\d[\d,]*(?:\.\d{1,2})?|\b(?:USD|GBP|EUR|NGN|Naira)\s*\d[\d,]*(?:\.\d{1,2})?)/i
+      .test(text);
+  const finiteCapacity =
+    /\bcapacity(?:\s+(?:for|of|at))?\s+\d+\b/i.test(text) ||
+    /\bfor\s+\d+\s+(?:guests?|people|attendees)\b/i.test(text);
+  return newTierRequested && namedTier && namedEvent && explicitPrice &&
+    finiteCapacity;
+}
+
+/** Keep a fully specified request to edit an existing tier from becoming an
+ * unrelated create proposal (for example, creating a second event with the
+ * existing event's name). */
+export function ticketTierProposalMismatch(
+  requestText: string,
+  proposedToolName: string,
+): boolean {
+  return isFullySpecifiedTicketTierWriteRequest(requestText) &&
+    proposedToolName !== "upsert_ticket_tier";
+}
+
+/** Reject text that substitutes a chat-only confirmation for the approval card. */
+export function ticketTierTextBypassesApproval(
+  requestText: string,
+  responseText: string,
+): boolean {
+  if (!isFullySpecifiedTicketTierWriteRequest(requestText)) return false;
+  return /\b(?:please\s+)?confirm\b[\s\S]{0,100}\b(?:save|add|create|proceed|continue)\b|\b(?:would\s+you\s+like|shall\s+i)\b[\s\S]{0,100}\b(?:save|add|create|proceed)\b|\bi(?:['’]ll|\s+will)\s+(?:add|create|save)\b/i
+    .test(responseText);
+}
+
+/** Build a compact confirmation receipt only from canonical ticket readback. */
+export function buildTicketTierReceipt(result: unknown): string | null {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return null;
+  }
+  const record = result as Record<string, unknown>;
+  const tiers = Array.isArray(record.tiers) ? record.tiers : [];
+  const tier = record.tier && typeof record.tier === "object" &&
+      !Array.isArray(record.tier)
+    ? record.tier as Record<string, unknown>
+    : tiers[0] && typeof tiers[0] === "object" && !Array.isArray(tiers[0])
+    ? tiers[0] as Record<string, unknown>
+    : null;
+  const name = typeof tier?.name === "string" ? tier.name.trim() : "";
+  if (!tier || !name) return null;
+
+  const isFree = tier.isFree === true || tier.is_free === true;
+  const rawAmount = typeof tier.priceGbp === "number"
+    ? tier.priceGbp
+    : typeof tier.price_cents === "number"
+    ? tier.price_cents / 100
+    : null;
+  const currency = typeof record.effective_currency === "string" &&
+      /^[A-Z]{3}$/.test(record.effective_currency)
+    ? record.effective_currency
+    : null;
+  const price = isFree
+    ? "free"
+    : rawAmount !== null && Number.isFinite(rawAmount) && currency
+    ? `${currency} ${
+      new Intl.NumberFormat("en", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(rawAmount)
+    }`
+    : null;
+  const capacity = typeof tier.capacity === "number"
+    ? tier.capacity
+    : typeof tier.quantity_total === "number"
+    ? tier.quantity_total
+    : null;
+  const details = [
+    price ? `${price}` : null,
+    capacity !== null ? `capacity ${capacity}` : null,
+  ].filter((value): value is string => value !== null);
+  const saved = `I saved and verified the “${name}” ticket tier${
+    details.length ? ` at ${details.join(", ")}` : ""
+  }.`;
+  return record.representation === "draft"
+    ? `${saved} The event remains a draft and is not published.`
+    : saved;
+}
+
 export function validateTier(
   tier: CanonicalTicketTier,
   _creating = false,

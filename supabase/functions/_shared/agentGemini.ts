@@ -19,6 +19,10 @@ import {
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
 const LOCAL_MAX_OUTPUT_TOKENS = 384;
+const LOCAL_CONTEXT_TOKENS = 16_384;
+// Keep an awaited local inference inside agent-chat's 115 s test budget so a
+// slow or wedged Ollama request cannot strand the chat beyond the loop deadline.
+export const ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS = 100_000;
 const TEMPERATURE = 0.3;
 
 export interface GeminiToolDef {
@@ -880,6 +884,7 @@ async function callLocalOllama(
   const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       model: config.modelId,
       stream: false,
@@ -900,6 +905,7 @@ async function callLocalOllama(
       })),
       options: {
         temperature: TEMPERATURE,
+        num_ctx: LOCAL_CONTEXT_TOKENS,
         num_predict: LOCAL_MAX_OUTPUT_TOKENS,
       },
     }),

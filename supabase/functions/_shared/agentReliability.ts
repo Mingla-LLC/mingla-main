@@ -33,6 +33,7 @@ export type AriErrorCode =
   | "VALIDATION_FAILED"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
+  | "PAYOUT_NOT_READY"
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
@@ -125,6 +126,14 @@ export const ARI_ERROR_REGISTRY: Readonly<
     safeToRetry: false,
     operationState: "none",
     userMessage: "Your current access does not allow this action.",
+  },
+  PAYOUT_NOT_READY: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+    userMessage:
+      "This brand cannot accept paid tickets yet. Finish its Stripe or Paystack payout setup first.",
   },
   ROLE_REVOKED: {
     httpStatus: 403,
@@ -437,7 +446,6 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
     case "VERSION_CONFLICT":
     case "TASK_STATE_VERSION_UNSUPPORTED":
     case "DELETE_BLOCKED_BY_EVENTS":
-    case "PAYOUT_NOT_READY":
     case "TAX_REGISTRATION_REQUIRED":
     case "EVENT_CURRENCY_REQUIRED":
     case "SLUG_TAKEN":

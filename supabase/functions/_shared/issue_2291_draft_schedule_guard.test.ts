@@ -73,13 +73,22 @@ function makeClient(opts: { storedPayload?: unknown; writes: Recorded[] }) {
           });
         }
         return Promise.resolve({
-          data: { id: CAMPAIGN_ID, status: "scheduled", scheduled_for: "2026-09-01T12:00:00Z" },
+          data: {
+            id: CAMPAIGN_ID,
+            status: "scheduled",
+            scheduled_for: "2026-09-01T12:00:00Z",
+          },
           error: null,
         });
       },
       single() {
         return Promise.resolve({
-          data: { id: CAMPAIGN_ID, name: "n", status: "draft", channel: "email" },
+          data: {
+            id: CAMPAIGN_ID,
+            name: "n",
+            status: "draft",
+            channel: "email",
+          },
           error: null,
         });
       },
@@ -114,7 +123,12 @@ Deno.test("#2291 T-1 — draft_campaign(email) writes subject + body_html, not `
   const writes: Recorded[] = [];
   // deno-lint-ignore no-explicit-any
   await tool("draft_campaign").executor(
-    { brand_id: BRAND_ID, title: "Autumn blast", subject: "Doors at 9", body: "<p>See you there.</p>" },
+    {
+      brand_id: BRAND_ID,
+      title: "Autumn blast",
+      subject: "Doors at 9",
+      body: "<p>See you there.</p>",
+    },
     makeClient({ writes }) as any,
     USER_ID,
   );
@@ -138,7 +152,12 @@ Deno.test("#2291 T-1b — draft_campaign(sms) is unchanged: it still writes `bod
   const writes: Recorded[] = [];
   // deno-lint-ignore no-explicit-any
   await tool("draft_campaign").executor(
-    { brand_id: BRAND_ID, title: "SMS blast", channel: "sms", body: "Doors at 9. Reply STOP." },
+    {
+      brand_id: BRAND_ID,
+      title: "SMS blast",
+      channel: "sms",
+      body: "Doors at 9. Reply STOP.",
+    },
     makeClient({ writes }) as any,
     USER_ID,
   );
@@ -185,7 +204,11 @@ Deno.test("#2291 T-2 — draft_campaign(email) with no usable content writes not
     const err = await assertRejects(
       () =>
         // deno-lint-ignore no-explicit-any
-        tool("draft_campaign").executor(args, makeClient({ writes }) as any, USER_ID),
+        tool("draft_campaign").executor(
+          args,
+          makeClient({ writes }) as any,
+          USER_ID,
+        ),
       ToolError,
     );
     assertEquals(err.code, "INVALID_ARGS");
@@ -254,7 +277,11 @@ Deno.test("#2291 T-12b — schedule_campaign still schedules a complete campaign
   const result = await tool("schedule_campaign").executor(
     { campaign_id: CAMPAIGN_ID, scheduled_for: "2026-09-01T12:00:00Z" },
     makeClient({
-      storedPayload: { kind: "email", subject: "Doors at 9", body_html: "<p>See you.</p>" },
+      storedPayload: {
+        kind: "email",
+        subject: "Doors at 9",
+        body_html: "<p>See you.</p>",
+      },
       writes,
     }) as any,
     USER_ID,
@@ -273,7 +300,8 @@ Deno.test("#2291 T-12b — schedule_campaign still schedules a complete campaign
 // ---------------------------------------------------------------------------
 Deno.test("#2291 — draft/schedule take no confirm phrase; send_campaign_now does", () => {
   const props = (name: string) =>
-    (tool(name).parameters as { properties: Record<string, unknown> }).properties;
+    (tool(name).parameters as { properties: Record<string, unknown> })
+      .properties;
   assert(!("confirm_phrase" in props("draft_campaign")));
   assert(!("confirm_phrase" in props("schedule_campaign")));
   assert(
@@ -287,4 +315,16 @@ Deno.test("#2291 — draft_campaign no longer advertises a channel it cannot dis
     properties: { channel: { enum: string[] } };
   }).properties.channel;
   assertEquals(channel.enum, ["email", "sms"]);
+});
+
+Deno.test("#3355 — draft_campaign requires complete channel payload before approval", () => {
+  const schema = tool("draft_campaign").parameters as {
+    required: string[];
+  };
+  for (const key of ["brand_id", "title", "body", "subject", "channel"]) {
+    assert(
+      schema.required.includes(key),
+      `draft_campaign must require ${key} before an approval card is created`,
+    );
+  }
 });

@@ -92,6 +92,17 @@ export function isBrandLaunchPlanRequest(value: string): boolean {
     /\b(?:brand|business|club|room|host)\b/i.test(value);
 }
 
+/** Route a saved event's launch-readiness request through canonical reads. */
+export function isAriEventLaunchReadinessRequest(value: string): boolean {
+  const readiness = /\b(?:launch|publish|public)\b/i.test(value) &&
+    /\b(?:checklist|preview|readiness)\b/i.test(value);
+  const publicEventDetails =
+    /\bpublic\b[\s\S]{0,40}\bevents?\b[\s\S]{0,40}\bdetails\b/i
+      .test(value);
+  return (readiness || publicEventDetails) &&
+    /\b(?:event|listing|ticket)\b/i.test(value);
+}
+
 export function launchPlanNeedsPublicResearch(value: string): boolean {
   return /\b(?:research|public evidence|public presence|public source|online|social|instagram|tiktok|youtube|website)\b/i
     .test(value);
@@ -142,7 +153,12 @@ export function buildBrandLaunchPlan(input: {
   const country = text(selected.country_code);
   const currency = text(selected.default_currency);
   const payoutReady = snapshot.payout_ready === true;
-  const websiteState = text(website.website_state, "unknown");
+  const websiteReadFailed = input.observations.some((item) =>
+    item.tool === "get_brand_site" && item.error
+  );
+  const websiteState = websiteReadFailed
+    ? "unverified"
+    : text(website.website_state, "unknown");
   const sources = Array.isArray(research?.sources) ? research.sources : [];
   const sourceUrls = brandMatchedSourceUrls(brandName, sources);
   const researchFailed = input.observations.some((item) =>
@@ -162,7 +178,9 @@ export function buildBrandLaunchPlan(input: {
       offerings.length === 1 ? "" : "s"
     } will be reviewed before launch.`
     : "Choose the first offering type, date and time, capacity, price, location privacy, and refund policy.";
-  const websiteDetail = websiteState === "not_set_up"
+  const websiteDetail = websiteReadFailed
+    ? "I couldn't verify the website status in this check. Review the brand's Website screen before publishing."
+    : websiteState === "not_set_up"
     ? "No website draft exists yet; prepare one after the brand and first offering are ready."
     : websiteState === "not_available"
     ? "Website setup is not available for this brand yet; continue with the Mingla public profile and listing."
@@ -244,6 +262,7 @@ export function buildBrandLaunchPlan(input: {
     );
   }
   if (!payoutReady) missing.push("payout setup (human-owned)");
+  if (websiteReadFailed) missing.push("verified website status");
   if (sourceUrls.length === 0) {
     missing.push("a known official public URL or social handle (optional)");
   }

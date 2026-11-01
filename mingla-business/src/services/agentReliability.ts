@@ -73,6 +73,7 @@ export type AriErrorCode =
   | "VALIDATION_FAILED"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
+  | "PAYOUT_NOT_READY"
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
@@ -117,6 +118,11 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     operationState: "none",
   },
   FORBIDDEN: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+  },
+  PAYOUT_NOT_READY: {
     retryability: "never",
     safeToRetry: false,
     operationState: "none",

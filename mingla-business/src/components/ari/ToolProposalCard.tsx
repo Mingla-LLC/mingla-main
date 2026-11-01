@@ -52,6 +52,7 @@ import {
   isValidAdCreativeOwnerKey,
 } from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
+import { formatEventProposalWhen } from "./eventProposalDisplay";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -625,21 +626,17 @@ function fieldsFor(
       });
   }
   if (toolName === "create_event" || toolName === "update_event") {
-    if (typeof args.start_at === "string") {
-      const d = new Date(args.start_at);
-      if (!Number.isNaN(d.getTime())) {
-        const date = d.toLocaleString(undefined, {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        });
-        out.push({ label: "When", value: date });
-      }
-    }
+    const when = formatEventProposalWhen(
+      args.start_at,
+      args.end_at,
+      args.timezone,
+    );
+    if (when) out.push({ label: "When", value: when });
     if (typeof args.location_text === "string" && args.location_text) {
       out.push({ label: "Where", value: args.location_text });
+    }
+    if (typeof args.description === "string" && args.description.trim()) {
+      out.push({ label: "Event copy", value: args.description.trim() });
     }
     if (typeof args.brand_id === "string") {
       out.push({
@@ -1560,7 +1557,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   <Text style={styles.fieldLabel}>{f.label}</Text>
                   <Text
                     style={styles.fieldValue}
-                    numberOfLines={isAdPlanCreativeProposal ? 4 : 1}
+                    numberOfLines={
+                      isAdPlanCreativeProposal ||
+                        f.label === "Description" ||
+                        f.label === "Event copy"
+                        ? 4
+                        : 1
+                    }
                   >
                     {f.value}
                   </Text>

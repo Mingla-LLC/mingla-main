@@ -59,18 +59,19 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #3872] Discount list/create/pause, R2 referral
   // list/create/invite, and R3 guarded gig-script drafting; 133→140.
   // #2829 W9b website designer tools; 140→152.
-  // [TEST-MOD-APPROVED #3355] Planning, memory, research, extraction, and
-  // verification capabilities extend the caller-bound registry; 152→172.
+  // [TEST-MOD-APPROVED #3355] Planning, memory, research, extraction,
+  // verification, and saved campaign-draft readback extend the caller-bound
+  // registry; 152→173.
   assert(
-    AGENT_TOOLS.length === 172,
-    `expected 172 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 173,
+    `expected 173 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 172,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 173,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 172,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 173,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -130,9 +131,9 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // [TEST-MOD-APPROVED #3872] 133→140 with discount list/create/pause, R2
   // referral list/create/invite, and R3 guarded gig-script drafting.
   // #2829 W9b website designer tools; 140→152.
-  // [TEST-MOD-APPROVED #3355] The same 20 tools are present in the accepted
-  // capability ledger; 152→172.
-  assert(rows.length === 172, `expected 172 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #3355] The same 21 tools are present in the accepted
+  // capability ledger; 152→173.
+  assert(rows.length === 173, `expected 173 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
@@ -270,7 +271,13 @@ Deno.test("#2019 full rank x operation-class matrix", async () => {
           name === "create_event"
             ? VALID_CREATE_EVENT_ARGS
             : name === "draft_campaign"
-            ? { brand_id: UUID, title: "Test" }
+            ? {
+              brand_id: UUID,
+              title: "Test",
+              channel: "email",
+              subject: "Test subject",
+              body: "Test email body.",
+            }
             : name === "update_brand"
             ? { brand_id: UUID, description: "Test" }
             : { brand_id: UUID },

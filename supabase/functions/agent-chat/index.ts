@@ -46,7 +46,10 @@ import {
   isReadOnlyAgentToolCall,
   ToolError,
 } from "../_shared/agentTools.ts";
-import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
+import {
+  authorizeAgentTool,
+  validateAriCampaignDraftProposal,
+} from "../_shared/agentToolAuthorization.ts";
 import {
   buildServiceClient,
   enforceTurnRateLimit,
@@ -59,11 +62,19 @@ import {
   validateChoiceSubmission,
 } from "../_shared/agentChoices.ts";
 import {
+  groundNewTicketTierFields,
+  isFullySpecifiedTicketTierWriteRequest,
   preflightTicketPricingProposal,
+  ticketTierProposalMismatch,
+  ticketTierTextBypassesApproval,
   verifiedProposalArgs,
 } from "../_shared/agentTicketPricing.ts";
-import { preflightMoneyProposal } from "../_shared/agentDomainTools.ts";
+import {
+  bindTripStandardPlaceholderProposal,
+  preflightMoneyProposal,
+} from "../_shared/agentDomainTools.ts";
 import { logError } from "../_shared/structuredLog.ts";
+import { buildGroundedCampaignDraft } from "../_shared/campaignPayloadContract.ts";
 import {
   AccessibleAgentBrand,
   requireAccessibleAgentBrand,
@@ -77,6 +88,7 @@ import {
   pendingQuestionPrompt,
   reconcilePendingAction,
   resumeInterruption,
+  stateForNewAgentProposal,
   TaskStateError,
   TaskStateV1,
 } from "../_shared/agentConversationState.ts";
@@ -117,9 +129,20 @@ import {
   buildAriCapabilityPlan,
   buildAriDeterministicReadReply,
   buildAriOnboardingResumeReply,
+  buildAriOnboardingSetupPlanCall,
+  buildAriOnboardingSetupReply,
+  findAriCampaignDraftId,
+  findAriRecentEventTitle,
   inferAriToolsets,
+  isAriOnboardingPlanProgressMessage,
+  needsAriCampaignDraftReview,
+  needsAriCampaignPerformanceRead,
+  needsAriCampaignWorkflow,
   needsAriCapabilityDiscovery,
   needsAriOnboardingResumeRead,
+  needsAriOnboardingSetupRead,
+  selectAriCampaignWorkflowTools,
+  selectAriOnboardingSetupTools,
   selectAriTools,
 } from "../_shared/agentToolsets.ts";
 import { lintAriCopy, safeAriCopyFallback } from "../_shared/agentCopyLint.ts";
@@ -127,6 +150,7 @@ import { recordAriTrainingTurn } from "../_shared/agentQuality.ts";
 import { buildAgentRunRendition } from "../_shared/agentRenditions.ts";
 import {
   buildBrandLaunchPlan,
+  isAriEventLaunchReadinessRequest,
   isBrandLaunchPlanRequest,
   launchPlanInitialCalls,
   launchPlanNeedsPublicResearch,
@@ -137,6 +161,7 @@ import {
   canCompleteResearchFromSearchIndex,
   isStandalonePublicResearchRequest,
 } from "../_shared/agentWebResearch.ts";
+import { buildAriTripCreationCall } from "../_shared/agentTripPlanner.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -1574,6 +1599,13 @@ async function handle(req: Request): Promise<Response> {
         : HISTORY_WINDOW,
     );
     const history = (historyRows ?? []).reverse(); // oldest -> newest
+    const trustedCampaignSourceText = [
+      ...history.filter((row) => row.role === "user").map((row) => {
+        const content = row.content as Record<string, unknown> | null;
+        return typeof content?.text === "string" ? content.text : "";
+      }),
+      semanticMessage,
+    ].filter(Boolean).join("\n").slice(-8_000);
 
     // Load profile
     const { data: profileRow } = await userClient
@@ -2176,15 +2208,35 @@ ARI 10X OPERATING CONTRACT
 ${boundedAgentContext}
 </caller_scoped_agent_context>`;
 
-      const selectedToolsets = new Set<AriToolsetKey>(
-        inferAriToolsets(semanticMessage),
-      );
-      let selectedTools = selectAriTools(
-        AGENT_TOOLS,
-        [...selectedToolsets],
-        8,
+      const onboardingResumeRequest = needsAriOnboardingResumeRead(
         semanticMessage,
       );
+      const onboardingSetupRequest = !!activeBrand &&
+        !onboardingResumeRequest &&
+        (needsAriOnboardingSetupRead(semanticMessage) ||
+          onboardingPlan?.status === "active" &&
+            isAriOnboardingPlanProgressMessage(semanticMessage));
+      const campaignWorkflowRequest = !!activeBrand &&
+        needsAriCampaignWorkflow(semanticMessage);
+      const eventLaunchReadinessRequest = !!activeBrand &&
+        isAriEventLaunchReadinessRequest(semanticMessage);
+      const selectedToolsets = new Set<AriToolsetKey>(
+        onboardingSetupRequest
+          ? ["core", "brand", "onboarding"]
+          : eventLaunchReadinessRequest
+          ? ["core", "sites", "listings"]
+          : inferAriToolsets(semanticMessage),
+      );
+      let selectedTools = onboardingSetupRequest
+        ? selectAriOnboardingSetupTools(AGENT_TOOLS)
+        : campaignWorkflowRequest
+        ? selectAriCampaignWorkflowTools(AGENT_TOOLS)
+        : selectAriTools(
+          AGENT_TOOLS,
+          [...selectedToolsets],
+          12,
+          semanticMessage,
+        );
       try {
         compileGeminiToolDeclarations(selectedTools.map((tool) => ({
           name: tool.name,
@@ -2197,7 +2249,8 @@ ${boundedAgentContext}
         throw err;
       }
       const launchPlanRequest = activeBrand !== null &&
-        isBrandLaunchPlanRequest(semanticMessage);
+        (isBrandLaunchPlanRequest(semanticMessage) ||
+          eventLaunchReadinessRequest);
       const launchInitialCalls = launchPlanRequest && activeBrand
         ? launchPlanInitialCalls({
           brandId: activeBrand.id,
@@ -2205,6 +2258,12 @@ ${boundedAgentContext}
           includeResearch: launchPlanNeedsPublicResearch(semanticMessage),
         })
         : [];
+      if (eventLaunchReadinessRequest && activeBrand) {
+        launchInitialCalls.push({
+          name: "list_events",
+          args: { brand_id: activeBrand.id, upcoming_only: false, limit: 50 },
+        });
+      }
       const standaloneResearchRequest = isStandalonePublicResearchRequest(
         semanticMessage,
       );
@@ -2213,15 +2272,29 @@ ${boundedAgentContext}
       const capabilityDiscoveryRequest = needsAriCapabilityDiscovery(
         semanticMessage,
       );
-      const onboardingResumeRequest = needsAriOnboardingResumeRead(
-        semanticMessage,
+      const recentEventTitle = findAriRecentEventTitle(
+        history.filter((row) => row.role === "user").flatMap((row) => {
+          const content = row.content as Record<string, unknown> | null;
+          return typeof content?.text === "string" ? [content.text] : [];
+        }),
       );
       const deterministicRead = ariDeterministicReadPlan(
         semanticMessage,
         activeBrand?.id ?? null,
+        typeof taskState.active_task?.slots.title.value === "string"
+          ? taskState.active_task.slots.title.value
+          : recentEventTitle,
+        currentAttachmentParts.length > 0,
+        needsAriCampaignDraftReview(semanticMessage)
+          ? findAriCampaignDraftId(history)
+          : null,
       );
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
+      );
+      const tripCreationCall = buildAriTripCreationCall(
+        semanticMessage,
+        activeBrand?.id ?? null,
       );
       const initialCalls = standaloneResearchRequest
         ? [{ name: "search_public_web", args: { query: semanticMessage } }]
@@ -2232,11 +2305,56 @@ ${boundedAgentContext}
           name: "search_capabilities",
           args: { query: semanticMessage, limit: 12 },
         }]
+        : campaignWorkflowRequest && activeBrand &&
+            needsAriCampaignPerformanceRead(semanticMessage)
+        ? [{
+          name: "get_brand_analytics",
+          args: { brand_id: activeBrand.id, question: semanticMessage },
+        }]
+        : onboardingSetupRequest && activeBrand
+        ? [
+          {
+            name: "get_operator_snapshot",
+            args: { brand_id: activeBrand.id },
+          },
+          {
+            name: "get_onboarding_plan",
+            args: { brand_id: activeBrand.id },
+          },
+          {
+            name: "build_host_onboarding_blueprint",
+            args: {
+              goal: semanticMessage.slice(0, 1000),
+              mode: "self_serve",
+              brand_id: activeBrand.id,
+              materials: ["message"],
+            },
+          },
+          buildAriOnboardingSetupPlanCall({
+            text: semanticMessage,
+            brandId: activeBrand.id,
+            brandName: activeBrand.name,
+            existingPlan: onboardingPlan,
+            hasAttachments: currentAttachmentParts.length > 0,
+          }),
+        ]
         : onboardingResumeRequest
         ? [{
           name: "get_onboarding_plan",
           args: { brand_id: activeBrand?.id ?? null },
         }]
+        : activeBrand &&
+            isFullySpecifiedTicketTierWriteRequest(semanticMessage)
+        ? [{
+          name: "list_events",
+          args: {
+            brand_id: activeBrand.id,
+            upcoming_only: false,
+            limit: 50,
+          },
+        }]
+        : tripCreationCall
+        ? [tripCreationCall]
         : deterministicRead
         ? deterministicRead.calls
         : [];
@@ -2270,9 +2388,16 @@ ${boundedAgentContext}
                   (discovery.result as { matches?: unknown }).matches,
                 )
               ? (discovery.result as {
-                matches: Array<{ name?: unknown }>;
+                matches: Array<{ name?: unknown; description?: unknown }>;
               }).matches.flatMap((item) =>
-                typeof item?.name === "string" ? [item.name] : []
+                typeof item?.name === "string"
+                  ? [{
+                    name: item.name,
+                    ...(typeof item.description === "string"
+                      ? { description: item.description }
+                      : {}),
+                  }]
+                  : []
               )
               : [];
             return buildAriCapabilityPlan(
@@ -2292,6 +2417,18 @@ ${boundedAgentContext}
               activeBrand?.name ?? null,
             );
           }
+          : onboardingSetupRequest
+          ? (observations) =>
+            buildAriOnboardingSetupReply(
+              observations,
+              activeBrand?.name ?? "your brand",
+            )
+          : eventLaunchReadinessRequest && activeBrand
+          ? (observations) =>
+            buildBrandLaunchPlan({
+              brandName: activeBrand.name,
+              observations,
+            }).text
           : deterministicRead
           ? (observations) =>
             buildAriDeterministicReadReply(
@@ -2369,6 +2506,55 @@ ${boundedAgentContext}
           if (isReadOnlyAgentToolCall(call.name, call.args)) return "read";
           return "write";
         },
+        validateProposal: (call) => {
+          if (ticketTierProposalMismatch(semanticMessage, call.name)) {
+            return {
+              code: "REQUESTED_TOOL_MISMATCH",
+              message:
+                "The user asked to add a ticket tier to an existing event. Do not create or edit an event. Use the canonical list_events result to identify the named event, then return upsert_ticket_tier for that event. If the event is missing or ambiguous, ask one precise question.",
+            };
+          }
+          if (call.name !== "draft_campaign") return null;
+          try {
+            validateAriCampaignDraftProposal(
+              call.args,
+              trustedCampaignSourceText,
+            );
+            return null;
+          } catch (error) {
+            const repairedArgs = buildGroundedCampaignDraft(
+              call.args,
+              trustedCampaignSourceText,
+              activeBrand?.name ?? "",
+            );
+            if (repairedArgs) {
+              try {
+                validateAriCampaignDraftProposal(
+                  repairedArgs,
+                  trustedCampaignSourceText,
+                );
+                call.args = repairedArgs;
+                return null;
+              } catch {
+                // Fall through to a model-visible correction instruction.
+              }
+            }
+            return {
+              code: error instanceof ToolError ? error.code : "INVALID_ARGS",
+              message: error instanceof Error
+                ? error.message
+                : "Remove unsupported campaign claims and provide a complete message.",
+            };
+          }
+        },
+        validateFinalText: (text) =>
+          ticketTierTextBypassesApproval(semanticMessage, text)
+            ? {
+              code: "WRITE_PROPOSAL_REQUIRED",
+              message:
+                "The user supplied the event, ticket name, price, and capacity. Return the matching upsert_ticket_tier tool call so the app can show its protected approval proposal. Do not ask the user to type a confirmation in chat. If the canonical event read shows a conflict or the target is ambiguous, ask one precise question instead.",
+            }
+            : null,
         executeTool: async (call) => {
           const tool = findTool(call.name);
           if (!tool) {
@@ -2415,7 +2601,7 @@ ${boundedAgentContext}
               const candidateTools = selectAriTools(
                 AGENT_TOOLS,
                 [...selectedToolsets],
-                8,
+                12,
                 semanticMessage,
               );
               compileGeminiToolDeclarations(candidateTools.map((item) => ({
@@ -2550,32 +2736,53 @@ ${boundedAgentContext}
             `Unknown tool: ${loopResult.toolCall.name}`,
           );
         }
+        let proposalStage = "canonicalize";
         try {
           loopResult.toolCall.args = canonicalizeAgentProposalArgs(
             tool.name,
             loopResult.toolCall.args,
           );
+          if (tool.name === "upsert_ticket_tier") {
+            loopResult.toolCall.args = groundNewTicketTierFields(
+              loopResult.toolCall.args,
+              semanticMessage,
+            );
+          }
+          proposalStage = "bind_state";
           loopResult.toolCall.args = await bindAgentProposalState(
             tool.name,
             loopResult.toolCall.args,
             userClient,
           );
+          proposalStage = "bind_trip_placeholder";
+          loopResult.toolCall.args = await bindTripStandardPlaceholderProposal(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
+          proposalStage = "authorize";
           await authorizeAgentTool(
             tool,
             loopResult.toolCall.args,
             userClient,
             userId,
+            tool.name === "draft_campaign"
+              ? trustedCampaignSourceText
+              : undefined,
           );
+          proposalStage = "ticket_preflight";
           const pricingContext = await preflightTicketPricingProposal(
             tool.name,
             loopResult.toolCall.args,
             userClient,
           );
+          proposalStage = "money_preflight";
           const moneyContext = await preflightMoneyProposal(
             tool.name,
             loopResult.toolCall.args,
             userClient,
           );
+          proposalStage = "commit_pending";
           return await commitPendingTurn({
             client: serviceClient,
             pendingClient: serviceClient,
@@ -2584,7 +2791,7 @@ ${boundedAgentContext}
             clientTurnId: body.client_turn_id,
             uiCapabilities: ariUiCapabilities,
             previousState: taskState,
-            readyState: taskState,
+            readyState: stateForNewAgentProposal(taskState),
             expectedRevision: taskStateRevision,
             previousSummary: conversationSummary,
             toolName: tool.name,
@@ -2597,8 +2804,31 @@ ${boundedAgentContext}
           });
         } catch (error: unknown) {
           if (error instanceof ToolError) {
+            console.warn(
+              "[agent-chat] proposal refused",
+              JSON.stringify({
+                tool_name: tool.name,
+                stage: proposalStage,
+                code: error.code,
+                ...(Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
+                  ? {
+                    detail: error.message.slice(0, 160),
+                    event_id: typeof loopResult.toolCall.args.event_id ===
+                        "string"
+                      ? loopResult.toolCall.args.event_id
+                      : null,
+                    brand_id: typeof loopResult.toolCall.args.brand_id ===
+                        "string"
+                      ? loopResult.toolCall.args.brand_id
+                      : null,
+                  }
+                  : {}),
+              }),
+            );
             return errorResponse(
-              error.code === "ROLE_CHECK_UNAVAILABLE"
+              error.code === "PAYOUT_NOT_READY"
+                ? 409
+                : error.code === "ROLE_CHECK_UNAVAILABLE"
                 ? 503
                 : error.code === "INVALID_ARGS"
                 ? 400
@@ -2624,14 +2854,44 @@ ${boundedAgentContext}
           "Ari stopped. Your message is still here.",
         );
       }
-      const launchPlan = launchPlanRequest && activeBrand
+      let launchPlan = launchPlanRequest && activeBrand
         ? buildBrandLaunchPlan({
           brandName: activeBrand.name,
           observations: loopResult.observations,
         })
         : null;
+      if (launchPlan && eventLaunchReadinessRequest && activeBrand) {
+        const savedEvents = buildAriDeterministicReadReply(
+          {
+            intent: "event_list",
+            calls: [{
+              name: "list_events",
+              args: {
+                brand_id: activeBrand.id,
+                upcoming_only: false,
+                limit: 50,
+              },
+            }],
+            ...(recentEventTitle ? { targetTitle: recentEventTitle } : {}),
+          },
+          loopResult.observations,
+          activeBrand.name,
+        );
+        launchPlan = {
+          ...launchPlan,
+          text: `${launchPlan.text}\n\nSaved event details:\n${
+            savedEvents ??
+              `I couldn't verify the saved event details for ${activeBrand.name}. The public page and publication state remain unverified.`
+          }`,
+        };
+      }
       const rawLoopText = launchPlan?.text ??
-        (loopResult.kind === "text"
+        (loopResult.kind === "stopped" &&
+            loopResult.observations.some((observation) =>
+              observation.error?.code === "WRITE_PROPOSAL_REQUIRED"
+            )
+          ? "I couldn't prepare the ticket change for approval, so nothing was saved. I need to verify the matching event and create its review card before you can approve the change."
+          : loopResult.kind === "text"
           ? loopResult.text
           : loopResult.reason === "deadline"
           ? "I reached this task's time limit. I kept the completed steps and can resume from here."
@@ -3156,7 +3416,18 @@ ${boundedAgentContext}
           tool.name,
           gemini.toolCall.args,
         );
+        if (tool.name === "upsert_ticket_tier") {
+          gemini.toolCall.args = groundNewTicketTierFields(
+            gemini.toolCall.args,
+            semanticMessage,
+          );
+        }
         gemini.toolCall.args = await bindAgentProposalState(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        gemini.toolCall.args = await bindTripStandardPlaceholderProposal(
           tool.name,
           gemini.toolCall.args,
           userClient,
@@ -3184,6 +3455,9 @@ ${boundedAgentContext}
           gemini.toolCall.args,
           userClient,
           userId,
+          tool.name === "draft_campaign"
+            ? trustedCampaignSourceText
+            : undefined,
         );
         const pricingContext = await preflightTicketPricingProposal(
           tool.name,
@@ -3228,7 +3502,7 @@ ${boundedAgentContext}
         clientTurnId: body.client_turn_id,
         uiCapabilities: ariUiCapabilities,
         previousState: taskState,
-        readyState: taskState,
+        readyState: stateForNewAgentProposal(taskState),
         expectedRevision: taskStateRevision,
         previousSummary: conversationSummary,
         toolName: tool.name,
@@ -3323,7 +3597,8 @@ async function commitPendingTurn(args: {
   const assistantMessageId = crypto.randomUUID();
   let nextState: TaskStateV1;
   try {
-    nextState = args.readyState.active_task?.intent === "create_event"
+    nextState = args.readyState.active_task?.intent === "create_event" &&
+        args.readyState.status === "ready_to_propose"
       ? markAwaitingConfirmation(args.readyState, pendingActionId)
       : args.readyState;
   } catch (err: unknown) {

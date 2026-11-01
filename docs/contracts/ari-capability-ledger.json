@@ -10,15 +10,15 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-30T12:52:49Z",
-    "registered_tool_count": 172,
-    "capability_count": 184,
+    "registered_tool_count": 173,
+    "capability_count": 185,
     "status_breakdown": {
       "verified": 0,
       "registered_unverified": 171,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
-      "in_flight": 5
+      "in_flight": 6
     }
   },
   "operation_universe": {
@@ -6056,6 +6056,52 @@
       ],
       "confidence": "medium",
       "verified_at": "2026-08-25"
+    },
+    {
+      "id": "ari.marketing.campaign_draft_review",
+      "domain": "analytics",
+      "outcome": "Read the saved campaign draft copy and status",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-3355"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getCampaignDraft"
+          }
+        ]
+      },
+      "ari_tool": "get_campaign_draft",
+      "status": "in_flight",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "b0b7cb4519d4ba881166dbb423988a055114a797",
+          "reference": "Issue #3355 local chain review exposed missing canonical readback of saved draft copy"
+        }
+      ],
+      "owning_issues": [
+        3355,
+        2000
+      ],
+      "blockers": [
+        "Open issue #3355; cross-surface and deployed runtime proof pending"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
     },
     {
       "id": "ari.brand.audit_log",

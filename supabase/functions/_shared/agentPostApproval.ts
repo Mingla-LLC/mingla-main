@@ -14,6 +14,7 @@ import {
   isReadOnlyAgentToolCall,
   ToolError,
 } from "./agentTools.ts";
+import { buildTicketTierReceipt } from "./agentTicketPricing.ts";
 import {
   type AriToolsetKey,
   inferAriToolsets,
@@ -56,6 +57,13 @@ export async function continueAfterApprovedAction(args: {
   toolName: string;
   result: unknown;
 }): Promise<PostApprovalContinuation | null> {
+  // Ticket pricing's confirmed operation returns the exact canonical tier
+  // that its SQL executor read back. Use that receipt directly; a second model
+  // pass adds latency and can replace a verified result with an unsafe claim.
+  if (args.toolName === "upsert_ticket_tier") {
+    const text = buildTicketTierReceipt(args.result);
+    if (text) return { kind: "text", text, observations: [] };
+  }
   const { data: rows, error } = await args.serviceClient
     .from("agent_messages")
     .select("role,content,created_at")

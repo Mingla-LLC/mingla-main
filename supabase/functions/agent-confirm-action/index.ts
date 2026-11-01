@@ -1329,6 +1329,9 @@ async function handleConfirmAction(args: {
   // is still persisted separately below.
   const rawFollowupText = tool.name === "create_event"
     ? undefined
+    : tool.name === "draft_campaign" ||
+        tool.name === "update_campaign_draft"
+    ? buildFollowupText(tool.name, result)
     : continuationHasScopeFailure
     ? buildFollowupText(tool.name, result)
     : continuation?.text ?? buildFollowupText(tool.name, result);
@@ -1506,6 +1509,19 @@ export function buildFollowupText(
     }
     if (toolName === "update_event") {
       return `Updated. Anything else to change?`;
+    }
+    if (toolName === "draft_campaign" || toolName === "update_campaign_draft") {
+      const row = result as {
+        name?: unknown;
+        status?: unknown;
+        channel?: unknown;
+      } | null;
+      const name = typeof row?.name === "string" ? row.name.trim() : "";
+      if (!name || row?.status !== "draft") return undefined;
+      const channel = row.channel === "sms" ? "SMS" : "email";
+      return toolName === "draft_campaign"
+        ? `Saved “${name}” as an ${channel} campaign draft. Nothing has been scheduled or sent.`
+        : `Updated the saved campaign draft to “${name}”. Nothing has been scheduled or sent.`;
     }
     if (toolName === "create_experience") {
       const event = (result as { event?: unknown } | null)?.event;

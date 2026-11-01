@@ -9,8 +9,14 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { detectChoices } from "../agentChoices.ts";
+import { searchAriCapabilities } from "../agentAri10xTools.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
-import { AGENT_TOOLS, findTool, READ_ONLY_TOOL_NAMES, ToolError } from "../agentTools.ts";
+import {
+  AGENT_TOOLS,
+  findTool,
+  READ_ONLY_TOOL_NAMES,
+  ToolError,
+} from "../agentTools.ts";
 import { assertCanCollect, isUuid } from "../agentToolHelpers.ts";
 import { DOMAIN_READ_ONLY, MONEY_CONFIRM_TOOLS } from "../agentDomainTools.ts";
 import type { BrandSummary } from "../agentSystemPrompt.ts";
@@ -33,7 +39,7 @@ Deno.test("#1970 happy: PROMPT_VERSION is v6 and create_experience is advertised
   // packages, traveller intake and the aggregate money read are advertised, and
   // the trip rules block is new). ONE assertion is invalidated — the version
   // literal. Every capability-advertisement assertion below is unchanged.
-  assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
+  assertEquals(PROMPT_VERSION, "v27"); // #2829 W11 completes the website journey entrances
   const prompt = buildSystemPrompt(null, []);
   const caps = prompt.slice(prompt.indexOf("CAPABILITIES"));
   assertStringIncludes(caps, "create_experience");
@@ -42,11 +48,18 @@ Deno.test("#1970 happy: PROMPT_VERSION is v6 and create_experience is advertised
   assertStringIncludes(caps, "get_operator_snapshot");
 });
 
-Deno.test("#1970 happy: every registered tool name appears in CAPABILITIES", () => {
+Deno.test("#3355 every registered tool is discoverable through Ari's capability map", () => {
   const prompt = buildSystemPrompt(null, []);
   const caps = prompt.slice(prompt.indexOf("CAPABILITIES"));
+  assertStringIncludes(caps, "search_capabilities");
+  assertStringIncludes(caps, "request_tools");
   for (const tool of AGENT_TOOLS) {
-    assert(caps.includes(`- ${tool.name} —`), `missing CAPABILITIES line for ${tool.name}`);
+    assert(
+      searchAriCapabilities(tool.name, 20).some((match) =>
+        match.name === tool.name
+      ),
+      `missing searchable capability for ${tool.name}`,
+    );
   }
 });
 
@@ -55,7 +68,12 @@ Deno.test("#1970 happy: richer prompt context injects offerings + payout + summa
     injectStrictReminder: false,
     business: {
       brands: [brand("b1", "Lumen")],
-      offerings: [{ id: "e1", title: "Friday Social", kind: "ticketed", status: "draft" }],
+      offerings: [{
+        id: "e1",
+        title: "Friday Social",
+        kind: "ticketed",
+        status: "draft",
+      }],
       payoutReady: false,
       roleHint: "owner",
       conversationSummary: "User asked to publish Friday Social",

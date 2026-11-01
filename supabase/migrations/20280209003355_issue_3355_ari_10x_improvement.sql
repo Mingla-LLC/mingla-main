@@ -1702,4 +1702,54 @@ CREATE TRIGGER ari_unlink_training_before_conversation_delete
 BEFORE DELETE ON public.agent_conversations
 FOR EACH ROW EXECUTE FUNCTION public.ari_unlink_training_on_conversation_delete();
 
+-- I-3355-TRIP-STANDARD-PLACEHOLDER | #3355 | A caller can resolve only the
+-- unique, unsold, free Standard placeholder on a trip they can manage. Ari
+-- uses this id to update the wizard's placeholder after confirmation instead
+-- of adding a duplicate package; the resolver exposes no trip graph or PII.
+CREATE OR REPLACE FUNCTION public.ari_resolve_trip_standard_placeholder(
+  p_event_id uuid
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_brand_id uuid;
+  v_matches uuid[];
+BEGIN
+  SELECT brand_id INTO v_brand_id
+    FROM public.events
+   WHERE id = p_event_id
+     AND event_type = 'trip'
+     AND deleted_at IS NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'trip_not_found'; END IF;
+
+  PERFORM public.biz_trip_require_manager(v_brand_id);
+
+  SELECT array_agg(tt.id ORDER BY tt.created_at) INTO v_matches
+    FROM public.trip_pricing_tiers t
+    JOIN public.ticket_types tt ON tt.id = t.ticket_type_id
+   WHERE t.event_id = p_event_id
+     AND lower(btrim(t.tier_name)) = 'standard'
+     AND lower(btrim(tt.name)) = 'standard'
+     AND tt.deleted_at IS NULL
+     AND tt.is_free = true
+     AND tt.price_cents = 0
+     AND tt.quantity_total = 1
+     AND tt.is_unlimited = false
+     AND tt.sold_count = 0
+     AND tt.held_count = 0
+     AND NOT EXISTS (
+       SELECT 1 FROM public.tickets ticket
+        WHERE ticket.ticket_type_id = tt.id
+          AND ticket.status IN ('valid', 'used', 'transferred')
+     );
+
+  IF cardinality(v_matches) = 1 THEN RETURN v_matches[1]; END IF;
+  RETURN NULL;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.ari_resolve_trip_standard_placeholder(uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ari_resolve_trip_standard_placeholder(uuid)
+  TO authenticated;
+
 COMMIT;

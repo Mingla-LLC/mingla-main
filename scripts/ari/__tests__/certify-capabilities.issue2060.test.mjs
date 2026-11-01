@@ -158,7 +158,8 @@ function passingEvidence(plan) {
         surfaces: row.required_surfaces,
         scenarios: row.required_scenarios,
         canonical_readback: canonicalReadback,
-        tenant_role_matrix: "owner|applicable_member|below_threshold|revoked|outsider",
+        tenant_role_matrix:
+          "owner|applicable_member|below_threshold|revoked|outsider",
         scenario_evidence: scenarioEvidence,
       };
       return {
@@ -185,11 +186,11 @@ function passingEvidence(plan) {
 }
 
 // [TEST-MOD-APPROVED #3872] R1-R3 add discounts, referrals, and guarded gig-script drafting.
-test("#2060 plan covers the current exact 184-row ledger with one cache/readback owner", () => {
+test("#2060 plan covers the current exact 185-row ledger with one cache/readback owner", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  assert.equal(plan.capability_count, 184);
-  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 184);
+  assert.equal(plan.capability_count, 185);
+  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 185);
   assert.equal(
     plan.rows.every((row) =>
       row.cache_owner_id && row.canonical_readback_owner
@@ -241,7 +242,7 @@ test("#2060 rejects missing rows, SHA mismatch surfaces, dirty cleanup, and stra
       "requirements_digest",
       "release_artifact_sha:agent_chat_bundle",
       "native_artifact:business_android",
-      "evidence_capability_count:183",
+      "evidence_capability_count:184",
       "cleanup_zero_residue",
       "rollback_no_stranded_operations",
     ]
@@ -294,15 +295,26 @@ test("#2060 server attestation defeats a forged file even when every public dige
     attestationSecret: ATTESTATION_KEY,
   });
   assert.equal(result.ok, false);
-  assert.equal(result.failures.includes("server_attestation:evidence_set_digest"), true);
+  assert.equal(
+    result.failures.includes("server_attestation:evidence_set_digest"),
+    true,
+  );
   assert.equal(result.failures.includes("server_attestation:signature"), true);
 });
 
 test("#2060 certification cannot run without the server attestation key", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  const result = validateCertificationEvidence(passingEvidence(plan), ledger, owners, {
-    attestationSecret: "",
-  });
-  assert.equal(result.failures.includes("server_attestation_key_required"), true);
+  const result = validateCertificationEvidence(
+    passingEvidence(plan),
+    ledger,
+    owners,
+    {
+      attestationSecret: "",
+    },
+  );
+  assert.equal(
+    result.failures.includes("server_attestation_key_required"),
+    true,
+  );
 });

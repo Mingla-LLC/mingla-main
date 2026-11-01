@@ -115,6 +115,24 @@ export const IDLE_TASK_STATE: TaskStateV1 = Object.freeze({
   last_completed_step: null,
 });
 
+/**
+ * A completed planner task must not keep owning later, unrelated agent writes
+ * in the same conversation. Preserve its receipt in last_completed_step while
+ * returning the active planner to idle.
+ */
+export function stateForNewAgentProposal(state: TaskStateV1): TaskStateV1 {
+  if (
+    state.active_task &&
+    (state.status === "completed" || state.status === "cancelled")
+  ) {
+    return {
+      ...IDLE_TASK_STATE,
+      last_completed_step: state.last_completed_step,
+    };
+  }
+  return state;
+}
+
 const TASK_STATUSES = new Set<TaskStatus>([
   "idle",
   "gathering",
@@ -513,6 +531,8 @@ export function createEventTaskState(args: {
   title?: string;
   intent?: "create_event" | "create_rsvp";
   capacity?: number;
+  locationText?: string;
+  copyRequested?: boolean;
 }): TaskStateV1 {
   const state: TaskStateV1 = {
     schema_version: TASK_STATE_SCHEMA_VERSION,
@@ -542,6 +562,19 @@ export function createEventTaskState(args: {
               `${args.capacity} guests`,
             ),
           }
+          : {}),
+        ...(args.locationText
+          ? {
+            location_text: resolvedSlot(
+              args.locationText,
+              "user",
+              args.nowIso,
+              args.locationText,
+            ),
+          }
+          : {}),
+        ...(args.copyRequested
+          ? { description_requested: resolvedSlot(true, "user", args.nowIso) }
           : {}),
       },
       brief: args.brief,
@@ -971,15 +1004,74 @@ export function assertCreateEventProposal(
       availableAt: "both",
     }]
     : undefined;
+  const endAt = slots.end_at?.status === "resolved" &&
+      typeof slots.end_at.value === "string"
+    ? slots.end_at.value
+    : undefined;
+  const locationText = slots.location_text?.status === "resolved" &&
+      typeof slots.location_text.value === "string"
+    ? slots.location_text.value
+    : undefined;
+  const descriptionRequested = slots.description_requested?.status ===
+      "resolved" && slots.description_requested.value === true;
+  const description = descriptionRequested
+    ? buildGroundedEventDescription({
+      title,
+      startAt,
+      endAt,
+      timezone,
+      locationText,
+    })
+    : undefined;
   return {
     brand_id: brandId,
     title,
     start_at: startAt,
+    ...(endAt ? { end_at: endAt } : {}),
     timezone,
     when_mode: "single",
     visibility,
+    ...(locationText ? { location_text: locationText } : {}),
+    ...(description ? { description } : {}),
     ...(tickets ? { tickets } : {}),
   };
+}
+
+function buildGroundedEventDescription(args: {
+  title: string;
+  startAt: string;
+  endAt?: string;
+  timezone: string;
+  locationText?: string;
+}): string {
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: args.timezone,
+  };
+  const timeOptions: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: args.timezone,
+  };
+  const date = new Intl.DateTimeFormat("en-US", dateOptions).format(
+    new Date(args.startAt),
+  );
+  const startTime = new Intl.DateTimeFormat("en-US", timeOptions).format(
+    new Date(args.startAt),
+  );
+  const endTime = args.endAt
+    ? new Intl.DateTimeFormat("en-US", timeOptions).format(
+      new Date(args.endAt),
+    )
+    : null;
+  const location = args.locationText ? ` at ${args.locationText}` : "";
+  const schedule = endTime
+    ? ` from ${startTime} to ${endTime}`
+    : ` at ${startTime}`;
+  return `Join us for ${args.title}${location} on ${date}${schedule}.`;
 }
 
 export function assertCreateRsvpProposal(
