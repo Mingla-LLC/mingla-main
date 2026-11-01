@@ -236,7 +236,6 @@ const DATE_UNAVAILABLE_TOKENS: ReadonlySet<string> = new Set([
   "event_no_active_dates",
   "occurrence_not_found",
   "occurrence_not_available",
-  "ticket_not_valid_on_chosen_days",
   "occurrence_lookup_failed",
   "event_date_lookup_failed",
 ]);

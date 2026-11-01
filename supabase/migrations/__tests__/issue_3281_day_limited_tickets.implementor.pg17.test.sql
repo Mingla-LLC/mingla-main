@@ -25,6 +25,8 @@ DECLARE
   v_created jsonb;
   v_raised text;
   v_ticket uuid;
+  v_pair uuid := '32818000-0000-4000-8400-000000000007';
+  v_mon uuid := '32818000-0000-4000-8400-000000000014';
 BEGIN
   v_days := ARRAY[v_fri,v_sat];
   INSERT INTO auth.users(id,email) VALUES(v_owner,'day-list-owner@example.test');
@@ -135,18 +137,53 @@ BEGIN
     RAISE EXCEPTION 'a held date must be full, got %',v_raised;
   END IF;
 
-  -- The held session keeps its dates on the list.
+  -- The held session keeps its dates on the list, even for a direct update.
   v_raised := NULL;
   BEGIN
-    PERFORM public.issue_3281_assert_scope_keeps_taken_days(v_weekend,ARRAY['fri']);
+    UPDATE public.ticket_types SET valid_occurrence_keys=ARRAY['fri'] WHERE id=v_weekend;
   EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
   IF v_raised IS DISTINCT FROM 'tier_day_scope_drops_sold_day' THEN
     RAISE EXCEPTION 'a held date must stay on the list, got %',v_raised;
   END IF;
   -- Adding a date is always allowed.
-  PERFORM public.issue_3281_assert_scope_keeps_taken_days(v_weekend,ARRAY['fri','sat','sun']);
-  -- Sunday has nothing on it, so a list that loses only Sunday is fine.
-  PERFORM public.issue_3281_assert_scope_keeps_taken_days(v_weekend,ARRAY['fri','sat']);
+  UPDATE public.ticket_types SET valid_occurrence_keys=ARRAY['fri','sat','sun'] WHERE id=v_weekend;
+  -- Sunday has nothing on it, so a list can lose it again.
+  UPDATE public.ticket_types SET valid_occurrence_keys=ARRAY['fri','sat'] WHERE id=v_weekend;
+  -- A key the event does not have never reaches the table.
+  v_raised := NULL;
+  BEGIN
+    UPDATE public.ticket_types SET valid_occurrence_keys=ARRAY['fri','gone'] WHERE id=v_friday;
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'tier_day_scope_unknown_day' THEN
+    RAISE EXCEPTION 'an unknown day must be refused, got %',v_raised;
+  END IF;
+
+  -- One date full on a two-date ticket must not read as sold out.
+  INSERT INTO public.ticket_types(
+    id,event_id,name,price_cents,currency,is_free,quantity_total,is_unlimited,
+    min_purchase_qty,max_purchase_qty,available_online,available_in_person,valid_occurrence_keys
+  ) VALUES(v_pair,v_event,'Pair',2000,'USD',false,1,false,1,10,true,false,ARRAY['fri','sat']);
+  v_quote := public.issue_3872_ticket_quote(v_event,
+    jsonb_build_array(jsonb_build_object('ticketTypeId',v_pair,'quantity',1,'byDate',
+      jsonb_build_object(v_fri::text,1))),
+    v_days,NULL,NULL,NULL,'full',NULL,'pair@example.test','+15555550803',NULL,NULL,false);
+  PERFORM public.biz_ticket_checkout_create_session(
+    v_event,NULL,'Pair','pair@example.test','+15555550803',false,
+    jsonb_build_array(jsonb_build_object('ticketTypeId',v_pair,'quantity',1,'byDate',
+      jsonb_build_object(v_fri::text,1))),
+    'ticket_checkout:v2:'||v_event::text||':32818000-0000-4000-8400-000000000024',
+    now()+interval '15 minutes',0,'full',v_days,NULL,NULL,NULL,NULL,v_quote->>'quoteDigest');
+  v_json := public.issue_3872_ticket_sale_json(v_pair);
+  IF (v_json->>'remaining')::integer IS DISTINCT FROM 1
+     OR v_json->'soldOutOccurrenceIds' <> jsonb_build_array(v_fri) THEN
+    RAISE EXCEPTION 'one full date must leave the other on sale, got %',v_json;
+  END IF;
+  SELECT t INTO v_json
+    FROM jsonb_array_elements(public.pg_direct_event_checkout_bundle(v_event,NULL,NULL)::jsonb->'tickets') t
+   WHERE t->>'id'=v_pair::text;
+  IF (v_json->>'remaining')::integer IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'the public bundle must count per date, got %',v_json;
+  END IF;
 
   -- Scope writers: absent key keeps the list, null clears, junk is refused.
   v_scope := public.issue_3281_resolve_tier_scope(v_event,'{"id":"x"}'::jsonb,ARRAY['fri']);
@@ -236,6 +273,18 @@ BEGIN
     'ticket_checkout:v2:'||v_event::text||':32818000-0000-4000-8400-000000000023',
     now()+interval '15 minutes',0,'full',v_days,NULL,NULL,NULL,NULL,v_quote->>'quoteDigest');
   v_session := COALESCE(v_created->>'sessionId',v_created->>'checkoutSessionId')::uuid;
+  -- Discounts count the one date this pass admits, not both chosen dates.
+  IF (public.issue_3872_ticket_line_price(v_event,v_friday,1,
+        jsonb_build_object('pricingMode','all_days','dayCount',2,'dayMultiplier',1,
+          'dayIds',to_jsonb(v_days)),now()+interval '15 minutes',NULL)->>'countScale')::integer <> 1 THEN
+    RAISE EXCEPTION 'an all-days pass must count its admitted dates';
+  END IF;
+  -- This hold names Saturday, which the ticket never covered, so it cannot
+  -- block an unrelated list change.
+  INSERT INTO public.event_dates(id,event_id,start_at,end_at,timezone,is_master,occurrence_key)
+    VALUES(v_mon,v_event,now()+interval '4 days',now()+interval '4 days 2 hours','UTC',false,'mon');
+  UPDATE public.ticket_types SET valid_occurrence_keys=ARRAY['fri','mon'] WHERE id=v_friday;
+  UPDATE public.ticket_types SET valid_occurrence_keys=ARRAY['fri'] WHERE id=v_friday;
   PERFORM public.issue_1930_ticket_checkout_finalize_base(
     v_session,'pi_day_list','ch_day_list','card','by-date-test-pepper-0123456789abcdef0123456789'
   );
@@ -264,6 +313,37 @@ BEGIN
     UPDATE public.ticket_types SET valid_occurrence_keys='{}' WHERE id=v_friday;
   EXCEPTION WHEN check_violation THEN v_raised := 'refused'; END;
   IF v_raised IS NULL THEN RAISE EXCEPTION 'an empty list must never be stored'; END IF;
+END;
+$test$;
+
+-- A draft edit with no validDayIds key keeps the list; null clears it.
+DO $test$
+DECLARE
+  v_user uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_event uuid := gen_random_uuid();
+  v_tier jsonb := '{"id":"draft-a","name":"A","isFree":true,"isUnlimited":true}'::jsonb;
+BEGIN
+  INSERT INTO auth.users (id) VALUES (v_user);
+  INSERT INTO public.creator_accounts (id) VALUES (v_user);
+  INSERT INTO public.brands (id, account_id, name, slug)
+    VALUES (v_brand, v_user, 'draft list', 'draft-list-'||v_brand);
+  INSERT INTO public.events (id, brand_id, title, slug, event_type, status, visibility, timezone, theme)
+    VALUES (v_event, v_brand, 'draft list', 'draft-list-'||v_event, 'event', 'draft', 'draft', 'UTC',
+      jsonb_build_object('business_draft',jsonb_build_object('clientRevision',0,'tickets',
+        jsonb_build_array(v_tier||'{"validDayIds":["md_fri"]}'::jsonb))));
+  PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
+  PERFORM public.business_patch_event_ticket_tiers(v_event,jsonb_build_array(v_tier),NULL,0,gen_random_uuid(),NULL);
+  IF (SELECT theme#>'{business_draft,tickets,0,validDayIds}' FROM public.events WHERE id=v_event)
+     IS DISTINCT FROM '["md_fri"]'::jsonb THEN
+    RAISE EXCEPTION 'a draft edit with no key must keep the list';
+  END IF;
+  PERFORM public.business_patch_event_ticket_tiers(v_event,
+    jsonb_build_array(v_tier||'{"validDayIds":null}'::jsonb),NULL,1,gen_random_uuid(),NULL);
+  IF (SELECT theme#>'{business_draft,tickets,0,validDayIds}' FROM public.events WHERE id=v_event)
+     IS DISTINCT FROM 'null'::jsonb THEN
+    RAISE EXCEPTION 'null must clear a draft list';
+  END IF;
 END;
 $test$;
 

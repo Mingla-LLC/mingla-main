@@ -9,6 +9,7 @@
 --   A pass admits what ticket_event_dates says. The list is a sale and mint input,
 --     and changing it never touches an issued pass.
 --   Dates with sales or holds cannot leave a list. Adding dates is always allowed.
+--     A table trigger holds direct updates to this rule too.
 --
 -- Pricing needs no new path. A per_day line that covers only some chosen dates
 -- must use byDate, which already prices, holds and mints each date on its own.
@@ -173,9 +174,10 @@ END;
 $fn$;
 
 -- Sold and held places both count: a hold left off the list would be paid for
--- and then refused at mint.
+-- and then refused at mint. Only dates leaving the list are measured, because an
+-- all_days hold also names chosen dates the ticket never covered.
 CREATE OR REPLACE FUNCTION public.issue_3281_assert_scope_keeps_taken_days(
-  p_ticket_type_id uuid, p_keys text[]
+  p_ticket_type_id uuid, p_old_keys text[], p_new_keys text[]
 ) RETURNS void
 LANGUAGE plpgsql
 STABLE
@@ -183,18 +185,77 @@ SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $fn$
 BEGIN
-  IF p_keys IS NULL THEN RETURN; END IF;
+  IF p_new_keys IS NULL THEN RETURN; END IF;
   IF EXISTS (
     SELECT 1
       FROM public.ticket_types tt
       JOIN public.event_dates d ON d.event_id = tt.event_id
      WHERE tt.id = p_ticket_type_id
-       AND (d.occurrence_key IS NULL OR NOT d.occurrence_key = ANY (p_keys))
+       AND (p_old_keys IS NULL OR d.occurrence_key = ANY (p_old_keys))
+       AND (d.occurrence_key IS NULL OR NOT d.occurrence_key = ANY (p_new_keys))
        AND public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id) > 0
   ) THEN
     RAISE EXCEPTION 'tier_day_scope_drops_sold_day';
   END IF;
 END;
+$fn$;
+
+-- At the table, so a direct update is held to the same rules as a wizard save.
+CREATE OR REPLACE FUNCTION public.issue_3281_ticket_type_day_list_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  v_old text[];
+BEGIN
+  IF TG_OP = 'UPDATE' THEN v_old := OLD.valid_occurrence_keys; END IF;
+  IF NEW.valid_occurrence_keys IS NULL
+     OR cardinality(NEW.valid_occurrence_keys) = 0
+     OR NEW.valid_occurrence_keys IS NOT DISTINCT FROM v_old THEN
+    RETURN NEW;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM unnest(NEW.valid_occurrence_keys) k
+     WHERE NOT (k = ANY (COALESCE(v_old, '{}'::text[])))
+       AND NOT EXISTS (
+         SELECT 1 FROM public.event_dates d
+          WHERE d.event_id = NEW.event_id AND d.occurrence_key = k)
+  ) THEN
+    RAISE EXCEPTION 'tier_day_scope_unknown_day';
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    PERFORM public.issue_3281_assert_scope_keeps_taken_days(
+      NEW.id, v_old, NEW.valid_occurrence_keys);
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3281_ticket_type_day_list_guard ON public.ticket_types;
+CREATE TRIGGER issue_3281_ticket_type_day_list_guard
+  BEFORE INSERT OR UPDATE OF valid_occurrence_keys ON public.ticket_types
+  FOR EACH ROW EXECUTE FUNCTION public.issue_3281_ticket_type_day_list_guard();
+
+-- A listed ticket's capacity is per date: the best upcoming date, so it only
+-- reads sold out once every one of its dates is.
+CREATE OR REPLACE FUNCTION public.issue_3281_listed_remaining(p_ticket_type_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+  SELECT CASE WHEN tt.is_unlimited OR tt.quantity_total IS NULL THEN NULL ELSE COALESCE((
+    SELECT GREATEST(MAX(tt.quantity_total
+             - public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id)), 0)::integer
+      FROM public.event_dates d
+     WHERE d.event_id = tt.event_id
+       AND d.occurrence_key = ANY (tt.valid_occurrence_keys)
+       AND d.end_at > now()
+  ), 0) END
+  FROM public.ticket_types tt
+  WHERE tt.id = p_ticket_type_id;
 $fn$;
 
 -- NULL for an All dates ticket, otherwise the given dates it is valid on.
@@ -309,7 +370,9 @@ REVOKE ALL ON FUNCTION public.issue_3281_sync_occurrence_keys(uuid, jsonb) FROM 
 REVOKE ALL ON FUNCTION public.issue_3281_strip_removed_days(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_draft_ticket_scope(jsonb, text, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_resolve_tier_scope(uuid, jsonb, text[]) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.issue_3281_assert_scope_keeps_taken_days(uuid, text[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_assert_scope_keeps_taken_days(uuid, text[], text[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_ticket_type_day_list_guard() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_listed_remaining(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_days_in_scope(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_assert_line_days(uuid, jsonb, uuid[], text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_pass_day_in_scope() FROM PUBLIC, anon, authenticated;
@@ -1969,6 +2032,18 @@ BEGIN
       RAISE EXCEPTION 'payout_not_ready';
     END IF;
     v_next_revision := v_current_revision+1;
+    -- issue #3281 — no validDayIds key keeps the draft's list, as on a live edit.
+    SELECT COALESCE(jsonb_agg(
+      CASE WHEN rows.tier ? 'validDayIds' THEN rows.tier
+        ELSE rows.tier || COALESCE((
+          SELECT jsonb_build_object('validDayIds',old_tier->'validDayIds')
+            FROM jsonb_array_elements(COALESCE(v_event.theme->'business_draft'->'tickets','[]'::jsonb)) old_tier
+           WHERE old_tier->>'id'=rows.tier->>'id' AND old_tier ? 'validDayIds'
+           LIMIT 1
+        ),'{}'::jsonb) END
+      ORDER BY rows.ordinality),'[]'::jsonb)
+      INTO v_tiers
+      FROM jsonb_array_elements(v_tiers) WITH ORDINALITY rows(tier,ordinality);
     UPDATE public.events
        SET theme=jsonb_set(
              COALESCE(theme,'{}'::jsonb),
@@ -2052,7 +2127,6 @@ BEGIN
       WHERE id=(v_tier->>'id')::uuid AND event_id=p_event_id AND deleted_at IS NULL FOR UPDATE;
       IF FOUND THEN
         v_scope := public.issue_3281_resolve_tier_scope(p_event_id, v_tier, v_existing.valid_occurrence_keys);
-        PERFORM public.issue_3281_assert_scope_keeps_taken_days(v_existing.id, v_scope);
         SELECT count(*)::integer INTO v_sold FROM public.tickets tk
         WHERE tk.ticket_type_id=v_existing.id AND tk.status IN ('valid','used','transferred');
         -- issue #3313 — on a recurring event capacity is PER NIGHT, so the
@@ -2911,6 +2985,75 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.issue_3872_ticket_line_price(
+  p_event_id uuid,p_ticket_type_id uuid,p_qty_raw integer,p_ctx jsonb,
+  p_expires_at timestamptz,p_booked_party_size integer
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,auth,pg_temp AS $fn$
+DECLARE v_event record; v_tt record; v_qty integer; v_unit bigint; v_admits integer:=1;
+  v_basis text; v_blocks integer; v_day_count integer; v_mode text; v_value_scale integer:=1; v_count_scale integer:=1;
+  v_start timestamptz; v_end timestamptz;
+BEGIN
+  IF COALESCE(p_qty_raw,0)<=0 THEN RAISE EXCEPTION 'ticket_quantity_invalid'; END IF;
+  SELECT e.event_type,e.discounts_allowed INTO v_event FROM public.events e
+    WHERE e.id=p_event_id AND e.deleted_at IS NULL;
+  SELECT * INTO v_tt FROM public.ticket_types t
+    WHERE t.id=p_ticket_type_id AND t.event_id=p_event_id AND t.deleted_at IS NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ticket_type_not_found'; END IF;
+  IF (v_tt.is_hidden AND NOT public.issue_3827_link_unlocks_tier(v_tt.id))
+     OR v_tt.is_disabled OR NOT v_tt.available_online THEN RAISE EXCEPTION 'ticket_type_unavailable'; END IF;
+  IF v_tt.sale_start_at IS NOT NULL AND v_tt.sale_start_at>now() AND NOT (
+    p_expires_at='infinity'::timestamptz AND EXISTS(SELECT 1 FROM public.ticket_queue_arming a
+      WHERE a.ticket_type_id=v_tt.id AND a.disarmed_at IS NULL)) THEN
+    RAISE EXCEPTION 'ticket_sales_not_started';
+  END IF;
+  IF v_tt.sale_end_at IS NOT NULL AND v_tt.sale_end_at<=now() THEN RAISE EXCEPTION 'ticket_sales_ended'; END IF;
+  IF p_qty_raw<v_tt.min_purchase_qty THEN RAISE EXCEPTION 'ticket_quantity_below_min'; END IF;
+  -- A by-date line over several dates arrives as its total with no day
+  -- multiplier, a shape no uniform cart has. create-session checks each date.
+  IF v_tt.max_purchase_qty IS NOT NULL AND p_qty_raw>v_tt.max_purchase_qty
+     AND NOT (COALESCE(p_ctx->>'pricingMode','per_day')='per_day'
+       AND COALESCE((p_ctx->>'dayCount')::integer,0)>1
+       AND COALESCE((p_ctx->>'dayMultiplier')::integer,1)=1) THEN
+    RAISE EXCEPTION 'ticket_quantity_above_max';
+  END IF;
+
+  v_day_count:=COALESCE((p_ctx->>'dayCount')::integer,0);
+  -- issue #3281 — an all_days pass counts only the dates it admits.
+  IF v_tt.valid_occurrence_keys IS NOT NULL THEN
+    v_day_count:=COALESCE(cardinality(public.issue_3281_days_in_scope(v_tt.id,ARRAY(
+      SELECT value::uuid FROM jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(p_ctx->'dayIds')='array' THEN p_ctx->'dayIds' ELSE '[]'::jsonb END)
+    ))),0);
+  END IF;
+  v_mode:=COALESCE(p_ctx->>'pricingMode','per_day');
+  v_qty:=p_qty_raw*COALESCE((p_ctx->>'dayMultiplier')::integer,1);
+  v_unit:=v_tt.price_cents; v_basis:=COALESCE(v_tt.price_basis,'person');
+  v_start:=NULLIF(p_ctx->>'bookedStart','')::timestamptz; v_end:=NULLIF(p_ctx->>'bookedEnd','')::timestamptz;
+  IF v_event.event_type='experience' AND v_basis='group' THEN
+    IF p_booked_party_size IS NULL OR p_booked_party_size<1 OR v_tt.group_max IS NULL
+       OR p_booked_party_size>v_tt.group_max THEN RAISE EXCEPTION 'booked_party_invalid'; END IF;
+    v_admits:=v_tt.group_max;
+  ELSIF v_event.event_type='experience' AND v_basis='block' THEN
+    IF v_start IS NULL OR v_end IS NULL OR v_tt.block_minutes IS NULL OR v_end<=v_start THEN
+      RAISE EXCEPTION 'booked_length_invalid';
+    END IF;
+    v_blocks:=(extract(epoch FROM (v_end-v_start))/(v_tt.block_minutes::numeric*60.0))::integer;
+    IF v_blocks<COALESCE(v_tt.min_blocks,1) OR v_blocks>COALESCE(v_tt.max_blocks,v_blocks) THEN
+      RAISE EXCEPTION 'booked_length_invalid';
+    END IF;
+    v_unit:=v_tt.price_cents*v_blocks; v_value_scale:=v_blocks; v_count_scale:=v_blocks;
+  ELSIF v_mode='all_days' AND v_day_count>0 THEN v_count_scale:=v_day_count;
+  END IF;
+  RETURN jsonb_build_object('ticketTypeId',v_tt.id,'ticketName',v_tt.name,
+    'rawQuantity',p_qty_raw,'quantity',v_qty,'unitPriceCents',v_unit,'totalCents',v_unit*v_qty,
+    'admitsCount',v_admits,'priceBasis',v_basis,'blocks',v_blocks,'currency',v_tt.currency,
+    'isFree',COALESCE(v_tt.is_free,false) OR COALESCE(v_tt.price_cents,0)=0,
+    'discountsAllowed',COALESCE(v_event.discounts_allowed,true) AND COALESCE(v_tt.discounts_allowed,true),
+    'valueScale',v_value_scale,'countScale',v_count_scale);
+END;
+$fn$;
+
 CREATE OR REPLACE FUNCTION public.issue_3872_ticket_quote(
   p_event_id uuid,
   p_lines jsonb,
@@ -3685,6 +3828,8 @@ AS $fn$
     ELSE jsonb_build_object(
       -- issue #3281 — keys exist only on day-limited tickets, so every other
       -- ticket's payload is unchanged. No counts: "Hide remaining" still holds.
+      -- The reader's run-wide remaining would read sold out after one full date.
+      'remaining',public.issue_3281_listed_remaining(tt.id),
       'validOccurrenceIds',COALESCE((
         SELECT jsonb_agg(d.id ORDER BY d.start_at,d.id) FROM public.event_dates d
          WHERE d.event_id=tt.event_id AND d.occurrence_key=ANY(tt.valid_occurrence_keys)
@@ -3717,14 +3862,7 @@ AS $function$
       WHEN tt.quantity_total IS NULL THEN NULL
       -- issue #3281 — per date: the best upcoming date, so a ticket only reads
       -- sold out once every one of its dates is.
-      WHEN tt.valid_occurrence_keys IS NOT NULL THEN COALESCE((
-        SELECT GREATEST(MAX(tt.quantity_total
-                 - public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id)), 0)::int
-          FROM public.event_dates d
-         WHERE d.event_id = tt.event_id
-           AND d.occurrence_key = ANY (tt.valid_occurrence_keys)
-           AND d.end_at > now()
-      ), 0)
+      WHEN tt.valid_occurrence_keys IS NOT NULL THEN public.issue_3281_listed_remaining(tt.id)
       ELSE GREATEST(tt.quantity_total - COALESCE(s.sold, 0), 0)::int
     END AS remaining
   FROM public.ticket_types tt
