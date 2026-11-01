@@ -35,6 +35,7 @@ import {
   WEBSITE_DEFAULT_DESIGN,
   WEBSITE_SETUP_FLOW,
   websiteTextAnswer,
+  WEBSITE_BRAND_FIELD_ORDER,
 } from "../ariFlows/websiteSetup.ts";
 import {
   decideFlowTurn,
@@ -1304,4 +1305,15 @@ Deno.test("P4 first offering: trips and experiences are never created here (thei
     },
   });
   assertEquals(forged.kind, "stale");
+});
+
+Deno.test("P4 regression: city and country are asked before the phone and address they qualify", () => {
+  // The audit's recheck fingerprint for contact_phone and an address
+  // "doesn't apply" includes the brand's city and country. Asking them after
+  // the phone/address voided those answers and Ari re-asked the address forever
+  // (seen live on the local Sites stack, 2026-11-01).
+  const at = (key: string) => WEBSITE_BRAND_FIELD_ORDER.indexOf(key);
+  assert(at("city_country") >= 0);
+  assert(at("city_country") < at("contact_phone"));
+  assert(at("city_country") < at("address"));
 });

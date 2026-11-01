@@ -756,21 +756,29 @@ const offerStep = fieldStep({
   depends_on: [],
 });
 
+/**
+ * City and country come before the phone and address. The audit ties a
+ * phone's formatting and an address's "doesn't apply" to the brand's city and
+ * country, so saving them later voided the earlier answer and Ari re-asked
+ * forever. Asking them first also lets the phone chip open on that country.
+ */
+export const WEBSITE_BRAND_FIELD_ORDER: readonly string[] = Object.freeze([
+  "name",
+  "description",
+  "city_country",
+  "contact_email",
+  "contact_phone",
+  "address",
+  "social_links",
+  "profile_photo",
+  "cover_media",
+  "theme",
+]);
+
 const brandStep = fieldStep({
   part: "brand",
   title: "Your brand details",
-  fieldKeys: [
-    "name",
-    "description",
-    "contact_email",
-    "contact_phone",
-    "address",
-    "city_country",
-    "social_links",
-    "profile_photo",
-    "cover_media",
-    "theme",
-  ],
+  fieldKeys: WEBSITE_BRAND_FIELD_ORDER,
   depends_on: ["offer"],
 });
 
