@@ -57,7 +57,8 @@ describe("#3184 T-I6 Ari chat error copy never blames the connection for a refus
     // ATTACHMENT_CONTEXT_LIMIT, TURN_STOPPED and ACCEPTED_RESPONSE_FAILED to
     // the registry on BOTH sides (the #2060 parity gate compares the complete
     // key sets and passes at 24/24). Every other assertion here is untouched.
-    expect(REGISTRY_CODES).toHaveLength(24);
+    // #2830 adds PROPOSAL_EXPIRED on both sides (25/25).
+    expect(REGISTRY_CODES).toHaveLength(25);
     expect(REGISTRY_CODES).toContain("TRANSPORT_UNAVAILABLE");
   });
 

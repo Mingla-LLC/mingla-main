@@ -325,7 +325,7 @@
         "supabase/functions/_shared/agentWebsiteSetup.ts",
         "supabase/functions/brand-site-control/sitePlan.ts",
         "supabase/migrations/20280216002830_issue_2830_ari_brand_completeness.sql",
-        "supabase/migrations/20280221002830_issue_2830_brand_completeness_job_order.sql"
+        "supabase/migrations/20280223002830_issue_2830_brand_completeness_job_order.sql"
       ]
     },
     {

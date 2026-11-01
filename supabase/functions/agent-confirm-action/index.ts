@@ -58,6 +58,11 @@ import {
   type PostApprovalContinuation,
 } from "../_shared/agentPostApproval.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
+import { websiteSetupApprovedWriteFollowup } from "../_shared/agentWebsiteSetup.ts";
+import {
+  ariProposalExpiredResponse,
+  expiredProposalAnswer,
+} from "./proposalExpiry.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -151,6 +156,7 @@ async function appendPendingActivity(args: {
   }
 }
 
+// MINGLA-INVARIANT: I-ARI-RECEIPT-SET-COMPLETE | issue #2830 | Every Ari write whose SQL commits through agent_operation_receipt_begin is in this set, so an ambiguous `executing` retry replays the receipt instead of failing WRONG_STATE (enforced by agent-confirm-action/__tests__/issue_2830_receipt_set_and_expiry.implementor.test.ts, generated from the migrations).
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "create_brand",
   "create_event",
@@ -201,6 +207,9 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "update_rsvp_contribution_settings",
   "set_rsvp_guest_status",
   "refund_rsvp_contribution",
+  // Issue #2830 — ari_update_brand_context begins and completes the shared
+  // #1972 operation receipt itself, so its ambiguous retry must replay too.
+  "update_brand_context",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -815,6 +824,11 @@ async function handleConfirmAction(args: {
         }
       }
     }
+    if (expiredProposalAnswer(pending.source) === "ari_proposal_expired") {
+      // #2830 (D-3) — never a silent 200: the Ari Host used to clear the card
+      // and report success for an approval that saved nothing.
+      return ariProposalExpiredResponse();
+    }
     return jsonResponse(200, {
       kind: "expired_regenerate",
       pending_action_id: pending.id,
@@ -1274,7 +1288,11 @@ async function handleConfirmAction(args: {
   let continuation: PostApprovalContinuation | null = null;
   const deterministicEventTaskFinished = tool.name === "create_event" &&
     conversationTask?.state.active_task?.intent === "create_event";
-  if (pending.conversation_id && !deterministicEventTaskFinished) {
+  const websiteSetupFollowup = websiteSetupApprovedWriteFollowup(tool.name);
+  if (
+    pending.conversation_id && !deterministicEventTaskFinished &&
+    !websiteSetupFollowup
+  ) {
     const { data: loopEnabled, error: loopFlagError } = await userClient.rpc(
       "ari_agent_loop_enabled",
     );
@@ -1329,6 +1347,8 @@ async function handleConfirmAction(args: {
   // is still persisted separately below.
   const rawFollowupText = tool.name === "create_event"
     ? undefined
+    : websiteSetupFollowup
+    ? websiteSetupFollowup
     : continuationHasScopeFailure
     ? buildFollowupText(tool.name, result)
     : continuation?.text ?? buildFollowupText(tool.name, result);

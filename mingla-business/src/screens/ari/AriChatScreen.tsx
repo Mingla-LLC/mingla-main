@@ -64,7 +64,16 @@ import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
-import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
+import {
+  ARI_PROPOSAL_EXPIRED_COPY,
+  ariChatErrorCopy,
+  shouldReportAriChatError,
+} from "./ariChatErrorCopy";
+import { isAriProposalExpired } from "./ariProposalExpiry";
+import {
+  claimWebsiteSetupAutoAudit,
+  websiteSetupAutoAuditKey,
+} from "./websiteSetupAutoAudit";
 import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 import { submitAriMessageFeedback } from "../../services/ariFeedbackService";
 
@@ -121,14 +130,6 @@ function isAlreadyResolvedError(message: string): boolean {
   return (
     m.includes("current status:") || // "Cannot confirm — current status: executed|cancelled|expired"
     m.includes("already handled") // "Race detected — this action was already handled"
-  );
-}
-
-function isExpiredActionError(code: string, message: string): boolean {
-  return (
-    code === "EXPIRED" ||
-    message.toLowerCase().includes("status: expired") ||
-    message.toLowerCase().includes("proposal expired")
   );
 }
 
@@ -204,6 +205,18 @@ export interface AriChatScreenProps {
   embedded?: boolean;
 }
 
+/** Owner-facing labels for the Website setup parts (the plan's own wording). */
+const WEBSITE_SETUP_PART_LABELS: Readonly<Record<string, string>> = {
+  offer: "What you’ll offer",
+  brand: "Your brand details",
+  look: "Choose your design",
+  story: "Your story",
+  approve: "Approve the plan",
+  build: "Build your pages",
+  first_offering: "Add your first trip or event",
+  publish: "Check and publish",
+};
+
 export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   embedded = false,
 }) => {
@@ -278,7 +291,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const [attachedCovers, setAttachedCovers] = useState<
     Record<string, { url: string | null; type: string | null }>
   >({});
-  const automaticSetupAudit = useRef<string | null>(null);
 
   // The composer swaps in `keyboardHeight` when the keyboard is up and
   // BOTTOM_NAV_CLEARANCE_PX when it is down; a plain KeyboardAvoidingView
@@ -574,13 +586,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         setLocalError(message);
         return { ok: false, error: message };
       }
+      // #2830 (D-3) — a timed-out approval saved nothing. Say so, and never
+      // fall through to the success path (an older server's 200
+      // `expired_regenerate` used to clear the card as if it had worked).
+      if (isAriProposalExpired(result)) {
+        const message = ARI_PROPOSAL_EXPIRED_COPY;
+        setLocalError(message);
+        chat.clearPendingAction();
+        return { ok: false, error: message, terminal: "expired" };
+      }
       if (result.kind === "error") {
-        if (isExpiredActionError(result.code, result.message)) {
-          const message = "This proposal expired. Ask Ari to propose it again.";
-          setLocalError(message);
-          chat.clearPendingAction();
-          return { ok: false, error: message, terminal: "expired" };
-        }
         // ORCH-1103 REWORK 3 — guard the already-executed / expired / raced case.
         // If the pending action is no longer "pending" the edge fn returns
         // WRONG_STATE ("Cannot confirm — current status: executed" / "…cancelled"
@@ -612,6 +627,17 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         if (typeof r?.brand?.id === "string") brandId = r.brand.id;
       }
       if (!keepPending) chat.clearPendingAction();
+      if (websiteSetup && !keepPending && result.kind === "executed") {
+        const continued = await chat.sendMessage(
+          "Continue Website setup: resume Fix all Website gaps, re-check the live setup plan after my confirmed change, and ask me the next question. Don’t create a draft yet.",
+          [],
+        );
+        if (continued.kind === "error") {
+          setLocalError(
+            "The change was saved, but Ari couldn’t refresh the next Website gap. Ask Ari to continue Website setup.",
+          );
+        }
+      }
       return { ok: true, brandId };
     } finally {
       chat.finishConfirmedActivity();
@@ -667,20 +693,30 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       !online
     )
       return;
-    const auditKey = `${sitesBrandId}:${setupPart ?? "overview"}`;
-    if (automaticSetupAudit.current === auditKey) return;
-    automaticSetupAudit.current = auditKey;
-    const focus = setupPart ? ` The selected plan part is ${setupPart}.` : "";
+    // #2830 — claimed at module scope so a remount cannot re-send it.
+    const auditKey = websiteSetupAutoAuditKey(sitesBrandId, setupPart);
+    if (!claimWebsiteSetupAutoAudit(auditKey)) return;
+    // Everything in this message is shown to the owner as their own words, so
+    // it names parts by their plan labels and never carries tool names or keys.
+    const partLabel = setupPart ? WEBSITE_SETUP_PART_LABELS[setupPart] : null;
+    const focus = partLabel ? ` I’m working on ${partLabel}.` : "";
+    // The audit key stays claimed even when the send fails. Clearing it would
+    // re-arm this effect as soon as isSending flips back, re-sending on every
+    // failure (a rate limit then sustains itself forever). A failed start is
+    // retried by the owner from the failed message's Retry, never by a loop.
     void chat
       .sendMessage(
-        `Start Website setup.${focus} Read get_site_plan, summarize completion and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Do not create a draft until setup and brand context are complete.`,
+        `Start Website setup.${focus} Check the live setup plan, tell me what’s done and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Don’t create a draft until setup and brand context are complete.`,
         [],
       )
       .then((result) => {
-        if (result.kind === "error") automaticSetupAudit.current = null;
+        if (result.kind === "error") {
+          setLocalError(
+            "Ari couldn’t start the Website audit. Use Retry on the message when you’re ready.",
+          );
+        }
       })
       .catch(() => {
-        automaticSetupAudit.current = null;
         setLocalError("Ari couldn’t start the Website audit. Try again.");
       });
   }, [

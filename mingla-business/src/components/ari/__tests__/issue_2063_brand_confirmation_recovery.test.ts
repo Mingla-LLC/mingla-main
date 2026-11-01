@@ -41,12 +41,11 @@ describe("#2063 shared Business brand confirmation recovery", () => {
   });
 
   test("expiry is honest and cancel errors do not discard the proposal", () => {
-    expect(screen).toContain(
-      "isExpiredActionError(result.code, result.message)",
-    );
-    expect(screen).toContain(
-      "This proposal expired. Ask Ari to propose it again.",
-    );
+    // #2830 P0 — expiry detection moved to ariProposalExpiry (it also covers
+    // the typed 409 PROPOSAL_EXPIRED and an older server's 200
+    // expired_regenerate), and the copy now says nothing was saved.
+    expect(screen).toContain("if (isAriProposalExpired(result))");
+    expect(screen).toContain("const message = ARI_PROPOSAL_EXPIRED_COPY;");
     expect(screen).toContain('terminal: "expired"');
     expect(screen).toMatch(
       /const result = await confirm\.cancel[\s\S]*if \(result\.kind === "error"\)[\s\S]*setLocalError\(ariChatErrorCopy\(result\.code\)\)[\s\S]*return;/,

@@ -141,6 +141,15 @@ import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
   detectWebsiteSetupIntent,
+  buildWebsiteSetupRetryPresentation,
+  resolveWebsiteSetupContextAnswer,
+  websiteSetupContextAnswer,
+  websiteSetupCurrentTurnOnly,
+  websiteSetupDesignAnswer,
+  websiteSetupEffectiveIntent,
+  websiteSetupMergedPlanAnswers,
+  websiteSetupPlanAnswer,
+  websiteSetupPlanRevision,
   websiteSetupWorkflowInitialCalls,
 } from "../_shared/agentWebsiteSetup.ts";
 
@@ -1921,6 +1930,10 @@ async function handle(req: Request): Promise<Response> {
     const websiteSetupWorkflow = body.workflow_context === "website_setup";
     const websiteSetupBoundary = websiteSetupWorkflow ||
       websiteSetupIntent !== null;
+    if (websiteSetupBoundary) {
+      const currentTurn = websiteSetupCurrentTurnOnly(contents);
+      contents.splice(0, contents.length, ...currentTurn);
+    }
     let activeWebsiteSetupJob = false;
     if (websiteSetupWorkflow && activeBrand) {
       const { data: hasWebsiteJob } = await userClient.rpc(
@@ -1929,6 +1942,14 @@ async function handle(req: Request): Promise<Response> {
       );
       activeWebsiteSetupJob = hasWebsiteJob === true;
     }
+    // An owner returning from an upload or approval handoff resumes the
+    // durable job: fresh plan read, then the next gap, presented by the server.
+    const effectiveWebsiteSetupIntent = websiteSetupEffectiveIntent({
+      intent: websiteSetupIntent,
+      message: semanticMessage,
+      workflow: websiteSetupWorkflow,
+      activeFixAllJob: activeWebsiteSetupJob,
+    });
     const readInterruption = activeEventPlan &&
       !websiteSetupBoundary &&
       isReadInterruption(semanticMessage);
@@ -2142,6 +2163,171 @@ async function handle(req: Request): Promise<Response> {
       }
     }
 
+    const structuredWebsiteDesign = websiteSetupWorkflow
+      ? websiteSetupDesignAnswer(semanticMessage)
+      : null;
+    const structuredWebsitePlanAnswer = websiteSetupWorkflow
+      ? websiteSetupPlanAnswer(semanticMessage)
+      : null;
+    // #2830 — brand-context answers (contact, location, links, theme, name,
+    // story) and owner-only steps (approval, uploads) are resolved here too,
+    // never by a model guess.
+    const structuredWebsiteContext =
+      websiteSetupWorkflow && !structuredWebsiteDesign &&
+        !structuredWebsitePlanAnswer
+        ? websiteSetupContextAnswer(semanticMessage)
+        : null;
+    if (
+      (structuredWebsiteDesign || structuredWebsitePlanAnswer ||
+        structuredWebsiteContext) && activeBrand &&
+      activeWebsiteSetupJob
+    ) {
+      const readTool = findTool("get_site_plan");
+      const writeTool = findTool(
+        structuredWebsiteDesign
+          ? "save_site_plan_design"
+          : structuredWebsiteContext
+          ? "update_brand_context"
+          : "save_site_plan_answers",
+      );
+      if (!readTool || !writeTool) {
+        return errorResponse(
+          500,
+          "INTERNAL",
+          "Website setup tools are unavailable.",
+        );
+      }
+      try {
+        // Always propose against a fresh read: the revisions below come from
+        // this read, never from an earlier turn.
+        const plan = await readTool.executor(
+          { brand_id: activeBrand.id },
+          userClient,
+          userId,
+          { operationId: null },
+        );
+        const revision = websiteSetupPlanRevision(plan);
+        if (revision === null) {
+          return errorResponse(
+            503,
+            "SITE_SERVICE_UNAVAILABLE",
+            "Ari could not refresh the current Website plan revision. Nothing was changed.",
+          );
+        }
+        const contextResolution = structuredWebsiteContext
+          ? resolveWebsiteSetupContextAnswer({
+            brandId: activeBrand.id,
+            plan,
+            answer: structuredWebsiteContext,
+          })
+          : null;
+        if (contextResolution?.kind === "unavailable") {
+          return errorResponse(
+            503,
+            "SITE_SERVICE_UNAVAILABLE",
+            "Ari could not refresh the current Website details. Nothing was changed.",
+          );
+        }
+        if (contextResolution?.kind === "retry") {
+          // Nothing is written. Re-ask the same one question with what was
+          // wrong, using the same controls the owner just used.
+          const retry = buildWebsiteSetupRetryPresentation({
+            fieldKey: contextResolution.fieldKey,
+            field: contextResolution.field,
+            brandId: activeBrand.id,
+            problem: contextResolution.problem,
+            completeness: contextResolution.completeness,
+          });
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: retry.text,
+            classification: "website_setup_structured_retry",
+            startedAt: turnStartedAt,
+            structuredData: { rendition: retry.rendition },
+          });
+        }
+        const proposalArgs = contextResolution?.kind === "proposal"
+          ? contextResolution.args
+          : structuredWebsiteDesign
+          ? {
+            brand_id: activeBrand.id,
+            expected_plan_revision: revision,
+            design_key: structuredWebsiteDesign.designKey,
+            source_type: "owner",
+            why: `The owner selected ${
+              structuredWebsiteDesign.designKey === "atelier"
+                ? "Atelier"
+                : "Voyage"
+            } during Website setup.`,
+            cites: [{
+              kind: "owner_words",
+              quote: structuredWebsiteDesign.ownerWords,
+            }],
+          }
+          : {
+            brand_id: activeBrand.id,
+            expected_plan_revision: revision,
+            answers: websiteSetupMergedPlanAnswers(
+              plan,
+              structuredWebsitePlanAnswer!.answers,
+            ),
+            why: `Save ${structuredWebsitePlanAnswer!.ownerWords} for ${
+              structuredWebsitePlanAnswer!.fieldLabel
+            }.`.slice(0, 300),
+            cites: [{
+              kind: "owner_words",
+              quote: structuredWebsitePlanAnswer!.ownerWords,
+            }],
+          };
+        await authorizeAgentTool(
+          writeTool,
+          proposalArgs,
+          userClient,
+          userId,
+        );
+        return await commitPendingTurn({
+          client: serviceClient,
+          pendingClient: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          uiCapabilities: ariUiCapabilities,
+          previousState: taskState,
+          readyState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          toolName: writeTool.name,
+          toolArgs: proposalArgs,
+          classification: "website_setup_structured_answer",
+          startedAt: turnStartedAt,
+        });
+      } catch (err: unknown) {
+        if (err instanceof ToolError) {
+          return errorResponse(
+            err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+            err.code,
+            err.message,
+          );
+        }
+        logError("structured Website answer failed", err, {
+          fn: "agent-chat",
+          revision: "2830-structured-answer-v2",
+        });
+        return errorResponse(
+          503,
+          "SITE_SERVICE_UNAVAILABLE",
+          "Ari could not refresh the Website plan. Nothing was changed.",
+        );
+      }
+    }
+
     const interruptionState = (readInterruption || questionInterruption)
       ? beginInterruption(taskState, {
         turn_id: body.client_turn_id,
@@ -2264,7 +2450,7 @@ ${boundedAgentContext}
       );
       const websiteInitialCalls = activeBrand && websiteSetupBoundary
         ? websiteSetupWorkflowInitialCalls({
-          intent: websiteSetupIntent,
+          intent: effectiveWebsiteSetupIntent,
           brandId: activeBrand.id,
           activeFixAllJob: activeWebsiteSetupJob,
         })
@@ -2688,9 +2874,10 @@ ${boundedAgentContext}
       // #2830 — Website setup has its own customer-facing presentation.
       // Generic run cards expose tool names and orchestration diagnostics that
       // belong only in the engineering trace.
-      const websiteSetupPresentation = websiteSetupIntent && activeBrand
+      const websiteSetupPresentation = effectiveWebsiteSetupIntent &&
+          activeBrand
         ? buildWebsiteSetupPresentation(
-          websiteSetupIntent,
+          effectiveWebsiteSetupIntent,
           loopResult.observations,
           activeBrand.name,
           activeBrand.id,

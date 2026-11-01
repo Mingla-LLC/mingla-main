@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
@@ -148,159 +148,175 @@ export function AriWebsiteSetupPane({
       style={[styles.host, compact ? styles.compact : null]}
       testID="ari-website-setup"
     >
-      <View style={styles.headingRow}>
-        <View style={styles.headingCopy}>
-          <Text style={styles.eyebrow}>Website setup</Text>
-          <Text style={styles.title}>Setup plan</Text>
-        </View>
-        <View style={styles.headingMeta}>
-          <Text style={styles.progress}>
-            {done} of {total} done
-          </Text>
-          {compact ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                compactExpanded
-                  ? "Hide Website setup details"
-                  : "Show Website setup details"
-              }
-              accessibilityState={{ expanded: compactExpanded }}
-              onPress={() => setCompactExpanded((value) => !value)}
-              hitSlop={8}
-              testID="ari-setup-toggle"
-            >
-              <Text style={styles.toggleLabel}>
-                {compactExpanded ? "Hide details" : "Show details"}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-      {compact ? (
-        <Text style={styles.compactSummary}>
-          Current: {currentLabel}
-          {gaps.length > 0
-            ? ` · ${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"}`
-            : ""}
-        </Text>
-      ) : null}
-      {!compact || compactExpanded ? (
-        <Text style={styles.body}>
-          {activeLabel ? `Working on ${activeLabel}. ` : ""}
-          Ari reads this same live plan, finds every field-level gap, and works
-          through it before any draft is created.
-        </Text>
-      ) : null}
-
-      {setup.isLoading ? (
-        <Text style={styles.muted}>Reading the shared plan…</Text>
-      ) : null}
-      {setup.isError ? (
-        <Text style={styles.error}>
-          The plan could not refresh. Ari will not guess; try again.
-        </Text>
-      ) : null}
-
-      {!compact && plan ? (
-        <View style={styles.planList}>
-          {plan.parts.map((part) => (
-            <View key={part.key} style={styles.planRow}>
-              <View style={[styles.dot, part.done ? styles.dotDone : null]} />
-              <Text
-                style={[styles.partLabel, part.done ? styles.partDone : null]}
-              >
-                {part.label}
-              </Text>
-              <Text style={styles.partState}>
-                {part.done
-                  ? "Done"
-                  : part.key === activePart
-                    ? "Active"
-                    : "Open"}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {(!compact || compactExpanded) && plan?.contextComplete ? (
-        <View style={styles.completeBox}>
-          <Text style={styles.completeTitle}>Brand context complete</Text>
-          <Text style={styles.completeBody}>
-            Ari will re-check it before building the first draft.
-          </Text>
-        </View>
-      ) : (!compact || compactExpanded) && plan && gaps.length > 0 ? (
-        <View style={styles.gapBox}>
-          <Text style={styles.gapTitle}>
-            {gaps.length} context {gaps.length === 1 ? "gap" : "gaps"}
-          </Text>
-          {!compact || compactExpanded
-            ? gaps.slice(0, compact ? 4 : 6).map((gap) => (
-                <View key={gap.key} style={styles.gapRow}>
-                  <Text style={styles.gapLabel}>{gap.label}</Text>
-                  <Text style={styles.gapState}>
-                    {gapStateLabel(gap.state, gap.humanActionRequired)}
-                  </Text>
-                </View>
-              ))
-            : null}
-          {gaps.length > (compact ? 4 : 6) ? (
-            <Text style={styles.muted}>
-              + {gaps.length - (compact ? 4 : 6)} more in the shared plan
+      {/*
+        The pane must scroll on its own. As a fixed View it clipped its last
+        rows and actions ("Back to setup plan") on short windows, and the page
+        itself does not scroll, so they were unreachable.
+      */}
+      <ScrollView
+        style={compact ? styles.compactScroll : styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          compact ? styles.compactScrollContent : null,
+        ]}
+        showsVerticalScrollIndicator
+        keyboardShouldPersistTaps="handled"
+        testID="ari-website-setup-scroll"
+      >
+        <View style={styles.headingRow}>
+          <View style={styles.headingCopy}>
+            <Text style={styles.eyebrow}>Website setup</Text>
+            <Text style={styles.title}>Setup plan</Text>
+          </View>
+          <View style={styles.headingMeta}>
+            <Text style={styles.progress}>
+              {done} of {total} done
             </Text>
-          ) : null}
+            {compact ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  compactExpanded
+                    ? "Hide Website setup details"
+                    : "Show Website setup details"
+                }
+                accessibilityState={{ expanded: compactExpanded }}
+                onPress={() => setCompactExpanded((value) => !value)}
+                hitSlop={8}
+                testID="ari-setup-toggle"
+              >
+                <Text style={styles.toggleLabel}>
+                  {compactExpanded ? "Hide details" : "Show details"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-      ) : null}
-
-      <View style={styles.actions}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ask Ari to fix all brand context gaps"
-          onPress={onFixAll}
-          disabled={fixing || plan?.contextComplete === true}
-          style={({ pressed }) => [
-            styles.primaryAction,
-            pressed ? styles.pressed : null,
-            fixing || plan?.contextComplete ? styles.disabled : null,
-          ]}
-          testID="ari-setup-fix-all"
-        >
-          <Text style={styles.primaryActionText}>
-            {fixing ? "Ari is working…" : "Fix all gaps with Ari"}
+        {compact ? (
+          <Text style={styles.compactSummary}>
+            Current: {currentLabel}
+            {gaps.length > 0
+              ? ` · ${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"}`
+              : ""}
           </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Review every Website setup gap with Ari"
-          onPress={onReviewGaps}
-          disabled={fixing || plan?.contextComplete === true}
-          style={({ pressed }) => [
-            styles.secondaryAction,
-            pressed ? styles.pressed : null,
-            fixing || plan?.contextComplete ? styles.disabled : null,
-          ]}
-          testID="ari-setup-review-gaps"
-        >
-          <Text style={styles.secondaryActionText}>Review the gaps</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push(`/brand/${brandId}/edit` as never)}
-          style={styles.secondaryAction}
-          testID="ari-setup-self"
-        >
-          <Text style={styles.secondaryActionText}>Add it myself</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push(`/brand/${brandId}/website` as never)}
-          style={styles.secondaryAction}
-        >
-          <Text style={styles.secondaryActionText}>Back to setup plan</Text>
-        </Pressable>
-      </View>
+        ) : null}
+        {!compact || compactExpanded ? (
+          <Text style={styles.body}>
+            {activeLabel ? `Working on ${activeLabel}. ` : ""}
+            Ari reads this same live plan, finds every field-level gap, and
+            works through it before any draft is created.
+          </Text>
+        ) : null}
+
+        {setup.isLoading ? (
+          <Text style={styles.muted}>Reading the shared plan…</Text>
+        ) : null}
+        {setup.isError ? (
+          <Text style={styles.error}>
+            The plan could not refresh. Ari will not guess; try again.
+          </Text>
+        ) : null}
+
+        {!compact && plan ? (
+          <View style={styles.planList}>
+            {plan.parts.map((part) => (
+              <View key={part.key} style={styles.planRow}>
+                <View style={[styles.dot, part.done ? styles.dotDone : null]} />
+                <Text
+                  style={[styles.partLabel, part.done ? styles.partDone : null]}
+                >
+                  {part.label}
+                </Text>
+                <Text style={styles.partState}>
+                  {part.done
+                    ? "Done"
+                    : part.key === activePart
+                      ? "Active"
+                      : "Open"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {(!compact || compactExpanded) && plan?.contextComplete ? (
+          <View style={styles.completeBox}>
+            <Text style={styles.completeTitle}>Brand context complete</Text>
+            <Text style={styles.completeBody}>
+              Ari will re-check it before building the first draft.
+            </Text>
+          </View>
+        ) : (!compact || compactExpanded) && plan && gaps.length > 0 ? (
+          <View style={styles.gapBox}>
+            <Text style={styles.gapTitle}>
+              {gaps.length} context {gaps.length === 1 ? "gap" : "gaps"}
+            </Text>
+            {!compact || compactExpanded
+              ? gaps.slice(0, compact ? 4 : 6).map((gap) => (
+                  <View key={gap.key} style={styles.gapRow}>
+                    <Text style={styles.gapLabel}>{gap.label}</Text>
+                    <Text style={styles.gapState}>
+                      {gapStateLabel(gap.state, gap.humanActionRequired)}
+                    </Text>
+                  </View>
+                ))
+              : null}
+            {gaps.length > (compact ? 4 : 6) ? (
+              <Text style={styles.muted}>
+                + {gaps.length - (compact ? 4 : 6)} more in the shared plan
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ask Ari to fix all brand context gaps"
+            onPress={onFixAll}
+            disabled={fixing || plan?.contextComplete === true}
+            style={({ pressed }) => [
+              styles.primaryAction,
+              pressed ? styles.pressed : null,
+              fixing || plan?.contextComplete ? styles.disabled : null,
+            ]}
+            testID="ari-setup-fix-all"
+          >
+            <Text style={styles.primaryActionText}>
+              {fixing ? "Ari is working…" : "Fix all gaps with Ari"}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Review every Website setup gap with Ari"
+            onPress={onReviewGaps}
+            disabled={fixing || plan?.contextComplete === true}
+            style={({ pressed }) => [
+              styles.secondaryAction,
+              pressed ? styles.pressed : null,
+              fixing || plan?.contextComplete ? styles.disabled : null,
+            ]}
+            testID="ari-setup-review-gaps"
+          >
+            <Text style={styles.secondaryActionText}>Review the gaps</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(`/brand/${brandId}/edit` as never)}
+            style={styles.secondaryAction}
+            testID="ari-setup-self"
+          >
+            <Text style={styles.secondaryActionText}>Add it myself</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(`/brand/${brandId}/website` as never)}
+            style={styles.secondaryAction}
+          >
+            <Text style={styles.secondaryActionText}>Back to setup plan</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -309,8 +325,8 @@ const styles = StyleSheet.create({
   host: {
     flex: 1.2,
     minWidth: 0,
-    gap: spacing.md,
-    padding: spacing.lg,
+    minHeight: 0,
+    overflow: "hidden",
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
@@ -318,11 +334,14 @@ const styles = StyleSheet.create({
   },
   compact: {
     flex: 0,
-    gap: spacing.sm,
-    padding: spacing.md,
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
   },
+  scroll: { flex: 1, minHeight: 0 },
+  // A phone keeps most of the height for the conversation.
+  compactScroll: { flexGrow: 0, maxHeight: 320 },
+  scrollContent: { gap: spacing.md, padding: spacing.lg },
+  compactScrollContent: { gap: spacing.sm, padding: spacing.md },
   headingRow: {
     flexDirection: "row",
     alignItems: "center",

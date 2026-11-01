@@ -233,6 +233,7 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
   const originalBase = Deno.env.get("ARI_LOCAL_MODEL_BASE_URL");
   const originalModel = Deno.env.get("ARI_LOCAL_MODEL_ID");
   let wireModel = "";
+  let wireOptions: Record<string, unknown> = {};
   try {
     Deno.env.set("ARI_LOCAL_MODEL_ENABLED", "true");
     Deno.env.set(
@@ -242,9 +243,12 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     Deno.env.set("ARI_LOCAL_MODEL_ID", "qwen3:4b-instruct");
     globalThis.fetch = async (input, init) => {
       assertEquals(String(input), "http://host.docker.internal:11434/api/chat");
-      wireModel = String(
-        (JSON.parse(String(init?.body)) as Record<string, unknown>).model ?? "",
-      );
+      const wireBody = JSON.parse(String(init?.body)) as Record<
+        string,
+        unknown
+      >;
+      wireModel = String(wireBody.model ?? "");
+      wireOptions = (wireBody.options ?? {}) as Record<string, unknown>;
       return new Response(
         JSON.stringify({
           message: { content: "I will show the plan before any changes." },
@@ -266,6 +270,7 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     );
     assertEquals(result.usage.total_tokens, 23);
     assertEquals(wireModel, "qwen3:4b-instruct");
+    assertEquals(wireOptions.num_ctx, 32768);
 
     Deno.env.set("ARI_LOCAL_MODEL_BASE_URL", "https://example.com");
     let refused = false;

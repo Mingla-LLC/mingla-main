@@ -19,6 +19,7 @@ import {
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
 const LOCAL_MAX_OUTPUT_TOKENS = 384;
+const LOCAL_CONTEXT_TOKENS = 32768;
 const TEMPERATURE = 0.3;
 
 export interface GeminiToolDef {
@@ -900,6 +901,10 @@ async function callLocalOllama(
       })),
       options: {
         temperature: TEMPERATURE,
+        // Ari's tool contract plus a live setup plan can exceed Ollama's
+        // 4K default before the user sends an answer. Keep the local lane at
+        // the same practical context scale as the production reasoning path.
+        num_ctx: LOCAL_CONTEXT_TOKENS,
         num_predict: LOCAL_MAX_OUTPUT_TOKENS,
       },
     }),
