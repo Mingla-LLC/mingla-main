@@ -75,6 +75,8 @@
         "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",
         "mingla-business/src/components/checkout/CartContext.tsx",
+        "app-mobile/src/payments/checkoutErrorMessages.ts",
+        "supabase/functions/ticket-checkout-create/index.ts",
         "mingla-business/src/services/checkoutErrorCopy.ts",
         "mingla-business/src/services/ticketCheckoutService.ts",
         "supabase/migrations/20280216003282_issue_3281_by_date_quantities_paystack_reemit.sql",
