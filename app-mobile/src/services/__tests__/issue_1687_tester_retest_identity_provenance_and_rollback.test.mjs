@@ -868,6 +868,10 @@ test('T-9R the delete cannot come back under another name, in another file — t
     // user_visits. Keep it inside the closure so the delete scan below proves
     // that invariant instead of silently exempting the new module.
     'src/utils/explorerProfileAuthRest.ts',
+    // #4202 explorerReactivation.ts is the pure deleted-profile state machine
+    // imported by the shared Supabase client. It never reads or deletes
+    // user_visits, so admit it to the closure and keep the delete scan binding.
+    'src/utils/explorerReactivation.ts',
     'src/utils/logger.ts',
   ];
 

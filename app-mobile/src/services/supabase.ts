@@ -3,6 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
 import { getNativeAppVersionHeaders } from './appVersionIdentity';
 import { buildExplorerProfileAuthRestRequest } from '../utils/explorerProfileAuthRest';
+import {
+  reactivateExplorerProfileForExplicitSession,
+  type DeletedExplorerProfile,
+  type ExplorerProfileResolution,
+} from '../utils/explorerReactivation';
 import { trackNetworkRequest } from './reloadNetworkFence';
 // #1594 [consumer-map-url] — the project URL now comes from the ONE owner that
 // `app.config.js` can also read (`src/config/supabaseProject.js`), so the value
@@ -168,6 +173,31 @@ export async function requestOwnExplorerProfileForAuthEvent<T>(input: {
       },
     };
   }
+}
+
+/**
+ * #4202 — complete Explorer reactivation before an explicit sign-in returns.
+ * Both requests use the verified session's bearer directly; neither waits for
+ * the shared client's persisted-session state to catch up.
+ */
+export async function reactivateExplorerForVerifiedSession<
+  T extends DeletedExplorerProfile,
+>(input: {
+  accessToken: string;
+  userId: string;
+}): Promise<ExplorerProfileResolution<T>> {
+  return reactivateExplorerProfileForExplicitSession<T>(
+    () => requestOwnExplorerProfileForAuthEvent<T>({
+      accessToken: input.accessToken,
+      userId: input.userId,
+      reactivate: false,
+    }),
+    () => requestOwnExplorerProfileForAuthEvent<T>({
+      accessToken: input.accessToken,
+      userId: input.userId,
+      reactivate: true,
+    }),
+  );
 }
 
 /**

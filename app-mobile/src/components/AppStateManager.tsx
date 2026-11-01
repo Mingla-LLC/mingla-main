@@ -29,6 +29,7 @@ import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
 import { performPrivateAuthCleanup } from "../utils/authCleanup";
 import { canonicalDiscoveryPriceFields } from "../utils/priceTiers";
+import { reactivateExplorerForVerifiedSession } from "../services/supabase";
 import { withExplorerReactivationIntent } from "../utils/explorerReactivation";
 // Realtime hooks (useBoardRealtimeSync, useSavesRealtimeSync, useSocialRealtime)
 // moved to RealtimeSubscriptions.tsx component, mounted in index.tsx with
@@ -741,7 +742,19 @@ export function useAppState() {
   // OAuth sign-in handlers (called by WelcomeScreen)
   const handleGoogleSignIn = async () => {
     try {
-      const result = await withExplorerReactivationIntent(signInWithGoogle);
+      const result = await withExplorerReactivationIntent(async () => {
+        const signInResult = await signInWithGoogle();
+        if (!signInResult.error && signInResult.data) {
+          const reactivation = await reactivateExplorerForVerifiedSession({
+            accessToken: signInResult.data.access_token,
+            userId: signInResult.data.user.id,
+          });
+          if (reactivation.kind === "reactivation_failed") {
+            throw new Error("Explorer reactivation failed");
+          }
+        }
+        return signInResult;
+      });
       if (result.error) {
         // Error is already handled by signInWithGoogle (shows Alert)
       }
@@ -752,7 +765,19 @@ export function useAppState() {
 
   const handleAppleSignIn = async () => {
     try {
-      const result = await withExplorerReactivationIntent(signInWithApple);
+      const result = await withExplorerReactivationIntent(async () => {
+        const signInResult = await signInWithApple();
+        if (!signInResult.error && signInResult.data) {
+          const reactivation = await reactivateExplorerForVerifiedSession({
+            accessToken: signInResult.data.access_token,
+            userId: signInResult.data.user.id,
+          });
+          if (reactivation.kind === "reactivation_failed") {
+            throw new Error("Explorer reactivation failed");
+          }
+        }
+        return signInResult;
+      });
       if (result.error) {
         // Error is already handled by signInWithApple (shows Alert)
       }

@@ -32,9 +32,12 @@ import i18n from "../i18n";
 // #4202 [explorer-account-deletion] — only an explicit new sign-in may restart
 // a deleted Explorer side while a retained Creator/Business identity survives.
 import {
+  captureExplorerReactivationGeneration,
   captureExplorerReactivationIntentForAuthEvent,
+  isExplorerReactivationIntentActive,
   resolveExplorerProfileAfterAuthEvent,
   shouldDeferDeletedExplorerSessionForAuthEvent,
+  shouldDeferDeletedExplorerSessionSince,
 } from "../utils/explorerReactivation";
 
 
@@ -263,6 +266,10 @@ export const useAuthSimple = () => {
     isMountedRef.current = true;
 
     const initializeAuth = async () => {
+      // #4202 [explorer-account-deletion] — begin initialization generation capture.
+      const explorerReactivationGeneration =
+        captureExplorerReactivationGeneration();
+      // #4202 [explorer-account-deletion] — end initialization generation capture.
       try {
         logger.auth('Initializing — fetching session...');
         // RELIABILITY: Enter 401 grace period BEFORE getSession() on cold start.
@@ -458,6 +465,19 @@ export const useAuthSimple = () => {
               }
             } else if (profile) {
               if (profile.explorer_deleted_at) {
+                // #4202 [explorer-account-deletion] — begin initialization race guard.
+                if (
+                  isExplorerReactivationIntentActive() ||
+                  shouldDeferDeletedExplorerSessionSince(
+                    explorerReactivationGeneration,
+                  )
+                ) {
+                  logger.auth(
+                    'Initial deleted-profile read deferred for explicit Explorer sign-in',
+                  );
+                  return;
+                }
+                // #4202 [explorer-account-deletion] — end initialization race guard.
                 logger.auth('Explorer side deleted — signing out consumer session');
                 await signOutWithPrivateCleanup(
                   "explorer-side-deleted",
@@ -514,6 +534,8 @@ export const useAuthSimple = () => {
       // emits it when an existing session is re-established on app focus.
       const explorerReactivationIntentConfirmed =
         captureExplorerReactivationIntentForAuthEvent(event);
+      const explorerReactivationGeneration =
+        captureExplorerReactivationGeneration();
       const deferDeletedExplorerSessionSignOut =
         shouldDeferDeletedExplorerSessionForAuthEvent(event);
       // #4202 [explorer-account-deletion] — end synchronous intent capture.
@@ -591,7 +613,13 @@ export const useAuthSimple = () => {
             );
 
             if (resolution.kind === "deleted_session") {
-              if (deferDeletedExplorerSessionSignOut) {
+              if (
+                deferDeletedExplorerSessionSignOut ||
+                isExplorerReactivationIntentActive() ||
+                shouldDeferDeletedExplorerSessionSince(
+                  explorerReactivationGeneration,
+                )
+              ) {
                 logger.auth(
                   "Passive auth event deferred while explicit Explorer sign-in resolves",
                   { event },

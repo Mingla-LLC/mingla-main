@@ -4,9 +4,12 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  captureExplorerReactivationGeneration,
   captureExplorerReactivationIntentForAuthEvent,
+  reactivateExplorerProfileForExplicitSession,
   resolveExplorerProfileAfterAuthEvent,
   shouldDeferDeletedExplorerSessionForAuthEvent,
+  shouldDeferDeletedExplorerSessionSince,
   withExplorerReactivationIntent,
 } from "../explorerReactivation.ts";
 import { buildExplorerProfileAuthRestRequest } from "../explorerProfileAuthRest.ts";
@@ -167,6 +170,54 @@ Deno.test("#4202 delayed passive profile work cannot sign out before explicit re
   assertEquals(explicitResolution.kind, "reactivated");
 });
 
+Deno.test("#4202 a passive read stays stale after a later explicit attempt completes", async () => {
+  const passiveGeneration = captureExplorerReactivationGeneration();
+  assertEquals(
+    shouldDeferDeletedExplorerSessionSince(passiveGeneration),
+    false,
+  );
+
+  await withExplorerReactivationIntent(async () => {
+    assertEquals(
+      shouldDeferDeletedExplorerSessionSince(passiveGeneration),
+      true,
+    );
+  });
+
+  assertEquals(
+    shouldDeferDeletedExplorerSessionSince(passiveGeneration),
+    true,
+  );
+  assertEquals(
+    shouldDeferDeletedExplorerSessionSince(
+      captureExplorerReactivationGeneration(),
+    ),
+    false,
+  );
+});
+
+Deno.test("#4202 explicit session owns the profile read and reactivation PATCH", async () => {
+  let reads = 0;
+  let patches = 0;
+  const result = await reactivateExplorerProfileForExplicitSession(
+    () => {
+      reads += 1;
+      return Promise.resolve({ data: deletedProfile, error: null });
+    },
+    () => {
+      patches += 1;
+      return Promise.resolve({
+        data: { ...deletedProfile, explorer_deleted_at: null },
+        error: null,
+      });
+    },
+  );
+
+  assertEquals(reads, 1);
+  assertEquals(patches, 1);
+  assertEquals(result.kind, "reactivated");
+});
+
 Deno.test("#4202 a failed auth attempt cannot leave reactivation intent armed", async () => {
   try {
     await withExplorerReactivationIntent(() => Promise.reject(new Error("no session")));
@@ -241,7 +292,8 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   );
   assert(hookSource.includes("captureExplorerReactivationIntentForAuthEvent(event)"));
   assert(hookSource.includes("shouldDeferDeletedExplorerSessionForAuthEvent(event)"));
-  assert(hookSource.includes("if (deferDeletedExplorerSessionSignOut)"));
+  assert(hookSource.includes("deferDeletedExplorerSessionSignOut ||"));
+  assert(hookSource.includes("shouldDeferDeletedExplorerSessionSince("));
   assert(hookSource.includes("resolveExplorerProfileAfterAuthEvent"));
   assert(authRestSource.includes("explorer_deleted_at: null"));
   assert(authRestSource.includes("has_completed_onboarding: false"));
@@ -249,10 +301,17 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   assert(hookSource.includes("accessToken: session.access_token"));
   assert(supabaseSource.includes("buildExplorerProfileAuthRestRequest"));
   assert(supabaseSource.includes("fetchWithTimeout(request.url"));
+  assert(supabaseSource.includes("reactivateExplorerForVerifiedSession"));
   assert(hookSource.includes('resolution.kind === "deleted_session"'));
   assert(hookSource.includes('resolution.kind === "reactivation_failed"'));
-  assert(appStateSource.includes("withExplorerReactivationIntent(signInWithGoogle)"));
-  assert(appStateSource.includes("withExplorerReactivationIntent(signInWithApple)"));
-  assert(emailSource.includes("withExplorerReactivationIntent(() =>"));
-  assert(claimSource.includes("withExplorerReactivationIntent(() =>"));
+  assert(appStateSource.includes("withExplorerReactivationIntent(async () =>"));
+  assert(emailSource.includes("withExplorerReactivationIntent(async () =>"));
+  assert(claimSource.includes("withExplorerReactivationIntent(async () =>"));
+  assert(emailSource.includes("reactivateExplorerForVerifiedSession({"));
+  assert(claimSource.includes("reactivateExplorerForVerifiedSession({"));
+  assertEquals(
+    appStateSource.match(/reactivateExplorerForVerifiedSession\(\{/g)
+      ?.length,
+    2,
+  );
 });
