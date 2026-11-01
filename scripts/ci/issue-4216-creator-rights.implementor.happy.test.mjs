@@ -25,6 +25,19 @@ assert.match(migration, /p_terms->>'rights_accepted'/);
 assert.match(migration, /s\.gross_minor=t\.fee_minor AND s\.reversed_minor=0/);
 assert.match(migration, /NEW\.changes \? 'usage_days'/);
 
+const termsGuardOff = migration.indexOf(
+  'ALTER TABLE public.gig_terms_versions\n  DISABLE TRIGGER issue_3872_terms_immutable;',
+);
+const termsBackfill = migration.indexOf(
+  "UPDATE public.gig_terms_versions SET rights_model='legacy_timed' WHERE rights_model IS NULL;",
+);
+const termsGuardOn = migration.indexOf(
+  'ALTER TABLE public.gig_terms_versions\n  ENABLE TRIGGER issue_3872_terms_immutable;',
+);
+assert.ok(termsGuardOff >= 0, 'legacy terms backfill must suspend the append-only trigger');
+assert.ok(termsGuardOff < termsBackfill, 'append-only trigger must be suspended before the terms backfill');
+assert.ok(termsBackfill < termsGuardOn, 'append-only trigger must be restored immediately after the terms backfill');
+
 assert.doesNotMatch(explorerAgreement, /EXPO_PUBLIC_CREATOR_AGREEMENT/);
 assert.match(explorerAgreement, /creatorProgramService\.currentAgreement\(\)/);
 assert.match(explorerAgreement, /signAgreement\(birthDate\)/);
