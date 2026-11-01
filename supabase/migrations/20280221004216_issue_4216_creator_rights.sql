@@ -98,6 +98,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
       AND v.is_current AND v.retired_at IS NULL AND v.effective_at<=now()
   )
 $fn$;
+REVOKE ALL ON FUNCTION public.issue_4216_creator_has_current_agreement(uuid)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4216_creator_has_current_agreement(uuid)
+  TO service_role;
 
 CREATE OR REPLACE FUNCTION public.creator_current_agreement()
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
