@@ -105,7 +105,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // PostgreSQL proof entered the three preserved inventories, with the migration
 // excluded by exact filename from the pre-#1931 replay that omits its #3355
 // control-plane prerequisite.
-export const BOOTSTRAP_SHA256 = "3785fbd66da4dd4f9fe84e265e4c156386baa55510dfa9eed0ad9b987bc016aa";
+// #4216: re-sealed after the Creator rights migration entered the same three
+// full-history replay inventories and gained an exact-file exclusion from the
+// deliberately pre-#1931 replay that has no Creator/gig schema.
+export const BOOTSTRAP_SHA256 = "9793619c2c320ce08028e2bac794ee14619eae6ef26a5c4e8b35b66563dc3ce6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

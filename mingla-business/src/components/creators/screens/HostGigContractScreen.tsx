@@ -271,6 +271,7 @@ export default function HostGigContract(): React.ReactElement {
       "resolved_partial",
       "resolved_refund",
     ].includes(state);
+  const perpetualRightsActive = workspace?.rights?.status === "active";
 
   useEffect(() => {
     let active = true;
@@ -1286,21 +1287,27 @@ export default function HostGigContract(): React.ReactElement {
             <Card>
               <Text style={programStyles.title}>Approved master</Text>
               <Muted>
-                {downloadAvailableUntil
+                {perpetualRightsActive && downloadAvailableUntil
                   ? `Available until at least ${shortDateTime(downloadAvailableUntil)}. Mingla may extend this while posting, payout or a dispute is still open.`
-                  : "Available for at least 120 days after the final posting, payout and dispute checks."}
+                  : perpetualRightsActive
+                    ? "Your perpetual licence is active. The approved master remains available for authorised marketing use."
+                    : "You can review the approved video now. Download unlocks only after the full Creator fee is released."}
               </Muted>
-              <Button
-                label={
-                  Platform.OS === "web"
-                    ? "Download approved master"
-                    : "Save approved master"
-                }
-                loading={busy}
-                onPress={() => void saveApprovedMaster()}
-              />
+              {perpetualRightsActive ? (
+                <Button
+                  label={
+                    Platform.OS === "web"
+                      ? "Download approved master"
+                      : "Save approved master"
+                  }
+                  loading={busy}
+                  onPress={() => void saveApprovedMaster()}
+                />
+              ) : null}
               <Muted>
-                Downloading is for your records. It never holds creator payout.
+                {perpetualRightsActive
+                  ? "Downloading never holds Creator payout. Your licence covers organic and paid marketing; Creator-account whitelisting still needs platform permission."
+                  : "The licence is not active before full fee release."}
               </Muted>
             </Card>
           ) : null}
@@ -1477,6 +1484,26 @@ export default function HostGigContract(): React.ReactElement {
                 title="Terms"
                 right={`Version ${currentTerms.version}`}
                 onPress={() => setSheet("terms")}
+              />
+            ) : null}
+            {workspace.rights ? (
+              <ListRow
+                title="Marketing rights"
+                subtitle={
+                  workspace.rights.model === "creator_v1_perpetual"
+                    ? "You and Mingla · organic and paid marketing · edits allowed"
+                    : `${workspace.rights.usage_days ?? "Original"}-day legacy licence`
+                }
+                right={
+                  workspace.rights.status === "active"
+                    ? "Active forever"
+                    : workspace.rights.status === "not_granted"
+                      ? "Not granted"
+                      : workspace.rights.status === "legacy"
+                        ? "Legacy"
+                        : "After full fee release"
+                }
+                chevron={false}
               />
             ) : null}
             {gig ? (

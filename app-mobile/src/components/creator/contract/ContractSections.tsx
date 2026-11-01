@@ -79,7 +79,7 @@ export function TermsCard({ terms, gig }: { terms: GigTerms; gig: GigWorkspace['
     <ProgramRow title="Deliverables" value={deliverablesLabel(terms.deliverables)} chevron={false} />
     <ProgramRow title="Fixes included" value="2 technical" chevron={false} />
     {salesShareText(terms.sales_share_bps) ? <ProgramRow title="Plus" value={salesShareText(terms.sales_share_bps)!} chevron={false} /> : null}
-    <ProgramRow title="Host may reuse" value={usageLabel(terms.usage_days)} chevron={false} isLast />
+    <ProgramRow title="Marketing rights" value={terms.rights_model === 'creator_v1_perpetual' ? 'Perpetual after full fee release' : usageLabel(terms.usage_days)} chevron={false} isLast />
   </ProgramCard>;
 }
 
@@ -104,7 +104,7 @@ export function ProposalCard({ proposal, currency, busy, onRespond }: { proposal
   const due = proposalDueText(proposal.changes);
   const lines = Object.entries(proposal.changes).filter(([key]) => key !== 'post_by' && key !== 'video_due_at').map(([key, value]) => {
     if (key === 'shoot_date') return `Shoot on ${formatShortDate(String(value))}`;
-    if (key === 'usage_days') return `Host may reuse for ${usageLabel(Number(value))}`;
+    if (key === 'usage_days') return `Legacy reuse period: ${usageLabel(Number(value))}`;
     if (key === 'fee_minor') return `Fee ${formatMoney(Number(value), currency)}`;
     if (key === 'sales_share_bps') return `${Math.round(Number(value) / 100)}% of sales`;
     if (key === 'deliverables' && Array.isArray(value)) return deliverablesLabel(value as Array<{ platform: string; kind: string; count: number }>);
