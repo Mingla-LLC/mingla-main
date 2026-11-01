@@ -308,6 +308,7 @@
         "mingla-business/src/services/ariKnowledgeService.ts",
         "mingla-business/src/services/ariPolishAnalytics.ts",
         "mingla-business/src/services/ariTurnService.ts",
+        "mingla-business/src/store/ariConversationSelectionStore.ts",
         "supabase/functions/_shared/agentAri10xTools.ts",
         "supabase/functions/_shared/agentAttachmentFinalize.ts",
         "supabase/functions/_shared/agentAttachments.ts",
@@ -329,6 +330,7 @@
         "supabase/functions/_shared/agentToolsets.ts",
         "supabase/functions/_shared/agentTurnSweep.ts",
         "supabase/functions/_shared/agentWebResearch.ts",
+        "supabase/functions/_shared/agentWebsiteSetup.ts",
         "supabase/functions/_shared/ariRendition.ts",
         "supabase/functions/agent-attachment-cleanup/function-policy.issue-3355.patch.json",
         "supabase/functions/agent-attachments/function-policy.issue-3355.patch.json",
@@ -352,8 +354,10 @@
         "mingla-business/src/sites/sitePlanState.ts",
         "supabase/functions/_shared/agentSiteTools.ts",
         "supabase/functions/_shared/agentTenantScope.ts",
+        "supabase/functions/_shared/agentWebsiteSetup.ts",
         "supabase/functions/brand-site-control/sitePlan.ts",
-        "supabase/migrations/20280216002830_issue_2830_ari_brand_completeness.sql"
+        "supabase/migrations/20280216002830_issue_2830_ari_brand_completeness.sql",
+        "supabase/migrations/20280221002830_issue_2830_brand_completeness_job_order.sql"
       ]
     },
     {

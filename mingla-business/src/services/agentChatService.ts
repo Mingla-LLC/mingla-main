@@ -116,6 +116,7 @@ export interface SendMessageArgs {
   brand_id?: string | null;
   attachment_ids?: string[];
   ari_ui?: AriUiCapabilitiesV2;
+  workflow_context?: "website_setup";
 }
 
 export interface ConfirmActionArgs {
