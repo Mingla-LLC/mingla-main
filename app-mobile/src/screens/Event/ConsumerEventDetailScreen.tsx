@@ -1858,7 +1858,6 @@ export default function ConsumerEventDetailScreen({
                 listingKind="event"
                 listingId={seed.eventId}
                 title={seed.title}
-                onUnavailable={handleShare}
               />
               </>
             ) : (

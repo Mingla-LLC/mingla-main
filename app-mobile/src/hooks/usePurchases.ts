@@ -36,6 +36,14 @@ function mapReservations(
     title: reservation.brand_name ?? "Booking",
     coverMediaUrl:
       reservation.brand_cover_url ?? reservation.brand_photo_url ?? null,
+    coverMediaType:
+      reservation.brand_cover_type === "image" ||
+      reservation.brand_cover_type === "video" ||
+      reservation.brand_cover_type === "gif"
+        ? reservation.brand_cover_type
+        : reservation.brand_photo_url
+          ? "image"
+          : null,
     startAt: reservation.reserved_for,
     timezone: "UTC",
     venueLine: reservation.brand_address ?? reservation.brand_city ?? null,

@@ -48,7 +48,19 @@
     {
       "capability_key": "checkout-tickets",
       "paths": [
+        "app-mobile/app/purchases/[kind]/[id].tsx",
+        "app-mobile/src/components/activity/BusinessEventCalendarRow.tsx",
+        "app-mobile/src/components/profile/PurchasesCard.tsx",
+        "app-mobile/src/components/purchases/PurchaseCard.tsx",
+        "app-mobile/src/components/wallet/EarnBySharingCard.tsx",
+        "app-mobile/src/hooks/queryKeys.ts",
+        "app-mobile/src/hooks/useMyReservations.ts",
+        "app-mobile/src/hooks/usePurchases.ts",
         "app-mobile/src/i18n/locales/en/purchases.json",
+        "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
+        "app-mobile/src/services/calendarService.ts",
+        "app-mobile/src/services/purchasesService.ts",
+        "app-mobile/src/utils/purchaseTimeline.ts",
         "packages/offering-rendering/ticketCheckoutContract.ts",
         "packages/offering-rendering/ticketCheckoutServerContract.ts",
         "mingla-business/src/hooks/useTicketQuote.ts",
@@ -85,11 +97,18 @@
     {
       "capability_key": "programs-creators",
       "paths": [
+        "app-mobile/app/creator/contract/[contractId].tsx",
+        "app-mobile/app/creator/gig/[gigId].tsx",
+        "app-mobile/app/creator/setup/agreement.tsx",
+        "app-mobile/app/creator/setup/rates.tsx",
         "app-mobile/app/local/index.tsx",
         "app-mobile/app/local/review.tsx",
+        "app-mobile/src/components/creator/contract/ContractSections.tsx",
         "app-mobile/src/components/expandedCard/LocalReviewsSection.tsx",
         "app-mobile/src/components/local/localWords.ts",
         "app-mobile/src/components/programs/CreatorMediaPlayerModal.tsx",
+        "app-mobile/src/services/creatorGigsService.ts",
+        "app-mobile/src/services/creatorProgramService.ts",
         "app-mobile/src/services/localProgramService.ts",
         "app-mobile/src/services/programResult.ts",
         "app-mobile/src/utils/programFormat.ts",
@@ -98,9 +117,15 @@
         "mingla-admin/src/pages/ProgramCreatorsPage.jsx",
         "mingla-admin/src/pages/locals/LocalsPanel.jsx",
         "mingla-admin/src/services/creatorProgramsService.js",
+        "mingla-business/src/components/creators/screens/GigBriefEditorScreen.tsx",
         "mingla-business/src/components/creators/screens/HostGigContractScreen.tsx",
+        "mingla-business/src/components/creators/screens/PrehireCreatorProfileScreen.tsx",
+        "mingla-business/src/components/gigs/HireSheet.tsx",
+        "mingla-business/src/components/gigs/hireTerms.ts",
         "mingla-business/src/services/creatorGigsService.ts",
+        "mingla-marketing/app/creator-agreement/page.tsx",
         "mingla-marketing/app/local-agreement/page.tsx",
+        "mingla-marketing/lib/creatorAgreementContent.ts",
         "mingla-marketing/lib/localAgreementContent.ts",
         "mingla-marketing/package.json",
         "supabase/functions/_shared/creatorMedia.ts",
@@ -117,7 +142,14 @@
         "supabase/functions/local-payout/index.ts",
         "supabase/migrations/20280208004182_issue_4182_bunny_media_lifecycle.sql",
         "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql",
-        "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql"
+        "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
+        "supabase/migrations/20280221004216_issue_4216_creator_rights.sql"
+      ]
+    },
+    {
+      "capability_key": "marketing-host-ads",
+      "paths": [
+        "mingla-business/app/(tabs)/marketing/ads/create.tsx"
       ]
     },
     {

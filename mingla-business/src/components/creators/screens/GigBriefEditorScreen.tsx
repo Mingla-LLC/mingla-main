@@ -4,7 +4,7 @@
  * public/private brief boxes with counters. Timing and pay — "Video needed
  * by" (date and time, required), "Shoot" (optional; The event day / Any day
  * before; blank lets the creator propose a time), city, creators, a money
- * field ("Pay each creator up to"), sales share and reuse. The footer
+ * field ("Pay each creator up to"), sales share and the standard marketing licence. The footer
  * total never overflows; the keyboard rule hides it while typing.
  */
 import React, { useEffect, useMemo, useState } from "react";
@@ -48,7 +48,6 @@ import {
   type BriefPlatform,
   type BriefStep,
   type ShootMode,
-  type UsageDays,
 } from "../../../components/programs/gigBrief";
 import { CREATOR_FORMATS } from "../../../services/creatorProgramContract";
 import { creatorGigsService } from "../../../services/creatorGigsService";
@@ -82,12 +81,6 @@ import {
 } from "../../../constants/designSystem";
 
 const SHARE_OPTIONS = [5, 10, 15, 20] as const;
-const USAGE_OPTIONS: ReadonlyArray<readonly [UsageDays, string]> = [
-  [30, "30 days"],
-  [90, "90 days"],
-  [365, "1 year"],
-];
-
 /** A tall brief box with its label and a character count under it. */
 function BriefBox({
   value,
@@ -346,7 +339,7 @@ export default function GigBriefEditor(): React.ReactElement {
           ) : (
             <View style={styles.footer}>
               <View style={styles.spendRow}>
-                <Text style={styles.spendLabel}>Most you'll spend</Text>
+                <Text style={styles.spendLabel}>Most you’ll spend</Text>
                 <Text
                   style={styles.spendValue}
                   numberOfLines={1}
@@ -652,17 +645,14 @@ export default function GigBriefEditor(): React.ReactElement {
               ) : null}
             </>
           ) : null}
-          <Text style={styles.fieldLabel}>You can reuse the video for</Text>
-          <View style={styles.chips}>
-            {USAGE_OPTIONS.map(([days, label]) => (
-              <Chip
-                key={days}
-                label={label}
-                selected={form.usageDays === days}
-                onPress={() => update("usageDays", days)}
-              />
-            ))}
-          </View>
+          <ListGroup>
+            <ListRow
+              compact
+              title="Marketing rights"
+              subtitle="After the full Creator fee is released, your brand and Mingla may reuse, edit and advertise with the approved video worldwide, forever. The Creator keeps copyright."
+              chevron={false}
+            />
+          </ListGroup>
         </>
       )}
     </ProgramScreen>

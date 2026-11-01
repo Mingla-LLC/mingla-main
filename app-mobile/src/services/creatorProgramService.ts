@@ -37,6 +37,8 @@ export type CreatorSetupStatus = {
   home_city?: { id: string | null; name: string; is_live: boolean } | null;
 };
 
+export type CreatorAgreement = { version: string; document_url: string; document_sha256: string; effective_at: string; accepted: boolean };
+
 export type CreatorOwnProfile = {
   display_name: string; bio: string | null; home_city_id: string | null; home_city_name: string | null;
   /** Round 2: the saved home city, live or not, from `creator_profile_home_city`. */
@@ -73,6 +75,7 @@ export function setupChecks(status: CreatorSetupStatus | null | undefined): Setu
 
 export const creatorProgramService = {
   status: () => programRead<CreatorSetupStatus>('creator_setup_status'),
+  currentAgreement: () => programRead<CreatorAgreement | null>('creator_current_agreement'),
   publicProfile: (userId: string) => programRead<PublicCreatorProfile | null>('public_creator_profile', { p_creator_account_id: userId }),
 
   /** Your own profile row (owner-read RLS), for editing and the hub header. */
@@ -125,13 +128,14 @@ export const creatorProgramService = {
     p_platform: input.platform, p_handle: input.handle.trim().replace(/^@+/, '').toLowerCase(), p_follower_band: input.followerBand ?? null,
   }),
   verifyHandle: (handleId: string) => programEdge<{ status: 'verified' | 'pending' | 'review' | 'expired' }>('creator-handle-verify', { handleId }),
-  savePackage: (input: { formatKey: string; platforms: string[]; priceMinor: number; currency: string; turnaroundDays: number; includesUsageDays: 30 | 90 | 365; extraUsagePriceMinor?: number | null; active?: boolean }) => programWrite('creator_package_upsert', {
+  savePackage: (input: { formatKey: string; platforms: string[]; priceMinor: number; currency: string; turnaroundDays: number; active?: boolean }) => programWrite('creator_package_upsert', {
     p_format_key: input.formatKey, p_platforms: input.platforms, p_price_minor: input.priceMinor,
     p_currency: input.currency, p_turnaround_days: input.turnaroundDays,
-    p_includes_usage_days: input.includesUsageDays, p_extra_usage_price_minor: input.extraUsagePriceMinor ?? null, p_active: input.active ?? true,
+    // Legacy storage sentinel. New contracts receive the non-negotiable perpetual licence from the server.
+    p_includes_usage_days: 90, p_extra_usage_price_minor: null, p_active: input.active ?? true,
   }),
-  /** 18+ is enforced by the server here as well as by the picker. */
-  signAgreement: (version: string, dateOfBirth: string) => programWrite('creator_agreement_sign', { p_agreement_version: version, p_date_of_birth: dateOfBirth }),
+  /** The server selects and fingerprints the current agreement; the client never supplies a version. */
+  signAgreement: (dateOfBirth: string) => programWrite('creator_agreement_sign', { p_date_of_birth: dateOfBirth }),
   recompute: async () => {
     const data = await programEdge<{ status?: unknown; reasons?: unknown } | null>('creator-verify', {});
     if (data?.status === 'verified') {

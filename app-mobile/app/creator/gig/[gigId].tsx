@@ -133,12 +133,13 @@ export default function CreatorGigScreen(): React.ReactElement {
       <ProgramRow title="Shoot" value={formatDateRange(g.shoot_window.start, g.shoot_window.end)} chevron={false} />
       <ProgramRow title="Video due" value={videoDueText(g.video_due_at, g.post_by)} chevron={false} />
       <ProgramRow title="Deliverables" value={deliverablesLabel(g.deliverables)} chevron={false} />
-      <ProgramRow title="Host may reuse" value={usageLabel(g.usage_days)} chevron={false} />
+      <ProgramRow title="Marketing rights" value={g.rights_model === 'creator_v1_perpetual' ? 'Perpetual after full fee release' : usageLabel(g.usage_days)} chevron={false} />
       <ProgramRow title="Where" value={g.city_name} chevron={false} />
       {pay ? <ProgramRow title="Pay" chevron={false} right={<Text style={s.strong}>{pay}</Text>} /> : null}
       {salesShareText(g.sales_share_bps) ? <ProgramRow title="Plus" value={salesShareText(g.sales_share_bps)!} chevron={false} /> : null}
       <ProgramRow title="Spots left" value={String(g.slots_left)} chevron={false} isLast />
     </ProgramCard>
+    {g.rights_model === 'creator_v1_perpetual' ? <ProgramNotice text="You keep copyright. Once your full Creator fee is released, Mingla and the paying Host may reuse, edit and advertise with the approved video worldwide without another usage fee. Ads from your own social account still need separate platform permission." /> : null}
     {!verified ? <ProgramNotice text="Browse now. Sending interest unlocks when setup is done." /> : !pkg ? <ProgramNotice tone="warning" text="Set a rate for this format first, then send interest." /> : null}
 
     <ProgramSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Your price for this gig" snapPoints={['72%']} busy={busy}

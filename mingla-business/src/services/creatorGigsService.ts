@@ -195,6 +195,17 @@ export type GigWorkspace = {
   counters?: unknown;
   next_action?: string | null;
   pending_topup?: unknown;
+  rights?: GigRights | null;
+};
+
+export type GigRights = {
+  model: "legacy_timed" | "creator_v1_perpetual";
+  status: "legacy" | "pending" | "active" | "not_granted";
+  label: string;
+  usage_days?: number | null;
+  agreement_version?: string | null;
+  agreement_url?: string | null;
+  whitelisting_requires_platform_authorization?: boolean;
 };
 
 export type GigResult = {
@@ -554,8 +565,15 @@ export const creatorGigsService = {
       p_interest_id: interestId,
       p_status: status,
     }),
-  workspace: (contractId: string) =>
-    rpc<GigWorkspace>("gig_contract_workspace", { p_contract_id: contractId }),
+  workspace: async (contractId: string): Promise<GigWorkspace> => {
+    const [workspace, rights] = await Promise.all([
+      rpc<GigWorkspace>("gig_contract_workspace", {
+        p_contract_id: contractId,
+      }),
+      rpc<GigRights | null>("gig_rights_status", { p_contract_id: contractId }),
+    ]);
+    return { ...workspace, rights };
+  },
   transition: (
     contractId: string,
     expectedState: string,
