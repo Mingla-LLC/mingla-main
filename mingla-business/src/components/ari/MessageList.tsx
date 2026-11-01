@@ -39,6 +39,7 @@ import { MultiSelectPrompt } from "./MultiSelectPrompt";
 import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
 import type { AriRenditionInteraction } from "./renditions/AriRenditionPreview";
 import {
+  ariRenditionSelectedLabels,
   isAnswerableAriRendition,
   isSupersededRenditionTapAllowed,
   newestAnswerableRenditionKey,
@@ -53,6 +54,7 @@ import {
   ARI_FLOW_LOCKED_COPY,
   ARI_FLOW_OFFLINE_COPY,
   answeredFlowQuestionIds,
+  buildFlowFormAnswer,
   flowArtefactOf,
   flowCardStatus,
   flowViewOnlyCopy,
@@ -639,6 +641,26 @@ export const MessageList: React.FC<MessageListProps> = ({
           // sends its label as a normal user turn (Q2 conversational feedback).
           const choices = choicesOf(m);
           const AriRenditionCard = rendition ? getAriRenditionCard() : null;
+          // #2830 P4 — a form-shaped flow card: its rendition IS the answer
+          // control, so the server's current card (not the newest rendition)
+          // decides whether it can still be answered.
+          const earlyFlow = flowArtefactOf(m);
+          const formFlow =
+            earlyFlow?.answer_mode === "form" ? earlyFlow : null;
+          const formFlowStatus = formFlow
+            ? flowCardStatus({
+                artefact: formFlow,
+                flowState,
+                answered: answeredFlowIds,
+                fallbackCurrentId: fallbackFlowArtefactId,
+              })
+            : null;
+          const renditionSuperseded = rendition
+            ? formFlow
+              ? formFlowStatus !== "live" || !online
+              : isAnswerableAriRendition(rendition) &&
+                m.id !== liveRenditionMessageId
+            : false;
           const bubble = (
             <View>
               {m.role === "user" && attachments.length ? (
@@ -669,17 +691,31 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <AriRenditionCard
                     rendition={rendition}
                     showOrb={!text && !item.hideOrb}
-                    superseded={
-                      isAnswerableAriRendition(rendition) &&
-                      m.id !== liveRenditionMessageId
-                    }
+                    superseded={renditionSuperseded}
                     onAction={(interaction) => {
                       if (
-                        isAnswerableAriRendition(rendition) &&
-                        m.id !== liveRenditionMessageId &&
+                        renditionSuperseded &&
                         !isSupersededRenditionTapAllowed(interaction.action)
                       ) {
                         return; // answered/replaced card — never submits
+                      }
+                      if (
+                        formFlow &&
+                        interaction.action.behavior.type === "submit"
+                      ) {
+                        // #2830 P4 — a bound answer with the control's values,
+                        // never a scripted message in the owner's name.
+                        const built = buildFlowFormAnswer({
+                          artefact: formFlow,
+                          choiceLabels: ariRenditionSelectedLabels(
+                            interaction.rendition,
+                            interaction.selectedOptionIds,
+                          ),
+                          fieldValue: interaction.fieldValue,
+                          fieldCountryIso: interaction.fieldCountryIso,
+                        });
+                        if (built) onFlowAnswer?.(built.answer, built.label);
+                        return;
                       }
                       if (
                         interaction.action.behavior.type === "local" &&
@@ -917,6 +953,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               );
             }
             const isResolvedFlow = resolvedChoice?.messageId === m.id;
+            if (flow.options.length === 0) return bubble;
             return (
               <View>
                 {bubble}

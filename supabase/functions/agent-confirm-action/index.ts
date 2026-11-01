@@ -77,6 +77,7 @@ import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts
 import {
   type ConfirmNext,
   flowNextAfterConfirm,
+  liveFlowRunFor,
   websiteSetupNextAfterConfirm,
 } from "./confirmNext.ts";
 import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
@@ -1293,10 +1294,22 @@ async function handleConfirmAction(args: {
   let continuation: PostApprovalContinuation | null = null;
   const deterministicEventTaskFinished = tool.name === "create_event" &&
     conversationTask?.state.active_task?.intent === "create_event";
-  const websiteSetupFollowup = websiteSetupApprovedWriteFollowup(tool.name);
+  // #2830 P4: a live engine run owns what comes next in this chat — no
+  // model continuation, and the receipt line comes from the runner's
+  // canonical re-read instead of a fixed "re-checking" line.
+  const liveRun = pending.conversation_id
+    ? await liveFlowRunFor({
+      service: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+    })
+    : null;
+  const websiteSetupFollowup = liveRun
+    ? null
+    : websiteSetupApprovedWriteFollowup(tool.name);
   if (
     pending.conversation_id && !deterministicEventTaskFinished &&
-    !websiteSetupFollowup
+    !websiteSetupFollowup && !liveRun
   ) {
     const { data: loopEnabled, error: loopFlagError } = await userClient.rpc(
       "ari_agent_loop_enabled",
@@ -1350,7 +1363,8 @@ async function handleConfirmAction(args: {
   // A weak continuation model must not append an unrelated research or scope
   // error after a successful event write; a genuine next protected proposal
   // is still persisted separately below.
-  const rawFollowupText = tool.name === "create_event"
+  const rawFollowupText = tool.name === "create_event" ||
+      (liveRun && websiteSetupApprovedWriteFollowup(tool.name))
     ? undefined
     : tool.name === "draft_campaign" ||
         tool.name === "update_campaign_draft"
@@ -1520,7 +1534,8 @@ async function handleConfirmAction(args: {
       next = flow.next;
       flowState = flow.flow_state;
       if (
-        !next && !nextPendingActionId && body.continuation === "server" &&
+        !next && !flowState && !nextPendingActionId &&
+        body.continuation === "server" &&
         body.workflow_context === "website_setup"
       ) {
         next = await websiteSetupNextAfterConfirm({

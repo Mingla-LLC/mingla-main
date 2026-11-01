@@ -59,11 +59,19 @@ export interface AriFlowArtefact {
     can_caller_fix: boolean;
     who_can_fix: string;
   };
+  /**
+   * #2830 P4 — "form": answered with the real form control on the card's
+   * rendition (phone chip + number, choices, text) as a bound answer.
+   */
+  answer_mode?: "form";
+  rendition?: unknown;
 }
 
 /** #3355 P3 — what the server says about the chat's flow run. */
 export interface AriFlowState {
   run_id: string;
+  /** #2830 P4 — which flow ("website_setup", "create_event", …). */
+  flow_key?: string;
   status: string;
   current_artefact_id: string | null;
   current_step_key: string | null;
@@ -79,6 +87,15 @@ export interface AriFlowAnswer {
   question_id: string;
   choice_id: string;
   display_text: string;
+  /** #2830 P4 — a form card's values (choice_id "answer"). */
+  values?: AriFlowAnswerValues;
+}
+
+/** #2830 P4 — what a form-shaped flow card submits. */
+export interface AriFlowAnswerValues {
+  choices: string[];
+  country: string | null;
+  response: string;
 }
 
 /** #3355 P3 — the next step the server already persisted. */

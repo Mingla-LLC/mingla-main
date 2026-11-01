@@ -18,6 +18,9 @@ import {
   intentWantsPaid,
 } from "./index.ts";
 import { buildReadinessAnswer } from "./readinessAnswer.ts";
+import { SITE_AGENT_READ_ONLY, SITE_AGENT_TOOLS } from "../agentSiteTools.ts";
+import { detectWebsiteSetupIntent } from "../agentWebsiteSetup.ts";
+import { WEBSITE_SETUP_FLOW, WEBSITE_SETUP_FLOW_KEY } from "./websiteSetup.ts";
 import {
   runFlowStep,
   type RunnerOutcome,
@@ -31,6 +34,7 @@ import {
 } from "./store.ts";
 import type {
   FlowAnswer,
+  FlowAnswerValues,
   FlowArtefact,
   FlowProbeDeps,
   FlowRun,
@@ -55,18 +59,61 @@ export function parseFlowAnswer(value: unknown): FlowAnswer | null {
     typeof raw.display_text !== "string" ||
     raw.display_text.trim().length === 0 || raw.display_text.length > 200
   ) return null;
+  // #2830 P4: a form answer (choice "answer") carries the card control's
+  // values and nothing else; a chip answer carries none.
+  let values: FlowAnswerValues | undefined;
+  if (raw.choice_id === "answer") {
+    const parsed = parseFlowAnswerValues(raw.values);
+    if (!parsed) return null;
+    values = parsed;
+  } else if (raw.values !== undefined) {
+    return null;
+  }
   return {
     run_id: raw.run_id,
     question_id: raw.question_id,
     step_key: raw.step_key,
     choice_id: raw.choice_id,
     display_text: raw.display_text.trim(),
+    ...(values ? { values } : {}),
+  };
+}
+
+function parseFlowAnswerValues(value: unknown): FlowAnswerValues | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (
+    Object.keys(raw).some((key) =>
+      !["choices", "country", "response"].includes(key)
+    )
+  ) return null;
+  const choices = raw.choices ?? [];
+  if (
+    !Array.isArray(choices) || choices.length > 10 ||
+    choices.some((choice) =>
+      typeof choice !== "string" || !choice.trim() || choice.length > 100
+    )
+  ) return null;
+  const country = raw.country ?? null;
+  if (
+    country !== null &&
+    (typeof country !== "string" || !/^[A-Z]{2}$/.test(country))
+  ) return null;
+  const response = raw.response ?? "";
+  if (typeof response !== "string" || response.length > 2000) return null;
+  if (choices.length === 0 && !response.trim()) return null;
+  return {
+    choices: (choices as string[]).map((choice) => choice.trim()),
+    country: country as string | null,
+    response: response.trim(),
   };
 }
 
 /** What every response tells the Host about the chat's run. */
 export interface FlowStateView {
   run_id: string;
+  /** #2830 P4: which flow (the Host shows Website setup progress for it). */
+  flow_key: string;
   status: FlowRun["status"];
   current_artefact_id: string | null;
   current_step_key: string | null;
@@ -81,6 +128,7 @@ export function flowStateOf(run: FlowRun | null): FlowStateView | null {
   const live = LIVE_FLOW_STATUSES.has(run.status);
   return {
     run_id: run.id,
+    flow_key: run.flow_key,
     status: run.status,
     current_artefact_id: live
       ? run.current_artefact?.artefact_id ?? null
@@ -135,6 +183,8 @@ export function flowMessageContent(
         structured: {
           ...(artefact ? { flow: artefact } : {}),
           ...(choices ? { choices } : {}),
+          // #2830 P4: a form card's control rides as its rendition.
+          ...(artefact?.rendition ? { rendition: artefact.rendition } : {}),
           ...(state ? { flow_state: state } : {}),
         },
       }
@@ -142,13 +192,50 @@ export function flowMessageContent(
   };
 }
 
+const SITE_READS: ReadonlyMap<string, (typeof SITE_AGENT_TOOLS)[number]> =
+  new Map(
+    SITE_AGENT_TOOLS.filter((tool) => SITE_AGENT_READ_ONLY.has(tool.name))
+      .map((tool) => [tool.name, tool]),
+  );
+
 /** Canonical reads the runner makes for one brand, memoised per request. */
 export function buildFlowProbeDeps(
   userClient: SupabaseClient,
   brandId: string,
+  userId?: string,
+  conversationId?: string,
 ): FlowProbeDeps {
   const cache = new Map<string, Promise<BrandReadiness>>();
+  const reads = new Map<string, Promise<unknown>>();
   return {
+    // #2830 P4: one read-only Website tool as the caller, memoised for the
+    // request. A write tool is never reachable here.
+    readTool(name: string, args: Record<string, unknown>) {
+      const tool = SITE_READS.get(name);
+      if (!tool || !userId) {
+        return Promise.reject(new Error(`read ${name} unavailable`));
+      }
+      const key = `${name}:${JSON.stringify(args)}`;
+      let pending = reads.get(key);
+      if (!pending) {
+        pending = tool.executor(args, userClient, userId, {
+          operationId: null,
+        });
+        reads.set(key, pending);
+      }
+      return pending;
+    },
+    async hasOpenProposal() {
+      if (!userId || !conversationId) return false;
+      const { data, error } = await userClient.from("agent_pending_actions")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("conversation_id", conversationId)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString())
+        .limit(1);
+      return !error && Array.isArray(data) && data.length > 0;
+    },
     readiness(action: ReadinessAction | null) {
       const key = action ?? "all";
       let pending = cache.get(key);
@@ -195,7 +282,21 @@ export type FlowTurnDecision =
     ack?: string;
     state: FlowStateView | null;
   }
-  | { kind: "stale"; next: FlowArtefact | null; state: FlowStateView | null };
+  | { kind: "stale"; next: FlowArtefact | null; state: FlowStateView | null }
+  /** #2830 P4: the owner's answer becomes one protected proposal. */
+  | {
+    kind: "propose";
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    rows: { label: string; value: string }[];
+    ack?: string;
+    state: FlowStateView | null;
+  }
+  /**
+   * #2830 P4: not the engine's turn, but the engine owns this chat's Website
+   * setup — the pre-engine Website lanes must stay out of it.
+   */
+  | { kind: "side"; state: FlowStateView | null };
 
 function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
   const state = flowStateOf(outcome.run);
@@ -246,6 +347,15 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
       };
     case "stale":
       return { kind: "stale", next: outcome.artefact, state };
+    case "propose":
+      return {
+        kind: "propose",
+        tool_name: outcome.tool_name,
+        tool_args: outcome.tool_args,
+        rows: outcome.rows,
+        ...(outcome.ack ? { ack: outcome.ack } : {}),
+        state,
+      };
     case "unchanged":
     case "pass":
       return { kind: "none" };
@@ -263,6 +373,11 @@ export interface FlowTurnArgs {
   engineEnabled: boolean;
   /** An event plan or Website setup already owns this chat. */
   otherLaneActive: boolean;
+  /**
+   * #2830 P4: this turn is Website setup (the Website setup screen, or a
+   * "start / continue Website setup" request).
+   */
+  websiteSetup?: boolean;
   /** Test seam. */
   store?: FlowStore;
 }
@@ -276,9 +391,10 @@ export async function decideFlowTurn(
   args: FlowTurnArgs,
 ): Promise<FlowTurnDecision> {
   if (!args.brand) return { kind: "none" };
+  const websiteMode = args.websiteSetup === true;
 
   // Deterministic readiness answers: the canonical checklist, no model.
-  if (!args.flowAnswer) {
+  if (!args.flowAnswer && !websiteMode) {
     const action = classifyReadinessQuestion(args.message);
     if (action) {
       try {
@@ -313,7 +429,12 @@ export async function decideFlowTurn(
   const store = args.store ?? createFlowStore(args.service, args.userId);
   const deps = {
     store,
-    probes: buildFlowProbeDeps(args.userClient, args.brand.id),
+    probes: buildFlowProbeDeps(
+      args.userClient,
+      args.brand.id,
+      args.userId,
+      args.conversationId,
+    ),
   };
   try {
     let run = await store.getForConversation(args.conversationId);
@@ -331,7 +452,7 @@ export async function decideFlowTurn(
       );
     }
     if (live) {
-      return decisionFromOutcome(
+      const decision = decisionFromOutcome(
         await runFlowStep(deps, {
           run: live,
           trigger: "turn",
@@ -339,6 +460,36 @@ export async function decideFlowTurn(
           brandName: args.brand.name,
         }),
       );
+      if (live.flow_key !== WEBSITE_SETUP_FLOW_KEY || decision.kind !== "none") {
+        return decision;
+      }
+      // #2830 P4: the engine owns this chat's Website setup. "Start /
+      // continue Website setup" points at the open card; anything else is a
+      // side question for the normal lanes, never the pre-engine Website job.
+      const state = flowStateOf(live);
+      if (isWebsiteSetupRequest(args.message)) {
+        return {
+          kind: "reply",
+          text: live.current_artefact
+            ? `Picking up Website setup where we left off. Your next step is "${live.current_artefact.title}" above.`
+            : "Picking up Website setup where we left off.",
+          artefact: null,
+          state,
+          classification: "flow_engine",
+        };
+      }
+      return { kind: "side", state };
+    }
+    if (websiteMode) {
+      // A finished Website setup in this chat is not restarted by every
+      // message on the Website screen — only by asking for it again.
+      if (
+        run && run.flow_key === WEBSITE_SETUP_FLOW_KEY &&
+        !isWebsiteSetupRequest(args.message)
+      ) {
+        return { kind: "side", state: flowStateOf(run) };
+      }
+      return await startWebsiteSetup(args, store, deps);
     }
     if (args.otherLaneActive) return { kind: "none" };
     const flowKey = classifyOfferingIntent(args.message);
@@ -374,6 +525,77 @@ export async function decideFlowTurn(
     }
     throw error;
   }
+}
+
+const WEBSITE_KICKOFF =
+  /^(?:start|continue|resume)\s+(?:the\s+)?website setup\b|^(?:please\s+)?publish\s+(?:my|the|our)\s+website\b|^(?:continue website setup:)|\bfix all\b[^.?!]*website|\breview every remaining website setup gap\b/i;
+
+/** "Start / continue Website setup" and the Website setup screen's buttons. */
+export function isWebsiteSetupRequest(message: string): boolean {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return WEBSITE_KICKOFF.test(normalized) ||
+    detectWebsiteSetupIntent(normalized) !== null;
+}
+
+/**
+ * #2830 P4: start (or join) the brand's one Website setup run and present its
+ * first open part. A teammate's live run is shown view-only by the runner;
+ * the owner's own run in another chat is never forked.
+ */
+async function startWebsiteSetup(
+  args: FlowTurnArgs,
+  store: FlowStore,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+): Promise<FlowTurnDecision> {
+  const def = WEBSITE_SETUP_FLOW;
+  const started = await store.start({
+    brandId: args.brand!.id,
+    flowKey: def.key,
+    flowVersion: def.version,
+    concurrency: def.concurrency,
+    conversationId: args.conversationId,
+    answers: {},
+  });
+  const run = started.run;
+  if (
+    !started.created && !started.owned_by_other &&
+    run.conversation_id && run.conversation_id !== args.conversationId
+  ) {
+    return {
+      kind: "reply",
+      text:
+        "You already have Website setup open in another Ari chat. Pick it up there so your answers stay in one place — nothing was changed.",
+      artefact: null,
+      state: null,
+      classification: "flow_engine",
+    };
+  }
+  const decision = decisionFromOutcome(
+    await runFlowStep(deps, {
+      run,
+      trigger: "turn",
+      brandName: args.brand!.name,
+    }),
+  );
+  if (decision.kind === "reply" && started.created) {
+    return {
+      ...decision,
+      text:
+        `Let's set up your Website for ${args.brand!.name}. I'll go through the plan one part at a time, ask one thing at a time, and save each change only after you approve it.\n\n${decision.text}`,
+    };
+  }
+  if (decision.kind === "none") {
+    return {
+      kind: "reply",
+      text: run.current_artefact
+        ? `Picking up Website setup where we left off. Your next step is "${run.current_artefact.title}" above.`
+        : "Picking up Website setup where we left off.",
+      artefact: null,
+      state: flowStateOf(run),
+      classification: "flow_engine",
+    };
+  }
+  return decision;
 }
 
 /** Pre-claim check: a structured answer to a card that is no longer current. */
@@ -417,6 +639,8 @@ export async function runFlowForConversation(args: {
   trigger: Exclude<RunnerTrigger, "answer" | "turn">;
   confirmed?: { tool_name: string; result: unknown };
   store?: FlowStore;
+  /** Test seam: the canonical reads. */
+  probes?: FlowProbeDeps;
 }): Promise<{ outcome: RunnerOutcome | null; run: FlowRun | null }> {
   const store = args.store ?? createFlowStore(args.service, args.userId);
   try {
@@ -426,7 +650,12 @@ export async function runFlowForConversation(args: {
     }
     const outcome = await runFlowStep({
       store,
-      probes: buildFlowProbeDeps(args.userClient, args.brand.id),
+      probes: args.probes ?? buildFlowProbeDeps(
+        args.userClient,
+        args.brand.id,
+        args.userId,
+        args.conversationId,
+      ),
     }, {
       run,
       trigger: args.trigger,

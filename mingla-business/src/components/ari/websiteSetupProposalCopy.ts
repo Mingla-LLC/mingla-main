@@ -226,12 +226,44 @@ export function websiteSetupProposalCopy(
       };
     case "save_site_plan_design": {
       const key = text(args.design_key);
+      // #2830 P4 (decision 7) — skipping the look saves Mingla's default
+      // design, said plainly and labelled changeable.
+      if (args.source_type === "mingla") {
+        return {
+          verb: "Save to your Website plan",
+          title: "Use Mingla's default design",
+          fields: [
+            ...(key
+              ? [{ label: "Design", value: `${words(key)} (Mingla's default)` }]
+              : []),
+            {
+              label: "Change it later",
+              value:
+                "You can pick a different design anytime from your Website.",
+            },
+          ],
+        };
+      }
       return {
         verb: "Save to your Website plan",
         title: "Save your design",
         fields: key ? [{ label: "Design", value: words(key) }] : [],
       };
     }
+    case "publish_site":
+      // #2830 P4 — publishing is its own explicit confirmation of the exact
+      // draft Ari just checked; the digests stay server-side.
+      return {
+        verb: "Publish Website",
+        title: "Publish your Website",
+        fields: [
+          {
+            label: "What happens",
+            value:
+              "Your Website goes live at its address for anyone to see — exactly the draft Ari just checked.",
+          },
+        ],
+      };
     case "create_site_draft":
       return {
         verb: "Build your Website",

@@ -89,6 +89,18 @@ export type RunnerOutcome =
     run: FlowRun;
   }
   | { kind: "stale"; artefact: FlowArtefact | null; run: FlowRun }
+  /**
+   * #2830 P4 — the owner's answer becomes one protected proposal. The caller
+   * stores it as a pending action the owner confirms; nothing is written yet.
+   */
+  | {
+    kind: "propose";
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    rows: { label: string; value: string }[];
+    ack?: string;
+    run: FlowRun;
+  }
   | {
     kind: "completed";
     artefact: FlowArtefact;
@@ -98,6 +110,9 @@ export type RunnerOutcome =
   | { kind: "cancelled"; text: string; run: FlowRun };
 
 const SETTLED = new Set(["done", "skipped", "deferred"]);
+
+/** #2830 P4 — the choice id of a form-shaped card's answer. */
+export const FORM_ANSWER = "answer";
 
 const DONE_CLAIM =
   /^(?:(?:ok(?:ay)?|great|thanks|right|so)[,.!]?\s+)?(?:(?:i[’']?ve|i have|i)\s+)?(?:just\s+)?(?:uploaded|added|approved|saved|finished|done|fixed|connected|accepted|sorted|set\s+(?:it|that|them)\s+up)\b|^(?:all\s+)?(?:done|finished|ready|sorted)\b|^it[’']?s\s+(?:there|done|up|in)\b/i;
@@ -165,6 +180,17 @@ function buildArtefact(
     })),
     ...(ask.handoff ? { handoff: ask.handoff } : {}),
     ...(ask.items ? { items: ask.items } : {}),
+    ...(ask.answer_mode ? { answer_mode: ask.answer_mode } : {}),
+    // The form card is bound to this exact question: its id is unique per
+    // question (never per tool), so an older card can never pass for it.
+    ...(ask.rendition
+      ? {
+        rendition: {
+          ...ask.rendition,
+          rendition_id: `q:${run.id}:${questionId}`,
+        },
+      }
+      : {}),
   };
 }
 
@@ -232,14 +258,17 @@ export async function runFlowStep(
   const def = findFlowDefinition(run.flow_key, run.flow_version);
   if (!def) return { kind: "pass", run };
 
-  // Fast path: the offering lane owns ordinary turns once gates have passed.
+  // Fast path: the delegated lane owns ordinary turns once gates have
+  // passed (the offering lane for an offering flow; the event planner for
+  // Website setup's first offering).
   const currentRecord = run.current_step_key
     ? run.step_states[run.current_step_key]
     : undefined;
   if (
     input.trigger === "turn" && !run.current_artefact &&
-    run.current_step_key === "offering" &&
-    currentRecord?.state === "delegated" && !run.subject_id
+    currentRecord?.state === "delegated" &&
+    (def.subject !== "offering" ||
+      (run.current_step_key === "offering" && !run.subject_id))
   ) {
     return { kind: "pass", run };
   }
@@ -298,6 +327,7 @@ async function advanceUnderLease(
     deps: deps.probes,
     brandName: input.brandName,
     state: states[stepKey],
+    trigger: input.trigger,
   });
 
   const commit = async (extra: Record<string, unknown>): Promise<FlowRun> => {
@@ -314,6 +344,10 @@ async function advanceUnderLease(
 
   // ── 1. A bound answer (structured, or typed text that plainly is one) ────
   let choiceId: string | null = null;
+  let formAnswer: FlowAnswer | undefined;
+  const openStep = def.steps.find((candidate) =>
+    candidate.key === run.current_step_key
+  );
   if (input.trigger === "answer") {
     const answer = input.answer;
     if (
@@ -324,14 +358,39 @@ async function advanceUnderLease(
       return { kind: "stale", artefact: open, run };
     }
     choiceId = answer.choice_id;
+    if (choiceId === FORM_ANSWER) {
+      // A form answer carries the card control's values, and only a form
+      // card accepts one.
+      if (open.answer_mode !== "form" || !answer.values) {
+        return { kind: "stale", artefact: open, run };
+      }
+      formAnswer = answer;
+    }
   } else if (input.trigger === "turn") {
     choiceId = textChoiceFor(open, input.ownerText);
+    if (
+      !choiceId && open?.answer_mode === "form" && open.question_id &&
+      openStep?.textAnswer && input.ownerText
+    ) {
+      const values = openStep.textAnswer(ctxFor(openStep.key), input.ownerText);
+      if (values) {
+        choiceId = FORM_ANSWER;
+        formAnswer = {
+          run_id: run.id,
+          step_key: openStep.key,
+          question_id: open.question_id,
+          choice_id: FORM_ANSWER,
+          display_text: input.ownerText.slice(0, 200),
+          values,
+        };
+      }
+    }
   }
   if (choiceId && open) {
-    const option = open.options.find((candidate) => candidate.id === choiceId);
-    const step = def.steps.find((candidate) =>
-      candidate.key === run.current_step_key
-    );
+    const option = choiceId === FORM_ANSWER
+      ? { id: FORM_ANSWER, label: "", route: undefined }
+      : open.options.find((candidate) => candidate.id === choiceId);
+    const step = openStep;
     if (!option || !step) return { kind: "stale", artefact: open, run };
     if (choiceId === "open") {
       return {
@@ -347,13 +406,39 @@ async function advanceUnderLease(
     if (choiceId === "check") {
       checking = true;
     } else {
-      const outcome = await step.onAnswer?.(ctxFor(step.key), choiceId);
+      const outcome = await step.onAnswer?.(
+        ctxFor(step.key),
+        choiceId,
+        formAnswer,
+      );
       if (!outcome) return { kind: "stale", artefact: open, run };
       answered = true;
       setState(step.key, outcome.record);
-      if (outcome.session_skips) patch.session_skips = outcome.session_skips;
+      if (outcome.session_skips) {
+        patch.session_skips = outcome.session_skips;
+        // The probes below must see what the owner just set aside.
+        run = { ...run, session_skips: outcome.session_skips };
+      }
       if (outcome.ack) lines.push(outcome.ack);
       if (option.route) openRoute = option.route;
+      if (outcome.propose) {
+        // One protected proposal; the open card is answered. The confirm
+        // (agent-confirm-action) re-runs the probes and says what's next.
+        run = await commit({
+          status: "awaiting_approval",
+          current_step_key: step.key,
+          current_question_id: null,
+          current_artefact: null,
+        });
+        return {
+          kind: "propose",
+          tool_name: outcome.propose.tool_name,
+          tool_args: outcome.propose.tool_args,
+          rows: outcome.propose.rows ?? [],
+          ...(lines.length > 0 ? { ack: lines.join(" ") } : {}),
+          run,
+        };
+      }
       if (outcome.cancel_run) {
         patch.status = "cancelled";
         patch.current_artefact = null;
@@ -369,6 +454,30 @@ async function advanceUnderLease(
   }
 
   // ── 2. A confirmed write that may have created the subject ───────────────
+  // #2830 P4: a step that handed one request to another lane (Website setup's
+  // first offering) records the record that lane created, on the step.
+  if (input.confirmed && run.current_step_key) {
+    const waiting = def.steps.find((candidate) =>
+      candidate.key === run.current_step_key
+    );
+    const rec = states[run.current_step_key];
+    if (
+      waiting?.subject_tools?.includes(input.confirmed.tool_name) &&
+      rec?.state === "delegated" && !rec.data?.subject_id
+    ) {
+      const created = subjectIdFromResult(input.confirmed.result);
+      if (created) {
+        setState(waiting.key, {
+          ...rec,
+          data: {
+            ...(rec.data ?? {}),
+            subject_id: created,
+            subject_tool: input.confirmed.tool_name,
+          },
+        });
+      }
+    }
+  }
   if (
     input.confirmed && def.subject_tools.includes(input.confirmed.tool_name) &&
     !run.subject_id
@@ -399,18 +508,40 @@ async function advanceUnderLease(
       }
       continue;
     }
+    if ("wait" in probe) {
+      run = await commit({});
+      return input.trigger === "turn"
+        ? { kind: "pass", run }
+        : lines.length > 0
+        ? { kind: "notice", text: lines.join(" "), artefact: null, run }
+        : { kind: "unchanged", artefact: null, run };
+    }
     if ("delegate" in probe) {
-      if (rec?.state === "delegated") {
+      if (states[step.key]?.state === "delegated") {
         run = await commit({});
         return input.trigger === "turn"
           ? { kind: "pass", run }
           : { kind: "unchanged", artefact: null, run };
       }
       const intent = run.answers.intent_text?.value;
-      const semantic = typeof intent === "string" && intent.trim()
-        ? intent
-        : (input.ownerText ?? "");
-      if (!def.subject_table) {
+      const semantic = probe.semantic ??
+        (typeof intent === "string" && intent.trim()
+          ? intent
+          : (input.ownerText ?? ""));
+      if (probe.semantic) {
+        // #2830 P4: one request handed to another lane; the run stays open
+        // and re-reads canonical state when that lane's write is confirmed.
+        setState(step.key, {
+          ...(states[step.key] ?? { state: "pending" }),
+          state: "delegated",
+        });
+        run = await commit({
+          status: "active",
+          current_step_key: step.key,
+          current_question_id: null,
+          current_artefact: null,
+        });
+      } else if (!def.subject_table) {
         // P3: this offering's own lane creates and verifies it (P7–P9 bring
         // it onto the engine). The run's job — the preamble — is complete.
         const evidence = {
@@ -456,6 +587,15 @@ async function advanceUnderLease(
       run = await commit({});
       const claimedDone = checking ||
         (input.trigger === "turn" && DONE_CLAIM.test(input.ownerText ?? ""));
+      if (checking && !open?.handoff) {
+        return {
+          kind: "notice",
+          text:
+            "I checked again and nothing has changed yet. The card above is still open whenever you're ready.",
+          artefact: open,
+          run,
+        };
+      }
       if (claimedDone && open?.handoff) {
         return {
           kind: "notice",
@@ -495,6 +635,40 @@ async function advanceUnderLease(
   }
 
   // ── 4. Every step settled: an evidence-backed summary ────────────────────
+  if (def.summarize) {
+    const summary = def.summarize({ ...run, step_states: states });
+    if (summary) {
+      const artefact: FlowArtefact = {
+        schema_version: 1,
+        artefact_id: `s:${run.id}`,
+        run_id: run.id,
+        step_key: "summary",
+        question_id: null,
+        kind: "summary",
+        reuse_key: "summary",
+        title: assertOwnerCopy(summary.title, {
+          fallback: def.title,
+          surface: "flow_title",
+          mode: "label",
+        }),
+        text: ownerSafe(summary.text, def.title, "flow_text"),
+        options: [],
+      };
+      run = await commit({
+        status: "completed",
+        completion_evidence: summary.evidence,
+        current_step_key: "summary",
+        current_question_id: null,
+        current_artefact: artefact,
+      });
+      return {
+        kind: "completed",
+        artefact,
+        text: [...lines, artefact.text].join("\n\n"),
+        run,
+      };
+    }
+  }
   const settledOffering = states.offering;
   if (settledOffering?.state === "done" && settledOffering.evidence) {
     const artefact: FlowArtefact = {

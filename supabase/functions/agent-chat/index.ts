@@ -172,6 +172,7 @@ import {
   decideFlowTurn,
   flowChoices,
   type FlowStateView,
+  isWebsiteSetupRequest,
   parseFlowAnswer,
   persistFlowRow,
   staleFlowAnswer,
@@ -1744,6 +1745,10 @@ async function handle(req: Request): Promise<Response> {
     // readiness answers, the run's next step (one card at a time), bound card
     // answers, and the readiness preamble before a new offering. "none"
     // leaves every existing lane exactly as it was.
+    // #2830 P4: when the engine owns this chat's Website setup, the
+    // pre-engine Website lanes (durable Fix-all job, text-shaped answers)
+    // stay out of the turn. Flag off or migration missing: unchanged.
+    let websiteEngine = false;
     if (activeBrand && !choiceSubmission) {
       const otherLaneActive = body.workflow_context === "website_setup" ||
         (taskState.active_task !== null &&
@@ -1758,7 +1763,94 @@ async function handle(req: Request): Promise<Response> {
         flowAnswer,
         engineEnabled: flowEngineEnabled(),
         otherLaneActive,
+        websiteSetup: body.workflow_context === "website_setup" ||
+          isWebsiteSetupRequest(semanticMessage),
       });
+      if (decision.kind === "side") websiteEngine = true;
+      if (decision.kind === "propose") {
+        // #2830 P4: the owner's card answer becomes ONE protected proposal
+        // (server-built args against a fresh read). Nothing is written
+        // before the owner confirms it.
+        const tool = findTool(decision.tool_name);
+        if (!tool) {
+          return errorResponse(
+            500,
+            "INTERNAL",
+            "That change isn't available right now. Nothing was changed.",
+          );
+        }
+        try {
+          await authorizeAgentTool(
+            tool,
+            decision.tool_args,
+            userClient,
+            userId,
+          );
+        } catch (err: unknown) {
+          if (err instanceof ToolError) {
+            return await commitTextTurn({
+              client: serviceClient,
+              userId,
+              conversationId,
+              clientTurnId: body.client_turn_id,
+              previousState: taskState,
+              nextState: taskState,
+              expectedRevision: taskStateRevision,
+              previousSummary: conversationSummary,
+              text: assertOwnerCopy(
+                err.code === "ROLE_CHECK_UNAVAILABLE"
+                  ? "I couldn't check your role on this brand just now, so nothing was changed. Try again in a moment."
+                  : `${err.message} Nothing was changed.`,
+                {
+                  fallback:
+                    "Only a brand admin or the owner can make that change. Nothing was changed.",
+                  surface: "flow_refusal",
+                  mode: "prose",
+                },
+              ),
+              classification: "flow_engine_refused",
+              startedAt: turnStartedAt,
+              flowState: decision.state,
+            });
+          }
+          throw err;
+        }
+        if (decision.ack) {
+          await persistFlowRow({
+            service: serviceClient,
+            userId,
+            conversationId,
+            text: assertOwnerCopy(decision.ack, {
+              fallback: "Okay.",
+              surface: "flow_ack",
+              mode: "prose",
+            }),
+            artefact: null,
+            state: decision.state,
+            promptVersion: TENANT_CONTEXT_VERSION,
+            modelVersion: ARI_MODEL_VERSION,
+          });
+        }
+        return await commitPendingTurn({
+          client: serviceClient,
+          pendingClient: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          uiCapabilities: ariUiCapabilities,
+          previousState: taskState,
+          readyState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          toolName: tool.name,
+          toolArgs: decision.tool_args,
+          proposalContext: decision.rows.length > 0
+            ? { flow_rows: decision.rows }
+            : null,
+          classification: "flow_engine_proposal",
+          startedAt: turnStartedAt,
+        });
+      }
       if (decision.kind === "stale") {
         // Raced past the pre-claim check: nothing was applied. Close the turn
         // honestly with the card that is current now.
@@ -1804,6 +1896,7 @@ async function handle(req: Request): Promise<Response> {
         });
       }
       if (decision.kind === "delegate") {
+        if (decision.state?.flow_key === "website_setup") websiteEngine = true;
         // The gates passed: the offering lane now takes the owner's original
         // request. What the owner just chose is said first, as Ari's own row.
         if (decision.ack) {
@@ -2185,10 +2278,11 @@ async function handle(req: Request): Promise<Response> {
       !["completed", "cancelled"].includes(taskState.status);
     // Website setup is a separate durable workflow. It must not be interpreted
     // as an answer to an older event-planning question in the same thread.
-    const websiteSetupIntent = activeBrand
+    const websiteSetupIntent = activeBrand && !websiteEngine
       ? detectWebsiteSetupIntent(semanticMessage)
       : null;
-    const websiteSetupWorkflow = body.workflow_context === "website_setup";
+    const websiteSetupWorkflow = body.workflow_context === "website_setup" &&
+      !websiteEngine;
     const websiteSetupBoundary = websiteSetupWorkflow ||
       websiteSetupIntent !== null;
     if (websiteSetupBoundary) {
@@ -2444,14 +2538,14 @@ async function handle(req: Request): Promise<Response> {
       activeWebsiteSetupJob
     ) {
       const readTool = findTool("get_site_plan");
-      const writeTool = findTool(
+      const tool = findTool(
         structuredWebsiteDesign
           ? "save_site_plan_design"
           : structuredWebsiteContext
           ? "update_brand_context"
           : "save_site_plan_answers",
       );
-      if (!readTool || !writeTool) {
+      if (!readTool || !tool) {
         return errorResponse(
           500,
           "INTERNAL",
@@ -2548,7 +2642,7 @@ async function handle(req: Request): Promise<Response> {
             }],
           };
         await authorizeAgentTool(
-          writeTool,
+          tool,
           proposalArgs,
           userClient,
           userId,
@@ -2564,7 +2658,7 @@ async function handle(req: Request): Promise<Response> {
           readyState: taskState,
           expectedRevision: taskStateRevision,
           previousSummary: conversationSummary,
-          toolName: writeTool.name,
+          toolName: tool.name,
           toolArgs: proposalArgs,
           classification: "website_setup_structured_answer",
           startedAt: turnStartedAt,

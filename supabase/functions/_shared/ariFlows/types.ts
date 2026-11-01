@@ -61,6 +61,12 @@ export interface FlowStepRecord {
   /** Items the owner set aside at this step (owner words come from labels). */
   set_aside?: string[];
   reason?: string;
+  /**
+   * #2830 P4 — step-owned working data the runner carries but never reads
+   * (the Website field being asked, the exact draft digests a publish
+   * question was prepared against, a created offering's id).
+   */
+  data?: Record<string, unknown>;
   updated_at?: string;
 }
 
@@ -109,6 +115,14 @@ export interface FlowArtefact {
     who_can_fix: string;
   };
   items?: { key: string; label: string; blocks: boolean }[];
+  /**
+   * #2830 P4 — "form": the card is answered with the real form control on
+   * its rendition (phone chip + number, choices, text), submitted as a bound
+   * flow answer with `values`. Absent = answered with the option chips.
+   */
+  answer_mode?: "form";
+  /** #2830 P4 — the form-shaped card (an Ari rendition) for a form answer. */
+  rendition?: Record<string, unknown>;
 }
 
 export interface FlowRun {
@@ -142,6 +156,21 @@ export interface FlowAnswer {
   question_id: string;
   choice_id: string;
   display_text: string;
+  /**
+   * #2830 P4 — a form answer (choice_id "answer"): the values the card's
+   * control produced, never free text dressed as a choice.
+   */
+  values?: FlowAnswerValues;
+}
+
+/** #2830 P4 — what a form-shaped card submits. */
+export interface FlowAnswerValues {
+  /** Labels of the chosen options, as shown on the card. */
+  choices: string[];
+  /** The phone chip's country (ISO 3166-1 alpha-2), when the card has one. */
+  country: string | null;
+  /** What the owner typed or pasted. */
+  response: string;
 }
 
 /** Reads the runner may make. Every probe goes through these. */
@@ -154,6 +183,16 @@ export interface FlowProbeDeps {
    * "session_only" when the caller may not set it aside for the brand.
    */
   setAside(itemKey: string): Promise<"brand" | "session_only">;
+  /**
+   * #2830 P4 — one read-only Ari tool as the caller (Website plan, site,
+   * draft validation, design checks). Memoised per request; never a write.
+   */
+  readTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
+  /**
+   * #2830 P4 — does this chat still have a protected proposal the owner has
+   * not confirmed or cancelled? (A step waiting on it issues no new card.)
+   */
+  hasOpenProposal?(): Promise<boolean>;
 }
 
 export interface FlowContext {
@@ -162,6 +201,8 @@ export interface FlowContext {
   deps: FlowProbeDeps;
   brandName: string;
   state: FlowStepRecord | undefined;
+  /** #2830 P4 — why the runner is running (a confirm, an answer, a turn…). */
+  trigger?: "turn" | "answer" | "confirm" | "resume" | "handoff_return";
 }
 
 export type AskSpec = {
@@ -173,13 +214,31 @@ export type AskSpec = {
   options: FlowChoiceOption[];
   handoff?: FlowArtefact["handoff"];
   items?: FlowArtefact["items"];
+  /** #2830 P4 — a form-shaped card (see FlowArtefact.answer_mode). */
+  answer_mode?: "form";
+  rendition?: Record<string, unknown>;
   record: Omit<FlowStepRecord, "state" | "question_id">;
 };
 
 export type ProbeResult =
   | { done: true; evidence: FlowEvidence; note?: string }
   | { done: false; ask: AskSpec; note?: string }
-  | { done: false; delegate: true };
+  | {
+    done: false;
+    delegate: true;
+    /**
+     * #2830 P4 — a step that hands ONE request to another lane while the
+     * run stays open (Website setup's first offering → the event planner).
+     * Absent = the offering flow's own request (P3 behaviour).
+     */
+    semantic?: string;
+  }
+  /**
+   * #2830 P4 — waiting on something already in front of the owner (a
+   * protected proposal they have not confirmed or cancelled yet): no new
+   * card; the turn goes on to the normal lanes.
+   */
+  | { done: false; wait: true };
 
 export interface AnswerOutcome {
   record: FlowStepRecord;
@@ -189,6 +248,17 @@ export interface AnswerOutcome {
   open_route?: string;
   session_skips?: string[];
   cancel_run?: boolean;
+  /**
+   * #2830 P4 — the answer becomes ONE protected proposal (the owner confirms
+   * it on the card; nothing is written before that). The run waits for the
+   * confirm, then re-reads canonical state.
+   */
+  propose?: {
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    /** Extra plain-words rows for the confirmation card. */
+    rows?: { label: string; value: string }[];
+  };
 }
 
 export interface StepDefinition {
@@ -208,7 +278,15 @@ export interface StepDefinition {
   onAnswer?(
     ctx: FlowContext,
     choiceId: string,
+    answer?: FlowAnswer,
   ): Promise<AnswerOutcome | null>;
+  /**
+   * #2830 P4 — read a typed reply as this step's form answer (an older
+   * Host's card submission, or a plain value typed into the composer).
+   */
+  textAnswer?(ctx: FlowContext, text: string): FlowAnswerValues | null;
+  /** #2830 P4 — confirmed tools whose result is this step's created record. */
+  subject_tools?: string[];
 }
 
 export interface FlowDefinition {
@@ -230,6 +308,15 @@ export interface FlowDefinition {
   /** Table read to verify the created subject; null = verified by the delegated lane later (P7–P9). */
   subject_table: string | null;
   steps: StepDefinition[];
+  /**
+   * #2830 P4 — a brand flow's closing card, built only from step evidence.
+   * Offering flows use the runner's offering summary instead.
+   */
+  summarize?(run: FlowRun): {
+    title: string;
+    text: string;
+    evidence: FlowEvidence;
+  } | null;
 }
 
 export type { BrandReadiness, BrandReadinessItem };

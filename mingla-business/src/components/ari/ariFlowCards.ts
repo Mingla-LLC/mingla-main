@@ -12,8 +12,14 @@
  * Pure on purpose (no React Native), so every branch is unit-testable.
  */
 
+import {
+  formatPhoneNational,
+  phoneDialCodeForCountry,
+} from "@mingla/phone-input/phoneNumber";
+
 import type {
   AgentMessage,
+  AriFlowAnswer,
   AriFlowArtefact,
   AriFlowState,
 } from "../../services/agentChatService";
@@ -93,7 +99,10 @@ export function flowCardStatus(args: {
   fallbackCurrentId: string | null;
 }): AriFlowCardStatus {
   const { artefact, flowState } = args;
-  if (artefact.options.length === 0 || !artefact.question_id) return "info";
+  if (!artefact.question_id) return "info";
+  if (artefact.options.length === 0 && artefact.answer_mode !== "form") {
+    return "info";
+  }
   if (args.answered.has(artefact.question_id)) return "answered";
   const currentId = flowState === undefined
     ? args.fallbackCurrentId
@@ -117,4 +126,51 @@ export function flowViewOnlyCopy(state: AriFlowState | null | undefined): string
   return `${
     state?.owner_name ?? state?.lease_owner_name ?? "A teammate"
   } is working on this. You can follow along here.`;
+}
+
+/**
+ * #2830 P4 — a form card's answer: the values its control produced (chosen
+ * option labels, the phone chip's country, what was typed), bound to the
+ * card's run, step and question. The owner's bubble shows only their value
+ * ("+44 20 7946 0958"), never a scripted instruction.
+ */
+export function buildFlowFormAnswer(args: {
+  artefact: AriFlowArtefact;
+  choiceLabels: string[];
+  fieldValue: string;
+  fieldCountryIso?: string | null;
+}): { answer: AriFlowAnswer; label: string } | null {
+  const { artefact } = args;
+  if (artefact.answer_mode !== "form" || !artefact.question_id) return null;
+  const choices = args.choiceLabels
+    .map((label) => label.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+  const response = args.fieldValue.trim().slice(0, 2000);
+  const country =
+    typeof args.fieldCountryIso === "string" &&
+    /^[A-Z]{2}$/.test(args.fieldCountryIso)
+      ? args.fieldCountryIso
+      : null;
+  if (choices.length === 0 && !response) return null;
+  let shown = response || choices.join(", ");
+  if (country && response && !response.startsWith("+")) {
+    const dial = phoneDialCodeForCountry(country);
+    if (dial) shown = `${dial} ${formatPhoneNational(country, response)}`;
+  }
+  if (choices.length > 0 && response) {
+    shown = `${choices.join(", ")}: ${shown}`;
+  }
+  const label = shown.length > 200 ? `${shown.slice(0, 197)}…` : shown;
+  return {
+    answer: {
+      run_id: artefact.run_id,
+      step_key: artefact.step_key,
+      question_id: artefact.question_id,
+      choice_id: "answer",
+      display_text: label,
+      values: { choices, country, response },
+    },
+    label,
+  };
 }

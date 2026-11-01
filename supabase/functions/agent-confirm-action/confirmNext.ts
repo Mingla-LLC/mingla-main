@@ -31,10 +31,15 @@ import {
   runFlowForConversation,
 } from "../_shared/ariFlows/edge.ts";
 import {
+  createFlowStore,
   flowEngineEnabled,
   type FlowStore,
 } from "../_shared/ariFlows/store.ts";
-import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
+import type {
+  FlowArtefact,
+  FlowProbeDeps,
+} from "../_shared/ariFlows/types.ts";
+import { LIVE_FLOW_STATUSES } from "../_shared/ariFlows/types.ts";
 
 export interface ConfirmNext {
   message_id: string;
@@ -152,6 +157,31 @@ export async function websiteSetupNextAfterConfirm(args: {
     : null;
 }
 
+/**
+ * #2830 P4 — the chat's live flow run, if the engine is on and has one.
+ * While a run owns the chat, the model's post-approval continuation and the
+ * pre-engine Website follow-up stay out (the runner says what's next, from
+ * a canonical re-read). Any failure reads as "no run": the old path stands.
+ */
+export async function liveFlowRunFor(args: {
+  service: SupabaseClient;
+  userId: string;
+  conversationId: string;
+  enabled?: boolean;
+  store?: FlowStore;
+}): Promise<{ flow_key: string; id: string } | null> {
+  if (!(args.enabled ?? flowEngineEnabled())) return null;
+  try {
+    const store = args.store ?? createFlowStore(args.service, args.userId);
+    const run = await store.getForConversation(args.conversationId);
+    return run && LIVE_FLOW_STATUSES.has(run.status)
+      ? { flow_key: run.flow_key, id: run.id }
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 export async function flowNextAfterConfirm(args: {
   userClient: SupabaseClient;
   service: SupabaseClient;
@@ -164,6 +194,8 @@ export async function flowNextAfterConfirm(args: {
   enabled?: boolean;
   /** Test seam. */
   store?: FlowStore;
+  /** Test seam: the canonical reads. */
+  probes?: FlowProbeDeps;
 }): Promise<ConfirmNextResult> {
   if (!(args.enabled ?? flowEngineEnabled())) {
     return { next: null, flow_state: null };
@@ -177,6 +209,7 @@ export async function flowNextAfterConfirm(args: {
     trigger: "confirm",
     confirmed: args.confirmed,
     ...(args.store ? { store: args.store } : {}),
+    ...(args.probes ? { probes: args.probes } : {}),
   });
   const state = flowStateOf(run);
   if (
@@ -203,6 +236,8 @@ export async function flowNextAfterConfirm(args: {
       structured: {
         ...(artefact ? { flow: artefact } : {}),
         ...(choices ? { choices } : {}),
+        // #2830 P4: a form card's control rides as its rendition.
+        ...(artefact?.rendition ? { rendition: artefact.rendition } : {}),
         ...(state ? { flow_state: state } : {}),
       },
     },
@@ -211,7 +246,12 @@ export async function flowNextAfterConfirm(args: {
   });
   return {
     next: messageId
-      ? { message_id: messageId, text, ...(artefact ? { artefact } : {}) }
+      ? {
+        message_id: messageId,
+        text,
+        ...(artefact ? { artefact } : {}),
+        ...(artefact?.rendition ? { rendition: artefact.rendition } : {}),
+      }
       : null,
     flow_state: state,
   };

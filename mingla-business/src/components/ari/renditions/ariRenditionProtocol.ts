@@ -1003,6 +1003,22 @@ export function isSupersededRenditionTapAllowed(
   );
 }
 
+/** #2830 P4 — the labels of the options the owner chose on a card. */
+export function ariRenditionSelectedLabels(
+  rendition: AriRendition,
+  selectedOptionIds: readonly string[],
+): string[] {
+  const options =
+    rendition.schema_version === 1
+      ? [...(rendition.chips ?? []), ...(rendition.choices ?? [])]
+      : rendition.blocks
+          .filter((block) => block.type === "choices")
+          .flatMap((block) => block.options);
+  return options
+    .filter((option) => selectedOptionIds.includes(option.id))
+    .map((option) => option.label);
+}
+
 export function buildAriRenditionSubmission(input: {
   rendition: AriRendition;
   action: AriRenditionActionV1;

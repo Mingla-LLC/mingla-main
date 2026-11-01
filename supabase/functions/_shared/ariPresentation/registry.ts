@@ -266,6 +266,29 @@ function identityOf(args: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * #2830 P4 — plain-words rows the flow engine adds to a proposal it built
+ * (e.g. "Design: Atelier (Mingla's default)"). Server-built only (the
+ * proposal context is whitelisted), and copy-gated like every other row.
+ */
+function flowRows(context: unknown): PresentationField[] {
+  if (context === null || typeof context !== "object" || Array.isArray(context)) {
+    return [];
+  }
+  const rows = (context as Record<string, unknown>).flow_rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.slice(0, 4).flatMap((row) => {
+    if (row === null || typeof row !== "object") return [];
+    const { label, value } = row as Record<string, unknown>;
+    if (
+      typeof label !== "string" || typeof value !== "string" ||
+      !label.trim() || !value.trim() || !isOwnerSafe(label, "label") ||
+      !isOwnerSafeValue(value)
+    ) return [];
+    return [{ label: label.trim(), value: value.trim().slice(0, MAX_VALUE) }];
+  });
+}
+
 // MINGLA-INVARIANT: I-ARI-EVERY-WRITE-HAS-PRESENTATION | issue #3355 | Every registered Ari write tool has owner words in toolLabels.ts, and every proposal presentation built from any args is copy-gate clean (enforced by supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
 export function buildProposalPresentation(
   toolName: string,
@@ -273,6 +296,7 @@ export function buildProposalPresentation(
 ): ProposalPresentation {
   const copy = toolOwnerCopy(toolName);
   const clean = { ...args };
+  const context = clean.__proposal_context;
   delete clean.__proposal_context;
   const identity = identityOf(clean);
   const title = identity && isOwnerSafeValue(identity) ? identity : copy.title;
@@ -283,7 +307,10 @@ export function buildProposalPresentation(
       surface: "proposal_verb",
     }),
     title,
-    fields: presentationFields(clean),
+    fields: [...presentationFields(clean), ...flowRows(context)].slice(
+      0,
+      MAX_FIELDS,
+    ),
   };
 }
 

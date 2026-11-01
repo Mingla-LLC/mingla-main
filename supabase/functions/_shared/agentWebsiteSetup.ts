@@ -2011,6 +2011,105 @@ export function buildWebsiteSetupRetryPresentation(args: {
   };
 }
 
+/**
+ * #2830 P4 — the form-shaped card for ONE Website field on the flow engine.
+ *
+ * It reuses the exact controls the Website setup cards already use (the
+ * Brand details form's shapes: phone = country chip + number, choices for
+ * offerings / design / main action / theme, a pasted link with its
+ * platform). One progress counter only — the plan's own "Part n of 8" — and
+ * no "Verified / Remaining" metrics. The card's answer travels as a bound
+ * flow answer; the submit message keeps the shape an older Host sends, which
+ * the engine also reads (never as a model guess).
+ */
+export function buildWebsiteSetupFlowRendition(args: {
+  fieldKey: string;
+  field: Record<string, unknown>;
+  completeness: Record<string, unknown>;
+  brandId: string;
+  partNumber: number;
+  partTotal: number;
+  partLabel: string;
+  problem?: string | null;
+}): AriRenditionV2 {
+  const { fieldKey, field, completeness, brandId } = args;
+  const question = setupQuestion(fieldKey, field);
+  const label = fieldLabel(field, fieldKey);
+  return {
+    schema_version: 2,
+    rendition_id: `website-setup:field-${fieldKey.replaceAll(".", "-")}`,
+    kind: "website-setup",
+    eyebrow:
+      `Website setup · Part ${args.partNumber} of ${args.partTotal} · ${args.partLabel}`,
+    title: label,
+    body: args.problem ? `${args.problem}` : question,
+    ...(args.problem ? { tone: "warning" } : {}),
+    state: "ready",
+    graphic: "site",
+    blocks: [
+      ...(args.problem
+        ? [{
+          type: "callout",
+          version: 1,
+          id: "nothing-saved",
+          tone: "warning",
+          title: "Nothing was saved",
+          body:
+            "Answer again and Ari will show you the exact change before saving.",
+        }]
+        : []),
+      ...fieldInteraction(fieldKey, field, completeness),
+    ],
+    actions: [
+      {
+        id: "continue-with-ari",
+        label: "Continue with Ari",
+        style: "primary",
+        behavior: {
+          type: "submit",
+          message: `Use my answer for ${label}${WEBSITE_SETUP_SUBMISSION_SUFFIX}`,
+        },
+      },
+      {
+        id: "add-it-myself",
+        label: "Add it myself",
+        style: "secondary",
+        behavior: { type: "route", route: `/brand/${brandId}/edit` },
+      },
+    ],
+  } as AriRenditionV2;
+}
+
+/** #2830 P4 — the one question Ari asks for a Website field. */
+export function websiteSetupQuestion(
+  fieldKey: string,
+  field: Record<string, unknown>,
+): string {
+  return setupQuestion(fieldKey, field);
+}
+
+/** #2830 P4 — the owner label the canonical audit gives a field. */
+export function websiteSetupFieldLabel(
+  field: Record<string, unknown>,
+  fieldKey: string,
+): string {
+  return fieldLabel(field, fieldKey);
+}
+
+/**
+ * #2830 P4 — the upload handoff for logo / cover: Ari never adds media; the
+ * owner uploads in Brand details and Ari re-checks.
+ */
+export function websiteSetupUploadHandoff(fieldKey: string): {
+  actionLabel: string;
+  body: string;
+} | null {
+  const handoff = WEBSITE_SETUP_UPLOAD_HANDOFFS[fieldKey];
+  return handoff
+    ? { actionLabel: handoff.actionLabel, body: handoff.body }
+    : null;
+}
+
 function blockedPresentation(
   reply: string,
   title: string,

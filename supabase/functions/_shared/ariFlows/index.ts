@@ -12,6 +12,7 @@
 import type { ReadinessAction } from "../readinessCatalog.ts";
 import { brandBlockersStep, brandCanWaitStep, listWords } from "./brandGate.ts";
 import { moneyGateStep } from "./moneyGate.ts";
+import { WEBSITE_SETUP_FLOW } from "./websiteSetup.ts";
 import type {
   FlowContext,
   FlowDefinition,
@@ -166,6 +167,8 @@ export const FLOW_DEFINITIONS: readonly FlowDefinition[] = Object.freeze([
     subjectTools: ["create_stay_offering"],
     subjectTable: null,
   }),
+  // #2830 P4 — Website setup, the engine's first brand flow.
+  WEBSITE_SETUP_FLOW,
 ]);
 
 /**
