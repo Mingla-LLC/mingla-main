@@ -78,6 +78,7 @@ const FREE_RAIL_RAISE_TOKENS = [
   "event_not_selling",
   "occurrence_not_found",
   "occurrence_not_available",
+  "ticket_not_valid_on_chosen_days",
   "ticket_type_not_found",
   "ticket_type_unavailable",
   "ticket_sales_not_started",
