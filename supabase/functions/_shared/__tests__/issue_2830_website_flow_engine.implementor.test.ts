@@ -19,7 +19,12 @@ import {
   assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-import { runFlowStep, type RunnerOutcome } from "../ariFlows/runner.ts";
+import {
+  classifyFlowText,
+  runFlowStep,
+  type RunnerOutcome,
+  textChoiceFor,
+} from "../ariFlows/runner.ts";
 import type { FlowStore } from "../ariFlows/store.ts";
 import { FlowEngineUnavailable } from "../ariFlows/store.ts";
 import type {
@@ -39,6 +44,7 @@ import {
 } from "../ariFlows/websiteSetup.ts";
 import {
   decideFlowTurn,
+  flowSideFailureText,
   isWebsiteSetupRequest,
   parseFlowAnswer,
 } from "../ariFlows/edge.ts";
@@ -1184,8 +1190,20 @@ Deno.test("P4: while the owner's proposal is still open, a turn waits — no sec
   await step(w, store, run, form(run, { response: "hello@lantern.test" }));
   w.openProposal = true;
   run = await current(store);
+  // #3355: typed words while the change waits are told where it waits
+  // (no model round-trip, no second card); a real side question passes.
   const turn = await step(w, store, run, { trigger: "turn", ownerText: "hmm" });
-  assertEquals(turn.kind, "pass");
+  assertEquals(turn.kind, "notice");
+  assertMatch(
+    (turn as { text: string }).text,
+    /waiting on the confirmation card above/,
+  );
+  assertEquals((turn as { artefact: unknown }).artefact, null);
+  const aside = await step(w, store, await current(store), {
+    trigger: "turn",
+    ownerText: "What will the card say?",
+  });
+  assertEquals(aside.kind, "pass");
   assertEquals((await current(store)).current_artefact, null);
   // Cancelled (no open proposal): the same field is asked again.
   w.openProposal = false;
@@ -1311,7 +1329,10 @@ Deno.test("P4 parity: the agent-chat wiring only bypasses the pre-engine Website
     /websiteSetupWorkflow = body\.workflow_context === "website_setup" &&\s*!websiteEngine/,
   );
   assertMatch(chat, /websiteSetupIntent = activeBrand && !websiteEngine/);
-  assertMatch(chat, /if \(decision\.kind === "side"\) websiteEngine = true;/);
+  assertMatch(
+    chat,
+    /if \(decision\.kind === "side"\) \{\s*websiteEngine = true;/,
+  );
   const confirm = Deno.readTextFileSync(
     new URL("supabase/functions/agent-confirm-action/index.ts", ROOT),
   );
@@ -1367,12 +1388,13 @@ Deno.test("P4 first offering: trips and experiences are never created here (thei
   const card = asArtefact(await step(w, store, await startRun(store), {}));
   assertEquals(
     card.artefact.options.map((o) => o.id),
-    ["create:events", "not_now"],
+    ["create:events", "open", "not_now"],
   );
   assertMatch(
     card.artefact.text,
-    /Add your first trips and experiences from Mingla/,
+    /I can't add trips and experiences for you in this chat yet/,
   );
+  assertEquals(card.artefact.options[1].route, "/trip/create");
   const run = await current(store);
   const forged = await step(w, store, run, {
     trigger: "answer",
@@ -1665,4 +1687,209 @@ Deno.test("cert D8: opening Website setup is a structured request — a short ne
     chat,
     /await markEngineOriginTurn\(serviceClient, userId, attemptId\)/,
   );
+});
+
+// ── Live certification round 2 (local Sites stack, 8/8, 2026-11-01) ───────
+
+function edgeArgs(store: MemoryStore, message: string, w?: World) {
+  return {
+    ...(w ? { probes: probes(w) } : {}),
+    // deno-lint-ignore no-explicit-any
+    service: {} as any,
+    // deno-lint-ignore no-explicit-any
+    userClient: {} as any,
+    userId: OWNER,
+    brand: { id: BRAND, name: "Lantern" },
+    conversationId: CHAT,
+    message,
+    flowAnswer: null,
+    engineEnabled: true,
+    otherLaneActive: true,
+    websiteSetup: true,
+    store,
+  };
+}
+
+Deno.test("cert2 D1: a failed approval check brings the SAME live card back with its buttons", async () => {
+  const w = world(["approved_plan"]);
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(card.artefact.step_key, "approve");
+  const run = await current(store);
+  // The card's own "I've approved it, check now" button, nothing approved.
+  const checked = await step(w, store, run, choose(run, "check"));
+  assertEquals(checked.kind, "notice");
+  const notice = checked as Extract<RunnerOutcome, { kind: "notice" }>;
+  assertMatch(notice.text, /^I checked; your plan approval isn't there yet\./);
+  assertEquals(notice.represent, true, "the card comes back at the bottom");
+  assertEquals(notice.artefact?.artefact_id, card.artefact.artefact_id);
+  assertEquals(
+    notice.artefact?.options.map((o) => o.id).sort(),
+    ["check", "open"],
+  );
+  assertEquals(
+    (await current(store)).current_artefact?.artefact_id,
+    card.artefact.artefact_id,
+    "it stays the one current card",
+  );
+});
+
+Deno.test("cert2 D2: typed words that don't answer the card get a plain restatement and the same card — never the model", async () => {
+  const w = world(["design_key"]);
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(card.artefact.step_key, "look");
+  for (const typed of ["blue please", "done", "ok"]) {
+    const out = await step(w, store, await current(store), {
+      trigger: "turn",
+      ownerText: typed,
+    });
+    assertEquals(out.kind, "notice", typed);
+    const notice = out as Extract<RunnerOutcome, { kind: "notice" }>;
+    assertEquals(notice.represent, true, typed);
+    assertEquals(notice.unmatched, true, typed);
+    assertEquals(notice.artefact?.artefact_id, card.artefact.artefact_id);
+    assertMatch(notice.text, /We're on Website design:/);
+    assertEquals(w.openProposal, false, "nothing proposed");
+  }
+  // A genuine side question may still go to the model.
+  const aside = await step(w, store, await current(store), {
+    trigger: "turn",
+    ownerText: "What's the difference between the designs?",
+  });
+  assertEquals(aside.kind, "pass");
+  // decideFlowTurn: unmatched words are a reply with the card, not "side".
+  const decided = await decideFlowTurn(edgeArgs(store, "blue please", w));
+  assertEquals(decided.kind, "reply");
+  if (decided.kind === "reply") {
+    assertEquals(decided.artefact?.artefact_id, card.artefact.artefact_id);
+  }
+  // "Continue Website setup" still resumes with the card.
+  const resumed = await decideFlowTurn(
+    edgeArgs(store, "Continue Website setup", w),
+  );
+  assertEquals(resumed.kind, "reply");
+  if (resumed.kind === "reply") {
+    assertMatch(resumed.text, /^Picking up Website setup where we left off/);
+  }
+  // A side question is "side", and carries the card for a failed answer.
+  const side = await decideFlowTurn(
+    edgeArgs(store, "How long does it take?", w),
+  );
+  assertEquals(side.kind, "side");
+  if (side.kind === "side") {
+    assertEquals(side.artefact?.artefact_id, card.artefact.artefact_id);
+    assertMatch(
+      flowSideFailureText(side.artefact ?? null),
+      /^I couldn't answer that just now, and nothing was changed\. We're still on Website design:/,
+    );
+  }
+});
+
+Deno.test("cert2 D2: obvious intents are recognised — approved, skip, stop", async () => {
+  assertEquals(classifyFlowText("ok I've approved it now"), "done");
+  assertEquals(classifyFlowText("done"), "done");
+  assertEquals(classifyFlowText("can we skip this one?"), "not_now");
+  assertEquals(classifyFlowText("not now"), "not_now");
+  assertEquals(classifyFlowText("please stop"), "stop");
+  assertEquals(classifyFlowText("stop"), "stop");
+  assertEquals(classifyFlowText("don't cancel"), "other");
+  assertEquals(classifyFlowText("What does approve mean?"), "question");
+  assertEquals(classifyFlowText("blue please"), "other");
+  const handoff = {
+    options: [
+      { id: "open", label: "Open Brand details", route: "/x" },
+      { id: "check", label: "I've uploaded it, check now" },
+      { id: "not_now", label: "Not now, keep going" },
+    ],
+  } as unknown as Parameters<typeof textChoiceFor>[0];
+  assertEquals(textChoiceFor(handoff, "ok I've uploaded it now"), "check");
+  assertEquals(textChoiceFor(handoff, "can we skip this?"), "not_now");
+
+  // "stop" on a card with no stop button stops the run honestly.
+  const w = world(["approved_plan"]);
+  const store = new MemoryStore(OWNER);
+  await step(w, store, await startRun(store), {});
+  const stopped = await step(w, store, await current(store), {
+    trigger: "turn",
+    ownerText: "stop",
+  });
+  assertEquals(stopped.kind, "cancelled");
+  assertMatch((stopped as { text: string }).text, /Nothing was changed/);
+  assertEquals((await current(store)).status, "cancelled");
+});
+
+Deno.test("cert2 D2: agent-chat never strands the flow when a side answer fails", () => {
+  const chat = Deno.readTextFileSync(
+    new URL("supabase/functions/agent-chat/index.ts", ROOT),
+  );
+  assertMatch(chat, /flowSide = \{\s*artefact: decision\.artefact \?\? null,/);
+  assertMatch(chat, /if \(sideModelFailed\) return await flowSideFailure\(\);/);
+  assertMatch(
+    chat,
+    /if \(sideModelFailed && loopResult\.kind === "stopped"\) \{\s*return await flowSideFailure\(\);/,
+  );
+  assertMatch(
+    chat,
+    /if \(flowSide && !\(err instanceof AriAttachmentError\)\) \{[\s\S]{0,300}return await flowSideFailure\(\);/,
+  );
+});
+
+Deno.test("cert2 D4: a trips-only brand is told plainly that part 7 is skipped, why, and where to add a trip", async () => {
+  const w = world([], { site: { id: SITE }, built: true });
+  w.fields.get("offerings_selected")!.value = ["trips"];
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(card.artefact.step_key, "first_offering");
+  assertMatch(
+    card.artefact.text,
+    /I can't add trips for you in this chat yet, so I'm skipping this part for now\./,
+  );
+  assertMatch(card.artefact.text, /add your first trip yourself in Mingla/);
+  assertEquals(card.artefact.options, [
+    { id: "open", label: "Add my first trip", route: "/trip/create" },
+    { id: "not_now", label: "Skip for now, keep going" },
+  ]);
+  const run = await current(store);
+  const next = await step(w, store, run, choose(run, "not_now"));
+  assertEquals(next.kind, "artefact");
+  assertMatch((next as { text: string }).text, /no offering for now/);
+  assertEquals(
+    (await current(store)).step_states.first_offering.state,
+    "skipped",
+  );
+});
+
+Deno.test("cert2 D4: a part 7 the plan already ticks is never passed silently", async () => {
+  const w = readyToPublish();
+  w.fields.get("offerings_selected")!.value = ["trips"];
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(card.artefact.step_key, "publish");
+  assertMatch(
+    card.text,
+    /Your first trip is already on Mingla, so that part of your Website plan is done\./,
+  );
+  // Said once: the next read does not repeat it.
+  const again = await step(w, store, await current(store), {
+    trigger: "resume",
+  });
+  assertNotMatch(
+    JSON.stringify(again),
+    /already on Mingla/,
+  );
+});
+
+Deno.test("cert2 D6: the logo handoff offers the in-chat upload first and Brand details second", async () => {
+  const w = world(["profile_photo"]);
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(card.artefact.kind, "handoff");
+  assertEquals(card.artefact.handoff?.item_key, "profile_photo");
+  assertMatch(card.artefact.text, /Choose your file here in the chat/);
+  assertMatch(card.artefact.text, /Ari never adds media for you/);
+  const open = card.artefact.options.find((o) => o.id === "open");
+  assertEquals(open?.label, "Open Brand details");
+  assertEquals(open?.route, `/brand/${BRAND}/edit?section=photo`);
+  assert(card.artefact.options.some((o) => o.id === "check"));
 });

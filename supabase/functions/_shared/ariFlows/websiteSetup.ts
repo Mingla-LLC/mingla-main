@@ -591,10 +591,12 @@ function uploadAsk(ctx: FlowContext, fieldKey: string, field: Json): AskSpec {
     kind: "handoff",
     reuse_key: `website:handoff:${fieldKey}`,
     title: upload.actionLabel,
+    // #3355 — the Host shows an upload card on this handoff (the same
+    // pickers Brand details uses); Brand details stays the second way.
     text:
-      `${label} is an upload only you can add — Ari never adds media for you. Open Brand details, add it and save, then tell me and I'll check.`,
+      `${label} is an upload only you can add — Ari never adds media for you. Choose your file here in the chat, or open Brand details, add it and save. I'll check it's there before we move on.`,
     options: [
-      ...(route ? [{ id: "open", label: upload.actionLabel, route }] : []),
+      ...(route ? [{ id: "open", label: "Open Brand details", route }] : []),
       { id: "check", label: "I've uploaded it, check now" },
       ...(canSetAside(field)
         ? [{ id: "not_now", label: "Not now, keep going" }]
@@ -1123,6 +1125,8 @@ const OFFERING_KINDS: ReadonlyArray<{
   noun: string;
   request: string;
   ari_creates: boolean;
+  /** #3355 — where the owner adds one themselves (the Host creator). */
+  route?: string;
 }> = [
   {
     plan: "events",
@@ -1130,12 +1134,19 @@ const OFFERING_KINDS: ReadonlyArray<{
     request: "Create an event",
     ari_creates: true,
   },
-  { plan: "trips", noun: "trip", request: "Create a trip", ari_creates: false },
+  {
+    plan: "trips",
+    noun: "trip",
+    request: "Create a trip",
+    ari_creates: false,
+    route: "/trip/create",
+  },
   {
     plan: "experiences",
     noun: "experience",
     request: "Create an experience",
     ari_creates: false,
+    route: "/experience/create",
   },
 ];
 
@@ -1143,6 +1154,26 @@ function chosenKinds(plan: Json): typeof OFFERING_KINDS[number][] {
   const chosen = fieldOf(plan, "offerings_selected").value;
   const keys = Array.isArray(chosen) ? chosen : [];
   return OFFERING_KINDS.filter((kind) => keys.includes(kind.plan));
+}
+
+/**
+ * #3355 — why "Add your first trip or event" is already done, in the
+ * owner's words (the plan ticks it when every chosen kind already has a
+ * public offering, or when the owner skipped it on the plan).
+ */
+function firstOfferingDoneNote(plan: Json): string {
+  const part = parts(plan).find((candidate) =>
+    candidate.key === "first_offering"
+  );
+  if (part?.skipped === true) {
+    return "You chose to skip adding a first offering on your Website plan, so I'm moving on. You can add one anytime.";
+  }
+  const nouns = chosenKinds(plan).map((kind) => kind.noun);
+  return nouns.length > 0
+    ? `Your first ${
+      listWords(nouns)
+    } is already on Mingla, so that part of your Website plan is done.`
+    : "That part of your Website plan is already done.";
 }
 
 const firstOfferingStep: StepDefinition = {
@@ -1156,8 +1187,12 @@ const firstOfferingStep: StepDefinition = {
     const plan = await readPlan(ctx);
     if (!plan) return unavailableAsk("first_offering");
     if (websitePartDone(plan, "first_offering")) {
+      // #3355 — never pass this part silently: say why it is already done.
       return {
         done: true,
+        ...(ctx.state?.state === "done"
+          ? {}
+          : { note: firstOfferingDoneNote(plan) }),
         evidence: planEvidence(plan, { first_offering: true }),
       };
     }
@@ -1214,8 +1249,9 @@ const firstOfferingStep: StepDefinition = {
     }
     const nouns = kinds.map((candidate) => candidate.noun);
     const creatable = kinds.filter((candidate) => candidate.ari_creates);
-    const elsewhere = kinds.filter((candidate) => !candidate.ari_creates)
-      .map((candidate) => `${candidate.noun}s`);
+    const elsewhere = kinds.filter((candidate) => !candidate.ari_creates);
+    const elsewhereNouns = elsewhere.map((candidate) => candidate.noun);
+    const addYourself = elsewhere.find((candidate) => candidate.route);
     return {
       done: false,
       ask: {
@@ -1231,10 +1267,17 @@ const firstOfferingStep: StepDefinition = {
               listWords(creatable.map((candidate) => candidate.noun))
             } now — I'll ask you for every detail and won't fill any in for you.`
             : "",
+          // #3355 — say plainly what Ari is skipping and why (trips and
+          // experiences are added in Mingla until Ari can ask for every
+          // detail itself), and where to add one.
           elsewhere.length > 0
-            ? `Add your first ${
-              listWords(elsewhere)
-            } from Mingla when you're ready.`
+            ? `I can't add ${
+              listWords(elsewhereNouns.map((noun) => `${noun}s`))
+            } for you in this chat yet, so ${
+              creatable.length > 0 ? "that part is" : "I'm skipping this part"
+            } for now. It stays on your Website plan: add your first ${
+              listWords(elsewhereNouns)
+            } yourself in Mingla whenever you're ready, and your Website shows it once it's published.`
             : "",
         ].filter(Boolean).join(" "),
         options: [
@@ -1242,7 +1285,19 @@ const firstOfferingStep: StepDefinition = {
             id: `create:${candidate.plan}`,
             label: `Create my first ${candidate.noun}`,
           })),
-          { id: "not_now", label: "Not now" },
+          ...(addYourself?.route
+            ? [{
+              id: "open",
+              label: `Add my first ${addYourself.noun}`,
+              route: addYourself.route,
+            }]
+            : []),
+          {
+            id: "not_now",
+            label: creatable.length > 0
+              ? "Not now"
+              : "Skip for now, keep going",
+          },
         ],
         record: {},
       },

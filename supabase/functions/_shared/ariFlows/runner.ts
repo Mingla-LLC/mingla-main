@@ -78,6 +78,11 @@ export type RunnerOutcome =
      * artefact id, so it stays the one answerable card).
      */
     represent?: boolean;
+    /**
+     * #3355 — the owner's typed words were not an answer to the open card;
+     * the words restate what Ari is waiting for.
+     */
+    unmatched?: boolean;
     run: FlowRun;
   }
   /** Nothing new (resume / reload): the current card is the answer. */
@@ -125,6 +130,47 @@ const NOT_NOW_TEXT =
   /^(?:not\s+now|skip(?:\s+(?:it|them|this|that|those))?|later|maybe later|keep going|carry on|go ahead|no thanks)\b/i;
 const STOP_TEXT = /^(?:stop|cancel|never\s?mind|forget\s+it)\b/i;
 
+/**
+ * A real question asked aside ("what's a good description?"). Only these
+ * may leave the flow for the model while a card is open.
+ */
+const SIDE_QUESTION =
+  /\?\s*$|^(?:how|what|what[’']?s|why|where|when|which|who|can|could|should|do|does|is|are|will|would)\b/i;
+// Obvious intents said in passing, in a short reply ("ok I've approved it
+// now", "please skip this one", "can we stop here").
+const SHORT_REPLY = 80;
+const DONE_IN_PASSING =
+  /\b(?:i[’']?ve|i have|i)\s+(?:just\s+|now\s+|already\s+)?(?:uploaded|added|approved|saved|finished|done|fixed|connected|accepted)\b/i;
+const SKIP_IN_PASSING = /\b(?:skip|not now|later)\b/i;
+const STOP_IN_PASSING =
+  /\b(?:stop|cancel)(?:\s+(?:this|that|it|here|now|setup|website setup|for now|please))*\s*[.!]*$/i;
+const NEGATED = /\b(?:don[’']?t|do not|never|no need to)\b/i;
+
+export type FlowTextIntent = "done" | "not_now" | "stop" | "question" | "other";
+
+/**
+ * #3355 — what a typed reply means while a card is open. Intents come before
+ * the question test: "can we skip this?" is a skip, not a side question.
+ */
+export function classifyFlowText(text: string | undefined): FlowTextIntent {
+  const normalized = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "other";
+  const short = normalized.length <= SHORT_REPLY &&
+    !NEGATED.test(normalized);
+  if (
+    STOP_TEXT.test(normalized) || (short && STOP_IN_PASSING.test(normalized))
+  ) return "stop";
+  if (
+    NOT_NOW_TEXT.test(normalized) ||
+    (short && SKIP_IN_PASSING.test(normalized))
+  ) return "not_now";
+  if (
+    DONE_CLAIM.test(normalized) || (short && DONE_IN_PASSING.test(normalized))
+  ) return "done";
+  if (SIDE_QUESTION.test(normalized)) return "question";
+  return "other";
+}
+
 /** Map a typed reply onto the open card's choices, when it is plainly one. */
 export function textChoiceFor(
   artefact: FlowArtefact | null,
@@ -133,17 +179,43 @@ export function textChoiceFor(
   if (!artefact || !text) return null;
   const normalized = text.replace(/\s+/g, " ").trim();
   const has = (id: string) => artefact.options.some((o) => o.id === id);
-  if (DONE_CLAIM.test(normalized) && has("check")) return "check";
-  if (NOT_NOW_TEXT.test(normalized)) {
-    if (has("not_now")) return "not_now";
-    if (has("continue")) return "continue";
-  }
-  if (STOP_TEXT.test(normalized) && has("cancel")) return "cancel";
   const exact = artefact.options.find((option) =>
     option.label.toLowerCase() === normalized.toLowerCase()
   );
-  return exact?.id ?? null;
+  if (exact) return exact.id;
+  switch (classifyFlowText(normalized)) {
+    case "done":
+      return has("check") ? "check" : null;
+    case "not_now":
+      if (has("not_now")) return "not_now";
+      if (has("continue")) return "continue";
+      return null;
+    case "stop":
+      return has("cancel") ? "cancel" : null;
+    default:
+      return null;
+  }
 }
+
+/**
+ * #3355 — typed words that are not an answer to the open card: say plainly
+ * what Ari is waiting for; the same card comes back under the words.
+ */
+export function waitingText(
+  artefact: FlowArtefact,
+  intent: FlowTextIntent,
+): string {
+  const lead = intent === "not_now"
+    ? "This step can't be skipped, so I've kept it here."
+    : intent === "done"
+    ? "There's nothing for me to check on this step — it's answered right here in the chat."
+    : "I didn't catch that as an answer to this step, so nothing was changed.";
+  return `${lead} We're on ${artefact.title}:\n\n${artefact.text}`;
+}
+
+/** #3355 — a protected change is waiting on its confirmation card. */
+export const WAITING_ON_PROPOSAL_TEXT =
+  "Your change is waiting on the confirmation card above. Approve it there to save it, or cancel it — nothing is saved until you do.";
 
 function stepIndex(def: FlowDefinition, key: string | null): number {
   return key ? def.steps.findIndex((step) => step.key === key) : -1;
@@ -515,6 +587,21 @@ async function advanceUnderLease(
     }
     if ("wait" in probe) {
       run = await commit({});
+      // #3355 — typed words while a protected change waits on its card:
+      // a side question may go to the model; anything else is told where
+      // the change is waiting (no model round-trip, nothing saved).
+      if (
+        input.trigger === "turn" && input.ownerText?.trim() &&
+        classifyFlowText(input.ownerText) !== "question"
+      ) {
+        return {
+          kind: "notice",
+          text: WAITING_ON_PROPOSAL_TEXT,
+          artefact: null,
+          unmatched: true,
+          run,
+        };
+      }
       return input.trigger === "turn"
         ? { kind: "pass", run }
         : lines.length > 0
@@ -613,6 +700,37 @@ async function advanceUnderLease(
             } isn't there yet. Here's the same step whenever you're ready.`,
           artefact: open,
           represent: true,
+          run,
+        };
+      }
+      if (input.trigger === "turn" && open && input.ownerText?.trim()) {
+        // #3355 — the flow owns this chat. Only a genuine side question
+        // goes to the model; anything else gets plain words and the same
+        // card back at the bottom, never a model round-trip.
+        const intent = classifyFlowText(input.ownerText);
+        if (intent === "question") return { kind: "pass", run };
+        if (intent === "stop") {
+          patch.status = "cancelled";
+          patch.current_artefact = null;
+          patch.current_question_id = null;
+          run = await commit({});
+          return {
+            kind: "cancelled",
+            text:
+              "Okay, I've stopped here. Nothing was changed, and everything you already saved stays saved. You can pick this up again anytime.",
+            run,
+          };
+        }
+        return {
+          kind: "notice",
+          text: ownerSafe(
+            waitingText(open, intent),
+            open.text,
+            "flow_waiting",
+          ),
+          artefact: open,
+          represent: true,
+          unmatched: true,
           run,
         };
       }

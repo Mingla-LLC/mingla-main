@@ -310,7 +310,15 @@ export type FlowTurnDecision =
    * #2830 P4: not the engine's turn, but the engine owns this chat's Website
    * setup — the pre-engine Website lanes must stay out of it.
    */
-  | { kind: "side"; state: FlowStateView | null };
+  | {
+    kind: "side";
+    state: FlowStateView | null;
+    /**
+     * #3355 — the card the owner is on. If the side answer fails, it comes
+     * back with plain words instead of an error (the flow is never stranded).
+     */
+    artefact?: FlowArtefact | null;
+  };
 
 function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
   const state = flowStateOf(outcome.run);
@@ -396,6 +404,8 @@ export interface FlowTurnArgs {
   websiteSetup?: boolean;
   /** Test seam. */
   store?: FlowStore;
+  /** Test seam: the canonical reads. */
+  probes?: FlowProbeDeps;
 }
 
 /**
@@ -445,7 +455,7 @@ export async function decideFlowTurn(
   const store = args.store ?? createFlowStore(args.service, args.userId);
   const deps = {
     store,
-    probes: buildFlowProbeDeps(
+    probes: args.probes ?? buildFlowProbeDeps(
       args.userClient,
       args.brand.id,
       args.userId,
@@ -468,27 +478,35 @@ export async function decideFlowTurn(
       );
     }
     if (live) {
-      const decision = decisionFromOutcome(
-        await runFlowStep(deps, {
-          run: live,
-          trigger: "turn",
-          ownerText: args.message,
-          brandName: args.brand.name,
-        }),
-      );
+      const outcome = await runFlowStep(deps, {
+        run: live,
+        trigger: "turn",
+        ownerText: args.message,
+        brandName: args.brand.name,
+      });
+      const website = live.flow_key === WEBSITE_SETUP_FLOW_KEY;
+      // #2830 P4: "Start / continue Website setup" points at the open card.
       if (
-        live.flow_key !== WEBSITE_SETUP_FLOW_KEY || decision.kind !== "none"
+        website && outcome.kind === "notice" && outcome.unmatched &&
+        isWebsiteSetupRequest(args.message)
       ) {
-        return decision;
+        return resumeWebsiteReply(outcome.run);
       }
-      // #2830 P4: the engine owns this chat's Website setup. "Start /
-      // continue Website setup" points at the open card; anything else is a
-      // side question for the normal lanes, never the pre-engine Website job.
-      const state = flowStateOf(live);
+      const decision = decisionFromOutcome(outcome);
+      if (!website || decision.kind !== "none") return decision;
+      // The engine owns this chat's Website setup: anything else is a side
+      // question for the normal lanes, never the pre-engine Website job.
       if (isWebsiteSetupRequest(args.message)) {
         return resumeWebsiteReply(live);
       }
-      return { kind: "side", state };
+      const current = LIVE_FLOW_STATUSES.has(outcome.run.status)
+        ? outcome.run
+        : live;
+      return {
+        kind: "side",
+        state: flowStateOf(current),
+        artefact: current.current_artefact,
+      };
     }
     if (websiteMode) {
       // A finished Website setup in this chat is not restarted by every
@@ -497,7 +515,7 @@ export async function decideFlowTurn(
         run && run.flow_key === WEBSITE_SETUP_FLOW_KEY &&
         !isWebsiteSetupRequest(args.message)
       ) {
-        return { kind: "side", state: flowStateOf(run) };
+        return { kind: "side", state: flowStateOf(run), artefact: null };
       }
       return await startWebsiteSetup(args, store, deps);
     }
@@ -780,4 +798,15 @@ export async function markEngineOriginTurn(
   } catch (_error) {
     return false;
   }
+}
+
+/**
+ * #3355 — a side question's answer failed (the model could not finish).
+ * The flow is never stranded on an error: the owner gets plain words and
+ * the card they were on, at the bottom of the chat.
+ */
+export function flowSideFailureText(artefact: FlowArtefact | null): string {
+  return artefact
+    ? `I couldn't answer that just now, and nothing was changed. We're still on ${artefact.title}:\n\n${artefact.text}`
+    : "I couldn't answer that just now, and nothing was changed. Your setup is still where we left it.";
 }

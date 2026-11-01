@@ -172,6 +172,7 @@ import {
   decideFlowTurn,
   flowChoices,
   flowReplyStructured,
+  flowSideFailureText,
   type FlowStateView,
   isWebsiteSetupRequest,
   markEngineOriginTurn,
@@ -1787,6 +1788,35 @@ async function handle(req: Request): Promise<Response> {
     // pre-engine Website lanes (durable Fix-all job, text-shaped answers)
     // stay out of the turn. Flag off or migration missing: unchanged.
     let websiteEngine = false;
+    // #3355 — the Website setup card a side question was asked from. If the
+    // model cannot answer, the card comes back with plain words (never an
+    // error that strands the flow).
+    let flowSide: {
+      artefact: FlowArtefact | null;
+      state: FlowStateView | null;
+    } | null = null;
+    const flowSideFailure = (): Promise<Response> => {
+      const sideChoices = flowSide?.artefact
+        ? flowChoices(flowSide.artefact)
+        : undefined;
+      return commitTextTurn({
+        client: serviceClient,
+        userId,
+        conversationId,
+        clientTurnId: body.client_turn_id,
+        previousState: taskState,
+        nextState: taskState,
+        expectedRevision: taskStateRevision,
+        previousSummary: conversationSummary,
+        text: flowSideFailureText(flowSide?.artefact ?? null),
+        classification: "flow_engine_side_failed",
+        startedAt: turnStartedAt,
+        ...(sideChoices ? { choices: sideChoices } : {}),
+        ...flowReplyStructured(flowSide?.artefact ?? null),
+        flowArtefact: flowSide?.artefact ?? null,
+        flowState: flowSide?.state ?? null,
+      });
+    };
     if (activeBrand && !choiceSubmission) {
       const otherLaneActive = body.workflow_context === "website_setup" ||
         (taskState.active_task !== null &&
@@ -1804,7 +1834,13 @@ async function handle(req: Request): Promise<Response> {
         websiteSetup: body.workflow_context === "website_setup" ||
           isWebsiteSetupRequest(semanticMessage),
       });
-      if (decision.kind === "side") websiteEngine = true;
+      if (decision.kind === "side") {
+        websiteEngine = true;
+        flowSide = {
+          artefact: decision.artefact ?? null,
+          state: decision.state,
+        };
+      }
       if (decision.kind === "propose") {
         // #2830 P4: the owner's card answer becomes ONE protected proposal
         // (server-built args against a fresh read). Nothing is written
@@ -2963,7 +2999,8 @@ ${boundedAgentContext}
         ? deterministicRead.calls
         : [];
       let lastProgressEvent: string | null = null;
-      const loopResult = await runAgentLoop({
+      let sideModelFailed = false;
+      const loopRun = runAgentLoop({
         // #3355 local verification uses a device-resident model. Preserve the
         // production 55s budget, but allow the explicitly enabled loopback
         // lane enough time for its first prompt compilation and one observed
@@ -3095,15 +3132,23 @@ ${boundedAgentContext}
             });
           }
           emitAriPhase("model_start", { operationState: "sending" });
-          const model = await callGemini({
-            systemPrompt: loopSystemPrompt,
-            contents: [...contents, ...observationContents],
-            tools: selectedTools.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            })),
-          });
+          let model: Awaited<ReturnType<typeof callGemini>>;
+          try {
+            model = await callGemini({
+              systemPrompt: loopSystemPrompt,
+              contents: [...contents, ...observationContents],
+              tools: selectedTools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+              })),
+            });
+          } catch (modelError) {
+            if (flowSide && !(modelError instanceof AriAttachmentError)) {
+              sideModelFailed = true;
+            }
+            throw modelError;
+          }
           return {
             textResponse: model.textResponse,
             toolCalls: model.toolCalls,
@@ -3314,6 +3359,20 @@ ${boundedAgentContext}
             error.code === "TURN_STOPPED"),
         }),
       });
+      let loopResult: Awaited<typeof loopRun>;
+      try {
+        loopResult = await loopRun;
+      } catch (loopError) {
+        // #3355 — a side question asked while Website setup owns the chat:
+        // the model failing never strands the flow.
+        if (sideModelFailed) return await flowSideFailure();
+        throw loopError;
+      }
+      // The loop turns a model failure into a stop; during Website setup
+      // that is the same plain words and the current card.
+      if (sideModelFailed && loopResult.kind === "stopped") {
+        return await flowSideFailure();
+      }
 
       if (loopResult.kind === "proposal") {
         if (activeEventPlan && !websiteSetupBoundary) {
@@ -3636,6 +3695,21 @@ ${boundedAgentContext}
         })),
       });
     } catch (err: any) {
+      // #3355 — a side question during Website setup: plain words and the
+      // card the owner was on, never an error that strands the flow.
+      if (flowSide && !(err instanceof AriAttachmentError)) {
+        try {
+          await assertAttemptRunning(
+            serviceClient,
+            attemptId,
+            userId,
+            attemptNumber,
+          );
+          return await flowSideFailure();
+        } catch (_stopped) {
+          // Stopped meanwhile: the ordinary failure path below says so.
+        }
+      }
       await failAttempt({
         client: serviceClient,
         attemptId,
