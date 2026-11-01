@@ -22,6 +22,7 @@ import {
 import { useShareNetworkState } from "../components/ui/useShareNetworkState";
 import { agentQueryKeys } from "./agentQueryKeys";
 import { brandKeys } from "./brandKeys";
+import { brandReadinessKeys } from "./brandReadinessKeys";
 import { creatorAccountKeys } from "./creatorAccountKeys";
 import { brandHoursKeys } from "./useBrandHours";
 import { brandDiscoveryCurrencyKeys } from "./useBrandDiscoveryCurrency";
@@ -83,6 +84,21 @@ export function useConfirmPendingAction(
           ) {
             qc.invalidateQueries({ queryKey: creatorAccountKeys.all });
           }
+        }
+        // #3355 P5 — Ari's brand-context and "not now" writes change the
+        // canonical readiness Home shows; re-read it (nested under the brand
+        // detail key, so this also refreshes the brand record).
+        if (
+          response.tool_name === "update_brand_context" ||
+          response.tool_name === "record_brand_context_finding" ||
+          response.tool_name === "defer_readiness_item" ||
+          response.tool_name === "undefer_readiness_item"
+        ) {
+          qc.invalidateQueries({
+            queryKey: brandId
+              ? brandReadinessKeys.brand(brandId)
+              : brandKeys.details(),
+          });
         }
         if (response.tool_name === "manage_brand_hours" && brandId) {
           qc.invalidateQueries({ queryKey: brandHoursKeys.byBrand(brandId) });

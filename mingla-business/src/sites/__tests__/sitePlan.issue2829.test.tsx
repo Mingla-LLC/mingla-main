@@ -96,7 +96,8 @@ describe("#2829 W9a Home to-do row", () => {
     counts: { total: 1, live: 1, draft: 0 }, stripeActive: false, hasDraftPaidOffering: false,
     stripeRoute: "/stripe", draftRoute: null, venueClaimPending: false, venueListingRoute: "",
     venueClaimOpenFeedbackCount: 0, venueFeedbackRoute: "",
-    profile: { needsCover: true, needsPhoto: false, needsTagline: false, needsDescription: false, needsAddress: false, needsEmail: false, needsPhone: false, needsSocials: false, editRoute: "/brand/x/edit" },
+    // #3355 P5 — profile rows come from the canonical readiness read.
+    brandReadiness: { status: "ready", brandId: "x", editRoute: "/brand/x/edit", hideBrandRows: false, items: [{ key: "cover_media", state: "missing", canCallerFix: true, whoCanFix: "a brand admin or the owner" }] },
   };
 
   it("sits after getting paid and before profile polish, with the design contract's words", () => {

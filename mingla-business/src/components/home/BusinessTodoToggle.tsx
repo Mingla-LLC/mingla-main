@@ -40,6 +40,7 @@ import { useTodoToggleCollapseStore } from "../../store/todoToggleCollapseStore"
 import type { BusinessTodo } from "../../utils/businessTodos";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
+import { TodoReadinessRetry } from "./TodoReadinessRetry";
 
 if (
   Platform.OS === "android" &&
@@ -118,51 +119,86 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
         // would bury the dashboard with rows running off-screen unscrollably.
         <TodoListOwner presentation={presentation} testID={testID}>
           {todos.map((todo, index) => (
-            <Pressable
+            // #3355 P5 — the row is a container: the tappable main area, and
+            // beside it (on the readiness-error row only) a "Try again"
+            // button of its own (never a button inside a button).
+            <View
               key={todo.id}
-              onPress={() => onAction(todo)}
-              accessibilityRole="button"
-              accessibilityLabel={
-                todo.badge !== undefined
-                  ? todo.sublabel !== undefined
-                    ? `${todo.label}, ${todo.badge}. ${todo.sublabel}`
-                    : `${todo.label}, ${todo.badge}`
-                  : todo.sublabel !== undefined
-                    ? `${todo.label}. ${todo.sublabel}`
-                    : todo.label
-              }
               style={[styles.row, index === 0 && styles.rowFirst]}
               testID={testID !== undefined ? `${testID}-row-${todo.id}` : undefined}
             >
-              <View style={styles.rowText}>
-                <Text style={styles.rowLabel}>{todo.label}</Text>
-                {todo.sublabel !== undefined ? (
-                  <Text style={styles.rowSublabel}>{todo.sublabel}</Text>
-                ) : null}
-              </View>
-              {/* ORCH-1064 — worded count pill (e.g. "3 to fix") for the
-                  venue-claim-feedback row; decorative-within-the-button (count is
-                  already folded into the row's accessibilityLabel above). */}
-              {todo.badge !== undefined ? (
+              {todo.action.kind === "info" ? (
+                // #3355 P5 (C9) — a row this member cannot act on: plain text
+                // that says who can, no chevron, no tap (never a dead button).
                 <View
-                  style={styles.badge}
-                  testID={
-                    testID !== undefined
-                      ? `${testID}-row-${todo.id}-badge`
-                      : undefined
-                  }
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={rowAccessibilityLabel(todo)}
+                  style={styles.rowMain}
+                  testID={testID !== undefined ? `${testID}-row-${todo.id}-info` : undefined}
                 >
-                  <Text style={styles.badgeText}>{todo.badge}</Text>
+                  <RowText todo={todo} />
                 </View>
+              ) : (
+                <Pressable
+                  onPress={() => onAction(todo)}
+                  accessibilityRole="button"
+                  accessibilityLabel={rowAccessibilityLabel(todo)}
+                  style={styles.rowMain}
+                  testID={testID !== undefined ? `${testID}-row-${todo.id}-open` : undefined}
+                >
+                  <RowText todo={todo} />
+                  {/* ORCH-1064 — worded count pill (e.g. "3 to fix") for the
+                      venue-claim-feedback row; decorative-within-the-button (count is
+                      already folded into the row's accessibilityLabel above). */}
+                  {todo.badge !== undefined ? (
+                    <View
+                      style={styles.badge}
+                      testID={
+                        testID !== undefined
+                          ? `${testID}-row-${todo.id}-badge`
+                          : undefined
+                      }
+                    >
+                      <Text style={styles.badgeText}>{todo.badge}</Text>
+                    </View>
+                  ) : null}
+                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                </Pressable>
+              )}
+              {todo.retryReadinessBrandId !== undefined ? (
+                <TodoReadinessRetry
+                  brandId={todo.retryReadinessBrandId}
+                  testID={testID !== undefined ? `${testID}-row-${todo.id}-retry` : undefined}
+                />
               ) : null}
-              <Icon name="chevR" size={16} color={textTokens.tertiary} />
-            </Pressable>
+            </View>
           ))}
         </TodoListOwner>
       ) : null}
     </GlassCard>
   );
 };
+
+const rowAccessibilityLabel = (todo: BusinessTodo): string =>
+  todo.badge !== undefined
+    ? todo.sublabel !== undefined
+      ? `${todo.label}, ${todo.badge}. ${todo.sublabel}`
+      : `${todo.label}, ${todo.badge}`
+    : todo.sublabel !== undefined
+      ? `${todo.label}. ${todo.sublabel}`
+      : todo.label;
+
+function RowText({ todo }: { todo: BusinessTodo }): React.ReactElement {
+  return (
+    <View style={styles.rowText}>
+      <Text style={styles.rowLabel}>{todo.label}</Text>
+      {todo.sublabel !== undefined ? (
+        <Text style={styles.rowSublabel}>{todo.sublabel}</Text>
+      ) : null}
+    </View>
+  );
+}
 
 function TodoListOwner({ presentation, testID, children }: {
   presentation: "bounded" | "page-flow";
@@ -213,6 +249,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.10)",
+    gap: spacing.sm,
+  },
+  rowMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
   rowFirst: {

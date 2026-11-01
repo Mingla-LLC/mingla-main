@@ -18,7 +18,6 @@ import { useCurrentBrand } from "./useCurrentBrand";
 import { useCurrentBrandRecovery } from "./useCurrentBrandRecovery";
 import { useServerDraftsForBrand } from "./useServerDraftEvents";
 import { useUpcomingForBrand } from "./useUpcomingForBrand";
-import { isBrandChargeReady, isBrandPayoutReady } from "../utils/brandPayout";
 import {
   useCurrentBrandStore,
   useCurrentBrandHasHydrated,
@@ -28,11 +27,13 @@ import {
   draftVenueInProgress,
   useVenueDraftEntriesForBrand,
 } from "../store/draftVenueStore";
-import { deriveBrandProfileTodoInput } from "../utils/brandProfileCompleteness";
+import { useBrandReadiness } from "./useBrandReadiness";
+import { toHomeBrandReadiness } from "../utils/homeBrandReadiness";
 import { useInsightsNudgeInputs } from "./useGrowthToolsReads";
 import {
   buildBusinessTodos,
   type BusinessTodo,
+  type BusinessTodoBrandReadiness,
   type BusinessTodoInput,
   type InsightsNudgeTodo,
   type VenueOrderCompletenessTodo,
@@ -203,21 +204,37 @@ export function useBusinessTodos(): BusinessTodo[] {
     hasAnyFollowUp,
   );
 
-  // ORCH-1256 — brand-profile completeness input (band 6, tail rows). Derived
-  // ONLY once a brand is selected AND its record has resolved: `currentBrand`
-  // is null until useBrand's fetch settles, and the extra `!isBrandResolving`
-  // guard is belt-and-braces for the ORCH-1100 RC-1 hydration window — so no
-  // profile row can ever render (or flash) for a null/resolving brand.
-  const profile = useMemo(
+  // #3355 P5 — brand profile + money rows come from the ONE canonical server
+  // read (brand_readiness), the same answer Ari reads (C1/C2/C4/C8). Asked
+  // ONLY once a brand is selected AND resolved, so no row can flash for a
+  // null/resolving brand; while it loads no brand/money row shows (a row must
+  // be a true statement). Scanners see none of these rows (C9); other roles
+  // see the rows they cannot fix labelled with who can.
+  const readinessBrandId =
+    currentBrand !== null && !isBrandResolving ? currentBrand.id : null;
+  const readinessQuery = useBrandReadiness(readinessBrandId);
+  const readinessData = readinessQuery.data;
+  const readinessFailed = readinessQuery.isError && readinessData === undefined;
+  const brandReadiness = useMemo<BusinessTodoBrandReadiness | undefined>(
     () =>
-      currentBrand !== null && !isBrandResolving
-        ? {
-            ...deriveBrandProfileTodoInput(currentBrand),
-            editRoute: `/brand/${currentBrand.id}/edit`,
-          }
-        : undefined,
-    [currentBrand, isBrandResolving],
+      toHomeBrandReadiness({
+        brandId: readinessBrandId,
+        readiness: readinessData,
+        readinessFailed,
+        role: payoutRole.role,
+        roleLoading: payoutRole.isLoading,
+      }),
+    [
+      readinessBrandId,
+      readinessData,
+      readinessFailed,
+      payoutRole.role,
+      payoutRole.isLoading,
+    ],
   );
+  // Only read by the money band once `brandReadiness` is ready.
+  const canSell = readinessData?.money.canSell ?? false;
+  const canBePaidOut = readinessData?.money.canBePaidOut ?? false;
 
   const venueClaims = useMemo<VenueTodoClaim[]>(() => {
     if (currentBrand === null) return [];
@@ -356,8 +373,10 @@ export function useBusinessTodos(): BusinessTodo[] {
           live: upcoming.counts.live,
           draft: upcoming.counts.draft,
         },
-        stripeActive: isBrandChargeReady(currentBrand),
-        payoutReady: isBrandPayoutReady(currentBrand),
+        // #3355 P5 (C8) — the server's can_sell / can_be_paid_out. The money
+        // band only renders once `brandReadiness` is ready.
+        stripeActive: canSell,
+        payoutReady: canBePaidOut,
         payoutAttention,
         hasDraftPaidOffering: hasAnyDraftPaidOffering(drafts),
         stripeRoute:
@@ -371,14 +390,16 @@ export function useBusinessTodos(): BusinessTodo[] {
           currentBrand !== null
             ? `/brand/${currentBrand.id}/listing?focus=feedback`
             : "",
-        profile,
+        brandReadiness,
         insightsNudges,
         venueOrderCompleteness,
         website,
       }),
     [
       website,
-      profile,
+      brandReadiness,
+      canSell,
+      canBePaidOut,
       pendingInvites,
       enquiryTodos,
       hasNoBrands,

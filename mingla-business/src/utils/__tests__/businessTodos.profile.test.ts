@@ -1,16 +1,20 @@
 /**
- * ORCH-1256 — buildBusinessTodos band 6 (brand-profile completion rows).
+ * ORCH-1256 → #3355 P5 — buildBusinessTodos band 6 (brand-profile rows).
  *
- * Implementor happy-path regression (SPEC §7 T-1/T-2/T-3/T-7/T-8). Reverting
- * the band-6 emit in businessTodos.ts fails T-1/T-2/T-3 (fails-on-revert);
- * making the `profile` input required or default-on fails T-7.
+ * Since #3355 P5 the rows are the server's canonical readiness items
+ * (brand_readiness) through HOME_READINESS_ROWS, not client-derived
+ * emptiness booleans. Kept from ORCH-1256: fixed order, ?section= deep
+ * links, tail placement, one row per unmet item, absent input ⇒ zero rows,
+ * no rows while the brand resolves.
  */
 import { describe, expect, test } from "@jest/globals";
 
-import type { BusinessTodoProfileInput } from "../brandProfileCompleteness";
 import {
   buildBusinessTodos,
+  HOME_READINESS_ROWS,
+  type BusinessTodoBrandReadiness,
   type BusinessTodoInput,
+  type BusinessTodoReadinessItem,
 } from "../businessTodos";
 
 const base: BusinessTodoInput = {
@@ -35,84 +39,79 @@ const base: BusinessTodoInput = {
   venueFeedbackRoute: "/brand/b1/listing?focus=feedback",
 };
 
-const allTrue: BusinessTodoProfileInput = {
-  needsCover: true,
-  needsPhoto: true,
-  needsTagline: true,
-  needsDescription: true,
-  needsAddress: true,
-  needsEmail: true,
-  needsPhone: true,
-  needsSocials: true,
-};
-
 const EDIT_ROUTE = "/brand/b1/edit";
 
-const PROFILE_IDS = [
-  "profile_add_cover",
-  "profile_add_photo",
-  "profile_add_tagline",
-  "profile_add_description",
-  "profile_add_address",
-  "profile_add_email",
-  "profile_add_phone",
-  "profile_add_socials",
-] as const;
+const item = (
+  key: string,
+  state: BusinessTodoReadinessItem["state"] = "missing",
+): BusinessTodoReadinessItem => ({
+  key,
+  state,
+  canCallerFix: true,
+  whoCanFix: "a brand admin or the owner",
+});
+
+const MONEY_DONE = [
+  item("money.can_sell", "verified"),
+  item("money.can_be_paid_out", "verified"),
+];
+
+const readiness = (
+  items: BusinessTodoReadinessItem[],
+): BusinessTodoBrandReadiness => ({
+  status: "ready",
+  brandId: "b1",
+  editRoute: EDIT_ROUTE,
+  hideBrandRows: false,
+  items: [...items, ...MONEY_DONE],
+});
+
+const allMissing = (): BusinessTodoReadinessItem[] =>
+  HOME_READINESS_ROWS.map((row) => item(row.key));
+
+const PROFILE_IDS = HOME_READINESS_ROWS.map((row) => row.id);
 
 const ids = (input: BusinessTodoInput): string[] =>
   buildBusinessTodos(input).map((t) => t.id);
 
-describe("buildBusinessTodos — ORCH-1256 profile band (6, tail)", () => {
-  // T-1 — fresh brand, all fields empty → the 8 rows, exact order + routes.
-  test("T-1: all-true profile → 8 rows in fixed order, each deep-linking ?section=", () => {
+describe("buildBusinessTodos — profile band from canonical readiness", () => {
+  test("T-1: every Home item missing → one row each, fixed order, ?section= deep links", () => {
     const todos = buildBusinessTodos({
       ...base,
-      profile: { ...allTrue, editRoute: EDIT_ROUTE },
+      brandReadiness: readiness(allMissing()),
     });
-    expect(todos.map((t) => t.id)).toEqual([...PROFILE_IDS]);
-    const routeOf = (id: string): string => {
-      const row = todos.find((t) => t.id === id);
-      if (row === undefined || row.action.kind !== "route") {
-        throw new Error(`row ${id} missing or not a route action`);
-      }
-      return row.action.route;
+    expect(todos.map((t) => t.id)).toEqual(PROFILE_IDS);
+    for (const row of HOME_READINESS_ROWS) {
+      const todo = todos.find((t) => t.id === row.id);
+      expect(todo?.action).toEqual({
+        kind: "route",
+        route: `${EDIT_ROUTE}?section=${row.section}`,
+      });
+      expect(todo?.label).toBe(row.label);
+      expect(todo?.sublabel).toBe(row.sublabel);
+      expect(todo?.readinessKey).toBe(row.key);
+    }
+  });
+
+  test("T-1b: the ORCH-1256 rows keep their ids, labels and sections", () => {
+    const todos = buildBusinessTodos({
+      ...base,
+      brandReadiness: readiness(allMissing()),
+    });
+    const pick = (id: string): [string, string | undefined] => {
+      const todo = todos.find((t) => t.id === id);
+      return [todo?.label ?? "", todo?.sublabel];
     };
-    expect(routeOf("profile_add_cover")).toBe(`${EDIT_ROUTE}?section=cover`);
-    expect(routeOf("profile_add_photo")).toBe(`${EDIT_ROUTE}?section=photo`);
-    expect(routeOf("profile_add_tagline")).toBe(`${EDIT_ROUTE}?section=about`);
-    expect(routeOf("profile_add_description")).toBe(
-      `${EDIT_ROUTE}?section=about`,
-    );
-    expect(routeOf("profile_add_address")).toBe(
-      `${EDIT_ROUTE}?section=address`,
-    );
-    expect(routeOf("profile_add_email")).toBe(`${EDIT_ROUTE}?section=contact`);
-    expect(routeOf("profile_add_phone")).toBe(`${EDIT_ROUTE}?section=contact`);
-    expect(routeOf("profile_add_socials")).toBe(
-      `${EDIT_ROUTE}?section=social`,
-    );
+    expect(pick("profile_add_cover")).toEqual(["Add a cover", "Make your public page pop"]);
+    expect(pick("profile_add_photo")).toEqual(["Add a profile photo", "Put a face on your brand"]);
+    expect(pick("profile_add_tagline")).toEqual(["Add a tagline", "One line that says what you do"]);
+    expect(pick("profile_add_description")).toEqual(["Describe your brand", "Tell people what you're about"]);
+    expect(pick("profile_add_address")).toEqual(["Add your address", "Help people find you"]);
+    expect(pick("profile_add_email")).toEqual(["Add a contact email", "So customers can reach you"]);
+    expect(pick("profile_add_phone")).toEqual(["Add a phone number", "Another way to reach you"]);
+    expect(pick("profile_add_socials")).toEqual(["Add your social links", "Instagram, TikTok, your website and more"]);
   });
 
-  test("T-1b: exact copy — labels/sublabels are the SPEC strings, no badge", () => {
-    const todos = buildBusinessTodos({
-      ...base,
-      profile: { ...allTrue, editRoute: EDIT_ROUTE },
-    });
-    expect(
-      todos.map((t) => [t.id, t.label, t.sublabel, t.badge]),
-    ).toEqual([
-      ["profile_add_cover", "Add a cover", "Make your public page pop", undefined],
-      ["profile_add_photo", "Add a profile photo", "Put a face on your brand", undefined],
-      ["profile_add_tagline", "Add a tagline", "One line that says what you do", undefined],
-      ["profile_add_description", "Describe your brand", "Tell people what you're about", undefined],
-      ["profile_add_address", "Add your address", "Help people find you", undefined],
-      ["profile_add_email", "Add a contact email", "So customers can reach you", undefined],
-      ["profile_add_phone", "Add a phone number", "Another way to reach you", undefined],
-      ["profile_add_socials", "Add your social links", "Instagram, TikTok, your website and more", undefined],
-    ]);
-  });
-
-  // T-2 — tail placement: profile rows sit AFTER every structural row.
   test("T-2: profile rows come after get_venue_live / connect_stripe / finish_draft", () => {
     const todos = ids({
       ...base,
@@ -120,7 +119,7 @@ describe("buildBusinessTodos — ORCH-1256 profile band (6, tail)", () => {
       stripeActive: false,
       counts: { total: 1, live: 0, draft: 1 },
       draftRoute: "/event/d1/edit",
-      profile: { ...allTrue, editRoute: EDIT_ROUTE },
+      brandReadiness: readiness(allMissing()),
     });
     expect(todos).toEqual([
       "get_venue_live",
@@ -130,45 +129,30 @@ describe("buildBusinessTodos — ORCH-1256 profile band (6, tail)", () => {
     ]);
   });
 
-  // T-3 — no-false-positive matrix: each field filled one at a time drops
-  // exactly its own row.
-  const flagToId: Array<[keyof BusinessTodoProfileInput, string]> = [
-    ["needsCover", "profile_add_cover"],
-    ["needsPhoto", "profile_add_photo"],
-    ["needsTagline", "profile_add_tagline"],
-    ["needsDescription", "profile_add_description"],
-    ["needsAddress", "profile_add_address"],
-    ["needsEmail", "profile_add_email"],
-    ["needsPhone", "profile_add_phone"],
-    ["needsSocials", "profile_add_socials"],
-  ];
-  test.each(flagToId)(
-    "T-3: %s=false → only %s absent, other 7 present",
-    (flag, id) => {
-      const todos = ids({
-        ...base,
-        profile: { ...allTrue, [flag]: false, editRoute: EDIT_ROUTE },
-      });
-      expect(todos).not.toContain(id);
+  test.each(HOME_READINESS_ROWS.map((row) => [row.key, row.id] as const))(
+    "T-3: %s verified → only %s absent",
+    (key, id) => {
+      const items = allMissing().map((i) => (i.key === key ? item(key, "verified") : i));
+      const todos = ids({ ...base, brandReadiness: readiness(items) });
       expect(todos).toEqual(PROFILE_IDS.filter((p) => p !== id));
     },
   );
 
-  test("all-false profile → zero profile rows (healthy brand stays empty)", () => {
-    const allFalse = Object.fromEntries(
-      Object.keys(allTrue).map((k) => [k, false]),
-    ) as unknown as BusinessTodoProfileInput;
-    expect(
-      buildBusinessTodos({
-        ...base,
-        profile: { ...allFalse, editRoute: EDIT_ROUTE },
-      }),
-    ).toEqual([]);
+  test("not_applicable (an owner exception) never shows a row", () => {
+    const items = allMissing().map((i) =>
+      i.key === "address" ? item("address", "not_applicable") : i,
+    );
+    expect(ids({ ...base, brandReadiness: readiness(items) })).not.toContain(
+      "profile_add_address",
+    );
   });
 
-  // T-7 — the input is OPTIONAL: absent ⇒ zero profile rows, legacy behavior
-  // byte-identical (protects every pre-1256 caller/test).
-  test("T-7: profile key omitted → zero profile_* rows; healthy brand still []", () => {
+  test("all items done → zero profile rows (healthy brand stays empty)", () => {
+    const items = HOME_READINESS_ROWS.map((row) => item(row.key, "verified"));
+    expect(buildBusinessTodos({ ...base, brandReadiness: readiness(items) })).toEqual([]);
+  });
+
+  test("T-7: brandReadiness omitted → zero profile rows; healthy brand still []", () => {
     expect(buildBusinessTodos(base)).toEqual([]);
     const busy = ids({
       ...base,
@@ -178,20 +162,19 @@ describe("buildBusinessTodos — ORCH-1256 profile band (6, tail)", () => {
     expect(busy.some((id) => id.startsWith("profile_"))).toBe(false);
   });
 
-  // T-8 — flash gating: resolving/no-brand early-returns win over profile.
-  test("T-8: brandResolving (or !hasBrand) + all-true profile → no profile rows", () => {
+  test("T-8: brandResolving (or !hasBrand) → no profile rows", () => {
     expect(
       buildBusinessTodos({
         ...base,
         brandResolving: true,
-        profile: { ...allTrue, editRoute: EDIT_ROUTE },
+        brandReadiness: readiness(allMissing()),
       }),
     ).toEqual([]);
     expect(
       buildBusinessTodos({
         ...base,
         hasBrand: false,
-        profile: { ...allTrue, editRoute: EDIT_ROUTE },
+        brandReadiness: readiness(allMissing()),
       }),
     ).toEqual([]);
   });
