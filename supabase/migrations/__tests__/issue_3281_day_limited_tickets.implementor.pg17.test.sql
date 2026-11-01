@@ -517,6 +517,21 @@ BEGIN
     RAISE EXCEPTION 'Sunday must be gone';
   END IF;
 
+  -- Retiming Friday beside a new date at its old time keeps Friday's row and key.
+  SELECT id INTO v_saturday FROM public.event_dates WHERE event_id=v_event AND occurrence_key='md_fri';
+  PERFORM public.business_patch_event_when(v_event, jsonb_build_object(
+    'whenMode','multi_date','timezone','UTC','multiDates',jsonb_build_array(
+      jsonb_build_object('id','md_fri','date',v_d1,'startTime','19:00','endTime','23:00'),
+      jsonb_build_object('id','md_late','date',v_d1,'startTime','18:00','endTime','19:00'),
+      v_multi->1)
+  ),'Move Friday and add an earlier slot',NULL);
+  IF (SELECT to_char(start_at AT TIME ZONE 'UTC','HH24:MI') FROM public.event_dates
+       WHERE id=v_saturday AND occurrence_key='md_fri') IS DISTINCT FROM '19:00'
+     OR (SELECT to_char(start_at AT TIME ZONE 'UTC','HH24:MI') FROM public.event_dates
+          WHERE event_id=v_event AND occurrence_key='md_late') IS DISTINCT FROM '18:00' THEN
+    RAISE EXCEPTION 'a retimed date must keep its own row and key';
+  END IF;
+
   -- A list that a removal would empty is refused, never widened.
   v_raised := NULL;
   BEGIN

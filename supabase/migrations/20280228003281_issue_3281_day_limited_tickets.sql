@@ -1455,6 +1455,8 @@ DECLARE
   v_t_match uuid[] := '{}'::uuid[];
   v_n_t integer := 0;
   v_e_ids uuid[];
+  v_e_keys text[]; -- issue #3281
+  v_t_keys text[] := '{}'::text[]; -- issue #3281
   v_e_starts timestamptz[];
   v_e_ends timestamptz[];
   v_e_days date[];
@@ -1771,6 +1773,7 @@ BEGIN
       v_t_dates := v_t_dates || v_date_iso::date;
       v_t_starts := v_t_starts || v_start;
       v_t_ends := v_t_ends || v_end;
+      v_t_keys := v_t_keys || NULLIF(v_date_entry->>'id', '');
     END LOOP;
   END IF;
 
@@ -1781,15 +1784,30 @@ BEGIN
   SELECT COALESCE(array_agg(ed.id ORDER BY ed.start_at, ed.id), '{}'::uuid[]),
          COALESCE(array_agg(ed.start_at ORDER BY ed.start_at, ed.id), '{}'::timestamptz[]),
          COALESCE(array_agg(ed.end_at ORDER BY ed.start_at, ed.id), '{}'::timestamptz[]),
-         COALESCE(array_agg((ed.start_at AT TIME ZONE ed.timezone)::date ORDER BY ed.start_at, ed.id), '{}'::date[])
-    INTO v_e_ids, v_e_starts, v_e_ends, v_e_days
+         COALESCE(array_agg((ed.start_at AT TIME ZONE ed.timezone)::date ORDER BY ed.start_at, ed.id), '{}'::date[]),
+         COALESCE(array_agg(ed.occurrence_key ORDER BY ed.start_at, ed.id), '{}'::text[])
+    INTO v_e_ids, v_e_starts, v_e_ends, v_e_days, v_e_keys
     FROM public.event_dates ed
    WHERE ed.event_id = p_event_id;
   v_n_e := COALESCE(array_length(v_e_ids, 1), 0);
   v_e_matched := array_fill(false, ARRAY[v_n_e]);
 
+  -- 10.3 P0, issue #3281 — a keyed date is that date, so a retime beside a new
+  -- date at the old time cannot swap their rows. Still never across local days.
+  FOR v_i IN 1 .. v_n_t LOOP
+    FOR v_j IN 1 .. v_n_e LOOP
+      IF NOT v_e_matched[v_j] AND v_t_match[v_i] IS NULL
+         AND v_e_keys[v_j] = v_t_keys[v_i]
+         AND v_e_days[v_j] = v_t_dates[v_i] THEN
+        v_t_match[v_i] := v_e_ids[v_j];
+        v_e_matched[v_j] := true;
+      END IF;
+    END LOOP;
+  END LOOP;
+
   -- 10.3 P1 — same start instant.
   FOR v_i IN 1 .. v_n_t LOOP
+    CONTINUE WHEN v_t_match[v_i] IS NOT NULL;
     v_cand := NULL;
     v_cand_count := 0;
     FOR v_j IN 1 .. v_n_e LOOP
