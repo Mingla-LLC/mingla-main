@@ -51,7 +51,8 @@ import {
   type AriActivityWatermark,
   ariRowDelivery,
   isAriTurnStoppable,
-  isOrdinaryTurnActivityVisible,
+  activityTurnOf,
+  isAriTurnDiscardable,
   isTurnInSelectedConversation,
   latestLabelledActivityEvent,
   shouldFollowTurnConversation,
@@ -1268,12 +1269,22 @@ export function useAgentChat(
       const turn = turnsRef.current.find(
         (candidate) => candidate.clientTurnId === clientTurnId,
       );
-      if (!turn || turn.accepted) return;
+      // #3355 — a failed turn the server accepted (then could not answer)
+      // is discardable too; discarding takes its banner with it.
+      if (!turn || !isAriTurnDiscardable(turn)) return;
       replaceTurns((current) =>
         current.filter((candidate) => candidate.clientTurnId !== clientTurnId),
       );
       subscriptions.current.get(clientTurnId)?.();
       subscriptions.current.delete(clientTurnId);
+      // An accepted turn's attachments belong to the stored message.
+      if (turn.accepted) {
+        captureAriTurnOutcome({
+          surface: surfaceRef.current,
+          outcome: "discarded",
+        });
+        return;
+      }
       turn.attachments.forEach((attachment) => {
         if (attachment.attachmentId)
           void discardAriAttachment(attachment.attachmentId).catch(
@@ -1517,9 +1528,7 @@ export function useAgentChat(
         };
       }
     }
-    const candidate = [...scopedTurns]
-      .reverse()
-      .find(isOrdinaryTurnActivityVisible);
+    const candidate = activityTurnOf(scopedTurns);
     if (!candidate) return null;
     return {
       clientTurnId: candidate.clientTurnId,

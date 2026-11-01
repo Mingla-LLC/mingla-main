@@ -50,6 +50,7 @@ import {
 } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
+import type { AriFlowUploadKind } from "../../components/ari/ariFlowCards";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
@@ -207,6 +208,17 @@ const composerOccupiedPxFor = (
   keyboardHeight > 0
     ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
     : restingOccupiedPx;
+
+/*
+ * #3355 — the in-chat logo / cover upload (Brand details' own pickers).
+ * Loaded only when a live upload handoff is on screen, so the picker
+ * modules never join this screen's boot path or its render suites.
+ */
+const AriFlowUploadCard = React.lazy(() =>
+  import("../../components/ari/AriFlowUploadCard").then((module) => ({
+    default: module.AriFlowUploadCard,
+  })),
+);
 
 export interface AriChatScreenProps {
   /**
@@ -1247,6 +1259,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 void handleFlowAnswer(answer, label)
               }
               onFlowRoute={handleFlowRoute}
+              renderFlowUpload={({
+                kind,
+                disabled,
+                onUploaded,
+              }: {
+                kind: AriFlowUploadKind;
+                disabled: boolean;
+                onUploaded: () => void;
+              }) => (
+                <React.Suspense fallback={null}>
+                  <AriFlowUploadCard
+                    kind={kind}
+                    brandId={selectedBrandId}
+                    accountId={accountId}
+                    disabled={disabled}
+                    onUploaded={onUploaded}
+                  />
+                </React.Suspense>
+              )}
               online={online !== false}
               onRetryTurn={(clientTurnId) => {
                 if (!online) {

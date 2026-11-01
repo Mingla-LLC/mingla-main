@@ -59,8 +59,11 @@ import {
   earlierFlowCopyIds,
   flowArtefactOf,
   flowCardStatus,
+  flowUploadAnswer,
+  flowUploadKind,
   flowViewOnlyCopy,
   newestOpenFlowArtefactId,
+  type AriFlowUploadKind,
 } from "./ariFlowCards";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 import type { AriFeedbackReason } from "../../services/ariFeedbackService";
@@ -178,6 +181,15 @@ export interface MessageListProps {
    * posts nothing in the owner's name (the card stays current).
    */
   onFlowRoute?: (route: string) => void;
+  /**
+   * #3355 — the in-chat upload on a live logo / cover handoff (the Host's
+   * own Brand details pickers). `onUploaded` answers the card's "check".
+   */
+  renderFlowUpload?: (args: {
+    kind: AriFlowUploadKind;
+    disabled: boolean;
+    onUploaded: () => void;
+  }) => React.ReactNode;
   /** #3355 P3 — offline disables answers with a plain explanation. */
   online?: boolean;
   /**
@@ -247,6 +259,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   flowState,
   onFlowAnswer,
   onFlowRoute,
+  renderFlowUpload,
   online = true,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
@@ -982,9 +995,26 @@ export const MessageList: React.FC<MessageListProps> = ({
             }
             const isResolvedFlow = resolvedChoice?.messageId === m.id;
             if (flow.options.length === 0) return bubble;
+            // #3355 — a logo / cover handoff takes the upload in the chat;
+            // the card's own buttons ("Open Brand details", check) stay.
+            const uploadKind = flowUploadKind(flow);
+            const upload =
+              uploadKind && renderFlowUpload && !isResolvedFlow
+                ? renderFlowUpload({
+                    kind: uploadKind,
+                    disabled: choicesDisabled || !online,
+                    onUploaded: () => {
+                      const bound = flowUploadAnswer(flow, uploadKind);
+                      if (!bound) return;
+                      setResolvedChoice({ messageId: m.id, optionId: "check" });
+                      onFlowAnswer?.(bound.answer, bound.label);
+                    },
+                  })
+                : null;
             return (
               <View>
                 {bubble}
+                {upload}
                 <View style={styles.choicesRow}>
                   <QuickReplyChips
                     options={flow.options.map((option) => ({
