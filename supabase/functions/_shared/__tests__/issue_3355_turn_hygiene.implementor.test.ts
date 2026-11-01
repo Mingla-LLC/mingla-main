@@ -55,6 +55,7 @@ import {
 import { sanitizeAriUserFacingDiagnostics } from "../agentSanitization.ts";
 import { buildAgentRunRendition } from "../agentRenditions.ts";
 import { enforceTurnRateLimit } from "../agentRateLimit.ts";
+import { postApprovalStopText } from "../agentPostApproval.ts";
 import {
   ARI_DETERMINISTIC_TURN_CODES,
   isDeterministicTurnRefusal,
@@ -418,6 +419,15 @@ Deno.test("#3355 D-32 reconcile lines are plain and gate-clean", () => {
   ) {
     assert(isOwnerSafe(reconciledApprovalLine(outcome), "label"), outcome);
   }
+});
+
+Deno.test("#3355 D-7 a post-approval budget stop never claims the remaining plan was saved", () => {
+  for (const reason of ["budget", "deadline"]) {
+    const line = postApprovalStopText(reason);
+    assertEquals(line, `That's saved. ${ARI_STOPPED_HERE_LINE}`);
+    assert(!/remaining plan|resume without repeating/i.test(line));
+  }
+  assert(isOwnerSafe(postApprovalStopText("errors"), "label"));
 });
 
 Deno.test("#3355 D-7/D-15 a stopped run claims nothing was saved and an answer is not 'Plan complete'", () => {

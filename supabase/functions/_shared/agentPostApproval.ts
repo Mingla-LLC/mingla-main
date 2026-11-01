@@ -51,6 +51,18 @@ function boundedJson(value: unknown, max = 8_000): string {
   }
 }
 
+/**
+ * #3355 P1 (D-7): what the owner reads when the post-approval run stops
+ * before the goal is done. The approved write itself is saved and verified;
+ * nothing else is — so this never claims the remaining plan was saved.
+ */
+export function postApprovalStopText(reason: string): string {
+  if (reason === "budget" || reason === "deadline") {
+    return `That's saved. ${ARI_STOPPED_HERE_LINE}`;
+  }
+  return "That's saved. I couldn't safely do the next step, so I stopped here.";
+}
+
 export async function continueAfterApprovedAction(args: {
   client: SupabaseClient;
   serviceClient: SupabaseClient;
@@ -230,10 +242,7 @@ export async function continueAfterApprovedAction(args: {
   }
   const rawText = loop.kind === "text"
     ? loop.text
-    : loop.reason === "budget" || loop.reason === "deadline"
-    // #3355 P1 (D-7): never claim the remaining plan was saved — it was not.
-    ? `That's saved. ${ARI_STOPPED_HERE_LINE}`
-    : "That's saved. I couldn't safely do the next step, so I stopped here.";
+    : postApprovalStopText(loop.reason);
   const usedResearch = loop.observations.some((item) =>
     [
       "search_public_web",
