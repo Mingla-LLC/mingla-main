@@ -289,7 +289,14 @@ ALTER TABLE public.gig_contracts
   ADD CONSTRAINT gig_contracts_creator_rights_pair CHECK((creator_agreement_acceptance_id IS NULL)=(creator_rights_accepted_at IS NULL));
 
 ALTER TABLE public.gig_terms_versions ADD COLUMN rights_model text;
+-- Terms versions are append-only. Follow the established #3872 one-time
+-- backfill protocol: suspend only the immutable-row trigger inside this
+-- transaction, classify the existing rows, and restore it immediately.
+ALTER TABLE public.gig_terms_versions
+  DISABLE TRIGGER issue_3872_terms_immutable;
 UPDATE public.gig_terms_versions SET rights_model='legacy_timed' WHERE rights_model IS NULL;
+ALTER TABLE public.gig_terms_versions
+  ENABLE TRIGGER issue_3872_terms_immutable;
 ALTER TABLE public.gig_terms_versions
   ALTER COLUMN rights_model SET NOT NULL,
   ADD CONSTRAINT gig_terms_rights_model_check CHECK(rights_model IN ('legacy_timed','creator_v1_perpetual'));
