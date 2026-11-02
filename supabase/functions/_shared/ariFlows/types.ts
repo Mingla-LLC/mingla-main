@@ -348,6 +348,49 @@ export interface FlowProbeDeps {
   stayInventory?(venueId: string): Promise<FlowStayInventory | null>;
   /** #3355 P9 — one server feature flag (false when unreadable). */
   featureFlag?(key: string): Promise<boolean>;
+  /**
+   * #3355 — the existing contact import (#1775) checks a list as the
+   * caller: it reads the CSV, matches it against the brand's contacts and
+   * stages the result. Nothing is added to the brand's contacts.
+   */
+  contactImportPreview?(csv: string): Promise<ContactImportPreview>;
+  /** #3355 — one import, read back as the caller (null when not found). */
+  contactImportStatus?(batchId: string): Promise<ContactImportStatus | null>;
+}
+
+/** #3355 — the counts the contact import reports (#1775 shape). */
+export interface ContactImportCounts {
+  rowCount: number;
+  addedCount: number;
+  updatedCount: number;
+  reviewCount: number;
+  invalidCount: number;
+  duplicateCount: number;
+  unchangedCount: number;
+  alreadySuppressedCount: number;
+}
+
+export interface ContactImportPreview {
+  batch_id: string;
+  preview_token: string;
+  file_sha256: string;
+  counts: ContactImportCounts;
+  /** One per CSV row: the CSV row number (2 = first contact) and outcome. */
+  rows: { row_number: number; outcome: string; reason: string | null }[];
+}
+
+export interface ContactImportStatus {
+  batch_id: string;
+  state: string;
+  counts: ContactImportCounts;
+}
+
+/** #3355 — the import refused the list (plain reason, nothing saved). */
+export class ContactImportRefused extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = "ContactImportRefused";
+  }
 }
 
 export interface FlowContext {
@@ -453,6 +496,8 @@ export interface AnswerOutcome {
      * in plain words; raw arguments such as coordinates never show).
      */
     rows_only?: boolean;
+    /** #3355 — the card's heading, in plain words ("Import 48 contacts"). */
+    card_title?: string;
   };
 }
 

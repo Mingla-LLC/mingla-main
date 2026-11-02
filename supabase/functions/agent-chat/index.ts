@@ -35,6 +35,7 @@ import {
   AriAttachmentError,
   assertAttemptRunning,
   projectReadyAttachments,
+  readTurnAttachmentTexts,
   ReadyAttachmentRow,
 } from "../_shared/agentAttachments.ts";
 import {
@@ -1845,6 +1846,17 @@ async function handle(req: Request): Promise<Response> {
         otherLaneActive,
         websiteSetup: body.workflow_context === "website_setup" ||
           isWebsiteSetupRequest(semanticMessage),
+        // #3355: a contact list attached in the chat, read only when the
+        // import flow needs it (same scope checks as the model's read).
+        attachments: () =>
+          readTurnAttachmentTexts({
+            serviceClient,
+            attachmentIds,
+            userId,
+            conversationId,
+            messageId: userMessageId,
+            clientTurnId: body.client_turn_id,
+          }),
       });
       if (decision.kind === "side") {
         websiteEngine = true;
@@ -1945,6 +1957,10 @@ async function handle(req: Request): Promise<Response> {
               flow_rows: decision.rows,
               // #3355 P7: the engine wrote every row in plain words.
               ...(decision.rows_only ? { flow_rows_only: true } : {}),
+              // #3355: the card's heading ("Import 48 contacts").
+              ...(decision.card_title
+                ? { flow_title: decision.card_title }
+                : {}),
             }
             : null,
           classification: "flow_engine_proposal",

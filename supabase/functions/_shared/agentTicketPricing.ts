@@ -28,6 +28,8 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "flow_rows",
   // #3355 P7 — the card shows only the engine's plain-words rows.
   "flow_rows_only",
+  // #3355 — the engine's plain-words heading for its own proposal card.
+  "flow_title",
   "lifecycle",
   "action",
   "tier_name",

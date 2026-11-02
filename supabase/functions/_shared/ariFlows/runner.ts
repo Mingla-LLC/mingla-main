@@ -111,6 +111,8 @@ export type RunnerOutcome =
     tool_args: Record<string, unknown>;
     rows: { label: string; value: string }[];
     rows_only?: boolean;
+    /** #3355 — the card's heading, in plain words. */
+    card_title?: string;
     ack?: string;
     run: FlowRun;
   }
@@ -539,6 +541,9 @@ async function advanceUnderLease(
           tool_args: outcome.propose.tool_args,
           rows: outcome.propose.rows ?? [],
           ...(outcome.propose.rows_only ? { rows_only: true } : {}),
+          ...(outcome.propose.card_title
+            ? { card_title: outcome.propose.card_title }
+            : {}),
           ...(lines.length > 0 ? { ack: lines.join(" ") } : {}),
           run,
         };
@@ -659,6 +664,9 @@ async function advanceUnderLease(
           tool_args: probe.propose.tool_args,
           rows: probe.propose.rows ?? [],
           ...(probe.propose.rows_only ? { rows_only: true } : {}),
+          ...(probe.propose.card_title
+            ? { card_title: probe.propose.card_title }
+            : {}),
           ...(lines.length > 0 ? { ack: lines.join(" ") } : {}),
           run,
         };

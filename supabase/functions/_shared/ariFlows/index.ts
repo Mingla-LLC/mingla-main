@@ -18,6 +18,7 @@ import { CREATE_TRIP_FLOW } from "./offerings/trip.ts";
 import { CREATE_EXPERIENCE_FLOW } from "./offerings/experience.ts";
 import { CREATE_VENUE_FLOW } from "./offerings/venue.ts";
 import { CREATE_STAY_FLOW } from "./offerings/stay.ts";
+import { IMPORT_CONTACTS_FLOW } from "./contactImport.ts";
 import type {
   FlowContext,
   FlowDefinition,
@@ -183,6 +184,8 @@ export const FLOW_DEFINITIONS: readonly FlowDefinition[] = Object.freeze([
   CREATE_STAY_FLOW,
   // #2830 P4 — Website setup, the engine's first brand flow.
   WEBSITE_SETUP_FLOW,
+  // #3355 — a contact list for blasts and outreach, through Ari.
+  IMPORT_CONTACTS_FLOW,
 ]);
 
 /**

@@ -40,6 +40,7 @@ import {
   sellGuide,
 } from "./money/moneySplit.ts";
 import { formatMinorWithCode } from "./money/formatMinor.ts";
+import { executeAriContactImport } from "./ariContactImportWrite.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -6312,10 +6313,15 @@ function normalizePeopleBookCursor(
 
 const manageBrandPeople = writeTool(
   "manage_brand_people",
-  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. Add requires display_name plus email and/or phone_e164 (Host people_contact_required). For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged.",
+  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. Add requires display_name plus email and/or phone_e164 (Host people_contact_required). For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged. Action import only runs a contact list Ari's import flow already checked (never call it yourself; start the flow by asking the owner to import their contacts).",
   {
     brand_id: UUID,
-    action: { type: "string", enum: ["list", "get", "add"] },
+    action: { type: "string", enum: ["list", "get", "add", "import"] },
+    // #3355 — the contact list Ari's import flow checked with the existing
+    // contact import (#1775); only that flow builds these.
+    import_batch_id: UUID,
+    import_preview_token: { type: "string", minLength: 20, maxLength: 200 },
+    import_file_sha256: { type: "string", minLength: 64, maxLength: 64 },
     person_id: UUID,
     search: { type: "string", maxLength: 120 },
     cursor: PEOPLE_BOOK_CURSOR,
@@ -6401,7 +6407,21 @@ const manageBrandPeople = writeTool(
         p_client_request_id: clientRequestId,
       });
     }
-    throw new ToolError("INVALID_ARGS", "action must be list, get, or add");
+    if (action === "import") {
+      // #3355 — the existing contact import's execute, as the caller.
+      return await executeAriContactImport({
+        client,
+        brandId: String(args.brand_id),
+        batchId: args.import_batch_id,
+        previewToken: args.import_preview_token,
+        fileSha256: args.import_file_sha256,
+        operationId: requireAgentOperationId(context),
+      });
+    }
+    throw new ToolError(
+      "INVALID_ARGS",
+      "action must be list, get, add, or import",
+    );
   },
 );
 

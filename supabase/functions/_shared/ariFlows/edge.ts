@@ -22,6 +22,18 @@ import { buildReadinessAnswer } from "./readinessAnswer.ts";
 import { SITE_AGENT_READ_ONLY, SITE_AGENT_TOOLS } from "../agentSiteTools.ts";
 import { detectWebsiteSetupIntent } from "../agentWebsiteSetup.ts";
 import { WEBSITE_SETUP_FLOW, WEBSITE_SETUP_FLOW_KEY } from "./websiteSetup.ts";
+import {
+  CONTACT_LIST_STEP,
+  CONTACT_REVIEW_STEP,
+  IMPORT_CONTACTS_FLOW,
+  IMPORT_CONTACTS_FLOW_KEY,
+  isContactImportIntent,
+} from "./contactImport.ts";
+import { CONTACT_IMPORT_MAPPING_VERSION } from "../contactImportContract.ts";
+import {
+  ARI_CONTACT_CSV_MAPPING,
+  contactImportErrorCode,
+} from "../ariContactImportWrite.ts";
 import { PLAN_PARTS, type PlanPartKey } from "../siteContracts/sitePlan.ts";
 import {
   runFlowStep,
@@ -34,6 +46,12 @@ import {
   FlowEngineUnavailable,
   type FlowStore,
 } from "./store.ts";
+import {
+  type ContactImportCounts,
+  type ContactImportPreview,
+  ContactImportRefused,
+  type ContactImportStatus,
+} from "./types.ts";
 import type {
   FlowAnswer,
   FlowAnswerValues,
@@ -569,6 +587,137 @@ export function stayInventoryOf(
   };
 }
 
+const ARI_CONTACT_FILE_NAME = "ari-contact-list.csv";
+
+function importCounts(value: unknown): ContactImportCounts | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const keys = [
+    "rowCount",
+    "addedCount",
+    "updatedCount",
+    "reviewCount",
+    "invalidCount",
+    "duplicateCount",
+    "unchangedCount",
+    "alreadySuppressedCount",
+  ] as const;
+  if (keys.some((key) => typeof raw[key] !== "number")) return null;
+  return Object.fromEntries(keys.map((key) => [key, raw[key]])) as unknown as
+    ContactImportCounts;
+}
+
+async function invokeContactImport(
+  userClient: SupabaseClient,
+  body: FormData | Record<string, unknown>,
+  headers?: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await userClient.functions.invoke("contact-import", {
+    body,
+    ...(headers ? { headers } : {}),
+  });
+  if (error) {
+    const code = await contactImportErrorCode(error);
+    throw new ContactImportRefused(code, code);
+  }
+  const payload = (data as { data?: unknown } | null)?.data;
+  if (!payload || typeof payload !== "object") {
+    throw new ContactImportRefused("IMPORT_FAILED", "IMPORT_FAILED");
+  }
+  return payload as Record<string, unknown>;
+}
+
+function csvForm(csv: string, extra: Record<string, string> = {}): FormData {
+  const form = new FormData();
+  form.append(
+    "file",
+    new File([csv], ARI_CONTACT_FILE_NAME, { type: "text/csv" }),
+  );
+  for (const [key, value] of Object.entries(extra)) form.append(key, value);
+  return form;
+}
+
+/**
+ * #3355 — inspect then preview with the existing import (the Host's own two
+ * calls), on the CSV Ari built from the owner's list.
+ */
+export async function contactImportPreview(
+  userClient: SupabaseClient,
+  brandId: string,
+  csv: string,
+): Promise<ContactImportPreview> {
+  const inspected = await invokeContactImport(userClient, csvForm(csv), {
+    "x-mingla-import-action": "inspect",
+    "x-mingla-brand-id": brandId,
+  });
+  const inspectionId = inspected.inspectionId;
+  const inspectionToken = inspected.inspectionToken;
+  if (typeof inspectionId !== "string" || typeof inspectionToken !== "string") {
+    throw new ContactImportRefused("IMPORT_FAILED", "IMPORT_FAILED");
+  }
+  const previewed = await invokeContactImport(
+    userClient,
+    csvForm(csv, {
+      inspectionId,
+      inspectionToken,
+      mappingVersion: CONTACT_IMPORT_MAPPING_VERSION,
+      normalizedMapping: JSON.stringify(ARI_CONTACT_CSV_MAPPING),
+    }),
+    { "x-mingla-import-action": "preview", "x-mingla-brand-id": brandId },
+  );
+  const counts = importCounts(previewed.counts);
+  const file = previewed.file as { sha256?: unknown } | undefined;
+  if (
+    typeof previewed.batchId !== "string" ||
+    typeof previewed.previewToken !== "string" ||
+    typeof file?.sha256 !== "string" || !counts
+  ) {
+    throw new ContactImportRefused("IMPORT_FAILED", "IMPORT_FAILED");
+  }
+  const rows = Array.isArray(previewed.rows) ? previewed.rows : [];
+  return {
+    batch_id: previewed.batchId,
+    preview_token: previewed.previewToken,
+    file_sha256: file.sha256,
+    counts,
+    rows: rows.flatMap((row) => {
+      const r = row as Record<string, unknown>;
+      return typeof r.rowNumber === "number" && typeof r.outcome === "string"
+        ? [{
+          row_number: r.rowNumber,
+          outcome: r.outcome,
+          reason: typeof r.reasonCode === "string" ? r.reasonCode : null,
+        }]
+        : [];
+    }),
+  };
+}
+
+/** #3355 — one import read back as the caller (null when not found). */
+export async function contactImportStatus(
+  userClient: SupabaseClient,
+  brandId: string,
+  batchId: string,
+): Promise<ContactImportStatus | null> {
+  try {
+    const status = await invokeContactImport(userClient, {
+      action: "status",
+      brandId,
+      batchId,
+      pageSize: 1,
+    });
+    const counts = importCounts(status.counts);
+    if (typeof status.state !== "string" || !counts) return null;
+    return { batch_id: batchId, state: status.state, counts };
+  } catch (error) {
+    if (
+      error instanceof ContactImportRefused &&
+      error.code === "BATCH_NOT_FOUND"
+    ) return null;
+    throw error;
+  }
+}
+
 /** Canonical reads the runner makes for one brand, memoised per request. */
 export function buildFlowProbeDeps(
   userClient: SupabaseClient,
@@ -698,6 +847,14 @@ export function buildFlowProbeDeps(
       }
       return pending;
     },
+    // #3355 — the existing contact import (#1775), as the caller: check a
+    // list (stage it; nothing is added to the contacts) and read one back.
+    contactImportPreview(csv: string) {
+      return contactImportPreview(userClient, brandId, csv);
+    },
+    contactImportStatus(batchId: string) {
+      return contactImportStatus(userClient, brandId, batchId);
+    },
     async featureFlag(key: string) {
       const { data, error } = await userClient.from("feature_flags")
         .select("is_enabled")
@@ -752,6 +909,8 @@ export type FlowTurnDecision =
     rows: { label: string; value: string }[];
     /** #3355 P7 — the card shows only these rows. */
     rows_only?: boolean;
+    /** #3355 — the card's heading, in plain words. */
+    card_title?: string;
     ack?: string;
     state: FlowStateView | null;
   }
@@ -827,6 +986,7 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
         tool_args: outcome.tool_args,
         rows: outcome.rows,
         ...(outcome.rows_only ? { rows_only: true } : {}),
+        ...(outcome.card_title ? { card_title: outcome.card_title } : {}),
         ...(outcome.ack ? { ack: outcome.ack } : {}),
         state,
       };
@@ -852,10 +1012,119 @@ export interface FlowTurnArgs {
    * "start / continue Website setup" request).
    */
   websiteSetup?: boolean;
+  /**
+   * #3355 — this turn's attachments as text (a contact list attached in the
+   * chat). Read only when the import flow needs them.
+   */
+  attachments?: () => Promise<FlowTurnAttachment[]>;
   /** Test seam. */
   store?: FlowStore;
   /** Test seam: the canonical reads. */
   probes?: FlowProbeDeps;
+}
+
+/** #3355 — one attachment of this turn, as the flow sees it. */
+export interface FlowTurnAttachment {
+  file_type: string;
+  name: string;
+  /** Null when the file has no text Ari can read (PDF, image, audio…). */
+  text: string | null;
+}
+
+/**
+ * #3355 — attached files become the contact list step's answer (their text,
+ * never the files). A file with no readable text gets plain words and the
+ * same card back.
+ */
+export function contactListFromFiles(
+  run: FlowRun,
+  files: FlowTurnAttachment[],
+): { kind: "answer"; answer: FlowAnswer } | { kind: "unreadable"; text: string } {
+  const readable = files.filter((file) => file.text && file.text.trim());
+  if (readable.length === 0) {
+    const pdf = files.some((file) => file.file_type === "pdf");
+    return {
+      kind: "unreadable",
+      text: pdf
+        ? "I can't read a contact list out of a PDF reliably, so nothing was saved. Save it as CSV from the program it came from, or copy the rows and paste them here."
+        : "I can't read a contact list from that file, so nothing was saved. Attach a spreadsheet saved as CSV, a text file or a Word document, or paste the rows here.",
+    };
+  }
+  const names = readable.map((file) => file.name).join(", ");
+  return {
+    kind: "answer",
+    answer: {
+      run_id: run.id,
+      step_key: CONTACT_LIST_STEP,
+      question_id: run.current_question_id ?? "",
+      choice_id: "answer",
+      display_text: `Attached ${names}`.slice(0, 200),
+      values: {
+        choices: [],
+        country: null,
+        response: readable.map((file) => file.text!.trim()).join("\n"),
+      },
+    },
+  };
+}
+
+/**
+ * #3355 — a turn of a live contact import that carries files: the files are
+ * the list when the list card is open; otherwise plain words, same card.
+ */
+async function importFilesTurn(
+  args: FlowTurnArgs,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+  run: FlowRun,
+): Promise<FlowTurnDecision | null> {
+  if (run.flow_key !== IMPORT_CONTACTS_FLOW_KEY || !args.attachments) {
+    return null;
+  }
+  if (
+    run.current_step_key !== CONTACT_LIST_STEP &&
+    run.current_step_key !== CONTACT_REVIEW_STEP
+  ) return null;
+  let files: FlowTurnAttachment[];
+  try {
+    files = await args.attachments();
+  } catch (_error) {
+    files = [{ file_type: "unknown", name: "your file", text: null }];
+  }
+  if (files.length === 0) return null;
+  const open = run.current_artefact;
+  if (
+    !open || run.current_step_key !== CONTACT_LIST_STEP ||
+    !run.current_question_id
+  ) {
+    return {
+      kind: "reply",
+      text: open
+        ? `I've already read a list in this chat. To use this file instead, choose "Use a different list" below, then send it again. Nothing was changed.`
+        : "I've already read a list in this chat, so I didn't use this file. Nothing was changed.",
+      artefact: open,
+      state: flowStateOf(run),
+      classification: "flow_engine",
+    };
+  }
+  const read = contactListFromFiles(run, files);
+  if (read.kind === "unreadable") {
+    return {
+      kind: "reply",
+      text: `${read.text}\n\n${open.text}`,
+      artefact: open,
+      state: flowStateOf(run),
+      classification: "flow_engine",
+    };
+  }
+  return decisionFromOutcome(
+    await runFlowStep(deps, {
+      run,
+      trigger: "answer",
+      answer: read.answer,
+      ownerText: read.answer.display_text,
+      brandName: args.brand!.name,
+    }),
+  );
 }
 
 /**
@@ -928,6 +1197,9 @@ export async function decideFlowTurn(
       );
     }
     if (live) {
+      // #3355: a contact list attached while the import flow is open.
+      const filesTurn = await importFilesTurn(args, deps, live);
+      if (filesTurn) return filesTurn;
       const outcome = await runFlowStep(deps, {
         run: live,
         trigger: "turn",
@@ -970,6 +1242,29 @@ export async function decideFlowTurn(
       return await startWebsiteSetup(args, store, deps);
     }
     if (args.otherLaneActive) return { kind: "none" };
+    // #3355: "Import my contacts" / "Upload a contact list".
+    if (isContactImportIntent(args.message)) {
+      const def = IMPORT_CONTACTS_FLOW;
+      const started = await store.start({
+        brandId: args.brand.id,
+        flowKey: def.key,
+        flowVersion: def.version,
+        concurrency: def.concurrency,
+        conversationId: args.conversationId,
+        answers: {},
+      });
+      const first = await runFlowStep(deps, {
+        run: started.run,
+        trigger: "turn",
+        brandName: args.brand.name,
+      });
+      // The list attached to the same message is read straight away.
+      if (first.kind === "artefact") {
+        const filesTurn = await importFilesTurn(args, deps, first.run);
+        if (filesTurn) return filesTurn;
+      }
+      return decisionFromOutcome(first);
+    }
     const flowKey = classifyOfferingIntent(args.message);
     if (!flowKey) return { kind: "none" };
     const def = findFlowDefinition(flowKey);

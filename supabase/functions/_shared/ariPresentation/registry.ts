@@ -268,6 +268,17 @@ function flowRows(context: unknown): PresentationField[] {
   });
 }
 
+/** #3355 — the engine's own heading for its proposal, copy-gated. */
+function flowTitleOf(context: unknown): string | null {
+  if (context === null || typeof context !== "object" || Array.isArray(context)) {
+    return null;
+  }
+  const title = (context as Record<string, unknown>).flow_title;
+  if (typeof title !== "string" || !title.trim()) return null;
+  const trimmed = title.trim().slice(0, 120);
+  return isOwnerSafe(trimmed, "label") ? trimmed : null;
+}
+
 // MINGLA-INVARIANT: I-ARI-EVERY-WRITE-HAS-PRESENTATION | issue #3355 | Every registered Ari write tool has owner words in toolLabels.ts, and every proposal presentation built from any args is copy-gate clean (enforced by supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
 export function buildProposalPresentation(
   toolName: string,
@@ -278,7 +289,10 @@ export function buildProposalPresentation(
   const context = clean.__proposal_context;
   delete clean.__proposal_context;
   const identity = identityOf(clean);
-  const title = identity && isOwnerSafeValue(identity) ? identity : copy.title;
+  // #3355: an engine proposal may name its own card ("Import 48 contacts").
+  const flowTitle = flowTitleOf(context);
+  const title = flowTitle ??
+    (identity && isOwnerSafeValue(identity) ? identity : copy.title);
   // #3355 P7: an engine proposal whose rows are all written in plain words
   // shows only those (never raw arguments such as coordinates).
   const rowsOnly = context !== null && typeof context === "object" &&
