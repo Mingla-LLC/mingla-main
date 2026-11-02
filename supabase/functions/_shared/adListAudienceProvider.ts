@@ -87,6 +87,55 @@ export function buildMetaUsers(input: {
   };
 }
 
+/** The Graph call shape the Meta list transport needs (metaGraph, or a fake). */
+export type MetaGraphCall = (
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  params: Record<string, unknown> | undefined,
+  opts: { deleteBody?: boolean },
+) => Promise<unknown>;
+
+/**
+ * #4238: one Meta /users request per identifier type and per BATCH.meta
+ * (10,000, Meta's documented per-request cap) rows. Adds POST and removals
+ * DELETE; both carry the hashes in the JSON body, never the query string.
+ */
+export async function sendMetaListUsers(input: {
+  graph: MetaGraphCall;
+  audienceId: string;
+  action: "add" | "remove";
+  members: readonly MemberHashRow[];
+  sessionId: () => number;
+}): Promise<void> {
+  for (let i = 0; i < input.members.length; i += BATCH.meta) {
+    const slice = input.members.slice(i, i + BATCH.meta);
+    for (const [schema, hashes] of [
+      ["EMAIL", slice.map((m) => m.email_sha256).filter((h): h is string => !!h)],
+      ["PHONE", slice.map((m) => m.phone_sha256).filter((h): h is string => !!h)],
+    ] as const) {
+      if (hashes.length === 0) continue;
+      const request = buildMetaUsers({
+        audienceId: input.audienceId,
+        action: input.action,
+        schema,
+        hashes,
+        session: {
+          session_id: input.sessionId(),
+          batch_seq: 1,
+          last_batch_flag: true,
+          estimated_num_total: hashes.length,
+        },
+      });
+      await input.graph(
+        request.method as "POST" | "DELETE",
+        request.path,
+        request.body,
+        { deleteBody: true },
+      );
+    }
+  }
+}
+
 export function buildMetaLookalike(input: {
   accountId: string;
   name: string;
@@ -573,6 +622,20 @@ export async function syncListAudiences(input: {
     errors: 0,
   };
 
+  /**
+   * #4238 P1-1: the delta bound is the audience's members_refreshed_at as
+   * re-read AFTER this pass's refreshes. The refresh stamps added_at,
+   * removed_at and members_refreshed_at with one database now(), so this
+   * bound is database time and covers every change the refresh just made
+   * (a late opt-out leaves on this pass, not the next). runStart (worker
+   * clock, taken before the refreshes) is only the fallback when the audience
+   * was re-dirtied or never refreshed; anything it misses goes next pass.
+   */
+  const deltaBound = (def: Row): string =>
+    typeof def.members_refreshed_at === "string" && def.members_refreshed_at
+      ? def.members_refreshed_at
+      : runStart;
+
   const definitions = await rows(
     db.from("ad_list_audiences").select("*").order("kind").order("audience_key"),
   );
@@ -773,7 +836,8 @@ export async function syncListAudiences(input: {
           result.cursor = { after: item.key };
           continue; // new uploads wait for the daily run
         }
-        const all = await memberPage(db, String(def.id), "all", null, runStart);
+        const until = deltaBound(def);
+        const all = await memberPage(db, String(def.id), "all", null, until);
         const name = audienceProviderName({
           ownerKind: def.owner_kind as "mingla" | "host",
           brandName: String(brandById.get(String(def.brand_id))?.name ?? ""),
@@ -786,6 +850,18 @@ export async function syncListAudiences(input: {
           created = await transport.createWithMembers(name, all);
         } else {
           created = await transport.createList(name);
+          // #4238 P2-2: keep the provider id before any upload. If the first
+          // upload is refused (Meta terms 200/1870090, a timeout), the next
+          // run finds this id and uploads into it (synced_through stays null,
+          // so it owes every member) instead of creating a second audience.
+          await upsertState(def, platform, {
+            provider_audience_id: created.providerAudienceId,
+            state: "syncing",
+            approx_size: created.approxSize,
+            needed_count: null,
+            synced_through: null,
+            error_code: null,
+          });
           for (let i = 0; i < all.length; i += BATCH[platform]) {
             await transport.send(created.providerAudienceId, "add", all.slice(i, i + BATCH[platform]));
           }
@@ -796,14 +872,15 @@ export async function syncListAudiences(input: {
           state: created.state === "ready" ? "ready" : "syncing",
           approx_size: created.approxSize,
           needed_count: null,
-          synced_through: runStart,
+          synced_through: until,
           last_full_sync_at: iso(now()),
           last_synced_at: iso(now()),
           error_code: null,
         });
       } else {
         const since = typeof current.synced_through === "string" ? current.synced_through : null;
-        const removed = await memberPage(db, String(def.id), "removed", since, runStart);
+        const until = deltaBound(def);
+        const removed = await memberPage(db, String(def.id), "removed", since, until);
         if (
           platform === "tiktok" && removed.length > 0 &&
           memberCount < LIST_MIN.tiktok
@@ -817,7 +894,7 @@ export async function syncListAudiences(input: {
             state: "too_small",
             approx_size: null,
             needed_count: neededCount(platform, "list", memberCount),
-            synced_through: runStart,
+            synced_through: until,
             last_synced_at: iso(now()),
             error_code: null,
           });
@@ -833,7 +910,7 @@ export async function syncListAudiences(input: {
         // Removals go out on every pass because a removal is a privacy promise.
         const sendAdds = input.kind === "daily";
         if (sendAdds) {
-          const added = await memberPage(db, String(def.id), "added", since, runStart);
+          const added = await memberPage(db, String(def.id), "added", since, until);
           for (let i = 0; i < added.length; i += BATCH[platform]) {
             await transport.send(providerId, "add", added.slice(i, i + BATCH[platform]));
           }
@@ -846,7 +923,7 @@ export async function syncListAudiences(input: {
           needed_count: null,
           // A removals-only pass leaves synced_through alone so the next daily
           // run still owes every add since then (removes are idempotent).
-          synced_through: sendAdds ? runStart : current.synced_through ?? null,
+          synced_through: sendAdds ? until : current.synced_through ?? null,
           last_synced_at: iso(now()),
           error_code: null,
         });

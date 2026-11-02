@@ -49,7 +49,7 @@ import {
   buildMetaListCreate,
   buildMetaLookalike,
   buildMetaTermsRead,
-  buildMetaUsers,
+  sendMetaListUsers,
   buildRedditUsers,
   buildSnapListCreate,
   buildSnapLookalike,
@@ -441,32 +441,19 @@ async function listTransport(
   if (connection.platform === "meta") {
     const client = resolveMetaClient(connection);
     let session = Date.now();
-    const send = async (
+    const send = (
       providerId: string,
       action: "add" | "remove",
       members: MemberHashRow[],
-    ) => {
-      session += 1;
-      for (const [schema, hashes] of [
-        ["EMAIL", members.map((m) => m.email_sha256).filter((h): h is string => !!h)],
-        ["PHONE", members.map((m) => m.phone_sha256).filter((h): h is string => !!h)],
-      ] as const) {
-        if (hashes.length === 0) continue;
-        const request = buildMetaUsers({
-          audienceId: providerId,
-          action,
-          schema,
-          hashes,
-          session: {
-            session_id: session,
-            batch_seq: 1,
-            last_batch_flag: true,
-            estimated_num_total: hashes.length,
-          },
-        });
-        await metaGraph(client, request.method as "POST" | "DELETE", request.path, request.body);
-      }
-    };
+    ) =>
+      sendMetaListUsers({
+        graph: (method, path, params, opts) =>
+          metaGraph(client, method, path, params, opts),
+        audienceId: providerId,
+        action,
+        members,
+        sessionId: () => (session += 1),
+      });
     const read = async (id: string) =>
       parseListFact(
         "meta",

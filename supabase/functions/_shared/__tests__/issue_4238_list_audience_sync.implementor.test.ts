@@ -255,13 +255,17 @@ Deno.test("T8 create + full upload, then a delta: removes then only new adds", a
   assertEquals(calls[1].n, 120);
   const state = db.tables.ad_list_audience_platforms[0];
   assertEquals(state.provider_audience_id, "meta-aud-1");
-  assertEquals(state.synced_through, new Date(T0).toISOString());
+  // #4238 P1-1: synced through the snapshot's own database time.
+  assertEquals(state.synced_through, RECENT);
 
-  // A day later: one person leaves (opt-out), two join.
+  // A day later: one person leaves (opt-out), two join. The refresh stamps
+  // both, and members_refreshed_at, with one database now().
   const T1 = T0 + 86_400_000;
+  const refreshAt = new Date(T1 - 1_800_000).toISOString();
   const leaver = db.tables.ad_list_audience_members[3];
-  leaver.removed_at = new Date(T1 - 3_600_000).toISOString();
-  db.tables.ad_list_audience_members.push(...members("a1", 2, new Date(T1 - 1_800_000).toISOString(), "b"));
+  leaver.removed_at = refreshAt;
+  db.tables.ad_list_audience_members.push(...members("a1", 2, refreshAt, "b"));
+  db.tables.ad_list_audiences[0].members_refreshed_at = refreshAt;
   calls.length = 0;
   await syncListAudiences({ db, kind: "daily", transports: { meta: fakeTransport("meta", calls) }, redditEnabled: false, now: () => T1 });
   assertEquals(calls.map((c) => `${c.op}:${c.n}`), ["remove:1", "add:2"]);
@@ -280,9 +284,11 @@ Deno.test("T8 SC-3 a removals pass sends the REMOVE to every synced platform and
   };
   await syncListAudiences({ db, kind: "daily", transports, redditEnabled: false, now: () => T0 });
   const leaver = memberRows[7];
-  leaver.removed_at = new Date(T0 + 600_000).toISOString();
+  const refreshAt = new Date(T0 + 600_000).toISOString();
+  leaver.removed_at = refreshAt;
   db.tables.ad_list_audiences[0].member_count = 1199;
-  db.tables.ad_list_audience_members.push(...members("a1", 1, new Date(T0 + 700_000).toISOString(), "c"));
+  db.tables.ad_list_audiences[0].members_refreshed_at = refreshAt;
+  db.tables.ad_list_audience_members.push(...members("a1", 1, refreshAt, "c"));
   calls.length = 0;
   await syncListAudiences({ db, kind: "removals", transports, redditEnabled: false, now: () => T0 + 3_600_000 });
   const removes = calls.filter((c) => c.op === "remove");
@@ -337,6 +343,7 @@ Deno.test("T8 TikTok: a REMOVE that would leave fewer than 1,000 deletes the aud
   await syncListAudiences({ db, kind: "daily", transports: { tiktok: fakeTransport("tiktok", calls) }, redditEnabled: false, now: () => T0 });
   memberRows[0].removed_at = new Date(T0 + 1000).toISOString();
   db.tables.ad_list_audiences[0].member_count = 999;
+  db.tables.ad_list_audiences[0].members_refreshed_at = memberRows[0].removed_at;
   calls.length = 0;
   await syncListAudiences({ db, kind: "removals", transports: { tiktok: fakeTransport("tiktok", calls) }, redditEnabled: false, now: () => T0 + 3_600_000 });
   assertEquals(calls.map((c) => c.op), ["delete"]);
@@ -471,4 +478,63 @@ Deno.test("T8 logs carry only key, platform, counts and a code: never a hash or 
     Object.keys(db.tables.ad_list_audience_sync_runs[0]).sort(),
     ["adds", "audiences_refreshed", "cursor", "errors", "finished_at", "kind", "more", "removes", "started_at"],
   );
+});
+
+// #4238 P1-1: the bound is database time from AFTER the refresh, kept as the
+// database's own string (microseconds included), not the worker's run start.
+Deno.test("T8 P1-1 a refresh during the pass bounds the delta by its database time", async () => {
+  const day0 = new Date(T0 - 2 * 86_400_000).toISOString();
+  const memberRows = members("a1", 150, day0);
+  const db = new FakeDb(baseTables(
+    [definition("a1", "brand:b1:guests", 150, { members_refreshed_at: null })],
+    memberRows,
+    {
+      ad_list_audience_platforms: [{
+        audience_id: "a1", platform: "meta", connection_id: "conn-meta",
+        provider_audience_id: "meta-aud-1", state: "ready", synced_through: day0,
+      }],
+    },
+  ));
+  const dbNow = "2026-11-03T03:47:00.250731+00:00"; // after the run start (T0)
+  db.rpc = (name: string, args: Row) => {
+    db.rpcs.push(name);
+    if (name === "ad_list_audience_refresh" && args.p_audience_id === "a1") {
+      memberRows[4].removed_at = dbNow;
+      db.tables.ad_list_audiences[0].members_refreshed_at = dbNow;
+    }
+    return Promise.resolve({ data: { member_count: 149 }, error: null });
+  };
+  const calls: Call[] = [];
+  await syncListAudiences({ db, kind: "removals", transports: { meta: fakeTransport("meta", calls) }, redditEnabled: false, now: () => T0 });
+  assertEquals(calls.filter((c) => c.op === "remove").flatMap((c) => c.hashes ?? []), [String(memberRows[4].email_sha256)]);
+  assertEquals(db.tables.ad_list_audience_platforms[0].synced_through, day0, "a removals pass keeps synced_through");
+  calls.length = 0;
+  await syncListAudiences({ db, kind: "daily", transports: { meta: fakeTransport("meta", calls) }, redditEnabled: false, now: () => T0 + 1000 });
+  assertEquals(db.tables.ad_list_audience_platforms[0].synced_through, dbNow);
+});
+
+// #4238 P2-2: the provider audience id is kept the moment it exists.
+Deno.test("T8 P2-2 a refused first upload keeps the new provider audience id; the next run uploads into it", async () => {
+  const db = new FakeDb(baseTables([definition("a1", "brand:b1:guests", 150)], members("a1", 150, RECENT)));
+  const calls: Call[] = [];
+  const base = fakeTransport("meta", calls);
+  let refuse = true;
+  const meta: ListTransport = {
+    ...base,
+    send: (id, action, rows) =>
+      refuse
+        ? Promise.reject({ code: 200, subcode: 1870090, message: "Custom Audience Terms Not Accepted" })
+        : base.send(id, action, rows),
+  };
+  await syncListAudiences({ db, kind: "daily", transports: { meta }, redditEnabled: false, now: () => T0 });
+  const row = db.tables.ad_list_audience_platforms[0];
+  assertEquals(row.provider_audience_id, "meta-aud-1", "the id survives the refused upload");
+  assertEquals(row.state, "terms_required");
+  assertEquals(row.synced_through ?? null, null, "nothing counted as synced");
+  db.tables.ad_platform_audience_terms[0].state = "accepted";
+  refuse = false;
+  calls.length = 0;
+  await syncListAudiences({ db, kind: "daily", transports: { meta }, redditEnabled: false, now: () => T0 + 86_400_000 });
+  assertEquals(calls.filter((c) => c.op === "create").length, 0, "no second audience");
+  assertEquals(calls.filter((c) => c.op === "add").map((c) => [c.providerId, c.n]), [["meta-aud-1", 150]]);
 });
