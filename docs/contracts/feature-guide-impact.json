@@ -425,7 +425,8 @@
         "mingla-business/app/event/[id]/dates.tsx",
         "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql",
         "mingla-business/src/components/event/ChangeSummaryModal.tsx",
-        "mingla-business/src/components/event/EditPublishedScreen.tsx"
+        "mingla-business/src/components/event/EditPublishedScreen.tsx",
+        "mingla-business/src/utils/publishedEventEditGuards.ts"
       ]
     }
   ]
