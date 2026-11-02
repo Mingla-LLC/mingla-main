@@ -12,7 +12,9 @@
 --   #minimum-and-maximum-charge-amounts), checked when a price is SET: a new
 --   paid tier or a changed price. Existing rows are never re-validated, so no
 --   backfill and no table constraint; an untouched older price stays valid.
---   Currencies without a verified minimum (BGN, ISK, NGN) are not checked.
+--   Currencies without a verified minimum (BGN, ISK) are not checked. NGN
+--   (Paystack) is ₦100.00 = 10000 kobo: Seth's decision, 2026-11-01, not
+--   Paystack's documentation.
 --
 -- Both rules live in one BEFORE trigger on public.ticket_types, the single
 -- table every ticket, trip-package and experience price is written to. The
@@ -47,6 +49,7 @@ AS $function$
     WHEN 'EUR' THEN 50
     WHEN 'GBP' THEN 30
     WHEN 'HUF' THEN 17500
+    WHEN 'NGN' THEN 10000
     WHEN 'NOK' THEN 300
     WHEN 'PLN' THEN 200
     WHEN 'RON' THEN 200

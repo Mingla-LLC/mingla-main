@@ -6,9 +6,11 @@
  * Source (verified 2026-11-01): Stripe "Minimum and maximum charge amounts",
  * https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts —
  * only currencies Mingla can price in (its Stripe payout countries) AND that
- * Stripe lists are here. BGN and ISK are not on Stripe's list, and Paystack's
- * NGN minimum could not be verified from Paystack's own documentation, so
- * those currencies have no minimum here (left out rather than guessed).
+ * Stripe lists are here. BGN and ISK are not on Stripe's list, so they have
+ * no minimum here (left out rather than guessed).
+ *
+ * NGN (Paystack): ₦100.00 = 10000 kobo. Source: Seth's decision, 2026-11-01
+ * (#3355), not Paystack's documentation.
  *
  * Amounts are stored minor units (price_cents), the same unit Stripe takes.
  *
@@ -30,6 +32,7 @@ export const PROVIDER_MINIMUM_CHARGE_MINOR: Readonly<Record<string, number>> =
     EUR: 50,
     GBP: 30,
     HUF: 17500,
+    NGN: 10000,
     NOK: 300,
     PLN: 200,
     RON: 200,
@@ -49,12 +52,33 @@ export function providerMinimumChargeMinor(currency: unknown): number | null {
     : null;
 }
 
+/**
+ * Currencies whose en-GB form is the bare code ("NGN 100.00") but whose own
+ * symbol is unambiguous, so the owner reads "₦100.00". Same list in the Host.
+ */
+const NARROW_SYMBOL_CURRENCIES: ReadonlySet<string> = new Set(["NGN"]);
+
+function minimumText(minor: number, code: string): string {
+  if (NARROW_SYMBOL_CURRENCIES.has(code)) {
+    try {
+      return new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: code,
+        currencyDisplay: "narrowSymbol",
+      }).format(minor / 100);
+    } catch {
+      // Fall through to the shared formatter.
+    }
+  }
+  return formatMinor(minor, code) ?? `${(minor / 100).toFixed(2)} ${code}`;
+}
+
 /** The one owner sentence (Ari and the Host form say the same words). */
 export function ticketPriceMinimumMessage(currency: string): string | null {
   const minimum = providerMinimumChargeMinor(currency);
   if (minimum === null) return null;
   return `Paid tickets must be at least ${
-    formatMinor(minimum, currency)
+    minimumText(minimum, currency.trim().toUpperCase())
   }. That's the smallest amount the payment provider can charge.`;
 }
 

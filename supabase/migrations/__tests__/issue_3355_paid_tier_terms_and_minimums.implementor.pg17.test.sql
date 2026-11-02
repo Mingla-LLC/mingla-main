@@ -7,7 +7,8 @@
 --       RPC business_patch_event_ticket_tiers); a Terms-accepted teammate
 --       passes; drafts are untouched.
 --   D6: a new paid price below the provider minimum is refused, the exact
---       minimum passes, a currency with no verified minimum is not checked,
+--       minimum passes (GBP 30p; NGN ₦100 = 10000 kobo, ₦99 refused), a
+--       currency with no verified minimum is not checked,
 --       and an existing below-minimum row is left alone (other edits and an
 --       unchanged price still save; nothing is backfilled).
 --   No publish regression: a valid paid publish and a valid free publish
@@ -202,9 +203,27 @@ BEGIN
   -- The exact minimum passes.
   INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total)
   VALUES (v_live,'Exactly the minimum',30,'GBP',false,10);
-  -- A currency with no verified minimum is not checked.
+  -- Nigeria: ₦100 = 10000 kobo (Seth's decision, 2026-11-01). ₦99 is
+  -- refused, ₦100 passes.
+  v_failed := false;
+  BEGIN
+    INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total)
+    VALUES (v_ngn_live,'Ninety-nine naira',9900,'NGN',false,10);
+  EXCEPTION WHEN OTHERS THEN
+    v_failed := SQLERRM = 'ticket_price_below_minimum';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION 'D6: a ₦99 paid ticket must be refused';
+  END IF;
   INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total)
-  VALUES (v_ngn_live,'Small naira',100,'NGN',false,10);
+  VALUES (v_ngn_live,'Hundred naira',10000,'NGN',false,10);
+  IF public.issue_3355_provider_minimum_charge_minor('ngn') IS DISTINCT FROM 10000 THEN
+    RAISE EXCEPTION 'D6: the NGN minimum must be 10000 kobo';
+  END IF;
+  -- A currency with no verified minimum is not checked.
+  IF public.issue_3355_provider_minimum_charge_minor('ISK') IS NOT NULL THEN
+    RAISE EXCEPTION 'D6: ISK has no verified minimum and must not be checked';
+  END IF;
   -- A free tier is never checked.
   INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total)
   VALUES (v_live,'Guest list',0,'GBP',true,10);

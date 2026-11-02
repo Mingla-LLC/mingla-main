@@ -88,15 +88,29 @@ describe("#3355 P6 ticket price minimum (Host form)", () => {
     expect(
       ticketPriceEntryMinimumMessage({
         ...base,
-        currency: "NGN",
+        currency: "ISK",
         priceText: "1",
       }),
     ).toBeNull();
+  });
+
+  test("Nigeria's minimum is ₦100 (Seth's decision, 2026-11-01) and reads in naira", () => {
+    const words =
+      "Paid tickets must be at least ₦100.00. That's the smallest amount the payment provider can charge.";
+    expect(providerMinimumChargeMinor("NGN")).toBe(10000);
+    expect(ticketPriceMinimumMessage("NGN")).toBe(words);
     expect(
       ticketPriceEntryMinimumMessage({
         ...base,
-        currency: "ISK",
-        priceText: "1",
+        currency: "NGN",
+        priceText: "99",
+      }),
+    ).toBe(words);
+    expect(
+      ticketPriceEntryMinimumMessage({
+        ...base,
+        currency: "NGN",
+        priceText: "100",
       }),
     ).toBeNull();
   });

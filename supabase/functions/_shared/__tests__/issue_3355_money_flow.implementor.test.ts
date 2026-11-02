@@ -52,6 +52,7 @@ import {
 import { formatMinorAmount } from "../ariPresentation/registry.ts";
 import {
   PROVIDER_MINIMUM_CHARGE_MINOR,
+  ticketPriceBelowMinimum,
   ticketPriceMinimumMessage,
 } from "../money/providerMinimums.ts";
 import {
@@ -758,9 +759,22 @@ Deno.test("P6: the minimum-price table is identical in edge code, the Host app a
     );
   }
   // Unverified currencies are left out, never guessed.
-  for (const currency of ["NGN", "ISK", "BGN"]) {
+  for (const currency of ["ISK", "BGN"]) {
     assert(!(currency in PROVIDER_MINIMUM_CHARGE_MINOR));
   }
+});
+
+Deno.test("P6: Nigeria's minimum is ₦100 (Seth's decision, 2026-11-01) and reads in naira", () => {
+  assertEquals(PROVIDER_MINIMUM_CHARGE_MINOR.NGN, 10000);
+  assertEquals(HOST_MINIMUMS.NGN, 10000);
+  const words =
+    "Paid tickets must be at least ₦100.00. That's the smallest amount the payment provider can charge.";
+  assertEquals(ticketPriceMinimumMessage("NGN"), words);
+  assertEquals(hostMinimumMessage("ngn"), words);
+  // ₦99 is refused, ₦100 passes (kobo).
+  assertEquals(ticketPriceBelowMinimum(9900, "NGN"), words);
+  assertEquals(ticketPriceBelowMinimum(10000, "NGN"), null);
+  assertEquals(ticketPriceBelowMinimum(0, "NGN"), null, "free is never checked");
 });
 
 function tierClient(): Any {

@@ -4,8 +4,9 @@
  *
  * Source: Stripe "Minimum and maximum charge amounts"
  * (https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts),
- * limited to currencies Mingla prices in. BGN, ISK and NGN have no verified
- * minimum, so none is enforced for them.
+ * limited to currencies Mingla prices in. BGN and ISK have no verified
+ * minimum, so none is enforced for them. NGN (Paystack) is ₦100.00 = 10000
+ * kobo: Seth's decision, 2026-11-01 (#3355), not Paystack's documentation.
  *
  * MIRROR of supabase/functions/_shared/money/providerMinimums.ts and the SQL
  * function public.issue_3355_provider_minimum_charge_minor(text). The Deno
@@ -25,6 +26,7 @@ export const PROVIDER_MINIMUM_CHARGE_MINOR: Readonly<Record<string, number>> =
     EUR: 50,
     GBP: 30,
     HUF: 17500,
+    NGN: 10000,
     NOK: 300,
     PLN: 200,
     RON: 200,
@@ -45,12 +47,21 @@ export function providerMinimumChargeMinor(
     : null;
 }
 
+/**
+ * Currencies whose en-GB form is the bare code ("NGN 100.00") but whose own
+ * symbol is unambiguous, so the host reads "₦100.00". Same list as Ari's.
+ */
+const NARROW_SYMBOL_CURRENCIES: ReadonlySet<string> = new Set(["NGN"]);
+
 function formatMinimum(minor: number, code: string): string {
   // Every currency in the table uses two decimals.
   try {
     return new Intl.NumberFormat("en-GB", {
       style: "currency",
       currency: code,
+      ...(NARROW_SYMBOL_CURRENCIES.has(code)
+        ? { currencyDisplay: "narrowSymbol" as const }
+        : {}),
     }).format(minor / 100);
   } catch {
     return `${(minor / 100).toFixed(2)} ${code}`;
