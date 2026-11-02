@@ -1,5 +1,5 @@
 -- #3281 Extras, slice 1: extras leave the order only with its last paid tickets.
--- MINGLA-INVARIANT: I-3281-EXTRAS-REFUND-WITH-THE-ORDER | issue #3281 | The refund that returns an order's last paid tickets also returns and records its extras. A partial refund never touches them, and an order without extras refunds exactly as before.
+-- MINGLA-INVARIANT: I-3281-EXTRAS-REFUND-WITH-THE-ORDER | issue #3281 | The refund that returns an order's last paid tickets also returns and records its extras. A partial refund never touches them, and a manual refund of an order without extras is unchanged.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -193,6 +193,7 @@ DECLARE
   v_plain_order uuid := gen_random_uuid();
   v_plain_line uuid := gen_random_uuid();
   v_refund uuid;
+  v_result jsonb;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','',true);
   INSERT INTO auth.users(id) VALUES (v_owner);
@@ -255,12 +256,14 @@ BEGIN
     RAISE EXCEPTION 'cancel must return the extras and fees past a free ticket';
   END IF;
 
-  -- An order with no extras cancels exactly as before.
-  PERFORM public.issue_3872_cancel_refund_order(v_plain_order,
+  -- A free ticket never keeps a cancelled order's fees, with or without extras.
+  v_result := public.issue_3872_cancel_refund_order(v_plain_order,
     jsonb_build_array(jsonb_build_object('order_line_item_id',v_plain_line,'quantity',1)),
     'The organiser cancelled this event','cancel-plain-1');
-  IF (SELECT amount_cents FROM public.refunds WHERE order_id=v_plain_order) <> 1000 THEN
-    RAISE EXCEPTION 'a plain cancellation must not change';
+  IF (SELECT amount_cents FROM public.refunds WHERE order_id=v_plain_order) <> 1200
+     OR (v_result->>'is_full_refund')::boolean IS NOT TRUE
+     OR v_result->>'proposed_new_payment_status' <> 'refunded' THEN
+    RAISE EXCEPTION 'cancel must return the whole charge past a free ticket, got %',v_result;
   END IF;
 END;
 $test$;

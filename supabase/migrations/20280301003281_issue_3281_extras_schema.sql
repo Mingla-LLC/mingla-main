@@ -884,17 +884,9 @@ BEGIN
     RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
   END IF;
 
-  -- Would every line be fully refunded after this?
-  SELECT NOT EXISTS (
-    SELECT 1 FROM public.order_line_items oli
-    WHERE oli.order_id = p_order_id
-      AND oli.quantity > (
-        SELECT COALESCE(SUM(rli.quantity), 0) FROM public.refund_line_items rli
-        JOIN public.refunds r ON r.id = rli.refund_id
-        WHERE rli.order_line_item_id = oli.id AND r.status IN ('pending', 'succeeded')
-      ) + COALESCE((SELECT (l->>'quantity')::int FROM jsonb_array_elements(v_lines) l
-                    WHERE l->>'order_line_item_id' = oli.id::text), 0)
-  ) INTO v_full;
+  -- Would every paid line be fully refunded after this? A free ticket can't be
+  -- refunded, so it must not keep fees, tax or extras from going back (#3281).
+  v_full := public.issue_3281_refund_returns_all_tickets(p_order_id, v_lines, NULL);
 
   SELECT COALESCE(SUM(amount_cents), 0) INTO v_other
   FROM public.refunds WHERE order_id = p_order_id AND status IN ('pending', 'succeeded')
@@ -902,9 +894,7 @@ BEGIN
   v_charged := COALESCE(v_order.buyer_total_cents, v_order.total_cents);
   -- Everything that remains when the last tickets go back; otherwise the lines
   -- (a cancellation always returns every remaining ticket, so this is the norm).
-  v_amount := CASE WHEN v_full
-      OR public.issue_3281_extras_refund_cents(p_order_id, v_lines, NULL) > 0
-    THEN v_charged - v_other ELSE LEAST(v_line_base, v_charged - v_other) END;
+  v_amount := CASE WHEN v_full THEN v_charged - v_other ELSE LEAST(v_line_base, v_charged - v_other) END;
   IF v_amount <= 0 THEN
     RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
   END IF;
