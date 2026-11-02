@@ -1344,6 +1344,18 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     currency: ticket.currency ?? fallbackCurrency,
     isFree: ticket.isFree,
   });
+  // issue #3281 — says which days a listed ticket covers. Explorer has no
+  // scope line on the event page yet, so the cart is where a guest sees it.
+  const dayScopeLabelFor = (ticket: PublicTicketProps): string | null => {
+    const days = multiDaySelection?.occurrences.filter((day) =>
+      ticket.validOccurrenceIds?.includes(day.id),
+    );
+    if (multiDaySelection == null || days == null || days.length === 0) return null;
+    if (days.length === multiDaySelection.occurrences.length) return null;
+    return days.length === 1
+      ? formatOccurrenceLine(days[0], multiDaySelection.timezone)
+      : `${days.length} of ${multiDaySelection.occurrences.length} dates`;
+  };
   const renderQuantityRow = (
     ticket: PublicTicketProps,
     key: string,
@@ -1352,7 +1364,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   ): React.ReactElement => (
     <QuantityRow
       key={key}
-      ticket={ticket}
+      ticket={{ ...ticket, dayScopeLabel: dayScopeLabelFor(ticket) }}
       quantity={quantity}
       onQuantityChange={onQuantityChange}
       CardComponent={ConsumerCartCard}

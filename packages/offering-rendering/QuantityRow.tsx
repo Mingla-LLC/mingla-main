@@ -59,6 +59,8 @@ export interface QuantityRowTicket {
   id: string;
   name: string;
   description?: string | null;
+  /** issue #3281 — "Fri 2 Oct" on a day-limited ticket, null otherwise. */
+  dayScopeLabel?: string | null;
   /** Major-unit price (e.g., 12.50 for £12.50). Null when isFree. */
   priceGbp: number | null;
   /**
@@ -357,6 +359,14 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
           >
             {ticket.name}
           </Text>
+          {ticket.dayScopeLabel != null ? (
+            <Text
+              style={descriptionStyle}
+              testID={`issue-3281-cart-scope-${ticket.id}`}
+            >
+              {`For ${ticket.dayScopeLabel}`}
+            </Text>
+          ) : null}
         </View>
         {isSoldOut ? (
           canJoinWaitlist ? (

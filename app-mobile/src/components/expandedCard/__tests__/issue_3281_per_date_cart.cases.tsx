@@ -104,6 +104,14 @@ describe("issue #3281 — Explorer per-date quantities", () => {
     });
   });
 
+  test("a listed ticket says which dates it covers", () => {
+    const renderer = mountTicketCart(listed(["day-1", "day-2"]));
+    expect(
+      renderer.root.findAllByType("QuantityRow" as never)[0].props.ticket
+        .dayScopeLabel,
+    ).toBe("2 of 3 dates");
+  });
+
   test("a listed ticket covering every chosen date stays uniform", () => {
     mountTicketCart(listed(DAYS));
     expect(quoteLine()).toMatchObject({ quantity: 2 });

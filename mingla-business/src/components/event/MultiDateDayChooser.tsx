@@ -41,6 +41,8 @@ export interface MultiDateDayChooserProps {
   occurrences: readonly PublicEventOccurrence[];
   /** The chosen `event_dates.id`s. Empty until the guest picks — never defaulted. */
   selectedOccurrenceIds: readonly string[];
+  /** issue #3281 — "Sold out" or "No tickets" per date, by day-limited tickets. */
+  dayCaptions?: Readonly<Record<string, string>>;
   /**
    * issue #2160 — the organiser's pricing choice, so the guest learns the
    * multiplier HERE, before any total is shown.
@@ -141,6 +143,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   state = "ready",
   onRetry,
   onToggle,
+  dayCaptions,
 }) => {
   const reducedMotion = useReducedMotionOnWeb();
   const allDaysPass = allDaysPassProp === true || pricingMode === "all_days";
@@ -256,7 +259,12 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
             renderOccurrence={(row: EventDatePickerOccurrenceRenderArgs) => {
               const selected = row.selected;
               const label = rowLabel(row.occurrence, timezone);
-              const detail = [row.title, row.location, row.placesLeftLabel]
+              const detail = [
+                row.title,
+                row.location,
+                row.placesLeftLabel,
+                dayCaptions?.[row.occurrence.id] ?? null,
+              ]
                 .filter((part): part is string => part !== null)
                 .join(" · ");
               const webCheckboxProps = Platform.OS === "web"

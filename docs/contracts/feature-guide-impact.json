@@ -77,6 +77,8 @@
         "mingla-business/src/components/checkout/CartContext.tsx",
         "supabase/functions/ticket-checkout-create/index.ts",
         "mingla-business/src/services/checkoutErrorCopy.ts",
+        "mingla-business/src/components/event/MultiDateDayChooser.tsx",
+        "packages/offering-rendering/QuantityRow.tsx",
         "app-mobile/src/hooks/usePublicEventBySlug.ts",
         "app-mobile/src/services/publicEventTicketsService.ts",
         "app-mobile/src/payments/checkoutErrorMessages.ts",
