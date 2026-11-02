@@ -10,9 +10,10 @@
  * Setup (local only): B-New's open "not now" rows are cleared first, so the
  * owner's card is shown fresh every run.
  *
- * Mutation check: make `brandCanWaitStep.onAnswer` (ariFlows/brandGate.ts)
- * keep the skip for the run only (do not call `ctx.deps.setAside`) and
- * `deferral rows` is 0 and the teammate's `first card` is brand_can_wait.
+ * Mutation check (run live 2026-11-02): make `brandCanWaitStep.onAnswer`
+ * (ariFlows/brandGate.ts) keep the skip for the run only (never call
+ * `ctx.deps.setAside`) and `deferral rows` is 0 and the teammate's `first
+ * card` is brand_can_wait — FAIL.
  */
 
 import { compareFacts, driveFlow } from "./lib.mjs";
@@ -21,7 +22,10 @@ export const meta = {
   id: "brand_gate_defer_remembered",
   brand: "new",
   account: "new_owner",
-  capabilities: ["ari.readiness.defer_item"],
+  // The flow writes the brand-wide "not now" itself (brand_readiness_defer);
+  // the defer_readiness_item tool (ari.brand.readiness_defer) is not what
+  // runs here, so no ledger row is claimed.
+  capabilities: [],
 };
 
 export async function run(ctx) {

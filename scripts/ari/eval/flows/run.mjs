@@ -29,6 +29,7 @@ import {
 import {
   FLOW_ACCOUNTS,
   FLOW_EVAL_PASSWORD,
+  resetTurnWindow,
   seedFlowBrands,
 } from "../seed-flow-brands.mjs";
 
@@ -103,6 +104,7 @@ export async function runFlowEvals({ ids = null } = {}) {
   const config = localConfig();
   const rest = serviceRest(config);
   const { brands, users } = await seedFlowBrands(config);
+  await resetTurnWindow(rest, Object.values(users));
   const tokens = new Map();
   const sessions = [];
   const ctxBase = {

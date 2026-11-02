@@ -23,7 +23,7 @@ export const meta = {
   id: "website_setup_phone",
   brand: "new",
   account: "new_owner",
-  capabilities: ["ari.brand.update"],
+  capabilities: ["ari.brand.update_context"],
 };
 
 const PHONE_TYPED = "07700 900123";

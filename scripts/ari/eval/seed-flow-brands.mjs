@@ -176,6 +176,23 @@ async function ensureMember(rest, brandId, userId, role, terms) {
   }
 }
 
+/**
+ * Local only: moves the synthetic accounts' counted Ari turns out of the
+ * 24-hour window. One full eval run uses ~80 owner turns (every card tap is
+ * an owner turn) and the cap is 200 a day, so without this a second run the
+ * same day is refused with RATE_LIMITED. Rows are kept, only aged.
+ */
+export async function resetTurnWindow(rest, userIds) {
+  const aged = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  for (const userId of userIds) {
+    await rest.update(
+      "agent_turn_attempts",
+      `user_id=eq.${userId}&counted_at=gt.${aged}`,
+      { counted_at: aged },
+    );
+  }
+}
+
 export async function seedFlowBrands(config = localConfig()) {
   const rest = serviceRest(config);
   const users = {};

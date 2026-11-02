@@ -7,10 +7,11 @@
  * start, end, time zone and place equal the owner's answers; no tickets;
  * never private; exactly one record with that title.
  *
- * Mutation check: revert the event seed truth (make the end card's suggested
- * end the saved end, or drop the owner's end time in `offerings/event.ts`
- * `eventEndStep.onAnswer`) and `end_time` reads 21:00, not 22:30; flip the
- * create default visibility to "private" and `visibility` fails.
+ * Mutation check (run live 2026-11-02): in `offerings/event.ts`
+ * `eventEndStep.onAnswer`, save the suggested end instead of the owner's
+ * (`owner(suggestedEventEnd(start_at))`) and `end time` reads "21:00", not
+ * "22:30" — FAIL. Flip the create default visibility to "private" and
+ * `requested visibility` fails.
  */
 
 import { compareFacts, driveFlow, place } from "./lib.mjs";
