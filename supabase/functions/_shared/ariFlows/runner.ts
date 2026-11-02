@@ -108,6 +108,7 @@ export type RunnerOutcome =
     tool_name: string;
     tool_args: Record<string, unknown>;
     rows: { label: string; value: string }[];
+    rows_only?: boolean;
     ack?: string;
     run: FlowRun;
   }
@@ -258,6 +259,7 @@ function buildArtefact(
     ...(ask.handoff ? { handoff: ask.handoff } : {}),
     ...(ask.items ? { items: ask.items } : {}),
     ...(ask.answer_mode ? { answer_mode: ask.answer_mode } : {}),
+    ...(ask.subject_id ? { subject_id: ask.subject_id } : {}),
     // The form card is bound to this exact question: its id is unique per
     // question (never per tool), so an older card can never pass for it.
     ...(ask.rendition
@@ -405,6 +407,7 @@ async function advanceUnderLease(
     brandName: input.brandName,
     state: states[stepKey],
     trigger: input.trigger,
+    answered,
   });
 
   const commit = async (extra: Record<string, unknown>): Promise<FlowRun> => {
@@ -492,6 +495,18 @@ async function advanceUnderLease(
       if (!outcome) return { kind: "stale", artefact: open, run };
       answered = true;
       setState(step.key, outcome.record);
+      if (outcome.answers) {
+        // #3355 P7 — the owner's own facts (provenance "owner"), merged.
+        patch.answers = {
+          ...(patch.answers as Record<string, unknown> | undefined ?? {}),
+          ...outcome.answers,
+        };
+        run = { ...run, answers: { ...run.answers, ...outcome.answers } };
+      }
+      if (outcome.subject_id && !run.subject_id) {
+        patch.subject_id = outcome.subject_id;
+        run = { ...run, subject_id: outcome.subject_id };
+      }
       if (outcome.session_skips) {
         patch.session_skips = outcome.session_skips;
         // The probes below must see what the owner just set aside.
@@ -513,6 +528,7 @@ async function advanceUnderLease(
           tool_name: outcome.propose.tool_name,
           tool_args: outcome.propose.tool_args,
           rows: outcome.propose.rows ?? [],
+          ...(outcome.propose.rows_only ? { rows_only: true } : {}),
           ...(lines.length > 0 ? { ack: lines.join(" ") } : {}),
           run,
         };
@@ -609,6 +625,29 @@ async function advanceUnderLease(
         ? { kind: "notice", text: lines.join(" "), artefact: null, run }
         : { kind: "unchanged", artefact: null, run };
     }
+    if ("propose" in probe) {
+      if (answered) {
+        // #3355 P7 — straight after the owner's answer: ONE protected
+        // proposal. Nothing is written before they confirm it.
+        setState(step.key, { ...probe.record, state: "awaiting_approval" });
+        run = await commit({
+          status: "awaiting_approval",
+          current_step_key: step.key,
+          current_question_id: null,
+          current_artefact: null,
+        });
+        return {
+          kind: "propose",
+          tool_name: probe.propose.tool_name,
+          tool_args: probe.propose.tool_args,
+          rows: probe.propose.rows ?? [],
+          ...(probe.propose.rows_only ? { rows_only: true } : {}),
+          ...(lines.length > 0 ? { ack: lines.join(" ") } : {}),
+          run,
+        };
+      }
+    }
+    const askOf = "propose" in probe ? probe.ask : null;
     if ("delegate" in probe) {
       if (states[step.key]?.state === "delegated") {
         run = await commit({});
@@ -672,7 +711,7 @@ async function advanceUnderLease(
       };
     }
 
-    const ask = probe.ask;
+    const ask = askOf ?? (probe as { ask: AskSpec }).ask;
     const sameCard = !!open && run.current_step_key === step.key &&
       open.reuse_key === ask.reuse_key && !answered;
     if (sameCard) {

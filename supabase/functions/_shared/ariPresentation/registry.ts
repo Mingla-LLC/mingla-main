@@ -256,7 +256,7 @@ function flowRows(context: unknown): PresentationField[] {
   }
   const rows = (context as Record<string, unknown>).flow_rows;
   if (!Array.isArray(rows)) return [];
-  return rows.slice(0, 4).flatMap((row) => {
+  return rows.slice(0, 6).flatMap((row) => {
     if (row === null || typeof row !== "object") return [];
     const { label, value } = row as Record<string, unknown>;
     if (
@@ -279,6 +279,12 @@ export function buildProposalPresentation(
   delete clean.__proposal_context;
   const identity = identityOf(clean);
   const title = identity && isOwnerSafeValue(identity) ? identity : copy.title;
+  // #3355 P7: an engine proposal whose rows are all written in plain words
+  // shows only those (never raw arguments such as coordinates).
+  const rowsOnly = context !== null && typeof context === "object" &&
+    !Array.isArray(context) &&
+    (context as Record<string, unknown>).flow_rows_only === true &&
+    flowRows(context).length > 0;
   return {
     version: 1,
     verb: assertOwnerCopy(copy.verb, {
@@ -286,7 +292,10 @@ export function buildProposalPresentation(
       surface: "proposal_verb",
     }),
     title,
-    fields: [...presentationFields(clean), ...flowRows(context)].slice(
+    fields: [
+      ...(rowsOnly ? [] : presentationFields(clean)),
+      ...flowRows(context),
+    ].slice(
       0,
       MAX_FIELDS,
     ),

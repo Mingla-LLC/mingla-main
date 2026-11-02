@@ -38,6 +38,8 @@ import type {
   FlowAnswer,
   FlowAnswerValues,
   FlowArtefact,
+  FlowEventRow,
+  FlowPlaceValue,
   FlowProbeDeps,
   FlowRun,
 } from "./types.ts";
@@ -86,9 +88,16 @@ function parseFlowAnswerValues(value: unknown): FlowAnswerValues | null {
   const raw = value as Record<string, unknown>;
   if (
     Object.keys(raw).some((key) =>
-      !["choices", "country", "response"].includes(key)
+      !["choices", "country", "response", "place"].includes(key)
     )
   ) return null;
+  // #3355 P7: a place picked from the address search on the card.
+  let place: FlowPlaceValue | undefined;
+  if (raw.place !== undefined) {
+    const parsed = parseFlowPlace(raw.place);
+    if (!parsed) return null;
+    place = parsed;
+  }
   const choices = raw.choices ?? [];
   if (
     !Array.isArray(choices) || choices.length > 10 ||
@@ -103,11 +112,63 @@ function parseFlowAnswerValues(value: unknown): FlowAnswerValues | null {
   ) return null;
   const response = raw.response ?? "";
   if (typeof response !== "string" || response.length > 2000) return null;
-  if (choices.length === 0 && !response.trim()) return null;
+  if (choices.length === 0 && !response.trim() && !place) return null;
   return {
     choices: (choices as string[]).map((choice) => choice.trim()),
     country: country as string | null,
     response: response.trim(),
+    ...(place ? { place } : {}),
+  };
+}
+
+function boundedText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed && trimmed.length <= max ? trimmed : null;
+}
+
+/** #3355 P7 — validate a picked place (shape only; the server re-checks). */
+export function parseFlowPlace(value: unknown): FlowPlaceValue | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const allowed = [
+    "venue_name",
+    "address",
+    "city",
+    "country_code",
+    "lat",
+    "lng",
+    "feature_type",
+  ];
+  if (Object.keys(raw).some((key) => !allowed.includes(key))) return null;
+  const venue = boundedText(raw.venue_name, 120);
+  const address = boundedText(raw.address, 300);
+  const city = boundedText(raw.city, 120);
+  const lat = raw.lat;
+  const lng = raw.lng;
+  if (
+    !venue || !address || !city || typeof lat !== "number" ||
+    typeof lng !== "number" || !Number.isFinite(lat) ||
+    !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180
+  ) return null;
+  const country = raw.country_code ?? null;
+  if (
+    country !== null &&
+    (typeof country !== "string" || !/^[A-Z]{2}$/.test(country))
+  ) return null;
+  const feature = raw.feature_type ?? null;
+  if (
+    feature !== null &&
+    (typeof feature !== "string" || !/^[a-z_]{1,30}$/.test(feature))
+  ) return null;
+  return {
+    venue_name: venue,
+    address,
+    city,
+    country_code: country as string | null,
+    lat,
+    lng,
+    feature_type: feature as string | null,
   };
 }
 
@@ -213,6 +274,38 @@ const SITE_READS: ReadonlyMap<string, (typeof SITE_AGENT_TOOLS)[number]> =
       .map((tool) => [tool.name, tool]),
   );
 
+const EVENT_COLUMNS =
+  "id,title,status,timezone,description,party_types,city,cover_media_url,online_url,created_at,theme";
+
+function eventRowOf(data: unknown): FlowEventRow {
+  const row = data as Record<string, unknown>;
+  const theme = row.theme && typeof row.theme === "object"
+    ? row.theme as Record<string, unknown>
+    : {};
+  const draft = theme.business_draft && typeof theme.business_draft === "object"
+    ? theme.business_draft as Record<string, unknown>
+    : {};
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : null;
+  return {
+    id: String(row.id),
+    title: typeof row.title === "string" ? row.title : "",
+    status: typeof row.status === "string" ? row.status : "",
+    timezone: text(row.timezone),
+    description: text(row.description),
+    party_types: Array.isArray(row.party_types)
+      ? row.party_types.filter((item): item is string =>
+        typeof item === "string"
+      )
+      : [],
+    city: text(row.city),
+    cover_media_url: text(row.cover_media_url),
+    online_url: text(row.online_url),
+    created_at: text(row.created_at),
+    draft,
+  };
+}
+
 /** Canonical reads the runner makes for one brand, memoised per request. */
 export function buildFlowProbeDeps(
   userClient: SupabaseClient,
@@ -222,6 +315,7 @@ export function buildFlowProbeDeps(
 ): FlowProbeDeps {
   const cache = new Map<string, Promise<BrandReadiness>>();
   const reads = new Map<string, Promise<unknown>>();
+  const events = new Map<string, Promise<FlowEventRow | null>>();
   return {
     // #2830 P4: one read-only Website tool as the caller, memoised for the
     // request. A write tool is never reachable here.
@@ -259,6 +353,50 @@ export function buildFlowProbeDeps(
         cache.set(key, pending);
       }
       return pending;
+    },
+    // #3355 P7 — the brand's own facts and its events, read as the caller.
+    async brandFacts() {
+      const { data, error } = await userClient.from("brands")
+        .select("default_timezone,country_code,default_currency")
+        .eq("id", brandId)
+        .maybeSingle();
+      if (error || !data) return null;
+      const row = data as Record<string, unknown>;
+      const text = (value: unknown) =>
+        typeof value === "string" && value.trim() ? value.trim() : null;
+      return {
+        default_timezone: text(row.default_timezone),
+        country_code: text(row.country_code),
+        default_currency: text(row.default_currency),
+      };
+    },
+    eventRow(id: string) {
+      let pending = events.get(id);
+      if (!pending) {
+        pending = (async () => {
+          const { data, error } = await userClient.from("events")
+            .select(EVENT_COLUMNS)
+            .eq("id", id)
+            .eq("brand_id", brandId)
+            .is("deleted_at", null)
+            .maybeSingle();
+          return error || !data ? null : eventRowOf(data);
+        })();
+        events.set(id, pending);
+      }
+      return pending;
+    },
+    async eventsTitled(title: string) {
+      const { data, error } = await userClient.from("events")
+        .select(EVENT_COLUMNS)
+        .eq("brand_id", brandId)
+        .eq("event_type", "event")
+        .in("status", ["draft", "scheduled"])
+        .is("deleted_at", null)
+        .ilike("title", title.replace(/[\\%_]/g, (c) => `\\${c}`))
+        .limit(10);
+      if (error || !Array.isArray(data)) return [];
+      return data.map(eventRowOf);
     },
     async subjectExists(table: string, id: string) {
       if (!["events"].includes(table)) return false;
@@ -304,6 +442,8 @@ export type FlowTurnDecision =
     tool_name: string;
     tool_args: Record<string, unknown>;
     rows: { label: string; value: string }[];
+    /** #3355 P7 — the card shows only these rows. */
+    rows_only?: boolean;
     ack?: string;
     state: FlowStateView | null;
   }
@@ -378,6 +518,7 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
         tool_name: outcome.tool_name,
         tool_args: outcome.tool_args,
         rows: outcome.rows,
+        ...(outcome.rows_only ? { rows_only: true } : {}),
         ...(outcome.ack ? { ack: outcome.ack } : {}),
         state,
       };

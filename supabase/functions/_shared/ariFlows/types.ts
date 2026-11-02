@@ -123,6 +123,11 @@ export interface FlowArtefact {
   answer_mode?: "form";
   /** #2830 P4 — the form-shaped card (an Ari rendition) for a form answer. */
   rendition?: Record<string, unknown>;
+  /**
+   * #3355 P7 — the record this card is about (the event a cover upload
+   * goes to). Never shown; the Host reads it to open the right picker.
+   */
+  subject_id?: string;
 }
 
 export interface FlowRun {
@@ -171,6 +176,35 @@ export interface FlowAnswerValues {
   country: string | null;
   /** What the owner typed or pasted. */
   response: string;
+  /** #3355 P7 — a place picked from the address search on the card. */
+  place?: FlowPlaceValue;
+}
+
+/** #3355 P7 — what the address picker on an Ari card submits. */
+export interface FlowPlaceValue {
+  venue_name: string;
+  address: string;
+  city: string;
+  country_code: string | null;
+  lat: number;
+  lng: number;
+  feature_type: string | null;
+}
+
+/** #3355 P7 — the event row an event flow reads back (canonical state). */
+export interface FlowEventRow {
+  id: string;
+  title: string;
+  status: string;
+  timezone: string | null;
+  description: string | null;
+  party_types: string[];
+  city: string | null;
+  cover_media_url: string | null;
+  online_url: string | null;
+  created_at: string | null;
+  /** theme.business_draft (draft facts, tickets, when). */
+  draft: Record<string, unknown>;
 }
 
 /** Reads the runner may make. Every probe goes through these. */
@@ -193,6 +227,16 @@ export interface FlowProbeDeps {
    * not confirmed or cancelled? (A step waiting on it issues no new card.)
    */
   hasOpenProposal?(): Promise<boolean>;
+  /** #3355 P7 — the brand's own time zone, country and currency. */
+  brandFacts?(): Promise<{
+    default_timezone: string | null;
+    country_code: string | null;
+    default_currency: string | null;
+  } | null>;
+  /** #3355 P7 — one event of this brand, read back (null when gone). */
+  eventRow?(id: string): Promise<FlowEventRow | null>;
+  /** #3355 P7 — this brand's live drafts / scheduled events with this title. */
+  eventsTitled?(title: string): Promise<FlowEventRow[]>;
 }
 
 export interface FlowContext {
@@ -203,6 +247,11 @@ export interface FlowContext {
   state: FlowStepRecord | undefined;
   /** #2830 P4 — why the runner is running (a confirm, an answer, a turn…). */
   trigger?: "turn" | "answer" | "confirm" | "resume" | "handoff_return";
+  /**
+   * #3355 P7 — the owner answered a card in this same request, so a step
+   * may put its protected proposal straight in front of them.
+   */
+  answered?: boolean;
 }
 
 export type AskSpec = {
@@ -217,6 +266,8 @@ export type AskSpec = {
   /** #2830 P4 — a form-shaped card (see FlowArtefact.answer_mode). */
   answer_mode?: "form";
   rendition?: Record<string, unknown>;
+  /** #3355 P7 — see FlowArtefact.subject_id. */
+  subject_id?: string;
   /**
    * #2830 P4 — what to say when the owner says a handoff is done but the
    * re-read disagrees, when the probe knows more than "not there yet" (a
@@ -244,7 +295,20 @@ export type ProbeResult =
    * protected proposal they have not confirmed or cancelled yet): no new
    * card; the turn goes on to the normal lanes.
    */
-  | { done: false; wait: true };
+  | { done: false; wait: true }
+  /**
+   * #3355 P7 — the step's protected proposal. Put in front of the owner
+   * only right after they answered a card (`ctx.answered`); on any other
+   * trigger the runner shows `ask` instead (a "Create it" card), so a
+   * reload or a side question never springs a confirmation on anyone.
+   */
+  | {
+    done: false;
+    propose: NonNullable<AnswerOutcome["propose"]>;
+    ask: AskSpec;
+    record: Omit<FlowStepRecord, "state">;
+    note?: string;
+  };
 
 export interface AnswerOutcome {
   record: FlowStepRecord;
@@ -254,6 +318,10 @@ export interface AnswerOutcome {
   open_route?: string;
   session_skips?: string[];
   cancel_run?: boolean;
+  /** #3355 P7 — owner-provided facts, merged into the run's answers. */
+  answers?: Record<string, FlowAnswerValue>;
+  /** #3355 P7 — the owner chose an existing record to continue. */
+  subject_id?: string;
   /**
    * #2830 P4 — the answer becomes ONE protected proposal (the owner confirms
    * it on the card; nothing is written before that). The run waits for the
@@ -264,6 +332,11 @@ export interface AnswerOutcome {
     tool_args: Record<string, unknown>;
     /** Extra plain-words rows for the confirmation card. */
     rows?: { label: string; value: string }[];
+    /**
+     * #3355 P7 — the card shows ONLY these rows (the engine wrote every row
+     * in plain words; raw arguments such as coordinates never show).
+     */
+    rows_only?: boolean;
   };
 }
 

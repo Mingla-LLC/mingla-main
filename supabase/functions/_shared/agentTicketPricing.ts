@@ -26,6 +26,8 @@ export type PricingState = typeof PRICING_STATE_VALUES[number];
 const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   // #2830 P4 — plain-words rows the flow engine adds to its own proposals.
   "flow_rows",
+  // #3355 P7 — the card shows only the engine's plain-words rows.
+  "flow_rows_only",
   "lifecycle",
   "action",
   "tier_name",

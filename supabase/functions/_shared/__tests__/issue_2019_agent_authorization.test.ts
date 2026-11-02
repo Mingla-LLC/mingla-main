@@ -20,6 +20,9 @@ const VALID_CREATE_EVENT_ARGS = {
   title: "Test",
   when_mode: "single",
   start_at: "2027-01-01T00:00:00Z",
+  // #3355 P7: Ari's create_event needs the owner's end time and time zone.
+  end_at: "2027-01-01T02:00:00Z",
+  timezone: "Europe/London",
   visibility: "public",
 };
 const tool = (name: string) => {

@@ -420,8 +420,13 @@ function freshWorld(overrides: Partial<World> = {}): World {
   };
 }
 
+// #3355 P7: these P3 cases pin create_event version 1 (gates, then the old
+// event lane), which stays registered so a run started on it finishes there.
+// Version 2 (the event facts on the engine) is covered by
+// issue_3355_event_flow.implementor.test.ts.
 async function startEventRun(store: MemoryStore, text = "Create an event") {
-  const def = findFlowDefinition("create_event")!;
+  const def = findFlowDefinition("create_event", 1)!;
+  assertEquals(def.version, 1);
   const started = await store.start({
     brandId: BRAND,
     flowKey: def.key,

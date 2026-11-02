@@ -1942,7 +1942,11 @@ async function handle(req: Request): Promise<Response> {
           toolName: tool.name,
           toolArgs: decision.tool_args,
           proposalContext: decision.rows.length > 0
-            ? { flow_rows: decision.rows }
+            ? {
+              flow_rows: decision.rows,
+              // #3355 P7: the engine wrote every row in plain words.
+              ...(decision.rows_only ? { flow_rows_only: true } : {}),
+            }
             : null,
           classification: "flow_engine_proposal",
           startedAt: turnStartedAt,

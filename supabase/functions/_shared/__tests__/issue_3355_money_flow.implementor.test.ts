@@ -566,7 +566,12 @@ Deno.test("P6: money_gate is wired into every paid offering flow after the brand
     const keys = def.steps.map((step) => step.key);
     assert(keys.includes("money_gate"), `${def.key} has the money step`);
     assert(keys.indexOf("money_gate") > keys.indexOf("brand_blockers"));
-    assert(keys.indexOf("money_gate") < keys.indexOf("offering"));
+    // #3355 P7: v1 hands over at "offering"; v2 (events) asks its own facts.
+    const firstOffering = keys.findIndex((key) =>
+      !["brand_blockers", "brand_can_wait", "money_gate"].includes(key)
+    );
+    assert(firstOffering > 0);
+    assert(keys.indexOf("money_gate") < firstOffering);
   }
 });
 
