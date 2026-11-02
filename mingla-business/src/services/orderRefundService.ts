@@ -54,6 +54,8 @@ export interface RefundOrderError extends Error {
     | "idempotency_key_required"
     | "refund_reconciliation_pending"
     | "refund_evidence_conflict"
+    // issue #3281 — another refund on the order is still settling.
+    | "refund_pending_on_order"
     | "unauthenticated"
     | "internal_error"
     | "network_error";
@@ -261,6 +263,8 @@ const userMessageFor = (code: string): string => {
       return "This order can't be refunded in its current state.";
     case "line_overrefund":
       return "You can't refund more tickets than were purchased.";
+    case "refund_pending_on_order":
+      return "Another refund on this order is still going through. Try again once it finishes.";
     case "line_item_not_found":
       return "One of the ticket lines is missing. Refresh and try again.";
     case "reason_invalid_length":

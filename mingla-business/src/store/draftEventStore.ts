@@ -87,6 +87,27 @@ export type TicketVisibility = "public" | "hidden" | "disabled";
  */
 export type TicketAvailableAt = "online" | "door" | "both";
 
+/**
+ * issue #3281 — an extra sold with one ticket tier (a dinner, a shuttle). The
+ * server prices it and enforces every rule here; the editor only mirrors them.
+ */
+export interface TicketExtraStub {
+  /** A saved extra's row id, or a new `x_*` id until it saves. */
+  id: string;
+  name: string;
+  description: string | null;
+  /** Major units; 0 is a free extra. */
+  priceGbp: number;
+  isUnlimited: boolean;
+  /** Null when unlimited. Per date when the extra is limited to dates. */
+  capacity: number | null;
+  maxPerTicket: number;
+  /** A subset of the tier's dates. Null means every date the tier admits. */
+  validDayIds: string[] | null;
+  /** Live events only: how many have sold. Locks the price once above 0. */
+  soldCount?: number;
+}
+
 export interface TicketStub {
   id: string;
   name: string;
@@ -96,6 +117,11 @@ export interface TicketStub {
    * not publish. Capacity on a listed ticket is per date.
    */
   validDayIds?: string[] | null;
+  /**
+   * issue #3281 — this tier's extras. Undefined means "not loaded", and a save
+   * then leaves the server's extras untouched; `[]` means none.
+   */
+  extras?: TicketExtraStub[];
   /** issue #3281 — public reads only: this ticket's dates, by `event_dates.id`. */
   validOccurrenceIds?: string[] | null;
   /** issue #3281 — public reads only: listed dates this ticket has sold out. */

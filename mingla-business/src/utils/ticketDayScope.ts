@@ -98,15 +98,34 @@ export const liveDayIds = (
   entries: Entries,
 ): string[] => scopeIds.filter((id) => entries.some((e) => e.id === id));
 
+/** issue #3281 — a tier's extras get the same treatment as its own list. */
+const withExtraLists = (
+  ticket: TicketStub,
+  list: (ids: string[]) => string[] | null,
+): TicketStub =>
+  ticket.extras === undefined
+    ? ticket
+    : {
+        ...ticket,
+        extras: ticket.extras.map((extra) =>
+          extra.validDayIds === null
+            ? extra
+            : { ...extra, validDayIds: list(extra.validDayIds) },
+        ),
+      };
+
 /** After a date mode switch mints new ids, a list keeps only ids that survive. */
 export const ticketsOnCurrentDays = (
   tickets: readonly TicketStub[],
   entries: Entries,
 ): TicketStub[] =>
   tickets.map((ticket) =>
-    ticket.validDayIds === null || ticket.validDayIds === undefined
-      ? ticket
-      : { ...ticket, validDayIds: liveDayIds(ticket.validDayIds, entries) },
+    withExtraLists(
+      ticket.validDayIds === null || ticket.validDayIds === undefined
+        ? ticket
+        : { ...ticket, validDayIds: liveDayIds(ticket.validDayIds, entries) },
+      (ids) => liveDayIds(ids, entries),
+    ),
   );
 
 /**
@@ -117,7 +136,10 @@ export const ticketsOnAllDates = (
   tickets: readonly TicketStub[],
 ): TicketStub[] =>
   tickets.map((ticket) =>
-    isDayLimited(ticket) ? { ...ticket, validDayIds: null } : ticket,
+    withExtraLists(
+      isDayLimited(ticket) ? { ...ticket, validDayIds: null } : ticket,
+      () => null,
+    ),
   );
 
 /** Passes sold on the ticket's busiest date. */
@@ -131,12 +153,15 @@ export const ticketsWithoutDay = (
   entryId: string,
 ): TicketStub[] =>
   tickets.map((ticket) =>
-    ticket.validDayIds?.includes(entryId)
-      ? {
-          ...ticket,
-          validDayIds: ticket.validDayIds.filter((id) => id !== entryId),
-        }
-      : ticket,
+    withExtraLists(
+      ticket.validDayIds?.includes(entryId)
+        ? {
+            ...ticket,
+            validDayIds: ticket.validDayIds.filter((id) => id !== entryId),
+          }
+        : ticket,
+      (ids) => ids.filter((id) => id !== entryId),
+    ),
   );
 
 const ticketPhrase = (names: readonly string[]): string =>

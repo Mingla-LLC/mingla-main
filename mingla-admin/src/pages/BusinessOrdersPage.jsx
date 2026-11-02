@@ -39,6 +39,8 @@ function refundErrorCopy(code) {
   switch (code) {
     case "refund_exceeds_remaining": return "Amount exceeds what's left to refund.";
     case "line_overrefund": return "One or more items are already fully refunded.";
+    // #3281: the last tickets' refund also returns extras, so it waits for any other refund to settle.
+    case "refund_pending_on_order": return "Another refund on this order is still going through. Try again once it finishes.";
     case "stripe_declined": return "Stripe declined — no money moved.";
     // #4130: Paystack refunds (admin-refund-order maps these for Paystack brands).
     case "paystack_refund_failed": return "Paystack refused the refund — no money moved.";

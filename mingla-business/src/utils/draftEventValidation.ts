@@ -587,6 +587,19 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
         message: `${label} has no days left. Edit it to pick a day or choose All dates.`,
       });
     }
+    // issue #3281 — an extra left without a name or without any date is
+    // fixed in the ticket's sheet; the server checks the rest.
+    if (
+      t.extras?.some(
+        (x) => x.name.trim() === "" || (x.validDayIds !== null && x.validDayIds.length === 0),
+      )
+    ) {
+      errs.push({
+        fieldKey: `tickets[${i}].extras`,
+        step: 4,
+        message: `${label} has an extra to finish. Edit it to name the extra or pick its dates.`,
+      });
+    }
     // Cycle 5 (v4) rules — modifier validation
     if (
       t.passwordProtected &&

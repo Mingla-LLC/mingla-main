@@ -120,7 +120,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // per-reason module.
 // #3281: re-sealed after the webhook fee migration joined the same replays.
 // #3281: re-sealed after the Extras checkout migration joined the same replays.
-export const BOOTSTRAP_SHA256 = "b498adba5d771a9760aac690460090b4832e99f752575f1de49fce1891edad9f";
+// #3281: register the Extras authoring migration and its proof the same way.
+export const BOOTSTRAP_SHA256 = "98b5401d2f88b835bee1013182b3ca1ca9736b029a257f9d47f628d5edf15832";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

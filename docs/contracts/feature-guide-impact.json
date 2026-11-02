@@ -41,7 +41,8 @@
         "supabase/functions/_shared/stripeWebhookRouter.ts",
         "supabase/functions/admin-refund-order/index.ts",
         "supabase/functions/refund-order/index.ts",
-        "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql"
+        "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql",
+        "mingla-business/src/services/orderRefundService.ts"
       ]
     },
     {
@@ -459,7 +460,12 @@
         "mingla-business/src/utils/draftEventValidation.ts",
         "mingla-business/src/utils/serverDraftEventMapper.ts",
         "mingla-business/src/utils/ticketDayScope.ts",
-        "mingla-business/src/utils/ticketDayScopeCopy.ts"
+        "mingla-business/src/utils/ticketDayScopeCopy.ts",
+        "mingla-business/src/components/event/TicketExtrasSection.tsx",
+        "mingla-business/src/utils/ticketExtras.ts",
+        "supabase/migrations/20280314003281_issue_3281_extras_authoring.sql",
+        "mingla-business/src/config/featureFlags.ts",
+        "mingla-business/src/utils/ticketExtrasFromServer.ts"
       ]
     },
     {
@@ -519,6 +525,12 @@
         "supabase/functions/marketing-send/index.ts",
         "supabase/functions/_shared/email/footerLine.ts",
         "supabase/functions/_shared/marketingReceiveReason.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-orders-money",
+      "paths": [
+        "mingla-admin/src/pages/BusinessOrdersPage.jsx"
       ]
     }
   ]

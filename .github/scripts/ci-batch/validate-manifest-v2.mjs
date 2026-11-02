@@ -334,7 +334,8 @@ export function phase3dContractDigest(manifest) {
 // the #1995 blast suite now watches packages/brand-rendering/emailFooter.ts.
 // #3281: register the webhook fee migration the same way.
 // #3281: register the Extras checkout migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3d67b8f4f1431af33627edde803ce18a2b197b7475f8ef9506d5554346dfd296";
+// #3281: register the Extras authoring migration and its proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "2a6c92f03998b1908f35d6fdd8129c3ca1a005f72014be48fb2e61e28665dbd2";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
