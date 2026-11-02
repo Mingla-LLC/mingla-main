@@ -2183,14 +2183,14 @@ async function handle(req: Request): Promise<Response> {
       activeWebsiteSetupJob
     ) {
       const readTool = findTool("get_site_plan");
-      const writeTool = findTool(
+      const tool = findTool(
         structuredWebsiteDesign
           ? "save_site_plan_design"
           : structuredWebsiteContext
           ? "update_brand_context"
           : "save_site_plan_answers",
       );
-      if (!readTool || !writeTool) {
+      if (!readTool || !tool) {
         return errorResponse(
           500,
           "INTERNAL",
@@ -2287,7 +2287,7 @@ async function handle(req: Request): Promise<Response> {
             }],
           };
         await authorizeAgentTool(
-          writeTool,
+          tool,
           proposalArgs,
           userClient,
           userId,
@@ -2303,7 +2303,7 @@ async function handle(req: Request): Promise<Response> {
           readyState: taskState,
           expectedRevision: taskStateRevision,
           previousSummary: conversationSummary,
-          toolName: writeTool.name,
+          toolName: tool.name,
           toolArgs: proposalArgs,
           classification: "website_setup_structured_answer",
           startedAt: turnStartedAt,

@@ -6,6 +6,9 @@ import {
 
 import type { AgentLoopObservation } from "../agentLoop.ts";
 import { isAriRenditionInputField } from "../ariRendition.ts";
+import { AGENT_TOOLS } from "../agentTools.ts";
+import { authorizeAgentTool } from "../agentToolAuthorization.ts";
+import { ToolError } from "../agentToolHelpers.ts";
 import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
@@ -1093,4 +1096,92 @@ Deno.test("#2830 links are asked like the form: pick the platform, paste its lin
     )),
     "That link isn’t for Instagram",
   );
+});
+
+// #2830 / #2019 — the deterministic Website-setup proposal path persists a
+// pending action without the model. It must authorize the caller exactly like
+// every other proposal site, immediately before it persists.
+const CALLER_ID = "28300000-0000-4000-8000-000000000009";
+
+// deno-lint-ignore no-explicit-any
+function rankedClient(rank: number, required: number): any {
+  return {
+    rpc(name: string) {
+      return Promise.resolve({
+        data: name === "biz_role_rank" ? required : rank,
+        error: null,
+      });
+    },
+    from() {
+      // deno-lint-ignore no-explicit-any
+      const q: any = {
+        select: () => q,
+        eq: () => q,
+        is: () => q,
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return q;
+    },
+  };
+}
+
+async function authorizationCode(
+  name: string,
+  args: Record<string, unknown>,
+  rank: number,
+): Promise<string> {
+  const tool = AGENT_TOOLS.find((candidate) => candidate.name === name);
+  if (!tool) throw new Error(`missing tool: ${name}`);
+  try {
+    await authorizeAgentTool(tool, args, rankedClient(rank, 50), CALLER_ID);
+    return "allowed";
+  } catch (error) {
+    if (error instanceof ToolError) return error.code;
+    throw error;
+  }
+}
+
+Deno.test("#2830 Website setup proposals refuse callers below brand admin", async () => {
+  const contextArgs = proposalArgs(
+    resolve("Contact email", " Response: hello@northstar.travel"),
+  );
+  const designArgs = {
+    brand_id: BRAND_ID,
+    expected_plan_revision: 9,
+    design_key: "atelier",
+    source_type: "owner",
+    why: "The owner selected Atelier during Website setup.",
+    cites: [{ kind: "owner_words", quote: "Choices: Atelier" }],
+  };
+  for (
+    const [name, args] of [
+      ["update_brand_context", contextArgs],
+      ["save_site_plan_design", designArgs],
+    ] as const
+  ) {
+    assertEquals(await authorizationCode(name, args, 50), "allowed", name);
+    assertEquals(await authorizationCode(name, args, 40), "ROLE_DENIED", name);
+    assertEquals(
+      await authorizationCode(name, args, 0),
+      "BRAND_ACCESS_DENIED",
+      name,
+    );
+  }
+});
+
+Deno.test("#2830 agent-chat authorizes the Website setup proposal right before persisting it", async () => {
+  const chat = await Deno.readTextFile(
+    new URL("../../agent-chat/index.ts", import.meta.url),
+  );
+  const persist = chat.indexOf('classification: "website_setup_structured_answer"');
+  if (persist < 0) throw new Error("Website setup persist site not found");
+  const commit = chat.lastIndexOf("return await commitPendingTurn({", persist);
+  const authorize = chat.lastIndexOf("await authorizeAgentTool(", commit);
+  const between = chat.slice(authorize, commit);
+  assertMatch(between, /^await authorizeAgentTool\(\s*tool,\s*proposalArgs,\s*userClient,\s*userId,?\s*\);\s*$/);
+  assertStringIncludes(
+    chat.slice(commit, persist),
+    "toolArgs: proposalArgs,",
+  );
+  assertStringIncludes(chat.slice(commit, persist), "toolName: tool.name,");
 });
