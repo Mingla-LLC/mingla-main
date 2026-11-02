@@ -150,6 +150,7 @@ import {
 } from "../../../../src/components/checkout/CartContext";
 import { ticketQuoteFromLines } from "../../../../src/components/checkout/__tests__/ticketQuoteFixture";
 import { checkoutResumeStorageKey } from "../../../../src/components/checkout/checkoutPersistence";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PaymentScreen from "../payment";
 
 
@@ -298,6 +299,79 @@ describe("issue #3281 — a Stripe cancel return keeps the guest's own hold", ()
     const saved = JSON.parse(storage.getItem(checkoutResumeStorageKey(EVENT_ID)) ?? "{}");
     expect(saved.providerHandoff).toBeUndefined();
     await act(async () => back.unmount());
+  });
+
+  test("an expired checkout asks for a fresh quote, then the cart pays with a new checkout", async () => {
+    // The quote after the return failed against the expired checkout's own
+    // hold, and no quote input changes when it is forgotten: the payment step
+    // must ask again itself, or Pay stays off.
+    const client = new QueryClient();
+    const invalidate = jest.spyOn(client, "invalidateQueries");
+    const QuoteState: React.FC = () => {
+      const { lines, setQuoteState } = useCart();
+      const [step, setStep] = React.useState(0);
+      React.useEffect(() => {
+        if (lines.length === 0) return;
+        if (step === 0) {
+          setQuoteState(null, "error", "extra_capacity_exceeded");
+          setStep(1);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [lines.length, step]);
+      // The fresh quote lands once the payment step has asked for it.
+      React.useEffect(() => {
+        if (step === 1 && invalidate.mock.calls.length > 0) {
+          setQuoteState(ticketQuoteFromLines([line]), "ready");
+          setStep(2);
+        }
+      });
+      return null;
+    };
+    routeInvoke();
+    let first!: Renderer;
+    await act(async () => {
+      first = TestRenderer.create(
+        <CartProvider>
+          <SeedCart />
+          <PaymentScreen />
+        </CartProvider>,
+      );
+    });
+    await tap(first);
+    await act(async () => first.unmount());
+    assign.mockReset();
+
+    let back!: Renderer;
+    await act(async () => {
+      back = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <CartProvider>
+            <QuoteState />
+            <PaymentScreen />
+          </CartProvider>
+        </QueryClientProvider>,
+      );
+    });
+    sessionStatus = "expired";
+    await tap(back);
+    expect(assign).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ticket-checkout-quote"] });
+    // The fresh quote lands; Pay creates a second checkout and follows it.
+    await act(async () => {
+      (back as unknown as { update: (e: React.ReactElement) => void }).update(
+        <QueryClientProvider client={client}>
+          <CartProvider>
+            <QuoteState />
+            <PaymentScreen />
+          </CartProvider>
+        </QueryClientProvider>,
+      );
+    });
+    await tap(back);
+    expect(createCalls()).toHaveLength(2);
+    expect(assign).toHaveBeenCalledWith(STRIPE_URL);
+    await act(async () => back.unmount());
+    client.clear();
   });
 
   test("a checkout already paid goes to confirmation", async () => {

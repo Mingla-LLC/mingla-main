@@ -50,6 +50,7 @@
 import React, {
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -75,6 +76,7 @@ import {
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
+import { QueryClientContext } from "@tanstack/react-query";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import { queueContractOptInFields } from "../../../src/services/queueDeviceToken";
@@ -253,6 +255,9 @@ function CheckoutPaymentScreenContent({
     fingerprint: string;
     handoff: TicketCheckoutProviderHandoff;
   } | null>(null);
+  // issue #3281 — re-quotes after an expired handoff is forgotten. Tolerates a
+  // missing provider, like the cart step's cache read.
+  const queryClient = useContext(QueryClientContext);
   // issue #3281 — the handoff restored after a provider cancel, if any.
   const [resumedHandoff, setResumedHandoff] = useState<{
     fingerprint: string;
@@ -476,7 +481,12 @@ function CheckoutPaymentScreenContent({
           const { providerHandoff: _expired, ...rest } = saved;
           writeCheckoutResumePayload(storage, eventId, rest);
         }
-        // A fresh quote now prices this cart; Pay starts a new checkout.
+        // A fresh quote now prices this cart; Pay starts a new checkout. The
+        // last quote may have failed against that checkout's own hold, and no
+        // quote input changed, so ask again.
+        void queryClient?.invalidateQueries({
+          queryKey: ["ticket-checkout-quote"],
+        });
         return;
       }
       // The price moved since that page was handed: it is the old price, so it
@@ -650,7 +660,7 @@ function CheckoutPaymentScreenContent({
             ...(eventDateIds.length > 0
               ? { eventDateIds: [...eventDateIds] }
               : {}),
-            ...(eventDateId !== null ? { eventDateId } : {}),
+            eventDateId,
             // issue #3281 — a cancel return re-follows this page (see restore).
             providerHandoff: {
               fingerprint: cartFingerprint,
@@ -880,6 +890,7 @@ function CheckoutPaymentScreenContent({
       processing,
       quote,
       quoteStatus,
+      queryClient,
       resumable,
       resumedHandoff,
       setCheckoutReview,
