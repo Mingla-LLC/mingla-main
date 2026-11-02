@@ -157,7 +157,7 @@ describe("#4238 Host ad copy modules return plain words", () => {
   it("result words are the ones Hosts use", () => {
     const kinds = [
       "conversions", "landing_page_view", "landing page view",
-      "rsvp_registration", "ticket_purchase", "link_click", "sign_up",
+      "rsvp_registration", "ticket_purchase", "link_click", "sign_up", "impressions",
     ];
     expect(
       notPlain([
@@ -171,6 +171,11 @@ describe("#4238 Host ad copy modules return plain words", () => {
     expect(hostAdResultLabel("conversions")).toBe("results");
     expect(hostAdResultLabel("landing page view")).toBe("page visits");
     expect(hostAdResultLabel("rsvp_registration")).toBe("RSVPs");
+    // "impressions" is banned; the raw key must come back as Host words.
+    expect(hostAdResultLabel("impressions")).toBe("times shown");
+    expect(hostAdResultLabel("Impression")).toBe("times shown");
+    expect(hostAdCopyIsPlain(hostAdResultLabel("impressions"))).toBe(true);
+    expect(hostAdCopyIsPlain(hostAdCostPerLabel("impressions"))).toBe(true);
     expect(hostAdCountingLines(["rsvp_registration", "landing_page_view"]).counts).toBe(
       "We count RSVPs, then page visits.",
     );

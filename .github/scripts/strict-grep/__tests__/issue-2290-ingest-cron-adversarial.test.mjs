@@ -335,7 +335,16 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       job: "issue_3872_creator_media_reaper",
     },
   ];
-  for (const { file, job } of [...issue3697Pairs, ...issue3872Pairs]) {
+  // #4238 wave 2: the hourly list-audience removals job removes any existing
+  // job of the same name and reschedules it in the same DO block (+1 → 19).
+  // Proven in the loop below like the pairs above.
+  const issue4238Pairs = [
+    {
+      file: "supabase/migrations/20280315004238_issue_4238_ad_list_audiences.sql",
+      job: "issue_4238_ad_list_audience_removals_hourly",
+    },
+  ];
+  for (const { file, job } of [...issue3697Pairs, ...issue3872Pairs, ...issue4238Pairs]) {
     const sql = stripSqlComments(
       fs.readFileSync(path.join(REPO_ROOT, file), "utf8"),
     );
@@ -378,7 +387,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    18,
+    19,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

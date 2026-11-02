@@ -184,6 +184,9 @@ const RESULT_LABELS: Record<string, string> = {
   booking_confirmed: "bookings",
   install: "app installs",
   app_store_click: "app store visits",
+  // #4238: "impressions" is a banned word; Hosts read "times shown".
+  impression: "times shown",
+  impressions: "times shown",
   results: "results",
 };
 

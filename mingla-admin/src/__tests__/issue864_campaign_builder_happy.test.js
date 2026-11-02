@@ -70,6 +70,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN_SRC = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(ADMIN_SRC, "../..");
 const read = (p) => fs.readFileSync(p, "utf8");
+// #4238: the wizard trees now hold a co-located __tests__/ folder. List every
+// source FILE under a tree (recursing into any nested source folder) and skip
+// test folders, which are not builder code. A bare readdirSync handed the
+// folder itself to read() and failed with EISDIR.
+const sourceFilesUnder = (rel) =>
+  fs
+    .readdirSync(path.join(ADMIN_SRC, rel), { withFileTypes: true })
+    .flatMap((entry) => {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) return entry.name === "__tests__" ? [] : sourceFilesUnder(child);
+      return entry.isFile() ? [child] : [];
+    });
 
 // ── A4.b — per-channel copy caps, never shared ────────────────────────────────
 
@@ -526,7 +538,7 @@ describe("review detail map (§1.9b)", () => {
 describe("SC-10 create-paused (source assertions)", () => {
   const builderFiles = [
     "pages/CampaignBuilderPage.jsx",
-    ...fs.readdirSync(path.join(ADMIN_SRC, "components/campaign-builder")).map((f) => `components/campaign-builder/${f}`),
+    ...sourceFilesUnder("components/campaign-builder"),
   ];
 
   it("no builder file imports or calls campaignAction (launch is #/campaigns-only)", () => {
@@ -609,8 +621,8 @@ describe("REWORK P1-1 — destination display host parity (implementor guard)", 
       "services/mediaUpload.js",
       "pages/CampaignBuilderPage.jsx",
       "pages/CampaignsPage.jsx",
-      ...fs.readdirSync(path.join(ADMIN_SRC, "components/campaign-builder")).map((f) => `components/campaign-builder/${f}`),
-      ...fs.readdirSync(path.join(ADMIN_SRC, "lib/adBuilder")).map((f) => `lib/adBuilder/${f}`),
+      ...sourceFilesUnder("components/campaign-builder"),
+      ...sourceFilesUnder("lib/adBuilder"),
     ];
     for (const file of trees) {
       const source = read(path.join(ADMIN_SRC, file));
