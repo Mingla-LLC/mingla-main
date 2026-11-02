@@ -4,6 +4,10 @@
 //   - Tabs Explorers / Hosts / Both / Didn't finish sign-up / Staff and test,
 //     with counts from admin_people_segments (staff and test are left out of
 //     every other count). A failed count load shows Retry, never 0.
+//   - #4226: a "Ticket buyers, no app" tab lists everyone with a paid ticket
+//     who has not finished Explorer onboarding, including people with no
+//     account (from the same server list the Email audiences read). Account
+//     rows on every tab carry their ticket facts.
 //   - Each tab is a server-paged list (admin_list_people): search, country,
 //     joined; sort and CSV export cover the whole filtered list.
 //   - A row opens the person drawer; every write lives there (PersonDrawer).
@@ -23,6 +27,7 @@ import { getPeopleSegments, listPeople } from "../services/peopleService";
 import {
   PEOPLE_TABS,
   flattenPersonRow,
+  marketingConsent,
   bestReadiness,
   peopleTabFor,
   peopleTabLabel,
@@ -58,6 +63,9 @@ const NAME_COLUMN = {
         {personDisplayName(row)}
         {row.banned && (
           <Badge variant="error" className="ml-2">Banned</Badge>
+        )}
+        {row.is_ticket_holder && row.segment !== "ticket_buyer_no_app" && (
+          <Badge variant="info" className="ml-2">Ticket buyer</Badge>
         )}
       </span>
       {row.email && <span className="truncate text-xs text-[var(--color-text-tertiary)]">{row.email}</span>}
@@ -95,6 +103,26 @@ const HOST_COLUMNS = [
   JOINED_COLUMN,
 ];
 
+// #4226: the ticket-buyer tab. Sorting "Joined" means first ticket, "Last
+// active" means latest ticket (the server maps both).
+const TICKET_BUYER_COLUMNS = [
+  { ...NAME_COLUMN, label: "Name / email" },
+  { key: "app_status_label", label: "App status" },
+  { key: "event_city", label: "City", render: (v) => v || muted("Not known") },
+  { key: "country", label: "Country", render: (v) => v || muted("Not known") },
+  count("tickets", "Tickets"),
+  { key: "spent_label", label: "Spent" },
+  { key: "last_purchase_at", label: "Last purchase", sortable: true, render: (v) => (v ? formatDate(v) : muted("–")) },
+  {
+    key: "emails_ok_label",
+    label: "Emails OK",
+    render: (_v, row) => {
+      const c = marketingConsent(row.marketing_consent);
+      return <Badge variant={c.variant}>{c.label}</Badge>;
+    },
+  },
+];
+
 const COLUMNS = {
   explorer: [NAME_COLUMN, COUNTRY_COLUMN, LAST_ACTIVE_COLUMN, count("saves", "Saves"), count("tickets", "Tickets"), count("friends", "Friends"), JOINED_COLUMN],
   host: HOST_COLUMNS,
@@ -106,7 +134,17 @@ const COLUMNS = {
     JOINED_COLUMN,
   ],
   internal: [NAME_COLUMN, { key: "internal_reason", label: "Why it's here" }, LAST_ACTIVE_COLUMN, JOINED_COLUMN],
+  ticket_buyer_no_app: TICKET_BUYER_COLUMNS,
 };
+
+// #4226: ticket facts on every export.
+const CSV_TICKETS = [
+  { key: "tickets_held", label: "Tickets held" },
+  { key: "spent_label", label: "Spent" },
+  { key: "last_purchase_at", label: "Last purchase" },
+  { key: "event_city", label: "Event city" },
+  { key: "emails_ok_label", label: "Emails OK" },
+];
 
 const CSV_BASE = [
   { key: "id", label: "ID" },
@@ -125,12 +163,35 @@ const CSV_EXTRA = {
   internal: [{ key: "internal_reason", label: "Why it's here" }],
 };
 
+const CSV_TICKET_BUYERS = [
+  { key: "id", label: "Account ID" },
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "app_status_label", label: "App status" },
+  { key: "event_city", label: "Event city" },
+  { key: "country", label: "Country" },
+  { key: "tickets", label: "Tickets" },
+  { key: "orders", label: "Orders" },
+  { key: "spent_label", label: "Spent" },
+  { key: "first_purchase_at", label: "First purchase" },
+  { key: "last_purchase_at", label: "Last purchase" },
+  { key: "brands_bought_names", label: "Brands bought from" },
+  { key: "emails_ok_label", label: "Emails OK" },
+];
+
+function csvColumnsFor(segment) {
+  if (segment === "ticket_buyer_no_app") return CSV_TICKET_BUYERS;
+  return [...CSV_BASE, ...CSV_EXTRA[segment], ...CSV_TICKETS];
+}
+
 const EMPTY = {
   explorer: "No explorers match. People who finish Explorer onboarding appear here.",
   host: "No hosts match. People with a business account or a role on a brand appear here.",
   both: "No one matches. People who host and also finished Explorer onboarding appear here.",
   incomplete: "No one matches. People who signed in but never finished either app's setup appear here.",
   internal: "No staff or test accounts match. Accounts marked as staff or test, or with a usemingla.com or example.com email, or \"test\" as its own word before the @, appear here.",
+  ticket_buyer_no_app: "No ticket buyers match. People who bought or were given a ticket and haven't finished setting up the Explorer app appear here, with or without an account.",
 };
 
 const JOINED_OPTIONS = [
@@ -191,6 +252,12 @@ export function PeoplePage() {
     ];
   }, [counts]);
 
+  // "Joined" on this tab is the first ticket, so it reads "First ticket".
+  const ticketBuyerFilters = useMemo(
+    () => filters.map((f) => (f.key === "joined" ? { ...f, label: "First ticket any time" } : f)),
+    [filters]
+  );
+
   const onChanged = useCallback(() => {
     loadCounts();
     setListVersion((v) => v + 1);
@@ -205,7 +272,7 @@ export function PeoplePage() {
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="People"
-        description="Everyone with a Mingla account, split by how they use Mingla. Staff and test accounts are left out of every count."
+        description="Everyone with a Mingla account, split by how they use Mingla, plus ticket buyers who don't have the Explorer app yet. Staff and test accounts are left out of every count."
       />
 
       {countsError && (
@@ -224,10 +291,11 @@ export function PeoplePage() {
           columns={COLUMNS[segment]}
           fetchPage={fetchPage}
           serverSort
-          searchPlaceholder="Name, email or phone"
-          filters={filters}
-          onRowClick={(row) => writeHash({ tab: tab.id, userId: row.id })}
-          csv={{ columns: [...CSV_BASE, ...CSV_EXTRA[segment]], filename: `people_${tab.id}` }}
+          searchPlaceholder={segment === "ticket_buyer_no_app" ? "Name, email, phone or city" : "Name, email or phone"}
+          filters={segment === "ticket_buyer_no_app" ? ticketBuyerFilters : filters}
+          rowKey={(row) => row.row_key}
+          onRowClick={segment === "ticket_buyer_no_app" ? undefined : (row) => writeHash({ tab: tab.id, userId: row.id })}
+          csv={{ columns: csvColumnsFor(segment), filename: `people_${tab.id}` }}
           emptyMessage={EMPTY[segment]}
           emptyIcon={Users}
         />

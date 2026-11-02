@@ -13,7 +13,10 @@ export const personActions = createPersonActions(supabase);
 
 export { getPerson };
 
-/** Counts per segment, plus the countries people live in. Throws on error. */
+/**
+ * Counts per segment (including #4226 ticket_buyer_no_app, which is a view,
+ * not part of `people`), plus the countries people live in. Throws on error.
+ */
 export async function getPeopleSegments() {
   const { data, error } = await supabase.rpc("admin_people_segments");
   if (error) throw new Error(error.message || "Couldn't load the people counts.");
@@ -25,6 +28,9 @@ const SORTS = Object.freeze({
   joined_at: { asc: "joined_asc", desc: "joined_desc" },
   name: { asc: "name_asc", desc: "name_desc" },
   last_active_at: { asc: "last_active_asc", desc: "last_active_desc" },
+  // #4226: on the ticket-buyer tab the server reads "last active" as the
+  // latest ticket.
+  last_purchase_at: { asc: "last_active_asc", desc: "last_active_desc" },
 });
 
 export function peopleSortParam(sortKey, sortDir) {

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-send-email/issue_4226_ticket_buyer_audience.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4226-admin-email-ticket-buyers",
+  "profile": "deno-1.46-stripe"
+}

@@ -17717,6 +17717,7 @@
         "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
         "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql",
         "supabase/migrations/20280229003281_issue_3281_door_active_date.sql",
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19374,6 +19375,7 @@
         "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
         "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql",
         "supabase/migrations/20280229003281_issue_3281_door_active_date.sql",
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20490,6 +20492,8 @@
         "supabase/migrations/__tests__/issue_4203_hidden_purchase_reads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4216_creator_rights.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4216_creator_rights.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -24127,6 +24131,7 @@
         "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
         "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql",
         "supabase/migrations/20280229003281_issue_3281_door_active_date.sql",
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25243,6 +25248,8 @@
         "supabase/migrations/__tests__/issue_4203_hidden_purchase_reads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4216_creator_rights.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4216_creator_rights.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -52501,5 +52508,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "07374ce3b2e930380547f94d4b539d3bab088e48b64089ac253df3a08c2a730d"
+  "phase3eContractSha256": "73fd6e7a1dbc13872e495ee92a2443f80dfa45372f5b1ffadf68795534e48a56"
 }

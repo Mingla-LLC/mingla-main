@@ -113,7 +113,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: re-sealed after the day-limited tickets migration and its PostgreSQL
 // proof entered the same inventories and filtered replays.
 // #3281: re-sealed after the door active date migration followed them.
-export const BOOTSTRAP_SHA256 = "7e36f703a535677c64b80d41dedea9bcff8cd8a6556df33784295010a36823a3";
+// #4226: re-sealed after the ticket buyer people migration and its proof followed them.
+export const BOOTSTRAP_SHA256 = "8a5c4ac4eb4ac9864f0ecde1a8d4b1ed005e106c54feba9ac952d4ca7541a8d8";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
