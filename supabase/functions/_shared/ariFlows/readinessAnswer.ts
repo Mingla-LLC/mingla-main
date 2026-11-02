@@ -17,7 +17,35 @@ import type { ReadinessAction } from "../readinessCatalog.ts";
 import { itemRelevantTo, listWords } from "./brandGate.ts";
 import { READINESS_ACTION_WORDS } from "./index.ts";
 
-function blockerLine(item: BrandReadinessItem): string {
+/**
+ * #3355 P10 — who may do each action, mirroring the server's
+ * `brand_readiness_action_allowed` (refund: biz_can_manage_payments_for_brand;
+ * bank setup: biz_can_mutate_payouts_for_brand; Website: brand admin+; the
+ * rest: event manager+). The `team.role` item's own "who can fix" is who can
+ * change roles (the owner), which read as "only the owner can refund".
+ */
+const ACTION_DOERS: Readonly<Record<ReadinessAction, string>> = Object.freeze({
+  draft_save: "an event manager, a brand admin or the owner",
+  publish_free: "an event manager, a brand admin or the owner",
+  publish_paid: "an event manager, a brand admin or the owner",
+  trip_installments: "an event manager, a brand admin or the owner",
+  venue_submit: "an event manager, a brand admin or the owner",
+  stay_publish: "an event manager, a brand admin or the owner",
+  website_build: "a brand admin or the owner",
+  website_publish: "a brand admin or the owner",
+  refund: "a finance manager, a brand admin or the owner",
+  bank_setup: "the brand owner",
+});
+
+function blockerLine(
+  item: BrandReadinessItem,
+  action: ReadinessAction,
+): string {
+  if (item.key === "team.role") {
+    return `Your role can't ${READINESS_ACTION_WORDS[action]}: only ${
+      ACTION_DOERS[action]
+    } can.`;
+  }
   if (item.fix.can_caller_fix) {
     return item.fix.route
       ? `${item.label}: you can sort this in ${item.fix.route_label}.`
@@ -92,7 +120,7 @@ export function buildReadinessAnswer(args: {
         blocking.length === 1 ? "this needs" : "these need"
       } doing:`,
     );
-    parts.push(...blocking.map((item) => `- ${blockerLine(item)}`));
+    parts.push(...blocking.map((item) => `- ${blockerLine(item, action)}`));
   }
   if (canWait.length > 0) {
     parts.push(

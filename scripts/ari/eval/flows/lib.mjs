@@ -376,8 +376,10 @@ export async function driveFlow(session, {
     const artefact = artefactOf(data);
     if (!artefact) return state;
     state.steps.push(artefact.step_key);
-    const repeats = state.steps.slice(-4);
-    if (repeats.length === 4 && repeats.every((key) => key === artefact.step_key)) {
+    // The same card (same text) four times running is a loop, not progress.
+    const seen = `${artefact.step_key}:${artefact.text ?? ""}`;
+    state.cards = [...(state.cards ?? []), seen];
+    if (state.cards.slice(-4).length === 4 && state.cards.slice(-4).every((c) => c === seen)) {
       throw new Error(
         `stuck on card "${artefact.step_key}": ${String(artefact.text ?? "").slice(0, 200)}`,
       );

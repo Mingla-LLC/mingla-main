@@ -38,6 +38,10 @@ import * as tripCreateLagos3day from "./trip_create_lagos_3day.mjs";
 import * as experienceCreateTwoStops from "./experience_create_two_stops.mjs";
 import * as venueCreatePicker from "./venue_create_picker.mjs";
 import * as stayCreateOnApprovedVenue from "./stay_create_on_approved_venue.mjs";
+import * as websiteSetupPhone from "./website_setup_phone.mjs";
+import * as brandGateDeferRemembered from "./brand_gate_defer_remembered.mjs";
+import * as refundRoleRefusedEventManager from "./refund_role_refused_event_manager.mjs";
+import * as moneyReconciliationResolve from "./money_reconciliation_resolve.mjs";
 
 export const FLOW_EVALS = [
   eventCreateMinimal,
@@ -46,6 +50,10 @@ export const FLOW_EVALS = [
   experienceCreateTwoStops,
   venueCreatePicker,
   stayCreateOnApprovedVenue,
+  websiteSetupPhone,
+  refundRoleRefusedEventManager,
+  brandGateDeferRemembered,
+  moneyReconciliationResolve,
 ];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
