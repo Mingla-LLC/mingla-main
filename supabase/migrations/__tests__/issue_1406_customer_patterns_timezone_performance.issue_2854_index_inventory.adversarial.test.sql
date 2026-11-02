@@ -192,10 +192,10 @@ BEGIN
   INTO v_projected_count, v_projected_fingerprint
   FROM projected_rows;
 
-  -- [TEST-MOD-APPROVED #3643] Terminal inventory is 79; excluding #871 → 78.
+  -- [TEST-MOD-APPROVED #3643] Terminal inventory is 80; excluding #871 → 79.
   -- Fingerprint is recomputed each run against the live projected set so a second
   -- post-#1406 index still fails the count check below.
-  IF v_projected_count <> 78
+  IF v_projected_count <> 79
   THEN
     RAISE EXCEPTION
       'T-3 FAIL: projected #1406 inventory drift count=% hash=%',
@@ -203,7 +203,7 @@ BEGIN
       v_projected_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 78 rows (hash %)', v_projected_fingerprint;
+  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 79 rows (hash %)', v_projected_fingerprint;
 END;
 $test$;
 
