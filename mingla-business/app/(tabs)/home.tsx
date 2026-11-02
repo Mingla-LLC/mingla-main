@@ -68,6 +68,7 @@ import {
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
+import { useLatchedWhileOpen } from "../../src/hooks/useLatchedWhileOpen";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { isCurrentBrandPending } from "../../src/utils/currentBrandPending";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
@@ -710,11 +711,23 @@ export default function HomeTab(): React.ReactElement {
         : role.role === "venue_staff"
           ? "staff"
           : null;
-  if (venueStaffSurface !== null && currentBrand !== null) {
+  // #3355 bug 16 — each surface below mounts its OWN BrandSwitcherSheet.
+  // Creating a brand switches the current brand at step 1 and the new
+  // brand's role starts loading, which used to swap the surface underneath
+  // the open sheet and unmount the creation flow after step 1. While the
+  // switcher is open the surface stays the one it was opened on.
+  const liveSurface: "staff" | "scanner" | "home" =
+    venueStaffSurface !== null && currentBrand !== null
+      ? "staff"
+      : isScannerOnlyRank(callerRank)
+        ? "scanner"
+        : "home";
+  const surface = useLatchedWhileOpen(liveSurface, sheetVisible);
+  if (surface === "staff" && currentBrand !== null) {
     return (
       <Suspense fallback={<View style={styles.host} />}>
         <LazyVenueStaffHomeBoundary
-          mode={venueStaffSurface}
+          mode={venueStaffSurface ?? "resolving"}
           brandId={currentBrand.id}
           brandName={currentBrand.displayName}
           onBrandTap={handleOpenSwitcher}
@@ -737,7 +750,7 @@ export default function HomeTab(): React.ReactElement {
   // under rules-of-hooks. rank<scanner (i.e. rank 0 / no membership)
   // falls through to the regular Home so the empty-brand prompt can
   // still drive onboarding.
-  if (isScannerOnlyRank(callerRank)) {
+  if (surface === "scanner") {
     return <ScannerHome />;
   }
 
