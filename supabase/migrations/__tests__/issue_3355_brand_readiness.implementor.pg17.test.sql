@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-BRAND-READINESS-SINGLE-SOURCE | issue #3355 | brand_readiness(brand, action) is the one server answer to "what is this brand missing and does it block this action"; Ari's snapshot and launch plan read it (Deno guard: supabase/functions/_shared/__tests__/issue_3355_brand_readiness.implementor.test.ts).
+-- MINGLA-INVARIANT: I-BRAND-READINESS-ONE-SERVER-ANSWER | issue #3355 | brand_readiness(brand, action) is the one server answer to "what is this brand missing and does it block this action"; Ari's snapshot and launch plan read it (Deno guard: supabase/functions/_shared/__tests__/issue_3355_brand_readiness.implementor.test.ts).
 -- MINGLA-INVARIANT: I-BRAND-EVIDENCE-CLEARS-ON-WRITE | issue #3355 | A member's direct brands update (Brand Edit) closes that field's stale/conflict finding; writes with no member behind them never award a tick.
 -- MINGLA-INVARIANT: I-READINESS-DEFERRAL-NEVER-UNBLOCKS | issue #3355 | A brand-wide "not now" never changes blocks_action and never hides the item.
 --

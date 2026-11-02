@@ -279,7 +279,9 @@ function flowTitleOf(context: unknown): string | null {
   return isOwnerSafe(trimmed, "label") ? trimmed : null;
 }
 
-// MINGLA-INVARIANT: I-ARI-EVERY-WRITE-HAS-PRESENTATION | issue #3355 | Every registered Ari write tool has owner words in toolLabels.ts, and every proposal presentation built from any args is copy-gate clean (enforced by supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
+// #3355: every registered write tool has owner words and a copy-gate-clean
+// presentation (I-ARI-EVERY-WRITE-HAS-PRESENTATION, declared in
+// supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
 export function buildProposalPresentation(
   toolName: string,
   args: Record<string, unknown>,

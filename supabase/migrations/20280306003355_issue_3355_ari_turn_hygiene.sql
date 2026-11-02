@@ -129,7 +129,8 @@ CREATE TRIGGER agent_pending_actions_supersede_older
 -- ---------------------------------------------------------------------------
 -- Rate window (DB clock)
 -- ---------------------------------------------------------------------------
--- MINGLA-INVARIANT: I-ARI-RATE-LIMIT-POST-CLAIM | issue #3355 | A client_turn_id that is already claimed is never rate-limited, only owner turns count, an executing row older than 2 minutes never blocks, and the reset time is when the oldest counted turn leaves the 24 h window (enforced by supabase/migrations/__tests__/issue_3355_ari_turn_hygiene.implementor.pg17.test.sql).
+-- #3355 (I-ARI-RATE-LIMIT-POST-CLAIM, declared in
+-- supabase/migrations/__tests__/issue_3355_ari_turn_hygiene.implementor.pg17.test.sql).
 CREATE OR REPLACE FUNCTION public.agent_turn_rate_window(
   p_user_id uuid,
   p_client_turn_id uuid DEFAULT NULL
@@ -222,7 +223,8 @@ GRANT EXECUTE ON FUNCTION public.agent_turn_rate_window(uuid, uuid)
 -- ---------------------------------------------------------------------------
 -- Confirm claim (DB clock)
 -- ---------------------------------------------------------------------------
--- MINGLA-INVARIANT: I-ARI-DB-CLOCK-TTL | issue #3355 | Whether an Ari approval has expired is decided by the database clock inside agent_pending_action_claim_for_confirm, never by the edge clock (enforced by supabase/migrations/__tests__/issue_3355_ari_turn_hygiene.implementor.pg17.test.sql).
+-- #3355 (I-ARI-DB-CLOCK-TTL, declared in
+-- supabase/migrations/__tests__/issue_3355_ari_turn_hygiene.implementor.pg17.test.sql).
 --
 -- Answers one of:
 --   'pending'      probe only: still pending and inside its expiry

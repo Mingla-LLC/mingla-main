@@ -1,5 +1,5 @@
--- MINGLA-INVARIANT: I-BRAND-EVIDENCE-CLEARS-ON-WRITE | issue #3355 P5 | Brand Edit's structured address save (address + city + country + point, as the signed-in member through RLS) closes the address and city/country stale/conflict findings and the readiness read shows them resolved.
--- MINGLA-INVARIANT: I-HOME-NOT-NOW-NEVER-HIDES | issue #3355 P5 | Ari's brand-wide "not now" leaves the item in the readiness list Home reads, with its true state (Home always shows every outstanding item; the Host never sets or reads a deferral); only someone who can fix the item may set it; blocking money items refuse it.
+-- MINGLA-INVARIANT: I-BRAND-ADDRESS-SAVE-CLEARS-FINDINGS | issue #3355 | Brand Edit's structured address save (address + city + country + point, as the signed-in member through RLS) closes the address and city/country stale/conflict findings and the readiness read shows them resolved.
+-- MINGLA-INVARIANT: I-HOME-NOT-NOW-NEVER-HIDES | issue #3355 | Ari's brand-wide "not now" leaves the item in the readiness list Home reads, with its true state (Home always shows every outstanding item; the Host never sets or reads a deferral); only someone who can fix the item may set it; blocking money items refuse it.
 --
 -- Issue #3355 P5 — Home consumes readiness (implementor happy path +
 -- adversarial). Runs the exact write Brand Edit now makes, under the

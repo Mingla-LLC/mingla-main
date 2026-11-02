@@ -40,7 +40,9 @@ export interface AriRefusalCopy {
 
 const PAYMENTS_ONBOARD = "/brand/{brandId}/payments/onboard";
 
-// MINGLA-INVARIANT: I-ARI-DETERMINISTIC-REFUSAL-TYPED | issue #3355 | Every deterministic publish/money refusal code a receipt-backed Ari write can raise maps to a typed DOMAIN_REFUSED with an owner sentence, never to RPC_FAILED -> 202 "verifying" (enforced by supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
+// #3355: every deterministic refusal code maps to a typed DOMAIN_REFUSED
+// (I-ARI-DETERMINISTIC-REFUSAL-TYPED, declared in
+// supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
 export const ARI_REFUSAL_COPY: Readonly<Record<string, AriRefusalCopy>> = Object
   .freeze({
     stripe_charges_disabled: {

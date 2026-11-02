@@ -3,7 +3,7 @@
 //
 // MINGLA-INVARIANT: I-ARI-WEBSITE-OWNER-APPROVES-PLAN | issue #2830 | Ari never approves the Website plan: the approve part is only a review handoff to /brand/<id>/website/plan?part=approve, and no Website flow answer can produce a plan-approval write.
 // MINGLA-INVARIANT: I-ARI-WEBSITE-BUILD-GATED | issue #2830 | The Website build is proposed only when the plan's first five parts, the brand-context audit and the owner's approval are all true, through ONE protected create_site_draft proposal that reuses the brand's site; a built site is verified by reading the site back, never a second website.
-// MINGLA-INVARIANT: I-ARI-WEBSITE-PUBLISH-EXACT-DIGEST | issue #2830 | A Website publish is proposed only after the owner asks for it, bound to the exact revision and digest that were validated and design-checked; a changed draft is re-checked, never published.
+// MINGLA-INVARIANT: I-ARI-WEBSITE-PUBLISH-EXACT-DIGEST | issue #2830 | A Website publish is proposed only after the owner asks for it, bound to the exact revision and digest that were validated and design-checked; a changed revision is re-checked, never published.
 //
 // Drives the shipped runner + Website flow with an in-memory run store (the
 // SQL rules: lease, compare-and-swap, evidence) and a fake Website world

@@ -1,5 +1,5 @@
--- MINGLA-INVARIANT: I-ARI-FLOW-ENGINE-OWNS-PROGRESS | issue #3355 | An Ari flow step becomes done, and a run completed, only through ari_flow_run_advance under a held lease with an evidence object (probe + observed); D-31: ari_manage_agent_job refuses "completed" without evidence references (edge guard: supabase/functions/_shared/__tests__/issue_3355_flow_engine.implementor.test.ts).
--- MINGLA-INVARIANT: I-ARI-BOUND-ANSWERS | issue #3355 | A run has exactly one current question; only the edge runner moves it, and clients cannot read or write runs directly.
+-- MINGLA-INVARIANT: I-ARI-FLOW-RUN-ADVANCE-NEEDS-EVIDENCE | issue #3355 | An Ari flow step becomes done, and a run completed, only through ari_flow_run_advance under a held lease with an evidence object (probe + observed); D-31: ari_manage_agent_job refuses "completed" without evidence references (edge guard: supabase/functions/_shared/__tests__/issue_3355_flow_engine.implementor.test.ts).
+-- MINGLA-INVARIANT: I-ARI-FLOW-RUN-ONE-CURRENT-QUESTION | issue #3355 | A run has exactly one current question; only the edge runner moves it, and clients cannot read or write runs directly.
 --
 -- Issue #3355 P3 — durable Ari flow runs (implementor happy path + edges).
 -- Pins, on the database clock:

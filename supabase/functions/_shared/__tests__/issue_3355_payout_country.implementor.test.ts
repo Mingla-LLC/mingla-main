@@ -1,7 +1,7 @@
 // Issue #3355 P7 (Phase 7 certification fix) — Ari's payout-country pick is
 // the Host chooser's pick (BrandPayoutCountryField), made as the caller.
 //
-// MINGLA-INVARIANT: I-ARI-PAYOUT-COUNTRY-HOST-PARITY | issue #3355 | Ari sets a brand's payout country only through the confirmed write set_brand_payout_country, which makes the Host chooser's writes as the caller and nothing else: Nigeria calls brand-paystack-onboard select_provider (the server sets the Nigerian rail and naira); any other supported country clears a Paystack rail if one is set, updates brands.default_currency, then remembers brands.payout_country. A brand that already has a different currency, or an unsupported country, is refused with nothing written.
+// MINGLA-INVARIANT: I-ARI-PAYOUT-COUNTRY-HOST-PARITY | issue #3355 | Ari sets a payout country only through the confirmed set_brand_payout_country, making the Host chooser's writes as the caller: Nigeria goes through brand-paystack-onboard select_provider; any other supported country clears a Paystack rail, sets brands.default_currency, then brands.payout_country. A brand with a different currency, or an unsupported country, is refused with nothing written.
 //
 // Run: deno test --no-check --allow-env --allow-read \
 //   supabase/functions/_shared/__tests__/issue_3355_payout_country.implementor.test.ts

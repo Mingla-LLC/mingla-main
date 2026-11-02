@@ -1,3 +1,6 @@
+-- MINGLA-INVARIANT: I-ARI-RATE-LIMIT-POST-CLAIM | issue #3355 | A client_turn_id that is already claimed is never rate-limited, only owner turns count, an executing row older than 2 minutes never blocks, and the reset time is when the oldest counted turn leaves the 24 h window.
+-- MINGLA-INVARIANT: I-ARI-DB-CLOCK-TTL | issue #3355 | Whether an Ari approval has expired is decided by the database clock inside agent_pending_action_claim_for_confirm, never by the edge clock.
+--
 -- Issue #3355 P1 — Ari turn and confirm hygiene (implementor happy path).
 --
 -- Pins, on the database clock:

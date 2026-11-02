@@ -1,5 +1,8 @@
 // Issue #3355 P1 — Ari turn and confirm hygiene (implementor happy path).
 //
+// MINGLA-INVARIANT: I-ARI-EVERY-WRITE-HAS-PRESENTATION | issue #3355 | Every registered Ari write tool has owner words in toolLabels.ts, and every proposal presentation built from any args is copy-gate clean.
+// MINGLA-INVARIANT: I-ARI-DETERMINISTIC-REFUSAL-TYPED | issue #3355 | Every deterministic publish/money refusal code a receipt-backed Ari write can raise maps to a typed DOMAIN_REFUSED with an owner sentence, never to RPC_FAILED -> 202 "verifying".
+//
 // Drives the shipped modules, not source text:
 //   D-9  a deterministic money/publish refusal from the database becomes a
 //        typed DOMAIN_REFUSED with an owner sentence (409, terminal), never
