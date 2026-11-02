@@ -114,6 +114,14 @@ describe("issue #3281 date picker captions", () => {
     expect(dayChooserCaptions([ticket(["fri"], ["fri"]), ticket(null)], days)).toEqual({});
   });
 
+  test("a full All dates ticket doesn't keep a date open", () => {
+    const full = { ...ticket(null), isUnlimited: false, capacity: 0 };
+    expect(dayChooserCaptions([full, ticket(["sat"])], days)).toEqual({
+      fri: "Sold out",
+      sun: "Sold out",
+    });
+  });
+
   test("a hidden ticket covers nothing", () => {
     expect(
       dayChooserCaptions(

@@ -8,7 +8,15 @@ interface ChooserTicket {
   visibility: TicketStub["visibility"];
   validOccurrenceIds?: readonly string[] | null;
   soldOutOccurrenceIds?: readonly string[];
+  isUnlimited?: boolean;
+  capacity?: number | null;
 }
+
+// An All dates ticket has one shared pool, so the server sends no per-date flags.
+const isFullOn = (ticket: ChooserTicket, id: string): boolean =>
+  ticket.validOccurrenceIds != null
+    ? ticket.soldOutOccurrenceIds?.includes(id) === true
+    : ticket.isUnlimited !== true && (ticket.capacity ?? 1) <= 0;
 
 /**
  * The caption on each date in the picker. Only events with a listed ticket get
@@ -26,7 +34,7 @@ export const dayChooserCaptions = (
       (ticket) => ticket.validOccurrenceIds?.includes(id) ?? true,
     );
     if (covering.length === 0) captions[id] = "No tickets";
-    else if (covering.every((ticket) => ticket.soldOutOccurrenceIds?.includes(id))) {
+    else if (covering.every((ticket) => isFullOn(ticket, id))) {
       captions[id] = "Sold out";
     }
   }
