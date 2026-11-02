@@ -33,7 +33,7 @@ CREATE TABLE public.ticket_add_ons (
   CONSTRAINT ticket_add_ons_price_not_negative CHECK (price_cents >= 0),
   CONSTRAINT ticket_add_ons_capacity_shape CHECK (
     (is_unlimited AND quantity_total IS NULL)
-    OR (NOT is_unlimited AND quantity_total > 0)
+    OR (NOT is_unlimited AND quantity_total IS NOT NULL AND quantity_total > 0)
   ),
   CONSTRAINT ticket_add_ons_max_per_ticket CHECK (max_per_ticket BETWEEN 1 AND 20),
   CONSTRAINT ticket_add_ons_day_list_not_empty CHECK (
@@ -118,28 +118,57 @@ $fn$;
 CREATE OR REPLACE FUNCTION public.issue_3281_extras_refund_cents(
   p_order_id uuid, p_lines jsonb, p_this_refund uuid
 ) RETURNS integer
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $fn$
-  SELECT CASE
-    WHEN NOT public.issue_3281_refund_returns_all_tickets(p_order_id, p_lines, p_this_refund)
-      THEN 0
-    ELSE COALESCE((
-      SELECT SUM(GREATEST(item.total_cents - COALESCE((
-        SELECT SUM(ra.amount_cents)
-          FROM public.refund_add_on_line_items ra
-          JOIN public.refunds r ON r.id = ra.refund_id
-         WHERE ra.order_add_on_line_item_id = item.id
-           AND r.status IN ('pending', 'succeeded')
-           AND r.id IS DISTINCT FROM p_this_refund
-      ), 0), 0))
-        FROM public.order_add_on_line_items item
-       WHERE item.order_id = p_order_id
-    ), 0)::integer
-  END;
+DECLARE
+  v_cents integer;
+BEGIN
+  IF NOT public.issue_3281_refund_returns_all_tickets(p_order_id, p_lines, p_this_refund) THEN
+    RETURN 0;
+  END IF;
+  SELECT COALESCE(SUM(GREATEST(item.total_cents - COALESCE((
+      SELECT SUM(ra.amount_cents)
+        FROM public.refund_add_on_line_items ra
+        JOIN public.refunds r ON r.id = ra.refund_id
+       WHERE ra.order_add_on_line_item_id = item.id
+         AND r.status IN ('pending', 'succeeded')
+         AND r.id IS DISTINCT FROM p_this_refund
+    ), 0), 0)), 0)::integer
+    INTO v_cents
+    FROM public.order_add_on_line_items item
+   WHERE item.order_id = p_order_id;
+  RETURN v_cents;
+END;
 $fn$;
+
+-- A manual refund that would return the extras must not rest on another refund
+-- that can still fail, or the guest could keep a ticket after losing its
+-- extras. It waits until that refund settles. A cancellation never waits: the
+-- event is gone, so nothing is left to keep. Orders with no extras never wait.
+CREATE OR REPLACE FUNCTION public.issue_3281_extras_refund_cents_settled(
+  p_order_id uuid, p_lines jsonb
+) RETURNS integer
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  v_cents integer := public.issue_3281_extras_refund_cents(p_order_id, p_lines, NULL);
+BEGIN
+  IF v_cents > 0 AND EXISTS (
+    SELECT 1 FROM public.refunds r
+     WHERE r.order_id = p_order_id AND r.status = 'pending'
+  ) THEN
+    RAISE EXCEPTION 'refund_pending_on_order' USING ERRCODE = 'P0013';
+  END IF;
+  RETURN v_cents;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_3281_extras_refund_cents_settled(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.issue_3281_record_extras_refund(
   p_refund_id uuid, p_order_id uuid, p_lines jsonb
@@ -262,7 +291,7 @@ BEGIN
     RAISE EXCEPTION 'not_authorized';
   END IF;
 
-  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
   END IF;
@@ -385,7 +414,7 @@ BEGIN
 
   -- issue #3281 — returning the last tickets also returns the order's extras.
   v_refund_amount_cents := v_refund_amount_cents
-    + public.issue_3281_extras_refund_cents(p_order_id, v_canonical_lines, NULL);
+    + public.issue_3281_extras_refund_cents_settled(p_order_id, v_canonical_lines);
 
   IF v_refund_amount_cents <= 0 THEN
     RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
@@ -509,7 +538,7 @@ DECLARE
 BEGIN
   -- Authorization precedes the idempotency lookup so replay cannot disclose
   -- refund or payment identifiers to a caller outside the order's brand.
-  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
   END IF;
@@ -640,7 +669,7 @@ BEGIN
 
   -- issue #3281 — returning the last tickets also returns the order's extras.
   v_refund_amount_cents := v_refund_amount_cents
-    + public.issue_3281_extras_refund_cents(p_order_id, v_canonical_lines, NULL);
+    + public.issue_3281_extras_refund_cents_settled(p_order_id, v_canonical_lines);
 
   IF v_refund_amount_cents <= 0 THEN
     RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
@@ -765,6 +794,8 @@ DECLARE
   v_allocated bigint := 0;
   v_alloc bigint;
   v_idx integer := 0;
+  v_extras bigint := 0;
+  v_pool bigint;
   v_count integer;
   v_full boolean;
   v_status text;
@@ -875,11 +906,15 @@ BEGIN
   ) RETURNING id INTO v_refund_id;
 
   PERFORM public.issue_3281_record_extras_refund(v_refund_id, p_order_id, v_lines);
+  -- issue #3281 — the refund total is unchanged. Tickets share what extras don't.
+  SELECT COALESCE(SUM(amount_cents), 0) INTO v_extras
+    FROM public.refund_add_on_line_items WHERE refund_id = v_refund_id;
+  v_pool := GREATEST(v_amount - v_extras, v_count);
 
   FOR v_line IN SELECT * FROM jsonb_array_elements(v_lines) ORDER BY value->>'order_line_item_id' LOOP
     v_idx := v_idx + 1;
-    v_alloc := CASE WHEN v_idx = v_count THEN v_amount - v_allocated
-      ELSE floor(v_amount::numeric * (v_line->>'amount_cents')::bigint / v_line_base)::bigint END;
+    v_alloc := CASE WHEN v_idx = v_count THEN v_pool - v_allocated
+      ELSE floor(v_pool::numeric * (v_line->>'amount_cents')::bigint / v_line_base)::bigint END;
     v_allocated := v_allocated + v_alloc;
     INSERT INTO public.refund_line_items (refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents)
     SELECT v_refund_id, oli.id, oli.ticket_type_id, (v_line->>'quantity')::int, v_alloc::integer
@@ -897,7 +932,8 @@ BEGIN
     'is_full_refund', v_full,
     'issue_3872_cancellation', jsonb_build_object(
       'ticket_lines_cents', v_line_base,
-      'fees_and_tax_cents', GREATEST(0, v_amount - v_line_base),
+      'extras_cents', v_extras,
+      'fees_and_tax_cents', GREATEST(0, v_amount - v_extras - v_line_base),
       'charged_total_cents', v_charged)
   );
   UPDATE public.refunds

@@ -56,6 +56,17 @@ BEGIN
     RAISE EXCEPTION 'a plain refund must not change, got %',v_result;
   END IF;
 
+  -- Limited capacity needs a number, and two refunds wait on the order row.
+  v_raised := NULL;
+  BEGIN
+    INSERT INTO public.ticket_add_ons(ticket_type_id,name) VALUES (v_tier,'No capacity');
+  EXCEPTION WHEN check_violation THEN v_raised := 'refused'; END;
+  IF v_raised IS NULL THEN RAISE EXCEPTION 'a limited extra needs a capacity'; END IF;
+  IF position('FROM public.orders WHERE id = p_order_id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order(uuid,jsonb,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = p_order_id FOR UPDATE' IN pg_get_functiondef('public.admin_refund_order(uuid,jsonb,text,text)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'manual refunds must lock the order';
+  END IF;
+
   -- The first ticket back keeps the dinner.
   v_one := jsonb_build_array(jsonb_build_object('order_line_item_id',v_line,'quantity',1));
   v_preview := public.refund_preview(v_order,v_one);
@@ -64,6 +75,14 @@ BEGIN
   END IF;
   PERFORM public.biz_refund_order(v_order,v_one,'First of two tickets back','extras-1');
   SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_order;
+  -- While that refund can still fail, the last ticket can't take the dinner.
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.biz_refund_order(v_order,v_one,'Second ticket while pending','extras-early');
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'refund_pending_on_order' THEN
+    RAISE EXCEPTION 'extras must wait for a pending refund, got %',v_raised;
+  END IF;
   UPDATE public.refunds SET status='succeeded' WHERE id=v_refund;
   IF (SELECT amount_cents FROM public.refunds WHERE id=v_refund) <> 1000
      OR EXISTS (SELECT 1 FROM public.refund_add_on_line_items) THEN
@@ -136,19 +155,25 @@ BEGIN
     VALUES (v_tier,v_event,'VIP',1000);
   INSERT INTO public.orders(
     id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
-  ) VALUES (v_order,v_event,4500,'NGN','paid','pi-cancel','ch-cancel','legacy');
+  ) VALUES (v_order,v_event,4600,'NGN','paid','pi-cancel','ch-cancel','legacy');
   INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
     VALUES (v_line,v_order,v_tier,1,1000,1000);
   INSERT INTO public.order_add_on_line_items(
     order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
     quantity,unit_price_cents,total_cents
   ) VALUES (v_order,v_tier,'Dinner','VIP',1,3500,3500);
+  -- A cancellation does not wait for another refund to settle.
+  INSERT INTO public.refunds(order_id,amount_cents,currency,reason,status)
+    VALUES (v_order,100,'NGN','Earlier refund still pending','pending');
   PERFORM public.issue_3872_cancel_refund_order(v_order,
     jsonb_build_array(jsonb_build_object('order_line_item_id',v_line,'quantity',1)),
     'The organiser cancelled this event','cancel-extras-1');
-  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_order;
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_order AND amount_cents<>100;
   IF (SELECT amount_cents FROM public.refunds WHERE id=v_refund) <> 4500 THEN
     RAISE EXCEPTION 'cancel must return the whole order';
+  END IF;
+  IF (SELECT SUM(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund) <> 1000 THEN
+    RAISE EXCEPTION 'tickets must share only what extras do not use';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.refund_add_on_line_items WHERE refund_id=v_refund) THEN
     RAISE EXCEPTION 'cancel must record the extra';
