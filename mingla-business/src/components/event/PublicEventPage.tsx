@@ -196,11 +196,7 @@ import {
 // issue #2209 — namespace import ALONGSIDE the named ones above, for the
 // compatibility seam right below. Same module, so Metro resolves one copy.
 import * as EventDateDisplay from "../../utils/eventDateDisplay";
-import {
-  dayChooserCaptions,
-  removedTicketsNotice,
-  ticketDayView,
-} from "../../utils/ticketDayOffer";
+import { removedTicketsNotice, ticketDayView } from "../../utils/ticketDayOffer";
 // issue #2135 [multi-date public day picker] — TYPE-ONLY (erased at build; adds
 // no runtime dependency to this hot buyer-web route).
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
@@ -1499,11 +1495,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     );
   }, [onRetryOccurrences, showToast]);
 
-  const dayCaptions = useMemo(
-    () => dayChooserCaptions(event.tickets, occurrences),
-    [event.tickets, occurrences],
-  );
-
   // issue #2399 — app-local, lazy chooser injected as the shared purchase
   // card's first child. Non-purchase states do not ask the buyer for a day.
   const multiDateDayChooser = requiresMultiDatePurchase ? (
@@ -1523,7 +1514,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onRetryOccurrences === undefined ? undefined : handleRetryOccurrences
         }
         onToggle={handleOccurrenceToggle}
-        dayCaptions={dayCaptions}
+        tickets={event.tickets}
       />
       {dayNotice !== null ? (
         <View style={styles.dayNotice} testID="issue-3281-scope-notice">

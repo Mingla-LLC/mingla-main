@@ -6,11 +6,8 @@ import {
   quantityPerDate,
   ticketCoversAnyDate,
 } from "../../components/checkout/byDateQuantities";
-import {
-  dayChooserCaptions,
-  removedTicketsNotice,
-  ticketDayView,
-} from "../ticketDayOffer";
+import { dayChooserCaptions } from "../dayChooserCaptions";
+import { removedTicketsNotice, ticketDayView } from "../ticketDayOffer";
 
 const occurrences = ["fri", "sat", "sun"].map((id, index) => ({
   id,
@@ -97,7 +94,7 @@ describe("issue #3281 cart lines", () => {
 describe("issue #3281 date picker captions", () => {
   const days = [{ id: "fri" }, { id: "sat" }, { id: "sun" }];
   const ticket = (ids: string[] | null, soldOut: string[] = []) => ({
-    visibility: "public",
+    visibility: "public" as const,
     validOccurrenceIds: ids,
     soldOutOccurrenceIds: soldOut,
   });
@@ -119,7 +116,10 @@ describe("issue #3281 date picker captions", () => {
 
   test("a hidden ticket covers nothing", () => {
     expect(
-      dayChooserCaptions([{ ...ticket(["fri"]), visibility: "hidden" }, ticket(["sat"])], days),
+      dayChooserCaptions(
+        [{ ...ticket(["fri"]), visibility: "hidden" as const }, ticket(["sat"])],
+        days,
+      ),
     ).toEqual({ fri: "No tickets", sun: "No tickets" });
   });
 });

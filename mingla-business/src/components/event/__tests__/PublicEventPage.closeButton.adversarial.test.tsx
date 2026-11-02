@@ -409,7 +409,6 @@ const renderPublicEventPage = (
         return { useBrandList: () => mockUserBrands };
       case "../../utils/ticketDayOffer":
         return {
-          dayChooserCaptions: () => ({}),
           removedTicketsNotice: () => "",
           ticketDayView: () => ({ dayScopeLabel: null, offChosenDays: false }),
         };

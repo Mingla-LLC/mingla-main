@@ -16,7 +16,6 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
-import { ticketDayView } from "../../../src/utils/ticketDayOffer";
 import {
   dayLimitedLine,
   perDateLine,
@@ -56,7 +55,10 @@ import { resolveHideRemainingCount } from "@mingla/offering-rendering/remainingC
 // occurrence query here any more.
 import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
 import { formatCurrency } from "../../../src/utils/currency";
-import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
+import {
+  formatChosenDaysLabel,
+  resolveChosenDaysLine,
+} from "../../../src/utils/eventDateDisplay";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 
@@ -499,13 +501,15 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   // issue #3281 — says which days a listed ticket covers in the cart too.
   const withDayScope = (ticket: TicketStub): TicketStub & { dayScopeLabel: string | null } => ({
     ...ticket,
-    dayScopeLabel: ticketDayView(
-      ticket.validOccurrenceIds,
-      occurrences,
-      [],
-      false,
-      event?.timezone,
-    ).dayScopeLabel,
+    dayScopeLabel:
+      ticket.validOccurrenceIds == null ||
+      occurrences.every((o) => ticket.validOccurrenceIds?.includes(o.id))
+        ? null
+        : formatChosenDaysLabel(
+            occurrences,
+            ticket.validOccurrenceIds,
+            event?.timezone,
+          ),
   });
 
   const visibleTickets =
