@@ -223,10 +223,11 @@ REVOKE ALL ON FUNCTION public.issue_3281_refund_returns_all_tickets(uuid, jsonb,
 REVOKE ALL ON FUNCTION public.issue_3281_extras_refund_cents(uuid, jsonb, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_record_extras_refund(uuid, uuid, jsonb, integer) FROM PUBLIC, anon, authenticated;
 
--- A full cancellation has returned the whole charge, so a free ticket left on
--- the order doesn't keep it partial. A manual refund is judged on every line.
+-- A settled full cancellation means the whole charge goes back, so a free ticket
+-- left on the order doesn't keep it partial, whichever refund settles last.
+-- Without one, every line counts, free tickets included.
 CREATE OR REPLACE FUNCTION public.issue_3281_settled_payment_status(
-  p_order_id uuid, p_refund_id uuid
+  p_order_id uuid
 ) RETURNS text
 LANGUAGE sql
 STABLE
@@ -237,9 +238,10 @@ AS $fn$
     SELECT 1 FROM public.order_line_items oli
      WHERE oli.order_id = p_order_id
        AND NOT (oli.unit_price_cents = 0 AND EXISTS (
-         SELECT 1 FROM public.refunds this
-          WHERE this.id = p_refund_id
-            AND this.metadata #>> '{refund_request_manifest,is_full_refund}' = 'true'
+         SELECT 1 FROM public.refunds cancel
+          WHERE cancel.order_id = p_order_id
+            AND cancel.status = 'succeeded'
+            AND cancel.metadata #>> '{refund_request_manifest,is_full_refund}' = 'true'
        ))
        AND oli.quantity > (
          SELECT COALESCE(SUM(rli.quantity), 0)
@@ -249,7 +251,7 @@ AS $fn$
        )
   ) THEN 'refunded' ELSE 'partial_refund' END;
 $fn$;
-REVOKE ALL ON FUNCTION public.issue_3281_settled_payment_status(uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_settled_payment_status(uuid) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.refund_preview(
   p_order_id uuid,
@@ -1065,7 +1067,7 @@ BEGIN
   WHERE order_id = v_order.id AND status = 'succeeded'
     AND order_installment_id IS NULL;  -- issue #3645: instalment refunds are not deposit refunds
 
-  v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id, p_refund_id);
+  v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id);
 
   UPDATE public.orders
   SET payment_status = v_new_payment_status,
@@ -1101,6 +1103,109 @@ BEGIN
   );
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION public.biz_refund_order_commit(
+  p_refund_id uuid,
+  p_stripe_refund_id text,
+  p_application_fee_refunded_cents integer,
+  p_status text,
+  p_stripe_tax_transaction_id text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_refund public.refunds%ROWTYPE;
+  v_order public.orders%ROWTYPE;
+  v_caller uuid := auth.uid();
+  v_brand_id uuid;
+  v_line_item record;
+  v_new_payment_status text;
+  v_total_refunded_cents int;
+BEGIN
+  SELECT * INTO v_refund FROM public.refunds WHERE id = p_refund_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'refund_not_found' USING ERRCODE = 'P0010';
+  END IF;
+  IF v_refund.status <> 'pending' THEN
+    SELECT * INTO v_order FROM public.orders WHERE id = v_refund.order_id;
+    RETURN jsonb_build_object(
+      'refund_id', p_refund_id,
+      'status', v_refund.status,
+      'new_payment_status', v_order.payment_status,
+      'total_refunded_cents', v_order.refunded_amount_cents,
+      'idempotent_replay', true
+    );
+  END IF;
+  IF p_status NOT IN ('succeeded', 'failed') THEN
+    RAISE EXCEPTION 'invalid_commit_status' USING ERRCODE = 'P0012';
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id = v_refund.order_id;
+  SELECT brand_id INTO v_brand_id FROM public.events WHERE id = v_order.event_id;
+  IF NOT public.biz_can_manage_payments_for_brand(v_brand_id, v_caller) THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_status = 'failed' THEN
+    UPDATE public.refunds
+    SET status = 'failed',
+        stripe_tax_transaction_id = COALESCE(p_stripe_tax_transaction_id, stripe_tax_transaction_id),
+        processed_at = now()
+    WHERE id = p_refund_id;
+    RETURN jsonb_build_object('refund_id', p_refund_id, 'status', 'failed', 'idempotent_replay', false);
+  END IF;
+
+  UPDATE public.refunds
+  SET status = 'succeeded',
+      stripe_refund_id = p_stripe_refund_id,
+      stripe_tax_transaction_id = p_stripe_tax_transaction_id,
+      application_fee_refunded_cents = COALESCE(p_application_fee_refunded_cents, 0),
+      processed_at = now()
+  WHERE id = p_refund_id;
+
+  SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
+  FROM public.refunds
+  WHERE order_id = v_order.id AND status = 'succeeded';
+
+  v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id);
+
+  UPDATE public.orders
+  SET payment_status = v_new_payment_status,
+      refunded_amount_cents = v_total_refunded_cents,
+      updated_at = now()
+  WHERE id = v_order.id;
+
+  FOR v_line_item IN
+    SELECT rli.ticket_type_id, rli.quantity
+    FROM public.refund_line_items rli
+    WHERE rli.refund_id = p_refund_id
+  LOOP
+    UPDATE public.tickets t
+    SET status = 'refunded'
+    WHERE t.id IN (
+      SELECT t2.id
+      FROM public.tickets t2
+      WHERE t2.order_id = v_order.id
+        AND t2.ticket_type_id = v_line_item.ticket_type_id
+        AND t2.status = 'valid'
+      ORDER BY t2.created_at ASC
+      LIMIT v_line_item.quantity
+    );
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'refund_id', p_refund_id,
+    'status', 'succeeded',
+    'new_payment_status', v_new_payment_status,
+    'total_refunded_cents', v_total_refunded_cents,
+    'stripe_tax_transaction_id', p_stripe_tax_transaction_id,
+    'idempotent_replay', false
+  );
+END;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.issue_2097_finalize_refund_attempt(
   p_attempt_id uuid,p_lease_owner uuid,p_lease_epoch bigint,p_status text,
@@ -1178,7 +1283,7 @@ BEGIN
       WHERE a.refund_id=v.refund_id AND x.ticket_id=t.id AND t.status='refund_pending';
     SELECT COALESCE(SUM(amount_cents),0) INTO v_total FROM public.refunds
       WHERE order_id=v.order_id AND status='succeeded';
-    v_order_status:=public.issue_3281_settled_payment_status(v.order_id,v.refund_id);
+    v_order_status:=public.issue_3281_settled_payment_status(v.order_id);
     UPDATE public.orders SET payment_status=v_order_status,refunded_amount_cents=v_total,updated_at=now() WHERE id=v.order_id;
     IF p_status='succeeded_positive' THEN
       UPDATE public.mingla_revenue_log SET refunded_amount_cents=LEAST(amount_cents,

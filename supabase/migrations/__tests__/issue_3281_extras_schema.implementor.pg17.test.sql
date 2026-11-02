@@ -162,8 +162,7 @@ BEGIN
   END IF;
   -- A manual refund is still judged on every line.
   UPDATE public.refunds SET status='succeeded' WHERE order_id=v_mixed_order;
-  IF public.issue_3281_settled_payment_status(v_mixed_order,
-       (SELECT id FROM public.refunds WHERE order_id=v_mixed_order)) <> 'partial_refund' THEN
+  IF public.issue_3281_settled_payment_status(v_mixed_order) <> 'partial_refund' THEN
     RAISE EXCEPTION 'a manual refund must stay judged on every line';
   END IF;
 
@@ -212,6 +211,10 @@ DECLARE
   v_discount_order uuid := gen_random_uuid();
   v_discount_line uuid := gen_random_uuid();
   v_attempt uuid := gen_random_uuid();
+  v_race_order uuid;
+  v_race_line uuid;
+  v_manual uuid;
+  v_cancel_first boolean;
   v_refund uuid;
   v_result jsonb;
 BEGIN
@@ -331,6 +334,43 @@ BEGIN
   IF (SELECT payment_status FROM public.orders WHERE id=v_mixed_order) <> 'refunded' THEN
     RAISE EXCEPTION 'a settled Stripe cancellation must store refunded';
   END IF;
+
+  -- Whichever refund settles last, a full cancellation ends as refunded.
+  FOREACH v_cancel_first IN ARRAY ARRAY[true,false] LOOP
+    v_race_order := gen_random_uuid();
+    v_race_line := gen_random_uuid();
+    INSERT INTO public.orders(
+      id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+    ) VALUES (v_race_order,v_event,2200,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+    INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+      VALUES (v_race_line,v_race_order,v_tier,2,1000,2000);
+    INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+      VALUES (v_race_order,v_tier,1,0,0);
+    PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+    PERFORM public.biz_refund_order(v_race_order,
+      jsonb_build_array(jsonb_build_object('order_line_item_id',v_race_line,'quantity',1)),
+      'One ticket back first','race-'||v_race_order);
+    SELECT id INTO v_manual FROM public.refunds WHERE order_id=v_race_order;
+    PERFORM set_config('request.jwt.claim.sub','',true);
+    PERFORM public.issue_3872_cancel_refund_order(v_race_order,
+      jsonb_build_array(jsonb_build_object('order_line_item_id',v_race_line,'quantity',1)),
+      'The organiser cancelled this event','race-cancel-'||v_race_order);
+    SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_race_order AND id<>v_manual;
+    PERFORM public.issue_2097_finalize_not_applicable(v_manual,'paystack','re-m-'||v_race_order);
+    PERFORM public.issue_2097_finalize_not_applicable(v_refund,'paystack','re-c-'||v_race_order);
+    IF v_cancel_first THEN
+      PERFORM public.admin_refund_order_commit(v_refund,'re-c-'||v_race_order,0,'succeeded');
+    END IF;
+    PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+    PERFORM public.biz_refund_order_commit(v_manual,'re-m-'||v_race_order,0,'succeeded');
+    PERFORM set_config('request.jwt.claim.sub','',true);
+    IF NOT v_cancel_first THEN
+      PERFORM public.admin_refund_order_commit(v_refund,'re-c-'||v_race_order,0,'succeeded');
+    END IF;
+    IF (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded' THEN
+      RAISE EXCEPTION 'a full cancellation must end refunded (cancel first: %)',v_cancel_first;
+    END IF;
+  END LOOP;
 END;
 $test$;
 
