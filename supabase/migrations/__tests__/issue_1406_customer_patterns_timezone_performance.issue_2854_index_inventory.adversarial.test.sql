@@ -148,7 +148,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 79 / 8e7ec4e5428dd976a5d9a976d4821e59';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 80 / 8e7ec4e5428dd976a5d9a976d4821e59';
 END;
 $test$;
 
