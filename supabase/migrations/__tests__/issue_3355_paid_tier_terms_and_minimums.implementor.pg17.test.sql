@@ -14,6 +14,9 @@
 --   D3: Ari saves a paid tier on a draft for a brand that can't take
 --       payments (Host draft storage, no live ticket); publishing that draft is
 --       still refused; a live paid tier through Ari is still payout_not_ready.
+--   Currency decision: the readiness "who can fix" row follows the resolver's
+--       own rule (rank >= finance_manager): an event manager can, a marketing
+--       manager can't.
 --   No publish regression: a valid paid publish and a valid free publish
 --   through business_publish_event_draft still succeed; a below-minimum paid
 --   publish is refused.
@@ -56,6 +59,8 @@ DECLARE
   v_args jsonb;
   v_result jsonb;
   v_theme jsonb;
+  v_mkt uuid := '33550000-0000-4000-8000-0000000006a4';
+  v_item jsonb;
 BEGIN
   INSERT INTO auth.users(id,email) VALUES
     (v_owner,'owner-3355pm@example.invalid'),
@@ -447,6 +452,39 @@ BEGIN
   END;
   IF NOT v_failed OR EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id=v_ari_live) THEN
     RAISE EXCEPTION 'D3: a live paid tier must still need payments';
+  END IF;
+
+  -- ── Currency decision: "who can fix" is the resolver's own rule ──────────
+  -- issue_1384_resolve_reconciliation admits effective rank >= finance_manager.
+  PERFORM set_config('request.jwt.claims','',true);
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  INSERT INTO auth.users(id,email) VALUES (v_mkt,'mkt-3355pm@example.invalid');
+  INSERT INTO public.brand_team_members(brand_id,user_id,role,accepted_at)
+  VALUES (v_brand,v_mkt,'marketing_manager',now());
+  IF public.biz_can_manage_payments_for_brand(v_brand,v_plain_mgr) THEN
+    RAISE EXCEPTION 'fixture: an event manager is outside the money predicate';
+  END IF;
+  PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v_plain_mgr,'role','authenticated')::text,true);
+  PERFORM set_config('request.jwt.claim.sub',v_plain_mgr::text,true);
+  SELECT item INTO v_item
+  FROM jsonb_array_elements(public.brand_readiness(v_brand,'publish_paid')->'items') item
+  WHERE item->>'key'='money.currency_reconciliation';
+  IF (v_item#>>'{fix,can_caller_fix}')::boolean IS DISTINCT FROM true
+     OR v_item#>>'{fix,who_can_fix}' <> 'a finance manager or higher' THEN
+    RAISE EXCEPTION 'currency decision: an event manager may decide it, as the resolver allows (got %)', v_item->'fix';
+  END IF;
+  PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v_mkt,'role','authenticated')::text,true);
+  PERFORM set_config('request.jwt.claim.sub',v_mkt::text,true);
+  SELECT item INTO v_item
+  FROM jsonb_array_elements(public.brand_readiness(v_brand,'publish_paid')->'items') item
+  WHERE item->>'key'='money.currency_reconciliation';
+  IF (v_item#>>'{fix,can_caller_fix}')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'currency decision: a marketing manager is below the resolver rule (got %)', v_item->'fix';
+  END IF;
+  -- Refunds and payouts stay on the money predicate.
+  IF (SELECT server_predicate FROM public.brand_readiness_catalog
+      WHERE key='money.tax_registration') IS DISTINCT FROM 'biz_can_manage_payments_for_brand' THEN
+    RAISE EXCEPTION 'only the currency decision row changes';
   END IF;
 END;
 $i3355pm$;

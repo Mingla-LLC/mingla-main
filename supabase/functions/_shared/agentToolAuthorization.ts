@@ -304,9 +304,17 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
 // (rank 40, above finance's 30) is refused here, before any card is shown.
 // The coarse `requiredRole` label stays for the capability ledger.
 // Enforcing test: __tests__/issue_3355_money_flow.implementor.test.ts.
+//
+// The currency-change DECISION is the exception: its server owners
+// (issue_1384_resolve_reconciliation, issue_1387_resolve_currency_reconciliation
+// and ari_execute_brand_operation) admit any member whose effective rank is at
+// least finance_manager, an event manager included. Ari holds it to exactly
+// that rule ("rank_at_least_finance_manager") so it never refuses a decision
+// the Host screen's server allows (#3355 P6 follow-up, Seth 2026-11-01).
 export type MoneyServerPredicate =
   | "biz_can_manage_payments_for_brand"
-  | "biz_can_mutate_payouts_for_brand";
+  | "biz_can_mutate_payouts_for_brand"
+  | "rank_at_least_finance_manager";
 
 const ASK_FINANCE =
   "Ask a brand admin, a finance manager or the owner to do it.";
@@ -357,9 +365,9 @@ export const MONEY_TOOL_PREDICATES: Readonly<
       `Only admins or finance can retry an instalment. Nothing was changed. ${ASK_FINANCE}`,
   },
   manage_brand_discovery_currency: {
-    predicate: "biz_can_manage_payments_for_brand",
+    predicate: "rank_at_least_finance_manager",
     refusal:
-      `Only admins or finance can decide a currency change. Nothing was changed. ${ASK_FINANCE}`,
+      "Your role can't decide a currency change. Nothing was changed. Ask a finance manager, an event manager, a brand admin or the owner to do it.",
     appliesTo: (args) => args.action === "resolve_reconciliation",
   },
 });
@@ -393,6 +401,30 @@ export async function callerPassesMoneyPredicate(
   brandId: string,
   predicate: MoneyServerPredicate,
 ): Promise<boolean> {
+  if (predicate === "rank_at_least_finance_manager") {
+    // The resolver's own check: biz_brand_effective_rank >= finance_manager.
+    const [
+      { data: actual, error: actualError },
+      { data: required, error: requiredError },
+    ] = await Promise.all([
+      userClient.rpc("biz_brand_effective_rank_for_caller", {
+        p_brand_id: brandId,
+      }),
+      userClient.rpc("biz_role_rank", { p_role: "finance_manager" }),
+    ]);
+    const actualRank = Number(actual ?? 0);
+    const requiredRank = Number(required ?? 0);
+    if (
+      actualError || requiredError || !Number.isFinite(actualRank) ||
+      !Number.isFinite(requiredRank) || requiredRank <= 0
+    ) {
+      throw new ToolError(
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
+    }
+    return actualRank > 0 && actualRank >= requiredRank;
+  }
   const { data, error } = await userClient.rpc(`${predicate}_for_caller`, {
     p_brand_id: brandId,
   });

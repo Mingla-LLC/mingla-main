@@ -515,3 +515,16 @@ COMMENT ON FUNCTION public.ari_execute_ticket_pricing_operation(uuid,text,jsonb)
   IS '#1974 receipt-backed ticket/pricing dispatcher; reuses #1972 terminal truth. #3355 P6: draft ticket writes use issue_3355_ari_save_draft_ticket_tiers (no payments check, decision 3); live writes keep business_patch_event_ticket_tiers.';
 
 NOTIFY pgrst,'reload schema';
+
+-- ── The currency-change decision follows its server owner ──────────────────
+-- issue_1384_resolve_reconciliation / issue_1387_resolve_currency_reconciliation
+-- (and ari_execute_brand_operation in front of them) admit any member whose
+-- effective rank is at least finance_manager, an event manager included. The
+-- readiness row held "who can fix" to the stricter money predicate, so an
+-- event manager was told someone else had to decide. It now uses the
+-- resolver's own rule (min_role finance_manager, no money predicate). Refunds,
+-- payouts, balances and tax registration keep biz_can_manage_payments_for_brand.
+UPDATE public.brand_readiness_catalog
+   SET server_predicate = NULL
+ WHERE key = 'money.currency_reconciliation'
+   AND min_role = 'finance_manager';

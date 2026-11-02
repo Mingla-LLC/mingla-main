@@ -1,6 +1,6 @@
 // Issue #3355 P6 — the money flow (implementor happy path + edges).
 //
-// MINGLA-INVARIANT: I-ARI-MONEY-ROLE-USES-SERVER-PREDICATE | issue #3355 | Ari's money tools (refunds, order cancels, payout and balance reads, instalment charges, the currency-change decision) authorize with the server's money predicate biz_can_manage_payments_for_brand through its _for_caller wrapper, never the linear role rank; an event manager is refused in plain words before any card. Owner-only payment setup (biz_can_mutate_payouts_for_brand) is role-aware in open_handoff.
+// MINGLA-INVARIANT: I-ARI-MONEY-ROLE-USES-SERVER-PREDICATE | issue #3355 | Ari's money tools (refunds, order cancels, payout and balance reads, instalment charges) authorize with the server's money predicate biz_can_manage_payments_for_brand through its _for_caller wrapper, never the linear role rank, and the currency-change decision uses its resolver's own rule (effective rank >= finance_manager); an event manager is refused in plain words before any card. Owner-only payment setup (biz_can_mutate_payouts_for_brand) is role-aware in open_handoff.
 // MINGLA-INVARIANT: I-MONEY-SELL-VS-PAYOUT-DISTINCT | issue #3355 | Every Ari money answer (get_payout_status, the launch plan, the money gate) comes from brand_readiness(...).money (pg_brand_can_collect vs pg_brand_can_payout) with a plain guide per reason; a brand that can sell but can't be paid out is never told "Payouts are enabled".
 //
 // Covers SPEC §7.1 P6 and Seth's decisions 5/6 on the Ari side:
@@ -1183,4 +1183,84 @@ Deno.test("P6 decision 3: publishing that paid draft is refused with the plain f
     ].join("\n"),
   );
   assertEquals(ownerCopyViolations(blocked.message, "prose"), []);
+});
+
+// ── The currency-change decision follows its server owner ───────────────────
+
+const RESOLVE_ARGS = {
+  brand_id: BRAND,
+  action: "resolve_reconciliation",
+  reconciliation_id: ORDER,
+  decision: "convert",
+};
+
+Deno.test("P6 currency decision: every role the resolver admits (rank >= finance) can decide it through Ari, an event manager included", async () => {
+  // issue_1384_resolve_reconciliation: biz_brand_effective_rank >= finance_manager.
+  for (const rank of [30, 40, 50, 60]) {
+    const client = authClient({ rank, canManage: rank !== 40 });
+    await authorizeAgentTool(
+      tool("manage_brand_discovery_currency"),
+      RESOLVE_ARGS,
+      client,
+      USER,
+    );
+    assert(
+      !client.calls.includes("biz_can_manage_payments_for_brand_for_caller"),
+      "the currency decision is not held to the refund/payout predicate",
+    );
+  }
+});
+
+Deno.test("P6 currency decision: a role the resolver refuses is refused by Ari first, in plain words; refunds keep the money predicate", async () => {
+  for (const rank of [10, 20]) {
+    const denied = await assertRejects(
+      () =>
+        authorizeAgentTool(
+          tool("manage_brand_discovery_currency"),
+          RESOLVE_ARGS,
+          authClient({ rank, canManage: false }),
+          USER,
+        ),
+      ToolError,
+    );
+    assertEquals(denied.code, "MONEY_ROLE_DENIED");
+    assertEquals(
+      denied.message,
+      "Your role can't decide a currency change. Nothing was changed. Ask a finance manager, an event manager, a brand admin or the owner to do it.",
+    );
+    assertEquals(ownerCopyViolations(denied.message, "prose"), []);
+  }
+  const stranger = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        tool("manage_brand_discovery_currency"),
+        RESOLVE_ARGS,
+        authClient({ rank: 0, canManage: false }),
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(stranger.code, "BRAND_ACCESS_DENIED");
+  // An event manager still can't refund or see payouts.
+  for (const name of ["refund_order", "get_payout_status"]) {
+    const refused = await assertRejects(
+      () =>
+        authorizeAgentTool(
+          tool(name),
+          name === "refund_order" ? REFUND_ARGS : { brand_id: BRAND },
+          authClient({ rank: 40, canManage: false }),
+          USER,
+        ),
+      ToolError,
+    );
+    assertEquals(refused.code, "MONEY_ROLE_DENIED");
+  }
+  assertEquals(
+    MONEY_TOOL_PREDICATES.refund_order.predicate,
+    "biz_can_manage_payments_for_brand",
+  );
+  assertEquals(
+    MONEY_TOOL_PREDICATES.get_brand_balances_reports.predicate,
+    "biz_can_manage_payments_for_brand",
+  );
 });
