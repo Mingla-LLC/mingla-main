@@ -41,8 +41,10 @@ describe("#1985 tester — first created conversation becomes the durable select
   test("the screen binds that callback to the current account+brand scope", () => {
     const screen = readSource("../../screens/ari/AriChatScreen.tsx");
 
+    // #2830 — Website setup keeps its own thread; every other Ari chat still
+    // uses the account+brand scope.
     expect(screen).toMatch(
-      /const conversationScopeKey = ariConversationScopeKey\(\s*accountId,\s*selectedBrandId,?\s*\);/,
+      /const conversationScopeKey = websiteSetup\s*\?\s*ariWebsiteSetupConversationScopeKey\(accountId, selectedBrandId\)\s*:\s*ariConversationScopeKey\(accountId, selectedBrandId\);/,
     );
     expect(screen).toMatch(
       /setStoredConversationSelection\(conversationScopeKey,\s*conversationId\);/,
