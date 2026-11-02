@@ -37,6 +37,7 @@ import * as eventPaidBlocked from "./event_paid_blocked.mjs";
 import * as tripCreateLagos3day from "./trip_create_lagos_3day.mjs";
 import * as experienceCreateTwoStops from "./experience_create_two_stops.mjs";
 import * as venueCreatePicker from "./venue_create_picker.mjs";
+import * as stayCreateOnApprovedVenue from "./stay_create_on_approved_venue.mjs";
 
 export const FLOW_EVALS = [
   eventCreateMinimal,
@@ -44,6 +45,7 @@ export const FLOW_EVALS = [
   tripCreateLagos3day,
   experienceCreateTwoStops,
   venueCreatePicker,
+  stayCreateOnApprovedVenue,
 ];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
