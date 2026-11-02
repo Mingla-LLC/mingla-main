@@ -29,6 +29,8 @@ interface EventDetailTicketTypeRowProps {
    * "12 / 60 busiest night" and never claims SOLD OUT from one full night.
    */
   capacityPerNight?: boolean;
+  /** issue #3281 — a listed ticket counts dates, not nights. */
+  busiestLabel?: string;
 }
 
 const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = ({
@@ -36,6 +38,7 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
   soldCount,
   capacityTestID,
   capacityPerNight = false,
+  busiestLabel = "busiest night",
 }) => {
   const sold = soldCount;
   const cap = ticket.isUnlimited
@@ -54,8 +57,8 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
   const capText = sold === null
     ? "—"
     : ticket.isUnlimited
-      ? capacityPerNight ? `${sold} sold busiest night` : `${sold} sold`
-      : capacityPerNight ? `${sold} / ${cap} busiest night` : `${sold} / ${cap}`;
+      ? capacityPerNight ? `${sold} sold ${busiestLabel}` : `${sold} sold`
+      : capacityPerNight ? `${sold} / ${cap} ${busiestLabel}` : `${sold} / ${cap}`;
 
   return (
     <View style={styles.host}>

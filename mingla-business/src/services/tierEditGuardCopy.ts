@@ -28,6 +28,14 @@ const TIER_EDIT_GUARD_COPY: Readonly<Record<string, string>> = Object.assign(
     sold_ticket_mutation_blocked:
       "Tickets have already sold for this tier, so its price, its free/paid setting, and any capacity below the number already issued are fixed. Everything else — including when sales run — can still be changed.",
 
+    // issue #3281 — day lists.
+    tier_day_scope_drops_sold_day:
+      "Guests already have tickets for a day you removed from this tier, so that day has to stay. You can still add days, or remove days nobody has bought yet.",
+    tier_day_scope_empty:
+      "A ticket has no days left. Pick at least one day, or choose All dates.",
+    tier_day_scope_unknown_day:
+      "A day on this ticket isn't saved yet or no longer exists. Save your dates first, then pick the ticket's days again.",
+
     // Turning password protection on without a password to check against.
     ticket_password_setup_required:
       "Set a password of at least 4 characters before turning password protection on.",

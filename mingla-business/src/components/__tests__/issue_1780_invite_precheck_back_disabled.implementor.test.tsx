@@ -516,6 +516,12 @@ function loadCompiledCreator(relative: string, exportName: string): React.Compon
     if (key === "LazyCreatorStep2When") {
       return { CreatorStep2When: leaf("CreatorStep2When") };
     } // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf
+    if (key === "LazyCreatorStep5Tickets") {
+      return { CreatorStep5Tickets: leaf("CreatorStep5Tickets") };
+    } // #3281 route-only lazy boundary; same inert step leaf
+    if (key === "useEventDateKeys") {
+      return { useEventDateKeys: () => ({ data: undefined }) };
+    } // #3281 sold-date keys; unused by these hosts
     if (STEP_LEAF.test(key)) return { [key]: leaf(key) };
     throw new Error(`Unclassified creator boundary in ${exportName}: ${specifier}`);
   };

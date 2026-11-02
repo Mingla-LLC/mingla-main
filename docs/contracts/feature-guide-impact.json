@@ -75,12 +75,14 @@
         "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",
         "mingla-business/src/components/checkout/CartContext.tsx",
+        "supabase/functions/ticket-checkout-create/index.ts",
         "mingla-business/src/services/checkoutErrorCopy.ts",
         "mingla-business/src/services/ticketCheckoutService.ts",
         "supabase/migrations/20280216003282_issue_3281_by_date_quantities_paystack_reemit.sql",
         "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql",
         "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
-        "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql"
+        "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
+        "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql"
       ]
     },
     {
@@ -388,20 +390,45 @@
         "mingla-business/src/components/scanner/DoorGuestSearchSheet.tsx",
         "mingla-business/src/components/scanner/scanResultCopy.ts",
         "mingla-business/src/services/scanTicketService.ts",
-        "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql"
+        "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql",
+        "mingla-business/src/components/door/DoorSaleNewSheet.tsx",
+        "mingla-business/src/services/doorSalesService.ts",
+        "supabase/migrations/20280229003281_issue_3281_door_active_date.sql",
+        "mingla-business/src/store/orderStoreHelpers.ts"
       ]
     },
     {
       "capability_key": "events-ticket-types",
       "paths": [
-        "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx"
+        "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx",
+        "mingla-business/src/components/event/CreatorStep2When.tsx",
+        "mingla-business/src/components/event/CreatorStep5Tickets.tsx",
+        "mingla-business/src/components/event/TicketTierCard.tsx",
+        "mingla-business/src/components/event/TicketTierEditSheet.tsx",
+        "mingla-business/src/components/event/ValidDaysSheet.tsx",
+        "mingla-business/src/components/event/LazyCreatorStep5Tickets.tsx",
+        "mingla-business/app/event/[id]/index.tsx",
+        "mingla-business/src/utils/eventSalesSummary.ts",
+        "mingla-business/src/components/event/EventCreatorWizard.tsx",
+        "mingla-business/src/components/event/types.ts",
+        "mingla-business/src/hooks/useEventDateKeys.ts",
+        "mingla-business/src/services/businessEvents.ts",
+        "mingla-business/src/services/eventDateKeys.ts",
+        "mingla-business/src/services/tierEditGuardCopy.ts",
+        "mingla-business/src/store/draftEventStore.ts",
+        "mingla-business/src/utils/draftEventValidation.ts",
+        "mingla-business/src/utils/serverDraftEventMapper.ts",
+        "mingla-business/src/utils/ticketDayScope.ts"
       ]
     },
     {
       "capability_key": "events-edit-live",
       "paths": [
         "mingla-business/app/event/[id]/dates.tsx",
-        "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql"
+        "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql",
+        "mingla-business/src/components/event/ChangeSummaryModal.tsx",
+        "mingla-business/src/components/event/EditPublishedScreen.tsx",
+        "mingla-business/src/utils/publishedEventEditGuards.ts"
       ]
     }
   ]
