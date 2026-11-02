@@ -122,17 +122,36 @@ Deno.test("#3355 trip creation carries only the owner's schedule, zone and picke
   // live on the packages the owner gives (no capacity default).
   const createTrip = findTool("create_trip");
   assert(createTrip);
-  assertMatch(createTrip.description, /time zone, and the first and last calendar day/i);
-  assertMatch(createTrip.description, /do not invent dates, a time zone, price, packages/i);
+  assertMatch(
+    createTrip.description,
+    /time zone, and the first and last calendar day/i,
+  );
+  assertMatch(
+    createTrip.description,
+    /do not invent dates, a time zone, price, packages/i,
+  );
   const schema = createTrip.parameters as {
     properties?: Record<string, unknown>;
     required?: string[];
   };
-  for (const field of ["timezone", "start_date", "end_date", "departure", "destination"]) {
+  for (
+    const field of [
+      "timezone",
+      "start_date",
+      "end_date",
+      "departure",
+      "destination",
+    ]
+  ) {
     assert(schema.properties?.[field], `create_trip must expose ${field}`);
   }
-  for (const field of ["brand_id", "title", "timezone", "start_date", "end_date"]) {
-    assert(schema.required?.includes(field), `create_trip must require ${field}`);
+  for (
+    const field of ["brand_id", "title", "timezone", "start_date", "end_date"]
+  ) {
+    assert(
+      schema.required?.includes(field),
+      `create_trip must require ${field}`,
+    );
   }
   for (const field of ["max_guests", "destination_text"]) {
     assertEquals(schema.properties?.[field], undefined, `${field} is gone`);
@@ -146,7 +165,10 @@ Deno.test("#3355 trip date ranges are read as calendar days, never guessed", () 
     { start_date: "2027-01-08", end_date: "2027-01-10" },
   );
   assertEquals(
-    parseTripDateRange("Create a 3-day trip to Lagos from 8 to 10 January", now),
+    parseTripDateRange(
+      "Create a 3-day trip to Lagos from 8 to 10 January",
+      now,
+    ),
     { start_date: "2027-01-08", end_date: "2027-01-10" },
     "a yearless range is the next time it comes round",
   );
@@ -426,7 +448,9 @@ Deno.test("#3355 event confirmation preserves year, explicit WAT, end time, venu
     /Harmattan Club in Lagos/,
   );
   assertMatch(planned.text, /Nov 15, 2026/);
-  assertMatch(planned.text, /11:00 PM WAT/);
+  // Deno 1.46's ICU writes a narrow no-break space before PM; newer ones a
+  // plain space. Either is the same clock to the owner.
+  assertMatch(planned.text, /11:00\sPM WAT/);
   assertMatch(planned.text, /Harmattan Club in Lagos/);
   assertMatch(planned.text, /Should I create this draft\?/);
 });
@@ -462,10 +486,10 @@ Deno.test("#3355 abbreviated meridiem event range preserves both clocks without 
     "2027-01-20T17:00:00.000Z",
   );
   assertEquals(planned.proposal?.tool_args.end_at, "2027-01-20T20:00:00.000Z");
-  assertMatch(planned.text, /6:00 PM WAT[\s\S]*9:00 PM WAT/);
+  assertMatch(planned.text, /6:00\sPM WAT[\s\S]*9:00\sPM WAT/);
   assertMatch(
     String(planned.proposal?.tool_args.description),
-    /6:00 PM to 9:00 PM/,
+    /6:00\sPM to 9:00\sPM/,
   );
   assert(!/\bfree\b/i.test(String(planned.proposal?.tool_args.description)));
 });
@@ -1649,9 +1673,11 @@ Deno.test("#3355 future onboarding materials do not trigger event or order tools
     "Use NGN and Africa/Lagos. Mark the logo and flyer as still needed.",
   ));
   assert(!isAriOnboardingPlanProgressMessage("Create an event for Friday"));
-  assert(!isAriOnboardingPlanProgressMessage(
-    "Continue the saved trip setup. Set dates in Africa/Lagos and set guest capacity to 20.",
-  ));
+  assert(
+    !isAriOnboardingPlanProgressMessage(
+      "Continue the saved trip setup. Set dates in Africa/Lagos and set guest capacity to 20.",
+    ),
+  );
   const setupTools = selectAriOnboardingSetupTools(AGENT_TOOLS).map((tool) =>
     tool.name
   );
