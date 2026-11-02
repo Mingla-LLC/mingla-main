@@ -157,7 +157,7 @@ export function AriWebsiteSetupPane({
     plan?.parts.find((part) => !part.done)?.label ??
     (plan?.contextComplete
       ? "Ready for the first draft"
-      : "Reviewing brand context");
+      : "Reviewing your brand details");
 
   return (
     <View
