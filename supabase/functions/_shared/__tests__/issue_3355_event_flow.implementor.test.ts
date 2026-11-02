@@ -48,6 +48,7 @@ import { decideFlowTurn, parseFlowAnswer } from "../ariFlows/edge.ts";
 import {
   CREATE_EVENT_FLOW,
   createEventArgs,
+  createRows,
   duplicateDrafts,
   parseTicketAnswer,
   UNPUBLISHED_DRAFT_WORDS,
@@ -1404,4 +1405,22 @@ Deno.test("P7 fix: a refused confirm runs the flow, and the Host reads the re-pr
     host.indexOf('if (result.kind === "proposal_replaced")'),
   );
   assertMatch(errorBranch, /void chat\.resumeFlow\("resume"\);/);
+});
+
+Deno.test("P7: an online event's create card shows the joining link the owner gave", () => {
+  const rows = createRows({
+    title: "Harbour Social",
+    timezone: "Europe/London",
+    timezone_source: "country",
+    start_at: "2026-11-14T18:00:00.000Z",
+    end_at: "2026-11-14T20:00:00.000Z",
+    format: "online",
+    place: null,
+    online_url: "https://meet.example.test/harbour-social",
+    hide_address: null,
+  });
+  assertEquals(
+    rows.find((row) => row.label === "Joining link")?.value,
+    "https://meet.example.test/harbour-social",
+  );
 });

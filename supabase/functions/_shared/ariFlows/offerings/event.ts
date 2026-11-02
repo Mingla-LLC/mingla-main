@@ -882,7 +882,7 @@ export function createEventArgs(
   };
 }
 
-function createRows(facts: Facts): { label: string; value: string }[] {
+export function createRows(facts: Facts): { label: string; value: string }[] {
   const tz = facts.timezone ?? "UTC";
   const rows = [
     {
@@ -908,6 +908,11 @@ function createRows(facts: Facts): { label: string; value: string }[] {
           facts.hide_address ? " (address shown only to ticket holders)" : ""
         }`,
       }]
+      : []),
+    // #3355 — the owner confirms the joining link they gave; it was saved
+    // without ever being shown on the card.
+    ...(facts.online_url
+      ? [{ label: "Joining link", value: facts.online_url }]
       : []),
     { label: "Status", value: UNPUBLISHED_DRAFT_WORDS },
   ];
