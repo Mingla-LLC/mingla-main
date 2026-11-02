@@ -118,7 +118,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4226: re-sealed after the host contacts people migration and its proof followed them,
 // and the #1995 blast suite watches the one email footer line instead of the retired
 // per-reason module.
-export const BOOTSTRAP_SHA256 = "7bced88e2712a621966a424229d2b04f13dbdefeb7792aa1b449dad063775ea5";
+// #3281: re-sealed after the webhook fee migration joined the same replays.
+export const BOOTSTRAP_SHA256 = "68ffff9a4b1025ceb5deacf8a497f334ff82058dfe3c6435b9dce5e22083575f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
