@@ -245,9 +245,89 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+let sessionStatus = "awaiting_web_redirect";
+const routeInvoke = (): void => {
+  invoke.mockImplementation(async (fn: unknown) =>
+    fn === "ticket-checkout-status"
+      ? {
+          data: { checkoutSessionId: SESSION_ID, status: sessionStatus, order: null },
+          error: null,
+        }
+      : { data: stripeEnvelope, error: null },
+  );
+};
+
+/** Hands the cart to Stripe, then reloads the payment step with an empty cart. */
+const cancelReturn = async (Extra?: React.FC): Promise<Renderer> => {
+  routeInvoke();
+  let first!: Renderer;
+  await act(async () => {
+    first = TestRenderer.create(
+      <CartProvider>
+        <SeedCart />
+        <PaymentScreen />
+      </CartProvider>,
+    );
+  });
+  await tap(first);
+  await act(async () => first.unmount());
+  assign.mockReset();
+  let back!: Renderer;
+  await act(async () => {
+    back = TestRenderer.create(
+      <CartProvider>
+        {Extra !== undefined ? <Extra /> : null}
+        <PaymentScreen />
+      </CartProvider>,
+    );
+  });
+  return back;
+};
+
 describe("issue #3281 — a Stripe cancel return keeps the guest's own hold", () => {
+  beforeEach(() => {
+    sessionStatus = "awaiting_web_redirect";
+  });
+
+  test("an expired checkout is forgotten, never re-followed", async () => {
+    const back = await cancelReturn();
+    sessionStatus = "expired";
+    await tap(back);
+    expect(assign).not.toHaveBeenCalled();
+    expect(createCalls()).toHaveLength(1);
+    const saved = JSON.parse(storage.getItem(checkoutResumeStorageKey(EVENT_ID)) ?? "{}");
+    expect(saved.providerHandoff).toBeUndefined();
+    await act(async () => back.unmount());
+  });
+
+  test("a checkout already paid goes to confirmation", async () => {
+    const back = await cancelReturn();
+    sessionStatus = "paid_completed";
+    await tap(back);
+    expect(assign).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith(`/checkout/${EVENT_ID}/confirm`);
+    await act(async () => back.unmount());
+  });
+
+  test("a fresh quote at another price starts a new checkout instead", async () => {
+    const Repriced: React.FC = () => {
+      const { lines, setQuoteState } = useCart();
+      React.useEffect(() => {
+        if (lines.length > 0) {
+          setQuoteState(ticketQuoteFromLines([{ ...line, unitPriceAllIn: 200 }]), "ready");
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [lines.length]);
+      return null;
+    };
+    const back = await cancelReturn(Repriced);
+    await tap(back);
+    expect(createCalls()).toHaveLength(2);
+    await act(async () => back.unmount());
+  });
+
   test("Pay re-follows the page already handed, with no fresh quote and no second create", async () => {
-    invoke.mockResolvedValue({ data: stripeEnvelope, error: null });
+    routeInvoke();
     let first!: Renderer;
     await act(async () => {
       first = TestRenderer.create(

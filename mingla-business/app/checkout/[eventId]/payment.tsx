@@ -70,6 +70,7 @@ import { eventPublicPath } from "../../../src/constants/publicUrls";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  getTicketCheckoutStatus,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
@@ -138,6 +139,13 @@ const TicketQuoteSummary = React.lazy(() =>
 // eager chunk; the tickets step says which extra changed.
 const EXTRAS_CHANGED_MESSAGE =
   "One of your extras changed. Go back to your tickets to update it.";
+
+// issue #3281 — checkout states whose provider page can still take payment.
+const RESUMABLE_SESSION_STATUSES = new Set([
+  "awaiting_web_redirect",
+  "requires_payment",
+  "processing_payment",
+]);
 
 export default function CheckoutPaymentScreen(): React.ReactElement {
   return (
@@ -278,6 +286,13 @@ function CheckoutPaymentScreenContent({
       l.addOns ?? null,
     ]),
   });
+  // issue #3281 — back from a provider cancel with the cart unchanged, the
+  // page re-followed is the one priced at the accepted total. A fresh quote
+  // at a different total means the price moved: that cart starts again.
+  const resumable =
+    resumedHandoff !== null &&
+    resumedHandoff.fingerprint === cartFingerprint &&
+    (quote === null || quote.buyerTotalCents === resumedHandoff.totalCents);
 
   /**
    * Full-page navigation to the provider. Returns false ONLY where
@@ -425,17 +440,52 @@ function CheckoutPaymentScreenContent({
       if (processing) return;
       if (eventId === null) return;
       // issue #3281 — an unchanged cart back from a provider cancel re-follows
-      // its page; it needs no fresh quote, which would count its own hold.
+      // its page; it needs no fresh quote, which would count its own hold. The
+      // checkout must still be open: a paid one goes to confirmation, and an
+      // expired or failed one is forgotten so this tap creates a new checkout.
       const resumedPage = providerHandoffRef.current;
-      if (
-        acceptedQuote === undefined &&
-        resumedHandoff !== null &&
-        resumedPage !== null &&
-        resumedPage.fingerprint === cartFingerprint
-      ) {
-        if (assignLocation(resumedPage.handoff.redirectUrl)) return;
-        setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+      if (acceptedQuote === undefined && resumable && resumedPage !== null) {
+        let replay = true;
+        try {
+          setProcessing(true);
+          const status = await getTicketCheckoutStatus(
+            resumedPage.handoff.checkoutSessionId,
+            resumedPage.handoff.buyerStatusToken,
+          );
+          if (status.order !== null || status.status === "paid_completed") {
+            router.replace(`/checkout/${eventId}/confirm` as never);
+            return;
+          }
+          replay = RESUMABLE_SESSION_STATUSES.has(status.status);
+        } catch {
+          // No answer: the provider page itself says whether it can still pay.
+        }
+        if (replay) {
+          if (assignLocation(resumedPage.handoff.redirectUrl)) return;
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+          return;
+        }
+        setProcessing(false);
+        providerHandoffRef.current = null;
+        setResumedHandoff(null);
+        const storage = (globalThis as unknown as { sessionStorage?: Storage })
+          .sessionStorage;
+        const saved = readCheckoutResumePayload(storage, eventId);
+        if (saved !== null) {
+          const { providerHandoff: _expired, ...rest } = saved;
+          writeCheckoutResumePayload(storage, eventId, rest);
+        }
+        // A fresh quote now prices this cart; Pay starts a new checkout.
         return;
+      }
+      // The price moved since that page was handed: it is the old price, so it
+      // is forgotten and this cart starts a new checkout below.
+      if (acceptedQuote === undefined && resumedHandoff !== null && !resumable) {
+        if (providerHandoffRef.current?.fingerprint === cartFingerprint) {
+          providerHandoffRef.current = null;
+        }
+        setResumedHandoff(null);
       }
       const activeQuote = acceptedQuote ?? quote;
       if (
@@ -830,6 +880,7 @@ function CheckoutPaymentScreenContent({
       processing,
       quote,
       quoteStatus,
+      resumable,
       resumedHandoff,
       setCheckoutReview,
       router,
@@ -837,10 +888,7 @@ function CheckoutPaymentScreenContent({
     ],
   );
 
-  // issue #3281 — back from a provider cancel with the cart unchanged: the
-  // page re-followed is the one priced at this total.
-  const resumable =
-    resumedHandoff !== null && resumedHandoff.fingerprint === cartFingerprint;
+
   const displayAllIn =
     quote === null
       ? resumable
