@@ -13,7 +13,7 @@
  *    text ALWAYS shown alongside our mapping).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   ExternalLink,
@@ -26,6 +26,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AlertCard, SectionCard } from "../components/ui/Card";
+import { AdResultsCharts } from "../components/ad-engine/AdResultsCharts";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
@@ -37,6 +38,7 @@ import {
   cancelAdminAdPlan,
   campaignAction,
   getCampaignConversions,
+  getCampaignDailySeries,
   getCampaignDetail,
   getPlanSettlements,
   getStayCampaignRollup,
@@ -541,6 +543,34 @@ export function CampaignsPage({ embedded = false }) {
 
   const selectedCampaign =
     (campaigns ?? []).find((campaign) => campaign.id === selectedId) ?? detail;
+
+  // #4238 wave 2 — results over time for the campaign and its plan siblings.
+  const [seriesRows, setSeriesRows] = useState(null);
+  const [seriesError, setSeriesError] = useState(null);
+  const seriesIds = useMemo(() => {
+    const siblings = campaignsForPlan(campaigns ?? [], selectedCampaign).map((row) => row.id);
+    return siblings.length > 0 ? siblings : selectedId ? [selectedId] : [];
+  }, [campaigns, selectedCampaign, selectedId]);
+  const seriesZone = selectedCampaign?.plan_version?.schedule_time_zone ?? "UTC";
+  const seriesKey = seriesIds.join(",");
+  useEffect(() => {
+    if (!seriesKey) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSeriesRows(null);
+      return;
+    }
+    let active = true;
+    setSeriesRows(null);
+    setSeriesError(null);
+    void getCampaignDailySeries(seriesKey.split(","), seriesZone).then(({ data, error }) => {
+      if (!active) return;
+      setSeriesRows(error ? [] : (data ?? []));
+      setSeriesError(error ? adsErrorWords(error.message) : null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [seriesKey, seriesZone]);
   const selectedProviderMoney = providerMoneyAuthority(selectedCampaign);
   const roi = toCampaignRoiView(roiPayload, {
     spendCurrency: selectedProviderMoney.providerCurrency,
@@ -1672,6 +1702,20 @@ export function CampaignsPage({ embedded = false }) {
             </SectionCard>
           );
         })()}
+
+      {selectedId && (
+        <SectionCard
+          title="Results over time"
+          subtitle="Daily spend, results and reach from the provider spend sync and Mingla's own counts. Missing days stay blank, never zero."
+        >
+          <AdResultsCharts
+            rows={seriesRows ?? []}
+            loading={seriesRows === null && !seriesError}
+            error={seriesError}
+            capCents={providerMoneyAuthority(selectedCampaign).providerCapCents}
+          />
+        </SectionCard>
+      )}
 
       {/* ISSUE-865 PR1 WP-4 — Conversions & ROI (below Ad sets & ads). Reads the
           per-campaign ad_campaign_conversion_rollup RPC. Spend/ROAS are shown ONLY

@@ -1,9 +1,10 @@
 // Issue #4238 — Admin never promises lookalike audiences.
 //
-// Mingla does not build lookalike (prospecting M9/S6/T6) audiences; the
-// adAudienceDefinitions builders refuse them (audience_code_not_automatic).
-// The Prospecting stage copy must say what actually runs. Fails on revert:
-// restoring "Broad and lookalike audiences" reds this test.
+// Wave 1: Mingla did not build lookalike (prospecting M9/S6/T6) audiences, so
+// the Prospecting copy promised none. Wave 2 builds real lists and lookalikes
+// (ad_list_audiences); the copy now says prospecting uses the ones the Admin
+// picks, and is broad with none. Fails on revert: restoring the old "Broad and
+// lookalike audiences" promise (lookalikes by default) reds this test.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -17,14 +18,14 @@ const stepAudience = fs.readFileSync(
 );
 
 describe("#4238 truthful prospecting copy", () => {
-  it("does not mention lookalike audiences", () => {
-    assert.doesNotMatch(stepAudience, /lookalike/i);
+  it("never promises lookalikes by default", () => {
+    assert.doesNotMatch(stepAudience, /Broad and lookalike audiences/i);
   });
 
   it("says what the prospecting stage does", () => {
     assert.match(
       stepAudience,
-      /Broad audiences; past buyers excluded where the buyer list is ready\./,
+      /Prospecting uses your chosen lists or lookalikes; with none, it's broad\./,
     );
   });
 });

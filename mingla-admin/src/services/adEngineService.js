@@ -181,7 +181,8 @@ export async function loadAdsOperationsOverview() {
   return supabase.rpc("ad_admin_operations_overview");
 }
 
-/** #3697 — server-owned provider audiences; ids never come from the browser. */
+/** #3697 — server-owned provider audiences; ids never come from the browser.
+ * #4238: the response also carries `list_audiences` and `terms`. */
 export async function listAdAudiences(filters = {}) {
   return invokeWithRefresh("admin-ad-audiences", {
     body: { action: "list", ...filters },
@@ -192,6 +193,54 @@ export async function listAdAudiences(filters = {}) {
 export async function refreshAdAudiences(filters = {}) {
   return invokeWithRefresh("admin-ad-audiences", {
     body: { action: "refresh", ...filters },
+  });
+}
+
+// ── #4238 wave 2: customer lists and lookalikes ────────────────────────────
+// Every call goes through admin-ad-audiences (the sole audience provider
+// writer). Admin sees counts and states, never members.
+
+/** Create a Mingla-wide list `{source, filter, display_name}`, a lookalike
+ * `{lookalike_of, country}`, or ensure a brand's lists `{brand_id}`. */
+export async function createListAudience(definition) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "create_definition", ...definition },
+  });
+}
+
+export async function retireListAudience(audienceKey) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "retire_definition", audience_key: audienceKey },
+  });
+}
+
+/** Count preview only: `{member_count, by_country}`. */
+export async function previewListAudience(definition) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "preview", ...definition },
+  });
+}
+
+/** Read-only provider terms check (Meta tos_accepted). */
+export async function checkAudienceTerms(connectionId) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "check_terms", connection_id: connectionId },
+  });
+}
+
+/** Records that an Admin accepted terms in the provider's own UI. It never
+ * accepts anything on Mingla's behalf. */
+export async function confirmAudienceTerms(connectionId) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "confirm_terms", connection_id: connectionId },
+  });
+}
+
+/** Daily spend, shown, clicks, visits and results per campaign (admin RPC). */
+export async function getCampaignDailySeries(campaignIds, timeZone) {
+  return supabase.rpc("ad_campaign_daily_series", {
+    p_campaign_ids: campaignIds,
+    p_time_zone: timeZone ?? "UTC",
   });
 }
 

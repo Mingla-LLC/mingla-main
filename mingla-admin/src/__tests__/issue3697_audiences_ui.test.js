@@ -32,7 +32,10 @@ describe("#3697 Ads audiences UI", () => {
     );
     assert.match(page, /id: "audiences", label: "Audiences"/);
     assert.match(page, /shownTab === "audiences" && <AdAudiencesPanel/);
-    assert.match(panel, /Off: needs privacy approval/);
+    // #4238 wave 2: the dead buyer-list flag notice is gone; setup tasks and
+    // customer lists replace it (see AdAudiencesPanel.issue4238 tests).
+    assert.doesNotMatch(panel, /Off: needs privacy approval/);
+    assert.match(panel, /Customer lists/);
     assert.match(panel, /Refresh now/);
     assert.match(panel, /Platform/);
     assert.match(panel, /Market/);
