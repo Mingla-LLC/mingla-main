@@ -105,6 +105,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/invites/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
     if (name.endsWith("/lazySettingsSteps")) return { CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: leaf("RsvpStep5Setup") }; // issue #3827: the two settings steps load lazily; same inert leaves
     if (name.endsWith("/LazyCreatorStep2When")) return { CreatorStep2When: leaf("CreatorStep2When") }; // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf
+    if (name.endsWith("/LazyCreatorStep5Tickets")) return { CreatorStep5Tickets: leaf("CreatorStep5Tickets") }; // #3281 route-only lazy boundary; same inert step leaf
+    if (name.endsWith("/useEventDateKeys")) return { useEventDateKeys: () => ({ data: undefined }) }; // #3281 sold-date keys; unused by these hosts
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     throw new Error(`Unclassified wizard boundary: ${name}`);
