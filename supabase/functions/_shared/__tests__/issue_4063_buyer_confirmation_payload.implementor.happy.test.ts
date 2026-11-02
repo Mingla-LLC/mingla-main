@@ -183,6 +183,7 @@ const clientWithExtras = (result: {
   data: unknown;
   error: { message: string } | null;
 }) => ({
+  ...client,
   from(table: string) {
     if (table !== "order_add_on_line_items") return client.from(table);
     return {

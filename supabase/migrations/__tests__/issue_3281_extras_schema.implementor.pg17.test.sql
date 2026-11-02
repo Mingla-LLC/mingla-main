@@ -1,5 +1,5 @@
--- #3281 Extras, slice 1: extras leave the order only with its last tickets.
--- MINGLA-INVARIANT: I-3281-EXTRAS-REFUND-WITH-THE-ORDER | issue #3281 | The refund that returns an order's last tickets also returns and records its extras. A partial refund never touches them, and an order without extras refunds exactly as before.
+-- #3281 Extras, slice 1: extras leave the order only with its last paid tickets.
+-- MINGLA-INVARIANT: I-3281-EXTRAS-REFUND-WITH-THE-ORDER | issue #3281 | The refund that returns an order's last paid tickets also returns and records its extras. A partial refund never touches them, and an order without extras refunds exactly as before.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -17,6 +17,8 @@ DECLARE
   v_plain_line uuid := gen_random_uuid();
   v_free_order uuid := gen_random_uuid();
   v_free_line uuid := gen_random_uuid();
+  v_mixed_order uuid := gen_random_uuid();
+  v_mixed_line uuid := gen_random_uuid();
   v_one jsonb;
   v_preview jsonb;
   v_result jsonb;
@@ -140,6 +142,25 @@ BEGIN
     RAISE EXCEPTION 'a failed refund must not count';
   END IF;
 
+  -- A free ticket can't be refunded, so it doesn't hold the extras back.
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_mixed_order,v_event,4500,'NGN','paid','pi-mixed','ch-mixed','legacy');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_mixed_line,v_mixed_order,v_tier,1,1000,1000);
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_mixed_order,v_tier,1,0,0);
+  INSERT INTO public.order_add_on_line_items(
+    order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
+    quantity,unit_price_cents,total_cents
+  ) VALUES (v_mixed_order,v_tier,'Dinner','Friday VIP',1,3500,3500);
+  PERFORM public.biz_refund_order(v_mixed_order,
+    jsonb_build_array(jsonb_build_object('order_line_item_id',v_mixed_line,'quantity',1)),
+    'Last paid ticket back','mixed-1');
+  IF (SELECT amount_cents FROM public.refunds WHERE order_id=v_mixed_order) <> 4500 THEN
+    RAISE EXCEPTION 'a free ticket must not hold the extras back';
+  END IF;
+
   -- The rules live in the database.
   v_raised := NULL;
   BEGIN
@@ -167,6 +188,8 @@ DECLARE
   v_tier uuid := gen_random_uuid();
   v_order uuid := gen_random_uuid();
   v_line uuid := gen_random_uuid();
+  v_mixed_order uuid := gen_random_uuid();
+  v_mixed_line uuid := gen_random_uuid();
   v_refund uuid;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','',true);
@@ -203,6 +226,28 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.refund_add_on_line_items WHERE refund_id=v_refund) THEN
     RAISE EXCEPTION 'cancel must record the extra';
+  END IF;
+
+  -- The cancel manifest omits a free ticket, and the extras still go back.
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_mixed_order,v_event,4500,'NGN','paid','pi-cancel-mixed','ch-cancel-mixed','legacy');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_mixed_line,v_mixed_order,v_tier,1,1000,1000);
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_mixed_order,v_tier,1,0,0);
+  INSERT INTO public.order_add_on_line_items(
+    order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
+    quantity,unit_price_cents,total_cents
+  ) VALUES (v_mixed_order,v_tier,'Dinner','VIP',1,3500,3500);
+  PERFORM public.issue_3872_cancel_refund_order(v_mixed_order,
+    jsonb_build_array(jsonb_build_object('order_line_item_id',v_mixed_line,'quantity',1)),
+    'The organiser cancelled this event','cancel-mixed-1');
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_mixed_order;
+  IF (SELECT amount_cents FROM public.refunds WHERE id=v_refund) <> 4500
+     OR (SELECT SUM(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund) <> 1000
+     OR NOT EXISTS (SELECT 1 FROM public.refund_add_on_line_items WHERE refund_id=v_refund) THEN
+    RAISE EXCEPTION 'cancel must return the extras past a free ticket';
   END IF;
 END;
 $test$;

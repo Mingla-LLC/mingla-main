@@ -100,6 +100,8 @@ AS $fn$
   SELECT NOT EXISTS (
     SELECT 1 FROM public.order_line_items oli
      WHERE oli.order_id = p_order_id
+       -- A free ticket has no refund to wait for, so it can't hold the extras.
+       AND oli.unit_price_cents > 0
        AND oli.quantity > (
          SELECT COALESCE(SUM(rli.quantity), 0)
            FROM public.refund_line_items rli
@@ -900,7 +902,9 @@ BEGIN
   v_charged := COALESCE(v_order.buyer_total_cents, v_order.total_cents);
   -- Everything that remains when the last tickets go back; otherwise the lines
   -- (a cancellation always returns every remaining ticket, so this is the norm).
-  v_amount := CASE WHEN v_full THEN v_charged - v_other ELSE LEAST(v_line_base, v_charged - v_other) END;
+  v_amount := CASE WHEN v_full THEN v_charged - v_other ELSE LEAST(
+    v_line_base + public.issue_3281_extras_refund_cents(p_order_id, v_lines, NULL),
+    v_charged - v_other) END;
   IF v_amount <= 0 THEN
     RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
   END IF;
