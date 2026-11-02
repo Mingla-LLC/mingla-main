@@ -363,7 +363,15 @@ async function invoke<T>(
         : JSON.stringify(rawDetail ?? "request_failed");
     throw new HostAdPlanError(payload?.error ?? "network", detail);
   }
-  if (data && typeof data === "object" && "error" in data) {
+  // #4238: an edge envelope carries `error: null` on success (e.g.
+  // admin-ad-creative-prepare when the video is ready). Fail only on a real
+  // error value, never on the mere presence of the key.
+  if (
+    data &&
+    typeof data === "object" &&
+    (data as { error?: unknown }).error !== null &&
+    (data as { error?: unknown }).error !== undefined
+  ) {
     const payload = data as { error: string; detail?: unknown };
     throw new HostAdPlanError(
       payload.error,

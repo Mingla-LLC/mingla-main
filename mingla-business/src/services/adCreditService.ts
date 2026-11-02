@@ -136,7 +136,15 @@ async function invokeAdCredit<T>(
       payload?.detail ?? null,
     );
   }
-  if (data && typeof data === "object" && "error" in data) {
+  // #4238: an edge envelope carries `error: null` on success (e.g.
+  // admin-ad-creative-prepare when the video is ready). Fail only on a real
+  // error value, never on the mere presence of the key.
+  if (
+    data &&
+    typeof data === "object" &&
+    (data as { error?: unknown }).error !== null &&
+    (data as { error?: unknown }).error !== undefined
+  ) {
     const errBody = data as { error: string; detail?: string };
     throw new AdCreditAppError(
       (errBody.error as AdCreditAppErrorCode) || "unknown",
