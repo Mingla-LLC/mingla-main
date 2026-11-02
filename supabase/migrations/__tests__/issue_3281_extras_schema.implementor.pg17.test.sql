@@ -523,6 +523,36 @@ BEGIN
      OR EXISTS (SELECT 1 FROM public.tickets WHERE order_id=v_race_order AND status='valid') THEN
     RAISE EXCEPTION 'both refunds together must return the whole order';
   END IF;
+
+  -- Two refunds smaller than the ticket that together return the charge refund it.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,1000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,1,1000,1000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    VALUES (v_race_order,v_tier,v_event,'qr-half-'||v_race_order,'valid','auto');
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-half-a-'||v_race_order,500,'NGN',NULL,NULL);
+  IF (SELECT status FROM public.tickets WHERE order_id=v_race_order) <> 'valid' THEN
+    RAISE EXCEPTION 'half the charge back must keep the ticket';
+  END IF;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-half-b-'||v_race_order,500,'NGN',NULL,NULL);
+  IF (SELECT status FROM public.tickets WHERE order_id=v_race_order) <> 'refunded'
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded'
+     OR EXISTS (
+       SELECT 1 FROM public.refunds r
+       WHERE r.order_id=v_race_order
+         AND (SELECT COALESCE(SUM(amount_cents),0) FROM public.refund_line_items WHERE refund_id=r.id) > r.amount_cents
+     ) THEN
+    RAISE EXCEPTION 'refunds that return the whole charge must refund the ticket, within their own amounts';
+  END IF;
+
+  -- The Stripe finalizer locks the order before its ticket update fires the counter trigger.
+  IF position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure))
+     > position('UPDATE public.tickets' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) THEN
+    RAISE EXCEPTION 'the finalizer must lock the order before updating tickets';
+  END IF;
 END;
 $test$;
 
