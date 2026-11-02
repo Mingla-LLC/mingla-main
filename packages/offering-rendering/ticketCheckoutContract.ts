@@ -17,6 +17,14 @@ export interface CheckoutV2Line {
   paymentPlanChoice: CheckoutLinePlanChoice;
   /** issue #3281 — event date id → quantity; omit keeps fingerprints identical. */
   byDate?: Record<string, number>;
+  /** issue #3281 — extras on this ticket; the server prices them. Omit keeps fingerprints identical. */
+  addOns?: CheckoutAddOnRequest[];
+}
+
+/** issue #3281 — one extra the buyer asked for; the server owns its price. */
+export interface CheckoutAddOnRequest {
+  addOnId: string;
+  quantity: number;
 }
 
 export interface CheckoutClientAttemptInput {
