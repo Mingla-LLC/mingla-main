@@ -60,13 +60,15 @@ import { Sheet } from "../ui/Sheet";
 import type { MultiDateEntry } from "../../store/draftEventStore";
 import {
   busiestDaySold,
+  formatDraftDayScopeLabel,
+  liveDayIds,
+} from "../../utils/ticketDayScope";
+import {
   capacityHelper,
   capacityLabel,
   dayScopeHelper,
-  formatDraftDayScopeLabel,
-  liveDayIds,
   priceHelper,
-} from "../../utils/ticketDayScope";
+} from "../../utils/ticketDayScopeCopy";
 import { ValidDaysSheet } from "./ValidDaysSheet";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 import { canShowTicketTierDiscountControls } from "../discounts/ticketTierDiscountContract";

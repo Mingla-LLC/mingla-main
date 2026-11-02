@@ -84,6 +84,54 @@ describe("issue #3281 — Explorer per-date quantities", () => {
     expect(quoteLine().byDate).toBeUndefined();
   });
 
+  // #3281 day-limited tickets — a line pays only for the chosen dates it covers.
+  const listed = (ids: string[], days = DAYS) => {
+    const base = props(days);
+    return {
+      ...base,
+      tickets: (base.tickets ?? []).map((ticket) => ({
+        ...ticket,
+        validOccurrenceIds: ids,
+      })),
+    };
+  };
+
+  test("a listed ticket names only the chosen dates it covers", () => {
+    mountTicketCart(listed(["day-1", "day-2"]));
+    expect(quoteLine()).toMatchObject({
+      quantity: 4,
+      byDate: { "day-1": 2, "day-2": 2 },
+    });
+  });
+
+  test("a listed ticket says which dates it covers", () => {
+    const renderer = mountTicketCart(listed(["day-1", "day-2"]));
+    expect(
+      renderer.root.findAllByType("QuantityRow" as never)[0].props.ticket
+        .dayScopeLabel,
+    ).toBe("2 of 3 dates");
+  });
+
+  test("a listed ticket covering every chosen date stays uniform", () => {
+    mountTicketCart(listed(DAYS));
+    expect(quoteLine()).toMatchObject({ quantity: 2 });
+    expect(quoteLine().byDate).toBeUndefined();
+  });
+
+  test("switching off starts a listed ticket only on its dates", () => {
+    const renderer = mountTicketCart(listed(["day-1", "day-2"]));
+    setSwitch(renderer, false);
+    expect(quoteLine()).toMatchObject({
+      quantity: 4,
+      byDate: { "day-1": 2, "day-2": 2 },
+    });
+  });
+
+  test("a line for a ticket off every chosen date leaves the cart", () => {
+    mountTicketCart(listed(["day-9"], ["day-1"]));
+    expect(mockTicketQuote.input?.lines ?? []).toHaveLength(0);
+  });
+
   test("switching off starts each date on the chosen quantity", () => {
     const renderer = mountTicketCart(props(DAYS));
     setSwitch(renderer, false);

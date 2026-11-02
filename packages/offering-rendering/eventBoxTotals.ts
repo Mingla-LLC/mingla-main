@@ -18,6 +18,7 @@ export interface TicketLike {
   priceGbp: number | null;
   priceAllInGbp?: number | null;
   saleAllInGbp?: number | null;
+  lineDayCount?: number;
 }
 
 /** The per-unit all-in price (WYSIWYP). Free / missing → 0. */
@@ -31,11 +32,12 @@ export const ticketUnitAllIn = (ticket: TicketLike): number => {
 export const computeRunningTotal = (
   tickets: TicketLike[],
   quantities: Record<string, number>,
+  priceMultiplier = 1,
 ): number => {
   let total = 0;
   for (const t of tickets) {
     const qty = quantities[t.id] ?? 0;
-    if (qty > 0) total += ticketUnitAllIn(t) * qty;
+    if (qty > 0) total += ticketUnitAllIn(t) * qty * (t.lineDayCount ?? priceMultiplier);
   }
   return total;
 };

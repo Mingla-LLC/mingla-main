@@ -407,6 +407,11 @@ const renderPublicEventPage = (
         return { useAuth: () => ({ user: mockUser }) };
       case "../../store/currentBrandStore":
         return { useBrandList: () => mockUserBrands };
+      case "../../utils/ticketDayOffer":
+        return {
+          removedTicketsNotice: () => "",
+          ticketDayView: () => ({ dayScopeLabel: null, offChosenDays: false }),
+        };
       case "../../utils/eventDateDisplay":
         return {
           formatDraftDateLine: () => "May 30",

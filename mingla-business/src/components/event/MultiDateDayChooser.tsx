@@ -26,6 +26,8 @@ import type { EventDateScheduleOccurrence } from "@mingla/offering-rendering/eve
 import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
+import { dayChooserCaptions } from "../../utils/dayChooserCaptions";
+import type { TicketStub } from "../../store/draftEventStore";
 
 export interface MultiDateDayChooserProps {
   /** The event's IANA zone, used only when an occurrence row carries none. */
@@ -41,6 +43,8 @@ export interface MultiDateDayChooserProps {
   occurrences: readonly PublicEventOccurrence[];
   /** The chosen `event_dates.id`s. Empty until the guest picks — never defaulted. */
   selectedOccurrenceIds: readonly string[];
+  /** issue #3281 — drives "Sold out" and "No tickets" on each date. */
+  tickets?: readonly TicketStub[];
   /**
    * issue #2160 — the organiser's pricing choice, so the guest learns the
    * multiplier HERE, before any total is shown.
@@ -141,9 +145,14 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   state = "ready",
   onRetry,
   onToggle,
+  tickets,
 }) => {
   const reducedMotion = useReducedMotionOnWeb();
   const allDaysPass = allDaysPassProp === true || pricingMode === "all_days";
+  const dayCaptions = useMemo(
+    () => dayChooserCaptions(tickets ?? [], occurrences),
+    [tickets, occurrences],
+  );
   const scheduleOccurrences = useMemo(
     () => toScheduleOccurrences(occurrences, timezone),
     [occurrences, timezone],
@@ -256,7 +265,12 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
             renderOccurrence={(row: EventDatePickerOccurrenceRenderArgs) => {
               const selected = row.selected;
               const label = rowLabel(row.occurrence, timezone);
-              const detail = [row.title, row.location, row.placesLeftLabel]
+              const detail = [
+                row.title,
+                row.location,
+                row.placesLeftLabel,
+                dayCaptions[row.occurrence.id] ?? null,
+              ]
                 .filter((part): part is string => part !== null)
                 .join(" · ");
               const webCheckboxProps = Platform.OS === "web"
