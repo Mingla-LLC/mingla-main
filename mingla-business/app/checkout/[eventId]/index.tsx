@@ -361,6 +361,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
       const qty = seedMap[ticket.id];
       if (qty === undefined || qty <= 0) continue;
       if (ticket.availableAt === "door") continue;
+      // issue #3281 — a ticket that no longer covers the chosen dates has no row.
+      if (!ticketCoversAnyDate(ticket.validOccurrenceIds, seedEventDateIds)) continue;
       setLineQuantity({
         ticketTypeId: ticket.id,
         ticketName: ticket.name,

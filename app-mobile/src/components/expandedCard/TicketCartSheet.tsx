@@ -616,17 +616,18 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     multiDaySelection.pricingMode !== "all_days" &&
     quoteEventDateIds.length >= 2;
   const perDateActive = canSplitByDate && !sameTicketsForEveryDate;
+  const perDateIds = perDateActive ? quoteEventDateIds : null;
   const quoteLines = useMemo(
     () =>
       lines
         .filter((line) => line.quantity > 0)
         .map((line) => ({
           ticketTypeId: line.ticketTypeId,
-          ...(perDateActive
+          ...(perDateIds !== null
             ? cartLineQuantities(
                 line,
                 byDateByTicket[line.ticketTypeId],
-                quoteEventDateIds,
+                perDateIds,
               )
             : dayLimitedQuantities(
                 tickets?.find((t) => t.id === line.ticketTypeId)
@@ -647,7 +648,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lines,
       multiDaySelection?.allDaysPass,
       multiDaySelection?.pricingMode,
-      perDateActive,
+      perDateIds,
       planTiersByTicketId,
       quoteEventDateIds,
       tickets,

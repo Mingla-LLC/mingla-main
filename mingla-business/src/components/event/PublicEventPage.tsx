@@ -1031,19 +1031,24 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const previousDaysRef = useRef<readonly string[]>(selectedOccurrenceIds);
   useEffect(() => {
     const previousDays = previousDaysRef.current;
-    if (previousDays === selectedOccurrenceIds) return;
+    const daysChanged = previousDays !== selectedOccurrenceIds;
     previousDaysRef.current = selectedOccurrenceIds;
     const removed = publicEvent.tickets.filter(
       (ticket) => ticket.offChosenDays === true && (ticketQuantities[ticket.id] ?? 0) > 0,
     );
     if (removed.length === 0) {
-      setDayNotice(null);
+      if (daysChanged) setDayNotice(null);
       return;
     }
     const after = {
       ...ticketQuantities,
       ...Object.fromEntries(removed.map((ticket) => [ticket.id, 0])),
     };
+    // A ticket's list can change under the guest. Undo is only for date edits.
+    if (!daysChanged) {
+      setTicketQuantities(after);
+      return;
+    }
     setDayNotice({
       message: removedTicketsNotice(
         removed.map((ticket) => ({
