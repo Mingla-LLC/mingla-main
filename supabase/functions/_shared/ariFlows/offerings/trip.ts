@@ -121,6 +121,23 @@ function placeAnswer(run: FlowRun, key: string): PickedPlace | null {
   return value && typeof value === "object" ? value as PickedPlace : null;
 }
 
+const TITLE_DATE_TAIL =
+  /\s+(?:from|on|between|for|starting)\s+(?:the\s+)?(?:\d{1,4}\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d)[\s\S]*$/i;
+
+/**
+ * The name in the owner's request ("a trip called Lagos Weekend from 8 to
+ * 10 January" → "Lagos Weekend"): the event title reader, without the dates.
+ */
+export function tripTitleFromIntent(
+  text: string,
+  brandName?: string,
+): string | null {
+  const title = extractEventTitle(text, brandName);
+  if (!title) return null;
+  const trimmed = title.replace(TITLE_DATE_TAIL, "").trim();
+  return trimmed.length >= 2 ? trimmed : null;
+}
+
 /**
  * Everything the owner has given so far. A fact first read from the
  * request is pinned in its step's evidence, so "8 to 10 January" means the
@@ -131,7 +148,7 @@ export function tripFacts(ctx: FlowContext): TripFacts {
   const pinnedTitle = observedOf(ctx, "trip_title");
   const title = stringAnswer(run, "title") ??
     (typeof pinnedTitle === "string" ? pinnedTitle : null) ??
-    extractEventTitle(intentText(run), ctx.brandName) ?? null;
+    tripTitleFromIntent(intentText(run), ctx.brandName);
   const ownerDates = answer(run, "dates");
   const pinnedDates = observedOf(ctx, "trip_dates");
   // The owner chose "Change the dates": only a new answer counts now.

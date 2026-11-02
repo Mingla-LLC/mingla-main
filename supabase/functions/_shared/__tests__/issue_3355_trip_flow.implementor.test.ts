@@ -45,6 +45,7 @@ import {
   parseInstallmentPlan,
   parsePackageAnswer,
   tripPublishGaps,
+  tripTitleFromIntent,
 } from "../ariFlows/offerings/trip.ts";
 import {
   parseTicketAnswer,
@@ -802,6 +803,15 @@ Deno.test("P8 bug: a price with a thousands separator is the price the owner typ
   assertEquals(parseTicketAnswer("£1,250.50, 10 tickets", true)?.price_major, 1250.5);
   assertEquals(parseTicketAnswer("12,5 euros, 30 tickets", true)?.price_major, 12.5);
   assertEquals(parsePackageAnswer("Shared room, ₦250,000, 12 spots", true)?.price_major, 250000);
+});
+
+Deno.test("P8: the trip's name is the owner's words, without the dates", () => {
+  assertEquals(
+    tripTitleFromIntent("Create a trip called Lagos Weekend from 8 to 10 January"),
+    "Lagos Weekend",
+  );
+  assertEquals(tripTitleFromIntent("Create a trip called “Harmattan Escape”"), "Harmattan Escape");
+  assertEquals(tripTitleFromIntent(INTENT), null, "no name given, none made up");
 });
 
 Deno.test("P8: every trip-create refusal is a plain, final 'nothing was saved' (never 'verifying')", () => {
