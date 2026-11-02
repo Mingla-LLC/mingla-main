@@ -46,7 +46,7 @@ export const validateTicketExtra = (
   if (!Number.isFinite(extra.priceGbp) || extra.priceGbp < 0) {
     return "An extra can't cost less than nothing. If you want a cheaper option, add a second ticket type.";
   }
-  if (Math.round(extra.priceGbp * 100) !== extra.priceGbp * 100) {
+  if (Number(extra.priceGbp.toFixed(2)) !== extra.priceGbp) {
     return "Use at most two decimal places for the price.";
   }
   if (extra.priceGbp > 0 && options.tierIsFree) {
@@ -60,9 +60,12 @@ export const validateTicketExtra = (
     ) {
       return "Capacity must be 1 or more.";
     }
-    const sold = extra.soldCount ?? 0;
-    if (extra.capacity < sold)
-      return `Capacity is below the ${sold} already sold.`;
+    const floor = extra.capacityFloor ?? extra.soldCount ?? 0;
+    if (extra.capacity < floor) {
+      return extra.validDayIds === null
+        ? `Capacity is below the ${floor} already sold.`
+        : `Capacity is below the ${floor} already sold on its busiest date.`;
+    }
   }
   if (
     !Number.isInteger(extra.maxPerTicket) ||

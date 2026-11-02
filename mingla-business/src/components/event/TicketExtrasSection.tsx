@@ -41,6 +41,8 @@ export interface TicketExtrasSectionProps {
   formatPrice: (major: number) => string;
   /** The dates this tier admits, in order. Null on a single-date event. */
   tierDayEntries: readonly MultiDateEntry[] | null;
+  /** A published tier whose extras didn't load: nothing can be changed. */
+  unavailable?: boolean;
 }
 
 const isWholeNumberText = (value: string): boolean => /^\d{0,6}$/.test(value);
@@ -70,6 +72,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
   currencyCode,
   formatPrice,
   tierDayEntries,
+  unavailable = false,
 }) => {
   const [openId, setOpenId] = useState<string | null>(null);
   const [priceText, setPriceText] = useState("");
@@ -96,15 +99,32 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
     if (openId === id) setOpenId(null);
   };
 
-  // Several dates to choose from only when the tier admits more than one.
-  const choosableDays =
-    tierDayEntries !== null && tierDayEntries.length > 1
+  // Dates to choose from when the tier admits several, or when an extra lost
+  // all of its dates and must be given one again.
+  const choosableDaysFor = (
+    extra: TicketExtraStub,
+  ): readonly MultiDateEntry[] | null =>
+    tierDayEntries !== null &&
+    (tierDayEntries.length > 1 || extra.validDayIds?.length === 0)
       ? tierDayEntries
       : null;
   const singleDay =
     tierDayEntries !== null && tierDayEntries.length === 1
       ? formatDraftDayScopeLabel(tierDayEntries, [tierDayEntries[0].id])
       : null;
+
+  if (unavailable) {
+    return (
+      <View>
+        <Text style={styles.sectionHeader}>Extras</Text>
+        <Text style={styles.helperHint}>
+          {"This ticket's extras didn't load, so they can't be changed right now. " +
+            "Close this sheet and open the event again to retry. Everything else " +
+            "here still saves, and the extras stay as they are."}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View>
@@ -293,13 +313,13 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
               />
             </View>
 
-            {singleDay !== null ? (
+            {singleDay !== null && choosableDaysFor(extra) === null ? (
               <Text style={styles.helperHint}>
                 {tierName.trim() || "This ticket"} is {singleDay} only, so this
                 extra is too.
               </Text>
             ) : null}
-            {choosableDays !== null ? (
+            {choosableDaysFor(extra) !== null ? (
               <View
                 accessibilityRole="radiogroup"
                 accessibilityLabel="Dates for this extra"
@@ -311,14 +331,15 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                   disabled={sold > 0 && extra.validDayIds !== null}
                   onPress={() => update(extra.id, { validDayIds: null })}
                 />
-                {choosableDays.map((entry) => {
+                {choosableDaysFor(extra)!.map((entry) => {
                   const chosen = extra.validDayIds?.includes(entry.id) ?? false;
                   return (
                     <DayOption
                       key={entry.id}
                       label={
-                        formatDraftDayScopeLabel(choosableDays, [entry.id]) ??
-                        entry.date
+                        formatDraftDayScopeLabel(tierDayEntries ?? [], [
+                          entry.id,
+                        ]) ?? entry.date
                       }
                       selected={chosen}
                       // A sold extra keeps its dates; new dates can still be added.
@@ -342,15 +363,18 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
               <Text style={styles.helperError}>{problem}</Text>
             ) : null}
             <View style={styles.editorActions}>
-              {sold === 0 ? (
-                <Button
-                  label="Remove extra"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => remove(extra.id)}
-                  accessibilityLabel={`Remove extra ${extra.name}`}
-                />
-              ) : null}
+              {/* A sold extra can still stop selling; what was bought is kept. */}
+              <Button
+                label={sold > 0 ? "Stop selling" : "Remove extra"}
+                variant="ghost"
+                size="sm"
+                onPress={() => remove(extra.id)}
+                accessibilityLabel={
+                  sold > 0
+                    ? `Stop selling extra ${extra.name}; existing orders keep it`
+                    : `Remove extra ${extra.name}`
+                }
+              />
               <Button
                 label="Done"
                 variant="secondary"

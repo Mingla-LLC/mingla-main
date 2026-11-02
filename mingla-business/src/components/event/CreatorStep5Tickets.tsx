@@ -152,6 +152,17 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
             ? `${original.name} (copy)`
             : "Untitled (copy)",
         displayOrder: nextDisplayOrder(draft.tickets),
+        // issue #3281 — a copied tier's extras are new extras: fresh ids, no sales.
+        ...(original.extras !== undefined
+          ? {
+              extras: original.extras.map(
+                ({ soldCount: _sold, capacityFloor: _floor, ...extra }, i) => ({
+                  ...extra,
+                  id: `x_${Date.now().toString(36)}${i}`,
+                }),
+              ),
+            }
+          : {}),
       };
       updateDraft({ tickets: [...draft.tickets, copy] });
     },
@@ -510,6 +521,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
           eventId={coverMediaEventId}
           privateLinksEnabled={editMode !== undefined}
+          liveEdit={editMode !== undefined}
           eventTitle={draft.name}
           allTickets={draft.tickets}
           eventStartsAtIso={eventStartsAtIso}

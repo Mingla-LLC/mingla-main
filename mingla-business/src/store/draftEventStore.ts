@@ -106,6 +106,8 @@ export interface TicketExtraStub {
   validDayIds: string[] | null;
   /** Live events only: how many have sold. Locks the price once above 0. */
   soldCount?: number;
+  /** Live events only: the lowest capacity allowed, per date when dated. */
+  capacityFloor?: number;
 }
 
 export interface TicketStub {

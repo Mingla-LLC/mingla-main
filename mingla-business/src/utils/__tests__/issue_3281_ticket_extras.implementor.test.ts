@@ -51,6 +51,27 @@ describe("issue #3281 extras validation mirrors the database", () => {
     ).toBeNull();
   });
 
+  test("prices with two decimals are valid despite floating point", () => {
+    for (const priceGbp of [0.29, 1.1, 1.1, 19.99, 0.07]) {
+      expect(
+        validateTicketExtra(extra({ priceGbp }), { tierIsFree: false }),
+      ).toBeNull();
+    }
+  });
+
+  test("a dated extra's capacity floor is its busiest date, not its total", () => {
+    const dated = extra({
+      validDayIds: ["fri", "sat"],
+      capacity: 10,
+      soldCount: 12,
+      capacityFloor: 6,
+    });
+    expect(validateTicketExtra(dated, { tierIsFree: false })).toBeNull();
+    expect(
+      validateTicketExtra({ ...dated, capacity: 5 }, { tierIsFree: false }),
+    ).toMatch(/below the 6 already sold on its busiest date/);
+  });
+
   test("each problem has its own sentence", () => {
     const cases: [Partial<TicketExtraStub>, boolean, RegExp][] = [
       [{ name: "  " }, false, /name/],

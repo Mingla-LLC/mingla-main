@@ -497,6 +497,8 @@ export interface TicketTierEditSheetProps {
   newTicketPreset?: NewTicketPreset | null;
   /** Published-event context for opening private links from a hidden tier. */
   privateLinksEnabled?: boolean;
+  /** issue #3281 — editing a published event, where extras are read from the server. */
+  liveEdit?: boolean;
   eventTitle?: string;
   allTickets?: TicketStub[];
 }
@@ -532,6 +534,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   renderUnderPrice,
   newTicketPreset = null,
   privateLinksEnabled = false,
+  liveEdit = false,
   eventTitle = "Event",
   allTickets = [],
 }) => {
@@ -657,6 +660,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setExtras(initial.extras ?? []);
     } else {
       setName("");
+      setExtras([]);
       setIsFree(newTicketPreset === "free-guest-list");
       setIsUnlimited(false);
       setPriceText("");
@@ -744,6 +748,15 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     Number.isFinite(parsedCapacityValue) &&
     parsedCapacityValue < minimumCapacity;
 
+  // issue #3281 — narrowing the tier's dates narrows its extras now, so the
+  // save button judges what will be sent; an extra left with no date is shown
+  // as an error the organiser can fix by choosing again.
+  useEffect(() => {
+    setExtras((current) =>
+      keepExtraDaysInTier(current, dayScoped && validDayIds !== null ? validDayIds : null),
+    );
+  }, [dayScoped, validDayIds]);
+
   // issue #3281 — the dates this tier admits, for its extras to choose from.
   const tierDayEntries =
     dayScopeEntries === null
@@ -751,6 +764,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       : validDayIds === null
         ? dayScopeEntries
         : dayScopeEntries.filter((entry) => validDayIds.includes(entry.id));
+  // A published tier whose extras failed to load can't replace them safely.
+  const extrasUnavailable =
+    liveEdit && initial !== null && initial.extras === undefined;
   const extrasInvalid = extras.some(
     (extra) => validateTicketExtra(extra, { tierIsFree: isFree }) !== null,
   );
@@ -1390,6 +1406,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 ? formatCurrency(major, priceCurrency)
                 : String(major)}
             tierDayEntries={tierDayEntries}
+            unavailable={extrasUnavailable}
           />
           ) : null}
 

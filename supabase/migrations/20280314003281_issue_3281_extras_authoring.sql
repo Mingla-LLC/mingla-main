@@ -191,17 +191,23 @@ BEGIN
     IF v_existing.id IS NOT NULL THEN
       v_sold := public.issue_3281_add_on_sold(v_existing.id, NULL);
       IF v_sold > 0 THEN
-        IF v_existing.valid_occurrence_keys IS NOT NULL THEN
+        -- The floor follows the capacity mode the extra will have: one shared
+        -- count with no list, the busiest listed date with one.
+        IF v_keys IS NOT NULL THEN
           SELECT COALESCE(MAX(public.issue_3281_add_on_sold(v_existing.id, k)), 0) INTO v_sold
-            FROM unnest(v_existing.valid_occurrence_keys) k;
+            FROM unnest(v_keys) k;
         END IF;
         IF v_price <> v_existing.price_cents OR COALESCE(v_capacity, 2147483647) < v_sold THEN
           RAISE EXCEPTION 'sold_extra_mutation_blocked';
         END IF;
-        IF EXISTS (
-          SELECT 1 FROM unnest(COALESCE(v_existing.valid_occurrence_keys, '{}'::text[])) k
-           WHERE (v_keys IS NOT NULL AND NOT (k = ANY (v_keys)))
-             AND public.issue_3281_add_on_sold(v_existing.id, k) > 0
+        -- A date anyone bought it for stays, whatever the old list said.
+        IF v_keys IS NOT NULL AND EXISTS (
+          SELECT 1
+            FROM public.order_add_on_line_items li
+            JOIN public.orders o ON o.id = li.order_id
+           WHERE li.ticket_add_on_id = v_existing.id
+             AND o.payment_status IN ('pending', 'paid', 'partial_refund')
+             AND EXISTS (SELECT 1 FROM unnest(li.day_scope_at_order) k WHERE NOT (k = ANY (v_keys)))
         ) THEN
           RAISE EXCEPTION 'extra_day_scope_drops_sold_day';
         END IF;
@@ -231,8 +237,35 @@ BEGIN
 END;
 $fn$;
 
+-- A tier edited without its extras keeps them, and they must still fit it:
+-- no paid extra on a free tier, and no extra dated outside the tier's dates.
+CREATE FUNCTION public.issue_3281_assert_kept_extras_fit_tier(
+  p_ticket_type_id uuid, p_tier_free boolean, p_tier_keys text[]
+) RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+BEGIN
+  IF p_tier_free AND EXISTS (
+    SELECT 1 FROM public.ticket_add_ons a
+     WHERE a.ticket_type_id = p_ticket_type_id AND a.is_active AND a.price_cents > 0
+  ) THEN
+    RAISE EXCEPTION 'paid_extra_on_free_ticket';
+  END IF;
+  IF p_tier_keys IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.ticket_add_ons a
+     WHERE a.ticket_type_id = p_ticket_type_id AND a.is_active
+       AND a.valid_occurrence_keys IS NOT NULL AND NOT (a.valid_occurrence_keys <@ p_tier_keys)
+  ) THEN
+    RAISE EXCEPTION 'extra_day_scope_outside_ticket';
+  END IF;
+END;
+$fn$;
+
 -- A live tier's extras, in the payload shape the wizards edit.
-CREATE FUNCTION public.issue_3281_tier_extras_json(p_ticket_type_id uuid)
+CREATE FUNCTION public.issue_3281_tier_extras_json(p_ticket_type_id uuid, p_with_sales boolean DEFAULT true)
 RETURNS jsonb
 LANGUAGE sql
 STABLE
@@ -243,9 +276,15 @@ AS $fn$
     'id', a.id::text, 'name', a.name, 'description', a.description,
     'priceGbp', a.price_cents / 100.0, 'isUnlimited', a.is_unlimited,
     'capacity', a.quantity_total, 'maxPerTicket', a.max_per_ticket,
-    'validDayIds', to_jsonb(a.valid_occurrence_keys),
-    'soldCount', public.issue_3281_add_on_sold(a.id, NULL)
-  ) ORDER BY a.sort_order, a.id), '[]'::jsonb)
+    'validDayIds', to_jsonb(a.valid_occurrence_keys)
+  ) || CASE WHEN p_with_sales THEN jsonb_build_object(
+    -- Total sales lock the price; the capacity floor follows the extra's mode.
+    'soldCount', public.issue_3281_add_on_sold(a.id, NULL),
+    'capacityFloor', CASE WHEN a.valid_occurrence_keys IS NULL
+      THEN public.issue_3281_add_on_sold(a.id, NULL)
+      ELSE (SELECT COALESCE(MAX(public.issue_3281_add_on_sold(a.id, k)), 0)
+              FROM unnest(a.valid_occurrence_keys) k) END
+  ) ELSE '{}'::jsonb END ORDER BY a.sort_order, a.id), '[]'::jsonb)
   FROM public.ticket_add_ons a
   WHERE a.ticket_type_id = p_ticket_type_id AND a.is_active;
 $fn$;
@@ -285,7 +324,8 @@ REVOKE ALL ON FUNCTION public.issue_3281_normalize_tier_extras(jsonb, boolean) F
 REVOKE ALL ON FUNCTION public.issue_3281_assert_extra_days_in_tier(text[], text[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_publish_tier_extras(uuid, jsonb, text, jsonb, text[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_sync_live_tier_extras(uuid, uuid, jsonb, boolean, text[]) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.issue_3281_tier_extras_json(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_tier_extras_json(uuid, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_assert_kept_extras_fit_tier(uuid, boolean, text[]) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.issue_1974_normalize_ticket_tiers(p_tiers jsonb)
 RETURNS jsonb
@@ -1370,6 +1410,10 @@ BEGIN
       IF v_tier ? 'extras' THEN
         PERFORM public.issue_3281_sync_live_tier_extras((v_tier->>'id')::uuid, p_event_id,
           v_tier->'extras', (v_tier->>'isFree')::boolean, v_scope);
+      ELSE
+        -- Kept extras must still fit the edited tier.
+        PERFORM public.issue_3281_assert_kept_extras_fit_tier((v_tier->>'id')::uuid,
+          (v_tier->>'isFree')::boolean, v_scope);
       END IF;
     END LOOP;
     UPDATE public.events SET updated_at=now() WHERE id=p_event_id;
@@ -1439,7 +1483,8 @@ BEGIN
     'visibility', CASE WHEN tt.is_disabled THEN 'disabled' WHEN tt.is_hidden THEN 'hidden' ELSE 'public' END,
     'displayOrder', tt.display_order,
     'validDayIds', to_jsonb(tt.valid_occurrence_keys),
-    'extras', public.issue_3281_tier_extras_json(tt.id),
+    -- No sales metadata: a draft (or a duplicate) has sold nothing.
+    'extras', public.issue_3281_tier_extras_json(tt.id, false),
     'approvalRequired', tt.requires_approval,
     'passwordProtected', tt.password_protected,
     'passwordConfigured', tt.password_hash IS NOT NULL,

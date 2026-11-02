@@ -167,8 +167,8 @@ BEGIN
   v_tiers := (SELECT jsonb_agg(t) FROM jsonb_array_elements(
     public.business_event_draft_payload_from_graph(v_event)#>'{theme,business_draft,tickets}') t);
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_tiers) t, jsonb_array_elements(t->'extras') x
-                  WHERE x->>'id' = v_dinner::text AND (x->>'soldCount')::integer = 0) THEN
-    RAISE EXCEPTION 'the edit payload must carry the extras';
+                  WHERE x->>'id' = v_dinner::text AND NOT (x ? 'soldCount')) THEN
+    RAISE EXCEPTION 'the edit payload must carry the extras, with no sales metadata';
   END IF;
 
   -- A live edit without the key leaves extras alone; with it, adds a new one.
@@ -250,6 +250,70 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
   IF v_raised IS DISTINCT FROM 'extra_day_scope_drops_sold_day' THEN
     RAISE EXCEPTION 'a sold date must stay on the extra, got %',v_raised;
+  END IF;
+  -- One shuttle per date, sold on both dates: the floor follows the new mode.
+  INSERT INTO public.order_add_on_line_items(order_id,ticket_add_on_id,ticket_type_id,
+      add_on_name_at_order,ticket_type_name_at_order,day_scope_at_order,quantity,unit_price_cents,total_cents)
+    SELECT v_order,a.id,v_all,'Shuttle','All dates',ARRAY['md_fri'],1,0,0
+      FROM public.ticket_add_ons a WHERE a.ticket_type_id=v_all AND a.name='Shuttle';
+  UPDATE public.ticket_add_ons SET is_unlimited=false,quantity_total=1
+   WHERE ticket_type_id=v_all AND name='Shuttle';
+  IF (SELECT (x->>'capacityFloor')::integer FROM jsonb_array_elements(public.issue_3281_tier_extras_json(v_all)) x
+       WHERE x->>'name'='Shuttle') <> 1
+     OR (SELECT (x->>'soldCount')::integer FROM jsonb_array_elements(public.issue_3281_tier_extras_json(v_all)) x
+          WHERE x->>'name'='Shuttle') <> 2 THEN
+    RAISE EXCEPTION 'a dated extra''s floor is its busiest date, its sales the total';
+  END IF;
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.issue_3281_sync_live_tier_extras(v_all,v_event,
+      (SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'priceGbp',0,
+          'isUnlimited',a.is_unlimited,'capacity',a.quantity_total,
+          'validDayIds',CASE WHEN a.name='Shuttle' THEN 'null'::jsonb ELSE to_jsonb(a.valid_occurrence_keys) END))
+         FROM public.ticket_add_ons a WHERE a.ticket_type_id=v_all),
+      true,NULL);
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'sold_extra_mutation_blocked' THEN
+    RAISE EXCEPTION 'one shared count must cover every date''s sales, got %',v_raised;
+  END IF;
+  -- An all-dates extra sold on Saturday can't narrow to Friday.
+  UPDATE public.ticket_add_ons SET valid_occurrence_keys=NULL,quantity_total=2
+   WHERE ticket_type_id=v_all AND name='Shuttle';
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.issue_3281_sync_live_tier_extras(v_all,v_event,
+      (SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'priceGbp',0,
+          'isUnlimited',a.is_unlimited,'capacity',a.quantity_total,
+          'validDayIds',CASE WHEN a.name='Shuttle' THEN '["md_fri"]'::jsonb ELSE to_jsonb(a.valid_occurrence_keys) END))
+         FROM public.ticket_add_ons a WHERE a.ticket_type_id=v_all),
+      true,NULL);
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'extra_day_scope_drops_sold_day' THEN
+    RAISE EXCEPTION 'an all-dates extra must keep a date it sold on, got %',v_raised;
+  END IF;
+  UPDATE public.ticket_add_ons SET valid_occurrence_keys=ARRAY['md_fri','md_sat'],is_unlimited=true,quantity_total=NULL
+   WHERE ticket_type_id=v_all AND name='Shuttle';
+
+  -- A tier edited without its extras must still fit them.
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.issue_3281_assert_kept_extras_fit_tier(v_all,true,ARRAY['md_fri']);
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'extra_day_scope_outside_ticket' THEN
+    RAISE EXCEPTION 'a narrowed tier must not orphan a kept extra, got %',v_raised;
+  END IF;
+  UPDATE public.ticket_add_ons SET price_cents=500 WHERE ticket_type_id=v_all AND name='Shuttle';
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.issue_3281_assert_kept_extras_fit_tier(v_all,true,NULL);
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'paid_extra_on_free_ticket' THEN
+    RAISE EXCEPTION 'a free tier must not keep a paid extra, got %',v_raised;
+  END IF;
+  UPDATE public.ticket_add_ons SET price_cents=0 WHERE ticket_type_id=v_all AND name='Shuttle';
+  IF position('issue_3281_assert_kept_extras_fit_tier' IN pg_get_functiondef(
+       'public.business_patch_event_ticket_tiers'::regproc)) = 0 THEN
+    RAISE EXCEPTION 'an edit without extras must check the kept ones';
   END IF;
   UPDATE public.ticket_add_ons SET valid_occurrence_keys=ARRAY['md_fri'] WHERE id=v_dinner;
   v_raised := NULL;
