@@ -2195,20 +2195,22 @@ export const createTicketCheckoutCreateHandler = (
       ) {
         return jsonResponse({ error: "ticket_link_invalid" }, 400);
       }
-      // issue #3281 — booked-start and day-limited ticket refusals (stable
-      // names for client copy).
+      // issue #3281 — booked-start refusals (stable names for client copy).
       for (
         const token of [
           "booked_start_required",
           "booked_start_invalid",
           "booked_start_in_past",
           "booked_start_off_grid",
-          "ticket_not_valid_on_chosen_days",
         ] as const
       ) {
         if (sessionError?.message?.includes(token)) {
           return jsonResponse({ error: token }, 422);
         }
+      }
+      // issue #3281 — a day-limited ticket off the chosen dates.
+      if (sessionError?.message?.includes("ticket_not_valid_on_chosen_days")) {
+        return jsonResponse({ error: "ticket_not_valid_on_chosen_days" }, 422);
       }
       const dbAccessDenial = ticketCheckoutAccessDenialFromDbMessage(
         sessionError?.message,
