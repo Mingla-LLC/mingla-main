@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore Deno ESM runtime import.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { AdConnectionRow } from "../_shared/adChannel.ts";
+import { adLaneForOwner, type Lane } from "../_shared/adChannelCore.ts";
 import type { AdCreativeRow } from "../_shared/adCreative.ts";
 import { CreativeUploadError } from "../_shared/adCreative.ts";
 import {
@@ -234,7 +235,8 @@ serve(async (req: Request): Promise<Response> => {
     ? body.creative_library_id.trim()
     : "";
   const platform = body.platform;
-  const lane = body.lane;
+  // #4238: Host callers send no lane; it is resolved from the plan owner below.
+  const bodyLane = body.lane;
   const planVersionId = typeof body.plan_version_id === "string"
     ? body.plan_version_id.trim()
     : "";
@@ -248,7 +250,10 @@ serve(async (req: Request): Promise<Response> => {
   if (!isPreparationPlatform(platform)) {
     return json({ error: "platform_invalid" }, 422);
   }
-  if (lane !== "consumer" && lane !== "business") {
+  if (
+    bodyLane !== undefined && bodyLane !== "consumer" &&
+    bodyLane !== "business"
+  ) {
     return json({ error: "lane_invalid" }, 422);
   }
   if (!UUID_RE.test(planVersionId) || !PLAN_HASH_RE.test(planHash)) {
@@ -314,6 +319,8 @@ serve(async (req: Request): Promise<Response> => {
   } else {
     return json({ error: "plan_conflict", detail: "plan_owner_invalid" }, 409);
   }
+  const lane: Lane = (bodyLane as Lane | undefined) ??
+    adLaneForOwner(plan.owner_kind);
   const traceId = crypto.randomUUID();
 
   const allocation = allocationResult.data as

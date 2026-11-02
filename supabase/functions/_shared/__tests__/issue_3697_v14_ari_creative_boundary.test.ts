@@ -129,7 +129,8 @@ Deno.test("#3697 Ari prepares provider media only after fund and exact LAUNCH co
   assert(validate > prepare);
   assert(create > validate);
   assert(launch > create);
-  assert(approve.includes('lane: "business"'));
+  // #4238: Ari sends no lane; the server resolves it from the plan owner.
+  assertEquals(approve.includes("lane:"), false);
   assert(approve.includes('action: "record_create_failure"'));
   assertEquals(
     approve.slice(0, confirm).includes('"admin-ad-create-campaign"'),
@@ -164,11 +165,18 @@ Deno.test("#3697 Ari runtime calls fund, confirm, prepare, validate, create and 
           });
         }
         if (name === "admin-ad-creative-prepare") {
-          assertEquals(body.lane, "business");
+          assertEquals("lane" in body, false);
           assertEquals(body.brand_id, BRAND);
           assertEquals(body.plan_version_id, VERSION);
           assertEquals(body.plan_hash, HASH);
           return Promise.resolve({ data: { state: "ready" }, error: null });
+        }
+        if (name === "admin-ad-create-campaign") {
+          // #4238: no lane and no client-authored objective fields.
+          assertEquals("lane" in body, false);
+          assertEquals("objective" in body, false);
+          assertEquals("optimization_goal" in body, false);
+          assertEquals("billing_event" in body, false);
         }
         if (name === "admin-ad-create-campaign" && action === "create") {
           return Promise.resolve({

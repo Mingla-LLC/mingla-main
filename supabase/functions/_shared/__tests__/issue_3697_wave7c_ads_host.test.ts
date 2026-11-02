@@ -125,7 +125,12 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   );
   assert(tools.includes('"admin-ad-create-campaign"'));
   assert(tools.includes('owner_kind: "host"'));
-  assert(tools.includes('lane: "business"'));
+  // #4238 D1: Ari never names a lane; the server owns it via HOST_AD_LANE.
+  assertEquals(tools.includes('lane: "business"'), false);
+  const adPlan = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
+  assert(adPlan.includes("HOST_AD_LANE"));
   assert(tools.includes("HOST_AD_PLATFORMS"));
   assert(tools.includes("requireAgentOperationId(context)"));
   const builder = await Deno.readTextFile(

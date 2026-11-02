@@ -201,7 +201,13 @@ import {
   googleTotalDaysOk,
   parseCampaignSchedule,
 } from "../_shared/adMoney.ts";
-import type { Platform } from "../_shared/adChannelCore.ts";
+import { type Platform, resolveOwnerLane } from "../_shared/adChannelCore.ts";
+import {
+  hostAdGoalFields,
+  hostGoalBodyError,
+  hostOptimizationFor,
+} from "../_shared/adHostGoal.ts";
+import { PURCHASE_SIGNAL_MIN_28D } from "../_shared/adSalesReadiness.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
   compatibleMetaValidateReference,
@@ -215,7 +221,6 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const PURCHASE_SIGNAL_MIN_28D = 20;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -917,18 +922,20 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform ?? "meta";
-  const lane = body.lane ?? "consumer";
+  // #4238 D1: a Host lane comes from adLaneForOwner; a Host body naming another
+  // lane (an old client sending "business") is refused, never rewritten.
+  const laneResolution = resolveOwnerLane(requestedOwnerKind, body.lane);
   if (!isPlatform(platform)) {
     return json({ error: "validation_error", detail: "platform_invalid" }, 400);
   }
+  if (!laneResolution.ok) {
+    return laneResolution.detail === "lane_owner_mismatch"
+      ? json({ error: "validation_error", detail: "lane_owner_mismatch" }, 422)
+      : json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  }
+  const lane = laneResolution.lane;
   if (!isLane(lane)) {
     return json({ error: "validation_error", detail: "lane_invalid" }, 400);
-  }
-  if (requestedOwnerKind === "host" && lane !== "business") {
-    return json({
-      error: "validation_error",
-      detail: "host_requires_business_lane",
-    }, 422);
   }
 
   if (requestedOwnerKind === "host") {
@@ -1015,6 +1022,65 @@ serve(async (req: Request): Promise<Response> => {
         detail: "host_video_creative_required",
       }, 422);
     }
+
+    // #4238: clients never author Host objectives; the plan hash does. The
+    // goal is derived from canonical_plan.optimization_by_platform of the
+    // exact bound version, before any objective field below is read.
+    const hostPlanVersionId = typeof body.plan_version_id === "string"
+      ? body.plan_version_id.trim()
+      : "";
+    const hostPlanHash = typeof body.plan_hash === "string"
+      ? body.plan_hash.trim().toLowerCase()
+      : "";
+    if (
+      !UUID_REGEX.test(hostPlanVersionId) ||
+      !/^[0-9a-f]{64}$/.test(hostPlanHash)
+    ) {
+      return json({
+        error: "plan_required",
+        detail: "plan_version_and_hash_required",
+      }, 409);
+    }
+    const goalBodyError = hostGoalBodyError(body);
+    if (goalBodyError) {
+      return json({ error: "plan_conflict", detail: goalBodyError }, 409);
+    }
+    const { data: hostVersion, error: hostVersionError } = await supabase
+      .from("ad_plan_versions")
+      .select("id,plan_id,plan_hash,canonical_plan")
+      .eq("id", hostPlanVersionId)
+      .eq("plan_hash", hostPlanHash)
+      .maybeSingle();
+    if (hostVersionError) return json({ error: "plan_lookup_failed" }, 503);
+    const { data: hostPlan, error: hostPlanError } = hostVersion
+      ? await supabase.from("ad_plans").select("owner_kind,brand_id")
+        .eq("id", hostVersion.plan_id).maybeSingle()
+      : { data: null, error: null };
+    if (hostPlanError) return json({ error: "plan_lookup_failed" }, 503);
+    if (
+      !hostVersion || !hostPlan || hostPlan.owner_kind !== "host" ||
+      hostPlan.brand_id !== requestedBrandId
+    ) {
+      return json({
+        error: "plan_conflict",
+        detail: "plan_version_hash_mismatch",
+      }, 409);
+    }
+    const hostCanonical = hostVersion.canonical_plan &&
+        typeof hostVersion.canonical_plan === "object"
+      ? hostVersion.canonical_plan as Record<string, unknown>
+      : {};
+    const hostOptimization = hostOptimizationFor(hostCanonical, platform);
+    const hostGoal = hostOptimization
+      ? hostAdGoalFields(platform, hostOptimization)
+      : null;
+    if (!hostGoal) {
+      return json({
+        error: "plan_conflict",
+        detail: "plan_optimization_mismatch",
+      }, 409);
+    }
+    Object.assign(body, hostGoal);
   }
 
   // ISSUE-1002 [multi-destination fan-out] — REJECTED in Wave 2 (#3707 / A3-11).

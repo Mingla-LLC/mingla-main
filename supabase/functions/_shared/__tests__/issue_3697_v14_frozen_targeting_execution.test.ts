@@ -170,7 +170,13 @@ Deno.test("#3697 targeting search authorizes Host planning without exposing cons
   assert(auth > 0);
   assert(permission > auth);
   assert(validation > permission);
-  assertStringIncludes(search, 'requestedLane !== "business"');
+  // #4238 D1: Hosts identify as owner_kind "host"; the server picks the lane.
+  assertStringIncludes(
+    search,
+    "!hostCaller || !UUID_RE.test(requestedBrandId)",
+  );
+  assertStringIncludes(search, "resolveOwnerLane(");
+  assert(!search.includes('requestedLane !== "business"'));
   assertStringIncludes(search, "ad_can_host_action");
   assertStringIncludes(search, 'return json({ error: "forbidden" }, 403)');
 });

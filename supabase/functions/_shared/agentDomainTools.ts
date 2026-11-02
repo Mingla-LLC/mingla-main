@@ -27,6 +27,7 @@ import {
 } from "./agentTenantScope.ts";
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
 import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
+import { HOST_SALES_GOAL_PLATFORMS } from "./adHostGoal.ts";
 // issue #2291 — ONE contract for what a channel_payload must contain. Ari is
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
@@ -3556,9 +3557,13 @@ function buildHostAdCreatePayload(
     audience,
     (snapshot.compiled_targeting ?? {}) as Record<string, unknown>,
   );
+  // #4238: no lane (the server derives it from the owner) and no objective
+  // fields (the server derives them from the plan hash).
+  const aiGenerated = (canonical.media_rights as
+    | Record<string, unknown>
+    | undefined)?.ai_generated === true;
   const base: Record<string, unknown> = {
     platform,
-    lane: "business",
     owner_kind: "host",
     brand_id: aggregate.plan.brand_id,
     plan_version_id: aggregate.version.id,
@@ -3584,15 +3589,12 @@ function buildHostAdCreatePayload(
       creative_library_id: creativeId,
       image_url: null,
     },
-    compliance: { aiGenerated: false, specialAdCategory: "NONE" },
+    compliance: { aiGenerated, specialAdCategory: "NONE" },
     ...(validateOnly ? { validate_only: true } : {}),
   };
   if (platform === "tiktok") {
     return {
       ...base,
-      objective: "TRAFFIC",
-      optimization_goal: "TRAFFIC_LANDING_PAGE_VIEW",
-      billing_event: "CPC",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -3606,7 +3608,6 @@ function buildHostAdCreatePayload(
   if (platform === "reddit") {
     return {
       ...base,
-      objective: "CLICKS",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -3617,8 +3618,6 @@ function buildHostAdCreatePayload(
   if (platform === "snapchat") {
     return {
       ...base,
-      objective: "TRAFFIC",
-      optimization_goal: "SWIPES",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -3643,16 +3642,13 @@ function buildHostAdCreatePayload(
   }
   return {
     ...base,
-    objective: "OUTCOME_TRAFFIC",
-    optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS",
     creative: {
       kind: "video",
       creative_library_id: creativeId,
       message: primary,
       headline: name.slice(0, 255),
       call_to_action_type: "LEARN_MORE",
-      ai_generated: false,
+      ai_generated: aiGenerated,
     },
     special_ad_categories: [],
   };
@@ -3690,7 +3686,6 @@ async function resolveAriTargetingRefs(
       await Promise.all(cities.map(async (city) => {
         const response = await invokeFn(client, "admin-ad-targeting-search", {
           owner_kind: "host",
-          lane: "business",
           brand_id: brandId,
           platform,
           kind: "city",
@@ -3717,7 +3712,6 @@ async function resolveAriTargetingRefs(
       await Promise.all(interests.map(async (interest) => {
         const response = await invokeFn(client, "admin-ad-targeting-search", {
           owner_kind: "host",
-          lane: "business",
           brand_id: brandId,
           platform,
           kind: "interest",
@@ -3741,12 +3735,20 @@ async function resolveAriTargetingRefs(
   return refsByPlatform;
 }
 
+const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
+  meta: "Meta",
+  google: "Google",
+  tiktok: "TikTok",
+  snapchat: "Snapchat",
+  reddit: "Reddit",
+};
+
 // Issue #3697 v1.4 — Ari creates the same server-owned plan as the Host and
 // Admin builders. Currency is deliberately absent: the server derives the
 // verified brand settlement currency and provider-account currency.
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Distinct from draft_campaign (Blast email/SMS).",
+  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales (optimize_for). Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -3799,6 +3801,7 @@ const proposeAdPlan = writeTool(
       enum: ["owned", "licensed", "authorized_by_brand"],
     },
     ai_generated: { type: "boolean" },
+    optimize_for: { type: "string", enum: ["visits", "sales"] },
   },
   [
     "brand_id",
@@ -3934,24 +3937,35 @@ const proposeAdPlan = writeTool(
         "budget_cents and daily_budget_cents are invalid",
       );
     }
-    const { data: connections, error: connectionError } = await client
-      .from("ad_connections")
-      .select("id,platform")
-      .in("platform", platforms)
-      .eq("lane", "business")
-      .eq("connected", true)
-      .eq("status", "connected");
-    if (
-      connectionError || !Array.isArray(connections) ||
-      platforms.some((platform) =>
-        !connections.some((connection: { platform?: string; id?: string }) =>
-          connection.platform === platform && isUuid(connection.id)
-        )
+    // #4238: a Host cannot read ad_connections under RLS (admin-only), so the
+    // ready accounts come from the same server-owned Host setup the Business
+    // builder uses. The server decides which lane those accounts are on.
+    const setup = await invokeFn(client, "ad-plan", {
+      action: "host_setup",
+      brand_id: args.brand_id,
+    }) as {
+      connections?: Array<{
+        id?: string;
+        platform?: string;
+        sales?: { ready?: boolean };
+      }>;
+      pages?: Array<Record<string, unknown>>;
+    };
+    const setupConnections = Array.isArray(setup.connections)
+      ? setup.connections
+      : [];
+    const connections = platforms.map((platform) =>
+      setupConnections.find((connection) =>
+        connection.platform === platform && isUuid(connection.id)
       )
-    ) {
+    );
+    const missingPlatform = platforms.find((_, index) => !connections[index]);
+    if (missingPlatform) {
       throw new ToolError(
         "RPC_FAILED",
-        "Every selected business ad account must be connected",
+        `Ads aren't available on ${
+          HOST_AD_PLATFORM_NAMES[missingPlatform] ?? missingPlatform
+        } for this brand yet`,
       );
     }
     const split = (total: number) => {
@@ -3992,9 +4006,28 @@ const proposeAdPlan = writeTool(
     if (!planId || !isUuid(planId)) {
       throw new ToolError("RPC_FAILED", "ad-plan open returned no plan id");
     }
+    const destinationPage = (Array.isArray(setup.pages) ? setup.pages : [])
+      .find((page) =>
+        page.page_type === destination.page_type &&
+        page.brand_slug === destination.brand_slug &&
+        (destination.page_type === "brand" ||
+          (page.entity_slug ?? undefined) === destination.entity_slug)
+      );
+    const wantsSales = args.optimize_for === "sales" &&
+      destinationPage?.result_kind === "tickets";
+    const optimizationByPlatform = Object.fromEntries(
+      platforms.map((platform, index) => [
+        platform,
+        wantsSales && connections[index]?.sales?.ready === true &&
+          (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
+          ? "sales"
+          : "visits",
+      ]),
+    );
     const canonicalPlan = {
       name: String(args.name),
       destination,
+      optimization_by_platform: optimizationByPlatform,
       schedule: {
         ...(typeof args.starts_at === "string"
           ? { starts_at: args.starts_at }
@@ -4039,10 +4072,7 @@ const proposeAdPlan = writeTool(
       canonical_plan: canonicalPlan,
       provider_allocations: platforms.map((platform, index) => ({
         platform,
-        connection_id: connections.find(
-          (connection: { platform?: string }) =>
-            connection.platform === platform,
-        )?.id,
+        connection_id: connections[index]?.id,
         host_budget_cents: capShares[index],
         host_delivery_budget_cents: dailyShares[index],
       })),
@@ -4079,6 +4109,10 @@ const proposeAdPlan = writeTool(
       host_currency: versioned.version?.host_currency,
       host_budget_cents: cap,
       host_daily_budget_cents: daily,
+      optimization: {
+        sales: platforms.filter((p) => optimizationByPlatform[p] === "sales"),
+        visits: platforms.filter((p) => optimizationByPlatform[p] === "visits"),
+      },
       targeting_snapshots: frozen.targeting_snapshots ?? [],
       ready_for_funding: !blocked,
       next_step: blocked
@@ -4197,7 +4231,6 @@ const approveAdPlan = writeTool(
               action,
               creative_library_id: creativeId,
               platform,
-              lane: "business",
               brand_id: args.brand_id,
               plan_version_id: args.plan_version_id,
               plan_hash: args.plan_hash,

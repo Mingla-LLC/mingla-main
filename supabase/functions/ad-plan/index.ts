@@ -57,7 +57,12 @@ import {
   destroyIfUnreferenced,
   type ReapDeps,
 } from "../_shared/coverVideoReap.ts";
-import { PLATFORMS } from "../_shared/adChannelCore.ts";
+import { HOST_AD_LANE, PLATFORMS } from "../_shared/adChannelCore.ts";
+import {
+  hostAllocationLaneError,
+  validateHostOptimization,
+} from "../_shared/adHostGoal.ts";
+import { salesReadiness } from "../_shared/adSalesReadiness.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   deletionOrder,
@@ -353,6 +358,33 @@ async function authorizeVersion(
   return { plan, version };
 }
 
+/** #4238: Host setup loads every advertisable page, not only the first 24. */
+export const HOST_SETUP_PAGE_CAP = 8;
+
+export async function collectAdvertisablePages(
+  fetchPage: (
+    page: number,
+  ) => PromiseLike<{ data: unknown; error: unknown }>,
+  cap = HOST_SETUP_PAGE_CAP,
+): Promise<{ data: Record<string, unknown>[]; error: unknown }> {
+  const rows: Record<string, unknown>[] = [];
+  for (let page = 0; page < cap; page += 1) {
+    const { data, error } = await fetchPage(page);
+    if (error) return { data: rows, error };
+    const batch = Array.isArray(data)
+      ? data.filter((row): row is Record<string, unknown> =>
+        row !== null && typeof row === "object"
+      )
+      : [];
+    rows.push(...batch);
+    const total = Number(batch[0]?.total_count);
+    if (
+      batch.length === 0 || !Number.isFinite(total) || rows.length >= total
+    ) break;
+  }
+  return { data: rows, error: null };
+}
+
 function canonicalizePlan(
   input: Record<string, unknown>,
   platforms: Platform[],
@@ -383,6 +415,20 @@ async function normalizedAllocations(
     const authority = await resolveAdBrandCurrency(db, plan.brand_id);
     if (!authority.ok) {
       return { ok: false, status: 409, detail: authority.detail };
+    }
+    // #4238 D1: a Host plan may bind only the accounts HOST_AD_LANE names.
+    const { data: laneRows, error: laneError } = await db.from("ad_connections")
+      .select("id,platform,lane,connected,status")
+      .in("id", requested.map((row) => row.connection_id));
+    if (laneError) {
+      return { ok: false, status: 502, detail: "connection_lookup_failed" };
+    }
+    const laneRejection = hostAllocationLaneError(
+      (laneRows ?? []) as Array<Record<string, unknown>>,
+      requested,
+    );
+    if (laneRejection) {
+      return { ok: false, status: 422, detail: laneRejection };
     }
     const rows: Record<string, unknown>[] = [];
     for (const allocation of requested) {
@@ -939,36 +985,42 @@ export async function handleAdPlan(
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const [pages, connections, creatives, authority, plans] = await Promise.all(
-      [
-        userDb.rpc("ad_advertisable_pages", {
-          p_query: null,
-          p_types: null,
-          p_include_unavailable: false,
-          p_brand_id: brandId,
-          p_page: 0,
-        }),
-        db.from("ad_connections")
-          .select("id,platform,lane,currency,status,connected,updated_at")
-          .eq("lane", "business").eq("connected", true).eq(
-            "status",
-            "connected",
-          )
-          .order("platform"),
-        db.from("ad_creatives")
-          .select(
-            "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at,width,height,has_audio,mime_type,byte_size,variants",
-          )
-          .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
-          .order("created_at", { ascending: false }).limit(100),
-        resolveAdBrandCurrency(db, brandId),
-        db.from("ad_plans")
-          .select("*").eq("brand_id", brandId).eq("owner_kind", "host")
-          .order("updated_at", { ascending: false }).limit(50),
-      ],
-    );
+    const [pages, connections, creatives, authority, plans, brand] =
+      await Promise.all(
+        [
+          collectAdvertisablePages((page) =>
+            userDb.rpc("ad_advertisable_pages", {
+              p_query: null,
+              p_types: null,
+              p_include_unavailable: false,
+              p_brand_id: brandId,
+              p_page: page,
+            })
+          ),
+          // #4238 D1: Host ads run on the accounts HOST_AD_LANE names.
+          db.from("ad_connections")
+            .select("*")
+            .eq("lane", HOST_AD_LANE).eq("connected", true).eq(
+              "status",
+              "connected",
+            )
+            .order("platform"),
+          db.from("ad_creatives")
+            .select(
+              "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at,width,height,has_audio,mime_type,byte_size,variants",
+            )
+            .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
+            .order("created_at", { ascending: false }).limit(100),
+          resolveAdBrandCurrency(db, brandId),
+          db.from("ad_plans")
+            .select("*").eq("brand_id", brandId).eq("owner_kind", "host")
+            .order("updated_at", { ascending: false }).limit(50),
+          db.from("brands").select("country_code").eq("id", brandId)
+            .maybeSingle(),
+        ] as const,
+      );
     const firstError = pages.error ?? connections.error ?? creatives.error ??
-      plans.error;
+      plans.error ?? brand.error;
     if (firstError) return databaseFailure(firstError);
     if (!authority.ok) {
       return json({
@@ -976,16 +1028,41 @@ export async function handleAdPlan(
         detail: authority.detail,
       }, 409);
     }
+    const connectionRows = (connections.data ?? []) as AdConnectionRow[];
+    // Read-only provider GETs; each settles to "not ready" on any failure.
+    const readiness = await Promise.allSettled(
+      connectionRows.map((row) => salesReadiness(row)),
+    );
+    const hostConnections = connectionRows.map((row, index) => {
+      const settled = readiness[index];
+      return {
+        id: row.id,
+        platform: row.platform,
+        currency: row.currency,
+        status: row.status,
+        connected: row.connected,
+        updated_at: (row as unknown as Record<string, unknown>).updated_at ??
+          null,
+        sales: settled.status === "fulfilled"
+          ? settled.value
+          : { ready: false, reason: "unknown" },
+      };
+    });
+    const rawCountry = typeof brand.data?.country_code === "string"
+      ? brand.data.country_code.trim().toUpperCase()
+      : "";
     return json({
       ok: true,
+      available: hostConnections.length > 0,
       currency: authority.currency,
-      pages: pages.data ?? [],
-      connections: connections.data ?? [],
+      brand_country_code: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null,
+      pages: pages.data,
+      connections: hostConnections,
       // #3040 AD-04 — each video's fit on the brand's connected platforms,
       // judged by the same channel matrix as every ads gate.
       creatives: withHostCreativeFit(
         creatives.data ?? [],
-        connections.data ?? [],
+        hostConnections,
       ),
       plans: plans.data ?? [],
     });
@@ -1787,6 +1864,24 @@ export async function handleAdPlan(
       resolvedDestination.ready = true;
       resolvedDestination.code = null;
       resolvedDestination.certification_mode = true;
+    }
+    if (plan.owner_kind === "host") {
+      // #4238: the Host goal lives inside the plan hash. Sales only where the
+      // platform has a website-sales path and the page sells tickets.
+      const optimization = validateHostOptimization(
+        canonicalInput.optimization_by_platform,
+        platforms,
+        typeof resolvedDestination.result_kind === "string"
+          ? resolvedDestination.result_kind
+          : null,
+      );
+      if (!optimization.ok) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: optimization.detail,
+        }, 422);
+      }
+      canonical.optimization_by_platform = optimization.map;
     }
     const paidSocialPlatforms = platforms.filter((platform) =>
       platform === "meta" || platform === "snapchat" || platform === "tiktok"

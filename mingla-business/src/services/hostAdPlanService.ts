@@ -37,15 +37,34 @@ export type HostAdPage = {
   brand_name: string;
   canonical_url: string;
   availability: string;
+  starts_at: string | null;
+  city: string | null;
+  cover_url: string | null;
+  result_kind: string | null;
 };
 
+/** #4238: what this ad optimises for on each platform (frozen in the plan). */
+export type HostAdOptimization = "visits" | "sales";
+
+/** Platforms with a website-sales path a Host ad may use (server mirror). */
+export const HOST_AD_SALES_PLATFORMS: readonly HostAdPlatform[] = [
+  "meta",
+  "snapchat",
+  "tiktok",
+];
+
+/**
+ * #4238 D1: the server decides which provider account a Host ad uses; the
+ * client never sees or sends a lane.
+ */
 export type HostAdConnection = {
   id: string;
   platform: HostAdPlatform;
-  lane: "business";
   currency: string;
   status: string;
   connected: boolean;
+  /** Read-only preview of the server's Sales signal gate. */
+  sales: { ready: boolean; reason: string };
 };
 
 export type HostAdTargetingCity = {
@@ -107,6 +126,10 @@ export type HostAdDraft = {
 };
 
 export type HostAdSetup = {
+  /** false when no ad platform is ready for Hosts yet. */
+  available: boolean;
+  /** brands.country_code, upper-cased ISO-3166 alpha-2, or null. */
+  brand_country_code: string | null;
   currency: string;
   pages: HostAdPage[];
   connections: HostAdConnection[];
@@ -297,7 +320,6 @@ export async function searchHostAdTargeting(input: {
   return invoke("admin-ad-targeting-search", {
     brand_id: input.brandId,
     owner_kind: "host",
-    lane: "business",
     platform: input.platform,
     kind: input.kind,
     q: input.query,
@@ -415,6 +437,7 @@ export type PrepareHostAdPlanInput = {
   rightsConfirmed: boolean;
   rightsBasis: "owned" | "licensed" | "authorized_by_brand";
   aiGenerated: boolean;
+  optimization: HostAdOptimization;
 };
 
 export type PreparedHostAdPlan = {
@@ -447,6 +470,46 @@ function targetingName(value: string): string {
 
 function targetingCityKey(city: { name: string; countryCode: string }): string {
   return `${city.countryCode.trim().toUpperCase()}:${targetingName(city.name)}`;
+}
+
+/**
+ * #4238: the per-platform goal frozen into the plan hash. "sales" only where
+ * the page sells tickets, the platform has a sales path and its signal is
+ * ready; everything else optimises for page visits. The server re-validates.
+ */
+export function hostOptimizationByPlatform(
+  optimization: HostAdOptimization,
+  page: Pick<HostAdPage, "result_kind">,
+  connections: Pick<HostAdConnection, "platform" | "sales">[],
+): Record<string, HostAdOptimization> {
+  return Object.fromEntries(
+    connections.map((connection) => [
+      connection.platform,
+      optimization === "sales" &&
+      page.result_kind === "tickets" &&
+      connection.sales?.ready === true &&
+      HOST_AD_SALES_PLATFORMS.includes(connection.platform)
+        ? "sales"
+        : "visits",
+    ]),
+  );
+}
+
+/** Review-step split of the frozen goal: which platforms chase sales vs visits. */
+export function hostOptimizationSummary(aggregate: {
+  version: { canonical_plan: Record<string, unknown> };
+  provider_allocations: Record<string, unknown>[];
+}): { sales: HostAdPlatform[]; visits: HostAdPlatform[] } {
+  const map = recordValue(
+    aggregate.version.canonical_plan.optimization_by_platform,
+  );
+  const platforms = aggregate.provider_allocations.map(
+    (row) => String(row.platform) as HostAdPlatform,
+  );
+  return {
+    sales: platforms.filter((platform) => map?.[platform] === "sales"),
+    visits: platforms.filter((platform) => map?.[platform] !== "sales"),
+  };
 }
 
 export async function prepareHostAdPlan(
@@ -563,6 +626,11 @@ export async function prepareHostAdPlan(
       },
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
+      optimization_by_platform: hostOptimizationByPlatform(
+        input.optimization,
+        input.page,
+        input.connections,
+      ),
       broader_acceptance: Object.fromEntries(
         input.connections.map((connection) => [
           connection.platform,
@@ -781,9 +849,10 @@ function providerCreatePayload(
   );
   const providerCap = Number(allocation.provider_budget_cents);
   const commonTargeting = hostExecutionTargeting(snapshot);
+  // #4238: no lane (the server derives it from the owner) and no objective
+  // fields (the server derives them from the plan's optimization_by_platform).
   const base: Record<string, unknown> = {
     platform,
-    lane: "business",
     owner_kind: "host",
     brand_id: aggregate.plan.brand_id,
     plan_version_id: aggregate.version.id,
@@ -820,9 +889,6 @@ function providerCreatePayload(
   if (platform === "tiktok") {
     return {
       ...base,
-      objective: "TRAFFIC",
-      optimization_goal: "TRAFFIC_LANDING_PAGE_VIEW",
-      billing_event: "CPC",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -835,7 +901,6 @@ function providerCreatePayload(
   if (platform === "reddit") {
     return {
       ...base,
-      objective: "CLICKS",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -846,8 +911,6 @@ function providerCreatePayload(
   if (platform === "snapchat") {
     return {
       ...base,
-      objective: "TRAFFIC",
-      optimization_goal: "SWIPES",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -872,9 +935,6 @@ function providerCreatePayload(
   }
   return {
     ...base,
-    objective: "OUTCOME_TRAFFIC",
-    optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS",
     creative: {
       kind: "video",
       creative_library_id: creativeId,
@@ -944,7 +1004,6 @@ async function prepareBoundVideoPlatforms(
             action,
             creative_library_id: creativeId,
             platform,
-            lane: "business",
             brand_id: aggregate.plan.brand_id,
             plan_version_id: aggregate.version.id,
             plan_hash: aggregate.version.plan_hash,
