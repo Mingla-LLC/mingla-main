@@ -176,13 +176,15 @@ describe("#4238 honest states and copy (T-D1, T-D2, T-E1, SC-12)", () => {
     expect(hostAdSetupErrorCopy(null)).toBe("Ads setup couldn't load. Try again.");
   });
 
-  it("T-E1 no surface promises lookalike audiences", () => {
+  it("T-E1 no surface promises lookalike audiences by default", () => {
     expect(read("src/components/ari/renditions/AriRenditionPreview.tsx")).not.toMatch(
       /lookalike/i,
     );
-    expect(
-      read("../mingla-admin/src/components/campaign-builder/StepAudience.jsx"),
-    ).not.toMatch(/lookalike/i);
+    // #4238 wave 2: Admin can now pick real lists and lookalikes; the
+    // Prospecting copy says they are used only when chosen.
+    const step = read("../mingla-admin/src/components/campaign-builder/StepAudience.jsx");
+    expect(step).not.toMatch(/Broad and lookalike audiences/i);
+    expect(step).toContain("Prospecting uses your chosen lists or lookalikes; with none, it's broad.");
   });
 
   it("the page picker never prints a raw URL", () => {

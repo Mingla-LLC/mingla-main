@@ -44,6 +44,7 @@ const FILES = {
   // #3355 campaign draft readback + P2 brand readiness read/not-now (188→192).
   // #3355 P6 follow-up: the confirmed brand-group owner note (192→193).
   // #3355 P7: the confirmed Host-parity payout country pick (193→194).
+  // #4238 wave 2: list_ad_audiences, the brand's own audience read (194→195).
   // #1981 and stays pinned below; do not rewrite applied/history migrations.
   censusMigration:
     "supabase/migrations/20270824003697_issue_3697_ari_cert_capability_census.sql",
@@ -240,12 +241,12 @@ export function checkContract(fixture) {
   );
   assert.equal(
     fixture.ledger.capabilities.length,
-    194,
-    "canonical ledger must stay exactly 194 rows",
+    195,
+    "canonical ledger must stay exactly 195 rows",
   );
   assert.equal(
     new Set(fixture.ledger.capabilities.map((row) => row.id)).size,
-    194,
+    195,
     "capability IDs must be unique",
   );
   for (const row of fixture.ledger.capabilities) {
@@ -261,12 +262,12 @@ export function checkContract(fixture) {
 
   assert.equal(
     fixture.schema.properties.capabilities.minItems,
-    194,
+    195,
     "evidence schema row floor",
   );
   assert.equal(
     fixture.schema.properties.capabilities.maxItems,
-    194,
+    195,
     "evidence schema row ceiling",
   );
   assert.ok(
@@ -482,8 +483,8 @@ export function checkContract(fixture) {
   need(
     fixture.certifier,
     [
-      "ledger.capabilities.length !== 194",
-      "rows.length === 194",
+      "ledger.capabilities.length !== 195",
+      "rows.length === 195",
       "`ledger_not_certifiable:${planned.capability_id}",
       "`status_laundering:${planned.capability_id}",
       "verified_zero_residue === true",
@@ -709,7 +710,7 @@ function selfTest() {
     good,
     (x) => {
       x.certifier = x.certifier.replace(
-        "ledger.capabilities.length !== 194",
+        "ledger.capabilities.length !== 195",
         "false",
       );
     },
@@ -971,6 +972,6 @@ if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
   console.log(
-    "issue-2060 Ari reliability foundation: PASS (194 capabilities; #2060 history remains 116)",
+    "issue-2060 Ari reliability foundation: PASS (195 capabilities; #2060 history remains 116)",
   );
 }
