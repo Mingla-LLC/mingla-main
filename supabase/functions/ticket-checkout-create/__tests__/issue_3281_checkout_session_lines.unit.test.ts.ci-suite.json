@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3281_checkout_session_lines.unit.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-checkout-session-lines-unit",
+  "profile": "deno-2-unit"
+}

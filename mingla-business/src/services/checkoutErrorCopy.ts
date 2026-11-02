@@ -206,6 +206,8 @@ const FREE_CHECKOUT_MESSAGE_BY_RAISE: Readonly<Record<string, string>> = Object
       "This event has already taken place, so tickets are no longer available. Nothing was reserved.",
     occurrence_not_found:
       "The day you picked is no longer part of this event. Choose another day \u2014 nothing was reserved.",
+    ticket_not_valid_on_chosen_days:
+      "One of your tickets isn't available on the days you picked. Go back and check your tickets \u2014 nothing was reserved.",
     occurrence_not_available:
       "That day has already finished, so it can no longer be booked. Pick another day \u2014 nothing was reserved.",
     // issue #3313 — an event with more than one date needs the guest's date
@@ -398,6 +400,9 @@ const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
     // The guest holds it. The opposite of sold out. (index.ts:902)
     [FREE_RESERVATION_ALREADY_EXISTS_TOKEN]:
       FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
+    // issue #3281 — the edge returns this as a bare code.
+    ticket_not_valid_on_chosen_days:
+      FREE_CHECKOUT_MESSAGE_BY_RAISE.ticket_not_valid_on_chosen_days,
     // The sale genuinely stopped being sellable. (index.ts:918/1054/1104/1120)
     checkout_unavailable: FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
     // Refused before anything could be created. (index.ts:819/1008)

@@ -251,6 +251,10 @@ const mapRpcTicket = (raw: unknown, fallbackCurrency: string): PublicTicketProps
     typeof t.capacity === "number" ? t.capacity : null;
   return {
     id: String(t.id ?? ""),
+    // issue #3281 — the dates a listed ticket covers. Absent means All dates.
+    validOccurrenceIds: Array.isArray(t.validOccurrenceIds)
+      ? t.validOccurrenceIds.filter((id): id is string => typeof id === "string")
+      : null,
     name: String(t.name ?? ""),
     description: asString(t.description),
     priceGbp: isFree || priceCents === null ? null : priceCents / 100,

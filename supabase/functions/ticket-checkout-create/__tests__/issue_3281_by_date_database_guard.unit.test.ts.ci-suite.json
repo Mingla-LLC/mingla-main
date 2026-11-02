@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 1,
-  "kind": "suite",
-  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3281_by_date_database_guard.unit.test.ts",
-  "lane": "deno2-discovered",
-  "orderKey": "issue-3281-by-date-database-guard-unit",
-  "profile": "deno-2-unit"
-}

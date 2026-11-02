@@ -54,6 +54,12 @@ import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 
 import { TicketTierCard } from "./TicketTierCard";
+import {
+  coverageCaution,
+  eventHasDayScope,
+  formatDraftDayScopeLabel,
+  isDayLimited,
+} from "../../utils/ticketDayScope";
 // META-ORCH-1255(R2) [web bundle budget] — the ~25 KB TicketTierEditSheet is a
 // tap-to-open sheet (renders NOTHING until `visible`), and this step body is
 // shared by the compose + edit route chunks, so a STATIC import hoisted the
@@ -220,7 +226,18 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   );
   const allTicketsFree = draft.tickets.every((t) => t.isFree);
 
-  const totalAvailable = hasUnlimitedCapacity
+  // issue #3281 — a listed ticket's capacity is per date, so it can't be summed
+  // with a shared pool, and its revenue ceiling counts each of its dates.
+  const dayEntries = eventHasDayScope(draft.whenMode, draft.multiDates)
+    ? (draft.multiDates ?? [])
+    : null;
+  const anyDayLimited =
+    dayEntries !== null && draft.tickets.some((t) => isDayLimited(t));
+  const dayCaution =
+    dayEntries !== null ? coverageCaution(draft.tickets, dayEntries) : null;
+  const totalAvailable = anyDayLimited
+    ? "Varies by day"
+    : hasUnlimitedCapacity
     ? "Unlimited"
     : (() => {
         const sum = draft.tickets.reduce(
@@ -239,7 +256,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         : formatCurrencyRound(
             draft.tickets.reduce(
               (sum, t) =>
-                sum + (t.isFree ? 0 : (t.priceGbp ?? 0) * (t.capacity ?? 0)),
+                sum +
+                (t.isFree ? 0 : (t.priceGbp ?? 0) * (t.capacity ?? 0)) *
+                  (dayEntries !== null ? (t.validDayIds?.length ?? 1) : 1),
               0,
             ),
             displayCurrency,
@@ -359,6 +378,11 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
                 errorMessage={firstError}
                 soldCount={soldCountByTier[t.id] ?? 0}
                 eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
+                dayScopeLabel={
+                  dayEntries !== null && isDayLimited(t)
+                    ? (formatDraftDayScopeLabel(dayEntries, t.validDayIds) ?? "No days")
+                    : null
+                }
               />
             );
           })}
@@ -367,6 +391,12 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
       {emptyError !== undefined ? (
         <Text style={styles.helperError}>{emptyError}</Text>
+      ) : null}
+
+      {dayCaution !== null ? (
+        <Text style={styles.dayCaution} testID="issue-3281-coverage-caution">
+          {dayCaution}
+        </Text>
       ) : null}
 
       <Pressable
@@ -464,6 +494,17 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
               ? editMode?.capacityFloorByTier?.[editingTicket.id]
               : undefined
           }
+          dayScopeEntries={dayEntries}
+          // Undefined on the edit screen, which does not carry the mode yet.
+          dayScopePricingMode={draft.multiDatePricingMode}
+          soldByDay={
+            editingTicket === null || editMode === undefined
+              ? {}
+              : editMode.soldCountByTierDay === null ||
+                  editMode.soldCountByTierDay === undefined
+                ? null
+                : (editMode.soldCountByTierDay[editingTicket.id] ?? {})
+          }
           canEditPrice={canEditTicketPrice}
           brandId={draft.brandId}
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
@@ -502,6 +543,12 @@ const styles = StyleSheet.create({
   ticketsCol: {
     gap: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  dayCaution: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    marginTop: spacing.sm,
   },
   helperError: {
     fontSize: typography.caption.fontSize,

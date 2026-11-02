@@ -106,6 +106,9 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") };
     if (name.endsWith("/lazySettingsSteps")) return { CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: RsvpStep5Setup }; // issue #3827: the settings steps load lazily; this suite drives the REAL RSVP step, as before
     if (name.endsWith("/LazyCreatorStep2When")) return { CreatorStep2When: leaf("CreatorStep2When") }; // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf
+    if (name.endsWith("/LazyCreatorStep5Tickets")) return { CreatorStep5Tickets: leaf("CreatorStep5Tickets") }; // #3281 route-only lazy boundary; same inert step leaf
+    if (name.endsWith("/useEventDateKeys")) return { useEventDateKeys: () => ({ data: undefined }) }; // #3281 sold-date keys; unused by these hosts
+    if (name.endsWith("/ticketDayScope")) return require("../../../utils/ticketDayScope"); // #3281 pure helpers
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     throw new Error(`Unclassified host boundary: ${name}`);

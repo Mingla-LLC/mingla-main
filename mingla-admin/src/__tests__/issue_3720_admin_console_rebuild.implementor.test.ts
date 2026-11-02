@@ -20,7 +20,8 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
     read("components/community/RoadmapPanel.jsx"),
     read("pages/SupportDeskPage.jsx"),
     read("pages/EmailPage.jsx"),
-    read("components/email/EmailComposer.jsx"),
+    // #4226: the audience presets moved from the composer into lib/emailAudience.js.
+    Promise.all([read("components/email/EmailComposer.jsx"), read("lib/emailAudience.js")]).then((parts) => parts.join("\n")),
     read("components/community/TeamRolesPanel.jsx"),
     read("components/community/FeatureGuidePanel.jsx"),
     read("components/community/BrandGroupsPanel.jsx"),

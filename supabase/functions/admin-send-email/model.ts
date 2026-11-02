@@ -23,6 +23,17 @@ export interface RecipientProfile {
   preferred_language?: string | null;
   created_at?: string | null;
   segment?: string | null;
+  /** #4226: People app status, staff/test flag and marketing consent. */
+  app_status?: string | null;
+  is_internal?: boolean | null;
+  marketing_consent?: string | null;
+}
+
+export interface SnapshotOptions {
+  /** Leave staff and test people out (every bulk send). */
+  excludeInternal?: boolean;
+  /** True when this recipient may only be sent marketing with consent 'yes'. */
+  requireConsent?: (profile: RecipientProfile) => boolean;
 }
 
 export function normalizedValidEmail(value: unknown): string | null {
@@ -40,11 +51,14 @@ export function normalizedValidEmail(value: unknown): string | null {
 export function snapshotAudience(
   profiles: RecipientProfile[],
   suppressed: Set<string>,
+  options: SnapshotOptions = {},
 ) {
   const seen = new Set<string>();
   let noContact = 0;
   let duplicate = 0;
   let skippedOptOut = 0;
+  let noConsent = 0;
+  let internalExcluded = 0;
   const deliveries: Array<{
     profile_id: string | null;
     recipient_email: string;
@@ -52,6 +66,11 @@ export function snapshotAudience(
     status: "pending" | "skipped_opt_out";
   }> = [];
   for (const profile of profiles) {
+    // #4226: staff and test never join a bulk send; counted, not queued.
+    if (options.excludeInternal && profile.is_internal === true) {
+      internalExcluded += 1;
+      continue;
+    }
     const email = normalizedValidEmail(profile.email);
     if (!email) {
       noContact += 1;
@@ -62,7 +81,16 @@ export function snapshotAudience(
       continue;
     }
     seen.add(email);
-    const isSuppressed = suppressed.has(email);
+    const isSuppressed = suppressed.has(email) ||
+      profile.marketing_consent === "unsubscribed";
+    // #4226: a ticket buyer reached for marketing needs a recorded 'yes'.
+    if (
+      !isSuppressed && options.requireConsent?.(profile) &&
+      profile.marketing_consent !== "yes"
+    ) {
+      noConsent += 1;
+      continue;
+    }
     if (isSuppressed) skippedOptOut += 1;
     deliveries.push({
       profile_id: profile.id ?? null,
@@ -78,14 +106,28 @@ export function snapshotAudience(
     skippedOptOut,
     noContact,
     duplicate,
+    noConsent,
+    internalExcluded,
   };
 }
 
 export interface AudienceDefinition {
   mode: "everyone" | "segment" | "person";
   profileId?: string;
+  /** #4226: a person with no account is addressed by email. */
+  email?: string;
   filters?: {
-    userType?: "all" | "host" | "explorer";
+    userType?: "all" | "host" | "explorer" | "ticket_buyers";
+    appStatus?:
+      | "all"
+      | "explorer"
+      | "host"
+      | "both"
+      | "incomplete"
+      | "ticket_buyer_no_app";
+    city?: string;
+    boughtTickets?: "all" | "yes" | "no";
+    brandId?: string;
     country?: string;
     onboarding?: "all" | "completed" | "incomplete";
     accountStatus?: "all" | "active" | "inactive";
@@ -367,6 +409,12 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
     const profileId = typeof raw.profileId === "string"
       ? raw.profileId.trim()
       : "";
+    // #4226: a ticket buyer with no account has no profile; address by email.
+    if (!profileId && typeof raw.email === "string") {
+      const email = normalizedValidEmail(raw.email);
+      if (!email) throw new Error("recipient_email_invalid");
+      return { mode: "person", email };
+    }
     if (
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
         .test(profileId)
@@ -408,10 +456,34 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
   if (joinedFrom && joinedTo && joinedFrom > joinedTo) {
     throw new Error("audience_filter_invalid:joined_range");
   }
+  const brandId = value("brandId");
+  if (
+    brandId && brandId !== "all" &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(brandId)
+  ) {
+    throw new Error("audience_filter_invalid:brandId");
+  }
   return {
     mode: "segment",
     filters: {
-      userType: enumFilter("userType", ["host", "explorer"] as const),
+      userType: enumFilter(
+        "userType",
+        ["host", "explorer", "ticket_buyers"] as const,
+      ),
+      appStatus: enumFilter(
+        "appStatus",
+        [
+          "explorer",
+          "host",
+          "both",
+          "incomplete",
+          "ticket_buyer_no_app",
+        ] as const,
+      ),
+      city: value("city").slice(0, 120) || "all",
+      boughtTickets: enumFilter("boughtTickets", ["yes", "no"] as const),
+      brandId: brandId || "all",
       country: value("country") || "all",
       onboarding: enumFilter(
         "onboarding",

@@ -372,6 +372,10 @@ BEGIN
   v_days := pg_temp.i3285_passdays(f.o_event);
   v_scans := pg_temp.i3285_scandays(f.o_event);
   v_epoch := pg_temp.i3285_epoch(f.o_event);
+  -- issue #3281 — live dates hold their stable key before this re-save, as the
+  -- migration's backfill leaves them. Writing a missing key is not a no-op.
+  PERFORM public.issue_3281_sync_occurrence_keys(f.o_event, pg_temp.i3285_payload('multi_date',
+    '[[1,"13:00","20:00"],[2,"13:00","20:00"]]')->'multiDates');
   -- Every UPDATE writes a new tuple version, so an unchanged ctid set proves
   -- no occurrence row was written (updated_at cannot: now() is fixed per
   -- transaction and this whole block is one).

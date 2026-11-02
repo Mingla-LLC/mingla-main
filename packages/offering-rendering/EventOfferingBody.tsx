@@ -1060,7 +1060,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   );
 
   const runningTotal =
-    computeRunningTotal(event.tickets, ticketQuantities) * priceMultiplier;
+    computeRunningTotal(event.tickets, ticketQuantities, priceMultiplier);
   const selectedQty = totalSelectedQuantity(ticketQuantities);
   const totalLabel =
     !purchaseReady || selectedQty === 0
@@ -1252,7 +1252,7 @@ export const EventOfferingFloatingBar: React.FC<
   );
 
   const runningTotal =
-    computeRunningTotal(event.tickets, ticketQuantities) * priceMultiplier;
+    computeRunningTotal(event.tickets, ticketQuantities, priceMultiplier);
   const selectedQty = totalSelectedQuantity(ticketQuantities);
   const totalLabel =
     !purchaseReady || selectedQty === 0
@@ -1377,13 +1377,16 @@ const TicketStepperRow: React.FC<{
   pricingNote = null,
   hideRemainingCount = false,
 }) => {
-  const sellable = ticketIsSellable(ticket);
+  const offChosenDays = ticket.offChosenDays === true;
+  const sellable = ticketIsSellable(ticket) && !offChosenDays;
   const isSoldOut = ticketIsSoldOut(ticket);
   const isDoorOnly = ticketIsDoorOnly(ticket);
   const saleEnded = ticketSaleEnded(ticket);
   const isPaused = ticket.visibility === "disabled";
 
-  const stateWord: string | null = saleEnded
+  const stateWord: string | null = offChosenDays
+    ? "Not on your days"
+    : saleEnded
     ? "Sales ended"
     : isPaused
       ? "Sales paused"
@@ -1410,7 +1413,7 @@ const TicketStepperRow: React.FC<{
       style={[
         styles.stepperRow,
         { borderBottomColor: palette.panelBorder },
-        !sellable ? styles.stepperRowMuted : null,
+        !sellable && !offChosenDays ? styles.stepperRowMuted : null,
       ]}
     >
       <View style={styles.stepperTextCol}>
@@ -1423,6 +1426,14 @@ const TicketStepperRow: React.FC<{
         >
           {ticket.name}
         </Text>
+        {ticket.dayScopeLabel != null ? (
+          <Text
+            style={[styles.tierDayScope, surface.secondaryText]}
+            testID={`issue-3281-scope-line-${ticket.id}`}
+          >
+            {`For ${ticket.dayScopeLabel}`}
+          </Text>
+        ) : null}
         {ticket.description !== null && ticket.description.length > 0 ? (
           <Text style={[styles.tierDesc, surface.secondaryText]}>
             {ticket.description}
@@ -1521,7 +1532,14 @@ const TicketStepperRow: React.FC<{
             ]}
           >
             <Text
-              style={[styles.tierStateText, { color: palette.tertiaryText }]}
+              style={[
+                styles.tierStateText,
+                {
+                  color: offChosenDays
+                    ? palette.secondaryText
+                    : palette.tertiaryText,
+                },
+              ]}
             >
               {stateWord ?? "Unavailable"}
             </Text>
@@ -1618,6 +1636,7 @@ const styles = StyleSheet.create({
   stepperTextCol: { flex: 1, minWidth: 0 },
   stepperRight: { alignItems: "flex-end", gap: 8 },
   tierName: { fontSize: 15, fontWeight: "800" },
+  tierDayScope: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   tierDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   tierCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   saleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 3 },

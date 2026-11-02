@@ -574,6 +574,19 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
         message: `Set a capacity for ${label}, or mark it unlimited.`,
       });
     }
+    // issue #3281 — a list with no current date must be chosen again, never
+    // treated as All dates.
+    if (
+      d.whenMode === "multi_date" &&
+      Array.isArray(t.validDayIds) &&
+      !t.validDayIds.some((id) => d.multiDates?.some((e) => e.id === id))
+    ) {
+      errs.push({
+        fieldKey: `tickets[${i}].validDays`,
+        step: 4,
+        message: `${label} has no days left. Edit it to pick a day or choose All dates.`,
+      });
+    }
     // Cycle 5 (v4) rules — modifier validation
     if (
       t.passwordProtected &&

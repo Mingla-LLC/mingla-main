@@ -127,6 +127,11 @@ Deno.test("#3720 audience normalizer exposes All for every optional segment filt
     mode: "segment",
     filters: {
       userType: "all",
+      // #4226: ticket-buyer filters default to All too.
+      appStatus: "all",
+      city: "all",
+      boughtTickets: "all",
+      brandId: "all",
       country: "all",
       onboarding: "all",
       accountStatus: "all",
@@ -162,8 +167,21 @@ Deno.test("#3720 audience normalizer exposes All for every optional segment filt
       profileId: "123e4567-e89b-42d3-a456-426614174000",
     },
   );
+  // #4226: a ticket buyer with no account is addressed by email. Only people
+  // on the admin people list are loaded for it (an outside address matches no
+  // one and the send is refused with audience_has_no_eligible_recipients);
+  // an address that is not an email still fails closed here.
+  assertEquals(
+    normalizeAudience({ mode: "person", email: " Outside@Example.com " }),
+    { mode: "person", email: "outside@example.com" },
+  );
   assertThrows(
-    () => normalizeAudience({ mode: "person", email: "outside@example.com" }),
+    () => normalizeAudience({ mode: "person", email: "not-an-email" }),
+    Error,
+    "recipient_email_invalid",
+  );
+  assertThrows(
+    () => normalizeAudience({ mode: "person" }),
     Error,
     "recipient_profile_invalid",
   );

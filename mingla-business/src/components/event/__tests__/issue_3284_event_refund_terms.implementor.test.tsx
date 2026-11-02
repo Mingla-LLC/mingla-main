@@ -99,6 +99,7 @@ jest.mock("../CreatorStep2When", () => ({ CreatorStep2When: (): null => null }))
 jest.mock("../CreatorStep3Where", () => ({ CreatorStep3Where: (): null => null }));
 jest.mock("../CreatorStep4Cover", () => ({ CreatorStep4Cover: (): null => null }));
 jest.mock("../CreatorStep5Tickets", () => ({ CreatorStep5Tickets: (): null => null }));
+jest.mock("../LazyCreatorStep5Tickets", () => ({ CreatorStep5Tickets: (): null => null }));
 jest.mock("../EditAfterPublishBanner", () => ({ EditAfterPublishBanner: (): null => null }));
 jest.mock("../EventTicketCheckoutAccessCard", () => ({
   EventTicketCheckoutAccessCard: (): null => null,
@@ -128,6 +129,9 @@ jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
 jest.mock("@tanstack/react-query", () => ({
   ...jest.requireActual<Record<string, unknown>>("@tanstack/react-query"),
   useQueryClient: () => ({ invalidateQueries: jest.fn() }),
+}));
+jest.mock("../../../hooks/useEventDateKeys", () => ({
+  useEventDateKeys: () => ({ data: undefined }),
 }));
 jest.mock("../../../hooks/useBusinessEvents", () => ({
   businessEventKeys: {

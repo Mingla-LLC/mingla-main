@@ -31,6 +31,14 @@ import {
   validateDocument,
   versionedDocument,
 } from "./model.ts";
+import {
+  applyDirectoryFilters,
+  appStatusLabel,
+  DIRECTORY_COLUMNS,
+  type DirectoryRow,
+  directoryRowToRecipient,
+  requiresMarketingConsent,
+} from "./audience.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -125,70 +133,52 @@ function legacySegmentAudience(
   throw new Error(`unsupported_segment:${type}`);
 }
 
-// deno-lint-ignore no-explicit-any
-function applyAudienceFilters(query: any, audience: AudienceDefinition) {
-  if (audience.mode === "person") return query.eq("id", audience.profileId);
-  if (audience.mode === "everyone") {
-    return query.in("segment", ["business", "explorer"]);
+/**
+ * #4226 — every audience reads the admin-only people list
+ * (admin_people_directory), the one the People page uses, so Explorer / Host
+ * mean the same thing here as there and ticket buyers with no account can be
+ * reached. Filters live in ./audience.ts.
+ */
+async function loadDirectoryRows(
+  supabase: ServiceClient,
+  audience: AudienceDefinition | null,
+): Promise<DirectoryRow[]> {
+  const rows: DirectoryRow[] = [];
+  for (let offset = 0;; offset += RECIPIENT_PAGE_SIZE) {
+    let query = supabase
+      .rpc("admin_people_directory")
+      .select(DIRECTORY_COLUMNS)
+      .order("person_key", { ascending: true })
+      .range(offset, offset + RECIPIENT_PAGE_SIZE - 1);
+    if (audience) query = applyDirectoryFilters(query, audience);
+    const { data, error } = await query;
+    if (error) throw new Error(`audience_query_failed:${error.message}`);
+    const page = (data ?? []) as DirectoryRow[];
+    rows.push(...page);
+    if (page.length < RECIPIENT_PAGE_SIZE) break;
   }
-  const filters = audience.filters ?? {};
-  if (filters.userType === "host") query = query.eq("segment", "business");
-  if (filters.userType === "explorer") query = query.eq("segment", "explorer");
-  if (!filters.userType || filters.userType === "all") {
-    query = query.in("segment", ["business", "explorer"]);
-  }
-  if (filters.country && filters.country !== "all") {
-    query = query.eq("country", filters.country);
-  }
-  if (filters.onboarding === "completed") {
-    query = query.eq("has_completed_onboarding", true);
-  }
-  if (filters.onboarding === "incomplete") {
-    query = query.eq("has_completed_onboarding", false);
-  }
-  if (filters.accountStatus === "active") query = query.eq("active", true);
-  if (filters.accountStatus === "inactive") query = query.eq("active", false);
-  if (filters.emailStatus === "verified") {
-    query = query.eq("email_verified", true);
-  }
-  if (filters.emailStatus === "unverified") {
-    query = query.eq("email_verified", false);
-  }
-  if (filters.language && filters.language !== "all") {
-    query = query.eq("preferred_language", filters.language);
-  }
-  if (filters.beta === "beta") query = query.eq("is_beta_tester", true);
-  if (filters.beta === "non_beta") query = query.eq("is_beta_tester", false);
-  if (filters.joinedFrom) {
-    query = query.gte("created_at", `${filters.joinedFrom}T00:00:00.000Z`);
-  }
-  if (filters.joinedTo) {
-    query = query.lte("created_at", `${filters.joinedTo}T23:59:59.999Z`);
-  }
-  return query;
+  return rows;
 }
 
 async function loadAudienceProfiles(
   supabase: ServiceClient,
   audience: AudienceDefinition,
 ): Promise<RecipientProfile[]> {
-  const recipients: RecipientProfile[] = [];
-  for (let offset = 0;; offset += RECIPIENT_PAGE_SIZE) {
-    let query = supabase
-      .from("profiles_with_segment")
-      .select(
-        "id,email,first_name,display_name,username,country,preferred_language,created_at,segment,has_completed_onboarding,email_verified,active,is_beta_tester",
-      )
-      .order("id", { ascending: true })
-      .range(offset, offset + RECIPIENT_PAGE_SIZE - 1);
-    query = applyAudienceFilters(query, audience);
-    const { data, error } = await query;
-    if (error) throw new Error(`audience_query_failed:${error.message}`);
-    const page = (data ?? []) as RecipientProfile[];
-    recipients.push(...page);
-    if (page.length < RECIPIENT_PAGE_SIZE) break;
-  }
-  return recipients;
+  return (await loadDirectoryRows(supabase, audience)).map(
+    directoryRowToRecipient,
+  );
+}
+
+/** #4226: staff/test out of bulk sends; ticket buyers need marketing consent. */
+function snapshotFor(
+  recipients: RecipientProfile[],
+  suppressed: Set<string>,
+  audience: AudienceDefinition,
+) {
+  return snapshotAudience(recipients, suppressed, {
+    excludeInternal: audience.mode !== "person",
+    requireConsent: (profile) => requiresMarketingConsent(audience, profile),
+  });
 }
 
 /** Lowercased emails suppressed for marketing/all email channel. */
@@ -372,7 +362,7 @@ export async function createCampaign(
 
   const recipients = await loadAudienceProfiles(supabase, audience);
   const suppressed = await loadSuppressedEmails(supabase);
-  const snapshot = snapshotAudience(recipients, suppressed);
+  const snapshot = snapshotFor(recipients, suppressed, audience);
   if (snapshot.willReceive < 1) {
     throw new Error("audience_has_no_eligible_recipients");
   }
@@ -399,6 +389,8 @@ export async function createCampaign(
       skipped_count: snapshot.skippedOptOut,
       no_contact_count: snapshot.noContact,
       duplicate_count: snapshot.duplicate,
+      no_consent_count: snapshot.noConsent,
+      internal_excluded_count: snapshot.internalExcluded,
       status,
       scheduled_for: scheduledFor?.toISOString() ?? null,
       timezone,
@@ -438,6 +430,8 @@ export async function createCampaign(
     skipped_opt_out: snapshot.skippedOptOut,
     no_contact: snapshot.noContact,
     duplicate: snapshot.duplicate,
+    no_consent: snapshot.noConsent,
+    internal: snapshot.internalExcluded,
   };
 }
 
@@ -679,23 +673,39 @@ export async function handler(req: Request) {
       });
     }
     if (action === "metadata") {
-      const profiles = await loadAudienceProfiles(supabase, {
-        mode: "everyone",
-        filters: {},
-      });
+      // #4226: options come from the same people list the audiences read,
+      // so ticket buyers' countries, event cities and brands are offered.
+      const rows = (await loadDirectoryRows(supabase, null)).filter((row) =>
+        row.is_internal !== true
+      );
       const countries = [
         ...new Set(
-          profiles.map((row) => row.country?.trim().toUpperCase()).filter(
+          rows.map((row) => row.country?.trim().toUpperCase()).filter(
             Boolean,
           ),
         ),
       ].sort();
       const languages = [
         ...new Set(
-          profiles.map((row) => row.preferred_language?.trim().toLowerCase())
+          rows.map((row) => row.preferred_language?.trim().toLowerCase())
             .filter(Boolean),
         ),
       ].sort();
+      const cities = [
+        ...new Set(
+          rows.flatMap((row) => row.event_cities ?? []).map((city) =>
+            city.trim()
+          ).filter(Boolean),
+        ),
+      ].sort((left, right) => left.localeCompare(right));
+      const brands = new Map<string, string>();
+      for (const row of rows) {
+        for (const brand of row.brands ?? []) {
+          if (brand?.id && !brands.has(brand.id)) {
+            brands.set(brand.id, brand.name);
+          }
+        }
+      }
       return jsonResponse({
         countries: countries.map((value) => ({
           value,
@@ -709,6 +719,10 @@ export async function handler(req: Request) {
             preferred_language: value,
           }).language,
         })),
+        cities: cities.map((value) => ({ value, label: value })),
+        brands: [...brands.entries()]
+          .map(([value, label]) => ({ value, label }))
+          .sort((left, right) => left.label.localeCompare(right.label)),
       });
     }
 
@@ -719,35 +733,35 @@ export async function handler(req: Request) {
         term.replace(/[\\%_]/g, "\\$&").replace(/[(),]/g, "")
       }%`;
       const { data: matches, error: searchError } = await supabase
-        .from("profiles_with_segment")
-        .select(
-          "id,email,first_name,display_name,username,country,preferred_language,created_at,segment",
-        )
-        .in("segment", ["business", "explorer"])
+        .rpc("admin_people_directory")
+        .select(DIRECTORY_COLUMNS)
         .or(
-          `email.ilike.${pattern},display_name.ilike.${pattern},username.ilike.${pattern}`,
+          `email.ilike.${pattern},name.ilike.${pattern},username.ilike.${pattern}`,
         )
-        .order("display_name", { ascending: true, nullsFirst: false })
+        .order("name", { ascending: true, nullsFirst: false })
         .limit(12);
       if (searchError) {
         throw new Error(`recipient_search_failed:${searchError.message}`);
       }
       const suppressed = await loadSuppressedEmails(supabase);
       return jsonResponse({
-        recipients: (matches ?? []).map((profile: RecipientProfile) => {
+        recipients: ((matches ?? []) as DirectoryRow[]).map((row) => {
+          const profile = directoryRowToRecipient(row);
           const email = normalizedValidEmail(profile.email);
           const values = fallbackPersonalization(profile);
-          const exclusion = !email
-            ? "No valid email"
-            : suppressed.has(email)
+          const exclusion = !email ? "No valid email" : suppressed.has(email) ||
+              profile.marketing_consent === "unsubscribed"
             ? "Unsubscribed"
+            : requiresMarketingConsent({ mode: "person" }, profile) &&
+                profile.marketing_consent !== "yes"
+            ? "Didn't agree to marketing email"
             : null;
           return {
             profile_id: profile.id,
             display_name: values.display_name,
             username: values.username,
             email,
-            account_type: profile.segment === "business" ? "Host" : "Explorer",
+            account_type: appStatusLabel(row.app_status),
             country: values.country,
             eligible: exclusion === null,
             exclusion,
@@ -767,13 +781,16 @@ export async function handler(req: Request) {
         : normalizeAudience(body.audience);
       const recipients = await loadAudienceProfiles(supabase, audience);
       const suppressed = await loadSuppressedEmails(supabase);
-      const snapshot = snapshotAudience(recipients, suppressed);
+      const snapshot = snapshotFor(recipients, suppressed, audience);
       return jsonResponse({
         matched: snapshot.matched,
         total: snapshot.matched,
         opted_out: snapshot.skippedOptOut,
         no_contact: snapshot.noContact,
         duplicate: snapshot.duplicate,
+        // #4226: left out, by reason.
+        no_consent: snapshot.noConsent,
+        internal: snapshot.internalExcluded,
         will_receive: snapshot.willReceive,
       });
     }
@@ -902,17 +919,18 @@ export async function handler(req: Request) {
       let audience: AudienceDefinition;
       if (action === "send") {
         const email = String(body.to ?? "").toLowerCase().trim();
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles_with_segment")
-          .select("id")
-          .ilike("email", email)
-          .in("segment", ["business", "explorer"])
+        const { data: person, error: personError } = await supabase
+          .rpc("admin_people_directory")
+          .select("user_id,email")
+          .eq("email", email)
           .limit(1)
           .maybeSingle();
-        if (profileError || !profile) {
+        if (personError || !person) {
           throw new Error("recipient_profile_invalid");
         }
-        audience = { mode: "person", profileId: profile.id };
+        audience = person.user_id
+          ? { mode: "person", profileId: person.user_id }
+          : { mode: "person", email: person.email };
       } else {
         audience = legacySegmentAudience(segment);
       }

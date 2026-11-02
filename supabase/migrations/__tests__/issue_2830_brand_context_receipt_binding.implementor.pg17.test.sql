@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-ARI-RECEIPT-BINDS-CONFIRMED-ARGS | issue #2830 | Every receipt-backed Ari SQL dispatcher passes the owner-confirmed proposal args (including why and cites) to agent_operation_receipt_begin unchanged, and refuses any value that differs from what the owner confirmed.
 --
--- Regression for 20280222002830: the 20280216002830 definition rebuilt a
+-- Regression for 20280303002830: the 20280216002830 definition rebuilt a
 -- six-key copy of the proposal, so every confirmed update_brand_context that
 -- carried the readable why and cites failed with operation_binding_mismatch.
 -- Reverting the function to that definition makes the happy path below fail.

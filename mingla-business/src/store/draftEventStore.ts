@@ -90,6 +90,16 @@ export type TicketAvailableAt = "online" | "door" | "both";
 export interface TicketStub {
   id: string;
   name: string;
+  /**
+   * issue #3281 — the `MultiDateEntry.id`s this ticket is valid on. Null or
+   * undefined means All dates. `[]` means its dates were deleted and it must
+   * not publish. Capacity on a listed ticket is per date.
+   */
+  validDayIds?: string[] | null;
+  /** issue #3281 — public reads only: this ticket's dates, by `event_dates.id`. */
+  validOccurrenceIds?: string[] | null;
+  /** issue #3281 — public reads only: listed dates this ticket has sold out. */
+  soldOutOccurrenceIds?: string[];
   /** Null when isFree=true; otherwise positive major-unit price. */
   priceGbp: number | null;
   /**
