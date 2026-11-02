@@ -142,3 +142,55 @@ Deno.test("#4238 P2-4 the approval (LAUNCH) card names the frozen audiences", as
   );
   assertEquals(context?.ad_audiences, "People like your guests in Nigeria · Your past guests");
 });
+
+// #4238 investigation: canonical_plan.destination is the full
+// ad_plan_destination_resolve result. Sent whole, create's resolver refuses it
+// (destination_descriptor_unknown_field) before anything else, so every Ari
+// and Host create failed at the validate step. The payload now carries the
+// descriptor only.
+import { buildHostAdCreatePayload } from "../agentDomainTools.ts";
+import { AdDestinationError, resolveAdDestination } from "../adDestination.ts";
+
+const CANONICAL_DESTINATION = {
+  ok: true, ready: true, code: null, page_type: "event", id: "e1", brand_id: BRAND,
+  brand_slug: "femzy", entity_slug: "deserted-island", title: "Deserted Island",
+  canonical_url: "https://host.usemingla.com/e/femzy/deserted-island", result_kind: "tickets",
+  destination_family: "public_mingla_page", destination_key: "event:femzy:deserted-island",
+  objective: "web_traffic", measurement_event: "tickets",
+};
+
+Deno.test("#4238 Ari's create payload sends only the destination descriptor create accepts", async () => {
+  const aggregate = {
+    plan: { id: "p1", brand_id: BRAND, state: "funded_held" },
+    version: {
+      id: "v1", plan_hash: "b".repeat(64), host_budget_cents: 100_000, host_currency: "NGN",
+      canonical_plan: {
+        name: "Ari ad", destination: CANONICAL_DESTINATION, creative_library_id: "c1",
+        delivery_budgets: { meta: { host_amount_cents: 10_000, provider_amount_cents: 700 } },
+      },
+    },
+    provider_allocations: [{ platform: "meta", host_budget_cents: 100_000, provider_budget_cents: 7_000 }],
+    targeting_snapshots: [{ platform: "meta", audience_intent: { countries: ["NG"] }, compiled_targeting: {} }],
+  };
+  // deno-lint-ignore no-explicit-any
+  const payload = buildHostAdCreatePayload(aggregate as any, "meta", "op-1", true);
+  const expected = { page_type: "event", brand_slug: "femzy", entity_slug: "deserted-island" };
+  assertEquals(payload.destination, expected);
+  assertEquals(payload.destinations, [expected]);
+
+  const seen: Record<string, unknown>[] = [];
+  const db = {
+    from: () => ({ select: () => ({}) }),
+    rpc: (_name: string, args: Record<string, unknown>) => {
+      seen.push(args);
+      return Promise.resolve({ data: null, error: { message: "stop here" } });
+    },
+  };
+  // The whole canonical object is refused before any lookup (the old bug).
+  const refused = await assertRejects(() => resolveAdDestination(db, CANONICAL_DESTINATION), AdDestinationError);
+  assertEquals((refused as AdDestinationError).code, "destination_descriptor_unknown_field");
+  assertEquals(seen.length, 0);
+  // The descriptor passes the shape check and reaches the resolver.
+  await assertRejects(() => resolveAdDestination(db, payload.destination));
+  assertEquals(seen[0], { p_page_type: "event", p_brand_slug: "femzy", p_entity_slug: "deserted-island" });
+});

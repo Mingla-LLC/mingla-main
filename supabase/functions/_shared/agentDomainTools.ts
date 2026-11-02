@@ -27,6 +27,7 @@ import {
 } from "./agentTenantScope.ts";
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
 import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
+import { destinationDescriptorOf } from "./adDestination.ts";
 import { formatHostAdMoneyCents } from "./adMoneyFormat.ts";
 import {
   HOST_SALES_GOAL_PLATFORMS,
@@ -3629,7 +3630,7 @@ type AriAdPlanAggregate = {
   funding_hold?: Record<string, unknown> | null;
 };
 
-function buildHostAdCreatePayload(
+export function buildHostAdCreatePayload(
   aggregate: AriAdPlanAggregate,
   platform: string,
   operationId: string,
@@ -3697,8 +3698,9 @@ function buildHostAdCreatePayload(
       (validateOnly ? "_validate" : "")
     ).slice(0, 120),
     name,
-    destination,
-    destinations: [destination],
+    // #4238: the descriptor only; create refuses the full canonical object.
+    destination: destinationDescriptorOf(destination),
+    destinations: [destinationDescriptorOf(destination)],
     budget: {
       type: "daily",
       amount_cents: validateOnly ? providerDaily : hostDaily,

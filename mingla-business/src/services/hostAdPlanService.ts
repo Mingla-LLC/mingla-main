@@ -899,7 +899,25 @@ function hostExecutionTargeting(
   };
 }
 
-function providerCreatePayload(
+/**
+ * #4238: the destination descriptor admin-ad-create-campaign accepts, and
+ * only that. canonical_plan.destination is the full ad_plan_destination_resolve
+ * result (ok, ready, title, canonical_url, destination_family, ...); create's
+ * resolver refuses any other key (destination_descriptor_unknown_field), so
+ * sending it whole failed every Host create at the validate step.
+ */
+export function hostAdDestinationDescriptor(
+  destination: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of ["page_type", "brand_slug", "entity_slug"] as const) {
+    const value = destination?.[key];
+    if (typeof value === "string" && value.trim()) out[key] = value;
+  }
+  return out;
+}
+
+export function providerCreatePayload(
   aggregate: HostAdPlanAggregate,
   allocation: Record<string, unknown>,
   validateOnly = false,
@@ -940,8 +958,8 @@ function providerCreatePayload(
       validateOnly ? "_validate" : ""
     }`.slice(0, 120),
     name: String(canonical.name ?? "Mingla promotion"),
-    destination,
-    destinations: [destination],
+    destination: hostAdDestinationDescriptor(destination),
+    destinations: [hostAdDestinationDescriptor(destination)],
     audience_intent: audience,
     copy_intent: copy,
     creative_intent: {
