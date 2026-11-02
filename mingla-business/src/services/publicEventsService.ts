@@ -1734,6 +1734,7 @@ const directBundleTicketToStub = (
   return {
     id: String(ticket.id ?? ""),
     name: String(ticket.name ?? ""),
+    buyerExtras: ticket.extras,
     validOccurrenceIds: Array.isArray(ticket.validOccurrenceIds)
       ? asStringArray(ticket.validOccurrenceIds)
       : null,

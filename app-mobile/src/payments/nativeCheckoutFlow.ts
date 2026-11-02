@@ -122,6 +122,8 @@ export interface NativeCheckoutInput {
     quantity: number;
     paymentPlanChoice?: "full" | "installments";
     byDate?: Record<string, number>;
+    /** issue #3281 — extras on this ticket; the server prices them. */
+    addOns?: Array<{ addOnId: string; quantity: number }>;
   }>;
   buyer: {
     name: string;
@@ -457,6 +459,8 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
         ? [line.ticketTypeId, line.quantity]
         : [line.ticketTypeId, line.quantity, line.paymentPlanChoice]),
       ...(line.byDate !== undefined ? [line.byDate] : []),
+      // issue #3281 — other extras are another cart.
+      ...(line.addOns !== undefined ? [line.addOns] : []),
     ]),
     paymentPlanChoice: input.paymentPlanChoice ?? null,
     purchaseTermsAccepted: input.purchaseTermsAccepted === true,
@@ -836,6 +840,7 @@ export const useNativeCheckoutFlow = (): ((
               | "full"
               | "installments",
             ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+            ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
           })),
           eventDateId: input.eventDateId ?? null,
           eventDateIds: normalizedEventDateIds(input),
@@ -885,6 +890,7 @@ export const useNativeCheckoutFlow = (): ((
                 quantity: line.quantity,
                 paymentPlanChoice: line.paymentPlanChoice,
                 ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+                ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
               }))
               : input.lines,
           // ORCH-1016: trip intake answers → orders.intake_form_data.

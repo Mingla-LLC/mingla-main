@@ -110,7 +110,14 @@
         "supabase/migrations/20280301003281_issue_3281_extras_schema.sql",
         "supabase/migrations/20280313003281_issue_3281_extras_checkout.sql",
         "supabase/functions/_shared/buyerConfirmationPayload.ts",
-        "supabase/migrations/20280315003281_issue_3281_public_extras.sql"
+        "supabase/migrations/20280315003281_issue_3281_public_extras.sql",
+        "mingla-business/app/checkout/[eventId]/payment.tsx",
+        "mingla-business/src/components/checkout/CartTicketExtras.tsx",
+        "mingla-business/src/components/checkout/TicketQuoteController.tsx",
+        "mingla-business/src/components/checkout/TicketQuoteSummary.tsx",
+        "packages/offering-rendering/TicketExtrasPicker.tsx",
+        "packages/offering-rendering/discountQuote.ts",
+        "packages/offering-rendering/ticketExtrasCart.ts"
       ]
     },
     {

@@ -134,6 +134,11 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
+// issue #3281 — kept here, not in a shared module, so it stays out of the
+// eager chunk; the tickets step says which extra changed.
+const EXTRAS_CHANGED_MESSAGE =
+  "One of your extras changed. Go back to your tickets to update it.";
+
 export default function CheckoutPaymentScreen(): React.ReactElement {
   return (
     <Suspense fallback={null}>
@@ -256,7 +261,13 @@ function CheckoutPaymentScreenContent({
     eventDateIds: [...eventDateIds],
     email: buyer.email.trim().toLowerCase(),
     phone: buyer.phone.trim(),
-    lines: lines.map((l) => [l.ticketTypeId, l.quantity]),
+    // issue #3281 — a change of dates or extras is a different cart.
+    lines: lines.map((l) => [
+      l.ticketTypeId,
+      l.quantity,
+      l.byDate ?? null,
+      l.addOns ?? null,
+    ]),
   });
 
   /**
@@ -297,7 +308,13 @@ function CheckoutPaymentScreenContent({
           currency: l.currency,
           isFree: l.isFree,
           quantity: l.quantity,
+          // issue #3281 — a retry pays for the same dates and extras.
+          byDate: l.byDate,
         });
+        // issue #3281 — then its extras, which only an existing line takes.
+        if (Array.isArray(l.addOns)) {
+          setLineQuantity({ ...l, addOns: l.addOns });
+        }
       }
       setBuyer(payload.buyer);
     }
@@ -552,7 +569,13 @@ function CheckoutPaymentScreenContent({
           // every handled refusal as "Edge Function returned a non-2xx status
           // code"; the mapper is total and turns each bounded case into a
           // sentence that also says whether money moved.
-          const message = paidCheckoutErrorMessage(error);
+          // issue #3281 — an extra changed after the quote; the tickets step
+          // names which one.
+          const message = /^extras?_/.test(
+            (error as { code?: string } | null)?.code ?? "",
+          )
+            ? EXTRAS_CHANGED_MESSAGE
+            : paidCheckoutErrorMessage(error);
           setPaymentError(message);
           mixpanelService.track("ticket_checkout_failed", {
             surface,

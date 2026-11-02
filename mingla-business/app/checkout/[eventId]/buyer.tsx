@@ -224,6 +224,11 @@ const splitExistingPhone = (
   return "";
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// issue #3281 — kept here, not in a shared module, so it stays out of the
+// eager chunk; the tickets step says which extra changed.
+const EXTRAS_CHANGED_MESSAGE =
+  "One of your extras changed. Go back to your tickets to update it.";
 const NAME_MIN_CHARS = 2;
 
 interface ValidationState {
@@ -803,7 +808,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // render a claim the server did not make: `freeCheckoutErrorMessage` is
         // total AND keys on the bounded token, so an unidentified 409 says
         // something true and non-specific rather than "sold out".
-        setSubmitError(freeCheckoutErrorMessage(error));
+        setSubmitError(
+          // issue #3281 — an extra changed after the quote; the tickets step
+          // names which one.
+          /^extras?_/.test((error as { code?: string } | null)?.code ?? "")
+            ? EXTRAS_CHANGED_MESSAGE
+            : freeCheckoutErrorMessage(error),
+        );
       } finally {
         submitInFlight.current = false;
         setSubmitting(false);

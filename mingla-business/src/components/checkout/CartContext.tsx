@@ -32,6 +32,8 @@ import type { ReactNode } from "react";
 import {
   createCheckoutAttemptId,
   createCheckoutAttemptTracker,
+  type CheckoutAddOnRequest,
+  type CheckoutClientAttemptInput,
   type CheckoutLinePlanChoice,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
 import {
@@ -76,6 +78,8 @@ export interface CartLine {
    * every date" is off. Absent means uniform quantity × chosen days.
    */
   byDate?: Readonly<Record<string, number>>;
+  /** issue #3281 — extras on this line; the server prices them. */
+  addOns?: readonly CheckoutAddOnRequest[];
 }
 
 export interface BuyerDetails {
@@ -286,6 +290,7 @@ type CartAction =
       quantity: number;
       paymentPlanChoice?: CheckoutLinePlanChoice;
       byDate?: Readonly<Record<string, number>>;
+      addOns?: readonly CheckoutAddOnRequest[];
     }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
   | { type: "SET_DISCOUNT_CODE"; code: string | null }
@@ -364,6 +369,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         quantity,
         paymentPlanChoice,
         byDate,
+        addOns,
       } = action;
       const normalizedCurrency = currency.toUpperCase();
       const existingCurrency = state.lines[0]?.currency;
@@ -424,6 +430,8 @@ const reducer = (state: CartState, action: CartAction): CartState => {
                   ? { paymentPlanChoice }
                   : {}),
                 byDate,
+                // issue #3281 — undefined keeps the line's extras; [] clears them.
+                ...(addOns && { addOns }),
               }
             : l,
         ),
@@ -508,6 +516,8 @@ export interface CartContextValue extends CartState {
     quantity: number;
     paymentPlanChoice?: CheckoutLinePlanChoice;
     byDate?: Readonly<Record<string, number>>;
+    /** issue #3281 — sets an existing line's extras; undefined keeps them, [] clears. */
+    addOns?: readonly CheckoutAddOnRequest[];
   }) => void;
   setBuyer: (patch: Partial<BuyerDetails>) => void;
   setDiscountCode: (code: string | null) => void;
@@ -595,6 +605,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       quantity: number;
       paymentPlanChoice?: CheckoutLinePlanChoice;
       byDate?: Readonly<Record<string, number>>;
+      addOns?: readonly CheckoutAddOnRequest[];
     }): void => {
       dispatch({ type: "SET_LINE_QUANTITY", ...params });
     },
@@ -682,11 +693,12 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
           marketingOptIn: state.buyer.marketingOptIn === true,
         },
         providerInput: { surface: input.surface },
+        // issue #3281 — the contract reads dates and extras off the line too,
+        // so changing either is a new attempt.
         lines: state.lines.map((line) => ({
-          ticketTypeId: line.ticketTypeId,
-          quantity: line.quantity,
+          ...line,
           paymentPlanChoice: line.paymentPlanChoice ?? "full",
-        })),
+        })) as CheckoutClientAttemptInput["lines"],
         eventDateId: state.eventDateId,
         eventDateIds: state.eventDateIds,
         bookedStartAt: state.bookedStartAt,
