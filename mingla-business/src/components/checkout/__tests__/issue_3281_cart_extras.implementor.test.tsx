@@ -18,6 +18,7 @@ import {
   type TicketQuoteInput,
 } from "../../../services/ticketQuoteService";
 import { CartProvider, type CartContextValue, useCart } from "../CartContext";
+import { CartTicketExtras } from "../CartTicketExtras";
 
 interface RenderTree {
   unmount: () => void;
@@ -137,5 +138,72 @@ describe("#3281 quote extras", () => {
     expect(ticketQuoteKeys.detail(quoteInput([{ addOnId: DINNER, quantity: 1 }]))).not.toEqual(
       ticketQuoteKeys.detail(quoteInput([{ addOnId: DINNER, quantity: 2 }])),
     );
+  });
+});
+
+describe("#3281 extras date captions", () => {
+  test("a date-limited extra names its day in the date's own timezone", async () => {
+    const FRI = "11111111-1111-4111-8111-111111111111";
+    const SAT = "22222222-2222-4222-8222-222222222222";
+    const ticket = {
+      id: TICKET,
+      name: "General",
+      buyerExtras: [
+        {
+          id: DINNER,
+          name: "Late dinner",
+          description: null,
+          priceCents: 1500,
+          priceAllInCents: 1500,
+          maxPerTicket: 1,
+          isUnlimited: true,
+          validOccurrenceIds: [FRI],
+          remaining: null,
+        },
+      ],
+      validOccurrenceIds: null,
+    } as never;
+    // 00:30 on Friday in London is still Thursday in Los Angeles.
+    const occurrences = [
+      { id: FRI, startAt: "2027-03-05T00:30:00Z", endAt: "2027-03-05T03:00:00Z", timezone: "Europe/London", isMaster: true },
+      { id: SAT, startAt: "2027-03-06T00:30:00Z", endAt: "2027-03-06T03:00:00Z", timezone: "Europe/London", isMaster: false },
+    ] as never;
+    let tree!: { root: { findAllByType: (t: string) => Array<{ children: unknown[] }> }; unmount: () => void };
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <Probe />
+        </CartProvider>,
+      ) as never;
+    });
+    await act(async () => addTicket(1));
+    await act(async () => {
+      (tree as unknown as { update: (e: React.ReactElement) => void }).update(
+        <CartProvider>
+          <Probe />
+        </CartProvider>,
+      );
+    });
+    const line = latestCart!.lines[0];
+    let captionTree!: { root: { findAllByProps: (p: object) => Array<{ props: { children?: unknown } }> }; unmount: () => void };
+    await act(async () => {
+      captionTree = TestRenderer.create(
+        <CartProvider>
+          <CartTicketExtras
+            ticket={ticket}
+            line={line}
+            eventDateIds={[FRI, SAT]}
+            occurrences={occurrences}
+            allDaysPass={false}
+            currency="USD"
+          />
+        </CartProvider>,
+      ) as never;
+    });
+    const text = JSON.stringify((captionTree as unknown as { toJSON: () => unknown }).toJSON());
+    expect(text).toMatch(/Fri[^"]*only/);
+    expect(text).not.toMatch(/Thu[^"]*only/);
+    await act(async () => captionTree.unmount());
+    await act(async () => tree.unmount());
   });
 });

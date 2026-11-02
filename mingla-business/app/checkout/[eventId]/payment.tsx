@@ -196,6 +196,8 @@ function CheckoutPaymentScreenContent({
     setCheckoutReview,
     setLineQuantity,
     setBuyer,
+    setEventDateId,
+    setEventDateIds,
     eventDateId,
     eventDateIds,
     checkoutAttemptIdFor,
@@ -318,6 +320,13 @@ function CheckoutPaymentScreenContent({
         }
       }
       setBuyer(payload.buyer);
+      // issue #3281 — and the dates they were for, or a per-date cart can't quote.
+      if (payload.eventDateIds !== undefined && payload.eventDateIds.length > 0) {
+        setEventDateIds(payload.eventDateIds);
+      }
+      if (typeof payload.eventDateId === "string") {
+        setEventDateId(payload.eventDateId);
+      }
     }
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mount;

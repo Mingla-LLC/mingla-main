@@ -54,12 +54,19 @@ export interface CartTicketExtrasProps {
   currency: string;
 }
 
-const shortDay = (iso: string): string =>
-  new Date(iso).toLocaleDateString(undefined, {
+// In the date's own timezone, so the day named is the day being bought.
+const shortDay = (iso: string, timeZone: string): string => {
+  const options: Intl.DateTimeFormatOptions = {
     weekday: "short",
     day: "numeric",
     month: "short",
-  });
+  };
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { ...options, timeZone });
+  } catch {
+    return new Date(iso).toLocaleDateString(undefined, options);
+  }
+};
 
 export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
   ticket,
@@ -117,7 +124,7 @@ export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
     const labels = occurrences
       .filter((occurrence) => dates.includes(occurrence.id))
       .sort((a, b) => a.startAt.localeCompare(b.startAt))
-      .map((occurrence) => shortDay(occurrence.startAt));
+      .map((occurrence) => shortDay(occurrence.startAt, occurrence.timezone));
     return labels.length === 0 ? null : `${labels.join(", ")} only`;
   };
 
