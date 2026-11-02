@@ -377,3 +377,69 @@ test("tester rejects an extant-but-wrong source token that a substring check wou
   row.owners.source[0].symbol = "brand";
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /source path\/symbol evidence changed/);
 });
+
+// #3355 P10 (SC-17) — ledger truth from live behaviour. Pinned independently of
+// the gate: exactly these rows cite a live flow-eval run, each citation resolves
+// to a recorded run where every named eval passed and covers the row, and no
+// row is verified without one.
+const LIVE_EVAL_RUNS_PATH = path.join(ROOT, "docs/contracts/ari-live-eval-runs.json");
+const EXPECTED_LIVE_EVAL_ROWS = [
+  "ari.brand.update_context",
+  "ari.event.create",
+  "ari.event.update",
+  "ari.experience.create",
+  "ari.stay.manage_inventory",
+  "ari.ticket.upsert_tier",
+  "ari.trip.create",
+  "ari.venue.create_listing",
+];
+
+function liveEvalFailures(ledger, runs) {
+  const failures = [];
+  for (const row of ledger.capabilities) {
+    if (row.status === "verified" && !row.live_eval) failures.push(`${row.id}: verified without live_eval`);
+    if (!row.live_eval) continue;
+    const run = runs.runs.find((entry) => entry.run_id === row.live_eval.run_id);
+    if (!run) {
+      failures.push(`${row.id}: unknown run`);
+      continue;
+    }
+    for (const id of row.live_eval.evals ?? []) {
+      const result = run.evals.find((entry) => entry.id === id);
+      if (result?.verdict !== "pass") failures.push(`${row.id}: ${id} did not pass`);
+      else if (!result.capabilities.includes(row.id)) failures.push(`${row.id}: ${id} does not cover it`);
+    }
+  }
+  return failures;
+}
+
+function readRuns() {
+  return JSON.parse(fs.readFileSync(LIVE_EVAL_RUNS_PATH, "utf8"));
+}
+
+test("tester pins the rows carrying live flow-eval evidence and resolves every citation", () => {
+  const ledger = readLedger();
+  const cited = ledger.capabilities.filter((row) => row.live_eval).map((row) => row.id).sort();
+  assert.deepEqual(cited, EXPECTED_LIVE_EVAL_ROWS);
+  assert.deepEqual(liveEvalFailures(ledger, readRuns()), []);
+  // Local live evidence never stands in for production: no row flips to verified on it.
+  assert.ok(ledger.capabilities.filter((row) => row.live_eval).every((row) => row.status === "registered_unverified"));
+});
+
+test("tester rejects a live_eval citing a run that never happened or an eval that failed", () => {
+  const ledger = readLedger();
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.event.create");
+  row.live_eval = { run_id: "flow-invented", evals: ["event_create_minimal"] };
+  assert.match(liveEvalFailures(ledger, readRuns()).join("; "), /unknown run/);
+  const runs = readRuns();
+  const real = ledger.capabilities.find((capability) => capability.id === "ari.trip.create");
+  runs.runs.find((entry) => entry.run_id === real.live_eval.run_id)
+    .evals.find((entry) => entry.id === "trip_create_lagos_3day").verdict = "fail";
+  assert.match(liveEvalFailures(readLedger(), runs).join("; "), /trip_create_lagos_3day did not pass/);
+});
+
+test("tester rejects a verified row without a live eval run", () => {
+  const ledger = readLedger();
+  ledger.capabilities.find((capability) => capability.id === "ari.operator.snapshot").status = "verified";
+  assert.match(liveEvalFailures(ledger, readRuns()).join("; "), /verified without live_eval/);
+});

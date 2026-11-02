@@ -2,5 +2,92 @@
   "schema_version": 1,
   "contract": "I-ARI-LIVE-EVAL-EVIDENCE",
   "purpose": "Runs of Ari's live flow evals (scripts/ari/eval/flows/run.mjs --record). Each eval drives the real agent-chat and agent-confirm-action with structured answers and asserts on saved records. A capability-ledger row's live_eval must cite a run here in which every named eval passed and lists that capability. The scenario registry lint (run-scenarios.mjs, mode registry-lint) is not behaviour evidence and never appears here.",
-  "runs": []
+  "runs": [
+    {
+      "run_id": "flow-20261102T064717Z-df9f0a39",
+      "ran_at": "2026-11-02T06:47:24Z",
+      "revision": {
+        "sha": "146dd6577be045158c22074fc8b7ca6898c5f801",
+        "functions_dirty": false
+      },
+      "target": "local",
+      "evals": [
+        {
+          "id": "event_create_minimal",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.event.create"
+          ],
+          "facts_compared": 15
+        },
+        {
+          "id": "event_paid_blocked",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.ticket.upsert_tier",
+            "ari.event.update"
+          ],
+          "facts_compared": 12
+        },
+        {
+          "id": "trip_create_lagos_3day",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.trip.create"
+          ],
+          "facts_compared": 11
+        },
+        {
+          "id": "experience_create_two_stops",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.experience.create"
+          ],
+          "facts_compared": 19
+        },
+        {
+          "id": "venue_create_picker",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.venue.create_listing"
+          ],
+          "facts_compared": 18
+        },
+        {
+          "id": "stay_create_on_approved_venue",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.stay.manage_inventory"
+          ],
+          "facts_compared": 15
+        },
+        {
+          "id": "website_setup_phone",
+          "verdict": "pass",
+          "capabilities": [
+            "ari.brand.update_context"
+          ],
+          "facts_compared": 4
+        },
+        {
+          "id": "refund_role_refused_event_manager",
+          "verdict": "pass",
+          "capabilities": [],
+          "facts_compared": 6
+        },
+        {
+          "id": "brand_gate_defer_remembered",
+          "verdict": "pass",
+          "capabilities": [],
+          "facts_compared": 6
+        },
+        {
+          "id": "money_reconciliation_resolve",
+          "verdict": "skipped",
+          "capabilities": [],
+          "facts_compared": 0
+        }
+      ]
+    }
+  ]
 }

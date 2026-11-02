@@ -60,6 +60,7 @@
     "unsupported": "The Business operation exists but has no mapped Ari tool or accepted handoff.",
     "in_flight": "An open owning issue exists; registration elsewhere does not satisfy the operation."
   },
+  "live_eval_definition": "#3355 P10 (SC-17): live_eval cites a recorded run in docs/contracts/ari-live-eval-runs.json in which every named live flow eval (scripts/ari/eval/flows) passed against saved records and lists this capability. It is required for verified and is local-stack evidence only: it does not replace deployed-runtime or production observation, so a row with live_eval alone stays registered_unverified. Scenario registry lint never counts.",
   "evidence_order": [
     "registration",
     "source_contract",
@@ -319,7 +320,13 @@
         "No full surface runtime proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-13",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "event_create_minimal"
+        ]
+      }
     },
     {
       "id": "ari.event.list",
@@ -427,7 +434,13 @@
         "No cross-surface runtime evidence that Business and Ari read each other's writes"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-13",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "event_paid_blocked"
+        ]
+      }
     },
     {
       "id": "ari.experience.create",
@@ -474,7 +487,13 @@
         "No deployed runtime or cross-surface parity proof after #1972 integration"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-13",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "experience_create_two_stops"
+        ]
+      }
     },
     {
       "id": "ari.event.publish",
@@ -908,7 +927,13 @@
         "deployed cross-surface runtime certification pending"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-13",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "event_paid_blocked"
+        ]
+      }
     },
     {
       "id": "ari.ticket.pricing_switches",
@@ -1193,7 +1218,13 @@
         "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-08-25",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "trip_create_lagos_3day"
+        ]
+      }
     },
     {
       "id": "ari.trip.update",
@@ -1889,7 +1920,13 @@
         "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-13",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "venue_create_picker"
+        ]
+      }
     },
     {
       "id": "ari.venue.submit_claim",
@@ -5020,7 +5057,13 @@
         "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-13",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "stay_create_on_approved_venue"
+        ]
+      }
     },
     {
       "id": "ari.stay.publish_offering",
@@ -7985,7 +8028,13 @@
         "No exact-revision runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-10-31"
+      "verified_at": "2026-10-31",
+      "live_eval": {
+        "run_id": "flow-20261102T064717Z-df9f0a39",
+        "evals": [
+          "website_setup_phone"
+        ]
+      }
     },
     {
       "id": "ari.sites.create_draft",
