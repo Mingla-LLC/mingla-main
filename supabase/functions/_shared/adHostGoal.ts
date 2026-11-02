@@ -191,6 +191,10 @@ export const HOST_BUDGET_BID_FIELDS = [
   "bid_price_cents",
   "cpc_bid_cents",
   "bid_cents",
+  // #4238 retest 3: budget level and campaign spend cap are Mingla's too.
+  // Neither the Business client nor Ari sends them on the Host path.
+  "level",
+  "spend_cap_cents",
 ] as const;
 
 /** A Host create body that names its own objective or delivery choice is refused. */

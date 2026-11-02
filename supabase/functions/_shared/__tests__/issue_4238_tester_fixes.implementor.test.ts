@@ -160,7 +160,14 @@ Deno.test("Extra B #4238 a Host may not choose bidding, promotion type or TikTok
 
 Deno.test("#4238 retest 2: a Host may not set manual bids inside budget", () => {
   for (
-    const field of ["bid_type", "bid_price_cents", "cpc_bid_cents", "bid_cents"]
+    const field of [
+      "bid_type",
+      "bid_price_cents",
+      "cpc_bid_cents",
+      "bid_cents",
+      "level",
+      "spend_cap_cents",
+    ]
   ) {
     for (const value of ["BID_TYPE_CUSTOM", 150, null, 0, "", false]) {
       assertEquals(
@@ -242,4 +249,20 @@ Deno.test("D3 #4238 Ari's ad card shows money in the brand currency and plain wo
   assert(String(context.ad_audience).startsWith("Nigeria, Ghana"));
   assert(String(context.ad_audience).includes("all genders"));
   assert(String(context.ad_media_rights).startsWith("You own this video"));
+});
+
+Deno.test("#4238 retest 3: the Host client and Ari never send budget level or spend cap", async () => {
+  const service = await Deno.readTextFile(
+    new URL(
+      "../../../../mingla-business/src/services/hostAdPlanService.ts",
+      import.meta.url,
+    ),
+  );
+  const ari = await Deno.readTextFile(
+    new URL("../agentDomainTools.ts", import.meta.url),
+  );
+  for (const source of [service, ari]) {
+    assert(!source.includes("spend_cap_cents"));
+    assert(!/\blevel:/.test(source));
+  }
 });

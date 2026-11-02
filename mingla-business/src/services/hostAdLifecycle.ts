@@ -40,6 +40,8 @@ export type HostAdListItem = {
   route: string;
   reason: string | null;
   updatedAt: string | null;
+  /** #4238: a plainer status than the lifecycle bucket, when there is one. */
+  statusLabel?: string;
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -159,6 +161,11 @@ function planItem(aggregate: HostAdPlanAggregate): HostAdListItem {
     costPerResultCents: null,
     resultsValueCents: {},
     nextAction: planNextAction(aggregate.plan.state),
+    // #4238: approved (or funded) and waiting for LAUNCH is not a draft.
+    ...(aggregate.plan.state === "staff_approved" ||
+      aggregate.plan.state === "funded_held"
+      ? { statusLabel: "Ready to start" }
+      : {}),
     route: `/(tabs)/marketing/ads/create?plan_id=${aggregate.plan.id}`,
     reason: typeof reason === "string" ? hostAdReviewReason(reason) : null,
     updatedAt: aggregate.plan.updated_at,

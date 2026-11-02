@@ -86,6 +86,18 @@ export function hostAdPlaceList(raw: string): string {
   return `${items.slice(0, -1).join("; ")} and ${items[items.length - 1]}`;
 }
 
+/**
+ * A place name from an ad app ("Lagos, Lagos State, NG") with the country
+ * code spelled out ("Lagos, Lagos State, Nigeria").
+ */
+export function hostAdPlaceName(raw: string): string {
+  return raw
+    .split(/\s*,\s*/)
+    .map((part) => (/^[A-Z]{2}$/.test(part.trim()) ? countryWord(part) : part.trim()))
+    .filter(Boolean)
+    .join(", ");
+}
+
 export const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
   meta: "Facebook & Instagram",
   tiktok: "TikTok",
@@ -162,6 +174,12 @@ const RESULT_LABELS: Record<string, string> = {
   conversions: "results",
   rsvp_registration: "RSVPs",
   rsvp_registrations: "RSVPs",
+  rsvps: "RSVPs",
+  rsvp: "RSVPs",
+  checkouts_started: "checkouts started",
+  app_installs: "app installs",
+  installs: "app installs",
+  app_store_visits: "app store visits",
   checkout_started: "checkouts started",
   booking_confirmed: "bookings",
   install: "app installs",
@@ -182,8 +200,17 @@ export function hostAdCostPerLabel(kind: string | null | undefined): string {
   return COST_PER_LABELS[hostAdResultLabel(kind)] ?? "Cost per result";
 }
 
+const PLAIN_RESULT_LABELS = new Set(Object.values(RESULT_LABELS));
+
+/**
+ * Plain words for any result kind: a raw key ("rsvp_registration"), a
+ * spaced key ("landing page view") or a label the server already made plain
+ * ("RSVPs", "ticket sales") all come back as the plain label.
+ */
 export function hostAdResultLabel(kind: string | null | undefined): string {
-  const key = String(kind ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const raw = String(kind ?? "").trim();
+  if (PLAIN_RESULT_LABELS.has(raw)) return raw;
+  const key = raw.toLowerCase().replace(/[\s-]+/g, "_");
   return RESULT_LABELS[key] ?? humanize(key).toLowerCase();
 }
 

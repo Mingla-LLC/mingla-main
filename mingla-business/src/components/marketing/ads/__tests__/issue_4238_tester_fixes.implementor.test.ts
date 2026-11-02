@@ -31,12 +31,14 @@ import {
 import {
   hostAdCostPerLabel,
   hostAdPlaceList,
+  hostAdPlaceName,
   hostAdResultLabel,
   hostAdReviewReason,
   hostAdStepLabel,
   hostAdTargetingNote,
 } from "../hostAdCopy";
 import { hostAdPageDetails } from "../hostAdPageLabels";
+import { formatHostAdMoneyCents } from "../hostAdMoney";
 
 const ROOT = path.resolve(__dirname, "../../../../..");
 const read = (relative: string): string =>
@@ -262,5 +264,76 @@ describe("#4238 retest 2: sign-out clears the Ads setup cache", () => {
     runSignOutCleanups();
     await cachedHostAdSetup("brand-signout", loader, { now: 3 });
     expect(loader).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("#4238 retest 3: Ari card money and result labels, city rows, ready status", () => {
+  /** Every result kind the server can send, raw and already-plain. */
+  function serverResultKinds(): string[] {
+    const measurement = read("../supabase/functions/_shared/adMeasurement.ts");
+    const hierarchy = measurement.slice(
+      measurement.indexOf("const RESULT_HIERARCHY"),
+      measurement.indexOf("};", measurement.indexOf("const RESULT_HIERARCHY")),
+    );
+    const raw = [...hierarchy.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    const keys = [...hierarchy.matchAll(/^\s+([a-z_]+):/gm)].map((m) => m[1]);
+    const ari = read("../supabase/functions/_shared/agentDomainTools.ts");
+    const words = ari.slice(
+      ari.indexOf("const AD_RESULT_WORDS"),
+      ari.indexOf("};", ari.indexOf("const AD_RESULT_WORDS")),
+    );
+    const plain = [...words.matchAll(/: "([^"]+)"/g)].map((m) => m[1]);
+    const wordKeys = [...words.matchAll(/^\s+([a-z_]+):/gm)].map((m) => m[1]);
+    return [...new Set([...raw, ...keys, ...plain, ...wordKeys, "results", "conversions"])];
+  }
+
+  it("every result kind shows a plain label, never a raw lowercase key", () => {
+    const kinds = serverResultKinds();
+    expect(kinds.length).toBeGreaterThan(15);
+    const plainLabels = new Set([
+      "ticket sales",
+      "sign-ups",
+      "RSVPs",
+      "bookings",
+      "page visits",
+      "results",
+      "checkouts started",
+      "app installs",
+      "app store visits",
+    ]);
+    for (const kind of kinds) {
+      const label = hostAdResultLabel(kind);
+      expect(plainLabels.has(label) ? label : `${kind} → ${label}`).toBe(label);
+      expect(label).not.toMatch(/_/);
+    }
+    expect(hostAdResultLabel("RSVPs")).toBe("RSVPs");
+    expect(hostAdResultLabel("rsvps")).toBe("RSVPs");
+  });
+
+  it("the Ari card passes the server's result word straight to the label", () => {
+    const card = read("src/components/ari/ToolProposalCard.tsx");
+    expect(card).toContain("value: hostAdResultLabel(context.ad_result),");
+    expect(card).not.toContain('context.ad_result.replace(/ /g, "_")');
+  });
+
+  it("Ari card money reads NGN 1,500,000.00, the server's format", () => {
+    expect(formatHostAdMoneyCents(150_000_000, "NGN")).toBe("NGN 1,500,000.00");
+    expect(formatHostAdMoneyCents(25_000, "gbp")).toBe("GBP 250.00");
+    const card = read("src/components/ari/ToolProposalCard.tsx");
+    expect(card).toContain("return formatHostAdMoneyCents(cents, currency);");
+    expect(card).not.toContain("verified settlement currency on save");
+  });
+
+  it("city search rows spell out the country", () => {
+    expect(hostAdPlaceName("Lagos, Lagos State, NG")).toBe("Lagos, Lagos State, Nigeria");
+    expect(hostAdPlaceName("Accra")).toBe("Accra");
+    expect(createRoute).toContain("{hostAdPlaceName(result.name)}");
+  });
+
+  it("an approved ad waiting for LAUNCH reads Ready to start, not Draft", () => {
+    const lifecycle = read("src/services/hostAdLifecycle.ts");
+    expect(lifecycle).toContain('{ statusLabel: "Ready to start" }');
+    const list = read("app/(tabs)/marketing/ads/index.tsx");
+    expect(list).toContain("{item.statusLabel ?? LIFECYCLE_LABEL[item.lifecycle]}");
   });
 });

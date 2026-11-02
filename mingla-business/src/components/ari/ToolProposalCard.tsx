@@ -51,6 +51,7 @@ import {
   hostAdResultLabel,
   platformName,
 } from "../marketing/ads/hostAdCopy";
+import { formatHostAdMoneyCents } from "../marketing/ads/hostAdMoney";
 import {
   ariAdOwnerKey,
   isValidAdCreativeOwnerKey,
@@ -276,14 +277,11 @@ function coverTypeLabel(type: unknown): string | null {
   return null;
 }
 
+// #4238: one money format everywhere on this card ("NGN 1,500,000.00"),
+// the same formatter the server uses for Ari's "Budget per app" lines.
 function formatMoneyCents(cents: unknown, currency: unknown): string | null {
   if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
-  const code =
-    typeof currency === "string" && currency.trim()
-      ? currency.trim().toUpperCase()
-      : "";
-  const amount = (cents / 100).toFixed(2);
-  return code ? `${amount} ${code}` : amount;
+  return formatHostAdMoneyCents(cents, currency);
 }
 
 function formatAdMoneyCents(cents: unknown, currency: unknown): string | null {
@@ -291,7 +289,7 @@ function formatAdMoneyCents(cents: unknown, currency: unknown): string | null {
   if (!formatted) return null;
   return typeof currency === "string" && /^[a-z]{3}$/i.test(currency.trim())
     ? formatted
-    : `${formatted} · verified settlement currency on save`;
+    : `${formatted} · in your brand's payout currency`;
 }
 
 function fieldsFor(
@@ -402,7 +400,7 @@ function fieldsFor(
     if (typeof context.ad_result === "string") {
       out.push({
         label: "What we count",
-        value: hostAdResultLabel(context.ad_result.replace(/ /g, "_")),
+        value: hostAdResultLabel(context.ad_result),
       });
     }
     if (typeof context.ad_audience === "string") {

@@ -26,6 +26,7 @@ import { Input } from "../../../../src/components/ui/Input";
 import {
   HOST_AD_PLATFORM_NAMES,
   hostAdErrorMessage,
+  hostAdPlaceName,
   hostAdReachLine,
   hostAdResultLabel,
   hostAdStatusLabel,
@@ -1886,9 +1887,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
               style={styles.searchResult}
               onPress={() => void addCityResult(result)}
               accessibilityRole="button"
-              accessibilityLabel={`Target ${result.name}`}
+              accessibilityLabel={`Target ${hostAdPlaceName(result.name)}`}
             >
-              <Text style={styles.choiceTitle}>{result.name}</Text>
+              <Text style={styles.choiceTitle}>{hostAdPlaceName(result.name)}</Text>
               <Text style={styles.resume}>Add</Text>
             </Pressable>
           ))}

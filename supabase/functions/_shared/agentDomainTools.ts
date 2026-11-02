@@ -27,6 +27,7 @@ import {
 } from "./agentTenantScope.ts";
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
 import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
+import { formatHostAdMoneyCents } from "./adMoneyFormat.ts";
 import {
   HOST_SALES_GOAL_PLATFORMS,
   hostPageSellsTickets,
@@ -8152,22 +8153,9 @@ function adPlatformName(value: unknown): string {
   return HOST_AD_PLATFORM_NAMES[key] ?? adLabel(key);
 }
 
-/**
- * #4238: money on the Ari ad card, one way only: the currency code, then the
- * amount with thousands separators ("NGN 1,500,000.00"). With no known
- * currency, the plain amount.
- */
+/** #4238: money on the Ari ad card, via the one shared formatter. */
 function formatAdMoney(value: unknown, currency: unknown): string {
-  const cents = Number(value);
-  if (!Number.isSafeInteger(cents) || cents < 0) return "not available yet";
-  const code = typeof currency === "string" && /^[A-Z]{3}$/i.test(currency)
-    ? currency.toUpperCase()
-    : "";
-  const amount = (cents / 100).toLocaleString("en", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  return code ? `${code} ${amount}` : amount;
+  return formatHostAdMoneyCents(value, currency) ?? "not available yet";
 }
 
 /** "NG" → "Nigeria" for the Ari ad card (falls back to the code). */

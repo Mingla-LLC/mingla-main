@@ -480,7 +480,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                   style={styles.campaignRow}
                   onPress={() => router.push(item.route as never)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${item.name}, ${LIFECYCLE_LABEL[item.lifecycle]}, ${item.nextAction}`}
+                  accessibilityLabel={`${item.name}, ${item.statusLabel ?? LIFECYCLE_LABEL[item.lifecycle]}, ${item.nextAction}`}
                   testID={`ads-${item.kind}-row-${item.id}`}
                 >
                   {item.creative?.previewUrl ? (
@@ -508,7 +508,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                         ]}
                       >
                         <Text style={styles.statusPillLabel}>
-                          {LIFECYCLE_LABEL[item.lifecycle]}
+                          {item.statusLabel ?? LIFECYCLE_LABEL[item.lifecycle]}
                         </Text>
                       </View>
                     </View>
