@@ -191,15 +191,20 @@ Deno.test("#1985 I-7 proposal contains only resolved brand, title and start time
     context: context("q-title-proposal"),
   });
   assert(afterDate.choices);
-  const ready = applyStoredChoice({
+  const titled = applyStoredChoice({
     state: afterDate.state,
     choices: afterDate.choices,
     optionIds: [afterDate.choices.options[0].id],
-    context: context("q-done"),
+    context: context("q-end-proposal"),
   });
+  // #3355 P7 (D-23): the end time is asked, never assumed.
+  assertEquals(titled.proposal, undefined);
+  assertEquals(titled.choices?.required_slot_keys, ["end_at"]);
+  const ready = planEventTurn(titled.state, "10pm", context("q-done"));
   assertEquals(ready.proposal?.tool_name, "create_event");
   assertEquals(Object.keys(ready.proposal?.tool_args ?? {}).sort(), [
     "brand_id",
+    "end_at",
     "start_at",
     "timezone",
     "title",
@@ -219,7 +224,7 @@ Deno.test("#1985 I-8 confirmation outcomes reconcile state without replaying a w
       pending_question: null,
       last_completed_step: null,
     }),
-    "Create an event called Lagos Lights tomorrow at 7pm",
+    "Create an event called Lagos Lights tomorrow at 7pm until 10pm",
     context("q-ready"),
   );
   assertEquals(initial.state.status, "ready_to_propose");
@@ -268,17 +273,23 @@ Deno.test("#3355 a concrete calendar answer advances instead of repeating the da
     choices: initial.choices,
     optionIds: [],
     freeText: "November 14, 2026 at 7:00 PM local time.",
-    context: context("q-autumn-ready"),
+    context: context("q-autumn-end"),
   });
-  assertEquals(advanced.proposal?.tool_name, "create_event");
+  // #3355 P7 (D-23): the date advances to the end-time question.
+  assertEquals(advanced.state.pending_question?.required_slot_keys, ["end_at"]);
+  const ended = planEventTurn(advanced.state, "until 10pm", context("q-autumn-ready"));
+  assertEquals(ended.proposal?.tool_name, "create_event");
   assertEquals(
-    advanced.proposal?.tool_args.start_at,
+    ended.proposal?.tool_args.start_at,
     "2026-11-14T18:00:00.000Z",
   );
-  assertEquals(advanced.state.pending_question, null);
-  assertEquals(advanced.proposal?.tool_args.when_mode, "single");
-  assertEquals(advanced.proposal?.tool_args.visibility, "private");
-  assertEquals(advanced.proposal?.tool_args.timezone, "Africa/Lagos");
+  assertEquals(ended.proposal?.tool_args.end_at, "2026-11-14T21:00:00.000Z");
+  assertEquals(ended.state.pending_question, null);
+  assertEquals(ended.proposal?.tool_args.when_mode, "single");
+  // #3355 P7 (D-24): "private" in the owner's words means unpublished; the
+  // draft is never saved Private while private access is frozen.
+  assertEquals(ended.proposal?.tool_args.visibility, "public");
+  assertEquals(ended.proposal?.tool_args.timezone, "Africa/Lagos");
 });
 
 Deno.test("#3355 event clarification echoes the full date and confirmation", () => {
@@ -301,11 +312,14 @@ Deno.test("#3355 event clarification echoes the full date and confirmation", () 
     "I have November 15, 2026 from your message. What time should I use? I’ll confirm the full date and time before creating the draft.",
   );
 
-  const answered = planEventTurn(
+  const timed = planEventTurn(
     initial.state,
     "Use november 15th 18:00",
     context("q-harmattan-time"),
   );
+  assertEquals(timed.proposal, undefined);
+  assert(timed.text.includes("When does it end?"));
+  const answered = planEventTurn(timed.state, "22:00", context("q-end"));
   assertEquals(answered.proposal?.tool_name, "create_event");
   assertEquals(answered.proposal?.tool_args.title, "seth is popping");
   assertEquals(
@@ -316,10 +330,15 @@ Deno.test("#3355 event clarification echoes the full date and confirmation", () 
   assert(answered.text.includes("Nov 15, 2026"));
   assert(answered.text.includes("Should I create this draft?"));
 
-  const timeOnly = planEventTurn(
+  const timeOnlyStart = planEventTurn(
     initial.state,
     "Use 18:00",
     context("q-harmattan-time-only"),
+  );
+  const timeOnly = planEventTurn(
+    timeOnlyStart.state,
+    "3 hours",
+    context("q-harmattan-end-only"),
   );
   assertEquals(timeOnly.proposal?.tool_name, "create_event");
   assertEquals(timeOnly.proposal?.tool_args.title, "seth is popping");
@@ -349,9 +368,9 @@ Deno.test("#3355 a yearless date is clarified instead of becoming a write propos
   assert(initial.text.includes("full date and time for confirmation"));
 
   const yearAnswered = planEventTurn(
-    initial.state,
-    "2026",
-    context("q-harmattan-year"),
+    planEventTurn(initial.state, "2026", context("q-harmattan-year")).state,
+    "until 9pm",
+    context("q-harmattan-year-end"),
   );
   assertEquals(yearAnswered.proposal?.tool_name, "create_event");
   assertEquals(
@@ -362,9 +381,13 @@ Deno.test("#3355 a yearless date is clarified instead of becoming a write propos
   assert(yearAnswered.text.includes("Should I create this draft?"));
 
   const yearAndDraftAnswered = planEventTurn(
-    initial.state,
-    "Use 2026. Keep it as a draft.",
-    context("q-harmattan-year-and-draft"),
+    planEventTurn(
+      initial.state,
+      "Use 2026. Keep it as a draft.",
+      context("q-harmattan-year-and-draft"),
+    ).state,
+    "9pm",
+    context("q-harmattan-year-and-draft-end"),
   );
   assertEquals(yearAndDraftAnswered.proposal?.tool_name, "create_event");
   assertEquals(
@@ -385,12 +408,12 @@ Deno.test("#3355 title extraction stops before an explicit date phrase", () => {
       pending_question: null,
       last_completed_step: null,
     }),
-    "Create a private dinner event called Autumn Table on November 14, 2026 at 7:00 PM local time.",
+    "Create a private dinner event called Autumn Table on November 14, 2026 at 7:00 PM to 10pm local time.",
     context("q-autumn-one-turn"),
   );
   assertEquals(planned.proposal?.tool_name, "create_event");
   assertEquals(planned.proposal?.tool_args.title, "Autumn Table");
-  assertEquals(planned.proposal?.tool_args.visibility, "private");
+  assertEquals(planned.proposal?.tool_args.visibility, "public");
 });
 
 Deno.test("#3355 long event requests keep bounded provenance and resolve the full time range", () => {

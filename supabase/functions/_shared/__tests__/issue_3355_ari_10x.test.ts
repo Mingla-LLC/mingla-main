@@ -348,7 +348,9 @@ Deno.test("#3355 a new proposal releases a completed event planner task", () => 
   assertEquals(next.last_completed_step, completed.last_completed_step);
 });
 
-Deno.test("#3355 deterministic event planning carries capacity into the confirmed draft", () => {
+// #3355 P7 (D-23): a guest count is not a free "General admission" tier the
+// owner never chose; and the end time is asked, never assumed.
+Deno.test("#3355 deterministic event planning never turns a guest count into a free tier", () => {
   const planned = planEventTurn(
     {
       schema_version: 1,
@@ -371,14 +373,25 @@ Deno.test("#3355 deterministic event planning carries capacity into the confirme
       questionId: "question-capacity",
     },
   );
-  assertEquals(planned.state.status, "ready_to_propose");
-  assertEquals(planned.proposal?.tool_name, "create_event");
-  const tickets = planned.proposal?.tool_args.tickets as Array<
-    Record<string, unknown>
-  >;
-  assertEquals(tickets[0].capacity, 20);
-  assertEquals(tickets[0].isFree, true);
-  assertMatch(planned.text, /limited to 20 guests/i);
+  assertEquals(planned.state.status, "gathering");
+  assertEquals(planned.proposal, undefined);
+  assertMatch(planned.text, /When does it end\?/);
+  const ended = planEventTurn(planned.state, "10pm", {
+    now: new Date("2026-10-29T18:00:00-04:00"),
+    timezone: "America/New_York",
+    activeBrand: {
+      id: "33550000-0000-4000-a000-000000000002",
+      name: "Lantern Room",
+    },
+    originMessageId: "message-capacity",
+    taskId: "task-capacity",
+    questionId: "question-capacity-end",
+  });
+  assertEquals(ended.state.status, "ready_to_propose");
+  assertEquals(ended.proposal?.tool_name, "create_event");
+  assertEquals(ended.proposal?.tool_args.tickets, undefined);
+  assertEquals(ended.proposal?.tool_args.end_at, "2027-01-18T03:00:00.000Z");
+  assert(!/free|General admission/i.test(ended.text));
 });
 
 Deno.test("#3355 event confirmation preserves year, explicit WAT, end time, venue, and grounded copy", () => {
@@ -480,7 +493,7 @@ Deno.test("#3355 event titles exclude the active brand and parenthetical event s
       pending_question: null,
       last_completed_step: null,
     },
-    "Create an event called Afterglow Sessions for Lantern Room (live jazz) on December 5, 2026 at 7:30 PM America/New_York. Keep it as a draft.",
+    "Create an event called Afterglow Sessions for Lantern Room (live jazz) on December 5, 2026 at 7:30 PM to 10:30 PM America/New_York. Keep it as a draft.",
     {
       now: new Date("2026-10-29T18:00:00-04:00"),
       timezone: "America/New_York",

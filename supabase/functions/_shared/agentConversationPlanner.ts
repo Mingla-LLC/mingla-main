@@ -32,6 +32,12 @@ import {
   resolveRelativeTime,
   TemporalSlotValue,
 } from "./agentRelativeTime.ts";
+import {
+  extractEventTitle,
+  formatEventStart,
+  parseEventEnd,
+  zoneWords,
+} from "./ariFlows/offerings/eventFacts.ts";
 
 export type PlannerClassification =
   | "event_plan_start"
@@ -279,26 +285,13 @@ function expandSharedMeridiemRange(text: string): string {
   );
 }
 
+// #3355 P7 (D-19): one title reader for the planner and the flow engine —
+// curly quotes removed, apostrophes and "Vol. 2" kept.
 function extractTitle(
   text: string,
   activeBrandName?: string,
 ): string | undefined {
-  const explicitMatch = text.match(
-    /\b(?:called|named|title(?:d)?)\s+["“']?([^"”'.,!?]{3,80})/i,
-  )?.[1]?.trim();
-  let explicit = explicitMatch?.replace(
-    /\s+(?:on|at)\s+(?=(?:today|tomorrow|next|this|in\s+\d+|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)|\d{1,4}[-/:]))[\s\S]*$/i,
-    "",
-  ).trim();
-  if (explicit && activeBrandName) {
-    const brandSuffix = explicit.toLocaleLowerCase().lastIndexOf(
-      ` for ${activeBrandName.toLocaleLowerCase()}`,
-    );
-    if (brandSuffix > 0) explicit = explicit.slice(0, brandSuffix).trim();
-  }
-  if (explicit) return explicit.slice(0, 80);
-  const quoted = text.match(/["“]([^"”]{3,80})["”]/)?.[1]?.trim();
-  return quoted ? quoted.slice(0, 80) : undefined;
+  return extractEventTitle(text, activeBrandName);
 }
 
 function extractGuestCapacity(text: string): number | undefined {
@@ -402,6 +395,23 @@ function timezoneQuestion(questionId: string): AgentChoicesV2 {
     kind: "clarifying",
     prompt: "Which timezone should I use for this event?",
     required_slot_keys: ["timezone"],
+    options: [],
+  });
+}
+
+function endTimeQuestion(
+  questionId: string,
+  startAt: string,
+  timezone: string,
+): AgentChoicesV2 {
+  return assertAgentChoicesV2({
+    schema_version: 2,
+    question_id: questionId,
+    kind: "clarifying",
+    prompt: `When does it end? It starts ${
+      formatEventStart(startAt, timezone)
+    } (${zoneWords(timezone)}). Tell me the end time, for example 10:30pm.`,
+    required_slot_keys: ["end_at"],
     options: [],
   });
 }
@@ -526,12 +536,8 @@ function proposalText(state: TaskStateV1, brandName: string): string {
     )?.value ?? timezone;
   const display = `${displayDateTime} ${zoneLabel}`;
   const kind = state.active_task.intent === "create_rsvp" ? "RSVP" : "event";
-  const capacity = state.active_task.slots.capacity?.status === "resolved"
-    ? Number(state.active_task.slots.capacity.value)
-    : null;
-  const admission = capacity && kind === "event"
-    ? ` It includes a free General admission tier limited to ${capacity} guests.`
-    : "";
+  // #3355 P7 (D-23): no implicit ticket tier, so nothing to announce.
+  const admission = "";
   const slots = state.active_task.slots;
   const endAt = slots.end_at?.status === "resolved" &&
       typeof slots.end_at.value === "string"
@@ -555,7 +561,7 @@ function proposalText(state: TaskStateV1, brandName: string): string {
       slots.description_requested.value === true
     ? " I’ve prepared concise event copy using only the details you gave."
     : "";
-  return `Ready to create “${title}” as a draft ${kind} for ${brandName}${location} on ${display}${schedule}.${admission}${copy} I’ll save this as a private draft and won’t publish it. Should I create this draft?`;
+  return `Ready to create “${title}” as a draft ${kind} for ${brandName}${location} on ${display}${schedule}.${admission}${copy} It’ll be an unpublished draft — nobody can see it until you publish. Should I create this draft?`;
 }
 
 function finalizeResult(
@@ -891,12 +897,17 @@ export function planEventTurn(
       startAt.status === "resolved" && typeof startAt.value === "string" &&
       isValidIanaTimezone(timezone)
     ) {
+      // #3355 P7 (D-23): the owner's answer to "When does it end?" may be a
+      // lone time ("10:30pm") or a length ("3 hours").
       const endAt = extractEventEndAt(
         userText,
         startAt.value,
         timezone,
         context.now,
-      );
+      ) ?? (state.pending_question?.required_slot_keys.includes("end_at")
+        ? parseEventEnd(userText, startAt.value, timezone, context.now) ??
+          undefined
+        : undefined);
       if (endAt) {
         updates.end_at = resolvedSlot(
           endAt,
@@ -983,6 +994,26 @@ export function planEventTurn(
       classification,
       state,
       `${intro} ${choices.prompt}`.trim(),
+      context,
+      choices,
+    );
+  }
+  // #3355 P7 (D-23): ask when it ends; never assume two hours.
+  const endSlot = activeTask.slots.end_at;
+  if (activeTask.intent === "create_event" && endSlot?.status !== "resolved") {
+    const choices = endTimeQuestion(
+      context.questionId,
+      String(activeTask.slots.start_at.value),
+      String(activeTask.slots.timezone.value),
+    );
+    const asked = state.pending_question?.required_slot_keys.includes("end_at");
+    state = setPendingQuestion(state, pendingQuestion(choices));
+    return finalizeResult(
+      classification,
+      state,
+      asked
+        ? `I couldn't read an end time after the start from that. ${choices.prompt}`
+        : `${intro} ${choices.prompt}`.trim(),
       context,
       choices,
     );
