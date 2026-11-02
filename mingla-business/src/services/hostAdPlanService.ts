@@ -130,6 +130,70 @@ export type HostAdDraft = {
   updated_at: string;
 };
 
+/** #4238 wave 2: the state of one audience on one ad app. */
+export type HostAdAudiencePlatformState = {
+  platform: HostAdPlatform;
+  state:
+    | "pending"
+    | "below_minimum"
+    | "syncing"
+    | "ready"
+    | "too_small"
+    | "terms_required"
+    | "ineligible"
+    | "unsupported"
+    | "error"
+    | "retired";
+  neededCount: number | null;
+};
+
+/** #4238 wave 2: the brand's own audience, names and rough sizes only. */
+export type HostAdAudience = {
+  audienceKey: string;
+  name: string;
+  kind: "list" | "lookalike";
+  approxSize: number | null;
+  lookalikeCountry: string | null;
+  platforms: HostAdAudiencePlatformState[];
+};
+
+/** Server rows → typed audiences. Unknown shapes are dropped, never guessed. */
+export function hostAdAudiencesFromSetup(raw: unknown): HostAdAudience[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item): HostAdAudience[] => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.audience_key !== "string" || !row.audience_key) return [];
+    const platforms = Array.isArray(row.platforms) ? row.platforms : [];
+    return [{
+      audienceKey: row.audience_key,
+      name: typeof row.display_name === "string" ? row.display_name : "",
+      kind: row.kind === "lookalike" ? "lookalike" : "list",
+      approxSize:
+        typeof row.approx_size === "number" && Number.isFinite(row.approx_size)
+          ? row.approx_size
+          : null,
+      lookalikeCountry:
+        typeof row.lookalike_country === "string"
+          ? row.lookalike_country
+          : null,
+      platforms: platforms.flatMap((value): HostAdAudiencePlatformState[] => {
+        if (!value || typeof value !== "object") return [];
+        const state = value as Record<string, unknown>;
+        if (typeof state.platform !== "string" || typeof state.state !== "string") {
+          return [];
+        }
+        return [{
+          platform: state.platform as HostAdPlatform,
+          state: state.state as HostAdAudiencePlatformState["state"],
+          neededCount:
+            typeof state.needed_count === "number" ? state.needed_count : null,
+        }];
+      }),
+    }];
+  });
+}
+
 export type HostAdSetup = {
   /** false when no ad platform is ready for Hosts yet. */
   available: boolean;
@@ -140,6 +204,10 @@ export type HostAdSetup = {
   connections: HostAdConnection[];
   creatives: HostAdCreative[];
   plans: HostAdPlanRow[];
+  /** #4238 wave 2: the brand's own audiences ([] when none or unavailable). */
+  audiences: HostAdAudience[];
+  /** "unavailable" when the audiences could not be loaded. */
+  audiences_error?: "unavailable";
 };
 
 export type TargetingSnapshot = {
@@ -308,11 +376,13 @@ async function invoke<T>(
 }
 
 export async function loadHostAdSetup(brandId: string): Promise<HostAdSetup> {
-  const result = await invoke<{ ok: true } & HostAdSetup>("ad-plan", {
+  const result = await invoke<
+    { ok: true } & Omit<HostAdSetup, "audiences"> & { audiences?: unknown }
+  >("ad-plan", {
     action: "host_setup",
     brand_id: brandId,
   });
-  return result;
+  return { ...result, audiences: hostAdAudiencesFromSetup(result.audiences) };
 }
 
 export async function searchHostAdTargeting(input: {
@@ -443,6 +513,8 @@ export type PrepareHostAdPlanInput = {
   rightsBasis: "owned" | "licensed" | "authorized_by_brand";
   aiGenerated: boolean;
   optimization: HostAdOptimization;
+  /** #4238 wave 2: the brand's own audience keys (0-3). */
+  audienceKeys?: string[];
 };
 
 export type PreparedHostAdPlan = {
@@ -501,6 +573,18 @@ export function hostOptimizationByPlatform(
     ]),
   );
 }
+
+/**
+ * #4238: the only refs a Host client may send. Audience ids are deliberately
+ * absent: they come from audience_selection, resolved on the server.
+ */
+export type HostTargetingRefs = {
+  locationIds?: Record<string, string>;
+  interestIds?: Record<string, string>;
+  includeAudienceIds?: never;
+  excludeAudienceIds?: never;
+  advantageAudience?: never;
+};
 
 export async function prepareHostAdPlan(
   input: PrepareHostAdPlanInput,
@@ -572,13 +656,11 @@ export async function prepareHostAdPlan(
           return id ? [[targetingName(interest.name), id]] : [];
         }),
       );
-      return [
-        connection.platform,
-        {
-          ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
-          ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
-        },
-      ];
+      const refs: HostTargetingRefs = {
+        ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
+        ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
+      };
+      return [connection.platform, refs];
     }),
   );
   const copy = {
@@ -616,6 +698,10 @@ export async function prepareHostAdPlan(
       },
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
+      // #4238 wave 2: the server checks these are this brand's own.
+      audience_selection: {
+        include_keys: [...new Set(input.audienceKeys ?? [])].slice(0, 3),
+      },
       optimization_by_platform: hostOptimizationByPlatform(
         input.optimization,
         input.page,

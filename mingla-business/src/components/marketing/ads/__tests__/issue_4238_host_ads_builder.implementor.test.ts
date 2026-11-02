@@ -334,7 +334,8 @@ describe("#4238 ticket-sales goal (T-F3, T-F4, SC-14)", () => {
     expect(createRoute).toContain("disabled={salesReadyPlatforms.length === 0}");
     expect(createRoute).toContain("Not enough ticket sales on these platforms yet.");
     expect(createRoute).toContain('testID="host-ad-goal-summary"');
-    expect(createRoute).toContain("optimization,\n      });");
+    // #4238 wave 2: the audience keys travel with the goal.
+    expect(createRoute).toContain("optimization,\n        audienceKeys,\n      });");
   });
 
   it("SC-3 search works before any platform is ticked", () => {

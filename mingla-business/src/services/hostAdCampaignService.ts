@@ -47,7 +47,41 @@ export type HostAdCampaign = {
   } | null;
 };
 
+/** #4238 wave 2: one day of results, host currency where convertible. */
+export type HostAdDailyPoint = {
+  day: string;
+  spend_host_cents: number | null;
+  spend_provider_cents: number | null;
+  provider_currency: string | null;
+  impressions: number | null;
+  clicks: number | null;
+  page_visits: number | null;
+  results: number | null;
+};
+
+export type HostAdPlatformSpend = {
+  platform: string;
+  spend_provider_cents: number;
+  provider_currency: string | null;
+  results: number;
+};
+
+/** #4238 wave 2: the Ads list summary card (this month). */
+export type HostAdListSummary = {
+  currency: string | null;
+  spent_cents: number | null;
+  budget_cents: number;
+  results: number;
+  daily_spend: { day: string; cents: number | null }[];
+};
+
 export type HostAdCampaignDetail = {
+  /** #4238 wave 2: results over time ([] on older servers). */
+  daily?: HostAdDailyPoint[];
+  by_platform_spend?: HostAdPlatformSpend[];
+  time_zone?: string;
+  /** "unavailable" when the daily series could not be read. */
+  daily_error?: string;
   campaign: HostAdCampaign & Record<string, unknown>;
   plan_campaigns: (HostAdCampaign & Record<string, unknown>)[];
   plan_state: string | null;
@@ -195,11 +229,22 @@ async function invokeHostAd<T>(
 export async function listHostAdCampaigns(
   brandId: string,
 ): Promise<HostAdCampaign[]> {
-  const res = await invokeHostAd<{ ok: true; campaigns: HostAdCampaign[] }>({
+  return (await listHostAdCampaignPage(brandId)).campaigns;
+}
+
+/** #4238 wave 2: the list plus its summary card (null with no ads). */
+export async function listHostAdCampaignPage(
+  brandId: string,
+): Promise<{ campaigns: HostAdCampaign[]; summary: HostAdListSummary | null }> {
+  const res = await invokeHostAd<{
+    ok: true;
+    campaigns: HostAdCampaign[];
+    summary?: HostAdListSummary | null;
+  }>({
     action: "list",
     brand_id: brandId,
   });
-  return res.campaigns ?? [];
+  return { campaigns: res.campaigns ?? [], summary: res.summary ?? null };
 }
 
 export async function getHostAdCampaign(

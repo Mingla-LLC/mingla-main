@@ -45,6 +45,7 @@ import {
   platformName,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
+import { AdResultsSection } from "../../../../src/components/marketing/ads/results/AdResultsSection";
 import {
   goBackToAds,
   hostAdScrollBottomPadding,
@@ -279,14 +280,6 @@ export default function HostAdDetailRoute(): React.ReactElement {
     String(resultHierarchy[0] ?? "results"),
   );
   const costPerLabel = hostAdCostPerLabel(String(resultHierarchy[0] ?? "results"));
-  const impressions = payload.spend_daily.reduce(
-    (total, row) => total + Number(row.impressions ?? 0),
-    0,
-  );
-  const clicks = payload.spend_daily.reduce(
-    (total, row) => total + Number(row.clicks ?? 0),
-    0,
-  );
   const capUsed =
     spent !== null && cap > 0
       ? Math.min(100, Math.round((spent / cap) * 100))
@@ -427,62 +420,31 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.sectionTitle}>Results</Text>
-          <Text style={styles.muted}>
-            We count {primaryResultLabel} for this ad.
-          </Text>
-          <Text style={styles.muted}>
-            {hostAdCountingLines(resultHierarchy).sharing}
-          </Text>
-          <View style={styles.metricGrid}>
-            <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>
-                {impressions.toLocaleString()}
-              </Text>
-              <Text style={styles.metricLabel}>Times shown</Text>
-            </View>
-            <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>{clicks.toLocaleString()}</Text>
-              <Text style={styles.metricLabel}>Clicks</Text>
-            </View>
-            <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>
-                {conversions.toLocaleString()}
-              </Text>
-              <Text style={styles.metricLabel}>{primaryResultLabel}</Text>
-            </View>
-          </View>
+          <AdResultsSection
+            daily={payload.daily ?? []}
+            byPlatformSpend={payload.by_platform_spend ?? []}
+            dailyError={payload.daily_error === "unavailable"}
+            hostCurrency={currency}
+            budgetCents={cap > 0 ? cap : null}
+            resultKind={String(resultHierarchy[0] ?? "results")}
+            notes={[
+              `We count ${primaryResultLabel} for this ad.`,
+              hostAdCountingLines(resultHierarchy).sharing,
+              ...(payload.measurement?.platform_withheld_conversion_count > 0
+                ? [
+                    `${payload.measurement.platform_withheld_conversion_count} result(s) counted by Mingla but not shared with the ad apps, because those buyers didn't agree to sharing.`,
+                  ]
+                : []),
+            ]}
+            placements={payload.by_placement}
+            onRetry={() => void load()}
+          />
           <Text style={styles.muted} testID="ads-detail-cost-per-result">
             {costPerLabel}:{" "}
             {costPerResult !== null && currency
               ? formatCurrency(costPerResult, currency, true)
               : "Shown once we have both spend and results"}
           </Text>
-          {payload.measurement?.platform_withheld_conversion_count > 0 ? (
-            <Text style={styles.muted}>
-              {payload.measurement.platform_withheld_conversion_count} result(s)
-              counted by Mingla but not shared with the ad apps, because those
-              buyers didn&apos;t agree to sharing.
-            </Text>
-          ) : null}
-          {(payload.results.by_platform ?? []).map((row) => (
-            <View key={row.platform} style={styles.resultRow}>
-              <Text style={styles.body}>{platformName(String(row.platform))}</Text>
-              <Text style={styles.body}>
-                {row.conversions} {primaryResultLabel}
-              </Text>
-            </View>
-          ))}
-          {payload.by_placement.map((row) => (
-            <View
-              key={`${row.platform}:${row.placement}`}
-              style={styles.resultRow}
-            >
-              <Text style={styles.body}>{humanize(String(row.placement))}</Text>
-              <Text style={styles.body}>
-                {row.conversions} {primaryResultLabel}
-              </Text>
-            </View>
-          ))}
         </GlassCard>
 
         <GlassCard variant="elevated" padding={spacing.lg}>

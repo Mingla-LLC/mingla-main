@@ -462,3 +462,87 @@ export function hostAdErrorMessage(cause: unknown, fallback = FALLBACK_ERROR): s
   }
   return fallback;
 }
+
+// ── #4238 wave 2: audiences ─────────────────────────────────────────────────
+
+export const HOST_AD_AUDIENCE_COPY = {
+  title: "Reach people you know",
+  helper:
+    "Show this ad to people who already know you, or people like them. You'll only see rough sizes, never names.",
+  empty:
+    "Once you've had guests or added contacts, you can show ads to them here.",
+  error:
+    "We couldn't load your audiences. You can still run this ad to everyone in the places you picked.",
+  limit: "You can pick up to 3.",
+  notReadyAnywhere: "Not ready on any app you picked yet.",
+} as const;
+
+/** The Host-facing name; a lookalike names its country in full. */
+export function hostAdAudienceName(audience: {
+  name: string;
+  kind: "list" | "lookalike";
+  lookalikeCountry: string | null;
+}): string {
+  if (audience.kind === "lookalike" && audience.lookalikeCountry) {
+    return `People like your guests in ${countryWord(audience.lookalikeCountry)}`;
+  }
+  return audience.name || "Your audience";
+}
+
+/** "About 250 people", "Fewer than 10 people", or "Building now". */
+export function hostAdAudienceSize(audience: {
+  approxSize: number | null;
+  platforms: readonly { state: string }[];
+}): string {
+  const building =
+    audience.platforms.length > 0 &&
+    audience.platforms.every((p) => p.state === "pending" || p.state === "syncing");
+  if (audience.approxSize === null || building) return "Building now";
+  if (audience.approxSize < 10) return "Fewer than 10 people";
+  return `About ${audience.approxSize.toLocaleString("en-US")} people`;
+}
+
+/** One plain line per selected app. */
+export function hostAdAudienceStatusLine(
+  platform: string,
+  state: string | null,
+  neededCount: number | null,
+): string {
+  const app = platformName(platform);
+  switch (state) {
+    case "ready":
+      return `${app}: Ready`;
+    case "below_minimum":
+      return neededCount !== null && neededCount > 0
+        ? `${app}: Not enough people yet: ${neededCount.toLocaleString("en-US")} more needed`
+        : `${app}: Not enough people yet`;
+    case "too_small":
+      return `${app}: Not enough people yet`;
+    case "pending":
+    case "syncing":
+    case "terms_required":
+    case null:
+      return `Getting ready on ${app}`;
+    default:
+      return `Not available on ${app}`;
+  }
+}
+
+// ── #4238 wave 2: results charts ────────────────────────────────────────────
+
+export const HOST_AD_RESULTS_COPY = {
+  noSpend: "Your ad hasn't spent anything yet. Charts appear after its first day.",
+  usdOnly: "Spend shown in US dollars, the currency the ad apps bill in.",
+  chartError: "We couldn't load the chart. Your totals above are still right.",
+  visitsNote: "Page visits are counted when people land on your page from this ad.",
+  whereFrom: "Where results came from",
+} as const;
+
+/** "No ticket sales counted yet. We count them when people buy on Mingla…" */
+export function hostAdNoResultsLine(resultLabel: string): string {
+  const label = hostAdResultLabel(resultLabel);
+  if (label === "ticket sales") {
+    return "No ticket sales counted yet. We count them when people buy on Mingla after seeing this ad.";
+  }
+  return `No ${label} counted yet. We count them when people act on Mingla after seeing this ad.`;
+}

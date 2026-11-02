@@ -38,6 +38,7 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useAdCreditWallet } from "../../../../src/hooks/marketing/useAdCreditWallet";
 import { useHostAdCampaigns } from "../../../../src/hooks/marketing/useHostAdCampaigns";
+import { AdListSummaryCard } from "../../../../src/components/marketing/ads/results/AdListSummaryCard";
 import { useHostAdPlans } from "../../../../src/hooks/marketing/useHostAdPlans";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
@@ -410,6 +411,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
               isWideDesktop && styles.primaryColumnWide,
             ]}
           >
+        {adItems.length > 0 ? (
+          <AdListSummaryCard summary={campaignsQuery.summary} />
+        ) : null}
         {adItems.length > 0 ? <View style={styles.filterRow} testID="ads-campaign-filters">
           {FILTERS.map(({ key, label }) => {
             const selected = campaignFilter === key;

@@ -33,6 +33,7 @@ import {
   hostAdTargetingNote,
   hostAdVerdictLabel,
   platformNames,
+  hostAdAudienceName,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import {
   goBackToAds,
@@ -42,6 +43,7 @@ import {
 } from "../../../../src/components/marketing/ads/hostAdBuilderRules";
 import { cachedHostAdSetup } from "../../../../src/components/marketing/ads/hostAdSetupCache";
 import { HostAdCountryPicker } from "../../../../src/components/marketing/ads/HostAdCountryPicker";
+import { HostAdAudiencePicker } from "../../../../src/components/marketing/ads/HostAdAudiencePicker";
 import { HostAdPagePicker } from "../../../../src/components/marketing/ads/HostAdPagePicker";
 import {
   countryName,
@@ -362,6 +364,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
     [],
   );
   const [interests, setInterests] = useState<HostAdTargetingInterest[]>([]);
+  // #4238 wave 2: the brand's own audiences (keys only; the server resolves).
+  const [audienceKeys, setAudienceKeys] = useState<string[]>([]);
   const [interestQuery, setInterestQuery] = useState("");
   const [interestResults, setInterestResults] = useState<
     HostAdTargetingSearchResult[]
@@ -810,6 +814,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
         if (Array.isArray(state.interests)) {
           setInterests(state.interests as HostAdTargetingInterest[]);
         }
+        if (Array.isArray(state.audience_keys)) {
+          setAudienceKeys(
+            state.audience_keys
+              .filter((key): key is string => typeof key === "string")
+              .slice(0, 3),
+          );
+        }
         if (typeof state.daily_amount === "string") {
           setDailyAmount(state.daily_amount);
         }
@@ -981,6 +992,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       cities,
       radius_km: radiusKm,
       interests,
+      audience_keys: audienceKeys,
       daily_amount: dailyAmount,
       cap_amount: capAmount,
       start_date: startDate,
@@ -994,6 +1006,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     [
       acceptBroader,
       activePlanState,
+      audienceKeys,
       ageMax,
       ageMin,
       aiGenerated,
@@ -1469,6 +1482,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         rightsBasis,
         aiGenerated,
         optimization,
+        audienceKeys,
       });
       setExistingPlanId(next.planId);
       draftPlanIdRef.current = next.planId;
@@ -1839,6 +1853,17 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 multiple
               />
             ))}
+          <HostAdAudiencePicker
+            audiences={setup.audiences ?? []}
+            unavailable={setup.audiences_error === "unavailable"}
+            selected={audienceKeys}
+            countries={countries}
+            connections={connections}
+            onChange={(next) => {
+              setAudienceKeys(next);
+              setPrepared(null);
+            }}
+          />
           <HostAdCountryPicker
             countries={countries}
             onChange={(next) => {
@@ -2354,6 +2379,22 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
           {prepared ? (
             <View style={styles.planBox}>
+              {audienceKeys.length > 0 ? (
+                <View style={styles.targetingRow} testID="host-ad-review-audiences">
+                  <Text style={styles.choiceTitle}>People you chose</Text>
+                  <Text style={styles.choiceSubtitle}>
+                    {audienceKeys
+                      .map((key) => {
+                        const audience = (setup.audiences ?? []).find(
+                          (item) => item.audienceKey === key,
+                        );
+                        return audience ? hostAdAudienceName(audience) : null;
+                      })
+                      .filter((value): value is string => value !== null)
+                      .join(", ")}
+                  </Text>
+                </View>
+              ) : null}
               {prepared.optimizationByPlatform ? (
                 <Text style={styles.choiceTitle} testID="host-ad-goal-summary">
                   {goalSummaryLine(

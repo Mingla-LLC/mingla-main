@@ -404,6 +404,22 @@ export const trafficAnalytics = {
   },
 } as const;
 
+// #4238 wave 2 — Host ad results charts: one colour per ad app, reused from
+// the analytics hues above (no new hue family; each ≥ 3:1 on the dark card).
+// Colour is never the only signal: every bar also carries the app name.
+export const hostAdCharts = {
+  platform: {
+    meta: "#7aa7ff",
+    snapchat: "#ffd2a8",
+    tiktok: "#5fd4d0",
+    google: "#b49cff",
+    reddit: "#f6a15f",
+  },
+  spend: accent.warm,
+  results: trafficAnalytics.positiveDelta,
+  costPerResult: trafficAnalytics.sources.mingla_ads,
+} as const;
+
 export const canvas = {
   discover: "#0c0e12",
   profile: "#141113",
