@@ -270,13 +270,19 @@ export function flowUploadKind(
  * #3355 P8 — the trip flow's departure and destination cards use the same
  * search without a venue name ("city" mode).
  */
-export type AriFlowPlaceMode = "venue" | "city";
+export type AriFlowPlaceMode = "venue" | "city" | "address";
 
+/**
+ * #3355 P9 — "address": an experience stop or a venue. The name was (or will
+ * be) asked on its own card, so only the address search shows.
+ */
 const FLOW_PLACE_STEPS: Readonly<Record<string, AriFlowPlaceMode>> =
   Object.freeze({
     event_place: "venue",
     trip_departure: "city",
     trip_destination: "city",
+    experience_stop_place: "address",
+    venue_place: "address",
   });
 
 export function flowPlaceMode(
@@ -310,9 +316,9 @@ export function buildFlowPlaceAnswer(
   ) {
     return null;
   }
-  const shown = flowPlaceMode(artefact) === "city"
-    ? address
-    : `${venue}, ${address}`;
+  const shown = flowPlaceMode(artefact) === "venue"
+    ? `${venue}, ${address}`
+    : address;
   const label = shown.length > 200 ? `${shown.slice(0, 197)}…` : shown;
   return {
     answer: {

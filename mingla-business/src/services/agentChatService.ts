@@ -111,6 +111,11 @@ export interface AriFlowPlaceValue {
   lat: number;
   lng: number;
   feature_type: string | null;
+  /**
+   * #3355 P9 — the address search's own id for the pick, the same id the
+   * experience wizard stores as a stop's place_id.
+   */
+  place_id?: string | null;
 }
 
 /** #3355 P3 — the next step the server already persisted. */

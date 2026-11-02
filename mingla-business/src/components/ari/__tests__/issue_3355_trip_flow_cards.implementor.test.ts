@@ -95,8 +95,10 @@ describe("#3355 P8 trip flow cards", () => {
       path.join(__dirname, "..", "AriFlowPlaceCard.tsx"),
       "utf8",
     );
-    expect(placeCard).toMatch(/\{city \? null : \(\s*<Input/);
-    expect(placeCard).toMatch(/if \(city\) \{[\s\S]*setVenueName\(/);
+    // #3355 P9: "city" and "address" both hide the name box (noName).
+    expect(placeCard).toMatch(/const noName = mode !== "venue"/);
+    expect(placeCard).toMatch(/\{noName \? null : \(\s*<Input/);
+    expect(placeCard).toMatch(/if \(noName\) \{[\s\S]*setVenueName\(/);
     const list = fs.readFileSync(
       path.join(__dirname, "..", "MessageList.tsx"),
       "utf8",

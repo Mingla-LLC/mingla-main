@@ -53,6 +53,8 @@ export function placeFromPick(
     lat: details.location.lat,
     lng: details.location.lng,
     feature_type: details.featureType ?? null,
+    // #3355 P9 — the pick's own id (an experience stop needs it to publish).
+    ...(details.placeId ? { place_id: details.placeId } : {}),
   };
 }
 
@@ -62,6 +64,9 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
   mode = "venue",
 }) => {
   const city = mode === "city";
+  // #3355 P9 — "address" (an experience stop, a venue): no name box either;
+  // the name has its own card.
+  const noName = mode !== "venue";
   const [venueName, setVenueName] = useState("");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<PlaceDetails | null>(null);
@@ -70,7 +75,7 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
 
   return (
     <View style={styles.card}>
-      {city ? null : (
+      {noName ? null : (
         <Input
           value={venueName}
           onChangeText={setVenueName}
@@ -89,7 +94,7 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
         onPick={(details, selectedLabel) => {
           setPicked(details);
           setQuery(selectedLabel ?? details.formattedAddress);
-          if (city) {
+          if (noName) {
             // The place the owner picked names itself ("Lagos").
             setVenueName(
               selectedLabel?.split(",")[0]?.trim() || details.city || "",
@@ -103,7 +108,9 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
           setPicked(null);
         }}
         placeholder={city ? "Search for a city or address" : "Search the address"}
-        accessibilityLabel={city ? "Trip place" : "Venue address"}
+        accessibilityLabel={
+          city ? "Trip place" : mode === "address" ? "Address" : "Venue address"
+        }
       />
       <Text style={styles.note}>
         {city

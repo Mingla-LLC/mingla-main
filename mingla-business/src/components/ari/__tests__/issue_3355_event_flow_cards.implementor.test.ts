@@ -125,9 +125,11 @@ describe("#3355 P7 event flow cards", () => {
       location: { lat: 51.5265, lng: -0.0806 },
       featureType: "poi",
     };
-    expect(placeFromPick(details as never, "Shoreditch Town Hall")).toEqual(
-      SHOREDITCH,
-    );
+    // #3355 P9: the pick also carries the address search's own id.
+    expect(placeFromPick(details as never, "Shoreditch Town Hall")).toEqual({
+      ...SHOREDITCH,
+      place_id: "poi.1",
+    });
     expect(
       placeFromPick({ ...details, city: "" } as never, "Shoreditch Town Hall"),
     ).toBeNull();
