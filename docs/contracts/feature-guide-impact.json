@@ -36,6 +36,13 @@
       ]
     },
     {
+      "capability_key": "events-orders-refunds",
+      "paths": [
+        "supabase/functions/admin-refund-order/index.ts",
+        "supabase/functions/refund-order/index.ts"
+      ]
+    },
+    {
       "capability_key": "checkout-claim-ticket",
       "paths": [
         "app-mobile/src/components/OnboardingFlow.tsx",
@@ -96,7 +103,9 @@
         "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql",
         "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
-        "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql"
+        "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql",
+        "supabase/migrations/20280301003281_issue_3281_extras_schema.sql",
+        "supabase/functions/_shared/buyerConfirmationPayload.ts"
       ]
     },
     {

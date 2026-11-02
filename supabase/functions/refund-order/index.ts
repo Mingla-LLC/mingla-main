@@ -103,6 +103,9 @@ function mapRpcErrorToHttp(errorMessage: string): {
   if (msg.includes("line_overrefund")) {
     return { code: "line_overrefund", status: 422, detail: errorMessage };
   }
+  if (msg.includes("refund_pending_on_order")) {
+    return { code: "refund_pending_on_order", status: 409, detail: errorMessage };
+  }
   if (msg.includes("line_item_not_found")) {
     return { code: "line_item_not_found", status: 422, detail: errorMessage };
   }
