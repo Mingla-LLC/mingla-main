@@ -184,7 +184,9 @@ async function appendPendingActivity(args: {
   }
 }
 
-// MINGLA-INVARIANT: I-ARI-RECEIPT-SET-COMPLETE | issue #2830 | Every Ari write whose SQL commits through agent_operation_receipt_begin is in this set, so an ambiguous `executing` retry replays the receipt instead of failing WRONG_STATE (enforced by agent-confirm-action/__tests__/issue_2830_receipt_set_and_expiry.implementor.test.ts, generated from the migrations).
+// I-ARI-RECEIPT-SET-COMPLETE (#2830): every Ari write whose SQL commits through
+// agent_operation_receipt_begin is in this set. Declared and enforced in
+// __tests__/issue_2830_receipt_set_and_expiry.implementor.test.ts.
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "create_brand",
   "create_event",

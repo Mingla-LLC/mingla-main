@@ -335,7 +335,7 @@ export function phase3dContractDigest(manifest) {
 // #3355 / #2830: register the renumbered #3355 and #2830 migrations and their
 // proofs the same way, plus the exact-file exclusion of brand readiness,
 // paid-tier terms and event seed truth from the deliberately pre-#1931 replay.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "1bc89d5c95ee0dd4dee0e20f10db475a6c6ece9906bf17854e3070b63e2fdea7";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "d725587c830a06c33e6e0bd034525986000f6e80e3096d096932726b15659756";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
