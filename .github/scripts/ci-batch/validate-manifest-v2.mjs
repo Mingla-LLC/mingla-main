@@ -329,7 +329,8 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the day-limited tickets migration and its proof the same way.
 // #3281: register the door active date migration the same way.
 // #4226: register the ticket buyer people migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "73fd6e7a1dbc13872e495ee92a2443f80dfa45372f5b1ffadf68795534e48a56";
+// #3281: register the Extras schema migration the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "0a2cfdd518af42d628fc4794d264596808426658b0ad793cf7aa97a2e33c7463";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -87,6 +87,12 @@ interface LineRow {
     | null;
 }
 
+interface ExtraRow {
+  add_on_name_at_order: string;
+  quantity: number | string | null;
+  total_cents: number | string | null;
+}
+
 interface DiscountRow {
   name_snapshot: string | null;
   amount_minor: number | string | null;
@@ -246,6 +252,25 @@ export async function buildBuyerConfirmationPayload(
       QueryResult<DiscountRow[]>,
     ];
 
+  // issue #3281 — decision 8: a confirmation names what was bought. Read apart
+  // from the receipt so a missing row can never block a guest's confirmation.
+  const extrasResult = (await client
+    .from("order_add_on_line_items")
+    .select("add_on_name_at_order, quantity, total_cents")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true })) as QueryResult<ExtraRow[]>;
+  if (extrasResult.error !== null) {
+    console.error(`${logPrefix} extras lookup failed`, {
+      orderId,
+      message: extrasResult.error.message,
+    });
+  }
+  const extraLines = (extrasResult.data ?? []).map((row) => ({
+    name: row.add_on_name_at_order,
+    qty: Math.max(Math.round(Number(row.quantity ?? 0)), 0),
+    amountCents: safeCents(row.total_cents),
+  }));
+
   if (orderResult.error !== null || orderResult.data === null) {
     console.error(`${logPrefix} order receipt lookup failed`, {
       orderId,
@@ -288,7 +313,7 @@ export async function buildBuyerConfirmationPayload(
       phoneLast4: buyerPhoneLast4(order.buyer_phone_e164),
     },
     receipt: {
-      lines: receiptLines(lineResult.data ?? []),
+      lines: [...receiptLines(lineResult.data ?? []), ...extraLines],
       discountLines: discountLines(discountResult.data ?? []),
       feesAndTaxCents:
         safeCents(order.buyer_fees_cents) + safeCents(order.tax_cents),
