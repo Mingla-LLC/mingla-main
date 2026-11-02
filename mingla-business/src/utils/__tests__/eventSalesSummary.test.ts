@@ -68,8 +68,9 @@ const order = (patch: Partial<OrderRecord> = {}): OrderRecord => ({
 describe("eventSalesSummary", () => {
   test("issue #3281 — a listed ticket's per-date capacity is never a run total", () => {
     const summary = buildEventSalesSummary({
+      eventId: "event-1",
       tickets: [ticket({ capacity: 10, validDayIds: ["fri", "sat"] })],
-      eventCurrency: "GBP",
+      eventCurrency: "USD",
       orders: [order()],
     });
 
