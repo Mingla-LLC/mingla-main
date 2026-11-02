@@ -476,7 +476,8 @@
         "supabase/functions/_shared/marketingAudience.ts",
         "supabase/functions/_shared/marketingEmailRender.ts",
         "supabase/functions/marketing-send/index.ts",
-        "supabase/functions/_shared/email/footerLine.ts"
+        "supabase/functions/_shared/email/footerLine.ts",
+        "supabase/functions/_shared/marketingReceiveReason.ts"
       ]
     }
   ]
