@@ -204,6 +204,21 @@ Deno.test("#2830 structured design answers become exact pre-draft plan proposals
   assertEquals(websiteSetupPlanRevision({ plan: { revision: "6" } }), null);
 });
 
+Deno.test("#3355 a brand-new brand with no saved plan answers Ari at revision 0", () => {
+  // The plan read returns `plan: null` until the first save creates the row.
+  assertEquals(
+    websiteSetupPlanRevision({ brand_id: BRAND_ID, entitled: true, plan: null }),
+    0,
+  );
+  // Not entitled, or no plan read at all: still nothing to save against.
+  assertEquals(
+    websiteSetupPlanRevision({ brand_id: BRAND_ID, entitled: false }),
+    null,
+  );
+  assertEquals(websiteSetupPlanRevision({ entitled: true }), null);
+  assertEquals(websiteSetupPlanRevision(null), null);
+});
+
 Deno.test("#2830 structured plan answers preserve owner words without model inference", () => {
   assertEquals(
     websiteSetupPlanAnswer(

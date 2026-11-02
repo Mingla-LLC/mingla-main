@@ -649,6 +649,10 @@ export function websiteSetupPlanAnswer(
 
 export function websiteSetupPlanRevision(result: unknown): number | null {
   const root = object(result);
+  // #3355 — an entitled brand that has never saved a plan reads `plan: null`.
+  // Its first save creates the row at revision 0, exactly as the Website
+  // screen sends it; without this a brand-new brand could never answer Ari.
+  if (root.entitled === true && "plan" in root && root.plan === null) return 0;
   const nested = object(root.plan);
   const candidate = nested.revision ?? root.revision;
   return Number.isInteger(candidate) && Number(candidate) >= 0
