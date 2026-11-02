@@ -260,6 +260,7 @@
     {
       "capability_key": "brand-team-roles",
       "paths": [
+        "mingla-business/app/(tabs)/_layout.tsx",
         "mingla-business/app/(tabs)/home.tsx",
         "mingla-business/app/brand/[id]/team.tsx",
         "mingla-business/src/components/home/VenueStaffHome.tsx",
@@ -267,6 +268,7 @@
         "mingla-business/src/components/team/MemberDetailSheet.tsx",
         "mingla-business/src/components/team/RolePickerSheet.tsx",
         "mingla-business/src/components/team/VenueAccessEditor.tsx",
+        "mingla-business/src/config/tabsNavigatorSettings.ts",
         "mingla-business/src/hooks/useBrandInvitations.ts",
         "mingla-business/src/hooks/useBrandVenueAccessMutation.ts",
         "mingla-business/src/hooks/useCurrentBrandRole.ts",
