@@ -24,6 +24,9 @@ jest.mock("@mingla/phone-input/phoneNumber", () => ({
   formatPhoneNational: (_c: string, v: string) => v,
   phoneDialCodeForCountry: () => null,
 }));
+jest.mock("../../../hooks/useCurrentBrand", () => ({
+  useCurrentBrand: () => null,
+}));
 jest.mock("../../location/MapboxAddressInput", () => ({
   MapboxAddressInput: "mapbox",
 }));

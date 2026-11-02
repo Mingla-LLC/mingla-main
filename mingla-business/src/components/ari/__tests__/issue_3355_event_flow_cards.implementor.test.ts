@@ -22,6 +22,9 @@ jest.mock("../../../constants/designSystem", () => ({
   text: { secondary: "grey" },
   typography: { bodySm: { fontSize: 13 } },
 }));
+jest.mock("../../../hooks/useCurrentBrand", () => ({
+  useCurrentBrand: () => null,
+}));
 jest.mock("../../location/MapboxAddressInput", () => ({
   MapboxAddressInput: "mapbox-address-input",
 }));

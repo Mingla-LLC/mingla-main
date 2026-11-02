@@ -316,6 +316,9 @@ const HOST_FIELDS: ReadonlyArray<{
   { file: "src/components/venue/VenueDetailsEditor.tsx", field: "venue details editor address", savedAs: /addressText: label,/ },
   // #3355 P5 — Brand Edit's structured address is a Host mount of the picker.
   { file: "src/components/brand/BrandEditAddressField.tsx", field: "brand edit address", savedAs: /brandAddressPatchFromPlace\(details, label\);/ },
+  // #3355 P7 — Ari's in-chat place card (event venue, trip places, experience
+  // stops, a venue's address) is a Host mount of the picker.
+  { file: "src/components/ari/AriFlowPlaceCard.tsx", field: "Ari place card", savedAs: /setPicked\(\{ \.\.\.details, formattedAddress: label \}\);/ },
 ];
 
 /**
@@ -347,7 +350,7 @@ describe("Issue #3291 — every Host address field saves the tapped name", () =>
       const source = fs.readFileSync(path.resolve(ROOT, "mingla-business", file), "utf8");
       expect(addressInputBlocks(source)).toHaveLength(count);
     }
-    expect(Object.keys(mounts)).toHaveLength(8);
+    expect(Object.keys(mounts)).toHaveLength(9);
 
     // Discovery, not a hand-kept list: a NEW Host mount of the picker must be
     // added to HOST_FIELDS (and proven) or this goes red.

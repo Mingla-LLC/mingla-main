@@ -23,6 +23,7 @@ import {
   MapboxAddressInput,
   type PlaceDetails,
 } from "../location/MapboxAddressInput";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 
@@ -70,6 +71,7 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
   const [venueName, setVenueName] = useState("");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<PlaceDetails | null>(null);
+  const brand = useCurrentBrand();
   const place = picked ? placeFromPick(picked, venueName) : null;
   const ready = place !== null && venueName.trim().length > 0;
 
@@ -87,13 +89,19 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
       )}
       <MapboxAddressInput
         value={query}
+        // Issue #3291 — rank-only: the brand's saved point first, else its
+        // country (shared resolver), like every Host address field.
+        proximitySources={{ brandPoint: brand ?? undefined, draftPoint: null }}
         onChangeText={(next) => {
           setQuery(next);
           setPicked(null);
         }}
         onPick={(details, selectedLabel) => {
-          setPicked(details);
-          setQuery(selectedLabel ?? details.formattedAddress);
+          // Like every Host address field: the picker's label first, the
+          // retrieved address second (#3291) — the tapped street is kept.
+          const label = selectedLabel ?? details.formattedAddress;
+          setPicked({ ...details, formattedAddress: label });
+          setQuery(label);
           if (noName) {
             // The place the owner picked names itself ("Lagos").
             setVenueName(
