@@ -24,6 +24,12 @@
 --   T5  Two concurrent refreshes: the second raises PT409, never 40001.
 --   T6  The mark-dirty trigger never fails its host transaction.
 --   T7  ad_campaign_daily_series is admin/service only.
+--   T8  The refresh runs as a non-superuser (service_role) with pg-safeupdate
+--       loaded, as every hosted PostgREST session does (authenticator
+--       preloads safeupdate): a bare DELETE/UPDATE raises 21000 there.
+--   T9  Host sizes: 0 people reads 0 ("No people yet"), 1-9 read 1 ("Fewer
+--       than 10 people", never 10), and a lookalike has no size (its
+--       member_count is the seed's, not its own).
 --
 -- MINGLA-INVARIANT: I-4238-AUDIENCE-HASH-ONLY | issue #4238 | Audience members are SHA-256 hex only and plaintext never leaves Postgres for audience work: identifiers are normalised and hashed inside ad_list_audience_refresh, every hash column carries a ^[0-9a-f]{64}$ CHECK, and members have no grant to any signed-in role.
 
@@ -398,8 +404,8 @@ BEGIN
   PERFORM pg_temp.t4238_assert(v_rows::text NOT LIKE '%238400000000001%' AND v_rows::text NOT LIKE '%provider_audience_id%',
     'T4 no provider audience id reaches the Host');
   PERFORM pg_temp.t4238_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r
-      WHERE (r->>'approx_size')::integer % 10 <> 0),
-    'T4 sizes are rounded');
+      WHERE (r->>'approx_size')::integer NOT IN (0, 1) AND (r->>'approx_size')::integer % 10 <> 0),
+    'T4 sizes are rounded (1 stands for "fewer than 10")');
   PERFORM pg_temp.t4238_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r, jsonb_array_elements(r->'platforms') p
       WHERE p->>'platform' = 'meta' AND p->>'state' = 'ready'),
     'T4 per-platform state is returned');
@@ -493,3 +499,78 @@ BEGIN
     'T5 the in-progress conflict is PT409, never 40001');
 END
 $t5b$;
+
+-- T8 + T9: non-superuser with pg-safeupdate, and the Host's sizes. ----------
+BEGIN;
+LOAD 'safeupdate';
+DO $t8$
+DECLARE
+  v_host  constant uuid := '42389000-0000-4000-a000-000000000001';
+  v_brand constant uuid := '42389000-0000-4000-a000-000000000101';
+  v_person uuid; v_link uuid; v_cm uuid;
+  i integer;
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES (v_host, 't4238-t8-host@mingla-fixture.org');
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_host, 't4238-t8-host@mingla-fixture.org');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency, country_code)
+  VALUES (v_brand, v_host, 'T4238 T8 Brand', 't4238-t8-' || v_brand, 'NGN', 'NG');
+  FOR i IN 1..3 LOOP
+    INSERT INTO public.brand_people(brand_id, display_name) VALUES (v_brand, 'T8 Contact ' || i) RETURNING id INTO v_person;
+    INSERT INTO public.brand_person_source_links(brand_id, brand_person_id, source_kind, source_id, link_method, source_occurred_at)
+    VALUES (v_brand, v_person, 'import', gen_random_uuid(), 'normalized_address', now()) RETURNING id INTO v_link;
+    INSERT INTO public.brand_person_contact_methods(brand_id, brand_person_id, channel, normalized_value, provenance_scope, is_exportable, is_primary)
+    VALUES (v_brand, v_person, 'email', format('t4238-t8-c%s@mingla-fixture.org', i), 'brand_owned', true, true) RETURNING id INTO v_cm;
+    INSERT INTO public.brand_person_contact_method_sources(contact_method_id, source_link_id, provenance_kind, exportable)
+    VALUES (v_cm, v_link, 'import', true);
+  END LOOP;
+END
+$t8$;
+
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claim.role', 'service_role', true);
+DO $t8b$
+DECLARE
+  v_brand constant uuid := '42389000-0000-4000-a000-000000000101';
+  v_err text := NULL;
+  v_n integer;
+BEGIN
+  PERFORM pg_temp.t4238_assert(NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user),
+    'T8 running as a non-superuser (' || current_user || ')');
+  -- The guard is live in this session: a bare DELETE is refused.
+  BEGIN
+    CREATE TEMP TABLE t8_probe(x int) ON COMMIT DROP;
+    DELETE FROM t8_probe;
+    v_err := 'no error';
+  EXCEPTION WHEN OTHERS THEN v_err := SQLSTATE;
+  END;
+  PERFORM pg_temp.t4238_assert(v_err = '21000', 'T8 pg-safeupdate is loaded (bare DELETE raised ' || v_err || ')');
+  v_err := NULL;
+  BEGIN
+    PERFORM public.ad_list_audience_ensure_brand(v_brand);
+    PERFORM public.ad_list_audience_refresh(id) FROM public.ad_list_audiences
+      WHERE audience_key = 'brand:' || v_brand || ':contacts';
+  EXCEPTION WHEN OTHERS THEN v_err := SQLSTATE || ' ' || SQLERRM;
+  END;
+  PERFORM pg_temp.t4238_assert(v_err IS NULL,
+    'T8 ensure_brand and refresh succeed under pg-safeupdate (got ' || COALESCE(v_err, 'ok') || ')');
+
+  -- T9 ----------------------------------------------------------------------
+  PERFORM pg_temp.t4238_assert(public.ad_list_audience_round_size(0) = 0, 'T9 round_size(0) = 0');
+  FOR v_n IN 1..9 LOOP
+    PERFORM pg_temp.t4238_assert(public.ad_list_audience_round_size(v_n) = 1,
+      format('T9 round_size(%s) = 1 (fewer than 10)', v_n));
+  END LOOP;
+  PERFORM pg_temp.t4238_assert(public.ad_list_audience_round_size(10) = 10, 'T9 round_size(10) = 10');
+  PERFORM pg_temp.t4238_assert(
+    (SELECT approx_size FROM public.host_ad_audiences(v_brand) WHERE audience_key = 'brand:' || v_brand || ':contacts') = 1,
+    'T9 a 3-person list reaches the Host as 1 ("Fewer than 10 people")');
+  PERFORM pg_temp.t4238_assert(
+    (SELECT approx_size FROM public.host_ad_audiences(v_brand) WHERE audience_key = 'brand:' || v_brand || ':guests') = 0,
+    'T9 an empty list reaches the Host as 0 ("No people yet")');
+  PERFORM pg_temp.t4238_assert(
+    EXISTS (SELECT 1 FROM public.host_ad_audiences(v_brand) WHERE kind = 'lookalike')
+    AND NOT EXISTS (SELECT 1 FROM public.host_ad_audiences(v_brand) WHERE kind = 'lookalike' AND approx_size IS NOT NULL),
+    'T9 a lookalike has no Host size (never the seed''s count)');
+END
+$t8b$;
+ROLLBACK;

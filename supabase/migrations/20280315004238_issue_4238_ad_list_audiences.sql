@@ -320,7 +320,10 @@ BEGIN
   CREATE TEMP TABLE IF NOT EXISTS ad_list_cand (
     email text, phone text, user_id uuid, country text
   ) ON COMMIT DROP;
-  DELETE FROM pg_temp.ad_list_cand;
+  -- WHERE true: hosted PostgREST sessions preload pg-safeupdate, which
+  -- refuses a DELETE with no WHERE clause (21000). Every refresh arrives
+  -- through PostgREST, so a bare DELETE here fails every refresh.
+  DELETE FROM pg_temp.ad_list_cand WHERE true;
 
   IF v_a.status = 'retired' THEN
     NULL; -- no candidates: every member is marked removed below.
@@ -661,7 +664,7 @@ BEGIN
       members_refreshed_at = now(), updated_at = now()
   WHERE l.seed_audience_id = v_a.id;
 
-  DELETE FROM pg_temp.ad_list_cand;
+  DELETE FROM pg_temp.ad_list_cand WHERE true; -- pg-safeupdate: see above
   RETURN jsonb_build_object('member_count', v_count, 'added', v_added, 'removed', v_removed);
 END;
 $function$;
@@ -740,8 +743,11 @@ RETURNS integer
 LANGUAGE sql IMMUTABLE
 SET search_path = pg_catalog
 AS $function$
+  -- 0 reads "No people yet"; 1-9 come back as 1, which the Host reads as
+  -- "Fewer than 10 people" (never rounded up to 10, never the exact count).
   SELECT CASE
     WHEN p_n IS NULL OR p_n <= 0 THEN 0
+    WHEN p_n < 10 THEN 1
     WHEN p_n < 100 THEN (round(p_n / 10.0) * 10)::integer
     WHEN p_n < 1000 THEN (round(p_n / 50.0) * 50)::integer
     ELSE (round(p_n / power(10, floor(log(p_n)) - 1)) * power(10, floor(log(p_n)) - 1))::integer
@@ -771,7 +777,10 @@ BEGIN
   END IF;
   RETURN QUERY
   SELECT a.audience_key, a.display_name, a.kind,
-         public.ad_list_audience_round_size(a.member_count),
+         -- A lookalike's member_count is its seed's count in that country,
+         -- not its own size (each app builds it), so it is never shown.
+         CASE WHEN a.kind = 'lookalike' THEN NULL
+              ELSE public.ad_list_audience_round_size(a.member_count) END,
          a.lookalike_country,
          COALESCE((
            SELECT jsonb_agg(jsonb_build_object(
