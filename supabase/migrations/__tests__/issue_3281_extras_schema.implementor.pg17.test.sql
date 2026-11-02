@@ -192,6 +192,8 @@ DECLARE
   v_mixed_line uuid := gen_random_uuid();
   v_plain_order uuid := gen_random_uuid();
   v_plain_line uuid := gen_random_uuid();
+  v_discount_order uuid := gen_random_uuid();
+  v_discount_line uuid := gen_random_uuid();
   v_refund uuid;
   v_result jsonb;
 BEGIN
@@ -254,6 +256,30 @@ BEGIN
      OR (SELECT SUM(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund) <> 1200
      OR NOT EXISTS (SELECT 1 FROM public.refund_add_on_line_items WHERE refund_id=v_refund) THEN
     RAISE EXCEPTION 'cancel must return the extras and fees past a free ticket';
+  END IF;
+
+  -- A discount can leave less than the list prices. Every line still adds up
+  -- to the refund, and tickets keep their share.
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_discount_order,v_event,3000,'NGN','paid','pi-discount','ch-discount','legacy');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_discount_line,v_discount_order,v_tier,1,1000,1000);
+  INSERT INTO public.order_add_on_line_items(
+    order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
+    quantity,unit_price_cents,total_cents
+  ) VALUES (v_discount_order,v_tier,'Dinner','VIP',1,3500,3500);
+  PERFORM public.issue_3872_cancel_refund_order(v_discount_order,
+    jsonb_build_array(jsonb_build_object('order_line_item_id',v_discount_line,'quantity',1)),
+    'The organiser cancelled this event','cancel-discount-1');
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_discount_order;
+  IF (SELECT amount_cents FROM public.refunds WHERE id=v_refund) <> 3000
+     OR (SELECT SUM(amount_cents) FROM public.refund_add_on_line_items WHERE refund_id=v_refund) <> 2333
+     OR (SELECT SUM(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund) <> 667 THEN
+    RAISE EXCEPTION 'allocations must add up to the refund';
+  END IF;
+  IF public.issue_3281_extras_refund_cents(v_discount_order,'[]'::jsonb,NULL) <> 0 THEN
+    RAISE EXCEPTION 'a capped extra must not refund again';
   END IF;
 
   -- A free ticket never keeps a cancelled order's fees, with or without extras.

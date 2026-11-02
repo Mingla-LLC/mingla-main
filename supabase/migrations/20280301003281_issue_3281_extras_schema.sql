@@ -131,17 +131,18 @@ BEGIN
   IF NOT public.issue_3281_refund_returns_all_tickets(p_order_id, p_lines, p_this_refund) THEN
     RETURN 0;
   END IF;
-  SELECT COALESCE(SUM(GREATEST(item.total_cents - COALESCE((
-      SELECT SUM(ra.amount_cents)
-        FROM public.refund_add_on_line_items ra
-        JOIN public.refunds r ON r.id = ra.refund_id
-       WHERE ra.order_add_on_line_item_id = item.id
-         AND r.status IN ('pending', 'succeeded')
-         AND r.id IS DISTINCT FROM p_this_refund
-    ), 0), 0)), 0)::integer
+  -- An extra is returned once, even when a discount capped what it got back.
+  SELECT COALESCE(SUM(item.total_cents), 0)::integer
     INTO v_cents
     FROM public.order_add_on_line_items item
-   WHERE item.order_id = p_order_id;
+   WHERE item.order_id = p_order_id
+     AND NOT EXISTS (
+       SELECT 1 FROM public.refund_add_on_line_items ra
+         JOIN public.refunds r ON r.id = ra.refund_id
+        WHERE ra.order_add_on_line_item_id = item.id
+          AND r.status IN ('pending', 'succeeded')
+          AND r.id IS DISTINCT FROM p_this_refund
+     );
   RETURN v_cents;
 END;
 $fn$;
@@ -184,8 +185,9 @@ END;
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_3281_extras_refund_cents_settled(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 
+-- p_cap limits what the extras take in total when the refund can't cover them.
 CREATE OR REPLACE FUNCTION public.issue_3281_record_extras_refund(
-  p_refund_id uuid, p_order_id uuid, p_lines jsonb
+  p_refund_id uuid, p_order_id uuid, p_lines jsonb, p_cap integer DEFAULT NULL
 ) RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -198,21 +200,26 @@ BEGIN
   INSERT INTO public.refund_add_on_line_items (
     refund_id, order_add_on_line_item_id, quantity, amount_cents
   )
-  SELECT p_refund_id, item.id, item.quantity, item.total_cents
-    FROM public.order_add_on_line_items item
-   WHERE item.order_id = p_order_id
-     AND NOT EXISTS (
-       SELECT 1 FROM public.refund_add_on_line_items ra
-         JOIN public.refunds r ON r.id = ra.refund_id
-        WHERE ra.order_add_on_line_item_id = item.id
-          AND r.status IN ('pending', 'succeeded')
-     );
+  SELECT p_refund_id, due.id, due.quantity,
+         CASE WHEN p_cap IS NULL THEN due.total_cents
+              ELSE LEAST(due.total_cents, GREATEST(p_cap - due.before, 0))::integer END
+    FROM (
+      SELECT item.id, item.quantity, item.total_cents,
+             COALESCE(SUM(item.total_cents) OVER (
+               ORDER BY item.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+             ), 0) AS before
+        FROM public.order_add_on_line_items item
+       WHERE item.order_id = p_order_id
+         AND NOT EXISTS (
+           SELECT 1 FROM public.refund_add_on_line_items ra
+             JOIN public.refunds r ON r.id = ra.refund_id
+            WHERE ra.order_add_on_line_item_id = item.id
+              AND r.status IN ('pending', 'succeeded')
+         )
+    ) due;
 END;
 $fn$;
-
-REVOKE ALL ON FUNCTION public.issue_3281_refund_returns_all_tickets(uuid, jsonb, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.issue_3281_extras_refund_cents(uuid, jsonb, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.issue_3281_record_extras_refund(uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_record_extras_refund(uuid, uuid, jsonb, integer) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.refund_preview(
   p_order_id uuid,
@@ -909,11 +916,14 @@ BEGIN
     jsonb_build_object('idempotency_key', p_idempotency_key)
   ) RETURNING id INTO v_refund_id;
 
-  PERFORM public.issue_3281_record_extras_refund(v_refund_id, p_order_id, v_lines);
   -- issue #3281 — the refund total is unchanged. Tickets share what extras don't.
-  SELECT COALESCE(SUM(amount_cents), 0) INTO v_extras
-    FROM public.refund_add_on_line_items WHERE refund_id = v_refund_id;
-  v_pool := GREATEST(v_amount - v_extras, v_count);
+  -- A discount can leave less than the list prices, so each side takes its share.
+  v_extras := public.issue_3281_extras_refund_cents(p_order_id, v_lines, v_refund_id);
+  IF v_amount < v_line_base + v_extras THEN
+    v_extras := floor(v_amount::numeric * v_extras / (v_line_base + v_extras))::bigint;
+  END IF;
+  PERFORM public.issue_3281_record_extras_refund(v_refund_id, p_order_id, v_lines, v_extras::integer);
+  v_pool := v_amount - v_extras;
 
   FOR v_line IN SELECT * FROM jsonb_array_elements(v_lines) ORDER BY value->>'order_line_item_id' LOOP
     v_idx := v_idx + 1;
