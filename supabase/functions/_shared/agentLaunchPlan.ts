@@ -10,6 +10,7 @@ import {
   readinessMoneyGaps,
   readinessMoneySentence,
 } from "./agentReadinessTools.ts";
+import { type MoneySplitView, moneySplitView } from "./money/moneySplit.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -27,6 +28,11 @@ export interface AriBrandLaunchPlan {
   steps: AriLaunchPlanStep[];
   missing: string[];
   sourceUrls: string[];
+  /**
+   * #3355 P6 (D-10): can sell vs can be paid out, each with its plain guide,
+   * from the snapshot's brand_readiness money split. Null when unread.
+   */
+  money: MoneySplitView | null;
 }
 
 function record(value: unknown): JsonRecord | null {
@@ -349,5 +355,6 @@ export function buildBrandLaunchPlan(input: {
     steps,
     missing,
     sourceUrls,
+    money: money ? moneySplitView(money) : null,
   };
 }

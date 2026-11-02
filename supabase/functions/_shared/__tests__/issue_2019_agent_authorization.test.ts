@@ -198,8 +198,11 @@ Deno.test("#2019 canonical role boundary is caller-bound and monotonic", async (
     client(50, 40),
     UUID,
   );
+  // [TEST-MOD-APPROVED #3355 P6] get_payout_status now uses the server money
+  // predicate (D-11, see issue_3355_money_flow); get_tax_status keeps the
+  // rank boundary this case pins.
   await authorizeAgentTool(
-    tool("get_payout_status"),
+    tool("get_tax_status"),
     { brand_id: UUID },
     client(40, 30),
     UUID,
@@ -258,7 +261,8 @@ Deno.test("#2019 full rank x operation-class matrix", async () => {
   const classes = [
     ["get_brand_analytics", "scanner", 10],
     ["draft_campaign", "marketing_manager", 20],
-    ["get_payout_status", "finance_manager", 30],
+    // [TEST-MOD-APPROVED #3355 P6] payout status moved to the money predicate.
+    ["get_tax_status", "finance_manager", 30],
     ["create_event", "event_manager", 40],
     ["update_brand", "brand_admin", 50],
   ] as const;

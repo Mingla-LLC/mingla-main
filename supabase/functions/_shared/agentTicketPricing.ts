@@ -7,6 +7,7 @@
 import { withProposalPresentation } from "./ariPresentation/registry.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { assertCanCollect, isUuid, ToolError } from "./agentToolHelpers.ts";
+import { ticketPriceBelowMinimum } from "./money/providerMinimums.ts";
 
 export const PRICING_STATE_VALUES = [
   "inherit",
@@ -612,6 +613,30 @@ export async function preflightTicketPricingProposal(
         "EVENT_CURRENCY_REQUIRED",
         "Connect a payout account with a currency before adding a paid tier",
       );
+    }
+    // #3355 P6 (Seth decision 6): a new or changed paid price must clear the
+    // payment provider's minimum. Said at price entry, before any card; the
+    // database refuses the same price (ticket_price_below_minimum).
+    const proposedCents = proposed.priceGbp == null
+      ? null
+      : Math.round(proposed.priceGbp * 100);
+    const currentCents = current?.priceGbp == null || current.isFree
+      ? null
+      : Math.round(current.priceGbp * 100);
+    if (
+      !proposed.isFree && proposedCents !== null &&
+      proposedCents !== currentCents && effectiveCurrency !== null
+    ) {
+      const belowMinimum = ticketPriceBelowMinimum(
+        proposedCents,
+        effectiveCurrency,
+      );
+      if (belowMinimum) {
+        throw new ToolError(
+          "TICKET_PRICE_BELOW_MINIMUM",
+          `${belowMinimum} Nothing was changed.`,
+        );
+      }
     }
     return {
       lifecycle: event.status === "draft" ? "draft" : "live",

@@ -21,6 +21,7 @@ import {
 } from "../ariOwnerCopy.ts";
 import { toolOwnerCopy } from "./toolLabels.ts";
 import { readinessItemLabel } from "../readinessCatalog.ts";
+import { formatMinor } from "../money/formatMinor.ts";
 
 export interface PresentationField {
   label: string;
@@ -121,37 +122,15 @@ function labelFor(key: string): string {
     : sentenceCase(key.replace(/_(cents|minor|bps|e164)$/, ""));
 }
 
-const ZERO_DECIMAL_PROBE = new Map<string, number>();
-
-function minorUnits(currency: string): number {
-  const cached = ZERO_DECIMAL_PROBE.get(currency);
-  if (cached !== undefined) return cached;
-  let digits = 2;
-  try {
-    digits = new Intl.NumberFormat("en", { style: "currency", currency })
-      .resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    digits = 2;
-  }
-  ZERO_DECIMAL_PROBE.set(currency, digits);
-  return digits;
-}
-
+// #3355 P6 (D-28): one money formatter for Ari. The shared helper uses the
+// currency's own decimals and Stripe's documented two-decimal wire form for
+// ISK/UGX, so 2500 stored ISK reads "ISK 25", not "ISK 2,500".
 export function formatMinorAmount(
   minor: number,
   currency: string | null,
 ): string {
-  if (!currency || !/^[A-Za-z]{3}$/.test(currency)) {
-    return (minor / 100).toFixed(2);
-  }
-  const code = currency.toUpperCase();
-  const digits = minorUnits(code);
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency: code })
-      .format(minor / 10 ** digits);
-  } catch {
-    return `${(minor / 10 ** digits).toFixed(digits)} ${code}`;
-  }
+  if (minor < 0) return `-${formatMinorAmount(-minor, currency)}`;
+  return formatMinor(minor, currency, "en") ?? (minor / 100).toFixed(2);
 }
 
 function formatInstant(value: string, timezone: string | null): string | null {

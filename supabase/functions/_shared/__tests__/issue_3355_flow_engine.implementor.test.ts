@@ -839,9 +839,11 @@ Deno.test("P3 adversarial: paid intent says once what blocks selling and keeps b
   if (money.kind !== "artefact") return;
   assertEquals(money.artefact.step_key, "money_gate");
   assertMatch(money.artefact.text, /with paid tickets now/);
+  // [TEST-MOD-APPROVED #3355 P6] the money gate now walks one item at a time
+  // and a teammate's owner-only item says so in the owner handoff words.
   assertMatch(
     money.artefact.text,
-    /Ready to sell paid tickets \(the brand owner\)/,
+    /Payments aren't set up for selling yet\. Only the owner can do this — tell them\?/,
   );
   const going = await runFlowStep(deps, {
     run: await current(store),

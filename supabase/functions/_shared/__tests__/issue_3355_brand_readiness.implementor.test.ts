@@ -424,7 +424,8 @@ Deno.test("#3355 P2: the launch plan reads the canonical checklist and says can-
     !plan.missing.some((m) => /payment setup so the brand can sell/.test(m)),
   );
   const payouts = plan.steps.find((step) => step.id === "payouts-and-terms")!;
-  assertMatch(payouts.detail, /can sell paid tickets; payouts start once/);
+  // P6 (D-10): the spec's own words for a sell-before-bank brand.
+  assertMatch(payouts.detail, /You can sell now; payouts start once/);
   assert(!/Payouts are enabled|Payout collection is ready/.test(plan.text));
   assertEquals(payouts.state, "active");
 

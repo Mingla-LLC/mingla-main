@@ -29,7 +29,8 @@ export function ticketPriceEntryMinimumMessage(
   if (typed.length === 0) return null;
   const price = Number(typed);
   if (!Number.isFinite(price) || price <= 0) return null;
-  const unchanged = entry.initialIsFree === false &&
+  const unchanged =
+    entry.initialIsFree === false &&
     entry.initialPriceMajor !== null &&
     Math.round(entry.initialPriceMajor * 100) === Math.round(price * 100);
   if (unchanged) return null;

@@ -297,6 +297,114 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   undefer_readiness_item: role("finance_manager", "brand"),
 });
 
+// I-ARI-MONEY-ROLE-USES-SERVER-PREDICATE (#3355 P6, D-11): money tools are
+// authorized with the same server predicate the money RPCs and edges use,
+// never the linear role rank. `biz_can_manage_payments_for_brand` admits a
+// brand admin, the owner or exactly a finance manager; an event manager
+// (rank 40, above finance's 30) is refused here, before any card is shown.
+// The coarse `requiredRole` label stays for the capability ledger.
+// Enforcing test: __tests__/issue_3355_money_flow.implementor.test.ts.
+export type MoneyServerPredicate =
+  | "biz_can_manage_payments_for_brand"
+  | "biz_can_mutate_payouts_for_brand";
+
+const ASK_FINANCE =
+  "Ask a brand admin, a finance manager or the owner to do it.";
+
+export const MONEY_TOOL_PREDICATES: Readonly<
+  Record<string, {
+    predicate: MoneyServerPredicate;
+    refusal: string;
+    appliesTo?: (args: Record<string, unknown>) => boolean;
+  }>
+> = Object.freeze({
+  refund_order: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can refund. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  get_order_refund_preview: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal: `Only admins or finance can refund. ${ASK_FINANCE}`,
+  },
+  refund_rsvp_contribution: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can refund. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  cancel_order: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can cancel orders. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  get_payout_status: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal: `Only admins or finance can see payouts. ${ASK_FINANCE}`,
+  },
+  get_brand_balances_reports: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can see balances and payout reports. ${ASK_FINANCE}`,
+  },
+  charge_installment_now: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can charge an instalment. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  retry_installment: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can retry an instalment. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  manage_brand_discovery_currency: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can decide a currency change. Nothing was changed. ${ASK_FINANCE}`,
+    appliesTo: (args) => args.action === "resolve_reconciliation",
+  },
+});
+
+/** The money predicate a call is held to, or null for a rank-checked call. */
+export function moneyToolPredicate(
+  toolName: string,
+  args: Record<string, unknown>,
+): { predicate: MoneyServerPredicate; refusal: string } | null {
+  const rule = Object.prototype.hasOwnProperty.call(
+      MONEY_TOOL_PREDICATES,
+      toolName,
+    )
+    ? MONEY_TOOL_PREDICATES[toolName]
+    : null;
+  if (!rule || (rule.appliesTo && !rule.appliesTo(args))) return null;
+  return { predicate: rule.predicate, refusal: rule.refusal };
+}
+
+/** Owner-facing refusal codes the chat says as plain words, not a toast. */
+export const OWNER_SPOKEN_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "MONEY_ROLE_DENIED",
+  "READINESS_BLOCKED",
+  "TICKET_PRICE_BELOW_MINIMUM",
+  "TIMEZONE_NEEDED",
+]);
+
+/** Caller check against a money predicate's `_for_caller` wrapper. */
+export async function callerPassesMoneyPredicate(
+  userClient: SupabaseClient,
+  brandId: string,
+  predicate: MoneyServerPredicate,
+): Promise<boolean> {
+  const { data, error } = await userClient.rpc(`${predicate}_for_caller`, {
+    p_brand_id: brandId,
+  });
+  if (error) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not verify permissions right now",
+    );
+  }
+  return data === true;
+}
+
 function unavailable(): never {
   throw new ToolError(
     "BRAND_ACCESS_DENIED",
@@ -730,6 +838,28 @@ export async function authorizeAgentTool(
     return { brandId, resource: expected.resource };
   }
   if (!brandId) unavailable();
+  const money = moneyToolPredicate(tool.name, args);
+  if (money) {
+    if (
+      await callerPassesMoneyPredicate(userClient, brandId, money.predicate)
+    ) {
+      return { brandId, resource: expected.resource };
+    }
+    // Non-members keep the generic not-found answer; only a member learns
+    // that this money action belongs to someone else.
+    const { data: rank, error } = await userClient.rpc(
+      "biz_brand_effective_rank_for_caller",
+      { p_brand_id: brandId },
+    );
+    if (error || !Number.isFinite(Number(rank))) {
+      throw new ToolError(
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
+    }
+    if (Number(rank) <= 0) unavailable();
+    throw new ToolError("MONEY_ROLE_DENIED", money.refusal);
+  }
   if (expected.requiredRole === "deed_owner") {
     const { data, error } = await userClient.from("brands").select("id").eq(
       "id",

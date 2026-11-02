@@ -33,6 +33,12 @@ import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
 import { validateGigScript } from "./gigScript.ts";
 import { tryReadBrandReadiness } from "./agentReadinessTools.ts";
+import {
+  type MoneySplitView,
+  moneySplitView,
+  sellGuide,
+} from "./money/moneySplit.ts";
+import { formatMinorWithCode } from "./money/formatMinor.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -4781,68 +4787,102 @@ async function readProviderRailStatus(
 
 const getPayoutStatus = writeTool(
   "get_payout_status",
-  "Read payout readiness (pg_brand_can_collect) plus Stripe/Paystack connect status and guide KYC. Never bypasses Stripe/Paystack.",
+  "Read whether this brand can sell paid tickets and, separately, whether payouts reach its bank, each with a plain-English guide; plus your own Organiser Terms state, the payment rail and Stripe/Paystack connect status. Never bypasses Stripe/Paystack.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    // #1982 / #1976 — canonical readiness gate + Host connect-status edges.
-    // Ari NEVER completes hosted KYC in chat — it only reads status and hands
-    // the owner off to the native Payouts flow.
-    //
-    // #2593 — the bare-boolean read is CORRECT and is now pinned. Production
-    // carries exactly ONE overload, `pg_brand_can_collect(uuid) RETURNS
-    // boolean` (created 20261220000000, replaced in place by 20270129001384),
-    // whose body is `(pg_brand_can_charge(..) OR EXISTS(..)) AND NOT EXISTS(..)`
-    // — every leg is an EXISTS, so it can never evaluate to SQL NULL and
-    // PostgREST can never surface an object. Sibling readers still carry an
-    // `{ can_collect: true }` fallback for a shape this RPC cannot return; that
-    // tolerance is dead code, not a contract, so it is not reintroduced here.
-    //
-    // What IS restored is loudness: a non-boolean must never be folded into a
-    // silent `can_collect: false`, because that answer tells an already-onboarded
-    // owner to go redo KYC. Contract violation fails closed and says so.
-    const can = await callRpc<unknown>(client, "pg_brand_can_collect", {
-      p_brand_id: args.brand_id,
-    });
-    if (typeof can !== "boolean") {
-      throw new ToolError(
-        "RPC_FAILED",
-        "Payout readiness is unavailable right now. Open Brand → Payouts to check directly.",
-      );
+    const brandId = String(args.brand_id);
+    // #3355 P6 (D-10, I-MONEY-SELL-VS-PAYOUT-DISTINCT): the money position is
+    // the server's split in brand_readiness(...).money — can_sell from
+    // pg_brand_can_collect, can_be_paid_out from pg_brand_can_payout
+    // (migration 20270726003645), Terms for the caller — never re-derived
+    // here. A hold-rail brand reads "You can sell now; payouts start once your
+    // bank is connected", never "Payouts are enabled".
+    const { readiness } = await tryReadBrandReadiness(client, brandId);
+    const money: MoneySplitView | null = readiness
+      ? moneySplitView(readiness.money)
+      : null;
+    if (!money) {
+      // Deploy window (readiness not applied yet): sell readiness only, from
+      // the same canonical predicate; the payout half is unknown, not false.
+      // #2593 — the predicate returns a bare boolean; anything else fails
+      // closed loudly rather than telling an onboarded owner to redo KYC.
+      const can = await callRpc<unknown>(client, "pg_brand_can_collect", {
+        p_brand_id: args.brand_id,
+      });
+      if (typeof can !== "boolean") {
+        throw new ToolError(
+          "RPC_FAILED",
+          "Payout readiness is unavailable right now. Open Brand → Payouts to check directly.",
+        );
+      }
+      // Same edges Host polls; per-rail failures stay on that rail.
+      const [stripe, paystack] = await readPayoutRails(client, brandId);
+      return {
+        brand_id: args.brand_id,
+        can_collect: can,
+        can_sell: can,
+        can_be_paid_out: null,
+        sell_guide: sellGuide(can ? "ready" : "kyc_incomplete"),
+        payout_guide:
+          "I couldn't check payouts to the bank just now. The owner can see them in Payments setup.",
+        stripe,
+        paystack,
+        guide: can
+          ? "This brand can sell paid tickets. I couldn't check payouts to the bank just now."
+          : `${
+            sellGuide("kyc_incomplete")
+          } Open Brand → Payouts to see where it's up to. Ari cannot complete payment setup in chat.`,
+      };
     }
-    const canCollect = can;
-    // Same edges Host polls: brand-stripe-refresh-status + Paystack
-    // refresh_status. Per-rail failures stay on that rail — never invent
-    // can_collect:false from a provider outage.
-    const [stripe, paystack] = await Promise.all([
-      readProviderRailStatus(
-        client,
-        "brand-stripe-refresh-status",
-        { brand_id: args.brand_id },
-        minimiseStripeConnectStatus,
-        "Stripe connect status could not be loaded.",
-      ),
-      readProviderRailStatus(
-        client,
-        "brand-paystack-onboard",
-        { action: "refresh_status", brand_id: args.brand_id },
-        minimisePaystackConnectStatus,
-        "Paystack connect status could not be loaded.",
-      ),
-    ]);
+    const [stripe, paystack] = await readPayoutRails(client, brandId);
     return {
       brand_id: args.brand_id,
-      can_collect: canCollect,
+      // Kept for older readers: the same answer as can_sell.
+      can_collect: money.can_sell,
+      can_sell: money.can_sell,
+      sell_reason: money.sell_reason,
+      sell_guide: money.sell_guide,
+      can_be_paid_out: money.can_be_paid_out,
+      payout_reason: money.payout_reason,
+      payout_guide: money.payout_guide,
+      terms_accepted_by_caller: money.terms_accepted_by_caller,
+      terms_guide: money.terms_guide,
+      rail: money.rail,
+      currency: money.currency,
       stripe,
       paystack,
-      guide: canCollect
-        ? "Payouts are enabled — this brand can collect money."
-        : "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
+      guide: money.can_sell && money.can_be_paid_out
+        ? money.summary
+        : `${money.summary} Open Brand → Payouts to see where it's up to. Ari cannot complete payment setup in chat.`,
     };
   },
 );
+
+/** #1982 / #1976 — the same connect-status edges Host polls, minimised. */
+function readPayoutRails(
+  client: any,
+  brandId: string,
+): Promise<[Record<string, unknown>, Record<string, unknown>]> {
+  return Promise.all([
+    readProviderRailStatus(
+      client,
+      "brand-stripe-refresh-status",
+      { brand_id: brandId },
+      minimiseStripeConnectStatus,
+      "Stripe connect status could not be loaded.",
+    ),
+    readProviderRailStatus(
+      client,
+      "brand-paystack-onboard",
+      { action: "refresh_status", brand_id: brandId },
+      minimisePaystackConnectStatus,
+      "Paystack connect status could not be loaded.",
+    ),
+  ]);
+}
 
 // #1976 — canonical partner-split status. The link lives in
 // `partner_brand_links` (ORCH-1081/-1384), NOT the non-existent `brand_partners`
@@ -8213,14 +8253,10 @@ const getOperatorSnapshot = writeTool(
   },
 );
 
+// #3355 P6 (D-28): the currency's own decimals via the shared formatter
+// (ISK 3500 shown as "35 ISK", never "35.00 ISK").
 function formatAdMinor(value: unknown, currency: unknown): string {
-  const cents = Number(value);
-  if (!Number.isSafeInteger(cents) || cents < 0) return "unavailable";
-  const amount = (cents / 100).toFixed(2);
-  const code = typeof currency === "string" && /^[A-Z]{3}$/i.test(currency)
-    ? currency.toUpperCase()
-    : "";
-  return code ? `${amount} ${code}` : amount;
+  return formatMinorWithCode(value, currency) ?? "unavailable";
 }
 
 function adLabel(value: unknown): string {

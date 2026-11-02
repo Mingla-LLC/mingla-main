@@ -39,8 +39,12 @@ describe("#3355 P6 ticket price minimum (Host form)", () => {
   });
 
   test("the exact minimum and anything above it is fine", () => {
-    expect(ticketPriceEntryMinimumMessage({ ...base, priceText: "0.30" })).toBeNull();
-    expect(ticketPriceEntryMinimumMessage({ ...base, priceText: "35" })).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({ ...base, priceText: "0.30" }),
+    ).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({ ...base, priceText: "35" }),
+    ).toBeNull();
   });
 
   test("an unchanged older below-minimum price is not blocked", () => {
@@ -64,18 +68,46 @@ describe("#3355 P6 ticket price minimum (Host form)", () => {
   });
 
   test("free, locked, empty and unknown-minimum entries are never blocked", () => {
-    expect(ticketPriceEntryMinimumMessage({ ...base, isFree: true, priceText: "0.10" })).toBeNull();
-    expect(ticketPriceEntryMinimumMessage({ ...base, isPriceLocked: true, priceText: "0.10" })).toBeNull();
-    expect(ticketPriceEntryMinimumMessage({ ...base, priceText: "" })).toBeNull();
-    expect(ticketPriceEntryMinimumMessage({ ...base, currency: "NGN", priceText: "1" })).toBeNull();
-    expect(ticketPriceEntryMinimumMessage({ ...base, currency: "ISK", priceText: "1" })).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({
+        ...base,
+        isFree: true,
+        priceText: "0.10",
+      }),
+    ).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({
+        ...base,
+        isPriceLocked: true,
+        priceText: "0.10",
+      }),
+    ).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({ ...base, priceText: "" }),
+    ).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({
+        ...base,
+        currency: "NGN",
+        priceText: "1",
+      }),
+    ).toBeNull();
+    expect(
+      ticketPriceEntryMinimumMessage({
+        ...base,
+        currency: "ISK",
+        priceText: "1",
+      }),
+    ).toBeNull();
   });
 
   test("the table covers the currencies Mingla prices in that Stripe lists", () => {
     expect(providerMinimumChargeMinor("usd")).toBe(50);
     expect(providerMinimumChargeMinor("HUF")).toBe(17500);
     expect(providerMinimumChargeMinor("BGN")).toBeNull();
-    expect(ticketPriceBelowMinimum(14.99, "CZK")).toBe(ticketPriceMinimumMessage("CZK"));
+    expect(ticketPriceBelowMinimum(14.99, "CZK")).toBe(
+      ticketPriceMinimumMessage("CZK"),
+    );
     expect(ticketPriceBelowMinimum(15, "CZK")).toBeNull();
   });
 
@@ -86,7 +118,11 @@ describe("#3355 P6 ticket price minimum (Host form)", () => {
     );
     expect(sheet).toContain("ticketPriceEntryMinimumMessage({");
     expect(sheet).toMatch(/priceMinimumMessage === null &&\s*!capacityInvalid/);
-    expect(sheet).toContain("if (priceMinimumMessage !== null) block(priceMinimumMessage);");
-    expect(sheet).toContain("<Text style={styles.helperError}>{priceMinimumMessage}</Text>");
+    expect(sheet).toContain(
+      "if (priceMinimumMessage !== null) block(priceMinimumMessage);",
+    );
+    expect(sheet).toContain(
+      "<Text style={styles.helperError}>{priceMinimumMessage}</Text>",
+    );
   });
 });

@@ -231,6 +231,14 @@ export function intentWantsPaid(text: string): boolean {
   return PAID_SIGNAL.test(text) && !FREE_SIGNAL.test(text);
 }
 
+const INSTALLMENT_SIGNAL =
+  /\b(?:deposits?|instal?lments?|payment plans?|pay in (?:parts|stages)|pay monthly)\b/i;
+
+/** #3355 P6: a trip with deposits or instalments needs payouts to the bank. */
+export function intentWantsInstallments(text: string): boolean {
+  return INSTALLMENT_SIGNAL.test(text);
+}
+
 export const READINESS_ACTION_WORDS: Readonly<Record<ReadinessAction, string>> =
   Object.freeze({
     draft_save: "save a draft",

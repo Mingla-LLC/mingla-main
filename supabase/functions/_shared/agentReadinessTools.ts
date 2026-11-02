@@ -15,6 +15,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4
 import type { AgentToolDefinition } from "./agentToolHelpers.ts";
 import { isUuid, ToolError } from "./agentToolHelpers.ts";
 import { assertAgentReadBrand } from "./agentTenantScope.ts";
+import { moneySummary } from "./money/moneySplit.ts";
 import {
   BRAND_READINESS_ITEM_LABELS,
   READINESS_ACTIONS,
@@ -286,48 +287,36 @@ export function readinessGapLabels(
   );
 }
 
-const SELL_REASON_WORDS: Readonly<Record<string, string>> = Object.freeze({
-  no_provider: "payments aren't connected yet",
-  kyc_incomplete: "payment setup isn't finished",
-  provider_disabled: "the payment provider has paused this account",
-  currency_missing: "there's no payout currency yet",
-  currency_reconciliation_pending: "a currency change needs a decision first",
-  unsupported_market: "this country isn't supported for payments yet",
-});
-
-const PAYOUT_REASON_WORDS: Readonly<Record<string, string>> = Object.freeze({
-  no_bank: "no bank account is connected for payouts",
-  payouts_disabled: "the payment provider hasn't turned payouts on yet",
-  provider_review: "the payment provider needs more information",
-  currency_reconciliation_pending: "a currency change needs a decision first",
-  hold_rail_sell_before_bank: "sales are held until the owner connects a bank",
-});
-
-/** One plain paragraph for the money position (can sell vs can be paid out). */
+/**
+ * One plain paragraph for the money position (can sell vs can be paid out).
+ * #3355 P6 (D-10): built by the shared money split, never "payouts are
+ * enabled" when only selling works.
+ */
 export function readinessMoneySentence(money: BrandReadinessMoney): string {
-  const sell = money.can_sell
-    ? "This brand can sell paid tickets"
-    : `Paid selling isn't ready: ${
-      SELL_REASON_WORDS[money.sell_reason] ?? "payment setup isn't finished"
-    }`;
-  const payout = money.can_be_paid_out
-    ? "payouts reach the bank"
-    : money.can_sell
-    ? `payouts start once that's sorted (${
-      PAYOUT_REASON_WORDS[money.payout_reason] ?? "no bank is connected yet"
-    })`
-    : PAYOUT_REASON_WORDS[money.payout_reason] ?? "no bank is connected yet";
-  const terms = money.terms_accepted_by_caller === false
-    ? " You still need to accept the Organiser Terms before publishing anything paid."
-    : "";
-  return `${sell}; ${payout}.${terms}`;
+  return moneySummary(money);
 }
 
 /** Owner words for the money gaps the launch plan lists. */
 export function readinessMoneyGaps(money: BrandReadinessMoney): string[] {
   const gaps: string[] = [];
-  if (!money.can_sell) gaps.push("payment setup so the brand can sell (owner)");
-  if (!money.can_be_paid_out) gaps.push("a bank for payouts (owner)");
+  // #3355 P6: a pending currency change is a finance decision Ari can help
+  // with, not unfinished payment setup.
+  const recon = money.sell_reason === "currency_reconciliation_pending" ||
+    money.payout_reason === "currency_reconciliation_pending";
+  if (recon) {
+    gaps.push(
+      "a decision on the currency change (finance, a brand admin or the owner)",
+    );
+  }
+  if (
+    !money.can_sell && money.sell_reason !== "currency_reconciliation_pending"
+  ) {
+    gaps.push("payment setup so the brand can sell (owner)");
+  }
+  if (
+    !money.can_be_paid_out &&
+    money.payout_reason !== "currency_reconciliation_pending"
+  ) gaps.push("a bank for payouts (owner)");
   if (money.terms_accepted_by_caller === false) {
     gaps.push("your Organiser Terms acceptance");
   }

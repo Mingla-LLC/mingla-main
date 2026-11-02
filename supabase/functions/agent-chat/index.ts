@@ -47,7 +47,17 @@ import {
   ToolError,
 } from "../_shared/agentTools.ts";
 import {
+  preflightReadinessProposal,
+  preflightTripPackagePrices,
+} from "../_shared/money/proposeReadiness.ts";
+import { bindProposalTimezone } from "../_shared/agentAri10xTools.ts";
+import {
+  formatMajorWithCode,
+  formatMinorWithCode,
+} from "../_shared/money/formatMinor.ts";
+import {
   authorizeAgentTool,
+  OWNER_SPOKEN_REFUSAL_CODES,
   validateAriCampaignDraftProposal,
 } from "../_shared/agentToolAuthorization.ts";
 import {
@@ -2102,9 +2112,17 @@ async function handle(req: Request): Promise<Response> {
               `${String(tier.name ?? "Tier").slice(0, 40)} ${
                 tier.isFree === true
                   ? "free"
-                  : `${Number(tier.priceGbp ?? tier.price ?? 0).toFixed(2)} ${
-                    String(row.currency ?? "currency pending")
-                  }`
+                  : row.currency
+                  ? formatMajorWithCode(
+                    Number(tier.priceGbp ?? tier.price ?? 0),
+                    row.currency,
+                  ) ?? "price unavailable"
+                  : `${
+                    formatMajorWithCode(
+                      Number(tier.priceGbp ?? tier.price ?? 0),
+                      null,
+                    ) ?? "price unavailable"
+                  } currency pending`
               }`
             ).join("; ")
             : null,
@@ -2146,9 +2164,13 @@ async function handle(req: Request): Promise<Response> {
               `${String(tier.name ?? "Tier").slice(0, 40)} ${
                 tier.is_free === true
                   ? "free"
-                  : `${(Number(tier.price_cents ?? 0) / 100).toFixed(2)} ${
-                    String(tier.currency ?? "currency pending")
-                  }`
+                  : tier.currency
+                  ? formatMinorWithCode(tier.price_cents ?? 0, tier.currency) ??
+                    "price unavailable"
+                  : `${
+                    formatMinorWithCode(tier.price_cents ?? 0, null) ??
+                      "price unavailable"
+                  } currency pending`
               }`
             ).join("; ");
           }
@@ -3430,6 +3452,12 @@ ${boundedAgentContext}
             loopResult.toolCall.args,
             userClient,
           );
+          proposalStage = "bind_timezone";
+          loopResult.toolCall.args = await bindProposalTimezone(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
           proposalStage = "authorize";
           await authorizeAgentTool(
             tool,
@@ -3452,6 +3480,19 @@ ${boundedAgentContext}
             loopResult.toolCall.args,
             userClient,
           );
+          // #3355 P6 (D-26): readiness at propose time; the publish RPC's
+          // own refusal stays the backstop.
+          proposalStage = "readiness_preflight";
+          const readinessContext = await preflightReadinessProposal(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
+          await preflightTripPackagePrices(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
           proposalStage = "commit_pending";
           return await commitPendingTurn({
             client: serviceClient,
@@ -3466,13 +3507,37 @@ ${boundedAgentContext}
             previousSummary: conversationSummary,
             toolName: tool.name,
             toolArgs: loopResult.toolCall.args,
-            proposalContext: pricingContext || moneyContext
-              ? { ...(pricingContext ?? {}), ...(moneyContext ?? {}) }
+            proposalContext: pricingContext || moneyContext || readinessContext
+              ? {
+                ...(pricingContext ?? {}),
+                ...(moneyContext ?? {}),
+                ...(readinessContext ?? {}),
+              }
               : null,
             classification: "agent_loop_write_proposal",
             startedAt: turnStartedAt,
           });
         } catch (error: unknown) {
+          if (
+            error instanceof ToolError &&
+            OWNER_SPOKEN_REFUSAL_CODES.has(error.code)
+          ) {
+            // #3355 P6 (D-11/D-26): a money-role refusal or a readiness
+            // blocker is said to the owner in plain words before any card.
+            return await commitTextTurn({
+              client: serviceClient,
+              userId,
+              conversationId,
+              clientTurnId: body.client_turn_id,
+              previousState: taskState,
+              nextState: taskState,
+              expectedRevision: taskStateRevision,
+              previousSummary: conversationSummary,
+              text: error.message,
+              classification: "owner_refusal",
+              startedAt: turnStartedAt,
+            });
+          }
           if (error instanceof ToolError) {
             console.warn(
               "[agent-chat] proposal refused",
@@ -4151,6 +4216,12 @@ ${boundedAgentContext}
       // #2019: authorization precedes every persisted proposal.
       let proposalContext: Record<string, unknown> | null = null;
       try {
+        // #3355 P6 (D-27): never an empty time zone on an offering card.
+        gemini.toolCall.args = await bindProposalTimezone(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
         await authorizeAgentTool(
           tool,
           gemini.toolCall.args,
@@ -4170,13 +4241,43 @@ ${boundedAgentContext}
           gemini.toolCall.args,
           userClient,
         );
-        if (pricingContext || moneyContext) {
+        // #3355 P6 (D-26): readiness at propose time (DB stays the backstop).
+        const readinessContext = await preflightReadinessProposal(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        await preflightTripPackagePrices(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        if (pricingContext || moneyContext || readinessContext) {
           proposalContext = {
             ...(pricingContext ?? {}),
             ...(moneyContext ?? {}),
+            ...(readinessContext ?? {}),
           };
         }
       } catch (err: unknown) {
+        if (
+          err instanceof ToolError && OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
+        ) {
+          // #3355 P6 (D-11/D-26): said in plain words before any card.
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: err.message,
+            classification: "owner_refusal",
+            startedAt: turnStartedAt,
+          });
+        }
         if (err instanceof ToolError) {
           const status = err.code === "ROLE_CHECK_UNAVAILABLE"
             ? 503

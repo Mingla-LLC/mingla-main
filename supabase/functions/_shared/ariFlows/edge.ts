@@ -15,6 +15,7 @@ import {
   classifyOfferingIntent,
   classifyReadinessQuestion,
   findFlowDefinition,
+  intentWantsInstallments,
   intentWantsPaid,
 } from "./index.ts";
 import { buildReadinessAnswer } from "./readinessAnswer.ts";
@@ -533,6 +534,10 @@ export async function decideFlowTurn(
       answers: {
         intent_text: { value: args.message.slice(0, 600), source: "owner" },
         paid: { value: intentWantsPaid(args.message), source: "owner" },
+        // #3355 P6: deposits/instalments are the one paid path payouts block.
+        ...(def.key === "create_trip" && intentWantsInstallments(args.message)
+          ? { installments: { value: true, source: "owner" as const } }
+          : {}),
       },
     });
     run = started.run;

@@ -757,10 +757,19 @@ const forgetMemoryNote: AgentToolDefinition = {
   },
 };
 
+// #3355 P6 (D-11): destinations only the brand owner can finish. A teammate
+// is told so in plain words instead of being sent to a screen they can't use.
+const OWNER_ONLY_HANDOFFS: Readonly<Record<string, string>> = Object.freeze({
+  payment_onboarding: "biz_can_mutate_payouts_for_brand_for_caller",
+});
+
+export const OWNER_ONLY_HANDOFF_MESSAGE =
+  "Only the owner can do this — tell them?";
+
 const openHandoff: AgentToolDefinition = {
   name: "open_handoff",
   description:
-    "Return an allowlisted Mingla Host route for a human-owned or screen-specific step. This never accepts an arbitrary URL.",
+    "Return an allowlisted Mingla Host route for a human-owned or screen-specific step. This never accepts an arbitrary URL. Payment setup is owner-only: for anyone else it returns requires_owner instead of a route; say the message and offer to tell the owner through the Team screen.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -771,7 +780,7 @@ const openHandoff: AgentToolDefinition = {
       reason: { type: "string", maxLength: 300 },
     },
   },
-  executor: async (args) => {
+  executor: async (args, client) => {
     const destination = String(args.destination) as keyof typeof HANDOFF_ROUTES;
     const template = HANDOFF_ROUTES[destination];
     if (!template) {
@@ -786,21 +795,122 @@ const openHandoff: AgentToolDefinition = {
         "brand_id is required for this destination",
       );
     }
+    const reason = typeof args.reason === "string"
+      ? sanitizeAriPublicText(args.reason).text.slice(0, 300)
+      : null;
+    const ownerCheck = OWNER_ONLY_HANDOFFS[destination];
+    if (ownerCheck && isUuid(args.brand_id)) {
+      const { data, error } = await client.rpc(ownerCheck, {
+        p_brand_id: args.brand_id,
+      });
+      if (error) {
+        throw new ToolError(
+          "ROLE_CHECK_UNAVAILABLE",
+          "Ari could not verify permissions right now",
+        );
+      }
+      if (data !== true) {
+        // "Tell them" goes through the existing team surface; Ari opens no
+        // new channel and sends nothing on its own.
+        return {
+          destination,
+          route: null,
+          requires_owner: true,
+          message: OWNER_ONLY_HANDOFF_MESSAGE,
+          tell_owner: {
+            route: HANDOFF_ROUTES.team.replace(
+              "{brand_id}",
+              String(args.brand_id),
+            ),
+            route_label: "Team",
+          },
+          reason,
+          requires_human: true,
+        };
+      }
+    }
     return {
       destination,
       route: template.replace("{brand_id}", String(args.brand_id ?? "")),
-      reason: typeof args.reason === "string"
-        ? sanitizeAriPublicText(args.reason).text.slice(0, 300)
-        : null,
+      reason,
       requires_human: true,
     };
   },
 };
 
+// #3355 P6 (D-27): the default IANA time zone for each payout country that
+// has exactly one. Countries spanning several zones (US, CA; ES with the
+// Canaries; PT with the Azores) return null so Ari asks the owner.
+export const MARKET_DEFAULT_TIMEZONES: Readonly<Record<string, string | null>> =
+  Object.freeze({
+    AT: "Europe/Vienna",
+    BE: "Europe/Brussels",
+    BG: "Europe/Sofia",
+    CA: null,
+    CH: "Europe/Zurich",
+    CY: "Asia/Nicosia",
+    CZ: "Europe/Prague",
+    DE: "Europe/Berlin",
+    DK: "Europe/Copenhagen",
+    EE: "Europe/Tallinn",
+    ES: null,
+    FI: "Europe/Helsinki",
+    FR: "Europe/Paris",
+    GB: "Europe/London",
+    GR: "Europe/Athens",
+    HR: "Europe/Zagreb",
+    HU: "Europe/Budapest",
+    IE: "Europe/Dublin",
+    IS: "Atlantic/Reykjavik",
+    IT: "Europe/Rome",
+    LI: "Europe/Vaduz",
+    LT: "Europe/Vilnius",
+    LU: "Europe/Luxembourg",
+    LV: "Europe/Riga",
+    MT: "Europe/Malta",
+    NG: "Africa/Lagos",
+    NL: "Europe/Amsterdam",
+    NO: "Europe/Oslo",
+    PL: "Europe/Warsaw",
+    PT: null,
+    RO: "Europe/Bucharest",
+    SE: "Europe/Stockholm",
+    SI: "Europe/Ljubljana",
+    SK: "Europe/Bratislava",
+    US: null,
+  });
+
+/** The single default zone for a country, or null (several zones / unknown). */
+export function marketDefaultTimezone(country: unknown): string | null {
+  if (typeof country !== "string") return null;
+  const code = country.trim().toUpperCase();
+  return Object.prototype.hasOwnProperty.call(MARKET_DEFAULT_TIMEZONES, code)
+    ? MARKET_DEFAULT_TIMEZONES[code]
+    : null;
+}
+
+function marketTimezoneFields(country: string): Record<string, unknown> {
+  const known = Object.prototype.hasOwnProperty.call(
+    MARKET_DEFAULT_TIMEZONES,
+    country,
+  );
+  const timezone = marketDefaultTimezone(country);
+  return {
+    default_timezone: timezone,
+    timezone_needs_owner_choice: timezone === null,
+    ...(timezone === null && known
+      ? {
+        timezone_ask:
+          "This country has more than one time zone. Ask the owner which one the offering is in.",
+      }
+      : {}),
+  };
+}
+
 const getMarketRules: AgentToolDefinition = {
   name: "get_market_rules",
   description:
-    "Read Mingla's deterministic payout country, currency and provider rules. Unknown markets remain unknown rather than being guessed.",
+    "Read Mingla's deterministic payout country, currency, provider and default time zone rules. A country with several time zones returns no default: ask the owner. Unknown markets remain unknown rather than being guessed.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -820,6 +930,7 @@ const getMarketRules: AgentToolDefinition = {
         currency: "NGN",
         payment_provider: "paystack",
         payout_country_immutable_after_onboarding: true,
+        ...marketTimezoneFields(country),
       };
     }
     const stripe = STRIPE_SUPPORTED_COUNTRIES.find((entry) =>
@@ -832,6 +943,7 @@ const getMarketRules: AgentToolDefinition = {
         currency: stripe.defaultCurrency,
         payment_provider: "stripe",
         payout_country_immutable_after_onboarding: true,
+        ...marketTimezoneFields(country),
       }
       : {
         country,
@@ -839,9 +951,58 @@ const getMarketRules: AgentToolDefinition = {
         currency: null,
         payment_provider: null,
         requires_human_review: true,
+        default_timezone: null,
+        timezone_needs_owner_choice: true,
       };
   },
 };
+
+function validIanaTimezone(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const TIMEZONE_BOUND_TOOLS: ReadonlySet<string> = new Set([
+  "create_event",
+  "create_trip",
+]);
+
+/**
+ * #3355 P6 (D-27): Ari never proposes an offering with an empty time zone.
+ * A blank zone is filled from the brand's own time zone, then from its
+ * country when that country has exactly one; otherwise Ari asks before any
+ * card. Bound before the card so the confirmed payload is the one shown.
+ */
+export async function bindProposalTimezone(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+): Promise<Record<string, unknown>> {
+  if (!TIMEZONE_BOUND_TOOLS.has(toolName)) return args;
+  if (validIanaTimezone(args.timezone)) return args;
+  if (!isUuid(args.brand_id)) return args;
+  const { data } = await client.from("brands")
+    .select("default_timezone,country_code")
+    .eq("id", args.brand_id).maybeSingle();
+  // Not this caller's brand: authorization answers that, not a time zone ask.
+  if (!data) return args;
+  const brand = data as Record<string, unknown>;
+  const timezone = validIanaTimezone(brand.default_timezone)
+    ? String(brand.default_timezone).trim()
+    : marketDefaultTimezone(brand.country_code);
+  if (!timezone) {
+    throw new ToolError(
+      "TIMEZONE_NEEDED",
+      "Which time zone is this in? Tell me the city or time zone and I'll set it up.",
+    );
+  }
+  return { ...args, timezone };
+}
 
 const getListingCapabilities: AgentToolDefinition = {
   name: "get_listing_type_capabilities",
