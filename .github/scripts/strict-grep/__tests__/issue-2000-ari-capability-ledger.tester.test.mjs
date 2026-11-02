@@ -290,10 +290,10 @@ const EXPECTED = Object.freeze({
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "3538dd40743bb2abee4f1a481d9a6622789ba9fe891d8062e891de5549443e94",
-  statusDigest: "cbe1597b5622782b3b2c04fd515ab92111e4ae4731af02b333a0d5d196a843d0",
-  mappingDigest: "9bb97a79b5a334448339d8547cc6c7171dd17cc00eb804ad4a0bbef9cfde4e6b",
-  sourceRefDigest: "9673902ff8a7ae9de53c699b051928fedce636d348de060114e53cfa5ea932c6",
+  idDigest: "f804f4e73a10c0fffae916935e3ca820f95e13f8f7e9a2c4f1035dcfa63444d9",
+  statusDigest: "ca1186e7eca51a44a59b1b5658a28670baf2c5397447205d94a0fbb2938d682e",
+  mappingDigest: "383bbf24790d154bedc2bc81ade190642144b1639a356e79c907fa47e28159ae",
+  sourceRefDigest: "998896e0e0cc02eba473445ea3590ccf7bbaa305a88d1a4eb6f7d652baeddb98",
 });
 
 function readLedger() {

@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 181,
-    "capability_count": 193,
+    "registered_tool_count": 182,
+    "capability_count": 194,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 180,
+      "registered_unverified": 181,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -8679,6 +8679,41 @@
           "tier": "regression",
           "sha": "b1916219387dd3da6d772492ae62dcfdafc6e551",
           "reference": "issue_3355_tell_owner_group.implementor.test.ts: confirmed brand-group owner note",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-01"
+    },
+    {
+      "id": "ari.brand.payout_country",
+      "domain": "brands",
+      "outcome": "Choose the payout country, and so the price currency, of a brand that has none yet, after the owner confirms",
+      "safety": "money",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/components/brand/BrandPayoutCountryField.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const setBrandPayoutCountry"
+          }
+        ]
+      },
+      "ari_tool": "set_brand_payout_country",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "3aba0edff37013d96a8d5913a93655ad653eedae",
+          "reference": "issue_3355_payout_country.implementor.test.ts: Host-parity payout country writes",
           "guard_role": "implementor"
         }
       ],
