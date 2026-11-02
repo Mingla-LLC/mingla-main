@@ -7,9 +7,9 @@
  * keeps it valid too); free tickets, locked prices and currencies with no
  * verified minimum are never blocked. The words match Ari's exactly (the Deno
  * parity test compares this file's table and messages to the edge mirror).
+ * The ticket sheet blocking Save is rendered in
+ * components/event/__tests__/TicketTierEditSheet.issue3355.priceMinimum.test.tsx.
  */
-import { readFileSync } from "fs";
-import { join } from "path";
 import { describe, expect, test } from "@jest/globals";
 
 import {
@@ -123,20 +123,5 @@ describe("#3355 P6 ticket price minimum (Host form)", () => {
       ticketPriceMinimumMessage("CZK"),
     );
     expect(ticketPriceBelowMinimum(15, "CZK")).toBeNull();
-  });
-
-  test("the ticket sheet blocks Save and shows the message under the price", () => {
-    const sheet = readFileSync(
-      join(__dirname, "../../components/event/TicketTierEditSheet.tsx"),
-      "utf8",
-    );
-    expect(sheet).toContain("ticketPriceEntryMinimumMessage({");
-    expect(sheet).toMatch(/priceMinimumMessage === null &&\s*!capacityInvalid/);
-    expect(sheet).toContain(
-      "if (priceMinimumMessage !== null) block(priceMinimumMessage);",
-    );
-    expect(sheet).toContain(
-      "<Text style={styles.helperError}>{priceMinimumMessage}</Text>",
-    );
   });
 });

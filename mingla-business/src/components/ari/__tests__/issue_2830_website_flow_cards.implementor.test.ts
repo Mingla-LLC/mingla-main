@@ -7,13 +7,11 @@
  *    control's values — never a scripted "Use my answer for …" message in the
  *    owner's name. The owner's bubble shows only their value.
  * 2. Only the run's current form card can be answered; an answered or
- *    replaced form card is locked like every other flow card.
+ *    replaced form card is locked like every other flow card. (MessageList
+ *    wiring is rendered in issue_3355_flow_cards.implementor.test.tsx.)
  * 3. The confirmation card says plainly when Ari saves Mingla's default
  *    design (labelled changeable) and what publishing does.
  */
-import * as fs from "fs";
-import * as path from "path";
-
 import type {
   AriFlowArtefact,
   AriFlowState,
@@ -147,20 +145,6 @@ describe("#2830 P4 — form-shaped Website cards", () => {
         fallbackCurrentId: null,
       }),
     ).toBe("info");
-  });
-
-  it("MessageList routes a form card's submit to the bound answer and locks it unless current", () => {
-    const source = fs.readFileSync(
-      path.join(__dirname, "..", "MessageList.tsx"),
-      "utf8",
-    );
-    expect(source).toMatch(
-      /formFlow &&\s*interaction\.action\.behavior\.type === "submit"/,
-    );
-    expect(source).toMatch(/buildFlowFormAnswer\(\{/);
-    expect(source).toMatch(/onFlowAnswer\?\.\(built\.answer, built\.label\)/);
-    expect(source).toMatch(/formFlowStatus !== "live" \|\| !online/);
-    expect(source).toMatch(/superseded=\{renditionSuperseded\}/);
   });
 });
 

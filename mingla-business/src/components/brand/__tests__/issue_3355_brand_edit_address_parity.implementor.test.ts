@@ -15,18 +15,19 @@
  *      saves as "10 Downing Street, 10 Downing St, London…".
  *
  * FAILS-ON-REVERT (true line deletion): drop the country step from
- * resolveAddressSearchProximity → the ranking cases go red; drop the
- * `countryCode` from Brand Edit's brandPoint → its wiring case goes red;
- * delete brandPhoneCountryAfterAddressPick's empty-box guard → the "typed
- * number never moves" case goes red; drop Input's `countryIso` effect or
- * Brand Edit's `countryIso=` → the chip wiring cases go red; drop
- * normaliseStreetWords from addressBeginsWithName → the label cases go red;
- * inline the map back into the Where step or drop it from Brand Edit → the
- * preview cases go red.
+ * resolveAddressSearchProximity → the ranking cases go red; delete
+ * brandPhoneCountryAfterAddressPick's empty-box guard → the "typed number never
+ * moves" case goes red; drop normaliseStreetWords from addressBeginsWithName →
+ * the label cases go red.
+ *
+ * Rendered elsewhere: Brand Edit's field ranks by the brand's point and
+ * country and shows the shared map preview
+ * (issue_3355_brand_edit_address_field.implementor.test.tsx); the shared
+ * preview's empty state and real map
+ * (location/__tests__/issue_3355_address_map_preview.implementor.test.tsx);
+ * the Host search request carries no types/country filter
+ * (location/__tests__/issue_3827_host_address_suggest_limit.implementor.test.tsx).
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, test } from "@jest/globals";
 
 import {
@@ -40,11 +41,6 @@ import {
   composeSuggestionLabel,
   resolvePickedLabel,
 } from "../../../../../packages/location-input/src/MapboxAddressInput";
-
-const SRC = join(__dirname, "..", "..", "..");
-const read = (rel: string): string => readFileSync(join(SRC, rel), "utf8");
-const strip = (src: string): string =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const DIRECTORY = [
   { iso: "GB", dialCode: "+44" },
@@ -107,19 +103,6 @@ describe("#3355 — ranking falls back to the brand's country (shared, rank-only
       }),
     ).toBe("-0.13,51.51");
   });
-
-  test("Brand Edit and the venue editor hand the brand's country to the shared resolver", () => {
-    const field = strip(read("components/brand/BrandEditAddressField.tsx"));
-    expect(field).toContain("brandPoint: { lat, lng, countryCode },");
-    const venue = strip(read("components/venue/VenueDetailsEditor.tsx"));
-    expect(venue).toContain("brandPoint: { countryCode: brandCountryCode },");
-  });
-
-  test("still rank-only: the business wrapper adds no country or types filter", () => {
-    const wrapper = strip(read("components/location/MapboxAddressInput.tsx"));
-    expect(wrapper).not.toMatch(/\bcountry\s*[:=]/);
-    expect(wrapper).not.toMatch(/\btypes\s*[:=]/);
-  });
 });
 
 describe("#3355 — the phone chip follows the address only while the box is empty", () => {
@@ -143,56 +126,6 @@ describe("#3355 — the phone chip follows the address only while the box is emp
   test("a country the chip does not list leaves it alone", () => {
     expect(brandPhoneCountryAfterAddressPick("", "ZZ", DIRECTORY)).toBeNull();
     expect(brandPhoneCountryAfterAddressPick("", null, DIRECTORY)).toBeNull();
-  });
-
-  test("Brand Edit moves the chip from the address pick, through the edit", () => {
-    const view = strip(read("components/brand/BrandEditView.tsx"));
-    const address = view.slice(
-      view.indexOf("<BrandEditAddressField"),
-      view.indexOf('testID="brand-edit-address"'),
-    );
-    expect(address).toContain("brandPhoneCountryAfterAddressPick(");
-    expect(address).toContain("const phoneText = latestPhoneTextRef.current;");
-    expect(address).toContain("countryIso: follow.iso,");
-    expect(address).toContain("countrySource: follow.countrySource,");
-    expect(view).toContain(
-      "latestPhoneTextRef.current = phoneEdit?.text ?? openedPhone.localText;",
-    );
-    expect(view).toContain("countryIso={phoneEdit?.countryIso}");
-  });
-
-  test("the phone Input follows an opt-in countryIso when it changes", () => {
-    const input = strip(read("components/ui/Input.tsx"));
-    expect(input).toMatch(
-      /useEffect\(\(\) => \{\s*if \(countryIso !== undefined\) setCountry\(findCountryByIso\(countryIso\)\);\s*\}, \[countryIso\]\);/,
-    );
-  });
-});
-
-describe("#3355 — Brand Edit shows the same map preview as the event Where step", () => {
-  test("the Where step renders the shared preview, not an inline copy", () => {
-    const where = strip(read("components/event/CreatorStep3Where.tsx"));
-    expect(where).toContain('import { AddressMapPreview } from "../location/AddressMapPreview";');
-    expect(where).toContain("<AddressMapPreview");
-    expect(where).not.toContain("buildStaticMapUrl(");
-  });
-
-  test("Brand Edit renders that same component with the brand's point", () => {
-    const field = strip(read("components/brand/BrandEditAddressField.tsx"));
-    expect(field).toContain('import { AddressMapPreview } from "../location/AddressMapPreview";');
-    expect(field).toContain("<AddressMapPreview");
-    expect(field).toContain("lat={text.length > 0 ? lat : null}");
-    expect(field).toContain("lng={text.length > 0 ? lng : null}");
-  });
-
-  test("the shared preview keeps the honest empty state and the real map", () => {
-    const preview = strip(read("components/location/AddressMapPreview.tsx"));
-    expect(preview).toContain("buildStaticMapUrl({");
-    expect(preview).toContain("mapUrl !== null ?");
-    expect(preview).toContain("<Image");
-    expect(read("components/location/AddressMapPreview.tsx")).toContain(
-      "Pick an address to preview the map",
-    );
   });
 });
 

@@ -110,6 +110,13 @@ jest.mock("../QuickReplyChips", () => ({
 }));
 jest.mock("../ClarifyingCard", () => ({ ClarifyingCard: () => null }));
 jest.mock("../MultiSelectPrompt", () => ({ MultiSelectPrompt: () => null }));
+// #2830 P4 — the rendition card is a host element exposing its props, so a
+// test can fire the same `onAction` the real card fires on Submit.
+jest.mock("../renditions/AriRenditionPreview", () => ({
+  AriRenditionCard: (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement("rendition-card", props),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { MessageList } = require("../MessageList") as typeof import("../MessageList");
@@ -408,6 +415,135 @@ describe("#2830 P4 live certification — flow cards on the Host", () => {
     expect(earlierFlowCopyIds([ari("a1", logo), ari("a2", logo)])).toEqual(
       new Set(["a1"]),
     );
+    renderer.unmount();
+  });
+});
+
+describe("#2830 P4 — a form-shaped Website card answered through MessageList", () => {
+  function formCard(question: string): AriFlowArtefact {
+    return {
+      ...card(question, "Contact phone"),
+      step_key: "brand",
+      text: "What public contact phone number should the Website show?",
+      options: [],
+      answer_mode: "form",
+    };
+  }
+
+  function formMessage(id: string, artefact: AriFlowArtefact): AgentMessage {
+    return {
+      ...ari(id, artefact),
+      content: {
+        text: artefact.text,
+        structured: {
+          flow: artefact,
+          rendition: {
+            schema_version: 1,
+            rendition_id: `form-${id}`,
+            kind: "form",
+            title: "Contact phone",
+            body: "The number people can call from your Website.",
+            field: {
+              id: "phone",
+              label: "Phone",
+              value: "",
+              kind: "phone",
+              countryIso: "GB",
+            },
+            actions: [
+              {
+                id: "save",
+                label: "Save",
+                style: "primary",
+                behavior: { type: "submit", message: "Use my answer for phone" },
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  type OnAction = (interaction: {
+    rendition: unknown;
+    action: { id: string; label: string; style: string; behavior: { type: string; message: string } };
+    selectedOptionIds: string[];
+    fieldValue: string;
+    fieldCountryIso?: string | null;
+  }) => void;
+
+  function submit(renderer: ReturnType<typeof mount>): void {
+    const [cardNode] = renderer.root.findAll((n) => n.type === "rendition-card");
+    TestRenderer.act(() => {
+      (cardNode.props.onAction as OnAction)({
+        rendition: cardNode.props.rendition,
+        action: {
+          id: "save",
+          label: "Save",
+          style: "primary",
+          behavior: { type: "submit", message: "Use my answer for phone" },
+        },
+        selectedOptionIds: [],
+        fieldValue: "07700 900123",
+        fieldCountryIso: "GB",
+      });
+    });
+  }
+
+  test("happy: Submit on the current card sends a bound answer with the control's values", () => {
+    const sent: { answer: AriFlowAnswer; label: string }[] = [];
+    const artefact = formCard(Q1);
+    const renderer = mount({
+      messages: [formMessage("a1", artefact)],
+      flowState: state(artefact.artefact_id),
+      onFlowAnswer: (answer, label) => sent.push({ answer, label }),
+    });
+    const cards = renderer.root.findAll((n) => n.type === "rendition-card");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].props.superseded).toBe(false);
+    submit(renderer);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].answer).toEqual({
+      run_id: RUN,
+      step_key: "brand",
+      question_id: Q1,
+      choice_id: "answer",
+      display_text: sent[0].label,
+      values: { choices: [], country: "GB", response: "07700 900123" },
+    });
+    expect(sent[0].label).toMatch(/^\+44 /);
+    expect(sent[0].label).not.toMatch(/Use my answer for/);
+    renderer.unmount();
+  });
+
+  test("adversarial: a form card the server has moved past is locked and never submits", () => {
+    const sent: AriFlowAnswer[] = [];
+    const artefact = formCard(Q1);
+    const renderer = mount({
+      messages: [formMessage("a1", artefact)],
+      flowState: state(`q:${RUN}:${Q2}`),
+      onFlowAnswer: (answer) => sent.push(answer),
+    });
+    const [cardNode] = renderer.root.findAll((n) => n.type === "rendition-card");
+    expect(cardNode.props.superseded).toBe(true);
+    submit(renderer);
+    expect(sent).toEqual([]);
+    renderer.unmount();
+  });
+
+  test("adversarial: offline locks the current form card", () => {
+    const sent: AriFlowAnswer[] = [];
+    const artefact = formCard(Q1);
+    const renderer = mount({
+      messages: [formMessage("a1", artefact)],
+      flowState: state(artefact.artefact_id),
+      online: false,
+      onFlowAnswer: (answer) => sent.push(answer),
+    });
+    const [cardNode] = renderer.root.findAll((n) => n.type === "rendition-card");
+    expect(cardNode.props.superseded).toBe(true);
+    submit(renderer);
+    expect(sent).toEqual([]);
     renderer.unmount();
   });
 });

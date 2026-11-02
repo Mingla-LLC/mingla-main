@@ -2,15 +2,13 @@
  * #3355 P5 (C3) — Brand Edit's address is a structured search that also sets
  * the brand's city and country (and point), saved in the same update.
  *
- * Fails on revert: putting back the free-text Input, dropping the city/country
- * keys from computeDirtyFieldsPatch, or forking the creation search all turn
- * a test below red. The DB half (the save clears Ari's stale address and
+ * Fails on revert: dropping the city/country keys from computeDirtyFieldsPatch
+ * or the patch mapping turns a test below red. The field itself (pick, typed
+ * address, legacy load) is rendered in
+ * issue_3355_brand_edit_address_field.implementor.test.tsx. The DB half (the save clears Ari's stale address and
  * city/country flags under RLS) is proven by
  * supabase/migrations/__tests__/issue_3355_p5_home_readiness.implementor.pg17.test.sql.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, test } from "@jest/globals";
 
 import type { PlaceDetails } from "../../../services/mapboxGeocodeService";
@@ -22,9 +20,6 @@ import {
   brandCityCountryLine,
 } from "../../../utils/brandAddressPatch";
 import { computeDirtyFieldsPatch } from "../../../utils/brandPatch";
-
-const VIEW = readFileSync(join(__dirname, "..", "BrandEditView.tsx"), "utf8");
-const FIELD = readFileSync(join(__dirname, "..", "BrandEditAddressField.tsx"), "utf8");
 
 const margate: PlaceDetails = {
   placeId: "dXJuOm1ieHBvaTo",
@@ -113,9 +108,8 @@ describe("#3355 P5 — Brand Edit structured address", () => {
     const other = computeDirtyFieldsPatch({ ...legacy, displayName: "Lantern" }, legacy);
     expect(other).toEqual({ displayName: "Lantern" });
     expect(mapUiToBrandUpdatePatch(other, { existingDescription: null })).not.toHaveProperty("address");
-    // The field shows the saved text as the selected address (no re-search).
-    expect(FIELD).toContain('text.trim().length > 0 ? "selected" : "editing"');
-    expect(FIELD).toContain("selectedLabel={text.length > 0 ? text : null}");
+    // The field showing it as the selected address (no re-search) is rendered
+    // in issue_3355_brand_edit_address_field.implementor.test.tsx.
   });
 
   test("the city/country line reads back what will be saved", () => {
@@ -123,18 +117,5 @@ describe("#3355 P5 — Brand Edit structured address", () => {
     expect(brandCityCountryLine(undefined, undefined)).toBe(
       "No city or country yet. Pick your address to set them.",
     );
-  });
-
-  test("Brand Edit renders the structured field, not a free-text address Input", () => {
-    expect(VIEW).toContain("<BrandEditAddressField");
-    expect(VIEW).not.toContain('placeholder="e.g. 12 Old Street, London EC1V 9HL"');
-    expect(VIEW).toContain('onLayout={handleSectionLayout("address")}');
-  });
-
-  test("the field reuses brand creation's search, it does not fork it", () => {
-    expect(FIELD).toContain('from "../location/MapboxAddressInput"');
-    expect(FIELD).toContain("resolveFreeTextLocation");
-    expect(FIELD).toContain("isFreeTextResolveStale");
-    expect(FIELD).not.toMatch(/fetch\(|mapbox\.com|functions\.invoke/);
   });
 });

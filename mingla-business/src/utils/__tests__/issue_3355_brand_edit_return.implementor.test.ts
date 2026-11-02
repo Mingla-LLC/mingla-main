@@ -3,10 +3,9 @@
  * the page had no back history (Ari's handoff link opened it directly on web).
  * Now: back history, then the opener's returnTo (internal paths only), then
  * the brand's own page; never Account. Ari passes its own path as returnTo.
+ * The route and Ari's setup pane are rendered in
+ * issue_3355_brand_edit_return_route.implementor.test.tsx.
  */
-import { readFileSync } from "fs";
-import { join } from "path";
-
 import {
   ariReturnPath,
   brandEditReturnTarget,
@@ -71,34 +70,5 @@ describe("#3355 Brand Edit return target", () => {
     expect(query.get("section")).toBe("photo");
     expect(query.get("returnTo")).toBe(back);
     expect(ariReturnPath({ brandId: null, sitesIntent: undefined, setupPart: null })).toBe("/(tabs)/ari");
-  });
-});
-
-describe("#3355 the route and Ari use it", () => {
-  const root = join(__dirname, "..", "..", "..");
-  const read = (rel: string): string => readFileSync(join(root, rel), "utf8");
-
-  test("Brand Edit's Back / after-save no longer falls back to Account", () => {
-    const route = read("app/brand/[id]/edit.tsx");
-    const handleBack = route.slice(
-      route.indexOf("const handleBack"),
-      route.indexOf("const handleSave"),
-    );
-    expect(handleBack).toMatch(/brandEditReturnTarget\(\{/);
-    expect(handleBack).toMatch(/returnTo: returnToParam/);
-    expect(handleBack).not.toMatch(/account/);
-    expect(route).toMatch(/onAfterSave=\{handleBack\}/);
-  });
-
-  test("Ari's handoff and the setup pane pass returnTo", () => {
-    const ari = read("src/screens/ari/AriChatScreen.tsx");
-    const flowRoute = ari.slice(
-      ari.indexOf("const handleFlowRoute"),
-      ari.indexOf("useFocusEffectSafe("),
-    );
-    expect(flowRoute).toMatch(/isBrandEditRoute\(route\)/);
-    expect(flowRoute).toMatch(/withReturnTo\(/);
-    const pane = read("src/components/ari/AriWebsiteSetupPane.tsx");
-    expect(pane).toMatch(/withReturnTo\(\s*`\/brand\/\$\{brandId\}\/edit`/);
   });
 });
