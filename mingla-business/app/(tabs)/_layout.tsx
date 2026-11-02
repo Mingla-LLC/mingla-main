@@ -24,6 +24,7 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 // max-width 640px column. Per SPEC_ORCH-0885-A §3.
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { isTabVisible } from "../../src/config/featureFlags";
+import { tabsNavigatorSettings } from "../../src/config/tabsNavigatorSettings";
 import { canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-aware tab filtering. The TABS
@@ -68,6 +69,10 @@ const TABS: BottomNavTab[] = [
 ];
 
 const DEFAULT_TAB_ID = "home";
+
+// #4237: the Slot's fallback screen must be the tab the nav highlights by
+// default; see src/config/tabsNavigatorSettings.ts.
+export const unstable_settings = tabsNavigatorSettings;
 
 export default function TabsLayout(): React.ReactElement {
   const router = useRouter();
