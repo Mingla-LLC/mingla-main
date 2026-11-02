@@ -51,7 +51,15 @@ async function loadRegistryNames() {
   );
 }
 
-async function traceForContract(scenario) {
+/**
+ * #3355 P10 — registry lint (formerly "contract" mode). It checks that each
+ * scenario names registered tools and a well-formed chain; it runs nothing,
+ * so it is NEVER a pass signal and is excluded from every pass count. The
+ * behaviour signal is the live flow evals in ./flows/ (run.mjs).
+ */
+export const REGISTRY_LINT_MODE = "registry-lint";
+
+async function registryLintFailures(scenario) {
   const registry = await loadRegistryNames();
   const required = scenario.expected.required_tools ?? [];
   const forbidden = scenario.expected.forbidden_tools ?? [];
@@ -107,15 +115,29 @@ async function traceForContract(scenario) {
       ? ["chain_conversation_scope_missing"]
       : []),
   ];
+  return failures;
+}
+
+/** Lints every active scenario. Reports lint failures only — no pass count. */
+export async function lintScenarioRegistry({ ids = null } = {}) {
+  const selected = ARI_EVAL_SCENARIOS.filter((scenario) =>
+    scenario.status === "active" && (!ids || ids.includes(scenario.id))
+  );
+  const results = [];
+  for (const scenario of selected) {
+    results.push({
+      scenario_key: scenario.id,
+      lint_failures: await registryLintFailures(scenario),
+    });
+  }
   return {
-    contract_only: true,
-    contract_failures: failures,
-    tool_calls: [],
-    error_codes: [],
-    reply: "",
-    canonical_readback: false,
-    latency_ms: 0,
-    estimated_cost_micros: 0,
+    mode: REGISTRY_LINT_MODE,
+    behavioural: false,
+    linted: results.length,
+    with_lint_failures: results.filter((result) =>
+      result.lint_failures.length > 0
+    ).length,
+    results,
   };
 }
 
@@ -190,10 +212,6 @@ function verifiedTripGraphSummary(result) {
 }
 
 export function evaluateScenario(scenario, trace) {
-  if (trace.contract_only) {
-    const failures = trace.contract_failures ?? [];
-    return { passed: failures.length === 0, failures };
-  }
   const tools = (trace.tool_calls ?? []).map((call) => call.name);
   const reply = String(trace.reply ?? "");
   const codes = trace.error_codes ?? [];
@@ -572,11 +590,17 @@ async function cachedModelTrace(
 }
 
 export async function runScenarios({
-  mode = "contract",
+  mode = "deterministic",
   maxCalls = 450,
   ids = null,
   observedTraces = null,
 } = {}) {
+  if (mode === REGISTRY_LINT_MODE || mode === "contract") {
+    // A lint is not a behaviour run; it has no pass count to report.
+    throw new Error(
+      `${mode} is a registry lint, not a behaviour run: use lintScenarioRegistry()`,
+    );
+  }
   const selected = ARI_EVAL_SCENARIOS.filter((scenario) =>
     scenario.status === "active" && (!ids || ids.includes(scenario.id))
   );
@@ -587,9 +611,7 @@ export async function runScenarios({
       break;
     }
     let trace;
-    if (mode === "contract") {
-      trace = await traceForContract(scenario);
-    } else if (mode === "deterministic") {
+    if (mode === "deterministic") {
       trace = observedTraces?.[scenario.id] ?? null;
       if (!trace) {
         throw new Error(
@@ -698,17 +720,23 @@ export async function runScenarios({
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const mode = option("mode", "contract");
-  const maxCalls = Number(option("max-calls", "450"));
+  const mode = option("mode", REGISTRY_LINT_MODE);
   const ids = option("ids")?.split(",").filter(Boolean) ?? null;
-  const traceFile = option("trace-file");
-  const observedTraces = traceFile
-    ? JSON.parse(await readFile(traceFile, "utf8"))
-    : null;
-  const output = await runScenarios({ mode, maxCalls, ids, observedTraces });
-  const serialized = JSON.stringify(output, null, 2);
-  const outputPath = option("output");
-  if (outputPath) await writeFile(outputPath, serialized, "utf8");
-  console.log(serialized);
-  process.exitCode = output.failed > 0 ? 1 : 0;
+  if (mode === REGISTRY_LINT_MODE) {
+    const lint = await lintScenarioRegistry({ ids });
+    console.log(JSON.stringify(lint, null, 2));
+    process.exitCode = lint.with_lint_failures > 0 ? 1 : 0;
+  } else {
+    const maxCalls = Number(option("max-calls", "450"));
+    const traceFile = option("trace-file");
+    const observedTraces = traceFile
+      ? JSON.parse(await readFile(traceFile, "utf8"))
+      : null;
+    const output = await runScenarios({ mode, maxCalls, ids, observedTraces });
+    const serialized = JSON.stringify(output, null, 2);
+    const outputPath = option("output");
+    if (outputPath) await writeFile(outputPath, serialized, "utf8");
+    console.log(serialized);
+    process.exitCode = output.failed > 0 ? 1 : 0;
+  }
 }

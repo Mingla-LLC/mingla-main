@@ -4,6 +4,7 @@ import { ARI_EVAL_SCENARIOS } from "../scenarios.mjs";
 import {
   assertExpectedPendingAction,
   evaluateScenario,
+  lintScenarioRegistry,
   resolveScenarioBrandId,
   runScenarios,
 } from "../run-scenarios.mjs";
@@ -408,13 +409,27 @@ test("#3355 chain evaluator enforces ordered tools, one conversation and approva
   ]);
 });
 
-test("#3355 contract suite validates every active executable scenario without fabricating behavior", async () => {
-  const result = await runScenarios({ mode: "contract" });
-  assert.ok(result.executed >= 60);
-  assert.equal(result.failed, 0);
-  assert.equal(result.passed, result.executed);
-  assert.ok(
-    result.results.every((item) => item.trace[0].contract_only === true),
+test("#3355 P10 registry lint checks every active scenario and reports no pass count", async () => {
+  const lint = await lintScenarioRegistry();
+  assert.equal(lint.mode, "registry-lint");
+  assert.equal(lint.behavioural, false);
+  assert.ok(lint.linted >= 60);
+  assert.equal(lint.with_lint_failures, 0);
+  // A lint is never presented as a pass signal ("168/168").
+  for (const key of ["passed", "failed", "executed", "score"]) {
+    assert.equal(key in lint, false, `lint output must not carry ${key}`);
+  }
+  assert.ok(lint.results.every((item) => !("passed" in item)));
+});
+
+test("#3355 P10 the old contract mode cannot produce a pass count", async () => {
+  await assert.rejects(
+    () => runScenarios({ mode: "contract" }),
+    /registry lint, not a behaviour run/,
+  );
+  await assert.rejects(
+    () => runScenarios({ mode: "registry-lint" }),
+    /registry lint, not a behaviour run/,
   );
 });
 
