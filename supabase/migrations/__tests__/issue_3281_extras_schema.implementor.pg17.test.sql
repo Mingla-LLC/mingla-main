@@ -219,6 +219,7 @@ DECLARE
   v_discount_line uuid := gen_random_uuid();
   v_attempt uuid := gen_random_uuid();
   v_tiny_order uuid := gen_random_uuid();
+  v_deep_order uuid := gen_random_uuid();
   v_race_order uuid;
   v_race_line uuid;
   v_manual uuid;
@@ -309,6 +310,27 @@ BEGIN
   END IF;
   IF public.issue_3281_extras_refund_cents(v_discount_order,'[]'::jsonb,NULL) <> 0 THEN
     RAISE EXCEPTION 'a capped extra must not refund again';
+  END IF;
+
+  -- A deep discount across several lines still leaves each ticket line a cent.
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_deep_order,v_event,10,'NGN','paid','pi-deep','ch-deep','legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_deep_order,v_tier,1,1000,1000),(v_deep_order,v_tier,1,1000,1000),(v_deep_order,v_tier,1,1000,1000);
+  INSERT INTO public.order_add_on_line_items(
+    order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
+    quantity,unit_price_cents,total_cents
+  ) VALUES (v_deep_order,v_tier,'Dinner','VIP',1,100000,100000);
+  PERFORM public.issue_3872_cancel_refund_order(v_deep_order,
+    (SELECT jsonb_agg(jsonb_build_object('order_line_item_id',id,'quantity',1))
+       FROM public.order_line_items WHERE order_id=v_deep_order),
+    'The organiser cancelled this event','cancel-deep-1');
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_deep_order;
+  IF (SELECT SUM(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund)
+     + (SELECT SUM(amount_cents) FROM public.refund_add_on_line_items WHERE refund_id=v_refund) <> 10
+     OR (SELECT count(*) FROM public.refund_line_items WHERE refund_id=v_refund AND amount_cents>=1) <> 3 THEN
+    RAISE EXCEPTION 'a deep discount must leave each ticket line a cent';
   END IF;
 
   -- A free ticket never keeps a cancelled order's fees, with or without extras.

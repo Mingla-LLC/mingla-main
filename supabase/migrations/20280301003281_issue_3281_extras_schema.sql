@@ -952,7 +952,10 @@ BEGIN
   -- A discount can leave less than the list prices, so each side takes its share.
   v_extras := public.issue_3281_extras_refund_cents(p_order_id, v_lines, v_refund_id);
   IF v_amount < v_line_base + v_extras THEN
-    v_extras := floor(v_amount::numeric * v_extras / (v_line_base + v_extras))::bigint;
+    -- Each ticket line still needs a cent of its own.
+    v_extras := LEAST(
+      floor(v_amount::numeric * v_extras / (v_line_base + v_extras))::bigint,
+      GREATEST(v_amount - v_count, 0));
   END IF;
   PERFORM public.issue_3281_record_extras_refund(v_refund_id, p_order_id, v_lines, v_extras::integer);
   v_pool := v_amount - v_extras;
