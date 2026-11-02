@@ -444,6 +444,10 @@ function fieldsFor(
     if (typeof context.ad_audience === "string") {
       out.push({ label: "Audience", value: context.ad_audience });
     }
+    // #4238: the brand's own audiences this ad uses, by plain name.
+    if (typeof context.ad_audiences === "string" && context.ad_audiences) {
+      out.push({ label: "People you know", value: context.ad_audiences });
+    }
     if (typeof context.ad_targeting === "string") {
       out.push({ label: "Audience check", value: context.ad_targeting });
     }

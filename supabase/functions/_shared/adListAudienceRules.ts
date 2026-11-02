@@ -107,7 +107,9 @@ export function audienceProviderName(input: {
   const clean = (value: string) => value.replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/\s+/g, " ").trim();
   const name = clean(input.displayName) || "Audience";
-  const suffix = input.country ? ` · ${clean(input.country)}` : "";
+  const country = input.country ? clean(input.country) : "";
+  // A lookalike's display name already ends "(NG)"; never repeat it.
+  const suffix = country && !name.includes(`(${country})`) ? ` · ${country}` : "";
   const label = input.ownerKind === "host"
     ? `Mingla · ${clean(input.brandName ?? "") || "Brand"} [${
       String(input.brandId ?? "").slice(0, 8)
@@ -135,6 +137,54 @@ export function neededCount(
   }
   const have = Math.max(0, Math.floor(memberCount));
   return have >= LIST_MIN[platform] ? null : LIST_MIN[platform] - have;
+}
+
+export type HostAudiencePlatformState = {
+  platform: string;
+  state: string;
+  needed_count: number | null;
+};
+
+/**
+ * #4238 host_setup: one state per picked app for a Host audience. A state the
+ * worker already wrote wins. Before the worker's first pass the state must
+ * still be true: Google Customer Match needs an eligible account (the worker
+ * marks it ineligible until then), Reddit lists are not built yet (O-3), and
+ * Google has no lookalikes, so a lookalike never gets a Google line.
+ */
+export function hostAudiencePlatformStates(input: {
+  kind: ListAudienceKind;
+  platforms: readonly string[];
+  known: readonly HostAudiencePlatformState[];
+  memberCount: number;
+  countryCount: number | null;
+}): HostAudiencePlatformState[] {
+  return input.platforms
+    .filter((platform) => input.kind === "list" || platform !== "google")
+    .map((platform) => {
+      const found = input.known.find((item) => item.platform === platform);
+      if (found) return found;
+      if (platform === "google") {
+        return { platform, state: "ineligible", needed_count: null };
+      }
+      if (platform === "reddit") {
+        return { platform, state: "unsupported", needed_count: null };
+      }
+      if (!(LIST_PLATFORMS as readonly string[]).includes(platform)) {
+        return { platform, state: "unsupported", needed_count: null };
+      }
+      const needed = neededCount(
+        platform as ListPlatform,
+        input.kind,
+        input.memberCount,
+        input.countryCount,
+      );
+      return {
+        platform,
+        state: needed === null ? "pending" : "below_minimum",
+        needed_count: needed,
+      };
+    });
 }
 
 export type AudienceSelection = { include_keys: string[] };

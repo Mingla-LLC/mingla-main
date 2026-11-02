@@ -22,9 +22,11 @@ import {
 import type { HostAdAudience } from "../../../services/hostAdPlanService";
 import {
   HOST_AD_AUDIENCE_COPY,
+  HOST_AD_LOOKALIKE_PLATFORMS,
   hostAdAudienceName,
   hostAdAudienceSize,
   hostAdAudienceStatusLine,
+  hostAdLookalikeCountryReason,
 } from "./hostAdCopy";
 
 export const HOST_AD_AUDIENCE_MAX = 3;
@@ -92,11 +94,20 @@ export function HostAdAudiencePicker({
         <>
           {visible.map((audience) => {
             const isSelected = selected.includes(audience.audienceKey);
-            const selectable = hostAdAudienceSelectable(audience, connections);
+            const countryReason = hostAdLookalikeCountryReason(audience, countries);
+            const selectable =
+              countryReason === null && hostAdAudienceSelectable(audience, connections);
+            // A chosen card stays pressable so the Host can take it off.
             const disabled = !isSelected && (!selectable || full);
             const name = hostAdAudienceName(audience);
             const size = hostAdAudienceSize(audience);
-            const lines = connections.map((connection) => {
+            const lines = connections
+              .filter(
+                (connection) =>
+                  audience.kind !== "lookalike" ||
+                  HOST_AD_LOOKALIKE_PLATFORMS.includes(connection.platform),
+              )
+              .map((connection) => {
               const state = audience.platforms.find(
                 (item) => item.platform === connection.platform,
               );
@@ -106,7 +117,9 @@ export function HostAdAudiencePicker({
                 state?.neededCount ?? null,
               );
             });
-            const reason = !selectable
+            const reason = countryReason
+              ? countryReason
+              : !selectable
               ? HOST_AD_AUDIENCE_COPY.notReadyAnywhere
               : full && !isSelected
                 ? HOST_AD_AUDIENCE_COPY.limit
@@ -131,12 +144,12 @@ export function HostAdAudiencePicker({
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: isSelected, disabled }}
                 aria-checked={isSelected}
-                accessibilityLabel={`${name}. ${size}.${reason ? ` ${reason}` : ""}`}
+                accessibilityLabel={`${name}.${size ? ` ${size}.` : ""}${reason ? ` ${reason}` : ""}`}
                 testID={`host-ad-audience-${audience.audienceKey}`}
               >
                 <View style={styles.cardText}>
                   <Text style={styles.cardTitle}>{name}</Text>
-                  <Text style={styles.cardSubtitle}>{size}</Text>
+                  {size ? <Text style={styles.cardSubtitle}>{size}</Text> : null}
                   {lines.map((line) => (
                     <Text key={line} style={styles.statusLine}>
                       {line}

@@ -393,6 +393,28 @@ const ERROR_COPY: { match: RegExp; text: string }[] = [
     match: /^network$/,
     text: "We couldn't reach Mingla. Check your connection and try again.",
   },
+  // #4238: every audience_* refusal from ad-plan, create and Ari. These come
+  // first so a plan_conflict that names an audience reads as an audience.
+  {
+    match: /audience_country_mismatch/,
+    text: "\"People like your guests\" can only run in its own country. Pick just that country, or remove that audience.",
+  },
+  {
+    match: /audience_binding_mismatch|audience_binding_unverified/,
+    text: "One of your audiences changed after you checked your ad. Go back to the review step and check it again.",
+  },
+  {
+    match: /audience_not_owned|audience_not_found/,
+    text: "One of the audiences you picked isn't available for this brand. Remove it and try again.",
+  },
+  {
+    match: /audience_selection_invalid|audience_intent_invalid/,
+    text: "Something about the people you picked didn't work. Check who should see it and try again.",
+  },
+  {
+    match: /audience_[a-z_]+/,
+    text: "One of the audiences you picked can't be used right now. Remove it, or try again later.",
+  },
   {
     match: /forbidden|permission_denied/,
     text: "Your role on this brand can't do that. Ask the brand owner for access.",
@@ -480,6 +502,25 @@ export const HOST_AD_AUDIENCE_COPY = {
   notReadyAnywhere: "Not ready on any app you picked yet.",
 } as const;
 
+/** Apps that build lookalikes. Google has none, so it never gets a line. */
+export const HOST_AD_LOOKALIKE_PLATFORMS: readonly string[] = ["meta", "snapchat", "tiktok", "reddit"];
+
+/**
+ * #4238: a lookalike runs only when its one country is the only country
+ * picked (the server refuses anything else with audience_country_mismatch).
+ */
+export function hostAdLookalikeCountryReason(
+  audience: { kind: "list" | "lookalike"; lookalikeCountry: string | null },
+  countries: readonly string[],
+): string | null {
+  if (audience.kind !== "lookalike" || !audience.lookalikeCountry) return null;
+  const picked = countries.map((code) => code.trim().toUpperCase());
+  if (picked.length === 1 && picked[0] === audience.lookalikeCountry.toUpperCase()) {
+    return null;
+  }
+  return `Runs only when ${countryWord(audience.lookalikeCountry)} is the one country you picked.`;
+}
+
 /** The Host-facing name; a lookalike names its country in full. */
 export function hostAdAudienceName(audience: {
   name: string;
@@ -492,11 +533,24 @@ export function hostAdAudienceName(audience: {
   return audience.name || "Your audience";
 }
 
-/** "About 250 people", "Fewer than 10 people", or "Building now". */
+/**
+ * "About 250 people", "Fewer than 10 people", "No people yet" or "Building
+ * now". A lookalike has no size of its own (each app builds it), so it reads
+ * "Built by {apps}" for the apps where it is ready, or nothing at all.
+ */
 export function hostAdAudienceSize(audience: {
+  kind?: "list" | "lookalike";
   approxSize: number | null;
-  platforms: readonly { state: string }[];
-}): string {
+  platforms: readonly { platform?: string; state: string }[];
+}): string | null {
+  if (audience.kind === "lookalike") {
+    const ready = audience.platforms
+      .filter((p) => p.state === "ready" && typeof p.platform === "string")
+      .map((p) => String(p.platform))
+      .filter((platform) => HOST_AD_LOOKALIKE_PLATFORMS.includes(platform));
+    return ready.length > 0 ? `Built by ${platformNames(ready)}` : null;
+  }
+  if (audience.approxSize === 0) return "No people yet";
   const building =
     audience.platforms.length > 0 &&
     audience.platforms.every((p) => p.state === "pending" || p.state === "syncing");
@@ -521,6 +575,8 @@ export function hostAdAudienceStatusLine(
         : `${app}: Not enough people yet`;
     case "too_small":
       return `${app}: Not enough people yet`;
+    case "ineligible":
+      return `Not eligible on ${app} yet`;
     case "pending":
     case "syncing":
     case "terms_required":

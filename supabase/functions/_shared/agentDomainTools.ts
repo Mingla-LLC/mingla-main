@@ -3885,6 +3885,61 @@ function ariAudienceName(row: Record<string, unknown>): string {
   return String(row.display_name ?? "Audience");
 }
 
+const AD_AUDIENCE_NOT_OWNED =
+  "That audience doesn't belong to this brand. Ads can only use the brand's own audiences from list_ad_audiences.";
+
+/**
+ * #4238: the chosen audiences, checked and named at CARD time. Every key must
+ * be one host_ad_audiences returns for this brand (so never another brand's,
+ * the hidden seed, or a Mingla-wide key), and a lookalike runs only when its
+ * one country is the only country picked. Refusals are AD_AUDIENCE_NOT_OWNED,
+ * which agent-chat says in plain words before any card. Returns the plain
+ * names in the order picked.
+ */
+export async function ariCheckedAudienceNames(
+  args: Record<string, unknown>,
+  client: any,
+): Promise<string[]> {
+  const raw = args.audience_keys;
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 3) {
+    throw new ToolError("AD_AUDIENCE_NOT_OWNED", "An ad can use up to 3 of the brand's own audiences.");
+  }
+  const keys = [...new Set(raw.map((key) => String(key)))];
+  if (keys.length === 0) return [];
+  const prefix = `brand:${String(args.brand_id ?? "").toLowerCase()}:`;
+  if (!isUuid(args.brand_id) || keys.some((key) => !key.startsWith(prefix) || key.endsWith(":seed"))) {
+    throw new ToolError("AD_AUDIENCE_NOT_OWNED", AD_AUDIENCE_NOT_OWNED);
+  }
+  const { data, error } = await client.rpc("host_ad_audiences", { p_brand_id: args.brand_id });
+  if (error) {
+    throw new ToolError(
+      "AD_AUDIENCE_NOT_OWNED",
+      "I couldn't check this brand's audiences just now. Try again, or run the ad without them.",
+    );
+  }
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const countries = Array.isArray(args.countries)
+    ? [...new Set(args.countries.map((value) => String(value).trim().toUpperCase()))]
+    : [];
+  return keys.map((key) => {
+    const row = rows.find((item) => item.audience_key === key);
+    if (!row) throw new ToolError("AD_AUDIENCE_NOT_OWNED", AD_AUDIENCE_NOT_OWNED);
+    if (
+      row.kind === "lookalike" &&
+      !(countries.length === 1 && countries[0] === row.lookalike_country)
+    ) {
+      throw new ToolError(
+        "AD_AUDIENCE_NOT_OWNED",
+        `${ariAudienceName(row)} can only run when ${
+          adCountryName(String(row.lookalike_country ?? ""))
+        } is the only country. Pick just that country, or leave that audience out.`,
+      );
+    }
+    return ariAudienceName(row);
+  });
+}
+
 // #4238 wave 2 — the brand's own audiences, names and rough sizes only. The
 // RPC runs under the caller's JWT and refuses brands the caller can't read.
 const listAdAudiences = writeTool(
@@ -4020,10 +4075,7 @@ const proposeAdPlan = writeTool(
           key.endsWith(":seed")
         )
       ) {
-        throw new ToolError(
-          "INVALID_ARGS",
-          "That audience doesn't belong to this brand. Ads can only use the brand's own audiences from list_ad_audiences.",
-        );
+        throw new ToolError("INVALID_ARGS", AD_AUDIENCE_NOT_OWNED);
       }
     }
     const platforms = [
@@ -8562,6 +8614,8 @@ export async function preflightMoneyProposal(
   client: any,
 ): Promise<Record<string, unknown> | null> {
   if (toolName === "propose_ad_plan") {
+    // #4238: refused here, before any card, not only after approval.
+    const audienceNames = await ariCheckedAudienceNames(args, client);
     const platforms = [
       ...new Set(
         (Array.isArray(args.platforms) && args.platforms.length > 0
@@ -8662,6 +8716,9 @@ export async function preflightMoneyProposal(
         (platforms.length > 0 ? " · split evenly across the apps" : ""),
       ad_destination: destination || "Public Mingla page",
       ad_audience: audience || "Choose who should see this ad",
+      ...(audienceNames.length > 0
+        ? { ad_audiences: audienceNames.join(" · ") }
+        : {}),
       ad_schedule: `${start} → ${end}`,
       ad_copy: typeof args.primary_text === "string"
         ? args.primary_text
@@ -8803,6 +8860,25 @@ export async function preflightMoneyProposal(
         ", then ",
       )
       : "results Mingla can see";
+    // #4238: the frozen audience selection, by plain name.
+    const selection = canonical.audience_selection as
+      | Record<string, unknown>
+      | undefined;
+    const chosenKeys = Array.isArray(selection?.include_keys)
+      ? selection.include_keys.map(String)
+      : [];
+    let audienceNames: string | null = null;
+    if (chosenKeys.length > 0) {
+      const { data: rows, error: rowsError } = await client.rpc(
+        "host_ad_audiences",
+        { p_brand_id: args.brand_id },
+      );
+      const known = rowsError ? [] : (rows ?? []) as Record<string, unknown>[];
+      audienceNames = chosenKeys.map((key) => {
+        const row = known.find((item) => item.audience_key === key);
+        return row ? ariAudienceName(row) : "An audience that is no longer available";
+      }).join(" · ");
+    }
     return {
       ad_budget_cents: aggregate.version.host_budget_cents,
       ad_daily_budget_cents: daily,
@@ -8827,6 +8903,7 @@ export async function preflightMoneyProposal(
       ad_provider_allocation: providerAllocation ||
         "Budget split not available yet",
       ad_audience: audienceSummary,
+      ...(audienceNames ? { ad_audiences: audienceNames } : {}),
       ad_targeting: targeting || "Not checked yet",
       ad_schedule: `${start} → ${end}`,
       ad_creative: "Your brand video is ready for this ad",

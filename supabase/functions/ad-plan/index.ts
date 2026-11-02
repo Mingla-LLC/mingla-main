@@ -66,9 +66,8 @@ import { cachedSalesReadiness } from "../_shared/adSalesReadiness.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   audienceCountryMismatch,
+  hostAudiencePlatformStates,
   type ListAudienceDefinitionRow,
-  type ListPlatform,
-  neededCount,
   validateAudienceSelection,
 } from "../_shared/adListAudienceRules.ts";
 import {
@@ -216,25 +215,19 @@ async function hostSetupAudiences(
             asRecord(seed?.member_count_by_country)?.[country] ?? 0,
           )
           : null;
-        const filled = platforms
-          .filter((platform) =>
-            kind === "list" || platform !== "google"
-          )
-          .map((platform) => {
-            const found = known.find((item) => item.platform === platform);
-            if (found) return found;
-            const needed = neededCount(
-              platform as ListPlatform,
-              kind,
-              Number(def?.member_count ?? 0),
-              countryCount,
-            );
-            return {
-              platform,
-              state: needed === null ? "pending" : "below_minimum",
-              needed_count: needed,
-            };
-          });
+        const filled = hostAudiencePlatformStates({
+          kind,
+          platforms,
+          known: known.map((item) => ({
+            platform: String(item.platform),
+            state: String(item.state),
+            needed_count: typeof item.needed_count === "number"
+              ? item.needed_count
+              : null,
+          })),
+          memberCount: Number(def?.member_count ?? 0),
+          countryCount,
+        });
         return { ...row, platforms: filled };
       },
     );
