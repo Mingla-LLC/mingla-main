@@ -329,10 +329,13 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the day-limited tickets migration and its proof the same way.
 // #3281: register the door active date migration the same way.
 // #4226: register the ticket buyer people migration and its proof the same way.
+// #3281: register the Extras schema migration the same way.
+// #4226: register the host contacts people migration and its proof the same way;
+// the #1995 blast suite now watches packages/brand-rendering/emailFooter.ts.
 // #3355 / #2830: register the renumbered #3355 and #2830 migrations and their
 // proofs the same way, plus the exact-file exclusion of brand readiness,
 // paid-tier terms and event seed truth from the deliberately pre-#1931 replay.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "988100d8a80d2748e2bee43f5470b38ed36b340aefaf4e546f17e0f87514a2c8";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "1bc89d5c95ee0dd4dee0e20f10db475a6c6ece9906bf17854e3070b63e2fdea7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

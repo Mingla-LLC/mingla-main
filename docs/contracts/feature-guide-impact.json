@@ -36,6 +36,13 @@
       ]
     },
     {
+      "capability_key": "events-orders-refunds",
+      "paths": [
+        "supabase/functions/admin-refund-order/index.ts",
+        "supabase/functions/refund-order/index.ts"
+      ]
+    },
+    {
       "capability_key": "checkout-claim-ticket",
       "paths": [
         "app-mobile/src/components/OnboardingFlow.tsx",
@@ -96,7 +103,9 @@
         "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql",
         "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
-        "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql"
+        "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql",
+        "supabase/migrations/20280301003281_issue_3281_extras_schema.sql",
+        "supabase/functions/_shared/buyerConfirmationPayload.ts"
       ]
     },
     {
@@ -537,7 +546,8 @@
         "mingla-admin/src/pages/PeoplePage.jsx",
         "mingla-admin/src/lib/peopleSegments.js",
         "mingla-admin/src/services/peopleService.js",
-        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql"
       ]
     },
     {
@@ -549,7 +559,11 @@
         "supabase/functions/admin-send-email/audience.ts",
         "supabase/functions/admin-send-email/index.ts",
         "supabase/functions/admin-send-email/model.ts",
-        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
+        "packages/brand-rendering/emailFooter.ts",
+        "supabase/functions/_shared/email/copy.ts",
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
+        "supabase/functions/_shared/email/footerLine.ts"
       ]
     },
     {
@@ -557,7 +571,22 @@
       "paths": [
         "mingla-admin/src/components/dataRoom/DataRoomOverview.jsx",
         "mingla-admin/src/lib/dataRoomAnalytics.js",
-        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql"
+      ]
+    },
+    {
+      "capability_key": "marketing-campaigns",
+      "paths": [
+        "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",
+        "mingla-business/src/components/marketing/EmailPreviewPane.tsx",
+        "packages/brand-rendering/emailFooter.ts",
+        "supabase/functions/_shared/email/copy.ts",
+        "supabase/functions/_shared/marketingAudience.ts",
+        "supabase/functions/_shared/marketingEmailRender.ts",
+        "supabase/functions/marketing-send/index.ts",
+        "supabase/functions/_shared/email/footerLine.ts",
+        "supabase/functions/_shared/marketingReceiveReason.ts"
       ]
     },
     {
