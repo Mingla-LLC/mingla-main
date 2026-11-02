@@ -459,6 +459,29 @@ BEGIN
      OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded' THEN
     RAISE EXCEPTION 'a matched webhook must keep the stored fee';
   END IF;
+
+  -- A redelivered dashboard refund voids no more tickets than it returned.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,2,1000,2000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    SELECT v_race_order,v_tier,v_event,'qr-'||v_race_order||'-'||n,'valid','auto'
+    FROM generate_series(1,2) AS n;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-again-'||v_race_order,1000,'NGN',NULL,NULL);
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-again-'||v_race_order,1000,'NGN',NULL,NULL);
+  IF (SELECT count(*) FROM public.tickets WHERE order_id=v_race_order AND status='valid') <> 1
+     OR (SELECT count(*) FROM public.refunds WHERE order_id=v_race_order) <> 1 THEN
+    RAISE EXCEPTION 'a redelivered refund must leave the unrefunded ticket valid';
+  END IF;
+
+  -- Dashboard refunds lock the order before they choose ticket lines.
+  IF position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure))
+     > position('INSERT INTO public.refunds' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) THEN
+    RAISE EXCEPTION 'a dashboard refund must lock the order before allocating';
+  END IF;
 END;
 $test$;
 

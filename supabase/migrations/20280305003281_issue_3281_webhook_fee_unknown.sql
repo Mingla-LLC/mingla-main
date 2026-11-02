@@ -5,6 +5,13 @@
 -- default unknown_legacy fee status, which refunds_application_fee_amount_truth_check
 -- rejects, so every dashboard refund webhook failed. A new refund row now
 -- stores NULL, and a matched pending refund keeps the fee it already has.
+--
+-- Accepting these rows also exposes two older gaps, closed here:
+--   Two dashboard refunds allocated ticket lines before taking the order lock,
+--     so both could take the same line. The insert path now locks first and
+--     re-reads the refund, so a redelivery that waited finds it.
+--   A replayed event re-ran the ticket void for an already settled refund.
+--     Tickets are now voided only by the call that creates or settles it.
 -- The body is otherwise the terminal one from 20280301003281.
 
 BEGIN;
@@ -32,6 +39,7 @@ DECLARE
   v_alloc_amount int;
   v_new_payment_status text;
   v_total_refunded_cents int;
+  v_settled boolean := false;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
   IF NOT FOUND THEN
@@ -63,69 +71,81 @@ BEGIN
         processed_at = COALESCE(processed_at, now())
     WHERE id = v_existing_refund_id
       AND status = 'pending';
+    -- issue #3281 — only the call that settles the refund voids its tickets.
+    v_settled := FOUND;
     v_refund_id := v_existing_refund_id;
   ELSE
-    -- Dashboard-initiated refund with no in-app pre-record.
-    -- Create a new refund row + proportional refund_line_items (oldest-first allocation per Q-3).
-    INSERT INTO public.refunds (
-      order_id, amount_cents, currency, reason, initiated_by, status,
-      stripe_payment_intent_id, stripe_charge_id, stripe_refund_id,
-      application_fee_refunded_cents, processed_at, metadata
-    ) VALUES (
-      p_order_id,
-      p_amount_cents,
-      p_currency,
-      'Dashboard-initiated refund (Stripe)',
-      NULL,
-      'succeeded',
-      v_order.stripe_payment_intent_id,
-      v_order.stripe_charge_id,
-      p_stripe_refund_id,
-      -- issue #3281 — unknown until fee evidence arrives (#2097 unknown_legacy).
-      p_application_fee_refunded_cents,
-      now(),
-      jsonb_build_object('source', 'webhook_reconciliation')
-    ) RETURNING id INTO v_refund_id;
-
-    -- Proportional allocation: walk order_line_items oldest-first, take as much qty as needed
-    -- to cover p_amount_cents at unit_price_cents per ticket.
-    v_remaining_to_allocate := p_amount_cents;
-    FOR v_line IN
-      SELECT id, ticket_type_id, quantity, unit_price_cents, total_cents,
-             (
-               SELECT COALESCE(SUM(rli.quantity), 0)
-               FROM public.refund_line_items rli
-               JOIN public.refunds r ON r.id = rli.refund_id
-               WHERE rli.order_line_item_id = order_line_items.id
-                 AND r.status = 'succeeded'
-                 AND r.id <> v_refund_id
-             ) AS already_refunded_qty
-      FROM public.order_line_items
-      WHERE order_id = p_order_id
-      ORDER BY id ASC
-    LOOP
-      EXIT WHEN v_remaining_to_allocate <= 0;
-      -- How many units can we refund from this line?
-      v_alloc_qty := LEAST(
-        v_line.quantity - v_line.already_refunded_qty,
-        CASE WHEN v_line.unit_price_cents > 0
-          THEN v_remaining_to_allocate / v_line.unit_price_cents
-          ELSE 0
-        END
-      );
-      IF v_alloc_qty <= 0 THEN
-        CONTINUE;
-      END IF;
-      v_alloc_amount := v_alloc_qty * v_line.unit_price_cents;
-      INSERT INTO public.refund_line_items (
-        refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
+    -- issue #3281 — lock the order before allocating, so two dashboard refunds
+    -- never take the same line, and a redelivery that waited here finds the row.
+    PERFORM 1 FROM public.orders WHERE id = p_order_id FOR NO KEY UPDATE;
+    SELECT id INTO v_refund_id
+    FROM public.refunds
+    WHERE stripe_refund_id = p_stripe_refund_id;
+    v_existing_refund_id := v_refund_id;
+    IF v_refund_id IS NULL THEN
+      v_settled := true;
+      -- Dashboard-initiated refund with no in-app pre-record.
+      -- Create a new refund row + proportional refund_line_items (oldest-first allocation per Q-3).
+      INSERT INTO public.refunds (
+        order_id, amount_cents, currency, reason, initiated_by, status,
+        stripe_payment_intent_id, stripe_charge_id, stripe_refund_id,
+        application_fee_refunded_cents, processed_at, metadata
       ) VALUES (
-        v_refund_id, v_line.id, v_line.ticket_type_id, v_alloc_qty, v_alloc_amount
-      );
-      v_remaining_to_allocate := v_remaining_to_allocate - v_alloc_amount;
-    END LOOP;
-    -- If we couldn't fully allocate (e.g., partial-cent refund), the leftover stays at the
-    -- order level only (orders.refunded_amount_cents reflects the Stripe truth via re-aggregation below).
+        p_order_id,
+        p_amount_cents,
+        p_currency,
+        'Dashboard-initiated refund (Stripe)',
+        NULL,
+        'succeeded',
+        v_order.stripe_payment_intent_id,
+        v_order.stripe_charge_id,
+        p_stripe_refund_id,
+        -- issue #3281 — unknown until fee evidence arrives (#2097 unknown_legacy).
+        p_application_fee_refunded_cents,
+        now(),
+        jsonb_build_object('source', 'webhook_reconciliation')
+      ) RETURNING id INTO v_refund_id;
+
+      -- Proportional allocation: walk order_line_items oldest-first, take as much qty as needed
+      -- to cover p_amount_cents at unit_price_cents per ticket.
+      v_remaining_to_allocate := p_amount_cents;
+      FOR v_line IN
+        SELECT id, ticket_type_id, quantity, unit_price_cents, total_cents,
+               (
+                 SELECT COALESCE(SUM(rli.quantity), 0)
+                 FROM public.refund_line_items rli
+                 JOIN public.refunds r ON r.id = rli.refund_id
+                 WHERE rli.order_line_item_id = order_line_items.id
+                   AND r.status = 'succeeded'
+                   AND r.id <> v_refund_id
+               ) AS already_refunded_qty
+        FROM public.order_line_items
+        WHERE order_id = p_order_id
+        ORDER BY id ASC
+      LOOP
+        EXIT WHEN v_remaining_to_allocate <= 0;
+        -- How many units can we refund from this line?
+        v_alloc_qty := LEAST(
+          v_line.quantity - v_line.already_refunded_qty,
+          CASE WHEN v_line.unit_price_cents > 0
+            THEN v_remaining_to_allocate / v_line.unit_price_cents
+            ELSE 0
+          END
+        );
+        IF v_alloc_qty <= 0 THEN
+          CONTINUE;
+        END IF;
+        v_alloc_amount := v_alloc_qty * v_line.unit_price_cents;
+        INSERT INTO public.refund_line_items (
+          refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
+        ) VALUES (
+          v_refund_id, v_line.id, v_line.ticket_type_id, v_alloc_qty, v_alloc_amount
+        );
+        v_remaining_to_allocate := v_remaining_to_allocate - v_alloc_amount;
+      END LOOP;
+      -- If we couldn't fully allocate (e.g., partial-cent refund), the leftover stays at the
+      -- order level only (orders.refunded_amount_cents reflects the Stripe truth via re-aggregation below).
+    END IF;
   END IF;
 
   -- issue #3281 — two refunds settling together must see each other's result.
@@ -146,23 +166,26 @@ BEGIN
   WHERE id = p_order_id;
 
   -- Defense-in-depth ticket void (idempotent — only flips tickets still 'valid').
-  FOR v_line IN
-    SELECT rli.ticket_type_id, rli.quantity
-    FROM public.refund_line_items rli
-    WHERE rli.refund_id = v_refund_id
-  LOOP
-    UPDATE public.tickets t
-    SET status = 'refunded'
-    WHERE t.id IN (
-      SELECT t2.id
-      FROM public.tickets t2
-      WHERE t2.order_id = p_order_id
-        AND t2.ticket_type_id = v_line.ticket_type_id
-        AND t2.status = 'valid'
-      ORDER BY t2.created_at ASC
-      LIMIT v_line.quantity
-    );
-  END LOOP;
+  -- issue #3281 — a replayed event must not void more tickets than the refund holds.
+  IF v_settled THEN
+    FOR v_line IN
+      SELECT rli.ticket_type_id, rli.quantity
+      FROM public.refund_line_items rli
+      WHERE rli.refund_id = v_refund_id
+    LOOP
+      UPDATE public.tickets t
+      SET status = 'refunded'
+      WHERE t.id IN (
+        SELECT t2.id
+        FROM public.tickets t2
+        WHERE t2.order_id = p_order_id
+          AND t2.ticket_type_id = v_line.ticket_type_id
+          AND t2.status = 'valid'
+        ORDER BY t2.created_at ASC
+        LIMIT v_line.quantity
+      );
+    END LOOP;
+  END IF;
 
   RETURN jsonb_build_object(
     'refund_id', v_refund_id,

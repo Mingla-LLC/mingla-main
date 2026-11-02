@@ -921,6 +921,22 @@ async function handleRefundEvent(
   supabase: SupabaseClient,
   event: StripeWebhookEvent,
 ): Promise<string | null> {
+  // #3281: a charge.refunded object is the Charge, so its id and amount are the
+  // charge's, not a refund's. Each Refund reconciles from its own refund.* event;
+  // this event only names the brand (the router runs its partner reversal).
+  if (event.type === "charge.refunded") {
+    const chargeAccountId = accountIdForEvent(event);
+    if (!chargeAccountId) return null;
+    const { data, error } = await supabase
+      .from("stripe_connect_accounts")
+      .select("brand_id")
+      .eq("stripe_account_id", chargeAccountId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`refund account lookup failed: ${error.message}`);
+    }
+    return data?.brand_id ?? null;
+  }
   const refund = event.data.object;
   const refundId = objectString(refund, "id");
   if (!refundId) {
