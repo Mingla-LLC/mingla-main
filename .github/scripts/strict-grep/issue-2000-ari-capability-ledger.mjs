@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const LEDGER_PATH = "docs/contracts/ari-capability-ledger.json";
 // #3355 P10 — recorded runs of the live flow evals (scripts/ari/eval/flows).
+// MINGLA-INVARIANT: I-ARI-LIVE-EVAL-EVIDENCE | issue #3355 | A capability-ledger row's live_eval cites a recorded run in docs/contracts/ari-live-eval-runs.json in which every named eval passed and lists that capability; registry lint is never behaviour evidence.
 const LIVE_EVAL_RUNS_PATH = "docs/contracts/ari-live-eval-runs.json";
 const TOOL_PATHS = [
   "supabase/functions/_shared/agentTools.ts",
