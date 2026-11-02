@@ -430,6 +430,35 @@
         "mingla-business/src/components/event/EditPublishedScreen.tsx",
         "mingla-business/src/utils/publishedEventEditGuards.ts"
       ]
+    },
+    {
+      "capability_key": "staff-people-brands",
+      "paths": [
+        "mingla-admin/src/pages/PeoplePage.jsx",
+        "mingla-admin/src/lib/peopleSegments.js",
+        "mingla-admin/src/services/peopleService.js",
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-email",
+      "paths": [
+        "mingla-admin/src/pages/EmailPage.jsx",
+        "mingla-admin/src/components/email/EmailComposer.jsx",
+        "mingla-admin/src/lib/emailAudience.js",
+        "supabase/functions/admin-send-email/audience.ts",
+        "supabase/functions/admin-send-email/index.ts",
+        "supabase/functions/admin-send-email/model.ts",
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-data-room",
+      "paths": [
+        "mingla-admin/src/components/dataRoom/DataRoomOverview.jsx",
+        "mingla-admin/src/lib/dataRoomAnalytics.js",
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+      ]
     }
   ]
 }

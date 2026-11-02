@@ -199,9 +199,17 @@ RETURNS TABLE (
   active                   boolean,
   is_beta_tester           boolean
 )
-LANGUAGE sql STABLE
+-- plpgsql, not sql: the body reads tickets.holder_email (#4063), and a
+-- LANGUAGE sql body is validated at CREATE time. The deliberately pre-#1931
+-- CI replay skips #4063, so a sql body would abort that chain; plpgsql checks
+-- the columns when the function runs. use_column keeps every bare name below
+-- meaning the query column, never the RETURNS TABLE variable.
+LANGUAGE plpgsql STABLE
 SET search_path = public, pg_temp
 AS $$
+#variable_conflict use_column
+BEGIN
+  RETURN QUERY
   WITH
   -- Every email that belongs to an account with a profile: the profile email
   -- first, then the sign-in email.
@@ -440,7 +448,8 @@ AS $$
   LEFT JOIN last_spend ls ON ls.person_key = un.person_key
   LEFT JOIN event_agg ea ON ea.person_key = un.person_key
   LEFT JOIN suppressed su ON su.person_key = un.person_key
-  LEFT JOIN consent_latest cl ON cl.person_key = un.person_key
+  LEFT JOIN consent_latest cl ON cl.person_key = un.person_key;
+END;
 $$;
 COMMENT ON FUNCTION public.admin_people_directory_rows() IS
   'Issue #4226: one row per person (non-seed profiles plus ticket people with no account, by normalised email) with app status, ticket facts, country and marketing consent. Helper: read only through admin RPCs.';
