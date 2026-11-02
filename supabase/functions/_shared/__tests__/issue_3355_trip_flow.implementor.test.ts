@@ -51,6 +51,7 @@ import {
   UNPUBLISHED_DRAFT_WORDS,
 } from "../ariFlows/offerings/event.ts";
 import { findTool, isReadOnlyAgentToolCall } from "../agentTools.ts";
+import { ariDomainRefusal } from "../agentToolHelpers.ts";
 import type { ReadinessAction } from "../readinessCatalog.ts";
 
 const ROOT = new URL("../../../../", import.meta.url);
@@ -801,6 +802,25 @@ Deno.test("P8 bug: a price with a thousands separator is the price the owner typ
   assertEquals(parseTicketAnswer("£1,250.50, 10 tickets", true)?.price_major, 1250.5);
   assertEquals(parseTicketAnswer("12,5 euros, 30 tickets", true)?.price_major, 12.5);
   assertEquals(parsePackageAnswer("Shared room, ₦250,000, 12 spots", true)?.price_major, 250000);
+});
+
+Deno.test("P8: every trip-create refusal is a plain, final 'nothing was saved' (never 'verifying')", () => {
+  for (
+    const code of [
+      "trip_timezone_required",
+      "trip_dates_required",
+      "trip_dates_invalid",
+      "trip_date_past",
+      "trip_place_invalid",
+      "trip_refund_policy_draft_only",
+    ]
+  ) {
+    const refusal = ariDomainRefusal(`ari_execute_trip_operation: ${code}`);
+    assert(refusal, `${code} must be a typed refusal`);
+    assertEquals(refusal.code, "DOMAIN_REFUSED");
+    assertMatch(refusal.message, /Nothing was saved\.$/);
+    assertNotMatch(refusal.message, /_/);
+  }
 });
 
 Deno.test("P8 (D-16): agent-chat's read-only pre-pass never holds a write", async () => {

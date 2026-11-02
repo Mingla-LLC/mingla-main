@@ -91,6 +91,37 @@ export const ARI_REFUSAL_COPY: Readonly<Record<string, AriRefusalCopy>> = Object
       fixRoute: null,
       who: "anyone",
     },
+    // #3355 P8 — the Ari trip create refuses what the owner hasn't given.
+    trip_timezone_required: {
+      message:
+        "The trip needs a time zone. Tell me the city it's in and ask me again. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
+    trip_dates_required: {
+      message:
+        "The trip needs its first and last day. Tell me them and ask me again. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
+    trip_dates_invalid: {
+      message:
+        "The last day of the trip has to be on or after the first day. Pick the dates again. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
+    trip_place_invalid: {
+      message:
+        "Pick the place from the search suggestions and ask me again. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
+    trip_refund_policy_draft_only: {
+      message:
+        "A published trip's refund policy is changed in the trip editor. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
     city_required: {
       message:
         "Add the city where this happens before publishing (or mark it online). Nothing was published.",
