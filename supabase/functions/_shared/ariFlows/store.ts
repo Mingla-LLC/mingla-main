@@ -184,10 +184,19 @@ export function createFlowStore(
   service: SupabaseClient,
   userId: string,
 ): FlowStore {
-  const call = async (fn: string, params: JsonRecord): Promise<unknown> => {
-    const { data, error } = await service.rpc(fn, params);
-    if (error) throw failure(fn, error);
-    return data;
+  // Each RPC is named literally at its `service.rpc("…")` call site so the
+  // #2305 lifecycle gate can see that production code reaches the functions
+  // that advance `ari_flow_runs.status` (a name passed through a variable is
+  // invisible to it). `settle` only maps the result.
+  const settle = (
+    fn: string,
+    result: {
+      data: unknown;
+      error: { code?: unknown; message?: unknown } | null;
+    },
+  ): unknown => {
+    if (result.error) throw failure(fn, result.error);
+    return result.data;
   };
   const runOrThrow = (value: unknown, fn: string): FlowRun => {
     const run = parseFlowRun(value);
@@ -197,16 +206,19 @@ export function createFlowStore(
   return {
     async start(args) {
       const data = record(
-        await call("ari_flow_run_start", {
-          p_user_id: userId,
-          p_brand_id: args.brandId,
-          p_flow_key: args.flowKey,
-          p_flow_version: args.flowVersion,
-          p_concurrency: args.concurrency,
-          p_conversation_id: args.conversationId,
-          p_subject_id: args.subjectId ?? null,
-          p_answers: args.answers ?? {},
-        }),
+        settle(
+          "ari_flow_run_start",
+          await service.rpc("ari_flow_run_start", {
+            p_user_id: userId,
+            p_brand_id: args.brandId,
+            p_flow_key: args.flowKey,
+            p_flow_version: args.flowVersion,
+            p_concurrency: args.concurrency,
+            p_conversation_id: args.conversationId,
+            p_subject_id: args.subjectId ?? null,
+            p_answers: args.answers ?? {},
+          }),
+        ),
       );
       return {
         created: data?.created === true,
@@ -217,12 +229,15 @@ export function createFlowStore(
     },
     async lease(runId, token, ttlSeconds = 30) {
       const data = record(
-        await call("ari_flow_run_lease", {
-          p_run_id: runId,
-          p_user_id: userId,
-          p_lease_token: token,
-          p_ttl_seconds: ttlSeconds,
-        }),
+        settle(
+          "ari_flow_run_lease",
+          await service.rpc("ari_flow_run_lease", {
+            p_run_id: runId,
+            p_user_id: userId,
+            p_lease_token: token,
+            p_ttl_seconds: ttlSeconds,
+          }),
+        ),
       );
       const reason = str(data?.reason);
       return {
@@ -237,35 +252,47 @@ export function createFlowStore(
     },
     async advance(runId, token, expectedRevision, patch) {
       return runOrThrow(
-        await call("ari_flow_run_advance", {
-          p_run_id: runId,
-          p_lease_token: token,
-          p_expected_revision: expectedRevision,
-          p_patch: patch,
-        }),
+        settle(
+          "ari_flow_run_advance",
+          await service.rpc("ari_flow_run_advance", {
+            p_run_id: runId,
+            p_lease_token: token,
+            p_expected_revision: expectedRevision,
+            p_patch: patch,
+          }),
+        ),
         "ari_flow_run_advance",
       );
     },
     async release(runId, token) {
-      await call("ari_flow_run_release", {
-        p_run_id: runId,
-        p_lease_token: token,
-      });
+      settle(
+        "ari_flow_run_release",
+        await service.rpc("ari_flow_run_release", {
+          p_run_id: runId,
+          p_lease_token: token,
+        }),
+      );
     },
     async getForConversation(conversationId) {
-      const data = await call("ari_flow_run_get", {
-        p_user_id: userId,
-        p_run_id: null,
-        p_conversation_id: conversationId,
-      });
+      const data = settle(
+        "ari_flow_run_get",
+        await service.rpc("ari_flow_run_get", {
+          p_user_id: userId,
+          p_run_id: null,
+          p_conversation_id: conversationId,
+        }),
+      );
       return data === null ? null : parseFlowRun(data);
     },
     async getById(runId) {
-      const data = await call("ari_flow_run_get", {
-        p_user_id: userId,
-        p_run_id: runId,
-        p_conversation_id: null,
-      });
+      const data = settle(
+        "ari_flow_run_get",
+        await service.rpc("ari_flow_run_get", {
+          p_user_id: userId,
+          p_run_id: runId,
+          p_conversation_id: null,
+        }),
+      );
       return data === null ? null : parseFlowRun(data);
     },
   };
