@@ -815,7 +815,12 @@ export async function authorizeAgentTool(
       "Ari's permission contract is unavailable",
     );
   }
-  validateBeforeAuthorization(tool, args, trustedUserText);
+  validateBeforeAuthorization(tool, args);
+  // Campaign cards also meet the channel's content contract and the owner's
+  // own words — after the schema, still before any resource or rank lookup.
+  if (tool.name === "draft_campaign") {
+    validateAriCampaignDraftProposal(args, trustedUserText);
+  }
   const brandId = await resolveBrand(tool.name, expected, args, userClient);
   if (expected.resource === "optional_brand" && brandId === null) {
     return { brandId: null, resource: expected.resource };
@@ -953,7 +958,6 @@ export async function authorizeAgentTool(
 function validateBeforeAuthorization(
   tool: Pick<AgentToolDefinition, "name" | "parameters">,
   args: Record<string, unknown>,
-  trustedUserText?: string,
 ): void {
   const schema = tool.parameters as any;
   if (!args || typeof args !== "object" || Array.isArray(args)) {
@@ -962,9 +966,6 @@ function validateBeforeAuthorization(
   // #2829 W9b — Sites proposals are checked against the block catalogue,
   // their citations and (reviews) the owner's pasted text before a card shows.
   assertSiteToolArgs(tool.name, args);
-  if (tool.name === "draft_campaign") {
-    validateAriCampaignDraftProposal(args, trustedUserText);
-  }
   for (const key of schema.required ?? []) {
     if (args[key] === undefined || args[key] === null || args[key] === "") {
       const values = schema.properties?.[key]?.enum;

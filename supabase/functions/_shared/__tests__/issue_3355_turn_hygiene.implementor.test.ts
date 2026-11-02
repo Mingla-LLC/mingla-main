@@ -567,7 +567,7 @@ Deno.test("#3355 D-14 expiry and claim are answered by the database", async () =
   assertEquals(live, false);
   const claim = await claimPendingForConfirm(
     rateClient({ data: "claimed", error: null }) as never,
-    { id: "p", userId: "u", toolArgs: { a: 1 } },
+    { id: "p", userId: "u", status: "executing", toolArgs: { a: 1 } },
   );
   assertEquals(claim, { answer: "claimed", legacy: false });
 });

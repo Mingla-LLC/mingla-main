@@ -86,7 +86,13 @@ export async function pendingExpiredByDbClock(
  */
 export async function claimPendingForConfirm(
   client: RpcClient,
-  input: { id: string; userId: string; toolArgs: Record<string, unknown> },
+  input: {
+    id: string;
+    userId: string;
+    /** The only state a confirm claim may move to; named at the call site. */
+    status: "executing";
+    toolArgs: Record<string, unknown>;
+  },
 ): Promise<{ answer: PendingClaimAnswer; legacy: boolean }> {
   const { data, error } = await client.rpc(
     "agent_pending_action_claim_for_confirm",
@@ -105,7 +111,7 @@ export async function claimPendingForConfirm(
   const { data: flipped, error: flipErr } = await client
     .from("agent_pending_actions")
     .update({
-      status: "executing",
+      status: input.status,
       tool_args: input.toolArgs,
       execution_attested_at: new Date().toISOString(),
     })

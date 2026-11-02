@@ -1096,6 +1096,7 @@ async function handleConfirmAction(args: {
       claim = await claimPendingForConfirm(pendingStateClient, {
         id: pending.id,
         userId,
+        status: "executing",
         toolArgs: finalArgs,
       });
     } catch {
