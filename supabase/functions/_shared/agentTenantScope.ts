@@ -36,6 +36,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   // Issue #3697 v1.4 — report is an inline read. Plan proposal is a confirmed
   // write because it freezes a version after the Host attaches the video.
   "get_ad_campaign_report",
+  // #4238 — the brand's own audience names and sizes; the RPC re-checks
+  // ad_can_host_action_for_caller under the caller's JWT.
+  "list_ad_audiences",
   // #1980 — Growth Tool report resume/read; brand-scoped like Host app-lane.
   "get_growth_tool_report",
   "get_operator_snapshot",

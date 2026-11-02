@@ -65,6 +65,13 @@ import {
 import { cachedSalesReadiness } from "../_shared/adSalesReadiness.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
+  audienceCountryMismatch,
+  type ListAudienceDefinitionRow,
+  type ListPlatform,
+  neededCount,
+  validateAudienceSelection,
+} from "../_shared/adListAudienceRules.ts";
+import {
   deletionOrder,
   probeMetaObjects,
   type ProviderObjectProbe,
@@ -162,6 +169,83 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
     ? city.countryCode.trim().toUpperCase()
     : "";
   return name && /^[A-Z]{2}$/.test(country) ? `${country}:${name}` : null;
+}
+
+/**
+ * #4238 host_setup: ensure the brand's definitions (and keep them
+ * materialised), then read rounded sizes through host_ad_audiences. A platform
+ * the worker has not reached yet gets its Mingla-side "needed" from the
+ * shared minimums. Never returns members or provider ids.
+ */
+async function hostSetupAudiences(
+  db: Db,
+  brandId: string,
+  platforms: string[],
+): Promise<{ ok: true; rows: Record<string, unknown>[] } | { ok: false }> {
+  try {
+    const ensured = await db.rpc("ad_list_audience_ensure_brand", {
+      p_brand_id: brandId,
+    });
+    if (ensured.error) throw ensured.error;
+    await db.from("ad_list_audiences")
+      .update({ requested_at: new Date().toISOString() })
+      .eq("brand_id", brandId);
+    const visible = await db.rpc("host_ad_audiences", { p_brand_id: brandId });
+    if (visible.error) throw visible.error;
+    const exact = new Map<string, Record<string, unknown>>(
+      ((ensured.data ?? []) as Record<string, unknown>[]).map((row) => [
+        String(row.audience_key),
+        row,
+      ]),
+    );
+    const seed = [...exact.values()].find((row) =>
+      String(row.audience_key).endsWith(":seed")
+    );
+    const rows = ((visible.data ?? []) as Record<string, unknown>[]).map(
+      (row) => {
+        const known = Array.isArray(row.platforms)
+          ? row.platforms as Record<string, unknown>[]
+          : [];
+        const def = exact.get(String(row.audience_key));
+        const kind = row.kind === "lookalike" ? "lookalike" : "list";
+        const country = typeof row.lookalike_country === "string"
+          ? row.lookalike_country
+          : null;
+        const countryCount = country
+          ? Number(
+            asRecord(seed?.member_count_by_country)?.[country] ?? 0,
+          )
+          : null;
+        const filled = platforms
+          .filter((platform) =>
+            kind === "list" || platform !== "google"
+          )
+          .map((platform) => {
+            const found = known.find((item) => item.platform === platform);
+            if (found) return found;
+            const needed = neededCount(
+              platform as ListPlatform,
+              kind,
+              Number(def?.member_count ?? 0),
+              countryCount,
+            );
+            return {
+              platform,
+              state: needed === null ? "pending" : "below_minimum",
+              needed_count: needed,
+            };
+          });
+        return { ...row, platforms: filled };
+      },
+    );
+    return { ok: true, rows };
+  } catch (error) {
+    console.error(
+      "[ad-plan] host_setup audiences unavailable",
+      (error as { code?: string })?.code ?? "error",
+    );
+    return { ok: false };
+  }
 }
 
 async function withServerTargetingCoordinates(
@@ -383,6 +467,96 @@ export async function collectAdvertisablePages(
     ) break;
   }
   return { data: rows, error: null };
+}
+
+const APP_NAMES: Record<string, string> = {
+  meta: "Facebook & Instagram",
+  snapchat: "Snapchat",
+  tiktok: "TikTok",
+  google: "Google",
+  reddit: "Reddit",
+};
+
+/**
+ * #4238: the three audience fields a request ref may never carry. Provider
+ * audience ids enter a plan only through the version's audience_selection,
+ * resolved here from server-owned rows (I-4238-AUDIENCE-SERVER-BOUND).
+ */
+export function stripClientAudienceRefs(
+  refs: Partial<Record<Platform, ProviderTargetingRefs>>,
+): Partial<Record<Platform, ProviderTargetingRefs>> {
+  const clean: Partial<Record<Platform, ProviderTargetingRefs>> = {};
+  for (const [platform, raw] of Object.entries(refs ?? {})) {
+    const ref = asRecord(raw);
+    if (!ref) continue;
+    const copy = { ...ref } as Record<string, unknown>;
+    delete copy.includeAudienceIds;
+    delete copy.excludeAudienceIds;
+    delete copy.advantageAudience;
+    clean[platform as Platform] = copy as ProviderTargetingRefs;
+  }
+  return clean;
+}
+
+/** Ready provider ids per platform for the version's selected audiences. */
+export async function resolvePlanAudienceRefs(
+  db: Db,
+  plan: { owner_kind: string; brand_id: string | null },
+  canonicalPlan: Record<string, unknown>,
+  platforms: Platform[],
+): Promise<{
+  idsByPlatform: Partial<Record<Platform, string[]>>;
+  notReady: Partial<Record<Platform, string[]>>;
+  keys: string[];
+}> {
+  const selection = asRecord(canonicalPlan.audience_selection);
+  const keys = Array.isArray(selection?.include_keys)
+    ? selection!.include_keys.filter((key): key is string =>
+      typeof key === "string"
+    )
+    : [];
+  const idsByPlatform: Partial<Record<Platform, string[]>> = {};
+  const notReady: Partial<Record<Platform, string[]>> = {};
+  if (keys.length === 0) return { idsByPlatform, notReady, keys };
+  const { data: defs, error } = await db.from("ad_list_audiences")
+    .select("id,audience_key,owner_kind,brand_id,kind,display_name,lookalike_country,status")
+    .in("audience_key", keys);
+  if (error) throw error;
+  const rows = (defs ?? []) as Record<string, unknown>[];
+  const owned = rows.filter((row) =>
+    row.status === "active" &&
+    (plan.owner_kind !== "host" ||
+      (row.owner_kind === "host" && row.brand_id === plan.brand_id))
+  );
+  const ids = owned.map((row) => String(row.id));
+  const { data: states, error: stateError } = ids.length > 0
+    ? await db.from("ad_list_audience_platforms")
+      .select("audience_id,platform,state,provider_audience_id")
+      .in("audience_id", ids)
+    : { data: [], error: null };
+  if (stateError) throw stateError;
+  for (const platform of platforms) {
+    for (const key of keys) {
+      const def = owned.find((row) => row.audience_key === key);
+      const state = def
+        ? (states ?? []).find((row: Record<string, unknown>) =>
+          row.audience_id === def.id && row.platform === platform
+        )
+        : null;
+      if (
+        def && state?.state === "ready" &&
+        typeof state.provider_audience_id === "string" &&
+        state.provider_audience_id
+      ) {
+        (idsByPlatform[platform] ??= []).push(state.provider_audience_id);
+      } else {
+        (notReady[platform] ??= []).push(
+          String(def?.display_name ?? "This audience"),
+        );
+      }
+    }
+  }
+  return { idsByPlatform, notReady, keys };
 }
 
 function canonicalizePlan(
@@ -1052,9 +1226,17 @@ export async function handleAdPlan(
     const rawCountry = typeof brand.data?.country_code === "string"
       ? brand.data.country_code.trim().toUpperCase()
       : "";
+    // #4238: the brand's own audiences (best-effort; setup works without).
+    const audiences = await hostSetupAudiences(
+      db,
+      brandId,
+      hostConnections.map((row) => String(row.platform)),
+    );
     return json({
       ok: true,
       available: hostConnections.length > 0,
+      audiences: audiences.ok ? audiences.rows : [],
+      ...(audiences.ok ? {} : { audiences_error: "unavailable" }),
       currency: authority.currency,
       brand_country_code: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null,
       pages: pages.data,
@@ -1825,6 +2007,57 @@ export async function handleAdPlan(
       host_budget_cents: hostBudget,
     });
     canonical.media_rights = mediaRights;
+    // #4238 I-4238-AUDIENCE-SERVER-BOUND: the audience selection is validated
+    // and written into the canonical plan BEFORE hashing, so the plan hash
+    // always covers it. Hosts may pick only their own brand's audiences.
+    const audienceSelection = validateAudienceSelection({
+      raw: canonicalInput.audience_selection,
+      ownerKind: plan.owner_kind,
+      planBrandId: plan.brand_id,
+    });
+    if (!audienceSelection.ok) {
+      return json({
+        error: "validation_error",
+        detail: audienceSelection.detail,
+      }, 422);
+    }
+    if (audienceSelection.selection.include_keys.length > 0) {
+      const { data: selectedRows, error: selectedError } = await db
+        .from("ad_list_audiences")
+        .select(
+          "id,audience_key,owner_kind,brand_id,kind,display_name,lookalike_country,status,host_visible",
+        )
+        .in("audience_key", audienceSelection.selection.include_keys);
+      if (selectedError) return databaseFailure(selectedError);
+      const selected = (selectedRows ?? []) as (ListAudienceDefinitionRow & {
+        host_visible?: boolean;
+      })[];
+      const usable = selected.filter((row) =>
+        row.status === "active" &&
+        (plan.owner_kind !== "host" ||
+          (row.owner_kind === "host" && row.brand_id === plan.brand_id &&
+            row.host_visible !== false))
+      );
+      if (usable.length !== audienceSelection.selection.include_keys.length) {
+        return json({
+          error: "validation_error",
+          detail: plan.owner_kind === "host"
+            ? "audience_not_owned"
+            : "audience_not_found",
+        }, 422);
+      }
+      const intent = asRecord(canonicalInput.audience_intent);
+      const countries = Array.isArray(intent?.countries)
+        ? intent!.countries.map((value) => String(value))
+        : [];
+      if (audienceCountryMismatch(usable, countries)) {
+        return json({
+          error: "validation_error",
+          detail: "audience_country_mismatch",
+        }, 422);
+      }
+    }
+    canonical.audience_selection = audienceSelection.selection;
     const { data: destination, error: destinationError } = await db.rpc(
       "ad_plan_destination_resolve",
       {
@@ -1982,11 +2215,34 @@ export async function handleAdPlan(
       );
     }
     const platforms = rawPlatforms as Platform[];
+    // #4238: audience ids never come from the request; a Host could target
+    // another brand's people in Mingla's shared accounts. Strip every client
+    // audience field, then resolve the version's own selection server-side.
     const resolvedRefs = await withServerTargetingCoordinates(
       intent,
-      refsByPlatform ?? {},
+      stripClientAudienceRefs(refsByPlatform ?? {}),
       platforms,
     );
+    let audienceRefs: Awaited<ReturnType<typeof resolvePlanAudienceRefs>>;
+    try {
+      audienceRefs = await resolvePlanAudienceRefs(
+        db,
+        plan,
+        version.canonical_plan,
+        platforms,
+      );
+    } catch (error) {
+      return databaseFailure(error as { message?: string; code?: string });
+    }
+    for (const platform of platforms) {
+      const ids = audienceRefs.idsByPlatform[platform] ?? [];
+      if (ids.length > 0) {
+        resolvedRefs[platform] = {
+          ...(resolvedRefs[platform] ?? {}),
+          includeAudienceIds: ids,
+        };
+      }
+    }
     const compiled = compileTargetingPlan({
       platforms,
       intent,
@@ -1996,6 +2252,22 @@ export async function handleAdPlan(
         ? "native_app"
         : "web",
     });
+    // A selected audience that is not ready on a platform blocks that
+    // platform with a plain reason, through the existing blocked-state path.
+    for (const row of compiled) {
+      const waiting = audienceRefs.notReady[row.platform] ?? [];
+      for (const name of waiting) {
+        row.checksRequired.push(
+          `${name} isn't ready on ${APP_NAMES[row.platform] ?? row.platform} yet.`,
+        );
+        row.verdict = "check_required";
+      }
+    }
+    if (audienceRefs.keys.length > 0) {
+      await db.from("ad_list_audiences")
+        .update({ last_used_at: new Date().toISOString() })
+        .in("audience_key", audienceRefs.keys);
+    }
     const broaderAcceptance =
       asRecord(version.canonical_plan.broader_acceptance) ?? {};
     const frozenAt = new Date().toISOString();

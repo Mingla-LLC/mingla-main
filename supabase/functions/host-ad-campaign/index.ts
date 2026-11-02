@@ -27,7 +27,12 @@ import {
   getAdapter,
   isPlatform,
 } from "../_shared/adChannel.ts";
-import { buildHostCampaignList } from "../_shared/hostAdCampaignList.ts";
+import {
+  buildHostCampaignList,
+  buildHostDailySeries,
+  buildHostListSummary,
+  type DailySeriesRow,
+} from "../_shared/hostAdCampaignList.ts";
 import {
   isSyntheticHostExternalId,
   setCampaignTreeStatus,
@@ -246,7 +251,7 @@ serve(async (req: Request): Promise<Response> => {
     ];
     const [spend, conversions, adSets, versions, plans] = await Promise.all([
       supabase.from("ad_spend_daily").select(
-        "campaign_id,spend_cents,impressions,clicks,currency",
+        "campaign_id,spend_cents,impressions,clicks,currency,spend_date",
       ).in("campaign_id", campaignIds),
       supabase.from("ad_conversions").select(
         "campaign_id,value_cents,currency",
@@ -283,17 +288,25 @@ serve(async (req: Request): Promise<Response> => {
     if (ads.error) {
       return json({ error: "apply_failed", detail: ads.error.message }, 502);
     }
+    const nowIso = new Date().toISOString();
+    const listed = buildHostCampaignList({
+      campaigns,
+      versions: versions.data ?? [],
+      plans: plans.data ?? [],
+      spend: spend.data ?? [],
+      conversions: conversions.data ?? [],
+      adSets: adSets.data ?? [],
+      ads: ads.data ?? [],
+      nowIso,
+    });
     return json({
       ok: true,
-      campaigns: buildHostCampaignList({
-        campaigns,
-        versions: versions.data ?? [],
-        plans: plans.data ?? [],
+      campaigns: listed,
+      // #4238: the Ads list summary card (null when there are no ads).
+      summary: buildHostListSummary({
+        campaigns: listed,
         spend: spend.data ?? [],
-        conversions: conversions.data ?? [],
-        adSets: adSets.data ?? [],
-        ads: ads.data ?? [],
-        nowIso: new Date().toISOString(),
+        nowIso,
       }),
     });
   }
@@ -598,10 +611,56 @@ serve(async (req: Request): Promise<Response> => {
       placementMap.set(key, current);
     }
 
+    // #4238: results over time for the Host charts. Missing data stays null;
+    // a failed series read hides the charts (daily_error) and keeps totals.
+    const { data: brandZone } = await supabase.from("brands")
+      .select("default_timezone").eq("id", brandId).maybeSingle();
+    const timeZone = typeof brandZone?.default_timezone === "string" &&
+        brandZone.default_timezone
+      ? brandZone.default_timezone
+      : "UTC";
+    const { data: seriesRows, error: seriesError } = await supabase.rpc(
+      "ad_campaign_daily_series",
+      { p_campaign_ids: planCampaignIds, p_time_zone: timeZone },
+    );
+    const series = seriesError ? null : await buildHostDailySeries({
+      rows: ((seriesRows ?? []) as DailySeriesRow[]).map((row) => ({
+        ...row,
+        spend_cents: row.spend_cents === null ? null : Number(row.spend_cents),
+        impressions: row.impressions === null ? null : Number(row.impressions),
+        clicks: row.clicks === null ? null : Number(row.clicks),
+        page_visits: row.page_visits === null ? null : Number(row.page_visits),
+        results: row.results === null ? null : Number(row.results),
+      })),
+      hostCurrency: planCurrency,
+      convert: async ({ amount, platform, source }) => {
+        const allocation = providerAllocations.find((row) =>
+          row.platform === platform
+        );
+        if (!allocation || !planCurrency) return null;
+        const { data: converted, error: conversionError } = await supabase
+          .rpc("ad_fx_convert_frozen_minor", {
+            p_amount: amount,
+            p_source: source,
+            p_target: planCurrency,
+            p_snapshot: typeof allocation.fx_snapshot_id === "string"
+              ? allocation.fx_snapshot_id
+              : null,
+          });
+        const value = Number(converted);
+        return conversionError || !Number.isSafeInteger(value) || value < 0
+          ? null
+          : value;
+      },
+    });
     return json({
       ok: true,
       campaign: data,
       plan_campaigns: planCampaigns,
+      daily: series?.daily ?? [],
+      by_platform_spend: series?.by_platform_spend ?? [],
+      time_zone: timeZone,
+      ...(seriesError ? { daily_error: "unavailable" } : {}),
       plan_state: planState,
       plan_currency: planCurrency,
       plan_cap_cents: planCapCents,

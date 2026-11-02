@@ -3867,6 +3867,69 @@ const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
   reddit: "Reddit",
 };
 
+/** "NG" lookalike names read as "People like your guests in Nigeria". */
+function ariAudienceName(row: Record<string, unknown>): string {
+  const country = typeof row.lookalike_country === "string"
+    ? row.lookalike_country
+    : "";
+  if (row.kind === "lookalike" && country) {
+    let name = country;
+    try {
+      name = new Intl.DisplayNames(["en"], { type: "region" }).of(country) ??
+        country;
+    } catch {
+      name = country;
+    }
+    return `People like your guests in ${name}`;
+  }
+  return String(row.display_name ?? "Audience");
+}
+
+// #4238 wave 2 — the brand's own audiences, names and rough sizes only. The
+// RPC runs under the caller's JWT and refuses brands the caller can't read.
+const listAdAudiences = writeTool(
+  "list_ad_audiences",
+  "List the brand's own ad audiences (past guests, contacts, people like your guests) with rough sizes and which apps they're ready on. Names and sizes only: never people. Use the returned keys in propose_ad_plan audience_keys; never invent keys.",
+  { brand_id: UUID },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    const { data, error } = await client.rpc("host_ad_audiences", {
+      p_brand_id: args.brand_id,
+    });
+    if (error) {
+      throw new ToolError(
+        "RPC_FAILED",
+        "I couldn't load your audiences just now. You can still run the ad to everyone in the places you pick.",
+      );
+    }
+    return {
+      audiences: ((data ?? []) as Record<string, unknown>[]).map((row) => {
+        const platforms = Array.isArray(row.platforms)
+          ? row.platforms as Record<string, unknown>[]
+          : [];
+        return {
+          key: String(row.audience_key),
+          name: ariAudienceName(row),
+          approx_size: typeof row.approx_size === "number"
+            ? row.approx_size
+            : null,
+          ready_on: platforms.filter((item) => item.state === "ready").map(
+            (item) => adPlatformName(item.platform),
+          ),
+          not_enough: platforms.filter((item) =>
+            item.state === "below_minimum" &&
+            typeof item.needed_count === "number"
+          ).map((item) => ({
+            app: adPlatformName(item.platform),
+            needed: item.needed_count,
+          })),
+        };
+      }),
+    };
+  },
+);
+
 // Issue #3697 v1.4 — Ari creates the same server-owned plan as the Host and
 // Admin builders. Currency is deliberately absent: the server derives the
 // verified brand settlement currency and provider-account currency.
@@ -3926,6 +3989,12 @@ const proposeAdPlan = writeTool(
     },
     ai_generated: { type: "boolean" },
     optimize_for: { type: "string", enum: ["visits", "sales"] },
+    // #4238: keys from list_ad_audiences only; the server checks ownership.
+    audience_keys: {
+      type: "array",
+      items: { type: "string", minLength: 1, maxLength: 120 },
+      maxItems: 3,
+    },
   },
   [
     "brand_id",
@@ -3940,6 +4009,23 @@ const proposeAdPlan = writeTool(
   ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    // #4238: a Host plan may use only this brand's own audiences. The server
+    // refuses others too (create_version 422 audience_not_owned); this gives
+    // Ari the plain reason first.
+    if (Array.isArray(args.audience_keys)) {
+      const prefix = `brand:${String(args.brand_id).toLowerCase()}:`;
+      if (
+        args.audience_keys.some((key) =>
+          typeof key !== "string" || !key.startsWith(prefix) ||
+          key.endsWith(":seed")
+        )
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "That audience doesn't belong to this brand. Ads can only use the brand's own audiences from list_ad_audiences.",
+        );
+      }
+    }
     const platforms = [
       ...new Set(
         (Array.isArray(args.platforms) && args.platforms.length > 0
@@ -4181,6 +4267,12 @@ const proposeAdPlan = writeTool(
       creative_url: null,
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
+      // #4238: the server validates these belong to this brand (422 otherwise).
+      audience_selection: {
+        include_keys: Array.isArray(args.audience_keys)
+          ? [...new Set(args.audience_keys.map((key) => String(key)))]
+          : [],
+      },
       media_rights: {
         rights_confirmed: true,
         rights_basis: String(args.rights_basis),
@@ -8969,6 +9061,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   scheduleCampaign,
   sendCampaignNow,
   cancelCampaign,
+  listAdAudiences,
   proposeAdPlan,
   approveAdPlan,
   pauseAdCampaign,
@@ -9046,6 +9139,8 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_campaign_report",
   "get_campaign_draft",
   "get_ad_campaign_report",
+  // #4238 — the brand's own audience names and sizes (inline read).
+  "list_ad_audiences",
   // #1980 — Growth Tool report read (growth-tools-report app lane).
   "get_growth_tool_report",
   "get_operator_snapshot",

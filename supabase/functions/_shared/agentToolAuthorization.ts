@@ -166,6 +166,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // Issue #3697 v1.4 — Host Ads is an action capability matrix, not the
   // monotonic brand-role ladder. The legacy role label remains for capability
   // ledger compatibility; hostAdActions is the authoritative caller check.
+  // #4238: same action as the plan's read side; names and sizes only.
+  list_ad_audiences: role("finance_manager", "brand", ["read"]),
   propose_ad_plan: role("finance_manager", "brand", ["plan"]),
   approve_ad_plan: role("finance_manager", "brand", ["fund", "launch"]),
   pause_ad_campaign: role("finance_manager", "brand", ["pause"]),

@@ -237,3 +237,190 @@ export function buildHostCampaignList(input: HostCampaignListInput) {
     };
   }).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
 }
+
+// ── #4238 wave 2: results over time ─────────────────────────────────────────
+
+export type DailySeriesRow = {
+  day: string;
+  campaign_id: string;
+  platform: string | null;
+  spend_cents: number | null;
+  currency: string | null;
+  impressions: number | null;
+  clicks: number | null;
+  page_visits: number | null;
+  results: number | null;
+};
+
+export type HostDailyPoint = {
+  day: string;
+  spend_host_cents: number | null;
+  spend_provider_cents: number | null;
+  provider_currency: string | null;
+  impressions: number | null;
+  clicks: number | null;
+  page_visits: number | null;
+  results: number | null;
+};
+
+/** Converts a provider-currency total into host currency; null when it can't. */
+export type FrozenConvert = (input: {
+  amount: number;
+  platform: string;
+  source: string;
+}) => Promise<number | null>;
+
+function sumOrNull(values: (number | null)[]): number | null {
+  const present = values.filter((value): value is number =>
+    value !== null && Number.isFinite(value)
+  );
+  return present.length === 0 ? null : present.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * One point per day for the Host charts. Host-currency spend converts each
+ * platform's CUMULATIVE provider total through the plan's frozen FX and takes
+ * differences, so the last cumulative point equals host_spend_equivalent_cents
+ * exactly. If any conversion fails, every day's spend_host_cents is null and
+ * the chart falls back to provider currency. Missing data stays null.
+ */
+export async function buildHostDailySeries(input: {
+  rows: DailySeriesRow[];
+  hostCurrency: string | null;
+  convert: FrozenConvert;
+}): Promise<{
+  daily: HostDailyPoint[];
+  by_platform_spend: {
+    platform: string;
+    spend_provider_cents: number;
+    provider_currency: string | null;
+    results: number;
+  }[];
+}> {
+  const days = [...new Set(input.rows.map((row) => row.day))].sort();
+  const platforms = [
+    ...new Set(input.rows.map((row) => row.platform ?? "unknown")),
+  ].sort();
+  const providerCurrencies = new Set(
+    input.rows.filter((row) => row.spend_cents !== null && row.currency)
+      .map((row) => String(row.currency).toUpperCase()),
+  );
+  const providerCurrency = providerCurrencies.size === 1
+    ? [...providerCurrencies][0]
+    : null;
+  const hostByDay = new Map<string, number>();
+  let hostOk = !!input.hostCurrency;
+  for (const platform of platforms) {
+    if (!hostOk) break;
+    const rows = input.rows.filter((row) =>
+      (row.platform ?? "unknown") === platform && row.spend_cents !== null
+    );
+    const currency = rows[0]?.currency?.toUpperCase() ?? null;
+    if (rows.some((row) => row.currency?.toUpperCase() !== currency)) {
+      hostOk = false;
+      break;
+    }
+    let cumulative = 0;
+    let previousConverted = 0;
+    for (const day of days) {
+      const dayCents = rows.filter((row) => row.day === day)
+        .reduce((sum, row) => sum + Number(row.spend_cents ?? 0), 0);
+      if (dayCents === 0 && cumulative === 0) continue;
+      cumulative += dayCents;
+      const converted = currency === input.hostCurrency
+        ? cumulative
+        : currency
+        ? await input.convert({ amount: cumulative, platform, source: currency })
+        : null;
+      if (converted === null || !Number.isSafeInteger(converted)) {
+        hostOk = false;
+        break;
+      }
+      hostByDay.set(day, (hostByDay.get(day) ?? 0) + (converted - previousConverted));
+      previousConverted = converted;
+    }
+  }
+  const daily = days.map((day) => {
+    const rows = input.rows.filter((row) => row.day === day);
+    const providerSpend = sumOrNull(rows.map((row) => row.spend_cents));
+    return {
+      day,
+      spend_host_cents: hostOk
+        ? (providerSpend === null ? null : hostByDay.get(day) ?? 0)
+        : null,
+      spend_provider_cents: providerCurrency ? providerSpend : null,
+      provider_currency: providerCurrency,
+      impressions: sumOrNull(rows.map((row) => row.impressions)),
+      clicks: sumOrNull(rows.map((row) => row.clicks)),
+      page_visits: sumOrNull(rows.map((row) => row.page_visits)),
+      results: sumOrNull(rows.map((row) => row.results)),
+    };
+  });
+  const by_platform_spend = platforms.map((platform) => {
+    const rows = input.rows.filter((row) => (row.platform ?? "unknown") === platform);
+    return {
+      platform,
+      spend_provider_cents: rows.reduce((sum, row) => sum + Number(row.spend_cents ?? 0), 0),
+      provider_currency: rows.find((row) => row.currency)?.currency?.toUpperCase() ?? null,
+      results: rows.reduce((sum, row) => sum + Number(row.results ?? 0), 0),
+    };
+  });
+  return { daily, by_platform_spend };
+}
+
+/**
+ * The Host Ads list summary: this calendar month's spend against the budgets
+ * of the ads running in it, results, and a 30-day daily spend sparkline in
+ * host currency (null on a day whose spend is in another currency).
+ */
+export function buildHostListSummary(input: {
+  campaigns: ReturnType<typeof buildHostCampaignList>;
+  spend: Row[];
+  nowIso: string;
+}): {
+  currency: string | null;
+  spent_cents: number | null;
+  budget_cents: number;
+  results: number;
+  daily_spend: { day: string; cents: number | null }[];
+} | null {
+  if (input.campaigns.length === 0) return null;
+  const currencies = unique(input.campaigns.map((row) => row.currency));
+  const currency = currencies.length === 1 ? currencies[0] : null;
+  const now = new Date(input.nowIso);
+  const monthStart = `${input.nowIso.slice(0, 7)}-01`;
+  const start = new Date(now.getTime() - 29 * 86_400_000).toISOString().slice(0, 10);
+  const daily: { day: string; cents: number | null }[] = [];
+  for (let i = 0; i < 30; i += 1) {
+    const day = new Date(Date.parse(`${start}T00:00:00Z`) + i * 86_400_000)
+      .toISOString().slice(0, 10);
+    const rows = input.spend.filter((row) => text(row.spend_date) === day);
+    const foreign = rows.some((row) => text(row.currency)?.toUpperCase() !== currency);
+    daily.push({
+      day,
+      cents: !currency || foreign
+        ? (rows.length === 0 && currency ? 0 : null)
+        : rows.reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0),
+    });
+  }
+  const monthRows = input.spend.filter((row) =>
+    (text(row.spend_date) ?? "") >= monthStart
+  );
+  const spentForeign = monthRows.some((row) =>
+    text(row.currency)?.toUpperCase() !== currency
+  );
+  const monthCampaignIds = new Set(monthRows.map((row) => String(row.campaign_id)));
+  const running = input.campaigns.filter((row) =>
+    ["live", "scheduled", "in_review"].includes(String(row.lifecycle)) ||
+    row.campaign_ids.some((id) => monthCampaignIds.has(id))
+  );
+  return {
+    currency,
+    spent_cents: !currency || spentForeign
+      ? null
+      : monthRows.reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0),
+    budget_cents: running.reduce((sum, row) => sum + (row.cap_cents ?? 0), 0),
+    results: running.reduce((sum, row) => sum + row.primary_result_count, 0),
+    daily_spend: daily,
+  };
+}
