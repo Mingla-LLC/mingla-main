@@ -605,7 +605,14 @@ async function advanceUnderLease(
       break;
     }
     const probe = await step.probe(ctxFor(step.key));
-    if ("note" in probe && probe.note) lines.push(probe.note);
+    // A step's note is said when it settles, not again on every later turn
+    // ("I'll add it to … venue" was repeated above each question).
+    if (
+      "note" in probe && probe.note &&
+      !(probe.done && rec?.state === "done")
+    ) {
+      lines.push(probe.note);
+    }
     if (probe.done) {
       if (rec?.state !== "done") {
         setState(step.key, { state: "done", evidence: probe.evidence });

@@ -492,7 +492,7 @@ async function readVenues(
 ): Promise<FlowVenueRow[]> {
   const { data, error } = await userClient.from("venue_listings")
     .select(
-      "id,name,slug,venue_category,claim_status,city,cover_media_url,created_at",
+      "id,name,slug,venue_category,claim_status,city,country_code,cover_media_url,created_at",
     )
     .eq("brand_id", brandId)
     .order("created_at", { ascending: true })
@@ -509,6 +509,7 @@ async function readVenues(
       : "",
     claim_status: typeof row.claim_status === "string" ? row.claim_status : "",
     city: text(row.city),
+    country_code: text(row.country_code),
     cover_media_url: text(row.cover_media_url),
     created_at: text(row.created_at),
   }));

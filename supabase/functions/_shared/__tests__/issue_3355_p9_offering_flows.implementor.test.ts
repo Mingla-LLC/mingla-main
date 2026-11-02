@@ -970,6 +970,7 @@ function stayVenue(claim: string): FlowVenueRow {
     venue_category: "stay",
     claim_status: claim,
     city: "Lagos",
+    country_code: "NG",
     cover_media_url: null,
     created_at: null,
   };
@@ -1314,4 +1315,36 @@ Deno.test("#3355: a published offering is announced once, not twice in a row", a
       `${file} repeats the publish readback in its summary`,
     );
   }
+});
+
+Deno.test("#3355: a stay's clock follows the venue's country, never the brand's", async () => {
+  // A UK brand with a Lagos guesthouse: check-in is on Lagos time.
+  const world = freshWorld({
+    venues: [stayVenue("verified")],
+    brand: {
+      default_timezone: "Europe/London",
+      country_code: "GB",
+      default_currency: "GBP",
+      contact_email: "hello@coastline.test",
+      contact_phone: "+442071234567",
+    },
+  });
+  const store = new MemoryStore();
+  const run = await startRun(store, "create_stay", "Create a stay for my guesthouse");
+  await runFlowStep({ store, probes: probesFor(world) }, {
+    run,
+    trigger: "turn",
+    brandName: BRAND_NAME,
+  });
+  const next = await answer(world, store, (r) => form(r, {
+    response: "A calm guesthouse a short walk from the beach, with breakfast.",
+  }));
+  // The venue was named once, above the first question; it is not repeated.
+  assert(next.kind === "artefact");
+  assert(!next.text.includes("I'll add it to"), next.text);
+  const zone = (await cur(store)).step_states.stay_timezone?.evidence?.observed as
+    | { timezone?: string; source?: string }
+    | undefined;
+  assertEquals(zone?.timezone, "Africa/Lagos");
+  assertEquals(zone?.source, "venue_country");
 });

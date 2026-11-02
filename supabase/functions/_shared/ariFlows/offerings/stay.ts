@@ -290,16 +290,16 @@ const timezoneStep: StepDefinition = {
         source: "stay",
       });
     }
-    const brand = await ctx.deps.brandFacts?.() ?? null;
-    if (brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)) {
-      return done("brand_timezone", {
-        timezone: brand.default_timezone,
-        source: "brand",
+    // A stay's check-in clock is the venue's, not the brand's: a UK brand's
+    // Lagos guesthouse checks in on Lagos time. The Host form has no default,
+    // so without a single-zone venue country Ari asks.
+    const venue = await chosenVenue(ctx);
+    const venueZone = marketDefaultTimezone(venue?.country_code ?? null);
+    if (venueZone) {
+      return done("venue_country_timezone", {
+        timezone: venueZone,
+        source: "venue_country",
       });
-    }
-    const country = marketDefaultTimezone(brand?.country_code);
-    if (country) {
-      return done("country_timezone", { timezone: country, source: "country" });
     }
     return {
       done: false,
@@ -526,10 +526,8 @@ const settingsSaveStep: StepDefinition = {
           {
             label: "Time zone",
             value: `${zoneWords(zone.timezone)}${
-              zone.source === "brand"
-                ? ", from your brand"
-                : zone.source === "country"
-                ? ", from your brand's country"
+              zone.source === "venue_country"
+                ? ", from the venue's country"
                 : ""
             }`,
           },

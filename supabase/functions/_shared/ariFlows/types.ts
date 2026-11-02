@@ -275,6 +275,8 @@ export interface FlowVenueRow {
   venue_category: string;
   claim_status: string;
   city: string | null;
+  /** #3355 — the venue's own country; a stay's clock follows the venue. */
+  country_code?: string | null;
   cover_media_url: string | null;
   created_at: string | null;
 }
