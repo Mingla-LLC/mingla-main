@@ -102,7 +102,9 @@ describe("#4226 People: the ticket-buyer tab", () => {
     assert.match(page, /ticket_buyer_no_app: TICKET_BUYER_COLUMNS/);
     assert.match(page, /if \(segment === "ticket_buyer_no_app"\) return CSV_TICKET_BUYERS;/);
     assert.match(page, /rowKey=\{\(row\) => row\.row_key\}/);
-    assert.match(page, /onRowClick=\{segment === "ticket_buyer_no_app" \? undefined :/);
+    // Host contacts (no account either) share the no-drawer rule.
+    assert.match(page, /const noAccountTab = segment === "ticket_buyer_no_app" \|\|/);
+    assert.match(page, /onRowClick=\{noAccountTab \? undefined :/);
     const service = read("services/peopleService.js");
     assert.match(service, /last_purchase_at: \{ asc: "last_active_asc", desc: "last_active_desc" \}/);
   });

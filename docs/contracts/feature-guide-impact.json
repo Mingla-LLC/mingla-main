@@ -447,7 +447,8 @@
         "mingla-admin/src/pages/PeoplePage.jsx",
         "mingla-admin/src/lib/peopleSegments.js",
         "mingla-admin/src/services/peopleService.js",
-        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql"
       ]
     },
     {
@@ -459,7 +460,11 @@
         "supabase/functions/admin-send-email/audience.ts",
         "supabase/functions/admin-send-email/index.ts",
         "supabase/functions/admin-send-email/model.ts",
-        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
+        "packages/brand-rendering/emailFooter.ts",
+        "supabase/functions/_shared/email/copy.ts",
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
+        "supabase/functions/_shared/email/footerLine.ts"
       ]
     },
     {
@@ -467,7 +472,22 @@
       "paths": [
         "mingla-admin/src/components/dataRoom/DataRoomOverview.jsx",
         "mingla-admin/src/lib/dataRoomAnalytics.js",
-        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql"
+        "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql"
+      ]
+    },
+    {
+      "capability_key": "marketing-campaigns",
+      "paths": [
+        "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",
+        "mingla-business/src/components/marketing/EmailPreviewPane.tsx",
+        "packages/brand-rendering/emailFooter.ts",
+        "supabase/functions/_shared/email/copy.ts",
+        "supabase/functions/_shared/marketingAudience.ts",
+        "supabase/functions/_shared/marketingEmailRender.ts",
+        "supabase/functions/marketing-send/index.ts",
+        "supabase/functions/_shared/email/footerLine.ts",
+        "supabase/functions/_shared/marketingReceiveReason.ts"
       ]
     }
   ]

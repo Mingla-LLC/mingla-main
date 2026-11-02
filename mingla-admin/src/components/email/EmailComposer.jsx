@@ -32,6 +32,8 @@ import { EmailBlogPostPicker } from "./EmailBlogPostPicker";
 import {
   APP_STATUS_OPTIONS,
   AUDIENCE_PRESETS,
+  SOURCE_OPTIONS,
+  groupBreakdown,
   EMPTY_FILTERS,
   audienceFor,
   audienceSummary,
@@ -725,6 +727,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
 
   const audienceLabel = audienceSummary(audienceMode, filters, estimate, selectedRecipient);
   const leftOut = exclusionReasons(estimate);
+  const byGroup = groupBreakdown(estimate);
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]">
@@ -739,7 +742,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Audience</h2>
-              <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer and ticket-buyer sends always require an explicit choice and count review. Ticket buyers only get marketing email if they agreed to it.</p>
+              <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer, ticket-buyer, host-contact and Everyone sends always require an explicit choice and count review. People without a Mingla account only get marketing email if they agreed to it (a host's import counts as agreement).</p>
             </div>
             <div className="flex rounded-lg bg-[var(--gray-100)] p-1">
               {AUDIENCE_PRESETS.map((preset) => {
@@ -766,7 +769,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           {audienceMode === "everyone" && (
             <div className="flex items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5 text-sm text-[var(--color-text-secondary)]">
               <Users className="h-4 w-4 text-[var(--color-brand-500)]" />
-              Everyone with the Host or Explorer app. Staff, test and unsubscribed addresses are always left out.
+              Everyone on the People list: app users, people who didn't finish sign-up, ticket buyers and host contacts. Unsubscribed, suppressed, staff and test addresses, and people without an account who didn't agree to marketing, are always left out.
             </div>
           )}
           {audienceMode === "person" && (
@@ -816,7 +819,11 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 <FilterSelect label="User type" value={filters.userType} onChange={(value) => setFilter("userType", value)}>
-                  <option value="all">All</option><option value="host">Host</option><option value="explorer">Explorer</option><option value="ticket_buyers">Ticket buyers</option>
+                  <option value="all">All</option><option value="host">Host</option><option value="explorer">Explorer</option><option value="ticket_buyers">Ticket buyers</option><option value="host_contacts">Host contacts</option>
+                </FilterSelect>
+                <FilterSelect label="Source" value={filters.source} onChange={(value) => setFilter("source", value)}>
+                  <option value="all">All</option>
+                  {SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </FilterSelect>
                 <FilterSelect label="App status" value={filters.appStatus} onChange={(value) => setFilter("appStatus", value)}>
                   <option value="all">All</option>
@@ -888,6 +895,11 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <><strong className="text-[var(--color-text-primary)]">{estimate.matched.toLocaleString()}</strong> matched · <strong className="text-[var(--color-text-primary)]">{estimate.will_receive.toLocaleString()}</strong> will receive{leftOut.map((reason) => <span key={reason.key}> · {reason.count.toLocaleString()} {reason.label}</span>)}</>
             ) : <span>Recipient count appears here.</span>}
           </div>
+          {!estimating && byGroup.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--color-text-tertiary)]" aria-label="Will receive, by group">
+              {byGroup.map((group) => <span key={group.key}>{group.label}: <strong className="tabular-nums text-[var(--color-text-secondary)]">{group.count.toLocaleString()}</strong></span>)}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 p-4 sm:p-5">

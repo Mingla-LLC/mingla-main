@@ -19,6 +19,10 @@ export const PEOPLE_TABS = Object.freeze([
   // (no account, or an account that never onboarded). Not a partition: an
   // account holder here keeps their own tab too.
   Object.freeze({ id: "ticket-buyers", segment: "ticket_buyer_no_app", label: "Ticket buyers, no app" }),
+  // #4226: people a host imported or added to their contact book who have no
+  // account and no ticket. Hosts' contacts who do have one are marked on
+  // their own tab instead.
+  Object.freeze({ id: "host-contacts", segment: "host_contact_no_app", label: "Host contacts, no app" }),
 ]);
 
 export const DEFAULT_PEOPLE_TAB = "explorers";
@@ -197,6 +201,7 @@ const APP_STATUS_WORDS = Object.freeze({
   both: "Host and Explorer",
   incomplete: "Didn't finish sign-up",
   ticket_buyer_no_app: "No app yet",
+  host_contact_no_app: "No app yet",
 });
 
 export function appStatusLabel(value) {
@@ -228,11 +233,24 @@ export function spentLabel(spent) {
   return parts.length ? joinMoneyAmounts(parts) : "Free";
 }
 
+// #4226: why "Emails OK" is yes, in plain words.
+const CONSENT_BASIS_WORDS = Object.freeze({
+  checkout: "Agreed at checkout",
+  consent_record: "Agreed to marketing",
+  host_import_attestation: "Host import (host confirmed permission)",
+  host_manual_add: "Added by a host",
+});
+
+export function consentBasisLabel(value) {
+  return (typeof value === "string" && Object.hasOwn(CONSENT_BASIS_WORDS, value) && CONSENT_BASIS_WORDS[value]) || "";
+}
+
 /** Plain fields beside the server row, for the table and the CSV. */
 export function flattenPersonRow(row) {
   const brands = Array.isArray(row?.brands) ? row.brands : [];
   const readiness = bestReadiness(brands);
   const bought = Array.isArray(row?.brands_bought) ? row.brands_bought : [];
+  const addedBy = Array.isArray(row?.host_brands) ? row.host_brands : [];
   return {
     ...row,
     row_key: row?.id || row?.person_key || row?.email || "",
@@ -240,6 +258,8 @@ export function flattenPersonRow(row) {
     spent_label: row?.spent ? spentLabel(row.spent) : "",
     emails_ok_label: marketingConsent(row?.marketing_consent).label,
     brands_bought_names: bought.map((b) => b?.name).filter(Boolean).join("; "),
+    host_brand_names: addedBy.map((b) => b?.name).filter(Boolean).join("; "),
+    consent_basis_label: consentBasisLabel(row?.consent_basis),
     brand_names: brands.map((b) => b?.name).filter(Boolean).join("; "),
     main_role: brands.length ? brandRoleLabel(brands[0]?.role) : "",
     payments_label: readiness ? readiness.label : "",

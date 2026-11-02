@@ -1,25 +1,35 @@
 // #4226 — who an admin email reaches.
 //
 // Every audience reads ONE list of people: the admin-only SQL function
-// public.admin_people_directory() (migration 20280301004226), the same list
-// the People page and the Data room read. It holds every account (with the
-// People classifier's app status: explorer, host, both, incomplete) and every
-// ticket buyer or holder with no account ('ticket_buyer_no_app').
+// public.admin_people_directory() (migrations 20280301004226 and
+// 20280302004226), the same list the People page and the Data room read. It
+// holds every account (with the People classifier's app status: explorer,
+// host, both, incomplete), every ticket buyer or holder with no account
+// ('ticket_buyer_no_app') and every host contact with neither
+// ('host_contact_no_app').
 //
 // Audiences:
+//   Everyone       EVERY person on the list (Seth, 2026-11-02): explorers,
+//                  hosts, both, didn't finish sign-up, ticket buyers with no
+//                  app, host contacts with no app. No filter at all; the
+//                  snapshot leaves out only what the rules exclude.
 //   Explorers      app status explorer or both
 //   Hosts          app status host or both
-//   Everyone / all explorer, host or both (people with a Mingla app)
 //   Ticket buyers  anyone with a paid ticket (bought, comp'd or held),
 //                  whatever their app status
-// Segment filters narrow any of these: app status, event city, country,
-// bought tickets (yes / no), brand bought from, and the #3720 profile filters.
+//   Host contacts  anyone a host imported or added to their contact book,
+//                  whatever their app status
+// Segment filters narrow any of these: app status, source (ticket buyer /
+// host contact), event city, country, bought tickets (yes / no), brand bought
+// from, and the #3720 profile filters.
 //
-// Staff and test (is_internal) are left out of every bulk send and counted.
-// Ticket buyers are reached only with marketing consent: on the "Ticket
-// buyers" audience, and for anyone whose only tie is a ticket (no app), a
-// recipient whose consent is not 'yes' is left out and counted. An
-// unsubscribed person is never sent to, on any audience.
+// Left out of every bulk send, and counted by reason: staff and test
+// (is_internal), no valid email, duplicate email, unsubscribed or suppressed
+// (Mingla-wide, or by a brand that added them as a host contact — the list
+// reports that as marketing_consent 'unsubscribed'), and no marketing consent
+// where consent applies: people with no account (ticket buyers and host
+// contacts) and anyone reached through the Ticket buyers or Host contacts
+// audience need consent 'yes'. Accounts keep their existing rule.
 import type { AudienceDefinition, RecipientProfile } from "./model.ts";
 
 export const DIRECTORY_COLUMNS = [
@@ -47,6 +57,10 @@ export const DIRECTORY_COLUMNS = [
   "email_verified",
   "active",
   "is_beta_tester",
+  "is_host_contact",
+  "host_brand_ids",
+  "host_city",
+  "consent_basis",
 ].join(",");
 
 export const APP_STATUSES = [
@@ -55,9 +69,19 @@ export const APP_STATUSES = [
   "both",
   "incomplete",
   "ticket_buyer_no_app",
+  "host_contact_no_app",
 ] as const;
 
 const WITH_APP = ["explorer", "host", "both"];
+
+/** People with no Mingla account: marketing needs their consent 'yes'. */
+export const NO_ACCOUNT_STATUSES = [
+  "ticket_buyer_no_app",
+  "host_contact_no_app",
+];
+
+/** The Everyone breakdown, in display order (app status of each person). */
+export const EVERYONE_GROUPS = [...APP_STATUSES];
 
 export interface DirectoryRow {
   person_key?: string | null;
@@ -79,6 +103,10 @@ export interface DirectoryRow {
   last_event_city?: string | null;
   event_cities?: string[] | null;
   brands?: Array<{ id: string; name: string }> | null;
+  is_host_contact?: boolean | null;
+  host_brand_ids?: string[] | null;
+  host_city?: string | null;
+  consent_basis?: string | null;
 }
 
 /** A Postgres array literal of one text element, safely quoted for `cs`. */
@@ -96,23 +124,32 @@ export function applyDirectoryFilters(
     if (audience.profileId) return query.eq("user_id", audience.profileId);
     return query.eq("email", String(audience.email ?? "").toLowerCase().trim());
   }
-  if (audience.mode === "everyone") return query.in("app_status", WITH_APP);
+  // Everyone is everyone: the whole list, no filter (#4226).
+  if (audience.mode === "everyone") return query;
 
   const filters = audience.filters ?? {};
   const userType = filters.userType ?? "all";
   const appStatus = filters.appStatus && filters.appStatus !== "all"
     ? filters.appStatus
     : null;
+  const source = filters.source && filters.source !== "all"
+    ? filters.source
+    : null;
   if (userType === "host") query = query.in("app_status", ["host", "both"]);
   else if (userType === "explorer") {
     query = query.in("app_status", ["explorer", "both"]);
   } else if (userType === "ticket_buyers") {
     query = query.eq("is_ticket_holder", true);
-  } else if (!appStatus) {
-    // "All users" without an app-status filter means people with an app.
+  } else if (userType === "host_contacts") {
+    query = query.eq("is_host_contact", true);
+  } else if (!appStatus && !source) {
+    // "All users" without an app-status or source filter means people with
+    // an app (the segment builder's starting point; Everyone is its own mode).
     query = query.in("app_status", WITH_APP);
   }
   if (appStatus) query = query.eq("app_status", appStatus);
+  if (source === "ticket_buyer") query = query.eq("is_ticket_holder", true);
+  if (source === "host_contact") query = query.eq("is_host_contact", true);
   if (filters.boughtTickets === "yes") {
     query = query.eq("is_ticket_holder", true);
   }
@@ -163,9 +200,10 @@ export function requiresMarketingConsent(
 ): boolean {
   if (
     audience.mode === "segment" &&
-    audience.filters?.userType === "ticket_buyers"
+    (audience.filters?.userType === "ticket_buyers" ||
+      audience.filters?.userType === "host_contacts")
   ) return true;
-  return row.app_status === "ticket_buyer_no_app";
+  return NO_ACCOUNT_STATUSES.includes(String(row.app_status ?? ""));
 }
 
 /** One directory row as the recipient shape the composer personalises. */
@@ -192,6 +230,7 @@ const APP_STATUS_LABELS: Record<string, string> = {
   both: "Host and Explorer",
   incomplete: "Didn't finish sign-up",
   ticket_buyer_no_app: "Ticket buyer, no app",
+  host_contact_no_app: "Host contact, no app",
 };
 
 export function appStatusLabel(value: string | null | undefined): string {
