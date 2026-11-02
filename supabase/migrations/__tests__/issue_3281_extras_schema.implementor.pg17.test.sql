@@ -548,6 +548,25 @@ BEGIN
     RAISE EXCEPTION 'refunds that return the whole charge must refund the ticket, within their own amounts';
   END IF;
 
+  -- On a two-ticket line, 500 then 1,500 returns both tickets in one row per refund line.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,2,1000,2000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    SELECT v_race_order,v_tier,v_event,'qr-pair-'||v_race_order||'-'||n,'valid','auto'
+    FROM generate_series(1,2) AS n;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-pair-a-'||v_race_order,500,'NGN',NULL,NULL);
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-pair-b-'||v_race_order,1500,'NGN',NULL,NULL);
+  IF (SELECT rli.quantity <> 2 OR rli.amount_cents <> 1500 FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id=rli.refund_id WHERE r.stripe_refund_id='re-pair-b-'||v_race_order)
+     OR EXISTS (SELECT 1 FROM public.tickets WHERE order_id=v_race_order AND status='valid')
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'the completing refund must merge into its own row for the line';
+  END IF;
+
   -- The Stripe finalizer locks the order before its ticket update fires the counter trigger.
   IF position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure))
      > position('UPDATE public.tickets' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) THEN

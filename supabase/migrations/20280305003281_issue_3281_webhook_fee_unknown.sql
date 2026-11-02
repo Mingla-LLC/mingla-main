@@ -194,11 +194,15 @@ BEGIN
           -- Split only this refund's own cents, so no line claims more than was returned.
           v_alloc_amount := CASE WHEN v_idx >= v_open_lines THEN v_remaining_to_allocate
             ELSE GREATEST(v_remaining_to_allocate / (v_open_lines - v_idx + 1), 1) END;
+          -- The first pass may already hold part of this line for this refund.
           INSERT INTO public.refund_line_items (
             refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
           ) VALUES (
             v_refund_id, v_line.id, v_line.ticket_type_id, v_line.open_qty, v_alloc_amount
-          );
+          )
+          ON CONFLICT ON CONSTRAINT refund_line_items_refund_line_installment_unique DO UPDATE
+          SET quantity = public.refund_line_items.quantity + EXCLUDED.quantity,
+              amount_cents = public.refund_line_items.amount_cents + EXCLUDED.amount_cents;
           v_remaining_to_allocate := v_remaining_to_allocate - v_alloc_amount;
         END LOOP;
       END IF;
