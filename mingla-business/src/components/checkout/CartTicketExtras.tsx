@@ -10,6 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo } from "react";
+import { Platform } from "react-native";
 
 import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketCheckoutContract";
 
@@ -109,11 +110,19 @@ export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
   const addOns = line?.addOns;
   useEffect(() => {
     if (line === undefined) return;
+    // Off web the panel doesn't render, so the line carries no extras.
+    if (Platform.OS !== "web") {
+      if (addOns !== undefined && addOns.length > 0) setLineAddOns([]);
+      return;
+    }
     const fitted = fitExtrasToLine(addOns, extras, parentCount, lineDates);
     if (fitted !== addOns) setLineAddOns(fitted);
   }, [addOns, extras, line, lineDates, parentCount, setLineAddOns]);
 
   if (extras.length === 0 || line === undefined || parentCount === 0) return null;
+  // Host web only: the Host app's native paid checkout is still on contract
+  // v1, whose idempotency key ignores extras. Explorer is the native buyer app.
+  if (Platform.OS !== "web") return null;
 
   const dateCaption = (extra: PublicTicketExtra): string | null => {
     const dates = extraDatesOnLine(extra, lineDates);

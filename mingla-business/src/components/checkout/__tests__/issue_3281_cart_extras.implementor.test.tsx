@@ -5,7 +5,7 @@
  * send them on the line; a cart without extras keeps its wire body.
  */
 import React from "react";
-import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const request = jest.fn<(body: Record<string, unknown>) => Promise<unknown>>();
 jest.mock("../../../services/ticketCheckoutService", () => ({
@@ -18,6 +18,7 @@ import {
   type TicketQuoteInput,
 } from "../../../services/ticketQuoteService";
 import { CartProvider, type CartContextValue, useCart } from "../CartContext";
+import { Platform } from "react-native";
 import { CartTicketExtras } from "../CartTicketExtras";
 
 interface RenderTree {
@@ -33,6 +34,10 @@ const act = TestRenderer.act;
 const EVENT = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const TICKET = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const DINNER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 let latestCart: CartContextValue | null = null;
 const Probe = () => {
@@ -143,6 +148,7 @@ describe("#3281 quote extras", () => {
 
 describe("#3281 extras date captions", () => {
   test("a date-limited extra names its day in the date's own timezone", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
     const FRI = "11111111-1111-4111-8111-111111111111";
     const SAT = "22222222-2222-4222-8222-222222222222";
     const ticket = {
@@ -204,6 +210,44 @@ describe("#3281 extras date captions", () => {
     expect(text).toMatch(/Fri[^"]*only/);
     expect(text).not.toMatch(/Thu[^"]*only/);
     await act(async () => captionTree.unmount());
+    await act(async () => tree.unmount());
+  });
+});
+
+describe("#3281 Host native checkout", () => {
+  test("offers no extras: its paid checkout is still contract v1", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    let tree!: { toJSON: () => unknown; unmount: () => void };
+    await act(async () => {
+      TestRenderer.create(
+        <CartProvider>
+          <Probe />
+        </CartProvider>,
+      );
+    });
+    await act(async () => addTicket(1));
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <CartTicketExtras
+            ticket={{
+              id: TICKET,
+              name: "General",
+              buyerExtras: [
+                { id: DINNER, name: "Dinner", description: null, priceCents: 500, priceAllInCents: 500, maxPerTicket: 1, isUnlimited: true, validOccurrenceIds: null, remaining: null },
+              ],
+              validOccurrenceIds: null,
+            } as never}
+            line={latestCart!.lines[0]}
+            eventDateIds={[]}
+            occurrences={[]}
+            allDaysPass={false}
+            currency="USD"
+          />
+        </CartProvider>,
+      ) as never;
+    });
+    expect(tree.toJSON()).toBeNull();
     await act(async () => tree.unmount());
   });
 });
