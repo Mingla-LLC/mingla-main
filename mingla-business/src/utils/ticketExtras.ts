@@ -8,8 +8,6 @@
 
 import type { TicketExtraStub } from "../store/draftEventStore";
 
-export { extrasFromServer } from "./ticketExtrasFromServer";
-
 export const MAX_EXTRAS_PER_TIER = 20;
 export const MAX_PER_TICKET_LIMIT = 20;
 
@@ -95,3 +93,47 @@ export const keepExtraDaysInTier = (
           ),
         },
   );
+
+/** Only a date someone bought the extra for is locked on its list. */
+export const isExtraDayLocked = (
+  extra: TicketExtraStub,
+  dayId: string,
+): boolean =>
+  (extra.validDayIds?.includes(dayId) ?? false) &&
+  (extra.soldDayIds?.includes(dayId) ?? false);
+
+/** Toggles one date; leaving "every date" keeps the dates it already sold on. */
+export const toggleExtraDay = (
+  extra: TicketExtraStub,
+  dayId: string,
+): string[] => {
+  const current = extra.validDayIds ?? extra.soldDayIds ?? [];
+  if (extra.validDayIds?.includes(dayId)) {
+    return isExtraDayLocked(extra, dayId)
+      ? current
+      : current.filter((id) => id !== dayId);
+  }
+  return current.includes(dayId) ? [...current] : [...current, dayId];
+};
+
+/**
+ * A saved tier (a row id) whose extras didn't load can't replace them. A new
+ * tier (a local `t_*` id) has nothing on the server yet and stays editable.
+ */
+export const extrasUnavailableFor = (
+  liveEdit: boolean,
+  tier: { id: string; extras?: TicketExtraStub[] } | null,
+): boolean =>
+  liveEdit &&
+  tier !== null &&
+  tier.extras === undefined &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(tier.id);
+
+/**
+ * Reads a tier's extras from a server payload. The server always returns them
+ * normalized, so this only tells a list from "not loaded".
+ */
+export const extrasFromServer = (
+  value: unknown,
+): TicketExtraStub[] | undefined =>
+  Array.isArray(value) ? (value as TicketExtraStub[]) : undefined;

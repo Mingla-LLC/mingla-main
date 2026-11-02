@@ -108,6 +108,8 @@ export interface TicketExtraStub {
   soldCount?: number;
   /** Live events only: the lowest capacity allowed, per date when dated. */
   capacityFloor?: number;
+  /** Live events only: dates someone bought it for, which can't leave its list. */
+  soldDayIds?: string[];
 }
 
 export interface TicketStub {

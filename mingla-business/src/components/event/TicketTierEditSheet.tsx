@@ -43,6 +43,7 @@ import { useEventWaitlist } from "../../hooks/useEventWaitlist";
 import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
+import { ticketPriceEntryMinimumMessage } from "../../utils/ticketPriceMinimum";
 import { formatCurrency, minorFromMajor } from "../../utils/currency";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // #2664 — Android has no `datetime` picker mode; the sale window has to step
@@ -71,9 +72,15 @@ import {
 } from "../../utils/ticketDayScopeCopy";
 import { ValidDaysSheet } from "./ValidDaysSheet";
 import { TicketExtrasSection } from "./TicketExtrasSection";
+import { supabase } from "../../services/supabase";
 import { isFeatureEnabled } from "../../config/featureFlags";
 import type { TicketExtraStub } from "../../store/draftEventStore";
-import { keepExtraDaysInTier, validateTicketExtra } from "../../utils/ticketExtras";
+import {
+  extrasFromServer,
+  extrasUnavailableFor,
+  keepExtraDaysInTier,
+  validateTicketExtra,
+} from "../../utils/ticketExtras";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 import { canShowTicketTierDiscountControls } from "../discounts/ticketTierDiscountContract";
 
@@ -597,6 +604,12 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [validDayIds, setValidDayIds] = useState<string[] | null>(null);
   // issue #3281 — this tier's extras, edited in place and saved with the tier.
   const [extras, setExtras] = useState<TicketExtraStub[]>([]);
+  // A saved tier on a published event reads its extras when the sheet opens;
+  // the boot payload never carries them. `loadedExtras` is what the server has.
+  const [extrasRead, setExtrasRead] = useState<
+    "none" | "loading" | "loaded" | "failed"
+  >("none");
+  const loadedExtras = useRef<string | null>(null);
 
   // Cycle 12 — Available-at sub-sheet
   const [availableAt, setAvailableAt] = useState<TicketAvailableAt>("both");
@@ -658,9 +671,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setAvailableAt(initial.availableAt);
       setValidDayIds(initial.validDayIds ?? null);
       setExtras(initial.extras ?? []);
+      loadedExtras.current = null;
+      setExtrasRead(extrasUnavailableFor(liveEdit, initial) ? "loading" : "none");
     } else {
       setName("");
       setExtras([]);
+      loadedExtras.current = null;
+      setExtrasRead("none");
       setIsFree(newTicketPreset === "free-guest-list");
       setIsUnlimited(false);
       setPriceText("");
@@ -727,6 +744,18 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     (priceText.trim().length === 0 ||
       !Number.isFinite(parsedPriceValue) ||
       parsedPriceValue <= 0);
+  // issue #3355 — Seth's decision 6: a new or changed paid price must clear
+  // the payment provider's minimum (the server refuses it otherwise).
+  const priceMinimumMessage = priceInvalid
+    ? null
+    : ticketPriceEntryMinimumMessage({
+        isFree,
+        priceText,
+        currency: priceCurrency,
+        initialIsFree: initial?.isFree ?? null,
+        initialPriceMajor: initial?.priceGbp ?? null,
+        isPriceLocked,
+      });
   const capacityInvalid =
     !isUnlimited &&
     (capacityText.trim().length === 0 ||
@@ -765,8 +794,40 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
         ? dayScopeEntries
         : dayScopeEntries.filter((entry) => validDayIds.includes(entry.id));
   // A published tier whose extras failed to load can't replace them safely.
-  const extrasUnavailable =
-    liveEdit && initial !== null && initial.extras === undefined;
+  // A new tier (a local `t_*` id) has nothing on the server yet, so it can
+  // always take extras; only a saved tier (a row id) depends on the read.
+  const extrasUnavailable = extrasRead === "loading" || extrasRead === "failed";
+  useEffect(() => {
+    if (extrasRead !== "loading" || initial === null) return;
+    if (eventId === null || eventId === undefined) {
+      setExtrasRead("failed");
+      return;
+    }
+    let live = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc(
+          "business_event_ticket_extras",
+          { p_event_id: eventId },
+        );
+        if (!live) return;
+        if (error !== null || data === null) {
+          setExtrasRead("failed");
+          return;
+        }
+        const list =
+          extrasFromServer((data as Record<string, unknown>)[initial.id]) ?? [];
+        loadedExtras.current = JSON.stringify(list);
+        setExtras(list);
+        setExtrasRead("loaded");
+      } catch {
+        if (live) setExtrasRead("failed");
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [extrasRead, eventId, initial]);
   const extrasInvalid = extras.some(
     (extra) => validateTicketExtra(extra, { tierIsFree: isFree }) !== null,
   );
@@ -783,6 +844,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     !descriptionTooLong &&
     !saleEndBeforeStart &&
     !priceInvalid &&
+    priceMinimumMessage === null &&
     !capacityInvalid &&
     !capacityBelowSold &&
     !dayScopeOrphaned &&
@@ -801,6 +863,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   if (name.trim().length === 0) block("Give this ticket a name.", touched.name);
   if (priceInvalid)
     block("Enter a valid price, or mark it free.", touched.price);
+  if (priceMinimumMessage !== null) block(priceMinimumMessage);
   if (capacityInvalid) {
     block(
       "Enter a capacity above zero, or mark it unlimited.",
@@ -965,6 +1028,19 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     }
   };
 
+  const extrasOut = keepExtraDaysInTier(
+    extras,
+    dayScoped && validDayIds !== null ? validDayIds : null,
+  );
+  const extrasToSend: TicketExtraStub[] | null =
+    extrasRead === "loaded"
+      ? JSON.stringify(extrasOut) === loadedExtras.current
+        ? null
+        : extrasOut
+      : extrasRead === "none" && (initial?.extras !== undefined || extras.length > 0)
+        ? extrasOut
+        : null;
+
   const handleSave = useCallback((): void => {
     const parsedPrice = isFree ? null : parseFloat(priceText);
     const parsedCapacity = isUnlimited ? null : parseInt(capacityText, 10);
@@ -1017,19 +1093,14 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       // Default "both" for new tiers (visible online + door). I-30 enforced
       // via filter chains downstream (J-C1 picker, J-D3 picker, AddCompGuestSheet).
       availableAt,
-      // issue #3281 — sent only once loaded or added, so a failed extras read
-      // can never save an empty list over the server's extras.
-      ...(initial?.extras !== undefined || extras.length > 0
-        ? {
-          extras: keepExtraDaysInTier(
-            extras,
-            dayScoped && validDayIds !== null ? validDayIds : null,
-          ),
-        }
-        : {}),
+      // issue #3281 — a published tier sends its extras only when they changed
+      // from what the server has; a draft sends them once it has any. An
+      // unread or failed read never sends, so the server's extras are kept.
+      ...(extrasToSend !== null ? { extras: extrasToSend } : {}),
     };
     onSave(ticket);
   }, [
+    extrasToSend,
     name,
     isFree,
     isUnlimited,
@@ -1258,6 +1329,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 <Text style={styles.helperError}>
                   Enter a price greater than zero, or mark this ticket free.
                 </Text>
+              ) : priceMinimumMessage !== null ? (
+                <Text style={styles.helperError}>{priceMinimumMessage}</Text>
               ) : dayScoped && dayPriceHelper !== null ? (
                 <Text style={styles.helperHint}>{dayPriceHelper}</Text>
               ) : isPriceLockedByRank ? (
@@ -1394,7 +1467,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
 
           {/* #3281 — dark until buyers can buy extras; a tier that already has
               some keeps them editable. */}
-          {isFeatureEnabled("extras") || (initial?.extras?.length ?? 0) > 0 ? (
+          {isFeatureEnabled("extras") || extras.length > 0 ? (
           <TicketExtrasSection
             extras={extras}
             onChange={setExtras}
@@ -1407,6 +1480,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 : String(major)}
             tierDayEntries={tierDayEntries}
             unavailable={extrasUnavailable}
+            loading={extrasRead === "loading"}
           />
           ) : null}
 

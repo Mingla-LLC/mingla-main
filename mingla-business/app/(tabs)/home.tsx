@@ -40,7 +40,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { BusinessPulsePanel } from "../../src/components/home/BusinessPulsePanel";
 import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
@@ -68,6 +67,7 @@ import {
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
+import { useLatchedWhileOpen } from "../../src/hooks/useLatchedWhileOpen";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { isCurrentBrandPending } from "../../src/utils/currentBrandPending";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
@@ -115,6 +115,14 @@ import {
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
 import { canViewBrandPayments } from "../../src/utils/brandPaymentsPermission";
+
+// #3355 — the brand switcher loads when the owner opens it, the way Hub,
+// Account and Marketing load it (#3493); a static import here, in the staff
+// Home and in Ari kept it in `__common`.
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
 
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
 // Account tab and Hub layout; a static import here kept it in `__common`.
@@ -710,11 +718,23 @@ export default function HomeTab(): React.ReactElement {
         : role.role === "venue_staff"
           ? "staff"
           : null;
-  if (venueStaffSurface !== null && currentBrand !== null) {
+  // #3355 bug 16 — each surface below mounts its OWN BrandSwitcherSheet.
+  // Creating a brand switches the current brand at step 1 and the new
+  // brand's role starts loading, which used to swap the surface underneath
+  // the open sheet and unmount the creation flow after step 1. While the
+  // switcher is open the surface stays the one it was opened on.
+  const liveSurface: "staff" | "scanner" | "home" =
+    venueStaffSurface !== null && currentBrand !== null
+      ? "staff"
+      : isScannerOnlyRank(callerRank)
+        ? "scanner"
+        : "home";
+  const surface = useLatchedWhileOpen(liveSurface, sheetVisible);
+  if (surface === "staff" && currentBrand !== null) {
     return (
       <Suspense fallback={<View style={styles.host} />}>
         <LazyVenueStaffHomeBoundary
-          mode={venueStaffSurface}
+          mode={venueStaffSurface ?? "resolving"}
           brandId={currentBrand.id}
           brandName={currentBrand.displayName}
           onBrandTap={handleOpenSwitcher}
@@ -737,7 +757,7 @@ export default function HomeTab(): React.ReactElement {
   // under rules-of-hooks. rank<scanner (i.e. rank 0 / no membership)
   // falls through to the regular Home so the empty-brand prompt can
   // still drive onboarding.
-  if (isScannerOnlyRank(callerRank)) {
+  if (surface === "scanner") {
     return <ScannerHome />;
   }
 
@@ -985,13 +1005,19 @@ export default function HomeTab(): React.ReactElement {
         // orch-0974-lock-pane:end-mobile-populated
       )}
 
-      <BrandSwitcherSheet
-        visible={sheetVisible}
-        onClose={handleCloseSheet}
-        onBrandCreated={handleBrandCreated}
-        onDefaultBrandSaveError={handleDefaultBrandSaveError}
-        onRequestDeleteBrand={handleRequestDeleteBrand}
-      />
+      {/* #3355 — the switcher loads when the owner opens it, like Hub,
+          Account and Marketing already do (#3493). */}
+      {sheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={handleCloseSheet}
+            onBrandCreated={handleBrandCreated}
+            onDefaultBrandSaveError={handleDefaultBrandSaveError}
+            onRequestDeleteBrand={handleRequestDeleteBrand}
+          />
+        </Suspense>
+      ) : null}
 
       {/* ORCH-0826 M0: universal creator sheet (Create event/experience/trip) */}
       {isUniversalCreatorOpen ? (

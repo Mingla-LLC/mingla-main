@@ -15,6 +15,7 @@ import {
   createEventTaskState,
   EventBrief,
   IDLE_TASK_STATE,
+  MAX_STATE_STRING,
   missingSlot,
   PendingQuestionV1,
   proposedSlot,
@@ -26,10 +27,17 @@ import {
 } from "./agentConversationState.ts";
 import {
   DateTimeChoice,
+  extractExplicitTimezone,
   isValidIanaTimezone,
   resolveRelativeTime,
   TemporalSlotValue,
 } from "./agentRelativeTime.ts";
+import {
+  extractEventTitle,
+  formatEventStart,
+  parseEventEnd,
+  zoneWords,
+} from "./ariFlows/offerings/eventFacts.ts";
 
 export type PlannerClassification =
   | "event_plan_start"
@@ -63,7 +71,7 @@ export interface PlannerResult {
 
 export function isCreateEventPlanningRequest(text: string): boolean {
   const actionToListing =
-    /\b(?:create|make|set up|setup|schedule|host|plan|start)\b[\s\S]{0,80}\b(?:event|gathering|party)\b/i
+    /\b(?:create|make|set up|setup|schedule|host|plan|start)\b[\s\S]{0,80}\b(?:event|gathering|party)\b(?!\s+flyer\b)/i
       .test(text);
   // “Show me the steps” uses show as a verb. Only treat show as an offering
   // noun when the phrase itself is noun-shaped (plan a show, create our show,
@@ -76,7 +84,7 @@ export function isCreateEventPlanningRequest(text: string): boolean {
     // "Show me a plan" is a general planning request, not a request to create
     // an entertainment show. Keep the ambiguous noun out of the reverse form;
     // explicit "plan a show" still matches the forward form above.
-    /\b(?:event|gathering|party)\b[\s\S]{0,80}\b(?:create|make|set up|setup|schedule|host|plan|start)\b/i
+    /\b(?:event|gathering|party)\b(?!\s+flyer\b)[\s\S]{0,80}\b(?:create|make|set up|setup|schedule|host|plan|start)\b/i
       .test(text);
 }
 
@@ -100,7 +108,9 @@ export function isExplicitReplacementTaskRequest(text: string): boolean {
 
 export function isReadInterruption(text: string): boolean {
   return /\b(?:how many|list|show|what are|which)\b[\s\S]{0,50}\b(?:brands?|events?|sales|orders|guests?)\b/i
-    .test(text);
+    .test(text) ||
+    /\b(?:read back|check|verify|confirm)\b[\s\S]{0,50}\b(?:saved|created|draft|event)\b/i
+      .test(text);
 }
 
 export function isCancelTaskRequest(text: string): boolean {
@@ -148,17 +158,140 @@ export function extractEventBrief(text: string): EventBrief {
   };
 }
 
-function extractTitle(text: string): string | undefined {
-  const explicitMatch = text.match(
-    /\b(?:called|named|title(?:d)?)\s+["“']?([^"”'.,!?]{3,80})/i,
-  )?.[1]?.trim();
-  const explicit = explicitMatch?.replace(
-    /\s+(?:on|at)\s+(?=(?:today|tomorrow|next|this|in\s+\d+|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)|\d{1,4}[-/:]))[\s\S]*$/i,
+function extractEventLocation(text: string): string | undefined {
+  const match = text.match(
+    /\b(?:at|venue(?:\s+(?:is|at))?|location(?:\s+(?:is|at))?)\s+(?!\d)([^.!?;\n]{3,160})/i,
+  );
+  const value = match?.[1]?.trim().replace(/\s+/g, " ");
+  if (!value) return undefined;
+  if (/^the end of (?:the )?month\b/i.test(value)) return undefined;
+  const cleaned = value.replace(
+    /\s+(?:make it|keep it|use copy|write copy|with a capacity)\b[\s\S]*$/i,
     "",
-  ).trim();
-  if (explicit) return explicit.slice(0, 80);
-  const quoted = text.match(/["“]([^"”]{3,80})["”]/)?.[1]?.trim();
-  return quoted ? quoted.slice(0, 80) : undefined;
+  ).replace(/[,.\s]+$/, "").trim();
+  return cleaned.length >= 3 ? cleaned.slice(0, 160) : undefined;
+}
+
+function requestsGroundedEventCopy(text: string): boolean {
+  return /\b(?:event\s+copy|description|promotional\s+text|event\s+text)\b/i
+    .test(text);
+}
+
+function localDateOf(instantIso: string, timezone: string): string | null {
+  const date = new Date(instantIso);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: string): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const year = value("year");
+  const month = value("month");
+  const day = value("day");
+  return year && month && day ? `${year}-${month}-${day}` : null;
+}
+
+function localClockMinutes(
+  instantIso: string,
+  timezone: string,
+): number | null {
+  const date = new Date(instantIso);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+  return Number.isInteger(hour) && Number.isInteger(minute)
+    ? hour * 60 + minute
+    : null;
+}
+
+function extractEventEndAt(
+  text: string,
+  startAt: string,
+  timezone: string,
+  now: Date,
+): string | undefined {
+  const time = String
+    .raw`(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)?`;
+  const range = new RegExp(
+    String
+      .raw`\b(?:from\s+)?(${time})\s*(?:to|until|through|[–—-])\s*(${time})\b`,
+    "i",
+  ).exec(text);
+  const endClock = range?.[2]?.trim();
+  if (!endClock) return undefined;
+  const date = localDateOf(startAt, timezone);
+  if (!date) return undefined;
+  const startMinutes = localClockMinutes(startAt, timezone);
+  let endResult = resolveRelativeTime(`${date} ${endClock}`, {
+    now,
+    timezone,
+  });
+  if (!endResult.temporal?.resolved_iso) return undefined;
+  let endAt = endResult.temporal.resolved_iso;
+  const endMinutes = localClockMinutes(endAt, timezone);
+  if (
+    startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes
+  ) {
+    const [year, month, day] = date.split("-").map(Number);
+    const nextDate = new Date(Date.UTC(year, month - 1, day + 1))
+      .toISOString().slice(0, 10);
+    endResult = resolveRelativeTime(`${nextDate} ${endClock}`, {
+      now,
+      timezone,
+    });
+    if (!endResult.temporal?.resolved_iso) return undefined;
+    endAt = endResult.temporal.resolved_iso;
+  }
+  return endAt;
+}
+
+/**
+ * A shared meridiem belongs to both sides of a clock range: 6–9 PM means
+ * 6 PM–9 PM. The relative-time parser treats the first bare hour as its own
+ * time, so make that convention explicit before resolving the event start.
+ */
+function expandSharedMeridiemRange(text: string): string {
+  const clock = String
+    .raw`(?:[01]?\d|2[0-3])(?::[0-5]\d)?`;
+  const meridiem = String.raw`(?:a\.?m\.?|p\.?m\.?)`;
+  const range = new RegExp(
+    String
+      .raw`\b((?:from\s+)?(${clock})\s*)(?:to|until|through|[–—-])\s*(${clock})\s*(${meridiem})\b`,
+    "i",
+  );
+  return text.replace(
+    range,
+    (
+      _match,
+      prefix: string,
+      startClock: string,
+      endClock: string,
+      suffix: string,
+    ) => {
+      const startHasMeridiem = new RegExp(`${meridiem}$`, "i").test(prefix);
+      return `${
+        startHasMeridiem ? prefix : `${prefix}${suffix}`
+      }–${endClock} ${suffix}`;
+    },
+  );
+}
+
+// #3355 P7 (D-19): one title reader for the planner and the flow engine —
+// curly quotes removed, apostrophes and "Vol. 2" kept.
+function extractTitle(
+  text: string,
+  activeBrandName?: string,
+): string | undefined {
+  return extractEventTitle(text, activeBrandName);
 }
 
 function extractGuestCapacity(text: string): number | undefined {
@@ -221,11 +354,25 @@ function dateChoices(
   questionId: string,
   choices: DateTimeChoice[],
 ): AgentChoicesV2 {
+  const dates = [
+    ...new Set(choices.map((choice) => choice.temporal.local_date)),
+  ];
+  const onlyDate = dates.length === 1 ? dates[0] : null;
+  const prompt = onlyDate
+    ? `I have ${
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "UTC",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }).format(new Date(`${onlyDate}T12:00:00.000Z`))
+    } from your message. What time should I use? I’ll confirm the full date and time before creating the draft.`
+    : "Which date and time should I use?";
   return assertAgentChoicesV2({
     schema_version: 2,
     question_id: questionId,
     kind: "clarifying",
-    prompt: "Which date and time should I use?",
+    prompt,
     required_slot_keys: ["start_at", "timezone"],
     options: choices.map((choice) => ({
       id: choice.id,
@@ -248,6 +395,23 @@ function timezoneQuestion(questionId: string): AgentChoicesV2 {
     kind: "clarifying",
     prompt: "Which timezone should I use for this event?",
     required_slot_keys: ["timezone"],
+    options: [],
+  });
+}
+
+function endTimeQuestion(
+  questionId: string,
+  startAt: string,
+  timezone: string,
+): AgentChoicesV2 {
+  return assertAgentChoicesV2({
+    schema_version: 2,
+    question_id: questionId,
+    kind: "clarifying",
+    prompt: `When does it end? It starts ${
+      formatEventStart(startAt, timezone)
+    } (${zoneWords(timezone)}). Tell me the end time, for example 10:30pm.`,
+    required_slot_keys: ["end_at"],
     options: [],
   });
 }
@@ -353,23 +517,51 @@ function proposalText(state: TaskStateV1, brandName: string): string {
   const title = String(state.active_task.slots.title.value);
   const startAt = String(state.active_task.slots.start_at.value);
   const timezone = String(state.active_task.slots.timezone.value);
-  const display = new Intl.DateTimeFormat("en-US", {
+  const displayDateTime = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     weekday: "short",
     month: "short",
     day: "numeric",
+    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZoneName: "short",
   }).format(new Date(startAt));
+  const zoneLabel = timezone === "Africa/Lagos"
+    ? "WAT"
+    : new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "short",
+    }).formatToParts(new Date(startAt)).find((part) =>
+      part.type === "timeZoneName"
+    )?.value ?? timezone;
+  const display = `${displayDateTime} ${zoneLabel}`;
   const kind = state.active_task.intent === "create_rsvp" ? "RSVP" : "event";
-  const capacity = state.active_task.slots.capacity?.status === "resolved"
-    ? Number(state.active_task.slots.capacity.value)
+  // #3355 P7 (D-23): no implicit ticket tier, so nothing to announce.
+  const admission = "";
+  const slots = state.active_task.slots;
+  const endAt = slots.end_at?.status === "resolved" &&
+      typeof slots.end_at.value === "string"
+    ? slots.end_at.value
     : null;
-  const admission = capacity && kind === "event"
-    ? ` It includes a free General admission tier limited to ${capacity} guests.`
+  const endDisplay = endAt
+    ? `${
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(endAt))
+    } ${zoneLabel}`
+    : null;
+  const schedule = endDisplay ? ` through ${endDisplay}` : "";
+  const location = slots.location_text?.status === "resolved" &&
+      typeof slots.location_text.value === "string"
+    ? ` at ${slots.location_text.value}`
     : "";
-  return `Ready to create “${title}” as a draft ${kind} for ${brandName} on ${display}.${admission} The draft will write the brand, title, start time, and every confirmed limit; your creative ideas stay in this plan for later refinement.`;
+  const copy = slots.description_requested?.status === "resolved" &&
+      slots.description_requested.value === true
+    ? " I’ve prepared concise event copy using only the details you gave."
+    : "";
+  return `Ready to create “${title}” as a draft ${kind} for ${brandName}${location} on ${display}${schedule}.${admission}${copy} It’ll be an unpublished draft — nobody can see it until you publish. Should I create this draft?`;
 }
 
 function finalizeResult(
@@ -401,11 +593,63 @@ function incorporateTime(
   userText: string,
   context: PlannerContext,
 ): { state: TaskStateV1; choices?: AgentChoicesV2; text?: string } {
-  const resolution = resolveRelativeTime(userText, {
+  const storedTimezone = state.active_task?.slots.timezone?.value;
+  const timeContext = {
     now: context.now,
-    timezone: context.timezone,
+    timezone: extractExplicitTimezone(userText) ??
+      (isValidIanaTimezone(storedTimezone) ? storedTimezone : context.timezone),
     locale: context.locale,
-  });
+  };
+  let resolution = resolveRelativeTime(
+    expandSharedMeridiemRange(userText),
+    timeContext,
+  );
+  // A follow-up such as "18:00" answers a missing-time question when the host
+  // already supplied a concrete date. Reuse that exact full-year date only
+  // when the current text has a time and either no date or a matching yearless
+  // restatement. A yearless date never becomes the source of truth.
+  const priorStartValue = state.active_task?.slots.start_at.value;
+  const priorDate = priorStartValue !== null &&
+      typeof priorStartValue === "object" &&
+      typeof (priorStartValue as { local_date?: unknown }).local_date ===
+        "string"
+    ? (priorStartValue as { local_date: string }).local_date
+    : null;
+  const yearlessCandidate = state.active_task?.slots.start_at.status ===
+        "proposed" &&
+      priorStartValue !== null &&
+      typeof priorStartValue === "object" &&
+      typeof (priorStartValue as { yearless_date?: unknown }).yearless_date ===
+        "string"
+    ? priorStartValue as {
+      yearless_date: string;
+      original_text: string;
+    }
+    : null;
+  const suppliedYear = yearAnswer(userText);
+  if (yearlessCandidate && suppliedYear) {
+    resolution = resolveRelativeTime(
+      `${yearlessCandidate.yearless_date}, ${suppliedYear} ${yearlessCandidate.original_text}`,
+      timeContext,
+    );
+  }
+  const suppliesTime = /\b(?:[01]?\d|2[0-3]):[0-5]\d\b/.test(userText) ||
+    /\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:am|pm)\b/i.test(userText);
+  const mentionsDate =
+    /\b(?:today|tomorrow|next|this|weekend|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i
+      .test(userText) ||
+    /\b20\d{2}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/i
+      .test(userText);
+  const repeatsStoredDateWithoutYear = priorDate !== null &&
+    !/\b20\d{2}\b/.test(userText) &&
+    matchesStoredMonthDay(userText, priorDate);
+  if (
+    !resolution.temporal && resolution.choices.length === 0 && suppliesTime &&
+    (!mentionsDate || repeatsStoredDateWithoutYear) && priorDate &&
+    state.pending_question?.required_slot_keys.includes("start_at")
+  ) {
+    resolution = resolveRelativeTime(`${priorDate} ${userText}`, timeContext);
+  }
   if (resolution.needsTimezone) {
     const choices = timezoneQuestion(context.questionId);
     return {
@@ -446,6 +690,104 @@ function incorporateTime(
     };
   }
   return { state };
+}
+
+/**
+ * A year clarification can include a small instruction in the same reply
+ * (for example, "Use 2026. Keep it as a draft."). Accept one unambiguous
+ * year plus lightweight acknowledgement/draft wording; never choose between
+ * multiple years or consume a reply that contains unrelated details.
+ */
+function yearAnswer(text: string): string | undefined {
+  const matches = [...text.matchAll(/\b(20\d{2})\b/g)];
+  if (matches.length !== 1) return undefined;
+  const remainder = text.replace(/\b20\d{2}\b/, " ")
+    .replace(
+      /\b(?:please|use|in|the|year|keep|it|as|a|draft|leave|this|that|still|just|and|make|remain|do|let'?s)\b/gi,
+      " ",
+    )
+    .replace(/[\s,.;!?-]+/g, "")
+    .trim();
+  return remainder ? undefined : matches[0][1];
+}
+
+/** A yearless restatement is only a match against an already-known full date. */
+function matchesStoredMonthDay(text: string, isoDate: string): boolean {
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!date) return false;
+  const month = Number(date[2]);
+  const day = Number(date[3]);
+  const monthPattern =
+    "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+  const monthFirst = [...text.matchAll(
+    new RegExp(`\\b(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, "gi"),
+  )];
+  const dayFirst = [...text.matchAll(
+    new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthPattern})\\b`, "gi"),
+  )];
+  const matches = [
+    ...monthFirst.map((match) => ({
+      month: MONTH_INDEX[match[1].slice(0, 3).toLowerCase()],
+      day: Number(match[2]),
+    })),
+    ...dayFirst.map((match) => ({
+      month: MONTH_INDEX[match[2].slice(0, 3).toLowerCase()],
+      day: Number(match[1]),
+    })),
+  ];
+  return matches.length === 1 && matches[0].month === month &&
+    matches[0].day === day;
+}
+
+const MONTH_INDEX: Readonly<Record<string, number>> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
+
+function yearlessCalendarDate(text: string): string | null {
+  const monthPattern =
+    "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+  const monthFirst = new RegExp(
+    `\\b(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`,
+    "i",
+  ).exec(text);
+  const dayFirst = new RegExp(
+    `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthPattern})\\b`,
+    "i",
+  ).exec(text);
+  const match = monthFirst ?? dayFirst;
+  if (!match || /\b20\d{2}\b/.test(text)) return null;
+  const monthName = (monthFirst ? match[1] : match[2]).slice(0, 3)
+    .toLowerCase();
+  const day = Number(monthFirst ? match[2] : match[1]);
+  const month = MONTH_INDEX[monthName];
+  if (!month || day < 1 || day > 31) return null;
+  const names = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  return `${names[month]} ${day}`;
 }
 
 export function planEventTurn(
@@ -495,11 +837,13 @@ export function planEventTurn(
       originMessageId: context.originMessageId,
       nowIso: context.now.toISOString(),
       brief,
-      title: extractTitle(userText),
+      title: extractTitle(userText, context.activeBrand.name),
       intent: isCreateRsvpPlanningRequest(userText)
         ? "create_rsvp"
         : "create_event",
       capacity: extractGuestCapacity(userText),
+      locationText: extractEventLocation(userText),
+      copyRequested: requestsGroundedEventCopy(userText),
     });
     intro = usefulBrief(context.activeBrand.name, brief);
   }
@@ -510,7 +854,7 @@ export function planEventTurn(
     return { classification: "general", state, text: "" };
   }
 
-  const title = extractTitle(userText);
+  const title = extractTitle(userText, context.activeBrand.name);
   if (title) {
     state = applySlotUpdates(state, {
       title: resolvedSlot(title, "user", context.now.toISOString(), title),
@@ -529,6 +873,54 @@ export function planEventTurn(
   }
   const time = incorporateTime(state, userText, context);
   state = time.state;
+  if (state.active_task?.intent === "create_event") {
+    const updates: Record<string, ReturnType<typeof resolvedSlot>> = {};
+    const locationText = extractEventLocation(userText);
+    if (locationText) {
+      updates.location_text = resolvedSlot(
+        locationText,
+        "user",
+        context.now.toISOString(),
+        locationText,
+      );
+    }
+    if (requestsGroundedEventCopy(userText)) {
+      updates.description_requested = resolvedSlot(
+        true,
+        "user",
+        context.now.toISOString(),
+      );
+    }
+    const startAt = state.active_task.slots.start_at;
+    const timezone = state.active_task.slots.timezone.value;
+    if (
+      startAt.status === "resolved" && typeof startAt.value === "string" &&
+      isValidIanaTimezone(timezone)
+    ) {
+      // #3355 P7 (D-23): the owner's answer to "When does it end?" may be a
+      // lone time ("10:30pm") or a length ("3 hours").
+      const endAt = extractEventEndAt(
+        userText,
+        startAt.value,
+        timezone,
+        context.now,
+      ) ?? (state.pending_question?.required_slot_keys.includes("end_at")
+        ? parseEventEnd(userText, startAt.value, timezone, context.now) ??
+          undefined
+        : undefined);
+      if (endAt) {
+        updates.end_at = resolvedSlot(
+          endAt,
+          "user",
+          context.now.toISOString(),
+          userText.trim().slice(0, MAX_STATE_STRING),
+        );
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      state = applySlotUpdates(state, updates, state.pending_question);
+    }
+  }
   if (time.choices) {
     return finalizeResult(
       classification,
@@ -555,6 +947,25 @@ export function planEventTurn(
     );
   }
   if (activeTask.slots.start_at.status !== "resolved") {
+    const yearlessDate = yearlessCalendarDate(userText);
+    if (yearlessDate) {
+      const temporal = {
+        original_text: userText,
+        precision: "date" as const,
+        local_date: null,
+        local_time: null,
+        timezone: context.timezone,
+        resolved_iso: null,
+        source: "user" as const,
+        yearless_date: yearlessDate,
+      };
+      state = applySlotUpdates(state, {
+        start_at: proposedSlot(temporal, "user", userText),
+      }, null);
+    }
+    const prompt = yearlessDate
+      ? `I see ${yearlessDate}, but the year is missing. Which year should I use? I’ll show you the full date and time for confirmation before creating anything.`
+      : "What future date and time should I use?";
     const choices =
       activeTask.slots.timezone.status !== "resolved" && !context.timezone
         ? timezoneQuestion(context.questionId)
@@ -562,7 +973,7 @@ export function planEventTurn(
           schema_version: 2,
           question_id: context.questionId,
           kind: "clarifying",
-          prompt: "What future date and time should I use?",
+          prompt,
           required_slot_keys: ["start_at"],
           options: [],
         });
@@ -583,6 +994,26 @@ export function planEventTurn(
       classification,
       state,
       `${intro} ${choices.prompt}`.trim(),
+      context,
+      choices,
+    );
+  }
+  // #3355 P7 (D-23): ask when it ends; never assume two hours.
+  const endSlot = activeTask.slots.end_at;
+  if (activeTask.intent === "create_event" && endSlot?.status !== "resolved") {
+    const choices = endTimeQuestion(
+      context.questionId,
+      String(activeTask.slots.start_at.value),
+      String(activeTask.slots.timezone.value),
+    );
+    const asked = state.pending_question?.required_slot_keys.includes("end_at");
+    state = setPendingQuestion(state, pendingQuestion(choices));
+    return finalizeResult(
+      classification,
+      state,
+      asked
+        ? `I couldn't read an end time after the start from that. ${choices.prompt}`
+        : `${intro} ${choices.prompt}`.trim(),
       context,
       choices,
     );

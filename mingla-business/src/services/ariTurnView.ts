@@ -92,6 +92,40 @@ export function isOrdinaryTurnActivityVisible(turn: AriTurnActivityInput): boole
   return !hasCurrentAttemptEvent(turn.events, turn.attemptNumber, "response_ready");
 }
 
+/**
+ * #3355 — the one turn that owns the activity callout. A turn still in
+ * flight always may; a failed or stopped turn's callout ("Ari couldn't finish
+ * this response") belongs ONLY to the newest turn, so a later turn — answered
+ * or still going — clears an older failure's banner instead of leaving it on
+ * screen. Turns are given oldest first.
+ */
+export function activityTurnOf<T extends AriTurnActivityInput>(
+  turns: readonly T[],
+): T | null {
+  const newest = turns[turns.length - 1];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (!isOrdinaryTurnActivityVisible(turn)) continue;
+    const ended = turn.delivery === "stopped" ||
+      (turn.accepted && turn.attemptStatus === "failed");
+    return ended && turn !== newest ? null : turn;
+  }
+  return null;
+}
+
+/**
+ * #3355 — Discard is offered on a failed turn, including one the server
+ * accepted and then could not answer. Discarding removes the row and, with
+ * it, its "couldn't finish" banner; an answered or running turn is never
+ * discarded.
+ */
+export function isAriTurnDiscardable(
+  turn: Pick<AriTurnActivityInput, "delivery" | "accepted" | "attemptStatus">,
+): boolean {
+  if (turn.delivery === "failed") return true;
+  return turn.accepted && turn.attemptStatus === "failed";
+}
+
 /** Stop is only ever offered for an attempt that can still be stopped. */
 export function isAriTurnStoppable(turn: Pick<AriTurnActivityInput, "delivery" | "attemptStatus">): boolean {
   return turn.delivery === "sending" &&

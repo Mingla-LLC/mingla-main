@@ -26,7 +26,9 @@ const TOOLSET_PATTERNS: Readonly<Record<AriToolsetKey, readonly RegExp[]>> =
       /^request_tools$/,
       /^get_capability_inventory$/,
     ],
-    brand: [/brand/, /profile/, /notification/],
+    // #3355 P2 — get_brand_readiness matches /brand/; the brand-wide
+    // "not now" pair travels with brand work too.
+    brand: [/brand/, /profile/, /notification/, /readiness_item$/],
     listings: [
       /event/,
       /experience/,
@@ -80,7 +82,7 @@ const INTENT_PATTERNS: ReadonlyArray<[AriToolsetKey, RegExp]> = [
   ["sites", /\b(site|website|web page|landing page)\b/i],
   [
     "people",
-    /\b(people|customer|contact|csv|team|member|invite|scanner|guest)\b/i,
+    /\b(people|customer|contact|csv|team|member|invite|scanner|guest list|guest check[ -]?in)\b/i,
   ],
   [
     "marketing",
@@ -102,7 +104,7 @@ const INTENT_PATTERNS: ReadonlyArray<[AriToolsetKey, RegExp]> = [
   ],
   [
     "listings",
-    /\b(event|trip|experience|rsvp|ticket|listing|date|capacity|refund)\b/i,
+    /\b(?:trip|experience|rsvp|ticket|package|tier|itinerary|listing|date|capacity|refund)\b|\b(?:create|make|set up|setup|schedule|host|plan|start|edit|update|change|cancel|publish|draft)\b[\s\S]{0,60}\bevents?\b(?!\s+flyer\b)|\bevents?\b(?!\s+flyer\b)[\s\S]{0,60}\b(?:create|make|set up|setup|schedule|host|plan|start|edit|update|change|cancel|publish|draft)\b/i,
   ],
   [
     "brand",
@@ -129,16 +131,70 @@ export function selectAriTools(
   maxTools = 40,
   query = "",
 ): AgentTool[] {
+  const queryTerms = query.toLowerCase().split(/[^a-z0-9]+/).filter((term) =>
+    term.length > 2
+  );
+  const tripFinanceRequested = queryTerms.some((term) =>
+    ["installment", "installments", "order", "orders", "payment", "refund"]
+      .includes(term)
+  );
+  const eventMoneyReadRequested =
+    /\b(?:order|orders|sales|revenue|refund|payment|payments|payout|money|transaction|transactions)\b/i
+      .test(query);
+  // Follow-up turns often omit "trip" but still say "per-person package".
+  // Treat that as trip pricing intent so a mention of the brand's currency
+  // does not route a package write into brand settings.
+  const tripTierRequested =
+    /\b(?:trip|per[ -]?person)\b[\s\S]{0,80}\b(?:package|tier|deposit|price|capacity)\b|\b(?:package|tier)\b[\s\S]{0,80}\b(?:trip|per[ -]?person)\b/i
+      .test(query);
+  // #3355 P9 (audit D-22): a host setting up a stay or a venue needs its
+  // venues listed, never the guest booking tools (quote, reserve, approve).
+  const hostVenueCreate = keys.includes("venues") &&
+    /\b(?:create|make|set\s*up|setup|add|build|start|list)\b[\s\S]{0,60}\b(?:stays?|venues?|guest\s?houses?|hotels?|rooms?)\b/i
+      .test(query) &&
+    !/\b(?:book|booking|bookings|reserve|reservation|reservations|quote|approve|decline|cancel)\b/i
+      .test(query);
   const selected = all.filter((tool) =>
-    keys.some((key) => toolBelongsTo(tool.name, key))
+    keys.some((key) => toolBelongsTo(tool.name, key)) &&
+    !(
+      hostVenueCreate &&
+      /^(quote_stay|create_stay_reservation|transition_stay|create_venue_reservation|transition_venue_reservation)$/
+        .test(tool.name)
+    ) &&
+    // Toolsets overlap by name (for example, manage_brand_people is both a
+    // brand and a people tool). Do not load the more sensitive people tools
+    // for generic brand settings questions unless people intent was detected.
+    (keys.includes("people") || !toolBelongsTo(tool.name, "people")) &&
+    !(
+      keys.includes("listings") && !tripFinanceRequested &&
+        /^(get_trip_order_money|list_trip_installments|cancel_trip_booking)$/
+          .test(tool.name) ||
+      keys.includes("listings") && !eventMoneyReadRequested &&
+        /^(list_event_orders|get_event_order_reconciliation)$/
+          .test(tool.name)
+    )
   );
   const core = all.filter((tool) => toolBelongsTo(tool.name, "core"));
   const unique = new Map<string, AgentTool>();
   for (const tool of core) unique.set(tool.name, tool);
 
-  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((term) =>
-    term.length > 2
-  );
+  const terms = queryTerms;
+  const actionWords = new Set([
+    "add",
+    "change",
+    "create",
+    "delete",
+    "draft",
+    "edit",
+    "invite",
+    "make",
+    "manage",
+    "publish",
+    "remove",
+    "set",
+    "update",
+  ]);
+  const requestIsWrite = terms.some((term) => actionWords.has(term));
   const priority: Record<string, number> = {
     get_operator_snapshot: 80,
     search_capabilities: 78,
@@ -151,12 +207,19 @@ export function selectAriTools(
     read_public_url: 60,
     inspect_public_social_profile: 58,
     fetch_public_listing_page: 56,
+    // #3355 P2: the saved onboarding plan stays in a tight window now that
+    // the brand checklist read competes for the same brand slots.
+    get_onboarding_plan: 55,
     build_host_onboarding_blueprint: 54,
     compare_listing_candidate_sources: 52,
     extract_listing_candidates: 50,
   };
   const ranked = selected.map((tool, index) => {
     const haystack = `${tool.name} ${tool.description}`.toLowerCase();
+    const nameTokens = tool.name.split("_").filter((term) =>
+      term.length > 2 && !actionWords.has(term) &&
+      !["list", "get", "read", "search", "find", "check"].includes(term)
+    );
     const readBonus =
       /^(get|list|search|read|inspect|fetch|preview|compare|check|lookup|extract)_/
           .test(
@@ -169,20 +232,128 @@ export function selectAriTools(
           .test(
             tool.name,
           )
-        ? -12
+        ? requestIsWrite ? 0 : -12
         : 0;
     const termScore = terms.reduce(
       (score, term) => score + (haystack.includes(term) ? 4 : 0),
       0,
     );
+    // Keep direct requested actions in the compact tool window. Without this
+    // boost, broad generic reads can crowd out a literal "create trip" request.
+    const directIntentScore = nameTokens.reduce(
+      (score, token) => score + (terms.includes(token) ? 90 : 0),
+      0,
+    );
+    const venueListScore = hostVenueCreate && tool.name === "list_venue_listings"
+      ? 150
+      : 0;
+    const tripPricingScore =
+      tripTierRequested && tool.name === "manage_trip_tiers"
+        ? 180
+        : tripTierRequested && tool.name === "manage_brand_discovery_currency"
+        ? -120
+        : 0;
     return {
       tool,
       index,
-      score: (priority[tool.name] ?? 0) + readBonus + writePenalty + termScore,
+      score: (priority[tool.name] ?? 0) + readBonus + writePenalty + termScore +
+        directIntentScore + tripPricingScore + venueListScore,
     };
   }).sort((a, b) => b.score - a.score || a.index - b.index);
   for (const { tool } of ranked) unique.set(tool.name, tool);
   return [...unique.values()].slice(0, Math.max(8, Math.min(maxTools, 60)));
+}
+
+/** Keep brand setup turns on their read/plan lane until a specific write is requested. */
+export function selectAriOnboardingSetupTools(
+  all: readonly AgentTool[],
+): AgentTool[] {
+  const allowed = new Set([
+    "get_operator_snapshot",
+    "get_brand_readiness",
+    "get_onboarding_plan",
+    "build_host_onboarding_blueprint",
+    "update_onboarding_plan",
+    "get_market_rules",
+  ]);
+  return all.filter((tool) => allowed.has(tool.name));
+}
+
+export function needsAriCampaignWorkflow(text: string): boolean {
+  return /\b(?:campaign|promote|promotion)\b/i.test(text) &&
+    !/\bcampaign\s+report\b|\breport\s+for\s+campaign\b/i.test(text);
+}
+
+export function needsAriCampaignPerformanceRead(text: string): boolean {
+  return needsAriCampaignWorkflow(text) &&
+    !/\b(?:review|inspect)\s+(?:the\s+)?(?:saved\s+)?campaign\s+draft\b/i
+      .test(text) &&
+    /\b(?:what\s+has\s+worked|worked\s+recently|recent\s+(?:results|performance)|available\s+results|analytics)\b/i
+      .test(text);
+}
+
+export function needsAriCampaignDraftReview(text: string): boolean {
+  return /\b(?:review|inspect|read\s+back|show\s+me)\b[\s\S]{0,50}\b(?:saved\s+)?campaign\s+draft\b/i
+    .test(text) ||
+    /\b(?:saved\s+campaign\s+draft|campaign\s+draft)\b[\s\S]{0,40}\b(?:review|inspect|read\s+back)\b/i
+      .test(text);
+}
+
+/** Find only the most recent campaign draft id explicitly read or changed in this conversation. */
+export function findAriCampaignDraftId(
+  history: readonly unknown[],
+): string | null {
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  for (const value of [...history].reverse()) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const row = value as Record<string, unknown>;
+    const toolCall = row.tool_calls && typeof row.tool_calls === "object"
+      ? row.tool_calls as Record<string, unknown>
+      : null;
+    const toolResult = row.tool_results && typeof row.tool_results === "object"
+      ? row.tool_results as Record<string, unknown>
+      : null;
+    if (
+      toolCall &&
+      (toolCall.tool_name === "update_campaign_draft" ||
+        toolCall.tool_name === "get_campaign_draft")
+    ) {
+      const args = toolCall.args && typeof toolCall.args === "object"
+        ? toolCall.args as Record<string, unknown>
+        : {};
+      if (typeof args.campaign_id === "string" && uuid.test(args.campaign_id)) {
+        return args.campaign_id;
+      }
+    }
+    if (
+      toolResult &&
+      (toolResult.tool_name === "draft_campaign" ||
+        toolResult.tool_name === "update_campaign_draft" ||
+        toolResult.tool_name === "get_campaign_draft")
+    ) {
+      const result = toolResult.result && typeof toolResult.result === "object"
+        ? toolResult.result as Record<string, unknown>
+        : {};
+      if (typeof result.id === "string" && uuid.test(result.id)) {
+        return result.id;
+      }
+    }
+  }
+  return null;
+}
+
+/** A campaign drafting turn should not surface another campaign's report or unrelated writes. */
+export function selectAriCampaignWorkflowTools(
+  all: readonly AgentTool[],
+): AgentTool[] {
+  const allowed = new Set([
+    "get_brand_analytics",
+    "draft_campaign",
+    "update_campaign_draft",
+    "get_campaign_draft",
+  ]);
+  return all.filter((tool) => allowed.has(tool.name));
 }
 
 /**
@@ -198,12 +369,42 @@ export function needsAriCapabilityDiscovery(text: string): boolean {
 export function buildAriCapabilityPlan(
   request: string,
   brandName: string | null,
-  capabilityNames: readonly string[],
+  capabilityMatches: readonly (string | {
+    name: string;
+    description?: string;
+  })[],
 ): string | null {
-  if (!needsAriCapabilityDiscovery(request) || capabilityNames.length === 0) {
-    return null;
-  }
+  if (!needsAriCapabilityDiscovery(request)) return null;
   const brand = brandName?.trim() || "your brand";
+  const capabilityNames = capabilityMatches.flatMap((item) =>
+    typeof item === "string" ? [item] : [item.name]
+  );
+  const isPromotionPlan =
+    /\b(?:host\s+promotion|promotion\s+plan|marketing\s+plan|growth\s+plan|launch\s+strategy)\b/i
+      .test(request);
+  if (!isPromotionPlan) {
+    const hoursMatch = capabilityMatches.find((item) =>
+      typeof item !== "string" && item.name === "manage_brand_hours"
+    );
+    if (
+      /\b(?:opening\s+hours|business\s+hours)\b/i.test(request) && hoursMatch
+    ) {
+      return `Ari can read or update ${brand}'s venue opening hours as a complete seven-day schedule. Tell me which venue and the hours for each day; I’ll show the proposed change for your approval before anything is saved.`;
+    }
+    const descriptions = capabilityMatches.flatMap((item) =>
+      typeof item === "string"
+        ? []
+        : typeof item.description === "string" && item.description.trim()
+        ? [item.description.trim()]
+        : []
+    ).slice(0, 3);
+    if (descriptions.length === 0) {
+      return `I couldn't find a matching Ari capability for that request in ${brand}'s available tools. Tell me the outcome you want, and I’ll check the closest supported path.`;
+    }
+    return `I checked ${brand}'s available capabilities. Ari can help with: ${
+      descriptions.join("; ")
+    }. Tell me which result you want, and I’ll prepare the right next step for review.`;
+  }
   const hasCampaigns = capabilityNames.some((name) =>
     /(?:ad|campaign|audience|discount|referral)/i.test(name)
   );
@@ -224,6 +425,269 @@ I found the Mingla capabilities needed to support this plan. Nothing has been cr
 export function needsAriOnboardingResumeRead(text: string): boolean {
   return /\b(?:next\s+steps?\s+after\s+accepting|greeting\s+after\s+silence\s+resumes?\s+plan|resume\s+(?:the\s+)?(?:onboarding|setup|launch)\s+plan|continue\s+(?:the\s+)?(?:onboarding|setup|launch)\s+plan)\b/i
     .test(text);
+}
+
+/** Existing-brand setup work should use the durable onboarding workflow. */
+export function needsAriOnboardingSetupRead(text: string): boolean {
+  const setupIntent =
+    /\b(?:set\s*up|setup|onboard|onboarding)\b[\s\S]{0,80}\b(?:brand|business|host|profile|my|this|the)\b|\b(?:brand|business|host)\b[\s\S]{0,80}\b(?:set\s*up|setup|onboard|onboarding)\b/i;
+  const explicitLaunchIntent =
+    /\blaunch\s+(?:my|this|the)\s+(?:brand|business|host|profile)\b|\b(?:my|this|the)\s+(?:brand|business|host|profile)\s+launch\b/i;
+  // #3355 P1 (D-20): "set up a trip for my brand" is offering work, not brand
+  // onboarding. Only an offering that is the object of the setup verb counts:
+  // "set up my brand … event flyer to add later" is still onboarding.
+  return (setupIntent.test(text) || explicitLaunchIntent.test(text)) &&
+    !/\bwebsite\b/i.test(text) && !ARI_OFFERING_SETUP.test(text);
+}
+
+/** A setup verb whose object is an offering ("set up a trip", "plan my events"). */
+const ARI_OFFERING_SETUP =
+  /\b(?:set\s*up|setup|create|plan|build|launch|make|organi[sz]e)\s+(?:(?:a|an|my|our|the|this|that|new|first|next|some)\s+){0,3}(?:events?|trips?|experiences?|class(?:es)?|rsvps?|venues?|listings?|campaigns?|tickets?|itinerar(?:y|ies)|stays?)\b/i;
+
+/** Nouns that name an offering workflow, never brand onboarding. */
+const ARI_OFFERING_NOUN =
+  /\b(?:events?|trips?|experiences?|class(?:es)?|rsvps?|venues?|listings?|campaigns?|tickets?|itinerar(?:y|ies)|stays?)\b/i;
+
+/** Follow-up values belong to the active setup checklist, not a new task. */
+export function isAriOnboardingPlanProgressMessage(text: string): boolean {
+  // An active onboarding checklist must not capture a follow-up that clearly
+  // belongs to another product workflow. For example, a trip date request
+  // contains “timezone” and “set”, but must continue through trip tools.
+  if (ARI_OFFERING_NOUN.test(text)) {
+    return false;
+  }
+  return /\b(?:currency|timezone|time zone|logo|flyer|materials?|profile|business description|social links?)\b/i
+    .test(text) &&
+    /\b(?:use|set|mark|keep|leave|preserve|record|save|show|remaining|still needed|add later)\b/i
+      .test(text);
+}
+
+/** Prepare a caller-scoped progress write; it changes Ari's plan, never the brand. */
+export function buildAriOnboardingSetupPlanCall(args: {
+  text: string;
+  brandId: string | null;
+  brandName: string | null;
+  existingPlan: unknown;
+  hasAttachments: boolean;
+}): AgentLoopToolCall {
+  const plan = args.existingPlan && typeof args.existingPlan === "object" &&
+      !Array.isArray(args.existingPlan)
+    ? args.existingPlan as Record<string, unknown>
+    : {};
+  const oldState = plan.state && typeof plan.state === "object" &&
+      !Array.isArray(plan.state)
+    ? plan.state as Record<string, unknown>
+    : {};
+  const previousDetails = Array.isArray(oldState.owner_provided_details)
+    ? oldState.owner_provided_details.filter((value): value is string =>
+      typeof value === "string"
+    )
+    : [];
+  const detail = args.text.trim().slice(0, 1000);
+  const details = previousDetails.includes(detail)
+    ? previousDetails
+    : [...previousDetails.slice(-7), detail];
+  const futureMaterials = [
+    ...new Set([
+      ...(Array.isArray(oldState.future_materials)
+        ? oldState.future_materials.filter((value): value is string =>
+          typeof value === "string"
+        )
+        : []),
+      ...((/\blogo\b/i.test(args.text)) ? ["logo"] : []),
+      ...((/\bflyers?\b/i.test(args.text)) ? ["event flyer"] : []),
+      ...((/\b(?:document|pdf)\b/i.test(args.text)) ? ["document"] : []),
+    ]),
+  ];
+  const blueprintSteps = [
+    ["materials", "Read supplied materials"],
+    ["brand", "Create or select the brand"],
+    ["market", "Confirm country, currency and timezone"],
+    ["listing_type", "Choose the right listing type"],
+    ["offerings", "Set up events, trips, experiences and venues"],
+    ["pricing", "Confirm tickets, capacity, fees and policies"],
+    ["media", "Add covers, logos, galleries and video"],
+    ["payments", "Complete payout and legal handoffs"],
+    ["preview", "Preview and publish after approval"],
+    ["verification", "Verify the public page"],
+    ["handover", "Invite the owner and prepare a launch message"],
+  ];
+  const priorSteps = Array.isArray(oldState.steps) ? oldState.steps : [];
+  const steps = blueprintSteps.map(([key, title]) => {
+    const existing = priorSteps.find((step) =>
+      !!step && typeof step === "object" &&
+      (step as Record<string, unknown>).key === key
+    ) as Record<string, unknown> | undefined;
+    const status = key === "brand" && args.brandId
+      ? "completed"
+      : existing && typeof existing.status === "string"
+      ? existing.status
+      : "pending";
+    return {
+      key,
+      title,
+      status,
+      human_owned: key === "payments" || key === "preview" ||
+        key === "handover",
+    };
+  });
+  const firstPending = steps.find((step) =>
+    step.status !== "completed" && step.status !== "done"
+  );
+  const revision = Number.isInteger(plan.revision) &&
+      (plan.revision as number) >= 0
+    ? plan.revision as number
+    : 0;
+  return {
+    name: "update_onboarding_plan",
+    args: {
+      brand_id: args.brandId,
+      mode: "self_serve",
+      expected_revision: revision,
+      patch: {
+        ...oldState,
+        goal: typeof oldState.goal === "string"
+          ? oldState.goal
+          : `Set up ${args.brandName?.trim() || "this business"}`,
+        status: "active",
+        current_step: firstPending?.key ?? "handover",
+        brand_name: args.brandName?.trim() || null,
+        owner_provided_details: details,
+        future_materials: futureMaterials,
+        materials_attached: args.hasAttachments ||
+          oldState.materials_attached === true,
+        steps,
+      },
+      evidence: {
+        ...(plan.evidence && typeof plan.evidence === "object" &&
+            !Array.isArray(plan.evidence)
+          ? plan.evidence as Record<string, unknown>
+          : {}),
+        last_updated_from: "owner_message",
+      },
+    },
+  };
+}
+
+/** Safe copy for the narrow, deterministic existing-brand setup lane. */
+export function buildAriOnboardingSetupReply(
+  observations: readonly AgentLoopObservation[],
+  brandName: string | null,
+): string | null {
+  const update = observations.find((item) =>
+    item.tool === "update_onboarding_plan"
+  );
+  if (!update || update.error) {
+    return `I checked the setup status for ${
+      brandName?.trim() || "this brand"
+    }, but couldn't save the onboarding checklist. Nothing changed on the brand profile or any listing. Please try again.`;
+  }
+  const planResult = observations.find((item) =>
+    item.tool === "update_onboarding_plan" && !item.error
+  )?.result;
+  const state = planResult && typeof planResult === "object" &&
+      !Array.isArray(planResult) &&
+      (planResult as Record<string, unknown>).state &&
+      typeof (planResult as Record<string, unknown>).state === "object"
+    ? (planResult as Record<string, unknown>).state as Record<string, unknown>
+    : {};
+  const details = Array.isArray(state.owner_provided_details)
+    ? state.owner_provided_details.filter((value): value is string =>
+      typeof value === "string"
+    ).slice(-3)
+    : [];
+  const materials = Array.isArray(state.future_materials)
+    ? state.future_materials.filter((value): value is string =>
+      typeof value === "string"
+    )
+    : [];
+  const detailText = details.join("\n");
+  const facts: string[] = [];
+  const location = new RegExp(
+    "\\bin\\s+([A-Z][A-Za-z' -]{1,40})(?=[,.;\\n])",
+  ).exec(detailText)?.[1]?.trim();
+  const businessType = new RegExp("\\bbusiness\\s+is\\s+([^.;\\n]+)", "i")
+    .exec(detailText)?.[1]?.trim();
+  const currency = new RegExp(
+    "\\b(NGN|USD|GBP|EUR|CAD|AUD|GHS|KES|ZAR)\\b",
+    "i",
+  ).exec(detailText)?.[1]?.toUpperCase();
+  const timezone = new RegExp(
+    "\\b(?:Africa|America|Europe|Asia|Australia|Pacific)/[A-Za-z_+-]+(?:/[A-Za-z_+-]+)?\\b",
+  ).exec(detailText)?.[0];
+  if (location) facts.push("Location: " + location);
+  if (businessType) facts.push("Business type: " + businessType);
+  if (currency) facts.push("Currency: " + currency);
+  if (timezone) facts.push("Timezone: " + timezone);
+  const detailCopy = facts.length
+    ? "Saved to the onboarding checklist: " + facts.join("; ") + ". "
+    : "I saved the setup details you provided to the onboarding checklist. ";
+  const materialCopy = materials.length
+    ? "Marked to add later: " + materials.join(" and ") +
+      (state.materials_attached === true
+        ? ". A file is attached in this conversation but has not been inspected. "
+        : ". They were not attached or inspected. ")
+    : "No future material was marked as received. ";
+  const snapshot = observations.find((item) =>
+    item.tool === "get_operator_snapshot" && !item.error
+  )?.result;
+  const profile = snapshot && typeof snapshot === "object" &&
+      !Array.isArray(snapshot) &&
+      (snapshot as Record<string, unknown>).selected_brand &&
+      typeof (snapshot as Record<string, unknown>).selected_brand === "object"
+    ? (snapshot as Record<string, unknown>).selected_brand as Record<
+      string,
+      unknown
+    >
+    : null;
+  // #3355 P2: what the brand still needs comes from the canonical checklist
+  // summary (brand_readiness) inside the snapshot, never a list made here.
+  const readiness = profile && profile.readiness &&
+      typeof profile.readiness === "object" &&
+      !Array.isArray(profile.readiness)
+    ? profile.readiness as Record<string, unknown>
+    : null;
+  const gaps = readiness && Array.isArray(readiness.items)
+    ? readiness.items.flatMap((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return [];
+      }
+      const item = value as Record<string, unknown>;
+      return ["identity", "contact", "location", "media"].includes(
+          String(item.group),
+        ) &&
+          item.severity !== "done" &&
+          typeof item.label === "string" && typeof item.key === "string"
+        ? [{ key: item.key, label: item.label.toLowerCase() }]
+        : [];
+    })
+    : [];
+  const missing = gaps.map((gap) => gap.key);
+  const missingCopy = gaps.length
+    ? "The brand checklist still needs: " +
+      gaps.map((gap) => gap.label).join(", ") + ". "
+    : "";
+  const hasCurrency = /\b(?:NGN|USD|GBP|EUR|CAD|AUD|GHS|KES|ZAR)\b/i.test(
+    detailText,
+  );
+  const hasTimezone =
+    /\b(?:Africa|America|Europe|Asia|Australia|Pacific)\/[A-Za-z_+-]+(?:\/[A-Za-z_+-]+)?\b/
+      .test(detailText);
+  const nextQuestion = !hasCurrency || !hasTimezone
+    ? "What " + (!hasCurrency && !hasTimezone
+      ? "currency and timezone"
+      : !hasCurrency
+      ? "currency"
+      : "timezone") +
+      " should I record?"
+    : missing.includes("description")
+    ? "What exact public description should the brand profile use?"
+    : "Which missing profile detail should we work on next?";
+  return "I matched " + (brandName?.trim() || "your business") +
+    " to the selected brand and saved a private onboarding checklist. " +
+    detailCopy + materialCopy + missingCopy +
+    "The brand profile, events, payments and public page are unchanged. I’ll show the exact profile fields and values and ask for your approval before changing or publishing anything. " +
+    nextQuestion;
 }
 
 export function buildAriOnboardingResumeReply(
@@ -283,13 +747,17 @@ export function ariDeterministicSafetyReply(text: string): string | null {
 export type AriDeterministicReadIntent =
   | "existing_brands"
   | "brand_team"
+  | "event_list"
+  | "saved_event"
   | "market_rules"
   | "listing_capabilities"
-  | "listing_candidates";
+  | "listing_candidates"
+  | "campaign_draft";
 
 export interface AriDeterministicReadPlan {
   intent: AriDeterministicReadIntent;
   calls: AgentLoopToolCall[];
+  targetTitle?: string;
 }
 
 /**
@@ -300,7 +768,60 @@ export interface AriDeterministicReadPlan {
 export function ariDeterministicReadPlan(
   text: string,
   brandId: string | null,
+  taskTitle?: string | null,
+  hasAttachments = false,
+  campaignDraftId?: string | null,
 ): AriDeterministicReadPlan | null {
+  if (brandId && campaignDraftId && needsAriCampaignDraftReview(text)) {
+    return {
+      intent: "campaign_draft",
+      calls: [{
+        name: "get_campaign_draft",
+        args: { campaign_id: campaignDraftId },
+      }],
+    };
+  }
+  const explicitSavedEventReadback =
+    /\bread\s+back\b[\s\S]{0,50}\b(?:saved|created|draft|event)\b/i.test(
+      text,
+    ) ||
+    /\b(?:check|verify|confirm)\b[\s\S]{0,35}\b(?:that\s+)?(?:the\s+)?(?:(?:saved|created|published)\s+)?(?:draft|event|listing)\b/i
+      .test(text);
+  const containsEventWriteIntent =
+    /\b(?:add|create|make|set|change|update|edit|prepare|save|publish|cancel|delete)\b[\s\S]{0,90}\b(?:ticket|tier|event|draft|listing)\b/i
+      .test(text);
+  const containsTicketWriteIntent =
+    /\b(?:add|create|make|set|change|update|edit|prepare|save|publish|cancel|delete)\b[\s\S]{0,120}\b(?:ticket|tier)\b/i
+      .test(text);
+  if (brandId && explicitSavedEventReadback && !containsEventWriteIntent) {
+    return {
+      intent: "saved_event",
+      calls: [{
+        name: "list_events",
+        args: { brand_id: brandId, upcoming_only: false, limit: 50 },
+      }],
+      ...(typeof taskTitle === "string" && taskTitle.trim()
+        ? { targetTitle: taskTitle.trim() }
+        : {}),
+    };
+  }
+  if (
+    brandId &&
+    /\b(?:list|show|find|which|what|see)\s+(?:(?:me|my|the|all|upcoming|current|saved|draft|published)\s+){0,3}events?\b/i
+      .test(text) &&
+    !containsEventWriteIntent &&
+    !containsTicketWriteIntent &&
+    !/\b(?:market|pricing|price|support|capabilit\w*|platform|rules?|bookable|ticketing)\b/i
+      .test(text)
+  ) {
+    return {
+      intent: "event_list",
+      calls: [{
+        name: "list_events",
+        args: { brand_id: brandId, upcoming_only: false, limit: 50 },
+      }],
+    };
+  }
   if (
     /\b(?:existing|current|available)\s+brands?\b/i.test(text) ||
     /\bbrand\b[\s\S]{0,40}\b(?:already\s+exists?|admin\s+invite)\b/i.test(text)
@@ -320,9 +841,18 @@ export function ariDeterministicReadPlan(
       calls: [{ name: "list_brand_team", args: { brand_id: brandId } }],
     };
   }
-  if (
-    /\b(?:flyers?|voice\s+note|supplied\s+(?:image|document|material)|document)\b/i
+  const materialMentioned =
+    /\b(?:flyers?|voice\s+notes?|images?|documents?|materials?)\b/i.test(text);
+  const explicitMaterialRead =
+    /\b(?:read|extract|compare|inspect|review|summari[sz]e)\b[\s\S]{0,50}\b(?:flyers?|voice\s+notes?|images?|documents?|materials?)\b/i
       .test(text) ||
+    /\b(?:attached|uploaded|provided|supplied)\b[\s\S]{0,30}\b(?:flyers?|voice\s+notes?|images?|documents?|materials?)\b/i
+      .test(text);
+  const materialConflict = materialMentioned &&
+    /\b(?:vs\.?|versus|differs?|conflicts?|reversed)\b/i.test(text);
+  if (
+    hasAttachments && materialMentioned || explicitMaterialRead ||
+    materialConflict ||
     /\b(?:date|time|address|price)\b[\s\S]{0,30}\b(?:differs?|conflicts?|changing|reversed)\b/i
       .test(text)
   ) {
@@ -352,6 +882,15 @@ export function ariDeterministicReadPlan(
       : /\b(?:event|ticket)\b/i.test(text)
       ? "event"
       : null;
+  // A request to build an offering can mention currency or price as a
+  // constraint (often to say not to invent it). Do not let the narrow market
+  // lookup lane consume that write request and report success without
+  // creating or proposing the requested listing.
+  const containsOfferingWriteIntent =
+    /\b(?:create|make|set\s+up|set|update|edit|change|patch|replace|schedule|host|plan|start|add|build)\b[\s\S]{0,100}\b(?:event|trip|experience|class|rsvp|venue|listing|draft)\b/i
+      .test(text) ||
+    /\b(?:event|trip|experience|class|rsvp|venue|listing|draft)\b[\s\S]{0,100}\b(?:create|make|set\s+up|set|update|edit|change|patch|replace|schedule|host|plan|start|add|build)\b/i
+      .test(text);
   if (
     listingType &&
     /\b(?:platform|capabilit|support|comparison|time[- ]dependent|per[- ]hour|rate\s+card|bookable)\b/i
@@ -367,14 +906,33 @@ export function ariDeterministicReadPlan(
   }
   if (
     /\b(?:nigeria|nigerian|lagos|naira|ngn|payout\s+country)\b/i.test(text) &&
-    /\b(?:currency|price|pricing|payout|market|country|rule|event|class)\b/i
-      .test(text)
+    /\b(?:currency|price|pricing|payout|market|country|rule|tax|fee)\b/i
+      .test(text) &&
+    !containsOfferingWriteIntent
   ) {
     return {
       intent: "market_rules",
       // orch-strict-grep-allow stripe-country-out-of-scope — deterministic Nigeria research routes to Paystack market rules, not Stripe.
       calls: [{ name: "get_market_rules", args: { country_code: "NG" } }],
     };
+  }
+  return null;
+}
+
+/** Recover the most recently named event from the user's conversation text. */
+export function findAriRecentEventTitle(
+  texts: readonly string[],
+): string | null {
+  for (const text of [...texts].reverse()) {
+    const matches = [
+      /\b(?:event|draft)\s+(?:(?:called|named)\s+)?[“"']([^”"']{2,100})[”"']/i,
+      /\b(?:event|draft)\s+(?:called|named)\s+(.{2,100}?)(?=\s+(?:for|on|at)\b|[.!?]|$)/i,
+      /\b(?:saved\s+)?(?:private\s+)?draft\s+[“"']([^”"']{2,100})[”"']/i,
+    ];
+    for (const pattern of matches) {
+      const title = pattern.exec(text)?.[1]?.trim();
+      if (title) return title;
+    }
   }
   return null;
 }
@@ -402,6 +960,175 @@ export function buildAriDeterministicReadReply(
   ) return null;
   const result = observation.result as Record<string, unknown>;
   const brand = brandName?.trim() || "this brand";
+  if (plan.intent === "event_list") {
+    const allEvents = Array.isArray(result.events)
+      ? result.events.filter((event): event is Record<string, unknown> =>
+        !!event && typeof event === "object" && !Array.isArray(event)
+      )
+      : [];
+    const events = plan.targetTitle
+      ? allEvents.filter((event) =>
+        typeof event.title === "string" &&
+        event.title.toLocaleLowerCase() ===
+          plan.targetTitle?.toLocaleLowerCase()
+      )
+      : allEvents;
+    if (events.length === 0) {
+      return plan.targetTitle
+        ? `I checked ${brand}’s saved events in Mingla, but couldn’t verify “${plan.targetTitle}”. Nothing was changed.`
+        : `I checked ${brand}’s saved events in Mingla and found none. Nothing was changed.`;
+    }
+    const lines = events.slice(0, 10).flatMap((event) => {
+      if (typeof event.title !== "string" || !event.title.trim()) return [];
+      const when = event.when && typeof event.when === "object"
+        ? event.when as Record<string, unknown>
+        : {};
+      const date = typeof when.date === "string" &&
+          /^\d{4}-\d{2}-\d{2}$/.test(when.date)
+        ? new Intl.DateTimeFormat("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        }).format(new Date(`${when.date}T12:00:00.000Z`))
+        : null;
+      const timezone = typeof when.timezone === "string"
+        ? when.timezone
+        : typeof event.timezone === "string"
+        ? event.timezone
+        : null;
+      const start = typeof when.doorsOpen === "string" ? when.doorsOpen : null;
+      const end = typeof when.endsAt === "string" ? when.endsAt : null;
+      const time = start && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(start)
+        ? `${formatClockTime(start)}${
+          end && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(end)
+            ? `–${formatClockTime(end)}`
+            : ""
+        }${
+          timezone ? ` ${timezone === "Africa/Lagos" ? "WAT" : timezone}` : ""
+        }`
+        : null;
+      const rawStatus = typeof event.status === "string"
+        ? event.status.replaceAll("_", " ")
+        : null;
+      const isDraft = event.status === "draft" || event.visibility === "draft";
+      const status = isDraft
+        ? "Draft — not published"
+        : rawStatus
+        ? `Status: ${rawStatus}`
+        : null;
+      const location = typeof event.location_text === "string" &&
+          event.location_text.trim()
+        ? ` · ${event.location_text.trim()}`
+        : "";
+      return [
+        `• ${event.title.trim()}${date ? ` — ${date}` : ""}${
+          time ? `, ${time}` : ""
+        }${location}${status ? ` (${status})` : ""}`,
+      ];
+    });
+    if (lines.length === 0) {
+      return `I checked ${brand}’s saved events in Mingla, but couldn’t verify readable event details. Nothing was changed.`;
+    }
+    const extra = events.length > 10 ? ` Showing 10 of ${events.length}.` : "";
+    return `Here are ${brand}’s saved events from Mingla:\n${
+      lines.join("\n")
+    }${extra}`;
+  }
+  if (plan.intent === "campaign_draft") {
+    const payload = result.channel_payload &&
+        typeof result.channel_payload === "object" &&
+        !Array.isArray(result.channel_payload)
+      ? result.channel_payload as Record<string, unknown>
+      : {};
+    const channel = result.channel === "sms" ? "SMS" : "email";
+    const name = typeof result.name === "string" ? result.name : "Campaign";
+    const subject = typeof payload.subject === "string"
+      ? payload.subject.trim()
+      : "";
+    const rawBody = channel === "SMS"
+      ? payload.body
+      : payload.body_text ?? payload.body_html;
+    const body = typeof rawBody === "string"
+      ? rawBody.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+      : "";
+    if (result.status !== "draft" || !body) {
+      return "I found the saved campaign record for " + brand +
+        ", but couldn’t verify its saved draft copy and status. I did not change or schedule it.";
+    }
+    return "I verified the saved " + channel + " campaign draft for " + brand +
+      ": “" + name + "”." + (subject ? " Subject: " + subject + "." : "") +
+      " Message: " + body +
+      " Status: draft. It has not been scheduled or sent.";
+  }
+  if (plan.intent === "saved_event") {
+    const events = Array.isArray(result.events)
+      ? result.events.filter((event): event is Record<string, unknown> =>
+        !!event && typeof event === "object" && !Array.isArray(event)
+      )
+      : [];
+    const targetTitle = plan.targetTitle?.toLocaleLowerCase();
+    const matches = targetTitle
+      ? events.filter((event) =>
+        typeof event.title === "string" &&
+        event.title.toLocaleLowerCase() === targetTitle
+      )
+      : events;
+    const event = matches[0];
+    if (!event) {
+      return targetTitle
+        ? `I checked ${brand}’s saved events in Mingla, but I couldn’t verify a saved event titled “${plan.targetTitle}”. Nothing was changed.`
+        : `I checked ${brand}’s saved events in Mingla, but couldn’t verify a saved event. Nothing was changed.`;
+    }
+    const when = event.when && typeof event.when === "object"
+      ? event.when as Record<string, unknown>
+      : {};
+    const date = typeof when.date === "string" ? when.date : null;
+    const timezone = typeof when.timezone === "string"
+      ? when.timezone
+      : typeof event.timezone === "string"
+      ? event.timezone
+      : null;
+    const weekdayDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(new Date(`${date}T12:00:00.000Z`))
+      : null;
+    const doorsOpen = typeof when.doorsOpen === "string"
+      ? when.doorsOpen
+      : typeof when.startAt === "string"
+      ? when.startAt
+      : null;
+    const endAt = typeof when.endsAt === "string" ? when.endsAt : null;
+    const validClock = (value: string | null): value is string =>
+      typeof value === "string" &&
+      /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+    const zoneLabel = timezone === "Africa/Lagos" ? "WAT" : timezone;
+    const clock = validClock(doorsOpen)
+      ? `${formatClockTime(doorsOpen)}${
+        validClock(endAt) ? `–${formatClockTime(endAt)}` : ""
+      }${zoneLabel ? ` ${zoneLabel}` : ""}`
+      : null;
+    const location = typeof event.location_text === "string" &&
+        event.location_text.trim()
+      ? event.location_text.trim()
+      : null;
+    const status = event.status === "draft" || event.visibility === "draft"
+      ? "saved draft"
+      : "saved event";
+    const publication = status === "saved draft" ? "It is not published." : "";
+    return `I verified this ${status} in Mingla: “${String(event.title)}”.${
+      weekdayDate ? ` Date: ${weekdayDate}.` : date ? ` Date: ${date}.` : ""
+    }${clock ? ` Time: ${clock}.` : ""}${
+      location ? ` Venue: ${location}.` : ""
+    } ${publication}`
+      .trim();
+  }
   if (plan.intent === "existing_brands") {
     const brands = Array.isArray(result.brands) ? result.brands : [];
     if (brands.length === 0) {
@@ -513,6 +1240,12 @@ export function buildAriDeterministicReadReply(
     }. Confirm these details before I prepare a listing. Nothing was created or changed.`;
   }
   return null;
+}
+
+function formatClockTime(value: string): string {
+  const [hourText, minute] = value.split(":");
+  const hour = Number(hourText);
+  return `${hour % 12 || 12}:${minute} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 export function searchAriCapabilities(

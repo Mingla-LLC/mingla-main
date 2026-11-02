@@ -622,6 +622,9 @@ const NON_SAVING_HOSTS: Array<[string, number]> = [
   ["components/brand/BrandCreationFlow.tsx", 1],
   // [TEST-MOD-APPROVED #3697] Host Ads adds one video-only, non-gallery picker.
   ["components/ari/ToolProposalCard.tsx", 3],
+  // #3355 — Ari's in-chat brand cover upload (Brand details' brand target, no gallery).
+  // #3355 P7 — the brand cover and the event cover, neither keeps a gallery.
+  ["components/ari/AriFlowUploadCard.tsx", 2],
 ];
 
 describe("issue #3319 — Additional photos only where they are saved", () => {

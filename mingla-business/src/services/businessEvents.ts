@@ -11,6 +11,7 @@ import type {
   EventCoverMediaType,
   MultiDateEntry,
   RecurrenceRule,
+  TicketExtraStub,
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
@@ -46,7 +47,6 @@ import type { RefundPolicy } from "./refundPolicyModel";
 import { setOfferingRefundPolicy } from "./refundPolicyWrites";
 import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { OfferingRefundTermsError } from "../utils/refundPolicyTerms";
-import { extrasFromServer } from "../utils/ticketExtrasFromServer";
 import { coverBasePayload } from "../utils/draftCoverBase";
 import { asExtraGuestCount } from "../constants/guestListPrivacy";
 
@@ -348,7 +348,7 @@ export const ticketRowToTicketStub = (row: TicketTypeRow): TicketStub => ({
   id: row.id,
   name: row.name,
   validDayIds: row.valid_occurrence_keys ?? null,
-  ...(row.extras !== undefined ? { extras: extrasFromServer(row.extras) } : {}),
+  ...(Array.isArray(row.extras) ? { extras: row.extras as TicketExtraStub[] } : {}),
   priceGbp: row.is_free ? null : row.price_cents / 100,
   currency: asIsoCurrencyCodeOrNull(row.currency) ?? undefined,
   capacity: row.quantity_total,
@@ -604,33 +604,9 @@ const fetchTicketsForEvent = async (eventId: string): Promise<TicketStub[]> => {
     .order("display_order", { ascending: true });
 
   if (error !== null) throw error;
-  const tickets = ((data ?? []) as TicketTypeRow[]).map(ticketRowToTicketStub);
-  return withTierExtras(eventId, tickets);
+  return ((data ?? []) as TicketTypeRow[]).map(ticketRowToTicketStub);
 };
 
-/**
- * issue #3281 — extras aren't readable from `ticket_types`, so event managers
- * read them by tier from the server. Any failure leaves them unloaded, and a
- * save then keeps the server's extras rather than writing an empty list.
- */
-const withTierExtras = async (
-  eventId: string,
-  tickets: TicketStub[],
-): Promise<TicketStub[]> => {
-  try {
-    const { data, error } = await supabase.rpc("business_event_ticket_extras", {
-      p_event_id: eventId,
-    });
-    if (error !== null || data === null) return tickets;
-    const byTier = data as Record<string, unknown>;
-    return tickets.map((ticket) => ({
-      ...ticket,
-      extras: extrasFromServer(byTier[ticket.id]) ?? [],
-    }));
-  } catch {
-    return tickets;
-  }
-};
 
 const detailFromRow = async (
   row: BusinessManagementEventRow,

@@ -5,6 +5,7 @@ import type {
   EventCoverMediaType,
   MultiDateEntry,
   RecurrenceRule,
+  TicketExtraStub,
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
@@ -22,7 +23,6 @@ import type { RefundPolicy } from "../services/refundPolicyService";
 import type { LiveEvent } from "../store/liveEventStore";
 import { asExtraGuestCount } from "../constants/guestListPrivacy";
 import { currencyCodeOrNull } from "./currency";
-import { extrasFromServer } from "./ticketExtrasFromServer";
 import {
   draftMultiDatePricingMode,
   type MultiDatePricingMode,
@@ -350,7 +350,7 @@ const normalizeTicketFromServer = (ticket: unknown, idx: number): TicketStub => 
   const passwordConfigured = asBoolean(t.passwordConfigured, passwordProtected);
   return {
     // issue #3281 — extras ride their tier; a missing key stays "not loaded".
-    ...(Array.isArray(t.extras) ? { extras: extrasFromServer(t.extras) } : {}),
+    ...(Array.isArray(t.extras) ? { extras: t.extras as TicketExtraStub[] } : {}),
     // issue #3281 — keep null or a missing key distinct from a list.
     ...(Array.isArray(t.validDayIds)
       ? {

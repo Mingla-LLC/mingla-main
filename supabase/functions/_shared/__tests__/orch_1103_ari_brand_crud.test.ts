@@ -24,16 +24,11 @@
 import {
   assert,
   assertEquals,
-  assertRejects,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  AGENT_TOOLS,
-  findTool,
-  READ_ONLY_TOOL_NAMES,
-  ToolError,
-} from "../agentTools.ts";
+import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES } from "../agentTools.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
+import { searchAriCapabilities } from "../agentAri10xTools.ts";
 
 // ── source for the strict-grep gates ────────────────────────────────────────
 const TOOLS_SRC = await Deno.readTextFile(
@@ -59,7 +54,7 @@ function sliceTool(src: string, marker: string): string {
 }
 
 // ── G-1: de-GBP — create_brand executor must not contain the literal "GBP" ──
-Deno.test("ORCH-1103 G-1: create_brand executor never writes the literal \"GBP\"", () => {
+Deno.test('ORCH-1103 G-1: create_brand executor never writes the literal "GBP"', () => {
   const createSrc = sliceTool(TOOLS_SRC, "const createBrand: AgentTool = {");
   // The DESCRIPTION may mention GBP as an example currency for the model; the
   // EXECUTOR body must not. Slice from the `executor:` keyword onward.
@@ -69,7 +64,7 @@ Deno.test("ORCH-1103 G-1: create_brand executor never writes the literal \"GBP\"
   assertEquals(
     /["']GBP["']/.test(execBody),
     false,
-    "create_brand executor must not contain a literal \"GBP\" string",
+    'create_brand executor must not contain a literal "GBP" string',
   );
 });
 
@@ -81,12 +76,16 @@ Deno.test("ORCH-1103 G-2: delete_brand executor has no hard-delete / admin / ser
   const execBody = delSrc.slice(execStart);
   assertEquals(/\.delete\(/.test(execBody), false, "no .delete(");
   assertEquals(/DELETE FROM/i.test(execBody), false, "no DELETE FROM");
-  assertEquals(/admin_suspend_listing/.test(execBody), false, "no admin_suspend_listing");
+  assertEquals(
+    /admin_suspend_listing/.test(execBody),
+    false,
+    "no admin_suspend_listing",
+  );
   assertEquals(/service.?role/i.test(execBody), false, "no service role");
 });
 
-// ── G-3: registry ↔ prompt sync for the ORCH-1103 WRITE tools ──
-Deno.test("ORCH-1103 G-3: update_brand + delete_brand are in BOTH registry and CAPABILITIES", () => {
+// ── G-3: registered tools remain discoverable without bloating the prompt ──
+Deno.test("ORCH-1103 G-3: update_brand + delete_brand are searchable capabilities", () => {
   const names = AGENT_TOOLS.map((t) => t.name);
   assert(names.includes("update_brand"), "update_brand registered");
   assert(names.includes("delete_brand"), "delete_brand registered");
@@ -94,12 +93,12 @@ Deno.test("ORCH-1103 G-3: update_brand + delete_brand are in BOTH registry and C
   assert(!READ_ONLY_TOOL_NAMES.has("update_brand"));
   assert(!READ_ONLY_TOOL_NAMES.has("delete_brand"));
 
-  const prompt = buildSystemPrompt(null, []);
-  const capsStart = prompt.indexOf("CAPABILITIES");
-  assert(capsStart >= 0, "CAPABILITIES block present");
-  const caps = prompt.slice(capsStart);
-  assertStringIncludes(caps, "update_brand");
-  assertStringIncludes(caps, "delete_brand");
+  for (const name of ["update_brand", "delete_brand"]) {
+    assert(
+      searchAriCapabilities(name, 20).some((match) => match.name === name),
+      `${name} must be discoverable without loading every tool into the prompt`,
+    );
+  }
 });
 
 // #1970 Wave 0 bumped PROMPT_VERSION v3 → v4 (create_experience advertised +
@@ -111,11 +110,10 @@ Deno.test("ORCH-1103: PROMPT_VERSION bumped (v6 keeps the earlier tools)", () =>
   // [TEST-MOD-APPROVED #1971] issue #1971 bumps v5 → v6 (trip lifecycle rebuilt
   // on the canonical command boundary). ONE assertion is invalidated — the
   // version literal. No brand-tool assertion changes.
-  assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
+  assertEquals(PROMPT_VERSION, "v27"); // #2829 W11 completes the website journey entrances
 });
 
-// ── richer brand context in the prompt (currency / cover / deletable hint) ──
-Deno.test("ORCH-1103: prompt injects per-brand currency + cover + deletable hint", () => {
+Deno.test("ORCH-1103: prompt scopes currency and deletion guidance to the active brand", () => {
   const prompt = buildSystemPrompt(null, [
     {
       id: "11111111-1111-4111-8111-111111111111",
@@ -133,212 +131,44 @@ Deno.test("ORCH-1103: prompt injects per-brand currency + cover + deletable hint
       hasCover: false,
       hasBlockingEvents: false,
     },
-  ]);
+  ], {
+    injectStrictReminder: false,
+    business: {
+      brands: [],
+      activeBrand: {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Lumen Coffee",
+        slug: "lumen-coffee",
+        defaultCurrency: "USD",
+        hasCover: true,
+        hasBlockingEvents: true,
+      },
+      offerings: [],
+      payoutReady: null,
+      roleHint: "owner",
+      conversationSummary: null,
+    },
+  });
   assertStringIncludes(prompt, "Lumen Coffee");
   assertStringIncludes(prompt, "currency USD");
-  assertStringIncludes(prompt, "has cover");
   assertStringIncludes(prompt, "NOT deletable yet");
   assertStringIncludes(prompt, "currency default"); // null currency → "default"
-  assertStringIncludes(prompt, "no cover");
-  assertStringIncludes(prompt, "deletable");
 });
 
-// ── mock Supabase client (chainable query-builder) ──────────────────────────
-// deno-lint-ignore no-explicit-any
-type Row = Record<string, any>;
-
-interface TableScript {
-  // count returned by .select(..., {count:'exact'}) terminal awaits
-  count?: number;
-  // single()/maybeSingle() row
-  single?: Row | null;
-  // error to surface on the terminal
-  error?: { message: string; code?: string } | null;
-}
-
-// Records mutations so the test can assert what was (or was NOT) written.
-interface Recorder {
-  updates: { table: string; payload: Row }[];
-  inserts: { table: string; payload: Row }[];
-}
-
-function makeClient(
-  scripts: Record<string, TableScript>,
-  rec: Recorder,
-) {
-  function builder(table: string) {
-    let pendingUpdate: Row | null = null;
-    let pendingInsert: Row | null = null;
-    const script = scripts[table] ?? {};
-    const chain: Record<string, unknown> = {};
-    const passthrough = (): Record<string, unknown> => chain;
-    // terminal that resolves with {data,count,error}
-    const terminal = (data: unknown) =>
-      Promise.resolve({
-        data,
-        count: script.count ?? null,
-        error: script.error ?? null,
-      });
-
-    Object.assign(chain, {
-      select: (_cols?: string, _opts?: unknown) => {
-        // head:true count query is awaited directly on the chain
-        return Object.assign(
-          terminal(null),
-          chain,
-        );
-      },
-      insert: (payload: Row) => {
-        pendingInsert = payload;
-        rec.inserts.push({ table, payload });
-        return chain;
-      },
-      update: (payload: Row) => {
-        pendingUpdate = payload;
-        rec.updates.push({ table, payload });
-        return chain;
-      },
-      eq: passthrough,
-      in: passthrough,
-      is: passthrough,
-      gt: passthrough,
-      order: passthrough,
-      limit: passthrough,
-      maybeSingle: () => terminal(script.single ?? null),
-      single: () => terminal(script.single ?? null),
-      // allow `await chain` after a head:true count select
-      then: (resolve: (v: unknown) => void) =>
-        terminal(pendingInsert ?? pendingUpdate ?? null).then(resolve),
-    });
-    return chain;
+// Brand mutations now go through one confirmed, exactly-once operation RPC.
+// The data-level deletion/currency rules are exercised in #2063's PostgreSQL
+// test; this source contract prevents old direct table writers from returning.
+Deno.test("ORCH-1103 brand mutations share the confirmed operation boundary", () => {
+  for (
+    const [name, marker] of [
+      ["create_brand", "const createBrand: AgentTool = {"],
+      ["update_brand", "const updateBrand: AgentTool = {"],
+      ["delete_brand", "const deleteBrand: AgentTool = {"],
+    ] as const
+  ) {
+    const toolSource = sliceTool(TOOLS_SRC, marker);
+    assertStringIncludes(toolSource, `executeBrandOperation("${name}"`);
   }
-  return { from: (t: string) => builder(t) } as unknown as Parameters<
-    NonNullable<ReturnType<typeof findTool>>["executor"]
-  >[1];
-}
-
-const OWNED_BRAND_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const USER_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-
-// ── G-4 / SC-3: delete REFUSED when a blocking future event exists ──
-Deno.test("ORCH-1103 G-4: delete_brand with a blocking future event is REFUSED (no deleted_at)", async () => {
-  const rec: Recorder = { updates: [], inserts: [] };
-  const client = makeClient(
-    {
-      // assertBrandOwned → ownership ok
-      brands: { single: { id: OWNED_BRAND_ID } },
-      // blocking-events count → 2 upcoming
-      events: { count: 2 },
-    },
-    rec,
-  );
-  const del = findTool("delete_brand");
-  assert(del, "delete_brand registered");
-
-  const err = await assertRejects(
-    () => del!.executor({ brand_id: OWNED_BRAND_ID }, client, USER_ID),
-    ToolError,
-  );
-  assertEquals((err as ToolError).code, "DELETE_BLOCKED_BY_EVENTS");
-  assertStringIncludes((err as ToolError).message, "2 upcoming");
-
-  // CRITICAL: no deleted_at stamp happened (no update to `brands`).
-  const brandUpdates = rec.updates.filter((u) => u.table === "brands");
-  assertEquals(brandUpdates.length, 0, "deleted_at must NOT be stamped on refusal");
-});
-
-// ── SC-2: delete with NO blocking events stamps deleted_at + clears default ──
-Deno.test("ORCH-1103 SC-2: delete_brand with no blocking events soft-deletes + clears default", async () => {
-  const rec: Recorder = { updates: [], inserts: [] };
-  const client = makeClient(
-    {
-      brands: { single: { id: OWNED_BRAND_ID } },
-      events: { count: 0 },
-      creator_accounts: { single: null },
-    },
-    rec,
-  );
-  const del = findTool("delete_brand");
-  const result = await del!.executor({ brand_id: OWNED_BRAND_ID }, client, USER_ID) as {
-    deleted: boolean;
-    recovery_window_days: number;
-  };
-  assertEquals(result.deleted, true);
-  assertEquals(result.recovery_window_days, 30);
-
-  const brandUpdates = rec.updates.filter((u) => u.table === "brands");
-  assertEquals(brandUpdates.length, 1, "exactly one brands update (the soft-delete)");
-  assert("deleted_at" in brandUpdates[0].payload, "deleted_at stamped");
-
-  const defaultClears = rec.updates.filter(
-    (u) => u.table === "creator_accounts" && u.payload.default_brand_id === null,
-  );
-  assertEquals(defaultClears.length, 1, "default_brand_id cleared (non-fatal)");
-});
-
-// ── SC-4 / T-09: create_brand with no currency + no pref OMITS default_currency ──
-Deno.test("ORCH-1103 SC-4: create_brand omits default_currency when no arg + no pref (no literal code)", async () => {
-  const rec: Recorder = { updates: [], inserts: [] };
-  const client = makeClient(
-    {
-      // agent_user_profile lookup → no preferred_currency
-      agent_user_profile: { single: { preferred_currency: null } },
-      // insert returns the new row
-      brands: {
-        single: {
-          id: OWNED_BRAND_ID,
-          name: "Lumen",
-          slug: "lumen",
-          default_currency: "USD", // column default applied server-side
-          cover_media_url: null,
-          cover_media_type: null,
-          created_at: "2026-06-08T00:00:00Z",
-        },
-        // count for the first-brand default check
-        count: 1,
-      },
-      creator_accounts: { single: { id: USER_ID } },
-    },
-    rec,
-  );
-  const create = findTool("create_brand");
-  await create!.executor({ name: "Lumen" }, client, USER_ID);
-
-  const brandInsert = rec.inserts.find((i) => i.table === "brands");
-  assert(brandInsert, "brand insert happened");
-  assertEquals(
-    "default_currency" in brandInsert!.payload,
-    false,
-    "default_currency must be OMITTED so the column default applies",
-  );
-});
-
-// ── SC-4: create_brand with an explicit currency arg writes it uppercased ──
-Deno.test("ORCH-1103 SC-4b: create_brand honors an explicit currency arg (uppercased)", async () => {
-  const rec: Recorder = { updates: [], inserts: [] };
-  const client = makeClient(
-    {
-      brands: {
-        single: { id: OWNED_BRAND_ID, name: "Lumen", slug: "lumen", default_currency: "USD", created_at: "x" },
-        count: 2, // not the first brand → default not changed
-      },
-    },
-    rec,
-  );
-  const create = findTool("create_brand");
-  await create!.executor({ name: "Lumen", default_currency: "usd" }, client, USER_ID);
-  const brandInsert = rec.inserts.find((i) => i.table === "brands");
-  assertEquals(brandInsert!.payload.default_currency, "USD");
-});
-
-// ── update_brand: empty patch → INVALID_ARGS ──
-Deno.test("ORCH-1103: update_brand with no editable fields → INVALID_ARGS", async () => {
-  const rec: Recorder = { updates: [], inserts: [] };
-  const client = makeClient({ brands: { single: { id: OWNED_BRAND_ID } } }, rec);
-  const upd = findTool("update_brand");
-  const err = await assertRejects(
-    () => upd!.executor({ brand_id: OWNED_BRAND_ID }, client, USER_ID),
-    ToolError,
-  );
-  assertEquals((err as ToolError).code, "INVALID_ARGS");
+  assertStringIncludes(TOOLS_SRC, "requireAgentOperationId(context)");
+  assertStringIncludes(TOOLS_SRC, 'client.rpc("ari_execute_brand_operation"');
 });

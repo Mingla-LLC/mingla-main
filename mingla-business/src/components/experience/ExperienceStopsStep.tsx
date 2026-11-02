@@ -33,7 +33,7 @@ import { Icon } from "../ui/Icon";
 import { ExperienceStopPhotoSheet } from "./ExperienceStopPhotoSheet";
 import { ExperienceStopCard } from "./ExperienceStopCard";
 import { useAddressSearchProximity } from "../location/MapboxAddressInput";
-import type { LatLngLike } from "../../utils/addressSearchProximity";
+import type { BrandProximityLike } from "../../utils/addressSearchProximity";
 import {
   emptyStop,
   type ExperienceLocationMode,
@@ -57,7 +57,7 @@ export interface ExperienceStopsStepProps {
    * Issue #3291 — the brand's saved location (first proximity source) and the
    * experience's IANA zone (last source). Both optional; absent skips ahead.
    */
-  brandLocation?: LatLngLike;
+  brandLocation?: BrandProximityLike;
   timeZone?: string | null;
   /** issue #3281 R3 — open-hours → offset minutes instead of clock start. */
   useStartOffsets?: boolean;

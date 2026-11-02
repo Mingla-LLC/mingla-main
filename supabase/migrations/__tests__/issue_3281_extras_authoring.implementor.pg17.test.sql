@@ -137,7 +137,7 @@ BEGIN
             jsonb_build_object('id','x_2','name','Shuttle','priceGbp',0,'isUnlimited',true,
               'validDayIds',jsonb_build_array('md_fri','md_sat')),
             jsonb_build_object('id','x_3','name','Saturday brunch','priceGbp',0,'capacity',20,
-              'validDayIds',jsonb_build_array('md_sat'))))))
+              'validDayIds',jsonb_build_array('md_sat','md_deleted'))))))
     )), NULL);
   SELECT id INTO v_vip FROM public.ticket_types WHERE event_id=v_event AND name='Friday VIP';
   SELECT id INTO v_all FROM public.ticket_types WHERE event_id=v_event AND name='All dates';
@@ -145,8 +145,10 @@ BEGIN
   IF (SELECT count(*) FROM public.ticket_add_ons WHERE ticket_type_id=v_all) <> 2
      OR (SELECT valid_occurrence_keys FROM public.ticket_add_ons WHERE ticket_type_id=v_all AND name='Shuttle')
         IS DISTINCT FROM ARRAY['md_fri','md_sat']
-     OR (SELECT quantity_total FROM public.ticket_add_ons WHERE id=v_dinner) <> 40 THEN
-    RAISE EXCEPTION 'publish must create each tier''s extras';
+     OR (SELECT quantity_total FROM public.ticket_add_ons WHERE id=v_dinner) <> 40
+     OR (SELECT valid_occurrence_keys FROM public.ticket_add_ons WHERE ticket_type_id=v_all AND name='Saturday brunch')
+        IS DISTINCT FROM ARRAY['md_sat'] THEN
+    RAISE EXCEPTION 'publish must create each tier''s extras, without a deleted draft date';
   END IF;
 
   -- The Host reads a live event's extras by tier; a stranger reads nothing.
@@ -261,8 +263,10 @@ BEGIN
   IF (SELECT (x->>'capacityFloor')::integer FROM jsonb_array_elements(public.issue_3281_tier_extras_json(v_all)) x
        WHERE x->>'name'='Shuttle') <> 1
      OR (SELECT (x->>'soldCount')::integer FROM jsonb_array_elements(public.issue_3281_tier_extras_json(v_all)) x
-          WHERE x->>'name'='Shuttle') <> 2 THEN
-    RAISE EXCEPTION 'a dated extra''s floor is its busiest date, its sales the total';
+          WHERE x->>'name'='Shuttle') <> 2
+     OR (SELECT x->'soldDayIds' FROM jsonb_array_elements(public.issue_3281_tier_extras_json(v_all)) x
+          WHERE x->>'name'='Shuttle') <> '["md_fri","md_sat"]'::jsonb THEN
+    RAISE EXCEPTION 'a dated extra''s floor is its busiest date, its sales the total, its sold dates listed';
   END IF;
   v_raised := NULL;
   BEGIN

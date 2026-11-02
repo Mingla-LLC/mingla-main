@@ -115,6 +115,24 @@ export const IDLE_TASK_STATE: TaskStateV1 = Object.freeze({
   last_completed_step: null,
 });
 
+/**
+ * A completed planner task must not keep owning later, unrelated agent writes
+ * in the same conversation. Preserve its receipt in last_completed_step while
+ * returning the active planner to idle.
+ */
+export function stateForNewAgentProposal(state: TaskStateV1): TaskStateV1 {
+  if (
+    state.active_task &&
+    (state.status === "completed" || state.status === "cancelled")
+  ) {
+    return {
+      ...IDLE_TASK_STATE,
+      last_completed_step: state.last_completed_step,
+    };
+  }
+  return state;
+}
+
 const TASK_STATUSES = new Set<TaskStatus>([
   "idle",
   "gathering",
@@ -513,6 +531,8 @@ export function createEventTaskState(args: {
   title?: string;
   intent?: "create_event" | "create_rsvp";
   capacity?: number;
+  locationText?: string;
+  copyRequested?: boolean;
 }): TaskStateV1 {
   const state: TaskStateV1 = {
     schema_version: TASK_STATE_SCHEMA_VERSION,
@@ -543,6 +563,19 @@ export function createEventTaskState(args: {
             ),
           }
           : {}),
+        ...(args.locationText
+          ? {
+            location_text: resolvedSlot(
+              args.locationText,
+              "user",
+              args.nowIso,
+              args.locationText,
+            ),
+          }
+          : {}),
+        ...(args.copyRequested
+          ? { description_requested: resolvedSlot(true, "user", args.nowIso) }
+          : {}),
       },
       brief: args.brief,
     },
@@ -563,7 +596,11 @@ export function applySlotUpdates(
     throw new TaskStateError("TASK_STATE_INVALID", "No active task to update");
   }
   const nextSlots = { ...state.active_task.slots, ...updates };
-  const required = ["brand_id", "title", "start_at", "timezone"];
+  // #3355 P7 (D-23): an event needs the end time the owner gave; nothing
+  // fills it in (the server refuses a draft without it).
+  const required = state.active_task.intent === "create_event"
+    ? ["brand_id", "title", "start_at", "timezone", "end_at"]
+    : ["brand_id", "title", "start_at", "timezone"];
   const complete = required.every((key) =>
     nextSlots[key]?.status === "resolved"
   );
@@ -669,6 +706,8 @@ const CREATE_EVENT_EDIT_ARG_KEYS = new Set([
   "brand_id",
   "title",
   "start_at",
+  // #3355 P7: the card always carries the owner's end time now.
+  "end_at",
   "timezone",
   ...CREATE_EVENT_OPTIONAL_ARG_KEYS,
 ]);
@@ -729,6 +768,22 @@ export function replaceCreateEventProposalArgs(args: {
       "Edited event title is longer than 120 characters",
     );
   }
+  // #3355 P7 (D-23): an edit keeps the owner's end time (or the one they
+  // typed on the card); it must still come after the start.
+  const endAt = typeof args.toolArgs.end_at === "string"
+    ? args.toolArgs.end_at
+    : active.slots.end_at?.status === "resolved"
+    ? active.slots.end_at.value
+    : undefined;
+  if (
+    typeof endAt !== "string" || !Number.isFinite(Date.parse(endAt)) ||
+    Date.parse(endAt) <= Date.parse(startAt)
+  ) {
+    throw new TaskStateError(
+      "TASK_STATE_INVALID",
+      "Edited event proposal needs an end time after the start",
+    );
+  }
   const optionalRules: Record<
     (typeof CREATE_EVENT_OPTIONAL_ARG_KEYS)[number],
     (value: unknown) => boolean
@@ -780,6 +835,12 @@ export function replaceCreateEventProposalArgs(args: {
       startAt,
     ),
     timezone: resolvedSlot(timezone, "user", args.nowIso, timezone),
+    end_at: resolvedSlot(
+      new Date(endAt).toISOString(),
+      "user",
+      args.nowIso,
+      endAt,
+    ),
   };
   for (const key of CREATE_EVENT_OPTIONAL_ARG_KEYS) {
     if (args.toolArgs[key] !== undefined) {
@@ -912,7 +973,7 @@ export function assertCreateEventProposal(
     );
   }
   const slots = state.active_task.slots;
-  for (const key of ["brand_id", "title", "start_at", "timezone"]) {
+  for (const key of ["brand_id", "title", "start_at", "timezone", "end_at"]) {
     if (slots[key]?.status !== "resolved") {
       throw new TaskStateError(
         "TASK_STATE_INVALID",
@@ -939,47 +1000,81 @@ export function assertCreateEventProposal(
       "create_event proposal values are invalid",
     );
   }
-  const visibility = state.active_task.brief.concepts.includes("private")
-    ? "private"
-    : state.active_task.brief.concepts.includes("unlisted")
+  // #3355 P7 (D-24): a draft is simply unpublished. Its visibility for later
+  // is the Host default (public) unless the owner said unlisted; never
+  // "private", which can't be published while private access is frozen.
+  const visibility = state.active_task.brief.concepts.includes("unlisted")
     ? "unlisted"
-    : state.active_task.brief.concepts.includes("public")
-    ? "public"
-    : "private";
-  const capacity = slots.capacity?.status === "resolved"
-    ? Number(slots.capacity.value)
-    : null;
-  const tickets = Number.isInteger(capacity) && Number(capacity) > 0
-    ? [{
-      id: "ari-general-admission",
-      name: "General admission",
-      description: null,
-      priceGbp: null,
-      currency: null,
-      capacity,
-      isFree: true,
-      isUnlimited: false,
-      visibility: "public",
-      displayOrder: 0,
-      approvalRequired: false,
-      passwordProtected: false,
-      password: null,
-      waitlistEnabled: false,
-      minPurchaseQty: 1,
-      maxPurchaseQty: null,
-      allowTransfers: true,
-      availableAt: "both",
-    }]
+    : "public";
+  // #3355 P7 (D-23): no ticket the owner didn't describe — a guest count is
+  // not a free "General admission" tier.
+  const endAt = slots.end_at?.status === "resolved" &&
+      typeof slots.end_at.value === "string"
+    ? slots.end_at.value
+    : undefined;
+  const locationText = slots.location_text?.status === "resolved" &&
+      typeof slots.location_text.value === "string"
+    ? slots.location_text.value
+    : undefined;
+  const descriptionRequested = slots.description_requested?.status ===
+      "resolved" && slots.description_requested.value === true;
+  const description = descriptionRequested
+    ? buildGroundedEventDescription({
+      title,
+      startAt,
+      endAt,
+      timezone,
+      locationText,
+    })
     : undefined;
   return {
     brand_id: brandId,
     title,
     start_at: startAt,
+    ...(endAt ? { end_at: endAt } : {}),
     timezone,
     when_mode: "single",
     visibility,
-    ...(tickets ? { tickets } : {}),
+    ...(locationText ? { location_text: locationText } : {}),
+    ...(description ? { description } : {}),
   };
+}
+
+function buildGroundedEventDescription(args: {
+  title: string;
+  startAt: string;
+  endAt?: string;
+  timezone: string;
+  locationText?: string;
+}): string {
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: args.timezone,
+  };
+  const timeOptions: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: args.timezone,
+  };
+  const date = new Intl.DateTimeFormat("en-US", dateOptions).format(
+    new Date(args.startAt),
+  );
+  const startTime = new Intl.DateTimeFormat("en-US", timeOptions).format(
+    new Date(args.startAt),
+  );
+  const endTime = args.endAt
+    ? new Intl.DateTimeFormat("en-US", timeOptions).format(
+      new Date(args.endAt),
+    )
+    : null;
+  const location = args.locationText ? ` at ${args.locationText}` : "";
+  const schedule = endTime
+    ? ` from ${startTime} to ${endTime}`
+    : ` at ${startTime}`;
+  return `Join us for ${args.title}${location} on ${date}${schedule}.`;
 }
 
 export function assertCreateRsvpProposal(

@@ -1,4 +1,5 @@
 -- Issue #3645 — the three offering functions ask the shared currency source
+-- #3355 P6: paid prices here sit above every currency's provider minimum.
 -- (migration 20270830003645). Implementor happy path, behavioural.
 --
 -- Proves, by LOOPING over public.supported_brand_currencies (no literal list):
@@ -155,9 +156,9 @@ BEGIN
     -- Paid experience, created already published. No currency in the payload:
     -- the brand's own currency is used.
     v_res := public.biz_create_experience(
-      v_brand, pg_temp.x3645_exp(v_code || ' paid create', 5000), true);
+      v_brand, pg_temp.x3645_exp(v_code || ' paid create', 25000), true);
     PERFORM pg_temp.x3645_assert_published(
-      v_code || ' create paid', (v_res->'event'->>'id')::uuid, v_code, 5000);
+      v_code || ' create paid', (v_res->'event'->>'id')::uuid, v_code, 25000);
 
     -- Saved as a draft in that currency, then published free.
     v_res := public.biz_create_experience(
@@ -172,11 +173,11 @@ BEGIN
 
     -- Saved as a paid draft, then published paid.
     v_res := public.biz_create_experience(
-      v_brand, pg_temp.x3645_exp(v_code || ' paid draft', 7500, v_code), false);
+      v_brand, pg_temp.x3645_exp(v_code || ' paid draft', 27500, v_code), false);
     v_event := (v_res->'event'->>'id')::uuid;
     PERFORM public.biz_publish_experience(
-      v_event, pg_temp.x3645_exp(v_code || ' paid draft', 7500, v_code), true);
-    PERFORM pg_temp.x3645_assert_published(v_code || ' publish paid', v_event, v_code, 7500);
+      v_event, pg_temp.x3645_exp(v_code || ' paid draft', 27500, v_code), true);
+    PERFORM pg_temp.x3645_assert_published(v_code || ' publish paid', v_event, v_code, 27500);
 
     -- Paid event in that currency.
     v_event := gen_random_uuid();
@@ -186,8 +187,8 @@ BEGIN
       v_event, v_brand, 'x3645 event', 'x3645-ev-' || lower(v_code) || '-' || v_suffix,
       'event', 'draft', 'draft', 'UTC'
     );
-    PERFORM public.business_publish_event_draft(v_event, pg_temp.x3645_event(25));
-    PERFORM pg_temp.x3645_assert_published(v_code || ' event paid', v_event, v_code, 2500);
+    PERFORM public.business_publish_event_draft(v_event, pg_temp.x3645_event(250));
+    PERFORM pg_temp.x3645_assert_published(v_code || ' event paid', v_event, v_code, 25000);
   END LOOP;
 
   IF v_codes = 0 THEN
@@ -220,14 +221,14 @@ BEGIN
     'no-terms create free', (v_res->'event'->>'id')::uuid, 'NGN', 0);
 
   v_res := public.biz_create_experience(
-    v_brand, pg_temp.x3645_exp('no terms paid draft', 5000, 'NGN'), false);
+    v_brand, pg_temp.x3645_exp('no terms paid draft', 25000, 'NGN'), false);
   v_event := (v_res->'event'->>'id')::uuid;
   IF (SELECT status FROM public.events WHERE id = v_event) <> 'draft' THEN
     RAISE EXCEPTION 'no-terms FAIL: a paid draft save was not stored as a draft';
   END IF;
   -- Saving that paid draft again needs no terms either.
   PERFORM public.biz_publish_experience(
-    v_event, pg_temp.x3645_exp('no terms paid draft', 5000, 'NGN'), false);
+    v_event, pg_temp.x3645_exp('no terms paid draft', 25000, 'NGN'), false);
   -- Turned free, it publishes without terms.
   PERFORM public.biz_publish_experience(
     v_event, pg_temp.x3645_exp('no terms now free', 0, 'NGN'), true);
@@ -290,7 +291,7 @@ BEGIN
   v_raised := NULL;
   BEGIN
     PERFORM public.biz_create_experience(
-      v_brand, pg_temp.x3645_exp('no currency paid create', 5000), true);
+      v_brand, pg_temp.x3645_exp('no currency paid create', 25000), true);
   EXCEPTION WHEN OTHERS THEN
     v_raised := SQLERRM;
   END;
@@ -302,12 +303,12 @@ BEGIN
   END IF;
 
   v_res := public.biz_create_experience(
-    v_brand, pg_temp.x3645_exp('no currency paid draft', 5000), false);
+    v_brand, pg_temp.x3645_exp('no currency paid draft', 25000), false);
   v_event := (v_res->'event'->>'id')::uuid;
   v_raised := NULL;
   BEGIN
     PERFORM public.biz_publish_experience(
-      v_event, pg_temp.x3645_exp('no currency paid draft', 5000), true);
+      v_event, pg_temp.x3645_exp('no currency paid draft', 25000), true);
   EXCEPTION WHEN OTHERS THEN
     v_raised := SQLERRM;
   END;

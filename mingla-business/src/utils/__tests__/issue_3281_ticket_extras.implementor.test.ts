@@ -1,17 +1,11 @@
 import { describe, expect, test } from "@jest/globals";
 
-import type {
-  MultiDateEntry,
-  TicketExtraStub,
-  TicketStub,
-} from "../../store/draftEventStore";
-import {
-  ticketsOnAllDates,
-  ticketsOnCurrentDays,
-  ticketsWithoutDay,
-} from "../ticketDayScope";
+import type { TicketExtraStub } from "../../store/draftEventStore";
 import {
   emptyExtra,
+  extrasUnavailableFor,
+  isExtraDayLocked,
+  toggleExtraDay,
   extrasFromServer,
   keepExtraDaysInTier,
   validateTicketExtra,
@@ -29,14 +23,6 @@ const extra = (patch: Partial<TicketExtraStub> = {}): TicketExtraStub => ({
   ...patch,
 });
 
-const tierWith = (extras: TicketExtraStub[] | undefined): TicketStub =>
-  ({
-    id: "t_1",
-    name: "Weekend",
-    visibility: "public",
-    validDayIds: ["fri", "sat"],
-    ...(extras !== undefined ? { extras } : {}),
-  }) as TicketStub;
 
 describe("issue #3281 extras validation mirrors the database", () => {
   test("a complete extra can save", () => {
@@ -113,39 +99,6 @@ describe("issue #3281 extras follow their tier's dates", () => {
         .validDayIds,
     ).toEqual(["sun"]);
   });
-
-  test("deleting a date removes it from extras and never widens one", () => {
-    const [tier] = ticketsWithoutDay(
-      [
-        tierWith([
-          extra({ validDayIds: ["fri"] }),
-          extra({ id: "x_2", validDayIds: ["fri", "sat"] }),
-        ]),
-      ],
-      "fri",
-    );
-    expect(tier.extras?.[0].validDayIds).toEqual([]);
-    expect(tier.extras?.[1].validDayIds).toEqual(["sat"]);
-  });
-
-  test("leaving multi-date clears extras' lists; new ids prune stale ones", () => {
-    expect(
-      ticketsOnAllDates([tierWith([extra({ validDayIds: ["fri"] })])])[0]
-        .extras?.[0].validDayIds,
-    ).toBeNull();
-    const entries = [{ id: "sat" }] as unknown as MultiDateEntry[];
-    expect(
-      ticketsOnCurrentDays(
-        [tierWith([extra({ validDayIds: ["fri", "sat"] })])],
-        entries,
-      )[0].extras?.[0].validDayIds,
-    ).toEqual(["sat"]);
-  });
-
-  test("a tier without loaded extras stays without the key", () => {
-    const [tier] = ticketsWithoutDay([tierWith(undefined)], "fri");
-    expect("extras" in tier).toBe(false);
-  });
 });
 
 describe("issue #3281 extras from the server", () => {
@@ -171,5 +124,41 @@ describe("issue #3281 extras from the server", () => {
     ];
     expect(extrasFromServer(rows)).toEqual(rows);
     expect(extrasFromServer([])).toEqual([]);
+  });
+});
+
+describe("issue #3281 sold dates and saved tiers", () => {
+  test("only a sold date is locked; an unsold date can leave the list", () => {
+    const sold = extra({
+      validDayIds: ["fri", "sat"],
+      soldCount: 2,
+      soldDayIds: ["sat"],
+    });
+    expect(isExtraDayLocked(sold, "sat")).toBe(true);
+    expect(isExtraDayLocked(sold, "fri")).toBe(false);
+    expect(toggleExtraDay(sold, "fri")).toEqual(["sat"]);
+    expect(toggleExtraDay(sold, "sat")).toEqual(["fri", "sat"]);
+  });
+
+  test("leaving every date keeps the dates it sold on, without repeats", () => {
+    const allDates = extra({
+      validDayIds: null,
+      soldCount: 1,
+      soldDayIds: ["sat"],
+    });
+    expect(toggleExtraDay(allDates, "fri")).toEqual(["sat", "fri"]);
+    expect(toggleExtraDay(allDates, "sat")).toEqual(["sat"]);
+    expect(toggleExtraDay(extra({ validDayIds: null }), "fri")).toEqual([
+      "fri",
+    ]);
+  });
+
+  test("an unloaded saved tier is locked; a new local tier is not", () => {
+    const saved = { id: "3b0f2a1c-0000-4000-8000-000000000001" };
+    expect(extrasUnavailableFor(true, saved)).toBe(true);
+    expect(extrasUnavailableFor(true, { ...saved, extras: [] })).toBe(false);
+    expect(extrasUnavailableFor(true, { id: "t_abc123" })).toBe(false);
+    expect(extrasUnavailableFor(false, saved)).toBe(false);
+    expect(extrasUnavailableFor(true, null)).toBe(false);
   });
 });

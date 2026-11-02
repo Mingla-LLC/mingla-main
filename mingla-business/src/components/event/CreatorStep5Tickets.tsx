@@ -156,7 +156,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         ...(original.extras !== undefined
           ? {
               extras: original.extras.map(
-                ({ soldCount: _sold, capacityFloor: _floor, ...extra }, i) => ({
+                ({ soldCount: _sold, capacityFloor: _floor, soldDayIds: _days, ...extra }, i) => ({
                   ...extra,
                   id: `x_${Date.now().toString(36)}${i}`,
                 }),

@@ -98,9 +98,9 @@ Deno.test("#2830 an expired Ari approval answers PROPOSAL_EXPIRED; Hub keeps re-
 
   // The expiry branch must route through the classifier before it can emit
   // the Hub-only expired_regenerate body.
-  const branchStart = confirmSource.indexOf(
-    "new Date(pending.expires_at).getTime() < Date.now()",
-  );
+  // #3355 P1 (D-14): expiry is now decided by the database clock
+  // (pendingClaim.ts); the branch is anchored on that decision.
+  const branchStart = confirmSource.indexOf("if (expiredByDbClock) {");
   const hubBody = confirmSource.indexOf(
     'kind: "expired_regenerate",',
     branchStart,

@@ -22,6 +22,7 @@ import {
 import { useShareNetworkState } from "../components/ui/useShareNetworkState";
 import { agentQueryKeys } from "./agentQueryKeys";
 import { brandKeys } from "./brandKeys";
+import { brandReadinessKeys } from "./brandReadinessKeys";
 import { creatorAccountKeys } from "./creatorAccountKeys";
 import { brandHoursKeys } from "./useBrandHours";
 import { brandDiscoveryCurrencyKeys } from "./useBrandDiscoveryCurrency";
@@ -31,6 +32,8 @@ export interface UseConfirmPendingActionResult {
   confirm: (
     pending_action_id: string,
     edited_args?: Record<string, unknown>,
+    /** #3355 P3: Website setup asks the server for the next gap after a save. */
+    workflow_context?: "website_setup",
   ) => Promise<AgentConfirmResponse>;
   cancel: (pending_action_id: string) => Promise<AgentConfirmResponse>;
   isExecuting: boolean;
@@ -44,7 +47,11 @@ export function useConfirmPendingAction(
   const intentRef = useRef<ReturnType<typeof createAriClientIntent> | null>(null);
 
   const confirmMutation = useMutation({
-    mutationFn: (args: { pending_action_id: string; edited_args?: Record<string, unknown> }) =>
+    mutationFn: (args: {
+      pending_action_id: string;
+      edited_args?: Record<string, unknown>;
+      workflow_context?: "website_setup";
+    }) =>
       confirmAgentAction({ ...args, ari_ui: currentAriUiCapabilities() }),
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
@@ -78,6 +85,21 @@ export function useConfirmPendingAction(
             qc.invalidateQueries({ queryKey: creatorAccountKeys.all });
           }
         }
+        // #3355 P5 — Ari's brand-context and "not now" writes change the
+        // canonical readiness Home shows; re-read it (nested under the brand
+        // detail key, so this also refreshes the brand record).
+        if (
+          response.tool_name === "update_brand_context" ||
+          response.tool_name === "record_brand_context_finding" ||
+          response.tool_name === "defer_readiness_item" ||
+          response.tool_name === "undefer_readiness_item"
+        ) {
+          qc.invalidateQueries({
+            queryKey: brandId
+              ? brandReadinessKeys.brand(brandId)
+              : brandKeys.details(),
+          });
+        }
         if (response.tool_name === "manage_brand_hours" && brandId) {
           qc.invalidateQueries({ queryKey: brandHoursKeys.byBrand(brandId) });
           qc.invalidateQueries({ queryKey: venueAvailabilityKeys.config(brandId) });
@@ -102,7 +124,11 @@ export function useConfirmPendingAction(
   });
 
   const confirm = useCallback(
-    async (pending_action_id: string, edited_args?: Record<string, unknown>) => {
+    async (
+      pending_action_id: string,
+      edited_args?: Record<string, unknown>,
+      workflow_context?: "website_setup",
+    ) => {
       const intent = createAriClientIntent({
         intent: "confirm",
         conversationId,
@@ -124,7 +150,11 @@ export function useConfirmPendingAction(
         };
       }
       intentRef.current = reduceAriClientIntent(current, { type: "dispatch_started" });
-      const response = await confirmMutation.mutateAsync({ pending_action_id, edited_args });
+      const response = await confirmMutation.mutateAsync({
+        pending_action_id,
+        edited_args,
+        ...(workflow_context ? { workflow_context } : {}),
+      });
       if (intentRef.current?.stableId === pending_action_id) {
         intentRef.current = {
           ...intentRef.current,

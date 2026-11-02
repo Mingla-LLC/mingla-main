@@ -40,7 +40,13 @@ const androidOpaqueFillForTint = (
 // EVERY element under 768px at paint time (immune to the SPA render-timing race),
 // which is the exact thing proven to stop the crash. Injected once, web-only;
 // desktop web (>=768px) and native apps are unaffected.
-if (typeof document !== "undefined") {
+// A non-DOM `document` (a test or SSR stub with no element API) gets no style:
+// only a real page can host it.
+if (
+  typeof document !== "undefined" &&
+  typeof document.getElementById === "function" &&
+  typeof document.createElement === "function"
+) {
   const STYLE_ID = "mingla-mobile-web-no-backdrop-blur";
   if (!document.getElementById(STYLE_ID)) {
     const styleEl = document.createElement("style");

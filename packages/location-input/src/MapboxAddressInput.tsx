@@ -143,13 +143,43 @@ export function computeDropdownMaxHeight(params: {
 // Kept in this file (not a module of its own) because the picker ships in the
 // eager `__common` web chunk and every module costs a wrapper (ORCH-1083).
 
+// #3355 — Mapbox names a street in full ("10 Downing Street") but abbreviates
+// it in the grey line ("10 Downing St, London…"), so the label read "10 Downing
+// Street, 10 Downing St, London…". The comparison treats the common street
+// abbreviations as their full words. Only the COMPARISON changes: the label
+// keeps the grey line's own spelling.
+const STREET_WORDS: Readonly<Record<string, string>> = {
+  st: "street",
+  rd: "road",
+  ave: "avenue",
+  av: "avenue",
+  blvd: "boulevard",
+  dr: "drive",
+  ln: "lane",
+  ct: "court",
+  pl: "place",
+  sq: "square",
+  hwy: "highway",
+  pkwy: "parkway",
+  cres: "crescent",
+  tce: "terrace",
+  ter: "terrace",
+  cl: "close",
+  gdns: "gardens",
+};
+
 const normaliseLabel = (value: string): string =>
   value.replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ").trim().toLowerCase();
 
+const normaliseStreetWords = (value: string): string =>
+  value.replace(/\b([a-z]+)\.?(?=\s|,|$)/g, (word, bare: string) =>
+    STREET_WORDS[bare] ?? word,
+  );
+
 /** True when `address` leads with `name` as its first comma-separated part. */
 export function addressBeginsWithName(address: string, name: string): boolean {
-  const n = normaliseLabel(name);
-  const a = normaliseLabel(address);
+  const n = normaliseStreetWords(normaliseLabel(name));
+  const a = normaliseStreetWords(normaliseLabel(address));
   return n.length > 0 && (a === n || a.startsWith(`${n},`));
 }
 

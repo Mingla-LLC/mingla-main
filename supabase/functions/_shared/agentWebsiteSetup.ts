@@ -78,7 +78,8 @@ export const WEBSITE_SETUP_THEME_PRESETS = [
   {
     id: "warm",
     label: "Warm and welcoming",
-    detail: "Sunset orange, Fraunces type, and a soft shimmer as the page opens",
+    detail:
+      "Sunset orange, Fraunces type, and a soft shimmer as the page opens",
     theme: { color: "#eb7825", font: "fraunces", animation: "shimmer_reveal" },
   },
   {
@@ -131,6 +132,14 @@ export function websiteSetupUploadRoute(
 }
 
 /**
+ * #3355 bug 19 — "Fix all" sent as the owner's own bubble, in the owner's
+ * words. It still names "Fix all … Website … gaps", which is what
+ * `detectWebsiteSetupIntent` keys the durable job on.
+ */
+export const WEBSITE_SETUP_FIX_ALL_MESSAGE =
+  "Fix all my Website gaps with me, one question at a time. Look up public facts first, and save each change only after I approve it. Don’t build a draft yet.";
+
+/**
  * Sent as the owner's own message when they return from a handoff. It names
  * Fix all so the server resumes the durable job and re-reads the live plan.
  */
@@ -166,8 +175,19 @@ function naturalList(values: readonly string[]): string {
   return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
 }
 
+/**
+ * #3355 bug 19 — a key shown to the owner when no label exists reads as
+ * words ("story.who" → "Story who"), never as snake_case or a dotted key.
+ */
+export function websiteSetupPlainKey(key: string): string {
+  const words = key.replace(/[._]+/g, " ").replace(/\s+/g, " ").trim();
+  return words.length > 0
+    ? words.charAt(0).toUpperCase() + words.slice(1)
+    : "Website detail";
+}
+
 function fieldLabel(field: JsonObject, fallback: string): string {
-  return text(field.label) ?? fallback.replaceAll("_", " ");
+  return text(field.label) ?? websiteSetupPlainKey(fallback);
 }
 
 function findField(completeness: JsonObject, key: string): JsonObject {
@@ -629,6 +649,10 @@ export function websiteSetupPlanAnswer(
 
 export function websiteSetupPlanRevision(result: unknown): number | null {
   const root = object(result);
+  // #3355 — an entitled brand that has never saved a plan reads `plan: null`.
+  // Its first save creates the row at revision 0, exactly as the Website
+  // screen sends it; without this a brand-new brand could never answer Ari.
+  if (root.entitled === true && "plan" in root && root.plan === null) return 0;
   const nested = object(root.plan);
   const candidate = nested.revision ?? root.revision;
   return Number.isInteger(candidate) && Number(candidate) >= 0
@@ -926,7 +950,10 @@ export function websiteSetupPhone(args: {
   }
   const country = chosenIso === null ? null : phoneCountry(chosenIso);
   if (chosenIso !== null && country === null) {
-    return { ok: false, problem: WEBSITE_SETUP_PHONE_CHOOSE_COUNTRY_FOR_NUMBER };
+    return {
+      ok: false,
+      problem: WEBSITE_SETUP_PHONE_CHOOSE_COUNTRY_FOR_NUMBER,
+    };
   }
   if (namesOwnCountry) {
     const parsed = parsePhoneEntry(text, {
@@ -1073,8 +1100,9 @@ export function websiteSetupLinks(
     if (links[key] && links[key] !== candidate) {
       return {
         ok: false,
-        problem:
-          `That answer has two ${SOCIAL_KEY_LABELS[key]} links. Which one should the Website show?`,
+        problem: `That answer has two ${
+          SOCIAL_KEY_LABELS[key]
+        } links. Which one should the Website show?`,
       };
     }
     links[key] = candidate;
@@ -1201,10 +1229,16 @@ export function websiteSetupCityCountry(
   }
   city = city.replace(/^(?:in|at)\s+/i, "").trim();
   if (!city) {
-    return { ok: false, problem: `I have the country but not the city. ${askAgain}` };
+    return {
+      ok: false,
+      problem: `I have the country but not the city. ${askAgain}`,
+    };
   }
   if (city.length > 120) {
-    return { ok: false, problem: `That city name is too long to show. ${askAgain}` };
+    return {
+      ok: false,
+      problem: `That city name is too long to show. ${askAgain}`,
+    };
   }
   return { ok: true, value: { city, country_code: country.code } };
 }
@@ -1483,7 +1517,7 @@ function setupQuestion(fieldKey: string, field: JsonObject): string {
   }
   if (field.human_action_required === true) {
     const label = fieldLabel(field, fieldKey);
-    return `${label} needs your upload. Can you use Add it myself to upload it, then tell me when it is ready so I can re-audit the next gap?`;
+    return `${label} needs your upload. Can you use Add it myself to upload it, then tell me when it is ready so I can check it and move on?`;
   }
   switch (fieldKey) {
     case "name":
@@ -1592,12 +1626,12 @@ export function buildWebsiteSetupPresentation(
   const doneParts = parts.filter((part) => part.done === true).map((part) =>
     PART_LABELS[String(part.key ?? "")] ??
       text(part.label) ??
-      String(part.key ?? "Setup part")
+      websiteSetupPlainKey(String(part.key ?? "Setup part"))
   );
   const openParts = parts.filter((part) => part.done !== true).map((part) =>
     PART_LABELS[String(part.key ?? "")] ??
       text(part.label) ??
-      String(part.key ?? "Setup part")
+      websiteSetupPlainKey(String(part.key ?? "Setup part"))
   );
   const doneCount = typeof status.done_count === "number"
     ? status.done_count
@@ -1640,9 +1674,9 @@ export function buildWebsiteSetupPresentation(
       ? `I found ${gaps.length} Website-ready ${
         gaps.length === 1 ? "gap" : "gaps"
       }: ${naturalList(gapLabels)}.`
-      : "I found no required or recommended brand-context gaps.";
+      : "Nothing required or recommended is missing.";
     const reply =
-      `Website setup for ${brand} is ${doneCount} of ${total} complete. ${partSummary}\n\n${gapSummary}\n\nChoose Fix all gaps with Ari, Review the gaps, or use Add it myself. I will not create a draft until setup and brand context are complete.`;
+      `Website setup for ${brand} is ${doneCount} of ${total} complete. ${partSummary}\n\n${gapSummary}\n\nChoose Fix all gaps with Ari, Review the gaps, or use Add it myself. I will not create a draft until setup and your brand details are complete.`;
     return {
       text: reply,
       rendition: {
@@ -1652,7 +1686,7 @@ export function buildWebsiteSetupPresentation(
         eyebrow: "Website setup",
         title: gaps.length > 0
           ? `${verifiedCount} ready · ${gaps.length} need attention`
-          : "Brand context is ready",
+          : "Your brand details are ready",
         body:
           "Ari checked every required and recommended Website field against the saved plan. The Website draft stays out of the way until setup is complete.",
         tone: gaps.length > 0 ? "warning" : "success",
@@ -1691,7 +1725,7 @@ export function buildWebsiteSetupPresentation(
             version: 1,
             id: "context-progress",
             value: progress,
-            label: "Brand context completeness",
+            label: "Brand details complete",
           },
           ...(gaps.length > 0
             ? [{
@@ -1712,7 +1746,7 @@ export function buildWebsiteSetupPresentation(
               id: "setup-complete",
               tone: "success",
               title: "Ready for review",
-              body: "No required or recommended brand-context gaps remain.",
+              body: "Nothing required or recommended is missing.",
             }]),
         ],
         actions: gaps.length > 0
@@ -1723,8 +1757,7 @@ export function buildWebsiteSetupPresentation(
               style: "primary",
               behavior: {
                 type: "submit",
-                message:
-                  "Fix all Website brand-context gaps with Ari. Own the complete chain and ask one question at a time.",
+                message: WEBSITE_SETUP_FIX_ALL_MESSAGE,
               },
             },
             {
@@ -1751,10 +1784,10 @@ export function buildWebsiteSetupPresentation(
   if (!jobRead) return null;
   if (jobRead.error) {
     const reply =
-      `I read the live Website plan for ${brand}, but I couldn’t start the durable Fix all job. Nothing was changed and no draft was created. Try again and I’ll resume safely.`;
+      `I read the live Website plan for ${brand}, but I couldn’t start Website setup. Nothing was changed and no draft was created. Try again and I’ll pick up where we left off.`;
     return blockedPresentation(
       reply,
-      "Ari could not start the Fix everything chain",
+      "Ari couldn’t start Website setup",
     );
   }
   const result = object(jobRead.result);
@@ -1763,7 +1796,7 @@ export function buildWebsiteSetupPresentation(
       ? "An owner or admin can choose to wait or explicitly take over."
       : "Ask the teammate who owns it to finish or release it.";
     const reply =
-      `Another teammate already owns the active Website gap job for ${brand}. I did not start a competing chain or create a draft. ${takeover}`;
+      `Another teammate is already working through Website setup for ${brand}. I didn’t start a second one or create a draft. ${takeover}`;
     return blockedPresentation(reply, "Another teammate owns this setup");
   }
   const job = object(result.job);
@@ -1772,7 +1805,7 @@ export function buildWebsiteSetupPresentation(
   const completed = stringArray(job.completed_step_keys);
   if (pending.length === 0 || job.status === "completed") {
     const reply =
-      `The durable Website gap job for ${brand} is complete. I verified ${completed.length} brand-context steps and found no remaining required or recommended gaps. No draft has been created; the owner can review the completed setup plan next.`;
+      `Every Website detail for ${brand} is filled. I checked each one and nothing required or recommended is missing. No draft has been created yet; review the setup plan next.`;
     return {
       text: reply,
       rendition: {
@@ -1782,7 +1815,7 @@ export function buildWebsiteSetupPresentation(
         eyebrow: "Website setup",
         title: "Every Website detail is filled",
         body:
-          "Ari re-checked the saved plan and found no required or recommended brand-context gaps.",
+          "Ari re-checked the saved plan: nothing required or recommended is missing.",
         tone: "success",
         state: "submitted",
         graphic: "site",
@@ -1811,7 +1844,11 @@ export function buildWebsiteSetupPresentation(
   const action = setupQuestion(currentStep, currentField);
   const verb = result.resumed === true ? "resumed" : "started";
   const reply =
-    `I ${verb} one durable Fix all job for ${brand}. ${completed.length} steps are verified and ${pending.length} remain. I’ll research safe public facts, ask only for what I can’t verify, checkpoint every confirmed change, and re-audit before moving on. No draft will be created first.\n\nCurrent step — ${
+    // #3355 P1 (D-6): plain words, one counter (the card shows progress) and
+    // no engine vocabulary ("durable job", "checkpoint", "re-audit").
+    `${
+      verb === "resumed" ? "Picking up" : "Starting"
+    } Website setup for ${brand}. I’ll look up public facts first, ask only for what I can’t verify, and save each change only after you approve it. No draft will be created first.\n\nNext — ${
       fieldLabel(currentField, currentStep)
     }: ${action}`;
   return {
@@ -1851,7 +1888,7 @@ export function buildWebsiteSetupPresentation(
             (completed.length /
               Math.max(1, completed.length + pending.length)) * 100,
           ),
-          label: "Ari checkpoints and re-checks each answer",
+          label: "Ari saves and re-checks each answer",
         },
         ...fieldInteraction(
           currentStep,
@@ -1998,13 +2035,171 @@ export function buildWebsiteSetupRetryPresentation(args: {
           id: "nothing-saved",
           tone: "warning",
           title: "Nothing was saved",
-          body: "Answer the same question again and Ari will confirm the exact change before saving.",
+          body:
+            "Answer the same question again and Ari will confirm the exact change before saving.",
         }]),
         ...fieldInteraction(fieldKey, field, completeness),
       ],
       actions: websiteSetupFieldActions(fieldKey, field, brandId, routeActions),
     } as AriRenditionV2,
   };
+}
+
+/**
+ * #2830 P4 — the form-shaped card for ONE Website field on the flow engine.
+ *
+ * It reuses the exact controls the Website setup cards already use (the
+ * Brand details form's shapes: phone = country chip + number, choices for
+ * offerings / design / main action / theme, a pasted link with its
+ * platform). One progress counter only — the plan's own "Part n of 8" — and
+ * no "Verified / Remaining" metrics. The card's answer travels as a bound
+ * flow answer; the submit message keeps the shape an older Host sends, which
+ * the engine also reads (never as a model guess).
+ */
+export function buildWebsiteSetupFlowRendition(args: {
+  fieldKey: string;
+  field: Record<string, unknown>;
+  completeness: Record<string, unknown>;
+  brandId: string;
+  partNumber: number;
+  partTotal: number;
+  partLabel: string;
+  problem?: string | null;
+  /**
+   * #2830 P4 — after a refusal, what the owner gave last time: the same card
+   * comes back with it filled in (their own words and choices only), so they
+   * fix what was wrong instead of retyping everything.
+   */
+  draft?: {
+    choices: string[];
+    country: string | null;
+    response: string;
+  } | null;
+}): AriRenditionV2 {
+  const { fieldKey, field, completeness, brandId } = args;
+  const question = setupQuestion(fieldKey, field);
+  const label = fieldLabel(field, fieldKey);
+  const interaction = fieldInteraction(fieldKey, field, completeness);
+  const draft = args.draft ?? null;
+  const blocks = draft
+    ? interaction.map((block) => withDraft(block, draft))
+    : interaction;
+  return {
+    schema_version: 2,
+    rendition_id: `website-setup:field-${fieldKey.replaceAll(".", "-")}`,
+    kind: "website-setup",
+    eyebrow:
+      `Website setup · Part ${args.partNumber} of ${args.partTotal} · ${args.partLabel}`,
+    title: label,
+    body: args.problem ? `${args.problem}` : question,
+    ...(args.problem ? { tone: "warning" } : {}),
+    state: "ready",
+    graphic: "site",
+    blocks: [
+      ...(args.problem
+        ? [{
+          type: "callout",
+          version: 1,
+          id: "nothing-saved",
+          tone: "warning",
+          title: "Nothing was saved",
+          body:
+            "Answer again and Ari will show you the exact change before saving.",
+        }]
+        : []),
+      ...blocks,
+    ],
+    actions: [
+      {
+        id: "continue-with-ari",
+        label: "Continue with Ari",
+        style: "primary",
+        behavior: {
+          type: "submit",
+          message:
+            `Use my answer for ${label}${WEBSITE_SETUP_SUBMISSION_SUFFIX}`,
+        },
+      },
+      {
+        id: "add-it-myself",
+        label: "Add it myself",
+        style: "secondary",
+        behavior: { type: "route", route: `/brand/${brandId}/edit` },
+      },
+    ],
+  } as AriRenditionV2;
+}
+
+/** Fill one answer block with the owner's previous answer. */
+function withDraft(
+  block: Record<string, unknown>,
+  draft: { choices: string[]; country: string | null; response: string },
+): Record<string, unknown> {
+  if (block.type === "choices" && Array.isArray(block.options)) {
+    const chosen = new Set(draft.choices.map((choice) => choice.toLowerCase()));
+    return {
+      ...block,
+      options: block.options.map((option) => {
+        const entry = object(option);
+        return chosen.has(String(entry.label ?? "").toLowerCase())
+          ? { ...entry, selected: true }
+          : entry;
+      }),
+    };
+  }
+  if (block.type === "input") {
+    const fieldModel = object(block.field);
+    const response = draft.response.trim().slice(0, 2000);
+    if (!response) return block;
+    const country = fieldModel.kind === "phone" && draft.country
+      ? phoneCountry(draft.country)
+      : null;
+    const filled: Record<string, unknown> = { ...fieldModel, value: response };
+    if (country) {
+      delete filled.countryPlaceholder;
+      filled.countryIso = country.code;
+      filled.label = `${
+        fieldLabelOnly(String(fieldModel.label ?? ""))
+      } — ${country.name} (${country.dialCode})`;
+    }
+    return { ...block, field: filled };
+  }
+  return block;
+}
+
+/** "Contact phone — United Kingdom (+44)" → "Contact phone". */
+function fieldLabelOnly(label: string): string {
+  return label.split(" — ")[0];
+}
+
+/** #2830 P4 — the one question Ari asks for a Website field. */
+export function websiteSetupQuestion(
+  fieldKey: string,
+  field: Record<string, unknown>,
+): string {
+  return setupQuestion(fieldKey, field);
+}
+
+/** #2830 P4 — the owner label the canonical audit gives a field. */
+export function websiteSetupFieldLabel(
+  field: Record<string, unknown>,
+  fieldKey: string,
+): string {
+  return fieldLabel(field, fieldKey);
+}
+
+/**
+ * #2830 P4 — the upload handoff for logo / cover: Ari never adds media; the
+ * owner uploads in Brand details and Ari re-checks.
+ */
+export function websiteSetupUploadHandoff(fieldKey: string): {
+  actionLabel: string;
+  body: string;
+} | null {
+  const handoff = WEBSITE_SETUP_UPLOAD_HANDOFFS[fieldKey];
+  return handoff
+    ? { actionLabel: handoff.actionLabel, body: handoff.body }
+    : null;
 }
 
 function blockedPresentation(

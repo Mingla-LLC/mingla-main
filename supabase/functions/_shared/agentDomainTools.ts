@@ -32,6 +32,15 @@ import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 // writer that most needs to be told "no" before the row is stored.
 import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
 import { validateGigScript } from "./gigScript.ts";
+import { tryReadBrandReadiness } from "./agentReadinessTools.ts";
+import { stayOfferingPayloadProblem } from "./stayOfferingContract.ts";
+import {
+  type MoneySplitView,
+  moneySplitView,
+  sellGuide,
+} from "./money/moneySplit.ts";
+import { formatMinorWithCode } from "./money/formatMinor.ts";
+import { executeAriContactImport } from "./ariContactImportWrite.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -304,10 +313,16 @@ const discardEventDraft = writeTool(
 
 const upsertTicketTier = writeTool(
   "upsert_ticket_tier",
-  "Create or sparsely update a complete canonical ticket tier. Currency is derived by the server; paid tiers require payout readiness.",
+  "Create or sparsely update a complete canonical ticket tier. For a new tier, omit tier_id; only pass an existing tier_id returned by a read when updating. Never invent a tier_id. Currency is derived by the server; paid tiers require payout readiness.",
   {
     event_id: UUID,
-    tier_id: { type: "string", minLength: 1, maxLength: 100 },
+    tier_id: {
+      type: "string",
+      minLength: 1,
+      maxLength: 100,
+      description:
+        "Omit this field when adding a new tier. For updates, use only an existing tier_id returned by a read; never invent one.",
+    },
     name: STR,
     price_cents: { type: "integer", minimum: 0 },
     is_free: { type: "boolean" },
@@ -355,7 +370,12 @@ const upsertTicketTier = writeTool(
       operationId,
       tiers.reduce((max, tier) => Math.max(max, tier.displayOrder), -1) + 1,
     );
-    if (!next.isFree && (existing === null || existing.isFree)) {
+    // #3355 P6 (Seth's decision 3): drafts may hold paid tickets before
+    // payments are set up (checked at publish); live tiers still need them.
+    if (
+      event.status !== "draft" && !next.isFree &&
+      (existing === null || existing.isFree)
+    ) {
       await assertCanCollect(client, brandId);
     }
     return await callRpc(client, "ari_execute_ticket_pricing_operation", {
@@ -744,20 +764,84 @@ function tripGraphExecutor(
   };
 }
 
+/**
+ * Bind an update of a new trip's Standard placeholder BEFORE Ari persists the
+ * approval card. This keeps the exact user-approved args and operation receipt
+ * identical; no executor may rewrite a confirmed payload later.
+ */
+export async function bindTripStandardPlaceholderProposal(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: any,
+): Promise<Record<string, unknown>> {
+  if (toolName !== "manage_trip_tiers") return args;
+  const items = args.items as unknown[];
+  const requested = items.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    return record.deleted !== true && !isUuid(record.ticket_type_id) &&
+        typeof record.tier_name === "string" &&
+        record.tier_name.trim().toLocaleLowerCase() === "standard"
+      ? [record]
+      : [];
+  });
+  if (requested.length !== 1) return args;
+
+  const { data, error } = await client.rpc(
+    "ari_resolve_trip_standard_placeholder",
+    {
+      p_event_id: args.event_id,
+    },
+  );
+  if (error) {
+    throw new ToolError(
+      "TRIP_READ_FAILED",
+      "I couldn't verify the existing Standard package, so I stopped before changing it.",
+    );
+  }
+  if (!isUuid(data)) return args;
+  return {
+    ...args,
+    items: items.map((item) =>
+      item === requested[0] ? { ...requested[0], ticket_type_id: data } : item
+    ),
+  };
+}
+
+// #3355 P8 — a place the owner picked on the Ari card (the Host address
+// search), in the trip wizard's shape. Never typed or guessed.
+const TRIP_PLACE = {
+  type: "object",
+  additionalProperties: false,
+  required: ["label", "city", "lat", "lng"],
+  properties: {
+    label: { type: "string", minLength: 1, maxLength: 300 },
+    city: { type: "string", minLength: 1, maxLength: 120 },
+    country_code: { type: "string", pattern: "^[A-Z]{2}$" },
+    lat: { type: "number", minimum: -90, maximum: 90 },
+    lng: { type: "number", minimum: -180, maximum: 180 },
+  },
+};
+
 const createTrip = writeTool(
   "create_trip",
-  "Create a draft trip under an owned brand. Produces the complete canonical draft graph — event, placeholder Standard package and its pricing tier — so it opens identically in the manual trip wizard.",
+  "Create an unpublished draft trip under an owned brand from the owner's own facts: title, time zone, and the first and last calendar day (YYYY-MM-DD). The days are stored exactly as the trip wizard stores them. Departure and destination are only places the owner picked from the address search. Do not invent dates, a time zone, price, packages, itinerary, coordinates or departure details; packages are added separately with manage_trip_tiers.",
   {
     brand_id: UUID,
     title: STR,
     description: { type: "string" },
+    timezone: { type: "string", minLength: 1, maxLength: 100 },
+    start_date: { type: "string", format: "date" },
+    end_date: { type: "string", format: "date" },
+    departure: TRIP_PLACE,
+    destination: TRIP_PLACE,
     provenance: {
       type: "object",
       description:
         "Opaque origin marker (issue #1753 owns quote-to-draft mapping). Never invent one.",
     },
   },
-  ["brand_id", "title"],
+  ["brand_id", "title", "timezone", "start_date", "end_date"],
   async (args, client, userId, context) => {
     requireBrand(args, client, userId);
     return await executeTripWrite("create_trip", args, client, context);
@@ -766,18 +850,29 @@ const createTrip = writeTool(
 
 const updateTrip = writeTool(
   "update_trip",
-  "Edit an owned trip's title/description. A draft edits in place; a scheduled or live trip routes through the audited live-edit authority and needs a 10-200 character reason.",
+  "Edit an owned trip's title/description, or a draft trip's refund policy (the trip wizard's Policy presets). A draft edits in place; a scheduled or live trip routes through the audited live-edit authority and needs a 10-200 character reason.",
   {
     event_id: UUID,
     expected_updated_at: TRIP_REVISION,
     title: STR,
     description: { type: "string" },
+    refund_policy: {
+      type: "object",
+      description:
+        "Draft trips only: the canonical refund-policy object { kind, tiers: [{ days_before_start, refund_pct }] } the owner chose.",
+    },
     reason: TRIP_LIVE_REASON,
   },
   ["event_id", "expected_updated_at"],
   async (args, client, userId, context) => {
     await requireEvent(args, client, userId);
-    if (!isString(args.title) && typeof args.description !== "string") {
+    const policy = args.refund_policy;
+    const hasPolicy = !!policy && typeof policy === "object" &&
+      !Array.isArray(policy);
+    if (
+      !isString(args.title) && typeof args.description !== "string" &&
+      !hasPolicy
+    ) {
       throw new ToolError("INVALID_ARGS", "Nothing to update");
     }
     return await executeTripWrite("update_trip", args, client, context);
@@ -822,7 +917,7 @@ const manageTripInclusions = writeTool(
 
 const manageTripTiers = writeTool(
   "manage_trip_tiers",
-  "Create, update or remove trip packages, including deposit and instalment metadata. Money-bearing: always show the currency and the before/after amounts in the proposal. A package that has sold cannot be removed.",
+  "Create, update or remove trip packages, including deposit and instalment metadata. On a new trip, updating its sole untouched free Standard placeholder replaces that placeholder instead of adding a duplicate. Money-bearing: always show the currency and the before/after amounts in the proposal. A package that has sold cannot be removed.",
   tripGraphGroupSchema({
     type: "object",
     additionalProperties: false,
@@ -1686,12 +1781,16 @@ const manageStayInventory = writeTool(
         "resolve_currency_reconciliation",
       ],
     },
-    payload: { type: "object" },
+    payload: {
+      type: "object",
+      description:
+        "create_offering: a typed Stay offering (CreateStayOfferingInput) — kind room|place, name, inventoryBasis, maxGuests, quantity, room maxAdults/maxChildren or place placePricingBasis, optional price { amountMinor, currencyCode } and policy { cancellationPolicy }. Unknown fields are refused.",
+    },
     expected_version: {
       type: "integer",
       minimum: 1,
       description:
-        "Current Stay version. REQUIRED for every action except 'get'.",
+        "Current Stay version. REQUIRED for every action except 'get', and except the first 'save_settings' of a Stay that has no settings yet.",
     },
   },
   ["brand_id", "venue_id", "action"],
@@ -1721,20 +1820,34 @@ const manageStayInventory = writeTool(
     // with MODEL_SCHEMA_INVALID. So the conditional requirement is enforced
     // here, deterministically, and `expectedVersion` is now ALWAYS forwarded
     // for a mutation rather than conditionally.
+    //
+    // #3355 P9: the one exception is the FIRST save_settings of a Stay with no
+    // settings yet — biz_save_stay_settings_v2 itself requires no version
+    // then (and refuses a missing one once settings exist), so Ari could
+    // never save a new Stay's settings before.
+    const firstSettingsSave = args.action === "save_settings" &&
+      args.expected_version === undefined;
     if (
-      !Number.isInteger(args.expected_version) ||
-      Number(args.expected_version) < 1
+      !firstSettingsSave &&
+      (!Number.isInteger(args.expected_version) ||
+        Number(args.expected_version) < 1)
     ) {
       throw new ToolError(
         "INVALID_ARGS",
         "expected_version (current Stay version) is required for every action except get",
       );
     }
+    // #3355 P9 (audit D-22): a create carries a typed Stay offering; an
+    // untyped payload never reaches the Stay owner.
+    if (args.action === "create_offering") {
+      const problem = stayOfferingPayloadProblem(args.payload);
+      if (problem) throw new ToolError("INVALID_ARGS", problem);
+    }
     return await invokeFn(client, "manage-stay-inventory", {
       action: args.action,
       venueId: args.venue_id,
       payload: (args.payload as Record<string, unknown>) ?? {},
-      expectedVersion: args.expected_version,
+      expectedVersion: firstSettingsSave ? null : args.expected_version,
     });
   },
 );
@@ -1820,7 +1933,14 @@ const manageStayPolicyPriceMedia = writeTool(
 
 // issue #1978 — the venue category vocabulary the canonical create RPC accepts
 // (`biz_create_venue_listing`: 'restaurant' | 'play' | 'creative_and_arts').
-const VENUE_CATEGORIES = ["restaurant", "play", "creative_and_arts"] as const;
+// #3355 P9: "stay" too — the RPC refuses it while STAY_VENUE_AUTHORING is
+// off, and Ari's venue flow only offers it while the flag is on.
+const VENUE_CATEGORIES = [
+  "restaurant",
+  "play",
+  "creative_and_arts",
+  "stay",
+] as const;
 
 // issue #1978 — one canonical opening-hours row shape, identical to
 // manage_brand_hours and to the seven rows the create RPC parses out of
@@ -1889,7 +2009,7 @@ const createVenueListing = writeTool(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "venue_category must be restaurant, play, or creative_and_arts",
+        "venue_category must be restaurant, play, creative_and_arts or stay",
       );
     }
     if (!Array.isArray(args.hours) || args.hours.length !== 7) {
@@ -2986,8 +3106,9 @@ const draftCampaign = writeTool(
   // subject line and an HTML body under `body_html`.
   "Create a marketing campaign draft (RLS insert). Does not send. " +
     "`body` is the message content: for email it is the HTML body and `subject` " +
-    "is the subject line (both required); for sms it is the plain-text body and " +
-    "`subject` is ignored. Only 'email' and 'sms' can be sent.",
+    "is the subject line (both required); for sms it is the plain-text body, " +
+    "`subject` should repeat the campaign title and is ignored. Include `channel`; " +
+    "only 'email' and 'sms' can be sent.",
   {
     brand_id: UUID,
     title: STR,
@@ -2995,7 +3116,7 @@ const draftCampaign = writeTool(
     subject: { type: "string" },
     channel: { type: "string", enum: ["email", "sms"] },
   },
-  ["brand_id", "title"],
+  ["brand_id", "title", "body", "subject", "channel"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     // issue #2291 (M2) — `rcs` was accepted here and by the DB CHECK, but
@@ -4724,68 +4845,102 @@ async function readProviderRailStatus(
 
 const getPayoutStatus = writeTool(
   "get_payout_status",
-  "Read payout readiness (pg_brand_can_collect) plus Stripe/Paystack connect status and guide KYC. Never bypasses Stripe/Paystack.",
+  "Read whether this brand can sell paid tickets and, separately, whether payouts reach its bank, each with a plain-English guide; plus your own Organiser Terms state, the payment rail and Stripe/Paystack connect status. Never bypasses Stripe/Paystack.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    // #1982 / #1976 — canonical readiness gate + Host connect-status edges.
-    // Ari NEVER completes hosted KYC in chat — it only reads status and hands
-    // the owner off to the native Payouts flow.
-    //
-    // #2593 — the bare-boolean read is CORRECT and is now pinned. Production
-    // carries exactly ONE overload, `pg_brand_can_collect(uuid) RETURNS
-    // boolean` (created 20261220000000, replaced in place by 20270129001384),
-    // whose body is `(pg_brand_can_charge(..) OR EXISTS(..)) AND NOT EXISTS(..)`
-    // — every leg is an EXISTS, so it can never evaluate to SQL NULL and
-    // PostgREST can never surface an object. Sibling readers still carry an
-    // `{ can_collect: true }` fallback for a shape this RPC cannot return; that
-    // tolerance is dead code, not a contract, so it is not reintroduced here.
-    //
-    // What IS restored is loudness: a non-boolean must never be folded into a
-    // silent `can_collect: false`, because that answer tells an already-onboarded
-    // owner to go redo KYC. Contract violation fails closed and says so.
-    const can = await callRpc<unknown>(client, "pg_brand_can_collect", {
-      p_brand_id: args.brand_id,
-    });
-    if (typeof can !== "boolean") {
-      throw new ToolError(
-        "RPC_FAILED",
-        "Payout readiness is unavailable right now. Open Brand → Payouts to check directly.",
-      );
+    const brandId = String(args.brand_id);
+    // #3355 P6 (D-10, I-MONEY-SELL-VS-PAYOUT-DISTINCT): the money position is
+    // the server's split in brand_readiness(...).money — can_sell from
+    // pg_brand_can_collect, can_be_paid_out from pg_brand_can_payout
+    // (migration 20270726003645), Terms for the caller — never re-derived
+    // here. A hold-rail brand reads "You can sell now; payouts start once your
+    // bank is connected", never "Payouts are enabled".
+    const { readiness } = await tryReadBrandReadiness(client, brandId);
+    const money: MoneySplitView | null = readiness
+      ? moneySplitView(readiness.money)
+      : null;
+    if (!money) {
+      // Deploy window (readiness not applied yet): sell readiness only, from
+      // the same canonical predicate; the payout half is unknown, not false.
+      // #2593 — the predicate returns a bare boolean; anything else fails
+      // closed loudly rather than telling an onboarded owner to redo KYC.
+      const can = await callRpc<unknown>(client, "pg_brand_can_collect", {
+        p_brand_id: args.brand_id,
+      });
+      if (typeof can !== "boolean") {
+        throw new ToolError(
+          "RPC_FAILED",
+          "Payout readiness is unavailable right now. Open Brand → Payouts to check directly.",
+        );
+      }
+      // Same edges Host polls; per-rail failures stay on that rail.
+      const [stripe, paystack] = await readPayoutRails(client, brandId);
+      return {
+        brand_id: args.brand_id,
+        can_collect: can,
+        can_sell: can,
+        can_be_paid_out: null,
+        sell_guide: sellGuide(can ? "ready" : "kyc_incomplete"),
+        payout_guide:
+          "I couldn't check payouts to the bank just now. The owner can see them in Payments setup.",
+        stripe,
+        paystack,
+        guide: can
+          ? "This brand can sell paid tickets. I couldn't check payouts to the bank just now."
+          : `${
+            sellGuide("kyc_incomplete")
+          } Open Brand → Payouts to see where it's up to. Ari cannot complete payment setup in chat.`,
+      };
     }
-    const canCollect = can;
-    // Same edges Host polls: brand-stripe-refresh-status + Paystack
-    // refresh_status. Per-rail failures stay on that rail — never invent
-    // can_collect:false from a provider outage.
-    const [stripe, paystack] = await Promise.all([
-      readProviderRailStatus(
-        client,
-        "brand-stripe-refresh-status",
-        { brand_id: args.brand_id },
-        minimiseStripeConnectStatus,
-        "Stripe connect status could not be loaded.",
-      ),
-      readProviderRailStatus(
-        client,
-        "brand-paystack-onboard",
-        { action: "refresh_status", brand_id: args.brand_id },
-        minimisePaystackConnectStatus,
-        "Paystack connect status could not be loaded.",
-      ),
-    ]);
+    const [stripe, paystack] = await readPayoutRails(client, brandId);
     return {
       brand_id: args.brand_id,
-      can_collect: canCollect,
+      // Kept for older readers: the same answer as can_sell.
+      can_collect: money.can_sell,
+      can_sell: money.can_sell,
+      sell_reason: money.sell_reason,
+      sell_guide: money.sell_guide,
+      can_be_paid_out: money.can_be_paid_out,
+      payout_reason: money.payout_reason,
+      payout_guide: money.payout_guide,
+      terms_accepted_by_caller: money.terms_accepted_by_caller,
+      terms_guide: money.terms_guide,
+      rail: money.rail,
+      currency: money.currency,
       stripe,
       paystack,
-      guide: canCollect
-        ? "Payouts are enabled — this brand can collect money."
-        : "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
+      guide: money.can_sell && money.can_be_paid_out
+        ? money.summary
+        : `${money.summary} Open Brand → Payouts to see where it's up to. Ari cannot complete payment setup in chat.`,
     };
   },
 );
+
+/** #1982 / #1976 — the same connect-status edges Host polls, minimised. */
+function readPayoutRails(
+  client: any,
+  brandId: string,
+): Promise<[Record<string, unknown>, Record<string, unknown>]> {
+  return Promise.all([
+    readProviderRailStatus(
+      client,
+      "brand-stripe-refresh-status",
+      { brand_id: brandId },
+      minimiseStripeConnectStatus,
+      "Stripe connect status could not be loaded.",
+    ),
+    readProviderRailStatus(
+      client,
+      "brand-paystack-onboard",
+      { action: "refresh_status", brand_id: brandId },
+      minimisePaystackConnectStatus,
+      "Paystack connect status could not be loaded.",
+    ),
+  ]);
+}
 
 // #1976 — canonical partner-split status. The link lives in
 // `partner_brand_links` (ORCH-1081/-1384), NOT the non-existent `brand_partners`
@@ -6158,10 +6313,15 @@ function normalizePeopleBookCursor(
 
 const manageBrandPeople = writeTool(
   "manage_brand_people",
-  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. Add requires display_name plus email and/or phone_e164 (Host people_contact_required). For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged.",
+  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. Add requires display_name plus email and/or phone_e164 (Host people_contact_required). For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged. Action import only runs a contact list Ari's import flow already checked (never call it yourself; start the flow by asking the owner to import their contacts).",
   {
     brand_id: UUID,
-    action: { type: "string", enum: ["list", "get", "add"] },
+    action: { type: "string", enum: ["list", "get", "add", "import"] },
+    // #3355 — the contact list Ari's import flow checked with the existing
+    // contact import (#1775); only that flow builds these.
+    import_batch_id: UUID,
+    import_preview_token: { type: "string", minLength: 20, maxLength: 200 },
+    import_file_sha256: { type: "string", minLength: 64, maxLength: 64 },
     person_id: UUID,
     search: { type: "string", maxLength: 120 },
     cursor: PEOPLE_BOOK_CURSOR,
@@ -6247,7 +6407,21 @@ const manageBrandPeople = writeTool(
         p_client_request_id: clientRequestId,
       });
     }
-    throw new ToolError("INVALID_ARGS", "action must be list, get, or add");
+    if (action === "import") {
+      // #3355 — the existing contact import's execute, as the caller.
+      return await executeAriContactImport({
+        client,
+        brandId: String(args.brand_id),
+        batchId: args.import_batch_id,
+        previewToken: args.import_preview_token,
+        fileSha256: args.import_file_sha256,
+        operationId: requireAgentOperationId(context),
+      });
+    }
+    throw new ToolError(
+      "INVALID_ARGS",
+      "action must be list, get, add, or import",
+    );
   },
 );
 
@@ -7124,6 +7298,35 @@ const getCampaignReport = writeTool(
   },
 );
 
+const getCampaignDraft = writeTool(
+  "get_campaign_draft",
+  "Read one saved marketing campaign draft, including its subject and message content, so you can review the exact saved copy. Draft-only, brand-scoped, and never returns recipient details.",
+  { campaign_id: UUID },
+  ["campaign_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("marketing_campaigns")
+      .select(
+        "id, brand_id, name, channel, status, channel_payload, scheduled_for, created_at, updated_at",
+      )
+      .eq("id", args.campaign_id)
+      .eq("status", "draft")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!data) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Saved campaign draft not found or access denied.",
+      );
+    }
+    await assertAgentReadBrand(client, userId, data.brand_id as string);
+    return data;
+  },
+);
+
 // ----------------------------------------------------------------------------
 // #1983 — profile avatar, Ari history, notifications inbox, support inbox
 // ----------------------------------------------------------------------------
@@ -7975,9 +8178,12 @@ const requestAccountDeletion = writeTool(
 // O. Intelligence snapshot (read) — enables the create→ticket→publish→blast chain
 // ----------------------------------------------------------------------------
 
+// #3355 P2 (D-30): `writeTool` is only the schema builder shared by every
+// domain tool. This tool is classified read-only by DOMAIN_READ_ONLY below
+// (runs inline, never a confirmation card); the readiness test pins that.
 const getOperatorSnapshot = writeTool(
   "get_operator_snapshot",
-  "Compact owned offerings + payout-ready flag for chaining next steps. No PII rosters.",
+  "Compact owned offerings, the selected brand's canonical checklist summary (from get_brand_readiness) and the can-sell / can-be-paid-out money position for chaining next steps. No PII rosters.",
   { brand_id: UUID },
   [],
   async (args, client, userId) => {
@@ -7997,9 +8203,16 @@ const getOperatorSnapshot = writeTool(
       await assertAgentReadBrand(client, userId, brandId);
     }
     // Ledger `ari.operator.snapshot` requires brand_member: list every brand the
-    // caller can already read. Owner-only filtering was the Wave-3 leftover that
-    // kept delegated members out of the snapshot brand list and auto-select.
-    const brands = scope.slice(0, 8).map(
+    // caller can already read. #3355 P2 (C12): up to 50, the requested brand
+    // first, so a multi-brand operator's later brands are never invisible.
+    const requested = brandId;
+    const ordered = requested
+      ? [
+        ...scope.filter((brand) => brand.id === requested),
+        ...scope.filter((brand) => brand.id !== requested),
+      ]
+      : scope;
+    const brands = ordered.slice(0, 50).map(
       ({ id, name, role, effective_rank }) => ({
         id,
         name,
@@ -8009,13 +8222,14 @@ const getOperatorSnapshot = writeTool(
     );
     if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
-    let canCollect: unknown = null;
     let brandProfile: Record<string, unknown> | null = null;
+    let payoutReady: boolean | null = null;
+    let canBePaidOut: boolean | null = null;
     if (brandId) {
       const { data: profile, error: profileError } = await client
         .from("brands")
         .select(
-          "id,name,slug,description,kind,address,city,country_code,default_currency,profile_photo_url,cover_media_url,contact_email,contact_phone,social_links,custom_links,theme_color,theme_font,theme_animation,enquiries_enabled,payment_provider,payment_country,payout_country",
+          "id,name,slug,description,kind,address,city,country_code,default_currency,default_timezone,social_links,custom_links,theme_color,theme_font,theme_animation,enquiries_enabled,payment_provider,payment_country,payout_country",
         )
         .eq("id", brandId)
         .is("deleted_at", null)
@@ -8031,22 +8245,27 @@ const getOperatorSnapshot = writeTool(
         .order("created_at", { ascending: false })
         .limit(8);
       offerings = ev ?? [];
-      canCollect = await callRpc(client, "pg_brand_can_collect", {
-        p_brand_id: brandId,
-      }).catch(() => null);
+      // #3355 P2 (C1/C2, I-BRAND-READINESS-SINGLE-SOURCE): what the brand is
+      // missing comes only from the canonical server read. While the read is
+      // not deployed the snapshot says so instead of guessing a list.
+      const { readiness, unavailable } = await tryReadBrandReadiness(
+        client,
+        brandId,
+      );
+      if (readiness) {
+        payoutReady = readiness.money.can_sell;
+        canBePaidOut = readiness.money.can_be_paid_out;
+      } else {
+        // [TRANSITIONAL] money falls back to the canonical collect predicate
+        // only while brand_readiness is not yet applied — exit: migration
+        // 20280307003355 applied in production.
+        const canCollect = await callRpc(client, "pg_brand_can_collect", {
+          p_brand_id: brandId,
+        }).catch(() => null);
+        payoutReady = canCollect === true ||
+          (canCollect as any)?.can_collect === true;
+      }
       if (profile) {
-        const missing = [
-          ["description", profile.description],
-          ["profile photo", profile.profile_photo_url],
-          ["cover", profile.cover_media_url],
-          ["phone number", profile.contact_phone],
-          [
-            "social links",
-            profile.social_links &&
-            typeof profile.social_links === "object" &&
-            Object.keys(profile.social_links).length > 0,
-          ],
-        ].flatMap(([label, value]) => value ? [] : [label]);
         brandProfile = {
           id: profile.id,
           name: profile.name,
@@ -8057,6 +8276,7 @@ const getOperatorSnapshot = writeTool(
           city: profile.city,
           country_code: profile.country_code,
           default_currency: profile.default_currency,
+          default_timezone: profile.default_timezone ?? null,
           social_links: profile.social_links ?? {},
           custom_links: profile.custom_links ?? [],
           theme: {
@@ -8067,14 +8287,31 @@ const getOperatorSnapshot = writeTool(
           enquiries_enabled: profile.enquiries_enabled === true,
           payment_provider: profile.payment_provider,
           payment_country: profile.payment_country ?? profile.payout_country,
-          readiness: {
-            profile_photo: Boolean(profile.profile_photo_url),
-            cover: Boolean(profile.cover_media_url),
-            contact_email: Boolean(profile.contact_email),
-            contact_phone: Boolean(profile.contact_phone),
-            social_links: !missing.includes("social links"),
-          },
-          genuinely_missing: missing,
+          readiness: readiness
+            ? {
+              counts: readiness.counts,
+              money: readiness.money,
+              items: readiness.items.map((item) => ({
+                key: item.key,
+                label: item.label,
+                group: item.group,
+                state: item.state,
+                severity: item.severity,
+                value_preview: item.value_preview,
+                not_now: item.deferral
+                  ? {
+                    by: item.deferral.by_display_name,
+                    at: item.deferral.at,
+                    reason: item.deferral.reason,
+                  }
+                  : null,
+                can_caller_fix: item.fix.can_caller_fix,
+                who_can_fix: item.fix.who_can_fix,
+                fix_route: item.fix.route,
+              })),
+            }
+            : null,
+          readiness_unavailable: unavailable,
         };
       }
     }
@@ -8082,8 +8319,8 @@ const getOperatorSnapshot = writeTool(
       brands,
       selected_brand: brandProfile,
       offerings,
-      payout_ready: canCollect === true ||
-        (canCollect as any)?.can_collect === true,
+      payout_ready: payoutReady === true,
+      can_be_paid_out: canBePaidOut,
       next_step_hint: !brands.length
         ? "create_brand"
         : offerings.length === 0
@@ -8093,14 +8330,10 @@ const getOperatorSnapshot = writeTool(
   },
 );
 
+// #3355 P6 (D-28): the currency's own decimals via the shared formatter
+// (ISK 3500 shown as "35 ISK", never "35.00 ISK").
 function formatAdMinor(value: unknown, currency: unknown): string {
-  const cents = Number(value);
-  if (!Number.isSafeInteger(cents) || cents < 0) return "unavailable";
-  const amount = (cents / 100).toFixed(2);
-  const code = typeof currency === "string" && /^[A-Z]{3}$/i.test(currency)
-    ? currency.toUpperCase()
-    : "";
-  return code ? `${amount} ${code}` : amount;
+  return formatMinorWithCode(value, currency) ?? "unavailable";
 }
 
 function adLabel(value: unknown): string {
@@ -8624,6 +8857,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   manageMarketingAudiences,
   manageMarketingTemplates,
   getCampaignReport,
+  getCampaignDraft,
   editProfileAvatar,
   manageAriHistory,
   manageBusinessNotifications,
@@ -8657,6 +8891,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
+  "get_campaign_draft",
   "get_ad_campaign_report",
   // #1980 — Growth Tool report read (growth-tools-report app lane).
   "get_growth_tool_report",

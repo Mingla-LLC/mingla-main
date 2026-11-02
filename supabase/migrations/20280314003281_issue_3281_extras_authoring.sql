@@ -138,6 +138,17 @@ BEGIN
     SELECT value, ordinality FROM jsonb_array_elements(public.issue_3281_normalize_tier_extras(
       p_tier->'extras', COALESCE((p_tier->>'isFree')::boolean, false))) WITH ORDINALITY
   LOOP
+    -- A draft date deleted after the extra was set up leaves its list here; an
+    -- extra that loses every date is refused rather than widened.
+    IF jsonb_typeof(v_extra->'validDayIds') = 'array' AND p_when_mode = 'multi_date' THEN
+      v_extra := jsonb_set(v_extra, '{validDayIds}', COALESCE((
+        SELECT jsonb_agg(k.value) FROM jsonb_array_elements(v_extra->'validDayIds') k
+         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(p_multi_dates) e WHERE e->'id' = k.value)
+      ), '[]'::jsonb));
+      IF jsonb_array_length(v_extra->'validDayIds') = 0 THEN
+        RAISE EXCEPTION 'extra_day_scope_empty';
+      END IF;
+    END IF;
     v_keys := public.issue_3281_draft_ticket_scope(v_extra, p_when_mode, p_multi_dates);
     PERFORM public.issue_3281_assert_extra_days_in_tier(v_keys, p_tier_keys);
     INSERT INTO public.ticket_add_ons (
@@ -283,7 +294,16 @@ AS $fn$
     'capacityFloor', CASE WHEN a.valid_occurrence_keys IS NULL
       THEN public.issue_3281_add_on_sold(a.id, NULL)
       ELSE (SELECT COALESCE(MAX(public.issue_3281_add_on_sold(a.id, k)), 0)
-              FROM unnest(a.valid_occurrence_keys) k) END
+              FROM unnest(a.valid_occurrence_keys) k) END,
+    -- The dates someone bought it for: only these are locked on the list.
+    'soldDayIds', to_jsonb(ARRAY(
+      SELECT DISTINCT k
+        FROM public.order_add_on_line_items li
+        JOIN public.orders o ON o.id = li.order_id,
+             unnest(li.day_scope_at_order) k
+       WHERE li.ticket_add_on_id = a.id
+         AND o.payment_status IN ('pending', 'paid', 'partial_refund')
+       ORDER BY k))
   ) ELSE '{}'::jsonb END ORDER BY a.sort_order, a.id), '[]'::jsonb)
   FROM public.ticket_add_ons a
   WHERE a.ticket_type_id = p_ticket_type_id AND a.is_active;

@@ -26,8 +26,10 @@ import type {
 } from "../../store/draftEventStore";
 import { formatDraftDayScopeLabel } from "../../utils/ticketDayScope";
 import {
-  emptyExtra,
   MAX_EXTRAS_PER_TIER,
+  emptyExtra,
+  isExtraDayLocked,
+  toggleExtraDay,
   validateTicketExtra,
 } from "../../utils/ticketExtras";
 import { Button } from "../ui/Button";
@@ -41,8 +43,10 @@ export interface TicketExtrasSectionProps {
   formatPrice: (major: number) => string;
   /** The dates this tier admits, in order. Null on a single-date event. */
   tierDayEntries: readonly MultiDateEntry[] | null;
-  /** A published tier whose extras didn't load: nothing can be changed. */
+  /** A published tier whose extras aren't loaded: nothing can be changed. */
   unavailable?: boolean;
+  /** Still reading them, as opposed to a failed read. */
+  loading?: boolean;
 }
 
 const isWholeNumberText = (value: string): boolean => /^\d{0,6}$/.test(value);
@@ -73,6 +77,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
   formatPrice,
   tierDayEntries,
   unavailable = false,
+  loading = false,
 }) => {
   const [openId, setOpenId] = useState<string | null>(null);
   const [priceText, setPriceText] = useState("");
@@ -118,9 +123,11 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
       <View>
         <Text style={styles.sectionHeader}>Extras</Text>
         <Text style={styles.helperHint}>
-          {"This ticket's extras didn't load, so they can't be changed right now. " +
-            "Close this sheet and open the event again to retry. Everything else " +
-            "here still saves, and the extras stay as they are."}
+          {loading
+            ? "Loading this ticket's extras…"
+            : "This ticket's extras didn't load, so they can't be changed right now. " +
+              "Close this sheet and open it again to retry. Everything else " +
+              "here still saves, and the extras stay as they are."}
         </Text>
       </View>
     );
@@ -328,7 +335,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 <DayOption
                   label="Every date this ticket admits"
                   selected={extra.validDayIds === null}
-                  disabled={sold > 0 && extra.validDayIds !== null}
+                  disabled={false}
                   onPress={() => update(extra.id, { validDayIds: null })}
                 />
                 {choosableDaysFor(extra)!.map((entry) => {
@@ -342,17 +349,12 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                         ]) ?? entry.date
                       }
                       selected={chosen}
-                      // A sold extra keeps its dates; new dates can still be added.
-                      disabled={
-                        sold > 0 && (chosen || extra.validDayIds === null)
+                      disabled={isExtraDayLocked(extra, entry.id)}
+                      onPress={() =>
+                        update(extra.id, {
+                          validDayIds: toggleExtraDay(extra, entry.id),
+                        })
                       }
-                      onPress={() => {
-                        const current = extra.validDayIds ?? [];
-                        const next = chosen
-                          ? current.filter((id) => id !== entry.id)
-                          : [...current, entry.id];
-                        update(extra.id, { validDayIds: next });
-                      }}
                     />
                   );
                 })}

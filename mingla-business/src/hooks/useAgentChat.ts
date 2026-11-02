@@ -23,6 +23,8 @@ import {
   type AgentChoiceSubmissionV2,
   type AgentChatResponse,
   type AgentMessage,
+  type AriFlowAnswer,
+  type AriFlowState,
   fetchMessages,
   sendAgentMessage,
 } from "../services/agentChatService";
@@ -36,6 +38,7 @@ import {
   type AriActivityEvent,
   type AriAttemptStatus,
   fetchAriTurnStatus,
+  resumeAriFlow,
   retryAriTurn,
   stopAriTurn,
   subscribeAriTurnActivity,
@@ -48,7 +51,8 @@ import {
   type AriActivityWatermark,
   ariRowDelivery,
   isAriTurnStoppable,
-  isOrdinaryTurnActivityVisible,
+  activityTurnOf,
+  isAriTurnDiscardable,
   isTurnInSelectedConversation,
   latestLabelledActivityEvent,
   shouldFollowTurnConversation,
@@ -61,6 +65,11 @@ import {
   reduceAriClientIntent,
 } from "../services/agentReliability";
 import { agentQueryKeys } from "./agentQueryKeys";
+import {
+  ariRateLimitCopy,
+  ariRetryNeedsFreshTurn,
+  ariTurnRetryAllowed,
+} from "./ariTurnRetryPolicy";
 
 export { agentQueryKeys };
 
@@ -115,6 +124,11 @@ export interface AriActiveTurn {
   errorCode: string | null;
   errorMessage: string | null;
   reconciling: boolean;
+  /**
+   * #3355 P3: the last status check reached the server and the turn is still
+   * running there — the connection is fine, the answer is just slow.
+   */
+  serverWorking?: boolean;
   startedAt: number;
   /** D-1: false for a completed attempt (e.g. an approved action), so no Stop is offered. */
   stoppable: boolean;
@@ -131,6 +145,26 @@ export interface UseAgentChatResult {
     submission: AgentChoiceSubmissionV2,
     label: string,
   ) => Promise<AgentChatResponse>;
+  /** #3355 P3 — a structured answer bound to the flow's current card. */
+  sendFlowAnswer: (
+    answer: AriFlowAnswer,
+    label: string,
+  ) => Promise<AgentChatResponse>;
+  /**
+   * #2830 P4 — open Website setup with a structured request. The owner's
+   * bubble reads only "Set up my Website"; the server builds the instruction
+   * and, with the flow engine on, never counts it toward the daily limit.
+   */
+  startWebsiteSetup: (part: string | null) => Promise<AgentChatResponse>;
+  /**
+   * #3355 P3 — the server's view of this chat's flow run: which card is the
+   * current one (every other flow card is locked), who is working on it.
+   * `undefined` until the first resume for this chat has answered.
+   */
+  flowState: AriFlowState | null | undefined;
+  applyFlowState: (state: AriFlowState | null | undefined) => void;
+  /** #3355 P3 — mount / reconnect / back from a handoff. Never a turn. */
+  resumeFlow: (trigger?: "resume" | "handoff_return") => Promise<void>;
   retryTurn: (clientTurnId: string) => Promise<AgentChatResponse | null>;
   retryTenantRecovery: () => Promise<AgentChatResponse | null>;
   editTurn: (clientTurnId: string) => AriEditableTurn | null;
@@ -153,11 +187,16 @@ export interface UseAgentChatResult {
   setWorkflowContext: (context: AriWorkflowContext) => void;
 }
 
+/** #2830 P4 — the owner's bubble when Website setup opens (server-pinned). */
+export const WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website";
+
 type TurnPayload = {
   message?: string;
   choice_response?: AgentChoiceSubmissionV2;
+  flow_answer?: AriFlowAnswer;
   attachment_ids?: string[];
   workflow_context?: "website_setup";
+  website_setup_kickoff?: { part?: string };
 };
 
 interface LocalTurn {
@@ -176,6 +215,11 @@ interface LocalTurn {
   events: AriActivityEvent[];
   errorCode: string | null;
   errorMessage: string | null;
+  /**
+   * #3355 P1 — when a RATE_LIMITED refusal may be retried (epoch ms, from the
+   * server's database-clock retry_after_seconds). null for other failures.
+   */
+  retryAt: number | null;
   reconciling: boolean;
   startedAt: number;
   createdAt: string;
@@ -221,6 +265,17 @@ function sentAttachment(
   };
 }
 
+/**
+ * #3355 P1 (D-1): a deterministic refusal shows its own next step, not a
+ * Retry that would replay the same refusal.
+ */
+function retryableFlag(turn: LocalTurn): { local_retryable?: false } {
+  return turn.delivery === "failed" &&
+    !ariTurnRetryAllowed(turn.errorCode, turn.retryAt)
+    ? { local_retryable: false }
+    : {};
+}
+
 function turnMessage(turn: LocalTurn): AgentMessage {
   const attachmentCount = turn.attachments.length;
   const text =
@@ -234,6 +289,7 @@ function turnMessage(turn: LocalTurn): AgentMessage {
       text,
       local_delivery: ariRowDelivery(turn.delivery, turn.accepted),
       ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}),
+      ...retryableFlag(turn),
       ...(attachmentCount
         ? { attachments: turn.attachments.map(sentAttachment) }
         : {}),
@@ -310,6 +366,9 @@ export function useAgentChat(
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [flowStates, setFlowStates] = useState<
+    Record<string, AriFlowState | null>
+  >({});
   const [turns, setTurns] = useState<LocalTurn[]>([]);
   const turnsRef = useRef<LocalTurn[]>([]);
   const conversationIdRef = useRef<string | null>(initialConversationId);
@@ -537,6 +596,51 @@ export function useAgentChat(
     [qc],
   );
 
+  // #3355 P3 — the server owns which flow card is current, per chat.
+  const applyFlowStateFor = useCallback(
+    (
+      targetConversationId: string | null,
+      state: AriFlowState | null | undefined,
+    ): void => {
+      if (!targetConversationId || state === undefined) return;
+      setFlowStates((current) => ({
+        ...current,
+        [targetConversationId]: state,
+      }));
+    },
+    [],
+  );
+  const applyFlowState = useCallback(
+    (state: AriFlowState | null | undefined): void =>
+      applyFlowStateFor(conversationIdRef.current, state),
+    [applyFlowStateFor],
+  );
+
+  const resumeFlow = useCallback(
+    async (trigger: "resume" | "handoff_return" = "resume"): Promise<void> => {
+      const target = conversationIdRef.current;
+      if (!target) return;
+      try {
+        const resumed = await resumeAriFlow(target, trigger);
+        applyFlowStateFor(target, resumed.flow_state);
+        // A card the server created while this screen was away (or a reload
+        // that missed it) arrives as a saved message: re-read history once.
+        if (resumed.next || resumed.artefact) {
+          await refreshCanonicalMessages(target);
+        }
+      } catch {
+        // Resume is best effort: the history already holds every saved card,
+        // and the next turn re-reads the run on the server.
+      }
+    },
+    [applyFlowStateFor, refreshCanonicalMessages],
+  );
+
+  useEffect(() => {
+    if (!isAuthReady || !conversationId || online === false) return;
+    void resumeFlow("resume");
+  }, [conversationId, isAuthReady, online, resumeFlow]);
+
   /**
    * Canonical reconciliation. `announce` shows "Reconnecting to Ari…" (P2-7):
    * only after transport uncertainty, reconnect, foreground, or failed Stop
@@ -628,8 +732,18 @@ export function useAgentChat(
         turn.reconciling ||
         turn.attemptStatus === "reconciliation_required",
     );
+    // #3355 P3: a turn whose request is simply still in flight is not a
+    // connection problem — poll it quietly. Only real transport uncertainty
+    // announces "Reconnecting to Ari…".
     await Promise.all(
-      candidates.map((turn) => reconcileOne(turn.clientTurnId)),
+      candidates.map((turn) =>
+        reconcileOne(
+          turn.clientTurnId,
+          turn.reconciling ||
+            turn.attemptStatus === "reconciliation_required" ||
+            turn.delivery !== "sending",
+        ),
+      ),
     );
   }, [reconcileOne]);
 
@@ -704,10 +818,18 @@ export function useAgentChat(
                 : response.code,
               // The code registry owns public error copy. Never render an SDK,
               // gateway, provider, or legacy server message directly in chat.
+              // #3355 P1 (D-1): the cap names its real reset time.
               errorMessage:
                 response.code === "TRANSPORT_UNAVAILABLE"
                   ? ARI_CHAT_CONNECTION_COPY
-                  : ariChatErrorCopy(response.code),
+                  : response.code === "RATE_LIMITED"
+                    ? ariRateLimitCopy(response.retry_after_seconds)
+                    : ariChatErrorCopy(response.code),
+              retryAt:
+                response.code === "RATE_LIMITED" &&
+                typeof response.retry_after_seconds === "number"
+                  ? Date.now() + response.retry_after_seconds * 1000
+                  : null,
               reconciling: false,
             });
           }
@@ -728,7 +850,29 @@ export function useAgentChat(
           });
           return response;
         }
+        if (response.kind === "question_stale") {
+          // #3355 P3: nothing was written; the card that is current now is
+          // already in the thread (or arrives with this refresh).
+          patchTurn(clientTurnId, {
+            delivery: "failed",
+            accepted: false,
+            errorCode: "QUESTION_STALE",
+            errorMessage:
+              "That question was replaced by a newer one, so nothing changed.",
+            reconciling: false,
+          });
+          applyFlowStateFor(
+            response.conversation_id || turn.conversationId,
+            response.flow_state,
+          );
+          const staleTarget = response.conversation_id || turn.conversationId;
+          if (staleTarget) await refreshCanonicalMessages(staleTarget);
+          return response;
+        }
         const targetConversationId = response.conversation_id;
+        if (response.kind === "text") {
+          applyFlowStateFor(targetConversationId, response.flow_state);
+        }
         patchTurn(clientTurnId, {
           conversationId: targetConversationId,
           accepted: true,
@@ -806,6 +950,7 @@ export function useAgentChat(
       }
     },
     [
+      applyFlowStateFor,
       brandId,
       conversationId,
       patchTurn,
@@ -880,6 +1025,7 @@ export function useAgentChat(
             delivery: "sending",
             errorCode: null,
             errorMessage: null,
+            retryAt: null,
             reconciling: false,
             startedAt: Date.now(),
           }
@@ -898,6 +1044,7 @@ export function useAgentChat(
             events: [],
             errorCode: null,
             errorMessage: null,
+            retryAt: null,
             reconciling: false,
             startedAt: Date.now(),
             createdAt: new Date().toISOString(),
@@ -989,12 +1136,46 @@ export function useAgentChat(
     [sendTurn],
   );
 
+  const sendFlowAnswer = useCallback(
+    (answer: AriFlowAnswer, label: string) =>
+      sendTurn(label, { message: label, flow_answer: answer }),
+    [sendTurn],
+  );
+
+  const startWebsiteSetup = useCallback(
+    (part: string | null) =>
+      sendTurn(WEBSITE_SETUP_KICKOFF_DISPLAY, {
+        message: WEBSITE_SETUP_KICKOFF_DISPLAY,
+        website_setup_kickoff: part ? { part } : {},
+        workflow_context: "website_setup",
+      }),
+    [sendTurn],
+  );
+
   const retryTurn = useCallback(
     async (clientTurnId: string): Promise<AgentChatResponse | null> => {
       const turn = turnsRef.current.find(
         (candidate) => candidate.clientTurnId === clientTurnId,
       );
       if (!turn || !["failed", "stopped"].includes(turn.delivery)) return null;
+      // #3355 P1 (D-1): never replay a deterministic refusal.
+      if (
+        turn.delivery === "failed" &&
+        !ariTurnRetryAllowed(turn.errorCode, turn.retryAt)
+      ) {
+        return null;
+      }
+      // #3355 P1 (D-1): a turn the server refused before accepting it is
+      // retried as a fresh attempt under a new turn id, so the server judges
+      // it now instead of answering with the stored refusal.
+      if (turn.delivery === "failed" && ariRetryNeedsFreshTurn(turn)) {
+        if (sendIntentRef.current?.stableId === clientTurnId)
+          sendIntentRef.current = null;
+        replaceTurns((current) =>
+          current.filter((candidate) => candidate.clientTurnId !== clientTurnId),
+        );
+        return sendTurn(turn.displayText, turn.payload, turn.attachments);
+      }
       if (turn.accepted || turn.errorCode === "STOP_BEFORE_ACCEPTANCE") {
         try {
           // The retry RPC creates the next server attempt; clear the old
@@ -1031,8 +1212,24 @@ export function useAgentChat(
         clientTurnId,
       );
     },
-    [patchTurn, reconcileOne, sendTurn],
+    [patchTurn, reconcileOne, replaceTurns, sendTurn],
   );
+
+  // #3355 P1: when today's cap resets, re-render the failed row so its Retry
+  // appears at the server's reset time (never a dead tap before it).
+  const nextRetryAt = turns.reduce<number | null>((soonest, turn) => {
+    if (turn.delivery !== "failed" || turn.retryAt === null) return soonest;
+    if (turn.retryAt <= Date.now()) return soonest;
+    return soonest === null || turn.retryAt < soonest ? turn.retryAt : soonest;
+  }, null);
+  useEffect(() => {
+    if (nextRetryAt === null) return undefined;
+    const delay = Math.min(nextRetryAt - Date.now() + 250, 2_147_000_000);
+    const timer = setTimeout(() => {
+      replaceTurns((current) => [...current]);
+    }, Math.max(0, delay));
+    return () => clearTimeout(timer);
+  }, [nextRetryAt, replaceTurns]);
 
   const retryTenantRecovery =
     useCallback(async (): Promise<AgentChatResponse | null> => {
@@ -1072,12 +1269,22 @@ export function useAgentChat(
       const turn = turnsRef.current.find(
         (candidate) => candidate.clientTurnId === clientTurnId,
       );
-      if (!turn || turn.accepted) return;
+      // #3355 — a failed turn the server accepted (then could not answer)
+      // is discardable too; discarding takes its banner with it.
+      if (!turn || !isAriTurnDiscardable(turn)) return;
       replaceTurns((current) =>
         current.filter((candidate) => candidate.clientTurnId !== clientTurnId),
       );
       subscriptions.current.get(clientTurnId)?.();
       subscriptions.current.delete(clientTurnId);
+      // An accepted turn's attachments belong to the stored message.
+      if (turn.accepted) {
+        captureAriTurnOutcome({
+          surface: surfaceRef.current,
+          outcome: "discarded",
+        });
+        return;
+      }
       turn.attachments.forEach((attachment) => {
         if (attachment.attachmentId)
           void discardAriAttachment(attachment.attachmentId).catch(
@@ -1321,9 +1528,7 @@ export function useAgentChat(
         };
       }
     }
-    const candidate = [...scopedTurns]
-      .reverse()
-      .find(isOrdinaryTurnActivityVisible);
+    const candidate = activityTurnOf(scopedTurns);
     if (!candidate) return null;
     return {
       clientTurnId: candidate.clientTurnId,
@@ -1336,6 +1541,10 @@ export function useAgentChat(
       errorCode: candidate.errorCode,
       errorMessage: candidate.errorMessage,
       reconciling: candidate.reconciling,
+      serverWorking:
+        candidate.accepted &&
+        (candidate.attemptStatus === "running" ||
+          candidate.attemptStatus === "accepted"),
       startedAt: candidate.startedAt,
       stoppable: isAriTurnStoppable(candidate),
     };
@@ -1346,6 +1555,13 @@ export function useAgentChat(
     isLoadingMessages: messagesQuery.isLoading,
     sendMessage,
     sendChoice,
+    sendFlowAnswer,
+    startWebsiteSetup,
+    flowState: currentScope && conversationId
+      ? flowStates[conversationId]
+      : undefined,
+    applyFlowState,
+    resumeFlow,
     retryTurn,
     retryTenantRecovery,
     editTurn,

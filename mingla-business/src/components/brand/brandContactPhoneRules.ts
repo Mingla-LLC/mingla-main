@@ -104,6 +104,27 @@ export function brandOwnPhoneCountry(
 }
 
 /**
+ * #3355 — the country the phone chip moves to when the host places a new
+ * address, or null when it must not move.
+ *
+ * With NO number in the box (nothing typed, or the box cleared) the chip
+ * follows the address's country on EVERY pick (London → UK, then New York →
+ * US). With a number in the box it never moves: the number's country is the
+ * host's (or the saved number's), and nothing here second-guesses it. A
+ * country outside the directory leaves the chip alone.
+ */
+export function brandPhoneCountryAfterAddressPick(
+  phoneText: string | null | undefined,
+  addressCountryCode: string | null | undefined,
+  directory: BrandPhoneDirectory,
+): { iso: string; countrySource: Extract<BrandPhoneCountrySource, "brand"> } | null {
+  if (typeof phoneText === "string" && phoneText.trim().length > 0) return null;
+  const country = brandOwnPhoneCountry(addressCountryCode, directory);
+  // The address IS the brand's country now, so the chip's source is "brand".
+  return country === null ? null : { iso: country.iso, countrySource: "brand" };
+}
+
+/**
  * The country the host last picked for a number, kept for THIS run of the app
  * only (issue #3380 rework).
  *
