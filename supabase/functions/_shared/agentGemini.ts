@@ -10,7 +10,6 @@ import { recordApiCall } from "./apiHealthLog.ts";
 import { sanitizeGeminiContents } from "./agentGeminiContents.ts";
 // issue #3526 — model id + thinking level come from the single source.
 import {
-  GEMINI_MODEL_ID,
   GEMINI_THINKING_LEVEL_MINIMAL,
   geminiErrorFingerprint,
   geminiGenerateContentUrl,
@@ -754,20 +753,6 @@ interface OllamaResponse {
   eval_count?: number;
 }
 
-function modelVersionFromEnvironment(): string {
-  try {
-    return Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
-      ? `local:${Deno.env.get("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct"}`
-      : GEMINI_MODEL_ID;
-  } catch (error) {
-    if (
-      error instanceof Deno.errors.PermissionDenied ||
-      (error instanceof Error && error.name === "NotCapable")
-    ) return GEMINI_MODEL_ID;
-    throw error;
-  }
-}
-
 function localModelConfig(): { baseUrl: string; modelId: string } | null {
   if (Deno.env.get("ARI_LOCAL_MODEL_ENABLED") !== "true") return null;
 
@@ -949,7 +934,6 @@ async function callLocalOllama(
   };
 }
 
-// Keep importing the provider compiler permission-free. Runtime calls still
-// read the full local-model configuration, but schema and contract consumers
-// can inspect Ari's production model identity without --allow-env.
-export const ARI_MODEL_VERSION = modelVersionFromEnvironment();
+// Ari's recorded model identity lives in the leaf module (#3355) so callers
+// that only stamp it do not import this provider wrapper.
+export { ARI_MODEL_VERSION } from "./ariModelVersion.ts";

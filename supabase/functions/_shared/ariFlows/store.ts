@@ -32,9 +32,9 @@ export class FlowConflict extends Error {
 }
 
 export function flowEngineEnabled(
-  env: { get(key: string): string | undefined } = Deno.env,
+  value: string | undefined = Deno.env.get("ARI_FLOW_ENGINE"),
 ): boolean {
-  return env.get("ARI_FLOW_ENGINE") === "on";
+  return value === "on";
 }
 
 type JsonRecord = Record<string, unknown>;

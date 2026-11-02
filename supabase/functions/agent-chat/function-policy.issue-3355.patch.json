@@ -37,8 +37,14 @@
       "classification": "optional_top_level",
       "name": "ARI_RENDITION_V2_ENABLED",
       "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_FLOW_ENGINE",
+      "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "ca31ceca2f4ab33af75d9109d20b98adc0c3c78abd58f1d96cc9f90c79aa5796",
-  "reason": "Issue #3355 uses optional fail-closed controls for server-built Ari renditions and explicitly configured local or evaluation models; unset values keep those paths disabled."
+  "resultPolicySha256": "351c1752d781b98eb0b01153f3ade019efa8cbaa6fc0d70909d9196493b2e7cc",
+  "reason": "Issue #3355 uses optional fail-closed controls for server-built Ari renditions and explicitly configured local or evaluation models; unset values keep those paths disabled; ARI_FLOW_ENGINE=on switches on the deterministic flow engine, and unset keeps it off."
 }

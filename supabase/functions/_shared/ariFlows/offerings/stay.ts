@@ -21,7 +21,7 @@
 
 import { brandBlockersStep, brandCanWaitStep, listWords } from "../brandGate.ts";
 import { moneyGateStep } from "../moneyGate.ts";
-import { marketDefaultTimezone } from "../../agentAri10xTools.ts";
+import { marketDefaultTimezone } from "../../payoutCountries.ts";
 import { isValidIanaTimezone } from "../../agentRelativeTime.ts";
 import {
   attemptOf,

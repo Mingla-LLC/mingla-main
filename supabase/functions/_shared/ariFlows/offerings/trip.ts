@@ -27,7 +27,7 @@ import {
   PAYOUT_COUNTRY_TOOL,
   payoutCountryProposal,
 } from "../moneyGate.ts";
-import { marketDefaultTimezone, payoutRailFor } from "../../agentAri10xTools.ts";
+import { marketDefaultTimezone, payoutRailFor } from "../../payoutCountries.ts";
 import { isValidIanaTimezone } from "../../agentRelativeTime.ts";
 import { ticketPriceBelowMinimum } from "../../money/providerMinimums.ts";
 import { formatMinor, minorFromMajor } from "../../money/formatMinor.ts";

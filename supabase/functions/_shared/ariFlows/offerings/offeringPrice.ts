@@ -14,7 +14,7 @@ import {
   PAYOUT_COUNTRY_TOOL,
   payoutCountryProposal,
 } from "../moneyGate.ts";
-import { payoutRailFor } from "../../agentAri10xTools.ts";
+import { payoutRailFor } from "../../payoutCountries.ts";
 import { ticketPriceBelowMinimum } from "../../money/providerMinimums.ts";
 import { formatMinor, minorFromMajor } from "../../money/formatMinor.ts";
 import { assertOwnerCopy } from "../../ariOwnerCopy.ts";

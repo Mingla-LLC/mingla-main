@@ -23,7 +23,7 @@ import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { LIVE_FLOW_STATUSES } from "../_shared/ariFlows/types.ts";
 
 import { TENANT_CONTEXT_VERSION as PROMPT_VERSION } from "../_shared/agentSystemPrompt.ts";
-import { ARI_MODEL_VERSION as MODEL_VERSION } from "../_shared/agentGemini.ts";
+import { ARI_MODEL_VERSION as MODEL_VERSION } from "../_shared/ariModelVersion.ts";
 
 export async function resumeFlowForHost(args: {
   service: SupabaseClient;

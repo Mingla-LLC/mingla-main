@@ -19,7 +19,7 @@
  */
 
 import { moneySummary } from "../money/moneySplit.ts";
-import { PAYOUT_COUNTRIES, type PayoutRail } from "../agentAri10xTools.ts";
+import { PAYOUT_COUNTRIES, type PayoutRail } from "../payoutCountries.ts";
 import type { ReadinessAction } from "../readinessCatalog.ts";
 import { gateEvidence } from "./brandGate.ts";
 import type {
