@@ -1,0 +1,156 @@
+/**
+ * issue #3281 — Extras on the Host web cart step. One ticket's extras, under
+ * its quantity row, revealed once the guest has at least one of that ticket
+ * (#3283 §2.6). Lives in the deferred checkout route, so the public page pays
+ * nothing for it.
+ *
+ * The cart line is the authority: extras ride `line.addOns`, the quote prices
+ * them, and a ticket change that lowers what the line may carry trims them
+ * here before the next quote.
+ */
+
+import React, { useCallback, useEffect, useMemo } from "react";
+import { Platform } from "react-native";
+
+import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketCheckoutContract";
+
+import {
+  TicketExtrasPicker,
+  type TicketExtrasPickerTheme,
+} from "@mingla/offering-rendering/TicketExtrasPicker";
+import {
+  extraCap,
+  extraDatesOnLine,
+  extrasLineDates,
+  extrasParentCount,
+  extraSoldOutOnLine,
+  extrasCartDates,
+  fitExtrasToLine,
+  parsePublicTicketExtras,
+  withExtraQuantity,
+  type PublicTicketExtra,
+} from "@mingla/offering-rendering/ticketExtrasCart";
+
+import { accent, glass, text as textTokens } from "../../constants/designSystem";
+import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
+import type { TicketStub } from "../../store/draftEventStore";
+import { formatCurrency } from "../../utils/currency";
+import { useCart, type CartLine } from "./CartContext";
+
+const THEME: TicketExtrasPickerTheme = {
+  accent: accent.warm,
+  textPrimary: textTokens.primary,
+  textSecondary: textTokens.secondary,
+  textTertiary: textTokens.tertiary,
+  border: glass.border.chrome,
+};
+
+export interface CartTicketExtrasProps {
+  ticket: TicketStub;
+  line: CartLine | undefined;
+  eventDateIds: readonly string[];
+  occurrences: readonly PublicEventOccurrence[];
+  /** An all-days pass covers every date that hasn't ended, with none chosen. */
+  allDaysPass: boolean;
+  currency: string;
+}
+
+// In the date's own timezone, so the day named is the day being bought.
+const shortDay = (iso: string, timeZone: string): string => {
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  };
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { ...options, timeZone });
+  } catch {
+    return new Date(iso).toLocaleDateString(undefined, options);
+  }
+};
+
+export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
+  ticket,
+  line,
+  eventDateIds,
+  occurrences,
+  allDaysPass,
+  currency,
+}) => {
+  const { setLineQuantity } = useCart();
+  // The line's own fields, with new extras; an empty list clears them.
+  const setLineAddOns = useCallback(
+    (next: readonly CheckoutAddOnRequest[] | undefined): void => {
+      if (line !== undefined) setLineQuantity({ ...line, addOns: next ?? [] });
+    },
+    [line, setLineQuantity],
+  );
+  const extras = useMemo(
+    () => parsePublicTicketExtras(ticket.buyerExtras),
+    [ticket.buyerExtras],
+  );
+  const parentCount = extrasParentCount(line);
+  const lineDates = useMemo(
+    () =>
+      extrasLineDates(
+        line,
+        ticket.validOccurrenceIds,
+        extrasCartDates(eventDateIds, occurrences, allDaysPass),
+      ),
+    [line, ticket.validOccurrenceIds, eventDateIds, occurrences, allDaysPass],
+  );
+  const caps = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const extra of extras) out[extra.id] = extraCap(extra, parentCount, lineDates);
+    return out;
+  }, [extras, parentCount, lineDates]);
+
+  // Fewer tickets, other dates, or an extra taken off sale: bring the line's
+  // extras down to what it can carry, so the quote never sees an over-ask.
+  const addOns = line?.addOns;
+  useEffect(() => {
+    if (line === undefined) return;
+    // Off web the panel doesn't render, so the line carries no extras.
+    if (Platform.OS !== "web") {
+      if (addOns !== undefined && addOns.length > 0) setLineAddOns([]);
+      return;
+    }
+    const fitted = fitExtrasToLine(addOns, extras, parentCount, lineDates);
+    if (fitted !== addOns) setLineAddOns(fitted);
+  }, [addOns, extras, line, lineDates, parentCount, setLineAddOns]);
+
+  if (extras.length === 0 || line === undefined || parentCount === 0) return null;
+  // Host web only: the Host app's native paid checkout is still on contract
+  // v1, whose idempotency key ignores extras. Explorer is the native buyer app.
+  if (Platform.OS !== "web") return null;
+
+  const dateCaption = (extra: PublicTicketExtra): string | null => {
+    const dates = extraDatesOnLine(extra, lineDates);
+    // Only worth saying when it covers fewer dates than the ticket does.
+    if (dates === null || dates.length === 0 || dates.length === lineDates.length) {
+      return null;
+    }
+    const labels = occurrences
+      .filter((occurrence) => dates.includes(occurrence.id))
+      .sort((a, b) => a.startAt.localeCompare(b.startAt))
+      .map((occurrence) => shortDay(occurrence.startAt, occurrence.timezone));
+    return labels.length === 0 ? null : `${labels.join(", ")} only`;
+  };
+
+  return (
+    <TicketExtrasPicker
+      ticketName={ticket.name}
+      extras={extras}
+      selected={line.addOns}
+      caps={caps}
+      onChange={(addOnId, quantity) =>
+        setLineAddOns(withExtraQuantity(line.addOns, addOnId, quantity))
+      }
+      formatMoney={(cents) => formatCurrency(cents, currency, true)}
+      dateCaption={dateCaption}
+      soldOut={(extra) => extraSoldOutOnLine(extra, lineDates)}
+      theme={THEME}
+      testID={`issue-3281-cart-extras-${ticket.id}`}
+    />
+  );
+};

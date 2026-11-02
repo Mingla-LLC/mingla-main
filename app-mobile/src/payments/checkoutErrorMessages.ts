@@ -99,6 +99,23 @@ export const nativeCheckoutBookedStartRaiseMessage = (
   return undefined;
 };
 
+/**
+ * issue #3281 — an extra sold out or changed after the quote. Every extras
+ * refusal fires inside the create-session RPC before any payment exists.
+ */
+export const CHECKOUT_EXTRAS_CHANGED_MESSAGE =
+  "One of your extras changed or sold out. Update your extras and try again — you have not been charged.";
+
+/** An extras refusal token in `detail` or bare `error`. */
+export const nativeCheckoutExtrasRaiseMessage = (
+  ...candidates: ReadonlyArray<string | null | undefined>
+): string | undefined =>
+  candidates.some(
+    (candidate) => typeof candidate === "string" && /\bextras?_[a-z_]+/.test(candidate),
+  )
+    ? CHECKOUT_EXTRAS_CHANGED_MESSAGE
+    : undefined;
+
 // ---------------------------------------------------------------------------
 // issue #2264 — the RETURN LEG. Everything above answers "the server refused to
 // CREATE the checkout"; everything below answers "the buyer came back from
@@ -207,6 +224,7 @@ export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_BOOKED_START_INVALID_MESSAGE,
   CHECKOUT_BOOKED_START_IN_PAST_MESSAGE,
   CHECKOUT_BOOKED_START_OFF_GRID_MESSAGE,
+  CHECKOUT_EXTRAS_CHANGED_MESSAGE,
 ];
 
 /**

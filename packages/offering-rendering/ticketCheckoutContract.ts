@@ -122,6 +122,7 @@ export function normalizeCheckoutV2Lines(
     const quantity = row.quantity;
     const paymentPlanChoice = row.paymentPlanChoice;
     const byDate = row.byDate as Record<string, number> | undefined;
+    const addOns = row.addOns as CheckoutAddOnRequest[] | undefined;
     if (
       typeof ticketTypeId !== "string" || !UUID_PATTERN.test(ticketTypeId) ||
       !Number.isInteger(quantity) || Number(quantity) < 1 ||
@@ -138,6 +139,8 @@ export function normalizeCheckoutV2Lines(
       paymentPlanChoice,
       // issue #3281 — part of attempt identity; the server validates it.
       ...(byDate && { byDate }),
+      // issue #3281 — extras too; callers keep them sorted (withExtraQuantity).
+      ...(addOns?.length && { addOns }),
     });
   }
 

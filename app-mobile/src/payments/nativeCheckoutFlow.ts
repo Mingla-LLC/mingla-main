@@ -55,6 +55,7 @@ import {
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
   nativeCheckoutBookedStartRaiseMessage,
   nativeCheckoutErrorMessage,
+  nativeCheckoutExtrasRaiseMessage,
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
 import {
@@ -122,6 +123,8 @@ export interface NativeCheckoutInput {
     quantity: number;
     paymentPlanChoice?: "full" | "installments";
     byDate?: Record<string, number>;
+    /** issue #3281 — extras on this ticket; the server prices them. */
+    addOns?: Array<{ addOnId: string; quantity: number }>;
   }>;
   buyer: {
     name: string;
@@ -457,6 +460,8 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
         ? [line.ticketTypeId, line.quantity]
         : [line.ticketTypeId, line.quantity, line.paymentPlanChoice]),
       ...(line.byDate !== undefined ? [line.byDate] : []),
+      // issue #3281 — other extras are another cart.
+      ...(line.addOns !== undefined ? [line.addOns] : []),
     ]),
     paymentPlanChoice: input.paymentPlanChoice ?? null,
     purchaseTermsAccepted: input.purchaseTermsAccepted === true,
@@ -836,6 +841,7 @@ export const useNativeCheckoutFlow = (): ((
               | "full"
               | "installments",
             ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+            ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
           })),
           eventDateId: input.eventDateId ?? null,
           eventDateIds: normalizedEventDateIds(input),
@@ -885,6 +891,7 @@ export const useNativeCheckoutFlow = (): ((
                 quantity: line.quantity,
                 paymentPlanChoice: line.paymentPlanChoice,
                 ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+                ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
               }))
               : input.lines,
           // ORCH-1016: trip intake answers → orders.intake_form_data.
@@ -981,8 +988,12 @@ export const useNativeCheckoutFlow = (): ((
       // against the fingerprint from the start, with its own spec.
       return {
         outcome: "failed",
+        // issue #3281 — an extra that sold out after the quote is refused
+        // before any payment exists; say so instead of the generic 409 copy.
         message:
-          raiseCopy ?? nativeCheckoutErrorMessage(token, status),
+          raiseCopy ??
+          nativeCheckoutExtrasRaiseMessage(token, refusalDetail) ??
+          nativeCheckoutErrorMessage(token, status),
         token,
       };
     }

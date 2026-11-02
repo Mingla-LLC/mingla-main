@@ -63,6 +63,8 @@ export const quoteTicketCheckout = async (
       expectedUnitPriceCents: Math.round(line.unitPrice * 100),
       // issue #3281 — undefined drops out of the JSON for uniform carts.
       byDate: line.byDate,
+      // issue #3281 — extras ride their ticket's line; absent keeps the body.
+      addOns: line.addOns,
     })),
     surface: input.surface,
     ...(input.ticketLinkToken !== undefined && input.ticketLinkToken.length > 0

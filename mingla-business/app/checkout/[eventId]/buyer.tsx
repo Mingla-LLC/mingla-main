@@ -224,6 +224,11 @@ const splitExistingPhone = (
   return "";
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// issue #3281 — kept here, not in a shared module, so it stays out of the
+// eager chunk; the tickets step says which extra changed.
+const EXTRAS_CHANGED_MESSAGE =
+  "One of your extras changed. Go back to your tickets to update it.";
 const NAME_MIN_CHARS = 2;
 
 interface ValidationState {
@@ -296,6 +301,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     discountCode,
     quote,
     quoteStatus,
+    quoteErrorCode,
     setBuyer,
     recordResult,
     // Aliased: the free branch below declares its own `result` for the create
@@ -803,6 +809,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // render a claim the server did not make: `freeCheckoutErrorMessage` is
         // total AND keys on the bounded token, so an unidentified 409 says
         // something true and non-specific rather than "sold out".
+        // issue #3281 — an extra changed after the quote; the tickets step
+        // names which one.
+        if (/^extras?_/.test((error as { code?: string } | null)?.code ?? "")) {
+          setSubmitError(EXTRAS_CHANGED_MESSAGE);
+          return;
+        }
         setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         submitInFlight.current = false;
@@ -1133,6 +1145,32 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         </Pressable>
         {submitError !== null ? (
           <Text style={styles.errorText}>{submitError}</Text>
+        ) : null}
+        {/* issue #3281 — the quote refused an extra (it sold out, say), so the
+            button stays off; say why and take the guest back to change it. */}
+        {quoteStatus === "error" && /extras?_/.test(quoteErrorCode ?? "") ? (
+          <Text
+            style={styles.errorText}
+            accessibilityRole="button"
+            testID="issue-3281-extras-changed"
+            onPress={(): void =>
+              router.replace(
+                // The tickets step reads the chosen dates from its route.
+                `/checkout/${eventId}?${new URLSearchParams({
+                  ...(eventDateIds.length > 0
+                    ? { eventDateIds: eventDateIds.join(",") }
+                    : eventDateId !== null
+                      ? { eventDateId }
+                      : {}),
+                  ...(ticketLinkToken !== null
+                    ? { ticketLink: ticketLinkToken }
+                    : {}),
+                }).toString()}` as never,
+              )
+            }
+          >
+            {EXTRAS_CHANGED_MESSAGE}
+          </Text>
         ) : null}
         {/* #2331 — end of content: reopens the privacy bar. */}
         <PrivacyChoicesLink />
