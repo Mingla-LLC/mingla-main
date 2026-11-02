@@ -923,7 +923,8 @@ serve(async (req: Request): Promise<Response> => {
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform ?? "meta";
   // #4238 D1: a Host lane comes from adLaneForOwner; a Host body naming another
-  // lane (an old client sending "business") is refused, never rewritten.
+  // lane (an old client still naming the business lane) is refused, never
+  // rewritten.
   const laneResolution = resolveOwnerLane(requestedOwnerKind, body.lane);
   if (!isPlatform(platform)) {
     return json({ error: "validation_error", detail: "platform_invalid" }, 400);
