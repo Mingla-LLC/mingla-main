@@ -14,7 +14,7 @@
  * The sheets render inside this card's View (I-SUB-SHEET-INSIDE-PARENT).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { Suspense, useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
@@ -27,17 +27,19 @@ import { brandKeys } from "../../hooks/brandKeys";
 import { useBrand } from "../../hooks/useBrands";
 import { brandSiteKeys } from "../../sites/brandSiteKeys";
 import { joinBrandDescription } from "../../services/brandMapping";
-import { BrandAvatarPickerSheet } from "../brand/BrandAvatarPickerSheet";
+import { LazyBrandAvatarPickerSheet } from "../brand/LazyBrandAvatarPickerSheet";
 import { Button } from "../ui/Button";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
-import {
-  ARI_FLOW_UPLOAD_COPY,
-  type AriFlowUploadKind,
-} from "./ariFlowCards";
+import type { AriFlowUploadCopy, AriFlowUploadKind } from "./ariFlowCards";
 
 export interface AriFlowUploadCardProps {
   kind: AriFlowUploadKind;
+  /**
+   * The card's words (`ARI_FLOW_UPLOAD_COPY[kind]`), passed by the chat so
+   * this lazy card does not share ariFlowCards with the chat chunk (#3493).
+   */
+  copy: AriFlowUploadCopy;
   brandId: string | null;
   accountId: string | null;
   /** Offline, sending, or not the current card. */
@@ -65,6 +67,7 @@ export function refreshAfterFlowUpload(
 
 export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
   kind,
+  copy,
   brandId,
   accountId,
   disabled,
@@ -76,7 +79,6 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const [open, setOpen] = useState(false);
-  const copy = ARI_FLOW_UPLOAD_COPY[kind];
   const ready =
     brand !== null &&
     brandId !== null &&
@@ -166,16 +168,19 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
         accessibilityHint={copy.note}
         testID={`ari-flow-upload-${kind}`}
       />
-      {ready && kind === "logo" ? (
-        <BrandAvatarPickerSheet
-          visible={open}
-          brandId={brandId}
-          accountId={accountId}
-          existingDescription={existingDescription}
-          currentPhotoUrl={brand.photo ?? null}
-          onClose={handleClose}
-          onPicked={handleLogoSaved}
-        />
+      {/* The picker loads when the owner opens it (one lazy owner, #3493). */}
+      {ready && kind === "logo" && open ? (
+        <Suspense fallback={null}>
+          <LazyBrandAvatarPickerSheet
+            visible
+            brandId={brandId}
+            accountId={accountId}
+            existingDescription={existingDescription}
+            currentPhotoUrl={brand.photo ?? null}
+            onClose={handleClose}
+            onPicked={handleLogoSaved}
+          />
+        </Suspense>
       ) : null}
       {saveError ? (
         <Text style={styles.note} accessibilityLiveRegion="polite">

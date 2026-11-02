@@ -18,7 +18,7 @@
  * newly picked point), and ranking falls back to the brand's country when it
  * has no saved point (shared `proximitySources`, rank-only).
  */
-import React, { useCallback, useRef, useState } from "react";
+import React, { Suspense, useCallback, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { LocationSelectionState } from "@mingla/location-input";
 
@@ -40,7 +40,8 @@ import {
   isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
-import { AddressMapPreview } from "../location/AddressMapPreview";
+// The shared preview loads through its one lazy owner (#3493).
+import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 
 export interface BrandEditAddressFieldProps {
@@ -165,13 +166,15 @@ export const BrandEditAddressField: React.FC<BrandEditAddressFieldProps> = ({
       </Text>
       <View style={styles.mapGap}>
         {/* A cleared address shows the empty state, never the old pin. */}
-        <AddressMapPreview
-          lat={text.length > 0 ? lat : null}
-          lng={text.length > 0 ? lng : null}
-          approximate={approximate}
-          accessibilityLabel={`Map of ${text.length > 0 ? text : "your address"}`}
-          testID={testID !== undefined ? `${testID}-map` : undefined}
-        />
+        <Suspense fallback={null}>
+          <LazyAddressMapPreview
+            lat={text.length > 0 ? lat : null}
+            lng={text.length > 0 ? lng : null}
+            approximate={approximate}
+            accessibilityLabel={`Map of ${text.length > 0 ? text : "your address"}`}
+            testID={testID !== undefined ? `${testID}-map` : undefined}
+          />
+        </Suspense>
       </View>
     </View>
   );

@@ -13,7 +13,7 @@
  * Per Cycle 3 spec §3.9 Step 3.
  */
 
-import React from "react";
+import React, { Suspense } from "react";
 import { precisionFromPlaceDetails } from "@mingla/location-input";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -48,8 +48,9 @@ import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import type { LocationSelectionState } from "@mingla/location-input";
 // ORCH-1186 [wizard-map-preview] — the static-map preview (vendor-neutral
 // `static-map` proxy, honest empty state) now lives in the shared
-// AddressMapPreview so Brand Edit renders the same one (#3355).
-import { AddressMapPreview } from "../location/AddressMapPreview";
+// AddressMapPreview so Brand Edit renders the same one (#3355). It loads
+// through its one lazy owner so it stays off the eager boot path (#3493).
+import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
 
 import { errorForKey, type StepBodyProps } from "./types";
 import { whereStepAddressCopy } from "./whereStepCopy";
@@ -288,12 +289,14 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               coords, honest "pick an address" empty state otherwise, and
               (#1363) an approximate point at a lower zoom with a caption.
               #3355 — the shared AddressMapPreview, also used by Brand Edit. */}
-          <AddressMapPreview
-            lat={draft.locationGeo?.lat ?? null}
-            lng={draft.locationGeo?.lng ?? null}
-            approximate={draft.coordinatePrecision === "approximate"}
-            accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
-          />
+          <Suspense fallback={null}>
+            <LazyAddressMapPreview
+              lat={draft.locationGeo?.lat ?? null}
+              lng={draft.locationGeo?.lng ?? null}
+              approximate={draft.coordinatePrecision === "approximate"}
+              accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
+            />
+          </Suspense>
 
           {/* Privacy info card */}
           <GlassCard

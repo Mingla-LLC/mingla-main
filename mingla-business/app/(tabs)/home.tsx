@@ -40,7 +40,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { BusinessPulsePanel } from "../../src/components/home/BusinessPulsePanel";
 import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
@@ -116,6 +115,14 @@ import {
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
 import { canViewBrandPayments } from "../../src/utils/brandPaymentsPermission";
+
+// #3355 — the brand switcher loads when the owner opens it, the way Hub,
+// Account and Marketing load it (#3493); a static import here, in the staff
+// Home and in Ari kept it in `__common`.
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
 
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
 // Account tab and Hub layout; a static import here kept it in `__common`.
@@ -998,13 +1005,19 @@ export default function HomeTab(): React.ReactElement {
         // orch-0974-lock-pane:end-mobile-populated
       )}
 
-      <BrandSwitcherSheet
-        visible={sheetVisible}
-        onClose={handleCloseSheet}
-        onBrandCreated={handleBrandCreated}
-        onDefaultBrandSaveError={handleDefaultBrandSaveError}
-        onRequestDeleteBrand={handleRequestDeleteBrand}
-      />
+      {/* #3355 — the switcher loads when the owner opens it, like Hub,
+          Account and Marketing already do (#3493). */}
+      {sheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={handleCloseSheet}
+            onBrandCreated={handleBrandCreated}
+            onDefaultBrandSaveError={handleDefaultBrandSaveError}
+            onRequestDeleteBrand={handleRequestDeleteBrand}
+          />
+        </Suspense>
+      ) : null}
 
       {/* ORCH-0826 M0: universal creator sheet (Create event/experience/trip) */}
       {isUniversalCreatorOpen ? (

@@ -109,7 +109,11 @@ describe("ORCH-1186 wizard map preview — CreatorStep3Where wiring", () => {
   );
 
   test("builds the static-map URL from the picked address coords", () => {
-    expect(SRC).toContain("<AddressMapPreview");
+    // Through its one lazy owner, off the eager boot path (#3493).
+    expect(SRC).toContain("<LazyAddressMapPreview");
+    expect(read("src/components/location/LazyAddressMapPreview.tsx")).toContain(
+      'import("./AddressMapPreview")',
+    );
     expect(SRC).toContain("lat={draft.locationGeo?.lat ?? null}");
     expect(SRC).toContain("lng={draft.locationGeo?.lng ?? null}");
     expect(PREVIEW).toContain("buildStaticMapUrl({");

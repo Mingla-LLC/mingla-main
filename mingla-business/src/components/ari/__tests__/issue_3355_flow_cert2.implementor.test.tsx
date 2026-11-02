@@ -405,7 +405,11 @@ describe("#3355 cert round 2 — D6 in-chat logo and cover upload", () => {
 
   test("the upload card reuses Brand details' own pickers, loaded lazily by the chat screen", () => {
     const card = read("mingla-business/src/components/ari/AriFlowUploadCard.tsx");
-    expect(card).toMatch(/import \{ BrandAvatarPickerSheet \} from "\.\.\/brand\/BrandAvatarPickerSheet";/);
+    // The avatar picker loads through its one lazy owner (#3493), shared with Brand Edit.
+    expect(card).toMatch(/import \{ LazyBrandAvatarPickerSheet \} from "\.\.\/brand\/LazyBrandAvatarPickerSheet";/);
+    expect(read("mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx")).toMatch(
+      /import\("\.\/BrandAvatarPickerSheet"\)/,
+    );
     expect(card).toMatch(/import \{ CoverPickerSheet \} from "\.\.\/ui\/CoverPickerSheet";/);
     expect(card).toMatch(/kind: "brand",/);
     // No second upload path: no storage or brand write of its own.

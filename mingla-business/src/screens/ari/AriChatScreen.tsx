@@ -50,9 +50,10 @@ import {
 } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
-import type {
-  AriFlowPlaceMode,
-  AriFlowUploadKind,
+import {
+  ARI_FLOW_UPLOAD_COPY,
+  type AriFlowPlaceMode,
+  type AriFlowUploadKind,
 } from "../../components/ari/ariFlowCards";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { StreamingText } from "../../components/ari/StreamingText";
@@ -77,7 +78,6 @@ import type {
   AriFlowAnswer,
   AriFlowPlaceValue,
 } from "../../services/agentChatService";
-import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import {
   ARI_PROPOSAL_EXPIRED_COPY,
   ariChatErrorCopy,
@@ -224,6 +224,11 @@ const composerOccupiedPxFor = (
  * modules never join this screen's boot path or its render suites.
  */
 // #3355 P7 — the address picker on Ari's "Where is it?" event card.
+// #3355 — the brand switcher loads when the owner opens it, as on Home (#3493).
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
 const AriFlowPlaceCard = React.lazy(() =>
   import("../../components/ari/AriFlowPlaceCard").then((module) => ({
     default: module.AriFlowPlaceCard,
@@ -1310,6 +1315,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 <React.Suspense fallback={null}>
                   <AriFlowUploadCard
                     kind={kind}
+                    copy={ARI_FLOW_UPLOAD_COPY[kind]}
                     brandId={selectedBrandId}
                     accountId={accountId}
                     disabled={disabled}
@@ -1604,10 +1610,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         surface={surface}
       />
 
-      <BrandSwitcherSheet
-        visible={brandSwitcherOpen}
-        onClose={() => setBrandSwitcherOpen(false)}
-      />
+      {/* #3355 — the switcher loads when the owner opens it (#3493). */}
+      {brandSwitcherOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={() => setBrandSwitcherOpen(false)}
+          />
+        </React.Suspense>
+      ) : null}
 
       <AriAttachmentSourceSheet
         visible={attachmentSourceOpen}

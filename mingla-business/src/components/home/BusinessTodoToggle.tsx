@@ -40,7 +40,12 @@ import { useTodoToggleCollapseStore } from "../../store/todoToggleCollapseStore"
 import type { BusinessTodo } from "../../utils/businessTodos";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { TodoReadinessRetry } from "./TodoReadinessRetry";
+// #3355 — "Try again" shows only when the readiness read failed, so it loads
+// then, off the eager boot path (#3493).
+const LazyTodoReadinessRetry = React.lazy(async () => {
+  const mod = await import("./TodoReadinessRetry");
+  return { default: mod.TodoReadinessRetry };
+});
 
 if (
   Platform.OS === "android" &&
@@ -167,10 +172,12 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
                 </Pressable>
               )}
               {todo.retryReadinessBrandId !== undefined ? (
-                <TodoReadinessRetry
-                  brandId={todo.retryReadinessBrandId}
-                  testID={testID !== undefined ? `${testID}-row-${todo.id}-retry` : undefined}
-                />
+                <React.Suspense fallback={null}>
+                  <LazyTodoReadinessRetry
+                    brandId={todo.retryReadinessBrandId}
+                    testID={testID !== undefined ? `${testID}-row-${todo.id}-retry` : undefined}
+                  />
+                </React.Suspense>
               ) : null}
             </View>
           ))}

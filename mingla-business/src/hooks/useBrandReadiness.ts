@@ -8,10 +8,9 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
-import {
-  fetchBrandReadiness,
-  type BrandReadiness,
-  type BrandReadinessAction,
+import type {
+  BrandReadiness,
+  BrandReadinessAction,
 } from "../services/brandReadinessService";
 import { brandReadinessKeys } from "./brandReadinessKeys";
 
@@ -37,6 +36,11 @@ export function useBrandReadiness(
       if (brandId === null) {
         throw new Error("useBrandReadiness: brandId is null but enabled");
       }
+      // #3355 — the read and its shape check load with the first read, not
+      // on every visitor's boot path (#3493): Home is in the eager chunk.
+      const { fetchBrandReadiness } = await import(
+        "../services/brandReadinessService"
+      );
       return fetchBrandReadiness(brandId, action);
     },
   });

@@ -221,8 +221,14 @@ const FLOW_UPLOAD_ITEMS: Readonly<Record<string, AriFlowUploadKind>> =
     event_cover: "event_cover",
   });
 
+export interface AriFlowUploadCopy {
+  action: string;
+  note: string;
+  answer: string;
+}
+
 export const ARI_FLOW_UPLOAD_COPY: Readonly<
-  Record<AriFlowUploadKind, { action: string; note: string; answer: string }>
+  Record<AriFlowUploadKind, AriFlowUploadCopy>
 > = Object.freeze({
   logo: {
     action: "Upload your logo",

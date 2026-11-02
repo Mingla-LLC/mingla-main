@@ -9,7 +9,7 @@ import React from "react";
 type Node = { type: unknown; props: Record<string, unknown> };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
-  act: (callback: () => void) => void;
+  act: (callback: () => void | Promise<void>) => void | Promise<void>;
   create: (node: React.ReactElement) => {
     root: { findAll: (predicate: (node: Node) => boolean) => Node[] };
     unmount: () => void;
@@ -71,6 +71,8 @@ jest.mock("../../ui/CoverPickerSheet", () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { AriFlowUploadCard } = require("../AriFlowUploadCard") as typeof import("../AriFlowUploadCard");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { ARI_FLOW_UPLOAD_COPY } = require("../ariFlowCards") as typeof import("../ariFlowCards");
 
 function mount(kind: "logo" | "cover", onUploaded: () => void, disabled = false) {
   let renderer!: ReturnType<typeof TestRenderer.create>;
@@ -78,6 +80,7 @@ function mount(kind: "logo" | "cover", onUploaded: () => void, disabled = false)
     renderer = TestRenderer.create(
       <AriFlowUploadCard
         kind={kind}
+        copy={ARI_FLOW_UPLOAD_COPY[kind]}
         brandId="b1"
         accountId="u1"
         disabled={disabled}
@@ -88,6 +91,22 @@ function mount(kind: "logo" | "cover", onUploaded: () => void, disabled = false)
   return renderer;
 }
 
+/**
+ * The logo picker loads through its lazy owner when the owner opens it
+ * (#3493), so press "Upload your logo" and let the lazy chunk resolve.
+ */
+async function openLogoSheet(renderer: ReturnType<typeof TestRenderer.create>): Promise<Node> {
+  const button = renderer.root.findAll((n) => n.type === "button")[0];
+  await TestRenderer.act(async () => {
+    (button.props.onPress as () => void)();
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  });
+  await TestRenderer.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return renderer.root.findAll((n) => n.type === "avatar-sheet")[0];
+}
+
 const invalidatedKeys = (): string[] =>
   invalidateQueries.mock.calls.map((call) =>
     JSON.stringify((call as unknown as [{ queryKey: unknown }])[0].queryKey),
@@ -96,10 +115,10 @@ const invalidatedKeys = (): string[] =>
 describe("#3355 in-chat upload card", () => {
   beforeEach(() => invalidateQueries.mockClear());
 
-  test("bug 15: a logo save refreshes the brand, its readiness and the Website setup pane", () => {
+  test("bug 15: a logo save refreshes the brand, its readiness and the Website setup pane", async () => {
     const uploaded = jest.fn();
     const renderer = mount("logo", uploaded);
-    const sheet = renderer.root.findAll((n) => n.type === "avatar-sheet")[0];
+    const sheet = await openLogoSheet(renderer);
     TestRenderer.act(() =>
       (sheet.props.onPicked as (r: { publicUrl: string }) => void)({
         publicUrl: "https://cdn.test/logo.png",
@@ -147,19 +166,18 @@ describe("#3355 in-chat upload card", () => {
     expect(pane).not.toMatch(/queryKey:\s*\[/);
   });
 
-  test("logo: the owner opens the Brand details avatar picker; its save asks Ari to check", () => {
+  test("logo: the owner opens the Brand details avatar picker; its save asks Ari to check", async () => {
     const uploaded = jest.fn();
     const renderer = mount("logo", uploaded);
     const button = renderer.root.findAll((n) => n.type === "button")[0];
     expect(button.props.label).toBe("Upload your logo");
-    let sheet = renderer.root.findAll((n) => n.type === "avatar-sheet")[0];
-    expect(sheet.props.visible).toBe(false);
+    // Not loaded or mounted until the owner opens it.
+    expect(renderer.root.findAll((n) => n.type === "avatar-sheet")).toHaveLength(0);
+    const sheet = await openLogoSheet(renderer);
+    expect(sheet.props.visible).toBe(true);
     expect(sheet.props.brandId).toBe("b1");
     expect(sheet.props.accountId).toBe("u1");
     expect(sheet.props.existingDescription).toBe("Walks\n\nCoastal walks.");
-    TestRenderer.act(() => (button.props.onPress as () => void)());
-    sheet = renderer.root.findAll((n) => n.type === "avatar-sheet")[0];
-    expect(sheet.props.visible).toBe(true);
     expect(uploaded).not.toHaveBeenCalled();
     TestRenderer.act(() =>
       (sheet.props.onPicked as (r: { publicUrl: string }) => void)({
@@ -167,8 +185,7 @@ describe("#3355 in-chat upload card", () => {
       }),
     );
     expect(uploaded).toHaveBeenCalledTimes(1);
-    sheet = renderer.root.findAll((n) => n.type === "avatar-sheet")[0];
-    expect(sheet.props.visible).toBe(false);
+    expect(renderer.root.findAll((n) => n.type === "avatar-sheet")).toHaveLength(0);
     renderer.unmount();
   });
 

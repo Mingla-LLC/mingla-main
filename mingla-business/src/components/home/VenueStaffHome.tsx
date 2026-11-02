@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { Suspense, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -20,11 +20,17 @@ import {
 } from "../../constants/designSystem";
 import { useVenueListings } from "../../hooks/useVenueListings";
 import type { Brand } from "../../store/currentBrandStore";
-import { BrandSwitcherSheet } from "../brand/BrandSwitcherSheet";
+
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
+
+// #3355 — the switcher loads when the member opens it, as on Home (#3493).
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
 
 export function VenueStaffHomeBoundary({
   mode,
@@ -94,13 +100,17 @@ export function VenueStaffHomeBoundary({
   return (
     <>
       {content}
-      <BrandSwitcherSheet
-        visible={switcherVisible}
-        onClose={onSwitcherClose}
-        onBrandCreated={onBrandCreated}
-        onDefaultBrandSaveError={onDefaultBrandSaveError}
-        onRequestDeleteBrand={onRequestDeleteBrand}
-      />
+      {switcherVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={onSwitcherClose}
+            onBrandCreated={onBrandCreated}
+            onDefaultBrandSaveError={onDefaultBrandSaveError}
+            onRequestDeleteBrand={onRequestDeleteBrand}
+          />
+        </Suspense>
+      ) : null}
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
           visible={toastVisible}

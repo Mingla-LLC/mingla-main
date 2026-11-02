@@ -22,6 +22,7 @@
  */
 
 import React, {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -91,7 +92,7 @@ import { TopBar } from "../ui/TopBar";
 // everyone else rather than offered and then refused by the database. Uses the
 // existing `accountId` prop (the signed-in operator) — no new auth dependency.
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
-import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
+import { LazyBrandAvatarPickerSheet } from "./LazyBrandAvatarPickerSheet";
 import { BrandEditAddressField } from "./BrandEditAddressField";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -1216,17 +1217,21 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       {/* ORCH-0807 — brand avatar picker (Upload only). Sibling of the
           cover picker; mounted inside the parent host View per the
           sub-sheet-inside-parent rule. */}
-      {brand !== null && accountId !== null ? (
-        <BrandAvatarPickerSheet
-          visible={avatarPickerVisible}
-          brandId={brand.id}
-          accountId={accountId}
-          existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
-          currentPhotoUrl={draft?.photo ?? null}
-          onClose={handleCloseAvatarPicker}
-          onPicked={handleAvatarPicked}
-          onErrorToast={fireToast}
-        />
+      {/* #3355 — the picker loads when the owner opens it, through the one
+          lazy owner Ari's in-chat upload shares (#3493). */}
+      {brand !== null && accountId !== null && avatarPickerVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandAvatarPickerSheet
+            visible
+            brandId={brand.id}
+            accountId={accountId}
+            existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
+            currentPhotoUrl={draft?.photo ?? null}
+            onClose={handleCloseAvatarPicker}
+            onPicked={handleAvatarPicked}
+            onErrorToast={fireToast}
+          />
+        </Suspense>
       ) : null}
 
       {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
