@@ -253,16 +253,16 @@ BEGIN
   END IF;
 
   -- #3355 complete-trip creation must reach the canonical Ari executor and
-  -- preserve explicit date-only boundaries in the requested local timezone.
+  -- store the owner's calendar days exactly as the Host wizard does (P8:
+  -- start T00:00:00Z, end T23:59:59Z, zone kept separately, no package).
+  -- Full contract: issue_3355_trip_seed_truth.implementor.pg17.test.sql.
   v_trip_args := jsonb_build_object(
     'brand_id', v_brand,
     'title', 'Ari local date-only trip',
     'description', 'Lagos wellness retreat',
     'timezone', 'Africa/Lagos',
-    'start_date', '2027-01-08',
-    'end_date', '2027-01-10',
-    'destination_text', 'Lagos',
-    'max_guests', 20
+    'start_date', format('%s-01-08', extract(year FROM now())::int + 1),
+    'end_date', format('%s-01-10', extract(year FROM now())::int + 1)
   );
   INSERT INTO public.agent_pending_actions(
     id, user_id, tool_name, tool_args, status, source, related_brand_id,
@@ -282,18 +282,17 @@ BEGIN
    WHERE event_id = v_created_trip AND is_master;
   IF (SELECT status FROM public.events WHERE id = v_created_trip) <> 'draft'
      OR (SELECT visibility FROM public.events WHERE id = v_created_trip) <> 'draft' THEN
-    RAISE EXCEPTION 'Ari trip executor did not keep the trip private';
+    RAISE EXCEPTION 'Ari trip executor did not keep the trip unpublished';
   END IF;
   IF v_created_date.timezone <> 'Africa/Lagos'
      OR v_created_date.start_at IS DISTINCT FROM
-          ('2027-01-08 00:00:00'::timestamp AT TIME ZONE 'Africa/Lagos')
+          (v_trip_args->>'start_date' || 'T00:00:00Z')::timestamptz
      OR v_created_date.end_at IS DISTINCT FROM
-          ('2027-01-10 00:00:00'::timestamp AT TIME ZONE 'Africa/Lagos') THEN
-    RAISE EXCEPTION 'Ari trip date-only range was not saved at local midnight';
+          (v_trip_args->>'end_date' || 'T23:59:59Z')::timestamptz THEN
+    RAISE EXCEPTION 'Ari trip calendar days were not stored like the Host wizard';
   END IF;
-  IF (SELECT quantity_total FROM public.ticket_types
-       WHERE event_id = v_created_trip AND name = 'Standard') <> 20 THEN
-    RAISE EXCEPTION 'Ari trip guest limit was not saved';
+  IF EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id = v_created_trip) THEN
+    RAISE EXCEPTION 'Ari invented a package for the trip';
   END IF;
   IF EXISTS (SELECT 1 FROM public.trip_days WHERE event_id = v_created_trip) THEN
     RAISE EXCEPTION 'Ari invented itinerary content for the trip';
