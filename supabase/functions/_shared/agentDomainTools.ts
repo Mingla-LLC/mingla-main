@@ -3887,6 +3887,28 @@ function ariAudienceName(row: Record<string, unknown>): string {
   return String(row.display_name ?? "Audience");
 }
 
+// #4238 wave 2 rework — the same size words the Host app shows
+// (hostAdAudienceSize in mingla-business hostAdCopy.ts). host_ad_audiences
+// encodes 1-9 people as approx_size 1, so a bare number would let Ari say
+// "about 1 person" for a list of six. A lookalike has no size of its own.
+export function ariAudienceSizeWords(
+  row: Record<string, unknown>,
+): string | null {
+  if (row.kind === "lookalike") return null;
+  const size = typeof row.approx_size === "number" ? row.approx_size : null;
+  if (size === 0) return "No people yet";
+  const platforms = Array.isArray(row.platforms)
+    ? row.platforms as Record<string, unknown>[]
+    : [];
+  const building = platforms.length > 0 &&
+    platforms.every((item) =>
+      item.state === "pending" || item.state === "syncing"
+    );
+  if (size === null || building) return "Building now";
+  if (size < 10) return "Fewer than 10 people";
+  return `About ${size.toLocaleString("en-US")} people`;
+}
+
 const AD_AUDIENCE_NOT_OWNED =
   "That audience doesn't belong to this brand. Ads can only use the brand's own audiences from list_ad_audiences.";
 
@@ -3946,7 +3968,7 @@ export async function ariCheckedAudienceNames(
 // RPC runs under the caller's JWT and refuses brands the caller can't read.
 const listAdAudiences = writeTool(
   "list_ad_audiences",
-  "List the brand's own ad audiences (past guests, contacts, people like your guests) with rough sizes and which apps they're ready on. Names and sizes only: never people. Use the returned keys in propose_ad_plan audience_keys; never invent keys.",
+  "List the brand's own ad audiences (past guests, contacts, people like your guests) with their size in words and which apps they're ready on. Names and sizes only: never people. Each size is already plain words (\"About 250 people\", \"Fewer than 10 people\", \"No people yet\", \"Building now\"); repeat it exactly as given and never turn it into a number. A lookalike has no size (size is null), so say only which apps are building it. Use the returned keys in propose_ad_plan audience_keys; never invent keys.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
@@ -3968,9 +3990,7 @@ const listAdAudiences = writeTool(
         return {
           key: String(row.audience_key),
           name: ariAudienceName(row),
-          approx_size: typeof row.approx_size === "number"
-            ? row.approx_size
-            : null,
+          size: ariAudienceSizeWords(row),
           ready_on: platforms.filter((item) => item.state === "ready").map(
             (item) => adPlatformName(item.platform),
           ),

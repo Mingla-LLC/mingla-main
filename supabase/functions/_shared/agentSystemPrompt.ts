@@ -375,7 +375,7 @@ CAPABILITIES (your tools):
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
-- list_ad_audiences — the brand's own ad audiences (past guests, contacts, people like your guests) with rough sizes and the apps each is ready on. Ari can attach the brand's own audiences from list_ad_audiences via propose_ad_plan audience_keys; never invent keys; if not enough people, say so plainly
+- list_ad_audiences — the brand's own ad audiences (past guests, contacts, people like your guests) with each size already in plain words (repeat it as given, never as a number) and the apps each is ready on. Ari can attach the brand's own audiences from list_ad_audiences via propose_ad_plan audience_keys; never invent keys; if not enough people, say so plainly
 - propose_ad_plan — propose one immutable Host video ad plan across one or more connected Meta, Google, TikTok, Snapchat, or Reddit accounts (no spend; budget/cap are brand-currency portfolio totals and are split explicitly per provider; first get explicit paid-ad media-rights confirmation, its owned/licensed/brand-authorized basis, and AI disclosure; distinct from Blast draft_campaign)
 - approve_ad_plan — open the typed Host LAUNCH review for the already video-bound immutable plan, then Mingla holds the exact Ads credit and creates/launches provider objects only after confirmation and any required staff review
 - pause_ad_campaign — pause a Host ad

@@ -209,9 +209,9 @@ import {
 } from "../_shared/adHostGoal.ts";
 import { PURCHASE_SIGNAL_MIN_28D } from "../_shared/adSalesReadiness.ts";
 import {
-  audienceBindingMismatch,
-  type PlatformBindingRow,
-} from "../_shared/adListAudienceRules.ts";
+  frozenAudienceBinding,
+  validateOnlyAudienceBinding,
+} from "../_shared/adAudienceBinding.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
   compatibleMetaValidateReference,
@@ -1376,71 +1376,17 @@ serve(async (req: Request): Promise<Response> => {
     // on this platform, selected by this version, and (Host) the plan
     // brand's own; the frozen ids must equal exactly that set.
     {
-      const compiledAudience =
-        (targetingSnapshot.compiled_targeting ?? {}) as Record<string, unknown>;
-      const selection = (version.canonical_plan as Record<string, unknown>)
-        ?.audience_selection as Record<string, unknown> | undefined;
-      const includeKeys = Array.isArray(selection?.include_keys)
-        ? (selection!.include_keys as unknown[]).filter((key): key is string =>
-          typeof key === "string"
-        )
-        : [];
-      let bindingRows: PlatformBindingRow[] = [];
-      if (includeKeys.length > 0) {
-        const { data: defs, error: defsError } = await supabase
-          .from("ad_list_audiences")
-          .select("id,audience_key,owner_kind,brand_id,status")
-          .in("audience_key", includeKeys);
-        const defRows = (defs ?? []) as Record<string, unknown>[];
-        const { data: states, error: statesError } = defRows.length > 0
-          ? await supabase.from("ad_list_audience_platforms")
-            .select("audience_id,platform,state,provider_audience_id")
-            .eq("platform", platform)
-            .in("audience_id", defRows.map((row) => row.id))
-          : { data: [], error: null };
-        if (defsError || statesError) {
-          return json({
-            error: "plan_conflict",
-            detail: "audience_binding_unverified",
-          }, 409);
-        }
-        bindingRows = ((states ?? []) as Record<string, unknown>[]).flatMap(
-          (state) => {
-            const def = defRows.find((row) => row.id === state.audience_id);
-            return def && def.status === "active"
-              ? [{
-                provider_audience_id: typeof state.provider_audience_id ===
-                    "string"
-                  ? state.provider_audience_id
-                  : null,
-                platform: String(state.platform),
-                state: String(state.state),
-                audience_key: String(def.audience_key),
-                owner_kind: String(def.owner_kind),
-                brand_id: typeof def.brand_id === "string" ? def.brand_id : null,
-              }]
-              : [];
-          },
-        );
+      const binding = await frozenAudienceBinding(supabase, {
+        platform,
+        canonicalPlan: version.canonical_plan,
+        compiled: targetingSnapshot.compiled_targeting,
+        ownerKind: String(plan.owner_kind),
+        planBrandId: typeof plan.brand_id === "string" ? plan.brand_id : null,
+      });
+      if (!binding.ok) {
+        return json({ error: "plan_conflict", detail: binding.detail }, 409);
       }
-      if (
-        audienceBindingMismatch({
-          platform,
-          compiled: compiledAudience,
-          includeKeys,
-          ownerKind: String(plan.owner_kind),
-          planBrandId: typeof plan.brand_id === "string" ? plan.brand_id : null,
-          rows: bindingRows,
-        })
-      ) {
-        return json({
-          error: "plan_conflict",
-          detail: "audience_binding_mismatch",
-        }, 409);
-      }
-      boundProspectingAudienceIds = bindingRows
-        .filter((row) => row.state === "ready" && row.provider_audience_id)
-        .map((row) => String(row.provider_audience_id));
+      boundProspectingAudienceIds = binding.prospectingAudienceIds;
     }
     frozenExecutionTargeting = providerExecutionTargeting(
       platform,
@@ -1547,7 +1493,20 @@ serve(async (req: Request): Promise<Response> => {
       planHash,
       providerDeliveryBudgetCents: providerAmountCents,
     });
-  } else if (requestedOwnerKind === "host") {
+  } else {
+    // #4238 (I-4238-AUDIENCE-SERVER-BOUND): validate_only runs the same
+    // frozen-audience binding guard before any provider call.
+    const binding = await validateOnlyAudienceBinding(supabase, {
+      platform,
+      body,
+      ownerKind: requestedOwnerKind,
+      brandId: requestedOwnerKind === "host" ? requestedBrandId : null,
+    });
+    if (!binding.ok) {
+      return json({ error: "plan_conflict", detail: binding.detail }, 409);
+    }
+  }
+  if (body.validate_only === true && requestedOwnerKind === "host") {
     const authority = await resolveAdBrandCurrency(supabase, requestedBrandId);
     if (!authority.ok) {
       return json({
