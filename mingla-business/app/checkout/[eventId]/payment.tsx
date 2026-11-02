@@ -245,6 +245,12 @@ function CheckoutPaymentScreenContent({
     fingerprint: string;
     handoff: TicketCheckoutProviderHandoff;
   } | null>(null);
+  // issue #3281 — the handoff restored after a provider cancel, if any.
+  const [resumedHandoff, setResumedHandoff] = useState<{
+    fingerprint: string;
+    totalCents: number;
+    currency: string;
+  } | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId,
     ticketLinkToken,
@@ -327,6 +333,32 @@ function CheckoutPaymentScreenContent({
       if (typeof payload.eventDateId === "string") {
         setEventDateId(payload.eventDateId);
       }
+      // issue #3281 — the page this cart was already handed. Pay re-follows it
+      // while the cart is unchanged, so the first checkout's hold stays theirs.
+      // Only an https page is ever followed back out of storage.
+      const stored = payload.providerHandoff as
+        | Record<string, unknown>
+        | undefined;
+      if (
+        stored !== undefined &&
+        stored !== null &&
+        typeof stored.fingerprint === "string" &&
+        typeof stored.redirectUrl === "string" &&
+        stored.redirectUrl.startsWith("https://") &&
+        Number.isInteger(stored.totalCents) &&
+        typeof stored.currency === "string" &&
+        payload.providerHandoff !== undefined
+      ) {
+        providerHandoffRef.current = {
+          fingerprint: payload.providerHandoff.fingerprint,
+          handoff: {
+            checkoutSessionId: payload.checkoutSessionId,
+            buyerStatusToken: payload.buyerStatusToken,
+            redirectUrl: payload.providerHandoff.redirectUrl,
+          },
+        };
+        setResumedHandoff(payload.providerHandoff);
+      }
     }
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mount;
@@ -392,6 +424,19 @@ function CheckoutPaymentScreenContent({
     async (acceptedQuote?: TicketQuote): Promise<void> => {
       if (processing) return;
       if (eventId === null) return;
+      // issue #3281 — an unchanged cart back from a provider cancel re-follows
+      // its page; it needs no fresh quote, which would count its own hold.
+      const resumedPage = providerHandoffRef.current;
+      if (
+        acceptedQuote === undefined &&
+        resumedHandoff !== null &&
+        resumedPage !== null &&
+        resumedPage.fingerprint === cartFingerprint
+      ) {
+        if (assignLocation(resumedPage.handoff.redirectUrl)) return;
+        setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+        return;
+      }
       const activeQuote = acceptedQuote ?? quote;
       if (
         activeQuote === null ||
@@ -555,6 +600,14 @@ function CheckoutPaymentScreenContent({
             ...(eventDateIds.length > 0
               ? { eventDateIds: [...eventDateIds] }
               : {}),
+            ...(eventDateId !== null ? { eventDateId } : {}),
+            // issue #3281 — a cancel return re-follows this page (see restore).
+            providerHandoff: {
+              fingerprint: cartFingerprint,
+              redirectUrl: handoff.redirectUrl,
+              totalCents: activeQuote.buyerTotalCents,
+              currency: activeQuote.currency,
+            },
           });
           if (assignLocation(handoff.redirectUrl)) return;
           // Sandbox / test environments where location.assign is unavailable.
@@ -777,15 +830,22 @@ function CheckoutPaymentScreenContent({
       processing,
       quote,
       quoteStatus,
+      resumedHandoff,
       setCheckoutReview,
       router,
       ticketLinkToken,
     ],
   );
 
+  // issue #3281 — back from a provider cancel with the cart unchanged: the
+  // page re-followed is the one priced at this total.
+  const resumable =
+    resumedHandoff !== null && resumedHandoff.fingerprint === cartFingerprint;
   const displayAllIn =
     quote === null
-      ? "Updating…"
+      ? resumable
+        ? formatQuoteMoney(resumedHandoff.totalCents, resumedHandoff.currency)
+        : "Updating…"
       : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
 
   // Render an empty shell while defensive guards redirect.
@@ -901,7 +961,9 @@ function CheckoutPaymentScreenContent({
         ) : null}
         {/* issue #3281 — the quote refused an extra (it sold out, say), so the
             button stays off; say why and take the guest back to change it. */}
-        {quoteStatus === "error" && /extras?_/.test(quoteErrorCode ?? "") ? (
+        {!resumable &&
+        quoteStatus === "error" &&
+        /extras?_/.test(quoteErrorCode ?? "") ? (
           <Text
             style={styles.errorText}
             accessibilityRole="button"
@@ -950,7 +1012,10 @@ function CheckoutPaymentScreenContent({
           loading={processing}
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
-          disabled={processing || quoteStatus !== "ready" || quote === null}
+          disabled={
+            processing ||
+            (!resumable && (quoteStatus !== "ready" || quote === null))
+          }
           accessibilityLabel={`Pay ${displayAllIn} with card`}
         />
       </View>
