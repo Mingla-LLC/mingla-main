@@ -1388,13 +1388,16 @@ Deno.test("P4 first offering: trips and experiences are never created here (thei
   const card = asArtefact(await step(w, store, await startRun(store), {}));
   assertEquals(
     card.artefact.options.map((o) => o.id),
-    ["create:events", "open", "not_now"],
+    // #3355 bug 20 — each kind the brand chose that has a Host creator gets
+    // its own "Add my first …" (it used to be the first one only).
+    ["create:events", "open:trips", "open:experiences", "not_now"],
   );
   assertMatch(
     card.artefact.text,
     /I can't add trips and experiences for you in this chat yet/,
   );
   assertEquals(card.artefact.options[1].route, "/trip/create");
+  assertEquals(card.artefact.options[2].route, "/experience/create");
   const run = await current(store);
   const forged = await step(w, store, run, {
     trigger: "answer",
@@ -1847,7 +1850,7 @@ Deno.test("cert2 D4: a trips-only brand is told plainly that part 7 is skipped, 
   );
   assertMatch(card.artefact.text, /add your first trip yourself in Mingla/);
   assertEquals(card.artefact.options, [
-    { id: "open", label: "Add my first trip", route: "/trip/create" },
+    { id: "open:trips", label: "Add my first trip", route: "/trip/create" },
     { id: "not_now", label: "Skip for now, keep going" },
   ]);
   const run = await current(store);
@@ -1858,6 +1861,67 @@ Deno.test("cert2 D4: a trips-only brand is told plainly that part 7 is skipped, 
     (await current(store)).step_states.first_offering.state,
     "skipped",
   );
+});
+
+Deno.test("#3355 bug 20: the first-offering card offers what the brand chose to sell, not only a trip", async () => {
+  // Experiences only: an experience, never a trip.
+  {
+    const w = world([], { site: { id: SITE }, built: true });
+    w.fields.get("offerings_selected")!.value = ["experiences"];
+    const store = new MemoryStore(OWNER);
+    const card = asArtefact(await step(w, store, await startRun(store), {}));
+    assertEquals(card.artefact.step_key, "first_offering");
+    assertEquals(card.artefact.options, [
+      {
+        id: "open:experiences",
+        label: "Add my first experience",
+        route: "/experience/create",
+      },
+      { id: "not_now", label: "Skip for now, keep going" },
+    ]);
+    assertNotMatch(JSON.stringify(card.artefact), /trip/i);
+  }
+  // Trips and experiences: both, plus the skip.
+  {
+    const w = world([], { site: { id: SITE }, built: true });
+    w.fields.get("offerings_selected")!.value = ["trips", "experiences", "venue_play"];
+    const store = new MemoryStore(OWNER);
+    const card = asArtefact(await step(w, store, await startRun(store), {}));
+    assertEquals(
+      card.artefact.options.map((o) => [o.id, o.route ?? null]),
+      [
+        ["open:trips", "/trip/create"],
+        ["open:experiences", "/experience/create"],
+        ["not_now", null],
+      ],
+    );
+    // Typing a button's words opens that page and keeps the card current.
+    const run = await current(store);
+    const typed = await step(w, store, run, {
+      trigger: "turn",
+      ownerText: "Add my first experience",
+    });
+    assertEquals(typed.kind, "notice");
+    assertEquals(
+      (typed as { open_route?: string }).open_route,
+      "/experience/create",
+    );
+    assertEquals(
+      (await current(store)).current_artefact?.artefact_id,
+      card.artefact.artefact_id,
+    );
+  }
+  // Events: Ari creates it in the chat; skip stays.
+  {
+    const w = world([], { site: { id: SITE }, built: true });
+    w.fields.get("offerings_selected")!.value = ["events"];
+    const store = new MemoryStore(OWNER);
+    const card = asArtefact(await step(w, store, await startRun(store), {}));
+    assertEquals(
+      card.artefact.options.map((o) => o.id),
+      ["create:events", "not_now"],
+    );
+  }
 });
 
 Deno.test("cert2 D4: a part 7 the plan already ticks is never passed silently", async () => {

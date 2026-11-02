@@ -469,7 +469,8 @@ async function advanceUnderLease(
       : open.options.find((candidate) => candidate.id === choiceId);
     const step = openStep;
     if (!option || !step) return { kind: "stale", artefact: open, run };
-    if (choiceId === "open") {
+    // `open:<kind>` — one of several route buttons on the same card (#3355).
+    if (choiceId === "open" || choiceId.startsWith("open:")) {
       return {
         kind: "notice",
         text: `Opening ${

@@ -1251,7 +1251,12 @@ const firstOfferingStep: StepDefinition = {
     const creatable = kinds.filter((candidate) => candidate.ari_creates);
     const elsewhere = kinds.filter((candidate) => !candidate.ari_creates);
     const elsewhereNouns = elsewhere.map((candidate) => candidate.noun);
-    const addYourself = elsewhere.find((candidate) => candidate.route);
+    // #3355 bug 20 — one "Add my first …" per kind the brand chose that has
+    // a Host creator, not just the first one (an experiences brand was only
+    // ever offered a trip-less card, a trips + experiences brand only a trip).
+    const addYourself = elsewhere.flatMap((candidate) =>
+      candidate.route ? [{ ...candidate, route: candidate.route }] : []
+    );
     return {
       done: false,
       ask: {
@@ -1285,13 +1290,11 @@ const firstOfferingStep: StepDefinition = {
             id: `create:${candidate.plan}`,
             label: `Create my first ${candidate.noun}`,
           })),
-          ...(addYourself?.route
-            ? [{
-              id: "open",
-              label: `Add my first ${addYourself.noun}`,
-              route: addYourself.route,
-            }]
-            : []),
+          ...addYourself.map((candidate) => ({
+            id: `open:${candidate.plan}`,
+            label: `Add my first ${candidate.noun}`,
+            route: candidate.route,
+          })),
           {
             id: "not_now",
             label: creatable.length > 0
