@@ -11,6 +11,7 @@ import type {
   EventCoverMediaType,
   MultiDateEntry,
   RecurrenceRule,
+  TicketExtraStub,
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
@@ -149,6 +150,8 @@ const splitTimestampInTz = (
 interface TicketTypeRow {
   // issue #3281 — null means All dates.
   valid_occurrence_keys?: string[] | null;
+  // issue #3281 — present only on the live save's returned rows.
+  extras?: unknown;
   id: string;
   event_id: string;
   name: string;
@@ -345,6 +348,7 @@ export const ticketRowToTicketStub = (row: TicketTypeRow): TicketStub => ({
   id: row.id,
   name: row.name,
   validDayIds: row.valid_occurrence_keys ?? null,
+  ...(Array.isArray(row.extras) ? { extras: row.extras as TicketExtraStub[] } : {}),
   priceGbp: row.is_free ? null : row.price_cents / 100,
   currency: asIsoCurrencyCodeOrNull(row.currency) ?? undefined,
   capacity: row.quantity_total,
@@ -602,6 +606,7 @@ const fetchTicketsForEvent = async (eventId: string): Promise<TicketStub[]> => {
   if (error !== null) throw error;
   return ((data ?? []) as TicketTypeRow[]).map(ticketRowToTicketStub);
 };
+
 
 const detailFromRow = async (
   row: BusinessManagementEventRow,

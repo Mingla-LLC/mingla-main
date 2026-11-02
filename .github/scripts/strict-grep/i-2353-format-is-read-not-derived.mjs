@@ -194,6 +194,10 @@ const S1_DRAFT_FORMAT_RE =
   /'format',\s*CASE\s+WHEN\s+lower\(btrim\(COALESCE\(v_event\.theme#>>'\{business_event,format\}'/i;
 const ISSUE_3281_DAY_LIMITED =
   "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql";
+// issue #3281 — Extras authoring copies the draft projection forward again so
+// back to draft keeps each tier's extras; every #2353 hunk rides along.
+const ISSUE_3281_EXTRAS_AUTHORING =
+  "supabase/migrations/20280314003281_issue_3281_extras_authoring.sql";
 // issue #3355 P7 — Ari's event drafts save only facts the owner gave. The
 // migration copies #2353's ari_execute_event_operation body forward and adds
 // refusals (end time, time zone, Private while frozen), a picked place and party
@@ -229,6 +233,12 @@ const SUCCESSORS = {
   business_event_draft_payload_from_graph: [
     {
       file: ISSUE_3281_DAY_LIMITED,
+      carries: [
+        { id: "S1 format read from the stored string", re: S1_DRAFT_FORMAT_RE },
+      ],
+    },
+    {
+      file: ISSUE_3281_EXTRAS_AUTHORING,
       carries: [
         { id: "S1 format read from the stored string", re: S1_DRAFT_FORMAT_RE },
       ],

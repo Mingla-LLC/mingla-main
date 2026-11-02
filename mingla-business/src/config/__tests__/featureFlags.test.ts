@@ -28,6 +28,16 @@ describe("featureFlags", () => {
     expect(featureFlags.sites).toBe(true);
   });
 
+  test("#3281 Extras authoring stays off until buyers can buy them", async () => {
+    delete process.env.EXPO_PUBLIC_FF_EXTRAS_ENABLED;
+    let flags = await import("../featureFlags");
+    expect(flags.isFeatureEnabled("extras")).toBe(false);
+    jest.resetModules();
+    process.env.EXPO_PUBLIC_FF_EXTRAS_ENABLED = "true";
+    flags = await import("../featureFlags");
+    expect(flags.isFeatureEnabled("extras")).toBe(true);
+  });
+
   test("EXPO_PUBLIC_FF_*=false disables feature", async () => {
     process.env.EXPO_PUBLIC_FF_ARI_ENABLED = "false";
     process.env.EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED = "0";
