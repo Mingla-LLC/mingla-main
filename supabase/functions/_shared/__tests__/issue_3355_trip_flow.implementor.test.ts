@@ -855,3 +855,11 @@ Deno.test("P8 (D-16): agent-chat's read-only pre-pass never holds a write", asyn
   );
   assertNotMatch(planner, /name:\s*"create_trip"/, "the planner only parses");
 });
+
+Deno.test("P8: a trip's money words talk about packages and bookings, not tickets", async () => {
+  const { paidThing, saleWords } = await import("../ariFlows/moneyGate.ts");
+  assertEquals(paidThing("trip"), "paid packages");
+  assertEquals(saleWords("trip"), "bookings can open");
+  assertEquals(paidThing("event"), "paid tickets");
+  assertEquals(saleWords("event"), "tickets can go on sale");
+});

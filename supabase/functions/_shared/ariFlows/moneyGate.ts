@@ -178,7 +178,7 @@ function moneyItemCard(args: {
       `${text} Deposits and instalments need payouts to reach the bank first.`;
   } else {
     options.push({ id: "continue", label: "Keep going" });
-    text = `${text} You can still build this ${noun} with paid tickets now.`;
+    text = `${text} You can still build this ${noun} with ${paidThing(noun)} now.`;
   }
 
   return {
@@ -189,7 +189,7 @@ function moneyItemCard(args: {
     reuse_key: `money:${item.key}`,
     title: blocksThisStep
       ? "Before deposits and instalments"
-      : "Before tickets can go on sale",
+      : `Before ${saleWords(ctx.def.noun)}`,
     text,
     options,
     handoff: {
@@ -364,7 +364,7 @@ export const moneyGateStep: StepDefinition = {
           reason: "money_at_publish",
         },
         ack:
-          "Okay. I'll build it now; tickets can go on sale once payments are ready.",
+          `Okay. I'll build it now; ${saleWords(ctx.def.noun)} once payments are ready.`,
       });
     }
     if (choiceId === "no_installments") {
@@ -412,3 +412,12 @@ export const moneyGateStep: StepDefinition = {
     return Promise.resolve(null);
   },
 };
+
+// #3355 — a trip sells bookings of packages, not tickets.
+export function paidThing(noun: string | undefined): string {
+  return noun === "trip" ? "paid packages" : "paid tickets";
+}
+
+export function saleWords(noun: string | undefined): string {
+  return noun === "trip" ? "bookings can open" : "tickets can go on sale";
+}
