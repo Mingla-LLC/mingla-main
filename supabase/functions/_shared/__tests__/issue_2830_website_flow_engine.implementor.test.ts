@@ -1616,6 +1616,16 @@ Deno.test("cert D7: readback shows the saved link; the receipt reads one clear l
     }),
     "Saved. City and country: London, United Kingdom.",
   );
+  // #3355 — an answer that already ends a sentence gets no second full stop.
+  assertEquals(
+    websiteReadbackLine("description", {
+      key: "description",
+      label: "Brand story",
+      state: "verified",
+      value: "Small group trips and hands-on classes for curious locals.",
+    }),
+    "Saved. Brand story: Small group trips and hands-on classes for curious locals.",
+  );
   const { buildToolReceiptRendition } = await import("../ariRendition.ts");
   const receipt = buildToolReceiptRendition({
     toolName: "update_brand_context",

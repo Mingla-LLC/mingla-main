@@ -298,7 +298,12 @@ export function websiteReadbackLine(fieldKey: string, field: Json): string {
   }
   if (!words) return `Saved. ${label} is set.`;
   const shown = words.length > 140 ? `${words.slice(0, 137)}…` : words;
-  return `Saved. ${label}: ${shown}.`;
+  return `Saved. ${label}: ${sentenceEnd(shown)}`;
+}
+
+/** Ends a quoted answer with one full stop: "…locals." never "…locals..". */
+function sentenceEnd(text: string): string {
+  return /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
 // ── Form answers ───────────────────────────────────────────────────────────
