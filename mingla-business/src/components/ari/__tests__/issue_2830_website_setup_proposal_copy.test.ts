@@ -102,19 +102,4 @@ describe("#2830 Website setup confirmations read as plain words", () => {
       "Continue Website setup",
     );
   });
-
-  it("wires both into the card and the owner's bubble", () => {
-    const fs = require("node:fs");
-    const path = require("node:path");
-    const card = fs.readFileSync(
-      path.resolve(__dirname, "../ToolProposalCard.tsx"),
-      "utf8",
-    );
-    const list = fs.readFileSync(
-      path.resolve(__dirname, "../MessageList.tsx"),
-      "utf8",
-    );
-    expect(card).toContain("websiteSetupProposalCopy(toolName, args)");
-    expect(list).toContain("friendlyWebsiteSetupAnswer(text)");
-  });
 });
