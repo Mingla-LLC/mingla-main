@@ -1,7 +1,7 @@
 // #4226 — who an admin email reaches.
 //
 // Every audience reads ONE list of people: the admin-only SQL function
-// public.admin_people_directory() (migration 20280228004226), the same list
+// public.admin_people_directory() (migration 20280301004226), the same list
 // the People page and the Data room read. It holds every account (with the
 // People classifier's app status: explorer, host, both, incomplete) and every
 // ticket buyer or holder with no account ('ticket_buyer_no_app').
