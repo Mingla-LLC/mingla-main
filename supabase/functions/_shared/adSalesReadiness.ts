@@ -120,3 +120,47 @@ export async function salesReadiness(
     return UNKNOWN;
   }
 }
+
+/**
+ * #4238 D4 — reuse each account's answer for a while. host_setup runs on
+ * every Ads builder load; without this every load made live reads on
+ * Mingla's shared ad accounts. In-isolate memory only (no table, no
+ * migration). A failed read ("unknown") is kept briefly so an outage does not
+ * hammer the provider. The create-campaign gates stay live and authoritative.
+ */
+export const SALES_READINESS_TTL_MS = 10 * 60 * 1000;
+export const SALES_READINESS_UNKNOWN_TTL_MS = 60 * 1000;
+
+type CachedReadiness = { at: number; value: Promise<SalesReadiness> };
+const readinessCache = new Map<string, CachedReadiness>();
+
+export function clearSalesReadinessCache(): void {
+  readinessCache.clear();
+}
+
+export async function cachedSalesReadiness(
+  conn: AdConnectionRow,
+  options: {
+    probes?: SalesSignalProbes;
+    now?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<SalesReadiness> {
+  const now = options.now ?? Date.now();
+  const key = `${conn.id}:${conn.platform}`;
+  const hit = readinessCache.get(key);
+  if (hit) {
+    const value = await hit.value;
+    const ttl = value.reason === "unknown"
+      ? SALES_READINESS_UNKNOWN_TTL_MS
+      : SALES_READINESS_TTL_MS;
+    if (now - hit.at < ttl) return value;
+  }
+  const value = salesReadiness(
+    conn,
+    options.probes ?? liveSalesSignalProbes,
+    options.timeoutMs ?? 4000,
+  );
+  readinessCache.set(key, { at: now, value });
+  return await value;
+}

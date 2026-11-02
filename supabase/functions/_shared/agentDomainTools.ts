@@ -8137,16 +8137,6 @@ const getOperatorSnapshot = writeTool(
   },
 );
 
-function formatAdMinor(value: unknown, currency: unknown): string {
-  const cents = Number(value);
-  if (!Number.isSafeInteger(cents) || cents < 0) return "unavailable";
-  const amount = (cents / 100).toFixed(2);
-  const code = typeof currency === "string" && /^[A-Z]{3}$/i.test(currency)
-    ? currency.toUpperCase()
-    : "";
-  return code ? `${amount} ${code}` : amount;
-}
-
 function adLabel(value: unknown): string {
   return String(value ?? "").replaceAll("_", " ");
 }
@@ -8161,6 +8151,84 @@ function adPlatformName(value: unknown): string {
   const key = String(value ?? "");
   return HOST_AD_PLATFORM_NAMES[key] ?? adLabel(key);
 }
+
+/** #4238 D3: money on the Ari ad card, in the brand currency when known. */
+function formatAdMoney(value: unknown, currency: unknown): string {
+  const cents = Number(value);
+  if (!Number.isSafeInteger(cents) || cents < 0) return "not available yet";
+  const code = typeof currency === "string" && /^[A-Z]{3}$/i.test(currency)
+    ? currency.toUpperCase()
+    : "";
+  if (code) {
+    try {
+      return new Intl.NumberFormat("en", { style: "currency", currency: code })
+        .format(cents / 100);
+    } catch {
+      return `${(cents / 100).toFixed(2)} ${code}`;
+    }
+  }
+  return (cents / 100).toLocaleString("en", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** "NG" → "Nigeria" for the Ari ad card (falls back to the code). */
+function adCountryName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** "deserted-island" → "Deserted Island". */
+function adTitleWords(value: unknown): string {
+  return adSlugWords(value).split(/\s+/).map((word) =>
+    word ? word[0].toUpperCase() + word.slice(1) : word
+  ).join(" ");
+}
+
+const AD_PAGE_TYPE_WORDS: Record<string, string> = {
+  event: "Event",
+  rsvp: "RSVP event",
+  trip: "Trip",
+  experience: "Experience",
+  venue: "Venue",
+  reservation: "Reservations",
+  brand: "Brand page",
+  site: "Website",
+};
+
+const AD_RIGHTS_WORDS: Record<string, string> = {
+  owned: "You own this video",
+  licensed: "You licensed this video",
+  authorized_by_brand: "The brand allowed this video",
+};
+
+const AD_RESULT_WORDS: Record<string, string> = {
+  tickets: "ticket sales",
+  ticket_purchase: "ticket sales",
+  purchase: "ticket sales",
+  signups: "sign-ups",
+  reservation: "sign-ups",
+  bookings: "bookings",
+  clicks: "page visits",
+  click: "page visits",
+  landing_page_view: "page visits",
+  page_view: "page visits",
+};
+
+function adResultWords(value: unknown): string {
+  const key = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return AD_RESULT_WORDS[key] ?? adLabel(key);
+}
+
+const AD_GENDER_WORDS: Record<string, string> = {
+  all: "all genders",
+  men: "men",
+  women: "women",
+};
 
 const AD_VERDICT_WORDS: Record<string, string> = {
   exact: "matches who you picked",
@@ -8188,6 +8256,24 @@ export async function preflightMoneyProposal(
       ),
     ];
     const budget = Number(args.budget_cents);
+    // #4238 D3: the card shows money in the brand's own currency. Ads setup
+    // is the server-owned answer; without it the card shows plain amounts.
+    let brandCurrency: string | null = null;
+    if (client && isUuid(args.brand_id)) {
+      try {
+        const setup = await invokeFn(client, "ad-plan", {
+          action: "host_setup",
+          brand_id: args.brand_id,
+        }) as { currency?: unknown };
+        brandCurrency = typeof setup?.currency === "string"
+          ? setup.currency
+          : null;
+      } catch (error) {
+        console.warn("[ari-ad-card] brand currency unavailable", {
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
     const days = hostAdScheduleDays(args.starts_at, args.ends_at);
     const daily = Number(
       args.daily_budget_cents ??
@@ -8203,12 +8289,15 @@ export async function preflightMoneyProposal(
       const remainder = total - base * platforms.length;
       return platforms.map((platform, index) =>
         `${adPlatformName(platform)}: ${
-          formatAdMinor(base + (index < remainder ? 1 : 0), null)
+          formatAdMoney(base + (index < remainder ? 1 : 0), brandCurrency)
         }`
       );
     };
     const countries = Array.isArray(args.countries)
-      ? args.countries.map((value) => String(value).toUpperCase()).join(", ")
+      ? args.countries.map((value) =>
+        adCountryName(String(value).toUpperCase())
+      )
+        .join(", ")
       : "";
     const cities = Array.isArray(args.cities)
       ? args.cities.map((value) =>
@@ -8227,13 +8316,19 @@ export async function preflightMoneyProposal(
       typeof args.age_min === "number" || typeof args.age_max === "number"
         ? `ages ${String(args.age_min ?? 13)}–${String(args.age_max ?? "100+")}`
         : "",
-      args.gender ? adLabel(args.gender) : "",
+      args.gender
+        ? AD_GENDER_WORDS[String(args.gender)] ?? adLabel(args.gender)
+        : "",
       interests.length > 0 ? interests.join(", ") : "",
     ].filter(Boolean).join(" · ");
-    const destination = [
-      adLabel(args.dest_page_type),
-      adSlugWords(args.dest_entity_slug ?? args.dest_brand_slug),
-    ].filter((value) => typeof value === "string" && value.trim()).join(" · ");
+    const pageWord = AD_PAGE_TYPE_WORDS[String(args.dest_page_type ?? "")] ??
+      adTitleWords(args.dest_page_type);
+    const pageName = adTitleWords(
+      args.dest_entity_slug ?? args.dest_brand_slug,
+    );
+    const destination = pageWord && pageName
+      ? `${pageWord}: ${pageName}`
+      : pageWord || pageName;
     const start = typeof args.starts_at === "string"
       ? args.starts_at
       : "starts after approval";
@@ -8241,6 +8336,7 @@ export async function preflightMoneyProposal(
     return {
       ad_budget_cents: budget,
       ad_daily_budget_cents: daily,
+      ...(brandCurrency ? { currency: brandCurrency } : {}),
       ad_currency_policy:
         "You pay in your brand's payout currency. The exchange rate is fixed when you save this ad.",
       ad_platforms: platforms,
@@ -8254,7 +8350,8 @@ export async function preflightMoneyProposal(
         : String(args.name ?? ""),
       ad_creative: "Add one ready video from your brand before you confirm",
       ad_media_rights: `${
-        adLabel(args.rights_basis) || "say who owns the video"
+        AD_RIGHTS_WORDS[String(args.rights_basis ?? "")] ??
+          "Say who owns the video"
       } · OK to use in paid ads · used only for this ad`,
       ad_ai_disclosure: args.ai_generated === true
         ? "Made with AI"
@@ -8316,7 +8413,9 @@ export async function preflightMoneyProposal(
       | undefined;
     const copy = canonical.copy as Record<string, unknown> | undefined;
     const countries = Array.isArray(audience?.countries)
-      ? audience.countries.map(String).join(", ")
+      ? audience.countries.map((value) => adCountryName(String(value))).join(
+        ", ",
+      )
       : "your countries";
     const cities = Array.isArray(audience?.cities)
       ? audience.cities.map((value) =>
@@ -8347,7 +8446,9 @@ export async function preflightMoneyProposal(
           String(audience?.ageMax ?? "100+")
         }`
         : "",
-      audience?.gender ? adLabel(audience.gender) : "",
+      audience?.gender
+        ? AD_GENDER_WORDS[String(audience.gender)] ?? adLabel(audience.gender)
+        : "",
       interests.length > 0 ? interests.join(", ") : "",
     ].filter(Boolean).join(" · ");
     const targeting = aggregate.targeting_snapshots.map((row) =>
@@ -8370,8 +8471,8 @@ export async function preflightMoneyProposal(
       const providerCurrency = String(
         row.provider_currency ?? hostCurrency,
       ).toUpperCase();
-      const hostAmount = formatAdMinor(row.host_budget_cents, hostCurrency);
-      const providerAmount = formatAdMinor(
+      const hostAmount = formatAdMoney(row.host_budget_cents, hostCurrency);
+      const providerAmount = formatAdMoney(
         row.provider_budget_cents,
         providerCurrency,
       );
@@ -8380,7 +8481,9 @@ export async function preflightMoneyProposal(
         : `${platform}: ${hostAmount} → ${providerAmount}`;
     }).join(" · ");
     const resultHierarchy = Array.isArray(measurement?.result_hierarchy)
-      ? measurement.result_hierarchy.map(adLabel).join(" → ")
+      ? [...new Set(measurement.result_hierarchy.map(adResultWords))].join(
+        ", then ",
+      )
       : "results Mingla can see";
     return {
       ad_budget_cents: aggregate.version.host_budget_cents,
@@ -8391,10 +8494,9 @@ export async function preflightMoneyProposal(
         destination?.title ?? adLabel(destination?.page_type) ??
           "Public Mingla page",
       ) || "Public Mingla page",
-      ad_result: String(
-        destination?.result_kind ?? measurement?.primary_result ??
-          "page conversion",
-      ).replaceAll("_", " "),
+      ad_result: adResultWords(
+        destination?.result_kind ?? measurement?.primary_result ?? "results",
+      ),
       ad_currency_policy:
         "You pay in your brand's payout currency. The exchange rate for each app is fixed for this ad.",
       ad_provider_allocation: providerAllocation ||
@@ -8405,7 +8507,8 @@ export async function preflightMoneyProposal(
       ad_creative: "Your brand video is ready for this ad",
       ad_copy: String(copy?.primary ?? "No ad text yet"),
       ad_media_rights: `${
-        adLabel(mediaRights?.rights_basis) || "not confirmed"
+        AD_RIGHTS_WORDS[String(mediaRights?.rights_basis ?? "")] ??
+          "Rights not confirmed"
       } · OK to use in paid ads · used only for this ad`,
       ad_ai_disclosure: mediaRights?.ai_generated === true
         ? "Made with AI"

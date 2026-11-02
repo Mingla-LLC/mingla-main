@@ -171,21 +171,42 @@ export function validateHostOptimization(
   return { ok: true, map };
 }
 
-/** A Host create body that names its own objective is refused. */
+/**
+ * #4238 Extra B: bidding, Google promotion type and TikTok placement are
+ * delivery choices Mingla makes, not the Host. A Host body naming them is
+ * refused the same way as an objective.
+ */
+export const HOST_DELIVERY_BODY_FIELDS = [
+  "bid_strategy",
+  "promotion_type",
+  "tiktok_placement",
+] as const;
+
+/** A Host create body that names its own objective or delivery choice is refused. */
 export function hostGoalBodyError(
   body: Record<string, unknown>,
-): "plan_optimization_mismatch" | null {
-  return HOST_GOAL_BODY_FIELDS.some((field) => body[field] !== undefined)
-    ? "plan_optimization_mismatch"
+): "plan_optimization_mismatch" | "host_delivery_field_forbidden" | null {
+  if (HOST_GOAL_BODY_FIELDS.some((field) => body[field] !== undefined)) {
+    return "plan_optimization_mismatch";
+  }
+  return HOST_DELIVERY_BODY_FIELDS.some((field) => body[field] !== undefined)
+    ? "host_delivery_field_forbidden"
     : null;
 }
 
 /**
- * A Host plan may bind only the accounts HOST_AD_LANE names, on the platform
- * the allocation says. Returns the refusal detail, or null.
+ * A Host plan may bind only connected accounts of the lane HOST_AD_LANE
+ * names, on the platform the allocation says. Returns the refusal detail, or
+ * null.
  */
 export function hostAllocationLaneError(
-  rows: readonly { id?: unknown; platform?: unknown; lane?: unknown }[],
+  rows: readonly {
+    id?: unknown;
+    platform?: unknown;
+    lane?: unknown;
+    connected?: unknown;
+    status?: unknown;
+  }[],
   requested: readonly { platform: string; connection_id: string }[],
 ): "host_connection_lane_invalid" | null {
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -193,7 +214,9 @@ export function hostAllocationLaneError(
     const row = byId.get(allocation.connection_id);
     if (
       !row || row.lane !== HOST_AD_LANE ||
-      row.platform !== allocation.platform
+      row.platform !== allocation.platform ||
+      // #4238 Extra C: only a live account may be bound to a Host plan.
+      row.connected !== true || row.status !== "connected"
     ) return "host_connection_lane_invalid";
   }
   return null;

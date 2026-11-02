@@ -133,10 +133,7 @@ Deno.test("T-A3/A8 #4238 search and create route the lane through resolveOwnerLa
   const search = await read("../../admin-ad-targeting-search/index.ts");
   assertStringIncludes(search, 'hostCaller ? "host" : "mingla"');
   assertStringIncludes(search, '"lane_owner_mismatch" }, 422');
-  assertStringIncludes(
-    search,
-    "Search isn't available for this platform right now.",
-  );
+  assertStringIncludes(search, "hostSafeSearchWarning(err)");
   const create = await read("../../admin-ad-create-campaign/index.ts");
   assertStringIncludes(
     create,
@@ -193,27 +190,72 @@ Deno.test("T-A6 #4238 a Host plan cannot bind a business-lane account", () => {
   const requested = [{ platform: "meta", connection_id: "c1" }];
   assertEquals(
     hostAllocationLaneError(
-      [{ id: "c1", platform: "meta", lane: "consumer" }],
+      [{
+        id: "c1",
+        platform: "meta",
+        lane: "consumer",
+        connected: true,
+        status: "connected",
+      }],
       requested,
     ),
     null,
   );
   assertEquals(
     hostAllocationLaneError(
-      [{ id: "c1", platform: "meta", lane: "business" }],
+      [{
+        id: "c1",
+        platform: "meta",
+        lane: "business",
+        connected: true,
+        status: "connected",
+      }],
       requested,
     ),
     "host_connection_lane_invalid",
   );
   assertEquals(
     hostAllocationLaneError(
-      [{ id: "c1", platform: "tiktok", lane: "consumer" }],
+      [{
+        id: "c1",
+        platform: "tiktok",
+        lane: "consumer",
+        connected: true,
+        status: "connected",
+      }],
       requested,
     ),
     "host_connection_lane_invalid",
   );
   assertEquals(
     hostAllocationLaneError([], requested),
+    "host_connection_lane_invalid",
+  );
+  // #4238 Extra C: a disconnected or invalid account is refused too.
+  assertEquals(
+    hostAllocationLaneError(
+      [{
+        id: "c1",
+        platform: "meta",
+        lane: "consumer",
+        connected: false,
+        status: "connected",
+      }],
+      requested,
+    ),
+    "host_connection_lane_invalid",
+  );
+  assertEquals(
+    hostAllocationLaneError(
+      [{
+        id: "c1",
+        platform: "meta",
+        lane: "consumer",
+        connected: true,
+        status: "invalid",
+      }],
+      requested,
+    ),
     "host_connection_lane_invalid",
   );
 });

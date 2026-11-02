@@ -262,17 +262,20 @@ Deno.test("#3697 Ari LAUNCH review shows immutable provider, rights and measurem
   assert(context);
   assertStringIncludes(
     String(context.ad_provider_allocation),
-    "300.00 NGN → 19.00 USD",
+    "NGN\u00a0300.00 → $19.00",
   );
   assertStringIncludes(
     String(context.ad_measurement),
-    "ticket purchase → click",
+    "ticket sales, then page visits",
   );
   assertStringIncludes(
     String(context.ad_measurement_scope),
     "ad apps only get sales data when buyers agree",
   );
-  assertStringIncludes(String(context.ad_media_rights), "authorized by brand");
+  assertStringIncludes(
+    String(context.ad_media_rights),
+    "The brand allowed this video",
+  );
   assertStringIncludes(
     String(context.ad_credit),
     "set aside only after you type LAUNCH",

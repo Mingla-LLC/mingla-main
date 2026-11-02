@@ -62,7 +62,7 @@ import {
   hostAllocationLaneError,
   validateHostOptimization,
 } from "../_shared/adHostGoal.ts";
-import { salesReadiness } from "../_shared/adSalesReadiness.ts";
+import { cachedSalesReadiness } from "../_shared/adSalesReadiness.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   deletionOrder,
@@ -1029,9 +1029,10 @@ export async function handleAdPlan(
       }, 409);
     }
     const connectionRows = (connections.data ?? []) as AdConnectionRow[];
-    // Read-only provider GETs; each settles to "not ready" on any failure.
+    // Read-only provider GETs, reused for 10 minutes per account (#4238 D4);
+    // each settles to "not ready" on any failure.
     const readiness = await Promise.allSettled(
-      connectionRows.map((row) => salesReadiness(row)),
+      connectionRows.map((row) => cachedSalesReadiness(row)),
     );
     const hostConnections = connectionRows.map((row, index) => {
       const settled = readiness[index];

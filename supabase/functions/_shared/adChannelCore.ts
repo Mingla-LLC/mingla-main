@@ -592,3 +592,29 @@ export interface AuthedClient {
   platform: Platform;
   [key: string]: unknown;
 }
+
+/** #4238 D6: the only search warning a Host ever sees for a failed lookup. */
+export const HOST_SEARCH_UNAVAILABLE =
+  "Search isn't available for this app right now. Try again in a few minutes, or keep your ad to whole countries.";
+
+/**
+ * #4238 D6: Host callers never see a provider's own error text (it can name
+ * Function Secrets or account IDs). The full detail goes to server logs only.
+ */
+export function hostSafeSearchWarning(
+  err: unknown,
+  log: (message: string, detail: Record<string, unknown>) => void = (
+    message,
+    detail,
+  ) => console.warn(message, detail),
+): string {
+  log("[targeting-search] host search failed", {
+    name: err instanceof Error ? err.name : typeof err,
+    platform: err instanceof AdApiError || err instanceof AdNotConnectedError
+      ? err.platform
+      : null,
+    code: err instanceof AdApiError ? err.code : null,
+    message: err instanceof Error ? err.message : String(err),
+  });
+  return HOST_SEARCH_UNAVAILABLE;
+}

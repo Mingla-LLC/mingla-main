@@ -135,10 +135,12 @@ Deno.test("#4238 ADV-A creative prepare refuses a Host plan named onto the busin
 
 // ── B. Allocation binding ───────────────────────────────────────────────────
 Deno.test("#4238 ADV-B a Host plan cannot bind a wrong-platform, unknown or hidden business account", () => {
+  // #4238 Extra C: rows carry connected/status (only live accounts bind).
+  const live = { connected: true, status: "connected" };
   const rows = [
-    { id: "meta-c", platform: "meta", lane: "consumer" },
-    { id: "snap-c", platform: "snapchat", lane: "consumer" },
-    { id: "meta-b", platform: "meta", lane: "business" },
+    { id: "meta-c", platform: "meta", lane: "consumer", ...live },
+    { id: "snap-c", platform: "snapchat", lane: "consumer", ...live },
+    { id: "meta-b", platform: "meta", lane: "business", ...live },
   ];
   // A consumer Snapchat account smuggled into a Meta allocation.
   assertEquals(

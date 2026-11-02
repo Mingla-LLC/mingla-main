@@ -54,7 +54,10 @@ import {
   type Lane,
   type Platform,
 } from "../_shared/adChannel.ts";
-import { resolveOwnerLane } from "../_shared/adChannelCore.ts";
+import {
+  hostSafeSearchWarning,
+  resolveOwnerLane,
+} from "../_shared/adChannelCore.ts";
 import {
   metaSearch,
   parseMetaGeoResults,
@@ -114,12 +117,12 @@ function failOpen(
   err: unknown,
   hostCaller = false,
 ): { results: []; warning: string } {
+  // #4238 D6: a Host never sees provider text (it can name secrets or IDs).
+  if (hostCaller) return { results: [], warning: hostSafeSearchWarning(err) };
   const warning = err instanceof AdApiError
     ? err.message
     : err instanceof AdNotConnectedError
-    ? (hostCaller
-      ? "Search isn't available for this platform right now."
-      : "That channel isn't connected — connect it to search its targeting.")
+    ? "That channel isn't connected — connect it to search its targeting."
     : err instanceof Error
     ? err.message
     : "Search is unavailable right now.";
