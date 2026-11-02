@@ -80,9 +80,9 @@ describe("#3040 AD-04 on Ari's ad proposal card", () => {
     const renderer = await mount({ brand_id: BRAND, creative_library_id: CREATIVE });
     expect(loadHostAdSetup).toHaveBeenCalledWith(BRAND);
     const [line] = renderer.root.findAll((node) => node.props.testID === "ari-ad-video-fit" && node.type === "Text");
-    expect(line.props.children).toBe("Fits Meta and TikTok. Snapchat needs 1080×1920.");
+    expect(line.props.children).toBe("Fits Facebook & Instagram and TikTok. Snapchat needs 1080×1920.");
     const [sheet] = renderer.root.findAll((node) => node.type === "CoverPickerSheet");
-    expect(sheet.props.adFitSummary).toBe("Fits Meta and TikTok. Snapchat needs 1080×1920.");
+    expect(sheet.props.adFitSummary).toBe("Fits Facebook & Instagram and TikTok. Snapchat needs 1080×1920.");
     renderer.unmount();
   });
 

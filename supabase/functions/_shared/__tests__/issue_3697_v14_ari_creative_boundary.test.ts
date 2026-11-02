@@ -74,7 +74,8 @@ Deno.test("#3697 Ari requires a brand-owned active video before plan freeze", as
     source.indexOf("const proposeAdPlan = writeTool("),
     source.indexOf("const approveAdPlan = writeTool("),
   );
-  assert(propose.includes("Choose and finish preparing one paid-ad video"));
+  // #4238 plain-language pass: same refusal, Host words.
+  assert(propose.includes("Pick one ready video for this ad first."));
   assert(propose.includes('.from("ad_creatives")'));
   assert(propose.includes('creative.kind !== "video"'));
   assert(propose.includes('creative.status !== "active"'));

@@ -15,7 +15,7 @@ describe("#3040 AD-04 per-platform fit sentence", () => {
         { platform: "tiktok", fits: true, needs: [] },
         { platform: "snapchat", fits: false, needs: ["1080×1920"] },
       ]),
-    ).toBe("Fits Meta and TikTok. Snapchat needs 1080×1920.");
+    ).toBe("Fits Facebook & Instagram and TikTok. Snapchat needs 1080×1920.");
   });
 
   it("joins several platforms and several needs in plain English", () => {
@@ -27,13 +27,13 @@ describe("#3040 AD-04 per-platform fit sentence", () => {
         { platform: "google", fits: true, needs: [] },
         { platform: "snapchat", fits: false, needs: ["9:16", "sound"] },
       ]),
-    ).toBe("Fits Meta, TikTok and Google. Snapchat needs 9:16 and sound.");
+    ).toBe("Fits Facebook & Instagram, TikTok and Google. Snapchat needs 9:16 and sound.");
   });
 
   it("says only what is true when nothing fits", () => {
     expect(
       formatAdFitSummary([{ platform: "meta", fits: false, needs: ["at least 5 seconds"] }]),
-    ).toBe("Meta needs at least 5 seconds.");
+    ).toBe("Facebook & Instagram needs at least 5 seconds.");
   });
 
   it("returns null (generic body) for an older server or no connected platform", () => {
@@ -55,7 +55,7 @@ describe("#3040 AD-04 per-platform fit sentence", () => {
       { id: "b", fit: [{ platform: "snapchat" as const, fits: false, needs: ["1080×1920"] }] },
     ];
     expect(adVideoFitSummaryFor({ creatives, heldId: "b", linked: creatives[0] })).toBe("Snapchat needs 1080×1920.");
-    expect(adVideoFitSummaryFor({ creatives, heldId: null, linked: creatives[0] })).toBe("Fits Meta.");
+    expect(adVideoFitSummaryFor({ creatives, heldId: null, linked: creatives[0] })).toBe("Fits Facebook & Instagram.");
     expect(adVideoFitSummaryFor({ creatives: undefined, heldId: "zz", linked: null })).toBeNull();
   });
 });

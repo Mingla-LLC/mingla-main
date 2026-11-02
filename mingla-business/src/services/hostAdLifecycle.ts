@@ -99,7 +99,7 @@ function draftItem(draft: HostAdDraft): HostAdListItem {
             name:
               stringValue(creativeRow?.name) ??
               stringValue(creativeState?.name) ??
-              "Creative in progress",
+              "Video in progress",
             kind:
               stringValue(creativeRow?.kind) ??
               stringValue(creativeState?.kind) ??
@@ -144,7 +144,7 @@ function planItem(aggregate: HostAdPlanAggregate): HostAdListItem {
       stringValue(destination?.dest_url) ??
       stringValue(destination?.url),
     creative: creativeId
-      ? { name: "Creative selected", kind: "video", previewUrl: null }
+      ? { name: "Video chosen", kind: "video", previewUrl: null }
       : null,
     currency: aggregate.version.host_currency,
     capCents: aggregate.version.host_budget_cents,
@@ -187,7 +187,7 @@ function campaignItem(campaign: HostAdCampaign): HostAdListItem {
     nextAction: campaign.next_action,
     route: `/(tabs)/marketing/ads/${campaign.id}`,
     reason: campaign.creative?.review_status?.toUpperCase().includes("REJECT")
-      ? "Provider rejected the creative"
+      ? "An app turned down your video"
       : null,
     updatedAt: campaign.updated_at ?? campaign.created_at,
   };

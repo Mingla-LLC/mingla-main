@@ -23,6 +23,16 @@ import { DateField } from "../../../../src/components/ui/DateField";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
+import {
+  HOST_AD_PLATFORM_NAMES,
+  hostAdErrorMessage,
+  hostAdReachLine,
+  hostAdResultLabel,
+  hostAdStatusLabel,
+  hostAdTargetingNote,
+  hostAdVerdictLabel,
+  platformNames,
+} from "../../../../src/components/marketing/ads/hostAdCopy";
 import { HostAdCountryPicker } from "../../../../src/components/marketing/ads/HostAdCountryPicker";
 import { HostAdPagePicker } from "../../../../src/components/marketing/ads/HostAdPagePicker";
 import {
@@ -71,20 +81,9 @@ import { hostAdOwnerKey } from "../../../../src/services/eventCoverVideoEdgeCont
 import { randomUuid } from "../../../../src/utils/randomId";
 import { adVideoFitSummaryFor } from "../../../../src/utils/adVideoFit";
 
-const PLATFORM_LABELS: Record<string, string> = {
-  meta: "Meta",
-  tiktok: "TikTok",
-  snapchat: "Snapchat",
-  google: "Google",
-  reddit: "Reddit",
-};
-
-/** "Meta", "Meta and Snapchat", "Meta, Snapchat and TikTok". */
-function platformList(platforms: readonly string[]): string {
-  const names = platforms.map((platform) => PLATFORM_LABELS[platform] ?? platform);
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
+// #4238: platforms are named the way Hosts know them.
+const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
+const platformList = platformNames;
 
 const CITY_REF_PLATFORMS = ["meta", "tiktok", "google"];
 
@@ -113,7 +112,7 @@ const HOST_AD_STEPS = [
   { id: "promote", label: "What are you promoting?" },
   { id: "audience", label: "Who should see it?" },
   { id: "budget", label: "Budget and dates" },
-  { id: "creative", label: "Creative and copy" },
+  { id: "creative", label: "Video and words" },
   { id: "review", label: "Review and launch" },
 ] as const;
 
@@ -200,21 +199,6 @@ function formatMoney(currency: string, cents: number): string {
   } catch {
     return `${currency} ${(cents / 100).toFixed(2)}`;
   }
-}
-
-function providerEstimateLabel(
-  estimate: PreparedHostAdPlan["targeting"][number]["provider_estimate"],
-): string {
-  if (
-    estimate?.state === "available" &&
-    Number.isFinite(estimate.lower_bound) &&
-    Number.isFinite(estimate.upper_bound)
-  ) {
-    return `${Number(estimate.lower_bound).toLocaleString()}–${Number(
-      estimate.upper_bound,
-    ).toLocaleString()} potential reach`;
-  }
-  return String(estimate?.state ?? "unavailable").replaceAll("_", " ");
 }
 
 function aggregateHasProviderObjectEvidence(
@@ -476,9 +460,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       } catch (cause) {
         setUnlinkedCreativeId(creativeId);
         setError(
-          cause instanceof Error
-            ? cause.message
-            : "Your ad video is saved, but it didn't link to this ad. Try linking it again.",
+          hostAdErrorMessage(cause, "Your ad video is saved, but it didn't link to this ad. Try linking it again."),
         );
       } finally {
         setAdVideoLinking(false);
@@ -654,14 +636,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
           });
           setActivePlanState(aggregate.plan.state);
           setNotice(
-            "Mingla staff is reviewing this plan. Funds are held; no provider object exists and nothing is spending.",
+            "Mingla is checking your ad. Your money is set aside and nothing is being spent yet.",
           );
         } else if (aggregate.plan.state === "changes_requested") {
           setPrepared(null);
           setActivePlanState(aggregate.plan.state);
           const reason = aggregate.reviews[0]?.reason;
           setNotice(
-            `Staff requested changes${reason ? `: ${reason}` : "."} Your held funds were returned to Ads credit. Update the fields below and prepare a new immutable version.`,
+            `Mingla asked for changes${reason ? `: ${reason}` : "."} The money you set aside is back in your Ads credit. Make the changes below, then check your ad again.`,
           );
         } else {
           setPrepared({
@@ -683,14 +665,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
           });
           setActivePlanState(aggregate.plan.state);
           setNotice(
-            "Plan restored. Review the exact hash, type LAUNCH, and resume.",
+            "Your saved ad is back. Check it, then type LAUNCH to carry on.",
           );
         }
       } catch (cause) {
         setError(
-          cause instanceof Error
-            ? cause.message
-            : "The plan could not be restored.",
+          hostAdErrorMessage(cause, "The plan could not be restored."),
         );
       } finally {
         setBusy(false);
@@ -856,9 +836,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         }
         setDraftSaveStatus("error");
         setError(
-          cause instanceof Error
-            ? cause.message
-            : "The saved ad draft could not be restored.",
+          hostAdErrorMessage(cause, "The saved ad draft could not be restored."),
         );
       });
     return () => {
@@ -907,7 +885,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     : null;
   const audienceError =
     connections.length === 0
-      ? "Choose at least one connected ad platform."
+      ? "Choose at least one app to show your ad on."
       : countries.length === 0
         ? "Choose at least one country."
         : cities.length > 0 &&
@@ -926,16 +904,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
     dailyBudgetCents <= 0
       ? "Enter a daily budget."
       : capCents < dailyBudgetCents
-        ? "The hard cap must be at least one day of budget."
+        ? "Your total budget must be at least one day of spend."
         : startDate !== "" && startDate < today
           ? "The start date cannot be in the past."
           : endDate !== "" && endDate < (startDate || today)
             ? "The end date must be on or after the start date."
             : null;
   const creativeError = !creative
-    ? "Choose a ready video creative."
+    ? "Choose a ready video."
     : !rightsConfirmed
-      ? "Confirm that this brand may use the creative in paid ads."
+      ? "Confirm your brand is allowed to use this video in paid ads."
       : name.trim().length < 3
         ? "Add a campaign name."
         : primaryText.trim().length < 3
@@ -1145,7 +1123,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         );
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "City search failed.");
+      setError(hostAdErrorMessage(cause, "City search failed."));
     } finally {
       setTargetingSearchBusy(false);
     }
@@ -1202,7 +1180,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setCityResults([]);
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "City resolution failed.",
+        hostAdErrorMessage(cause, "City resolution failed."),
       );
     } finally {
       setTargetingSearchBusy(false);
@@ -1230,12 +1208,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
       if (result.results.length === 0) {
         setNotice(
           result.warning ??
-            "No provider interest match was found. Try a broader term.",
+            "We couldn't find that interest. Try a more general word.",
         );
       }
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Interest search failed.",
+        hostAdErrorMessage(cause, "Interest search failed."),
       );
     } finally {
       setTargetingSearchBusy(false);
@@ -1287,7 +1265,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setInterestResults([]);
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Interest resolution failed.",
+        hostAdErrorMessage(cause, "Interest resolution failed."),
       );
     } finally {
       setTargetingSearchBusy(false);
@@ -1399,9 +1377,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
         }
       } catch (cause) {
         setNotice(
-          cause instanceof Error
-            ? `We couldn't check your places and interests on every platform: ${cause.message}`
-            : "We couldn't check your places and interests on every platform.",
+          hostAdErrorMessage(
+            cause,
+            "We couldn't check your places and interests on every app. Try again in a minute.",
+          ),
         );
       } finally {
         reresolveBusyRef.current = false;
@@ -1467,22 +1446,20 @@ export default function HostAdCreateRoute(): React.ReactElement {
       );
       if (next.status === "blocked") {
         setNotice(
-          "This provider needs more verified targeting data. No funds were held and nothing was created.",
+          "One of the apps can't run this audience yet. Change your places or interests, or turn that app off. No money was taken.",
         );
       } else if (next.status === "broader") {
         setNotice(
-          "This provider can run a broader audience. Review the exact widening before accepting it.",
+          "One of the apps can't target exactly who you picked, so it would show your ad to a wider group. Read the note below, then accept it or turn that app off.",
         );
       } else {
         setNotice(
-          "Immutable plan ready. Review the hash and targeting, then type LAUNCH.",
+          "Your ad is ready. Check the details below, then add the money.",
         );
       }
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "The plan could not be prepared.",
+        hostAdErrorMessage(cause, "The plan could not be prepared."),
       );
     } finally {
       setBusy(false);
@@ -1492,7 +1469,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const handleFund = async () => {
     if (!permissions.canFund) {
       setError(
-        "A finance manager, owner or approved ads spender must hold funds.",
+        "Only a finance manager, the owner or an approved ads spender can add money to an ad.",
       );
       return;
     }
@@ -1509,18 +1486,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setActivePlanState(result.state);
       if (result.state === "staff_review_required") {
         setNotice(
-          "Submitted for Mingla staff review. Your funds are held, no provider objects exist, and nothing is spending.",
+          "Sent to Mingla to check. Your money is set aside and nothing is being spent yet.",
         );
       } else {
         setNotice(
-          "Funds are held. An authorized ads operator can now type LAUNCH and start the approved plan.",
+          "Your money is set aside. Someone who can launch ads can now type LAUNCH to start your ad.",
         );
       }
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "The campaign budget could not be held.",
+        hostAdErrorMessage(cause, "The campaign budget could not be held."),
       );
     } finally {
       setBusy(false);
@@ -1529,13 +1504,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   const handleLaunch = async () => {
     if (!permissions.canLaunch) {
-      setError("Your role cannot launch provider delivery.");
+      setError("Your role can't start ads. Ask the brand owner.");
       return;
     }
     if (!prepared || prepared.status !== "ready") return;
     if (launchPhrase !== "LAUNCH") {
       setError(
-        "Type LAUNCH exactly before funds are held or provider objects are created.",
+        "Type LAUNCH in capital letters to start your ad.",
       );
       return;
     }
@@ -1549,7 +1524,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         planHash: prepared.planHash,
       });
       setNotice(
-        "The campaign was created and launched. Provider review may still gate delivery.",
+        "Your ad has started. Each app checks new ads first, so it may take a little while before people see it.",
       );
       setTimeout(() => router.replace("/(tabs)/marketing/ads" as never), 900);
     } catch (cause) {
@@ -1563,9 +1538,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         // restores the durable server state if this recovery read also fails.
       }
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "The campaign could not launch.",
+        hostAdErrorMessage(cause, "The campaign could not launch."),
       );
     } finally {
       setBusy(false);
@@ -1575,7 +1548,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const handleCancelBeforeCreate = async () => {
     if (!permissions.canEnd) {
       setError(
-        "Only the brand owner can cancel a funded plan and release its hold.",
+        "Only the brand owner can cancel this ad and get the money back.",
       );
       return;
     }
@@ -1588,7 +1561,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       await cancelHostAdPlanBeforeCreate({
         versionId: prepared.versionId,
         planHash: prepared.planHash,
-        reason: "Host canceled the frozen plan before provider creation.",
+        reason: "Host cancelled the ad before it was set up on any app.",
       });
       setPrepared(null);
       setExistingPlanId(null);
@@ -1597,14 +1570,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setProviderObjectEvidence(false);
       setCancelDialogVisible(false);
       setNotice(
-        "Plan canceled. Any held amount was returned to Ads credit; no provider object was created.",
+        "Ad cancelled. Any money you set aside is back in your Ads credit.",
       );
       await load();
     } catch (cause) {
       setCancelError(
-        cause instanceof Error
-          ? cause.message
-          : "The plan could not be canceled.",
+        hostAdErrorMessage(cause, "The plan could not be canceled."),
       );
     } finally {
       setBusy(false);
@@ -1684,7 +1655,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             <Text style={styles.back}>‹ Ads</Text>
           </Pressable>
           <Text style={styles.currency}>
-            {setup.currency} settlement currency
+            Amounts in {setup.currency}
           </Text>
         </View>
         <Text style={styles.title}>Create an ad</Text>
@@ -1765,21 +1736,26 @@ export default function HostAdCreateRoute(): React.ReactElement {
             contentStyle={styles.cardContent}
             testID="host-ad-resumable"
           >
-            <Text style={styles.sectionTitle}>Continue a saved plan</Text>
+            <Text style={styles.sectionTitle}>Carry on with a saved ad</Text>
             {resumable.map((plan) => (
               <Pressable
                 key={plan.id}
                 style={styles.savedPlan}
                 onPress={() => void resumePlan(plan.id)}
                 accessibilityRole="button"
-                accessibilityLabel={`Continue plan ${plan.state}`}
+                accessibilityLabel={`Continue saved ad, ${hostAdStatusLabel(plan.state)}`}
               >
                 <View style={styles.choiceText}>
                   <Text style={styles.choiceTitle}>
-                    {plan.state.replaceAll("_", " ")}
+                    {hostAdStatusLabel(plan.state)}
                   </Text>
                   <Text style={styles.choiceSubtitle}>
-                    {plan.destination_key}
+                    {setup.pages.find(
+                      (item) =>
+                        [item.page_type, item.brand_slug, item.page_type === "brand" ? null : item.entity_slug]
+                          .filter(Boolean)
+                          .join(":") === plan.destination_key,
+                    )?.title ?? "Saved ad"}
                   </Text>
                 </View>
                 <Text style={styles.resume}>Continue</Text>
@@ -2085,10 +2061,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ) : null}
           <Text style={styles.sectionTitle}>Set the spend and schedule boundaries</Text>
           <Text style={styles.helper}>
-            You pay and see every amount in {setup.currency}. These are
-            portfolio totals split evenly across the selected platforms; each
-            platform&apos;s exact amount and any FX quote are frozen in the
-            plan.
+            You pay and see every amount in {setup.currency}. We split your
+            budget evenly across the apps you picked, and the exchange rate is
+            fixed when you confirm your ad.
           </Text>
           <View style={styles.fieldRow}>
             <View style={styles.fieldHalf}>
@@ -2104,7 +2079,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
               />
             </View>
             <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Hard cap ({setup.currency})</Text>
+              <Text style={styles.label}>Total budget ({setup.currency})</Text>
               <Input
                 value={capAmount}
                 onChangeText={(value) => {
@@ -2112,13 +2087,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   setPrepared(null);
                 }}
                 variant="number"
-                accessibilityLabel="Campaign hard cap"
+                accessibilityLabel="Total budget for this ad"
               />
             </View>
           </View>
           <Text style={styles.helper}>
             {dailyBudgetCents > 0 && capCents > 0
-              ? `${formatMoney(setup.currency, dailyBudgetCents)} per day · never hold more than ${formatMoney(setup.currency, capCents)}`
+              ? `${formatMoney(setup.currency, dailyBudgetCents)} per day · never more than ${formatMoney(setup.currency, capCents)} in total`
               : "Enter valid positive amounts."}
           </Text>
           <View style={styles.fieldRow}>
@@ -2159,7 +2134,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
         {activeStepId === "creative" ? (
           <GlassCard variant="base" contentStyle={styles.cardContent}>
-          <Text style={styles.step}>4 · Creative and copy</Text>
+          <Text style={styles.step}>4 · Video and words</Text>
           <Text style={styles.sectionTitle}>Choose the ad</Text>
           {setup.creatives.length === 0 ? (
             <Text style={styles.helper}>
@@ -2240,7 +2215,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 }}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: rightsBasis === value }}
-                accessibilityLabel={`Creative rights: ${label}`}
+                accessibilityLabel={`Video rights: ${label}`}
               >
                 <Text style={styles.chipLabel}>{label}</Text>
               </Pressable>
@@ -2263,7 +2238,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
               ]}
             />
             <Text style={styles.choiceTitle}>
-              I confirm this creative may be used in paid ads. A paid Creator
+              I confirm this video may be used in paid ads. A paid Creator
               gig also licenses the approved video to Mingla for its own
               marketing after the full Creator fee is released.
             </Text>
@@ -2276,13 +2251,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
             }}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: aiGenerated }}
-            accessibilityLabel="Creative is AI-generated"
+            accessibilityLabel="Video is made with AI"
           >
             <View
               style={[styles.checkbox, aiGenerated && styles.checkboxChecked]}
             />
             <Text style={styles.choiceTitle}>
-              This creative is AI-generated or materially AI-edited
+              This video was made or heavily edited with AI
             </Text>
           </Pressable>
           <Text style={styles.label}>Campaign name</Text>
@@ -2321,15 +2296,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
         {activeStepId === "review" ? (
           <GlassCard variant="elevated" contentStyle={styles.cardContent}>
           <Text style={styles.step}>5 · Review and launch</Text>
-          <Text style={styles.sectionTitle}>Freeze the exact plan</Text>
+          <Text style={styles.sectionTitle}>Check your ad</Text>
           <Text style={styles.helper}>
-            Preparing performs validation only. It does not hold funds, create
-            provider objects or start spend.
+            We check your ad with each app first. This doesn&apos;t take any
+            money or start your ad.
           </Text>
           <Button
-            label={
-              prepared ? "Refresh immutable plan" : "Prepare immutable plan"
-            }
+            label={prepared ? "Check my ad again" : "Check my ad"}
             onPress={() => void handlePrepare(false)}
             disabled={Boolean(formError) || !permissions.canPlan}
             loading={busy}
@@ -2338,16 +2311,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
           />
           {!permissions.canPlan ? (
             <Text style={styles.helper}>
-              This plan is read-only for your role. You can still complete an
-              authorized funding or launch step below.
+              Your role can look at this ad but not change it. You may still be
+              able to add money or start it below.
             </Text>
           ) : null}
           {formError ? <Text style={styles.helper}>{formError}</Text> : null}
 
           {prepared ? (
             <View style={styles.planBox}>
-              <Text style={styles.label}>Immutable plan hash</Text>
-              <Text style={styles.hash}>{prepared.planHash}</Text>
               {prepared.optimizationByPlatform ? (
                 <Text style={styles.choiceTitle} testID="host-ad-goal-summary">
                   {goalSummaryLine(
@@ -2362,39 +2333,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
               ) : null}
               {prepared.measurement ? (
                 <View style={styles.targetingRow}>
-                  <Text style={styles.choiceTitle}>
-                    Measurement ·{" "}
-                    {String(prepared.measurement.quality).replaceAll("_", " ")}
+                  <Text style={styles.choiceTitle}>How we count results</Text>
+                  <Text style={styles.choiceSubtitle}>
+                    {Array.isArray(prepared.measurement.result_hierarchy) &&
+                    prepared.measurement.result_hierarchy.length > 0
+                      ? `We count ${prepared.measurement.result_hierarchy
+                          .map((value) => hostAdResultLabel(String(value)))
+                          .join(", then ")}.`
+                      : "We count the results Mingla can see."}
                   </Text>
                   <Text style={styles.choiceSubtitle}>
-                    Result order:{" "}
-                    {Array.isArray(prepared.measurement.result_hierarchy)
-                      ? prepared.measurement.result_hierarchy
-                          .map((value) => String(value).replaceAll("_", " "))
-                          .join(" → ")
-                      : "Unavailable"}
-                  </Text>
-                  <Text style={styles.choiceSubtitle}>
-                    Browser pixels and platform conversion sharing require
-                    consent. Trusted Mingla results remain in aggregate reports.
+                    We only share sales with ad apps when buyers agree to it.
+                    Your results in Mingla still count every sale.
                   </Text>
                 </View>
               ) : null}
               {prepared.mediaRights ? (
                 <View style={styles.targetingRow}>
-                  <Text style={styles.choiceTitle}>Media rights attested</Text>
+                  <Text style={styles.choiceTitle}>You confirmed the video rights</Text>
                   <Text style={styles.choiceSubtitle}>
-                    {String(prepared.mediaRights.rights_basis).replaceAll(
-                      "_",
-                      " ",
-                    )}{" "}
+                    {prepared.mediaRights.rights_basis === "licensed"
+                      ? "Licensed"
+                      : prepared.mediaRights.rights_basis === "authorized_by_brand"
+                        ? "Brand allowed"
+                        : "Owned"}{" "}
                     ·{" "}
                     {prepared.mediaRights.ai_generated === true
-                      ? "AI-generated"
-                      : "not marked AI-generated"}
+                      ? "Made with AI"
+                      : "Not made with AI"}
                   </Text>
                   <Text style={styles.choiceSubtitle}>
-                    Paid-ad use only; Mingla house reuse is not authorized.
+                    This video is used only for this paid ad.
                   </Text>
                 </View>
               ) : null}
@@ -2403,19 +2372,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   key={`validation-${platform}`}
                   style={styles.validationOk}
                 >
-                  {PLATFORM_LABELS[platform] ?? platform} preflight passed · no
-                  object created
+                  {PLATFORM_LABELS[platform] ?? platform} checked your ad · nothing
+                  is running yet
                 </Text>
               ))}
               {prepared.targeting.length > 0 ? (
                 <View style={styles.targetingRow}>
                   <Text style={styles.choiceTitle}>
-                    Provider estimates overlap
+                    Reach numbers overlap
                   </Text>
                   <Text style={styles.choiceSubtitle}>
-                    Read each platform separately. Do not add these estimates
-                    into a cross-platform total because the same person may be
-                    eligible on more than one platform.
+                    Read each app on its own. Don&apos;t add the numbers up,
+                    because the same person can use more than one app.
                   </Text>
                 </View>
               ) : null}
@@ -2423,11 +2391,17 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 <View key={row.platform} style={styles.targetingRow}>
                   <Text style={styles.choiceTitle}>
                     {PLATFORM_LABELS[row.platform] ?? row.platform} ·{" "}
-                    {row.verdict}
+                    {hostAdVerdictLabel(row.verdict)}
                   </Text>
                   {[
-                    ...(row.widening_summary ?? []),
-                    ...(row.checks_required ?? []),
+                    ...new Set(
+                      [
+                        ...(row.widening_summary ?? []),
+                        ...(row.checks_required ?? []),
+                      ].map((line) =>
+                        hostAdTargetingNote(row.platform, row.verdict, line, countries),
+                      ),
+                    ),
                   ].map((line) => (
                     <Text key={line} style={styles.choiceSubtitle}>
                       {line}
@@ -2436,31 +2410,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   {row.provider_estimate ? (
                     <>
                       <Text style={styles.choiceTitle}>
-                        Provider estimate ·{" "}
-                        {providerEstimateLabel(row.provider_estimate)}
+                        {hostAdReachLine(row.platform, row.provider_estimate)}
                       </Text>
-                      <Text style={styles.choiceSubtitle}>
-                        Observed{" "}
-                        {row.estimate_observed_at
-                          ? new Date(row.estimate_observed_at).toLocaleString()
-                          : "time unavailable"}{" "}
-                        · {row.provider_estimate.source}
-                      </Text>
-                      {row.provider_estimate.state !== "available" ? (
+                      {row.estimate_observed_at ? (
                         <Text style={styles.choiceSubtitle}>
-                          {String(row.provider_estimate.detail).replaceAll(
-                            "_",
-                            " ",
-                          )}
+                          Checked{" "}
+                          {new Date(row.estimate_observed_at).toLocaleString()}
                         </Text>
                       ) : null}
-                      {(row.provider_estimate.assumptions ?? []).map(
-                        (assumption) => (
-                          <Text key={assumption} style={styles.choiceSubtitle}>
-                            {assumption}
-                          </Text>
-                        ),
-                      )}
                     </>
                   ) : null}
                 </View>
@@ -2475,7 +2432,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     onPress={() => setAcceptBroader((value) => !value)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: acceptBroader }}
-                    accessibilityLabel="I accept the exact widening shown above"
+                    accessibilityLabel="I accept the wider audience shown above"
                   >
                     <View
                       style={[
@@ -2484,11 +2441,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       ]}
                     />
                     <Text style={styles.choiceTitle}>
-                      I accept the exact widening shown above
+                      I accept the wider audience shown above
                     </Text>
                   </Pressable>
                   <Button
-                    label="Accept and freeze a new version"
+                    label="Accept and check my ad again"
                     onPress={() => void handlePrepare(true)}
                     disabled={!acceptBroader}
                     loading={busy}
@@ -2502,13 +2459,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     permissions.canFund ? (
                       <>
                         <Text style={styles.helper}>
-                          Hold {formatMoney(setup.currency, capCents)} in Ads
-                          credit. First-three or flagged Host campaigns then
-                          stop for staff approval; no provider object is
-                          created.
+                          We&apos;ll set aside{" "}
+                          {formatMoney(setup.currency, capCents)} from your Ads
+                          credit. Your first few ads, and any ad that needs a
+                          closer look, are checked by Mingla before they start.
+                          Nothing is spent until your ad runs.
                         </Text>
                         <Button
-                          label="Hold funds"
+                          label="Set aside the money"
                           onPress={() => void handleFund()}
                           loading={busy}
                           fullWidth
@@ -2517,15 +2475,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       </>
                     ) : (
                       <Text style={styles.helper}>
-                        The immutable plan is ready. A finance manager, owner or
-                        approved ads spender must hold the budget next.
+                        Your ad is ready. A finance manager, the owner or an
+                        approved ads spender needs to add the money next.
                       </Text>
                     )
                   ) : null}
                   {activePlanState === "staff_review_required" ? (
                     <Text style={styles.helper}>
-                      Funds are held while Mingla staff reviews this exact plan.
-                      No provider object exists and nothing is spending.
+                      Your money is set aside while Mingla checks your ad.
+                      Nothing is being spent yet.
                     </Text>
                   ) : null}
                   {[
@@ -2537,8 +2495,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     permissions.canLaunch ? (
                       <>
                         <Text style={styles.helper}>
-                          Type LAUNCH exactly to create paused provider objects
-                          and activate this approved plan.
+                          Type LAUNCH to start your ad. We&apos;ll set it up on
+                          each app and it will start spending up to{" "}
+                          {formatMoney(setup.currency, capCents)} from the money
+                          you set aside.
                         </Text>
                         <Input
                           value={launchPhrase}
@@ -2552,8 +2512,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
                               "creating_paused_objects",
                               "creation_failed_retryable",
                             ].includes(activePlanState ?? "")
-                              ? "Retry provider creation and launch"
-                              : "Launch approved plan"
+                              ? "Try starting my ad again"
+                              : "Start my ad"
                           }
                           onPress={() => void handleLaunch()}
                           disabled={launchPhrase !== "LAUNCH"}
@@ -2564,8 +2524,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       </>
                     ) : (
                       <Text style={styles.helper}>
-                        Funds are held. An owner or ads operator with launch
-                        authority must complete the provider launch.
+                        Your money is set aside. The owner or someone who can
+                        launch ads needs to start it.
                       </Text>
                     )
                   ) : null}
@@ -2583,8 +2543,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     <Button
                       label={
                         activePlanState === "ready_for_funding"
-                          ? "Discard frozen plan"
-                          : "Cancel plan and release funds"
+                          ? "Delete this ad"
+                          : "Cancel ad and get my money back"
                       }
                       onPress={() => {
                         setCancelError(null);
@@ -2598,9 +2558,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   ) : null}
                   {providerObjectEvidence ? (
                     <Text style={styles.helper}>
-                      Provider object evidence is recorded. Funds remain held
-                      until Mingla reconciles those provider IDs; this plan
-                      cannot be discarded from the app.
+                      This ad was already set up on at least one app. Your
+                      money stays set aside until Mingla checks it, so you
+                      can&apos;t delete it here. Contact Mingla support if you
+                      need help.
                     </Text>
                   ) : null}
                 </>
@@ -2647,12 +2608,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
           setCancelError(null);
         }}
         onConfirm={handleCancelBeforeCreate}
-        title="Cancel this frozen ad plan?"
-        description="This releases any held Ads credit only after Mingla confirms that no provider object exists. The frozen plan cannot be resumed."
+        title="Cancel this ad?"
+        description="Type CANCEL PLAN to cancel. Once Mingla confirms the ad was not set up on any app, the money you set aside goes back to your Ads credit. You can't bring this ad back."
         variant="typeToConfirm"
         confirmText="CANCEL PLAN"
-        confirmLabel="Cancel plan"
-        cancelLabel="Keep plan"
+        confirmLabel="Cancel ad"
+        cancelLabel="Keep ad"
         destructive
         confirmLoading={busy}
         closeDisabled={busy}
@@ -2891,7 +2852,6 @@ const styles = StyleSheet.create({
   },
   resume: { ...typography.caption, color: "#FF7A18", fontWeight: "700" },
   planBox: { gap: spacing.sm, marginTop: spacing.sm },
-  hash: { fontFamily: "monospace", fontSize: 11, color: textTokens.tertiary },
   validationOk: { ...typography.caption, color: semantic.success },
   targetingRow: {
     gap: 3,

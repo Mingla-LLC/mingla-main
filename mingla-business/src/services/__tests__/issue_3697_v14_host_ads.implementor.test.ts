@@ -20,9 +20,10 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   it("links the Ads tab to a concrete Host builder", () => {
     expect(tabActions).toContain('label: "Create an ad"');
     expect(tabActions).toContain('href: "/(tabs)/marketing/ads/create"');
-    expect(createRoute).toContain("Prepare immutable plan");
-    expect(createRoute).toContain("Hold funds");
-    expect(createRoute).toContain("Launch approved plan");
+    // #4238 plain-language pass: same steps, Host words.
+    expect(createRoute).toContain("Check my ad");
+    expect(createRoute).toContain("Set aside the money");
+    expect(createRoute).toContain("Start my ad");
     expect(adsRoute).toContain("useHostAdPlans");
     expect(adsRoute).toContain('testID="ads-campaigns-empty"');
     expect(adsRoute).not.toContain("Plans in progress");
@@ -44,8 +45,8 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(createRoute).toContain("where it runs and one ready video");
     expect(service).toContain("provider_estimate");
     expect(service).toContain("estimate_observed_at");
-    expect(createRoute).toContain("Provider estimates overlap");
-    expect(createRoute).toContain("Do not add these estimates");
+    expect(createRoute).toContain("Reach numbers overlap");
+    expect(createRoute).toContain("Don&apos;t add the numbers up");
   });
 
   it("stops the first three for staff review before provider create", () => {
@@ -55,8 +56,8 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     const createIndex = service.lastIndexOf('"admin-ad-create-campaign"');
     expect(reviewIndex).toBeGreaterThan(-1);
     expect(createIndex).toBeGreaterThan(reviewIndex);
-    expect(createRoute).toContain("no provider object exists");
-    expect(createRoute).toContain("Cancel plan and release funds");
+    expect(createRoute).toContain("Your money is set aside while Mingla checks your ad.");
+    expect(createRoute).toContain("Cancel ad and get my money back");
   });
 
   it("runs provider validation only after funding, confirmation and media preparation", () => {
@@ -83,7 +84,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('phrase: "CANCEL PLAN"');
     expect(createRoute).toContain('confirmText="CANCEL PLAN"');
     expect(createRoute).toContain("aggregateHasProviderObjectEvidence");
-    expect(createRoute).toContain("Provider object evidence is recorded");
+    expect(createRoute).toContain("This ad was already set up on at least one app.");
   });
 
   it("creates every provider object paused before any Host activation", () => {
@@ -109,7 +110,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('"creating_paused_objects"');
     expect(service).toContain('action: "record_create_failure"');
     expect(service).not.toContain("item.value.campaigns.length === 0");
-    expect(createRoute).toContain("Retry provider creation and launch");
+    expect(createRoute).toContain("Try starting my ad again");
   });
 
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
@@ -119,8 +120,8 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(hostCampaignEndpoint).toContain("campaign_ids: planCampaigns.map");
     expect(hostCampaignEndpoint).toContain('from("ad_campaign_settlements")');
     expect(campaignService).toContain("settlements:");
-    expect(detailRoute).toContain("Stop and settlement");
-    expect(detailRoute).toContain("Final provider spend");
+    expect(detailRoute).toContain("Getting your money back");
+    expect(detailRoute).toContain("Final spend on the app");
   });
 
   it("reuses the shared resumable video picker instead of inventing an Ads uploader", () => {

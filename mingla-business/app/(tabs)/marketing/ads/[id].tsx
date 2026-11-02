@@ -35,6 +35,12 @@ import {
   pauseHostAdCampaign,
   resumeHostAdCampaignPlan,
 } from "../../../../src/services/hostAdCampaignService";
+import {
+  hostAdEventLabel,
+  hostAdStatusLabel,
+  humanize,
+  platformName,
+} from "../../../../src/components/marketing/ads/hostAdCopy";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { randomId } from "../../../../src/utils/randomId";
 
@@ -282,18 +288,18 @@ export default function HostAdDetailRoute(): React.ReactElement {
   )?.provider_response?.reason;
   const endState = isEnded
     ? status.toUpperCase() === "DELETED"
-      ? "Cancelled before platform spend — full Ads credit was returned"
-      : "Ended — unspent Ads credit was returned"
+      ? "Cancelled before anything was spent. All your Ads credit is back."
+      : "Ended. Any money your ad didn't spend is back in your Ads credit."
     : latestPauseReason === "destination_unavailable"
-      ? "Destination page ended or is no longer public — delivery paused"
+      ? "We paused your ad because the page it sends people to has ended or isn't public any more. Publish the page again, then resume."
       : latestPauseReason === "destination_check_failed"
-        ? "Destination availability could not be verified — delivery paused safely"
+        ? "We paused your ad because we couldn't check that your page is still public. Your money is safe; we'll try again shortly."
         : latestPauseReason === "end_date_passed"
-          ? "Campaign schedule ended — delivery paused"
+          ? "Your ad reached its end date, so we paused it."
           : latestPauseReason === "spend_fetch_failed"
-            ? "Results feed unavailable — delivery paused for budget safety"
+            ? "We paused your ad because we couldn't check how much it has spent. Your money is safe; we'll try again shortly."
             : spent !== null && cap > 0 && spent >= Math.floor(cap * 0.98)
-              ? "Budget used — delivery paused at the safety cap"
+              ? "Your ad has used its budget, so we paused it. It won't spend more than you set."
               : null;
 
   return (
@@ -311,28 +317,28 @@ export default function HostAdDetailRoute(): React.ReactElement {
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.kicker}>
             {payload.plan_campaigns
-              .map((row) => String(row.platform))
+              .map((row) => platformName(String(row.platform)))
               .join(" · ")}
           </Text>
           <Text style={styles.title}>{name}</Text>
           <Text style={styles.status} testID="ads-detail-status">
-            {status}
+            {hostAdStatusLabel(status)}
           </Text>
           <Text style={styles.metric}>
             {currency
               ? spent !== null
-                ? `Host-equivalent spend ${formatCurrency(spent, currency, true)} of ${formatCurrency(cap, currency, true)} cap`
-                : `Host budget ${formatCurrency(cap, currency, true)} held · spend conversion unavailable`
-              : "Currency authority unavailable — spending actions are blocked"}
+                ? `Spent ${formatCurrency(spent, currency, true)} of your ${formatCurrency(cap, currency, true)} budget`
+                : `${formatCurrency(cap, currency, true)} set aside · we can't show spend in your currency yet`
+              : "We can't confirm exchange rates right now, so you can't fund or launch ads for the moment. Try again later."}
           </Text>
           {payload.host_spend_equivalent_quality === "frozen_plan_fx" ? (
             <Text style={styles.muted}>
-              Host-equivalent spend uses the plan&apos;s frozen FX quote.
+              We use the exchange rate fixed when you confirmed this ad.
             </Text>
           ) : null}
           {payload.provider_spend_by_currency.length > 0 ? (
             <Text style={styles.muted}>
-              Platform-reported spend:{" "}
+              What the apps say they spent:{" "}
               {payload.provider_spend_by_currency
                 .map((row) =>
                   formatCurrency(row.spend_cents, row.currency, true),
@@ -341,29 +347,23 @@ export default function HostAdDetailRoute(): React.ReactElement {
             </Text>
           ) : null}
           {capUsed !== null ? (
-            <Text style={styles.progress}>{capUsed}% of cap used</Text>
-          ) : null}
-          {typeof c.dest_url === "string" && c.dest_url.length > 0 ? (
-            <Text style={styles.dest} numberOfLines={2}>
-              {c.dest_url}
-            </Text>
+            <Text style={styles.progress}>{capUsed}% of budget used</Text>
           ) : null}
         </GlassCard>
 
         {endState ? (
           <GlassCard variant="elevated" padding={spacing.md}>
-            <Text style={styles.sectionTitle}>End state</Text>
+            <Text style={styles.sectionTitle}>What happened</Text>
             <Text style={styles.body}>{endState}</Text>
           </GlassCard>
         ) : null}
 
         {settlements.length > 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.sectionTitle}>Stop and settlement</Text>
+            <Text style={styles.sectionTitle}>Getting your money back</Text>
             <Text style={styles.muted}>
-              Mingla returns unused Ads credit only after every provider
-              confirms the stop, reports final spend, and clears the finality
-              window.
+              We return unspent Ads credit once every app confirms your ad has
+              stopped and tells us its final spend. This can take a few days.
             </Text>
             {settlements.map((settlement) => {
               const platform = payload.plan_campaigns.find(
@@ -372,11 +372,11 @@ export default function HostAdDetailRoute(): React.ReactElement {
               return (
                 <View key={settlement.id} style={styles.timelineRow}>
                   <Text style={styles.body}>
-                    {String(platform ?? "Provider")} ·{" "}
-                    {settlement.state.replaceAll("_", " ")}
+                    {platform ? platformName(String(platform)) : "App"} ·{" "}
+                    {hostAdStatusLabel(settlement.state)}
                   </Text>
                   <Text style={styles.muted}>
-                    Final provider spend:{" "}
+                    Final spend on the app:{" "}
                     {settlement.final_provider_spend_cents === null
                       ? "pending"
                       : formatCurrency(
@@ -386,7 +386,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
                         )}
                   </Text>
                   <Text style={styles.muted}>
-                    Host equivalent:{" "}
+                    In your currency:{" "}
                     {settlement.final_host_spend_cents === null
                       ? "pending"
                       : formatCurrency(
@@ -396,10 +396,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
                         )}
                   </Text>
                   <Text style={styles.muted}>
-                    Finalize after:{" "}
+                    Money back after:{" "}
                     {settlement.settle_after
                       ? new Date(settlement.settle_after).toLocaleString()
-                      : "provider evidence pending"}
+                      : "waiting for the app to confirm"}
                   </Text>
                 </View>
               );
@@ -410,15 +410,11 @@ export default function HostAdDetailRoute(): React.ReactElement {
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.sectionTitle}>Results</Text>
           <Text style={styles.muted}>
-            Primary result: {primaryResultLabel} · quality{" "}
-            {String(
-              payload.measurement?.manifest?.quality ?? "unavailable",
-            ).replaceAll("_", " ")}
+            We count {primaryResultLabel} for this ad.
           </Text>
           <Text style={styles.muted}>
-            Browser pixels and outbound platform conversion sharing require
-            consent. Mingla shows trusted finalized results in aggregate even
-            when outbound sharing is withheld.
+            We only share sales with ad apps when buyers agree to it. Your
+            results in Mingla still count every sale.
           </Text>
           <View style={styles.metricGrid}>
             <View style={styles.metricCell}>
@@ -442,19 +438,21 @@ export default function HostAdDetailRoute(): React.ReactElement {
             Cost per {primaryResultLabel}:{" "}
             {costPerResult !== null && currency
               ? formatCurrency(costPerResult, currency, true)
-              : "Unavailable until spend and results share one currency"}
+              : "Shown once we have both spend and results"}
           </Text>
           {payload.measurement?.platform_withheld_conversion_count > 0 ? (
             <Text style={styles.muted}>
-              {payload.measurement.platform_withheld_conversion_count} trusted
-              result(s) counted by Mingla and withheld from ad platforms by
-              consent.
+              {payload.measurement.platform_withheld_conversion_count} result(s)
+              counted by Mingla but not shared with the ad apps, because those
+              buyers didn&apos;t agree to sharing.
             </Text>
           ) : null}
           {(payload.results.by_platform ?? []).map((row) => (
             <View key={row.platform} style={styles.resultRow}>
-              <Text style={styles.body}>{row.platform}</Text>
-              <Text style={styles.body}>{row.conversions} conversions</Text>
+              <Text style={styles.body}>{platformName(String(row.platform))}</Text>
+              <Text style={styles.body}>
+                {row.conversions} {primaryResultLabel}
+              </Text>
             </View>
           ))}
           {payload.by_placement.map((row) => (
@@ -462,16 +460,18 @@ export default function HostAdDetailRoute(): React.ReactElement {
               key={`${row.platform}:${row.placement}`}
               style={styles.resultRow}
             >
-              <Text style={styles.body}>{row.placement}</Text>
-              <Text style={styles.body}>{row.conversions} conversions</Text>
+              <Text style={styles.body}>{humanize(String(row.placement))}</Text>
+              <Text style={styles.body}>
+                {row.conversions} {primaryResultLabel}
+              </Text>
             </View>
           ))}
         </GlassCard>
 
         <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.sectionTitle}>Creative</Text>
+          <Text style={styles.sectionTitle}>Your video</Text>
           {payload.creatives.length === 0 ? (
-            <Text style={styles.body}>No creative record yet.</Text>
+            <Text style={styles.body}>No video added yet.</Text>
           ) : (
             payload.creatives.map((creative) => (
               <View key={creative.id} style={styles.timelineRow}>
@@ -479,13 +479,13 @@ export default function HostAdDetailRoute(): React.ReactElement {
                   {creative.ad_creatives?.name ?? creative.name}
                 </Text>
                 <Text style={styles.muted}>
-                  {creative.ad_creatives?.kind ?? "creative"} ·{" "}
-                  {creative.review_status ?? creative.status}
+                  {humanize(String(creative.ad_creatives?.kind ?? "video"))} ·{" "}
+                  {hostAdStatusLabel(creative.review_status ?? creative.status)}
                 </Text>
                 {creative.review_status?.toUpperCase().includes("REJECT") ? (
                   <Text style={styles.error}>
-                    Provider rejected this creative. Review the provider detail
-                    and replace it.
+                    The app turned this video down. Ask Ari why, then add a
+                    different video.
                   </Text>
                 ) : null}
               </View>
@@ -501,8 +501,8 @@ export default function HostAdDetailRoute(): React.ReactElement {
             payload.timeline.map((event) => (
               <View key={event.id} style={styles.timelineRow}>
                 <Text style={styles.body}>
-                  {event.action.replace(/_/g, " ")} ·{" "}
-                  {event.to_status ?? event.entity ?? "recorded"}
+                  {hostAdEventLabel(event.action)}
+                  {event.to_status ? ` · ${hostAdStatusLabel(event.to_status)}` : ""}
                 </Text>
                 <Text style={styles.muted}>
                   {new Date(event.created_at).toLocaleString()}
@@ -513,7 +513,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           {payload.credit_events.map((event) => (
             <View key={event.id} style={styles.timelineRow}>
               <Text style={styles.body}>
-                {event.entry_kind.replace(/_/g, " ")} ·{" "}
+                {hostAdEventLabel(event.entry_kind)} ·{" "}
                 {formatCurrency(event.amount_cents, event.currency, true)}
               </Text>
               <Text style={styles.muted}>
@@ -547,10 +547,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
         {resumeConfirmVisible ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.sectionTitle}>Resume paid delivery?</Text>
+            <Text style={styles.sectionTitle}>Restart your ad?</Text>
             <Text style={styles.muted}>
-              This resumes every paused provider campaign in the immutable plan.
-              Type LAUNCH to confirm.
+              Type LAUNCH to restart your ad on every app. It will start
+              spending again from the money you set aside.
             </Text>
             <TextInput
               value={resumePhrase}
@@ -559,7 +559,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
               autoCapitalize="characters"
               autoCorrect={false}
               style={styles.confirmInput}
-              accessibilityLabel="Type LAUNCH to resume this ad plan"
+              accessibilityLabel="Type LAUNCH to restart this ad"
               testID="ads-detail-resume-phrase"
             />
             <View style={styles.actions}>
@@ -684,8 +684,8 @@ export default function HostAdDetailRoute(): React.ReactElement {
         }
         description={
           destructiveAction === "end"
-            ? "Type END to stop every provider campaign in this plan. Final spend must settle before unused Ads credit is returned."
-            : "Type CANCEL to stop this unspent plan and return its reserved Ads credit."
+            ? "Type END to stop your ad on every app. Any money it didn't spend goes back to your Ads credit once each app confirms its final spend."
+            : "Type CANCEL to stop this ad. Nothing has been spent, so the money you set aside goes back to your Ads credit."
         }
         confirmLabel={destructiveAction === "end" ? "End ad" : "Cancel ad"}
         destructive

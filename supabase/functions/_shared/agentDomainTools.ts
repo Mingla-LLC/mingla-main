@@ -3530,7 +3530,7 @@ function buildHostAdCreatePayload(
   if (!allocation || !snapshot) {
     throw new ToolError(
       "INVALID_ARGS",
-      "The approved plan is missing a provider allocation or frozen target",
+      "This ad is missing an app or its audience. Ask me to set the ad up again.",
     );
   }
   const deliveryBudgets = canonical.delivery_budgets as
@@ -3551,7 +3551,7 @@ function buildHostAdCreatePayload(
   ) {
     throw new ToolError(
       "INVALID_ARGS",
-      "The approved plan budget is incomplete",
+      "This ad's budget isn't complete. Ask me to set the budget again.",
     );
   }
   const audience = (snapshot.audience_intent ?? {}) as Record<string, unknown>;
@@ -3739,7 +3739,7 @@ async function resolveAriTargetingRefs(
 }
 
 const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
-  meta: "Meta",
+  meta: "Facebook & Instagram",
   google: "Google",
   tiktok: "TikTok",
   snapchat: "Snapchat",
@@ -3910,7 +3910,7 @@ const proposeAdPlan = writeTool(
     if (!isUuid(args.creative_library_id)) {
       throw new ToolError(
         "INVALID_ARGS",
-        "Choose and finish preparing one paid-ad video before creating the immutable plan",
+        "Pick one ready video for this ad first.",
       );
     }
     const { data: creative, error: creativeError } = await client
@@ -3924,7 +3924,7 @@ const proposeAdPlan = writeTool(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "The selected creative must be an active video owned by this brand",
+        "That video isn't ready or doesn't belong to this brand. Pick another ready video.",
       );
     }
     const cap = Number(args.budget_cents);
@@ -4007,7 +4007,10 @@ const proposeAdPlan = writeTool(
     }) as { plan?: { id?: string } };
     const planId = opened.plan?.id;
     if (!planId || !isUuid(planId)) {
-      throw new ToolError("RPC_FAILED", "ad-plan open returned no plan id");
+      throw new ToolError(
+        "RPC_FAILED",
+        "I couldn't start this ad just now. Try again in a minute.",
+      );
     }
     const destinationPage = (Array.isArray(setup.pages) ? setup.pages : [])
       .find((page) =>
@@ -4085,7 +4088,10 @@ const proposeAdPlan = writeTool(
     const versionId = versioned.version?.id;
     const planHash = versioned.version?.plan_hash;
     if (!versionId || !planHash) {
-      throw new ToolError("RPC_FAILED", "ad-plan version returned no binding");
+      throw new ToolError(
+        "RPC_FAILED",
+        "I couldn't save this ad just now. Try again in a minute.",
+      );
     }
     const frozen = await invokeFn(client, "ad-plan", {
       action: "freeze_targeting",
@@ -4119,8 +4125,8 @@ const proposeAdPlan = writeTool(
       targeting_snapshots: frozen.targeting_snapshots ?? [],
       ready_for_funding: !blocked,
       next_step: blocked
-        ? "Resolve or explicitly accept every targeting difference in a new plan version."
-        : "Review this exact plan and approve its bound video with LAUNCH.",
+        ? "Some apps can't reach exactly who you picked. Change the places or interests, or accept the wider audience, and I'll check the ad again."
+        : "Check this ad and its video, then approve it by typing LAUNCH. Nothing is spent until it starts.",
     };
   },
 );
@@ -4144,7 +4150,7 @@ const approveAdPlan = writeTool(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "plan id, version and hash are required",
+        "I need the exact ad you want to start. Open it from your Ads list and try again.",
       );
     }
     let aggregate = await invokeFn(client, "ad-plan", {
@@ -4158,13 +4164,13 @@ const approveAdPlan = writeTool(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "The approval does not match the current plan version",
+        "This ad changed since you approved it. Check the latest version and approve it again.",
       );
     }
     if (!isUuid(aggregate.version.canonical_plan.creative_library_id)) {
       throw new ToolError(
         "INVALID_ARGS",
-        "creative_library_id must be a uuid of a READY video creative; create a new plan version after attaching it",
+        "This ad needs a ready video. Add one, then I'll check the ad again.",
       );
     }
     if (
@@ -4172,7 +4178,7 @@ const approveAdPlan = writeTool(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "Staff review requires a revised immutable plan before approval",
+        "Mingla asked for changes. Update the ad, then I'll check it again.",
       );
     }
     if (aggregate.plan.state === "staff_review_required") {
@@ -4244,9 +4250,9 @@ const approveAdPlan = writeTool(
             if (retried) {
               throw new ToolError(
                 "EDGE_FAILED",
-                `${platform}: ${
+                `${HOST_AD_PLATFORM_NAMES[platform] ?? platform}: ${
                   row.error?.message ??
-                    "The ad platform could not prepare this video"
+                    "couldn't get your video ready. Try again, or use a different video."
                 }`,
               );
             }
@@ -4260,7 +4266,9 @@ const approveAdPlan = writeTool(
           if (attempt === 59) {
             throw new ToolError(
               "EDGE_FAILED",
-              `${platform} is still preparing the video; resume this exact plan shortly`,
+              `${
+                HOST_AD_PLATFORM_NAMES[platform] ?? platform
+              } is still getting your video ready. Try again in a few minutes.`,
             );
           }
           const seconds = Math.min(
@@ -4304,7 +4312,7 @@ const approveAdPlan = writeTool(
         if (!campaignId || !isUuid(campaignId)) {
           throw new ToolError(
             "RPC_FAILED",
-            "provider create returned no campaign id",
+            "An app didn't confirm your ad was set up. Try starting it again in a minute.",
           );
         }
         created.push(result);

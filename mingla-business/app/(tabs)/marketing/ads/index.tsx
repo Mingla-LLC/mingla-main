@@ -50,6 +50,10 @@ import {
   type HostAdFilter,
   type HostAdLifecycle,
 } from "../../../../src/services/hostAdLifecycle";
+import {
+  humanize,
+  platformName,
+} from "../../../../src/components/marketing/ads/hostAdCopy";
 import { formatCurrency } from "../../../../src/utils/currency";
 
 function firstParam(value: string | string[] | undefined): string | null {
@@ -436,8 +440,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
           ) : adItems.length === 0 ? (
             <View style={styles.emptyHistory} testID="ads-campaigns-empty">
               <Text style={styles.emptyHistoryText}>
-                No Host ads yet. Create one here or ask Ari to propose the same
-                immutable plan.
+                No ads yet. Create one here, or ask Ari to set one up for you.
               </Text>
             </View>
           ) : filteredAds.length === 0 ? (
@@ -502,9 +505,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
                     </View>
                     <Text style={styles.campaignMeta} numberOfLines={1}>
                       {item.platforms.length > 0
-                        ? item.platforms.join(" · ")
-                        : "Platforms chosen during setup"}
-                      {item.destination ? ` · ${item.destination}` : ""}
+                        ? item.platforms.map(platformName).join(" · ")
+                        : "Apps chosen during setup"}
+                      {item.destination && !/^https?:\/\//i.test(item.destination)
+                        ? ` · ${item.destination}`
+                        : ""}
                     </Text>
                     <Text style={styles.campaignMeta}>{money}</Text>
                     {item.kind === "campaign" ? (
@@ -517,7 +522,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
                       </Text>
                     ) : null}
                     {item.reason ? (
-                      <Text style={styles.planReason}>{item.reason}</Text>
+                      <Text style={styles.planReason}>
+                        {/\s/.test(item.reason) ? item.reason : humanize(item.reason)}
+                      </Text>
                     ) : null}
                     <Text style={styles.nextAction}>{item.nextAction} →</Text>
                   </View>
