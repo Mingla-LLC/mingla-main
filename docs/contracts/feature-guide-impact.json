@@ -107,6 +107,7 @@
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
         "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql",
         "supabase/migrations/20280301003281_issue_3281_extras_schema.sql",
+        "supabase/migrations/20280313003281_issue_3281_extras_checkout.sql",
         "supabase/functions/_shared/buyerConfirmationPayload.ts"
       ]
     },
