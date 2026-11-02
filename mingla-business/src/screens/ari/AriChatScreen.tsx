@@ -695,6 +695,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         }
         const message = ariChatErrorCopy(result.code);
         setLocalError(message);
+        // #3355 P7: a refused write inside a flow comes back with the step
+        // re-presented (the server saved it); read it so the chat never
+        // dead-ends on "That didn't go through".
+        void chat.resumeFlow("resume");
         return { ok: false, error: message };
       }
       if (result.kind === "proposal_replaced") {

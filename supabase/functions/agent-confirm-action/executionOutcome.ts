@@ -71,6 +71,16 @@ export function toolErrorHttpStatus(code: string): number {
     ["OWNER_NOTE_UNAVAILABLE", "OWNER_NOTE_CHANGED", "OWNER_NOTE_NOT_NEEDED"]
       .includes(code)
   ) return 409;
+  // issue #3355 P7 — Ari's payout-country pick refused (unsupported country,
+  // a currency already set, or the payout rail could not be chosen). Nothing
+  // was saved; never a 500.
+  if (
+    [
+      "PAYOUT_COUNTRY_UNSUPPORTED",
+      "PAYOUT_COUNTRY_ALREADY_SET",
+      "PAYOUT_COUNTRY_NOT_SAVED",
+    ].includes(code)
+  ) return 409;
   // issue #3355 P1 (D-9) — a deterministic publish/money refusal from the
   // database (ariRefusalCopy.ts). Nothing was saved; the owner clears it by
   // fixing the named thing, so it is a conflict, never a 500 or a 202.

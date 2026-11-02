@@ -865,6 +865,8 @@ export async function runFlowForConversation(args: {
   conversationId: string;
   trigger: Exclude<RunnerTrigger, "answer" | "turn">;
   confirmed?: { tool_name: string; result: unknown };
+  /** #3355 P7 — the confirmed write was refused; nothing was saved. */
+  failed?: { tool_name: string; message: string };
   store?: FlowStore;
   /** Test seam: the canonical reads. */
   probes?: FlowProbeDeps;
@@ -887,6 +889,7 @@ export async function runFlowForConversation(args: {
       run,
       trigger: args.trigger,
       ...(args.confirmed ? { confirmed: args.confirmed } : {}),
+      ...(args.failed ? { failed: args.failed } : {}),
       brandName: args.brand.name,
     });
     return { outcome, run: outcome.run };

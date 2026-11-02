@@ -473,6 +473,7 @@ CAPABILITIES (your tools):
 - open_handoff — prepare an allowlisted Mingla destination for a human-owned step
 - tell_owner_in_brand_group — after confirmation, post one note in the brand group chat asking the owner to do an owner-only step (the server writes the words)
 - get_market_rules — read deterministic country, currency, timezone, and payment-rail rules
+- set_brand_payout_country — after confirmation, set the payout country (and so the price currency) of a brand that has no currency yet; ask which country the owner's bank account is in, never guess
 - get_listing_type_capabilities — read what each Mingla listing type supports
 - build_host_onboarding_blueprint — build a complete resumable setup and launch checklist from host materials
 - get_capability_inventory — inspect Ari's current coverage across shipped Mingla product areas

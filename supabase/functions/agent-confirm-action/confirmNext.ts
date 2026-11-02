@@ -188,7 +188,14 @@ export async function flowNextAfterConfirm(args: {
   userId: string;
   conversationId: string;
   brand: { id: string; name: string };
-  confirmed: { tool_name: string; result: unknown };
+  /** Absent when the write was refused (`failed`). */
+  confirmed?: { tool_name: string; result: unknown };
+  /**
+   * #3355 P7 — the confirmed write was refused and nothing was saved. The
+   * flow re-presents its step with the plain reason and the next choices,
+   * so a refusal never leaves the owner at a dead end.
+   */
+  failed?: { tool_name: string; message: string };
   promptVersion: string;
   modelVersion: string;
   enabled?: boolean;
@@ -207,7 +214,8 @@ export async function flowNextAfterConfirm(args: {
     brand: args.brand,
     conversationId: args.conversationId,
     trigger: "confirm",
-    confirmed: args.confirmed,
+    ...(args.confirmed ? { confirmed: args.confirmed } : {}),
+    ...(args.failed ? { failed: args.failed } : {}),
     ...(args.store ? { store: args.store } : {}),
     ...(args.probes ? { probes: args.probes } : {}),
   });

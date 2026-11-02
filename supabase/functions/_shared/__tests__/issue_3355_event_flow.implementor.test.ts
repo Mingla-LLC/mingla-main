@@ -1026,10 +1026,13 @@ Deno.test("P7: picked places and ticket words are read strictly", () => {
       null,
     );
   }
+  // #3355 P7: the typed currency rides along so a mismatch is asked about.
   assertEquals(parseTicketAnswer("£15, 60 tickets", true), {
     price_major: 15,
     capacity: 60,
     unlimited: false,
+    typed_price: "£15",
+    typed_currencies: ["GBP"],
   });
   assertEquals(parseTicketAnswer("60 tickets", true), null, "paid needs a price");
   assertEquals(parseTicketAnswer("no limit", false), {
@@ -1103,4 +1106,302 @@ Deno.test("P7: the request starts the engine's event flow before any keyword lan
     probes: probesFor(world),
   });
   assertEquals(next.kind, "reply", "typed words get the open card back");
+});
+
+// ── #3355 P7 Phase 7 fix: paid tickets on a brand with no currency ─────────
+//
+// Found in the browser: a brand with no payout country or currency picked
+// Paid, kept going, typed "£15, 60 tickets", saw Price "15.00" and the
+// confirm was refused (DOMAIN_REFUSED: paid tickets need a payout currency),
+// leaving the chat with no next card. Ari now asks the Host ticket sheet's
+// payout-country question first, shows the price in the brand's currency,
+// asks when a typed currency disagrees, and re-presents a refused save.
+
+/** Script B up to the "Are tickets free or paid?" card. */
+async function toTicketKind(world: World, store: MemoryStore) {
+  const proposed = await toCreateProposal(world, store);
+  assert(proposed.kind === "propose");
+  await confirm(
+    world,
+    store,
+    "create_event",
+    () => world.events.set(EVENT_ID, rowFrom(proposed.tool_args)),
+    { event: { id: EVENT_ID } },
+  );
+  await answer(world, store, (r) => choice(r, "yes"));
+  await answer(world, store, (r) => choice(r, "not_now"));
+  await answer(world, store, (r) => form(r, { choices: ["Themed Party"] }));
+  await answer(world, store, (r) => form(r, { response: "Candlelit supper." }));
+  const kind = await confirm(world, store, "update_event", () => {
+    const row = world.events.get(EVENT_ID)!;
+    row.party_types = ["themed-party"];
+    row.description = "Candlelit supper.";
+    row.draft.clientRevision = 1;
+  });
+  assert(kind.kind === "artefact");
+  assertEquals(kind.artefact.step_key, "event_ticket_kind");
+}
+
+function noCurrencyWorld(): World {
+  return freshWorld({
+    canSell: false,
+    brand: { default_timezone: null, country_code: "GB", default_currency: null },
+  });
+}
+
+/** Stand-in for agent-confirm-action when the confirmed write is refused. */
+async function confirmFailed(
+  world: World,
+  store: MemoryStore,
+  toolName: string,
+  message: string,
+): Promise<RunnerOutcome> {
+  world.openProposal = false;
+  return await runFlowStep({ store, probes: probesFor(world) }, {
+    run: await cur(store),
+    trigger: "confirm",
+    failed: { tool_name: toolName, message },
+    brandName: BRAND_NAME,
+  });
+}
+
+const CURRENCY_REFUSAL =
+  "Paid tickets need a payout currency, and that comes from payment setup.";
+
+Deno.test("P7 fix: no-currency brand → Paid → payout country → confirmed currency → £15.00 → draft tier", async () => {
+  const world = noCurrencyWorld();
+  const store = new MemoryStore();
+  await toTicketKind(world, store);
+  const money = await answer(world, store, (r) => choice(r, "paid"));
+  assert(money.kind === "artefact");
+  assertEquals(money.artefact.step_key, "money_gate");
+
+  // "Keep going" no longer leads to a price with no currency.
+  const country = await answer(world, store, (r) => choice(r, "continue"));
+  assert(country.kind === "artefact");
+  assertEquals(country.artefact.step_key, "event_ticket_details");
+  assertEquals(country.artefact.title, "Choose your payout country");
+  assertMatch(
+    country.artefact.text,
+    /Which country is your bank account in\? We'll use its currency for this brand's prices\./,
+  );
+  assertEquals(country.artefact.answer_mode, "form");
+  const block = (country.artefact.rendition?.blocks as {
+    type: string;
+    options?: { id: string; label: string }[];
+    selection?: string;
+  }[]).find((b) => b.type === "choices");
+  assertEquals(block?.selection, "single");
+  const labels = block?.options?.map((o) => o.label) ?? [];
+  assertEquals(labels[0], "United Kingdom (GBP)", "the brand's own country first");
+  assert(labels.includes("Nigeria (NGN)"), "Nigeria, as in the Host chooser");
+  assert(labels.includes("Ireland (EUR)"));
+  assertEquals(labels.length, 35, "the Host chooser's 34 card countries + Nigeria");
+
+  // The pick is a brand setting: one protected confirmation, nothing saved yet.
+  const pick = await answer(
+    world,
+    store,
+    (r) => form(r, { choices: ["United Kingdom (GBP)"] }),
+  );
+  assertEquals(pick.kind, "propose");
+  if (pick.kind !== "propose") return;
+  assertEquals(pick.tool_name, "set_brand_payout_country");
+  assertEquals(pick.tool_args, { brand_id: BRAND, country_code: "GB" });
+  assertEquals(
+    pick.ack,
+    "Use GBP (£) for Lantern Supper Club's prices? Your bank account is in the United Kingdom.",
+  );
+  assertEquals(pick.rows_only, true);
+  assertEquals(
+    pick.rows.map((r) => `${r.label}: ${r.value}`),
+    [
+      "Brand: Lantern Supper Club",
+      "Prices in: GBP (£)",
+      "Bank account in: United Kingdom",
+    ],
+  );
+  assertEquals(world.brand.default_currency, null, "nothing written before confirm");
+  // A typed reply while the card waits never issues a second card.
+  world.openProposal = true;
+  const waiting = await runFlowStep({ store, probes: probesFor(world) }, {
+    run: await cur(store),
+    trigger: "turn",
+    ownerText: "United Kingdom",
+    brandName: BRAND_NAME,
+  });
+  assertEquals(waiting.kind, "notice");
+
+  // Confirmed: the brand now has GBP, and Ari goes on to the price.
+  const price = await confirm(
+    world,
+    store,
+    "set_brand_payout_country",
+    () => {
+      world.brand.default_currency = "GBP";
+    },
+  );
+  assert(price.kind === "artefact");
+  assertEquals(price.artefact.step_key, "event_ticket_details");
+  assertMatch(price.text, /Saved and checked: Lantern Supper Club's prices are in GBP \(£\)\./);
+  assertMatch(price.artefact.text, /For example: £15, 60 tickets\./);
+
+  const tier = await answer(world, store, (r) => form(r, { response: "£15, 60 tickets" }));
+  assertEquals(tier.kind, "propose");
+  if (tier.kind !== "propose") return;
+  assertEquals(tier.tool_name, "upsert_ticket_tier");
+  assertEquals(tier.tool_args.price_cents, 1500);
+  const rows = tier.rows.map((r) => `${r.label}: ${r.value}`);
+  assert(rows.includes("Price: £15.00"), rows.join(" | "));
+  assert(rows.some((r) => r.startsWith("Heads-up: You can add paid tickets now")));
+
+  // Seth's decision 3: the paid tier saves on the draft before payments.
+  const saved = await confirm(world, store, "upsert_ticket_tier", () => {
+    world.events.get(EVENT_ID)!.draft.tickets = [{
+      name: "General admission",
+      isFree: false,
+      priceGbp: 15,
+      capacity: 60,
+    }];
+  });
+  assert(saved.kind === "artefact");
+  assertEquals(saved.artefact.step_key, "event_visibility");
+});
+
+Deno.test("P7 fix: Nigeria goes to the Nigerian payout rail (NGN) and the example is in naira", async () => {
+  const world = noCurrencyWorld();
+  const store = new MemoryStore();
+  await toTicketKind(world, store);
+  await answer(world, store, (r) => choice(r, "paid"));
+  await answer(world, store, (r) => choice(r, "continue"));
+  const pick = await answer(world, store, (r) => form(r, { choices: ["Nigeria (NGN)"] }));
+  assert(pick.kind === "propose");
+  assertEquals(pick.tool_args, { brand_id: BRAND, country_code: "NG" });
+  assertMatch(pick.ack ?? "", /Use NGN \(₦\) for Lantern Supper Club's prices\? Your bank account is in Nigeria\./);
+  const price = await confirm(world, store, "set_brand_payout_country", () => {
+    world.brand.default_currency = "NGN";
+  });
+  assert(price.kind === "artefact");
+  assertMatch(price.artefact.text, /For example: ₦2,000, 60 tickets\./);
+});
+
+Deno.test("P7 fix: a refused payout-country save brings the question back with the reason", async () => {
+  const world = noCurrencyWorld();
+  const store = new MemoryStore();
+  await toTicketKind(world, store);
+  await answer(world, store, (r) => choice(r, "paid"));
+  await answer(world, store, (r) => choice(r, "continue"));
+  await answer(world, store, (r) => form(r, { response: "uk" }));
+  const back = await confirmFailed(
+    world,
+    store,
+    "set_brand_payout_country",
+    "Only the owner or a brand admin can choose the payout country. Nothing was changed.",
+  );
+  assert(back.kind === "artefact", "never a dead end");
+  assertEquals(back.artefact.title, "Choose your payout country");
+  assertMatch(back.artefact.text, /^Only the owner or a brand admin can choose the payout country/);
+});
+
+Deno.test("P7 fix: a typed currency that disagrees with the brand's is asked about, never saved", async () => {
+  const world = freshWorld({ canSell: false });
+  const store = new MemoryStore();
+  await toTicketKind(world, store);
+  await answer(world, store, (r) => choice(r, "paid"));
+  const details = await answer(world, store, (r) => choice(r, "continue"));
+  assert(details.kind === "artefact");
+  assertEquals(details.artefact.title, "Price and number of tickets");
+  const asked = await answer(world, store, (r) => form(r, { response: "$15, 60 tickets" }));
+  assertEquals(asked.kind, "artefact", "no ticket proposal in the wrong currency");
+  if (asked.kind !== "artefact") return;
+  assertEquals(asked.artefact.step_key, "event_ticket_details");
+  assertMatch(
+    asked.artefact.text,
+    /You typed \$15, but Lantern Supper Club's prices are in GBP \(£\)\. What's the ticket price in GBP\? Nothing was saved\./,
+  );
+  assertEquals((await cur(store)).answers.ticket, undefined);
+  // The same price in the brand's currency (or with no symbol word) goes on.
+  const ok = await answer(world, store, (r) => form(r, { response: "15 pounds, 60 tickets" }));
+  assertEquals(ok.kind, "propose");
+});
+
+Deno.test("P7 fix: a refused ticket save re-presents the step with the reason and the next choices", async () => {
+  const world = freshWorld({ canSell: false });
+  const store = new MemoryStore();
+  await toTicketKind(world, store);
+  await answer(world, store, (r) => choice(r, "paid"));
+  await answer(world, store, (r) => choice(r, "continue"));
+  const tier = await answer(world, store, (r) => form(r, { response: "£15, 60 tickets" }));
+  assert(tier.kind === "propose");
+  const failed = await confirmFailed(world, store, "upsert_ticket_tier", CURRENCY_REFUSAL);
+  assert(failed.kind === "artefact", "a next card, not a dead end");
+  assertEquals(failed.artefact.step_key, "event_tickets_save");
+  assertEquals(failed.artefact.title, "The tickets didn't save");
+  assertMatch(failed.artefact.text, /^Paid tickets need a payout currency.*What would you like to do\?$/);
+  assertEquals(
+    failed.artefact.options.map((o) => o.id),
+    ["open", "free", "retry", "no_tickets"],
+  );
+  assertEquals(
+    failed.artefact.options[0].route,
+    `/brand/${BRAND}/payments/onboard`,
+  );
+  // Reloading or a stray reply keeps the same card (never a new one).
+  const again = await runFlowStep({ store, probes: probesFor(world) }, {
+    run: await cur(store),
+    trigger: "resume",
+    brandName: BRAND_NAME,
+  });
+  assertEquals(again.kind, "unchanged");
+
+  // "Make the tickets free" proposes the same ticket, free.
+  const free = await answer(world, store, (r) => choice(r, "free"));
+  assertEquals(free.kind, "propose");
+  if (free.kind !== "propose") return;
+  assertEquals(free.tool_args.is_free, true);
+  assertEquals("price_cents" in free.tool_args, false);
+  assert(free.rows.some((r) => r.label === "Price" && r.value === "Free"));
+});
+
+Deno.test("P7 fix: after a refused ticket save the owner can keep the draft without tickets", async () => {
+  const world = freshWorld({ canSell: false });
+  const store = new MemoryStore();
+  await toTicketKind(world, store);
+  await answer(world, store, (r) => choice(r, "paid"));
+  await answer(world, store, (r) => choice(r, "continue"));
+  await answer(world, store, (r) => form(r, { response: "£15, 60 tickets" }));
+  await confirmFailed(world, store, "upsert_ticket_tier", CURRENCY_REFUSAL);
+  const next = await answer(world, store, (r) => choice(r, "no_tickets"));
+  assert(next.kind === "artefact");
+  assertMatch(next.text, /The draft stays without tickets for now/);
+  assertEquals(next.artefact.step_key, "event_visibility");
+  // "Try saving again" from a fresh failure proposes the save again.
+  const world2 = freshWorld({ canSell: false });
+  const store2 = new MemoryStore();
+  await toTicketKind(world2, store2);
+  await answer(world2, store2, (r) => choice(r, "paid"));
+  await answer(world2, store2, (r) => choice(r, "continue"));
+  await answer(world2, store2, (r) => form(r, { response: "£15, 60 tickets" }));
+  await confirmFailed(world2, store2, "upsert_ticket_tier", "");
+  const retried = await answer(world2, store2, (r) => choice(r, "retry"));
+  assertEquals(retried.kind, "propose");
+});
+
+Deno.test("P7 fix: a refused confirm runs the flow, and the Host reads the re-presented step", async () => {
+  const confirmSource = await Deno.readTextFile(
+    new URL("supabase/functions/agent-confirm-action/index.ts", ROOT),
+  );
+  const failureBranch = confirmSource.slice(
+    confirmSource.indexOf('outcome: "failed",'),
+    confirmSource.indexOf("if (isAmbiguous) {"),
+  );
+  assertMatch(failureBranch, /await flowNextAfterConfirm\(\{[\s\S]*failed: \{\s*tool_name: tool\.name,/);
+  const host = await Deno.readTextFile(
+    new URL("mingla-business/src/screens/ari/AriChatScreen.tsx", ROOT),
+  );
+  const errorBranch = host.slice(
+    host.indexOf("if (isAlreadyResolvedError(result.message))"),
+    host.indexOf('if (result.kind === "proposal_replaced")'),
+  );
+  assertMatch(errorBranch, /void chat\.resumeFlow\("resume"\);/);
 });

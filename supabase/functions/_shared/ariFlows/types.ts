@@ -252,6 +252,11 @@ export interface FlowContext {
    * may put its protected proposal straight in front of them.
    */
   answered?: boolean;
+  /**
+   * #3355 P7 — the owner confirmed this run's protected proposal and the
+   * write was refused (nothing saved). `message` is the plain reason.
+   */
+  failed?: { tool_name: string; message: string };
 }
 
 export type AskSpec = {

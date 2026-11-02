@@ -6,7 +6,13 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import type { AgentToolDefinition } from "./agentToolHelpers.ts";
-import { callRpc, isString, isUuid, ToolError } from "./agentToolHelpers.ts";
+import {
+  callRpc,
+  invokeFn,
+  isString,
+  isUuid,
+  ToolError,
+} from "./agentToolHelpers.ts";
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
 import { READINESS_TOOLS } from "./agentReadinessTools.ts";
@@ -80,6 +86,10 @@ const LOCAL_CAPABILITIES = [
   [
     "get_market_rules",
     "Read deterministic country, currency and payment-rail rules.",
+  ],
+  [
+    "set_brand_payout_country",
+    "After confirmation, set the payout country (and so the price currency) of a brand that has none yet.",
   ],
   [
     "get_listing_type_capabilities",
@@ -1192,6 +1202,200 @@ const getMarketRules: AgentToolDefinition = {
   },
 };
 
+/** #3355 P7 — one payout country the Host chooser offers. */
+export interface PayoutRail {
+  country: string;
+  name: string;
+  currency: string;
+  provider: "stripe" | "paystack";
+}
+
+function regionName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+  } catch (_error) {
+    return code;
+  }
+}
+
+// orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses the canonical Paystack branch, never Stripe Connect.
+const NIGERIA_PAYOUT_RAIL: PayoutRail = {
+  country: "NG",
+  name: "Nigeria",
+  currency: "NGN",
+  provider: "paystack",
+};
+
+/**
+ * #3355 P7 — the Host payout-country chooser's list (BrandPayoutCountryField):
+ * every card-rail country plus Nigeria, by name. Same source as
+ * get_market_rules, so Ari never offers a country the Host can't save.
+ */
+export const PAYOUT_COUNTRIES: readonly PayoutRail[] = Object.freeze(
+  [
+    ...STRIPE_SUPPORTED_COUNTRIES.map((entry): PayoutRail => ({
+      country: entry.country,
+      name: regionName(entry.country),
+      currency: entry.defaultCurrency,
+      provider: "stripe",
+    })),
+    NIGERIA_PAYOUT_RAIL,
+  ].sort((a, b) => a.name.localeCompare(b.name)),
+);
+
+const PAYOUT_COUNTRY_ALIASES: Readonly<Record<string, string>> = Object.freeze(
+  {
+    uk: "GB",
+    "great britain": "GB",
+    britain: "GB",
+    england: "GB",
+    scotland: "GB",
+    wales: "GB",
+    "northern ireland": "GB",
+    us: "US",
+    usa: "US",
+    america: "US",
+    "united states of america": "US",
+  },
+);
+
+/** A payout country from a code, a name, or a card label ("United Kingdom (GBP)"). */
+export function payoutRailFor(input: unknown): PayoutRail | null {
+  if (typeof input !== "string") return null;
+  const words = input.replace(/\([^)]*\)/g, " ").replace(/[.!]+$/, "")
+    .replace(/\s+/g, " ").trim().toLowerCase()
+    .replace(/^(?:in|it'?s in|the)\s+/, "").replace(/^the\s+/, "");
+  if (!words) return null;
+  const code = PAYOUT_COUNTRY_ALIASES[words] ??
+    (/^[a-z]{2}$/.test(words) ? words.toUpperCase() : null);
+  return PAYOUT_COUNTRIES.find((rail) =>
+    rail.country === code || rail.name.toLowerCase() === words
+  ) ?? null;
+}
+
+const setBrandPayoutCountry: AgentToolDefinition = {
+  name: "set_brand_payout_country",
+  description:
+    "After the owner confirms, set the payout country of a brand that has no currency yet, which sets the currency its prices are in. The same change as choosing a payout country in the Host app (Nigeria also puts the brand on Nigerian bank payouts). Never guess the country: ask which country the owner's bank account is in.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id", "country_code"],
+    properties: {
+      brand_id: { type: "string", format: "uuid" },
+      country_code: { type: "string", minLength: 2, maxLength: 2 },
+    },
+  },
+  executor: async (args, client) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const brandId = args.brand_id;
+    const rail = payoutRailFor(args.country_code);
+    if (!rail) {
+      throw new ToolError(
+        "PAYOUT_COUNTRY_UNSUPPORTED",
+        "Mingla can't pay out to that country yet, so nothing was changed.",
+      );
+    }
+    const readBrand = async () => {
+      const { data, error } = await client.from("brands")
+        .select("id,name,default_currency,payment_provider,payout_country")
+        .eq("id", brandId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (error) throw new ToolError("READ_FAILED", error.message);
+      return data as {
+        id: string;
+        name: string;
+        default_currency: string | null;
+        payment_provider: string | null;
+        payout_country: string | null;
+      } | null;
+    };
+    const brand = await readBrand();
+    if (!brand) {
+      throw new ToolError(
+        "NOT_FOUND",
+        "That brand isn't available, so nothing was changed.",
+      );
+    }
+    const current = brand.default_currency?.trim().toUpperCase() || null;
+    if (current && current !== rail.currency) {
+      throw new ToolError(
+        "PAYOUT_COUNTRY_ALREADY_SET",
+        `This brand's prices are already in ${current}. You can change the payout country in Payments setup. Nothing was changed.`,
+      );
+    }
+    if (!current) {
+      // The same writes, in the same order, as the Host chooser
+      // (BrandPayoutCountryField), made as the caller.
+      try {
+        if (rail.provider === "paystack") {
+          // The server puts the brand on the Nigerian rail and sets naira.
+          await invokeFn(client, "brand-paystack-onboard", {
+            action: "select_provider",
+            brand_id: brandId,
+          });
+        } else if (brand.payment_provider?.trim().toLowerCase() === "paystack") {
+          await invokeFn(client, "brand-paystack-onboard", {
+            action: "clear_provider",
+            brand_id: brandId,
+          });
+        }
+      } catch (error) {
+        if (error instanceof ToolError && error.code !== "EDGE_FAILED") {
+          throw error;
+        }
+        throw new ToolError(
+          "PAYOUT_COUNTRY_NOT_SAVED",
+          rail.provider === "paystack"
+            ? "I couldn't put this brand on Nigerian bank payouts, so nothing was changed. Only the brand owner can choose that, in Payments setup."
+            : "I couldn't change this brand's payout country, so nothing was changed. You can choose it in Payments setup.",
+        );
+      }
+      if (rail.provider !== "paystack") {
+        const { data, error } = await client.from("brands")
+          .update({ default_currency: rail.currency })
+          .eq("id", brandId)
+          .is("deleted_at", null)
+          .select("id");
+        if (error) throw new ToolError("WRITE_FAILED", error.message);
+        if (!Array.isArray(data) || data.length !== 1) {
+          throw new ToolError(
+            "PERMISSION_DENIED",
+            "Only the owner or a brand admin can choose the payout country. Nothing was changed.",
+          );
+        }
+      }
+    }
+    // Remember the country itself (a currency several countries share still
+    // names the one picked). Best effort, exactly as the Host: the currency
+    // above is already saved either way.
+    if (brand.payout_country !== rail.country) {
+      await client.from("brands")
+        .update({ payout_country: rail.country })
+        .eq("id", brandId)
+        .is("deleted_at", null)
+        .select("id");
+    }
+    const after = await readBrand();
+    if (after?.default_currency?.trim().toUpperCase() !== rail.currency) {
+      throw new ToolError(
+        "PAYOUT_COUNTRY_NOT_SAVED",
+        "The currency didn't save, so nothing is shown as done. You can choose the payout country in Payments setup.",
+      );
+    }
+    return {
+      brand: after,
+      country_code: rail.country,
+      country_name: rail.name,
+      currency: rail.currency,
+      payout_provider: rail.provider,
+    };
+  },
+};
+
 function validIanaTimezone(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
   try {
@@ -1728,6 +1932,7 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   openHandoff,
   tellOwnerInBrandGroup,
   getMarketRules,
+  setBrandPayoutCountry,
   getListingCapabilities,
   buildHostOnboardingBlueprint,
   getCapabilityInventory,

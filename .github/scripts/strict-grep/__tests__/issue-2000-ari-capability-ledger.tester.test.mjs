@@ -92,6 +92,9 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // #3355 P6 follow-up adds tell_owner_in_brand_group, the confirmed
 // brand-group note to the owner (180→181 tools / 192→193 capabilities).
 // registered_unverified 179→180.
+// #3355 P7 adds set_brand_payout_country, the confirmed Host-parity payout
+// country pick (181→182 tools / 193→194 capabilities).
+// registered_unverified 180→181.
 const EXPECTED_TOOL_NAMES = [
   "approve_ad_plan",
   "build_host_onboarding_blueprint",
@@ -246,6 +249,7 @@ const EXPECTED_TOOL_NAMES = [
   "send_campaign_now",
   "send_installment_reminder",
   "send_venue_sms",
+  "set_brand_payout_country",
   "set_brand_pricing_defaults",
   "set_event_cover",
   "set_event_guest_privacy",
@@ -277,10 +281,10 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 193,
+  capabilityCount: 194,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 180,
+    registered_unverified: 181,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
@@ -315,9 +319,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("181-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("182-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/180/0/8/0/5 classification changed");
+    failures.push("0/181/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

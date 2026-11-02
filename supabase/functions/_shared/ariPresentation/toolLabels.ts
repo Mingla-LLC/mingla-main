@@ -58,6 +58,12 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> =
       "Back on Ari's list",
     ),
     // #3355 P6 follow-up — "Tell them" posts in the brand group chat.
+    // #3355 P7 — the payout country (and so the price currency) from Ari.
+    set_brand_payout_country: row(
+      "Set payout country",
+      "Prices for this brand",
+      "Payout country saved",
+    ),
     tell_owner_in_brand_group: row(
       "Message the owner",
       "Tell the owner",

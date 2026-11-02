@@ -1203,6 +1203,39 @@ async function handleConfirmAction(args: {
             "The action failed safely, but Ari needs a refresh to continue the plan.",
           );
         }
+        // #3355 P7: a refused write inside a live flow run re-presents the
+        // step with the plain reason and the next choices (saved as Ari's
+        // row; the Host re-reads it with flow_resume). Without this the run
+        // sat waiting on a confirmation that had already failed: no card.
+        const failedBrandId = conversationTask?.row.brand_id ?? null;
+        if (failedBrandId) {
+          try {
+            await flowNextAfterConfirm({
+              userClient,
+              service: pendingStateClient,
+              userId,
+              conversationId: pending.conversation_id,
+              brand: {
+                id: failedBrandId,
+                name: conversationBrandName ?? "your brand",
+              },
+              failed: {
+                tool_name: tool.name,
+                message: err instanceof ToolError ? err.message : "",
+              },
+              promptVersion: TENANT_CONTEXT_VERSION,
+              modelVersion: ARI_MODEL_VERSION,
+            });
+          } catch (flowError) {
+            // The refusal is already saved and answered; the Host's resume
+            // re-reads the run either way.
+            console.error(JSON.stringify({
+              event: "ari_confirm_failed_next_failed",
+              tool_name: tool.name,
+              error: flowError instanceof Error ? flowError.name : "unknown",
+            }));
+          }
+        }
       }
     }
     if (isAmbiguous) {

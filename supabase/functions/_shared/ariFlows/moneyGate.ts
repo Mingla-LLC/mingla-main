@@ -19,6 +19,7 @@
  */
 
 import { moneySummary } from "../money/moneySplit.ts";
+import { PAYOUT_COUNTRIES, type PayoutRail } from "../agentAri10xTools.ts";
 import type { ReadinessAction } from "../readinessCatalog.ts";
 import { gateEvidence } from "./brandGate.ts";
 import type {
@@ -201,6 +202,77 @@ function moneyItemCard(args: {
     },
     items: [{ key: item.key, label: item.label, blocks: item.blocks_action }],
     record: { item_key: item.key },
+  };
+}
+
+// ── #3355 P7: a brand with no currency (the Host's payout-country prompt) ──
+
+/** The confirmed write that sets a brand's payout country and currency. */
+export const PAYOUT_COUNTRY_TOOL = "set_brand_payout_country";
+
+/** The Host ticket sheet's question, in Ari's words. */
+export const PAYOUT_COUNTRY_QUESTION =
+  "Which country is your bank account in? We'll use its currency for this brand's prices.";
+
+/** "GBP (£)", "NGN (₦)", or the bare code when it has no symbol of its own. */
+export function currencyWords(code: string): string {
+  const upper = code.trim().toUpperCase();
+  try {
+    const symbol = new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: upper,
+      currencyDisplay: "narrowSymbol",
+    }).formatToParts(1).find((part) => part.type === "currency")?.value;
+    return symbol && symbol !== upper ? `${upper} (${symbol})` : upper;
+  } catch (_error) {
+    return upper;
+  }
+}
+
+/** The card label for one country ("United Kingdom (GBP)"). */
+export function payoutCountryLabel(rail: PayoutRail): string {
+  return `${rail.name} (${rail.currency})`;
+}
+
+/**
+ * The Host chooser's countries, by name; the brand's own address country
+ * first when Mingla can pay out there.
+ */
+export function payoutCountryOptions(
+  brandCountry: string | null,
+): { id: string; label: string }[] {
+  const home = brandCountry?.trim().toUpperCase() ?? null;
+  return [
+    ...PAYOUT_COUNTRIES.filter((rail) => rail.country === home),
+    ...PAYOUT_COUNTRIES.filter((rail) => rail.country !== home),
+  ].map((rail) => ({ id: rail.country, label: payoutCountryLabel(rail) }));
+}
+
+/**
+ * The owner picked a country: ONE protected proposal with the same writes
+ * the Host chooser makes. Nothing is saved before they confirm it.
+ */
+export function payoutCountryProposal(
+  ctx: Pick<FlowContext, "run" | "brandName">,
+  rail: PayoutRail,
+): { ack: string; propose: NonNullable<AnswerOutcome["propose"]> } {
+  const money = currencyWords(rail.currency);
+  return {
+    ack: `Use ${money} for ${ctx.brandName}'s prices? Your bank account is in ${
+      rail.country === "GB" || rail.country === "US" || rail.country === "NL"
+        ? "the "
+        : ""
+    }${rail.name}.`,
+    propose: {
+      tool_name: PAYOUT_COUNTRY_TOOL,
+      tool_args: { brand_id: ctx.run.brand_id, country_code: rail.country },
+      rows: [
+        { label: "Brand", value: ctx.brandName },
+        { label: "Prices in", value: money },
+        { label: "Bank account in", value: rail.name },
+      ],
+      rows_only: true,
+    },
   };
 }
 

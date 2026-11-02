@@ -284,6 +284,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // the caller.
   tell_owner_in_brand_group: role("scanner", "brand"),
   get_market_rules: role("self", "none"),
+  // #3355 P7 — the Host payout-country chooser's writes, as the caller: the
+  // brand currency (RLS: account owner or brand admin) and, for Nigeria,
+  // brand-paystack-onboard select_provider (which re-checks owner payouts).
+  set_brand_payout_country: role("brand_admin", "brand"),
   get_listing_type_capabilities: role("self", "none"),
   build_host_onboarding_blueprint: role("self", "none"),
   get_capability_inventory: role("self", "none"),

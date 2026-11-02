@@ -155,7 +155,8 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #3355] The saved campaign draft readback and the P2
   // brand readiness read + not-now pair extend that denominator to 180.
   // #3355 P6 follow-up: tell_owner_in_brand_group (brand member); 180→181.
-  if (declarationCount !== 181) failures.push(`expected 181 declarations, got ${declarationCount}`);
+  // #3355 P7: set_brand_payout_country (brand admin); 181→182.
+  if (declarationCount !== 182) failures.push(`expected 182 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

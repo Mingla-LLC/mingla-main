@@ -48,6 +48,8 @@ export interface RunnerInput {
   answer?: FlowAnswer;
   ownerText?: string;
   confirmed?: { tool_name: string; result: unknown };
+  /** #3355 P7 — a confirmed write that was refused; nothing was saved. */
+  failed?: { tool_name: string; message: string };
   brandName: string;
 }
 
@@ -408,6 +410,7 @@ async function advanceUnderLease(
     state: states[stepKey],
     trigger: input.trigger,
     answered,
+    ...(input.failed ? { failed: input.failed } : {}),
   });
 
   const commit = async (extra: Record<string, unknown>): Promise<FlowRun> => {

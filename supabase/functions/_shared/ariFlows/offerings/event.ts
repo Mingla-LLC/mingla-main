@@ -16,13 +16,31 @@
  */
 
 import { listWords } from "../brandGate.ts";
-import { moneyGateStep } from "../moneyGate.ts";
+import {
+  currencyWords,
+  moneyGateStep,
+  PAYOUT_COUNTRY_QUESTION,
+  PAYOUT_COUNTRY_TOOL,
+  payoutCountryOptions,
+  payoutCountryProposal,
+} from "../moneyGate.ts";
 import { brandBlockersStep, brandCanWaitStep } from "../brandGate.ts";
-import { marketDefaultTimezone } from "../../agentAri10xTools.ts";
+import {
+  marketDefaultTimezone,
+  payoutRailFor,
+} from "../../agentAri10xTools.ts";
 import { isValidIanaTimezone } from "../../agentRelativeTime.ts";
-import { ticketPriceBelowMinimum } from "../../money/providerMinimums.ts";
+import {
+  providerMinimumChargeMinor,
+  ticketPriceBelowMinimum,
+} from "../../money/providerMinimums.ts";
 import { DRAFT_PAID_TIER_HEADS_UP } from "../../agentTicketPricing.ts";
-import { formatMinor } from "../../money/formatMinor.ts";
+import {
+  formatMinor,
+  minorFromMajor,
+  minorUnitsPerMajor,
+} from "../../money/formatMinor.ts";
+import { assertOwnerCopy } from "../../ariOwnerCopy.ts";
 import {
   cleanTitle,
   extractEventTitle,
@@ -268,6 +286,39 @@ function textQuestion(args: {
       problem,
     }),
     record: { data: { attempt: attemptOf(args.ctx) } },
+  };
+}
+
+/**
+ * #3355 P7 — the Host ticket sheet's "Choose your payout country" prompt as
+ * an Ari card: the Host chooser's countries, one pick, answered on the card.
+ */
+function payoutCountryQuestion(
+  ctx: FlowContext,
+  brandCountry: string | null,
+  failed: string | null,
+): AskSpec {
+  const problem = failed ?? problemOf(ctx);
+  const title = "Choose your payout country";
+  const body =
+    `Prices need a currency. ${PAYOUT_COUNTRY_QUESTION}`;
+  return {
+    kind: "question",
+    answer_mode: "form",
+    reuse_key: `event:${PAYOUT_COUNTRY_KEY}:${attemptOf(ctx)}${
+      failed ? ":failed" : ""
+    }`,
+    title,
+    text: problem ? `${problem} ${PAYOUT_COUNTRY_QUESTION}` : body,
+    options: [],
+    rendition: formRendition({
+      id: PAYOUT_COUNTRY_KEY,
+      title,
+      body,
+      choices: { options: payoutCountryOptions(brandCountry), multiple: false },
+      problem,
+    }),
+    record: { data: { attempt: attemptOf(ctx) } },
   };
 }
 
@@ -1316,37 +1367,95 @@ const CAPACITY =
   /\b(\d{1,6})\s*(?:tickets?|people|guests?|spots?|places?|seats?|max|capacity)\b|\b(?:capacity|limit(?:ed)?(?:\s+to)?|for|max(?:imum)?)\s*(?:of\s+)?(\d{1,6})\b/i;
 const NO_LIMIT = /\b(?:no limit|unlimited|no cap|as many as)\b/i;
 const PRICE =
-  /(?:[£$€₦]\s*(\d{1,6}(?:[.,]\d{1,2})?))|(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:pounds?|dollars?|euros?|naira|gbp|usd|eur|ngn)\b/i;
+  /(?:([£$€₦])\s*(\d{1,6}(?:[.,]\d{1,2})?))|(\d{1,6}(?:[.,]\d{1,2})?)\s*(pounds?|dollars?|euros?|naira|gbp|usd|eur|ngn)\b/i;
+
+/** The currencies a typed symbol or word can mean. */
+const TYPED_CURRENCY: ReadonlyArray<[RegExp, string[]]> = [
+  [/^(?:£|pounds?|gbp)$/i, ["GBP"]],
+  [/^(?:\$|dollars?)$/i, ["USD", "CAD"]],
+  [/^usd$/i, ["USD"]],
+  [/^(?:€|euros?|eur)$/i, ["EUR"]],
+  [/^(?:₦|naira|ngn)$/i, ["NGN"]],
+];
 
 /** The owner's ticket words: price (paid only) and capacity or no limit. */
 export function parseTicketAnswer(
   text: string,
   paid: boolean,
-): { price_major: number | null; capacity: number | null; unlimited: boolean } | null {
+): {
+  price_major: number | null;
+  capacity: number | null;
+  unlimited: boolean;
+  /** The price as typed ("$15"), when it named a currency. */
+  typed_price?: string;
+  /** The currencies that typed symbol or word can mean. */
+  typed_currencies?: string[];
+} | null {
   const unlimited = NO_LIMIT.test(text);
   const capacityMatch = CAPACITY.exec(text);
   const capacity = capacityMatch
     ? Number(capacityMatch[1] ?? capacityMatch[2])
     : null;
   let price: number | null = null;
+  let typed: { price: string; currencies: string[] } | null = null;
   if (paid) {
     const priceMatch = PRICE.exec(text);
-    const raw = priceMatch?.[1] ?? priceMatch?.[2];
+    const raw = priceMatch?.[2] ?? priceMatch?.[3];
     price = raw ? Number(raw.replace(",", ".")) : null;
     if (price === null || !(price > 0)) return null;
+    const marker = priceMatch?.[1] ?? priceMatch?.[4] ?? "";
+    const currencies = TYPED_CURRENCY.find(([pattern]) => pattern.test(marker))
+      ?.[1];
+    if (currencies) {
+      typed = {
+        price: priceMatch?.[1] ? `${marker}${raw}` : `${raw} ${marker}`,
+        currencies,
+      };
+    }
   }
   if (!unlimited && !(capacity && capacity > 0)) return null;
-  return { price_major: price, capacity: unlimited ? null : capacity, unlimited };
+  return {
+    price_major: price,
+    capacity: unlimited ? null : capacity,
+    unlimited,
+    ...(typed
+      ? { typed_price: typed.price, typed_currencies: typed.currencies }
+      : {}),
+  };
 }
 
-function minorDigits(currency: string | null): number {
-  if (!currency) return 2;
+/** The example price in the brand's own currency ("£15", "₦2,000"). */
+function examplePrice(currency: string): string {
+  const minimum = providerMinimumChargeMinor(currency);
+  const minimumMajor = minimum === null
+    ? 0
+    : minimum / minorUnitsPerMajor(currency);
+  const amount = minimumMajor > 15 ? Math.ceil(minimumMajor * 20) : 15;
   try {
-    return new Intl.NumberFormat("en", { style: "currency", currency })
-      .resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    return 2;
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency,
+      currencyDisplay: "narrowSymbol",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch (_error) {
+    return `${amount} ${currency}`;
   }
+}
+
+function currencyOf(value: string | null | undefined): string | null {
+  const code = value?.trim().toUpperCase() ?? "";
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+const PAYOUT_COUNTRY_KEY = "payout_country";
+
+/** Is the open card the payout-country question? */
+function askingPayoutCountry(ctx: FlowContext): boolean {
+  return ctx.run.current_artefact?.reuse_key.startsWith(
+    `event:${PAYOUT_COUNTRY_KEY}:`,
+  ) === true;
 }
 
 const ticketDetailsStep: StepDefinition = {
@@ -1361,17 +1470,47 @@ const ticketDetailsStep: StepDefinition = {
     if (draftTickets(row).length > 0) return done("event_tickets", true);
     if (answer(ctx.run, "ticket")) return done("owner_ticket", true);
     const paid = answer(ctx.run, "ticket_kind") === "paid";
+    const brand = paid ? await ctx.deps.brandFacts?.() ?? null : null;
+    const currency = currencyOf(brand?.default_currency);
+    const proposed = ctx.state?.state === "awaiting_approval";
+    if (brand && paid && !currency) {
+      // The Host ticket sheet's payout-country prompt: a price needs a
+      // currency, and a paid ticket without one can never save.
+      if (proposed && ctx.trigger !== "confirm" && await proposalOpen(ctx)) {
+        return { done: false, wait: true };
+      }
+      const failed = proposed && ctx.trigger === "confirm" &&
+          ctx.failed?.tool_name === PAYOUT_COUNTRY_TOOL
+        ? assertOwnerCopy(ctx.failed.message, {
+          fallback: "The payout country didn't save, so nothing was changed.",
+          surface: "flow_text",
+          mode: "prose",
+        })
+        : null;
+      return {
+        done: false,
+        ask: payoutCountryQuestion(ctx, brand.country_code, failed),
+      };
+    }
+    const example = paid ? examplePrice(currency ?? "GBP") : "";
     return {
       done: false,
+      ...(proposed && currency && ctx.trigger === "confirm"
+        ? {
+          note: `Saved and checked: ${ctx.brandName}'s prices are in ${
+            currencyWords(currency)
+          }.`,
+        }
+        : {}),
       ask: textQuestion({
         ctx,
         key: "ticket",
         title: paid ? "Price and number of tickets" : "How many can come",
         text: paid
-          ? "What's the ticket price, and how many tickets? For example: £15, 60 tickets."
+          ? `What's the ticket price, and how many tickets? For example: ${example}, 60 tickets.`
           : "How many people can come? Say a number, or \"no limit\".",
         label: paid ? "Price and tickets" : "Number of people",
-        placeholder: paid ? "e.g. £15, 60 tickets" : "e.g. 60 people",
+        placeholder: paid ? `e.g. ${example}, 60 tickets` : "e.g. 60 people",
       }),
     };
   },
@@ -1379,6 +1518,24 @@ const ticketDetailsStep: StepDefinition = {
   async onAnswer(ctx, choiceId, answer) {
     const response = formResponse(choiceId, answer);
     if (response === null) return null;
+    if (askingPayoutCountry(ctx)) {
+      const rail = payoutRailFor(response);
+      if (!rail) {
+        return retry(
+          ctx,
+          "Pick the country your bank account is in from the list. Nothing was saved.",
+        );
+      }
+      const { ack, propose } = payoutCountryProposal(ctx, rail);
+      return {
+        record: {
+          state: "awaiting_approval",
+          data: { country_code: rail.country },
+        },
+        ack,
+        propose,
+      };
+    }
     const paid = ctx.run.answers.ticket_kind?.value === "paid";
     const parsed = parseTicketAnswer(response, paid);
     if (!parsed) {
@@ -1390,10 +1547,22 @@ const ticketDetailsStep: StepDefinition = {
       );
     }
     const brand = await ctx.deps.brandFacts?.() ?? null;
-    const currency = brand?.default_currency ?? null;
+    const currency = currencyOf(brand?.default_currency);
+    if (
+      paid && currency && parsed.typed_currencies &&
+      !parsed.typed_currencies.includes(currency)
+    ) {
+      // Never a silent save in the wrong currency: ask.
+      return retry(
+        ctx,
+        `You typed ${parsed.typed_price}, but ${ctx.brandName}'s prices are in ${
+          currencyWords(currency)
+        }. What's the ticket price in ${currency}? Nothing was saved.`,
+      );
+    }
     const priceMinor = parsed.price_major === null
       ? 0
-      : Math.round(parsed.price_major * 10 ** minorDigits(currency));
+      : minorFromMajor(parsed.price_major, currency);
     if (paid) {
       // Seth's decision 6: the provider minimum, checked at price entry.
       const tooLow = ticketPriceBelowMinimum(priceMinor, currency);
@@ -1440,13 +1609,24 @@ const ticketSaveStep: StepDefinition = {
     if (proposed && ctx.trigger !== "confirm" && await proposalOpen(ctx)) {
       return { done: false, wait: true };
     }
-    const ticket = answer(ctx.run, "ticket") as {
-      price_minor: number;
-      capacity: number | null;
-      unlimited: boolean;
-      paid: boolean;
-    } | undefined;
+    const ticket = answer(ctx.run, "ticket") as TicketAnswer | undefined;
     if (!ticket) return done("no_ticket", true);
+    // A refused save is never a dead end: the step comes back with the plain
+    // reason and what the owner can do next (and stays until they choose).
+    const failedNow = proposed && ctx.trigger === "confirm" &&
+        ctx.failed?.tool_name === "upsert_ticket_tier"
+      ? ctx.failed.message
+      : null;
+    const failedBefore = ctx.state?.state === "asked" &&
+        typeof ctx.state.data?.failed === "string"
+      ? ctx.state.data.failed
+      : null;
+    if (failedNow !== null || failedBefore !== null) {
+      return {
+        done: false,
+        ask: await ticketFailedQuestion(ctx, ticket, failedNow ?? failedBefore ?? ""),
+      };
+    }
     const args = {
       event_id: row.id,
       name: SUGGESTED_TICKET_NAME,
@@ -1497,13 +1677,81 @@ const ticketSaveStep: StepDefinition = {
     };
   },
   async onAnswer(ctx, choiceId) {
-    if (choiceId !== "save") return null;
+    if (choiceId === "no_tickets") {
+      return {
+        record: { state: "skipped", reason: "owner_kept_draft_without_tickets" },
+        ack:
+          "Okay. The draft stays without tickets for now; you can add them anytime.",
+      };
+    }
+    if (choiceId === "free") {
+      const ticket = answer(ctx.run, "ticket") as TicketAnswer | undefined;
+      if (!ticket) return null;
+      // The owner's own choice: the same ticket, free. The save is proposed
+      // again below, behind its confirmation.
+      return {
+        record: { state: "pending" },
+        answers: {
+          ticket_kind: owner("free"),
+          paid: owner(false),
+          ticket: owner({ ...ticket, price_minor: 0, paid: false }),
+        },
+      };
+    }
+    if (choiceId !== "save" && choiceId !== "retry") return null;
+    if (choiceId === "retry") {
+      // Re-read with the failure answered, so the save is proposed again.
+      return { record: { state: "pending" } };
+    }
     const probe = await ticketSaveStep.probe(ctx);
     return "propose" in probe
       ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
       : { record: { state: "pending" } };
   },
 };
+
+type TicketAnswer = {
+  price_minor: number;
+  capacity: number | null;
+  unlimited: boolean;
+  paid: boolean;
+};
+
+/** The ticket save was refused: the plain reason and the next choices. */
+async function ticketFailedQuestion(
+  ctx: FlowContext,
+  ticket: TicketAnswer,
+  message: string,
+): Promise<AskSpec> {
+  const reason = assertOwnerCopy(message, {
+    fallback: "The tickets didn't save, so nothing was changed.",
+    surface: "flow_text",
+    mode: "prose",
+  });
+  const options: { id: string; label: string; route?: string }[] = [];
+  if (ticket.paid) {
+    const readiness = await ctx.deps.readiness("publish_paid").catch(() => null);
+    const sell = readiness?.items.find((item) => item.key === "money.can_sell");
+    if (sell?.fix.can_caller_fix && sell.fix.route) {
+      options.push({
+        id: "open",
+        label: `Open ${sell.fix.route_label}`.slice(0, 100),
+        route: sell.fix.route,
+      });
+    }
+    options.push({ id: "free", label: "Make the tickets free" });
+  }
+  options.push({ id: "retry", label: "Try saving again" });
+  options.push({ id: "no_tickets", label: "Keep the draft without tickets" });
+  return {
+    kind: "question",
+    reuse_key: "event:tickets:failed",
+    title: "The tickets didn't save",
+    text: `${reason} What would you like to do?`,
+    options,
+    record: { data: { failed: reason } },
+  };
+}
 
 const VISIBILITY_OPTIONS = [
   { id: "public", label: "Public" },

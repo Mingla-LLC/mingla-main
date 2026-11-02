@@ -296,11 +296,12 @@ export function audit(base, plans = effectiveSuites()) {
     // [TEST-MOD-APPROVED #3355] The saved campaign draft readback and the P2
     // brand readiness read + not-now pair; 176→180.
     // #3355 P6 follow-up: tell_owner_in_brand_group; 180→181.
-    if (parsed.audit?.registered_tool_count !== 181) {
-      failures.push("ledger audit registered_tool_count is not 181");
+    // #3355 P7: set_brand_payout_country; 181→182.
+    if (parsed.audit?.registered_tool_count !== 182) {
+      failures.push("ledger audit registered_tool_count is not 182");
     }
-    if (mapped.length !== 181 || new Set(mapped).size !== 181) {
-      failures.push("ledger mapped tool census is not 181 unique tools");
+    if (mapped.length !== 182 || new Set(mapped).size !== 182) {
+      failures.push("ledger mapped tool census is not 182 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||
