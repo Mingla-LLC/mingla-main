@@ -36,6 +36,13 @@
       ]
     },
     {
+      "capability_key": "events-orders-refunds",
+      "paths": [
+        "supabase/functions/admin-refund-order/index.ts",
+        "supabase/functions/refund-order/index.ts"
+      ]
+    },
+    {
       "capability_key": "checkout-claim-ticket",
       "paths": [
         "app-mobile/src/components/OnboardingFlow.tsx",
