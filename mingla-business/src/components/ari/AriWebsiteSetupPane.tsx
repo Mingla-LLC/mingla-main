@@ -14,6 +14,7 @@ import {
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { brandSiteKeys } from "../../sites/brandSiteKeys";
+import { ariReturnPath, withReturnTo } from "../../utils/brandEditReturn";
 
 type Raw = Record<string, unknown>;
 type SetupPart = { key: string; label: string; done: boolean };
@@ -303,7 +304,18 @@ export function AriWebsiteSetupPane({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push(`/brand/${brandId}/edit` as never)}
+            onPress={() =>
+              router.push(
+                withReturnTo(
+                  `/brand/${brandId}/edit`,
+                  ariReturnPath({
+                    brandId,
+                    sitesIntent: "setup",
+                    setupPart: activePart,
+                  }),
+                ) as never,
+              )
+            }
             style={styles.secondaryAction}
             testID="ari-setup-self"
           >

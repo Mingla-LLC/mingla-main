@@ -56,6 +56,11 @@ import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import {
+  ariReturnPath,
+  isBrandEditRoute,
+  withReturnTo,
+} from "../../utils/brandEditReturn";
 import { AriWebsiteSetupPane } from "../../components/ari/AriWebsiteSetupPane";
 import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
@@ -607,7 +612,20 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // answer: it posts nothing in the owner's name. Coming back re-checks.
   const handleFlowRoute = (route: string): void => {
     flowHandoffOpenRef.current = true;
-    router.push(route as never);
+    // #3355 bug 18 — Brand Edit returns here after a save, even when it has no
+    // back history (a direct web load used to land the owner on Account).
+    router.push(
+      (isBrandEditRoute(route)
+        ? withReturnTo(
+            route,
+            ariReturnPath({
+              brandId: sitesBrandId,
+              sitesIntent,
+              setupPart,
+            }),
+          )
+        : route) as never,
+    );
   };
   useFocusEffectSafe(
     React.useCallback(() => {
