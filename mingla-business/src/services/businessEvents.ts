@@ -591,16 +591,31 @@ const eventFromRow = (
   };
 };
 
-const fetchTicketsForEvent = async (eventId: string): Promise<TicketStub[]> => {
-  const { data, error } = await supabase
+const UNDEFINED_COLUMN = "42703";
+
+// issue #3281 — web ships on merge and migrations apply separately, so a read
+// must survive the gap. Without the column every ticket is All dates.
+const selectTicketRows = async (eventId: string, columns: string) =>
+  supabase
     .from("ticket_types")
-    .select(TICKET_SELECT)
+    .select(columns)
     .eq("event_id", eventId)
     .is("deleted_at", null)
     .order("display_order", { ascending: true });
 
+export const fetchTicketsForEvent = async (
+  eventId: string,
+): Promise<TicketStub[]> => {
+  let { data, error } = await selectTicketRows(eventId, TICKET_SELECT);
+  if (error?.code === UNDEFINED_COLUMN) {
+    ({ data, error } = await selectTicketRows(
+      eventId,
+      TICKET_SELECT.replace("valid_occurrence_keys,", ""),
+    ));
+  }
+
   if (error !== null) throw error;
-  return ((data ?? []) as TicketTypeRow[]).map(ticketRowToTicketStub);
+  return ((data ?? []) as unknown as TicketTypeRow[]).map(ticketRowToTicketStub);
 };
 
 const detailFromRow = async (
