@@ -23,6 +23,12 @@ export type SpendSeries = {
   budget: number | null;
   /** the most spent on one day, for the a11y sentence */
   highest: { day: string; cents: number } | null;
+  /**
+   * #4238 shared days rule (Host and Admin): "over N days" counts the days
+   * whose own spend is above zero. Admin's buildAdminResultsSeries applies
+   * the same rule to the same ad_campaign_daily_series rows.
+   */
+  spendDays: number;
   /** 98% of the budget (the pause point), or null without a budget */
   pauseAt: number | null;
 };
@@ -43,11 +49,13 @@ export function buildSpendSeries(input: {
   const currency = inHost ? input.hostCurrency : providerCurrency;
   let running = 0;
   let highest: SpendSeries["highest"] = null;
+  let spendDays = 0;
   const points: SpendPoint[] = [];
   for (const point of spending) {
     const cents = inHost ? point.spend_host_cents : point.spend_provider_cents;
     if (cents === null) continue;
     running += cents;
+    if (cents > 0) spendDays += 1;
     points.push({ day: point.day, cumulative: running });
     if (!highest || cents > highest.cents) highest = { day: point.day, cents };
   }
@@ -61,6 +69,7 @@ export function buildSpendSeries(input: {
     total: points.length > 0 ? running : null,
     budget,
     highest,
+    spendDays,
     pauseAt: budget !== null ? Math.floor(budget * 0.98) : null,
   };
 }
@@ -75,6 +84,8 @@ export type ResultsPoint = {
 export type ResultsSeries = {
   points: ResultsPoint[];
   total: number;
+  /** total spend ÷ total results (never an average of daily figures) */
+  costPerResult: number | null;
   /** false hides the results chart: nothing counted yet */
   show: boolean;
 };
@@ -95,7 +106,46 @@ export function buildResultsSeries(input: {
     };
   });
   const total = points.reduce((sum, point) => sum + point.results, 0);
-  return { points, total, show: total > 0 };
+  const spendTotal = days.reduce((sum, point) => {
+    const spend = input.inHostCurrency ? point.spend_host_cents : point.spend_provider_cents;
+    return sum + (spend ?? 0);
+  }, 0);
+  return {
+    points,
+    total,
+    costPerResult: hostAdCostPerResult(spendTotal, total),
+    show: total > 0,
+  };
+}
+
+/** Total spend ÷ total results, or null unless both are above zero. */
+export function hostAdCostPerResult(spendCents: number | null, results: number | null): number | null {
+  return spendCents !== null && results !== null && spendCents > 0 && results > 0
+    ? Math.round(spendCents / results)
+    : null;
+}
+
+/**
+ * The detail page's "Cost per result": total spend ÷ total results. Spend is
+ * the brand-currency total when Mingla could convert it, otherwise the same
+ * provider-currency total the spend chart shows; results are Mingla's own
+ * count, else the chart's daily total. Null only when one of them is 0.
+ */
+export function hostAdDetailCostPerResult(input: {
+  hostSpendCents: number | null;
+  hostCurrency: string | null;
+  conversions: number;
+  daily: readonly HostAdDailyPoint[];
+}): { cents: number; currency: string } | null {
+  const series = buildSpendSeries({ daily: input.daily, hostCurrency: input.hostCurrency, budgetCents: null });
+  const useHost = input.hostSpendCents !== null && input.hostCurrency !== null;
+  const spend = useHost ? input.hostSpendCents : series.total;
+  const currency = useHost ? input.hostCurrency : series.currency;
+  const results = input.conversions > 0
+    ? input.conversions
+    : input.daily.reduce((sum, point) => sum + (point.results ?? 0), 0);
+  const cents = hostAdCostPerResult(spend, results);
+  return cents !== null && currency ? { cents, currency } : null;
 }
 
 export type FunnelStep = {

@@ -17,7 +17,13 @@ import {
 } from "../../../../constants/designSystem";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { HOST_AD_RESULTS_COPY } from "../hostAdCopy";
-import { HiddenWebTable, PLOT_WIDTH, RIGHT_GUTTER, usePlotHeight } from "./chartParts";
+import {
+  AXIS_ROW_INSET,
+  HiddenWebTable,
+  RIGHT_GUTTER,
+  usePlotHeight,
+  usePlotWidth,
+} from "./chartParts";
 import { linePath, shortDay, type SpendSeries } from "./adResultsSeries";
 
 function money(cents: number | null, currency: string | null): string {
@@ -29,7 +35,7 @@ export function spendChartLabel(series: SpendSeries): string {
   if (series.points.length === 0 || series.total === null) {
     return HOST_AD_RESULTS_COPY.noSpend;
   }
-  const days = series.points.length;
+  const days = series.spendDays;
   const budget = series.budget !== null
     ? ` of ${money(series.budget, series.currency)} budget`
     : "";
@@ -41,6 +47,7 @@ export function spendChartLabel(series: SpendSeries): string {
 
 export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactElement {
   const height = usePlotHeight();
+  const { plotWidth, onLayout } = usePlotWidth();
   if (series.points.length === 0 || series.total === null) {
     return (
       <Text style={styles.empty} testID="ad-spend-chart-empty">
@@ -48,7 +55,7 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
       </Text>
     );
   }
-  const width = PLOT_WIDTH - RIGHT_GUTTER;
+  const width = plotWidth - RIGHT_GUTTER;
   const max = Math.max(series.total, series.budget ?? 0, 1);
   const values = series.points.map((point) => point.cumulative);
   const path = linePath(values, width, height, max);
@@ -57,11 +64,12 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
   const label = spendChartLabel(series);
   return (
     <View testID="ad-spend-chart">
-      <View accessible accessibilityRole="image" accessibilityLabel={label}>
+      <View accessible accessibilityRole="image" accessibilityLabel={label} onLayout={onLayout}>
         <Svg
           width="100%"
           height={height}
-          viewBox={`0 0 ${PLOT_WIDTH} ${height}`}
+          viewBox={`0 0 ${plotWidth} ${height}`}
+          testID="ad-spend-chart-svg"
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
@@ -121,7 +129,7 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
           })}
         </View>
       ) : (
-        <View style={styles.axisRow}>
+        <View style={[styles.axisRow, AXIS_ROW_INSET]} testID="ad-spend-chart-axis">
           <Text style={styles.axisText}>{shortDay(series.points[0].day)}</Text>
           <Text style={styles.axisText}>{shortDay(series.points[series.points.length - 1].day)}</Text>
         </View>

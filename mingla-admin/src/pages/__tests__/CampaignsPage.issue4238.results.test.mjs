@@ -25,6 +25,9 @@ test("T17 series keeps missing days null and sums plan siblings", async () => {
       ["2026-11-03", null, null],
     ]);
     assert.equal(s.totalSpend, 2400);
+    // #4238 shared days rule: days whose own spend is above zero. The Host
+    // detail page counts the same rows the same way (2 days, not 3).
+    assert.equal(s.spendDays, 2);
     assert.equal(s.totalResults, 3);
     assert.deepEqual(s.platforms.map((p) => [p.platform, p.spend]), [["meta", 2100], ["snapchat", 300]]);
     assert.deepEqual(s.funnel.map((f) => [f.key, f.value]), [["shown", 8500], ["clicks", 150], ["visits", 61], ["results", 3]]);
@@ -37,7 +40,8 @@ test("T17 renders the charts, the summary line and the table toggle", async () =
     const html = renderToStaticMarkup(React.createElement(AdResultsCharts, { rows, capCents: 5000 }));
     assert.match(html, /data-testid="results-over-time"/);
     assert.match(html, /recharts-responsive-container/);
-    assert.match(html, /over 3 days of a .*cap · 3 results/);
+    assert.match(html, /over 2 days of a .*cap · 3 results/);
+    assert.doesNotMatch(html, /over 3 days/);
     assert.match(html, /Show as table/);
     assert.match(html, /data-testid="results-over-time-funnel"/);
     const empty = renderToStaticMarkup(React.createElement(AdResultsCharts, { rows: [] }));

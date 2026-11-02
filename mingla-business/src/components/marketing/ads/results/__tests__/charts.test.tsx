@@ -98,7 +98,9 @@ describe("#4238 T14 results charts", () => {
     );
     const [spend, results] = labels(r);
     expect(spend).toBe("Spend over 6 days: NGN 43,500.00 of NGN 100,000.00 budget, highest NGN 7,500.00 on 6 Nov.");
-    expect(results).toMatch(/^3 ticket sales over 6 days, most on 2 Nov \(1\); cost per sale NGN [\d,.]+ on average\.$/);
+    // #4238: total spend ÷ total results (NGN 43,500 ÷ 3), not the mean of
+    // the three daily figures (NGN 7,300).
+    expect(results).toBe("3 ticket sales over 6 days, most on 2 Nov (1); cost per sale NGN 14,500.00 on average.");
     expect(r.root.findAll((n) => n.type === "Path").length).toBeGreaterThan(0);
     expect(byTestId(r, "ad-funnel-shown")).toHaveLength(1);
     expect(byTestId(r, "ad-funnel-visits")).toHaveLength(1);

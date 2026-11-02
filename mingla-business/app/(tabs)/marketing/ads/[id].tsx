@@ -46,6 +46,7 @@ import {
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../../../src/components/marketing/ads/results/AdResultsSection";
+import { hostAdDetailCostPerResult } from "../../../../src/components/marketing/ads/results/adResultsSeries";
 import {
   goBackToAds,
   hostAdScrollBottomPadding,
@@ -284,8 +285,13 @@ export default function HostAdDetailRoute(): React.ReactElement {
     spent !== null && cap > 0
       ? Math.min(100, Math.round((spent / cap) * 100))
       : null;
-  const costPerResult =
-    spent !== null && conversions > 0 ? Math.round(spent / conversions) : null;
+  // #4238: total spend ÷ total results, from the same totals the charts use.
+  const costPerResult = hostAdDetailCostPerResult({
+    hostSpendCents: spent,
+    hostCurrency: currency,
+    conversions,
+    daily: payload.daily ?? [],
+  });
   const latestPauseReason = payload.timeline.find(
     (event) =>
       event.action === "pause" &&
@@ -441,8 +447,8 @@ export default function HostAdDetailRoute(): React.ReactElement {
           />
           <Text style={styles.muted} testID="ads-detail-cost-per-result">
             {costPerLabel}:{" "}
-            {costPerResult !== null && currency
-              ? formatCurrency(costPerResult, currency, true)
+            {costPerResult !== null
+              ? formatCurrency(costPerResult.cents, costPerResult.currency, true)
               : "Shown once we have both spend and results"}
           </Text>
         </GlassCard>

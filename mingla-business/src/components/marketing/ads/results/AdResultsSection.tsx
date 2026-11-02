@@ -79,7 +79,7 @@ export function AdResultsSection(props: {
           spentCents: spend.total,
           budgetCents: spend.budget,
           currency: spend.currency,
-          days: spend.points.length,
+          days: spend.spendDays,
         })}
       </Text>
       {props.dailyError ? (
@@ -100,13 +100,17 @@ export function AdResultsSection(props: {
       ) : (
         <>
           <View style={[styles.charts, wide && styles.chartsWide]}>
-            <View style={[styles.chart, wide && styles.chartWide]}>
-              <AdSpendChart series={spend} />
-            </View>
+            {/* Without spend the sentence above already says so; the empty
+                chart would repeat it. */}
             {spend.points.length > 0 ? (
-              <View style={[styles.chart, wide && styles.chartWide]}>
-                <AdResultsChart series={results} resultLabel={label} currency={spend.currency} />
-              </View>
+              <>
+                <View style={[styles.chart, wide && styles.chartWide]}>
+                  <AdSpendChart series={spend} />
+                </View>
+                <View style={[styles.chart, wide && styles.chartWide]}>
+                  <AdResultsChart series={results} resultLabel={label} currency={spend.currency} />
+                </View>
+              </>
             ) : null}
           </View>
           <AdFunnelRow steps={funnel} resultLabel={label} />

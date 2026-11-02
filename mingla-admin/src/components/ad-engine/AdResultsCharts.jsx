@@ -83,6 +83,9 @@ export function buildAdminResultsSeries(rows) {
     days,
     currency: currencies.size === 1 ? [...currencies][0] : null,
     totalSpend: days.some((d) => d.spend !== null) ? running : null,
+    // #4238 shared days rule (Admin and Host): "over N days" counts the days
+    // whose own spend is above zero, as the Host's buildSpendSeries does.
+    spendDays: days.filter((d) => d.spend !== null && d.spend > 0).length,
     totalResults: days.reduce((a, d) => a + d.results, 0),
     platforms: [...byPlatform.values()].sort((a, b) => b.spend - a.spend),
     funnel,
@@ -110,7 +113,7 @@ export function AdResultsCharts({ rows, capCents, loading = false, error = null 
     <div className="space-y-4" data-testid="results-over-time">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm">
-          {money(series.totalSpend)} spent over {series.days.length} {series.days.length === 1 ? "day" : "days"}
+          {money(series.totalSpend)} spent over {series.spendDays} {series.spendDays === 1 ? "day" : "days"}
           {capCents ? ` of a ${money(capCents)} cap` : ""} · {series.totalResults} results
         </p>
         <button
@@ -153,7 +156,7 @@ export function AdResultsCharts({ rows, capCents, loading = false, error = null 
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <figure aria-label={`Daily spend and spend so far: ${money(series.totalSpend)} over ${series.days.length} days`}>
+          <figure aria-label={`Daily spend and spend so far: ${money(series.totalSpend)} over ${series.spendDays} ${series.spendDays === 1 ? "day" : "days"}`}>
             <ResponsiveContainer width="100%" height={220}>
               <ComposedChart data={series.days} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="4 5" vertical={false} />

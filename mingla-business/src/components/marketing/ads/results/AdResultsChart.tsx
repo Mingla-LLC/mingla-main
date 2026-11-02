@@ -17,7 +17,13 @@ import {
 } from "../../../../constants/designSystem";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { hostAdCostPerLabel, hostAdNoResultsLine, hostAdResultLabel } from "../hostAdCopy";
-import { HiddenWebTable, PLOT_WIDTH, RIGHT_GUTTER, usePlotHeight } from "./chartParts";
+import {
+  AXIS_ROW_INSET,
+  HiddenWebTable,
+  RIGHT_GUTTER,
+  usePlotHeight,
+  usePlotWidth,
+} from "./chartParts";
 import { linePath, shortDay, type ResultsSeries } from "./adResultsSeries";
 
 export function resultsChartLabel(
@@ -30,9 +36,10 @@ export function resultsChartLabel(
     (top, point) => (!top || point.results > top.results ? point : top),
     null,
   );
-  const costs = series.points.map((p) => p.costPerResult).filter((v): v is number => v !== null);
-  const average = costs.length > 0
-    ? `; ${hostAdCostPerLabel(resultLabel).toLowerCase()} ${formatHostAdMoneyCents(Math.round(costs.reduce((a, b) => a + b, 0) / costs.length), currency) ?? ""} on average`
+  // Total spend ÷ total results: an average of daily figures overweights
+  // quiet days (one sale on a ₦100 day counts as much as ten on a ₦10,000 day).
+  const average = series.costPerResult !== null
+    ? `; ${hostAdCostPerLabel(resultLabel).toLowerCase()} ${formatHostAdMoneyCents(series.costPerResult, currency) ?? ""} on average`
     : "";
   return `${series.total} ${label} over ${series.points.length} ${series.points.length === 1 ? "day" : "days"}${best ? `, most on ${shortDay(best.day)} (${best.results})` : ""}${average}.`;
 }
@@ -43,6 +50,7 @@ export function AdResultsChart(props: {
   currency: string | null;
 }): React.ReactElement {
   const height = usePlotHeight();
+  const { plotWidth, onLayout } = usePlotWidth();
   if (!props.series.show) {
     return (
       <Text style={styles.empty} testID="ad-results-chart-empty">
@@ -50,7 +58,7 @@ export function AdResultsChart(props: {
       </Text>
     );
   }
-  const width = PLOT_WIDTH - RIGHT_GUTTER;
+  const width = plotWidth - RIGHT_GUTTER;
   const points = props.series.points;
   const maxResults = Math.max(1, ...points.map((p) => p.results));
   const costs = points.map((p) => p.costPerResult);
@@ -67,11 +75,11 @@ export function AdResultsChart(props: {
   const label = resultsChartLabel(props.series, props.resultLabel, props.currency);
   return (
     <View testID="ad-results-chart">
-      <View accessible accessibilityRole="image" accessibilityLabel={label}>
+      <View accessible accessibilityRole="image" accessibilityLabel={label} onLayout={onLayout}>
         <Svg
           width="100%"
           height={height}
-          viewBox={`0 0 ${PLOT_WIDTH} ${height}`}
+          viewBox={`0 0 ${plotWidth} ${height}`}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
@@ -100,7 +108,7 @@ export function AdResultsChart(props: {
           ) : null}
         </Svg>
       </View>
-      <View style={styles.axisRow}>
+      <View style={[styles.axisRow, AXIS_ROW_INSET]}>
         <Text style={styles.axisText}>{shortDay(points[0].day)}</Text>
         <Text style={styles.axisText}>{shortDay(points[points.length - 1].day)}</Text>
       </View>
