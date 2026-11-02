@@ -370,6 +370,70 @@ Deno.test("#3281 v2 keeps byDate, derives quantity and leaves plain lines alone"
   }
 });
 
+Deno.test("#3281 v2 keeps extras on their line, sorted, and refuses bad ones", () => {
+  const DINNER = "77777777-7777-4777-8777-777777777777";
+  const SHUTTLE = "88888888-8888-4888-8888-888888888888";
+  const parsed = normalizeCheckoutV2ServerLines([{
+    ticketTypeId: VIP,
+    quantity: 2,
+    paymentPlanChoice: "full",
+    addOns: [
+      { addOnId: SHUTTLE, quantity: 1 },
+      { addOnId: DINNER, quantity: 2 },
+    ],
+  }]);
+  assert(parsed.ok);
+  assertEquals(parsed.lines[0].addOns, [
+    { addOnId: DINNER, quantity: 2 },
+    { addOnId: SHUTTLE, quantity: 1 },
+  ]);
+
+  // No extras, or an empty list, leaves the line exactly as before.
+  for (const addOns of [undefined, null, []]) {
+    const plain = normalizeCheckoutV2ServerLines([
+      { ticketTypeId: VIP, quantity: 2, paymentPlanChoice: "full", addOns },
+    ]);
+    assert(plain.ok);
+    assertEquals("addOns" in plain.lines[0], false);
+  }
+
+  for (
+    const addOns of [
+      {},
+      [{ addOnId: DINNER }],
+      [{ addOnId: DINNER, quantity: 0 }],
+      [{ addOnId: DINNER, quantity: 1.5 }],
+      [{ addOnId: DINNER, quantity: "1" }],
+      [{ addOnId: "not-an-id", quantity: 1 }],
+      [{ addOnId: DINNER, quantity: 1 }, { addOnId: DINNER, quantity: 1 }],
+      [null],
+    ]
+  ) {
+    assertEquals(
+      normalizeCheckoutV2ServerLines([{
+        ticketTypeId: VIP,
+        quantity: 1,
+        paymentPlanChoice: "full",
+        addOns,
+      }]),
+      { ok: false, error: "checkout_lines_invalid" },
+    );
+  }
+});
+
+Deno.test("#3281 the session's extras join the bound total and the bind lines", () => {
+  const source = Deno.readTextFileSync(
+    new URL("../index.ts", import.meta.url),
+  );
+  assert(source.includes(
+    "const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents;",
+  ));
+  assert(source.includes("p_due_today_cents: dueTodayCents,"));
+  assert(source.includes(
+    "...(line.addOns !== undefined ? { addOns: line.addOns } : {}),",
+  ));
+});
+
 Deno.test("#3281 a changed date map changes the client attempt lines", () => {
   const DAY_ONE = "55555555-5555-4555-8555-555555555555";
   const parsed = normalizeCheckoutV2Lines([{
