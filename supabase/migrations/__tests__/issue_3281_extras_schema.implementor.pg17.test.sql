@@ -97,7 +97,8 @@ BEGIN
   -- Two refunds settling together must each see the other's result.
   IF position('FROM public.orders WHERE id = v_order.id FOR UPDATE' IN pg_get_functiondef('public.admin_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
      OR position('FROM public.orders WHERE id = v_order.id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
-     OR position('FROM public.orders WHERE id = v.order_id FOR UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) = 0 THEN
+     OR position('FROM public.orders WHERE id = v.order_id FOR UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = p_order_id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'settlement must lock the order';
   END IF;
 
@@ -217,6 +218,7 @@ DECLARE
   v_discount_order uuid := gen_random_uuid();
   v_discount_line uuid := gen_random_uuid();
   v_attempt uuid := gen_random_uuid();
+  v_tiny_order uuid := gen_random_uuid();
   v_race_order uuid;
   v_race_line uuid;
   v_manual uuid;
@@ -339,6 +341,30 @@ BEGIN
   PERFORM public.issue_2097_finalize_refund_attempt(v_attempt,v_owner,1,'not_applicable',NULL,'0','0',NULL);
   IF (SELECT payment_status FROM public.orders WHERE id=v_mixed_order) <> 'refunded' THEN
     RAISE EXCEPTION 'a settled Stripe cancellation must store refunded';
+  END IF;
+
+  -- A replayed refund webhook must not undo a settled full cancellation.
+  PERFORM public.biz_refund_order_commit_from_webhook(v_plain_order,'re-plain',1200,'NGN',NULL,NULL);
+  IF (SELECT payment_status FROM public.orders WHERE id=v_plain_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'a webhook replay must keep the order refunded';
+  END IF;
+
+  -- A line whose share rounds to nothing still gets a cent, so the cancel runs.
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_tiny_order,v_event,5000,'NGN','paid','pi-tiny','ch-tiny','legacy');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES ('00000000-0000-4000-8000-000000003281',v_tiny_order,v_tier,1,1,1),
+      ('ffffffff-ffff-4fff-bfff-ffffffff3281',v_tiny_order,v_tier,1,9999,9999);
+  PERFORM public.issue_3872_cancel_refund_order(v_tiny_order,
+    jsonb_build_array(
+      jsonb_build_object('order_line_item_id','00000000-0000-4000-8000-000000003281','quantity',1),
+      jsonb_build_object('order_line_item_id','ffffffff-ffff-4fff-bfff-ffffffff3281','quantity',1)),
+    'The organiser cancelled this event','cancel-tiny-1');
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_tiny_order;
+  IF (SELECT SUM(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund) <> 5000
+     OR (SELECT min(amount_cents) FROM public.refund_line_items WHERE refund_id=v_refund) < 1 THEN
+    RAISE EXCEPTION 'rounding must keep every line positive and the sum exact';
   END IF;
 
   -- Whichever refund settles last, a full cancellation ends as refunded.
