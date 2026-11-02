@@ -38,7 +38,12 @@ import { ClarifyingCard } from "./ClarifyingCard";
 import { MultiSelectPrompt } from "./MultiSelectPrompt";
 import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
 import type { AriRenditionInteraction } from "./renditions/AriRenditionPreview";
-import { parseAriRendition } from "./renditions/ariRenditionProtocol";
+import {
+  isAnswerableAriRendition,
+  isSupersededRenditionTapAllowed,
+  newestAnswerableRenditionKey,
+  parseAriRendition,
+} from "./renditions/ariRenditionProtocol";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 import type { AriFeedbackReason } from "../../services/ariFeedbackService";
@@ -61,6 +66,7 @@ import type { ConfirmOutcome } from "./toolProposalTypes";
 // #3429 REWORK-2 R-4 — the failed-delivery row renders the ONE connection
 // sentence #3184 owns, not a second wording of its own.
 import { ARI_CHAT_CONNECTION_COPY } from "../../screens/ari/ariChatErrorCopy";
+import { friendlyWebsiteSetupAnswer } from "./websiteSetupProposalCopy";
 
 /** #3355 — inverted-list tolerance (px) for "still at newest". */
 const NEWEST_PIN_TOLERANCE_PX = 48;
@@ -270,6 +276,15 @@ export const MessageList: React.FC<MessageListProps> = ({
       );
     }
   }
+
+  // #2830 P0 (D-4 interim) — one live answer card per thread. Older cards
+  // that could still submit render as answered and ignore taps, so an old
+  // question can never overwrite a newer answer.
+  const liveRenditionMessageId = newestAnswerableRenditionKey(
+    [...renditionsByMessageId].flatMap(([messageId, rendition]) =>
+      rendition ? [[messageId, rendition] as const] : [],
+    ),
+  );
 
   const raw: ListItem[] = [];
   for (const m of messages) {
@@ -606,7 +621,9 @@ export const MessageList: React.FC<MessageListProps> = ({
               {text ? (
                 <ChatBubble
                   role={m.role === "user" ? "user" : "assistant"}
-                  text={text}
+                  text={
+                    m.role === "user" ? friendlyWebsiteSetupAnswer(text) : text
+                  }
                   hideOrb={item.hideOrb}
                   tail={item.tail}
                   reveal={
@@ -623,7 +640,18 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <AriRenditionCard
                     rendition={rendition}
                     showOrb={!text && !item.hideOrb}
+                    superseded={
+                      isAnswerableAriRendition(rendition) &&
+                      m.id !== liveRenditionMessageId
+                    }
                     onAction={(interaction) => {
+                      if (
+                        isAnswerableAriRendition(rendition) &&
+                        m.id !== liveRenditionMessageId &&
+                        !isSupersededRenditionTapAllowed(interaction.action)
+                      ) {
+                        return; // answered/replaced card — never submits
+                      }
                       if (
                         interaction.action.behavior.type === "local" &&
                         interaction.action.behavior.command === "dismiss"

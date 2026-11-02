@@ -297,6 +297,8 @@ jest.mock("../../../hooks/useAgentChat", () => ({
     errorMessage: null,
     clearErrorMessage: jest.fn(),
     setSurface: jest.fn(),
+    // #2830 — AriChatScreen sets the Website setup workflow context on mount.
+    setWorkflowContext: jest.fn(),
     activeTurn: null,
     stopTurn: jest.fn(),
     retryTurn: jest.fn(),

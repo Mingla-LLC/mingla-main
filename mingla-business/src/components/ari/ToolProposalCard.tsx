@@ -52,6 +52,7 @@ import {
   isValidAdCreativeOwnerKey,
 } from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
+import { websiteSetupProposalCopy } from "./websiteSetupProposalCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -210,6 +211,11 @@ function humanizeToolName(toolName: string): string {
       return "Publish Website";
     case "rollback_site":
       return "Publish earlier Website version";
+    case "update_brand_context":
+    case "save_site_plan_answers":
+    case "save_site_plan_design":
+    case "create_site_draft":
+      return websiteSetupProposalCopy(toolName, {})?.verb ?? "Website setup";
     default:
       return toolName.replace(/_/g, " ");
   }
@@ -249,6 +255,9 @@ function primaryIdentity(
   args: Record<string, unknown>,
   brandNamesById: Record<string, string>,
 ): string {
+  // #2830 — Website setup saves title the card with what is being saved.
+  const websiteSetup = websiteSetupProposalCopy(toolName, args);
+  if (websiteSetup) return websiteSetup.title;
   if (toolName === "create_brand") return (args.name as string) || "New brand";
   if (toolName === "create_event") return (args.title as string) || "New event";
   if (toolName === "update_event") return "Event update";
@@ -301,6 +310,11 @@ function fieldsFor(
     typeof args.__proposal_context === "object"
       ? (args.__proposal_context as Record<string, unknown>)
       : {};
+
+  // #2830 — never fall through to the raw-argument listing below: it showed
+  // plan revisions and a context hash instead of the value being saved.
+  const websiteSetup = websiteSetupProposalCopy(toolName, args);
+  if (websiteSetup) return websiteSetup.fields;
 
   if (toolName === "create_discount") {
     if (typeof args.name === "string")

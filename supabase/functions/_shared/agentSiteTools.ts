@@ -1165,7 +1165,7 @@ const updateBrandContext = tool(
       ) {
         throw new ToolError(
           "REVISION_CONFLICT",
-          "The Website setup changed. Read get_site_plan again before proposing this update.",
+          "The Website setup changed since Ari last read it. Nothing was saved; Ari will re-check the plan before proposing this again.",
         );
       }
       if (message.includes("sites_plan_locked")) {

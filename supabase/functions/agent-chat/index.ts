@@ -137,6 +137,21 @@ import {
   canCompleteResearchFromSearchIndex,
   isStandalonePublicResearchRequest,
 } from "../_shared/agentWebResearch.ts";
+import {
+  buildWebsiteSetupPresentation,
+  buildWebsiteSetupReply,
+  detectWebsiteSetupIntent,
+  buildWebsiteSetupRetryPresentation,
+  resolveWebsiteSetupContextAnswer,
+  websiteSetupContextAnswer,
+  websiteSetupCurrentTurnOnly,
+  websiteSetupDesignAnswer,
+  websiteSetupEffectiveIntent,
+  websiteSetupMergedPlanAnswers,
+  websiteSetupPlanAnswer,
+  websiteSetupPlanRevision,
+  websiteSetupWorkflowInitialCalls,
+} from "../_shared/agentWebsiteSetup.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -220,6 +235,7 @@ interface RequestBody {
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
   ari_ui?: unknown;
+  workflow_context?: "website_setup";
 }
 
 type Response_ =
@@ -894,6 +910,12 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
   }
   const ariUiCapabilities = parseAriUiCapabilities(body.ari_ui);
+  if (
+    body.workflow_context !== undefined &&
+    body.workflow_context !== "website_setup"
+  ) {
+    return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
+  }
 
   const choiceSubmission = body.choice_response === undefined
     ? null
@@ -1900,9 +1922,39 @@ async function handle(req: Request): Promise<Response> {
       : null;
     const activeEventPlan = taskState.active_task?.intent === "create_event" &&
       !["completed", "cancelled"].includes(taskState.status);
+    // Website setup is a separate durable workflow. It must not be interpreted
+    // as an answer to an older event-planning question in the same thread.
+    const websiteSetupIntent = activeBrand
+      ? detectWebsiteSetupIntent(semanticMessage)
+      : null;
+    const websiteSetupWorkflow = body.workflow_context === "website_setup";
+    const websiteSetupBoundary = websiteSetupWorkflow ||
+      websiteSetupIntent !== null;
+    if (websiteSetupBoundary) {
+      const currentTurn = websiteSetupCurrentTurnOnly(contents);
+      contents.splice(0, contents.length, ...currentTurn);
+    }
+    let activeWebsiteSetupJob = false;
+    if (websiteSetupWorkflow && activeBrand) {
+      const { data: hasWebsiteJob } = await userClient.rpc(
+        "ari_has_active_brand_completeness_job",
+        { p_brand_id: activeBrand.id },
+      );
+      activeWebsiteSetupJob = hasWebsiteJob === true;
+    }
+    // An owner returning from an upload or approval handoff resumes the
+    // durable job: fresh plan read, then the next gap, presented by the server.
+    const effectiveWebsiteSetupIntent = websiteSetupEffectiveIntent({
+      intent: websiteSetupIntent,
+      message: semanticMessage,
+      workflow: websiteSetupWorkflow,
+      activeFixAllJob: activeWebsiteSetupJob,
+    });
     const readInterruption = activeEventPlan &&
+      !websiteSetupBoundary &&
       isReadInterruption(semanticMessage);
-    const questionInterruption = activeEventPlan && !readInterruption &&
+    const questionInterruption = activeEventPlan &&
+      !websiteSetupBoundary && !readInterruption &&
       /\b(?:what|why|how|who|where|can you|do you)\b/i.test(semanticMessage) &&
       !/\b(?:today|tomorrow|next|this|month|week|am|pm|morning|afternoon|evening|title|called|named)\b/i
         .test(semanticMessage);
@@ -2018,7 +2070,8 @@ async function handle(req: Request): Promise<Response> {
     }
 
     if (
-      plannerContext && !readInterruption && !questionInterruption &&
+      plannerContext && !websiteSetupBoundary &&
+      !readInterruption && !questionInterruption &&
       (activeEventPlan || isCreateEventPlanningRequest(semanticMessage))
     ) {
       try {
@@ -2110,6 +2163,171 @@ async function handle(req: Request): Promise<Response> {
       }
     }
 
+    const structuredWebsiteDesign = websiteSetupWorkflow
+      ? websiteSetupDesignAnswer(semanticMessage)
+      : null;
+    const structuredWebsitePlanAnswer = websiteSetupWorkflow
+      ? websiteSetupPlanAnswer(semanticMessage)
+      : null;
+    // #2830 — brand-context answers (contact, location, links, theme, name,
+    // story) and owner-only steps (approval, uploads) are resolved here too,
+    // never by a model guess.
+    const structuredWebsiteContext =
+      websiteSetupWorkflow && !structuredWebsiteDesign &&
+        !structuredWebsitePlanAnswer
+        ? websiteSetupContextAnswer(semanticMessage)
+        : null;
+    if (
+      (structuredWebsiteDesign || structuredWebsitePlanAnswer ||
+        structuredWebsiteContext) && activeBrand &&
+      activeWebsiteSetupJob
+    ) {
+      const readTool = findTool("get_site_plan");
+      const tool = findTool(
+        structuredWebsiteDesign
+          ? "save_site_plan_design"
+          : structuredWebsiteContext
+          ? "update_brand_context"
+          : "save_site_plan_answers",
+      );
+      if (!readTool || !tool) {
+        return errorResponse(
+          500,
+          "INTERNAL",
+          "Website setup tools are unavailable.",
+        );
+      }
+      try {
+        // Always propose against a fresh read: the revisions below come from
+        // this read, never from an earlier turn.
+        const plan = await readTool.executor(
+          { brand_id: activeBrand.id },
+          userClient,
+          userId,
+          { operationId: null },
+        );
+        const revision = websiteSetupPlanRevision(plan);
+        if (revision === null) {
+          return errorResponse(
+            503,
+            "SITE_SERVICE_UNAVAILABLE",
+            "Ari could not refresh the current Website plan revision. Nothing was changed.",
+          );
+        }
+        const contextResolution = structuredWebsiteContext
+          ? resolveWebsiteSetupContextAnswer({
+            brandId: activeBrand.id,
+            plan,
+            answer: structuredWebsiteContext,
+          })
+          : null;
+        if (contextResolution?.kind === "unavailable") {
+          return errorResponse(
+            503,
+            "SITE_SERVICE_UNAVAILABLE",
+            "Ari could not refresh the current Website details. Nothing was changed.",
+          );
+        }
+        if (contextResolution?.kind === "retry") {
+          // Nothing is written. Re-ask the same one question with what was
+          // wrong, using the same controls the owner just used.
+          const retry = buildWebsiteSetupRetryPresentation({
+            fieldKey: contextResolution.fieldKey,
+            field: contextResolution.field,
+            brandId: activeBrand.id,
+            problem: contextResolution.problem,
+            completeness: contextResolution.completeness,
+          });
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: retry.text,
+            classification: "website_setup_structured_retry",
+            startedAt: turnStartedAt,
+            structuredData: { rendition: retry.rendition },
+          });
+        }
+        const proposalArgs = contextResolution?.kind === "proposal"
+          ? contextResolution.args
+          : structuredWebsiteDesign
+          ? {
+            brand_id: activeBrand.id,
+            expected_plan_revision: revision,
+            design_key: structuredWebsiteDesign.designKey,
+            source_type: "owner",
+            why: `The owner selected ${
+              structuredWebsiteDesign.designKey === "atelier"
+                ? "Atelier"
+                : "Voyage"
+            } during Website setup.`,
+            cites: [{
+              kind: "owner_words",
+              quote: structuredWebsiteDesign.ownerWords,
+            }],
+          }
+          : {
+            brand_id: activeBrand.id,
+            expected_plan_revision: revision,
+            answers: websiteSetupMergedPlanAnswers(
+              plan,
+              structuredWebsitePlanAnswer!.answers,
+            ),
+            why: `Save ${structuredWebsitePlanAnswer!.ownerWords} for ${
+              structuredWebsitePlanAnswer!.fieldLabel
+            }.`.slice(0, 300),
+            cites: [{
+              kind: "owner_words",
+              quote: structuredWebsitePlanAnswer!.ownerWords,
+            }],
+          };
+        await authorizeAgentTool(
+          tool,
+          proposalArgs,
+          userClient,
+          userId,
+        );
+        return await commitPendingTurn({
+          client: serviceClient,
+          pendingClient: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          uiCapabilities: ariUiCapabilities,
+          previousState: taskState,
+          readyState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          toolName: tool.name,
+          toolArgs: proposalArgs,
+          classification: "website_setup_structured_answer",
+          startedAt: turnStartedAt,
+        });
+      } catch (err: unknown) {
+        if (err instanceof ToolError) {
+          return errorResponse(
+            err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+            err.code,
+            err.message,
+          );
+        }
+        logError("structured Website answer failed", err, {
+          fn: "agent-chat",
+          revision: "2830-structured-answer-v2",
+        });
+        return errorResponse(
+          503,
+          "SITE_SERVICE_UNAVAILABLE",
+          "Ari could not refresh the Website plan. Nothing was changed.",
+        );
+      }
+    }
+
     const interruptionState = (readInterruption || questionInterruption)
       ? beginInterruption(taskState, {
         turn_id: body.client_turn_id,
@@ -2124,7 +2342,10 @@ async function handle(req: Request): Promise<Response> {
     // the governed flag is disabled or unavailable.
     const { data: agentLoopFlag, error: agentLoopFlagError } = await userClient
       .rpc("ari_agent_loop_enabled");
-    if (!agentLoopFlagError && agentLoopFlag === true) {
+    if (
+      websiteSetupBoundary ||
+      (!agentLoopFlagError && agentLoopFlag === true)
+    ) {
       if (
         !await appendActivity({
           client: serviceClient,
@@ -2179,10 +2400,14 @@ ${boundedAgentContext}
       const selectedToolsets = new Set<AriToolsetKey>(
         inferAriToolsets(semanticMessage),
       );
+      if (websiteSetupBoundary) {
+        selectedToolsets.add("sites");
+        selectedToolsets.add("memory");
+      }
       let selectedTools = selectAriTools(
         AGENT_TOOLS,
         [...selectedToolsets],
-        8,
+        websiteSetupBoundary ? 16 : 8,
         semanticMessage,
       );
       try {
@@ -2223,7 +2448,16 @@ ${boundedAgentContext}
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
       );
-      const initialCalls = standaloneResearchRequest
+      const websiteInitialCalls = activeBrand && websiteSetupBoundary
+        ? websiteSetupWorkflowInitialCalls({
+          intent: effectiveWebsiteSetupIntent,
+          brandId: activeBrand.id,
+          activeFixAllJob: activeWebsiteSetupJob,
+        })
+        : [];
+      const initialCalls = websiteInitialCalls.length > 0
+        ? websiteInitialCalls
+        : standaloneResearchRequest
         ? [{ name: "search_public_web", args: { query: semanticMessage } }]
         : launchInitialCalls.length > 0
         ? launchInitialCalls
@@ -2255,7 +2489,14 @@ ${boundedAgentContext}
           }
           : undefined,
         initialCalls,
-        completeAfterInitialReads: deterministicSafetyReply
+        completeAfterInitialReads: websiteSetupIntent
+          ? (observations) =>
+            buildWebsiteSetupReply(
+              websiteSetupIntent,
+              observations,
+              activeBrand?.name ?? null,
+            )
+          : deterministicSafetyReply
           ? () => deterministicSafetyReply
           : completeFromSearchIndex
           ? completeStandaloneResearchRead
@@ -2519,7 +2760,7 @@ ${boundedAgentContext}
       });
 
       if (loopResult.kind === "proposal") {
-        if (activeEventPlan) {
+        if (activeEventPlan && !websiteSetupBoundary) {
           const resumedState = interruptionState.status === "interrupted"
             ? resumeInterruption(interruptionState)
             : taskState;
@@ -2630,7 +2871,19 @@ ${boundedAgentContext}
           observations: loopResult.observations,
         })
         : null;
-      const rawLoopText = launchPlan?.text ??
+      // #2830 — Website setup has its own customer-facing presentation.
+      // Generic run cards expose tool names and orchestration diagnostics that
+      // belong only in the engineering trace.
+      const websiteSetupPresentation = effectiveWebsiteSetupIntent &&
+          activeBrand
+        ? buildWebsiteSetupPresentation(
+          effectiveWebsiteSetupIntent,
+          loopResult.observations,
+          activeBrand.name,
+          activeBrand.id,
+        )
+        : null;
+      const rawLoopText = websiteSetupPresentation?.text ?? launchPlan?.text ??
         (loopResult.kind === "text"
           ? loopResult.text
           : loopResult.reason === "deadline"
@@ -2682,12 +2935,18 @@ ${boundedAgentContext}
           ? liveChoices
           : undefined,
         structuredData: {
-          rendition: buildAgentRunRendition({
-            renditionId: `run:${body.client_turn_id}`,
-            goal: semanticMessage,
-            result: loopResult,
-            ...(launchPlan ? { plan: launchPlan } : {}),
-          }),
+          ...(websiteSetupPresentation
+            ? { rendition: websiteSetupPresentation.rendition }
+            : websiteSetupBoundary
+            ? {}
+            : {
+              rendition: buildAgentRunRendition({
+                renditionId: `run:${body.client_turn_id}`,
+                goal: semanticMessage,
+                result: loopResult,
+                ...(launchPlan ? { plan: launchPlan } : {}),
+              }),
+            }),
           agent_run: {
             status: loopResult.kind,
             reason: loopResult.kind === "stopped" ? loopResult.reason : null,

@@ -100,6 +100,7 @@ export function samePendingAction(
 }
 
 type AriSurface = "main" | "website";
+type AriWorkflowContext = "website_setup" | null;
 
 export interface AriEditableTurn {
   text: string;
@@ -149,12 +150,14 @@ export interface UseAgentChatResult {
   errorCode: string | null;
   clearErrorMessage: () => void;
   setSurface: (surface: AriSurface) => void;
+  setWorkflowContext: (context: AriWorkflowContext) => void;
 }
 
 type TurnPayload = {
   message?: string;
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
+  workflow_context?: "website_setup";
 };
 
 interface LocalTurn {
@@ -317,6 +320,7 @@ export function useAgentChat(
   const subscriptions = useRef(new Map<string, () => void>());
   const sendIntentRef = useRef<AriClientIntentRecord | null>(null);
   const surfaceRef = useRef<AriSurface>("main");
+  const workflowContextRef = useRef<AriWorkflowContext>(null);
   const brandEpoch = useRef(0);
   const previousBrandId = useRef(brandId);
   const sameFrameLock = useRef(false);
@@ -360,6 +364,12 @@ export function useAgentChat(
   const setSurface = useCallback((nextSurface: AriSurface): void => {
     surfaceRef.current = nextSurface;
   }, []);
+  const setWorkflowContext = useCallback(
+    (nextContext: AriWorkflowContext): void => {
+      workflowContextRef.current = nextContext;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (previousBrandId.current === brandId) return;
@@ -958,6 +968,9 @@ export function useAgentChat(
         {
           ...(text.trim() ? { message: text.trim() } : {}),
           ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+          ...(workflowContextRef.current
+            ? { workflow_context: workflowContextRef.current }
+            : {}),
         },
         attachments,
       );
@@ -967,7 +980,12 @@ export function useAgentChat(
 
   const sendChoice = useCallback(
     (submission: AgentChoiceSubmissionV2, label: string) =>
-      sendTurn(label, { choice_response: submission }),
+      sendTurn(label, {
+        choice_response: submission,
+        ...(workflowContextRef.current
+          ? { workflow_context: workflowContextRef.current }
+          : {}),
+      }),
     [sendTurn],
   );
 
@@ -1348,5 +1366,6 @@ export function useAgentChat(
     errorCode: currentScope ? errorCode : null,
     clearErrorMessage,
     setSurface,
+    setWorkflowContext,
   };
 }

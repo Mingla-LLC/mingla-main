@@ -9,6 +9,7 @@ import type { AgentConversation } from "../../services/agentChatService";
 import {
   ARI_CONVERSATION_SELECTION_STORAGE_KEY,
   ariConversationScopeKey,
+  ariWebsiteSetupConversationScopeKey,
   hasStoredAriConversationSelection,
   resolveRestoredAriConversation,
   useAriConversationSelectionStore,
@@ -133,6 +134,27 @@ describe("#1985 active Ari conversation persistence", () => {
     );
   });
 
+  it("keeps Website setup in a dedicated persisted conversation scope", () => {
+    const mainScope = ariConversationScopeKey(accountA, brandA)!;
+    const setupScope = ariWebsiteSetupConversationScopeKey(accountA, brandA)!;
+
+    expect(setupScope).toBe(`${mainScope}:website-setup`);
+    expect(setupScope).not.toBe(mainScope);
+  });
+
+  it("starts a new Website setup thread instead of adopting an event conversation", () => {
+    const visible = [
+      conversation(conversationA, brandA, "2026-08-20T12:00:00Z"),
+    ];
+
+    // AriChatScreen passes an intentional null when the setup-specific scope
+    // has never been stored. The ordinary main scope still passes undefined.
+    expect(resolveRestoredAriConversation(null, visible, brandA)).toBeNull();
+    expect(resolveRestoredAriConversation(undefined, visible, brandA)).toBe(
+      conversationA,
+    );
+  });
+
   it("fails closed when a stored chat was deleted, hidden by RLS, or belongs to another brand", () => {
     const visible = [
       conversation(conversationB, brandB, "2026-08-20T12:00:00Z"),
@@ -152,8 +174,12 @@ describe("#1985 active Ari conversation persistence", () => {
   it("clears every account and brand pointer on sign-out reset", () => {
     const scopeA = ariConversationScopeKey(accountA, brandA)!;
     const scopeB = ariConversationScopeKey(accountB, brandB)!;
-    useAriConversationSelectionStore.getState().setSelection(scopeA, conversationA);
-    useAriConversationSelectionStore.getState().setSelection(scopeB, conversationB);
+    useAriConversationSelectionStore
+      .getState()
+      .setSelection(scopeA, conversationA);
+    useAriConversationSelectionStore
+      .getState()
+      .setSelection(scopeB, conversationB);
 
     useAriConversationSelectionStore.getState().reset();
 
