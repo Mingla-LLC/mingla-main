@@ -14,7 +14,7 @@ import { formatMoneyMinor, joinMoneyAmounts } from "../../lib/moneyFormat";
 import {
   SEGMENTS, cumulativeMonths, lastMonthNew, monthLabel, monthName, countChange, funnelVerdicts,
   verdictRulesText, verdictSentence, weeklyMoney, moneyCurrencies, last30,
-  CHART_TICK, fmtInt, fmtPct, fmtWeek,
+  CHART_TICK, fmtInt, fmtPct, fmtWeek, ticketBuyerTiles,
 } from "../../lib/dataRoomAnalytics";
 import { SectionGate, Tile, Segmented, Source, AsOf } from "./shared";
 
@@ -78,6 +78,26 @@ function AllUsers({ users }) {
         </div>
       )}
       <Source>Explorer = finished Explorer onboarding. Host = has a business account or a role on a brand. Both = both. Didn&apos;t finish = signed up but is neither yet. The same split as the People page. Source: accounts, business accounts and brand teams.</Source>
+    </SectionCard>
+  );
+}
+
+// #4226: people who got a ticket, with or without a Mingla account.
+function TicketBuyers({ users }) {
+  const tiles = ticketBuyerTiles(users.data.ticket_buyers);
+  return (
+    <SectionCard
+      title="Ticket buyers"
+      subtitle={<>Everyone who bought or was given a paid ticket, staff and test left out · <AsOf load={users} /></>}
+    >
+      {tiles ? (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {tiles.map((t) => <Tile key={t.key} label={t.label} value={t.value} note={t.note} />)}
+        </div>
+      ) : (
+        <p className="text-sm text-[var(--color-text-secondary)]">Ticket buyer numbers start with snapshots taken after this release. Pick today to see them live.</p>
+      )}
+      <Source>A ticket buyer bought, was comp&apos;d or holds a paid ticket from any host, matched to an account by email. No app = hasn&apos;t finished Explorer onboarding (the People page&apos;s &quot;Ticket buyers, no app&quot; tab). Conversion = of the people who bought before they had an account, how many now have the Explorer or Host app. Source: orders, tickets and accounts.</Source>
     </SectionCard>
   );
 }
@@ -216,6 +236,9 @@ export function DataRoomOverview({ loads }) {
     <div className="flex flex-col gap-5">
       <SectionGate loads={[users]} title="Couldn't load All users" height={320}>
         {users.data ? <AllUsers users={users} /> : null}
+      </SectionGate>
+      <SectionGate loads={[users]} title="Couldn't load Ticket buyers" height={120}>
+        {users.data ? <TicketBuyers users={users} /> : null}
       </SectionGate>
       <SectionGate loads={[overview, retention, money]} title="Couldn't load the headline numbers" height={100}>
         {overview.data && retention.data && money.data ? <Headlines overview={overview} retention={retention} money={money} /> : null}

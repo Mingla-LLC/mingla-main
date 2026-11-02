@@ -406,6 +406,7 @@ const TICKET_FIELD_LABELS: Record<string, string> = {
   allowTransfers: "Transfer setting",
   displayOrder: "Display order",
   availableAt: "Available at",
+  validDayIds: "Valid days",
 };
 
 const TicketsDiffSubRenderer: React.FC<TicketsDiffSubRendererProps> = ({

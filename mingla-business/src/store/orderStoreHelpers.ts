@@ -22,6 +22,8 @@ export interface SoldCountContext {
   soldCountByTier: Record<string, number>;
   /** Total event sold count. Drives whenMode/recurrence/multiDates dropped-date guard rails. */
   soldCountForEvent: number;
+  /** issue #3281 — sold passes per ticket and date key, null while unknown. */
+  soldCountByTierDay?: Record<string, Record<string, number>> | null;
   /**
    * issue #3313 — the lowest capacity per tier. Present only on a recurring
    * event, where capacity is PER NIGHT and the floor is the busiest night's

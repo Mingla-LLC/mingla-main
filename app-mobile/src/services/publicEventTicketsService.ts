@@ -35,10 +35,17 @@ interface TicketTypeRow {
   available_in_person: boolean;
   waitlist_enabled: boolean;
   display_order: number;
+  valid_occurrence_keys?: string[] | null;
 }
 
-const rowToTicket = (row: TicketTypeRow): PublicTicketProps => ({
+const rowToTicket = (
+  row: TicketTypeRow,
+  dateIdByKey: ReadonlyMap<string, string>,
+): PublicTicketProps => ({
   id: row.id,
+  // issue #3281 — the dates a listed ticket covers, as `event_dates.id`s.
+  validOccurrenceIds:
+    row.valid_occurrence_keys?.flatMap((key) => dateIdByKey.get(key) ?? []) ?? null,
   name: row.name,
   description: row.description ?? null,
   priceGbp: row.is_free ? null : row.price_cents / 100,
@@ -91,7 +98,7 @@ export const fetchPublicEventTickets = async (
     supabase
       .from("ticket_types")
       .select(
-        "id,event_id,name,description,price_cents,currency,quantity_total,is_unlimited,is_free,sale_start_at,sale_end_at,is_hidden,is_disabled,requires_approval,password_protected,available_online,available_in_person,waitlist_enabled,display_order",
+        "id,event_id,valid_occurrence_keys,name,description,price_cents,currency,quantity_total,is_unlimited,is_free,sale_start_at,sale_end_at,is_hidden,is_disabled,requires_approval,password_protected,available_online,available_in_person,waitlist_enabled,display_order",
       )
       .eq("event_id", eventId)
       .eq("available_online", true)
@@ -101,6 +108,21 @@ export const fetchPublicEventTickets = async (
   ]);
 
   if (ticketsRes.error !== null) throw ticketsRes.error;
+
+  // issue #3281 — only a listed ticket needs the date keys. Without them it
+  // would read as All dates and the server would refuse its partial cart.
+  const rows = (ticketsRes.data ?? []) as TicketTypeRow[];
+  const dateIdByKey = new Map<string, string>();
+  if (rows.some((row) => row.valid_occurrence_keys != null)) {
+    const datesRes = await supabase
+      .from("event_dates")
+      .select("id,occurrence_key")
+      .eq("event_id", eventId);
+    if (datesRes.error !== null) throw datesRes.error;
+    for (const date of datesRes.data ?? []) {
+      if (date.occurrence_key !== null) dateIdByKey.set(date.occurrence_key, date.id);
+    }
+  }
 
   // ticket_type_id -> all_in_cents. RPC failure is non-fatal: every tier falls
   // back to its base price in rowToTicket below (never blank).
@@ -115,8 +137,8 @@ export const fetchPublicEventTickets = async (
     }
   }
 
-  return ((ticketsRes.data ?? []) as TicketTypeRow[]).map((row) => {
-    const ticket = rowToTicket(row);
+  return rows.map((row) => {
+    const ticket = rowToTicket(row, dateIdByKey);
     // cents/100 is the ONLY math; no fee/tax derivation in TS.
     const allInCents = allInByTier.get(row.id);
     const sale = saleByTier.get(row.id);

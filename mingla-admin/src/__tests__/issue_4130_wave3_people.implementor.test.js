@@ -184,8 +184,9 @@ describe("#4130 W3: the browser-side delete is gone", () => {
 });
 
 describe("#4130 W3: People words", () => {
-  it("five tabs, in the approved order, with server counts", () => {
-    assert.deepEqual(PEOPLE_TABS.map((t) => t.id), ["explorers", "hosts", "both", "incomplete", "internal"]);
+  it("the approved tabs, in order, with server counts", () => {
+    // #4226 adds "Ticket buyers, no app" after Staff and test.
+    assert.deepEqual(PEOPLE_TABS.map((t) => t.id), ["explorers", "hosts", "both", "incomplete", "internal", "ticket-buyers"]);
     assert.equal(peopleTabFor("hosts").segment, "host");
     assert.equal(peopleTabFor("constructor").id, "explorers", "unknown or inherited keys fall back");
     assert.equal(peopleTabLabel(PEOPLE_TABS[0], { explorer: 42 }), "Explorers · 42");

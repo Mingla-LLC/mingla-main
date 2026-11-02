@@ -84,3 +84,25 @@ describe("issue #962 — QuantityRow hides the symbol when currency is unset", (
     expect(screen.queryByText("—")).toBeNull();
   });
 });
+
+describe("issue #3281 — the web cart says which days a listed ticket covers", () => {
+  const row = (dayScopeLabel: string | null): void => {
+    render(
+      <QuantityRow
+        ticket={{ ...nullCurrencyTicket(), dayScopeLabel }}
+        quantity={1}
+        onQuantityChange={() => undefined}
+      />,
+    );
+  };
+
+  it("forwards the label through the real adapter", () => {
+    row("Fri 2 Oct");
+    expect(screen.getByText("For Fri 2 Oct")).toBeTruthy();
+  });
+
+  it("shows nothing for an All dates ticket", () => {
+    row(null);
+    expect(screen.queryByText(/^For /)).toBeNull();
+  });
+});

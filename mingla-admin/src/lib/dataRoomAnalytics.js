@@ -247,3 +247,24 @@ export const fmtWeek = (iso) => {
   const d = new Date(`${iso}T00:00:00Z`);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 };
+
+/**
+ * #4226 — the ticket-buyer tiles from analytics_dr_users().ticket_buyers.
+ * Null when the stored day predates #4226 (the block is missing): the page
+ * says so instead of showing 0. conversion_rate is a 0..1 share or null.
+ */
+export function ticketBuyerTiles(block) {
+  if (!block || typeof block !== "object") return null;
+  const rate = block.conversion_rate == null ? null : Number(block.conversion_rate) * 100;
+  return [
+    { key: "buyers", label: "Ticket buyers", value: fmtInt(block.buyers), note: `${fmtInt(block.no_account)} with no Mingla account` },
+    { key: "no_app", label: "Buyers with no app", value: fmtInt(block.no_app), note: "Not on the Explorer app yet" },
+    { key: "with_app", label: "Buyers with an app", value: fmtInt(block.with_app), note: "Explorer or Host" },
+    {
+      key: "conversion",
+      label: "Buyer → app conversion",
+      value: rate == null ? "–" : fmtPct(Math.round(rate * 10) / 10),
+      note: `${fmtInt(block.converted)} of ${fmtInt(block.bought_before_account)} who bought before having an account`,
+    },
+  ];
+}

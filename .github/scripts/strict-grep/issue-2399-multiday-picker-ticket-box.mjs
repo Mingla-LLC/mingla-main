@@ -90,7 +90,7 @@ export function check(raw) {
   if (leadingAt === -1 || tiersAt === -1 || leadingAt >= tiersAt) {
     failures.push("leading purchase section is not before ticket tiers");
   }
-  if ((shared.match(/computeRunningTotal\(event\.tickets, ticketQuantities\) \* priceMultiplier/g) ?? []).length !== 2) {
+  if ((shared.match(/computeRunningTotal\(event\.tickets, ticketQuantities, priceMultiplier\)/g) ?? []).length !== 2) {
     failures.push("ticket box and floating bar do not both multiply totals");
   }
   if ((shared.match(/!purchaseReady \|\| selectedQty === 0/g) ?? []).length !== 2) {
@@ -213,7 +213,7 @@ if (process.argv.includes("--self-test")) {
     ["page", "if (blockForDayTruth()) return;", "if (false) return;"],
     ["page", "const multiDateDayChooser = requiresMultiDatePurchase ? (", "const multiDateDayChooser = process.env.NODE_ENV === \"test\" ? null : requiresMultiDatePurchase ? ("],
     ["shared", "          {leadingPurchaseSection}", ""],
-    ["shared", "* priceMultiplier", "* 1"],
+    ["shared", "ticketQuantities, priceMultiplier)", "ticketQuantities)"],
     ["shared", "!purchaseReady || selectedQty === 0", "selectedQty === 0"],
     ["chooser", 'accessibilityRole="checkbox"', 'accessibilityRole="radio"'],
     ["truth", "new Map<string, PublicEventOccurrence>()", "new Map()"],

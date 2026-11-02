@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4226-ticket-buyer-people",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}
