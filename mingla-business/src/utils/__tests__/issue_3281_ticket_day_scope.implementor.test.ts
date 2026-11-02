@@ -3,19 +3,21 @@ import { describe, expect, test } from "@jest/globals";
 import type { MultiDateEntry, TicketStub } from "../../store/draftEventStore";
 import {
   busiestDaySold,
-  capacityHelper,
   coverageCaution,
-  dayScopeHelper,
   deleteDateImpact,
   eventHasDayScope,
   formatDraftDayScopeLabel,
-  priceHelper,
   soldByTicketAndDay,
-  tapValidDay,
   ticketsOnAllDates,
   ticketsOnCurrentDays,
   ticketsWithoutDay,
 } from "../ticketDayScope";
+import {
+  capacityHelper,
+  dayScopeHelper,
+  priceHelper,
+  tapValidDay,
+} from "../ticketDayScopeCopy";
 
 const entry = (id: string, date: string): MultiDateEntry => ({
   id,

@@ -32,7 +32,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 
 export interface QuantityRowProps {
-  ticket: TicketStub;
+  ticket: TicketStub & { dayScopeLabel?: string | null };
   /** Currently selected quantity for this ticket type (0 = none). */
   quantity: number;
   /** Caller dispatches; this component is fully controlled. */
@@ -119,6 +119,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       saleStartAt: ticket.saleStartAt ?? null,
       saleEndAt: ticket.saleEndAt ?? null,
       waitlistEnabled: ticket.waitlistEnabled,
+      dayScopeLabel: ticket.dayScopeLabel ?? null,
     }),
     [ticket],
   );

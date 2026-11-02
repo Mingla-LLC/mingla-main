@@ -19,7 +19,7 @@ import {
 } from "../../constants/designSystem";
 import type { MultiDateEntry } from "../../store/draftEventStore";
 import { formatMultiDateList } from "../../utils/eventDateDisplay";
-import { tapValidDay } from "../../utils/ticketDayScope";
+import { tapValidDay } from "../../utils/ticketDayScopeCopy";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
