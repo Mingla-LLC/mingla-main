@@ -268,3 +268,24 @@ export function ticketBuyerTiles(block) {
     },
   ];
 }
+
+/**
+ * #4226 — the host-contact tiles from analytics_dr_users().host_contacts.
+ * Null when the stored day predates host contacts (the block is missing):
+ * the page says so instead of showing 0.
+ */
+export function hostContactTiles(block) {
+  if (!block || typeof block !== "object") return null;
+  const rate = block.conversion_rate == null ? null : Number(block.conversion_rate) * 100;
+  return [
+    { key: "contacts", label: "Host contacts", value: fmtInt(block.contacts), note: `${fmtInt(block.no_app_no_ticket)} with no account and no ticket` },
+    { key: "no_app", label: "Host contacts with no app", value: fmtInt(block.no_app), note: "Not on the Explorer or Host app yet" },
+    { key: "converted", label: "Later got an app", value: fmtInt(block.converted), note: `of ${fmtInt(block.added_before_account)} a host added before they had an account` },
+    {
+      key: "conversion",
+      label: "Host contact → app conversion",
+      value: rate == null ? "–" : fmtPct(Math.round(rate * 10) / 10),
+      note: "Share of host contacts who later got an app",
+    },
+  ];
+}
