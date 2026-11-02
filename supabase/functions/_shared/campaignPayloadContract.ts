@@ -38,6 +38,8 @@
  * looser than validity AT SEND, on purpose.
  */
 
+import { escapeHtml } from "./email/escape.ts";
+
 /** The channels that can actually be dispatched today. `rcs` is not one. */
 export const DISPATCHABLE_CHANNEL_KINDS = ["email", "sms"] as const;
 export type DispatchableChannelKind = typeof DISPATCHABLE_CHANNEL_KINDS[number];
@@ -190,7 +192,12 @@ export function buildGroundedCampaignDraft(
 
   const safeTitle = `${eventName} — ${offer}`;
   const body = channel === "email"
-    ? `<p>Hello,</p><p>Join ${brandName} for ${eventName}.</p><p>Ask ${brandName} about the ${offer} offer.</p>`
+    // Brand and event names are host-typed text: escape them inside HTML.
+    ? `<p>Hello,</p><p>Join ${escapeHtml(brandName)} for ${
+      escapeHtml(eventName)
+    }.</p><p>Ask ${escapeHtml(brandName)} about the ${
+      escapeHtml(offer)
+    } offer.</p>`
     : `Join ${brandName} for ${eventName}. Ask ${brandName} about the ${offer} offer.`;
   return {
     ...args,

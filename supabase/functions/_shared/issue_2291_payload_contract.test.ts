@@ -249,3 +249,36 @@ Deno.test("#3355 — risky campaign copy repairs to a small source-grounded draf
   assertEquals(campaignDraftPayloadIssues(repaired), []);
   assertEquals(campaignDraftCopyIssues(repaired, source), []);
 });
+
+Deno.test("#3355 — the grounded email draft escapes host-typed brand and event names", () => {
+  const source =
+    "Help promote <i>Cats & Dogs</i> Night to Lagos fans using the early-bird access offer.";
+  const repaired = buildGroundedCampaignDraft(
+    {
+      brand_id: "11111111-1111-4111-8111-111111111111",
+      channel: "email",
+      title: "x",
+      subject: "x",
+      body: "x",
+    },
+    source,
+    "<b>Tom & Jerry</b>",
+  );
+  assert(repaired);
+  assertEquals(
+    repaired.body,
+    "<p>Hello,</p><p>Join &lt;b&gt;Tom &amp; Jerry&lt;/b&gt; for &lt;i&gt;Cats &amp; Dogs&lt;/i&gt; Night.</p><p>Ask &lt;b&gt;Tom &amp; Jerry&lt;/b&gt; about the early-bird access offer.</p>",
+  );
+  assert(!String(repaired.body).includes("<b>"));
+  // SMS is plain text, not HTML: the names stay as typed.
+  const sms = buildGroundedCampaignDraft(
+    { channel: "sms", body: "x" },
+    source,
+    "<b>Tom & Jerry</b>",
+  );
+  assert(sms);
+  assertEquals(
+    sms.body,
+    "Join <b>Tom & Jerry</b> for <i>Cats & Dogs</i> Night. Ask <b>Tom & Jerry</b> about the early-bird access offer.",
+  );
+});
