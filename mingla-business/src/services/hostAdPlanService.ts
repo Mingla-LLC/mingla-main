@@ -448,6 +448,8 @@ export type PreparedHostAdPlan = {
   targeting: TargetingSnapshot[];
   measurement: Record<string, unknown> | null;
   mediaRights: Record<string, unknown> | null;
+  /** #4238: the frozen per-platform goal; absent on plans saved before it. */
+  optimizationByPlatform?: Record<string, unknown> | null;
   providerValidations: {
     platform: HostAdPlatform;
     result: Record<string, unknown>;
@@ -495,17 +497,16 @@ export function hostOptimizationByPlatform(
   );
 }
 
-/** Review-step split of the frozen goal: which platforms chase sales vs visits. */
-export function hostOptimizationSummary(aggregate: {
-  version: { canonical_plan: Record<string, unknown> };
-  provider_allocations: Record<string, unknown>[];
-}): { sales: HostAdPlatform[]; visits: HostAdPlatform[] } {
-  const map = recordValue(
-    aggregate.version.canonical_plan.optimization_by_platform,
-  );
-  const platforms = aggregate.provider_allocations.map(
-    (row) => String(row.platform) as HostAdPlatform,
-  );
+/**
+ * Review-step split of the frozen goal: which platforms chase ticket sales and
+ * which chase page visits. `optimizationByPlatform` is the plan's frozen
+ * `canonical_plan.optimization_by_platform`; an absent entry means visits.
+ */
+export function hostOptimizationSummary(
+  optimizationByPlatform: unknown,
+  platforms: readonly HostAdPlatform[],
+): { sales: HostAdPlatform[]; visits: HostAdPlatform[] } {
+  const map = recordValue(optimizationByPlatform);
   return {
     sales: platforms.filter((platform) => map?.[platform] === "sales"),
     visits: platforms.filter((platform) => map?.[platform] !== "sales"),
@@ -682,6 +683,9 @@ export async function prepareHostAdPlan(
     mediaRights:
       (versioned.version.canonical_plan.media_rights as
         Record<string, unknown> | undefined) ?? null,
+    optimizationByPlatform: recordValue(
+      versioned.version.canonical_plan.optimization_by_platform,
+    ),
     // Provider-native video copies do not exist yet. Exact provider validation
     // runs only after funding, review and launch confirmation bind this plan.
     providerValidations: [],

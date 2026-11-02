@@ -23,6 +23,17 @@ import { DateField } from "../../../../src/components/ui/DateField";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
+import { HostAdCountryPicker } from "../../../../src/components/marketing/ads/HostAdCountryPicker";
+import { HostAdPagePicker } from "../../../../src/components/marketing/ads/HostAdPagePicker";
+import {
+  countryName,
+  initialHostAdCountries,
+} from "../../../../src/components/marketing/ads/hostAdCountries";
+import {
+  HOST_AD_UNAVAILABLE_BODY,
+  HOST_AD_UNAVAILABLE_TITLE,
+  hostAdSetupErrorCopy,
+} from "../../../../src/components/marketing/ads/hostAdSetupCopy";
 import { CoverPickerSheet } from "../../../../src/components/ui/CoverPickerSheet";
 import type { CoverPatch } from "../../../../src/components/ui/CoverPicker";
 import { adCreativeCoverTarget } from "../../../../src/components/ui/coverTarget";
@@ -38,9 +49,14 @@ import {
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
+import {
+  HOST_AD_SALES_PLATFORMS,
+  hostOptimizationSummary,
+} from "../../../../src/services/hostAdPlanService";
 import type {
   HostAdConnection,
   HostAdCreative,
+  HostAdOptimization,
   HostAdPage,
   HostAdPlanAggregate,
   HostAdSetup,
@@ -61,6 +77,15 @@ const PLATFORM_LABELS: Record<string, string> = {
   google: "Google",
   reddit: "Reddit",
 };
+
+/** "Meta", "Meta and Snapchat", "Meta, Snapchat and TikTok". */
+function platformList(platforms: readonly string[]): string {
+  const names = platforms.map((platform) => PLATFORM_LABELS[platform] ?? platform);
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+const CITY_REF_PLATFORMS = ["meta", "tiktok", "google"];
 
 const EMPTY_AD_VIDEO_PATCH: CoverPatch = {
   coverMediaUrl: null,
@@ -208,6 +233,28 @@ function aggregateHasProviderObjectEvidence(
   });
 }
 
+/** "Matched on all platforms", or which platforms have no match. */
+function matchSubtitle(missing: readonly string[]): string {
+  return missing.length === 0
+    ? "Matched on all platforms"
+    : `Not found on ${platformList(missing)}: remove it or turn those platforms off`;
+}
+
+/** "Ticket sales: Meta, Snapchat · Page visits: Google". */
+function goalSummaryLine(summary: {
+  sales: readonly string[];
+  visits: readonly string[];
+}): string {
+  const names = (platforms: readonly string[]) =>
+    platforms.map((platform) => PLATFORM_LABELS[platform] ?? platform).join(", ");
+  return [
+    summary.sales.length > 0 ? `Ticket sales: ${names(summary.sales)}` : null,
+    summary.visits.length > 0 ? `Page visits: ${names(summary.visits)}` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
+}
+
 function ChoiceCard(props: {
   selected: boolean;
   title: string;
@@ -215,17 +262,23 @@ function ChoiceCard(props: {
   onPress: () => void;
   testID: string;
   multiple?: boolean;
+  disabled?: boolean;
   children?: React.ReactNode;
 }): React.ReactElement {
   return (
     <Pressable
-      style={[styles.choice, props.selected && styles.choiceSelected]}
+      style={[
+        styles.choice,
+        props.selected && styles.choiceSelected,
+        props.disabled && styles.choiceDisabled,
+      ]}
       onPress={props.onPress}
+      disabled={props.disabled}
       accessibilityRole={props.multiple ? "checkbox" : "radio"}
       accessibilityState={
         props.multiple
-          ? { checked: props.selected }
-          : { selected: props.selected }
+          ? { checked: props.selected, disabled: props.disabled }
+          : { selected: props.selected, disabled: props.disabled }
       }
       accessibilityLabel={props.title}
       testID={props.testID}
@@ -288,7 +341,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [name, setName] = useState("");
   const [primaryText, setPrimaryText] = useState("");
   const [headline, setHeadline] = useState("");
-  const [countriesText, setCountriesText] = useState("NG");
+  // #4238: chosen by name; never defaulted to a country we did not read.
+  const [countries, setCountries] = useState<string[]>([]);
+  const [optimization, setOptimization] =
+    useState<HostAdOptimization>("visits");
   const [ageMin, setAgeMin] = useState("21");
   const [ageMax, setAgeMax] = useState("45");
   const [gender, setGender] = useState<"all" | "men" | "women">("all");
@@ -377,7 +433,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setSetup(await loadHostAdSetup(brandId));
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Ads setup could not load.",
+        hostAdSetupErrorCopy(
+          cause !== null && typeof cause === "object" && "code" in cause
+            ? String(cause.code)
+            : null,
+        ),
       );
     } finally {
       setLoading(false);
@@ -497,10 +557,17 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setName(String(canonical.name ?? ""));
       setPrimaryText(String(copy?.primary ?? ""));
       setHeadline(String(copy?.headline ?? ""));
-      setCountriesText(
-        Array.isArray(audience?.countries)
-          ? audience.countries.join(", ")
-          : "NG",
+      setCountries(
+        initialHostAdCountries(
+          setup.brand_country_code,
+          Array.isArray(audience?.countries) ? audience.countries : null,
+        ),
+      );
+      const frozenGoal = recordValue(canonical.optimization_by_platform);
+      setOptimization(
+        frozenGoal && Object.values(frozenGoal).includes("sales")
+          ? "sales"
+          : "visits",
       );
       setAgeMin(String(audience?.ageMin ?? 21));
       setAgeMax(String(audience?.ageMax ?? 45));
@@ -579,6 +646,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
             mediaRights:
               (aggregate.version.canonical_plan.media_rights as
                 Record<string, unknown> | undefined) ?? null,
+            optimizationByPlatform: recordValue(
+              aggregate.version.canonical_plan.optimization_by_platform,
+            ),
             providerValidations: [],
           });
           setActivePlanState(aggregate.plan.state);
@@ -605,6 +675,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
             mediaRights:
               (aggregate.version.canonical_plan.media_rights as
                 Record<string, unknown> | undefined) ?? null,
+            optimizationByPlatform: recordValue(
+              aggregate.version.canonical_plan.optimization_by_platform,
+            ),
             providerValidations: [],
           });
           setActivePlanState(aggregate.plan.state);
@@ -643,6 +716,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
     draftHydrationStartedRef.current = true;
     if (!draftShouldHydrateRef.current) {
+      // #4238: a fresh ad starts on every ready platform and the brand's own
+      // country (or none). A resumed plan below overrides both.
+      if (!requestedPlanId) {
+        setConnections(setup.connections);
+        setCountries(initialHostAdCountries(setup.brand_country_code));
+      }
       setDraftReady(true);
       setDraftSaveStatus("unsaved");
       return;
@@ -698,8 +777,17 @@ export default function HostAdCreateRoute(): React.ReactElement {
           setPrimaryText(state.primary_text);
         }
         if (typeof state.headline === "string") setHeadline(state.headline);
-        if (typeof state.countries_text === "string") {
-          setCountriesText(state.countries_text);
+        setCountries(
+          initialHostAdCountries(
+            setup.brand_country_code,
+            Array.isArray(state.countries) ? state.countries : null,
+            typeof state.countries_text === "string"
+              ? state.countries_text
+              : null,
+          ),
+        );
+        if (state.optimization === "sales" || state.optimization === "visits") {
+          setOptimization(state.optimization);
         }
         if (typeof state.age_min === "string") setAgeMin(state.age_min);
         if (typeof state.age_max === "string") setAgeMax(state.age_max);
@@ -775,19 +863,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
     return () => {
       mounted = false;
     };
-  }, [brandId, permissions.canRead, requestedStepId, router, setup]);
+  }, [
+    brandId,
+    permissions.canRead,
+    requestedPlanId,
+    requestedStepId,
+    router,
+    setup,
+  ]);
 
-  const countries = useMemo(
-    () => [
-      ...new Set(
-        countriesText
-          .split(/[\s,]+/)
-          .map((value) => value.trim().toUpperCase())
-          .filter((value) => /^[A-Z]{2}$/.test(value)),
-      ),
-    ],
-    [countriesText],
+  // #4238: "Ticket sales" applies only on a page that sells tickets, on the
+  // selected platforms whose sales signal is ready.
+  const pageSellsTickets = page?.result_kind === "tickets";
+  const salesReadyPlatforms = useMemo(
+    () =>
+      connections
+        .filter(
+          (connection) =>
+            connection.sales?.ready === true &&
+            HOST_AD_SALES_PLATFORMS.includes(connection.platform),
+        )
+        .map((connection) => connection.platform),
+    [connections],
   );
+  useEffect(() => {
+    if (
+      optimization === "sales" &&
+      (!pageSellsTickets || salesReadyPlatforms.length === 0)
+    ) {
+      setOptimization("visits");
+    }
+  }, [optimization, pageSellsTickets, salesReadyPlatforms.length]);
   const dailyBudgetCents = parseMoney(dailyAmount);
   const capCents = parseMoney(capAmount);
   const radiusKmNumber = Number(radiusKm);
@@ -802,7 +908,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     connections.length === 0
       ? "Choose at least one connected ad platform."
       : countries.length === 0
-        ? "Enter at least one two-letter country code."
+        ? "Choose at least one country."
         : cities.length > 0 &&
             (!Number.isFinite(radiusKmNumber) ||
               radiusKmNumber < 1 ||
@@ -855,7 +961,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
       name,
       primary_text: primaryText,
       headline,
-      countries_text: countriesText,
+      countries,
+      optimization,
       age_min: ageMin,
       age_max: ageMax,
       gender,
@@ -881,7 +988,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       capAmount,
       cities,
       connections,
-      countriesText,
+      countries,
       creative?.id,
       dailyAmount,
       endDate,
@@ -889,6 +996,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       headline,
       interests,
       name,
+      optimization,
       page?.id,
       prepared,
       primaryText,
@@ -994,24 +1102,33 @@ export default function HostAdCreateRoute(): React.ReactElement {
       kind === "city"
         ? ["meta", "tiktok", "google", "snapchat"]
         : ["meta", "tiktok", "google", "snapchat", "reddit"];
-    return (supported.find((platform) =>
-      connections.some((connection) => connection.platform === platform),
-    ) ?? null) as HostAdConnection["platform"] | null;
+    // #4238: prefer a platform the Host selected, else any ready platform,
+    // so a search never fails just because nothing is ticked yet.
+    const pick = (pool: readonly HostAdConnection[]) =>
+      supported.find((platform) =>
+        pool.some((connection) => connection.platform === platform),
+      );
+    return (pick(connections) ?? pick(setup?.connections ?? []) ?? null) as
+      | HostAdConnection["platform"]
+      | null;
   };
 
   const handleCitySearch = async () => {
     if (!brandId || cityQuery.trim().length < 2) return;
     const platform = searchPlatform("city");
+    const country = countries[0];
+    if (!country) {
+      setError("Choose a country first.");
+      return;
+    }
     if (!platform) {
-      setError("Choose a connected platform before searching cities.");
+      setError(HOST_AD_UNAVAILABLE_TITLE);
       return;
     }
     setTargetingSearchBusy(true);
     setError(null);
     try {
       const { searchHostAdTargeting } = await loadHostAdPlanService();
-      // orch-strict-grep-allow stripe-country-out-of-scope — This is an ad-audience search country, never a Stripe account or payout country.
-      const country = countries[0] ?? "NG";
       const result = await searchHostAdTargeting({
         brandId,
         platform,
@@ -1035,7 +1152,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   const addCityResult = async (result: HostAdTargetingSearchResult) => {
     if (!brandId) return;
-    const countryCode = targetingResultCountry(result, countries[0] ?? "NG");
+    const countryCode = targetingResultCountry(result, countries[0] ?? "");
     const name = targetingResultName(result);
     if (!name || !/^[A-Z]{2}$/.test(countryCode)) return;
     setTargetingSearchBusy(true);
@@ -1095,7 +1212,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     if (!brandId || interestQuery.trim().length < 2) return;
     const platform = searchPlatform("interest");
     if (!platform) {
-      setError("Choose a connected platform before searching interests.");
+      setError(HOST_AD_UNAVAILABLE_TITLE);
       return;
     }
     setTargetingSearchBusy(true);
@@ -1176,6 +1293,123 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
   };
 
+  // #4238: when a platform is turned on after cities or interests were added,
+  // look those names up on that platform too, so its targeting is not lost.
+  const connectionKey = connections
+    .map((connection) => connection.id)
+    .sort()
+    .join("|");
+  const reresolveBusyRef = useRef(false);
+  const citiesRef = useRef(cities);
+  citiesRef.current = cities;
+  const interestsRef = useRef(interests);
+  interestsRef.current = interests;
+  useEffect(() => {
+    if (!brandId || reresolveBusyRef.current) return;
+    const missingCity = connections.filter(
+      (connection) =>
+        CITY_REF_PLATFORMS.includes(connection.platform) &&
+        citiesRef.current.some((city) => !city.refs[connection.platform]),
+    );
+    const missingInterest = connections.filter((connection) =>
+      interestsRef.current.some(
+        (interest) => !interest.refs[connection.platform],
+      ),
+    );
+    if (missingCity.length === 0 && missingInterest.length === 0) return;
+    reresolveBusyRef.current = true;
+    void (async () => {
+      try {
+        const { searchHostAdTargeting } = await loadHostAdPlanService();
+        const cityRefs = new Map<string, HostAdTargetingCity["refs"]>();
+        for (const connection of missingCity) {
+          for (const city of citiesRef.current) {
+            if (city.refs[connection.platform]) continue;
+            const found = await searchHostAdTargeting({
+              brandId,
+              platform: connection.platform,
+              kind: "city",
+              query: city.name,
+              country: city.countryCode,
+            });
+            const exact = found.results.find(
+              (candidate) =>
+                normalizedTargetName(targetingResultName(candidate)) ===
+                normalizedTargetName(city.name),
+            );
+            if (exact) {
+              const key = `${city.countryCode}:${normalizedTargetName(city.name)}`;
+              cityRefs.set(key, {
+                ...(cityRefs.get(key) ?? {}),
+                [connection.platform]: String(exact.id),
+              });
+            }
+          }
+        }
+        const interestRefs = new Map<string, HostAdTargetingInterest["refs"]>();
+        for (const connection of missingInterest) {
+          for (const interest of interestsRef.current) {
+            if (interest.refs[connection.platform]) continue;
+            const key = normalizedTargetName(interest.name);
+            if (connection.platform === "reddit") {
+              interestRefs.set(key, {
+                ...(interestRefs.get(key) ?? {}),
+                reddit: interest.name,
+              });
+              continue;
+            }
+            const found = await searchHostAdTargeting({
+              brandId,
+              platform: connection.platform,
+              kind: "interest",
+              query: interest.name,
+            });
+            const exact = found.results.find(
+              (candidate) =>
+                normalizedTargetName(candidate.name) === key,
+            );
+            if (exact) {
+              interestRefs.set(key, {
+                ...(interestRefs.get(key) ?? {}),
+                [connection.platform]: String(exact.id),
+              });
+            }
+          }
+        }
+        if (cityRefs.size > 0) {
+          setCities((current) =>
+            current.map((city) => {
+              const extra = cityRefs.get(
+                `${city.countryCode}:${normalizedTargetName(city.name)}`,
+              );
+              return extra ? { ...city, refs: { ...city.refs, ...extra } } : city;
+            }),
+          );
+        }
+        if (interestRefs.size > 0) {
+          setInterests((current) =>
+            current.map((interest) => {
+              const extra = interestRefs.get(normalizedTargetName(interest.name));
+              return extra
+                ? { ...interest, refs: { ...interest.refs, ...extra } }
+                : interest;
+            }),
+          );
+        }
+      } catch (cause) {
+        setNotice(
+          cause instanceof Error
+            ? `We couldn't check your places and interests on every platform: ${cause.message}`
+            : "We couldn't check your places and interests on every platform.",
+        );
+      } finally {
+        reresolveBusyRef.current = false;
+      }
+    })();
+    // connectionKey captures the selected platforms by value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandId, connectionKey]);
+
   const handlePrepare = async (forceAcceptance = false) => {
     if (!permissions.canPlan) {
       setError("Your role can review this plan but cannot change it.");
@@ -1221,6 +1455,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         rightsConfirmed,
         rightsBasis,
         aiGenerated,
+        optimization,
       });
       setExistingPlanId(next.planId);
       draftPlanIdRef.current = next.planId;
@@ -1417,6 +1652,19 @@ export default function HostAdCreateRoute(): React.ReactElement {
     );
   }
 
+  if (setup.available === false) {
+    return (
+      <View style={styles.center} testID="host-ad-unavailable">
+        <EmptyState
+          illustration="users"
+          title={HOST_AD_UNAVAILABLE_TITLE}
+          description={HOST_AD_UNAVAILABLE_BODY}
+          cta={{ label: "Back to Ads", onPress: () => router.back() }}
+        />
+      </View>
+    );
+  }
+
   const resumable = setup.plans.filter((plan) =>
     RESUMABLE_STATES.has(plan.state),
   );
@@ -1440,9 +1688,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
         </View>
         <Text style={styles.title}>Create an ad</Text>
         <Text style={styles.intro}>
-          Pick one public Mingla page, one or more connected platforms and one
-          ready video. The exact plan is frozen before funds or provider objects
-          can move.
+          Pick a public Mingla page, where it runs and one ready video. We lock
+          the plan before any money moves.
         </Text>
 
         <Text
@@ -1544,21 +1791,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
           <GlassCard variant="base" contentStyle={styles.cardContent}>
           <Text style={styles.step}>1 · What are you promoting?</Text>
           <Text style={styles.sectionTitle}>Choose the landing page</Text>
-          {setup.pages.map((item) => (
-            <ChoiceCard
-              key={`${item.page_type}:${item.id}`}
-              selected={
-                page?.page_type === item.page_type && page?.id === item.id
-              }
-              title={item.title}
-              subtitle={item.canonical_url}
-              onPress={() => {
-                setPage(item);
-                setPrepared(null);
-              }}
-              testID={`host-ad-page-${item.id}`}
-            />
-          ))}
+          <HostAdPagePicker
+            pages={setup.pages}
+            selected={page}
+            onSelect={(item) => {
+              setPage(item);
+              if (item.result_kind !== "tickets") setOptimization("visits");
+              setPrepared(null);
+            }}
+          />
           </GlassCard>
         ) : null}
 
@@ -1566,20 +1807,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
           <GlassCard variant="base" contentStyle={styles.cardContent}>
           <Text style={styles.step}>2 · Who should see it?</Text>
           <Text style={styles.sectionTitle}>Who should see it?</Text>
-          {setup.connections.length === 0 ? (
-            <Text style={styles.helper}>
-              No business-lane ad account is connected. Mingla Admin must
-              reconnect a provider first.
-            </Text>
-          ) : (
-            setup.connections.map((item) => (
+          {setup.connections.map((item) => (
               <ChoiceCard
                 key={item.id}
                 selected={connections.some(
                   (connection) => connection.id === item.id,
                 )}
                 title={PLATFORM_LABELS[item.platform] ?? item.platform}
-                subtitle={`Connected · provider account currency ${item.currency}`}
+                subtitle="Ready"
                 onPress={() => {
                   setConnections((current) =>
                     current.some((connection) => connection.id === item.id)
@@ -1593,30 +1828,29 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 testID={`host-ad-platform-${item.platform}`}
                 multiple
               />
-            ))
-          )}
-          <Text style={styles.label}>Country codes</Text>
-          <Input
-            value={countriesText}
-            onChangeText={(value) => {
-              setCountriesText(value);
+            ))}
+          <HostAdCountryPicker
+            countries={countries}
+            onChange={(next) => {
+              setCountries(next);
               setPrepared(null);
             }}
-            placeholder="NG, GH"
-            accessibilityLabel="Target country codes"
           />
           <Text style={styles.label}>Cities (optional)</Text>
           <Text style={styles.helper}>
-            Search resolves provider-native city IDs. Snapchat coordinates stay
-            server-side. Any platform that cannot preserve the city or radius
-            will show the exact widening before funding.
+            Add towns or cities to focus your ad. You&apos;ll see any platform
+            that has to show it wider before you pay.
           </Text>
           <View style={styles.searchRow}>
             <View style={styles.searchInput}>
               <Input
                 value={cityQuery}
                 onChangeText={setCityQuery}
-                placeholder={`Search in ${countries[0] ?? "NG"}`}
+                placeholder={
+                  countries[0]
+                    ? `Search cities in ${countryName(countries[0])}`
+                    : "Choose a country first"
+                }
                 accessibilityLabel="Search target city"
               />
             </View>
@@ -1657,15 +1891,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   {city.name}, {city.countryCode}
                 </Text>
                 <Text style={styles.choiceSubtitle}>
-                  Provider IDs: {Object.keys(city.refs).length}/
-                  {
-                    connections.filter((connection) =>
-                      ["meta", "tiktok", "google"].includes(
-                        connection.platform,
-                      ),
-                    ).length
-                  }{" "}
-                  required platforms
+                  {matchSubtitle(
+                    connections
+                      .filter(
+                        (connection) =>
+                          CITY_REF_PLATFORMS.includes(connection.platform) &&
+                          !city.refs[connection.platform],
+                      )
+                      .map((connection) => connection.platform),
+                  )}
                 </Text>
               </View>
               <Pressable
@@ -1698,9 +1932,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ) : null}
           <Text style={styles.label}>Interests (optional)</Text>
           <Text style={styles.helper}>
-            One logical interest must resolve on every selected provider that
-            needs an ID. Missing mappings block the plan instead of silently
-            widening it.
+            Add interests that fit your crowd. If a platform doesn&apos;t have a
+            match, we&apos;ll tell you before you pay.
           </Text>
           <View style={styles.searchRow}>
             <View style={styles.searchInput}>
@@ -1743,8 +1976,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
               <View style={styles.choiceText}>
                 <Text style={styles.choiceTitle}>{interest.name}</Text>
                 <Text style={styles.choiceSubtitle}>
-                  Provider mappings: {Object.keys(interest.refs).length}/
-                  {connections.length}
+                  {matchSubtitle(
+                    connections
+                      .filter(
+                        (connection) => !interest.refs[connection.platform],
+                      )
+                      .map((connection) => connection.platform),
+                  )}
                 </Text>
               </View>
               <Pressable
@@ -1813,6 +2051,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
         {activeStepId === "budget" ? (
           <GlassCard variant="base" contentStyle={styles.cardContent}>
           <Text style={styles.step}>3 · Budget and dates</Text>
+          {pageSellsTickets ? (
+            <View style={styles.goalBlock} testID="host-ad-goal">
+              <Text style={styles.sectionTitle}>What should this ad get?</Text>
+              <ChoiceCard
+                selected={optimization === "sales"}
+                title="Ticket sales"
+                subtitle={
+                  salesReadyPlatforms.length > 0
+                    ? `${platformList(salesReadyPlatforms)} ${
+                        salesReadyPlatforms.length === 1 ? "learns" : "learn"
+                      } from real ticket sales`
+                    : "Not enough ticket sales on these platforms yet."
+                }
+                disabled={salesReadyPlatforms.length === 0}
+                onPress={() => {
+                  setOptimization("sales");
+                  setPrepared(null);
+                }}
+                testID="host-ad-goal-sales"
+              />
+              <ChoiceCard
+                selected={optimization === "visits"}
+                title="Visits to your page"
+                onPress={() => {
+                  setOptimization("visits");
+                  setPrepared(null);
+                }}
+                testID="host-ad-goal-visits"
+              />
+            </View>
+          ) : null}
           <Text style={styles.sectionTitle}>Set the spend and schedule boundaries</Text>
           <Text style={styles.helper}>
             You pay and see every amount in {setup.currency}. These are
@@ -2078,6 +2347,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
             <View style={styles.planBox}>
               <Text style={styles.label}>Immutable plan hash</Text>
               <Text style={styles.hash}>{prepared.planHash}</Text>
+              {prepared.optimizationByPlatform ? (
+                <Text style={styles.choiceTitle} testID="host-ad-goal-summary">
+                  {goalSummaryLine(
+                    hostOptimizationSummary(
+                      prepared.optimizationByPlatform,
+                      prepared.targeting.length > 0
+                        ? prepared.targeting.map((row) => row.platform)
+                        : connections.map((connection) => connection.platform),
+                    ),
+                  )}
+                </Text>
+              ) : null}
               {prepared.measurement ? (
                 <View style={styles.targetingRow}>
                   <Text style={styles.choiceTitle}>
@@ -2523,6 +2804,8 @@ const styles = StyleSheet.create({
     borderColor: "#FF7A18",
     backgroundColor: "rgba(255,122,24,.11)",
   },
+  choiceDisabled: { opacity: 0.5 },
+  goalBlock: { gap: spacing.sm, marginBottom: spacing.sm },
   choiceText: { flex: 1, gap: 2 },
   choiceTitle: {
     ...typography.bodySm,

@@ -31,7 +31,8 @@ describe("#3697 Ari creative-before-freeze boundary", () => {
     expect(service).not.toContain('"admin-ad-creative-upload"');
     expect(service).not.toContain('"admin-ad-creative-prepare"');
     expect(approve).toContain('"admin-ad-creative-prepare"');
-    expect(approve).toContain('lane: "business"');
+    // #4238 D1: Ari sends no lane; the server resolves it from the plan owner.
+    expect(approve).not.toContain("lane:");
     expect(approve.indexOf('action: "confirm_launch"')).toBeLessThan(
       approve.indexOf('"admin-ad-creative-prepare"'),
     );

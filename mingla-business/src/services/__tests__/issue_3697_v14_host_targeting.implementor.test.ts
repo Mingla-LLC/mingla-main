@@ -12,13 +12,15 @@ describe("issue #3697 Host provider targeting parity", () => {
     "../supabase/functions/admin-ad-targeting-search/index.ts",
   );
 
-  it("uses the permission-scoped business-lane taxonomy search", () => {
+  it("uses the permission-scoped Host taxonomy search on the server-owned lane", () => {
     expect(service).toContain("export async function searchHostAdTargeting");
-    expect(service).toContain('lane: "business"');
+    // #4238 D1: Hosts never send a lane; the server derives it from the owner.
+    expect(service).not.toContain('lane: "business"');
     expect(service).toContain('owner_kind: "host"');
     expect(search).toContain("ad_can_host_action");
     expect(search).toContain('p_action: "plan"');
-    expect(search).toContain('requestedLane !== "business"');
+    expect(search).toContain("resolveOwnerLane(");
+    expect(search).not.toContain('requestedLane !== "business"');
   });
 
   it("freezes city, radius and logical interest references per platform", () => {
@@ -26,8 +28,8 @@ describe("issue #3697 Host provider targeting parity", () => {
     expect(service).toContain("input.radiusKm");
     expect(service).toContain("input.interests.map");
     expect(service).toContain("refs_by_platform: refsByPlatform");
-    expect(create).toContain("Search resolves provider-native city IDs");
-    expect(create).toContain("Missing mappings block the plan");
+    expect(create).toContain("Add towns or cities to focus your ad.");
+    expect(create).toContain("we&apos;ll tell you before you pay");
     expect(create).toContain("handleCitySearch");
     expect(create).toContain("handleInterestSearch");
   });

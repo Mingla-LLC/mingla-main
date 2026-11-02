@@ -76,7 +76,8 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(card).not.toContain('"admin-ad-creative-prepare"');
     const plan = read("src/services/hostAdPlanService.ts");
     expect(plan).toContain('"admin-ad-creative-prepare"');
-    expect(plan).toContain('lane: "business"');
+    // #4238 D1: the server resolves the lane from the plan owner.
+    expect(plan).not.toContain('lane: "business"');
     expect(plan).toContain("plan_version_id: aggregate.version.id");
     expect(plan).toContain("plan_hash: aggregate.version.plan_hash");
     const route = read("app/(tabs)/marketing/ads/create.tsx");

@@ -41,7 +41,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).not.toMatch(/currency:\s*input\./);
     expect(service).toContain('phrase: "LAUNCH"');
     expect(service).toContain("input.connections.map");
-    expect(createRoute).toContain("one or more connected platforms");
+    expect(createRoute).toContain("where it runs and one ready video");
     expect(service).toContain("provider_estimate");
     expect(service).toContain("estimate_observed_at");
     expect(createRoute).toContain("Provider estimates overlap");
@@ -140,9 +140,18 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(planEndpoint).toContain('action === "host_setup"');
     expect(planEndpoint).toContain("ad_can_host_action");
     expect(planEndpoint).toContain('p_action: "read"');
-    expect(planEndpoint).toContain(
-      "id,platform,lane,currency,status,connected,updated_at",
+    // #4238: Hosts get a projection of each ready account, never its lane,
+    // token variable, external ids or provider extra.
+    const projection = planEndpoint.slice(
+      planEndpoint.indexOf("const hostConnections = connectionRows.map"),
+      planEndpoint.indexOf("const rawCountry"),
     );
+    expect(projection).toContain("platform: row.platform");
+    expect(projection).toContain("sales:");
+    expect(projection).not.toContain("token_env_var");
+    expect(projection).not.toContain("external_account_id");
+    expect(projection).not.toContain("extra");
+    expect(projection).not.toContain("lane");
     expect(planEndpoint).not.toContain('select("*,secret');
   });
 
