@@ -94,6 +94,12 @@ BEGIN
      OR pg_get_functiondef('public.issue_3872_cancel_refund_order(uuid,jsonb,text,text)'::regprocedure) ~ 'LIMIT 1\s+FOR UPDATE' THEN
     RAISE EXCEPTION 'a retry must only read the refund';
   END IF;
+  -- Two refunds settling together must each see the other's result.
+  IF position('FROM public.orders WHERE id = v_order.id FOR UPDATE' IN pg_get_functiondef('public.admin_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = v_order.id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = v.order_id FOR UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'settlement must lock the order';
+  END IF;
 
   -- The first ticket back keeps the dinner.
   v_one := jsonb_build_array(jsonb_build_object('order_line_item_id',v_line,'quantity',1));
