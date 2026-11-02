@@ -3,7 +3,8 @@
  *
  *   You’re receiving this email because you’ve connected with Mingla
  *
- * written once in packages/brand-rendering/emailFooter.ts.
+ * written once in supabase/functions/_shared/email/footerLine.ts, mirrored
+ * for the business preview in packages/brand-rendering/emailFooter.ts.
  *
  *   1. The words are exact (curly apostrophes, no trailing period).
  *   2. Every email path prints it exactly once: the shell, a transactional
@@ -16,7 +17,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { EMAIL_FOOTER_LINE } from "../../../../packages/brand-rendering/emailFooter.ts";
+import { EMAIL_FOOTER_LINE } from "../email/footerLine.ts";
 import { FOOTER_DISCLAIMER } from "../email/copy.ts";
 import { renderShell } from "../email/shell.ts";
 import { renderTransactionalEmail } from "../email/index.ts";
@@ -107,6 +108,15 @@ Deno.test("#4226 every email path prints the line exactly once and never the old
   }
 });
 
+Deno.test("#4226 the business preview mirror equals the canonical footer line", async () => {
+  const mirror = await import("../../../../packages/brand-rendering/emailFooter.ts");
+  assertEquals(mirror.EMAIL_FOOTER_LINE, EMAIL_FOOTER_LINE);
+});
+
+Deno.test("#4226 no edge function imports from packages/ for the footer", () => {
+  assertEquals(read("supabase/functions/_shared/email/copy.ts").includes("packages/"), false);
+});
+
 Deno.test("#4226 the host composer preview shows the same constant", () => {
   const preview = read(
     "mingla-business/src/components/marketing/EmailPreviewPane.tsx",
@@ -150,6 +160,7 @@ Deno.test("#4226 no source file keeps the old sentence or a per-reason sentence"
         /\.(ts|tsx)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)
       ) {
         const text = Deno.readTextFileSync(new URL(entry.name, dir));
+        if (`${rel}${entry.name}` === "supabase/functions/_shared/email/footerLine.ts") continue;
         if (
           text.includes(OLD_SENTENCE) ||
           /You(?:'|’)re receiving this (?:because|email)/.test(text)
@@ -169,6 +180,6 @@ Deno.test("#4226 no source file keeps the old sentence or a per-reason sentence"
   assertEquals(
     offenders,
     [],
-    "the line lives only in packages/brand-rendering/emailFooter.ts",
+    "the line lives only in supabase/functions/_shared/email/footerLine.ts (and its parity-tested mirror)",
   );
 });

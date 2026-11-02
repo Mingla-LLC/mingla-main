@@ -7,7 +7,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { renderMarketingEmail } from "../marketingEmailRender.ts";
-import { EMAIL_FOOTER_LINE } from "../../../../packages/brand-rendering/emailFooter.ts";
+import { EMAIL_FOOTER_LINE } from "../email/footerLine.ts";
 import { isUndeliverableEmailDomain } from "../undeliverableEmail.ts";
 
 const vars = {
