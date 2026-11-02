@@ -1062,7 +1062,7 @@ function summarize(run: FlowRun): {
   return {
     title: published ? "Your stay is live" : "Your stay draft",
     text: published
-      ? `${name} is published and I've checked it's live.`
+      ? "It's live. Share it from its page whenever you're ready."
       : `${name} is saved as a draft and I've checked it's there. Guests can't book it until you publish. You can ask me to publish it anytime.`,
     evidence: created.evidence,
   };

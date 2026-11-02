@@ -1303,3 +1303,15 @@ Deno.test("P9: experience args are refused without every owner fact (no defaults
   // No price chosen: no draft (the server would store it as free).
   assertEquals(createExperienceArgs(BRAND, { ...facts, price: null }), null);
 });
+
+Deno.test("#3355: a published offering is announced once, not twice in a row", async () => {
+  for (const file of ["experience.ts", "event.ts", "trip.ts", "stay.ts"]) {
+    const source = await Deno.readTextFile(
+      new URL(`../ariFlows/offerings/${file}`, import.meta.url),
+    );
+    assert(
+      !source.includes("is published and I've checked it's live"),
+      `${file} repeats the publish readback in its summary`,
+    );
+  }
+});

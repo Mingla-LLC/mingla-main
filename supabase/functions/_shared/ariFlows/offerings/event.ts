@@ -2026,7 +2026,7 @@ function summarize(run: FlowRun): {
   return {
     title: published ? "Your event is live" : "Your event draft",
     text: published
-      ? `${title} is published and I've checked it's live.`
+      ? "It's live. Share it from its page whenever you're ready."
       : `${title} is saved as an unpublished draft and I've checked it's there. Nobody can see it until you publish. You can ask me to get it ready or publish it anytime.`,
     evidence: created.evidence,
   };
