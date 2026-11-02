@@ -49,6 +49,20 @@ function reconstructBase(files) {
   reconstructed.issue873 = reconstructed.issue873
     .split(pt409Handler)
     .join("EXCEPTION WHEN serialization_failure THEN");
+  // #3355's paid-tier trigger needs the fixture owner's Organiser Terms before
+  // the live event turns paid; that setup block is the only other allowlisted
+  // change.
+  reconstructed.issue873 = replaceExactly(
+    reconstructed.issue873,
+    `-- #3355: a live event turning paid needs the acting member's Organiser Terms.
+UPDATE public.brand_team_members
+SET mingla_tos_version_accepted='1.0',mingla_tos_accepted_at=now()
+WHERE brand_id='87300000-0000-4000-8000-000000000010'
+  AND user_id='87300000-0000-4000-8000-000000000001';
+`,
+    "",
+    "#3355 Organiser Terms fixture setup",
+  );
   reconstructed.orch1270 = replaceExactly(
     files.orch1270,
     `'ADV2','email', '{"kind":"email","subject":"ORCH-1270 double-send fixture","body_html":"ORCH-1270 double-send fixture"}', 'sending'`,
