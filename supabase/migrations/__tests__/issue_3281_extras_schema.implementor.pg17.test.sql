@@ -95,10 +95,10 @@ BEGIN
     RAISE EXCEPTION 'a retry must only read the refund';
   END IF;
   -- Two refunds settling together must each see the other's result.
-  IF position('FROM public.orders WHERE id = v_order.id FOR UPDATE' IN pg_get_functiondef('public.admin_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
-     OR position('FROM public.orders WHERE id = v_order.id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
-     OR position('FROM public.orders WHERE id = v.order_id FOR UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) = 0
-     OR position('FROM public.orders WHERE id = p_order_id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) = 0 THEN
+  IF position('FROM public.orders WHERE id = v_order.id FOR NO KEY UPDATE' IN pg_get_functiondef('public.admin_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = v_order.id FOR NO KEY UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit(uuid,text,integer,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = v.order_id FOR NO KEY UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) = 0
+     OR position('FROM public.orders WHERE id = p_order_id FOR NO KEY UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'settlement must lock the order';
   END IF;
 

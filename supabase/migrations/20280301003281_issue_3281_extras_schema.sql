@@ -1065,7 +1065,8 @@ BEGIN
   WHERE id = p_refund_id;
 
   -- issue #3281 — two refunds settling together must see each other's result.
-  PERFORM 1 FROM public.orders WHERE id = v_order.id FOR UPDATE;
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  PERFORM 1 FROM public.orders WHERE id = v_order.id FOR NO KEY UPDATE;
   SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
   FROM public.refunds
   WHERE order_id = v_order.id AND status = 'succeeded'
@@ -1171,7 +1172,8 @@ BEGIN
   WHERE id = p_refund_id;
 
   -- issue #3281 — two refunds settling together must see each other's result.
-  PERFORM 1 FROM public.orders WHERE id = v_order.id FOR UPDATE;
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  PERFORM 1 FROM public.orders WHERE id = v_order.id FOR NO KEY UPDATE;
   SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
   FROM public.refunds
   WHERE order_id = v_order.id AND status = 'succeeded';
@@ -1288,7 +1290,8 @@ BEGIN
       JOIN public.ticket_refund_attempts a ON a.id=x.attempt_id
       WHERE a.refund_id=v.refund_id AND x.ticket_id=t.id AND t.status='refund_pending';
   -- issue #3281 — two refunds settling together must see each other's result.
-  PERFORM 1 FROM public.orders WHERE id = v.order_id FOR UPDATE;
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  PERFORM 1 FROM public.orders WHERE id = v.order_id FOR NO KEY UPDATE;
     SELECT COALESCE(SUM(amount_cents),0) INTO v_total FROM public.refunds
       WHERE order_id=v.order_id AND status='succeeded';
     v_order_status:=public.issue_3281_settled_payment_status(v.order_id);
@@ -1423,7 +1426,8 @@ BEGIN
   END IF;
 
   -- issue #3281 — two refunds settling together must see each other's result.
-  PERFORM 1 FROM public.orders WHERE id = p_order_id FOR UPDATE;
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  PERFORM 1 FROM public.orders WHERE id = p_order_id FOR NO KEY UPDATE;
   -- Recompute cumulative refunded cents and new payment_status.
   SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
   FROM public.refunds
