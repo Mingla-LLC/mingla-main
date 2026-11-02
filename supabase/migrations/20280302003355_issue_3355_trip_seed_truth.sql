@@ -24,7 +24,7 @@
 --       - refuses a start before today in the trip's zone → 'trip_date_past';
 --       - stores the days exactly as the Host app does (calendarDate.ts):
 --         start YYYY-MM-DDT00:00:00Z, end YYYY-MM-DDT23:59:59Z, in the master
---         event_dates row and theme.business_trip.startAt/endAt, with the
+--         event_dates row and the trip theme's startAt/endAt, with the
 --         trip's time zone stored separately on events.timezone;
 --       - takes the departure and destination the owner picked on the card
 --         (label, city, country, coordinates) into the same theme keys and

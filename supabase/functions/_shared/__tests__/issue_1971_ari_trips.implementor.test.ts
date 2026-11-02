@@ -199,7 +199,14 @@ Deno.test("#1971 happy: no trip tool exposes an operation id to the model", () =
  * for a schema reason and masking what it was written to measure.
  */
 const VALID_WRITE_ARGS: [string, Record<string, unknown>][] = [
-  ["create_trip", { brand_id: BRAND_ID, title: "Trip" }],
+  // #3355 P8: a trip needs the owner's time zone and calendar days.
+  ["create_trip", {
+    brand_id: BRAND_ID,
+    title: "Trip",
+    timezone: "Africa/Lagos",
+    start_date: "2099-01-08",
+    end_date: "2099-01-10",
+  }],
   ["update_trip", {
     event_id: EVENT_ID,
     expected_updated_at: "2027-01-01T00:00:00Z",

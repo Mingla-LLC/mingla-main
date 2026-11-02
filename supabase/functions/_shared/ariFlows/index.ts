@@ -14,6 +14,7 @@ import { brandBlockersStep, brandCanWaitStep, listWords } from "./brandGate.ts";
 import { moneyGateStep } from "./moneyGate.ts";
 import { WEBSITE_SETUP_FLOW } from "./websiteSetup.ts";
 import { CREATE_EVENT_FLOW } from "./offerings/event.ts";
+import { CREATE_TRIP_FLOW } from "./offerings/trip.ts";
 import type {
   FlowContext,
   FlowDefinition,
@@ -170,6 +171,8 @@ export const FLOW_DEFINITIONS: readonly FlowDefinition[] = Object.freeze([
   }),
   // #3355 P7 — events on the engine (v2); v1 above lets older runs finish.
   CREATE_EVENT_FLOW,
+  // #3355 P8 — trips on the engine (v2); v1 above lets older runs finish.
+  CREATE_TRIP_FLOW,
   // #2830 P4 — Website setup, the engine's first brand flow.
   WEBSITE_SETUP_FLOW,
 ]);

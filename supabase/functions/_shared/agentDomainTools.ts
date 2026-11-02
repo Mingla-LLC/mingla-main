@@ -806,9 +806,24 @@ export async function bindTripStandardPlaceholderProposal(
   };
 }
 
+// #3355 P8 — a place the owner picked on the Ari card (the Host address
+// search), in the trip wizard's shape. Never typed or guessed.
+const TRIP_PLACE = {
+  type: "object",
+  additionalProperties: false,
+  required: ["label", "city", "lat", "lng"],
+  properties: {
+    label: { type: "string", minLength: 1, maxLength: 300 },
+    city: { type: "string", minLength: 1, maxLength: 120 },
+    country_code: { type: "string", pattern: "^[A-Z]{2}$" },
+    lat: { type: "number", minimum: -90, maximum: 90 },
+    lng: { type: "number", minimum: -180, maximum: 180 },
+  },
+};
+
 const createTrip = writeTool(
   "create_trip",
-  "Create a private draft trip under an owned brand. Include timezone, start_date, end_date, destination_text and max_guests whenever the user supplied them. Date-only boundaries are stored at local midnight in the supplied timezone. Do not invent price, itinerary, coordinates or departure details. Produces the canonical draft graph so it opens identically in the manual trip wizard.",
+  "Create an unpublished draft trip under an owned brand from the owner's own facts: title, time zone, and the first and last calendar day (YYYY-MM-DD). The days are stored exactly as the trip wizard stores them. Departure and destination are only places the owner picked from the address search. Do not invent dates, a time zone, price, packages, itinerary, coordinates or departure details; packages are added separately with manage_trip_tiers.",
   {
     brand_id: UUID,
     title: STR,
@@ -816,15 +831,15 @@ const createTrip = writeTool(
     timezone: { type: "string", minLength: 1, maxLength: 100 },
     start_date: { type: "string", format: "date" },
     end_date: { type: "string", format: "date" },
-    destination_text: { type: "string", minLength: 1, maxLength: 240 },
-    max_guests: { type: "integer", minimum: 1, maximum: 100000 },
+    departure: TRIP_PLACE,
+    destination: TRIP_PLACE,
     provenance: {
       type: "object",
       description:
         "Opaque origin marker (issue #1753 owns quote-to-draft mapping). Never invent one.",
     },
   },
-    ["brand_id", "title"],
+  ["brand_id", "title", "timezone", "start_date", "end_date"],
   async (args, client, userId, context) => {
     requireBrand(args, client, userId);
     return await executeTripWrite("create_trip", args, client, context);
@@ -833,18 +848,29 @@ const createTrip = writeTool(
 
 const updateTrip = writeTool(
   "update_trip",
-  "Edit an owned trip's title/description. A draft edits in place; a scheduled or live trip routes through the audited live-edit authority and needs a 10-200 character reason.",
+  "Edit an owned trip's title/description, or a draft trip's refund policy (the trip wizard's Policy presets). A draft edits in place; a scheduled or live trip routes through the audited live-edit authority and needs a 10-200 character reason.",
   {
     event_id: UUID,
     expected_updated_at: TRIP_REVISION,
     title: STR,
     description: { type: "string" },
+    refund_policy: {
+      type: "object",
+      description:
+        "Draft trips only: the canonical refund-policy object { kind, tiers: [{ days_before_start, refund_pct }] } the owner chose.",
+    },
     reason: TRIP_LIVE_REASON,
   },
   ["event_id", "expected_updated_at"],
   async (args, client, userId, context) => {
     await requireEvent(args, client, userId);
-    if (!isString(args.title) && typeof args.description !== "string") {
+    const policy = args.refund_policy;
+    const hasPolicy = !!policy && typeof policy === "object" &&
+      !Array.isArray(policy);
+    if (
+      !isString(args.title) && typeof args.description !== "string" &&
+      !hasPolicy
+    ) {
       throw new ToolError("INVALID_ARGS", "Nothing to update");
     }
     return await executeTripWrite("update_trip", args, client, context);

@@ -4,7 +4,7 @@ import {
   assertMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { runAgentLoop } from "../agentLoop.ts";
-import { buildAriTripCreationCall } from "../agentTripPlanner.ts";
+import { parseTripDateRange } from "../agentTripPlanner.ts";
 import { lintAriCopy } from "../agentCopyLint.ts";
 import {
   sanitizeAriPublicText,
@@ -116,60 +116,47 @@ Deno.test("#3355 event proposals preserve an explicit guest limit", () => {
   assert(tickets.items?.properties?.capacity);
 });
 
-Deno.test("#3355 trip creation can carry grounded schedule and guest limit", () => {
+Deno.test("#3355 trip creation carries only the owner's schedule, zone and picked places", () => {
+  // P8: the time zone and both calendar days are required (no UTC default,
+  // no undated draft); there is no guest-limit field because a trip's spots
+  // live on the packages the owner gives (no capacity default).
   const createTrip = findTool("create_trip");
   assert(createTrip);
-  assertMatch(createTrip.description, /include timezone, start_date, end_date/i);
-  assertMatch(createTrip.description, /do not invent price, itinerary/i);
+  assertMatch(createTrip.description, /time zone, and the first and last calendar day/i);
+  assertMatch(createTrip.description, /do not invent dates, a time zone, price, packages/i);
   const schema = createTrip.parameters as {
     properties?: Record<string, unknown>;
+    required?: string[];
   };
-  for (const field of [
-    "timezone",
-    "start_date",
-    "end_date",
-    "destination_text",
-    "max_guests",
-  ]) {
+  for (const field of ["timezone", "start_date", "end_date", "departure", "destination"]) {
     assert(schema.properties?.[field], `create_trip must expose ${field}`);
+  }
+  for (const field of ["brand_id", "title", "timezone", "start_date", "end_date"]) {
+    assert(schema.required?.includes(field), `create_trip must require ${field}`);
+  }
+  for (const field of ["max_guests", "destination_text"]) {
+    assertEquals(schema.properties?.[field], undefined, `${field} is gone`);
   }
 });
 
-Deno.test("#3355 complete trip creation requests use a grounded proposal", () => {
+Deno.test("#3355 trip date ranges are read as calendar days, never guessed", () => {
+  const now = new Date("2026-11-02T10:00:00Z");
   assertEquals(
-    buildAriTripCreationCall(
-      "Create a private trip named ‘Lagos Wellness Weekend’ for Coastline Collective: January 8, 2027 through January 10, 2027, Africa/Lagos, maximum 20 guests. Do not invent a price.",
-      "33550000-0000-4000-a000-000000000001",
-    ),
-    {
-      name: "create_trip",
-      args: {
-        brand_id: "33550000-0000-4000-a000-000000000001",
-        title: "Lagos Wellness Weekend",
-        start_date: "2027-01-08",
-        end_date: "2027-01-10",
-        timezone: "Africa/Lagos",
-        destination_text: "Lagos",
-        max_guests: 20,
-      },
-    },
+    parseTripDateRange("January 8, 2027 through January 10, 2027", now),
+    { start_date: "2027-01-08", end_date: "2027-01-10" },
   );
   assertEquals(
-    buildAriTripCreationCall(
-      "Create a private trip called ‘Lagos Wellness Weekend’ for November 15th. Africa/Lagos.",
-      "33550000-0000-4000-a000-000000000001",
-    ),
+    parseTripDateRange("Create a 3-day trip to Lagos from 8 to 10 January", now),
+    { start_date: "2027-01-08", end_date: "2027-01-10" },
+    "a yearless range is the next time it comes round",
+  );
+  assertEquals(
+    parseTripDateRange("Create a private trip for November 15th.", now),
     null,
-    "a yearless date must stay in clarification rather than becoming a proposal",
+    "one day is not a range",
   );
-  assertEquals(
-    buildAriTripCreationCall(
-      "How do I create a trip?",
-      "33550000-0000-4000-a000-000000000001",
-    ),
-    null,
-    "an instructional question is not a create request",
-  );
+  assertEquals(parseTripDateRange("10 to 8 January", now), null);
+  assertEquals(parseTripDateRange("1 to 2 November 2026", now), null, "past");
 });
 
 Deno.test("#3355 new ticket tiers omit ungrounded tier ids", () => {

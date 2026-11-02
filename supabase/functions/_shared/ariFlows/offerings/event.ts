@@ -61,6 +61,7 @@ import type {
   FlowAnswer,
   FlowAnswerValue,
   FlowAnswerValues,
+  FlowChoiceOption,
   FlowContext,
   FlowDefinition,
   FlowEventRow,
@@ -177,20 +178,25 @@ function done(probe: string, observed: unknown): ProbeResult {
   return { done: true, evidence: { probe, observed } };
 }
 
-/** A form card: one text field, or a set of choices, answered on the card. */
-function formRendition(args: {
+/**
+ * A form card: one text field, or a set of choices, answered on the card.
+ * #3355 P8: shared with the trip flow (`noun`).
+ */
+export function formRendition(args: {
   id: string;
+  noun?: string;
   title: string;
   body: string;
   field?: { label: string; placeholder: string; kind?: "text" | "url" };
   choices?: { options: { id: string; label: string }[]; multiple: boolean };
   problem?: string | null;
 }): Record<string, unknown> {
+  const noun = args.noun ?? "event";
   return {
     schema_version: 2,
-    rendition_id: `event-setup:${args.id}`,
-    kind: "event-setup",
-    eyebrow: "New event",
+    rendition_id: `${noun}-setup:${args.id}`,
+    kind: `${noun}-setup`,
+    eyebrow: `New ${noun}`,
     title: args.title,
     body: args.problem ?? args.body,
     ...(args.problem ? { tone: "warning" } : {}),
@@ -240,18 +246,18 @@ function formRendition(args: {
   };
 }
 
-function problemOf(ctx: FlowContext): string | null {
+export function problemOf(ctx: FlowContext): string | null {
   const problem = ctx.state?.data?.problem;
   return typeof problem === "string" ? problem : null;
 }
 
-function attemptOf(ctx: FlowContext): number {
+export function attemptOf(ctx: FlowContext): number {
   const attempt = ctx.state?.data?.attempt;
   return typeof attempt === "number" ? attempt : 0;
 }
 
 /** Nothing saved; the same question comes back with what was wrong. */
-function retry(ctx: FlowContext, problem: string): AnswerOutcome {
+export function retry(ctx: FlowContext, problem: string): AnswerOutcome {
   return {
     record: {
       state: "asked",
@@ -260,9 +266,10 @@ function retry(ctx: FlowContext, problem: string): AnswerOutcome {
   };
 }
 
-function textQuestion(args: {
+export function textQuestion(args: {
   ctx: FlowContext;
   key: string;
+  noun?: string;
   title: string;
   text: string;
   label: string;
@@ -271,15 +278,17 @@ function textQuestion(args: {
   options?: { id: string; label: string }[];
 }): AskSpec {
   const problem = problemOf(args.ctx);
+  const noun = args.noun ?? "event";
   return {
     kind: "question",
     answer_mode: "form",
-    reuse_key: `event:${args.key}:${attemptOf(args.ctx)}`,
+    reuse_key: `${noun}:${args.key}:${attemptOf(args.ctx)}`,
     title: args.title,
     text: problem ? `${problem} ${args.text}` : args.text,
     options: args.options ?? [],
     rendition: formRendition({
       id: args.key,
+      noun,
       title: args.title,
       body: args.text,
       field: { label: args.label, placeholder: args.placeholder, kind: args.kind },
@@ -293,10 +302,11 @@ function textQuestion(args: {
  * #3355 P7 — the Host ticket sheet's "Choose your payout country" prompt as
  * an Ari card: the Host chooser's countries, one pick, answered on the card.
  */
-function payoutCountryQuestion(
+export function payoutCountryQuestion(
   ctx: FlowContext,
   brandCountry: string | null,
   failed: string | null,
+  noun = "event",
 ): AskSpec {
   const problem = failed ?? problemOf(ctx);
   const title = "Choose your payout country";
@@ -305,7 +315,7 @@ function payoutCountryQuestion(
   return {
     kind: "question",
     answer_mode: "form",
-    reuse_key: `event:${PAYOUT_COUNTRY_KEY}:${attemptOf(ctx)}${
+    reuse_key: `${noun}:${PAYOUT_COUNTRY_KEY}:${attemptOf(ctx)}${
       failed ? ":failed" : ""
     }`,
     title,
@@ -313,6 +323,7 @@ function payoutCountryQuestion(
     options: [],
     rendition: formRendition({
       id: PAYOUT_COUNTRY_KEY,
+      noun,
       title,
       body,
       choices: { options: payoutCountryOptions(brandCountry), multiple: false },
@@ -322,15 +333,16 @@ function payoutCountryQuestion(
   };
 }
 
-function choiceQuestion(args: {
+export function choiceQuestion(args: {
   key: string;
   title: string;
   text: string;
-  options: { id: string; label: string }[];
+  options: FlowChoiceOption[];
+  noun?: string;
 }): AskSpec {
   return {
     kind: "question",
-    reuse_key: `event:${args.key}`,
+    reuse_key: `${args.noun ?? "event"}:${args.key}`,
     title: args.title,
     text: args.text,
     options: args.options,
@@ -342,13 +354,16 @@ const NOT_AN_ANSWER =
   /\?\s*$|^(?:how|why|can|could|should|do|does|is|are|will|would|stop|cancel|never\s?mind|forget it|not now|skip|later)\b/i;
 
 /** A typed reply as a form answer, unless it is a question or a stop. */
-function typedAnswer(text: string): FlowAnswerValues | null {
+export function typedAnswer(text: string): FlowAnswerValues | null {
   if (NOT_AN_ANSWER.test(text.trim())) return null;
   const response = text.trim().slice(0, 2000);
   return response ? { choices: [], country: null, response } : null;
 }
 
-function formResponse(choiceId: string, answer?: FlowAnswer): string | null {
+export function formResponse(
+  choiceId: string,
+  answer?: FlowAnswer,
+): string | null {
   if (choiceId !== FORM_ANSWER || !answer?.values) return null;
   return answer.values.response.trim() || answer.values.choices[0] || null;
 }
@@ -919,7 +934,7 @@ export function createRows(facts: Facts): { label: string; value: string }[] {
   return rows.filter((row) => row.value);
 }
 
-async function proposalOpen(ctx: FlowContext): Promise<boolean> {
+export async function proposalOpen(ctx: FlowContext): Promise<boolean> {
   if (!ctx.deps.hasOpenProposal) return false;
   try {
     return await ctx.deps.hasOpenProposal();
@@ -1371,8 +1386,17 @@ const ticketKindStep: StepDefinition = {
 const CAPACITY =
   /\b(\d{1,6})\s*(?:tickets?|people|guests?|spots?|places?|seats?|max|capacity)\b|\b(?:capacity|limit(?:ed)?(?:\s+to)?|for|max(?:imum)?)\s*(?:of\s+)?(\d{1,6})\b/i;
 const NO_LIMIT = /\b(?:no limit|unlimited|no cap|as many as)\b/i;
+// #3355 P8: "₦2,000" / "£1,250.50" carry thousands separators (the card's
+// own example for naira is "₦2,000"); a lone ",5" is a decimal comma.
 const PRICE =
-  /(?:([£$€₦])\s*(\d{1,6}(?:[.,]\d{1,2})?))|(\d{1,6}(?:[.,]\d{1,2})?)\s*(pounds?|dollars?|euros?|naira|gbp|usd|eur|ngn)\b/i;
+  /(?:([£$€₦])\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,7}(?:[.,]\d{1,2})?))|(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,7}(?:[.,]\d{1,2})?)\s*(pounds?|dollars?|euros?|naira|gbp|usd|eur|ngn)\b/i;
+
+/** "2,000" → 2000, "1,250.50" → 1250.5, "12,5" → 12.5. */
+function priceNumber(raw: string): number {
+  return /,\d{3}(?:\.|$)/.test(raw)
+    ? Number(raw.replace(/,/g, ""))
+    : Number(raw.replace(",", "."));
+}
 
 /** The currencies a typed symbol or word can mean. */
 const TYPED_CURRENCY: ReadonlyArray<[RegExp, string[]]> = [
@@ -1406,7 +1430,7 @@ export function parseTicketAnswer(
   if (paid) {
     const priceMatch = PRICE.exec(text);
     const raw = priceMatch?.[2] ?? priceMatch?.[3];
-    price = raw ? Number(raw.replace(",", ".")) : null;
+    price = raw ? priceNumber(raw) : null;
     if (price === null || !(price > 0)) return null;
     const marker = priceMatch?.[1] ?? priceMatch?.[4] ?? "";
     const currencies = TYPED_CURRENCY.find(([pattern]) => pattern.test(marker))
@@ -1430,7 +1454,7 @@ export function parseTicketAnswer(
 }
 
 /** The example price in the brand's own currency ("£15", "₦2,000"). */
-function examplePrice(currency: string): string {
+export function examplePrice(currency: string): string {
   const minimum = providerMinimumChargeMinor(currency);
   const minimumMajor = minimum === null
     ? 0
@@ -1449,12 +1473,12 @@ function examplePrice(currency: string): string {
   }
 }
 
-function currencyOf(value: string | null | undefined): string | null {
+export function currencyOf(value: string | null | undefined): string | null {
   const code = value?.trim().toUpperCase() ?? "";
   return /^[A-Z]{3}$/.test(code) ? code : null;
 }
 
-const PAYOUT_COUNTRY_KEY = "payout_country";
+export const PAYOUT_COUNTRY_KEY = "payout_country";
 
 /** Is the open card the payout-country question? */
 function askingPayoutCountry(ctx: FlowContext): boolean {

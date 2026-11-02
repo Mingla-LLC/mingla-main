@@ -207,6 +207,37 @@ export interface FlowEventRow {
   draft: Record<string, unknown>;
 }
 
+/** #3355 P8 — a trip place as stored (the wizard's theme keys). */
+export interface FlowTripPlace {
+  label: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+/** #3355 P8 — the trip row a trip flow reads back (canonical state). */
+export interface FlowTripRow {
+  id: string;
+  title: string;
+  status: string;
+  timezone: string | null;
+  /** The compare-and-swap revision every trip write needs. */
+  updated_at: string;
+  /** The master event_dates row (Host calendar-day encoding). */
+  start_at: string | null;
+  end_at: string | null;
+  departure: FlowTripPlace | null;
+  destination: FlowTripPlace | null;
+  refund_policy: Record<string, unknown> | null;
+  day_count: number;
+  packages: {
+    ticket_type_id: string;
+    name: string;
+    price_cents: number;
+    capacity: number | null;
+    installments: boolean;
+  }[];
+}
+
 /** Reads the runner may make. Every probe goes through these. */
 export interface FlowProbeDeps {
   readiness(action: ReadinessAction | null): Promise<BrandReadiness>;
@@ -237,6 +268,8 @@ export interface FlowProbeDeps {
   eventRow?(id: string): Promise<FlowEventRow | null>;
   /** #3355 P7 — this brand's live drafts / scheduled events with this title. */
   eventsTitled?(title: string): Promise<FlowEventRow[]>;
+  /** #3355 P8 — one trip of this brand, read back (null when gone). */
+  tripRow?(id: string): Promise<FlowTripRow | null>;
 }
 
 export interface FlowContext {

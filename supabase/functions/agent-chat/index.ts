@@ -180,7 +180,6 @@ import {
   canCompleteResearchFromSearchIndex,
   isStandalonePublicResearchRequest,
 } from "../_shared/agentWebResearch.ts";
-import { buildAriTripCreationCall } from "../_shared/agentTripPlanner.ts";
 import {
   decideFlowTurn,
   flowChoices,
@@ -2962,10 +2961,6 @@ ${boundedAgentContext}
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
       );
-      const tripCreationCall = buildAriTripCreationCall(
-        semanticMessage,
-        activeBrand?.id ?? null,
-      );
       const websiteInitialCalls = activeBrand && websiteSetupBoundary
         ? websiteSetupWorkflowInitialCalls({
           intent: effectiveWebsiteSetupIntent,
@@ -2973,6 +2968,9 @@ ${boundedAgentContext}
           activeFixAllJob: activeWebsiteSetupJob,
         })
         : [];
+      // #3355 P8 (D-16): initialCalls is the loop's read-only pre-pass; a
+      // write placed here can never run. Trips are created by the engine's
+      // create_trip flow (or proposed by the model when the engine is off).
       const initialCalls = websiteInitialCalls.length > 0
         ? websiteInitialCalls
         : standaloneResearchRequest
@@ -3032,8 +3030,6 @@ ${boundedAgentContext}
             limit: 50,
           },
         }]
-        : tripCreationCall
-        ? [tripCreationCall]
         : deterministicRead
         ? deterministicRead.calls
         : [];

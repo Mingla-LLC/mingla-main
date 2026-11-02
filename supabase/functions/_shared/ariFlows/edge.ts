@@ -42,6 +42,8 @@ import type {
   FlowPlaceValue,
   FlowProbeDeps,
   FlowRun,
+  FlowTripPlace,
+  FlowTripRow,
 } from "./types.ts";
 import { LIVE_FLOW_STATUSES } from "./types.ts";
 
@@ -306,6 +308,102 @@ function eventRowOf(data: unknown): FlowEventRow {
   };
 }
 
+/** #3355 P8 — a trip place from theme.business_trip (`departure…` keys). */
+function tripPlaceOf(
+  trip: Record<string, unknown>,
+  side: "departure" | "destination",
+  column: unknown,
+): FlowTripPlace | null {
+  const label = typeof column === "string" && column.trim()
+    ? column.trim()
+    : typeof trip[`${side}LocationText`] === "string"
+    ? String(trip[`${side}LocationText`]).trim()
+    : "";
+  if (!label) return null;
+  const num = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  return {
+    label,
+    lat: num(trip[`${side}Lat`]),
+    lng: num(trip[`${side}Lng`]),
+  };
+}
+
+/** #3355 P8 — one trip, read as the caller (null when gone or not theirs). */
+async function readTripRow(
+  userClient: SupabaseClient,
+  brandId: string,
+  id: string,
+): Promise<FlowTripRow | null> {
+  const { data, error } = await userClient.from("events")
+    .select(
+      "id,title,status,timezone,updated_at,theme,refund_policy,destination_text,departure_text",
+    )
+    .eq("id", id)
+    .eq("brand_id", brandId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as Record<string, unknown>;
+  const [dates, tickets, tiers, days] = await Promise.all([
+    userClient.from("event_dates").select("start_at,end_at")
+      .eq("event_id", id).eq("is_master", true).maybeSingle(),
+    userClient.from("ticket_types").select("id,name,price_cents,quantity_total")
+      .eq("event_id", id).is("deleted_at", null),
+    userClient.from("trip_pricing_tiers").select("ticket_type_id,tier_metadata")
+      .eq("event_id", id),
+    userClient.from("trip_days").select("id", { count: "exact", head: true })
+      .eq("event_id", id),
+  ]);
+  if (dates.error || tickets.error || tiers.error || days.error) return null;
+  const theme = row.theme && typeof row.theme === "object"
+    ? row.theme as Record<string, unknown>
+    : {};
+  const trip = theme.business_trip && typeof theme.business_trip === "object"
+    ? theme.business_trip as Record<string, unknown>
+    : {};
+  const metadata = new Map(
+    ((tiers.data ?? []) as Record<string, unknown>[]).map((tier) => [
+      String(tier.ticket_type_id),
+      tier.tier_metadata,
+    ]),
+  );
+  const date = (dates.data ?? null) as Record<string, unknown> | null;
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : null;
+  return {
+    id: String(row.id),
+    title: typeof row.title === "string" ? row.title : "",
+    status: typeof row.status === "string" ? row.status : "",
+    timezone: text(row.timezone),
+    updated_at: String(row.updated_at ?? ""),
+    start_at: text(date?.start_at),
+    end_at: text(date?.end_at),
+    departure: tripPlaceOf(trip, "departure", row.departure_text),
+    destination: tripPlaceOf(trip, "destination", row.destination_text),
+    refund_policy: row.refund_policy && typeof row.refund_policy === "object"
+      ? row.refund_policy as Record<string, unknown>
+      : null,
+    day_count: days.count ?? 0,
+    packages: ((tickets.data ?? []) as Record<string, unknown>[])
+      .filter((ticket) => metadata.has(String(ticket.id)))
+      .map((ticket) => {
+        const meta = metadata.get(String(ticket.id));
+        return {
+          ticket_type_id: String(ticket.id),
+          name: typeof ticket.name === "string" ? ticket.name : "",
+          price_cents: Number(ticket.price_cents ?? 0),
+          capacity: typeof ticket.quantity_total === "number"
+            ? ticket.quantity_total
+            : null,
+          installments: !!meta && typeof meta === "object" &&
+            !!(meta as Record<string, unknown>).installments,
+        };
+      }),
+  };
+}
+
 /** Canonical reads the runner makes for one brand, memoised per request. */
 export function buildFlowProbeDeps(
   userClient: SupabaseClient,
@@ -316,6 +414,7 @@ export function buildFlowProbeDeps(
   const cache = new Map<string, Promise<BrandReadiness>>();
   const reads = new Map<string, Promise<unknown>>();
   const events = new Map<string, Promise<FlowEventRow | null>>();
+  const trips = new Map<string, Promise<FlowTripRow | null>>();
   return {
     // #2830 P4: one read-only Website tool as the caller, memoised for the
     // request. A write tool is never reachable here.
@@ -397,6 +496,14 @@ export function buildFlowProbeDeps(
         .limit(10);
       if (error || !Array.isArray(data)) return [];
       return data.map(eventRowOf);
+    },
+    tripRow(id: string) {
+      let pending = trips.get(id);
+      if (!pending) {
+        pending = readTripRow(userClient, brandId, id);
+        trips.set(id, pending);
+      }
+      return pending;
     },
     async subjectExists(table: string, id: string) {
       if (!["events"].includes(table)) return false;
