@@ -79,6 +79,13 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(agentHook).toContain('WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website"');
   });
 
+  it("#3355 bug 19: the setup pane's own words are plain and never show a raw key", () => {
+    expect(pane).not.toMatch(/field-level|context gaps?\b|Brand context|brand context/);
+    expect(pane).toMatch(/PART_LABELS\[key\] \?\? plainKey\(key\)/);
+    expect(pane).toMatch(/PART_LABELS\[activePart\] \?\? plainKey\(activePart\)/);
+    expect(pane).not.toMatch(/PART_LABELS\[key\] \?\? key\b/);
+  });
+
   it("never re-sends the automatic setup audit after it fails", () => {
     // Clearing the claimed key on failure re-armed the effect the moment
     // isSending flipped back, so one failed send became an endless resend
