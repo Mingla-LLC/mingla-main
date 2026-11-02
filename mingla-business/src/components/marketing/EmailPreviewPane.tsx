@@ -35,6 +35,8 @@ import { brandFollowPublicUrl } from "../../utils/marketing/blastFollow";
 // ISSUE-1001 — the real wordmark replaces the "Mingla" text header, so the
 // preview mirrors what recipients actually see from _shared/email/shell.ts.
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
+// #4226: the footer line has ONE home, shared with every server email.
+import { EMAIL_FOOTER_LINE } from "@mingla/brand-rendering/emailFooter";
 
 // Mingla email design tokens — must match `_shared/email/shell.ts` and
 // `_shared/marketingEmailRender.ts` server-side.
@@ -86,55 +88,10 @@ export interface EmailPreviewPaneProps {
    */
   embeddedEvents?: ReadonlyArray<PreviewEmbeddedEvent>;
   /**
-   * #3682 — footer reason line. Defaults to bought (buyer audiences). Book /
-   * import / follow / RSVP / circle sends should pass the matching reason.
-   */
-  receiveReason?:
-    | "bought"
-    | "rsvp"
-    | "booking"
-    | "imported"
-    | "added"
-    | "follows"
-    | "friend_of_follower"
-    | "guest_book";
-  /**
    * #3682 Wave 2.3 — when set, render the Follow panel above the footer
    * (mirrors marketingEmailRender brand_follow_url injection).
    */
   brandSlug?: string | null;
-}
-
-function previewReceiveReasonLine(
-  reason:
-    | "bought"
-    | "rsvp"
-    | "booking"
-    | "imported"
-    | "added"
-    | "follows"
-    | "friend_of_follower"
-    | "guest_book",
-  brand: string,
-): string {
-  switch (reason) {
-    case "bought":
-      return `You're receiving this because you bought tickets from ${brand} on Mingla.`;
-    case "rsvp":
-      return `You're receiving this because you RSVP'd to an event from ${brand} on Mingla.`;
-    case "booking":
-      return `You're receiving this because you made a reservation with ${brand} on Mingla.`;
-    case "imported":
-      return `You're receiving this because ${brand} imported your contact on Mingla with permission.`;
-    case "added":
-      return `You're receiving this because ${brand} added you to their guest book on Mingla.`;
-    case "follows":
-      return `You're receiving this because you follow ${brand} on Mingla.`;
-    case "friend_of_follower":
-      return `You're receiving this because a friend follows ${brand} on Mingla.`;
-    case "guest_book":
-      return `You're receiving this because you're on ${brand}'s guest list on Mingla.`;
-  }
 }
 
 export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
@@ -144,7 +101,6 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
   brandName,
   brandHeaderImageUrl,
   embeddedEvents = [],
-  receiveReason = "bought",
   brandSlug = null,
 }) => {
   const blocks = previewBlocks(bodyHtml, variables);
@@ -255,13 +211,10 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
           </View>
         ) : null}
 
-        {/* Footer — unsubscribe + truthful reason (#3682) */}
+        {/* Footer — unsubscribe + the one footer line every email carries (#4226) */}
         <View style={styles.footer}>
           <Text style={styles.footerLine}>
-            {previewReceiveReasonLine(
-              receiveReason,
-              brandName ?? "this brand",
-            )}
+            {EMAIL_FOOTER_LINE}
           </Text>
           <Text style={styles.footerLine}>
             <Text style={styles.footerUnsubscribe}>Unsubscribe</Text>

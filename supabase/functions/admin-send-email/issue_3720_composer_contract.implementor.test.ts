@@ -129,6 +129,8 @@ Deno.test("#3720 audience normalizer exposes All for every optional segment filt
       userType: "all",
       // #4226: ticket-buyer filters default to All too.
       appStatus: "all",
+      // #4226: host contacts add the Source filter.
+      source: "all",
       city: "all",
       boughtTickets: "all",
       brandId: "all",

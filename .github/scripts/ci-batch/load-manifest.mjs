@@ -115,7 +115,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: re-sealed after the door active date migration followed them.
 // #4226: re-sealed after the ticket buyer people migration and its proof followed them.
 // #3281: re-sealed after the Extras schema migration joined the same replays.
-export const BOOTSTRAP_SHA256 = "f9487625cde690c707c7a05713ef29cf2b5a6e6e88be73755deb713c2bf2fb9c";
+// #4226: re-sealed after the host contacts people migration and its proof followed them,
+// and the #1995 blast suite watches the one email footer line instead of the retired
+// per-reason module.
+export const BOOTSTRAP_SHA256 = "0da18f1358a63229f88e0b6ecfb93728bea76ae091c0ab918078a1ee42528d6c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

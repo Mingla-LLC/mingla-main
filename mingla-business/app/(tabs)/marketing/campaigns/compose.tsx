@@ -1241,23 +1241,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     };
   }, [resolvedAudience.data, brandName, previewBookPeople.rows]);
 
-  // #3682 — preview footer reason. Mixed book audiences use guest_book (not
-  // "added"/"follows"); Friends of followers use friend_of_follower.
-  const previewReceiveReason = useMemo(() => {
-    if (sealedAudienceKind === "brand_followers") return "follows" as const;
-    if (sealedAudienceKind === "brand_circle_extended") {
-      return "friend_of_follower" as const;
-    }
-    if (
-      isBookAudience ||
-      sealedAudienceKind === "all_brand_people" ||
-      sealedAudienceKind === "manual_group"
-    ) {
-      return "guest_book" as const;
-    }
-    return "bought" as const;
-  }, [sealedAudienceKind, isBookAudience]);
-
   const reach = resolvedAudience.data?.reach ?? null;
 
   // META-ORCH-1161 Sub-B — channel switch (Email ↔ SMS). Marks dirty so the
@@ -1919,7 +1902,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   variables={previewVariables}
                   brandName={brandName}
                   brandSlug={brandSlug}
-                  receiveReason={previewReceiveReason}
                   brandHeaderImageUrl={
                     currentBrand?.coverMediaType !== "video"
                       ? (currentBrand?.coverMediaUrl ?? null)
@@ -2112,7 +2094,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 variables={previewVariables}
                 brandName={brandName}
                 brandSlug={brandSlug}
-                receiveReason={previewReceiveReason}
                 brandHeaderImageUrl={
                   currentBrand?.coverMediaType !== "video"
                     ? (currentBrand?.coverMediaUrl ?? null)

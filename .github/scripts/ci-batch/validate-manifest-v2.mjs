@@ -330,7 +330,9 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the door active date migration the same way.
 // #4226: register the ticket buyer people migration and its proof the same way.
 // #3281: register the Extras schema migration the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "0a2cfdd518af42d628fc4794d264596808426658b0ad793cf7aa97a2e33c7463";
+// #4226: register the host contacts people migration and its proof the same way;
+// the #1995 blast suite now watches packages/brand-rendering/emailFooter.ts.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "837cbf00a3ebe36614bd86976c0bfbdc22fd05a39414d5d0caafa6558db34c3b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
