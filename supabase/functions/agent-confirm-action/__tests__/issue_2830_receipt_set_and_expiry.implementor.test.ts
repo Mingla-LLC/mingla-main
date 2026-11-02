@@ -1,4 +1,5 @@
 // #2830 P0 — Ari confirm hygiene for Website setup.
+// MINGLA-INVARIANT: I-ARI-RECEIPT-SET-COMPLETE | issue #2830 | Every Ari write whose SQL commits through agent_operation_receipt_begin is in agent-confirm-action RECEIPT_BACKED_TOOL_NAMES, so an ambiguous `executing` retry replays the receipt instead of failing WRONG_STATE (the set is checked against the migrations below).
 //
 // 1. I-ARI-RECEIPT-SET-COMPLETE: every Ari tool whose SQL begins the shared
 //    #1972 operation receipt under a literal tool name is in the confirm
