@@ -220,6 +220,7 @@ ari.jobs.manage
 ari.marketing.campaign_draft_review
 ari.brand.readiness_read
 ari.brand.readiness_defer
+ari.team.tell_owner_group
 ari.brand.readiness_undefer
 `.trim().split(/\s+/));
 

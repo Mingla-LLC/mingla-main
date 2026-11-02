@@ -154,7 +154,8 @@ function check(s, manifest) {
   // bounded findings and evidence-backed context writes extend that denominator to 176.
   // [TEST-MOD-APPROVED #3355] The saved campaign draft readback and the P2
   // brand readiness read + not-now pair extend that denominator to 180.
-  if (declarationCount !== 180) failures.push(`expected 180 declarations, got ${declarationCount}`);
+  // #3355 P6 follow-up: tell_owner_in_brand_group (brand member); 180→181.
+  if (declarationCount !== 181) failures.push(`expected 181 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

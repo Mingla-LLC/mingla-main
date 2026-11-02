@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 180,
-    "capability_count": 192,
+    "registered_tool_count": 181,
+    "capability_count": 193,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 179,
+      "registered_unverified": 180,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -8653,6 +8653,41 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.team.tell_owner_group",
+      "domain": "team",
+      "outcome": "Ask the brand owner in the brand group chat to do an owner-only step, after the teammate confirms the exact note",
+      "safety": "write",
+      "required_role": "brand_member",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const tellOwnerInBrandGroup"
+          }
+        ]
+      },
+      "ari_tool": "tell_owner_in_brand_group",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "b1916219387dd3da6d772492ae62dcfdafc6e551",
+          "reference": "issue_3355_tell_owner_group.implementor.test.ts: confirmed brand-group owner note",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-01"
     },
     {
       "id": "ari.market.rules",
