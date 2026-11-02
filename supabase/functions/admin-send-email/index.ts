@@ -136,8 +136,9 @@ function legacySegmentAudience(
 /**
  * #4226 — every audience reads the admin-only people list
  * (admin_people_directory), the one the People page uses, so Explorer / Host
- * mean the same thing here as there and ticket buyers with no account can be
- * reached. Filters live in ./audience.ts.
+ * mean the same thing here as there and ticket buyers and host contacts with
+ * no account can be reached. Everyone is the whole list. Filters live in
+ * ./audience.ts.
  */
 async function loadDirectoryRows(
   supabase: ServiceClient,
@@ -792,6 +793,9 @@ export async function handler(req: Request) {
         no_consent: snapshot.noConsent,
         internal: snapshot.internalExcluded,
         will_receive: snapshot.willReceive,
+        // #4226: who will receive, by group (explorer, host, both,
+        // incomplete, ticket_buyer_no_app, host_contact_no_app).
+        groups: snapshot.byGroup,
       });
     }
 

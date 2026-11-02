@@ -14,7 +14,7 @@ import { formatMoneyMinor, joinMoneyAmounts } from "../../lib/moneyFormat";
 import {
   SEGMENTS, cumulativeMonths, lastMonthNew, monthLabel, monthName, countChange, funnelVerdicts,
   verdictRulesText, verdictSentence, weeklyMoney, moneyCurrencies, last30,
-  CHART_TICK, fmtInt, fmtPct, fmtWeek, ticketBuyerTiles,
+  CHART_TICK, fmtInt, fmtPct, fmtWeek, ticketBuyerTiles, hostContactTiles,
 } from "../../lib/dataRoomAnalytics";
 import { SectionGate, Tile, Segmented, Source, AsOf } from "./shared";
 
@@ -98,6 +98,26 @@ function TicketBuyers({ users }) {
         <p className="text-sm text-[var(--color-text-secondary)]">Ticket buyer numbers start with snapshots taken after this release. Pick today to see them live.</p>
       )}
       <Source>A ticket buyer bought, was comp&apos;d or holds a paid ticket from any host, matched to an account by email. No app = hasn&apos;t finished Explorer onboarding (the People page&apos;s &quot;Ticket buyers, no app&quot; tab). Conversion = of the people who bought before they had an account, how many now have the Explorer or Host app. Source: orders, tickets and accounts.</Source>
+    </SectionCard>
+  );
+}
+
+// #4226: people hosts imported or added to their contact book.
+function HostContacts({ users }) {
+  const tiles = hostContactTiles(users.data.host_contacts);
+  return (
+    <SectionCard
+      title="Host contacts"
+      subtitle={<>People hosts imported or added to their contact book, staff and test left out · <AsOf load={users} /></>}
+    >
+      {tiles ? (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {tiles.map((t) => <Tile key={t.key} label={t.label} value={t.value} note={t.note} />)}
+        </div>
+      ) : (
+        <p className="text-sm text-[var(--color-text-secondary)]">Host contact numbers start with snapshots taken after this release. Pick today to see them live.</p>
+      )}
+      <Source>A host contact is an email a host imported (with the host&apos;s permission attestation) or added by hand to their brand contact book, matched to an account or ticket by email. No app = no Explorer or Host app. Later got an app = a host added them before they had an account, and they now have the Explorer or Host app. Source: brand contact books, accounts and tickets.</Source>
     </SectionCard>
   );
 }
@@ -239,6 +259,7 @@ export function DataRoomOverview({ loads }) {
       </SectionGate>
       <SectionGate loads={[users]} title="Couldn't load Ticket buyers" height={120}>
         {users.data ? <TicketBuyers users={users} /> : null}
+        {users.data ? <HostContacts users={users} /> : null}
       </SectionGate>
       <SectionGate loads={[overview, retention, money]} title="Couldn't load the headline numbers" height={100}>
         {overview.data && retention.data && money.data ? <Headlines overview={overview} retention={retention} money={money} /> : null}

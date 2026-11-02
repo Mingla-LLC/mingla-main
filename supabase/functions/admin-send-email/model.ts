@@ -59,6 +59,8 @@ export function snapshotAudience(
   let skippedOptOut = 0;
   let noConsent = 0;
   let internalExcluded = 0;
+  // #4226: who will receive, by People app status (the Everyone breakdown).
+  const byGroup: Record<string, number> = {};
   const deliveries: Array<{
     profile_id: string | null;
     recipient_email: string;
@@ -92,6 +94,10 @@ export function snapshotAudience(
       continue;
     }
     if (isSuppressed) skippedOptOut += 1;
+    else {
+      const group = profile.app_status || "unknown";
+      byGroup[group] = (byGroup[group] ?? 0) + 1;
+    }
     deliveries.push({
       profile_id: profile.id ?? null,
       recipient_email: email,
@@ -108,6 +114,7 @@ export function snapshotAudience(
     duplicate,
     noConsent,
     internalExcluded,
+    byGroup,
   };
 }
 
@@ -117,14 +124,17 @@ export interface AudienceDefinition {
   /** #4226: a person with no account is addressed by email. */
   email?: string;
   filters?: {
-    userType?: "all" | "host" | "explorer" | "ticket_buyers";
+    userType?: "all" | "host" | "explorer" | "ticket_buyers" | "host_contacts";
     appStatus?:
       | "all"
       | "explorer"
       | "host"
       | "both"
       | "incomplete"
-      | "ticket_buyer_no_app";
+      | "ticket_buyer_no_app"
+      | "host_contact_no_app";
+    /** #4226: narrow to ticket buyers or host contacts. */
+    source?: "all" | "ticket_buyer" | "host_contact";
     city?: string;
     boughtTickets?: "all" | "yes" | "no";
     brandId?: string;
@@ -469,7 +479,7 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
     filters: {
       userType: enumFilter(
         "userType",
-        ["host", "explorer", "ticket_buyers"] as const,
+        ["host", "explorer", "ticket_buyers", "host_contacts"] as const,
       ),
       appStatus: enumFilter(
         "appStatus",
@@ -479,8 +489,10 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
           "both",
           "incomplete",
           "ticket_buyer_no_app",
+          "host_contact_no_app",
         ] as const,
       ),
+      source: enumFilter("source", ["ticket_buyer", "host_contact"] as const),
       city: value("city").slice(0, 120) || "all",
       boughtTickets: enumFilter("boughtTickets", ["yes", "no"] as const),
       brandId: brandId || "all",

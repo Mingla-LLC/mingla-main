@@ -4,11 +4,18 @@
 // The edge function (admin-send-email) decides who matches, reading the same
 // people list as the People page (admin_people_directory). This file only
 // builds the request and names the answer in plain English.
+//
+// "Everyone" (Seth, 2026-11-02) is every person on that list: explorers,
+// hosts, both, didn't finish sign-up, ticket buyers with no app and host
+// contacts with no app. Only the rules leave anyone out (unsubscribed or
+// suppressed, no consent where it applies, staff and test, no email,
+// duplicates), and the estimate counts each reason and each group.
 
 /** Every segment filter, at its "All" value. Hosts is the default audience. */
 export const EMPTY_FILTERS = Object.freeze({
   userType: "host",
   appStatus: "all",
+  source: "all",
   city: "all",
   boughtTickets: "all",
   brandId: "all",
@@ -29,6 +36,7 @@ export const AUDIENCE_PRESETS = Object.freeze([
   Object.freeze({ id: "segment", label: "Segment" }),
   Object.freeze({ id: "explorers", label: "Explorer users", userType: "explorer" }),
   Object.freeze({ id: "ticket_buyers", label: "Ticket buyers", userType: "ticket_buyers" }),
+  Object.freeze({ id: "host_contacts", label: "Host contacts", userType: "host_contacts" }),
   Object.freeze({ id: "everyone", label: "Everyone" }),
 ]);
 
@@ -38,6 +46,23 @@ export const APP_STATUS_OPTIONS = Object.freeze([
   Object.freeze({ value: "both", label: "Host and Explorer" }),
   Object.freeze({ value: "incomplete", label: "Didn't finish sign-up" }),
   Object.freeze({ value: "ticket_buyer_no_app", label: "Ticket buyer, no app" }),
+  Object.freeze({ value: "host_contact_no_app", label: "Host contact, no app" }),
+]);
+
+/** #4226: the Source filter — how someone came to Mingla's list. */
+export const SOURCE_OPTIONS = Object.freeze([
+  Object.freeze({ value: "ticket_buyer", label: "Ticket buyer" }),
+  Object.freeze({ value: "host_contact", label: "Host contact" }),
+]);
+
+/** #4226: the Everyone breakdown, one line per group, in this order. */
+export const EVERYONE_GROUPS = Object.freeze([
+  Object.freeze({ key: "explorer", label: "Explorers" }),
+  Object.freeze({ key: "host", label: "Hosts" }),
+  Object.freeze({ key: "both", label: "Host and Explorer" }),
+  Object.freeze({ key: "incomplete", label: "Didn't finish sign-up" }),
+  Object.freeze({ key: "ticket_buyer_no_app", label: "Ticket buyers, no app" }),
+  Object.freeze({ key: "host_contact_no_app", label: "Host contacts, no app" }),
 ]);
 
 /** Is this preset the one showing? */
@@ -82,14 +107,26 @@ export function exclusionReasons(estimate) {
   ].filter((reason) => reason.count > 0);
 }
 
+/**
+ * Who will receive, by group (estimate.groups from admin-send-email). Every
+ * group is listed, zeros included, so a group that went missing shows as 0.
+ */
+export function groupBreakdown(estimate) {
+  if (!estimate || !estimate.groups || typeof estimate.groups !== "object") return [];
+  return EVERYONE_GROUPS.map((group) => ({ ...group, count: n(estimate.groups[group.key]) }));
+}
+
 /** The audience in a few words, for the send button and the review. */
 export function audienceSummary(audienceMode, filters, estimate, selectedRecipient) {
-  if (audienceMode === "everyone") return "Everyone with a Mingla app";
+  if (audienceMode === "everyone") {
+    return estimate?.will_receive != null ? `Everyone (${estimate.will_receive})` : "Everyone";
+  }
   if (audienceMode === "person") return selectedRecipient?.display_name || "One person";
   const count = estimate?.will_receive ?? "—";
   if (filters?.userType === "host") return `${count} Hosts`;
   if (filters?.userType === "explorer") return `${count} Explorer users`;
   if (filters?.userType === "ticket_buyers") return `${count} ticket buyers`;
+  if (filters?.userType === "host_contacts") return `${count} host contacts`;
   return `${count} matching people`;
 }
 
@@ -97,9 +134,12 @@ export function audienceSummary(audienceMode, filters, estimate, selectedRecipie
 export function audienceFilterWords(filters) {
   const f = filters || {};
   const status = APP_STATUS_OPTIONS.find((o) => o.value === f.appStatus);
+  const source = SOURCE_OPTIONS.find((o) => o.value === f.source);
+  const userTypeWords = { ticket_buyers: "ticket buyers", host_contacts: "host contacts" };
   return [
-    f.userType === "ticket_buyers" ? "ticket buyers" : f.userType && f.userType !== "all" ? f.userType : null,
+    Object.hasOwn(userTypeWords, f.userType || "") ? userTypeWords[f.userType] : f.userType && f.userType !== "all" ? f.userType : null,
     status ? status.label : null,
+    source ? `source: ${source.label.toLowerCase()}` : null,
     f.city && f.city !== "all" ? `event city ${f.city}` : null,
     f.boughtTickets === "yes" ? "bought tickets" : f.boughtTickets === "no" ? "no tickets" : null,
     f.brandId && f.brandId !== "all" ? "one brand" : null,
