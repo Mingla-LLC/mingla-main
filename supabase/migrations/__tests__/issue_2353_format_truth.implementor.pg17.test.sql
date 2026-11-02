@@ -770,11 +770,14 @@ BEGIN
   SELECT v INTO v_manager FROM i2353t.ids WHERE k='manager';
   SELECT v INTO v_b1 FROM i2353t.ids WHERE k='b1';
 
+  -- #3355 P7: Ari's create path needs an end time and a time zone, so every
+  -- create below carries both; the format assertions are unchanged.
   -- T-14 / SC-12 — an explicit hybrid create.
   v_args := jsonb_build_object(
     'brand_id', v_b1::text, 'title','I2353T ari hybrid',
     'visibility','public','timezone','UTC','when_mode','single',
     'start_at', to_char(now()+interval '30 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
+    'end_at', to_char(now()+interval '30 day'+interval '3 hour','YYYY-MM-DD"T"HH24:MI:SSOF'),
     'currency','USD','city','London','format','hybrid');
   v_res := i2353t.ari(v_manager,'create_event',v_args);
   v_ev := (v_res#>>'{event,id}')::uuid;
@@ -791,6 +794,7 @@ BEGIN
     'brand_id', v_b1::text, 'title','I2353T ari legacy online',
     'visibility','public','timezone','UTC','when_mode','single',
     'start_at', to_char(now()+interval '31 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
+    'end_at', to_char(now()+interval '31 day'+interval '3 hour','YYYY-MM-DD"T"HH24:MI:SSOF'),
     'currency','USD','city','London','is_online', true);
   v_res := i2353t.ari(v_manager,'create_event',v_args);
   v_ev := (v_res#>>'{event,id}')::uuid;
@@ -806,6 +810,7 @@ BEGIN
     'brand_id', v_b1::text, 'title','I2353T ari legacy absent',
     'visibility','public','timezone','UTC','when_mode','single',
     'start_at', to_char(now()+interval '32 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
+    'end_at', to_char(now()+interval '32 day'+interval '3 hour','YYYY-MM-DD"T"HH24:MI:SSOF'),
     'currency','USD','city','London');
   v_res := i2353t.ari(v_manager,'create_event',v_args);
   v_ev := (v_res#>>'{event,id}')::uuid;
@@ -825,6 +830,7 @@ BEGIN
     'brand_id', v_b1::text, 'title','I2353T ari bogus format',
     'visibility','public','timezone','UTC','when_mode','single',
     'start_at', to_char(now()+interval '33 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
+    'end_at', to_char(now()+interval '33 day'+interval '3 hour','YYYY-MM-DD"T"HH24:MI:SSOF'),
     'currency','USD','city','London','format','virtual','is_online', true);
   v_res := i2353t.ari(v_manager,'create_event',v_args);
   v_ev := (v_res#>>'{event,id}')::uuid;
@@ -840,6 +846,7 @@ BEGIN
     'brand_id', v_b1::text, 'title','I2353T ari mixed case format',
     'visibility','public','timezone','UTC','when_mode','single',
     'start_at', to_char(now()+interval '34 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
+    'end_at', to_char(now()+interval '34 day'+interval '3 hour','YYYY-MM-DD"T"HH24:MI:SSOF'),
     'currency','USD','city','London','format','Hybrid','is_online', false);
   v_res := i2353t.ari(v_manager,'create_event',v_args);
   v_ev := (v_res#>>'{event,id}')::uuid;

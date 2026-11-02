@@ -14,9 +14,12 @@
  * Source order (first valid wins):
  *   1. the brand's saved location
  *   2. a location already picked on this draft
- *   3. an approximate point for the draft's time zone (device zone where the
+ *   3. an approximate point for the brand's country (#3355 — a brand with a
+ *      country but no saved point; a UK brand saw "Margate, Florida" first
+ *      because ranking fell through to a US device's time zone)
+ *   4. an approximate point for the draft's time zone (device zone where the
  *      draft has none)
- *   4. nothing — Mapbox falls back to its default
+ *   5. nothing — Mapbox falls back to its default
  *
  * No fabricated data (Constitution #9): an unknown zone, or `UTC`, yields NO
  * point rather than a guess. The table below names each zone's own IANA city,
@@ -39,16 +42,28 @@ export type LatLngLike =
   | null
   | undefined;
 
+/**
+ * The brand source: a Brand record works as-is — its `countryCode` is the
+ * ranking fallback when it has no usable point (#3355).
+ */
+export type BrandProximityLike =
+  | { lat?: number | null; lng?: number | null; countryCode?: string | null }
+  | null
+  | undefined;
+
 export interface AddressSearchProximityInput {
-  brandPoint?: LatLngLike;
+  brandPoint?: BrandProximityLike;
   draftPoint?: LatLngLike;
   timeZone?: string | null;
 }
 
 /** What a Host address field hands the hook. */
 export interface HostAddressProximitySources {
-  /** The brand's saved location (a Brand record works as-is). */
-  brandPoint?: LatLngLike;
+  /**
+   * The brand's saved location (a Brand record works as-is). Its
+   * `countryCode` ranks results when no brand or draft point exists.
+   */
+  brandPoint?: BrandProximityLike;
   /**
    * A point already picked on this draft, or candidates in priority order
    * (first usable wins) — e.g. departure then destination, or every stop.
@@ -178,6 +193,99 @@ const TIME_ZONE_POINTS: ReadonlyMap<string, GeoPoint> = new Map(
   }),
 );
 
+/**
+ * #3355 — each country's own capital or largest city, as "ISO|lat|lng". Used
+ * only as a RANKING hint when a brand has a country but no saved point; never
+ * saved, never a filter (international results still appear). Covers the
+ * countries Mingla hosts and payouts serve plus common neighbours; a country
+ * not listed yields no point (falls through to the time zone), never a guess.
+ */
+const COUNTRY_POINTS: ReadonlyMap<string, GeoPoint> = new Map(
+  [
+    "AE|25.2|55.27",
+    "AR|-34.6|-58.38",
+    "AT|48.21|16.37",
+    "AU|-33.87|151.21",
+    "BE|50.85|4.35",
+    "BG|42.7|23.32",
+    "BR|-23.55|-46.63",
+    "CA|43.65|-79.38",
+    "CH|47.38|8.54",
+    "CI|5.36|-4.01",
+    "CL|-33.45|-70.67",
+    "CM|4.05|9.7",
+    "CN|31.23|121.47",
+    "CO|4.71|-74.07",
+    "CY|35.17|33.36",
+    "CZ|50.08|14.44",
+    "DE|52.52|13.4",
+    "DK|55.68|12.57",
+    "EE|59.44|24.75",
+    "EG|30.04|31.24",
+    "ES|40.42|-3.7",
+    "FI|60.17|24.94",
+    "FR|48.86|2.35",
+    "GB|51.51|-0.13",
+    "GH|5.6|-0.19",
+    "GR|37.98|23.73",
+    "HK|22.32|114.17",
+    "HR|45.81|15.98",
+    "HU|47.5|19.04",
+    "ID|-6.21|106.85",
+    "IE|53.35|-6.26",
+    "IL|32.09|34.78",
+    "IN|19.08|72.88",
+    "IS|64.15|-21.94",
+    "IT|41.9|12.5",
+    "JM|18.02|-76.8",
+    "JP|35.68|139.69",
+    "KE|-1.29|36.82",
+    "KR|37.57|126.98",
+    "LI|47.14|9.52",
+    "LT|54.69|25.28",
+    "LU|49.61|6.13",
+    "LV|56.95|24.11",
+    "MA|33.57|-7.59",
+    "MT|35.9|14.51",
+    "MX|19.43|-99.13",
+    "MY|3.14|101.69",
+    "NG|6.45|3.4",
+    "NL|52.37|4.9",
+    "NO|59.91|10.75",
+    "NZ|-36.85|174.76",
+    "PE|-12.05|-77.04",
+    "PH|14.6|120.98",
+    "PL|52.23|21.01",
+    "PT|38.72|-9.14",
+    "RO|44.43|26.1",
+    "RW|-1.94|30.06",
+    "SA|24.71|46.68",
+    "SE|59.33|18.07",
+    "SG|1.35|103.82",
+    "SI|46.06|14.51",
+    "SK|48.15|17.11",
+    "SN|14.72|-17.47",
+    "TH|13.76|100.5",
+    "TR|41.01|28.98",
+    "TZ|-6.79|39.21",
+    "UG|0.35|32.58",
+    "US|40.71|-74.01",
+    "ZA|-26.2|28.05",
+  ].map((row): [string, GeoPoint] => {
+    const [iso, lat, lng] = row.split("|");
+    return [iso ?? "", { lat: Number(lat), lng: Number(lng) }];
+  }),
+);
+
+/** Approximate point for an ISO 3166-1 alpha-2 country, or null when unknown. */
+export const approximatePointForCountry = (
+  countryCode: string | null | undefined,
+): GeoPoint | null => {
+  if (typeof countryCode !== "string") return null;
+  const point = COUNTRY_POINTS.get(countryCode.trim().toUpperCase());
+  return point !== undefined && isUsableGeoPoint(point) ? point : null;
+};
+
 /** Approximate point for an IANA zone, or null when the zone is not known. */
 export const approximatePointForTimeZone = (
   timeZone: string | null | undefined,
@@ -214,6 +322,10 @@ export const resolveAddressSearchProximity = (
   if (isUsableGeoPoint(input.draftPoint)) {
     return formatProximity(input.draftPoint);
   }
+  // #3355 — rank by the brand's country before falling back to a time zone
+  // (which is often the DEVICE's, not the brand's). Rank-only, like the rest.
+  const countryPoint = approximatePointForCountry(input.brandPoint?.countryCode);
+  if (countryPoint !== null) return formatProximity(countryPoint);
   const zonePoint = approximatePointForTimeZone(input.timeZone);
   return zonePoint !== null ? formatProximity(zonePoint) : undefined;
 };

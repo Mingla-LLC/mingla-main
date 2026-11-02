@@ -43,6 +43,7 @@ import { useEventWaitlist } from "../../hooks/useEventWaitlist";
 import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
+import { ticketPriceEntryMinimumMessage } from "../../utils/ticketPriceMinimum";
 import { formatCurrency, minorFromMajor } from "../../utils/currency";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // #2664 — Android has no `datetime` picker mode; the sale window has to step
@@ -716,6 +717,18 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     (priceText.trim().length === 0 ||
       !Number.isFinite(parsedPriceValue) ||
       parsedPriceValue <= 0);
+  // issue #3355 — Seth's decision 6: a new or changed paid price must clear
+  // the payment provider's minimum (the server refuses it otherwise).
+  const priceMinimumMessage = priceInvalid
+    ? null
+    : ticketPriceEntryMinimumMessage({
+        isFree,
+        priceText,
+        currency: priceCurrency,
+        initialIsFree: initial?.isFree ?? null,
+        initialPriceMajor: initial?.priceGbp ?? null,
+        isPriceLocked,
+      });
   const capacityInvalid =
     !isUnlimited &&
     (capacityText.trim().length === 0 ||
@@ -749,6 +762,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     !descriptionTooLong &&
     !saleEndBeforeStart &&
     !priceInvalid &&
+    priceMinimumMessage === null &&
     !capacityInvalid &&
     !capacityBelowSold &&
     !dayScopeOrphaned;
@@ -766,6 +780,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   if (name.trim().length === 0) block("Give this ticket a name.", touched.name);
   if (priceInvalid)
     block("Enter a valid price, or mark it free.", touched.price);
+  if (priceMinimumMessage !== null) block(priceMinimumMessage);
   if (capacityInvalid) {
     block(
       "Enter a capacity above zero, or mark it unlimited.",
@@ -1209,6 +1224,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 <Text style={styles.helperError}>
                   Enter a price greater than zero, or mark this ticket free.
                 </Text>
+              ) : priceMinimumMessage !== null ? (
+                <Text style={styles.helperError}>{priceMinimumMessage}</Text>
               ) : dayScoped && dayPriceHelper !== null ? (
                 <Text style={styles.helperHint}>{dayPriceHelper}</Text>
               ) : isPriceLockedByRank ? (

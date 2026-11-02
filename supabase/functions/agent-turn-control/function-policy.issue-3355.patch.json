@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3355",
+  "target": {
+    "kind": "function",
+    "name": "agent-turn-control"
+  },
+  "basePolicySha256": "c1321716e70f512f6234003e71dd6119b9c85d1c411a4989b02fdb6e47e7dcf3",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_FLOW_ENGINE",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_LOCAL_MODEL_ENABLED",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_LOCAL_MODEL_ID",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_RENDITION_V2_ENABLED",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "a93db7f7085b4d491926841522e793c10f1a264e9a05b119a67ba73cfb23b333",
+  "reason": "Issue #3355 flow_resume runs the flow engine only when ARI_FLOW_ENGINE=on, stamps rows with Ari's model identity (local only when ARI_LOCAL_MODEL_ENABLED is set), and shares the rendition type whose V2 switch defaults off; unset values keep each path disabled."
+}

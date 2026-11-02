@@ -45,3 +45,30 @@ Deno.test("#1973 create follow-up never fabricates an outcome without matching r
     undefined,
   );
 });
+
+Deno.test("#3355 campaign follow-up reports only the canonical saved draft", () => {
+  assertEquals(
+    buildFollowupText("draft_campaign", {
+      name: "Golden Hour Social — early-bird access",
+      status: "draft",
+      channel: "email",
+    }),
+    "Saved “Golden Hour Social — early-bird access” as an email campaign draft. Nothing has been scheduled or sent.",
+  );
+  assertEquals(
+    buildFollowupText("update_campaign_draft", {
+      name: "Golden Hour Social — Lagos launch",
+      status: "draft",
+      channel: "email",
+    }),
+    "Updated the saved campaign draft to “Golden Hour Social — Lagos launch”. Nothing has been scheduled or sent.",
+  );
+  assertEquals(
+    buildFollowupText("draft_campaign", {
+      name: "not actually saved",
+      status: "scheduled",
+      channel: "email",
+    }),
+    undefined,
+  );
+});

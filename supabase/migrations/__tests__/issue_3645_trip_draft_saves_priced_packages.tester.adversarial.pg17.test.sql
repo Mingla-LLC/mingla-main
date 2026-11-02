@@ -94,10 +94,11 @@ BEGIN
   PERFORM public.biz_apply_trip_draft_graph(
     v_event,
     jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
-      'ticket_type_id', v_tier, 'price_cents', 1, 'capacity', 5))),
+      -- #3355 P6: the smallest paid price is the provider minimum (GBP 30p).
+      'ticket_type_id', v_tier, 'price_cents', 30, 'capacity', 5))),
     pg_temp.rev(v_event), '36450823-0000-4000-8000-a1a100000003');
   SELECT price_cents INTO v_price FROM public.ticket_types WHERE id = v_tier;
-  IF v_price IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'R1-01 the smallest price above zero did not save (%)', v_price; END IF;
+  IF v_price IS DISTINCT FROM 30 THEN RAISE EXCEPTION 'R1-01 the smallest allowed price did not save (%)', v_price; END IF;
 
   v_refused := false;
   BEGIN

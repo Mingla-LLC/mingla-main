@@ -1,3 +1,6 @@
+import { rewriteOwnerProse } from "./ariOwnerCopy.ts";
+import { toolOwnerPhrase } from "./ariPresentation/toolLabels.ts";
+
 // Issue #3355 — one sanitisation boundary for Ari training, quality cases and
 // browser research. The improvement archive receives only this output; raw
 // customer messages remain in the owner-scoped conversation tables.
@@ -197,10 +200,11 @@ export function sanitizeAriUserFacingDiagnostics(input: unknown): string {
     INTERNAL_CODE_SLUG,
     (code) => USER_FACING_DIAGNOSTIC_COPY[code] ?? "This step needs attention",
   );
-  text = text.replace(
-    /`?\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`?/g,
-    (slug) => slug.replace(/`/g, "").split("_").join(" "),
-  );
+  // #3355 P1 (D-6): tool names become the owner's words for that change,
+  // other snake_case keys become plain words or (ids, revisions, hashes)
+  // disappear, and ids/hashes are removed. Handles (@seth_ogieva), emails and
+  // URLs are left exactly as written — the old blanket rewrite split them.
+  text = rewriteOwnerProse(text, toolOwnerPhrase);
   return text
     .replace(/[^\S\r\n]{2,}/g, " ")
     .replace(/\s+([.,:;!?])/g, "$1")

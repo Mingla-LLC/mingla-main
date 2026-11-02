@@ -15,11 +15,16 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const LEDGER_PATH = "docs/contracts/ari-capability-ledger.json";
+// #3355 P10 — recorded runs of the live flow evals (scripts/ari/eval/flows).
+// MINGLA-INVARIANT: I-ARI-LIVE-EVAL-EVIDENCE | issue #3355 | A capability-ledger row's live_eval cites a recorded run in docs/contracts/ari-live-eval-runs.json in which every named eval passed and lists that capability; registry lint is never behaviour evidence.
+const LIVE_EVAL_RUNS_PATH = "docs/contracts/ari-live-eval-runs.json";
 const TOOL_PATHS = [
   "supabase/functions/_shared/agentTools.ts",
   "supabase/functions/_shared/agentDomainTools.ts",
   "supabase/functions/_shared/agentSiteTools.ts",
   "supabase/functions/_shared/agentAri10xTools.ts",
+  // #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
+  "supabase/functions/_shared/agentReadinessTools.ts",
 ];
 const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
 
@@ -215,6 +220,12 @@ ari.event.buyer_notice_status
 ari.research.fetch_listing_page
 ari.listings.extract_candidates
 ari.jobs.manage
+ari.marketing.campaign_draft_review
+ari.brand.readiness_read
+ari.brand.readiness_defer
+ari.team.tell_owner_group
+ari.brand.payout_country
+ari.brand.readiness_undefer
 `.trim().split(/\s+/));
 
 // Independent classification authority established by the source-contract
@@ -402,7 +413,39 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
   }
 }
 
-export function validateLedger({ root, ledger, registered, advertised }) {
+/**
+ * #3355 P10 (SC-17) — a row's `live_eval` must cite a recorded live flow-eval
+ * run in which every named eval passed and lists this capability. Registry
+ * lint results never count: only `run.mjs --record` writes that file.
+ */
+export function validateLiveEval(capability, liveEvalRuns, failures) {
+  const label = capability?.id ?? "<missing-id>";
+  const cite = capability.live_eval;
+  if (cite === undefined || cite === null) return;
+  if (
+    typeof cite !== "object" || typeof cite.run_id !== "string" ||
+    !Array.isArray(cite.evals) || cite.evals.length === 0 ||
+    cite.evals.some((id) => typeof id !== "string" || id.length === 0)
+  ) {
+    failures.push(`${label}: live_eval requires run_id and a non-empty evals list`);
+    return;
+  }
+  const run = (liveEvalRuns?.runs ?? []).find((entry) => entry.run_id === cite.run_id);
+  if (!run) {
+    failures.push(`${label}: live_eval cites unknown run ${cite.run_id}`);
+    return;
+  }
+  for (const id of cite.evals) {
+    const result = (run.evals ?? []).find((entry) => entry.id === id);
+    if (!result || result.verdict !== "pass") {
+      failures.push(`${label}: live_eval ${id} did not pass in run ${cite.run_id}`);
+    } else if (!(result.capabilities ?? []).includes(label)) {
+      failures.push(`${label}: live_eval ${id} does not cover this capability`);
+    }
+  }
+}
+
+export function validateLedger({ root, ledger, registered, advertised, liveEvalRuns = { runs: [] } }) {
   const failures = [];
   // [TEST-MOD-APPROVED #424/#1983] 1 - operator.snapshot = 0 proven-broken.
   if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 0) {
@@ -538,7 +581,10 @@ export function validateLedger({ root, ledger, registered, advertised }) {
       }
     }
 
+    validateLiveEval(capability, liveEvalRuns, failures);
     if (capability.status === "verified") {
+      // #3355 P10 (SC-17): never verified without a passing live eval run.
+      if (!capability.live_eval) failures.push(`${label}: verified requires a passing live eval run id (live_eval)`);
       const regressions = capability.evidence.filter((e) => e.tier === "regression");
       const roles = new Set(regressions.map((e) => e.guard_role));
       const guardRefs = new Set(regressions.map((e) => e.reference));
@@ -590,11 +636,14 @@ export function audit(root = ROOT, overrides = {}) {
   const ledger = overrides.ledger ?? JSON.parse(read(root, LEDGER_PATH));
   const toolSources = overrides.toolSources ?? TOOL_PATHS.map((relative) => read(root, relative));
   const promptSource = overrides.promptSource ?? read(root, PROMPT_PATH);
+  const liveEvalRuns = overrides.liveEvalRuns ??
+    JSON.parse(read(root, LIVE_EVAL_RUNS_PATH));
   return validateLedger({
     root,
     ledger,
     registered: extractRegisteredTools(toolSources),
     advertised: extractPromptTools(promptSource),
+    liveEvalRuns,
   });
 }
 
@@ -681,12 +730,31 @@ function selfTest() {
   expectMutation("duplicate id", ({ ledger }) => {
     ledger.capabilities[1].id = ledger.capabilities[0].id;
   }, (failure) => failure.includes("duplicate capability id"));
+  // #3355 P10: a live_eval citation must resolve to a passing run.
+  expectMutation("live eval cites an unknown run", ({ ledger }) => {
+    ledger.capabilities.find((c) => c.id === "ari.operator.snapshot").live_eval = {
+      run_id: "flow-invented-run",
+      evals: ["event_create_minimal"],
+    };
+  }, (failure) => failure.includes("live_eval cites unknown run"));
+  expectMutation("live eval cites an eval that failed", (overrides) => {
+    overrides.liveEvalRuns = {
+      runs: [{
+        run_id: "flow-hostile",
+        evals: [{ id: "event_create_minimal", verdict: "fail", capabilities: ["ari.operator.snapshot"] }],
+      }],
+    };
+    overrides.ledger.capabilities.find((c) => c.id === "ari.operator.snapshot").live_eval = {
+      run_id: "flow-hostile",
+      evals: ["event_create_minimal"],
+    };
+  }, (failure) => failure.includes("did not pass in run"));
   const promptSource = read(ROOT, PROMPT_PATH);
   const firstTool = [...extractPromptTools(promptSource)][0];
   const promptWithoutTool = promptSource.replace(new RegExp(`^- ${firstTool} —.*$`, "m"), "");
   const promptFailures = audit(ROOT, { promptSource: promptWithoutTool });
   if (!promptFailures.some((failure) => failure.includes("absent from prompt"))) throw new Error("prompt drift mutation passed");
-  console.log("[issue-2000-ari-capability-ledger] self-test PASS (12 hostile mutations + post-baseline control)");
+  console.log("[issue-2000-ari-capability-ledger] self-test PASS (14 hostile mutations + post-baseline control)");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

@@ -13,7 +13,11 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { AGENT_TOOLS } from "../agentTools.ts";
-import { DOMAIN_READ_ONLY, MONEY_CONFIRM_TOOLS } from "../agentDomainTools.ts";
+import {
+  bindTripStandardPlaceholderProposal,
+  DOMAIN_READ_ONLY,
+  MONEY_CONFIRM_TOOLS,
+} from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
@@ -73,6 +77,12 @@ function recordingClient() {
       }
       if (fn === "biz_brand_effective_rank_for_caller") {
         return Promise.resolve({ data: 60, error: null });
+      }
+      if (fn === "ari_resolve_trip_standard_placeholder") {
+        return Promise.resolve({
+          data: client.tripPlaceholderId ?? null,
+          error: null,
+        });
       }
       return Promise.resolve({ data: { ok: true, fn }, error: null });
     },
@@ -189,7 +199,14 @@ Deno.test("#1971 happy: no trip tool exposes an operation id to the model", () =
  * for a schema reason and masking what it was written to measure.
  */
 const VALID_WRITE_ARGS: [string, Record<string, unknown>][] = [
-  ["create_trip", { brand_id: BRAND_ID, title: "Trip" }],
+  // #3355 P8: a trip needs the owner's time zone and calendar days.
+  ["create_trip", {
+    brand_id: BRAND_ID,
+    title: "Trip",
+    timezone: "Africa/Lagos",
+    start_date: "2099-01-08",
+    end_date: "2099-01-10",
+  }],
   ["update_trip", {
     event_id: EVENT_ID,
     expected_updated_at: "2027-01-01T00:00:00Z",
@@ -246,6 +263,74 @@ Deno.test("#1971 happy: trip writes route through ari_execute_trip_operation and
   }
 });
 
+Deno.test("#3355 Standard package update replaces the sole untouched trip placeholder", async () => {
+  const client = recordingClient();
+  const placeholderId = "19710000-0000-4000-8000-000000000031";
+  client.tripPlaceholderId = placeholderId;
+  const proposedArgs = await bindTripStandardPlaceholderProposal(
+    "manage_trip_tiers",
+    {
+      event_id: EVENT_ID,
+      expected_updated_at: "2027-01-01T00:00:00Z",
+      items: [{
+        tier_name: "Standard",
+        price_cents: 24000,
+        capacity: 16,
+        display_order: 0,
+      }],
+    },
+    client,
+  );
+  await find("manage_trip_tiers").executor(
+    proposedArgs,
+    client,
+    USER_ID,
+    { operationId: OPERATION_ID },
+  );
+  const command = client.rpcCalls.find((call: any) =>
+    call.fn === "ari_execute_trip_operation"
+  );
+  assert(command, "trip-tier update must use the canonical operation RPC");
+  assertEquals(command.args.p_args.items[0].ticket_type_id, placeholderId);
+  assertEquals(
+    client.rpcCalls.filter((call: any) =>
+      call.fn === "ari_resolve_trip_standard_placeholder"
+    )
+      .length,
+    1,
+  );
+});
+
+Deno.test("#3355 sold trip package is never mistaken for the free placeholder", async () => {
+  const client = recordingClient();
+  const existingId = "19710000-0000-4000-8000-000000000032";
+  const proposedArgs = await bindTripStandardPlaceholderProposal(
+    "manage_trip_tiers",
+    {
+      event_id: EVENT_ID,
+      expected_updated_at: "2027-01-01T00:00:00Z",
+      items: [{
+        tier_name: "Standard",
+        price_cents: 30000,
+        capacity: 16,
+        display_order: 0,
+      }],
+    },
+    client,
+  );
+  await find("manage_trip_tiers").executor(
+    proposedArgs,
+    client,
+    USER_ID,
+    { operationId: OPERATION_ID },
+  );
+  const command = client.rpcCalls.find((call: any) =>
+    call.fn === "ari_execute_trip_operation"
+  );
+  assert(command, "new package must use the canonical operation RPC");
+  assertEquals(command.args.p_args.items[0].ticket_type_id, undefined);
+});
+
 Deno.test("#1971 happy: the aggregate money read calls the fail-closed snapshot RPC", async () => {
   const client = recordingClient();
   await find("get_trip_order_money").executor(
@@ -298,13 +383,17 @@ Deno.test("#1971 happy: the prompt advertises the trip graph and its revision ru
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
+  assertEquals(PROMPT_VERSION, "v27"); // #3355 advances the prompt for brand-scoped onboarding and grounded campaign drafts
   const prompt = buildSystemPrompt(null, []);
   for (const name of ALL_TRIP_TOOLS) {
     assertStringIncludes(prompt, `- ${name} —`);
   }
   assertStringIncludes(prompt, "expected_updated_at");
   assertStringIncludes(prompt, "trip_revision_conflict");
-  assertStringIncludes(prompt, "FULL REPLACEMENTS");
+  assertStringIncludes(prompt, "replace the complete collection");
+  assertStringIncludes(
+    prompt,
+    "manage_trip_tiers applies explicit add, update and remove operations",
+  );
 });
 // [TEST-MOD-APPROVED #1980] append-only override commit marker

@@ -194,7 +194,38 @@ const S1_DRAFT_FORMAT_RE =
   /'format',\s*CASE\s+WHEN\s+lower\(btrim\(COALESCE\(v_event\.theme#>>'\{business_event,format\}'/i;
 const ISSUE_3281_DAY_LIMITED =
   "supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql";
+// issue #3355 P7 — Ari's event drafts save only facts the owner gave. The
+// migration copies #2353's ari_execute_event_operation body forward and adds
+// refusals (end time, time zone, Private while frozen), a picked place and party
+// types; every #2353 hunk (S4 reads, S4(c) fail-closed entry, S6 draft arm)
+// rides along and is re-checked here on every run.
+const ISSUE_3355_EVENT_SEED_TRUTH =
+  "supabase/migrations/20280311003355_issue_3355_event_seed_truth.sql";
+const S4_ARI_READ_SRC =
+  String.raw`lower\(btrim\(COALESCE\(p_args->>'format',''\),\s*E'[^']*'\|\|chr\(160\)\)\)`;
+const S4_FIVE_READS_RE = new RegExp(`(?:[\\s\\S]*?${S4_ARI_READ_SRC}){5}`, "i");
+const S4_MEMBERSHIP_RE = new RegExp(
+  `${S4_ARI_READ_SRC}\\s+IN\\s*\\(\\s*'in_person'\\s*,\\s*'online'\\s*,\\s*'hybrid'\\s*\\)`, "i");
+const S4C_ENTRY_RE = new RegExp(
+  `IF\\s+${S4_ARI_READ_SRC}\\s+IN\\s*\\([^)]*\\)\\s*(?:\\r?\\n\\s*)?OR\\s+p_args\\s*\\?\\s*'is_online'\\s+THEN`, "i");
+const S4C_NOT_KEY_PRESENCE_RE = /^(?![\s\S]*IF\s+p_args\s*\?\s*'format')/i;
+const S6_DRAFT_WRITE_RE =
+  /v_business\s*:=\s*jsonb_set\(v_business,'\{format\}',to_jsonb\(v_draft_format\),true\)/i;
+const S6_RECONCILE_RE = /ELSIF\s+p_args\s*\?\s*'is_online'\s+THEN/i;
+const S6_ON_DISAGREEMENT_RE = /IS\s+DISTINCT\s+FROM\s+v_draft_online/i;
+const ARI_CARRIES = [
+  { id: "S4 all five Ari format reads", re: S4_FIVE_READS_RE },
+  { id: "S4 canonical-membership read of the supplied format", re: S4_MEMBERSHIP_RE },
+  { id: "S4(c) fail-closed entry test", re: S4C_ENTRY_RE },
+  { id: "S4(c) entry not on key presence", re: S4C_NOT_KEY_PRESENCE_RE },
+  { id: "S6 draft-arm format write", re: S6_DRAFT_WRITE_RE },
+  { id: "S6 is_online reconciliation", re: S6_RECONCILE_RE },
+  { id: "S6 reconciles only on disagreement", re: S6_ON_DISAGREEMENT_RE },
+];
 const SUCCESSORS = {
+  ari_execute_event_operation: [
+    { file: ISSUE_3355_EVENT_SEED_TRUTH, carries: ARI_CARRIES },
+  ],
   business_event_draft_payload_from_graph: [
     {
       file: ISSUE_3281_DAY_LIMITED,
@@ -1146,6 +1177,56 @@ if (process.argv.includes("--self-test")) {
     SUCCESSOR_GOOD + "\nCREATE OR REPLACE FUNCTION public.ari_execute_event_operation(a uuid, b text, c jsonb) AS $fn$ BEGIN NULL; END; $fn$;"),
     /LAST migration to CREATE OR REPLACE public\.ari_execute_event_operation/);
 
+  // 6c — issue #3355: event_seed_truth is a REGISTERED successor for
+  // ari_execute_event_operation. Accepted while it carries every #2353 hunk…
+  const ARI_SUCCESSOR_GOOD = [
+    "CREATE OR REPLACE FUNCTION public.ari_execute_event_operation(a uuid, b text, p_args jsonb)",
+    "AS $fn$ BEGIN",
+    "  IF NULLIF(p_args->>'end_at','') IS NULL THEN RAISE EXCEPTION 'event_end_required';END IF;",
+    "  v_business:=jsonb_build_object(",
+    "        'format',CASE",
+    "          WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
+    "            THEN lower(btrim(p_args->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))",
+    "          WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'",
+    "          ELSE 'in_person' END,",
+    S4B_GOOD,
+    "        'city',p_args->'city');",
+    S4C_GOOD,
+    S6_GOOD,
+    "END; $fn$;",
+  ].join("\n");
+  const withAriSuccessor = (sql) => ({ ...good, [ISSUE_3355_EVENT_SEED_TRUTH]: sql });
+  const ariSuccessorBaseline = run(withAriSuccessor(ARI_SUCCESSOR_GOOD));
+  if (ariSuccessorBaseline.length !== 0) {
+    selfFailures.push("#3355's registered ari_execute_event_operation successor was wrongly flagged: " +
+      JSON.stringify(ariSuccessorBaseline));
+  }
+  // …and refused the moment it drops one.
+  const ariSwap = (from, to) => {
+    if (!ARI_SUCCESSOR_GOOD.includes(from)) throw new Error("self-test fixture drift: " + from.slice(0, 60));
+    return withAriSuccessor(ARI_SUCCESSOR_GOOD.replace(from, to));
+  };
+  expect("#3355's successor deriving format from is_online again",
+    ariSwap(S4C_GOOD, "  IF p_args ? 'is_online' THEN v_business:=v_business||jsonb_build_object('format',CASE WHEN (p_args->>'is_online')::boolean THEN 'online' ELSE 'in_person' END);END IF;"),
+    /NEW format-from-is_online site|does NOT carry #2353's S4/);
+  expect("#3355's successor entering S4(c) on key presence",
+    ariSwap("  IF lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')\n     OR p_args ? 'is_online' THEN",
+      "  IF p_args ? 'format' OR p_args ? 'is_online' THEN"),
+    /does NOT carry #2353's S4\(c\)/);
+  expect("#3355's successor that dropped the S6 draft-arm format write",
+    ariSwap("    v_business:=jsonb_set(v_business,'{format}',to_jsonb(v_draft_format),true);\n", ""),
+    /does NOT carry #2353's S6 draft-arm format write/);
+  expect("#3355's successor reconciling format unconditionally",
+    ariSwap("       OR (v_draft_format IN ('online','hybrid')) IS DISTINCT FROM v_draft_online THEN",
+      "       OR true THEN"),
+    /does NOT carry #2353's S6 reconciles only on disagreement/);
+  // The registration is for ONE function: the same file re-creating another
+  // corrected function is still an unregistered last writer.
+  expect("#3355's successor re-creating business_update_live_event",
+    withAriSuccessor(ARI_SUCCESSOR_GOOD +
+      "\nCREATE OR REPLACE FUNCTION public.business_update_live_event(a uuid,b jsonb,c text,d integer) AS $fn$ BEGIN NULL; END; $fn$;"),
+    /LAST migration to CREATE OR REPLACE public\.business_update_live_event/);
+
   // 7 — the grant removed, one leaf at a time.
   expect("business_patch_event_when's grant removed",
     swap("  public.business_patch_event_when(uuid,jsonb,text,integer),\n", ""),
@@ -1217,7 +1298,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "#2353 format-is-read-not-derived self-test PASS (43 cases: the compliant fixture; the S2\n" +
+    "#2353 format-is-read-not-derived self-test PASS (49 cases: the compliant fixture; the S2\n" +
       "  read, the S3(a) projection, the S3(b) persist, the S3(b) namespace creation and one of\n" +
       "  the four Ari reads each reverted INDEPENDENTLY and each caught by its OWN rule; S4(c)\n" +
       "  put back on key presence (the P1 the tester proved); the normaliser stripped from one\n" +
@@ -1233,6 +1314,10 @@ if (process.argv.includes("--self-test")) {
       "  (last-writer-wins); #3827's registered successor accepted while it carries every\n" +
       "  #2353 hunk and refused when it drops the projection, the persist, the namespace merge\n" +
       "  or the normaliser, or re-creates a function it is not registered for;\n" +
+      "  #3355's registered ari_execute_event_operation successor accepted while it carries\n" +
+      "  every S4/S6 hunk and refused when it derives format from is_online, enters S4(c) on\n" +
+      "  key presence, drops the S6 draft write or its only-on-disagreement test, or re-creates\n" +
+      "  business_update_live_event;\n" +
       "  each grant removed on its own; anon re-granted; the [TRANSITIONAL]\n" +
       "  tag and the EXIT CONDITION each removed alone; the apply-order guard deleted, moved\n" +
       "  below the GRANT, and downgraded off to_regprocedure; the migration deleted; a fully\n" +

@@ -120,7 +120,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // per-reason module.
 // #3281: re-sealed after the webhook fee migration joined the same replays.
 // #3281: re-sealed after the Extras checkout migration joined the same replays.
-export const BOOTSTRAP_SHA256 = "b498adba5d771a9760aac690460090b4832e99f752575f1de49fce1891edad9f";
+// #3355: re-sealed after the renumbered #3355/#2830 migrations and proofs entered
+// the preserved inventories, and brand readiness, paid-tier terms and event seed
+// truth joined the deliberately pre-#1931 replay's skip list by exact filename (#2492).
+// #3355: re-sealed after the Ari flow runs migration joined that skip list by exact
+// filename (it links runs to ari_agent_jobs from the skipped control-plane migration).
+export const BOOTSTRAP_SHA256 = "d857c685032ca8df859fd59aa93058af73d669eedc886f7348606825ad155c31";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

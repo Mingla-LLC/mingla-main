@@ -74,8 +74,10 @@ Deno.test("#2063 implementor: hours are canonical before immutable proposal pers
   const confirmationCanonicalization = confirmSource.indexOf(
     "canonicalArgs = canonicalizeAgentProposalArgs(",
   );
+  // #3355 P1 (D-14): the confirmed payload is persisted by the DB-clock claim
+  // (claimPendingForConfirm -> agent_pending_action_claim_for_confirm).
   const confirmedPersistence = confirmSource.indexOf(
-    "tool_args: finalArgs",
+    "toolArgs: finalArgs",
     confirmationCanonicalization,
   );
   assert(

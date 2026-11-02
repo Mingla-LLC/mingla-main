@@ -39,12 +39,37 @@ import { MultiSelectPrompt } from "./MultiSelectPrompt";
 import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
 import type { AriRenditionInteraction } from "./renditions/AriRenditionPreview";
 import {
+  ariRenditionSelectedLabels,
   isAnswerableAriRendition,
   isSupersededRenditionTapAllowed,
   newestAnswerableRenditionKey,
   parseAriRendition,
 } from "./renditions/ariRenditionProtocol";
-import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
+import type {
+  AgentChoiceSubmissionV2,
+  AriFlowAnswer,
+  AriFlowPlaceValue,
+  AriFlowState,
+} from "../../services/agentChatService";
+import {
+  ARI_FLOW_CONTINUED_COPY,
+  ARI_FLOW_LOCKED_COPY,
+  ARI_FLOW_OFFLINE_COPY,
+  answeredFlowQuestionIds,
+  buildFlowFormAnswer,
+  buildFlowPlaceAnswer,
+  earlierFlowCopyIds,
+  flowArtefactOf,
+  flowCardStatus,
+  flowPlaceMode,
+  flowUploadAnswer,
+  flowUploadKind,
+  flowViewOnlyCopy,
+  isFlowPlaceCard,
+  newestOpenFlowArtefactId,
+  type AriFlowPlaceMode,
+  type AriFlowUploadKind,
+} from "./ariFlowCards";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 import type { AriFeedbackReason } from "../../services/ariFeedbackService";
 
@@ -150,6 +175,41 @@ export interface MessageListProps {
   ) => Promise<void>;
   surface?: "main" | "website";
   /**
+   * #3355 P3 — the server's flow state for this chat. Only its current card
+   * is interactive; `undefined` until the first resume answers.
+   */
+  flowState?: AriFlowState | null;
+  /** #3355 P3 — a structured answer to the current flow card. */
+  onFlowAnswer?: (answer: AriFlowAnswer, label: string) => void;
+  /**
+   * #2830 P4 — a flow card button that opens a Host page. It navigates and
+   * posts nothing in the owner's name (the card stays current).
+   */
+  onFlowRoute?: (route: string) => void;
+  /**
+   * #3355 — the in-chat upload on a live logo / cover handoff (the Host's
+   * own Brand details pickers). `onUploaded` answers the card's "check".
+   */
+  renderFlowUpload?: (args: {
+    kind: AriFlowUploadKind;
+    disabled: boolean;
+    onUploaded: () => void;
+    /** #3355 P7 — the event an event cover goes to. */
+    subjectId?: string | null;
+  }) => React.ReactNode;
+  /**
+   * #3355 P7 — the address picker on a live "Where is it?" event card.
+   * `onPicked` sends the bound answer.
+   */
+  renderFlowPlace?: (args: {
+    disabled: boolean;
+    onPicked: (place: AriFlowPlaceValue) => void;
+    /** #3355 P8 — "city" for a trip's departure / destination. */
+    mode: AriFlowPlaceMode;
+  }) => React.ReactNode;
+  /** #3355 P3 — offline disables answers with a plain explanation. */
+  online?: boolean;
+  /**
    * #3355 — when the host switches conversations, pin/unseen state must reset
    * so a cached history thread does not inherit another chat's scroll mode.
    */
@@ -213,6 +273,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   onFeedback,
   surface = "main",
   conversationId = null,
+  flowState,
+  onFlowAnswer,
+  onFlowRoute,
+  renderFlowUpload,
+  renderFlowPlace,
+  online = true,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -238,6 +304,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   // Re-open the choice when the message set changes so an error never strands
   // a locally-collapsed chip/card. Successful turns are superseded at the tail.
   useEffect(() => setResolvedChoice(null), [messages.length]);
+
+  // #3355 P3 — flow cards: answered question ids and the fallback current card.
+  const answeredFlowIds = answeredFlowQuestionIds(messages);
+  const fallbackFlowArtefactId = newestOpenFlowArtefactId(messages);
+  // #2830 P4 — older copies of a card Ari showed again at the bottom.
+  const earlierFlowCopies = earlierFlowCopyIds(messages);
 
   // Compose the rendered list. Two classes of rows are skipped entirely so
   // they don't leave empty separators in the FlatList:
@@ -597,7 +669,9 @@ export const MessageList: React.FC<MessageListProps> = ({
             .attachments ??
             []) as import("../../services/ariAttachmentService").AriSentAttachment[];
           const rendition =
-            m.role === "assistant" && !dismissedRenditionIds.has(m.id)
+            m.role === "assistant" &&
+            !dismissedRenditionIds.has(m.id) &&
+            !earlierFlowCopies.has(m.id)
               ? (renditionsByMessageId.get(m.id) ?? null)
               : null;
           if (!text && attachments.length === 0 && !rendition) return null;
@@ -610,6 +684,26 @@ export const MessageList: React.FC<MessageListProps> = ({
           // sends its label as a normal user turn (Q2 conversational feedback).
           const choices = choicesOf(m);
           const AriRenditionCard = rendition ? getAriRenditionCard() : null;
+          // #2830 P4 — a form-shaped flow card: its rendition IS the answer
+          // control, so the server's current card (not the newest rendition)
+          // decides whether it can still be answered.
+          const earlyFlow = flowArtefactOf(m);
+          const formFlow =
+            earlyFlow?.answer_mode === "form" ? earlyFlow : null;
+          const formFlowStatus = formFlow
+            ? flowCardStatus({
+                artefact: formFlow,
+                flowState,
+                answered: answeredFlowIds,
+                fallbackCurrentId: fallbackFlowArtefactId,
+              })
+            : null;
+          const renditionSuperseded = rendition
+            ? formFlow
+              ? formFlowStatus !== "live" || !online
+              : isAnswerableAriRendition(rendition) &&
+                m.id !== liveRenditionMessageId
+            : false;
           const bubble = (
             <View>
               {m.role === "user" && attachments.length ? (
@@ -640,17 +734,31 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <AriRenditionCard
                     rendition={rendition}
                     showOrb={!text && !item.hideOrb}
-                    superseded={
-                      isAnswerableAriRendition(rendition) &&
-                      m.id !== liveRenditionMessageId
-                    }
+                    superseded={renditionSuperseded}
                     onAction={(interaction) => {
                       if (
-                        isAnswerableAriRendition(rendition) &&
-                        m.id !== liveRenditionMessageId &&
+                        renditionSuperseded &&
                         !isSupersededRenditionTapAllowed(interaction.action)
                       ) {
                         return; // answered/replaced card — never submits
+                      }
+                      if (
+                        formFlow &&
+                        interaction.action.behavior.type === "submit"
+                      ) {
+                        // #2830 P4 — a bound answer with the control's values,
+                        // never a scripted message in the owner's name.
+                        const built = buildFlowFormAnswer({
+                          artefact: formFlow,
+                          choiceLabels: ariRenditionSelectedLabels(
+                            interaction.rendition,
+                            interaction.selectedOptionIds,
+                          ),
+                          fieldValue: interaction.fieldValue,
+                          fieldCountryIso: interaction.fieldCountryIso,
+                        });
+                        if (built) onFlowAnswer?.(built.answer, built.label);
+                        return;
                       }
                       if (
                         interaction.action.behavior.type === "local" &&
@@ -810,14 +918,22 @@ export const MessageList: React.FC<MessageListProps> = ({
                       ARI_CHAT_CONNECTION_COPY}
                   </Text>
                   <View style={styles.deliveryActions}>
-                    <Pressable
-                      onPress={() => onRetryTurn?.(m.client_turn_id as string)}
-                      style={styles.retryTurn}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Retry sending ${text}`}
-                    >
-                      <Text style={styles.retryTurnText}>Retry</Text>
-                    </Pressable>
+                    {/* #3355 P1 (D-1): a deterministic refusal (cap before its
+                        reset, stale choice, typed refusal) never offers a
+                        Retry that would replay the same refusal. */}
+                    {(m.content as { local_retryable?: boolean })
+                      .local_retryable === false ? null : (
+                      <Pressable
+                        onPress={() =>
+                          onRetryTurn?.(m.client_turn_id as string)
+                        }
+                        style={styles.retryTurn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Retry sending ${text}`}
+                      >
+                        <Text style={styles.retryTurnText}>Retry</Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       onPress={() => onEditTurn?.(m.client_turn_id as string)}
                       style={styles.retryTurn}
@@ -841,6 +957,161 @@ export const MessageList: React.FC<MessageListProps> = ({
               ) : null}
             </View>
           );
+          const flow = flowArtefactOf(m);
+          if (flow) {
+            const status = flowCardStatus({
+              artefact: flow,
+              flowState,
+              answered: answeredFlowIds,
+              fallbackCurrentId: fallbackFlowArtefactId,
+            });
+            if (status === "info") return bubble;
+            if (earlierFlowCopies.has(m.id)) {
+              // Shown again below: this copy is words only.
+              return (
+                <View>
+                  {bubble}
+                  <Text
+                    style={styles.flowLockedLabel}
+                    accessibilityRole="text"
+                    accessibilityState={{ disabled: true }}
+                    accessibilityLabel={`${flow.title}. ${ARI_FLOW_CONTINUED_COPY}.`}
+                  >
+                    {ARI_FLOW_CONTINUED_COPY}
+                  </Text>
+                </View>
+              );
+            }
+            if (status === "answered" || status === "replaced") {
+              const label = ARI_FLOW_LOCKED_COPY[status];
+              return (
+                <View>
+                  {bubble}
+                  <Text
+                    style={styles.flowLockedLabel}
+                    accessibilityRole="text"
+                    accessibilityState={{ disabled: true }}
+                    accessibilityLabel={`${flow.title}. ${label}.`}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              );
+            }
+            if (status === "view_only") {
+              return (
+                <View>
+                  {bubble}
+                  <Text
+                    style={styles.flowLockedLabel}
+                    accessibilityState={{ disabled: true }}
+                  >
+                    {flowViewOnlyCopy(flowState)}
+                  </Text>
+                </View>
+              );
+            }
+            const isResolvedFlow = resolvedChoice?.messageId === m.id;
+            // #3355 P7 — "Where is it?" is answered with the address search.
+            if (isFlowPlaceCard(flow) && renderFlowPlace) {
+              return (
+                <View>
+                  {bubble}
+                  {isResolvedFlow
+                    ? null
+                    : renderFlowPlace({
+                        mode: flowPlaceMode(flow) ?? "venue",
+                        disabled: choicesDisabled || !online,
+                        onPicked: (place) => {
+                          const bound = buildFlowPlaceAnswer(flow, place);
+                          if (!bound) return;
+                          setResolvedChoice({
+                            messageId: m.id,
+                            optionId: "answer",
+                          });
+                          onFlowAnswer?.(bound.answer, bound.label);
+                        },
+                      })}
+                  {!online ? (
+                    <Text
+                      style={styles.flowLockedLabel}
+                      accessibilityLiveRegion="polite"
+                    >
+                      {ARI_FLOW_OFFLINE_COPY}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            }
+            if (flow.options.length === 0) return bubble;
+            // #3355 — a logo / cover handoff takes the upload in the chat;
+            // the card's own buttons ("Open Brand details", check) stay.
+            const uploadKind = flowUploadKind(flow);
+            const upload =
+              uploadKind && renderFlowUpload && !isResolvedFlow
+                ? renderFlowUpload({
+                    kind: uploadKind,
+                    subjectId: flow.subject_id ?? null,
+                    disabled: choicesDisabled || !online,
+                    onUploaded: () => {
+                      const bound = flowUploadAnswer(flow, uploadKind);
+                      if (!bound) return;
+                      setResolvedChoice({ messageId: m.id, optionId: "check" });
+                      onFlowAnswer?.(bound.answer, bound.label);
+                    },
+                  })
+                : null;
+            return (
+              <View>
+                {bubble}
+                {upload}
+                <View style={styles.choicesRow}>
+                  <QuickReplyChips
+                    options={flow.options.map((option) => ({
+                      id: option.id,
+                      label: option.label,
+                    }))}
+                    selectedId={
+                      isResolvedFlow ? resolvedChoice?.optionId : undefined
+                    }
+                    state={isResolvedFlow ? "submitted" : "default"}
+                    disabled={choicesDisabled || !online}
+                    onSelectId={(optionId) => {
+                      const option = flow.options.find(
+                        (candidate) => candidate.id === optionId,
+                      );
+                      if (!option || !flow.question_id) return;
+                      // #2830 P4 — a route button opens the page; it is not
+                      // an answer and never posts an owner message.
+                      if (option.route && onFlowRoute) {
+                        onFlowRoute(option.route);
+                        return;
+                      }
+                      setResolvedChoice({ messageId: m.id, optionId });
+                      onFlowAnswer?.(
+                        {
+                          run_id: flow.run_id,
+                          step_key: flow.step_key,
+                          question_id: flow.question_id,
+                          choice_id: option.id,
+                          display_text: option.label,
+                        },
+                        option.label,
+                      );
+                    }}
+                  />
+                  {!online ? (
+                    <Text
+                      style={styles.flowLockedLabel}
+                      accessibilityLiveRegion="polite"
+                    >
+                      {ARI_FLOW_OFFLINE_COPY}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            );
+          }
           if (!choices) return bubble;
 
           const isResolved = resolvedChoice?.messageId === m.id;
@@ -1326,6 +1597,12 @@ const styles = StyleSheet.create({
   // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
   // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
   // the bubble text, with a small breath above.
+  flowLockedLabel: {
+    marginTop: spacing.xs,
+    marginLeft: 24 + ariThread.orbGap,
+    color: ariThread.tertiaryText,
+    fontSize: typography.caption.fontSize,
+  },
   choicesRow: {
     marginTop: ariThread.gapGroup,
     marginLeft: 24 + ariThread.orbGap,

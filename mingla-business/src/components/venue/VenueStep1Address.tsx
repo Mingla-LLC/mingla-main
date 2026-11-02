@@ -19,7 +19,7 @@ import {
 } from "../../utils/resolveApproxLocation";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import type { LatLngLike } from "../../utils/addressSearchProximity";
+import type { BrandProximityLike } from "../../utils/addressSearchProximity";
 // Issue #1648 — the recognition moment for a PICKED address. Kept in its own
 // component on purpose: accepting a match writes `googlePlaceId`, which the
 // ORCH-1079 guard forbids any `patch({...})` in THIS file from doing.
@@ -33,7 +33,7 @@ export interface VenueStep1AddressProps {
    * Issue #3291 — the brand's saved location, the first source of the
    * rank-only proximity hint. Optional: the claim flow has no brand yet.
    */
-  brandLocation?: LatLngLike;
+  brandLocation?: BrandProximityLike;
 }
 
 export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({

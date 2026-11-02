@@ -338,9 +338,13 @@ describe("#3184 T-A7 a server that answered is never blamed on the connection", 
   });
 });
 
-describe("#3184 T-A7 the Ari chat screen takes its toast from the copy module", () => {
+describe("#3355 failed turns keep their refusal copy with the turn", () => {
   const screen = fs.readFileSync(
     path.join(__dirname, "../../screens/ari/AriChatScreen.tsx"),
+    "utf8",
+  );
+  const chatHook = fs.readFileSync(
+    path.join(__dirname, "../../hooks/useAgentChat.ts"),
     "utf8",
   );
 
@@ -349,10 +353,19 @@ describe("#3184 T-A7 the Ari chat screen takes its toast from the copy module", 
     expect(screen).not.toContain(ARI_CHAT_CONNECTION_COPY);
   });
 
-  it("routes the send failure toast and its report through the module", () => {
+  it("renders one safe error on the recoverable turn instead of a duplicate toast", () => {
     expect(screen).toContain('from "./ariChatErrorCopy"');
-    expect(screen).toContain("setLocalError(ariChatErrorCopy(result.code));");
+    const sendHandler = screen.split("const handleSend =")[1]?.split(
+      "const handleChoice =",
+    )[0] ?? "";
+    expect(sendHandler).not.toContain(
+      "setLocalError(ariChatErrorCopy(result.code));",
+    );
     expect(screen).toContain("if (shouldReportAriChatError(result.code)) {");
+    expect(chatHook).toMatch(
+      /errorMessage:\s*response\.code === \"TRANSPORT_UNAVAILABLE\"/,
+    );
+    expect(chatHook).toContain(": ariChatErrorCopy(response.code)");
     // The #3186 lazy reporter survives: no module-scope diagnostics import.
     expect(screen).not.toMatch(/^import[^\n]*diagnostics\/reportNonFatal/m);
     expect(screen).toMatch(

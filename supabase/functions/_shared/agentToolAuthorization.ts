@@ -12,6 +12,10 @@ import type {
 import { isUuid, ToolError } from "./agentToolHelpers.ts";
 import { assertAgentReadBrand } from "./agentTenantScope.ts";
 import { assertSiteToolArgs } from "./agentSiteTools.ts";
+import {
+  campaignDraftCopyIssues,
+  campaignDraftPayloadIssues,
+} from "./campaignPayloadContract.ts";
 
 type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
@@ -211,6 +215,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_marketing_audiences: role("marketing_manager", "optional_brand"),
   manage_marketing_templates: role("marketing_manager", "optional_brand"),
   get_campaign_report: role("marketing_manager", "campaign"),
+  get_campaign_draft: role("marketing_manager", "campaign"),
   // #1983 — self-scoped account / inbox / support.
   edit_profile_avatar: role("self", "none"),
   manage_ari_history: role("self", "none"),
@@ -274,7 +279,15 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   save_memory_note: role("self", "optional_brand"),
   forget_memory_note: role("self", "none"),
   open_handoff: role("self", "optional_brand"),
+  // #3355 P6 follow-up — any accepted member may ask the owner in the brand
+  // group chat; issue_3720_send_brand_group_message re-checks membership as
+  // the caller.
+  tell_owner_in_brand_group: role("scanner", "brand"),
   get_market_rules: role("self", "none"),
+  // #3355 P7 — the Host payout-country chooser's writes, as the caller: the
+  // brand currency (RLS: account owner or brand admin) and, for Nigeria,
+  // brand-paystack-onboard select_provider (which re-checks owner payouts).
+  set_brand_payout_country: role("brand_admin", "brand"),
   get_listing_type_capabilities: role("self", "none"),
   build_host_onboarding_blueprint: role("self", "none"),
   get_capability_inventory: role("self", "none"),
@@ -283,7 +296,156 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_agent_job: role("self", "optional_brand"),
   set_refund_policy: role("event_manager", "event"),
   get_buyer_notice_status: role("event_manager", "event"),
+  // #3355 P2 — the canonical checklist: every active member may read it (it
+  // marks who can fix each row). A brand-wide "not now" is re-checked per item
+  // in SQL against that item's own role or money predicate; finance is the
+  // lowest rank that can fix any deferrable item.
+  get_brand_readiness: role("scanner", "brand"),
+  defer_readiness_item: role("finance_manager", "brand"),
+  undefer_readiness_item: role("finance_manager", "brand"),
 });
+
+// I-ARI-MONEY-ROLE-USES-SERVER-PREDICATE (#3355 P6, D-11): money tools are
+// authorized with the same server predicate the money RPCs and edges use,
+// never the linear role rank. `biz_can_manage_payments_for_brand` admits a
+// brand admin, the owner or exactly a finance manager; an event manager
+// (rank 40, above finance's 30) is refused here, before any card is shown.
+// The coarse `requiredRole` label stays for the capability ledger.
+// Enforcing test: __tests__/issue_3355_money_flow.implementor.test.ts.
+//
+// The currency-change DECISION is the exception: its server owners
+// (issue_1384_resolve_reconciliation, issue_1387_resolve_currency_reconciliation
+// and ari_execute_brand_operation) admit any member whose effective rank is at
+// least finance_manager, an event manager included. Ari holds it to exactly
+// that rule ("rank_at_least_finance_manager") so it never refuses a decision
+// the Host screen's server allows (#3355 P6 follow-up, Seth 2026-11-01).
+export type MoneyServerPredicate =
+  | "biz_can_manage_payments_for_brand"
+  | "biz_can_mutate_payouts_for_brand"
+  | "rank_at_least_finance_manager";
+
+const ASK_FINANCE =
+  "Ask a brand admin, a finance manager or the owner to do it.";
+
+export const MONEY_TOOL_PREDICATES: Readonly<
+  Record<string, {
+    predicate: MoneyServerPredicate;
+    refusal: string;
+    appliesTo?: (args: Record<string, unknown>) => boolean;
+  }>
+> = Object.freeze({
+  refund_order: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can refund. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  get_order_refund_preview: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal: `Only admins or finance can refund. ${ASK_FINANCE}`,
+  },
+  refund_rsvp_contribution: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can refund. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  cancel_order: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can cancel orders. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  get_payout_status: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal: `Only admins or finance can see payouts. ${ASK_FINANCE}`,
+  },
+  get_brand_balances_reports: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can see balances and payout reports. ${ASK_FINANCE}`,
+  },
+  charge_installment_now: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can charge an instalment. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  retry_installment: {
+    predicate: "biz_can_manage_payments_for_brand",
+    refusal:
+      `Only admins or finance can retry an instalment. Nothing was changed. ${ASK_FINANCE}`,
+  },
+  manage_brand_discovery_currency: {
+    predicate: "rank_at_least_finance_manager",
+    refusal:
+      "Your role can't decide a currency change. Nothing was changed. Ask a finance manager, an event manager, a brand admin or the owner to do it.",
+    appliesTo: (args) => args.action === "resolve_reconciliation",
+  },
+});
+
+/** The money predicate a call is held to, or null for a rank-checked call. */
+export function moneyToolPredicate(
+  toolName: string,
+  args: Record<string, unknown>,
+): { predicate: MoneyServerPredicate; refusal: string } | null {
+  const rule = Object.prototype.hasOwnProperty.call(
+      MONEY_TOOL_PREDICATES,
+      toolName,
+    )
+    ? MONEY_TOOL_PREDICATES[toolName]
+    : null;
+  if (!rule || (rule.appliesTo && !rule.appliesTo(args))) return null;
+  return { predicate: rule.predicate, refusal: rule.refusal };
+}
+
+/** Owner-facing refusal codes the chat says as plain words, not a toast. */
+export const OWNER_SPOKEN_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "MONEY_ROLE_DENIED",
+  "OWNER_NOTE_NOT_NEEDED",
+  "OWNER_NOTE_UNAVAILABLE",
+  "READINESS_BLOCKED",
+  "TICKET_PRICE_BELOW_MINIMUM",
+  "TIMEZONE_NEEDED",
+]);
+
+/** Caller check against a money predicate's `_for_caller` wrapper. */
+export async function callerPassesMoneyPredicate(
+  userClient: SupabaseClient,
+  brandId: string,
+  predicate: MoneyServerPredicate,
+): Promise<boolean> {
+  if (predicate === "rank_at_least_finance_manager") {
+    // The resolver's own check: biz_brand_effective_rank >= finance_manager.
+    const [
+      { data: actual, error: actualError },
+      { data: required, error: requiredError },
+    ] = await Promise.all([
+      userClient.rpc("biz_brand_effective_rank_for_caller", {
+        p_brand_id: brandId,
+      }),
+      userClient.rpc("biz_role_rank", { p_role: "finance_manager" }),
+    ]);
+    const actualRank = Number(actual ?? 0);
+    const requiredRank = Number(required ?? 0);
+    if (
+      actualError || requiredError || !Number.isFinite(actualRank) ||
+      !Number.isFinite(requiredRank) || requiredRank <= 0
+    ) {
+      throw new ToolError(
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
+    }
+    return actualRank > 0 && actualRank >= requiredRank;
+  }
+  const { data, error } = await userClient.rpc(`${predicate}_for_caller`, {
+    p_brand_id: brandId,
+  });
+  if (error) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not verify permissions right now",
+    );
+  }
+  return data === true;
+}
 
 function unavailable(): never {
   throw new ToolError(
@@ -632,6 +794,7 @@ export async function authorizeAgentTool(
   args: Record<string, unknown>,
   userClient: SupabaseClient,
   userId: string,
+  trustedUserText?: string,
 ): Promise<AuthContext> {
   if (!isUuid(userId)) {
     throw new ToolError("ROLE_DENIED", "Authentication is required");
@@ -653,6 +816,11 @@ export async function authorizeAgentTool(
     );
   }
   validateBeforeAuthorization(tool, args);
+  // Campaign cards also meet the channel's content contract and the owner's
+  // own words — after the schema, still before any resource or rank lookup.
+  if (tool.name === "draft_campaign") {
+    validateAriCampaignDraftProposal(args, trustedUserText);
+  }
   const brandId = await resolveBrand(tool.name, expected, args, userClient);
   if (expected.resource === "optional_brand" && brandId === null) {
     return { brandId: null, resource: expected.resource };
@@ -717,6 +885,28 @@ export async function authorizeAgentTool(
     return { brandId, resource: expected.resource };
   }
   if (!brandId) unavailable();
+  const money = moneyToolPredicate(tool.name, args);
+  if (money) {
+    if (
+      await callerPassesMoneyPredicate(userClient, brandId, money.predicate)
+    ) {
+      return { brandId, resource: expected.resource };
+    }
+    // Non-members keep the generic not-found answer; only a member learns
+    // that this money action belongs to someone else.
+    const { data: rank, error } = await userClient.rpc(
+      "biz_brand_effective_rank_for_caller",
+      { p_brand_id: brandId },
+    );
+    if (error || !Number.isFinite(Number(rank))) {
+      throw new ToolError(
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
+    }
+    if (Number(rank) <= 0) unavailable();
+    throw new ToolError("MONEY_ROLE_DENIED", money.refusal);
+  }
   if (expected.requiredRole === "deed_owner") {
     const { data, error } = await userClient.from("brands").select("id").eq(
       "id",
@@ -814,6 +1004,20 @@ function validateBeforeAuthorization(
     const value = args[key];
     if (value === undefined || value === null) continue;
     validateSchemaValue(value, rule, key);
+  }
+}
+
+/** Campaign approval cards must already satisfy the channel's content contract. */
+export function validateAriCampaignDraftProposal(
+  args: Record<string, unknown>,
+  trustedUserText?: string,
+): void {
+  const issues = [
+    ...campaignDraftPayloadIssues(args),
+    ...(trustedUserText ? campaignDraftCopyIssues(args, trustedUserText) : []),
+  ];
+  if (issues.length > 0) {
+    throw new ToolError("INVALID_ARGS", issues.join(" "));
   }
 }
 

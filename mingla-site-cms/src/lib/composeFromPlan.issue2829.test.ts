@@ -99,13 +99,29 @@ describe("#2829 W9a composer: no invented text", () => {
     );
     const home = result.fillHome!.blocks;
     expect(home[0]).toEqual({ blockType: "page_header", heading: "Travel the world." });
-    expect(home[1]).toEqual({ blockType: "cta", heading: "You leave with a group chat that lasts", label: "Reserve the next trip", href: "/trips" });
+    // #3355 bug 21 -- the "who" answer is the call to action's body.
+    expect(home[1]).toEqual({ blockType: "cta", heading: "You leave with a group chat that lasts", body: "First-time solo travellers", label: "Reserve the next trip", href: "/trips" });
     expect(home[2]).toMatchObject({ blockType: "offering_grid", kind: "trip", limit: 3 });
     const about = result.create.find((page) => page.slug === "about")!;
     const paragraphs = ((about.blocks[1]!.content as { root: { children: Array<{ children: Array<{ text: string }> }> } }).root.children)
       .map((paragraph) => paragraph.children[0]!.text);
     expect(paragraphs).toEqual(["We run small trips.", "Ten people at most."]);
     expect(result.create.find((page) => page.slug === "contact")!.blocks[2]).toEqual({ blockType: "contact_details", email: "hi@neutral.invalid", location: "Raleigh" });
+  });
+
+  it("#3355 bug 21: with a bio, the owner's 'who' answer is still shown (Home call to action); without one, no empty body", () => {
+    const withWho = compose(
+      plan(["trips"], { who: "Couples who like slow mornings", why: "Small groups", main_action: "Reserve the next trip" }),
+      { name: "N", tagline: "T", bio: "We run small trips.", contact_email: null, city: null },
+    );
+    const homeWith = (withWho.fillHome ?? withWho.create.find((page) => page.key === "home"))!;
+    expect(homeWith.blocks.find((block) => block.blockType === "cta")).toMatchObject({ body: "Couples who like slow mornings" });
+    const withoutWho = compose(
+      plan(["trips"], { why: "Small groups", main_action: "Reserve the next trip" }),
+      { name: "N", tagline: "T", bio: "We run small trips.", contact_email: null, city: null },
+    );
+    const homeWithout = (withoutWho.fillHome ?? withoutWho.create.find((page) => page.key === "home"))!;
+    expect(homeWithout.blocks.find((block) => block.blockType === "cta")).not.toHaveProperty("body");
   });
 
   it("About falls back to the story answers when there is no bio", () => {

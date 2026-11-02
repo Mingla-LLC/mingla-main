@@ -949,7 +949,12 @@ DECLARE
   v_event uuid;
   v_replay jsonb;
 BEGIN
-  v_args := jsonb_build_object('brand_id', v_brand::text, 'title', 'Ari created trip');
+  -- #3355 P8: an Ari trip needs the owner's time zone and calendar days (no
+  -- UTC default, no undated draft); see issue_3355_trip_seed_truth.
+  v_args := jsonb_build_object('brand_id', v_brand::text, 'title', 'Ari created trip',
+    'timezone', 'Africa/Lagos',
+    'start_date', to_char(current_date + 30, 'YYYY-MM-DD'),
+    'end_date', to_char(current_date + 32, 'YYYY-MM-DD'));
 
   INSERT INTO public.agent_pending_actions(
     id, user_id, conversation_id, tool_name, tool_args, status,

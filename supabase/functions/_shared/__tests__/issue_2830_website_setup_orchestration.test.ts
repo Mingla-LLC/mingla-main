@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEquals,
   assertMatch,
   assertStringIncludes,
@@ -206,6 +207,21 @@ Deno.test("#2830 structured design answers become exact pre-draft plan proposals
   assertEquals(websiteSetupPlanRevision({ plan: { revision: "6" } }), null);
 });
 
+Deno.test("#3355 a brand-new brand with no saved plan answers Ari at revision 0", () => {
+  // The plan read returns `plan: null` until the first save creates the row.
+  assertEquals(
+    websiteSetupPlanRevision({ brand_id: BRAND_ID, entitled: true, plan: null }),
+    0,
+  );
+  // Not entitled, or no plan read at all: still nothing to save against.
+  assertEquals(
+    websiteSetupPlanRevision({ brand_id: BRAND_ID, entitled: false }),
+    null,
+  );
+  assertEquals(websiteSetupPlanRevision({ entitled: true }), null);
+  assertEquals(websiteSetupPlanRevision(null), null);
+});
+
 Deno.test("#2830 structured plan answers preserve owner words without model inference", () => {
   assertEquals(
     websiteSetupPlanAnswer(
@@ -388,8 +404,9 @@ Deno.test("#2830 Fix all creates one durable job and asks one current-step quest
     ],
     "North Star",
   );
-  assertStringIncludes(reply ?? "", "started one durable Fix all job");
-  assertStringIncludes(reply ?? "", "3 remain");
+  // #3355 P1 (D-6): plain words, no engine vocabulary, no second counter.
+  assertStringIncludes(reply ?? "", "Starting Website setup for North Star");
+  assert(!/durable|job|checkpoint|\d+ remain/i.test(reply ?? ""));
   assertStringIncludes(reply ?? "", "Atelier or Voyage?");
   assertEquals((reply?.match(/\?/g) ?? []).length, 1);
   assertMatch(reply ?? "", /No draft will be created first/i);
@@ -407,9 +424,9 @@ Deno.test("#2830 Fix all reports teammate ownership without taking over", () => 
     ],
     "North Star",
   );
-  assertStringIncludes(reply ?? "", "Another teammate already owns");
+  assertStringIncludes(reply ?? "", "Another teammate is already working through");
   assertStringIncludes(reply ?? "", "explicitly take over");
-  assertStringIncludes(reply ?? "", "did not start a competing chain");
+  assertStringIncludes(reply ?? "", "didn’t start a second one");
 });
 
 // ---------------------------------------------------------------------------

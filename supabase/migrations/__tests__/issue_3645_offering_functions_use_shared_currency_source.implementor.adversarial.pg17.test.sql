@@ -1,4 +1,5 @@
 -- Issue #3645 — the three offering functions ask the shared currency source
+-- #3355 P6: paid prices here sit above every currency's provider minimum.
 -- (migration 20270830003645). Implementor adversarial, behavioural.
 --
 -- Proves:
@@ -160,19 +161,19 @@ BEGIN
   IF COALESCE(current_setting('mingla.publish_free_only', true), '') = 'on' THEN
     RAISE EXCEPTION 'A FAIL: the free-only flag was set before the test began';
   END IF;
-  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv paid create', 5000), true);
+  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv paid create', 25000), true);
   IF COALESCE(current_setting('mingla.publish_free_only', true), '') = 'on' THEN
     RAISE EXCEPTION 'A FAIL: a paid experience created published declared a free-only publish';
   END IF;
-  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv paid draft', 5000), false);
+  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv paid draft', 25000), false);
   v_draft := (v_res->'event'->>'id')::uuid;
-  PERFORM public.biz_publish_experience(v_draft, pg_temp.x3645_exp('adv paid draft', 5000), true);
+  PERFORM public.biz_publish_experience(v_draft, pg_temp.x3645_exp('adv paid draft', 25000), true);
   IF COALESCE(current_setting('mingla.publish_free_only', true), '') = 'on' THEN
     RAISE EXCEPTION 'A FAIL: a paid experience publish declared a free-only publish';
   END IF;
   -- Per-stop priced, terms accepted: published paid, still no flag.
   v_res := public.biz_create_experience(
-    v_brand, pg_temp.x3645_exp('adv per stop paid', 4000, NULL, 'per_stop'), true);
+    v_brand, pg_temp.x3645_exp('adv per stop paid', 24000, NULL, 'per_stop'), true);
   IF (v_res->'event'->>'status') <> 'scheduled'
      OR COALESCE(current_setting('mingla.publish_free_only', true), '') = 'on' THEN
     RAISE EXCEPTION 'A FAIL: a per-stop paid experience did not publish as a paid one';
@@ -187,12 +188,12 @@ BEGIN
   -- (Before any free publish in this transaction, so the flag is still unset.)
   PERFORM pg_temp.x3645_refused('F create',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_holdnc, pg_temp.x3645_exp('adv hold paid create', 5000)),
+           v_holdnc, pg_temp.x3645_exp('adv hold paid create', 25000)),
     'event_currency_required');
-  v_res := public.biz_create_experience(v_holdnc, pg_temp.x3645_exp('adv hold paid draft', 5000), false);
+  v_res := public.biz_create_experience(v_holdnc, pg_temp.x3645_exp('adv hold paid draft', 25000), false);
   PERFORM pg_temp.x3645_refused('F publish',
     format('SELECT public.biz_publish_experience(%L::uuid, %L::jsonb, true)',
-           (v_res->'event'->>'id')::uuid, pg_temp.x3645_exp('adv hold paid draft', 5000)),
+           (v_res->'event'->>'id')::uuid, pg_temp.x3645_exp('adv hold paid draft', 25000)),
     'event_currency_required');
   IF (SELECT status FROM public.events WHERE id = (v_res->'event'->>'id')::uuid) <> 'draft' THEN
     RAISE EXCEPTION 'F FAIL: the refused paid publish did not stay a draft';
@@ -201,7 +202,7 @@ BEGIN
   -- ── E. marked free but storing a priced stop: not declared free-only ──────
   PERFORM pg_temp.x3645_refused('E create',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_nocur, pg_temp.x3645_exp('adv free priced stop', 4000, NULL, 'per_stop', true)),
+           v_nocur, pg_temp.x3645_exp('adv free priced stop', 24000, NULL, 'per_stop', true)),
     'event_currency_required');
   IF COALESCE(current_setting('mingla.publish_free_only', true), '') = 'on' THEN
     RAISE EXCEPTION 'E FAIL: an experience storing a priced stop declared a free-only publish';
@@ -237,7 +238,7 @@ BEGIN
       'event_currency_unsupported');
     PERFORM pg_temp.x3645_refused(v_code || ' create published paid',
       format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-             v_brand, pg_temp.x3645_exp('adv ' || v_code, 5000, v_code)),
+             v_brand, pg_temp.x3645_exp('adv ' || v_code, 25000, v_code)),
       'event_currency_unsupported');
     PERFORM pg_temp.x3645_refused(v_code || ' save draft',
       format('SELECT public.biz_publish_experience(%L::uuid, %L::jsonb, false)',
@@ -245,11 +246,11 @@ BEGIN
       'event_currency_unsupported');
     PERFORM pg_temp.x3645_refused(v_code || ' publish',
       format('SELECT public.biz_publish_experience(%L::uuid, %L::jsonb, true)',
-             v_draft, pg_temp.x3645_exp('adv ' || v_code, 5000, v_code)),
+             v_draft, pg_temp.x3645_exp('adv ' || v_code, 25000, v_code)),
       'event_currency_unsupported');
     PERFORM pg_temp.x3645_refused(v_code || ' event publish',
       format('SELECT public.business_publish_event_draft(%L::uuid, %L::jsonb)',
-             v_event, pg_temp.x3645_event(25, v_code)),
+             v_event, pg_temp.x3645_event(250, v_code)),
       'event_currency_unsupported');
   END LOOP;
   IF (SELECT count(*) FROM public.events WHERE brand_id = v_brand) <> v_before THEN
@@ -281,11 +282,11 @@ BEGIN
     'event_currency_unsupported');
   PERFORM pg_temp.x3645_refused('C switched off, publish',
     format('SELECT public.biz_publish_experience(%L::uuid, %L::jsonb, true)',
-           v_draft, pg_temp.x3645_exp('adv after off', 5000, v_code)),
+           v_draft, pg_temp.x3645_exp('adv after off', 25000, v_code)),
     'event_currency_unsupported');
   PERFORM pg_temp.x3645_refused('C switched off, event',
     format('SELECT public.business_publish_event_draft(%L::uuid, %L::jsonb)',
-           v_event, pg_temp.x3645_event(25, v_code)),
+           v_event, pg_temp.x3645_event(250, v_code)),
     'event_currency_unsupported');
   UPDATE public.supported_brand_currencies SET active = true WHERE code::text = v_code;
 
@@ -295,30 +296,30 @@ BEGIN
   SELECT count(*) INTO v_before FROM public.events WHERE brand_id = v_brand;
   PERFORM pg_temp.x3645_refused('D create, whole price',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_brand, pg_temp.x3645_exp('adv member paid', 5000)),
+           v_brand, pg_temp.x3645_exp('adv member paid', 25000)),
     'mingla_tos_not_accepted');
   PERFORM pg_temp.x3645_refused('D create, per-stop price',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_brand, pg_temp.x3645_exp('adv member per stop', 4000, NULL, 'per_stop')),
+           v_brand, pg_temp.x3645_exp('adv member per stop', 24000, NULL, 'per_stop')),
     'mingla_tos_not_accepted');
   IF (SELECT count(*) FROM public.events WHERE brand_id = v_brand) <> v_before THEN
     RAISE EXCEPTION 'D FAIL: a refused paid create left a row behind';
   END IF;
-  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv member draft', 5000), false);
+  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv member draft', 25000), false);
   PERFORM pg_temp.x3645_refused('D publish',
     format('SELECT public.biz_publish_experience(%L::uuid, %L::jsonb, true)',
-           (v_res->'event'->>'id')::uuid, pg_temp.x3645_exp('adv member draft', 5000)),
+           (v_res->'event'->>'id')::uuid, pg_temp.x3645_exp('adv member draft', 25000)),
     'mingla_tos_not_accepted');
   IF (SELECT status FROM public.events WHERE id = (v_res->'event'->>'id')::uuid) <> 'draft' THEN
     RAISE EXCEPTION 'D FAIL: the refused paid publish did not stay a draft';
   END IF;
   PERFORM pg_temp.x3645_refused('D event, online ticket',
     format('SELECT public.business_publish_event_draft(%L::uuid, %L::jsonb)',
-           v_event, pg_temp.x3645_event(25)),
+           v_event, pg_temp.x3645_event(250)),
     'mingla_tos_not_accepted');
   PERFORM pg_temp.x3645_refused('D event, door-only ticket',
     format('SELECT public.business_publish_event_draft(%L::uuid, %L::jsonb)',
-           v_event, pg_temp.x3645_event(25, NULL, 'door')),
+           v_event, pg_temp.x3645_event(250, NULL, 'door')),
     'mingla_tos_not_accepted');
   IF (SELECT status FROM public.events WHERE id = v_event) <> 'draft' THEN
     RAISE EXCEPTION 'D FAIL: the refused paid event publish did not stay a draft';
@@ -335,13 +336,13 @@ BEGIN
    WHERE brand_id = v_brand AND user_id = v_member;
   PERFORM pg_temp.x3645_refused('D create, version without a timestamp',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_brand, pg_temp.x3645_exp('adv member half', 5000)),
+           v_brand, pg_temp.x3645_exp('adv member half', 25000)),
     'mingla_tos_not_accepted');
   -- Accepted in full: the same call now goes through.
   UPDATE public.brand_team_members
      SET mingla_tos_accepted_at = now()
    WHERE brand_id = v_brand AND user_id = v_member;
-  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv member accepted', 5000), true);
+  v_res := public.biz_create_experience(v_brand, pg_temp.x3645_exp('adv member accepted', 25000), true);
   IF (v_res->'event'->>'status') <> 'scheduled' THEN
     RAISE EXCEPTION 'D FAIL: an accepted member could not publish a paid experience';
   END IF;
@@ -354,12 +355,12 @@ BEGIN
    WHERE brand_id = v_nobank AND user_id = v_owner;
   PERFORM pg_temp.x3645_refused('D order, create',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_nobank, pg_temp.x3645_exp('adv no bank paid', 5000)),
+           v_nobank, pg_temp.x3645_exp('adv no bank paid', 25000)),
     'mingla_tos_not_accepted');
-  v_res := public.biz_create_experience(v_nobank, pg_temp.x3645_exp('adv no bank draft', 5000), false);
+  v_res := public.biz_create_experience(v_nobank, pg_temp.x3645_exp('adv no bank draft', 25000), false);
   PERFORM pg_temp.x3645_refused('D order, publish',
     format('SELECT public.biz_publish_experience(%L::uuid, %L::jsonb, true)',
-           (v_res->'event'->>'id')::uuid, pg_temp.x3645_exp('adv no bank draft', 5000)),
+           (v_res->'event'->>'id')::uuid, pg_temp.x3645_exp('adv no bank draft', 25000)),
     'mingla_tos_not_accepted');
   -- With the terms accepted, the same brand is told it cannot collect yet.
   UPDATE public.brand_team_members
@@ -367,7 +368,7 @@ BEGIN
    WHERE brand_id = v_nobank AND user_id = v_owner;
   PERFORM pg_temp.x3645_refused('D order, create after accepting',
     format('SELECT public.biz_create_experience(%L::uuid, %L::jsonb, true)',
-           v_nobank, pg_temp.x3645_exp('adv no bank paid', 5000)),
+           v_nobank, pg_temp.x3645_exp('adv no bank paid', 25000)),
     'stripe_charges_disabled');
 
   RAISE NOTICE '#3645 offering functions PASS (adversarial): unlisted codes are refused by name, the table decides, terms are per member and come first, a paid experience never declares free-only';

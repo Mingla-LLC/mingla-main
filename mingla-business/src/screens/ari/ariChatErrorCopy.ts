@@ -34,6 +34,8 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "Your session expired. Sign in again to keep chatting with Ari.",
   FORBIDDEN:
     "Your role on this brand doesn't allow that. Nothing was changed.",
+  PAYOUT_NOT_READY:
+    "This brand can't accept paid tickets yet. Finish its payout setup first.",
   ROLE_REVOKED: "Your access to this brand changed. Nothing was changed.",
   TENANT_MISMATCH:
     "This chat belongs to a different brand. Start a new chat for this brand.",

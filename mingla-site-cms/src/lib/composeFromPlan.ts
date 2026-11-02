@@ -4,8 +4,9 @@
  * Builds a site's pages from the owner's approved plan and Mingla's own
  * brand fields, in the chosen design's layouts:
  *   - Home: the brand's line over a colour panel (no photo is ever invented),
- *     the main action, the main offering's live grid, reviews only when the
- *     brand has confirmed ones, and the email sign-up;
+ *     the main action (carrying the owner's "why" and "who" answers), the
+ *     main offering's live grid, reviews only when the brand has confirmed
+ *     ones, and the email sign-up;
  *   - one page per ticked offering kind: a live list with the honest empty
  *     state from the design contract's rules table and a form;
  *   - About: the bio, else the owner's story answers;
@@ -201,7 +202,17 @@ export function composeFromPlan(input: {
   if (mainAction && mainAction.toLowerCase() !== "join the list") {
     const href = mainPage ? `/${SLUG[mainPage]}` : "/contact";
     // The heading is the owner's own "why" answer, else the brand's name.
-    homeBlocks.push({ blockType: "cta", heading: (why ?? name).slice(0, 120), label: mainAction, href });
+    // #3355 bug 21 -- the body is the owner's own "who comes with you"
+    // answer. #2829 puts the story answers on About only when there is no
+    // bio, so with a bio the "who" answer was shown nowhere and this band
+    // printed an empty paragraph. Missing stays missing: no body, no text.
+    homeBlocks.push({
+      blockType: "cta",
+      heading: (why ?? name).slice(0, 120),
+      ...(who ? { body: who } : {}),
+      label: mainAction,
+      href,
+    });
   }
   const gridPage = (mainPage && (mainPage === "trips" || mainPage === "events" || mainPage === "experiences"))
     ? mainPage

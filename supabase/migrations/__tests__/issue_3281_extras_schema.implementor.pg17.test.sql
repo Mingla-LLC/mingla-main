@@ -33,8 +33,10 @@ BEGIN
   ) VALUES (v_brand,v_owner,'Extras','extras-'||v_brand,'paystack','NG','NGN','NGN');
   INSERT INTO public.events(id,brand_id,title,slug,status,currency)
     VALUES (v_event,v_brand,'Extras','extras-'||v_event,'ended','NGN');
+  -- #3355 P6: a paid tier is at least the provider minimum (NGN 100); the
+  -- order lines below carry the prices these refunds are computed from.
   INSERT INTO public.ticket_types(id,event_id,name,price_cents)
-    VALUES (v_tier,v_event,'Friday VIP',1000);
+    VALUES (v_tier,v_event,'Friday VIP',10000);
   INSERT INTO public.orders(
     id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
   ) VALUES
@@ -235,8 +237,10 @@ BEGIN
   ) VALUES (v_brand,v_owner,'Cancel','cancel-'||v_brand,'paystack','NG','NGN','NGN');
   INSERT INTO public.events(id,brand_id,title,slug,status,currency)
     VALUES (v_event,v_brand,'Cancel','cancel-'||v_event,'ended','NGN');
+  -- #3355 P6: a paid tier is at least the provider minimum (NGN 100); the
+  -- order lines below carry the prices these refunds are computed from.
   INSERT INTO public.ticket_types(id,event_id,name,price_cents)
-    VALUES (v_tier,v_event,'VIP',1000);
+    VALUES (v_tier,v_event,'VIP',10000);
   INSERT INTO public.orders(
     id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
   ) VALUES (v_order,v_event,4600,'NGN','paid','pi-cancel','ch-cancel','legacy');

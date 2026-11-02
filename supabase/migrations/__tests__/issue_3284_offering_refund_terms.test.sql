@@ -518,12 +518,16 @@ BEGIN
   SELECT * INTO o_none FROM pg_temp.r3284_offering(b.o_brand, 'r15-none', 'event', 'scheduled', NULL);
   SELECT * INTO x_set FROM pg_temp.r3284_offering(b.o_brand, 'r15-exp', 'experience', 'scheduled', pg_temp.r3284_policy('flexible'));
   -- A priced ticket so the tickets array, the all-in price and remaining capacity are
-  -- part of what is compared, not an empty list.
+  -- part of what is compared, not an empty list. These are fixture rows, not a
+  -- member pricing a live offering, so no signed-in member writes them (#3355
+  -- P6 asks a member for the Organiser Terms on that action).
+  PERFORM set_config('request.jwt.claim.sub', '', true);
   INSERT INTO public.ticket_types(event_id, name, price_cents, quantity_total, currency)
     VALUES (o_set.o_event, 'GA', 2500, 100, 'USD');
   INSERT INTO public.ticket_types(event_id, name, price_cents, currency, is_unlimited, is_free,
                                   available_online, available_in_person, display_order)
     VALUES (x_set.o_event, 'Standard', 4000, 'USD', true, false, true, false, 0);
+  PERFORM set_config('request.jwt.claim.sub', b.o_user::text, true);
 
   -- ── The event bundle ──
   SELECT p.prosrc INTO v_src FROM pg_proc p

@@ -84,6 +84,17 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // #2830 adds durable completeness, pre-draft design, bounded audit findings,
 // and evidence-backed context writes (172→176 tools / 184→188 capabilities).
 // registered_unverified 171→175.
+// [TEST-MOD-APPROVED #3355] P2 adds the canonical brand readiness read and its
+// brand-wide "not now" write pair, and registers the #3355 saved-campaign-draft
+// readback the branch already shipped (176→180 tools / 188→192 capabilities).
+// registered_unverified 175→179; in_flight 6→5 (campaign draft review is now a
+// registered read).
+// #3355 P6 follow-up adds tell_owner_in_brand_group, the confirmed
+// brand-group note to the owner (180→181 tools / 192→193 capabilities).
+// registered_unverified 179→180.
+// #3355 P7 adds set_brand_payout_country, the confirmed Host-parity payout
+// country pick (181→182 tools / 193→194 capabilities).
+// registered_unverified 180→181.
 const EXPECTED_TOOL_NAMES = [
   "approve_ad_plan",
   "build_host_onboarding_blueprint",
@@ -106,6 +117,7 @@ const EXPECTED_TOOL_NAMES = [
   "create_trip",
   "create_venue_listing",
   "create_venue_reservation",
+  "defer_readiness_item",
   "delete_brand",
   "delete_campaign_draft",
   "delete_experience",
@@ -126,8 +138,10 @@ const EXPECTED_TOOL_NAMES = [
   "get_block_catalog",
   "get_brand_analytics",
   "get_brand_balances_reports",
+  "get_brand_readiness",
   "get_brand_site",
   "get_buyer_notice_status",
+  "get_campaign_draft",
   "get_campaign_report",
   "get_capability_inventory",
   "get_event_order_reconciliation",
@@ -235,6 +249,7 @@ const EXPECTED_TOOL_NAMES = [
   "send_campaign_now",
   "send_installment_reminder",
   "send_venue_sms",
+  "set_brand_payout_country",
   "set_brand_pricing_defaults",
   "set_event_cover",
   "set_event_guest_privacy",
@@ -243,8 +258,10 @@ const EXPECTED_TOOL_NAMES = [
   "set_rsvp_guest_status",
   "start_brand_completeness_job",
   "submit_venue_claim",
+  "tell_owner_in_brand_group",
   "transition_stay",
   "transition_venue_reservation",
+  "undefer_readiness_item",
   "unpublish_event",
   "unpublish_experience",
   "update_ari_prefs",
@@ -264,19 +281,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 188,
+  capabilityCount: 194,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 175,
+    registered_unverified: 181,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "4162ea1724d4d1ec56854819cb4a57ff6660e1ad90737094d071e1627fa81bd5",
-  statusDigest: "5a88bef584ecc692e20cd1b3177430a4b2e73c57a4e30fd4fb218d526ce3b64a",
-  mappingDigest: "66cc9f1102a861f0d84c2dfcd530d3dbd3edc1b58d0025b46dc0d714bc68bde7",
-  sourceRefDigest: "3a91c87a8aa031d89210b9b0a1b684041b0042d0ba5777bb45ede31b351f03aa",
+  idDigest: "f804f4e73a10c0fffae916935e3ca820f95e13f8f7e9a2c4f1035dcfa63444d9",
+  statusDigest: "ca1186e7eca51a44a59b1b5658a28670baf2c5397447205d94a0fbb2938d682e",
+  mappingDigest: "383bbf24790d154bedc2bc81ade190642144b1639a356e79c907fa47e28159ae",
+  sourceRefDigest: "998896e0e0cc02eba473445ea3590ccf7bbaa305a88d1a4eb6f7d652baeddb98",
 });
 
 function readLedger() {
@@ -302,9 +319,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("176-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("182-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/175/0/8/0/5 classification changed");
+    failures.push("0/181/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
@@ -359,4 +376,70 @@ test("tester rejects an extant-but-wrong source token that a substring check wou
   const row = ledger.capabilities.find((capability) => capability.id === "ari.brand.create");
   row.owners.source[0].symbol = "brand";
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /source path\/symbol evidence changed/);
+});
+
+// #3355 P10 (SC-17) — ledger truth from live behaviour. Pinned independently of
+// the gate: exactly these rows cite a live flow-eval run, each citation resolves
+// to a recorded run where every named eval passed and covers the row, and no
+// row is verified without one.
+const LIVE_EVAL_RUNS_PATH = path.join(ROOT, "docs/contracts/ari-live-eval-runs.json");
+const EXPECTED_LIVE_EVAL_ROWS = [
+  "ari.brand.update_context",
+  "ari.event.create",
+  "ari.event.update",
+  "ari.experience.create",
+  "ari.stay.manage_inventory",
+  "ari.ticket.upsert_tier",
+  "ari.trip.create",
+  "ari.venue.create_listing",
+];
+
+function liveEvalFailures(ledger, runs) {
+  const failures = [];
+  for (const row of ledger.capabilities) {
+    if (row.status === "verified" && !row.live_eval) failures.push(`${row.id}: verified without live_eval`);
+    if (!row.live_eval) continue;
+    const run = runs.runs.find((entry) => entry.run_id === row.live_eval.run_id);
+    if (!run) {
+      failures.push(`${row.id}: unknown run`);
+      continue;
+    }
+    for (const id of row.live_eval.evals ?? []) {
+      const result = run.evals.find((entry) => entry.id === id);
+      if (result?.verdict !== "pass") failures.push(`${row.id}: ${id} did not pass`);
+      else if (!result.capabilities.includes(row.id)) failures.push(`${row.id}: ${id} does not cover it`);
+    }
+  }
+  return failures;
+}
+
+function readRuns() {
+  return JSON.parse(fs.readFileSync(LIVE_EVAL_RUNS_PATH, "utf8"));
+}
+
+test("tester pins the rows carrying live flow-eval evidence and resolves every citation", () => {
+  const ledger = readLedger();
+  const cited = ledger.capabilities.filter((row) => row.live_eval).map((row) => row.id).sort();
+  assert.deepEqual(cited, EXPECTED_LIVE_EVAL_ROWS);
+  assert.deepEqual(liveEvalFailures(ledger, readRuns()), []);
+  // Local live evidence never stands in for production: no row flips to verified on it.
+  assert.ok(ledger.capabilities.filter((row) => row.live_eval).every((row) => row.status === "registered_unverified"));
+});
+
+test("tester rejects a live_eval citing a run that never happened or an eval that failed", () => {
+  const ledger = readLedger();
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.event.create");
+  row.live_eval = { run_id: "flow-invented", evals: ["event_create_minimal"] };
+  assert.match(liveEvalFailures(ledger, readRuns()).join("; "), /unknown run/);
+  const runs = readRuns();
+  const real = ledger.capabilities.find((capability) => capability.id === "ari.trip.create");
+  runs.runs.find((entry) => entry.run_id === real.live_eval.run_id)
+    .evals.find((entry) => entry.id === "trip_create_lagos_3day").verdict = "fail";
+  assert.match(liveEvalFailures(readLedger(), runs).join("; "), /trip_create_lagos_3day did not pass/);
+});
+
+test("tester rejects a verified row without a live eval run", () => {
+  const ledger = readLedger();
+  ledger.capabilities.find((capability) => capability.id === "ari.operator.snapshot").status = "verified";
+  assert.match(liveEvalFailures(ledger, readRuns()).join("; "), /verified without live_eval/);
 });

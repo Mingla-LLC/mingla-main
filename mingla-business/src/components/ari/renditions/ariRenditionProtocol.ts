@@ -409,6 +409,12 @@ function fieldKindProps(
     ...(countryPlaceholder ? { countryPlaceholder } : {}),
   };
 }
+/**
+ * Most options a choices block may carry: the 15 canonical party types and the
+ * 35 payout countries the Host chooser offers both fit.
+ */
+export const MAX_CHOICE_OPTIONS = 40;
+
 function parseOptions(
   value: unknown,
   max = 12,
@@ -822,7 +828,10 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
       : null;
   }
   if (raw.type === "choices") {
-    const options = parseOptions(raw.options, 12);
+    // #3355 P7 — a choices block may carry a full canonical list (15 party
+    // types). At 12 the whole card was dropped and the owner saw a question
+    // with nothing to pick.
+    const options = parseOptions(raw.options, MAX_CHOICE_OPTIONS);
     const selection =
       raw.selection === "single"
         ? "single"
@@ -1001,6 +1010,22 @@ export function isSupersededRenditionTapAllowed(
     action.behavior.type === "local" &&
     (action.behavior.command === "dismiss" || action.behavior.command === "copy")
   );
+}
+
+/** #2830 P4 — the labels of the options the owner chose on a card. */
+export function ariRenditionSelectedLabels(
+  rendition: AriRendition,
+  selectedOptionIds: readonly string[],
+): string[] {
+  const options =
+    rendition.schema_version === 1
+      ? [...(rendition.chips ?? []), ...(rendition.choices ?? [])]
+      : rendition.blocks
+          .filter((block) => block.type === "choices")
+          .flatMap((block) => block.options);
+  return options
+    .filter((option) => selectedOptionIds.includes(option.id))
+    .map((option) => option.label);
 }
 
 export function buildAriRenditionSubmission(input: {

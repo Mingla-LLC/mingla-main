@@ -73,6 +73,12 @@ export function extractExplicitTimezone(text: string): string | null {
     /\b(?:Africa|America|Asia|Atlantic|Australia|Europe|Indian|Pacific)\/[A-Za-z_+-]+(?:\/[A-Za-z_+-]+)?\b/,
   )?.[0];
   if (zone && isValidIanaTimezone(zone)) return zone;
+  // WAT is a specific, unambiguous IANA time-zone abbreviation used across
+  // Nigeria and the wider West Africa region. Resolve it to the canonical
+  // venue zone so an account's unrelated preferred zone cannot override it.
+  if (/\b(?:WAT|West\s+Africa(?:n)?\s+Time)\b/i.test(text)) {
+    return "Africa/Lagos";
+  }
   if (/\b(?:UTC|GMT)\b/i.test(text)) return "UTC";
   return null;
 }
@@ -290,7 +296,7 @@ function parseExplicitDate(text: string): string | null {
     "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
   const monthFirst = text.match(
     new RegExp(
-      `\\b(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,\\s*|\\s+)(20\\d{2})\\b`,
+      `\\b(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+)(20\\d{2})\\b`,
       "i",
     ),
   );
@@ -303,17 +309,16 @@ function parseExplicitDate(text: string): string | null {
   }
   const dayFirst = text.match(
     new RegExp(
-      `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthPattern})(?:,\\s*|\\s+)(20\\d{2})\\b`,
+      `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthPattern})(?:,?\\s+)(20\\d{2})\\b`,
       "i",
     ),
   );
-  return dayFirst
-    ? validExplicitDate(
-      Number(dayFirst[3]),
-      MONTH_NUMBER[dayFirst[2].slice(0, 3).toLowerCase()],
-      Number(dayFirst[1]),
-    )
-    : null;
+  if (!dayFirst) return null;
+  return validExplicitDate(
+    Number(dayFirst[3]),
+    MONTH_NUMBER[dayFirst[2].slice(0, 3).toLowerCase()],
+    Number(dayFirst[1]),
+  );
 }
 
 function displayChoice(

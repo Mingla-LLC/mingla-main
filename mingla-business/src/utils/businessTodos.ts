@@ -14,11 +14,9 @@
  */
 
 import type { BrandPlacePipelineState } from "../services/businessPlaceAuthoringService";
-// ORCH-1256 — type-only import (8 emptiness booleans). Keeps this file's
-// no-runtime-coupling contract: the caller derives the booleans from the
-// Brand record via utils/brandProfileCompleteness.ts and precomputes the
-// edit route; nothing Brand-shaped enters this module at runtime.
-import type { BusinessTodoProfileInput } from "./brandProfileCompleteness";
+// #3355 P5 — type-only: brand profile + money rows come from the server's
+// canonical readiness read (brand_readiness); nothing here derives them.
+import type { BrandReadinessState } from "../services/brandReadinessService";
 // #2829 W9a — type-only: the website row is derived by the plan module,
 // which the boot path loads lazily (useWebsiteTodo).
 import type { WebsiteTodo } from "../sites/websiteTodo";
@@ -91,7 +89,10 @@ export type BusinessTodoAction =
   | { kind: "open_universal_creator" }
   | { kind: "route"; route: string }
   // ORCH-1111 — open the Accept/Decline sheet for a pending brand invitation.
-  | { kind: "open_pending_invite"; invitationId: string; brandName: string };
+  | { kind: "open_pending_invite"; invitationId: string; brandName: string }
+  // #3355 P5 (C9) — a row this member cannot act on. It names who can and is
+  // rendered as plain text (no chevron, no tap), never as a dead button.
+  | { kind: "info" };
 
 export interface BusinessTodo {
   id: string;
@@ -104,7 +105,85 @@ export interface BusinessTodo {
    * venue-claim-feedback row sets this today; absent → no pill.
    */
   badge?: string;
+  /** #3355 P5 — the canonical readiness item key behind this row. */
+  readinessKey?: string;
+  /** #3355 P5 — the readiness read failed; the row offers "Try again". */
+  retryReadinessBrandId?: string;
 }
+
+/** One canonical readiness item as Home needs it (mapped by the hook). */
+export interface BusinessTodoReadinessItem {
+  key: string;
+  state: BrandReadinessState;
+  canCallerFix: boolean;
+  /** Server copy, e.g. "a brand admin or the owner". */
+  whoCanFix: string;
+}
+
+/**
+ * #3355 P5 — the canonical brand readiness answer for the current brand.
+ * `loading` → no brand/profile/money rows yet (a row must be a true
+ * statement); `error` → one honest "couldn't check" row with Try again.
+ */
+export type BusinessTodoBrandReadiness =
+  | { status: "loading" }
+  | { status: "error"; brandId: string }
+  | {
+      status: "ready";
+      brandId: string;
+      /** `/brand/{id}/edit`, precomputed by the caller. */
+      editRoute: string;
+      /** Scanner role: profile and money rows are hidden entirely (C9). */
+      hideBrandRows: boolean;
+      items: readonly BusinessTodoReadinessItem[];
+    };
+
+/**
+ * #3355 P5 — the Home rows that come from canonical readiness items. ONE map,
+ * so Home and Ari name the same keys. Keys absent here are not Home rows:
+ * Website items (the website row covers them), money keys (the money band
+ * below), action-scoped items, and `timezone` (no Host form control yet —
+ * Ari asks it; a Home row would be a dead end).
+ */
+export const HOME_READINESS_ROWS = [
+  { key: "cover_media", id: "profile_add_cover", label: "Add a cover", sublabel: "Make your public page pop", section: "cover" },
+  { key: "profile_photo", id: "profile_add_photo", label: "Add a profile photo", sublabel: "Put a face on your brand", section: "photo" },
+  { key: "name", id: "profile_add_name", label: "Add your brand name", sublabel: "What people will call you", section: "about" },
+  { key: "tagline", id: "profile_add_tagline", label: "Add a tagline", sublabel: "One line that says what you do", section: "about" },
+  { key: "description", id: "profile_add_description", label: "Describe your brand", sublabel: "Tell people what you're about", section: "about" },
+  { key: "address", id: "profile_add_address", label: "Add your address", sublabel: "Help people find you", section: "address" },
+  { key: "city_country", id: "profile_add_city_country", label: "Add your city and country", sublabel: "Pick your address to set them", section: "address" },
+  { key: "contact_email", id: "profile_add_email", label: "Add a contact email", sublabel: "So customers can reach you", section: "contact" },
+  { key: "contact_phone", id: "profile_add_phone", label: "Add a phone number", sublabel: "Another way to reach you", section: "contact" },
+  { key: "social_links", id: "profile_add_socials", label: "Add your social links", sublabel: "Instagram, TikTok, your website and more", section: "social" },
+  { key: "theme", id: "profile_choose_theme", label: "Choose your page look", sublabel: "Colours and font for your public page", section: "theme" },
+] as const;
+
+/** Readiness keys behind the money rows (money band). */
+export const HOME_MONEY_READINESS_KEYS = {
+  canSell: "money.can_sell",
+  canBePaidOut: "money.can_be_paid_out",
+} as const;
+
+const isReadinessDone = (state: BrandReadinessState): boolean =>
+  state === "verified" || state === "not_applicable";
+
+function readinessSublabel(
+  item: BusinessTodoReadinessItem,
+  fallback: string,
+): string {
+  if (!item.canCallerFix) return `Ask ${item.whoCanFix} to do this`;
+  switch (item.state) {
+    case "stale":
+    case "conflict":
+      return "Check this — it may be out of date";
+    case "invalid":
+      return "This needs fixing";
+    default:
+      return fallback;
+  }
+}
+
 
 export interface BusinessTodoInput {
   /**
@@ -171,7 +250,10 @@ export interface BusinessTodoInput {
   venueClaims?: VenueTodoClaim[];
   /** Upcoming buckets (total = live+upcoming+draft; past already filtered out). */
   counts: { total: number; live: number; draft: number };
-  /** Brand Stripe status is "active". */
+  /**
+   * The brand can sell (take paid sales). With `brandReadiness` this is the
+   * server's `money.can_sell` (`pg_brand_can_collect`), never a client guess.
+   */
   stripeActive: boolean;
   /**
    * #3645 PR10 — the brand can RECEIVE payouts (bank / recipient connected).
@@ -216,16 +298,13 @@ export interface BusinessTodoInput {
    */
   venueFeedbackRoute: string;
   /**
-   * ORCH-1256 — brand-profile completeness (priority band 6, tail). OPTIONAL
-   * so pre-1256 callers/tests compile + behave unchanged: absent ⇒ zero
-   * profile rows. The 8 booleans (true = field empty = row shows) are derived
-   * by the caller via `deriveBrandProfileTodoInput`; `editRoute` is the
-   * precomputed `/brand/{id}/edit` route (per this file's contract, route
-   * strings are precomputed by the caller). The hook only supplies this once
-   * the brand record has RESOLVED, so profile rows can never flash while the
-   * brand loads.
+   * #3355 P5 — the canonical brand readiness answer (replaces the ORCH-1256
+   * client-derived `profile` booleans). OPTIONAL so callers/tests that never
+   * pass it compile + behave unchanged: absent ⇒ zero profile rows and the
+   * money band reads `stripeActive` / `payoutReady` as given. Present ⇒ the
+   * profile band is built from its items and the money band waits for it.
    */
-  profile?: BusinessTodoProfileInput & { editRoute: string };
+  brandReadiness?: BusinessTodoBrandReadiness;
   /**
    * #2829 W9a — the website plan row ("Build your website" / "Finish your
    * website · n of 8 done · next: …" / "Your website · Ask an admin to start
@@ -471,27 +550,59 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     });
   }
 
-  // 4 — Stripe. ORCH-1040: show whenever the brand has NOT activated Stripe — any
-  // brand without active Stripe can't take payments yet, so surface it regardless
+  // 4 — Money. ORCH-1040: show whenever the brand cannot take payments — any
+  // brand that can't sell can't take payments yet, so surface it regardless
   // of whether a paid offering exists. Sublabel sharpens when a paid draft waits.
-  if (!input.stripeActive) {
-    todos.push({
-      id: "connect_stripe",
-      label: "Connect bank to take payments",
-      sublabel: input.hasDraftPaidOffering
-        ? "You have a paid offering ready"
-        : "Set up payouts so you can sell",
-      action: { kind: "route", route: input.stripeRoute },
-    });
+  // #3355 P5 — when the caller passes canonical readiness, `stripeActive` /
+  // `payoutReady` are the server's can_sell / can_be_paid_out; the band waits
+  // for that answer, is hidden for scanners, and names who can fix it.
+  const readiness = input.brandReadiness;
+  const moneyKnown = readiness === undefined || readiness.status === "ready";
+  const moneyHidden = readiness?.status === "ready" && readiness.hideBrandRows;
+  const moneyItem = (key: string): BusinessTodoReadinessItem | undefined =>
+    readiness?.status === "ready"
+      ? readiness.items.find((item) => item.key === key)
+      : undefined;
+  const moneyRow = (todo: BusinessTodo, key: string): BusinessTodo => {
+    const item = moneyItem(key);
+    if (item === undefined) return todo;
+    return {
+      ...todo,
+      sublabel: readinessSublabel(item, todo.sublabel ?? ""),
+      action: item.canCallerFix ? todo.action : { kind: "info" },
+      readinessKey: item.key,
+    };
+  };
+  if (!moneyKnown || moneyHidden) {
+    // No money row until the canonical answer exists; none for scanners.
+  } else if (!input.stripeActive) {
+    todos.push(
+      moneyRow(
+        {
+          id: "connect_stripe",
+          label: "Connect bank to take payments",
+          sublabel: input.hasDraftPaidOffering
+            ? "You have a paid offering ready"
+            : "Set up payouts so you can sell",
+          action: { kind: "route", route: input.stripeRoute },
+        },
+        HOME_MONEY_READINESS_KEYS.canSell,
+      ),
+    );
   } else if (input.payoutAttention?.kind === "add_bank") {
-    todos.push({
-      id: "add_bank_to_get_paid",
-      label: input.payoutAttention.amountLabel
-        ? `Add a bank to get ${input.payoutAttention.amountLabel}`
-        : "Add a bank to get paid",
-      sublabel: "Your sales are waiting. Takes about a minute.",
-      action: { kind: "route", route: input.stripeRoute },
-    });
+    todos.push(
+      moneyRow(
+        {
+          id: "add_bank_to_get_paid",
+          label: input.payoutAttention.amountLabel
+            ? `Add a bank to get ${input.payoutAttention.amountLabel}`
+            : "Add a bank to get paid",
+          sublabel: "Your sales are waiting. Takes about a minute.",
+          action: { kind: "route", route: input.stripeRoute },
+        },
+        HOME_MONEY_READINESS_KEYS.canBePaidOut,
+      ),
+    );
   } else if (input.payoutAttention?.kind === "fix_bank") {
     todos.push({
       id: "fix_bank_details",
@@ -510,12 +621,17 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     // #3645 PR10 — charge-ready but not payout-ready: the brand can keep
     // selling, its money waits until a bank is added. Same rung as
     // `homeNextAction` (rung 1b).
-    todos.push({
-      id: "add_bank_to_get_paid",
-      label: "Add a bank to get paid",
-      sublabel: "You can keep selling. Your money waits until you add a bank.",
-      action: { kind: "route", route: input.stripeRoute },
-    });
+    todos.push(
+      moneyRow(
+        {
+          id: "add_bank_to_get_paid",
+          label: "Add a bank to get paid",
+          sublabel: "You can keep selling. Your money waits until you add a bank.",
+          action: { kind: "route", route: input.stripeRoute },
+        },
+        HOME_MONEY_READINESS_KEYS.canBePaidOut,
+      ),
+    );
   }
 
   // 5 — Finish a draft (has a draft, nothing live yet).
@@ -562,83 +678,34 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     }
   }
 
-  // 6 — Brand profile (ORCH-1256). TAIL band, after finish_draft: profile
-  // fields are presentation polish that block NO transaction (a brand can be
-  // discovered, list, sell and get paid with an empty tagline), so they rank
-  // BELOW every revenue/liveness gate above — and never bury the single
-  // action that makes the brand live. Emitted only when the caller supplies
-  // `profile` (absent ⇒ zero rows). Fixed internal order (operator-confirmed
-  // enumeration): cover → photo → tagline → description → address → email →
-  // phone → one AGGREGATED socials row (shows only when ALL 8 networks are
-  // empty). Each row deep-links its brand-edit section via ?section=.
-  if (input.profile !== undefined) {
-    const profile = input.profile;
-    const profileRoute = (section: string): BusinessTodoAction => ({
-      kind: "route",
-      route: `${profile.editRoute}?section=${section}`,
+  // 6 — Brand profile (ORCH-1256, rebuilt #3355 P5). TAIL band, after
+  // finish_draft: profile fields are presentation polish that block NO
+  // transaction, so they rank BELOW every revenue/liveness gate above. The
+  // rows are the canonical readiness items (brand_readiness) through ONE map
+  // (HOME_READINESS_ROWS) — the same keys and states Ari reads. A row shows
+  // while its item is not done. Home is the reminder list (Seth, 2026-11-01):
+  // an Ari "not now" never hides, dims or reorders a row here.
+  // Each row deep-links its brand-edit section via ?section=.
+  if (readiness?.status === "error") {
+    todos.push({
+      id: "brand_readiness_error",
+      label: "Couldn't check your brand setup",
+      sublabel: "Your to-do list may be missing items",
+      action: { kind: "info" },
+      retryReadinessBrandId: readiness.brandId,
     });
-    if (profile.needsCover) {
+  } else if (readiness?.status === "ready" && !readiness.hideBrandRows) {
+    for (const row of HOME_READINESS_ROWS) {
+      const item = readiness.items.find((candidate) => candidate.key === row.key);
+      if (item === undefined || isReadinessDone(item.state)) continue;
       todos.push({
-        id: "profile_add_cover",
-        label: "Add a cover",
-        sublabel: "Make your public page pop",
-        action: profileRoute("cover"),
-      });
-    }
-    if (profile.needsPhoto) {
-      todos.push({
-        id: "profile_add_photo",
-        label: "Add a profile photo",
-        sublabel: "Put a face on your brand",
-        action: profileRoute("photo"),
-      });
-    }
-    if (profile.needsTagline) {
-      todos.push({
-        id: "profile_add_tagline",
-        label: "Add a tagline",
-        sublabel: "One line that says what you do",
-        action: profileRoute("about"),
-      });
-    }
-    if (profile.needsDescription) {
-      todos.push({
-        id: "profile_add_description",
-        label: "Describe your brand",
-        sublabel: "Tell people what you're about",
-        action: profileRoute("about"),
-      });
-    }
-    if (profile.needsAddress) {
-      todos.push({
-        id: "profile_add_address",
-        label: "Add your address",
-        sublabel: "Help people find you",
-        action: profileRoute("address"),
-      });
-    }
-    if (profile.needsEmail) {
-      todos.push({
-        id: "profile_add_email",
-        label: "Add a contact email",
-        sublabel: "So customers can reach you",
-        action: profileRoute("contact"),
-      });
-    }
-    if (profile.needsPhone) {
-      todos.push({
-        id: "profile_add_phone",
-        label: "Add a phone number",
-        sublabel: "Another way to reach you",
-        action: profileRoute("contact"),
-      });
-    }
-    if (profile.needsSocials) {
-      todos.push({
-        id: "profile_add_socials",
-        label: "Add your social links",
-        sublabel: "Instagram, TikTok, your website and more",
-        action: profileRoute("social"),
+        id: row.id,
+        label: row.label,
+        sublabel: readinessSublabel(item, row.sublabel),
+        action: item.canCallerFix
+          ? { kind: "route", route: `${readiness.editRoute}?section=${row.section}` }
+          : { kind: "info" },
+        readinessKey: item.key,
       });
     }
   }

@@ -306,13 +306,16 @@ describe("issue #3380 retest 2 — the editor always passes the real country sou
   });
 
   test("every write of the phone edit carries a source; none can leave it out", () => {
+    // Typing, the country list, and (#3355) an address pick that moves an
+    // EMPTY box's country — that one takes its source from the rule.
     const writes = EDITOR_CODE.match(/setPhoneEdit\(\{[\s\S]*?\}\);/g) ?? [];
-    expect(writes).toHaveLength(2);
+    expect(writes).toHaveLength(3);
     for (const write of writes) expect(write).toMatch(/countrySource/);
+    expect(writes.some((w) => /countrySource: follow\.countrySource,/.test(w))).toBe(true);
     // The only other write clears it after a successful save.
     const all = EDITOR_CODE.match(/setPhoneEdit\(/g) ?? [];
     const nulls = EDITOR_CODE.match(/setPhoneEdit\(null\)/g) ?? [];
-    expect(all.length - nulls.length).toBe(2);
+    expect(all.length - nulls.length).toBe(3);
     // Never a functional update that could spread an old shape.
     expect(EDITOR_CODE).not.toMatch(/setPhoneEdit\(\s*\(/);
   });

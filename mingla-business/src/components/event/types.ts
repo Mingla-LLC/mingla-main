@@ -202,10 +202,15 @@ export interface StepBodyProps {
   /**
    * Issue #3291 — the brand's saved location, when it has one. The Where step
    * uses it as the FIRST source of a rank-only proximity hint for address
-   * suggestions (brand → draft → time zone). Never saved, never a filter.
-   * Optional: absent/null simply skips to the next source.
+   * suggestions (brand → draft → brand country → time zone). Never saved,
+   * never a filter. Optional: absent/null simply skips to the next source.
+   * #3355 — the brand's `countryCode` ranks results when it has no point.
    */
-  brandLocation?: { lat?: number | null; lng?: number | null } | null;
+  brandLocation?: {
+    lat?: number | null;
+    lng?: number | null;
+    countryCode?: string | null;
+  } | null;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
   // now relies on the keyboard-controller library's KeyboardAvoidingView
   // wrap for search-input visibility above the keyboard.

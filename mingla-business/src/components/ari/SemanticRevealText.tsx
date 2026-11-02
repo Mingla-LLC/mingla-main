@@ -193,6 +193,19 @@ function webPrefersReducedMotion(): boolean {
     : false;
 }
 
+/**
+ * #2830 P4 — a page the browser isn't painting (a background tab, a hidden
+ * pane) runs no animation frames, so a fade that starts at 0.22 opacity
+ * stays there: the newest Ari reply looked greyed out, as if disabled.
+ */
+function webDocumentHidden(): boolean {
+  const doc = (globalThis as { document?: { hidden?: unknown } }).document;
+  return Platform.OS === "web" && doc?.hidden === true;
+}
+
+/** Past this, the text is shown settled whatever the animation did. */
+export const SEMANTIC_REVEAL_SETTLE_GRACE_MS = 400;
+
 export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
   text,
   textStyle,
@@ -204,7 +217,20 @@ export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
   const chunks = useMemo(() => splitSemanticChunks(text), [text]);
   const ChunkComponent = Platform.OS === "web" ? WebRevealChunk : RevealChunk;
   const [skipped, setSkipped] = useState(false);
+  // #2830 P4 — settled text is plain, full-opacity text. A timer (not an
+  // animation frame) guarantees it, so a reveal that cannot run never
+  // leaves a reply looking disabled.
+  const [settled, setSettled] = useState(() => webDocumentHidden());
   const captured = useRef(false);
+
+  useEffect(() => {
+    if (settled) return undefined;
+    const timer = setTimeout(
+      () => setSettled(true),
+      semanticRevealDuration(chunks.length) + SEMANTIC_REVEAL_SETTLE_GRACE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [chunks.length, settled]);
 
   useEffect(() => {
     setSkipped(false);
@@ -243,7 +269,19 @@ export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
       accessibilityRole="text"
       accessibilityLabel={`Ari said: ${toAccessibleText(text)}`}
     >
-      {chunks.map((chunk, index) => (
+      {settled
+        ? chunks.map((chunk, index) => (
+          <View
+            key={`${index}-${chunk.text.slice(0, 16)}`}
+            style={index > 0 ? styles.gap : null}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            testID="ari-reveal-settled"
+          >
+            <ChunkBody chunk={chunk} textStyle={textStyle} />
+          </View>
+        ))
+        : chunks.map((chunk, index) => (
         <ChunkComponent
           key={`${index}-${chunk.text.slice(0, 16)}`}
           chunk={chunk}

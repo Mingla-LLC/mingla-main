@@ -13,6 +13,8 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
+import { brandSiteKeys } from "../../sites/brandSiteKeys";
+import { ariReturnPath, withReturnTo } from "../../utils/brandEditReturn";
 
 type Raw = Record<string, unknown>;
 type SetupPart = { key: string; label: string; done: boolean };
@@ -33,6 +35,17 @@ const PART_LABELS: Readonly<Record<string, string>> = {
   first_offering: "Add your first trip or event",
   publish: "Check and publish",
 };
+
+/**
+ * #3355 bug 19 — a key with no label reads as words, never snake_case or a
+ * dotted key ("first_offering" → "First offering").
+ */
+export function plainKey(key: string): string {
+  const words = key.replace(/[._]+/g, " ").replace(/\s+/g, " ").trim();
+  return words.length > 0
+    ? words.charAt(0).toUpperCase() + words.slice(1)
+    : "Website detail";
+}
 
 const obj = (value: unknown): Raw =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -60,7 +73,7 @@ function normalizePlan(value: unknown): {
     .map(obj)
     .map((part) => {
       const key = String(part.key ?? "");
-      return { key, label: PART_LABELS[key] ?? key, done: part.done === true };
+      return { key, label: PART_LABELS[key] ?? plainKey(key), done: part.done === true };
     })
     .filter((part) => part.key.length > 0);
   const gaps = (Array.isArray(completeness.fields) ? completeness.fields : [])
@@ -75,7 +88,10 @@ function normalizePlan(value: unknown): {
     })
     .map((field) => ({
       key: String(field.key ?? ""),
-      label: String(field.label ?? field.key ?? "Brand detail"),
+      label:
+        typeof field.label === "string" && field.label.length > 0
+          ? field.label
+          : plainKey(String(field.key ?? "Brand detail")),
       state: String(field.state ?? "missing").replaceAll("_", " "),
       humanActionRequired: field.human_action_required === true,
     }));
@@ -123,7 +139,7 @@ export function AriWebsiteSetupPane({
   const router = useRouter();
   const [compactExpanded, setCompactExpanded] = React.useState(false);
   const setup = useQuery({
-    queryKey: ["brand-site-plan", brandId, "ari-setup"],
+    queryKey: brandSiteKeys.ariSetup(brandId),
     queryFn: () => getWebsiteSetup(brandId),
     enabled: brandId.length > 0,
     staleTime: 0,
@@ -134,14 +150,14 @@ export function AriWebsiteSetupPane({
   const done = plan?.doneCount ?? 0;
   const gaps = plan?.gaps ?? [];
   const activeLabel = activePart
-    ? (PART_LABELS[activePart] ?? activePart)
+    ? (PART_LABELS[activePart] ?? plainKey(activePart))
     : null;
   const currentLabel =
     activeLabel ??
     plan?.parts.find((part) => !part.done)?.label ??
     (plan?.contextComplete
       ? "Ready for the first draft"
-      : "Reviewing brand context");
+      : "Reviewing your brand details");
 
   return (
     <View
@@ -203,8 +219,8 @@ export function AriWebsiteSetupPane({
         {!compact || compactExpanded ? (
           <Text style={styles.body}>
             {activeLabel ? `Working on ${activeLabel}. ` : ""}
-            Ari reads this same live plan, finds every field-level gap, and
-            works through it before any draft is created.
+            Ari reads this same plan, finds every missing detail, and works
+            through them with you before any draft is created.
           </Text>
         ) : null}
 
@@ -241,7 +257,7 @@ export function AriWebsiteSetupPane({
 
         {(!compact || compactExpanded) && plan?.contextComplete ? (
           <View style={styles.completeBox}>
-            <Text style={styles.completeTitle}>Brand context complete</Text>
+            <Text style={styles.completeTitle}>Brand details complete</Text>
             <Text style={styles.completeBody}>
               Ari will re-check it before building the first draft.
             </Text>
@@ -249,7 +265,7 @@ export function AriWebsiteSetupPane({
         ) : (!compact || compactExpanded) && plan && gaps.length > 0 ? (
           <View style={styles.gapBox}>
             <Text style={styles.gapTitle}>
-              {gaps.length} context {gaps.length === 1 ? "gap" : "gaps"}
+              {gaps.length} {gaps.length === 1 ? "detail" : "details"} to add
             </Text>
             {!compact || compactExpanded
               ? gaps.slice(0, compact ? 4 : 6).map((gap) => (
@@ -272,7 +288,7 @@ export function AriWebsiteSetupPane({
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Ask Ari to fix all brand context gaps"
+            accessibilityLabel="Ask Ari to fill in every missing brand detail"
             onPress={onFixAll}
             disabled={fixing || plan?.contextComplete === true}
             style={({ pressed }) => [
@@ -302,7 +318,18 @@ export function AriWebsiteSetupPane({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push(`/brand/${brandId}/edit` as never)}
+            onPress={() =>
+              router.push(
+                withReturnTo(
+                  `/brand/${brandId}/edit`,
+                  ariReturnPath({
+                    brandId,
+                    sitesIntent: "setup",
+                    setupPart: activePart,
+                  }),
+                ) as never,
+              )
+            }
             style={styles.secondaryAction}
             testID="ari-setup-self"
           >
