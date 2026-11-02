@@ -59,10 +59,12 @@ import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import type { MultiDateEntry } from "../../store/draftEventStore";
 import {
+  busiestDaySold,
   capacityHelper,
   capacityLabel,
   dayScopeHelper,
   formatDraftDayScopeLabel,
+  liveDayIds,
   priceHelper,
 } from "../../utils/ticketDayScope";
 import { ValidDaysSheet } from "./ValidDaysSheet";
@@ -718,11 +720,15 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       !Number.isFinite(parsedCapacityValue) ||
       parsedCapacityValue <= 0);
   // issue #3313 — the floor is the busiest night on a recurring event.
-  const minimumCapacity = capacityFloor ?? soldCount;
   // issue #3281 — on a multi-date event the list decides the capacity unit.
   const dayScoped = dayScopeEntries !== null;
   const dayLimited = dayScoped && validDayIds !== null;
-  const dayScopeOrphaned = dayLimited && validDayIds.length === 0;
+  const dayScopeOrphaned =
+    dayLimited && liveDayIds(validDayIds, dayScopeEntries ?? []).length === 0;
+  const minimumCapacity =
+    dayLimited && soldByDay !== null
+      ? busiestDaySold(soldByDay)
+      : (capacityFloor ?? soldCount);
   const capacityBelowSold =
     isPriceLocked &&
     !isUnlimited &&
@@ -768,7 +774,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     block(
       capacityPerNight
         ? `Capacity per night is below the ${minimumCapacity} ticket${minimumCapacity === 1 ? "" : "s"} already sold for the busiest night.`
-        : `Capacity is below the ${soldCount} ticket${soldCount === 1 ? "" : "s"} already sold.`,
+        : `Capacity is below the ${minimumCapacity} ticket${minimumCapacity === 1 ? "" : "s"} already sold.`,
       touched.capacity,
     );
   }
@@ -1309,13 +1315,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 <Text style={styles.helperError}>
                   {capacityPerNight
                     ? `Cannot go below ${minimumCapacity} tickets sold for the busiest night. Increase capacity or refund existing buyers first.`
-                    : `Cannot go below ${soldCount} tickets sold. Increase capacity or refund existing buyers first.`}
+                    : `Cannot go below ${minimumCapacity} tickets sold. Increase capacity or refund existing buyers first.`}
                 </Text>
               ) : isPriceLocked ? (
                 <Text style={styles.helperHint}>
                   {capacityPerNight
                     ? `Minimum capacity per night = ${minimumCapacity} (busiest night so far).`
-                    : `Minimum capacity = ${soldCount} (already sold).`}
+                    : `Minimum capacity = ${minimumCapacity} (already sold).`}
                 </Text>
               ) : capacityPerNight ? (
                 <Text style={styles.helperHint}>

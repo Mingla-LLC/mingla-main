@@ -21,7 +21,11 @@
  * Per Cycle 4 spec §3.5.
  */
 
-import { deleteDateImpact, ticketsWithoutDay } from "../../utils/ticketDayScope";
+import {
+  deleteDateImpact,
+  ticketsOnCurrentDays,
+  ticketsWithoutDay,
+} from "../../utils/ticketDayScope";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Platform,
@@ -618,6 +622,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           };
         }
         patch.multiDates = null;
+      }
+      // issue #3281 — new dates get new ids, so a list keeps only what survives.
+      if (to === "multi_date") {
+        patch.tickets = ticketsOnCurrentDays(draft.tickets, patch.multiDates ?? []);
       }
       updateDraft(patch);
     },

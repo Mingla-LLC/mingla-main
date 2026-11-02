@@ -92,6 +92,28 @@ export const coverageCaution = (
     : `No ticket covers ${label}. Guests who pick those days won't find anything to buy.`;
 };
 
+/** The listed ids that are still dates of this event. */
+export const liveDayIds = (
+  scopeIds: readonly string[],
+  entries: Entries,
+): string[] => scopeIds.filter((id) => entries.some((e) => e.id === id));
+
+/** After a date mode switch mints new ids, a list keeps only ids that survive. */
+export const ticketsOnCurrentDays = (
+  tickets: readonly TicketStub[],
+  entries: Entries,
+): TicketStub[] =>
+  tickets.map((ticket) =>
+    ticket.validDayIds === null || ticket.validDayIds === undefined
+      ? ticket
+      : { ...ticket, validDayIds: liveDayIds(ticket.validDayIds, entries) },
+  );
+
+/** Passes sold on the ticket's busiest date. */
+export const busiestDaySold = (
+  soldByDay: Readonly<Record<string, number>>,
+): number => Math.max(0, ...Object.values(soldByDay));
+
 /** A deleted date leaves every list. An emptied list stays `[]`, never All dates. */
 export const ticketsWithoutDay = (
   tickets: readonly TicketStub[],
@@ -204,6 +226,10 @@ export const tapValidDay = (
   soldByDay: Readonly<Record<string, number>> | null,
 ): DayTap => {
   const soldOn = (id: string): number => soldByDay?.[id] ?? 0;
+  if (selected === null && soldByDay === null) {
+    // Leaving All dates needs the sold days, or it could drop one.
+    return { next: null, alert: "Still checking sales. Try again in a moment." };
+  }
   if (selected === null) {
     const next = [
       ...new Set([

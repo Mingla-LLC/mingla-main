@@ -133,7 +133,15 @@ export const validateLiveEventFieldUpdate = (
 
       // issue #3313 — on a recurring event capacity is PER NIGHT, so the
       // floor is the busiest night (the server's floor too), not the run total.
-      const floor = context.capacityFloorByTier?.[newT.id] ?? sold;
+      // issue #3281 — a listed ticket's capacity is per date too. While date
+      // counts are unknown the server decides.
+      const dayCounts = context.soldCountByTierDay?.[newT.id];
+      const floor =
+        newT.validDayIds !== null && newT.validDayIds !== undefined
+          ? dayCounts !== undefined
+            ? Math.max(0, ...Object.values(dayCounts))
+            : 0
+          : (context.capacityFloorByTier?.[newT.id] ?? sold);
       if (newT.capacity !== null && newT.capacity < floor) {
         return {
           ok: false,

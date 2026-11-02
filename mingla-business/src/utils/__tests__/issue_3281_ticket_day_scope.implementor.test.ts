@@ -2,6 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 
 import type { MultiDateEntry, TicketStub } from "../../store/draftEventStore";
 import {
+  busiestDaySold,
   coverageCaution,
   dayScopeHelper,
   deleteDateImpact,
@@ -10,6 +11,7 @@ import {
   priceHelper,
   soldByTicketAndDay,
   tapValidDay,
+  ticketsOnCurrentDays,
   ticketsWithoutDay,
 } from "../ticketDayScope";
 
@@ -86,6 +88,12 @@ describe("issue #3281 picker rules", () => {
     expect(tapValidDay(days, ["fri"], "sat", null).next).toEqual(["fri", "sat"]);
   });
 
+  test("All dates stays while sales are unknown", () => {
+    const tap = tapValidDay(days, null, "fri", null);
+    expect(tap.next).toBeNull();
+    expect(tap.alert).toContain("Still checking sales");
+  });
+
   test("removing the last day returns to All dates, never an empty list", () => {
     expect(tapValidDay(days, ["fri"], "fri", {}).next).toBeNull();
   });
@@ -108,6 +116,21 @@ describe("issue #3281 date deletion", () => {
       "Saturday GA is only valid on this date, so it will have no days left. You'll need to fix it before publishing. Weekend will keep its other days.",
     );
     expect(deleteDateImpact(tickets, "mon")).toBeNull();
+  });
+});
+
+describe("issue #3281 date mode switches", () => {
+  test("new date ids leave a list empty, never pointing at old dates", () => {
+    const next = ticketsOnCurrentDays(
+      [ticket("old", ["gone"]), ticket("kept", ["gone", "fri"]), ticket("all", null)],
+      days,
+    );
+    expect(next.map((t) => t.validDayIds)).toEqual([[], ["fri"], null]);
+  });
+
+  test("the floor is the busiest date", () => {
+    expect(busiestDaySold({ fri: 8, sat: 3 })).toBe(8);
+    expect(busiestDaySold({})).toBe(0);
   });
 });
 

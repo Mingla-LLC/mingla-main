@@ -300,15 +300,6 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
     lowestPaidMajor === null ? 0 : Math.round(lowestPaidMajor * 100);
   // Post-sale lock (Surface 3): the server stamps pricing_locked_at on the
   // first order; any sold tier is the UI proxy.
-  // issue #3281 — a listed ticket's floor is its busiest date.
-  const editingDaySold =
-    editingTicket !== null && isDayLimited(editingTicket)
-      ? editMode?.soldCountByTierDay?.[editingTicket.id]
-      : undefined;
-  const editingDayFloor =
-    editingDaySold !== undefined
-      ? Math.max(0, ...Object.values(editingDaySold))
-      : undefined;
   const pricingLocked = Object.values(soldCountByTier).some(
     (n) => (n ?? 0) > 0,
   );
@@ -500,7 +491,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           capacityPerNight={isPerNightCapacity(draft.whenMode)}
           capacityFloor={
             editingTicket !== null
-              ? editingDayFloor ?? editMode?.capacityFloorByTier?.[editingTicket.id]
+              ? editMode?.capacityFloorByTier?.[editingTicket.id]
               : undefined
           }
           dayScopeEntries={dayEntries}

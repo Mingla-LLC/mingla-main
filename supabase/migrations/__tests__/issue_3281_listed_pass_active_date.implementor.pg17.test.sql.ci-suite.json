@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_listed_pass_active_date.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3281-listed-pass-active-date-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

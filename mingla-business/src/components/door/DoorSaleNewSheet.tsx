@@ -266,11 +266,15 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const doorDateKeys = useEventDateKeys(event.id, listedLines.length > 0);
   const doorDates = useMemo(
     () =>
-      Object.entries(doorDateKeys.data ?? {}).filter(
-        ([, key]) =>
-          key !== null &&
-          listedLines.every((t) => t.validDayIds?.includes(key)),
-      ) as [string, string][],
+      (doorDateKeys.data ?? [])
+        .filter(
+          (row) =>
+            row.occurrence_key !== null &&
+            row.cancelled_at === null &&
+            new Date(row.end_at).getTime() > Date.now() &&
+            listedLines.every((t) => t.validDayIds?.includes(row.occurrence_key!)),
+        )
+        .map((row): [string, string] => [row.id, row.occurrence_key!]),
     [doorDateKeys.data, listedLines],
   );
   const doorDateNeeded = listedLines.length > 0;

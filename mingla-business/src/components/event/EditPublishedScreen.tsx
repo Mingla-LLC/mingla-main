@@ -613,7 +613,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // still backstops every structural change).
   const serverOrdersRead = useEventReconciliation(liveEvent.serverEventId);
   const serverOrders = serverOrdersRead.data ?? [];
-  const soldCountCtx = useMemo(
+  const baseSoldCountCtx = useMemo(
     () =>
       buildSoldCountContextFromOrders(
         serverOrders,
@@ -631,9 +631,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   const soldCountByTierDay = useMemo(
     () =>
       serverOrdersRead.data != null && dateKeysRead.data !== undefined
-        ? soldByTicketAndDay(serverOrdersRead.data, dateKeysRead.data)
+        ? soldByTicketAndDay(
+            serverOrdersRead.data,
+            Object.fromEntries(
+              dateKeysRead.data.map((row) => [row.id, row.occurrence_key]),
+            ),
+          )
         : null,
     [serverOrdersRead.data, dateKeysRead.data],
+  );
+
+  // Final validation and the store read the same per-date floor as the sheet.
+  const soldCountCtx = useMemo(
+    () => ({ ...baseSoldCountCtx, soldCountByTierDay }),
+    [baseSoldCountCtx, soldCountByTierDay],
   );
 
   // Cycle 13a J-T6 G2: ticket price editability gated on EDIT_TICKET_PRICE

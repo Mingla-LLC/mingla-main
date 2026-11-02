@@ -327,7 +327,8 @@ export function phase3dContractDigest(manifest) {
 // the deliberately pre-#1931 replay that has no Creator/gig schema.
 // #3281: register the per-date maximum migration the same way.
 // #3281: register the day-limited tickets migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e65bb82acba7799cb7753c9d9d61eaf32e14f769825a1f7bc47ff63611f20619";
+// #3281: register the listed-pass active date migration the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "cdb442c738f80abbdc2305f4d6283e3184c1b163ffe1a221622894d040e65f44";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

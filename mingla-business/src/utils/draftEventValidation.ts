@@ -574,11 +574,12 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
         message: `Set a capacity for ${label}, or mark it unlimited.`,
       });
     }
-    // issue #3281 — deleting a ticket's last date leaves `[]`, never All dates.
+    // issue #3281 — a list with no current date must be chosen again, never
+    // treated as All dates.
     if (
       d.whenMode === "multi_date" &&
       Array.isArray(t.validDayIds) &&
-      t.validDayIds.length === 0
+      !t.validDayIds.some((id) => d.multiDates?.some((e) => e.id === id))
     ) {
       errs.push({
         fieldKey: `tickets[${i}].validDays`,

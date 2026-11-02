@@ -392,7 +392,9 @@
         "mingla-business/src/services/scanTicketService.ts",
         "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql",
         "mingla-business/src/components/door/DoorSaleNewSheet.tsx",
-        "mingla-business/src/services/doorSalesService.ts"
+        "mingla-business/src/services/doorSalesService.ts",
+        "supabase/migrations/20280229003281_issue_3281_listed_pass_active_date.sql",
+        "mingla-business/src/store/orderStoreHelpers.ts"
       ]
     },
     {
