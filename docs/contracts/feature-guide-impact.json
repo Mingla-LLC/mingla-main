@@ -363,7 +363,14 @@
         "supabase/functions/agent-confirm-action/index.ts",
         "supabase/functions/ari-message-feedback/function-policy.json",
         "supabase/functions/ari-message-feedback/index.ts",
-        "supabase/migrations/20280209003355_issue_3355_ari_10x_improvement.sql"
+        "supabase/migrations/20280209003355_issue_3355_ari_10x_improvement.sql",
+        "mingla-business/src/screens/ari/ariChatErrorCopy.ts",
+        "mingla-business/src/screens/ari/ariProposalExpiry.ts",
+        "mingla-business/src/services/agentReliability.ts",
+        "supabase/functions/_shared/agentReliability.ts",
+        "supabase/functions/agent-confirm-action/proposalExpiry.ts",
+        "packages/phone-input/countries.ts",
+        "packages/phone-input/countryDirectory.ts"
       ]
     },
     {
@@ -380,7 +387,10 @@
         "supabase/functions/_shared/agentWebsiteSetup.ts",
         "supabase/functions/brand-site-control/sitePlan.ts",
         "supabase/migrations/20280216002830_issue_2830_ari_brand_completeness.sql",
-        "supabase/migrations/20280304002830_issue_2830_brand_completeness_job_order.sql"
+        "supabase/migrations/20280304002830_issue_2830_brand_completeness_job_order.sql",
+        "mingla-business/src/components/ari/websiteSetupProposalCopy.ts",
+        "mingla-business/src/screens/ari/websiteSetupAutoAudit.ts",
+        "supabase/migrations/20280303002830_issue_2830_brand_context_receipt_binding.sql"
       ]
     },
     {
