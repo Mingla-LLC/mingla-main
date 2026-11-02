@@ -219,13 +219,18 @@ describe("#4238 Host ad copy modules return plain words", () => {
         ...PLATFORMS.map((p) => hostAdReachLine(p, { state: "available", lower_bound: 1000, upper_bound: 2000 })),
         ...PLATFORMS.map((p) => hostAdReachLine(p, null)),
         ...PLATFORMS.flatMap((p) =>
-          ["ready", "below_minimum", "too_small", "pending", "terms_required", null, "rejected"].map((state) =>
+          ["ready", "below_minimum", "too_small", "pending", "terms_required", "ineligible", "unsupported", null, "rejected"].map((state) =>
             hostAdAudienceStatusLine(p, state, 120),
           ),
         ),
         ...Object.values(HOST_AD_AUDIENCE_COPY),
         hostAdAudienceName({ name: "", kind: "lookalike", lookalikeCountry: "NG" }),
-        hostAdAudienceSize({ approxSize: 250, platforms: [] }),
+        ...[
+          hostAdAudienceSize({ approxSize: 250, platforms: [] }),
+          hostAdAudienceSize({ approxSize: 1, platforms: [] }),
+          hostAdAudienceSize({ approxSize: 0, platforms: [] }),
+          hostAdAudienceSize({ kind: "lookalike", approxSize: null, platforms: [{ platform: "meta", state: "ready" }] }),
+        ].filter((line): line is string => line !== null),
       ]),
     ).toEqual([]);
     expect(hostAdReachLine("tiktok", null)).toBe("TikTok didn't give us a reach number yet. Your ad can still run.");
@@ -237,6 +242,8 @@ describe("#4238 Host ad copy modules return plain words", () => {
       "draft_conflict", "plan_version_hash_mismatch", "budget_below_minimum",
       "pixel_no_signal", "tiktok_not_connected", "insufficient_balance",
       "destination_not_public", "creative_not_ready", "boom",
+      "audience_country_mismatch", "audience_binding_mismatch", "audience_not_owned",
+      "audience_selection_invalid",
     ];
     expect(notPlain(codes.map((code) => hostAdErrorMessage({ code, detail: code })))).toEqual([]);
     expect(hostAdErrorMessage({ code: "network", detail: "fetch failed" })).toBe(
