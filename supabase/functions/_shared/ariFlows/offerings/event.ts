@@ -1562,7 +1562,7 @@ const ticketDetailsStep: StepDefinition = {
         ctx,
         `You typed ${parsed.typed_price}, but ${ctx.brandName}'s prices are in ${
           currencyWords(currency)
-        }. What's the ticket price in ${currency}? Nothing was saved.`,
+        }. Nothing was saved.`,
       );
     }
     const priceMinor = parsed.price_major === null
@@ -1836,12 +1836,25 @@ async function publishBlockers(
   const readiness = await ctx.deps.readiness(action);
   const blocking = readiness.items.filter((item) =>
     item.blocks_action && item.severity !== "done"
-  ).map((item) =>
-    item.key === "money.can_sell"
-      ? "payment setup isn't finished"
-      : `${item.label.charAt(0).toLowerCase()}${item.label.slice(1)}`
-  );
+  ).map(publishBlockerClause);
   return [...gaps.map((gap) => `it needs ${gap}`), ...blocking];
+}
+
+// #3355 — each blocker reads as its own clause ("…isn't finished and you
+// haven't accepted the Organiser Terms"), never a bare label tacked on.
+const BLOCKER_CLAUSES: Readonly<Record<string, string>> = {
+  "money.can_sell": "payment setup isn't finished",
+  "money.terms_member": "you haven't accepted the Organiser Terms yet",
+  "money.currency": "the brand has no currency yet",
+  "money.market": "the brand hasn't chosen its payout country",
+  "money.currency_reconciliation": "a currency change needs a decision",
+  "money.tax_registration": "tax registration isn't set up",
+};
+
+export function publishBlockerClause(
+  item: { key: string; label: string },
+): string {
+  return BLOCKER_CLAUSES[item.key] ?? `${item.label} still needs doing`;
 }
 
 const publishStep: StepDefinition = {
@@ -1925,7 +1938,9 @@ const publishStep: StepDefinition = {
     if (blockers.length > 0) {
       return {
         record: { state: "pending" },
-        ack: `Can't publish yet: ${listWords(blockers)}. Nothing was published.`,
+        // The re-presented card names the blockers; the ack only says what
+        // happened, so the reason is never printed twice.
+        ack: "Nothing was published.",
       };
     }
     const visibility = answer(ctx.run, "visibility") === "unlisted"

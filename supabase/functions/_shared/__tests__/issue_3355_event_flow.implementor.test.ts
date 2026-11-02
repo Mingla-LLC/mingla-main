@@ -658,7 +658,8 @@ Deno.test("P7 Script B: a paid ticket is saved on the draft with a heads-up; pub
   const refused = await answer(world, store, (r) => choice(r, "publish"));
   assertEquals(refused.kind, "artefact");
   if (refused.kind !== "artefact") return;
-  assertMatch(refused.text, /Can't publish yet: payment setup isn't finished\. Nothing was published\./);
+  assertMatch(refused.text, /^Nothing was published\.\s+Can't publish yet: payment setup isn't finished\. Your draft is saved/);
+  assertEquals(refused.text.split("Can't publish yet").length, 2, "the reason is said once");
   assertEquals((await cur(store)).status, "awaiting_owner");
 });
 
@@ -1318,7 +1319,7 @@ Deno.test("P7 fix: a typed currency that disagrees with the brand's is asked abo
   assertEquals(asked.artefact.step_key, "event_ticket_details");
   assertMatch(
     asked.artefact.text,
-    /You typed \$15, but Lantern Supper Club's prices are in GBP \(£\)\. What's the ticket price in GBP\? Nothing was saved\./,
+    /You typed \$15, but Lantern Supper Club's prices are in GBP \(£\)\. Nothing was saved\. What's the ticket price/,
   );
   assertEquals((await cur(store)).answers.ticket, undefined);
   // The same price in the brand's currency (or with no symbol word) goes on.
@@ -1423,4 +1424,24 @@ Deno.test("P7: an online event's create card shows the joining link the owner ga
     rows.find((row) => row.label === "Joining link")?.value,
     "https://meet.example.test/harbour-social",
   );
+});
+
+Deno.test("P7: publish blockers read as whole clauses and the refusal never repeats them", async () => {
+  const { publishBlockerClause } = await import("../ariFlows/offerings/event.ts");
+  assertEquals(
+    publishBlockerClause({ key: "money.terms_member", label: "Your Organiser Terms" }),
+    "you haven't accepted the Organiser Terms yet",
+  );
+  assertEquals(
+    publishBlockerClause({ key: "money.can_sell", label: "Payments" }),
+    "payment setup isn't finished",
+  );
+  assertEquals(
+    publishBlockerClause({ key: "brand.something_new", label: "Venue licence" }),
+    "Venue licence still needs doing",
+  );
+  const source = await Deno.readTextFile(
+    new URL("../ariFlows/offerings/event.ts", import.meta.url),
+  );
+  assert(!source.includes("listWords(blockers)}. Nothing was published"));
 });
