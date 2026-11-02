@@ -16,13 +16,16 @@
 
 import React, { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import {
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { brandKeys } from "../../hooks/brandKeys";
 import { useBrand } from "../../hooks/useBrands";
+import { brandSiteKeys } from "../../sites/brandSiteKeys";
 import { joinBrandDescription } from "../../services/brandMapping";
 import { BrandAvatarPickerSheet } from "../brand/BrandAvatarPickerSheet";
 import { Button } from "../ui/Button";
@@ -43,6 +46,21 @@ export interface AriFlowUploadCardProps {
   onUploaded: () => void;
 }
 
+/**
+ * #3355 bug 15 — after an in-chat logo / cover save, refresh everything that
+ * reads it: the brand and its readiness (readiness keys are nested under the
+ * brand detail) and the Website setup plan, including the pane beside the
+ * chat (nested under the plan). Without this the pane's gap count stayed on
+ * the old value after the upload.
+ */
+export function refreshAfterFlowUpload(
+  queryClient: Pick<QueryClient, "invalidateQueries">,
+  brandId: string,
+): void {
+  void queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+  void queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) });
+}
+
 export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
   kind,
   brandId,
@@ -50,6 +68,7 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
   disabled,
   onUploaded,
 }) => {
+  const queryClient = useQueryClient();
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const [open, setOpen] = useState(false);
@@ -63,8 +82,9 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
   const handleLogoSaved = useCallback((): void => {
     // The avatar pipeline has already saved it to the brand.
     setOpen(false);
+    if (brandId !== null) refreshAfterFlowUpload(queryClient, brandId);
     onUploaded();
-  }, [onUploaded]);
+  }, [brandId, onUploaded, queryClient]);
   const handleCoverSaved = useCallback(
     (patch: CoverPatch): void => {
       // The brand cover pipeline saves before it reports a change; a removal
@@ -73,9 +93,10 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
         return;
       }
       setOpen(false);
+      if (brandId !== null) refreshAfterFlowUpload(queryClient, brandId);
       onUploaded();
     },
-    [onUploaded],
+    [brandId, onUploaded, queryClient],
   );
 
   return (

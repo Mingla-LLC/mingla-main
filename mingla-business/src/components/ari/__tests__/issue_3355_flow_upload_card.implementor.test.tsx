@@ -42,6 +42,10 @@ const brandState: { data: Record<string, unknown> | null; isLoading: boolean } =
   },
   isLoading: false,
 };
+const invalidateQueries = jest.fn(() => Promise.resolve());
+jest.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries }),
+}));
 jest.mock("../../../hooks/useBrands", () => ({
   useBrand: () => brandState,
 }));
@@ -84,7 +88,65 @@ function mount(kind: "logo" | "cover", onUploaded: () => void, disabled = false)
   return renderer;
 }
 
+const invalidatedKeys = (): string[] =>
+  invalidateQueries.mock.calls.map((call) =>
+    JSON.stringify((call as unknown as [{ queryKey: unknown }])[0].queryKey),
+  );
+
 describe("#3355 in-chat upload card", () => {
+  beforeEach(() => invalidateQueries.mockClear());
+
+  test("bug 15: a logo save refreshes the brand, its readiness and the Website setup pane", () => {
+    const uploaded = jest.fn();
+    const renderer = mount("logo", uploaded);
+    const sheet = renderer.root.findAll((n) => n.type === "avatar-sheet")[0];
+    TestRenderer.act(() =>
+      (sheet.props.onPicked as (r: { publicUrl: string }) => void)({
+        publicUrl: "https://cdn.test/logo.png",
+      }),
+    );
+    // Readiness keys are nested under the brand detail; the pane's key is
+    // nested under the plan, so these two prefixes reach both.
+    expect(invalidatedKeys()).toEqual(
+      expect.arrayContaining([
+        JSON.stringify(["brands", "detail", "b1"]),
+        JSON.stringify(["brand-sites", "b1", "plan"]),
+      ]),
+    );
+    renderer.unmount();
+  });
+
+  test("bug 15: a cover save refreshes them too; a removal does not", () => {
+    const renderer = mount("cover", jest.fn());
+    const sheet = renderer.root.findAll((n) => n.type === "cover-sheet")[0];
+    const change = sheet.props.onCoverChange as (patch: unknown) => void;
+    TestRenderer.act(() => change({ coverMediaUrl: null }));
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    TestRenderer.act(() =>
+      change({ coverMediaUrl: "https://cdn.test/cover.png", coverMediaType: "image" }),
+    );
+    expect(invalidatedKeys()).toEqual(
+      expect.arrayContaining([
+        JSON.stringify(["brands", "detail", "b1"]),
+        JSON.stringify(["brand-sites", "b1", "plan"]),
+      ]),
+    );
+    renderer.unmount();
+  });
+
+  test("bug 15: the setup pane's key sits under the plan key and comes from the factory", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { brandSiteKeys } = require("../../../sites/brandSiteKeys") as typeof import("../../../sites/brandSiteKeys");
+    expect(brandSiteKeys.ariSetup("b1").slice(0, 3)).toEqual([...brandSiteKeys.plan("b1")]);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as typeof import("path");
+    const pane = fs.readFileSync(path.join(__dirname, "..", "AriWebsiteSetupPane.tsx"), "utf8");
+    expect(pane).toMatch(/queryKey: brandSiteKeys\.ariSetup\(brandId\)/);
+    expect(pane).not.toMatch(/queryKey:\s*\[/);
+  });
+
   test("logo: the owner opens the Brand details avatar picker; its save asks Ari to check", () => {
     const uploaded = jest.fn();
     const renderer = mount("logo", uploaded);

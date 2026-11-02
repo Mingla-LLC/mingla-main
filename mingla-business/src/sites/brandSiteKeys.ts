@@ -23,6 +23,12 @@ export const brandSiteKeys = {
   plan: (brandId: string) => ["brand-sites", brandId, "plan"] as const,
   /** #2829 W9a — the Home to-do row derived from the plan (refreshed with it). */
   planTodo: (brandId: string) => ["brand-sites", brandId, "plan", "todo"] as const,
+  /**
+   * #3355 — the Website setup pane beside Ari. Nested under `plan` so every
+   * plan invalidation (and an in-chat logo / cover upload) refreshes it.
+   */
+  ariSetup: (brandId: string) =>
+    ["brand-sites", brandId, "plan", "ari-setup"] as const,
   domains: (siteId: string | null) =>
     ["brand-sites", siteId, "domains"] as const,
   look: (siteId: string | null) => ["brand-sites", siteId, "look"] as const,

@@ -13,6 +13,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
+import { brandSiteKeys } from "../../sites/brandSiteKeys";
 
 type Raw = Record<string, unknown>;
 type SetupPart = { key: string; label: string; done: boolean };
@@ -123,7 +124,7 @@ export function AriWebsiteSetupPane({
   const router = useRouter();
   const [compactExpanded, setCompactExpanded] = React.useState(false);
   const setup = useQuery({
-    queryKey: ["brand-site-plan", brandId, "ari-setup"],
+    queryKey: brandSiteKeys.ariSetup(brandId),
     queryFn: () => getWebsiteSetup(brandId),
     enabled: brandId.length > 0,
     staleTime: 0,
