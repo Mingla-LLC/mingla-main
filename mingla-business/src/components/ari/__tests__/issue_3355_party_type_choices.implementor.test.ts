@@ -66,6 +66,15 @@ describe("#3355 the party type card shows every party type", () => {
     expect(block.options.map((option) => option.label)).toEqual(PARTY_TYPES);
   });
 
+  it("parses the 35-country payout country card", () => {
+    const countries = Array.from(
+      { length: 35 },
+      (_, index) => `Country ${index + 1}`,
+    );
+    const rendition = parseAriRendition(partyTypeCard(countries));
+    expect(rendition).not.toBeNull();
+  });
+
   it("still refuses an unbounded list", () => {
     const tooMany = Array.from(
       { length: MAX_CHOICE_OPTIONS + 1 },

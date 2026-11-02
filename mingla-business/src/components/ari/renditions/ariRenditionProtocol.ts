@@ -409,8 +409,11 @@ function fieldKindProps(
     ...(countryPlaceholder ? { countryPlaceholder } : {}),
   };
 }
-/** Most options a choices block may carry (the canonical party types are 15). */
-export const MAX_CHOICE_OPTIONS = 24;
+/**
+ * Most options a choices block may carry: the 15 canonical party types and the
+ * 35 payout countries the Host chooser offers both fit.
+ */
+export const MAX_CHOICE_OPTIONS = 40;
 
 function parseOptions(
   value: unknown,
