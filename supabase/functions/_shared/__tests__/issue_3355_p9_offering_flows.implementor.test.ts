@@ -845,10 +845,12 @@ Deno.test("P9: a venue created via the picker is one submit proposal of the owne
   const partial = await answer(world, store, (r) => form(r, { response: "Mon-Fri 12pm-11pm" }));
   assert(partial.kind === "artefact");
   assertMatch(partial.artefact.text, /I still need the hours for Saturday and Sunday/);
+  // #3355 — answering only the missing days completes the week; the weekdays
+  // already given are kept (this used to loop back to Monday–Friday).
   const contact = await answer(
     world,
     store,
-    (r) => form(r, { response: "Mon-Fri 12pm-11pm, Sat 10am-1am, Sun closed" }),
+    (r) => form(r, { response: "Sat 10am-1am, Sun closed" }),
   );
   assertEquals(stepOf(contact), "venue_contact");
   assert(contact.kind === "artefact");

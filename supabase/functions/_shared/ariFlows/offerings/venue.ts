@@ -530,6 +530,21 @@ const categoryStep: StepDefinition = {
   },
 };
 
+/** Earlier days first, then the newest answer's days on top. */
+export function mergeHourRows(
+  earlier: unknown,
+  latest: VenueHourRow[],
+): VenueHourRow[] {
+  const byDay = new Map<number, VenueHourRow>();
+  if (Array.isArray(earlier)) {
+    for (const row of earlier as VenueHourRow[]) {
+      if (Number.isInteger(row?.weekday)) byDay.set(row.weekday, row);
+    }
+  }
+  for (const row of latest) byDay.set(row.weekday, row);
+  return [...byDay.values()].sort((a, b) => a.weekday - b.weekday);
+}
+
 function hoursAnswer(run: FlowRun): VenueHourRow[] | null {
   const value = answer(run, "hours");
   return Array.isArray(value) && value.length === 7
@@ -546,18 +561,29 @@ const hoursStep: StepDefinition = {
   probe(ctx) {
     const hours = hoursAnswer(ctx.run);
     if (hours) return Promise.resolve(done("owner_hours", hoursWords(hours)));
+    const ask = textQuestion({
+      ctx,
+      noun: NOUN,
+      key: "hours",
+      title: "Opening hours",
+      text:
+        "What are the opening hours? Give every day — for example: 9am–5pm every day, or Mon–Fri 9am–5pm, Sat 10am–2pm, Sun closed.",
+      label: "Opening hours",
+      placeholder: "e.g. Mon–Fri 9am–5pm, Sat 10am–2pm, Sun closed",
+    });
+    // Re-asking must carry the days already given (see onAnswer).
+    const partial = ctx.state?.data?.partial_hours;
     return Promise.resolve({
       done: false,
-      ask: textQuestion({
-        ctx,
-        noun: NOUN,
-        key: "hours",
-        title: "Opening hours",
-        text:
-          "What are the opening hours? Give every day — for example: 9am–5pm every day, or Mon–Fri 9am–5pm, Sat 10am–2pm, Sun closed.",
-        label: "Opening hours",
-        placeholder: "e.g. Mon–Fri 9am–5pm, Sat 10am–2pm, Sun closed",
-      }),
+      ask: partial
+        ? {
+          ...ask,
+          record: {
+            ...ask.record,
+            data: { ...(ask.record?.data ?? {}), partial_hours: partial },
+          },
+        }
+        : ask,
     });
   },
   textAnswer: (_ctx, text) => typedAnswer(text),
@@ -568,17 +594,31 @@ const hoursStep: StepDefinition = {
     if (parsed.problem) {
       return Promise.resolve(retry(ctx, `${parsed.problem} Nothing was saved.`));
     }
-    if (parsed.missing.length > 0) {
-      return Promise.resolve(retry(
+    // #3355 — days given in an earlier answer are kept: asked only for the
+    // missing days, the owner's reply completes the week instead of
+    // replacing it (otherwise the question loops forever).
+    const rows = mergeHourRows(ctx.state?.data?.partial_hours, parsed.rows);
+    const missing = [0, 1, 2, 3, 4, 5, 6].filter((day) =>
+      !rows.some((row) => row.weekday === day)
+    );
+    if (missing.length > 0) {
+      const asked = retry(
         ctx,
         `I still need the hours for ${
-          listWords(parsed.missing.map((day) => WEEKDAY_WORDS[day]))
-        } (or say closed). Nothing was saved.`,
-      ));
+          listWords(missing.map((day) => WEEKDAY_WORDS[day]))
+        } (or say closed). The other days are kept.`,
+      );
+      return Promise.resolve({
+        ...asked,
+        record: {
+          ...asked.record,
+          data: { ...asked.record.data, partial_hours: rows },
+        },
+      });
     }
     return Promise.resolve({
       record: { state: "pending" },
-      answers: { hours: owner(parsed.rows) },
+      answers: { hours: owner(rows) },
     });
   },
 };
