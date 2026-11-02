@@ -439,7 +439,9 @@
         "supabase/functions/agent-turn-control/index.ts",
         "supabase/migrations/20280306003355_issue_3355_ari_turn_hygiene.sql",
         "supabase/migrations/20280307003355_issue_3355_brand_readiness.sql",
-        "supabase/migrations/20280308003355_issue_3355_ari_flow_runs.sql"
+        "supabase/migrations/20280308003355_issue_3355_ari_flow_runs.sql",
+        "supabase/functions/_shared/ariModelVersion.ts",
+        "supabase/functions/agent-turn-control/function-policy.issue-3355.patch.json"
       ]
     },
     {
@@ -527,7 +529,8 @@
         "mingla-business/src/constants/providerMinimumCharges.ts",
         "mingla-business/src/utils/ticketPriceMinimum.ts",
         "supabase/migrations/20280310003355_issue_3355_paid_tier_terms_and_minimums.sql",
-        "supabase/migrations/20280311003355_issue_3355_event_seed_truth.sql"
+        "supabase/migrations/20280311003355_issue_3355_event_seed_truth.sql",
+        "supabase/functions/_shared/payoutCountries.ts"
       ]
     },
     {
@@ -617,7 +620,9 @@
         "mingla-business/src/utils/businessTodoDispatch.ts",
         "mingla-business/src/utils/businessTodos.ts",
         "mingla-business/src/utils/homeBrandReadiness.ts",
-        "packages/location-input/src/MapboxAddressInput.tsx"
+        "packages/location-input/src/MapboxAddressInput.tsx",
+        "mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx",
+        "mingla-business/src/components/location/LazyAddressMapPreview.tsx"
       ]
     }
   ]
