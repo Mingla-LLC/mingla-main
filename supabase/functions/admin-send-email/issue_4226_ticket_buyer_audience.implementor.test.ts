@@ -265,7 +265,7 @@ Deno.test("#4226 Explorer audience uses the People classifier: no incomplete sig
   assertEquals(snapshot.willReceive, 2);
 });
 
-Deno.test("#4226 Host audience is host or both; Everyone is people with an app", () => {
+Deno.test("#4226 Host audience is host or both; Everyone is the whole list", () => {
   assertEquals(
     keys(audienceOf(normalizeAudience({
       mode: "segment",
@@ -273,9 +273,11 @@ Deno.test("#4226 Host audience is host or both; Everyone is people with an app",
     }))),
     ["u:both", "u:host"],
   );
+  // Seth, 2026-11-02: Everyone means everyone on the People list (the old
+  // "people with an app" rule is gone); the snapshot applies the exclusions.
   assertEquals(
     keys(audienceOf(normalizeAudience({ mode: "everyone" }))),
-    ["u:both", "u:explorer", "u:host", "u:staff"],
+    keys(PEOPLE),
   );
 });
 
