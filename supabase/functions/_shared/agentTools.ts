@@ -1676,10 +1676,12 @@ const createExperience: AgentToolDefinition = {
     if (!isString(args.title) || args.title.length > 120) {
       throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
     }
+    // #3355 P9: the message states the cap the check enforces (500, the
+    // schema's maxLength and the server's experience_description_invalid).
     if (!isString(args.narrative) || args.narrative.length > 500) {
       throw new ToolError(
         "INVALID_ARGS",
-        "narrative is required (1-2000 chars)",
+        "narrative is required (1-500 chars)",
       );
     }
     const { data, error } = await client.rpc(

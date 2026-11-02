@@ -15,6 +15,9 @@ import { moneyGateStep } from "./moneyGate.ts";
 import { WEBSITE_SETUP_FLOW } from "./websiteSetup.ts";
 import { CREATE_EVENT_FLOW } from "./offerings/event.ts";
 import { CREATE_TRIP_FLOW } from "./offerings/trip.ts";
+import { CREATE_EXPERIENCE_FLOW } from "./offerings/experience.ts";
+import { CREATE_VENUE_FLOW } from "./offerings/venue.ts";
+import { CREATE_STAY_FLOW } from "./offerings/stay.ts";
 import type {
   FlowContext,
   FlowDefinition,
@@ -173,6 +176,11 @@ export const FLOW_DEFINITIONS: readonly FlowDefinition[] = Object.freeze([
   CREATE_EVENT_FLOW,
   // #3355 P8 — trips on the engine (v2); v1 above lets older runs finish.
   CREATE_TRIP_FLOW,
+  // #3355 P9 — experiences, venues and stays on the engine (v2); their v1
+  // definitions above let older runs finish.
+  CREATE_EXPERIENCE_FLOW,
+  CREATE_VENUE_FLOW,
+  CREATE_STAY_FLOW,
   // #2830 P4 — Website setup, the engine's first brand flow.
   WEBSITE_SETUP_FLOW,
 ]);

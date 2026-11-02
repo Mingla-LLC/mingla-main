@@ -147,8 +147,20 @@ export function selectAriTools(
   const tripTierRequested =
     /\b(?:trip|per[ -]?person)\b[\s\S]{0,80}\b(?:package|tier|deposit|price|capacity)\b|\b(?:package|tier)\b[\s\S]{0,80}\b(?:trip|per[ -]?person)\b/i
       .test(query);
+  // #3355 P9 (audit D-22): a host setting up a stay or a venue needs its
+  // venues listed, never the guest booking tools (quote, reserve, approve).
+  const hostVenueCreate = keys.includes("venues") &&
+    /\b(?:create|make|set\s*up|setup|add|build|start|list)\b[\s\S]{0,60}\b(?:stays?|venues?|guest\s?houses?|hotels?|rooms?)\b/i
+      .test(query) &&
+    !/\b(?:book|booking|bookings|reserve|reservation|reservations|quote|approve|decline|cancel)\b/i
+      .test(query);
   const selected = all.filter((tool) =>
     keys.some((key) => toolBelongsTo(tool.name, key)) &&
+    !(
+      hostVenueCreate &&
+      /^(quote_stay|create_stay_reservation|transition_stay|create_venue_reservation|transition_venue_reservation)$/
+        .test(tool.name)
+    ) &&
     // Toolsets overlap by name (for example, manage_brand_people is both a
     // brand and a people tool). Do not load the more sensitive people tools
     // for generic brand settings questions unless people intent was detected.
@@ -232,6 +244,9 @@ export function selectAriTools(
       (score, token) => score + (terms.includes(token) ? 90 : 0),
       0,
     );
+    const venueListScore = hostVenueCreate && tool.name === "list_venue_listings"
+      ? 150
+      : 0;
     const tripPricingScore =
       tripTierRequested && tool.name === "manage_trip_tiers"
         ? 180
@@ -242,7 +257,7 @@ export function selectAriTools(
       tool,
       index,
       score: (priority[tool.name] ?? 0) + readBonus + writePenalty + termScore +
-        directIntentScore + tripPricingScore,
+        directIntentScore + tripPricingScore + venueListScore,
     };
   }).sort((a, b) => b.score - a.score || a.index - b.index);
   for (const { tool } of ranked) unique.set(tool.name, tool);

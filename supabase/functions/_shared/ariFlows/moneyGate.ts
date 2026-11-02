@@ -413,11 +413,18 @@ export const moneyGateStep: StepDefinition = {
   },
 };
 
-// #3355 — a trip sells bookings of packages, not tickets.
+// #3355 — a trip sells bookings of packages, not tickets; #3355 P9: an
+// experience and a stay sell bookings too.
 export function paidThing(noun: string | undefined): string {
-  return noun === "trip" ? "paid packages" : "paid tickets";
+  return noun === "trip"
+    ? "paid packages"
+    : noun === "experience" || noun === "stay"
+    ? "paid bookings"
+    : "paid tickets";
 }
 
 export function saleWords(noun: string | undefined): string {
-  return noun === "trip" ? "bookings can open" : "tickets can go on sale";
+  return noun === "trip" || noun === "experience" || noun === "stay"
+    ? "bookings can open"
+    : "tickets can go on sale";
 }

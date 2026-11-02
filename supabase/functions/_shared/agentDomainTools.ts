@@ -33,6 +33,7 @@ import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
 import { validateGigScript } from "./gigScript.ts";
 import { tryReadBrandReadiness } from "./agentReadinessTools.ts";
+import { stayOfferingPayloadProblem } from "./stayOfferingContract.ts";
 import {
   type MoneySplitView,
   moneySplitView,
@@ -1779,12 +1780,16 @@ const manageStayInventory = writeTool(
         "resolve_currency_reconciliation",
       ],
     },
-    payload: { type: "object" },
+    payload: {
+      type: "object",
+      description:
+        "create_offering: a typed Stay offering (CreateStayOfferingInput) — kind room|place, name, inventoryBasis, maxGuests, quantity, room maxAdults/maxChildren or place placePricingBasis, optional price { amountMinor, currencyCode } and policy { cancellationPolicy }. Unknown fields are refused.",
+    },
     expected_version: {
       type: "integer",
       minimum: 1,
       description:
-        "Current Stay version. REQUIRED for every action except 'get'.",
+        "Current Stay version. REQUIRED for every action except 'get', and except the first 'save_settings' of a Stay that has no settings yet.",
     },
   },
   ["brand_id", "venue_id", "action"],
@@ -1814,20 +1819,34 @@ const manageStayInventory = writeTool(
     // with MODEL_SCHEMA_INVALID. So the conditional requirement is enforced
     // here, deterministically, and `expectedVersion` is now ALWAYS forwarded
     // for a mutation rather than conditionally.
+    //
+    // #3355 P9: the one exception is the FIRST save_settings of a Stay with no
+    // settings yet — biz_save_stay_settings_v2 itself requires no version
+    // then (and refuses a missing one once settings exist), so Ari could
+    // never save a new Stay's settings before.
+    const firstSettingsSave = args.action === "save_settings" &&
+      args.expected_version === undefined;
     if (
-      !Number.isInteger(args.expected_version) ||
-      Number(args.expected_version) < 1
+      !firstSettingsSave &&
+      (!Number.isInteger(args.expected_version) ||
+        Number(args.expected_version) < 1)
     ) {
       throw new ToolError(
         "INVALID_ARGS",
         "expected_version (current Stay version) is required for every action except get",
       );
     }
+    // #3355 P9 (audit D-22): a create carries a typed Stay offering; an
+    // untyped payload never reaches the Stay owner.
+    if (args.action === "create_offering") {
+      const problem = stayOfferingPayloadProblem(args.payload);
+      if (problem) throw new ToolError("INVALID_ARGS", problem);
+    }
     return await invokeFn(client, "manage-stay-inventory", {
       action: args.action,
       venueId: args.venue_id,
       payload: (args.payload as Record<string, unknown>) ?? {},
-      expectedVersion: args.expected_version,
+      expectedVersion: firstSettingsSave ? null : args.expected_version,
     });
   },
 );
@@ -1913,7 +1932,14 @@ const manageStayPolicyPriceMedia = writeTool(
 
 // issue #1978 — the venue category vocabulary the canonical create RPC accepts
 // (`biz_create_venue_listing`: 'restaurant' | 'play' | 'creative_and_arts').
-const VENUE_CATEGORIES = ["restaurant", "play", "creative_and_arts"] as const;
+// #3355 P9: "stay" too — the RPC refuses it while STAY_VENUE_AUTHORING is
+// off, and Ari's venue flow only offers it while the flag is on.
+const VENUE_CATEGORIES = [
+  "restaurant",
+  "play",
+  "creative_and_arts",
+  "stay",
+] as const;
 
 // issue #1978 — one canonical opening-hours row shape, identical to
 // manage_brand_hours and to the seven rows the create RPC parses out of
@@ -1982,7 +2008,7 @@ const createVenueListing = writeTool(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "venue_category must be restaurant, play, or creative_and_arts",
+        "venue_category must be restaurant, play, creative_and_arts or stay",
       );
     }
     if (!Array.isArray(args.hours) || args.hours.length !== 7) {

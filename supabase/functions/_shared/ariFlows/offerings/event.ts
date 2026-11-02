@@ -1453,6 +1453,28 @@ export function parseTicketAnswer(
   };
 }
 
+/**
+ * #3355 P9 — a price on its own ("£45 per person", "45"): the same reading
+ * as a ticket price, with no count needed. Null when there is no price.
+ */
+export function parseTypedPrice(text: string): {
+  price_major: number;
+  typed_price?: string;
+  typed_currencies?: string[];
+} | null {
+  const parsed = parseTicketAnswer(`${text} no limit`, true);
+  if (!parsed || parsed.price_major === null) return null;
+  return {
+    price_major: parsed.price_major,
+    ...(parsed.typed_price
+      ? {
+        typed_price: parsed.typed_price,
+        typed_currencies: parsed.typed_currencies,
+      }
+      : {}),
+  };
+}
+
 /** The example price in the brand's own currency ("£15", "₦2,000"). */
 export function examplePrice(currency: string): string {
   const minimum = providerMinimumChargeMinor(currency);

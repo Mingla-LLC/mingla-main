@@ -189,6 +189,12 @@ export interface FlowPlaceValue {
   lat: number;
   lng: number;
   feature_type: string | null;
+  /**
+   * #3355 P9 — the address search's own id for the pick (Mapbox), the same
+   * id the experience wizard stores as a stop's place_id. Absent on older
+   * Host builds.
+   */
+  place_id?: string | null;
 }
 
 /** #3355 P7 — the event row an event flow reads back (canonical state). */
@@ -238,6 +244,65 @@ export interface FlowTripRow {
   }[];
 }
 
+/** #3355 P9 — the experience row an experience flow reads back. */
+export interface FlowExperienceRow {
+  id: string;
+  title: string;
+  status: string;
+  /** The compare-and-swap revision every experience write needs. */
+  updated_at: string;
+  timezone: string | null;
+  description: string | null;
+  intents: string[];
+  stops: {
+    name: string;
+    description: string;
+    address: string;
+    has_point: boolean;
+    has_place_id: boolean;
+  }[];
+  is_free: boolean;
+  whole_price_cents: number | null;
+  /** theme.experience_meta.when_draft.when ({ date, doorsOpen, endsAt }). */
+  when: Record<string, unknown> | null;
+}
+
+/** #3355 P9 — one of the brand's venue listings (never contact details). */
+export interface FlowVenueRow {
+  id: string;
+  name: string;
+  slug: string;
+  venue_category: string;
+  claim_status: string;
+  city: string | null;
+  cover_media_url: string | null;
+  created_at: string | null;
+}
+
+/** #3355 P9 — the Stay a stay flow reads back (manage-stay-inventory get). */
+export interface FlowStayInventory {
+  venue_id: string;
+  /** The settings version every Stay write needs (null = no settings yet). */
+  settings_version: number | null;
+  settings: {
+    summary: string;
+    timezone: string | null;
+    check_in_time: string | null;
+    check_out_time: string | null;
+  } | null;
+  /** The stored settings row, so a settings save keeps what is there. */
+  settings_raw: Record<string, unknown> | null;
+  offerings: {
+    id: string;
+    name: string;
+    kind: string;
+    status: string;
+    version: number;
+    has_price: boolean;
+    has_policy: boolean;
+  }[];
+}
+
 /** Reads the runner may make. Every probe goes through these. */
 export interface FlowProbeDeps {
   readiness(action: ReadinessAction | null): Promise<BrandReadiness>;
@@ -263,6 +328,9 @@ export interface FlowProbeDeps {
     default_timezone: string | null;
     country_code: string | null;
     default_currency: string | null;
+    /** #3355 P9 — the brand's own contact, offered for a venue. */
+    contact_email?: string | null;
+    contact_phone?: string | null;
   } | null>;
   /** #3355 P7 — one event of this brand, read back (null when gone). */
   eventRow?(id: string): Promise<FlowEventRow | null>;
@@ -270,6 +338,14 @@ export interface FlowProbeDeps {
   eventsTitled?(title: string): Promise<FlowEventRow[]>;
   /** #3355 P8 — one trip of this brand, read back (null when gone). */
   tripRow?(id: string): Promise<FlowTripRow | null>;
+  /** #3355 P9 — one experience of this brand, read back (null when gone). */
+  experienceRow?(id: string): Promise<FlowExperienceRow | null>;
+  /** #3355 P9 — this brand's venue listings, oldest first. */
+  venues?(): Promise<FlowVenueRow[]>;
+  /** #3355 P9 — one venue's Stay, read as the caller (null when unreadable). */
+  stayInventory?(venueId: string): Promise<FlowStayInventory | null>;
+  /** #3355 P9 — one server feature flag (false when unreadable). */
+  featureFlag?(key: string): Promise<boolean>;
 }
 
 export interface FlowContext {

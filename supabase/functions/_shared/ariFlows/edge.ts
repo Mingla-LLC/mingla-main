@@ -39,11 +39,14 @@ import type {
   FlowAnswerValues,
   FlowArtefact,
   FlowEventRow,
+  FlowExperienceRow,
   FlowPlaceValue,
   FlowProbeDeps,
   FlowRun,
+  FlowStayInventory,
   FlowTripPlace,
   FlowTripRow,
+  FlowVenueRow,
 } from "./types.ts";
 import { LIVE_FLOW_STATUSES } from "./types.ts";
 
@@ -141,6 +144,8 @@ export function parseFlowPlace(value: unknown): FlowPlaceValue | null {
     "lat",
     "lng",
     "feature_type",
+    // #3355 P9 — the address search's own id (an experience stop's place_id).
+    "place_id",
   ];
   if (Object.keys(raw).some((key) => !allowed.includes(key))) return null;
   const venue = boundedText(raw.venue_name, 120);
@@ -163,6 +168,11 @@ export function parseFlowPlace(value: unknown): FlowPlaceValue | null {
     feature !== null &&
     (typeof feature !== "string" || !/^[a-z_]{1,30}$/.test(feature))
   ) return null;
+  const placeId = raw.place_id ?? null;
+  if (
+    placeId !== null &&
+    (typeof placeId !== "string" || !/^[A-Za-z0-9._:=+/-]{1,300}$/.test(placeId))
+  ) return null;
   return {
     venue_name: venue,
     address,
@@ -171,6 +181,7 @@ export function parseFlowPlace(value: unknown): FlowPlaceValue | null {
     lat,
     lng,
     feature_type: feature as string | null,
+    ...(placeId ? { place_id: placeId } : {}),
   };
 }
 
@@ -404,6 +415,159 @@ async function readTripRow(
   };
 }
 
+/** #3355 P9 — one experience, read as the caller (null when gone). */
+async function readExperienceRow(
+  userClient: SupabaseClient,
+  brandId: string,
+  id: string,
+): Promise<FlowExperienceRow | null> {
+  const { data, error } = await userClient.from("events")
+    .select(
+      "id,title,status,updated_at,timezone,description,experience_intents,whole_price_cents,theme",
+    )
+    .eq("id", id)
+    .eq("brand_id", brandId)
+    .eq("event_type", "experience")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as Record<string, unknown>;
+  const [stops, tickets] = await Promise.all([
+    userClient.from("experience_stops")
+      .select("place_name,ai_description,address,place_id,lat,lng,stop_order")
+      .eq("event_id", id)
+      .order("stop_order", { ascending: true }),
+    userClient.from("ticket_types").select("is_free,price_cents,display_order")
+      .eq("event_id", id).is("deleted_at", null)
+      .order("display_order", { ascending: true }).limit(1),
+  ]);
+  if (stops.error || tickets.error) return null;
+  const theme = row.theme && typeof row.theme === "object"
+    ? row.theme as Record<string, unknown>
+    : {};
+  const meta = theme.experience_meta && typeof theme.experience_meta === "object"
+    ? theme.experience_meta as Record<string, unknown>
+    : {};
+  const whenDraft = meta.when_draft && typeof meta.when_draft === "object"
+    ? meta.when_draft as Record<string, unknown>
+    : {};
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : null;
+  const ticket = ((tickets.data ?? []) as Record<string, unknown>[])[0];
+  return {
+    id: String(row.id),
+    title: typeof row.title === "string" ? row.title : "",
+    status: typeof row.status === "string" ? row.status : "",
+    updated_at: String(row.updated_at ?? ""),
+    timezone: text(row.timezone) ?? text(whenDraft.timezone),
+    description: text(row.description),
+    intents: Array.isArray(row.experience_intents)
+      ? row.experience_intents.filter((item): item is string =>
+        typeof item === "string"
+      )
+      : [],
+    stops: ((stops.data ?? []) as Record<string, unknown>[]).map((stop) => ({
+      name: typeof stop.place_name === "string" ? stop.place_name : "",
+      description: typeof stop.ai_description === "string"
+        ? stop.ai_description
+        : "",
+      address: typeof stop.address === "string" ? stop.address : "",
+      has_point: typeof stop.lat === "number" && typeof stop.lng === "number",
+      has_place_id: !!text(stop.place_id),
+    })),
+    is_free: ticket?.is_free === true,
+    whole_price_cents: typeof row.whole_price_cents === "number"
+      ? row.whole_price_cents
+      : null,
+    when: whenDraft.when && typeof whenDraft.when === "object"
+      ? whenDraft.when as Record<string, unknown>
+      : null,
+  };
+}
+
+/** #3355 P9 — the brand's venue listings (no contact details). */
+async function readVenues(
+  userClient: SupabaseClient,
+  brandId: string,
+): Promise<FlowVenueRow[]> {
+  const { data, error } = await userClient.from("venue_listings")
+    .select(
+      "id,name,slug,venue_category,claim_status,city,cover_media_url,created_at",
+    )
+    .eq("brand_id", brandId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error || !Array.isArray(data)) return [];
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : null;
+  return (data as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    name: typeof row.name === "string" ? row.name : "",
+    slug: typeof row.slug === "string" ? row.slug : "",
+    venue_category: typeof row.venue_category === "string"
+      ? row.venue_category
+      : "",
+    claim_status: typeof row.claim_status === "string" ? row.claim_status : "",
+    city: text(row.city),
+    cover_media_url: text(row.cover_media_url),
+    created_at: text(row.created_at),
+  }));
+}
+
+/** #3355 P9 — one venue's Stay through manage-stay-inventory "get". */
+async function readStayInventory(
+  userClient: SupabaseClient,
+  venueId: string,
+): Promise<FlowStayInventory | null> {
+  const { data, error } = await userClient.functions.invoke(
+    "manage-stay-inventory",
+    { body: { action: "get", venueId, payload: {} } },
+  );
+  if (error || !data || typeof data !== "object") return null;
+  return stayInventoryOf(venueId, (data as { data?: unknown }).data);
+}
+
+/** The Stay snapshot (issue_1387_stay_inventory_snapshot) in flow terms. */
+export function stayInventoryOf(
+  venueId: string,
+  snapshot: unknown,
+): FlowStayInventory | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const snap = snapshot as Record<string, unknown>;
+  const settings = snap.settings && typeof snap.settings === "object"
+    ? snap.settings as Record<string, unknown>
+    : null;
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : null;
+  const offerings = Array.isArray(snap.offerings)
+    ? snap.offerings as Record<string, unknown>[]
+    : [];
+  return {
+    venue_id: venueId,
+    settings_version: typeof settings?.version === "number"
+      ? settings.version
+      : null,
+    settings: settings
+      ? {
+        summary: typeof settings.summary === "string" ? settings.summary : "",
+        timezone: text(settings.timezone),
+        check_in_time: text(settings.check_in_time),
+        check_out_time: text(settings.check_out_time),
+      }
+      : null,
+    settings_raw: settings,
+    offerings: offerings.map((offering) => ({
+      id: String(offering.id ?? ""),
+      name: typeof offering.name === "string" ? offering.name : "",
+      kind: typeof offering.kind === "string" ? offering.kind : "",
+      status: typeof offering.status === "string" ? offering.status : "",
+      version: typeof offering.version === "number" ? offering.version : 0,
+      has_price: !!offering.currentPrice,
+      has_policy: !!offering.currentPolicy,
+    })),
+  };
+}
+
 /** Canonical reads the runner makes for one brand, memoised per request. */
 export function buildFlowProbeDeps(
   userClient: SupabaseClient,
@@ -415,6 +579,9 @@ export function buildFlowProbeDeps(
   const reads = new Map<string, Promise<unknown>>();
   const events = new Map<string, Promise<FlowEventRow | null>>();
   const trips = new Map<string, Promise<FlowTripRow | null>>();
+  const experiences = new Map<string, Promise<FlowExperienceRow | null>>();
+  const stays = new Map<string, Promise<FlowStayInventory | null>>();
+  let venueList: Promise<FlowVenueRow[]> | null = null;
   return {
     // #2830 P4: one read-only Website tool as the caller, memoised for the
     // request. A write tool is never reachable here.
@@ -456,7 +623,9 @@ export function buildFlowProbeDeps(
     // #3355 P7 — the brand's own facts and its events, read as the caller.
     async brandFacts() {
       const { data, error } = await userClient.from("brands")
-        .select("default_timezone,country_code,default_currency")
+        .select(
+          "default_timezone,country_code,default_currency,contact_email,contact_phone",
+        )
         .eq("id", brandId)
         .maybeSingle();
       if (error || !data) return null;
@@ -467,6 +636,8 @@ export function buildFlowProbeDeps(
         default_timezone: text(row.default_timezone),
         country_code: text(row.country_code),
         default_currency: text(row.default_currency),
+        contact_email: text(row.contact_email),
+        contact_phone: text(row.contact_phone),
       };
     },
     eventRow(id: string) {
@@ -504,6 +675,35 @@ export function buildFlowProbeDeps(
         trips.set(id, pending);
       }
       return pending;
+    },
+    // #3355 P9 — experiences, venues and Stays, read as the caller.
+    experienceRow(id: string) {
+      let pending = experiences.get(id);
+      if (!pending) {
+        pending = readExperienceRow(userClient, brandId, id);
+        experiences.set(id, pending);
+      }
+      return pending;
+    },
+    venues() {
+      if (!venueList) venueList = readVenues(userClient, brandId);
+      return venueList;
+    },
+    stayInventory(venueId: string) {
+      let pending = stays.get(venueId);
+      if (!pending) {
+        pending = readStayInventory(userClient, venueId);
+        stays.set(venueId, pending);
+      }
+      return pending;
+    },
+    async featureFlag(key: string) {
+      const { data, error } = await userClient.from("feature_flags")
+        .select("is_enabled")
+        .eq("flag_key", key)
+        .maybeSingle();
+      return !error && (data as { is_enabled?: unknown } | null)?.is_enabled ===
+          true;
     },
     async subjectExists(table: string, id: string) {
       if (!["events"].includes(table)) return false;

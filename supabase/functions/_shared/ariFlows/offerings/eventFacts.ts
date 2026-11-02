@@ -257,6 +257,8 @@ export interface PickedPlace {
   lng: number;
   /** Mapbox `feature_type`: "poi" for a named venue, "address" for a street address. */
   feature_type: string | null;
+  /** #3355 P9 — the address search's own id (an experience stop's place_id). */
+  place_id?: string | null;
 }
 
 /**

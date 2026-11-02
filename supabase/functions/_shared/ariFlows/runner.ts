@@ -301,7 +301,14 @@ export function summaryText(def: FlowDefinition, run: FlowRun): string {
   ].filter(Boolean).join(" ");
 }
 
+const UUID_RESULT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function subjectIdFromResult(result: unknown): string | null {
+  // #3355 P9: biz_create_venue_listing returns the new venue's id itself.
+  if (typeof result === "string") {
+    return UUID_RESULT.test(result) ? result : null;
+  }
   if (!result || typeof result !== "object") return null;
   const root = result as Record<string, unknown>;
   for (const key of ["event", "experience", "trip", "venue", "stay"]) {

@@ -72,6 +72,9 @@ const INTERNAL_KEY_PHRASES: readonly RegExp[] = [
   /\bedge function\b/i,
   /\bRPC\b/,
   /\bdurable\b/i,
+  // #3355 P9 (D-21): places come from the address search; Ari never asks
+  // for, or talks about, coordinates.
+  /\b(?:latitudes?|longitudes?)\b/i,
 ];
 
 /** Strict-only words: fine in prose, never in a label or engine line. */
