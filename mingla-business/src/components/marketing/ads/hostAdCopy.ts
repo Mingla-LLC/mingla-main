@@ -240,6 +240,48 @@ export function hostAdReviewReason(reason: string | null | undefined): string {
   return REVIEW_REASON_LABELS[raw.toLowerCase()] ?? humanize(raw);
 }
 
+/** Ads credit history rows (ad_credit_ledger.entry_kind) in plain words. */
+const LEDGER_LABELS: Record<string, string> = {
+  top_up: "Credit added",
+  withdraw: "Credit withdrawn",
+  unspend_return: "Returned to credit",
+  campaign_spend: "Set aside for an ad",
+};
+
+/** Unknown kinds read as a safe generic phrase, never the raw code. */
+export function hostAdLedgerLabel(kind: string | null | undefined): string {
+  return LEDGER_LABELS[String(kind ?? "").trim().toLowerCase()] ??
+    "Ads credit change";
+}
+
+const SINGULAR_RESULTS: Record<string, string> = {
+  "ticket sales": "sale",
+  RSVPs: "RSVP",
+  "sign-ups": "sign-up",
+  bookings: "booking",
+  "page visits": "visit",
+};
+
+/**
+ * "How we count results" lines: each result once, in order ("We count
+ * RSVPs, then page visits."), and the result Mingla always counts.
+ */
+export function hostAdCountingLines(hierarchy: readonly unknown[]): {
+  counts: string;
+  sharing: string;
+} {
+  const labels = [...new Set(hierarchy.map((value) => hostAdResultLabel(String(value))))]
+    .filter(Boolean);
+  const first = labels[0] ?? "results";
+  const singular = SINGULAR_RESULTS[first] ?? "result";
+  return {
+    counts: labels.length > 0
+      ? `We count ${labels.join(", then ")}.`
+      : "We count the results Mingla can see.",
+    sharing: `We only share results with ad apps when people agree to it. Your results in Mingla still count every ${singular}.`,
+  };
+}
+
 const TIMELINE_LABELS: Record<string, string> = {
   create: "Ad set up",
   launch: "Ad started",
@@ -251,6 +293,8 @@ const TIMELINE_LABELS: Record<string, string> = {
   release: "Money returned",
   top_up: "Credit added",
   withdraw: "Credit withdrawn",
+  campaign_spend: "Set aside for an ad",
+  unspend_return: "Returned to credit",
   spend: "Ad spend",
   refund: "Money returned",
 };

@@ -8484,8 +8484,15 @@ export async function preflightMoneyProposal(
         destination?.title ?? adLabel(destination?.page_type) ??
           "Public Mingla page",
       ) || "Public Mingla page",
+      // #4238: the first measured result names what we count ("RSVPs" for
+      // an RSVP page, "bookings" for reservations), not the page's broad
+      // result kind ("signups").
       ad_result: adResultWords(
-        destination?.result_kind ?? measurement?.primary_result ?? "results",
+        (Array.isArray(measurement?.result_hierarchy)
+          ? measurement.result_hierarchy[0]
+          : undefined) ??
+          destination?.result_kind ??
+          measurement?.primary_result ?? "results",
       ),
       ad_currency_policy:
         "You pay in your brand's payout currency. The exchange rate for each app is fixed for this ad.",

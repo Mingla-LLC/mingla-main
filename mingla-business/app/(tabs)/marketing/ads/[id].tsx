@@ -37,6 +37,7 @@ import {
 } from "../../../../src/services/hostAdCampaignService";
 import {
   hostAdCostPerLabel,
+  hostAdCountingLines,
   hostAdEventLabel,
   hostAdResultLabel,
   hostAdStatusLabel,
@@ -44,7 +45,10 @@ import {
   platformName,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
-import { hostAdScrollBottomPadding } from "../../../../src/components/marketing/ads/hostAdBuilderRules";
+import {
+  goBackToAds,
+  hostAdScrollBottomPadding,
+} from "../../../../src/components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { randomId } from "../../../../src/utils/randomId";
 
@@ -320,7 +324,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
         ]}
       >
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBackToAds(router)}
           accessibilityRole="button"
           accessibilityLabel="Back to Ads"
           testID="ads-detail-back"
@@ -427,8 +431,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
             We count {primaryResultLabel} for this ad.
           </Text>
           <Text style={styles.muted}>
-            We only share sales with ad apps when buyers agree to it. Your
-            results in Mingla still count every sale.
+            {hostAdCountingLines(resultHierarchy).sharing}
           </Text>
           <View style={styles.metricGrid}>
             <View style={styles.metricCell}>

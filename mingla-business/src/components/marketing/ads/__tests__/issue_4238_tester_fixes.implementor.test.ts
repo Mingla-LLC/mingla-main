@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  goBackToAds,
   HOST_AD_FLOATING_ACTION_CLEARANCE,
   hostAdMatchSubtitle,
   hostAdScrollBottomPadding,
@@ -30,6 +31,8 @@ import {
 } from "../hostAdSetupCache";
 import {
   hostAdCostPerLabel,
+  hostAdCountingLines,
+  hostAdLedgerLabel,
   hostAdPlaceList,
   hostAdPlaceName,
   hostAdResultLabel,
@@ -121,8 +124,11 @@ describe("#4238 D4 one Ads setup read", () => {
 
 describe("#4238 D5, D7 and Extra A", () => {
   it("Back to Ads goes to the Ads list when there is no history", () => {
-    expect(createRoute).toContain("if (router.canGoBack()) router.back();");
-    expect(createRoute).toContain('else router.replace("/(tabs)/marketing/ads" as never);');
+    // #4238 retest 4: the fallback now lives in the shared goBackToAds helper.
+    const rules = read("src/components/marketing/ads/hostAdBuilderRules.ts");
+    expect(rules).toContain("if (router.canGoBack()) router.back();");
+    expect(rules).toContain("else router.replace(HOST_ADS_LIST_HREF as never);");
+    expect(createRoute).toContain("goBackToAds(router)");
     expect(createRoute).toContain('cta={{ label: "Back to Ads", onPress: backToAds }}');
   });
 
@@ -335,5 +341,73 @@ describe("#4238 retest 3: Ari card money and result labels, city rows, ready sta
     expect(lifecycle).toContain('{ statusLabel: "Ready to start" }');
     const list = read("app/(tabs)/marketing/ads/index.tsx");
     expect(list).toContain("{item.statusLabel ?? LIFECYCLE_LABEL[item.lifecycle]}");
+  });
+});
+
+describe("#4238 retest 4: back link, ledger words, counting lines, card title", () => {
+  function fakeRouter(canGoBack: boolean) {
+    return {
+      canGoBack: jest.fn(() => canGoBack),
+      back: jest.fn(),
+      replace: jest.fn(),
+    };
+  }
+
+  it("← Ads goes back with history, and to the Ads list without it", () => {
+    const withHistory = fakeRouter(true);
+    goBackToAds(withHistory);
+    expect(withHistory.back).toHaveBeenCalledTimes(1);
+    expect(withHistory.replace).not.toHaveBeenCalled();
+    const fresh = fakeRouter(false);
+    goBackToAds(fresh);
+    expect(fresh.back).not.toHaveBeenCalled();
+    expect(fresh.replace).toHaveBeenCalledWith("/(tabs)/marketing/ads");
+  });
+
+  it("the detail page and the builder both use the shared back helper", () => {
+    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    expect(detail).toContain("onPress={() => goBackToAds(router)}");
+    expect(detail).not.toContain("router.back()");
+    expect(createRoute).toContain("const backToAds = useCallback(() => goBackToAds(router), [router]);");
+  });
+
+  it("every Ads credit history kind has a plain label; unknown kinds never show their code", () => {
+    expect(hostAdLedgerLabel("top_up")).toBe("Credit added");
+    expect(hostAdLedgerLabel("withdraw")).toBe("Credit withdrawn");
+    expect(hostAdLedgerLabel("unspend_return")).toBe("Returned to credit");
+    expect(hostAdLedgerLabel("campaign_spend")).toBe("Set aside for an ad");
+    expect(hostAdLedgerLabel("future_kind_x")).toBe("Ads credit change");
+    expect(hostAdLedgerLabel(null)).toBe("Ads credit change");
+    const row = read("src/components/marketing/AdCreditLedgerRow.tsx");
+    expect(row).toContain("const kindLabel = hostAdLedgerLabel;");
+    expect(row).not.toContain("return kind;");
+    // Every kind the database allows has its own label.
+    const migration = read(
+      "../supabase/migrations/20270825003697_issue_3697_wave7c_ads_host.sql",
+    );
+    const allowed = migration
+      .slice(migration.indexOf("ad_credit_ledger_entry_kind_check CHECK"))
+      .split(")")[1];
+    for (const kind of [...allowed.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])) {
+      expect(hostAdLedgerLabel(kind)).not.toBe("Ads credit change");
+    }
+  });
+
+  it("the review step lists each result once and an RSVP ad never says 'every sale'", () => {
+    const rsvp = hostAdCountingLines(["rsvp_registration", "landing_page_view", "click"]);
+    expect(rsvp.counts).toBe("We count RSVPs, then page visits.");
+    expect(rsvp.sharing).toContain("count every RSVP.");
+    expect(rsvp.sharing).not.toContain("sale");
+    const tickets = hostAdCountingLines(["ticket_purchase", "checkout_started", "landing_page_view", "click"]);
+    expect(tickets.counts).toBe("We count ticket sales, then checkouts started, then page visits.");
+    expect(tickets.sharing).toContain("count every sale.");
+    expect(hostAdCountingLines([]).counts).toBe("We count the results Mingla can see.");
+    expect(createRoute).toContain(").counts");
+    expect(createRoute).not.toContain("still count every sale");
+  });
+
+  it("the Ari LAUNCH card has a plain title", () => {
+    const card = read("src/components/ari/ToolProposalCard.tsx");
+    expect(card).toContain('if (toolName === "approve_ad_plan") return "Start this ad";');
   });
 });

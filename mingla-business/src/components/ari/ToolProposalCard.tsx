@@ -264,6 +264,11 @@ function primaryIdentity(
       (toolName === "update_brand" ? "Brand update" : "This brand")
     );
   }
+  // #4238: Host ad cards read as plain titles, never the raw tool name.
+  if (toolName === "approve_ad_plan") return "Start this ad";
+  if (toolName === "pause_ad_campaign") return "Pause this ad";
+  if (toolName === "end_ad_campaign") return "End this ad";
+  if (toolName === "get_ad_campaign_report") return "How this ad is doing";
   if (typeof args.title === "string" && args.title) return args.title;
   if (typeof args.name === "string" && args.name) return args.name;
   if (typeof args.subject === "string" && args.subject) return args.subject;

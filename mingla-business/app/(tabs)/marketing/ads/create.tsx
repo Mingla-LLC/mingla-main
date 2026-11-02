@@ -25,16 +25,17 @@ import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
 import {
   HOST_AD_PLATFORM_NAMES,
+  hostAdCountingLines,
   hostAdErrorMessage,
   hostAdPlaceName,
   hostAdReachLine,
-  hostAdResultLabel,
   hostAdStatusLabel,
   hostAdTargetingNote,
   hostAdVerdictLabel,
   platformNames,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import {
+  goBackToAds,
   hostAdMatchSubtitle,
   hostAdScrollBottomPadding,
   initialHostAdConnections,
@@ -432,10 +433,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   // #4238 D5: after a refresh or a direct link there is no history, so a bare
   // router.back() did nothing. Go to the Ads list explicitly then.
-  const backToAds = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/marketing/ads" as never);
-  }, [router]);
+  const backToAds = useCallback(() => goBackToAds(router), [router]);
 
   const load = useCallback(async (force = false) => {
     if (!brandId || !permissions.canRead) return;
@@ -2372,16 +2370,22 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 <View style={styles.targetingRow}>
                   <Text style={styles.choiceTitle}>How we count results</Text>
                   <Text style={styles.choiceSubtitle}>
-                    {Array.isArray(prepared.measurement.result_hierarchy) &&
-                    prepared.measurement.result_hierarchy.length > 0
-                      ? `We count ${prepared.measurement.result_hierarchy
-                          .map((value) => hostAdResultLabel(String(value)))
-                          .join(", then ")}.`
-                      : "We count the results Mingla can see."}
+                    {
+                      hostAdCountingLines(
+                        Array.isArray(prepared.measurement.result_hierarchy)
+                          ? prepared.measurement.result_hierarchy
+                          : [],
+                      ).counts
+                    }
                   </Text>
                   <Text style={styles.choiceSubtitle}>
-                    We only share sales with ad apps when buyers agree to it.
-                    Your results in Mingla still count every sale.
+                    {
+                      hostAdCountingLines(
+                        Array.isArray(prepared.measurement.result_hierarchy)
+                          ? prepared.measurement.result_hierarchy
+                          : [],
+                      ).sharing
+                    }
                   </Text>
                 </View>
               ) : null}

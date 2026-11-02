@@ -44,3 +44,21 @@ export const HOST_AD_FLOATING_ACTION_CLEARANCE = 72;
 export function hostAdScrollBottomPadding(stickyFooterOffset: number): number {
   return stickyFooterOffset + HOST_AD_FLOATING_ACTION_CLEARANCE;
 }
+
+/** The router calls the back link needs (expo-router's router fits). */
+export type HostAdBackRouter = {
+  canGoBack: () => boolean;
+  back: () => void;
+  replace: (href: never) => void;
+};
+
+export const HOST_ADS_LIST_HREF = "/(tabs)/marketing/ads";
+
+/**
+ * #4238: "← Ads" / "Back to Ads". After a refresh or a direct link there is
+ * no history, and a bare router.back() does nothing, so go to the Ads list.
+ */
+export function goBackToAds(router: HostAdBackRouter): void {
+  if (router.canGoBack()) router.back();
+  else router.replace(HOST_ADS_LIST_HREF as never);
+}
