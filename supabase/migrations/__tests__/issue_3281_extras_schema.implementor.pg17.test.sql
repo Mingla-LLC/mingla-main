@@ -482,6 +482,47 @@ BEGIN
      > position('INSERT INTO public.refunds' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) THEN
     RAISE EXCEPTION 'a dashboard refund must lock the order before allocating';
   END IF;
+  -- It takes the referral share first, as every settlement's share trigger does.
+  IF position('FROM public.payee_shares' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure))
+     NOT BETWEEN 1 AND position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) THEN
+    RAISE EXCEPTION 'a dashboard refund must lock the referral share before the order';
+  END IF;
+
+  -- A dashboard refund leaves lines held by a pending in-app refund alone.
+  -- The held line sorts first, so the allocator reaches it before the free one.
+  v_race_order := gen_random_uuid();
+  v_race_line := '00000000-0000-4000-8000-0000000a3281';
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_line,v_race_order,v_tier,1,1000,1000);
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,1,1000,1000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    SELECT v_race_order,v_tier,v_event,'qr-held-'||v_race_order||'-'||n,'valid','auto'
+    FROM generate_series(1,2) AS n;
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM public.biz_refund_order(v_race_order,
+    jsonb_build_array(jsonb_build_object('order_line_item_id',v_race_line,'quantity',1)),
+    'The first ticket back','held-'||v_race_order);
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  SELECT id INTO v_manual FROM public.refunds WHERE order_id=v_race_order AND status='pending';
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-other-'||v_race_order,1000,'NGN',NULL,NULL);
+  IF EXISTS (
+    SELECT 1 FROM public.refund_line_items rli JOIN public.refunds r ON r.id=rli.refund_id
+    WHERE r.stripe_refund_id='re-other-'||v_race_order AND rli.order_line_item_id=v_race_line
+  ) THEN
+    RAISE EXCEPTION 'a dashboard refund must not take a line a pending refund holds';
+  END IF;
+  PERFORM public.issue_2097_finalize_not_applicable(v_manual,'paystack','re-held-'||v_race_order);
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM public.biz_refund_order_commit(v_manual,'re-held-'||v_race_order,0,'succeeded');
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  IF (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded'
+     OR EXISTS (SELECT 1 FROM public.tickets WHERE order_id=v_race_order AND status='valid') THEN
+    RAISE EXCEPTION 'both refunds together must return the whole order';
+  END IF;
 END;
 $test$;
 

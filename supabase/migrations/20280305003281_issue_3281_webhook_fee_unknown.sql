@@ -9,7 +9,9 @@
 -- Accepting these rows also exposes two older gaps, closed here:
 --   Two dashboard refunds allocated ticket lines before taking the order lock,
 --     so both could take the same line. The insert path now locks first and
---     re-reads the refund, so a redelivery that waited finds it.
+--     re-reads the refund, so a redelivery that waited finds it. It takes the
+--     referral share before the order, in the same order as every settlement.
+--   The allocator ignored lines held by pending in-app refunds.
 --   A replayed event re-ran the ticket void for an already settled refund.
 --     Tickets are now voided only by the call that creates or settles it.
 -- The body is otherwise the terminal one from 20280301003281.
@@ -77,6 +79,11 @@ BEGIN
   ELSE
     -- issue #3281 — lock the order before allocating, so two dashboard refunds
     -- never take the same line, and a redelivery that waited here finds the row.
+    -- The referral share goes first: a settling refund's share trigger
+    -- (issue_3872_refund_share_trigger) takes it before the order everywhere else.
+    PERFORM 1 FROM public.payee_shares
+    WHERE order_kind = 'ticket' AND order_id = p_order_id AND payee_kind = 'referral'
+    FOR UPDATE;
     PERFORM 1 FROM public.orders WHERE id = p_order_id FOR NO KEY UPDATE;
     SELECT id INTO v_refund_id
     FROM public.refunds
@@ -116,7 +123,8 @@ BEGIN
                  FROM public.refund_line_items rli
                  JOIN public.refunds r ON r.id = rli.refund_id
                  WHERE rli.order_line_item_id = order_line_items.id
-                   AND r.status = 'succeeded'
+                   -- issue #3281 — a pending in-app refund already holds its lines.
+                   AND r.status IN ('pending', 'succeeded')
                    AND r.id <> v_refund_id
                ) AS already_refunded_qty
         FROM public.order_line_items
