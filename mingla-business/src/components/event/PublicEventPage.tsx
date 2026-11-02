@@ -1025,6 +1025,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const [dayNotice, setDayNotice] = useState<{
     message: string;
     quantities: Record<string, number>;
+    after: Record<string, number>;
     days: readonly string[];
   } | null>(null);
   const previousDaysRef = useRef<readonly string[]>(selectedOccurrenceIds);
@@ -1039,6 +1040,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       setDayNotice(null);
       return;
     }
+    const after = {
+      ...ticketQuantities,
+      ...Object.fromEntries(removed.map((ticket) => [ticket.id, 0])),
+    };
     setDayNotice({
       message: removedTicketsNotice(
         removed.map((ticket) => ({
@@ -1048,13 +1053,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         })),
       ),
       quantities: ticketQuantities,
+      after,
       days: previousDays,
     });
-    setTicketQuantities((current) => ({
-      ...current,
-      ...Object.fromEntries(removed.map((ticket) => [ticket.id, 0])),
-    }));
+    setTicketQuantities(after);
   }, [publicEvent.tickets, selectedOccurrenceIds, ticketQuantities]);
+  // Any later quantity change ends the notice, so Undo can't overwrite it.
+  useEffect(() => {
+    if (dayNotice !== null && ticketQuantities !== dayNotice.after) {
+      setDayNotice(null);
+    }
+  }, [dayNotice, ticketQuantities]);
   const undoDayRemoval = useCallback((): void => {
     if (dayNotice === null) return;
     previousDaysRef.current = dayNotice.days;
