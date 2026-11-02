@@ -84,6 +84,32 @@ describe("issue #3281 — Explorer per-date quantities", () => {
     expect(quoteLine().byDate).toBeUndefined();
   });
 
+  // #3281 day-limited tickets — a line pays only for the chosen dates it covers.
+  const listed = (ids: string[], days = DAYS) => {
+    const base = props(days);
+    return {
+      ...base,
+      tickets: (base.tickets ?? []).map((ticket) => ({
+        ...ticket,
+        validOccurrenceIds: ids,
+      })),
+    };
+  };
+
+  test("a listed ticket names only the chosen dates it covers", () => {
+    mountTicketCart(listed(["day-1", "day-2"]));
+    expect(quoteLine()).toMatchObject({
+      quantity: 4,
+      byDate: { "day-1": 2, "day-2": 2 },
+    });
+  });
+
+  test("a listed ticket covering every chosen date stays uniform", () => {
+    mountTicketCart(listed(DAYS));
+    expect(quoteLine()).toMatchObject({ quantity: 2 });
+    expect(quoteLine().byDate).toBeUndefined();
+  });
+
   test("switching off starts each date on the chosen quantity", () => {
     const renderer = mountTicketCart(props(DAYS));
     setSwitch(renderer, false);

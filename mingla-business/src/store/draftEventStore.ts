@@ -96,6 +96,8 @@ export interface TicketStub {
    * not publish. Capacity on a listed ticket is per date.
    */
   validDayIds?: string[] | null;
+  /** issue #3281 — public reads only: this ticket's dates, by `event_dates.id`. */
+  validOccurrenceIds?: string[] | null;
   /** Null when isFree=true; otherwise positive major-unit price. */
   priceGbp: number | null;
   /**

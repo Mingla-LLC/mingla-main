@@ -43,6 +43,14 @@ export type TicketAvailableAt = "online" | "door" | "both";
 export interface PublicTicketProps {
   id: string;
   name: string;
+  /** issue #3281 — this ticket's dates by `event_dates.id`, null for All dates. */
+  validOccurrenceIds?: readonly string[] | null;
+  /** issue #3281 — "Fri 2 Oct" on a day-limited ticket, null otherwise. */
+  dayScopeLabel?: string | null;
+  /** issue #3281 — true when none of the guest's chosen days are valid. */
+  offChosenDays?: boolean;
+  /** issue #3281 — this line's day multiplier when it differs from the event's. */
+  lineDayCount?: number;
   description: string | null;
   priceGbp: number | null;
   /**

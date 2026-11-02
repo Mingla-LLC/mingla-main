@@ -196,6 +196,7 @@ import {
 // issue #2209 — namespace import ALONGSIDE the named ones above, for the
 // compatibility seam right below. Same module, so Metro resolves one copy.
 import * as EventDateDisplay from "../../utils/eventDateDisplay";
+import { removedTicketsNotice, ticketDayView } from "../../utils/ticketDayOffer";
 // issue #2135 [multi-date public day picker] — TYPE-ONLY (erased at build; adds
 // no runtime dependency to this hot buyer-web route).
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
@@ -815,10 +816,24 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     (bundleHideRemainingCount !== false &&
       socialProofQuery.data?.hideRemainingCount !== false);
   const publicEvent = useMemo(
-    () => ({
-      ...mapLiveEventToPublicEvent(event, acquisitionState, occurrences),
-      hideRemainingCount,
-    }),
+    () => {
+      const mapped = mapLiveEventToPublicEvent(event, acquisitionState, occurrences);
+      return {
+        ...mapped,
+        hideRemainingCount,
+        // issue #3281 — each listed ticket read against the guest's chosen days.
+        tickets: mapped.tickets.map((ticket, index) => ({
+          ...ticket,
+          ...ticketDayView(
+            event.tickets[index]?.validOccurrenceIds,
+            occurrences,
+            selectedOccurrenceIds,
+            multiDatePricingMode === "per_day" && selectedOccurrenceIds.length > 0,
+            event.timezone,
+          ),
+        })),
+      };
+    },
     [acquisitionState, event, hideRemainingCount, occurrences],
   );
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
@@ -997,6 +1012,49 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         testID="public-event-presented-by-message"
       />
     );
+
+  // issue #3281 — unticking a listed ticket's last day takes it out of the cart,
+  // visibly and reversibly. Any other day change ends the notice.
+  const [dayNotice, setDayNotice] = useState<{
+    message: string;
+    quantities: Record<string, number>;
+    days: readonly string[];
+  } | null>(null);
+  const previousDaysRef = useRef<readonly string[]>(selectedOccurrenceIds);
+  useEffect(() => {
+    const previousDays = previousDaysRef.current;
+    if (previousDays === selectedOccurrenceIds) return;
+    previousDaysRef.current = selectedOccurrenceIds;
+    const removed = publicEvent.tickets.filter(
+      (ticket) => ticket.offChosenDays === true && (ticketQuantities[ticket.id] ?? 0) > 0,
+    );
+    if (removed.length === 0) {
+      setDayNotice(null);
+      return;
+    }
+    setDayNotice({
+      message: removedTicketsNotice(
+        removed.map((ticket) => ({
+          name: ticket.name,
+          quantity: ticketQuantities[ticket.id] ?? 0,
+          dayLabel: ticket.dayScopeLabel ?? null,
+        })),
+      ),
+      quantities: ticketQuantities,
+      days: previousDays,
+    });
+    setTicketQuantities((current) => ({
+      ...current,
+      ...Object.fromEntries(removed.map((ticket) => [ticket.id, 0])),
+    }));
+  }, [publicEvent.tickets, selectedOccurrenceIds, ticketQuantities]);
+  const undoDayRemoval = useCallback((): void => {
+    if (dayNotice === null) return;
+    previousDaysRef.current = dayNotice.days;
+    setSelectedOccurrenceIds(dayNotice.days);
+    setTicketQuantities(dayNotice.quantities);
+    setDayNotice(null);
+  }, [dayNotice]);
 
   // ORCH-1138 — the page-level variant (cancelled / password-gate keep the shared
   // renderer's dedicated LEGACY render; everything else gets the FOUNDATION page).
@@ -1436,6 +1494,26 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         }
         onToggle={handleOccurrenceToggle}
       />
+      {dayNotice !== null ? (
+        <View style={styles.dayNotice} testID="issue-3281-scope-notice">
+          <Text
+            style={[styles.dayNoticeText, { color: palette.primaryText }]}
+            accessibilityRole="alert"
+          >
+            {dayNotice.message}
+          </Text>
+          <Pressable
+            onPress={undoDayRemoval}
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
+            style={styles.dayNoticeUndo}
+          >
+            <Text style={[styles.dayNoticeUndoText, { color: palette.accent }]}>
+              Undo
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </React.Suspense>
   ) : null;
 
@@ -2346,6 +2424,21 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 };
 
 const styles = StyleSheet.create({
+  dayNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+  },
+  dayNoticeText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+  dayNoticeUndo: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayNoticeUndoText: { fontSize: 14, fontWeight: "800" },
   host: {
     flex: 1,
     position: "relative",
