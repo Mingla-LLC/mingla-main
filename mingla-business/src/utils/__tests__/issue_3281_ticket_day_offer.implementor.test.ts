@@ -6,6 +6,7 @@ import {
   quantityPerDate,
   ticketCoversAnyDate,
 } from "../../components/checkout/byDateQuantities";
+import { dayChooserCaptions } from "../dayChooserCaptions";
 import { removedTicketsNotice, ticketDayView } from "../ticketDayOffer";
 
 const occurrences = ["fri", "sat", "sun"].map((id, index) => ({
@@ -87,6 +88,39 @@ describe("issue #3281 cart lines", () => {
     expect(ticketCoversAnyDate(["fri"], ["sat"])).toBe(false);
     expect(ticketCoversAnyDate(["fri"], [])).toBe(true);
     expect(ticketCoversAnyDate(null, ["sat"])).toBe(true);
+  });
+});
+
+describe("issue #3281 date picker captions", () => {
+  const days = [{ id: "fri" }, { id: "sat" }, { id: "sun" }];
+  const ticket = (ids: string[] | null, soldOut: string[] = []) => ({
+    visibility: "public" as const,
+    validOccurrenceIds: ids,
+    soldOutOccurrenceIds: soldOut,
+  });
+
+  test("an event with no listed ticket gets no captions", () => {
+    expect(dayChooserCaptions([ticket(null)], days)).toEqual({});
+  });
+
+  test("names dates with no ticket and dates that are full", () => {
+    expect(dayChooserCaptions([ticket(["fri", "sat"], ["sat"])], days)).toEqual({
+      sat: "Sold out",
+      sun: "No tickets",
+    });
+  });
+
+  test("an All dates ticket keeps every date open", () => {
+    expect(dayChooserCaptions([ticket(["fri"], ["fri"]), ticket(null)], days)).toEqual({});
+  });
+
+  test("a hidden ticket covers nothing", () => {
+    expect(
+      dayChooserCaptions(
+        [{ ...ticket(["fri"]), visibility: "hidden" as const }, ticket(["sat"])],
+        days,
+      ),
+    ).toEqual({ fri: "No tickets", sun: "No tickets" });
   });
 });
 

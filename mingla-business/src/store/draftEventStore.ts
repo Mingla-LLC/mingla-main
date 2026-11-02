@@ -98,6 +98,8 @@ export interface TicketStub {
   validDayIds?: string[] | null;
   /** issue #3281 — public reads only: this ticket's dates, by `event_dates.id`. */
   validOccurrenceIds?: string[] | null;
+  /** issue #3281 — public reads only: listed dates this ticket has sold out. */
+  soldOutOccurrenceIds?: string[];
   /** Null when isFree=true; otherwise positive major-unit price. */
   priceGbp: number | null;
   /**

@@ -1514,6 +1514,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onRetryOccurrences === undefined ? undefined : handleRetryOccurrences
         }
         onToggle={handleOccurrenceToggle}
+        tickets={event.tickets}
       />
       {dayNotice !== null ? (
         <View style={styles.dayNotice} testID="issue-3281-scope-notice">

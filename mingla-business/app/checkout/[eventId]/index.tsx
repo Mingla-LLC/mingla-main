@@ -55,7 +55,10 @@ import { resolveHideRemainingCount } from "@mingla/offering-rendering/remainingC
 // occurrence query here any more.
 import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
 import { formatCurrency } from "../../../src/utils/currency";
-import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
+import {
+  formatChosenDaysLabel,
+  resolveChosenDaysLine,
+} from "../../../src/utils/eventDateDisplay";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 
@@ -495,6 +498,20 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     );
   }
 
+  // issue #3281 — says which days a listed ticket covers in the cart too.
+  const withDayScope = (ticket: TicketStub): TicketStub & { dayScopeLabel: string | null } => ({
+    ...ticket,
+    dayScopeLabel:
+      ticket.validOccurrenceIds == null ||
+      occurrences.every((o) => ticket.validOccurrenceIds?.includes(o.id))
+        ? null
+        : formatChosenDaysLabel(
+            occurrences,
+            ticket.validOccurrenceIds,
+            event?.timezone,
+          ),
+  });
+
   const visibleTickets =
     ticketLinkToken === null
       ? event.tickets.filter(isVisibleForBuyer).slice().sort(sortByDisplayOrder)
@@ -690,7 +707,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                           <Text style={styles.perDateHint}>{maxHint}</Text>
                         ) : null}
                         <QuantityRow
-                          ticket={ticket}
+                          ticket={withDayScope(ticket)}
                           quantity={qty}
                           hideRemainingCount={hideRemainingCount}
                           onJoinWaitlist={setWaitlistTicketId}
@@ -743,7 +760,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                     <Text style={styles.perDateHint}>{maxHint}</Text>
                   ) : null}
                   <QuantityRow
-                    ticket={ticket}
+                    ticket={withDayScope(ticket)}
                     quantity={qty}
                     hideRemainingCount={hideRemainingCount}
                     onJoinWaitlist={setWaitlistTicketId}
