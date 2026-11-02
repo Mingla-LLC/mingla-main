@@ -65,6 +65,8 @@ export interface AriFlowArtefact {
    */
   answer_mode?: "form";
   rendition?: unknown;
+  /** #3355 P7 — the record the card is about (an event's cover upload). */
+  subject_id?: string;
 }
 
 /** #3355 P3 — what the server says about the chat's flow run. */
@@ -96,6 +98,19 @@ export interface AriFlowAnswerValues {
   choices: string[];
   country: string | null;
   response: string;
+  /** #3355 P7 — a place picked from the address search on an Ari card. */
+  place?: AriFlowPlaceValue;
+}
+
+/** #3355 P7 — the picked place (MapboxAddressInput) an Ari card submits. */
+export interface AriFlowPlaceValue {
+  venue_name: string;
+  address: string;
+  city: string;
+  country_code: string | null;
+  lat: number;
+  lng: number;
+  feature_type: string | null;
 }
 
 /** #3355 P3 — the next step the server already persisted. */

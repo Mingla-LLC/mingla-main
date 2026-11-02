@@ -21,6 +21,7 @@ import type {
   AgentMessage,
   AriFlowAnswer,
   AriFlowArtefact,
+  AriFlowPlaceValue,
   AriFlowState,
 } from "../../services/agentChatService";
 
@@ -210,10 +211,15 @@ export function buildFlowFormAnswer(args: {
 }
 
 /** #3355 — the handoffs the owner can finish with an in-chat upload. */
-export type AriFlowUploadKind = "logo" | "cover";
+export type AriFlowUploadKind = "logo" | "cover" | "event_cover";
 
 const FLOW_UPLOAD_ITEMS: Readonly<Record<string, AriFlowUploadKind>> =
-  Object.freeze({ profile_photo: "logo", cover_media: "cover" });
+  Object.freeze({
+    profile_photo: "logo",
+    cover_media: "cover",
+    // #3355 P7 — the event flow's cover, after the draft exists.
+    event_cover: "event_cover",
+  });
 
 export const ARI_FLOW_UPLOAD_COPY: Readonly<
   Record<AriFlowUploadKind, { action: string; note: string; answer: string }>
@@ -230,6 +236,12 @@ export const ARI_FLOW_UPLOAD_COPY: Readonly<
       "You choose the photo or video. It's saved to your brand as soon as you pick it — Ari never adds one for you.",
     answer: "I've added my cover",
   },
+  event_cover: {
+    action: "Add the event cover",
+    note:
+      "You choose the photo or video. It's saved to this event's draft as soon as you pick it — Ari never adds one for you.",
+    answer: "I've added the event cover",
+  },
 });
 
 /**
@@ -245,9 +257,61 @@ export function flowUploadKind(
     ? FLOW_UPLOAD_ITEMS[artefact.handoff.item_key]
     : undefined;
   if (!kind) return null;
+  // An event cover needs the event it goes to.
+  if (kind === "event_cover" && !artefact.subject_id) return null;
   return artefact.options.some((option) => option.id === "check")
     ? kind
     : null;
+}
+
+/**
+ * #3355 P7 — the event flow's "Where is it?" card: answered with the Host's
+ * address search (MapboxAddressInput) and a venue name, never typed text.
+ */
+export function isFlowPlaceCard(artefact: AriFlowArtefact): boolean {
+  return (
+    artefact.step_key === "event_place" &&
+    artefact.answer_mode === "form" &&
+    artefact.question_id !== null
+  );
+}
+
+/** #3355 P7 — the bound answer for a picked place. */
+export function buildFlowPlaceAnswer(
+  artefact: AriFlowArtefact,
+  place: AriFlowPlaceValue,
+): { answer: AriFlowAnswer; label: string } | null {
+  if (!isFlowPlaceCard(artefact) || !artefact.question_id) return null;
+  const venue = place.venue_name.trim();
+  const address = place.address.trim();
+  const city = place.city.trim();
+  if (
+    !venue ||
+    !address ||
+    !city ||
+    !Number.isFinite(place.lat) ||
+    !Number.isFinite(place.lng)
+  ) {
+    return null;
+  }
+  const shown = `${venue}, ${address}`;
+  const label = shown.length > 200 ? `${shown.slice(0, 197)}…` : shown;
+  return {
+    answer: {
+      run_id: artefact.run_id,
+      step_key: artefact.step_key,
+      question_id: artefact.question_id,
+      choice_id: "answer",
+      display_text: label,
+      values: {
+        choices: [],
+        country: null,
+        response: "",
+        place: { ...place, venue_name: venue, address, city },
+      },
+    },
+    label,
+  };
 }
 
 /** #3355 — the bound "check" answer sent once the owner's file is saved. */

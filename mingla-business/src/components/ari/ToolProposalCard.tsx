@@ -326,6 +326,14 @@ function fieldsFor(
   const websiteSetup = websiteSetupProposalCopy(toolName, args);
   if (websiteSetup) return websiteSetup.fields;
 
+  // #3355 P7 — an Ari flow proposal whose rows the server wrote in plain
+  // words (the event flow's create / details / tickets / publish cards):
+  // show exactly those, never the raw arguments (coordinates, "public").
+  if (context.flow_rows_only === true) {
+    const server = readServerPresentation(args);
+    if (server && server.fields.length > 0) return server.fields;
+  }
+
   if (toolName === "create_discount") {
     if (typeof args.name === "string")
       out.push({ label: "Discount", value: args.name });

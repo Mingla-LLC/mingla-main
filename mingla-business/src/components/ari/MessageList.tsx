@@ -48,6 +48,7 @@ import {
 import type {
   AgentChoiceSubmissionV2,
   AriFlowAnswer,
+  AriFlowPlaceValue,
   AriFlowState,
 } from "../../services/agentChatService";
 import {
@@ -56,12 +57,14 @@ import {
   ARI_FLOW_OFFLINE_COPY,
   answeredFlowQuestionIds,
   buildFlowFormAnswer,
+  buildFlowPlaceAnswer,
   earlierFlowCopyIds,
   flowArtefactOf,
   flowCardStatus,
   flowUploadAnswer,
   flowUploadKind,
   flowViewOnlyCopy,
+  isFlowPlaceCard,
   newestOpenFlowArtefactId,
   type AriFlowUploadKind,
 } from "./ariFlowCards";
@@ -189,6 +192,16 @@ export interface MessageListProps {
     kind: AriFlowUploadKind;
     disabled: boolean;
     onUploaded: () => void;
+    /** #3355 P7 — the event an event cover goes to. */
+    subjectId?: string | null;
+  }) => React.ReactNode;
+  /**
+   * #3355 P7 — the address picker on a live "Where is it?" event card.
+   * `onPicked` sends the bound answer.
+   */
+  renderFlowPlace?: (args: {
+    disabled: boolean;
+    onPicked: (place: AriFlowPlaceValue) => void;
   }) => React.ReactNode;
   /** #3355 P3 — offline disables answers with a plain explanation. */
   online?: boolean;
@@ -260,6 +273,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onFlowAnswer,
   onFlowRoute,
   renderFlowUpload,
+  renderFlowPlace,
   online = true,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
@@ -994,6 +1008,36 @@ export const MessageList: React.FC<MessageListProps> = ({
               );
             }
             const isResolvedFlow = resolvedChoice?.messageId === m.id;
+            // #3355 P7 — "Where is it?" is answered with the address search.
+            if (isFlowPlaceCard(flow) && renderFlowPlace) {
+              return (
+                <View>
+                  {bubble}
+                  {isResolvedFlow
+                    ? null
+                    : renderFlowPlace({
+                        disabled: choicesDisabled || !online,
+                        onPicked: (place) => {
+                          const bound = buildFlowPlaceAnswer(flow, place);
+                          if (!bound) return;
+                          setResolvedChoice({
+                            messageId: m.id,
+                            optionId: "answer",
+                          });
+                          onFlowAnswer?.(bound.answer, bound.label);
+                        },
+                      })}
+                  {!online ? (
+                    <Text
+                      style={styles.flowLockedLabel}
+                      accessibilityLiveRegion="polite"
+                    >
+                      {ARI_FLOW_OFFLINE_COPY}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            }
             if (flow.options.length === 0) return bubble;
             // #3355 — a logo / cover handoff takes the upload in the chat;
             // the card's own buttons ("Open Brand details", check) stay.
@@ -1002,6 +1046,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               uploadKind && renderFlowUpload && !isResolvedFlow
                 ? renderFlowUpload({
                     kind: uploadKind,
+                    subjectId: flow.subject_id ?? null,
                     disabled: choicesDisabled || !online,
                     onUploaded: () => {
                       const bound = flowUploadAnswer(flow, uploadKind);

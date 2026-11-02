@@ -44,6 +44,8 @@ export interface AriFlowUploadCardProps {
   disabled: boolean;
   /** The owner's file is saved to the brand: ask Ari to check. */
   onUploaded: () => void;
+  /** #3355 P7 — the event an `event_cover` upload is saved to. */
+  eventId?: string | null;
 }
 
 /**
@@ -67,13 +69,19 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
   accountId,
   disabled,
   onUploaded,
+  eventId = null,
 }) => {
   const queryClient = useQueryClient();
+  const [saveError, setSaveError] = useState<string | null>(null);
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const [open, setOpen] = useState(false);
   const copy = ARI_FLOW_UPLOAD_COPY[kind];
-  const ready = brand !== null && brandId !== null && accountId !== null;
+  const ready =
+    brand !== null &&
+    brandId !== null &&
+    accountId !== null &&
+    (kind !== "event_cover" || eventId !== null);
   const existingDescription = brand
     ? joinBrandDescription(brand.tagline, brand.bio)
     : null;
@@ -97,6 +105,50 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
       onUploaded();
     },
     [brandId, onUploaded, queryClient],
+  );
+  // #3355 P7 — an event draft's cover: saved to the event through the same
+  // Host pipeline the event wizard uses (attest + business_set_event_cover_media),
+  // and only after the owner picks.
+  const handleEventCoverSaved = useCallback(
+    (patch: CoverPatch): void => {
+      if (
+        eventId === null ||
+        typeof patch.coverMediaUrl !== "string" ||
+        !patch.coverMediaUrl ||
+        (patch.coverMediaType !== "image" && patch.coverMediaType !== "video")
+      ) {
+        return;
+      }
+      setSaveError(null);
+      const url = patch.coverMediaUrl;
+      const type = patch.coverMediaType;
+      void import("../../services/eventCoverMediaService")
+        .then(({ setEventCover }) =>
+          setEventCover(
+            eventId,
+            url,
+            type,
+            {
+              provider: patch.coverMediaProvider ?? "upload",
+              sourceUrl: patch.coverMediaSourceUrl ?? null,
+              credit: patch.coverMediaCredit ?? null,
+              creditUrl: patch.coverMediaCreditUrl ?? null,
+              alt: patch.coverMediaAlt ?? null,
+            },
+            patch.coverMediaPosterUrl ?? null,
+          ),
+        )
+        .then(() => {
+          setOpen(false);
+          onUploaded();
+        })
+        .catch(() => {
+          setSaveError(
+            "That cover didn't save, so nothing changed. Try picking it again.",
+          );
+        });
+    },
+    [eventId, onUploaded],
   );
 
   return (
@@ -123,6 +175,35 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
           currentPhotoUrl={brand.photo ?? null}
           onClose={handleClose}
           onPicked={handleLogoSaved}
+        />
+      ) : null}
+      {saveError ? (
+        <Text style={styles.note} accessibilityLiveRegion="polite">
+          {saveError}
+        </Text>
+      ) : null}
+      {ready && kind === "event_cover" && eventId !== null ? (
+        <CoverPickerSheet
+          visible={open}
+          onClose={handleClose}
+          target={{
+            kind: "event",
+            brandId,
+            eventRowId: eventId,
+            coverMediaApplyMode: "draft_auto",
+          }}
+          initial={{
+            coverMediaUrl: null,
+            coverMediaPosterUrl: null,
+            coverMediaType: null,
+            coverMediaProvider: null,
+            coverMediaSourceUrl: null,
+            coverMediaCredit: null,
+            coverMediaCreditUrl: null,
+            coverMediaAlt: null,
+          }}
+          onCoverChange={handleEventCoverSaved}
+          onShowToast={() => undefined}
         />
       ) : null}
       {ready && kind === "cover" ? (

@@ -72,6 +72,7 @@ import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type {
   AgentChoiceSubmissionV2,
   AriFlowAnswer,
+  AriFlowPlaceValue,
 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import {
@@ -219,6 +220,12 @@ const composerOccupiedPxFor = (
  * Loaded only when a live upload handoff is on screen, so the picker
  * modules never join this screen's boot path or its render suites.
  */
+// #3355 P7 — the address picker on Ari's "Where is it?" event card.
+const AriFlowPlaceCard = React.lazy(() =>
+  import("../../components/ari/AriFlowPlaceCard").then((module) => ({
+    default: module.AriFlowPlaceCard,
+  })),
+);
 const AriFlowUploadCard = React.lazy(() =>
   import("../../components/ari/AriFlowUploadCard").then((module) => ({
     default: module.AriFlowUploadCard,
@@ -1286,10 +1293,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 kind,
                 disabled,
                 onUploaded,
+                subjectId,
               }: {
                 kind: AriFlowUploadKind;
                 disabled: boolean;
                 onUploaded: () => void;
+                subjectId?: string | null;
               }) => (
                 <React.Suspense fallback={null}>
                   <AriFlowUploadCard
@@ -1298,7 +1307,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     accountId={accountId}
                     disabled={disabled}
                     onUploaded={onUploaded}
+                    eventId={subjectId ?? null}
                   />
+                </React.Suspense>
+              )}
+              renderFlowPlace={({
+                disabled,
+                onPicked,
+              }: {
+                disabled: boolean;
+                onPicked: (place: AriFlowPlaceValue) => void;
+              }) => (
+                <React.Suspense fallback={null}>
+                  <AriFlowPlaceCard disabled={disabled} onSubmit={onPicked} />
                 </React.Suspense>
               )}
               online={online !== false}
