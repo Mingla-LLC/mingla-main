@@ -91,6 +91,8 @@ import {
   type FieldDiff,
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
+import { useEventDateKeys } from "../../hooks/useEventDateKeys";
+import { soldByTicketAndDay } from "../../utils/ticketDayScope";
 import {
   NO_BUYERS_EDIT_REASON,
   validateLiveEventFieldUpdate,
@@ -121,7 +123,7 @@ import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
-import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
+import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — the two settings steps load lazily (see lazySettingsSteps.tsx).
 import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsSteps";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
@@ -611,7 +613,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // still backstops every structural change).
   const serverOrdersRead = useEventReconciliation(liveEvent.serverEventId);
   const serverOrders = serverOrdersRead.data ?? [];
-  const soldCountCtx = useMemo(
+  const baseSoldCountCtx = useMemo(
     () =>
       buildSoldCountContextFromOrders(
         serverOrders,
@@ -621,6 +623,28 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           : null,
       ),
     [serverOrders, liveEvent.whenMode, liveEvent.serverEventId, liveEvent.id],
+  );
+
+  // issue #3281 — sold passes per ticket and date key, null until both reads
+  // are in, so the Valid on picker never removes a day on unknown numbers.
+  const dateKeysRead = useEventDateKeys(liveEvent.serverEventId);
+  const soldCountByTierDay = useMemo(
+    () =>
+      serverOrdersRead.data != null && dateKeysRead.data !== undefined
+        ? soldByTicketAndDay(
+            serverOrdersRead.data,
+            Object.fromEntries(
+              dateKeysRead.data.map((row) => [row.id, row.occurrence_key]),
+            ),
+          )
+        : null,
+    [serverOrdersRead.data, dateKeysRead.data],
+  );
+
+  // Final validation and the store read the same per-date floor as the sheet.
+  const soldCountCtx = useMemo(
+    () => ({ ...baseSoldCountCtx, soldCountByTierDay }),
+    [baseSoldCountCtx, soldCountByTierDay],
   );
 
   // Cycle 13a J-T6 G2: ticket price editability gated on EDIT_TICKET_PRICE
@@ -1722,6 +1746,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         editMode: {
           soldCountByTier: soldCountCtx.soldCountByTier,
           capacityFloorByTier: soldCountCtx.capacityFloorByTier,
+          soldCountByTierDay,
         },
         canEditTicketPrice,
         coverMediaEventId: liveEvent.serverEventId,
@@ -1815,6 +1840,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       showToast,
       scrollToBottom,
       soldCountCtx.soldCountByTier,
+      soldCountByTierDay,
       canEditTicketPrice,
       liveEvent.serverEventId,
       liveEvent.currency,

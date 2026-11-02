@@ -153,7 +153,7 @@ import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
-import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
+import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — Step 6 loads lazily (see lazySettingsSteps.tsx).
 import { CreatorStep6SettingsLazy } from "./lazySettingsSteps";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";

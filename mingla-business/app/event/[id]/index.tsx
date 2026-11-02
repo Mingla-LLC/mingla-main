@@ -660,7 +660,8 @@ export default function EventDetailScreen(): React.ReactElement {
   const capacityPerNight = isPerNightCapacity(event?.whenMode);
   const busiestNightSoldByTier = useMemo<Record<string, number>>(
     () =>
-      event === null || !capacityPerNight
+      event === null ||
+      (!capacityPerNight && !event.tickets.some((t) => t.validDayIds != null))
         ? {}
         : busiestNightSoldByTicketType(allOrderEntries, event.id),
     [allOrderEntries, capacityPerNight, event],
@@ -1159,11 +1160,12 @@ export default function EventDetailScreen(): React.ReactElement {
                   soldCount={
                     !ordersReady
                       ? null
-                      : capacityPerNight
+                      : capacityPerNight || ticket.validDayIds != null
                         ? busiestNightSoldByTier[ticket.id] ?? 0
                         : soldCountByTier[ticket.id] ?? 0
                   }
-                  capacityPerNight={capacityPerNight}
+                  capacityPerNight={capacityPerNight || ticket.validDayIds != null}
+                  busiestLabel={capacityPerNight ? "busiest night" : "busiest date"}
                 />
               ))}
           </View>

@@ -55,6 +55,8 @@ import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { randomUuid } from "../../utils/randomId";
 import { useRecordDoorSale } from "../../hooks/useEventDoorSales";
+import { useEventDateKeys } from "../../hooks/useEventDateKeys";
+import { formatMultiDateList } from "../../utils/eventDateDisplay";
 import {
   DoorSaleError,
   type RecordDoorSaleResult,
@@ -256,9 +258,36 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const paymentMethodValid =
     paymentMethodOption !== undefined && !paymentMethodOption.disabled;
 
+  // issue #3281 — a listed ticket's pass needs a date, and one sale has one.
+  const [doorDateId, setDoorDateId] = useState<string | null>(null);
+  const listedLines = lines
+    .map((line) => pickableTiers.find((t) => t.id === line.ticketTypeId))
+    .filter((t): t is TicketStub => t?.validDayIds != null);
+  const doorDateKeys = useEventDateKeys(event.id, listedLines.length > 0);
+  const doorDates = useMemo(
+    () =>
+      (doorDateKeys.data ?? [])
+        .filter(
+          (row) =>
+            row.occurrence_key !== null &&
+            row.cancelled_at === null &&
+            new Date(row.end_at).getTime() > Date.now() &&
+            listedLines.every((t) => t.validDayIds?.includes(row.occurrence_key!)),
+        )
+        .map((row): [string, string] => [row.id, row.occurrence_key!]),
+    [doorDateKeys.data, listedLines],
+  );
+  const doorDateNeeded = listedLines.length > 0;
+  useEffect(() => {
+    if (!doorDateNeeded) setDoorDateId(null);
+    else if (doorDates.length === 1) setDoorDateId(doorDates[0][0]);
+    else if (!doorDates.some(([id]) => id === doorDateId)) setDoorDateId(null);
+  }, [doorDateId, doorDateNeeded, doorDates]);
+
   const canSubmit =
     !submitting &&
     lines.length > 0 &&
+    (!doorDateNeeded || doorDateId !== null) &&
     paymentMethodValid &&
     emailValid &&
     phoneValid &&
@@ -277,7 +306,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     try {
       const result = await recordSale.mutateAsync({
         eventId: event.id,
-        eventDateId: null,
+        eventDateId: doorDateId,
         buyerName: buyerName.trim(),
         buyerEmail: buyerEmail.trim().toLowerCase(),
         buyerPhoneE164: buyerPhone.e164,
@@ -303,6 +332,11 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       if (error instanceof DoorSaleError) {
         if (error.code === "door_ticket_capacity_exceeded") {
           setSubmitError("Not enough tickets left for this sale.");
+        } else if (
+          error.code === "ticket_not_valid_on_chosen_days" ||
+          error.code === "door_event_date_invalid"
+        ) {
+          setSubmitError("One of these tickets isn't valid on that date.");
         } else if (error.code === "door_access_denied" || error.code === "42501") {
           setSubmitError("You don't have door access for this event.");
         } else {
@@ -316,6 +350,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     }
   }, [
     canSubmit,
+    doorDateId,
     event.id,
     eventCurrencyCode,
     buyerName,
@@ -440,6 +475,39 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                   {fmtDoorMoney(total)}
                 </Text>
               </View>
+            </View>
+          ) : null}
+
+          {doorDateNeeded ? (
+            <View testID="issue-3281-door-date">
+              <Text style={styles.sectionHeader}>Date</Text>
+              {doorDates.length === 0 ? (
+                <Text style={styles.paymentLabel}>
+                  {doorDateKeys.isLoading
+                    ? "Checking dates…"
+                    : "These tickets share no date. Sell them separately."}
+                </Text>
+              ) : (
+                doorDates.map(([id, key]) => {
+                  const active = id === doorDateId;
+                  // The time too: two entries can share a calendar day.
+                  const entry = event.multiDates?.find((e) => e.id === key);
+                  const label =
+                    entry !== undefined ? formatMultiDateList([entry])[0] : key;
+                  return (
+                    <Pressable
+                      key={id}
+                      onPress={() => setDoorDateId(id)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={label}
+                      style={[styles.paymentRow, active && styles.paymentRowActive]}
+                    >
+                      <Text style={styles.paymentLabel}>{label}</Text>
+                    </Pressable>
+                  );
+                })
+              )}
             </View>
           ) : null}
 

@@ -74,6 +74,11 @@ export interface StepBodyProps {
      * sold passes; absent everywhere else, where the floor is the sold count.
      */
     capacityFloorByTier?: Record<string, number>;
+    /**
+     * issue #3281 — sold passes per ticket and date key. Null while unknown,
+     * and the Valid on picker then keeps every selected day.
+     */
+    soldCountByTierDay?: Record<string, Record<string, number>> | null;
   };
   /**
    * Cycle 13a J-T6 G2: when false, ticket price input is uneditable with a
