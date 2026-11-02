@@ -42,10 +42,6 @@ import {
   assertAudienceMatchesCampaignBrand,
   assertAudienceQueryMatchesCampaignBrand,
 } from "../_shared/marketingAudienceBrandGate.ts";
-import {
-  receiveReasonFromAudienceKind,
-  type MarketingReceiveReason,
-} from "../_shared/marketingReceiveReason.ts";
 import { isUndeliverableEmailDomain } from "../_shared/undeliverableEmail.ts";
 import {
   buildMarketingBookQuote,
@@ -1398,9 +1394,6 @@ async function sendEmail(
       continue;
     }
     const variables = buildVariables(contact, brandName, embedded);
-    const receiveReason: MarketingReceiveReason =
-      contact.receive_reason ??
-      receiveReasonFromAudienceKind(audience.query_definition.kind);
     const brandFollowUrl = brandSlug !== null && brandSlug.length > 0
       ? brandFollowPublicUrl(brandSlug)
       : null;
@@ -1412,7 +1405,6 @@ async function sendEmail(
       subject: substituteString(subject, variables),
       brand_name: brandName,
       brand_header_image_url: brandHeaderImageUrl,
-      receive_reason: receiveReason,
       brand_follow_url: brandFollowUrl,
       offering_invite_url_marker: inviteContext === null
         ? undefined

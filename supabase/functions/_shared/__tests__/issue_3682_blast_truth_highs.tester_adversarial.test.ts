@@ -6,13 +6,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { renderMarketingEmail } from "../marketingEmailRender.ts";
-import { receiveReasonFromAudienceKind } from "../marketingReceiveReason.ts";
 import { isUndeliverableEmailDomain } from "../undeliverableEmail.ts";
-
-Deno.test("#3682 buyer audiences still default to bought", () => {
-  assertEquals(receiveReasonFromAudienceKind("brand_buyers"), "bought");
-  assertEquals(receiveReasonFromAudienceKind("event_buyers"), "bought");
-});
 
 Deno.test("#3682 reserved domains cover exact + suffixes", () => {
   for (
@@ -31,7 +25,7 @@ Deno.test("#3682 reserved domains cover exact + suffixes", () => {
   }
 });
 
-Deno.test("#3682 added reason never claims bought tickets", () => {
+Deno.test("#3682 a book blast never claims bought tickets", () => {
   const rendered = renderMarketingEmail({
     body_html: "Hello",
     variables: {
@@ -53,9 +47,7 @@ Deno.test("#3682 added reason never claims bought tickets", () => {
     unsubscribe_url: "https://usemingla.com/u/tok",
     subject: "Hi",
     brand_name: "Lantern Room",
-    receive_reason: "added",
   });
-  assertStringIncludes(rendered.html, "added you to their guest book");
   assertEquals(rendered.html.includes("bought tickets"), false);
 });
 

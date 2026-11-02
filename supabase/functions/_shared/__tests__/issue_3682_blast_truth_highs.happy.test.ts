@@ -7,10 +7,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { renderMarketingEmail } from "../marketingEmailRender.ts";
-import {
-  receiveReasonFooterSentence,
-  receiveReasonFromAudienceKind,
-} from "../marketingReceiveReason.ts";
+import { EMAIL_FOOTER_LINE } from "../../../../packages/brand-rendering/emailFooter.ts";
 import { isUndeliverableEmailDomain } from "../undeliverableEmail.ts";
 
 const vars = {
@@ -29,8 +26,9 @@ const vars = {
   event_id: null,
 };
 
-Deno.test("#3682 footer reason follows for followers audience", () => {
-  assertEquals(receiveReasonFromAudienceKind("brand_followers"), "follows");
+// #4226 (Seth, 2026-11-02): the per-reason footer sentences were replaced by
+// ONE line every email carries; a blast never claims a reason it can't prove.
+Deno.test("#3682/#4226 a blast footer carries the one footer line, once, and claims no purchase", () => {
   const rendered = renderMarketingEmail({
     body_html: "Hi {first_name}",
     variables: vars,
@@ -38,53 +36,11 @@ Deno.test("#3682 footer reason follows for followers audience", () => {
     unsubscribe_url: "https://usemingla.com/u/tok",
     subject: "Hello",
     brand_name: "Lantern Room",
-    receive_reason: "follows",
   });
-  // Apostrophe is HTML-escaped in the footer.
-  assertStringIncludes(rendered.html, "you follow Lantern Room on Mingla");
+  assertEquals(rendered.html.split(EMAIL_FOOTER_LINE).length - 1, 1);
+  assertStringIncludes(rendered.html, "Mingla honours this for Lantern Room");
   assertEquals(rendered.html.includes("bought tickets"), false);
-});
-
-Deno.test("#3682 friends-of-followers get friend_of_follower reason", () => {
-  assertEquals(
-    receiveReasonFromAudienceKind("brand_circle_extended"),
-    "friend_of_follower",
-  );
-  const sentence = receiveReasonFooterSentence(
-    "friend_of_follower",
-    "Lantern Room",
-  );
-  assertStringIncludes(sentence, "a friend follows");
-  assertEquals(sentence.includes("you follow"), false);
-});
-
-Deno.test("#3682 book audiences default to guest_book not added/follows", () => {
-  assertEquals(receiveReasonFromAudienceKind("all_brand_people"), "guest_book");
-  assertEquals(receiveReasonFromAudienceKind("manual_group"), "guest_book");
-});
-
-Deno.test("#3682 imported reason sentence", () => {
-  assertEquals(
-    receiveReasonFooterSentence("imported", "Lantern Room"),
-    "You're receiving this because Lantern Room imported your contact on Mingla with permission.",
-  );
-});
-
-Deno.test("#3682 rsvp and booking reasons are truthful", () => {
-  assertStringIncludes(
-    receiveReasonFooterSentence("rsvp", "Lantern Room"),
-    "RSVP'd",
-  );
-  assertStringIncludes(
-    receiveReasonFooterSentence("booking", "Lantern Room"),
-    "reservation",
-  );
-  assertEquals(
-    receiveReasonFooterSentence("rsvp", "Lantern Room").includes(
-      "bought tickets",
-    ),
-    false,
-  );
+  assertEquals(rendered.html.includes("purchased tickets"), false);
 });
 
 Deno.test("#3682 empty {{event:}} token is stripped after empty event_id", () => {
@@ -95,7 +51,6 @@ Deno.test("#3682 empty {{event:}} token is stripped after empty event_id", () =>
     unsubscribe_url: "https://usemingla.com/u/tok",
     subject: "Almost sold out — see you Fri Oct 10",
     brand_name: "Lantern Room",
-    receive_reason: "bought",
   });
   assertEquals(rendered.html.includes("{{event:}}"), false);
 });

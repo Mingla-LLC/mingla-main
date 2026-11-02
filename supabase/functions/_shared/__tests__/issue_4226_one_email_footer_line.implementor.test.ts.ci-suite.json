@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4226_one_email_footer_line.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4226-one-email-footer-line",
+  "profile": "deno-2-unit"
+}

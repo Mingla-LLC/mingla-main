@@ -30,10 +30,6 @@
 import { escapeHtml } from "./email/escape.ts";
 import { renderShell, SHELL_TOKENS } from "./email/shell.ts";
 import { generateTrackingId } from "./marketingTokens.ts";
-import {
-  type MarketingReceiveReason,
-  receiveReasonFooterSentence,
-} from "./marketingReceiveReason.ts";
 import { renderBlastFollowPanelHtml } from "./marketingBlastFollow.ts";
 // ISSUE-1001 — canonical logo resolution; replaces the silent DEAD-404
 // email-assets fallback URL with a live default.
@@ -109,11 +105,6 @@ export interface RenderMarketingEmailInput {
   brand_header_image_url?: string | null;
   /** Server-owned inert marker. It is never rewritten into marketing_clicks. */
   offering_invite_url_marker?: string;
-  /**
-   * #3682 — why this recipient is on the list. Drives the unsubscribe footer
-   * reason line (bought / imported / added / follows).
-   */
-  receive_reason?: MarketingReceiveReason;
   /**
    * #3682 Wave 2.3 — public brand Follow deep link. When set, a Follow panel
    * is injected above the unsubscribe footer on every blast email.
@@ -246,10 +237,11 @@ export function renderMarketingEmail(
   // Step 4b — unsubscribe footer (unsubscribe URL is NOT tracked — must
   // remain a direct link so the unsubscribe edge function receives the
   // signed token verbatim).
+  // #4226: the "why you're receiving this" line is the shell's single
+  // footer line (FOOTER_DISCLAIMER), not a per-reason sentence here.
   const unsubFooter = renderUnsubscribeFooter(
     input.unsubscribe_url,
     input.brand_name,
-    input.receive_reason ?? "bought",
   );
   const bodyWithFooter = `${withTrackingLinks}${followPanel}${unsubFooter}`;
 
@@ -501,15 +493,10 @@ function getTrackingLinkOrigin(): string {
 function renderUnsubscribeFooter(
   unsubscribeUrl: string,
   brandName: string,
-  reason: MarketingReceiveReason,
 ): string {
   const safeUrl = escapeHtml(unsubscribeUrl);
   const safeBrand = escapeHtml(brandName);
-  const reasonLine = escapeHtml(
-    receiveReasonFooterSentence(reason, brandName),
-  );
   return `<p style="margin:32px 0 0 0;padding-top:16px;border-top:1px solid ${BRAND_BORDER};font-size:12px;line-height:1.5;color:${BRAND_MUTED};">
-    ${reasonLine}
     <a href="${safeUrl}" style="color:${BRAND_MUTED};text-decoration:underline;">Unsubscribe</a>
     — Mingla honours this for ${safeBrand}.
   </p>`;

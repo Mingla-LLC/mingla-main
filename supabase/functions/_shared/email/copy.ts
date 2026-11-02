@@ -3,6 +3,7 @@
 // "experience app, not dating app" positioning rule is enforced.
 
 import type { EmailVariant } from "./types.ts";
+import { EMAIL_FOOTER_LINE } from "../../../../packages/brand-rendering/emailFooter.ts";
 
 export interface TicketCopy {
   preheader: string;
@@ -57,5 +58,7 @@ export function ticketCopyFor(variant: EmailVariant): TicketCopy {
 // Mingla positioning copy used in the footer. Memory rule:
 // "Mingla is an experience app, not a dating app."
 export const MINGLA_TAGLINE = "Mingla — the experience app.";
-export const FOOTER_DISCLAIMER =
-  "You received this email because you purchased tickets or requested an action with Mingla.";
+// #4226: one footer line for every email (shell, admin sends, host blasts and
+// the host composer preview). Its words live in
+// packages/brand-rendering/emailFooter.ts and nowhere else.
+export const FOOTER_DISCLAIMER = EMAIL_FOOTER_LINE;
