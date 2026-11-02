@@ -1,147 +1,198 @@
 /**
- * #4238 — every Host ad screen and every Ari ad tool message uses plain words.
+ * #4238 — the Host ad copy helpers return plain words.
  *
- * invariant: {"id":"I-PROPOSED-HOST-AD-PLAIN-LANGUAGE","status":"DRAFT","issue":4238,"rule":"Host-visible ad text (Business ad screens, their helpers and Ari ad tool messages) never uses Mingla's internal words (provider, lane, immutable, hash, snapshot, widening, creative, delivery, ...) and never shows the plan hash; identifiers, testIDs and comments may.","gate":"this file"}
+ * Behavioural half of I-PROPOSED-HOST-AD-PLAIN-LANGUAGE: every string the
+ * Host ad copy modules export, and every sentence their functions build, is
+ * run through the app's own hostAdCopyIsPlain() and its exact wording checked.
+ * The structural half (no internal word in copy written inline in the ad
+ * screens or Ari's ad tools, the plan hash never on screen, the typed
+ * LAUNCH / CANCEL PLAN / END confirmations) is owned by the strict-grep gate
+ * .github/scripts/strict-grep/issue-4238-host-ad-plain-language.mjs.
  *
  * Fails on revert: restoring any old sentence such as "Immutable plan hash",
- * "Provider estimates overlap" or "provider create returned no campaign id"
- * reds the scan with the file, line and word.
+ * a status label such as "Provider review", or a raw server code reaching a
+ * Host reds the matching assertion with the offending text.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-
 import {
+  HOST_AD_AUDIENCE_COPY,
+  HOST_AD_BANNED_WORDS,
+  HOST_AD_PLATFORM_NAMES,
+  HOST_AD_RESULTS_COPY,
+  hostAdAudienceName,
+  hostAdAudienceSize,
+  hostAdAudienceStatusLine,
+  hostAdCopyIsPlain,
+  hostAdCostPerLabel,
+  hostAdCountingLines,
   hostAdErrorMessage,
+  hostAdEventLabel,
+  hostAdLedgerLabel,
+  hostAdNoResultsLine,
+  hostAdPlaceList,
+  hostAdReachLine,
+  hostAdResultLabel,
+  hostAdReviewReason,
   hostAdStatusLabel,
+  hostAdStepLabel,
   hostAdTargetingNote,
+  hostAdVerdictLabel,
   platformName,
+  platformNames,
 } from "../hostAdCopy";
-import { scanAriAdMessages, scanHostCopy } from "./hostAdPlainLanguageScan";
+import {
+  HOST_AD_UNAVAILABLE_BODY,
+  HOST_AD_UNAVAILABLE_TITLE,
+  hostAdSetupErrorCopy,
+} from "../hostAdSetupCopy";
+import {
+  HOST_AD_PAGE_TYPE_LABEL,
+  HOST_AD_PAGE_TYPE_ORDER,
+  hostAdPageDetails,
+  hostAdPageMeta,
+  hostAdPageTypeLabel,
+} from "../hostAdPageLabels";
+import { formatHostAdMoneyCents } from "../hostAdMoney";
 
-const ROOT = path.resolve(__dirname, "../../../../..");
-const read = (relative: string): string =>
-  fs.readFileSync(path.join(ROOT, relative), "utf8");
+const PLATFORMS = ["meta", "tiktok", "snapchat", "google", "reddit"] as const;
 
-const HOST_AD_FILES = [
-  "app/(tabs)/marketing/ads/create.tsx",
-  "app/(tabs)/marketing/ads/[id].tsx",
-  "app/(tabs)/marketing/ads/index.tsx",
-  "src/components/marketing/ads/HostAdPagePicker.tsx",
-  "src/components/marketing/ads/HostAdCountryPicker.tsx",
-  "src/components/marketing/ads/hostAdCopy.ts",
-  "src/components/marketing/ads/hostAdCountries.ts",
-  "src/components/marketing/ads/hostAdGoal.ts",
-  "src/components/marketing/ads/hostAdPageLabels.ts",
-  "src/components/marketing/ads/hostAdSetupCopy.ts",
-  "src/components/marketing/AdCreditLedgerRow.tsx",
-  "src/components/marketing/AdCreditQuoteSheet.tsx",
-  "src/services/hostAdPlanService.ts",
-  "src/services/hostAdCampaignService.ts",
-  "src/services/hostAdLifecycle.ts",
-  "src/services/adCreditService.ts",
-  "src/utils/adVideoFit.ts",
-  "src/utils/homeAdLifecycle.ts",
-];
+/** Every text that is not plain, so a failure names the offending sentence. */
+const notPlain = (texts: readonly string[]): string[] =>
+  texts.filter((text) => !hostAdCopyIsPlain(text));
 
-/** The ad-plan part of Ari's proposal card (other tools are out of scope). */
-function adCardSource(): string {
-  const card = read("src/components/ari/ToolProposalCard.tsx");
-  const start = card.indexOf('if (toolName === "propose_ad_plan" || toolName === "approve_ad_plan") {');
-  const end = card.indexOf("return out;", start);
-  const assurance = card.indexOf("isAdPlanProposal\n                  ?");
-  expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  expect(assurance).toBeGreaterThan(-1);
-  return `${card.slice(start, end)}\n${card.slice(assurance, card.indexOf(":", card.indexOf('"', assurance) + 1) + 1)}`;
-}
-
-describe("#4238 plain-language Host ad screens", () => {
-  it("no Host ad screen or helper shows an internal word", () => {
-    const hits = HOST_AD_FILES.flatMap((file) =>
-      scanHostCopy(read(file), file).map(
-        (hit) => `${file}:${hit.line} [${hit.word}] ${hit.text}`,
-      ),
-    );
-    expect(hits).toEqual([]);
+describe("#4238 the plain-language check itself", () => {
+  it("catches the old wording and passes plain sentences", () => {
+    for (const old of [
+      "Immutable plan hash",
+      "Provider estimates overlap",
+      "This provider can run a broader audience. Review the exact widening before accepting it.",
+      "provider create returned no campaign id",
+      "Delivery snapshot frozen",
+      "Saved at budget",
+      "Lagos (NG:lagos)",
+      "12 conversions, 4,000 impressions",
+    ]) {
+      expect({ old, plain: hostAdCopyIsPlain(old) }).toEqual({ old, plain: false });
+    }
+    expect(hostAdCopyIsPlain("Your ad is running on TikTok.")).toBe(true);
+    expect(HOST_AD_BANNED_WORDS.length).toBeGreaterThanOrEqual(20);
   });
+});
 
-  it("Ari's ad proposal card shows no internal word", () => {
-    const hits = scanHostCopy(adCardSource(), "ToolProposalCard.tsx").map(
-      (hit) => `ToolProposalCard:${hit.line} [${hit.word}] ${hit.text}`,
-    );
-    expect(hits).toEqual([]);
-    const card = read("src/components/ari/ToolProposalCard.tsx");
-    expect(card).not.toContain('label: "Plan binding"');
-  });
-
-  it("the facts Ari puts on its ad card are plain", () => {
-    const ari = read("../supabase/functions/_shared/agentDomainTools.ts");
-    const start = ari.indexOf('if (toolName === "propose_ad_plan") {', ari.indexOf("export async function preflightMoneyProposal("));
-    const end = ari.indexOf('if (toolName === "cancel_trip_booking") {', start);
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    const hits = scanHostCopy(ari.slice(start, end), "ari-card.ts").map(
-      (hit) => `ari-card:${hit.line} [${hit.word}] ${hit.text}`,
-    );
-    expect(hits).toEqual([]);
-  });
-
-  it("no Ari ad tool message shows an internal word", () => {
-    const ari = read("../supabase/functions/_shared/agentDomainTools.ts");
-    const start = ari.indexOf("function hostAdScheduleDays(");
-    const end = ari.indexOf("const updateCampaignDraft = writeTool(");
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    const hits = scanAriAdMessages(ari.slice(start, end)).map(
-      (hit) => `ari:${hit.line} [${hit.word}] ${hit.text}`,
-    );
-    expect(hits).toEqual([]);
-  });
-
-  it("the scan catches the old wording (self-test)", () => {
-    const old = `const a = <Text>Immutable plan hash</Text>;
-      setNotice("This provider can run a broader audience. Review the exact widening before accepting it.");
-      // comments may say provider, hash and lane
-      const b = <View testID="host-ad-provider-hash" />;`;
-    expect(scanHostCopy(old, "old.tsx").map((hit) => hit.word.toLowerCase())).toEqual([
-      "immutable",
-      "provider",
-    ]);
+describe("#4238 Host ad copy modules return plain words", () => {
+  it("the setup screen copy is plain", () => {
+    expect(HOST_AD_UNAVAILABLE_TITLE).toBe("Ads aren't available yet");
     expect(
-      scanAriAdMessages(
-        'throw new ToolError("RPC_FAILED", "provider create returned no campaign id");',
-      ),
-    ).toHaveLength(1);
+      notPlain([
+        HOST_AD_UNAVAILABLE_TITLE,
+        HOST_AD_UNAVAILABLE_BODY,
+        hostAdSetupErrorCopy(null),
+        hostAdSetupErrorCopy("currency_authority_unresolved"),
+        hostAdSetupErrorCopy("currency_authority_unresolved:brand"),
+        hostAdSetupErrorCopy("rpc_failed"),
+      ]),
+    ).toEqual([]);
+    // A raw server code never reaches a Host.
+    expect(hostAdSetupErrorCopy("currency_authority_unresolved")).toBe(
+      "Set your brand's payout currency before running ads.",
+    );
+    expect(hostAdSetupErrorCopy("rpc_failed")).toBe("Ads setup couldn't load. Try again.");
   });
 
-  it("never shows the plan hash, but still sends it to Mingla", () => {
-    const create = read("app/(tabs)/marketing/ads/create.tsx");
-    expect(create).not.toContain("{prepared.planHash}");
-    expect(create).toContain("planHash: prepared.planHash");
-    const service = read("src/services/hostAdPlanService.ts");
-    expect(service).toContain("plan_hash: aggregate.version.plan_hash");
-    expect(service).toContain("plan_hash: input.planHash");
-  });
-
-  it("keeps the typed confirmations and explains them", () => {
-    const create = read("app/(tabs)/marketing/ads/create.tsx");
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
-    expect(create).toContain('launchPhrase !== "LAUNCH"');
-    expect(create).toContain("Type LAUNCH to start your ad.");
-    expect(create).toContain('confirmText="CANCEL PLAN"');
-    expect(detail).toContain('confirmText={destructiveAction === "end" ? "END" : "CANCEL"}');
-    expect(detail).toContain("Type END to stop your ad on every app.");
+  it("page labels name pages the way Hosts know them", () => {
+    const labels = HOST_AD_PAGE_TYPE_ORDER.map((type) => HOST_AD_PAGE_TYPE_LABEL[type]);
+    expect(notPlain(labels)).toEqual([]);
+    expect(hostAdPageTypeLabel("site")).toBe("Website");
+    expect(hostAdPageTypeLabel("marketing")).toBe("Page");
+    const meta = hostAdPageMeta({ page_type: "trip", starts_at: null, city: " Lagos " });
+    expect(meta).toBe("Trip · Lagos");
+    expect(hostAdPageDetails({ page_type: "trip", starts_at: null, city: "Lagos" })).toBe("Lagos");
   });
 
   it("names platforms the way Hosts know them", () => {
     expect(platformName("meta")).toBe("Facebook & Instagram");
     expect(platformName("tiktok")).toBe("TikTok");
-    expect(hostAdStatusLabel("PARTIALLY_LIVE")).toBe("Running on some apps");
-    expect(hostAdStatusLabel("staff_review_required")).toBe("Mingla is checking your ad");
+    expect(platformNames(["meta", "snapchat", "tiktok"])).toBe(
+      "Facebook & Instagram, Snapchat and TikTok",
+    );
+    expect(notPlain(Object.values(HOST_AD_PLATFORM_NAMES))).toEqual([]);
   });
 
-  it("translates targeting notes and errors into next steps", () => {
+  it("every status, step, timeline, verdict and credit label is plain", () => {
+    const statuses = [
+      "live", "active", "partially_live", "paused", "pause_requested", "ended",
+      "archived", "deleted", "draft", "validating", "ready_for_funding",
+      "funded_held", "staff_review_required", "staff_approved",
+      "creating_paused_objects", "creation_failed_retryable",
+      "creation_failed_terminal", "changes_requested", "cancelled_before_create",
+      "launched",
+    ];
+    const steps = ["promote", "audience", "budget", "creative", "review"];
+    const events = [
+      "create", "launch", "pause", "resume", "end", "cancel", "hold", "release",
+      "top_up", "withdraw", "campaign_spend", "unspend_return", "spend", "refund",
+    ];
+    const verdicts = ["exact", "broader", "unavailable", "check_required"];
+    const ledger = ["top_up", "withdraw", "unspend_return", "campaign_spend", "provider_fee_adjustment"];
+    expect(
+      notPlain([
+        ...statuses.map(hostAdStatusLabel),
+        ...steps.map((step) => `Saved at ${hostAdStepLabel(step)}`),
+        ...events.map(hostAdEventLabel),
+        ...verdicts.map(hostAdVerdictLabel),
+        ...ledger.map(hostAdLedgerLabel),
+        hostAdReviewReason("first_three_host_campaigns"),
+      ]),
+    ).toEqual([]);
+    expect(hostAdStatusLabel("PARTIALLY_LIVE")).toBe("Running on some apps");
+    expect(hostAdStatusLabel("staff_review_required")).toBe("Mingla is checking your ad");
+    expect(hostAdStepLabel("creative")).toBe("Video and words");
+    // An unknown credit kind reads as a safe phrase, never the raw code.
+    expect(hostAdLedgerLabel("provider_fee_adjustment")).toBe("Ads credit change");
+    expect(hostAdReviewReason("first_three_host_campaigns")).toBe(
+      "Mingla checks a brand's first three ads before they run",
+    );
+  });
+
+  it("result words are the ones Hosts use", () => {
+    const kinds = [
+      "conversions", "landing_page_view", "landing page view",
+      "rsvp_registration", "ticket_purchase", "link_click", "sign_up",
+    ];
+    expect(
+      notPlain([
+        ...kinds.map(hostAdResultLabel),
+        ...kinds.map(hostAdCostPerLabel),
+        ...kinds.map(hostAdNoResultsLine),
+        ...Object.values(hostAdCountingLines(kinds)),
+        ...Object.values(HOST_AD_RESULTS_COPY),
+      ]),
+    ).toEqual([]);
+    expect(hostAdResultLabel("conversions")).toBe("results");
+    expect(hostAdResultLabel("landing page view")).toBe("page visits");
+    expect(hostAdResultLabel("rsvp_registration")).toBe("RSVPs");
+    expect(hostAdCountingLines(["rsvp_registration", "landing_page_view"]).counts).toBe(
+      "We count RSVPs, then page visits.",
+    );
+  });
+
+  it("targeting notes become next steps on every branch", () => {
+    const lines = [
+      "Resolve Meta city keys for: NG:lagos, GH:accra.",
+      "Radius targeting needs at least one verified city.",
+      "Reddit cannot preserve city targeting; the selected countries are broader.",
+      "Radius rounded to the provider minimum.",
+      "Age buckets are provider-native.",
+      "Gender targeting unsupported.",
+      "Interest targeting is a provider hint.",
+      "Something new from the provider snapshot.",
+    ];
+    const notes = PLATFORMS.flatMap((platform) =>
+      ["exact", "broader", "unavailable", "check_required"].flatMap((verdict) =>
+        lines.map((line) => hostAdTargetingNote(platform, verdict, line, ["NG"])),
+      ),
+    );
+    expect(notPlain(notes)).toEqual([]);
     expect(
       hostAdTargetingNote(
         "reddit",
@@ -153,6 +204,36 @@ describe("#4238 plain-language Host ad screens", () => {
     expect(
       hostAdTargetingNote("meta", "check_required", "Resolve Meta city keys for: Ikeja."),
     ).toBe("Facebook & Instagram couldn't find Ikeja. Remove it, or turn Facebook & Instagram off.");
+    // Raw city keys are spelled out.
+    expect(hostAdPlaceList("NG:lagos, GH:accra")).toBe("Lagos, Nigeria and Accra, Ghana");
+  });
+
+  it("reach and audience lines are plain", () => {
+    expect(
+      notPlain([
+        ...PLATFORMS.map((p) => hostAdReachLine(p, { state: "available", lower_bound: 1000, upper_bound: 2000 })),
+        ...PLATFORMS.map((p) => hostAdReachLine(p, null)),
+        ...PLATFORMS.flatMap((p) =>
+          ["ready", "below_minimum", "too_small", "pending", "terms_required", null, "rejected"].map((state) =>
+            hostAdAudienceStatusLine(p, state, 120),
+          ),
+        ),
+        ...Object.values(HOST_AD_AUDIENCE_COPY),
+        hostAdAudienceName({ name: "", kind: "lookalike", lookalikeCountry: "NG" }),
+        hostAdAudienceSize({ approxSize: 250, platforms: [] }),
+      ]),
+    ).toEqual([]);
+    expect(hostAdReachLine("tiktok", null)).toBe("TikTok didn't give us a reach number yet. Your ad can still run.");
+  });
+
+  it("errors become plain next steps; raw technical text never reaches a Host", () => {
+    const codes = [
+      "network", "forbidden", "currency_authority_unresolved", "staff_review_required",
+      "draft_conflict", "plan_version_hash_mismatch", "budget_below_minimum",
+      "pixel_no_signal", "tiktok_not_connected", "insufficient_balance",
+      "destination_not_public", "creative_not_ready", "boom",
+    ];
+    expect(notPlain(codes.map((code) => hostAdErrorMessage({ code, detail: code })))).toEqual([]);
     expect(hostAdErrorMessage({ code: "network", detail: "fetch failed" })).toBe(
       "We couldn't reach Mingla. Check your connection and try again.",
     );
@@ -162,9 +243,18 @@ describe("#4238 plain-language Host ad screens", () => {
     expect(
       hostAdErrorMessage({ code: "validation_error", detail: "x", message: "Add a campaign name." }),
     ).toBe("Add a campaign name.");
-    // Raw technical text never reaches a Host.
-    expect(
-      hostAdErrorMessage({ code: "boom", detail: "x", message: "provider_create_failed in lane business" }),
-    ).toContain("Try again in a minute");
+    for (const message of [
+      "provider_create_failed in lane business",
+      "provider create returned no campaign id",
+      "Immutable plan hash mismatch",
+    ]) {
+      expect(hostAdErrorMessage({ code: "boom", detail: "x", message })).toContain("Try again in a minute");
+    }
+  });
+
+  it("money is written the one Host way, never as raw cents", () => {
+    expect(formatHostAdMoneyCents(150000000, "ngn")).toBe("NGN 1,500,000.00");
+    expect(formatHostAdMoneyCents("2550", "USD")).toBe("USD 25.50");
+    expect(formatHostAdMoneyCents(-1, "USD")).toBeNull();
   });
 });
