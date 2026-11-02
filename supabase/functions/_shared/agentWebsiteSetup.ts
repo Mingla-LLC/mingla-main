@@ -132,6 +132,14 @@ export function websiteSetupUploadRoute(
 }
 
 /**
+ * #3355 bug 19 — "Fix all" sent as the owner's own bubble, in the owner's
+ * words. It still names "Fix all … Website … gaps", which is what
+ * `detectWebsiteSetupIntent` keys the durable job on.
+ */
+export const WEBSITE_SETUP_FIX_ALL_MESSAGE =
+  "Fix all my Website gaps with me, one question at a time. Look up public facts first, and save each change only after I approve it. Don’t build a draft yet.";
+
+/**
  * Sent as the owner's own message when they return from a handoff. It names
  * Fix all so the server resumes the durable job and re-reads the live plan.
  */
@@ -167,8 +175,19 @@ function naturalList(values: readonly string[]): string {
   return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
 }
 
+/**
+ * #3355 bug 19 — a key shown to the owner when no label exists reads as
+ * words ("story.who" → "Story who"), never as snake_case or a dotted key.
+ */
+export function websiteSetupPlainKey(key: string): string {
+  const words = key.replace(/[._]+/g, " ").replace(/\s+/g, " ").trim();
+  return words.length > 0
+    ? words.charAt(0).toUpperCase() + words.slice(1)
+    : "Website detail";
+}
+
 function fieldLabel(field: JsonObject, fallback: string): string {
-  return text(field.label) ?? fallback.replaceAll("_", " ");
+  return text(field.label) ?? websiteSetupPlainKey(fallback);
 }
 
 function findField(completeness: JsonObject, key: string): JsonObject {
@@ -1494,7 +1513,7 @@ function setupQuestion(fieldKey: string, field: JsonObject): string {
   }
   if (field.human_action_required === true) {
     const label = fieldLabel(field, fieldKey);
-    return `${label} needs your upload. Can you use Add it myself to upload it, then tell me when it is ready so I can re-audit the next gap?`;
+    return `${label} needs your upload. Can you use Add it myself to upload it, then tell me when it is ready so I can check it and move on?`;
   }
   switch (fieldKey) {
     case "name":
@@ -1603,12 +1622,12 @@ export function buildWebsiteSetupPresentation(
   const doneParts = parts.filter((part) => part.done === true).map((part) =>
     PART_LABELS[String(part.key ?? "")] ??
       text(part.label) ??
-      String(part.key ?? "Setup part")
+      websiteSetupPlainKey(String(part.key ?? "Setup part"))
   );
   const openParts = parts.filter((part) => part.done !== true).map((part) =>
     PART_LABELS[String(part.key ?? "")] ??
       text(part.label) ??
-      String(part.key ?? "Setup part")
+      websiteSetupPlainKey(String(part.key ?? "Setup part"))
   );
   const doneCount = typeof status.done_count === "number"
     ? status.done_count
@@ -1651,9 +1670,9 @@ export function buildWebsiteSetupPresentation(
       ? `I found ${gaps.length} Website-ready ${
         gaps.length === 1 ? "gap" : "gaps"
       }: ${naturalList(gapLabels)}.`
-      : "I found no required or recommended brand-context gaps.";
+      : "Nothing required or recommended is missing.";
     const reply =
-      `Website setup for ${brand} is ${doneCount} of ${total} complete. ${partSummary}\n\n${gapSummary}\n\nChoose Fix all gaps with Ari, Review the gaps, or use Add it myself. I will not create a draft until setup and brand context are complete.`;
+      `Website setup for ${brand} is ${doneCount} of ${total} complete. ${partSummary}\n\n${gapSummary}\n\nChoose Fix all gaps with Ari, Review the gaps, or use Add it myself. I will not create a draft until setup and your brand details are complete.`;
     return {
       text: reply,
       rendition: {
@@ -1663,7 +1682,7 @@ export function buildWebsiteSetupPresentation(
         eyebrow: "Website setup",
         title: gaps.length > 0
           ? `${verifiedCount} ready · ${gaps.length} need attention`
-          : "Brand context is ready",
+          : "Your brand details are ready",
         body:
           "Ari checked every required and recommended Website field against the saved plan. The Website draft stays out of the way until setup is complete.",
         tone: gaps.length > 0 ? "warning" : "success",
@@ -1702,7 +1721,7 @@ export function buildWebsiteSetupPresentation(
             version: 1,
             id: "context-progress",
             value: progress,
-            label: "Brand context completeness",
+            label: "Brand details complete",
           },
           ...(gaps.length > 0
             ? [{
@@ -1723,7 +1742,7 @@ export function buildWebsiteSetupPresentation(
               id: "setup-complete",
               tone: "success",
               title: "Ready for review",
-              body: "No required or recommended brand-context gaps remain.",
+              body: "Nothing required or recommended is missing.",
             }]),
         ],
         actions: gaps.length > 0
@@ -1734,8 +1753,7 @@ export function buildWebsiteSetupPresentation(
               style: "primary",
               behavior: {
                 type: "submit",
-                message:
-                  "Fix all Website brand-context gaps with Ari. Own the complete chain and ask one question at a time.",
+                message: WEBSITE_SETUP_FIX_ALL_MESSAGE,
               },
             },
             {
@@ -1793,7 +1811,7 @@ export function buildWebsiteSetupPresentation(
         eyebrow: "Website setup",
         title: "Every Website detail is filled",
         body:
-          "Ari re-checked the saved plan and found no required or recommended brand-context gaps.",
+          "Ari re-checked the saved plan: nothing required or recommended is missing.",
         tone: "success",
         state: "submitted",
         graphic: "site",
@@ -1866,7 +1884,7 @@ export function buildWebsiteSetupPresentation(
             (completed.length /
               Math.max(1, completed.length + pending.length)) * 100,
           ),
-          label: "Ari checkpoints and re-checks each answer",
+          label: "Ari saves and re-checks each answer",
         },
         ...fieldInteraction(
           currentStep,

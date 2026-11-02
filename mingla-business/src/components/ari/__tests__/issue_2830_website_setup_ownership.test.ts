@@ -71,6 +71,10 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     for (const message of sent) {
       expect(message).not.toMatch(/\b[a-z]+_[a-z_]+\b/);
       expect(message).not.toMatch(/plan part is/);
+      // #3355 bug 19 — no engine words either.
+      expect(message).not.toMatch(
+        /re-audit|checkpoint|fingerprint|part key|gap chain|durable job|brand[- ]context/i,
+      );
     }
     expect(agentHook).toContain('WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website"');
   });
@@ -106,11 +110,14 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(pane).toContain('testID="ari-setup-review-gaps"');
     expect(pane).toContain("Add it myself");
     expect(pane).toContain("Back to setup plan");
-    expect(screen).toContain("ask one question at a time");
-    expect(screen).toContain("confirm and checkpoint each write");
-    expect(screen).toContain(
-      "re-audit until required and recommended gaps are zero",
-    );
+    // #3355 bug 19 — the Fix-all request is the owner's own bubble, so it is
+    // in the owner's words; the same promises (one question at a time, save
+    // only after approval, no draft first) without engine vocabulary.
+    expect(screen).toContain("Fix all my Website gaps with me, one question at a time.");
+    expect(screen).toContain("save each change only after I approve it");
+    expect(screen).toContain("Don’t build a draft yet.");
+    expect(screen).not.toContain("checkpoint each write");
+    expect(screen).not.toContain("re-audit until");
   });
 
   it("refreshes server truth while Ari works and labels uploads as human actions", () => {

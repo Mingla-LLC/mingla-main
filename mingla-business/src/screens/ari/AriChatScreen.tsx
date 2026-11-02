@@ -963,8 +963,13 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           activePart={setupPart}
           fixing={chat.isSending}
           onFixAll={() => {
+            // #3355 bug 19 — this is the owner's own bubble, so it is in the
+            // owner's words (no "durable job", "checkpoint", "re-audit"). It
+            // still names "Fix all … Website gaps", which the server keys the
+            // Fix-all job on; it matches WEBSITE_SETUP_FIX_ALL_MESSAGE in
+            // supabase/functions/_shared/agentWebsiteSetup.ts.
             handleSend(
-              "Fix all Website brand-context gaps. Resume the durable job, research safe public facts, ask one question at a time, confirm and checkpoint each write, and re-audit until required and recommended gaps are zero. Do not create a draft first.",
+              "Fix all my Website gaps with me, one question at a time. Look up public facts first, and save each change only after I approve it. Don’t build a draft yet.",
             );
           }}
           onReviewGaps={() => {
