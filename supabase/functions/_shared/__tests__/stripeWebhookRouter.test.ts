@@ -389,6 +389,54 @@ Deno.test("account.updated updates connect row and clears KYC stall marker when 
   assertEquals(db.upserts[0].payload.kyc_stall_reminder_sent_at, null);
 });
 
+Deno.test("#3281 charge.refunded never records the charge as a refund", async () => {
+  const db = new FakeDb();
+  const result = await routeStripeEvent(db as never, {} as never, {
+    id: "evt_charge_refunded",
+    type: "charge.refunded",
+    account: "acct_123",
+    data: {
+      object: {
+        id: "ch_3281",
+        object: "charge",
+        amount: 2000,
+        amount_refunded: 1000,
+        currency: "usd",
+        status: "succeeded",
+        payment_intent: "pi_3281",
+        metadata: { mingla_order_id: "order_123" },
+      },
+    },
+  });
+  assertEquals(result.brandId, "brand_123");
+  assertEquals(db.rpcs, []);
+  assertEquals(db.inserts, []);
+});
+
+Deno.test("#3281 a refund's order hint never picks an order its payment did not pay for", async () => {
+  const db = new FakeDb();
+  await routeStripeEvent(db as never, {} as never, {
+    id: "evt_refund_hint",
+    type: "refund.updated",
+    account: "acct_123",
+    data: {
+      object: {
+        id: "re_3281",
+        object: "refund",
+        amount: 1000,
+        currency: "usd",
+        status: "succeeded",
+        payment_intent: "pi_unknown",
+        metadata: { mingla_order_id: "order_someone_else" },
+      },
+    },
+  });
+  assertEquals(
+    db.rpcs.some((call) => call.fn === "biz_refund_order_commit_from_webhook"),
+    false,
+  );
+});
+
 Deno.test("payout.failed upserts payout and dispatches remediation notification", async () => {
   const calls: unknown[] = [];
   const originalFetch = globalThis.fetch;

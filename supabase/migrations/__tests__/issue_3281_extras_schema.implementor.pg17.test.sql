@@ -429,6 +429,153 @@ BEGIN
       RAISE EXCEPTION 'a full cancellation must end refunded (cancel first: %)',v_cancel_first;
     END IF;
   END LOOP;
+
+  -- A Stripe dashboard refund arrives with no fee amount and must still reconcile.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,2,1000,2000);
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-dash-'||v_race_order,1000,'NGN',NULL,NULL);
+  IF (SELECT application_fee_refunded_cents IS NOT NULL
+             OR application_fee_refund_status <> 'unknown_legacy' OR status <> 'succeeded'
+        FROM public.refunds WHERE stripe_refund_id='re-dash-'||v_race_order)
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'partial_refund' THEN
+    RAISE EXCEPTION 'a dashboard refund must reconcile with its fee unknown';
+  END IF;
+
+  -- A webhook that settles a pending refund keeps the fee it already has.
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM public.biz_refund_order(v_race_order,
+    jsonb_build_array(jsonb_build_object(
+      'order_line_item_id',(SELECT id FROM public.order_line_items WHERE order_id=v_race_order),
+      'quantity',1)),
+    'The second ticket back','dash-hint-'||v_race_order);
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  SELECT id INTO v_manual FROM public.refunds WHERE order_id=v_race_order AND status='pending';
+  PERFORM public.issue_2097_finalize_not_applicable(v_manual,'paystack','re-hint-'||v_race_order);
+  UPDATE public.refunds SET status='pending' WHERE id=v_manual;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-hint-'||v_race_order,1000,'NGN',NULL,
+    'dash-hint-'||v_race_order);
+  IF (SELECT status <> 'succeeded' OR application_fee_refunded_cents IS DISTINCT FROM 0
+        FROM public.refunds WHERE id=v_manual)
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'a matched webhook must keep the stored fee';
+  END IF;
+
+  -- A redelivered dashboard refund voids no more tickets than it returned.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,2,1000,2000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    SELECT v_race_order,v_tier,v_event,'qr-'||v_race_order||'-'||n,'valid','auto'
+    FROM generate_series(1,2) AS n;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-again-'||v_race_order,1000,'NGN',NULL,NULL);
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-again-'||v_race_order,1000,'NGN',NULL,NULL);
+  IF (SELECT count(*) FROM public.tickets WHERE order_id=v_race_order AND status='valid') <> 1
+     OR (SELECT count(*) FROM public.refunds WHERE order_id=v_race_order) <> 1 THEN
+    RAISE EXCEPTION 'a redelivered refund must leave the unrefunded ticket valid';
+  END IF;
+
+  -- Dashboard refunds lock the order before they choose ticket lines.
+  IF position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure))
+     > position('INSERT INTO public.refunds' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) THEN
+    RAISE EXCEPTION 'a dashboard refund must lock the order before allocating';
+  END IF;
+  -- It takes the referral share first, as every settlement's share trigger does.
+  IF position('FROM public.payee_shares' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure))
+     NOT BETWEEN 1 AND position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.biz_refund_order_commit_from_webhook(uuid,text,integer,character,integer,text)'::regprocedure)) THEN
+    RAISE EXCEPTION 'a dashboard refund must lock the referral share before the order';
+  END IF;
+
+  -- A dashboard refund leaves lines held by a pending in-app refund alone.
+  -- The held line sorts first, so the allocator reaches it before the free one.
+  v_race_order := gen_random_uuid();
+  v_race_line := '00000000-0000-4000-8000-0000000a3281';
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_line,v_race_order,v_tier,1,1000,1000);
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,1,1000,1000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    SELECT v_race_order,v_tier,v_event,'qr-held-'||v_race_order||'-'||n,'valid','auto'
+    FROM generate_series(1,2) AS n;
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM public.biz_refund_order(v_race_order,
+    jsonb_build_array(jsonb_build_object('order_line_item_id',v_race_line,'quantity',1)),
+    'The first ticket back','held-'||v_race_order);
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  SELECT id INTO v_manual FROM public.refunds WHERE order_id=v_race_order AND status='pending';
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-other-'||v_race_order,1000,'NGN',NULL,NULL);
+  IF EXISTS (
+    SELECT 1 FROM public.refund_line_items rli JOIN public.refunds r ON r.id=rli.refund_id
+    WHERE r.stripe_refund_id='re-other-'||v_race_order AND rli.order_line_item_id=v_race_line
+  ) THEN
+    RAISE EXCEPTION 'a dashboard refund must not take a line a pending refund holds';
+  END IF;
+  PERFORM public.issue_2097_finalize_not_applicable(v_manual,'paystack','re-held-'||v_race_order);
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM public.biz_refund_order_commit(v_manual,'re-held-'||v_race_order,0,'succeeded');
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  IF (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded'
+     OR EXISTS (SELECT 1 FROM public.tickets WHERE order_id=v_race_order AND status='valid') THEN
+    RAISE EXCEPTION 'both refunds together must return the whole order';
+  END IF;
+
+  -- Two refunds smaller than the ticket that together return the charge refund it.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,1000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,1,1000,1000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    VALUES (v_race_order,v_tier,v_event,'qr-half-'||v_race_order,'valid','auto');
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-half-a-'||v_race_order,500,'NGN',NULL,NULL);
+  IF (SELECT status FROM public.tickets WHERE order_id=v_race_order) <> 'valid' THEN
+    RAISE EXCEPTION 'half the charge back must keep the ticket';
+  END IF;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-half-b-'||v_race_order,500,'NGN',NULL,NULL);
+  IF (SELECT status FROM public.tickets WHERE order_id=v_race_order) <> 'refunded'
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded'
+     OR EXISTS (
+       SELECT 1 FROM public.refunds r
+       WHERE r.order_id=v_race_order
+         AND (SELECT COALESCE(SUM(amount_cents),0) FROM public.refund_line_items WHERE refund_id=r.id) > r.amount_cents
+     ) THEN
+    RAISE EXCEPTION 'refunds that return the whole charge must refund the ticket, within their own amounts';
+  END IF;
+
+  -- On a two-ticket line, 500 then 1,500 returns both tickets in one row per refund line.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,2,1000,2000);
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+    SELECT v_race_order,v_tier,v_event,'qr-pair-'||v_race_order||'-'||n,'valid','auto'
+    FROM generate_series(1,2) AS n;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-pair-a-'||v_race_order,500,'NGN',NULL,NULL);
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-pair-b-'||v_race_order,1500,'NGN',NULL,NULL);
+  IF (SELECT rli.quantity <> 2 OR rli.amount_cents <> 1500 FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id=rli.refund_id WHERE r.stripe_refund_id='re-pair-b-'||v_race_order)
+     OR EXISTS (SELECT 1 FROM public.tickets WHERE order_id=v_race_order AND status='valid')
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'the completing refund must merge into its own row for the line';
+  END IF;
+
+  -- The Stripe finalizer locks the order before its ticket update fires the counter trigger.
+  IF position('FOR NO KEY UPDATE' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure))
+     > position('UPDATE public.tickets' IN pg_get_functiondef('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)'::regprocedure)) THEN
+    RAISE EXCEPTION 'the finalizer must lock the order before updating tickets';
+  END IF;
 END;
 $test$;
 
