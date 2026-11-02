@@ -160,6 +160,23 @@ BEGIN
   IF (SELECT amount_cents FROM public.refunds WHERE order_id=v_mixed_order) <> 4500 THEN
     RAISE EXCEPTION 'a free ticket must not hold the extras back';
   END IF;
+  -- A manual refund is still judged on every line.
+  UPDATE public.refunds SET status='succeeded' WHERE order_id=v_mixed_order;
+  IF public.issue_3281_settled_payment_status(v_mixed_order,
+       (SELECT id FROM public.refunds WHERE order_id=v_mixed_order)) <> 'partial_refund' THEN
+    RAISE EXCEPTION 'a manual refund must stay judged on every line';
+  END IF;
+
+  -- The extras helpers are not client functions.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+     WHERE n.nspname='public' AND p.proname LIKE 'issue_3281\_%' AND p.prosecdef
+       AND p.proname ~ 'extras|returns_all|settled_payment'
+       AND (has_function_privilege('anon',p.oid,'EXECUTE')
+         OR has_function_privilege('authenticated',p.oid,'EXECUTE'))
+  ) THEN
+    RAISE EXCEPTION 'extras helpers must stay closed to clients';
+  END IF;
 
   -- The rules live in the database.
   v_raised := NULL;
@@ -194,6 +211,7 @@ DECLARE
   v_plain_line uuid := gen_random_uuid();
   v_discount_order uuid := gen_random_uuid();
   v_discount_line uuid := gen_random_uuid();
+  v_attempt uuid := gen_random_uuid();
   v_refund uuid;
   v_result jsonb;
 BEGIN
@@ -290,6 +308,28 @@ BEGIN
      OR (v_result->>'is_full_refund')::boolean IS NOT TRUE
      OR v_result->>'proposed_new_payment_status' <> 'refunded' THEN
     RAISE EXCEPTION 'cancel must return the whole charge past a free ticket, got %',v_result;
+  END IF;
+
+  -- Settlement stores what the cancellation promised, on both rails.
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_plain_order;
+  PERFORM public.issue_2097_finalize_not_applicable(v_refund,'paystack','re-plain');
+  PERFORM public.admin_refund_order_commit(v_refund,'re-plain',0,'succeeded');
+  IF (SELECT payment_status FROM public.orders WHERE id=v_plain_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'a settled cancellation must store refunded';
+  END IF;
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id=v_mixed_order;
+  INSERT INTO public.ticket_refund_attempts(
+    id,refund_id,order_id,request_fingerprint,provider,provider_mode,connected_account_id,currency,
+    charge_id,payment_intent_id,application_fee_amount_text,captured_charge_amount_text,
+    requested_refund_amount_text,baseline_amount_refunded_text,buyer_refund_id,
+    buyer_refund_amount_text,buyer_refunded_at,status,observation_count,lease_owner,lease_epoch,
+    lease_expires_at,provider_call_permitted_at
+  ) VALUES (v_attempt,v_refund,v_mixed_order,'cancel-mixed','stripe','test','acct_test','NGN',
+    'ch-cancel-mixed','pi-cancel-mixed','0','4700','4700','0','re-mixed','4700',now(),
+    'pending_visibility',8,v_owner,1,now()+interval '1 minute',now());
+  PERFORM public.issue_2097_finalize_refund_attempt(v_attempt,v_owner,1,'not_applicable',NULL,'0','0',NULL);
+  IF (SELECT payment_status FROM public.orders WHERE id=v_mixed_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'a settled Stripe cancellation must store refunded';
   END IF;
 END;
 $test$;
