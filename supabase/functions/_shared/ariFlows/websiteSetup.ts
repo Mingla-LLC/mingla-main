@@ -1475,7 +1475,8 @@ const publishStep: StepDefinition = {
     }
     {
       if (
-        (proposed && ctx.trigger === "confirm") ||
+        // #3355 P7: a refused publish (ctx.failed) never reads as started.
+        (proposed && ctx.trigger === "confirm" && !ctx.failed) ||
         ctx.state?.data?.confirmed === true
       ) {
         // Publishing runs on Mingla's side; read back until it's live.

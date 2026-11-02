@@ -1014,6 +1014,23 @@ Deno.test("P4 adversarial: after the publish confirm the plan is read back; not 
   assertMatch((live as { text: string }).text, /Your Website is live/);
 });
 
+Deno.test("#3355 P7: a refused publish confirm never reads as started; the publish card comes back", async () => {
+  const w = readyToPublish();
+  const store = new MemoryStore(OWNER);
+  await step(w, store, await startRun(store), {});
+  const run = await current(store);
+  await step(w, store, run, choose(run, "publish"));
+  const back = asArtefact(
+    await step(w, store, await current(store), {
+      trigger: "confirm",
+      failed: { tool_name: "publish_site", message: "The site isn't ready." },
+    }),
+  );
+  assert(back.artefact.title !== "Publishing your Website", back.artefact.title);
+  assertEquals(back.artefact.step_key, "publish");
+  assertEquals(w.published, false);
+});
+
 // ── First offering ─────────────────────────────────────────────────────────
 
 Deno.test("P4 first offering: create goes to the event lane with no invented facts, is verified by id, and is never offered twice", async () => {
