@@ -19,6 +19,31 @@ export const HOST_SALES_GOAL_PLATFORMS: readonly Platform[] = [
   "tiktok",
 ];
 
+/**
+ * Page types that sell tickets through Mingla checkout (ad_advertisable_pages
+ * event / trip / experience rows). A brand website ('site') also reports
+ * result_kind 'tickets' in the wave-1 resolver but sells nothing itself, and
+ * the brand page and rsvp/venue/reservation pages never fire a Purchase, so
+ * none of them may optimise for sales.
+ */
+export const HOST_SALES_PAGE_TYPES: readonly string[] = [
+  "event",
+  "trip",
+  "experience",
+];
+
+/** True only for a page that actually sells tickets. */
+export function hostPageSellsTickets(
+  destination:
+    | { page_type?: unknown; result_kind?: unknown }
+    | null
+    | undefined,
+): boolean {
+  return destination?.result_kind === "tickets" &&
+    typeof destination.page_type === "string" &&
+    HOST_SALES_PAGE_TYPES.includes(destination.page_type);
+}
+
 /** The provider objective fields a Host body may never carry itself. */
 export const HOST_GOAL_BODY_FIELDS = [
   "objective",
@@ -101,14 +126,18 @@ export type HostOptimizationValidation =
 /**
  * create_version authority for a Host plan's goal. The map's keys must equal
  * the plan's platforms; "sales" is allowed only on Meta, Snapchat and TikTok
- * for a page that sells tickets. A missing map becomes all "visits" so the
+ * for a page that sells tickets (hostPageSellsTickets). A missing map becomes all "visits" so the
  * plan hash always carries the goal.
  */
 export function validateHostOptimization(
   input: unknown,
   platforms: readonly string[],
-  resultKind: string | null | undefined,
+  destination:
+    | { page_type?: unknown; result_kind?: unknown }
+    | null
+    | undefined,
 ): HostOptimizationValidation {
+  const sellsTickets = hostPageSellsTickets(destination);
   if (input === undefined || input === null) {
     return {
       ok: true,
@@ -133,7 +162,7 @@ export function validateHostOptimization(
     if (
       value === "sales" &&
       (!(HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform) ||
-        resultKind !== "tickets")
+        !sellsTickets)
     ) {
       return { ok: false, detail: "optimization_sales_unsupported" };
     }

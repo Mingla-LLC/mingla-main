@@ -50,6 +50,7 @@ jest.mock("../../../../services/supabase", () => ({
 
 // eslint-disable-next-line import/first
 import {
+  hostAdPageSellsTickets,
   hostOptimizationByPlatform,
   hostOptimizationSummary,
   prepareHostAdPlan,
@@ -296,6 +297,22 @@ describe("#4238 ticket-sales goal (T-F3, T-F4, SC-14)", () => {
     ).toEqual({ meta: "visits" });
   });
 
+  it("never offers sales for a brand website or brand page, even when it reports tickets", () => {
+    const site = { ...page("tickets"), page_type: "site" };
+    const brand = { ...page("tickets"), page_type: "brand" };
+    expect(hostAdPageSellsTickets(site)).toBe(false);
+    expect(hostAdPageSellsTickets(brand)).toBe(false);
+    for (const pageType of ["event", "trip", "experience"]) {
+      expect(hostAdPageSellsTickets({ ...page("tickets"), page_type: pageType })).toBe(true);
+    }
+    expect(hostOptimizationByPlatform("sales", site, [connection("meta", true)])).toEqual({
+      meta: "visits",
+    });
+    expect(
+      hostOptimizationByPlatform("sales", page("tickets"), [connection("meta", true)]),
+    ).toEqual({ meta: "sales" });
+  });
+
   it("splits the review line per platform", () => {
     expect(
       hostOptimizationSummary({ meta: "sales", snapchat: "sales" }, ["meta", "snapchat", "google"]),
@@ -312,7 +329,7 @@ describe("#4238 ticket-sales goal (T-F3, T-F4, SC-14)", () => {
   });
 
   it("SC-14 the builder offers Ticket sales only on ticket pages with a ready platform", () => {
-    expect(createRoute).toContain('const pageSellsTickets = page?.result_kind === "tickets"');
+    expect(createRoute).toContain("const pageSellsTickets = hostAdPageSellsTickets(page);");
     expect(createRoute).toContain("{pageSellsTickets ? (");
     expect(createRoute).toContain("disabled={salesReadyPlatforms.length === 0}");
     expect(createRoute).toContain("Not enough ticket sales on these platforms yet.");

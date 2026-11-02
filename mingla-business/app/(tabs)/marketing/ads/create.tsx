@@ -51,8 +51,9 @@ import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   HOST_AD_SALES_PLATFORMS,
+  hostAdPageSellsTickets,
   hostOptimizationSummary,
-} from "../../../../src/services/hostAdPlanService";
+} from "../../../../src/components/marketing/ads/hostAdGoal";
 import type {
   HostAdConnection,
   HostAdCreative,
@@ -874,7 +875,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   // #4238: "Ticket sales" applies only on a page that sells tickets, on the
   // selected platforms whose sales signal is ready.
-  const pageSellsTickets = page?.result_kind === "tickets";
+  const pageSellsTickets = hostAdPageSellsTickets(page);
   const salesReadyPlatforms = useMemo(
     () =>
       connections
@@ -1796,7 +1797,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             selected={page}
             onSelect={(item) => {
               setPage(item);
-              if (item.result_kind !== "tickets") setOptimization("visits");
+              if (!hostAdPageSellsTickets(item)) setOptimization("visits");
               setPrepared(null);
             }}
           />

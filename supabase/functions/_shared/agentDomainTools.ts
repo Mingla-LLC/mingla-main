@@ -27,7 +27,10 @@ import {
 } from "./agentTenantScope.ts";
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
 import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
-import { HOST_SALES_GOAL_PLATFORMS } from "./adHostGoal.ts";
+import {
+  HOST_SALES_GOAL_PLATFORMS,
+  hostPageSellsTickets,
+} from "./adHostGoal.ts";
 // issue #2291 — ONE contract for what a channel_payload must contain. Ari is
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
@@ -4014,7 +4017,7 @@ const proposeAdPlan = writeTool(
           (page.entity_slug ?? undefined) === destination.entity_slug)
       );
     const wantsSales = args.optimize_for === "sales" &&
-      destinationPage?.result_kind === "tickets";
+      hostPageSellsTickets(destinationPage);
     const optimizationByPlatform = Object.fromEntries(
       platforms.map((platform, index) => [
         platform,

@@ -8,6 +8,10 @@
 
 import { supabase } from "./supabase";
 import type { AdVideoFit } from "../utils/adVideoFit";
+import {
+  HOST_AD_SALES_PLATFORMS,
+  hostAdPageSellsTickets,
+} from "../components/marketing/ads/hostAdGoal";
 
 const PREPARED_VIDEO_PLATFORMS = new Set([
   "meta",
@@ -46,12 +50,12 @@ export type HostAdPage = {
 /** #4238: what this ad optimises for on each platform (frozen in the plan). */
 export type HostAdOptimization = "visits" | "sales";
 
-/** Platforms with a website-sales path a Host ad may use (server mirror). */
-export const HOST_AD_SALES_PLATFORMS: readonly HostAdPlatform[] = [
-  "meta",
-  "snapchat",
-  "tiktok",
-];
+export {
+  HOST_AD_SALES_PAGE_TYPES,
+  HOST_AD_SALES_PLATFORMS,
+  hostAdPageSellsTickets,
+  hostOptimizationSummary,
+} from "../components/marketing/ads/hostAdGoal";
 
 /**
  * #4238 D1: the server decides which provider account a Host ad uses; the
@@ -481,36 +485,20 @@ function targetingCityKey(city: { name: string; countryCode: string }): string {
  */
 export function hostOptimizationByPlatform(
   optimization: HostAdOptimization,
-  page: Pick<HostAdPage, "result_kind">,
+  page: Pick<HostAdPage, "page_type" | "result_kind">,
   connections: Pick<HostAdConnection, "platform" | "sales">[],
 ): Record<string, HostAdOptimization> {
   return Object.fromEntries(
     connections.map((connection) => [
       connection.platform,
       optimization === "sales" &&
-      page.result_kind === "tickets" &&
+      hostAdPageSellsTickets(page) &&
       connection.sales?.ready === true &&
       HOST_AD_SALES_PLATFORMS.includes(connection.platform)
         ? "sales"
         : "visits",
     ]),
   );
-}
-
-/**
- * Review-step split of the frozen goal: which platforms chase ticket sales and
- * which chase page visits. `optimizationByPlatform` is the plan's frozen
- * `canonical_plan.optimization_by_platform`; an absent entry means visits.
- */
-export function hostOptimizationSummary(
-  optimizationByPlatform: unknown,
-  platforms: readonly HostAdPlatform[],
-): { sales: HostAdPlatform[]; visits: HostAdPlatform[] } {
-  const map = recordValue(optimizationByPlatform);
-  return {
-    sales: platforms.filter((platform) => map?.[platform] === "sales"),
-    visits: platforms.filter((platform) => map?.[platform] !== "sales"),
-  };
 }
 
 export async function prepareHostAdPlan(

@@ -1871,9 +1871,7 @@ export async function handleAdPlan(
       const optimization = validateHostOptimization(
         canonicalInput.optimization_by_platform,
         platforms,
-        typeof resolvedDestination.result_kind === "string"
-          ? resolvedDestination.result_kind
-          : null,
+        resolvedDestination,
       );
       if (!optimization.ok) {
         return json({

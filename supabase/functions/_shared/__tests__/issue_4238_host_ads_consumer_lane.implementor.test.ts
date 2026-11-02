@@ -34,6 +34,7 @@ import {
   hostAllocationLaneError,
   hostGoalBodyError,
   hostOptimizationFor,
+  hostPageSellsTickets,
   validateHostOptimization,
 } from "../adHostGoal.ts";
 import {
@@ -301,44 +302,90 @@ Deno.test("T-F1 #4238 the Host goal table", () => {
   );
 });
 
+const EVENT = { page_type: "event", result_kind: "tickets" };
+const RSVP = { page_type: "rsvp", result_kind: "signups" };
+
 // ── T-F2 create_version validation ──────────────────────────────────────────
 Deno.test("T-F2 #4238 create_version accepts sales only where it can work", () => {
   assertEquals(
     validateHostOptimization(
       { meta: "sales", google: "visits" },
       ["meta", "google"],
-      "tickets",
+      EVENT,
     ),
     { ok: true, map: { meta: "sales", google: "visits" } },
   );
   assertEquals(
-    validateHostOptimization(undefined, ["meta", "reddit"], "signups"),
+    validateHostOptimization(undefined, ["meta", "reddit"], RSVP),
     { ok: true, map: { meta: "visits", reddit: "visits" } },
   );
   assertEquals(
-    validateHostOptimization({ meta: "sales" }, ["meta"], "signups"),
+    validateHostOptimization({ meta: "sales" }, ["meta"], RSVP),
     { ok: false, detail: "optimization_sales_unsupported" },
   );
   assertEquals(
-    validateHostOptimization({ reddit: "sales" }, ["reddit"], "tickets"),
+    validateHostOptimization({ reddit: "sales" }, ["reddit"], EVENT),
     { ok: false, detail: "optimization_sales_unsupported" },
   );
   assertEquals(
     validateHostOptimization(
       { meta: "visits", tiktok: "visits" },
       ["meta"],
-      "tickets",
+      EVENT,
     ),
     { ok: false, detail: "optimization_invalid" },
   );
   assertEquals(
-    validateHostOptimization({ meta: "boost" }, ["meta"], "tickets"),
+    validateHostOptimization({ meta: "boost" }, ["meta"], EVENT),
     { ok: false, detail: "optimization_invalid" },
   );
   assertEquals(
-    validateHostOptimization(["sales"], ["meta"], "tickets"),
+    validateHostOptimization(["sales"], ["meta"], EVENT),
     { ok: false, detail: "optimization_invalid" },
   );
+});
+
+Deno.test("T-F2b #4238 ticket sales only on pages that sell tickets", () => {
+  // The wave-1 resolver reports result_kind 'tickets' for a brand website.
+  assertEquals(
+    validateHostOptimization(
+      { meta: "sales" },
+      ["meta"],
+      { page_type: "site", result_kind: "tickets" },
+    ),
+    { ok: false, detail: "optimization_sales_unsupported" },
+  );
+  assertEquals(
+    validateHostOptimization(
+      { meta: "sales" },
+      ["meta"],
+      { page_type: "brand", result_kind: "tickets" },
+    ),
+    { ok: false, detail: "optimization_sales_unsupported" },
+  );
+  for (const pageType of ["event", "trip", "experience"]) {
+    assertEquals(
+      validateHostOptimization(
+        { meta: "sales" },
+        ["meta"],
+        { page_type: pageType, result_kind: "tickets" },
+      ),
+      { ok: true, map: { meta: "sales" } },
+    );
+  }
+  assertEquals(
+    hostPageSellsTickets({ page_type: "site", result_kind: "tickets" }),
+    false,
+  );
+  assertEquals(
+    hostPageSellsTickets({ page_type: "event", result_kind: "tickets" }),
+    true,
+  );
+  assertEquals(
+    hostPageSellsTickets({ page_type: "event", result_kind: "signups" }),
+    false,
+  );
+  assertEquals(hostPageSellsTickets(null), false);
 });
 
 Deno.test("T-F2 #4238 ad-plan validates the Host goal before it versions the plan", async () => {
