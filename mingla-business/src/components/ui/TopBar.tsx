@@ -47,6 +47,7 @@ import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
 
+import { BrandMark, brandMarkPhotoUrl } from "../brand/BrandMark";
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
 import { IconChrome } from "./IconChrome";
@@ -118,6 +119,7 @@ export interface TopBarProps {
 
 const TOPBAR_HEIGHT = 56;
 const BRAND_LABEL_MAX_CHARS = 18;
+const BRAND_MARK_SIZE = 24;
 
 interface ToastState {
   kind: ToastKind;
@@ -298,6 +300,16 @@ export const TopBar: React.FC<TopBarProps> = ({
             accessibilityLabel={`Brand: ${label}`}
             style={styles.brandRow}
           >
+            {/* #3355 bug 17 — the brand's uploaded logo beside its name. The
+                chip never showed a mark, so a brand without a logo keeps the
+                name-only chip. */}
+            {currentBrand !== null && brandMarkPhotoUrl(currentBrand) !== null ? (
+              <BrandMark
+                brand={currentBrand}
+                size={BRAND_MARK_SIZE}
+                testID="topbar-brand-mark"
+              />
+            ) : null}
             <Text style={styles.brandLabel} numberOfLines={1}>
               {label}
             </Text>

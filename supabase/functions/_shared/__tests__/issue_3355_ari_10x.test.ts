@@ -4,6 +4,7 @@ import {
   assertMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { runAgentLoop } from "../agentLoop.ts";
+import { parseTripDateRange } from "../agentTripPlanner.ts";
 import { lintAriCopy } from "../agentCopyLint.ts";
 import {
   sanitizeAriPublicText,
@@ -17,15 +18,27 @@ import {
   buildAriCapabilityPlan,
   buildAriDeterministicReadReply,
   buildAriOnboardingResumeReply,
+  buildAriOnboardingSetupPlanCall,
+  buildAriOnboardingSetupReply,
+  findAriCampaignDraftId,
+  findAriRecentEventTitle,
   inferAriToolsets,
+  isAriOnboardingPlanProgressMessage,
+  needsAriCampaignDraftReview,
+  needsAriCampaignPerformanceRead,
+  needsAriCampaignWorkflow,
   needsAriCapabilityDiscovery,
   needsAriOnboardingResumeRead,
+  needsAriOnboardingSetupRead,
+  selectAriCampaignWorkflowTools,
+  selectAriOnboardingSetupTools,
   selectAriTools,
 } from "../agentToolsets.ts";
 import type { AgentTool } from "../agentToolHelpers.ts";
 import {
   compareListingCandidateSources,
   extractCandidates,
+  searchAriCapabilities,
 } from "../agentAri10xTools.ts";
 import {
   assertSafePublicUrl,
@@ -43,16 +56,38 @@ import {
 } from "../agentRenditions.ts";
 import {
   buildBrandLaunchPlan,
+  isAriEventLaunchReadinessRequest,
   isBrandLaunchPlanRequest,
   launchPlanInitialCalls,
   launchPlanNeedsPublicResearch,
 } from "../agentLaunchPlan.ts";
+import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
 import { AGENT_TOOLS, findTool } from "../agentTools.ts";
+import {
+  assertTaskState,
+  createEventTaskState,
+  IDLE_TASK_STATE,
+  stateForNewAgentProposal,
+} from "../agentConversationState.ts";
 import {
   isCreateEventPlanningRequest,
   planEventTurn,
 } from "../agentConversationPlanner.ts";
-import { callGemini } from "../agentGemini.ts";
+import {
+  ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS,
+  callGemini,
+} from "../agentGemini.ts";
+import {
+  ARI_ERROR_REGISTRY,
+  mapLegacyAriErrorCode,
+} from "../agentReliability.ts";
+import {
+  buildTicketTierReceipt,
+  groundNewTicketTierFields,
+  isFullySpecifiedTicketTierWriteRequest,
+  ticketTierProposalMismatch,
+  ticketTierTextBypassesApproval,
+} from "../agentTicketPricing.ts";
 import {
   detectAriQualitySignals,
   inferAriCapabilityGap,
@@ -81,7 +116,250 @@ Deno.test("#3355 event proposals preserve an explicit guest limit", () => {
   assert(tickets.items?.properties?.capacity);
 });
 
-Deno.test("#3355 deterministic event planning carries capacity into the confirmed draft", () => {
+Deno.test("#3355 trip creation carries only the owner's schedule, zone and picked places", () => {
+  // P8: the time zone and both calendar days are required (no UTC default,
+  // no undated draft); there is no guest-limit field because a trip's spots
+  // live on the packages the owner gives (no capacity default).
+  const createTrip = findTool("create_trip");
+  assert(createTrip);
+  assertMatch(
+    createTrip.description,
+    /time zone, and the first and last calendar day/i,
+  );
+  assertMatch(
+    createTrip.description,
+    /do not invent dates, a time zone, price, packages/i,
+  );
+  const schema = createTrip.parameters as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+  for (
+    const field of [
+      "timezone",
+      "start_date",
+      "end_date",
+      "departure",
+      "destination",
+    ]
+  ) {
+    assert(schema.properties?.[field], `create_trip must expose ${field}`);
+  }
+  for (
+    const field of ["brand_id", "title", "timezone", "start_date", "end_date"]
+  ) {
+    assert(
+      schema.required?.includes(field),
+      `create_trip must require ${field}`,
+    );
+  }
+  for (const field of ["max_guests", "destination_text"]) {
+    assertEquals(schema.properties?.[field], undefined, `${field} is gone`);
+  }
+});
+
+Deno.test("#3355 trip date ranges are read as calendar days, never guessed", () => {
+  const now = new Date("2026-11-02T10:00:00Z");
+  assertEquals(
+    parseTripDateRange("January 8, 2027 through January 10, 2027", now),
+    { start_date: "2027-01-08", end_date: "2027-01-10" },
+  );
+  assertEquals(
+    parseTripDateRange(
+      "Create a 3-day trip to Lagos from 8 to 10 January",
+      now,
+    ),
+    { start_date: "2027-01-08", end_date: "2027-01-10" },
+    "a yearless range is the next time it comes round",
+  );
+  assertEquals(
+    parseTripDateRange("Create a private trip for November 15th.", now),
+    null,
+    "one day is not a range",
+  );
+  assertEquals(parseTripDateRange("10 to 8 January", now), null);
+  assertEquals(parseTripDateRange("1 to 2 November 2026", now), null, "past");
+});
+
+Deno.test("#3355 new ticket tiers omit ungrounded tier ids", () => {
+  const tool = findTool("upsert_ticket_tier");
+  assert(tool);
+  assertMatch(tool.description, /new tier, omit tier_id/i);
+  assertMatch(tool.description, /never invent a tier_id/i);
+  const schema = tool.parameters as {
+    properties?: Record<string, { description?: string }>;
+  };
+  assertMatch(
+    schema.properties?.tier_id?.description ?? "",
+    /omit.*new tier.*existing tier_id returned by a read/i,
+  );
+});
+
+Deno.test("#3355 new ticket arguments derive required flags only from explicit facts", () => {
+  const grounded = groundNewTicketTierFields({
+    event_id: "33550000-0000-4000-a000-000000000073",
+    tier_id: "invented-tier-id",
+    name: "General Admission",
+    price_cents: 2500,
+    capacity: 80,
+  }, "Add one ticket tier at $25, with capacity for 80 guests.");
+  assertEquals(grounded, {
+    event_id: "33550000-0000-4000-a000-000000000073",
+    name: "General Admission",
+    price_cents: 2500,
+    capacity: 80,
+    is_free: false,
+    is_unlimited: false,
+  });
+  assertEquals(
+    groundNewTicketTierFields({ name: "VIP" }, "Update VIP tier details."),
+    { name: "VIP" },
+    "an update must not be rewritten as a create",
+  );
+  assertEquals(
+    groundNewTicketTierFields(
+      { name: "Early Bird", price_cents: 2500000, capacity: 80 },
+      "Add an Early Bird ticket tier priced at NGN 25,000 with capacity 80 to the Harmattan Club event Midnight Practice.",
+    ),
+    {
+      name: "Early Bird",
+      price_cents: 2500000,
+      capacity: 80,
+      is_free: false,
+      is_unlimited: false,
+    },
+    "plain finite capacity wording grounds the create-only unlimited flag",
+  );
+  assertEquals(
+    groundNewTicketTierFields(
+      {
+        event_id: "33550000-0000-4000-a000-000000000073",
+        name: "General Admission",
+        price_cents: 2000000,
+        capacity: 80,
+      },
+      'Add a General Admission ticket to the draft event "Ari 3355 local QA Oct 31" for NGN 20,000, capacity 80.',
+    ),
+    {
+      event_id: "33550000-0000-4000-a000-000000000073",
+      name: "General Admission",
+      price_cents: 2000000,
+      capacity: 80,
+      is_free: false,
+      is_unlimited: false,
+    },
+    "natural-language ticket wording still grounds the required paid/finite flags",
+  );
+});
+
+Deno.test("#3355 ticket approval receipt uses the canonical saved tier", () => {
+  assertEquals(
+    buildTicketTierReceipt({
+      representation: "draft",
+      effective_currency: "USD",
+      tiers: [{
+        name: "General Admission",
+        isFree: false,
+        priceGbp: 25,
+        capacity: 80,
+      }],
+    }),
+    "I saved and verified the “General Admission” ticket tier at USD 25, capacity 80. The event remains a draft and is not published.",
+  );
+  assertEquals(buildTicketTierReceipt({ tiers: [] }), null);
+});
+
+Deno.test("#3355 explicit ticket writes cannot be replaced by chat-only confirmation", () => {
+  const request =
+    "For the saved draft ‘Midnight Practice’, add one General Admission ticket tier at NGN 25,000 with capacity 80. Keep the event unpublished. Show me the exact ticket details and ask me to confirm before saving.";
+  const response =
+    "I’ll add a General Admission ticket tier at NGN 25,000. Would you like me to proceed with saving it? Please confirm.";
+  assert(isFullySpecifiedTicketTierWriteRequest(request));
+  assert(ticketTierTextBypassesApproval(request, response));
+  assertEquals(
+    ticketTierTextBypassesApproval(
+      "For the saved draft ‘Midnight Practice’, add a ticket tier.",
+      "Which price and capacity should I use?",
+    ),
+    false,
+  );
+  assertEquals(
+    ticketTierTextBypassesApproval(
+      request,
+      "The ticket tier is blocked because this brand is not payout-ready.",
+    ),
+    false,
+  );
+});
+
+Deno.test("#3355 named ticket requests accept natural wording without the word tier", () => {
+  const request =
+    'Add a General Admission ticket to the draft event "Ari 3355 local QA Oct 31" for NGN 20,000, capacity 80. Keep the event unpublished and ask me to confirm before saving the ticket.';
+  assert(isFullySpecifiedTicketTierWriteRequest(request));
+  assert(ticketTierProposalMismatch(request, "create_event"));
+  assertEquals(
+    ticketTierProposalMismatch(request, "upsert_ticket_tier"),
+    false,
+  );
+});
+
+Deno.test("#3355 existing-event ticket request is explicit and rejects event creation", () => {
+  const request =
+    "Add an Early Bird ticket tier priced at NGN 25,000 with capacity 80 to the Harmattan Club event Midnight Practice. Show me the exact change for approval. Do not publish.";
+  assert(isFullySpecifiedTicketTierWriteRequest(request));
+  assert(ticketTierProposalMismatch(request, "create_event"));
+  assertEquals(
+    ticketTierProposalMismatch(request, "upsert_ticket_tier"),
+    false,
+  );
+});
+
+Deno.test("#3355 payout readiness refusal keeps actionable user-facing semantics", () => {
+  assertEquals(mapLegacyAriErrorCode("PAYOUT_NOT_READY"), "PAYOUT_NOT_READY");
+  assertEquals(ARI_ERROR_REGISTRY.PAYOUT_NOT_READY.httpStatus, 409);
+  assertEquals(ARI_ERROR_REGISTRY.PAYOUT_NOT_READY.operationState, "none");
+  assertMatch(
+    ARI_ERROR_REGISTRY.PAYOUT_NOT_READY.userMessage,
+    /finish its payout setup/i,
+  );
+});
+
+Deno.test("#3355 a new proposal releases a completed event planner task", () => {
+  const completed = {
+    ...createEventTaskState({
+      taskId: "33550000-0000-4000-a000-000000000001",
+      brandId: "33550000-0000-4000-a000-000000000002",
+      originMessageId: "33550000-0000-4000-a000-000000000003",
+      nowIso: "2026-10-30T12:00:00.000Z",
+      brief: {
+        concepts: [],
+        food: [],
+        music: [],
+        experience: [],
+        notes: [],
+      },
+      title: "Afterglow Sessions",
+    }),
+    status: "completed" as const,
+    last_completed_step: {
+      intent: "create_event",
+      outcome: "executed" as const,
+      resource_kind: "event",
+      resource_id: "33550000-0000-4000-a000-000000000004",
+      pending_action_id: "33550000-0000-4000-a000-000000000005",
+      completed_at: "2026-10-30T12:01:00.000Z",
+    },
+  };
+  const next = stateForNewAgentProposal(completed);
+  assertTaskState(next);
+  assertEquals(next.status, IDLE_TASK_STATE.status);
+  assertEquals(next.active_task, null);
+  assertEquals(next.last_completed_step, completed.last_completed_step);
+});
+
+// #3355 P7 (D-23): a guest count is not a free "General admission" tier the
+// owner never chose; and the end time is asked, never assumed.
+Deno.test("#3355 deterministic event planning never turns a guest count into a free tier", () => {
   const planned = planEventTurn(
     {
       schema_version: 1,
@@ -104,14 +382,149 @@ Deno.test("#3355 deterministic event planning carries capacity into the confirme
       questionId: "question-capacity",
     },
   );
-  assertEquals(planned.state.status, "ready_to_propose");
+  assertEquals(planned.state.status, "gathering");
+  assertEquals(planned.proposal, undefined);
+  assertMatch(planned.text, /When does it end\?/);
+  const ended = planEventTurn(planned.state, "10pm", {
+    now: new Date("2026-10-29T18:00:00-04:00"),
+    timezone: "America/New_York",
+    activeBrand: {
+      id: "33550000-0000-4000-a000-000000000002",
+      name: "Lantern Room",
+    },
+    originMessageId: "message-capacity",
+    taskId: "task-capacity",
+    questionId: "question-capacity-end",
+  });
+  assertEquals(ended.state.status, "ready_to_propose");
+  assertEquals(ended.proposal?.tool_name, "create_event");
+  assertEquals(ended.proposal?.tool_args.tickets, undefined);
+  assertEquals(ended.proposal?.tool_args.end_at, "2027-01-18T03:00:00.000Z");
+  assert(!/free|General admission/i.test(ended.text));
+});
+
+Deno.test("#3355 event confirmation preserves year, explicit WAT, end time, venue, and grounded copy", () => {
+  const planned = planEventTurn(
+    {
+      schema_version: 1,
+      status: "idle",
+      active_task: null,
+      interruption_stack: [],
+      pending_question: null,
+      last_completed_step: null,
+    },
+    "Create a draft event called “Seth Is Popping” for Harmattan Club on November 15, 2026 from 6 PM to 11 PM WAT at Harmattan Club in Lagos. Make it free for 200 guests, use event copy based only on those details, and stop before publishing.",
+    {
+      now: new Date("2026-10-29T18:00:00-04:00"),
+      timezone: "America/New_York",
+      activeBrand: {
+        id: "33550000-0000-4000-a000-000000000002",
+        name: "Harmattan Club",
+      },
+      originMessageId: "message-event-grounding",
+      taskId: "task-event-grounding",
+      questionId: "question-event-grounding",
+    },
+  );
+
   assertEquals(planned.proposal?.tool_name, "create_event");
-  const tickets = planned.proposal?.tool_args.tickets as Array<
-    Record<string, unknown>
-  >;
-  assertEquals(tickets[0].capacity, 20);
-  assertEquals(tickets[0].isFree, true);
-  assertMatch(planned.text, /limited to 20 guests/i);
+  assertEquals(planned.proposal?.tool_args.title, "Seth Is Popping");
+  assertEquals(planned.proposal?.tool_args.timezone, "Africa/Lagos");
+  assertEquals(
+    planned.proposal?.tool_args.start_at,
+    "2026-11-15T17:00:00.000Z",
+  );
+  assertEquals(planned.proposal?.tool_args.end_at, "2026-11-15T22:00:00.000Z");
+  assertEquals(
+    planned.proposal?.tool_args.location_text,
+    "Harmattan Club in Lagos",
+  );
+  assertMatch(
+    String(planned.proposal?.tool_args.description),
+    /November 15, 2026/,
+  );
+  assertMatch(
+    String(planned.proposal?.tool_args.description),
+    /Harmattan Club in Lagos/,
+  );
+  assertMatch(planned.text, /Nov 15, 2026/);
+  // Deno 1.46's ICU writes a narrow no-break space before PM; newer ones a
+  // plain space. Either is the same clock to the owner.
+  assertMatch(planned.text, /11:00\sPM WAT/);
+  assertMatch(planned.text, /Harmattan Club in Lagos/);
+  assertMatch(planned.text, /Should I create this draft\?/);
+});
+
+Deno.test("#3355 abbreviated meridiem event range preserves both clocks without inventing free entry", () => {
+  const planned = planEventTurn(
+    {
+      schema_version: 1,
+      status: "idle",
+      active_task: null,
+      interruption_stack: [],
+      pending_question: null,
+      last_completed_step: null,
+    },
+    "Create a private draft event called Copy QA for Harmattan Club on January 20, 2027, 6:00–9:00 PM WAT at Harmattan Club in Lagos. Write a brief description using only those details, show it and ask me to confirm. Do not publish.",
+    {
+      now: new Date("2026-10-29T18:00:00-04:00"),
+      timezone: "America/New_York",
+      activeBrand: {
+        id: "33550000-0000-4000-a000-000000000002",
+        name: "Harmattan Club",
+      },
+      originMessageId: "message-event-shared-meridiem",
+      taskId: "task-event-shared-meridiem",
+      questionId: "question-event-shared-meridiem",
+    },
+  );
+
+  assertEquals(planned.proposal?.tool_name, "create_event");
+  assertEquals(planned.proposal?.tool_args.timezone, "Africa/Lagos");
+  assertEquals(
+    planned.proposal?.tool_args.start_at,
+    "2027-01-20T17:00:00.000Z",
+  );
+  assertEquals(planned.proposal?.tool_args.end_at, "2027-01-20T20:00:00.000Z");
+  assertMatch(planned.text, /6:00\sPM WAT[\s\S]*9:00\sPM WAT/);
+  assertMatch(
+    String(planned.proposal?.tool_args.description),
+    /6:00\sPM to 9:00\sPM/,
+  );
+  assert(!/\bfree\b/i.test(String(planned.proposal?.tool_args.description)));
+});
+
+Deno.test("#3355 event titles exclude the active brand and parenthetical event style", () => {
+  const planned = planEventTurn(
+    {
+      schema_version: 1,
+      status: "idle",
+      active_task: null,
+      interruption_stack: [],
+      pending_question: null,
+      last_completed_step: null,
+    },
+    "Create an event called Afterglow Sessions for Lantern Room (live jazz) on December 5, 2026 at 7:30 PM to 10:30 PM America/New_York. Keep it as a draft.",
+    {
+      now: new Date("2026-10-29T18:00:00-04:00"),
+      timezone: "America/New_York",
+      activeBrand: {
+        id: "33550000-0000-4000-a000-000000000003",
+        name: "Lantern Room",
+      },
+      originMessageId: "message-brand-title-boundary",
+      taskId: "task-brand-title-boundary",
+      questionId: "question-brand-title-boundary",
+    },
+  );
+
+  assertEquals(planned.proposal?.tool_name, "create_event");
+  assertEquals(planned.proposal?.tool_args.title, "Afterglow Sessions");
+  assertEquals(planned.proposal?.tool_args.timezone, "America/New_York");
+  assertEquals(
+    planned.proposal?.tool_args.start_at,
+    "2026-12-06T00:30:00.000Z",
+  );
 });
 
 Deno.test("#3355 general planning language does not become an event workflow", () => {
@@ -134,6 +547,18 @@ Deno.test("#3355 general planning language does not become an event workflow", (
       "For Harmattan Club, build a complete launch plan. First show me the steps and identify what is missing.",
     ),
     false,
+  );
+  assertEquals(
+    isCreateEventPlanningRequest(
+      "Help me set up Harmattan House in Lagos. Its business is rooftop music. I have a logo and event flyer to add later.",
+    ),
+    false,
+  );
+  assertEquals(
+    isCreateEventPlanningRequest(
+      "Set up an event from the flyer for November 15.",
+    ),
+    true,
   );
 });
 
@@ -164,11 +589,46 @@ Deno.test("#3355 narrow product questions use canonical reads instead of model g
     },
   );
   assertEquals(
-    ariDeterministicReadPlan("Lagos event from New York device", brandId),
+    ariDeterministicReadPlan(
+      "What market pricing rules apply to a Lagos event when I manage it from a New York device?",
+      brandId,
+    ),
     {
       intent: "market_rules",
       calls: [{ name: "get_market_rules", args: { country_code: "NG" } }],
     },
+  );
+  assertEquals(
+    ariDeterministicReadPlan(
+      "Create a private Lagos trip draft. Do not invent the price; ask for missing details and show it for confirmation.",
+      brandId,
+    ),
+    null,
+    "price constraints on a trip write must not become a market-rules-only completion",
+  );
+  assertEquals(
+    ariDeterministicReadPlan(
+      "Create a Lagos experience draft; do not invent its price or exact venue.",
+      brandId,
+    ),
+    null,
+    "experience creation must remain on the write-planning path",
+  );
+  assertEquals(
+    ariDeterministicReadPlan(
+      "Add a private Lagos venue listing; do not invent its location or fees.",
+      brandId,
+    ),
+    null,
+    "venue creation must not be swallowed by the market-rules read",
+  );
+  assertEquals(
+    ariDeterministicReadPlan(
+      "For the private trip draft Codex QA Local Trip, set the dates to January 8–10, 2027 in Africa/Lagos and guest capacity to 20. Do not invent a price.",
+      brandId,
+    ),
+    null,
+    "trip field updates must not be swallowed by the market-rules read",
   );
   assertEquals(
     ariDeterministicReadPlan("Flyer 1 PM vs text 2–10 PM", brandId),
@@ -184,6 +644,18 @@ Deno.test("#3355 narrow product questions use canonical reads instead of model g
         },
       }],
     },
+  );
+  assertEquals(
+    ariDeterministicReadPlan(
+      "Help me set up Harmattan House in Lagos. Its business is rooftop music. I have a logo and event flyer to add later.",
+      brandId,
+    ),
+    null,
+  );
+  assertEquals(
+    ariDeterministicReadPlan("Read the flyer for the event date", brandId)
+      ?.intent,
+    "listing_candidates",
   );
 });
 
@@ -213,6 +685,153 @@ Deno.test("#3355 canonical product reads become concise public replies without m
   assertMatch(reply ?? "", /Nothing was created or changed/);
 });
 
+Deno.test("#3355 saved event readback uses canonical date and timezone", () => {
+  const brandId = "33550000-0000-4000-a000-000000000001";
+  const plan = ariDeterministicReadPlan(
+    "Read back the saved draft details, including the weekday and full year.",
+    brandId,
+    "Golden Hour Social",
+  );
+  assertEquals(plan, {
+    intent: "saved_event",
+    calls: [{
+      name: "list_events",
+      args: { brand_id: brandId, upcoming_only: false, limit: 50 },
+    }],
+    targetTitle: "Golden Hour Social",
+  });
+  assertEquals(
+    ariDeterministicReadPlan(
+      "Add one $25 ticket tier with capacity for 80 to Afterglow Sessions. Ask me to confirm before saving it, and keep the event unpublished.",
+      brandId,
+    ),
+    null,
+    "A write request that mentions confirmation must not be mistaken for a saved-event readback",
+  );
+  assertEquals(
+    ariDeterministicReadPlan(
+      "For the saved private draft ‘Afterglow Sessions’ on Lantern Room, add one General Admission ticket tier at USD 25 with capacity 80. Keep the event unpublished. Show me the exact tier details and ask me to confirm before saving.",
+      brandId,
+    ),
+    null,
+    "A request to show ticket proposal details must not be mistaken for an event listing",
+  );
+  const reply = buildAriDeterministicReadReply(
+    plan!,
+    [{
+      tool: "list_events",
+      args: { brand_id: brandId, upcoming_only: false },
+      result: {
+        events: [{
+          title: "Golden Hour Social",
+          status: "draft",
+          visibility: "draft",
+          timezone: "Africa/Lagos",
+          location_text: "Harmattan House, Lagos",
+          when: {
+            date: "2026-11-15",
+            doorsOpen: "18:00",
+            endsAt: "23:00",
+            timezone: "Africa/Lagos",
+          },
+        }],
+      },
+      elapsedMs: 2,
+    }],
+    "Harmattan House",
+  );
+  assertMatch(reply ?? "", /Sunday, November 15, 2026/);
+  assertMatch(reply ?? "", /6:00 PM–11:00 PM WAT/);
+  assertMatch(reply ?? "", /Venue: Harmattan House, Lagos/);
+  assertMatch(reply ?? "", /not published/i);
+  assert(!/Friday/.test(reply ?? ""));
+});
+
+Deno.test("#3355 launch readiness resolves the recently named event", () => {
+  const title = findAriRecentEventTitle([
+    "Create an event called Afterglow Sessions for Lantern Room (live jazz) on December 5, 2026.",
+    "Add a General Admission tier to the saved private draft ‘Afterglow Sessions’.",
+  ]);
+  assertEquals(title, "Afterglow Sessions");
+  const reply = buildAriDeterministicReadReply(
+    {
+      intent: "event_list",
+      calls: [{
+        name: "list_events",
+        args: { brand_id: "brand-a", upcoming_only: false, limit: 50 },
+      }],
+      targetTitle: title ?? undefined,
+    },
+    [{
+      tool: "list_events",
+      args: {},
+      result: {
+        events: [
+          { title: "Another Event", status: "live" },
+          {
+            title: "Afterglow Sessions",
+            status: "draft",
+            timezone: "America/New_York",
+            when: {
+              date: "2026-12-05",
+              doorsOpen: "19:30",
+              endsAt: "21:30",
+              timezone: "America/New_York",
+            },
+          },
+        ],
+      },
+      elapsedMs: 1,
+    }],
+    "Lantern Room",
+  );
+  assertMatch(reply ?? "", /Afterglow Sessions/);
+  assertMatch(reply ?? "", /Draft — not published/);
+  assert(!reply?.includes("Another Event"));
+});
+
+Deno.test("#3355 event listings use canonical local times and never call drafts live", () => {
+  const brandId = "33550000-0000-4000-a000-000000000001";
+  const plan = ariDeterministicReadPlan(
+    "List my events for Harmattan Club. Show the event title and date for each one.",
+    brandId,
+  );
+  assertEquals(plan?.intent, "event_list");
+  assertEquals(plan?.calls, [{
+    name: "list_events",
+    args: { brand_id: brandId, upcoming_only: false, limit: 50 },
+  }]);
+  const reply = buildAriDeterministicReadReply(
+    plan!,
+    [{
+      tool: "list_events",
+      args: { brand_id: brandId, upcoming_only: false },
+      result: {
+        events: [{
+          title: "Seth Is Popping",
+          status: "draft",
+          visibility: "draft",
+          timezone: "Africa/Lagos",
+          location_text: "Harmattan Club in Lagos",
+          when: {
+            date: "2026-11-15",
+            doorsOpen: "18:00",
+            endsAt: "23:00",
+            timezone: "Africa/Lagos",
+          },
+        }],
+      },
+      elapsedMs: 2,
+    }],
+    "Harmattan Club",
+  );
+  assertMatch(reply ?? "", /Sunday, November 15, 2026/);
+  assertMatch(reply ?? "", /6:00 PM–11:00 PM WAT/);
+  assertMatch(reply ?? "", /Draft — not published/);
+  assertMatch(reply ?? "", /Harmattan Club in Lagos/);
+  assertEquals(reply?.includes("scheduled to be live"), false);
+});
+
 Deno.test("#3355 sensitive and invalid media inputs use deterministic safe copy", () => {
   const bank = ariDeterministicSafetyReply("Bank number typed in chat") ?? "";
   assertMatch(bank, /protected payout setup/i);
@@ -233,6 +852,8 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
   const originalBase = Deno.env.get("ARI_LOCAL_MODEL_BASE_URL");
   const originalModel = Deno.env.get("ARI_LOCAL_MODEL_ID");
   let wireModel = "";
+  let wireContext = 0;
+  const requestSignals: AbortSignal[] = [];
   try {
     Deno.env.set("ARI_LOCAL_MODEL_ENABLED", "true");
     Deno.env.set(
@@ -242,8 +863,13 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     Deno.env.set("ARI_LOCAL_MODEL_ID", "qwen3:4b-instruct");
     globalThis.fetch = async (input, init) => {
       assertEquals(String(input), "http://host.docker.internal:11434/api/chat");
+      requestSignals.push(init?.signal as AbortSignal);
       wireModel = String(
         (JSON.parse(String(init?.body)) as Record<string, unknown>).model ?? "",
+      );
+      wireContext = Number(
+        ((JSON.parse(String(init?.body)) as Record<string, unknown>)
+          .options as Record<string, unknown>)?.num_ctx ?? 0,
       );
       return new Response(
         JSON.stringify({
@@ -266,6 +892,12 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     );
     assertEquals(result.usage.total_tokens, 23);
     assertEquals(wireModel, "qwen3:4b-instruct");
+    // [TEST-MOD-APPROVED #2830] A live Website setup plan needs 32K context.
+    assertEquals(wireContext, 32_768);
+    assertEquals(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS, 100_000);
+    assertEquals(requestSignals.length, 1);
+    assert(requestSignals[0] instanceof AbortSignal);
+    assertEquals(requestSignals[0].aborted, false);
 
     Deno.env.set("ARI_LOCAL_MODEL_BASE_URL", "https://example.com");
     let refused = false;
@@ -376,6 +1008,16 @@ Deno.test("#3355 unsupported requests aggregate into privacy-safe capability gap
   assert(!unknown.exampleRequest.includes("host@example.com"));
 });
 
+Deno.test("#3355 multiword capability search ranks intent instead of one shared word", () => {
+  const matches = searchAriCapabilities("tag waiters order");
+  assert(matches.some((match) => match.name === "manage_venue_waitlist"));
+  assert(!matches.some((match) => match.name === "cancel_order"));
+  assert(!matches.some((match) => match.name === "delete_trip"));
+  assert(
+    !matches.some((match) => match.name === "get_event_order_reconciliation"),
+  );
+});
+
 Deno.test("#3355 loop executes bounded reads then stops at the first write", async () => {
   let modelCalls = 0;
   const executed: string[] = [];
@@ -404,6 +1046,172 @@ Deno.test("#3355 loop executes bounded reads then stops at the first write", asy
   assertEquals(executed, ["inspect"]);
   assertEquals(modelCalls, 2);
   assertEquals(result.observations[0].result, { canonical: true });
+});
+
+Deno.test("#3355 loop returns proposal validation errors for one bounded repair", async () => {
+  let modelCalls = 0;
+  const result = await runAgentLoop({
+    callModel: async (observations) => {
+      modelCalls += 1;
+      if (observations.length === 0) {
+        return {
+          toolCalls: [{
+            name: "draft_campaign",
+            args: { subject: "unverified" },
+          }],
+        };
+      }
+      assertEquals(observations[0].error?.code, "UNSUPPORTED_CAMPAIGN_CLAIM");
+      return {
+        toolCalls: [{ name: "draft_campaign", args: { subject: "grounded" } }],
+      };
+    },
+    classifyTool: () => "write",
+    validateProposal: (call) =>
+      call.args.subject === "unverified"
+        ? {
+          code: "UNSUPPORTED_CAMPAIGN_CLAIM",
+          message: "Remove the claim; it is not in the host's source details.",
+        }
+        : null,
+    executeTool: async () => null,
+  });
+  assertEquals(result.kind, "proposal");
+  if (result.kind !== "proposal") return;
+  assertEquals(result.toolCall.args.subject, "grounded");
+  assertEquals(modelCalls, 2);
+  assertEquals(
+    result.observations[0].error?.code,
+    "UNSUPPORTED_CAMPAIGN_CLAIM",
+  );
+});
+
+Deno.test("#3355 loop repairs chat-only write confirmation into the approval tool", async () => {
+  const request =
+    "For the saved draft ‘Midnight Practice’, add one General Admission ticket tier at NGN 25,000 with capacity 80. Keep the event unpublished. Show me the exact ticket details and ask me to confirm before saving.";
+  let modelCalls = 0;
+  const result = await runAgentLoop({
+    callModel: async (observations) => {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        return {
+          toolCalls: [],
+          textResponse: "I'll add the tier. Please confirm to save it.",
+        };
+      }
+      assertEquals(observations.at(-1)?.error?.code, "WRITE_PROPOSAL_REQUIRED");
+      return {
+        toolCalls: [{
+          name: "upsert_ticket_tier",
+          args: {
+            event_id: "event-1",
+            name: "General Admission",
+            price_cents: 2500000,
+            capacity: 80,
+          },
+        }],
+      };
+    },
+    validateFinalText: (text) =>
+      ticketTierTextBypassesApproval(request, text)
+        ? {
+          code: "WRITE_PROPOSAL_REQUIRED",
+          message: "Return the protected write proposal.",
+        }
+        : null,
+    classifyTool: () => "write",
+    executeTool: async () => null,
+  });
+  assertEquals(result.kind, "proposal");
+  if (result.kind !== "proposal") return;
+  assertEquals(result.toolCall.name, "upsert_ticket_tier");
+  assertEquals(modelCalls, 2);
+  assertEquals(result.observations[0].error?.code, "WRITE_PROPOSAL_REQUIRED");
+});
+
+Deno.test("#3355 loop repairs wrong event creation into the requested ticket edit", async () => {
+  const request =
+    "Add an Early Bird ticket tier priced at NGN 25,000 with capacity 80 to the Harmattan Club event Midnight Practice. Show me the exact change for approval. Do not publish.";
+  let modelCalls = 0;
+  const result = await runAgentLoop({
+    initialCalls: [{ name: "list_events", args: { brand_id: "brand-1" } }],
+    callModel: async (observations) => {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        assertEquals(observations[0]?.tool, "list_events");
+        return {
+          toolCalls: [{
+            name: "create_event",
+            args: { title: "Midnight Practice" },
+          }],
+        };
+      }
+      assertEquals(
+        observations.at(-1)?.error?.code,
+        "REQUESTED_TOOL_MISMATCH",
+      );
+      return {
+        toolCalls: [{
+          name: "upsert_ticket_tier",
+          args: {
+            event_id: "event-midnight-practice",
+            name: "Early Bird",
+            price_cents: 2500000,
+            capacity: 80,
+          },
+        }],
+      };
+    },
+    classifyTool: (call) => call.name === "list_events" ? "read" : "write",
+    validateProposal: (call) =>
+      ticketTierProposalMismatch(request, call.name)
+        ? {
+          code: "REQUESTED_TOOL_MISMATCH",
+          message: "Use upsert_ticket_tier for the named existing event.",
+        }
+        : null,
+    executeTool: async () => ({
+      events: [{ id: "event-midnight-practice", title: "Midnight Practice" }],
+    }),
+  });
+  assertEquals(result.kind, "proposal");
+  if (result.kind !== "proposal") return;
+  assertEquals(result.toolCall.name, "upsert_ticket_tier");
+  assertEquals(modelCalls, 2);
+  assertEquals(
+    result.observations.at(-1)?.error?.code,
+    "REQUESTED_TOOL_MISMATCH",
+  );
+});
+
+Deno.test("#3355 repeated chat-only ticket confirmation stops without false completion", async () => {
+  const request =
+    "For the saved draft ‘Midnight Practice’, add one General Admission ticket tier at NGN 25,000 with capacity 80. Keep the event unpublished. Show me the exact ticket details and ask me to confirm before saving.";
+  const result = await runAgentLoop({
+    callModel: async () => ({
+      toolCalls: [],
+      textResponse: "I’ll add this ticket tier. Please confirm to save it.",
+    }),
+    validateFinalText: (text) =>
+      ticketTierTextBypassesApproval(request, text)
+        ? {
+          code: "WRITE_PROPOSAL_REQUIRED",
+          message: "Return the protected write proposal.",
+        }
+        : null,
+    classifyTool: () => "read",
+    executeTool: async () => null,
+  });
+  assertEquals(result.kind, "stopped");
+  if (result.kind !== "stopped") return;
+  assertEquals(result.reason, "errors");
+  const rendition = buildAgentRunRendition({
+    renditionId: "write-approval-required",
+    goal: request,
+    result,
+  });
+  assertEquals(rendition.title, "Ari reached a clear blocker");
+  assert(!JSON.stringify(rendition).includes("Plan complete"));
 });
 
 Deno.test("#3355 required launch reads run before the model's first turn", async () => {
@@ -723,7 +1531,7 @@ Deno.test("#3355 copy lint refuses unsourced research and sensitive success copy
 
 Deno.test("#3355 toolsets are inferred and capped without losing core tools", () => {
   const keys = inferAriToolsets(
-    "Research Instagram, import my people CSV and launch our event website",
+    "Research Instagram, import my people CSV, launch our website, and create an event",
   );
   assert(keys.includes("research"));
   assert(keys.includes("people"));
@@ -754,10 +1562,10 @@ Deno.test("#3355 toolsets are inferred and capped without losing core tools", ()
   const launchTools = selectAriTools(
     AGENT_TOOLS,
     inferAriToolsets(launchGoal),
-    8,
+    12,
     launchGoal,
   ).map((tool) => tool.name);
-  assertEquals(launchTools.length, 8);
+  assertEquals(launchTools.length, 12);
   for (
     const required of [
       "get_operator_snapshot",
@@ -771,6 +1579,152 @@ Deno.test("#3355 toolsets are inferred and capped without losing core tools", ()
       `${required} should stay discoverable`,
     );
   }
+});
+
+Deno.test("#3355 compact tool routing prioritizes directly requested write capabilities", () => {
+  const tripRequest =
+    "Set up a 3-day trip for Harmattan House, starting November 15, 2026. Draft only.";
+  const tripTools = selectAriTools(
+    AGENT_TOOLS,
+    inferAriToolsets(tripRequest),
+    12,
+    tripRequest,
+  ).map((tool) => tool.name);
+  for (
+    const required of [
+      "create_trip",
+      "manage_trip_days",
+      "manage_trip_tiers",
+    ]
+  ) {
+    assert(
+      tripTools.includes(required),
+      `${required} must fit in the compact trip tool window`,
+    );
+  }
+  assert(!tripTools.includes("list_trip_installments"));
+  assert(!tripTools.includes("get_trip_order_money"));
+
+  // A follow-up can omit the word "trip" while still clearly asking for its
+  // package. Brand currency must not crowd the trip-tier writer out.
+  const packageRequest =
+    "Set one per-person package at ₦180000. Use the brand currency and do not add instalments.";
+  const packageTools = selectAriTools(
+    AGENT_TOOLS,
+    inferAriToolsets(packageRequest),
+    12,
+    packageRequest,
+  ).map((tool) => tool.name);
+  assert(packageTools.includes("manage_trip_tiers"));
+  assert(!packageTools.includes("manage_brand_discovery_currency"));
+  assert(!packageTools.includes("manage_brand_people"));
+
+  const eventRequest =
+    "Create an event called Golden Hour Social on November 15, 2026.";
+  const eventTools = selectAriTools(
+    AGENT_TOOLS,
+    inferAriToolsets(eventRequest),
+    12,
+    eventRequest,
+  ).map((tool) => tool.name);
+  assert(eventTools.includes("create_event"));
+});
+
+Deno.test("#3355 event and trip guest capacity does not load team-management tools", () => {
+  const tripRequest =
+    "For this trip, set one per-person package at ₦15,000 with capacity for 120 guests.";
+  const keys = inferAriToolsets(tripRequest);
+  assert(keys.includes("listings"));
+  assert(!keys.includes("people"));
+
+  const guestListKeys = inferAriToolsets(
+    "Show me the guest list for this trip",
+  );
+  assert(guestListKeys.includes("people"));
+});
+
+Deno.test("#3355 future onboarding materials do not trigger event or order tools", () => {
+  const request =
+    "Help me set up Harmattan House in Lagos. Its business is rooftop music. I have a logo and event flyer to add later.";
+  assert(needsAriOnboardingSetupRead(request));
+  const keys = inferAriToolsets(request);
+  assert(keys.includes("onboarding"));
+  assert(!keys.includes("listings"));
+  const tools = selectAriTools(
+    AGENT_TOOLS,
+    ["core", "brand", "onboarding"],
+    12,
+    request,
+  )
+    .map((tool) => tool.name);
+  assert(tools.includes("get_onboarding_plan"));
+  assert(tools.includes("build_host_onboarding_blueprint"));
+  assert(!tools.includes("list_event_orders"));
+  assert(!tools.includes("get_event_order_reconciliation"));
+  assert(!tools.includes("create_event"));
+  assert(!needsAriOnboardingSetupRead("Create an event for the brand"));
+  assert(needsAriOnboardingSetupRead("Help me launch my business"));
+  assert(
+    !needsAriOnboardingSetupRead(
+      "Update the saved campaign draft title to Golden Hour Social — Lagos launch. Keep the approved message content and do not schedule it.",
+    ),
+  );
+  assert(isAriOnboardingPlanProgressMessage(
+    "Use NGN and Africa/Lagos. Mark the logo and flyer as still needed.",
+  ));
+  assert(!isAriOnboardingPlanProgressMessage("Create an event for Friday"));
+  assert(
+    !isAriOnboardingPlanProgressMessage(
+      "Continue the saved trip setup. Set dates in Africa/Lagos and set guest capacity to 20.",
+    ),
+  );
+  const setupTools = selectAriOnboardingSetupTools(AGENT_TOOLS).map((tool) =>
+    tool.name
+  );
+  // [TEST-MOD-APPROVED #3355] P2: brand setup reads the canonical checklist too.
+  assertEquals(setupTools, [
+    "get_operator_snapshot",
+    "get_onboarding_plan",
+    "update_onboarding_plan",
+    "get_market_rules",
+    "build_host_onboarding_blueprint",
+    "get_brand_readiness",
+  ]);
+  const progressCall = buildAriOnboardingSetupPlanCall({
+    text: request,
+    brandId: "c2c45be0-edbf-4b7c-aa5d-84b5c37fb3f9",
+    brandName: "Harmattan House",
+    existingPlan: {
+      revision: 3,
+      state: {
+        owner_provided_details: ["Earlier detail"],
+        steps: [{
+          key: "brand",
+          title: "Create or select the brand",
+          status: "completed",
+        }],
+      },
+    },
+    hasAttachments: false,
+  });
+  assertEquals(progressCall.name, "update_onboarding_plan");
+  assertEquals(progressCall.args.expected_revision, 3);
+  const patch = progressCall.args.patch as Record<string, unknown>;
+  assertEquals(patch.future_materials, ["logo", "event flyer"]);
+  assertEquals(patch.owner_provided_details, ["Earlier detail", request]);
+  const setupReply = buildAriOnboardingSetupReply([
+    {
+      tool: "update_onboarding_plan",
+      args: {},
+      result: { state: patch },
+      elapsedMs: 0,
+    },
+  ], "Harmattan House");
+  assert(setupReply?.includes("private onboarding checklist"));
+  assert(setupReply?.includes("Location: Lagos"));
+  assert(setupReply?.includes("Business type: rooftop music"));
+  assert(setupReply?.includes("not attached or inspected"));
+  assert(setupReply?.includes("unchanged"));
 });
 
 Deno.test("#3355 broad host promotion goals discover capabilities before reasoning", () => {
@@ -789,6 +1743,22 @@ Deno.test("#3355 broad host promotion goals discover capabilities before reasoni
   assert(!plan?.includes("propose_ad_plan"));
 });
 
+Deno.test("#3355 capability questions answer from relevant search matches", () => {
+  const answer = buildAriCapabilityPlan(
+    "What can Ari do to manage brand opening hours?",
+    "Harmattan Club",
+    [{
+      name: "manage_brand_hours",
+      description: "Read or update a brand venue's opening hours.",
+    }],
+  );
+  assert(answer?.includes("Harmattan Club's venue opening hours"));
+  assert(answer?.includes("complete seven-day schedule"));
+  assert(answer?.includes("your approval"));
+  assert(!answer?.includes("promotion plan"));
+  assert(!answer?.includes("manage_brand_hours"));
+});
+
 Deno.test("#3355 terse continuation requests read the durable onboarding plan", () => {
   assert(needsAriOnboardingResumeRead("Next steps after accepting"));
   assert(needsAriOnboardingResumeRead("Greeting after silence resumes plan"));
@@ -805,6 +1775,109 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
   }, "Harmattan Club");
   assert(resumed.includes("first offering"));
   assert(resumed.includes("will not repeat completed work"));
+});
+
+Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
+  assertEquals(PROMPT_VERSION, "v27");
+  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+  for (
+    const phrase of [
+      "ONBOARDING RULES:",
+      "Do not create a duplicate brand when an existing brand is selected.",
+      "CAMPAIGN DRAFT RULES:",
+      "Do not invent event features, artists, past attendance, repeat editions, discounts, priority access, scarcity or results.",
+      "said to be added later is not an attachment and has not been inspected.",
+      "Save the host's stated setup progress in the versioned onboarding plan.",
+    ]
+  ) assert(prompt.includes(phrase), `missing onboarding rule: ${phrase}`);
+});
+
+Deno.test("#3355 campaign review reads brand performance and excludes wrong campaign reports", () => {
+  const request = "Look at what has worked recently, then draft a campaign.";
+  assert(needsAriCampaignWorkflow(request));
+  assert(needsAriCampaignPerformanceRead(request));
+  assert(
+    !needsAriCampaignPerformanceRead(
+      "Review the saved campaign draft against the goal and audience.",
+    ),
+  );
+  assert(!needsAriCampaignWorkflow("Read the report for campaign 123"));
+  const tools = selectAriCampaignWorkflowTools(AGENT_TOOLS).map((tool) =>
+    tool.name
+  );
+  assertEquals(tools, [
+    "draft_campaign",
+    "update_campaign_draft",
+    "get_brand_analytics",
+    "get_campaign_draft",
+  ]);
+  assert(!tools.includes("get_campaign_report"));
+});
+
+Deno.test("#3355 campaign draft review reads the last saved draft and quotes canonical copy", () => {
+  const campaignId = "ae01ca3d-65d9-4e7d-9db4-617abfbd2490";
+  assert(needsAriCampaignDraftReview(
+    "Review the saved campaign draft against the goal and audience.",
+  ));
+  assertEquals(
+    findAriCampaignDraftId([
+      {
+        role: "tool",
+        tool_results: {
+          tool_name: "draft_campaign",
+          result: { id: campaignId },
+        },
+      },
+      {
+        role: "assistant",
+        tool_calls: {
+          tool_name: "update_campaign_draft",
+          args: { campaign_id: campaignId },
+        },
+      },
+    ]),
+    campaignId,
+  );
+  assertEquals(
+    findAriCampaignDraftId([{
+      role: "assistant",
+      tool_calls: {
+        tool_name: "update_campaign_draft",
+        args: { campaign_id: "not-a-uuid" },
+      },
+    }]),
+    null,
+  );
+  const plan = ariDeterministicReadPlan(
+    "Review the saved campaign draft against the goal and audience.",
+    "11111111-1111-4111-8111-111111111111",
+    null,
+    false,
+    campaignId,
+  );
+  assertEquals(plan?.calls[0], {
+    name: "get_campaign_draft",
+    args: { campaign_id: campaignId },
+  });
+  assertEquals(
+    buildAriDeterministicReadReply(plan!, [{
+      tool: "get_campaign_draft",
+      args: { campaign_id: campaignId },
+      result: {
+        id: campaignId,
+        name: "Golden Hour Social — Lagos launch",
+        status: "draft",
+        channel: "email",
+        channel_payload: {
+          subject: "Golden Hour Social — early-bird access",
+          body_text: "Join Harmattan House for Golden Hour Social.",
+          body_html: "<p>Join Harmattan House for Golden Hour Social.</p>",
+        },
+      },
+      elapsedMs: 1,
+    }], "Harmattan House"),
+    "I verified the saved email campaign draft for Harmattan House: “Golden Hour Social — Lagos launch”. Subject: Golden Hour Social — early-bird access. Message: Join Harmattan House for Golden Hour Social. Status: draft. It has not been scheduled or sent.",
+  );
 });
 
 Deno.test("#3355 every active scenario's required capability exists in the real registry", () => {
@@ -1146,7 +2219,8 @@ Deno.test("#3355 every committed assistant reply crosses the diagnostic sanitize
   );
   assertMatch(
     commitBoundary,
-    /const publicText = sanitizeAriUserFacingDiagnostics\(args\.text\)/,
+    // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate.
+    /const publicText = assertOwnerCopy\(\s*sanitizeAriUserFacingDiagnostics\(args\.text\)/,
   );
   assertMatch(commitBoundary, /const content = \{\s*text: publicText,/);
   assertMatch(commitBoundary, /assistantText: publicText,/);
@@ -1178,6 +2252,17 @@ Deno.test("#3355 complete launch requests receive a deterministic real-data plan
     "For Harmattan Club, build a complete brand launch plan, research our public presence, and show every step.";
   assert(isBrandLaunchPlanRequest(request));
   assert(
+    isAriEventLaunchReadinessRequest(
+      "Show me the exact launch checklist and public event details. Do not publish until I approve the final preview.",
+    ),
+  );
+  assert(
+    !isAriEventLaunchReadinessRequest(
+      "Create an event called Launch Details next Friday.",
+    ),
+    "ordinary event creation is not a launch-readiness request",
+  );
+  assert(
     launchPlanNeedsPublicResearch(
       "Check public evidence without guessing before launch.",
     ),
@@ -1203,7 +2288,35 @@ Deno.test("#3355 complete launch requests receive a deterministic real-data plan
             city: "Lagos",
             country_code: "NG",
             default_currency: "NGN",
-            genuinely_missing: ["cover image", "public phone"],
+            // [TEST-MOD-APPROVED #3355] P2: the launch plan reads the canonical
+            // brand_readiness summary the snapshot carries, not a hand-made list.
+            readiness: {
+              money: {
+                can_sell: false,
+                can_be_paid_out: false,
+                sell_reason: "no_provider",
+                payout_reason: "no_bank",
+                rail: "none",
+                currency: "NGN",
+                terms_accepted_by_caller: true,
+              },
+              items: [
+                {
+                  key: "cover_media",
+                  label: "Cover photo or video",
+                  group: "media",
+                  severity: "skippable",
+                  not_now: null,
+                },
+                {
+                  key: "contact_phone",
+                  label: "Contact phone",
+                  group: "contact",
+                  severity: "skippable",
+                  not_now: null,
+                },
+              ],
+            },
           },
           offerings: [],
           payout_ready: false,
@@ -1240,7 +2353,7 @@ Deno.test("#3355 complete launch requests receive a deterministic real-data plan
   assert(plan.text.includes("Lagos"));
   assert(plan.text.includes("NGN"));
   assert(plan.text.includes("Nothing has been changed or published"));
-  assert(plan.text.includes("cover image"));
+  assert(plan.text.includes("Cover photo or video"));
   assert(!plan.text.includes("RESEARCH_NOT_CONFIGURED"));
   assert(!plan.text.includes("create_site_draft"));
   assertEquals(plan.sourceUrls, [
@@ -1270,4 +2383,29 @@ Deno.test("#3355 complete launch requests receive a deterministic real-data plan
   );
   assert(blocks.some((block) => block.id === "genuinely-missing"));
   assertEquals(rendition.actions, undefined);
+
+  const unavailableSitePlan = buildBrandLaunchPlan({
+    brandName: "Harmattan Club",
+    observations: [
+      {
+        tool: "get_operator_snapshot",
+        args: { brand_id: "brand-a" },
+        result: {
+          selected_brand: { name: "Harmattan Club" },
+          offerings: [],
+          payout_ready: false,
+        },
+        elapsedMs: 1,
+      },
+      {
+        tool: "get_brand_site",
+        args: { brand_id: "brand-a" },
+        error: { code: "SITE_SERVICE_UNAVAILABLE", message: "unavailable" },
+        elapsedMs: 1,
+      },
+    ],
+  });
+  assertMatch(unavailableSitePlan.text, /couldn't verify the website status/i);
+  assert(!unavailableSitePlan.text.includes("SITE_SERVICE_UNAVAILABLE"));
+  assert(unavailableSitePlan.missing.includes("verified website status"));
 });

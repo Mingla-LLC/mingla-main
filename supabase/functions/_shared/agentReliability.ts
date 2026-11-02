@@ -33,9 +33,11 @@ export type AriErrorCode =
   | "VALIDATION_FAILED"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
+  | "PAYOUT_NOT_READY"
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "PROPOSAL_EXPIRED"
   | "CONFLICT"
   | "RATE_LIMITED"
   | "OFFLINE"
@@ -126,6 +128,14 @@ export const ARI_ERROR_REGISTRY: Readonly<
     operationState: "none",
     userMessage: "Your current access does not allow this action.",
   },
+  PAYOUT_NOT_READY: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+    userMessage:
+      "This brand cannot accept paid tickets yet. Finish its payout setup first.",
+  },
   ROLE_REVOKED: {
     httpStatus: 403,
     retryability: "after_reauth",
@@ -147,6 +157,17 @@ export const ARI_ERROR_REGISTRY: Readonly<
     operationState: "pending",
     userMessage:
       "This proposal changed. Review the latest version before confirming.",
+  },
+  // #2830 — an Ari approval that timed out. Terminal and explicit: nothing was
+  // saved, and the owner is told so instead of the card silently vanishing.
+  // (Hub proposals keep their own 200 expired_regenerate contract.)
+  PROPOSAL_EXPIRED: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "expired",
+    userMessage:
+      "That approval timed out, so nothing was saved. Ask me again and I'll redo it.",
   },
   CONFLICT: {
     httpStatus: 409,
@@ -437,7 +458,6 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
     case "VERSION_CONFLICT":
     case "TASK_STATE_VERSION_UNSUPPORTED":
     case "DELETE_BLOCKED_BY_EVENTS":
-    case "PAYOUT_NOT_READY":
     case "TAX_REGISTRATION_REQUIRED":
     case "EVENT_CURRENCY_REQUIRED":
     case "SLUG_TAKEN":
@@ -463,6 +483,10 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
     // the app's envelope check and reads as a broken connection. The exact
     // sentence reaches the thread through the stored failure reason.
     case "ORGANISER_TERMS_REQUIRED":
+    // issue #3355 P1 (D-9) — a typed publish/money refusal (ariRefusalCopy.ts).
+    // Same envelope family every installed app knows; the owner sentence
+    // reaches the thread through the stored failure reason.
+    case "DOMAIN_REFUSED":
     case "EDGE_FAILED":
     case "RPC_FAILED":
       // #1981 — Host/domain refusals arrive as EDGE_FAILED/RPC_FAILED; do not

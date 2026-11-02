@@ -12,6 +12,7 @@ export const BUSINESS_TODO_ACTION_KINDS = [
   "open_universal_creator",
   "route",
   "open_pending_invite",
+  "info",
 ] as const satisfies ReadonlyArray<BusinessTodoAction["kind"]>;
 
 export type BusinessTodoActionKind = (typeof BUSINESS_TODO_ACTION_KINDS)[number];
@@ -45,6 +46,10 @@ export function dispatchBusinessTodoAction(
       return;
     case "open_pending_invite":
       handlers.openPendingInvite(action.invitationId, action.brandName);
+      return;
+    case "info":
+      // #3355 P5 — a row this member cannot act on. BusinessTodoToggle renders
+      // it as text and never calls onAction; a stray call does nothing.
       return;
     default: {
       const _exhaustive: never = action;

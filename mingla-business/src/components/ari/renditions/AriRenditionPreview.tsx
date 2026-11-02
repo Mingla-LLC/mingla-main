@@ -28,6 +28,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../../constants/designSystem";
+import type { PhoneCountry } from "../../ui/Input";
 import { AriOrb } from "../AriOrb";
 import { AriPremiumButton as Button } from "../AriPremiumButton";
 import type {
@@ -1158,11 +1159,46 @@ export function buildAriRenditionExample(fixture: AriRenditionFixture): {
   };
 }
 
+/**
+ * #2830 — the Brand details phone control (Input variant="phone"), loaded on
+ * first use. Input pulls the icon set (react-native-svg) at module scope; a
+ * static import would load it for every rendition and break the render suites
+ * that never show a phone field.
+ */
+const AriRenditionPhoneField: React.FC<{
+  value: string;
+  onChangeText: (next: string) => void;
+  countryIso?: string;
+  countryPlaceholder?: string;
+  onCountryChange: (country: PhoneCountry) => void;
+  placeholder?: string;
+  disabled: boolean;
+  accessibilityLabel: string;
+}> = (props) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Input } = require("../../ui/Input") as typeof import("../../ui/Input");
+  return (
+    <Input
+      variant="phone"
+      value={props.value}
+      onChangeText={props.onChangeText}
+      defaultCountryIso={props.countryIso}
+      onCountryChange={props.onCountryChange}
+      countryPlaceholder={props.countryPlaceholder}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+      accessibilityLabel={props.accessibilityLabel}
+    />
+  );
+};
+
 export interface AriRenditionInteraction {
   rendition: AriRendition;
   action: AriRenditionActionV1;
   selectedOptionIds: string[];
   fieldValue: string;
+  /** #2830 — phone fields: the chip's country, null while none is chosen. */
+  fieldCountryIso?: string | null;
 }
 
 const AriRenditionStatus: React.FC<{
@@ -1326,16 +1362,20 @@ const AriRenditionBlocks: React.FC<{
   blocks: AriRenditionBlockV2[];
   selectedOptionIds: string[];
   fieldValue: string;
+  fieldCountryIso: string | null;
   interactionLocked: boolean;
   onSelect: (optionId: string, multiple: boolean) => void;
   onFieldChange: (value: string) => void;
+  onFieldCountryChange: (iso: string) => void;
 }> = ({
   blocks,
   selectedOptionIds,
   fieldValue,
+  fieldCountryIso,
   interactionLocked,
   onSelect,
   onFieldChange,
+  onFieldCountryChange,
 }) => (
   <View style={styles.blockStack}>
     {blocks.map((block) => {
@@ -1505,6 +1545,32 @@ const AriRenditionBlocks: React.FC<{
           </View>
         );
       }
+      if (block.type === "input" && block.field.kind === "phone") {
+        // #2830 — the Brand details phone control itself: country chip plus
+        // local number, opened on the country the server resolved, or on
+        // "Choose country" when nobody has chosen one.
+        return (
+          <View key={block.id} style={styles.fieldWrap}>
+            <Text style={styles.fieldLabel}>
+              {block.field.label.toUpperCase()}
+            </Text>
+            <AriRenditionPhoneField
+              value={fieldValue}
+              onChangeText={onFieldChange}
+              countryIso={block.field.countryIso}
+              onCountryChange={(country) => onFieldCountryChange(country.iso)}
+              countryPlaceholder={
+                fieldCountryIso === null
+                  ? block.field.countryPlaceholder
+                  : undefined
+              }
+              placeholder={block.field.placeholder}
+              disabled={block.field.editable === false || interactionLocked}
+              accessibilityLabel={block.field.label}
+            />
+          </View>
+        );
+      }
       if (block.type === "input") {
         return (
           <View key={block.id} style={styles.fieldWrap}>
@@ -1513,7 +1579,21 @@ const AriRenditionBlocks: React.FC<{
             </Text>
             <TextInput
               editable={block.field.editable !== false && !interactionLocked}
-              multiline
+              multiline={
+                block.field.kind !== "email" && block.field.kind !== "url"
+              }
+              autoCapitalize={
+                block.field.kind === "email" || block.field.kind === "url"
+                  ? "none"
+                  : undefined
+              }
+              keyboardType={
+                block.field.kind === "email"
+                  ? "email-address"
+                  : block.field.kind === "url"
+                    ? "url"
+                    : undefined
+              }
               value={fieldValue}
               placeholder={block.field.placeholder}
               placeholderTextColor={ariThread.tertiaryText}
@@ -1612,8 +1692,14 @@ const AriRenditionBlocks: React.FC<{
 export const AriRenditionCard: React.FC<{
   rendition: AriRendition;
   showOrb?: boolean;
+  /**
+   * #2830 P0 (D-4 interim) — a newer answer card exists in this thread, so
+   * this one is answered/replaced: shown with an "Answered" ribbon, choices
+   * and fields disabled, and no answer buttons.
+   */
+  superseded?: boolean;
   onAction?: (interaction: AriRenditionInteraction) => void;
-}> = ({ rendition, showOrb = true, onAction }) => {
+}> = ({ rendition, showOrb = true, superseded = false, onAction }) => {
   const reduceMotion = useReducedMotion();
   const entranceOpacity = useSharedValue(reduceMotion ? 1 : 0);
   const entranceOffset = useSharedValue(reduceMotion ? 0 : 8);
@@ -1625,10 +1711,14 @@ export const AriRenditionCard: React.FC<{
   const [selectedOptionIds, setSelectedOptionIds] =
     useState<string[]>(initialSelection);
   const [fieldValue, setFieldValue] = useState(fieldModel?.value ?? "");
+  const [fieldCountryIso, setFieldCountryIso] = useState<string | null>(
+    fieldModel?.kind === "phone" ? (fieldModel.countryIso ?? null) : null,
+  );
   const isMulti = choiceModel.multiple;
-  const visualState = rendition.state ?? "ready";
+  const visualState = superseded ? "disabled" : (rendition.state ?? "ready");
   const graphicCopy = renditionGraphicCopy(rendition);
   const interactionLocked =
+    superseded ||
     visualState === "loading" ||
     visualState === "submitted" ||
     visualState === "disabled";
@@ -1676,7 +1766,11 @@ export const AriRenditionCard: React.FC<{
   return (
     <Animated.View
       style={[styles.renditionHost, entranceStyle]}
-      accessibilityLabel={`${rendition.title} Ari rendition. ${rendition.body}`}
+      accessibilityLabel={`${rendition.title} Ari rendition.${
+        superseded ? " Answered." : ""
+      } ${rendition.body}`}
+      accessibilityState={superseded ? { disabled: true } : undefined}
+      testID={superseded ? "ari-rendition-superseded" : undefined}
     >
       <View style={styles.renditionOrb}>
         {showOrb ? (
@@ -1706,7 +1800,7 @@ export const AriRenditionCard: React.FC<{
         >
           <AriRenditionStatus
             state={visualState}
-            label={rendition.transition_label}
+            label={superseded ? "Answered" : rendition.transition_label}
           />
           {rendition.eyebrow ? (
             <Text style={styles.eyebrow}>
@@ -1721,9 +1815,11 @@ export const AriRenditionCard: React.FC<{
               blocks={rendition.blocks}
               selectedOptionIds={selectedOptionIds}
               fieldValue={fieldValue}
+              fieldCountryIso={fieldCountryIso}
               interactionLocked={interactionLocked}
               onSelect={selectOption}
               onFieldChange={setFieldValue}
+              onFieldCountryChange={setFieldCountryIso}
             />
           ) : null}
 
@@ -1895,7 +1991,9 @@ export const AriRenditionCard: React.FC<{
           </View>
         ) : null}
 
-        {rendition.actions?.length && visualState !== "submitted" ? (
+        {rendition.actions?.length &&
+        visualState !== "submitted" &&
+        !superseded ? (
           <View style={styles.actions}>
             {rendition.actions.map((action) => {
               const disabled =
@@ -1924,6 +2022,7 @@ export const AriRenditionCard: React.FC<{
                       action,
                       selectedOptionIds,
                       fieldValue,
+                      fieldCountryIso,
                     })
                   }
                   accessibilityLabel={action.label}

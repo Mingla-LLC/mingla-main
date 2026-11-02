@@ -103,3 +103,11 @@ describe("#2097 Business non-2xx refund truth", () => {
     expect(error.message).toMatch(/Mingla fee refund evidence needs review/i);
   });
 });
+
+describe("#3281 a refund waiting on another refund", () => {
+  it("explains the wait instead of a generic failure", async () => {
+    const error = await invokeAndCatch({ error: "refund_pending_on_order" }, 409);
+    expect(error.code).toBe("refund_pending_on_order");
+    expect(error.message).toMatch(/Another refund on this order is still going through/);
+  });
+});

@@ -306,13 +306,16 @@ describe("issue #3380 retest 2 — the editor always passes the real country sou
   });
 
   test("every write of the phone edit carries a source; none can leave it out", () => {
+    // Typing, the country list, and (#3355) an address pick that moves an
+    // EMPTY box's country — that one takes its source from the rule.
     const writes = EDITOR_CODE.match(/setPhoneEdit\(\{[\s\S]*?\}\);/g) ?? [];
-    expect(writes).toHaveLength(2);
+    expect(writes).toHaveLength(3);
     for (const write of writes) expect(write).toMatch(/countrySource/);
+    expect(writes.some((w) => /countrySource: follow\.countrySource,/.test(w))).toBe(true);
     // The only other write clears it after a successful save.
     const all = EDITOR_CODE.match(/setPhoneEdit\(/g) ?? [];
     const nulls = EDITOR_CODE.match(/setPhoneEdit\(null\)/g) ?? [];
-    expect(all.length - nulls.length).toBe(2);
+    expect(all.length - nulls.length).toBe(3);
     // Never a functional update that could spread an old shape.
     expect(EDITOR_CODE).not.toMatch(/setPhoneEdit\(\s*\(/);
   });
@@ -903,7 +906,12 @@ describe("issue #3380 retest 2 — the shared phone field is unchanged unless th
     };
     walk(join(process.cwd(), "src"));
     walk(join(process.cwd(), "app"));
-    expect(users).toEqual(["src/components/brand/BrandEditView.tsx"]);
+    // #2830 — Ari's Website setup asks for the brand contact phone with the
+    // SAME control and rules as Brand details, so it is the one other user.
+    expect(users.sort()).toEqual([
+      "src/components/ari/renditions/AriRenditionPreview.tsx",
+      "src/components/brand/BrandEditView.tsx",
+    ]);
     // The other phone fields exist and are the ones left alone.
     expect(phoneFields.length).toBeGreaterThan(1);
   });

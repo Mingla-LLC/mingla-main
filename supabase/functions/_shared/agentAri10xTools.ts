@@ -6,10 +6,31 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import type { AgentToolDefinition } from "./agentToolHelpers.ts";
-import { callRpc, isString, isUuid, ToolError } from "./agentToolHelpers.ts";
+import {
+  callRpc,
+  invokeFn,
+  isString,
+  isUuid,
+  ToolError,
+} from "./agentToolHelpers.ts";
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
+import { READINESS_TOOLS } from "./agentReadinessTools.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "./stripeSupportedCountries.ts";
+// #3355: the payout-country list lives in a leaf so the flow engine's money
+// gate reads it without importing these tools (and their web research).
+import {
+  MARKET_DEFAULT_TIMEZONES,
+  marketDefaultTimezone,
+  payoutRailFor,
+} from "./payoutCountries.ts";
+export {
+  MARKET_DEFAULT_TIMEZONES,
+  marketDefaultTimezone,
+  PAYOUT_COUNTRIES,
+  type PayoutRail,
+  payoutRailFor,
+} from "./payoutCountries.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
 import { toolBelongsTo } from "./agentToolsets.ts";
 import {
@@ -33,6 +54,19 @@ const TOOLSET_KEYS = [
 ] as const;
 
 const LOCAL_CAPABILITIES = [
+  ["list_events", "List the signed-in host's events and their saved details."],
+  ["update_event", "Prepare an approved change to an event the host owns."],
+  ["update_brand", "Prepare an approved change to a brand the host owns."],
+  [
+    "delete_brand",
+    "Request recoverable deletion of an owned brand after confirmation.",
+  ],
+  ["manage_brand_hours", "Read or update a brand venue's opening hours."],
+  ["list_brand_audit_log", "Read recent audit activity for an owned brand."],
+  [
+    "manage_brand_discovery_currency",
+    "Read or manage a brand's discovery currency settings.",
+  ],
   [
     "search_public_web",
     "Research public web sources with dates and citations.",
@@ -60,8 +94,16 @@ const LOCAL_CAPABILITIES = [
     "Prepare an allowlisted Mingla app destination for a human-owned step.",
   ],
   [
+    "tell_owner_in_brand_group",
+    "After confirmation, ask the brand owner in the brand group chat to do an owner-only step.",
+  ],
+  [
     "get_market_rules",
     "Read deterministic country, currency and payment-rail rules.",
+  ],
+  [
+    "set_brand_payout_country",
+    "After confirmation, set the payout country (and so the price currency) of a brand that has none yet.",
   ],
   [
     "get_listing_type_capabilities",
@@ -333,6 +375,7 @@ function catalogue(): Array<{ name: string; description: string }> {
   const all = [
     ...DOMAIN_TOOLS.map(({ name, description }) => ({ name, description })),
     ...SITE_AGENT_TOOLS.map(({ name, description }) => ({ name, description })),
+    ...READINESS_TOOLS.map(({ name, description }) => ({ name, description })),
     ...LOCAL_CAPABILITIES.map(([name, description]) => ({ name, description })),
     {
       name: "create_brand",
@@ -354,21 +397,44 @@ function catalogue(): Array<{ name: string; description: string }> {
   return [...new Map(all.map((item) => [item.name, item])).values()];
 }
 
-function capabilitySearch(
+const CAPABILITY_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
+  tag: ["mark", "label"],
+  tags: ["mark", "label"],
+  waiter: ["waitlist"],
+  waiters: ["waitlist"],
+  order: ["reservation", "booking"],
+};
+
+function capabilityTerms(query: string): string[] {
+  return [...new Set(query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [])];
+}
+
+/** Rank actual tool capabilities and require multiword intent coverage. */
+export function searchAriCapabilities(
   query: string,
   limit = 12,
 ): Array<{ name: string; description: string; score: number }> {
-  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((term) =>
-    term.length > 2
-  );
+  const terms = capabilityTerms(query);
+  const minimumCoverage = terms.length <= 1 ? 1 : 2;
   return catalogue().map((item) => {
-    const haystack = `${item.name} ${item.description}`.toLowerCase();
+    const haystack = new Set(
+      `${item.name} ${item.description}`.toLowerCase().match(/[a-z0-9]{3,}/g) ??
+        [],
+    );
+    let matchedTerms = 0;
+    let score = 0;
+    for (const term of terms) {
+      const exact = haystack.has(term);
+      const synonym = (CAPABILITY_SYNONYMS[term] ?? []).some((variant) =>
+        haystack.has(variant)
+      );
+      if (exact || synonym) matchedTerms += 1;
+      if (exact) score += 2;
+      else if (synonym) score += 1;
+    }
     return {
       ...item,
-      score: terms.reduce(
-        (total, term) => total + (haystack.includes(term) ? 1 : 0),
-        0,
-      ),
+      score: matchedTerms >= minimumCoverage ? score : 0,
     };
   }).filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
@@ -564,7 +630,10 @@ const searchCapabilities: AgentToolDefinition = {
   },
   executor: async (args) => ({
     query: requiredText(args.query, "query", 300),
-    matches: capabilitySearch(String(args.query), Number(args.limit ?? 12)),
+    matches: searchAriCapabilities(
+      String(args.query),
+      Number(args.limit ?? 12),
+    ),
     total_capabilities: catalogue().length,
   }),
 };
@@ -716,10 +785,238 @@ const forgetMemoryNote: AgentToolDefinition = {
   },
 };
 
+// #3355 P6 (D-11): destinations only the brand owner can finish. A teammate
+// is told so in plain words instead of being sent to a screen they can't use.
+const OWNER_ONLY_HANDOFFS: Readonly<Record<string, string>> = Object.freeze({
+  payment_onboarding: "biz_can_mutate_payouts_for_brand_for_caller",
+});
+
+export const OWNER_ONLY_HANDOFF_MESSAGE =
+  "Only the owner can do this — tell them?";
+
+// #3355 P6 follow-up (Seth, 2026-11-01): "Tell them" drops a note in the
+// brand's group chat, sent as the teammate (their sign-in, so the group's
+// membership rules apply) and only after they confirm the exact words on a
+// card. No group the teammate can post in → the Team screen, said plainly.
+export const OWNER_NOTE_TEAM_FALLBACK =
+  "There's no brand group chat you can post in, so let the owner know from the Team screen.";
+
+/** What the owner is asked to do, per owner-only step (owner-facing words). */
+export const OWNER_NOTE_TOPICS: Readonly<
+  Record<string, { ask: string; where: string; destination: string }>
+> = Object.freeze({
+  payment_setup: {
+    ask: "set up payments",
+    where: "Payments",
+    destination: "payment_onboarding",
+  },
+});
+
+const OWNER_NOTE_TOPIC_BY_DESTINATION: Readonly<Record<string, string>> = Object
+  .freeze({ payment_onboarding: "payment_setup" });
+
+type JsonRecord = Record<string, unknown>;
+
+/**
+ * The brand's group chat the caller can post in as a team member, or null.
+ * Reads the caller's own groups (issue_3720_list_brand_groups, caller JWT);
+ * a support-only view never counts. A failed read is "no group": the caller
+ * is sent to the Team screen instead, never told a note was sent.
+ */
+export async function findCallerBrandGroup(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  const { data, error } = await client.rpc("issue_3720_list_brand_groups");
+  if (error || !Array.isArray(data)) return null;
+  const group = (data as JsonRecord[]).find((row) =>
+    String(row.brand_id ?? "").toLowerCase() === brandId.toLowerCase() &&
+    row.access_kind === "brand" && isUuid(row.conversation_id)
+  );
+  return group ? String(group.conversation_id) : null;
+}
+
+/** The note's exact words: owner-facing, no codes, ids or tool names. */
+export function ownerNoteText(args: {
+  teammateFirstName: string | null;
+  brandName: string;
+  topic: string;
+}): string {
+  const topic = OWNER_NOTE_TOPICS[args.topic];
+  if (!topic) {
+    throw new ToolError("INVALID_ARGS", "That isn't an owner-only step.");
+  }
+  const who = args.teammateFirstName?.trim() || "A teammate";
+  return `${who} asked Ari to ${topic.ask} for ${args.brandName}. Only the owner can do this. Could you take a look? It's in Mingla Host under ${args.brandName} > ${topic.where}.`;
+}
+
+async function teammateFirstName(
+  client: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await client.from("profiles")
+    .select("first_name,display_name")
+    .eq("id", userId).maybeSingle();
+  const row = (data ?? {}) as JsonRecord;
+  const first = typeof row.first_name === "string" ? row.first_name.trim() : "";
+  if (first) return first.split(/\s+/)[0];
+  const display = typeof row.display_name === "string"
+    ? row.display_name.trim()
+    : "";
+  return display ? display.split(/\s+/)[0] : null;
+}
+
+async function brandNameFor(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string> {
+  const { data, error } = await client.from("brands").select("name")
+    .eq("id", brandId).is("deleted_at", null).maybeSingle();
+  const name = typeof (data as JsonRecord | null)?.name === "string"
+    ? String((data as JsonRecord).name).trim()
+    : "";
+  if (error || !name) {
+    throw new ToolError(
+      "BRAND_ACCESS_DENIED",
+      "That brand or resource is unavailable",
+    );
+  }
+  return name;
+}
+
+/** The caller can do the step themselves (they don't need the owner). */
+async function callerOwnsStep(
+  client: SupabaseClient,
+  brandId: string,
+  topic: string,
+): Promise<boolean> {
+  const destination = OWNER_NOTE_TOPICS[topic]?.destination;
+  const check = destination ? OWNER_ONLY_HANDOFFS[destination] : undefined;
+  if (!check) return false;
+  const { data, error } = await client.rpc(check, { p_brand_id: brandId });
+  if (error) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not verify permissions right now",
+    );
+  }
+  return data === true;
+}
+
+/**
+ * Propose-time binding for tell_owner_in_brand_group: the server writes the
+ * exact note (the model never supplies the words) and where it goes, so the
+ * card shows precisely what will be sent. Said in plain words instead of a
+ * card when the caller is the owner or has no group to post in.
+ */
+export async function bindOwnerNoteProposal(
+  toolName: string,
+  args: JsonRecord,
+  client: SupabaseClient,
+  userId: string,
+): Promise<JsonRecord> {
+  if (toolName !== "tell_owner_in_brand_group") return args;
+  if (!isUuid(args.brand_id)) {
+    throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+  }
+  const topic = String(args.about ?? "");
+  if (!OWNER_NOTE_TOPICS[topic]) {
+    throw new ToolError("INVALID_ARGS", "That isn't an owner-only step.");
+  }
+  if (await callerOwnsStep(client, args.brand_id, topic)) {
+    throw new ToolError(
+      "OWNER_NOTE_NOT_NEEDED",
+      `You can ${OWNER_NOTE_TOPICS[topic].ask} yourself in ${
+        OWNER_NOTE_TOPICS[topic].where
+      }. Nothing was sent.`,
+    );
+  }
+  const [group, brandName, firstName] = await Promise.all([
+    findCallerBrandGroup(client, args.brand_id),
+    brandNameFor(client, args.brand_id),
+    teammateFirstName(client, userId),
+  ]);
+  if (!group) {
+    throw new ToolError(
+      "OWNER_NOTE_UNAVAILABLE",
+      `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+    );
+  }
+  return {
+    brand_id: args.brand_id,
+    about: topic,
+    send_to: `${brandName} group chat`,
+    message: ownerNoteText({
+      teammateFirstName: firstName,
+      brandName,
+      topic,
+    }),
+  };
+}
+
+const tellOwnerInBrandGroup: AgentToolDefinition = {
+  name: "tell_owner_in_brand_group",
+  description:
+    "After the teammate confirms, post one note in the brand's group chat asking the owner to do an owner-only step (payment setup). Sent as the teammate. The server writes the exact words; never write your own. Offer it when open_handoff returns requires_owner with tell_owner.via brand_group; when it says team_screen, say its message and link the Team screen instead.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id", "about"],
+    properties: {
+      brand_id: { type: "string", format: "uuid" },
+      about: { type: "string", enum: Object.keys(OWNER_NOTE_TOPICS) },
+      send_to: { type: "string", maxLength: 200 },
+      message: { type: "string", maxLength: 600 },
+    },
+  },
+  executor: async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const topic = String(args.about ?? "");
+    const conversationId = await findCallerBrandGroup(client, args.brand_id);
+    if (!conversationId) {
+      throw new ToolError(
+        "OWNER_NOTE_UNAVAILABLE",
+        `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+      );
+    }
+    // Send exactly the words the teammate confirmed, and only words the
+    // server would write today (a stale or altered note is refused).
+    const expected = ownerNoteText({
+      teammateFirstName: await teammateFirstName(client, userId),
+      brandName: await brandNameFor(client, args.brand_id),
+      topic,
+    });
+    if (args.message !== expected) {
+      throw new ToolError(
+        "OWNER_NOTE_CHANGED",
+        "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
+      );
+    }
+    const messageId = await callRpc<string>(
+      client,
+      "issue_3720_send_brand_group_message",
+      {
+        p_conversation_id: conversationId,
+        p_content: expected,
+        p_actor_mode: "brand",
+      },
+    );
+    return {
+      sent: true,
+      message_id: messageId,
+      conversation_id: conversationId,
+      sent_to: args.send_to ?? null,
+      message: expected,
+    };
+  },
+};
+
 const openHandoff: AgentToolDefinition = {
   name: "open_handoff",
   description:
-    "Return an allowlisted Mingla Host route for a human-owned or screen-specific step. This never accepts an arbitrary URL.",
+    "Return an allowlisted Mingla Host route for a human-owned or screen-specific step. This never accepts an arbitrary URL. Payment setup is owner-only: for anyone else it returns requires_owner instead of a route; say the message. If tell_owner.via is brand_group, offer to tell them with tell_owner_in_brand_group (about = tell_owner.about); if it is team_screen, say tell_owner.message and link the Team screen.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -730,7 +1027,7 @@ const openHandoff: AgentToolDefinition = {
       reason: { type: "string", maxLength: 300 },
     },
   },
-  executor: async (args) => {
+  executor: async (args, client) => {
     const destination = String(args.destination) as keyof typeof HANDOFF_ROUTES;
     const template = HANDOFF_ROUTES[destination];
     if (!template) {
@@ -745,21 +1042,83 @@ const openHandoff: AgentToolDefinition = {
         "brand_id is required for this destination",
       );
     }
+    const reason = typeof args.reason === "string"
+      ? sanitizeAriPublicText(args.reason).text.slice(0, 300)
+      : null;
+    const ownerCheck = OWNER_ONLY_HANDOFFS[destination];
+    if (ownerCheck && isUuid(args.brand_id)) {
+      const { data, error } = await client.rpc(ownerCheck, {
+        p_brand_id: args.brand_id,
+      });
+      if (error) {
+        throw new ToolError(
+          "ROLE_CHECK_UNAVAILABLE",
+          "Ari could not verify permissions right now",
+        );
+      }
+      if (data !== true) {
+        // "Tell them" posts in the brand group chat after the teammate
+        // confirms (tell_owner_in_brand_group); Ari sends nothing on its own.
+        // No group they can post in → the Team screen, said plainly.
+        const teamRoute = HANDOFF_ROUTES.team.replace(
+          "{brand_id}",
+          String(args.brand_id),
+        );
+        const group = await findCallerBrandGroup(client, args.brand_id);
+        return {
+          destination,
+          route: null,
+          requires_owner: true,
+          message: OWNER_ONLY_HANDOFF_MESSAGE,
+          tell_owner: group
+            ? {
+              via: "brand_group",
+              about: OWNER_NOTE_TOPIC_BY_DESTINATION[destination] ?? null,
+              route: teamRoute,
+              route_label: "Team",
+            }
+            : {
+              via: "team_screen",
+              message: OWNER_NOTE_TEAM_FALLBACK,
+              route: teamRoute,
+              route_label: "Team",
+            },
+          reason,
+          requires_human: true,
+        };
+      }
+    }
     return {
       destination,
       route: template.replace("{brand_id}", String(args.brand_id ?? "")),
-      reason: typeof args.reason === "string"
-        ? sanitizeAriPublicText(args.reason).text.slice(0, 300)
-        : null,
+      reason,
       requires_human: true,
     };
   },
 };
 
+function marketTimezoneFields(country: string): Record<string, unknown> {
+  const known = Object.prototype.hasOwnProperty.call(
+    MARKET_DEFAULT_TIMEZONES,
+    country,
+  );
+  const timezone = marketDefaultTimezone(country);
+  return {
+    default_timezone: timezone,
+    timezone_needs_owner_choice: timezone === null,
+    ...(timezone === null && known
+      ? {
+        timezone_ask:
+          "This country has more than one time zone. Ask the owner which one the offering is in.",
+      }
+      : {}),
+  };
+}
+
 const getMarketRules: AgentToolDefinition = {
   name: "get_market_rules",
   description:
-    "Read Mingla's deterministic payout country, currency and provider rules. Unknown markets remain unknown rather than being guessed.",
+    "Read Mingla's deterministic payout country, currency, provider and default time zone rules. A country with several time zones returns no default: ask the owner. Unknown markets remain unknown rather than being guessed.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -779,6 +1138,7 @@ const getMarketRules: AgentToolDefinition = {
         currency: "NGN",
         payment_provider: "paystack",
         payout_country_immutable_after_onboarding: true,
+        ...marketTimezoneFields(country),
       };
     }
     const stripe = STRIPE_SUPPORTED_COUNTRIES.find((entry) =>
@@ -791,6 +1151,7 @@ const getMarketRules: AgentToolDefinition = {
         currency: stripe.defaultCurrency,
         payment_provider: "stripe",
         payout_country_immutable_after_onboarding: true,
+        ...marketTimezoneFields(country),
       }
       : {
         country,
@@ -798,9 +1159,183 @@ const getMarketRules: AgentToolDefinition = {
         currency: null,
         payment_provider: null,
         requires_human_review: true,
+        default_timezone: null,
+        timezone_needs_owner_choice: true,
       };
   },
 };
+
+const setBrandPayoutCountry: AgentToolDefinition = {
+  name: "set_brand_payout_country",
+  description:
+    "After the owner confirms, set the payout country of a brand that has no currency yet, which sets the currency its prices are in. The same change as choosing a payout country in the Host app (Nigeria also puts the brand on Nigerian bank payouts). Never guess the country: ask which country the owner's bank account is in.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id", "country_code"],
+    properties: {
+      brand_id: { type: "string", format: "uuid" },
+      country_code: { type: "string", minLength: 2, maxLength: 2 },
+    },
+  },
+  executor: async (args, client) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const brandId = args.brand_id;
+    const rail = payoutRailFor(args.country_code);
+    if (!rail) {
+      throw new ToolError(
+        "PAYOUT_COUNTRY_UNSUPPORTED",
+        "Mingla can't pay out to that country yet, so nothing was changed.",
+      );
+    }
+    const readBrand = async () => {
+      const { data, error } = await client.from("brands")
+        .select("id,name,default_currency,payment_provider,payout_country")
+        .eq("id", brandId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (error) throw new ToolError("READ_FAILED", error.message);
+      return data as {
+        id: string;
+        name: string;
+        default_currency: string | null;
+        payment_provider: string | null;
+        payout_country: string | null;
+      } | null;
+    };
+    const brand = await readBrand();
+    if (!brand) {
+      throw new ToolError(
+        "NOT_FOUND",
+        "That brand isn't available, so nothing was changed.",
+      );
+    }
+    const current = brand.default_currency?.trim().toUpperCase() || null;
+    if (current && current !== rail.currency) {
+      throw new ToolError(
+        "PAYOUT_COUNTRY_ALREADY_SET",
+        `This brand's prices are already in ${current}. You can change the payout country in Payments setup. Nothing was changed.`,
+      );
+    }
+    if (!current) {
+      // The same writes, in the same order, as the Host chooser
+      // (BrandPayoutCountryField), made as the caller.
+      try {
+        if (rail.provider === "paystack") {
+          // The server puts the brand on the Nigerian rail and sets naira.
+          await invokeFn(client, "brand-paystack-onboard", {
+            action: "select_provider",
+            brand_id: brandId,
+          });
+        } else if (
+          brand.payment_provider?.trim().toLowerCase() === "paystack"
+        ) {
+          await invokeFn(client, "brand-paystack-onboard", {
+            action: "clear_provider",
+            brand_id: brandId,
+          });
+        }
+      } catch (error) {
+        if (error instanceof ToolError && error.code !== "EDGE_FAILED") {
+          throw error;
+        }
+        throw new ToolError(
+          "PAYOUT_COUNTRY_NOT_SAVED",
+          rail.provider === "paystack"
+            ? "I couldn't put this brand on Nigerian bank payouts, so nothing was changed. Only the brand owner can choose that, in Payments setup."
+            : "I couldn't change this brand's payout country, so nothing was changed. You can choose it in Payments setup.",
+        );
+      }
+      if (rail.provider !== "paystack") {
+        const { data, error } = await client.from("brands")
+          .update({ default_currency: rail.currency })
+          .eq("id", brandId)
+          .is("deleted_at", null)
+          .select("id");
+        if (error) throw new ToolError("WRITE_FAILED", error.message);
+        if (!Array.isArray(data) || data.length !== 1) {
+          throw new ToolError(
+            "PERMISSION_DENIED",
+            "Only the owner or a brand admin can choose the payout country. Nothing was changed.",
+          );
+        }
+      }
+    }
+    // Remember the country itself (a currency several countries share still
+    // names the one picked). Best effort, exactly as the Host: the currency
+    // above is already saved either way.
+    if (brand.payout_country !== rail.country) {
+      await client.from("brands")
+        .update({ payout_country: rail.country })
+        .eq("id", brandId)
+        .is("deleted_at", null)
+        .select("id");
+    }
+    const after = await readBrand();
+    if (after?.default_currency?.trim().toUpperCase() !== rail.currency) {
+      throw new ToolError(
+        "PAYOUT_COUNTRY_NOT_SAVED",
+        "The currency didn't save, so nothing is shown as done. You can choose the payout country in Payments setup.",
+      );
+    }
+    return {
+      brand: after,
+      country_code: rail.country,
+      country_name: rail.name,
+      currency: rail.currency,
+      payout_provider: rail.provider,
+    };
+  },
+};
+
+function validIanaTimezone(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const TIMEZONE_BOUND_TOOLS: ReadonlySet<string> = new Set([
+  "create_event",
+  "create_trip",
+]);
+
+/**
+ * #3355 P6 (D-27): Ari never proposes an offering with an empty time zone.
+ * A blank zone is filled from the brand's own time zone, then from its
+ * country when that country has exactly one; otherwise Ari asks before any
+ * card. Bound before the card so the confirmed payload is the one shown.
+ */
+export async function bindProposalTimezone(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+): Promise<Record<string, unknown>> {
+  if (!TIMEZONE_BOUND_TOOLS.has(toolName)) return args;
+  if (validIanaTimezone(args.timezone)) return args;
+  if (!isUuid(args.brand_id)) return args;
+  const { data } = await client.from("brands")
+    .select("default_timezone,country_code")
+    .eq("id", args.brand_id).maybeSingle();
+  // Not this caller's brand: authorization answers that, not a time zone ask.
+  if (!data) return args;
+  const brand = data as Record<string, unknown>;
+  const timezone = validIanaTimezone(brand.default_timezone)
+    ? String(brand.default_timezone).trim()
+    : marketDefaultTimezone(brand.country_code);
+  if (!timezone) {
+    throw new ToolError(
+      "TIMEZONE_NEEDED",
+      "Which time zone is this in? Tell me the city or time zone and I'll set it up.",
+    );
+  }
+  return { ...args, timezone };
+}
 
 const getListingCapabilities: AgentToolDefinition = {
   name: "get_listing_type_capabilities",
@@ -1289,7 +1824,9 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   saveMemoryNote,
   forgetMemoryNote,
   openHandoff,
+  tellOwnerInBrandGroup,
   getMarketRules,
+  setBrandPayoutCountry,
   getListingCapabilities,
   buildHostOnboardingBlueprint,
   getCapabilityInventory,

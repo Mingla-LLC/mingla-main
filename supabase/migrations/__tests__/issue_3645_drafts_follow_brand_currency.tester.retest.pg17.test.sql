@@ -676,8 +676,9 @@ BEGIN
       ('S-11 the old number with no metadata at all (an older build, a script)',
         jsonb_build_object('ticket_type_id', p.id, 'tier_name', 'Standard',
           'price_cents', 4500000, 'capacity', 12)),
+      -- #3355 P6: a price above the provider minimum, so only the re-entry rule decides.
       ('S-12 the price alone',
-        jsonb_build_object('ticket_type_id', p.id, 'price_cents', 1)),
+        jsonb_build_object('ticket_type_id', p.id, 'price_cents', 5000)),
       ('S-13 the old number with a marker that is not the server''s shape',
         jsonb_build_object('ticket_type_id', p.id, 'price_cents', 4500000,
           'tier_metadata', v_clean || jsonb_build_object('price_cleared_for_currency_change', true))),

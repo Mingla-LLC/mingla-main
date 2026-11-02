@@ -27,6 +27,11 @@ export interface AgentLoopObservation {
   elapsedMs: number;
 }
 
+export interface AgentLoopProposalValidationIssue {
+  code: string;
+  message: string;
+}
+
 export interface AgentLoopBudget {
   maxSteps: number;
   maxModelCalls: number;
@@ -106,6 +111,22 @@ export async function runAgentLoop(args: {
   classifyTool: (
     call: AgentLoopToolCall,
   ) => "read" | "agent_state" | "write" | "unknown";
+  /** A failed proposal check is returned to the model for a bounded repair. */
+  validateProposal?: (
+    call: AgentLoopToolCall,
+  ) =>
+    | AgentLoopProposalValidationIssue
+    | null
+    | Promise<
+      AgentLoopProposalValidationIssue | null
+    >;
+  /** Reject false completion text and give the model one bounded repair turn. */
+  validateFinalText?: (
+    text: string,
+    observations: readonly AgentLoopObservation[],
+  ) => AgentLoopProposalValidationIssue | null | Promise<
+    AgentLoopProposalValidationIssue | null
+  >;
   executeTool: (call: AgentLoopToolCall) => Promise<unknown>;
   isCancelled?: () => Promise<boolean>;
   onProgress?: (
@@ -121,6 +142,7 @@ export async function runAgentLoop(args: {
   let modelCalls = 0;
   let toolCalls = 0;
   let consecutiveErrors = 0;
+  let finalTextRepairAttempts = 0;
   let input = 0;
   let output = 0;
   const usage = () => ({ input, output, calls: modelCalls });
@@ -295,7 +317,7 @@ export async function runAgentLoop(args: {
     };
   }
 
-  for (let step = 0; step < budget.maxSteps; step++) {
+  modelTurns: for (let step = 0; step < budget.maxSteps; step++) {
     if (Date.now() - started >= budget.deadlineMs) {
       return {
         kind: "stopped",
@@ -364,6 +386,29 @@ export async function runAgentLoop(args: {
       if (calls.length > 0) {
         await args.onProgress?.({ phase: "read", step });
       } else {
+        const textIssue = await args.validateFinalText?.(
+          modelText,
+          observations,
+        );
+        if (textIssue) {
+          observations.push({
+            tool: "reasoning",
+            args: {},
+            error: textIssue,
+            elapsedMs: 0,
+          });
+          if (finalTextRepairAttempts >= 1) {
+            return {
+              kind: "stopped",
+              reason: "errors",
+              observations,
+              usage: usage(),
+              exhausted: false,
+            };
+          }
+          finalTextRepairAttempts += 1;
+          continue modelTurns;
+        }
         return {
           kind: "text",
           text: modelText,
@@ -376,6 +421,29 @@ export async function runAgentLoop(args: {
     for (const call of calls) {
       const classification = args.classifyTool(call);
       if (classification === "write") {
+        const issue = await args.validateProposal?.(call);
+        if (issue) {
+          observations.push({
+            tool: call.name,
+            args: call.args,
+            ...(call.thoughtSignature
+              ? { thoughtSignature: call.thoughtSignature }
+              : {}),
+            error: { code: issue.code, message: issue.message },
+            elapsedMs: 0,
+          });
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= budget.maxConsecutiveErrors) {
+            return {
+              kind: "stopped",
+              reason: "errors",
+              observations,
+              usage: usage(),
+              exhausted: false,
+            };
+          }
+          continue modelTurns;
+        }
         return {
           kind: "proposal",
           toolCall: call,

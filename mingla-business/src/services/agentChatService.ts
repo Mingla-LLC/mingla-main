@@ -37,6 +37,94 @@ export interface AgentChoicesV2 {
   options: { id: string; label: string; payload: AgentChoicePayload }[];
 }
 
+/**
+ * #3355 P3 — one card from Ari's server flow engine (readiness preamble,
+ * handoff, summary). Interactive only while it is the run's current card.
+ */
+export interface AriFlowArtefact {
+  schema_version: 1;
+  artefact_id: string;
+  run_id: string;
+  step_key: string;
+  question_id: string | null;
+  kind: "question" | "handoff" | "summary" | "busy" | "notice";
+  title: string;
+  text: string;
+  options: { id: string; label: string; route?: string }[];
+  handoff?: {
+    item_key: string;
+    item_label: string;
+    route: string | null;
+    route_label: string;
+    can_caller_fix: boolean;
+    who_can_fix: string;
+  };
+  /**
+   * #2830 P4 — "form": answered with the real form control on the card's
+   * rendition (phone chip + number, choices, text) as a bound answer.
+   */
+  answer_mode?: "form";
+  rendition?: unknown;
+  /** #3355 P7 — the record the card is about (an event's cover upload). */
+  subject_id?: string;
+}
+
+/** #3355 P3 — what the server says about the chat's flow run. */
+export interface AriFlowState {
+  run_id: string;
+  /** #2830 P4 — which flow ("website_setup", "create_event", …). */
+  flow_key?: string;
+  status: string;
+  current_artefact_id: string | null;
+  current_step_key: string | null;
+  lease_owner_name: string | null;
+  owner_name: string;
+  view_only: boolean;
+}
+
+/** #3355 P3 (I-ARI-BOUND-ANSWERS) — a structured card answer. */
+export interface AriFlowAnswer {
+  run_id: string;
+  step_key: string;
+  question_id: string;
+  choice_id: string;
+  display_text: string;
+  /** #2830 P4 — a form card's values (choice_id "answer"). */
+  values?: AriFlowAnswerValues;
+}
+
+/** #2830 P4 — what a form-shaped flow card submits. */
+export interface AriFlowAnswerValues {
+  choices: string[];
+  country: string | null;
+  response: string;
+  /** #3355 P7 — a place picked from the address search on an Ari card. */
+  place?: AriFlowPlaceValue;
+}
+
+/** #3355 P7 — the picked place (MapboxAddressInput) an Ari card submits. */
+export interface AriFlowPlaceValue {
+  venue_name: string;
+  address: string;
+  city: string;
+  country_code: string | null;
+  lat: number;
+  lng: number;
+  feature_type: string | null;
+  /**
+   * #3355 P9 — the address search's own id for the pick, the same id the
+   * experience wizard stores as a stop's place_id.
+   */
+  place_id?: string | null;
+}
+
+/** #3355 P3 — the next step the server already persisted. */
+export interface AriFlowNext {
+  message_id: string;
+  text: string;
+  artefact?: AriFlowArtefact;
+}
+
 export interface AgentChoiceSubmissionV2 {
   question_id: string;
   option_ids: string[];
@@ -55,6 +143,17 @@ export type AgentChatResponse =
       conversation_title: string;
       choices?: AgentChoicesV2;
       handoff_route?: string;
+      flow?: AriFlowArtefact;
+      flow_state?: AriFlowState | null;
+    }
+  | {
+      // #3355 P3: the answered card was no longer current; nothing changed.
+      kind: "question_stale";
+      code: "QUESTION_STALE";
+      message: string;
+      conversation_id: string;
+      next: AriFlowArtefact | null;
+      flow_state: AriFlowState | null;
     }
   | {
       kind: "pending_action";
@@ -83,6 +182,9 @@ export type AgentConfirmResponse =
       tool_name: string;
       result: unknown;
       followup_text?: string;
+      /** #3355 P3: the next step, already saved as an Ari message. */
+      next?: AriFlowNext | null;
+      flow_state?: AriFlowState | null;
     }
   | { kind: "cancelled"; pending_action_id: string }
   | {
@@ -116,11 +218,17 @@ export interface SendMessageArgs {
   brand_id?: string | null;
   attachment_ids?: string[];
   ari_ui?: AriUiCapabilitiesV2;
+  workflow_context?: "website_setup";
+  flow_answer?: AriFlowAnswer;
+  /** #2830 P4 — opening Website setup (structured, never owner words). */
+  website_setup_kickoff?: { part?: string };
 }
 
 export interface ConfirmActionArgs {
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
+  /** #3355 P3: the server returns the next Website setup gap with the receipt. */
+  workflow_context?: "website_setup";
   ari_ui?: AriUiCapabilitiesV2;
 }
 
@@ -391,7 +499,9 @@ export async function confirmAgentAction(
 ): Promise<AgentConfirmResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
-    { body: { action: "confirm", ...args } },
+    // #3355 P3: this Host never authors a continuation message; the server
+    // returns (and saves) the next step instead.
+    { body: { action: "confirm", continuation: "server", ...args } },
   );
   if (error) {
     const typed = await extractError(

@@ -114,7 +114,20 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // proof entered the same inventories and filtered replays.
 // #3281: re-sealed after the door active date migration followed them.
 // #4226: re-sealed after the ticket buyer people migration and its proof followed them.
-export const BOOTSTRAP_SHA256 = "8a5c4ac4eb4ac9864f0ecde1a8d4b1ed005e106c54feba9ac952d4ca7541a8d8";
+// #3281: re-sealed after the Extras schema migration joined the same replays.
+// #4226: re-sealed after the host contacts people migration and its proof followed them,
+// and the #1995 blast suite watches the one email footer line instead of the retired
+// per-reason module.
+// #3281: re-sealed after the webhook fee migration joined the same replays.
+// #3281: re-sealed after the Extras checkout migration joined the same replays.
+// #3355: re-sealed after the renumbered #3355/#2830 migrations and proofs entered
+// the preserved inventories, and brand readiness, paid-tier terms and event seed
+// truth joined the deliberately pre-#1931 replay's skip list by exact filename (#2492).
+// #3355: re-sealed after the Ari flow runs migration joined that skip list by exact
+// filename (it links runs to ari_agent_jobs from the skipped control-plane migration).
+// #3281: register the Extras authoring migration and its proof the same way.
+// #3281: register the public Extras migration and its proof the same way.
+export const BOOTSTRAP_SHA256 = "409d59b0587ba0f1050d8878e28fc170239071d3772fb1b1087b1e285c6adb0d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

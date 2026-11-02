@@ -467,6 +467,17 @@ type CheckoutLine = {
   /** issue #3281 PR10 — optional per-date quantities. */
   byDate?: Record<string, number>;
 };
+
+/** issue #3281 — the database's extras refusals, returned by these names. */
+const EXTRAS_REFUSALS = [
+  "extras_invalid",
+  "extra_not_available",
+  "extra_quantity_above_max",
+  "extra_not_on_chosen_days",
+  "extra_capacity_exceeded",
+  "extras_need_paid_ticket",
+  "extras_not_on_installments",
+] as const;
 type CheckoutMode = "create" | "preview" | "quote";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
 // validateBuyerAddress are REMOVED. Tax is sourced at the VENUE (SPEC §B.1),
@@ -2212,6 +2223,16 @@ export const createTicketCheckoutCreateHandler = (
       if (sessionError?.message?.includes("ticket_not_valid_on_chosen_days")) {
         return jsonResponse({ error: "ticket_not_valid_on_chosen_days" }, 422);
       }
+      // issue #3281 — extras refusals, by stable name for client copy.
+      const extrasRefusal = EXTRAS_REFUSALS.find((token) =>
+        sessionError?.message?.includes(token)
+      );
+      if (extrasRefusal !== undefined) {
+        return jsonResponse(
+          { error: extrasRefusal },
+          extrasRefusal === "extra_capacity_exceeded" ? 409 : 422,
+        );
+      }
       const dbAccessDenial = ticketCheckoutAccessDenialFromDbMessage(
         sessionError?.message,
       );
@@ -2440,6 +2461,10 @@ export const createTicketCheckoutCreateHandler = (
           ...(requested?.byDate !== undefined
             ? { byDate: requested.byDate }
             : {}),
+          // issue #3281 — the extras asked for are part of the attempt's identity.
+          ...(requested?.addOns !== undefined
+            ? { addOns: requested.addOns }
+            : {}),
           expectedQuantity: requested === undefined
             ? undefined
             : expectedSessionLineQuantity(requested, sessionDayScope),
@@ -2504,10 +2529,21 @@ export const createTicketCheckoutCreateHandler = (
         throw error;
       }
 
+      // issue #3281 — the session priced the extras; they are paid today in
+      // full and never ride a plan, so they add to both totals.
+      const extrasTotalCents = Number(session.extrasTotalCents ?? 0);
+      if (!Number.isInteger(extrasTotalCents) || extrasTotalCents < 0) {
+        return await checkoutReviewResponse("lines");
+      }
+      if (extrasTotalCents > 0 && computedPlan.hasInstallments) {
+        return refuse({ error: "extras_not_on_installments" }, 422);
+      }
+      checkoutListSubtotalCents += extrasTotalCents;
+      const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents;
       const fullPriceCents = canonicalLines.reduce(
         (sum, line) => sum + line.totalCents,
         0,
-      );
+      ) + extrasTotalCents;
       const currency = String(session.currency ?? "").trim().toUpperCase();
       const installmentSchedule = computedPlan.hasInstallments
         ? {
@@ -2543,7 +2579,7 @@ export const createTicketCheckoutCreateHandler = (
           quote: {
             currency,
             fullPriceCents,
-            dueTodayCents: computedPlan.dueTodayCents,
+            dueTodayCents,
             installmentSchedule,
           },
         }),
@@ -2563,8 +2599,9 @@ export const createTicketCheckoutCreateHandler = (
             quantity: line.quantity,
             paymentPlanChoice: line.paymentPlanChoice,
             ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+            ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
           })),
-          p_due_today_cents: computedPlan.dueTodayCents,
+          p_due_today_cents: dueTodayCents,
           p_full_price_cents: fullPriceCents,
           p_installment_schedule: installmentSchedule,
         },

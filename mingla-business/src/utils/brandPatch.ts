@@ -38,6 +38,20 @@ export function computeDirtyFieldsPatch(
   if (draft.address !== original.address) {
     patch.address = draft.address;
   }
+  // #3355 P5 (C3) — Brand Edit's address search writes the city, country and
+  // point with the address, so they travel in the same patch.
+  if (draft.city !== original.city) {
+    patch.city = draft.city;
+  }
+  if (draft.countryCode !== original.countryCode) {
+    patch.countryCode = draft.countryCode;
+  }
+  if (draft.lat !== original.lat) {
+    patch.lat = draft.lat;
+  }
+  if (draft.lng !== original.lng) {
+    patch.lng = draft.lng;
+  }
   if (draft.coverHue !== original.coverHue) {
     patch.coverHue = draft.coverHue;
   }

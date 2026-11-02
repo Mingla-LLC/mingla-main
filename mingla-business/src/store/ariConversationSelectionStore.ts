@@ -39,6 +39,19 @@ export function ariConversationScopeKey(
   return accountId && brandId ? `${accountId}:${brandId}` : null;
 }
 
+/**
+ * Website setup is a durable Ari workflow, but it must never inherit an
+ * unrelated event, launch or support task from the main Ari surface. Keep its
+ * conversation pointer separate while preserving the ordinary brand pointer.
+ */
+export function ariWebsiteSetupConversationScopeKey(
+  accountId: string | null,
+  brandId: string | null,
+): string | null {
+  const base = ariConversationScopeKey(accountId, brandId);
+  return base ? `${base}:website-setup` : null;
+}
+
 export function hasStoredAriConversationSelection(
   selections: AriConversationSelections,
   scopeKey: string,

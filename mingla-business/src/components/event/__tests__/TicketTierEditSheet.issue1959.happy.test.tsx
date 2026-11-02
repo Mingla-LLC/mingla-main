@@ -245,7 +245,8 @@ describe("#1959 ticket numeric fields replace existing values", () => {
     expect(button(tree, "Save changes").props.disabled).toBe(false);
 
     await press(tree, "Free ticket");
-    await changeText(tree, "Ticket price in NGN", "25");
+    // #3355 — at least the ₦100 provider minimum, so only capacity decides Save.
+    await changeText(tree, "Ticket price in NGN", "250");
     await changeText(tree, "Ticket capacity", "");
     expect(button(tree, "Save changes").props.disabled).toBe(true);
     await changeText(tree, "Ticket capacity", "0");

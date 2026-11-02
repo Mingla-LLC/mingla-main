@@ -42,6 +42,7 @@ import {
 } from "../../../src/utils/coldLoadAuthGates";
 import { joinBrandDescription } from "../../../src/services/brandMapping";
 import { computeDirtyFieldsPatch } from "../../../src/utils/brandPatch";
+import { brandEditReturnTarget } from "../../../src/utils/brandEditReturn";
 
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
 // Account tab and Hub layout; a static import here kept it in `__common`.
@@ -70,7 +71,11 @@ export default function BrandEditRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     id: string | string[];
     section?: string | string[];
+    returnTo?: string | string[];
   }>();
+  const returnToParam = Array.isArray(params.returnTo)
+    ? params.returnTo[0]
+    : params.returnTo;
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   // ORCH-1256 — normalize the array form (house pattern: listing.tsx focus
   // param), then validate against the closed section set.
@@ -122,12 +127,17 @@ export default function BrandEditRoute(): React.ReactElement {
     return () => clearTimeout(timer);
   }, [isBrandResolving]);
 
+  // #3355 bug 18 — back history, then the opener's `returnTo`, then the
+  // brand's own page. Never Account (that was the old no-history fallback,
+  // hit whenever Ari or a link opened this page directly on web).
   const handleBack = (): void => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/account" as never);
-    }
+    const target = brandEditReturnTarget({
+      canGoBack: router.canGoBack(),
+      returnTo: returnToParam,
+      brandId,
+    });
+    if (target.kind === "back") router.back();
+    else router.replace(target.href as never);
   };
 
   const handleSave = async (next: Brand): Promise<void> => {

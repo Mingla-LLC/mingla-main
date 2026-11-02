@@ -179,6 +179,68 @@ Deno.test(
   },
 );
 
+const clientWithExtras = (result: {
+  data: unknown;
+  error: { message: string } | null;
+}) => ({
+  ...client,
+  from(table: string) {
+    if (table !== "order_add_on_line_items") return client.from(table);
+    return {
+      select: () => ({ eq: () => ({ order: () => Promise.resolve(result) }) }),
+    };
+  },
+});
+
+Deno.test("#3281 a receipt names the extras bought with the tickets", async () => {
+  const payload = await buildBuyerConfirmationPayload(
+    clientWithExtras({
+      data: [{ add_on_name_at_order: "Friday dinner", quantity: 1, total_cents: 3500 }],
+      error: null,
+    }),
+    { orderId: ORDER_ID, eventId: EVENT_ID, currency: "USD", logPrefix: "[test]" },
+  );
+  assert(payload !== null);
+  assertEquals(payload.receipt.lines, [
+    { qty: 2, name: "General admission", amountCents: 2000 },
+    { qty: 1, name: "Friday dinner", amountCents: 3500 },
+  ]);
+});
+
+Deno.test("#3281 an extras read failure never blocks a confirmation", async () => {
+  const payload = await buildBuyerConfirmationPayload(
+    clientWithExtras({ data: null, error: { message: "relation does not exist" } }),
+    { orderId: ORDER_ID, eventId: EVENT_ID, currency: "USD", logPrefix: "[test]" },
+  );
+  assert(payload !== null);
+  assertEquals(payload.receipt.lines, [
+    { qty: 2, name: "General admission", amountCents: 2000 },
+  ]);
+});
+
+Deno.test("#3281 an unexpected extras reply never blocks a confirmation", async () => {
+  const unexpected = clientWithExtras({ data: { not: "rows" }, error: null });
+  const throwing = {
+    ...client,
+    from(table: string) {
+      if (table !== "order_add_on_line_items") return client.from(table);
+      throw new Error("client exploded");
+    },
+  };
+  for (const reader of [unexpected, throwing]) {
+    const payload = await buildBuyerConfirmationPayload(reader, {
+      orderId: ORDER_ID,
+      eventId: EVENT_ID,
+      currency: "USD",
+      logPrefix: "[test]",
+    });
+    assert(payload !== null);
+    assertEquals(payload.receipt.lines, [
+      { qty: 2, name: "General admission", amountCents: 2000 },
+    ]);
+  }
+});
+
 Deno.test(
   "#4063 confirmation identifiers are compact and never expose a full phone",
   () => {

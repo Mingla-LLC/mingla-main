@@ -1364,7 +1364,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               selectionState={addressSelectionState}
               selectedLabel={address}
               // Issue #3291 — rank-only: a resumed brand's point → the point
-              // picked here → the device's time zone (no zone of its own).
+              // picked here → the resumed brand's country (#3355) → the
+              // device's time zone (no zone of its own).
               proximitySources={{
                 brandPoint: resumeBrandQuery.data,
                 draftPoint: addrMeta,

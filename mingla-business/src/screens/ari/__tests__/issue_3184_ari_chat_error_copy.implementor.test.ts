@@ -57,7 +57,9 @@ describe("#3184 T-I6 Ari chat error copy never blames the connection for a refus
     // ATTACHMENT_CONTEXT_LIMIT, TURN_STOPPED and ACCEPTED_RESPONSE_FAILED to
     // the registry on BOTH sides (the #2060 parity gate compares the complete
     // key sets and passes at 24/24). Every other assertion here is untouched.
-    expect(REGISTRY_CODES).toHaveLength(24);
+    // #2830 adds PROPOSAL_EXPIRED on both sides (25/25).
+    // #3355 adds PAYOUT_NOT_READY on both sides; merged registry 26/26.
+    expect(REGISTRY_CODES).toHaveLength(26);
     expect(REGISTRY_CODES).toContain("TRANSPORT_UNAVAILABLE");
   });
 
@@ -89,6 +91,12 @@ describe("#3184 T-I6 Ari chat error copy never blames the connection for a refus
     expect(ariChatErrorCopy("EDGE_ERROR")).toBe(INTERNAL_COPY);
     expect(ariChatErrorCopy("ENVELOPE_INVALID")).toBe(
       "Ari replied but this app couldn't verify the response. That's on us — it's been reported.",
+    );
+  });
+
+  it("explains why a brand cannot accept a paid ticket tier", () => {
+    expect(ariChatErrorCopy("PAYOUT_NOT_READY")).toBe(
+      "This brand can't accept paid tickets yet. Finish its payout setup first.",
     );
   });
 

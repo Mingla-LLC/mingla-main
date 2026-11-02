@@ -56,6 +56,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #2829 W9a — the Home to-do's website plan row (brand_site_plan_get,
   // auth.uid() rank check). Folds isAuthReady into enabled.
   "useWebsiteTodo.ts",
+  // #3355 P5 — the canonical brand readiness read (brand_readiness, auth.uid()
+  // member rank check) behind Home's brand/money rows. Folds isAuthReady into
+  // enabled.
+  "useBrandReadiness.ts",
   // #4111 — brand_enquiry_my_plans reads auth.uid(); folds isAuthReady.
   "useMyBrandPlans.ts",
   // #3988 — brand-group media/list metadata RPCs are membership-gated.

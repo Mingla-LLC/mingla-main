@@ -131,15 +131,29 @@ BEGIN
 END $a01$;
 ROLLBACK;
 
--- ─── A-02: no database routine reads the column ──────────────────────────────
+-- ─── A-02: no database routine decides anything from the column ──────────────
+-- #3355 P2 shows the payout country on the brand readiness list (the
+-- 'money.market' item's state and preview) and clears that item's stale
+-- finding when the column changes. Those two display readers are the only
+-- ones allowed, and only while 'money.market' blocks no action.
 BEGIN;
 DO $a02$
 DECLARE v_name text;
 BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.brand_readiness_catalog
+     WHERE key = 'money.market' AND cardinality(blocking_for) > 0
+  ) THEN
+    RAISE EXCEPTION 'A-02 FAIL: the payout-country readiness item now blocks an action';
+  END IF;
   SELECT n.nspname || '.' || p.proname INTO v_name
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND p.prokind = 'f'
-     AND p.prosrc ~ '\mpayout_country\M' LIMIT 1;
+     AND p.prosrc ~ '\mpayout_country\M'
+     AND (n.nspname, p.proname) NOT IN (
+       ('public', 'brand_readiness_internal'),
+       ('public', 'brands_readiness_evidence_on_write'))
+   LIMIT 1;
   IF v_name IS NOT NULL THEN
     RAISE EXCEPTION 'A-02 FAIL: % reads brands.payout_country; it is display-only', v_name;
   END IF;
@@ -149,7 +163,7 @@ BEGIN
   IF v_name IS NOT NULL THEN
     RAISE EXCEPTION 'A-02 FAIL: view % reads brands.payout_country; it is display-only', v_name;
   END IF;
-  RAISE NOTICE 'A-02 PASS: nothing in the database depends on the payout country';
+  RAISE NOTICE 'A-02 PASS: nothing in the database decides anything from the payout country';
 END $a02$;
 ROLLBACK;
 

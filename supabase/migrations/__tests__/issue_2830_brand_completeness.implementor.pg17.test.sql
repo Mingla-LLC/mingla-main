@@ -2,6 +2,7 @@
 -- MINGLA-INVARIANT: I-2830-NO-DRAFT-BEFORE-SETUP | issue #2830 | Provisioning is refused until the first five plan parts and every required or recommended brand-context field are resolved.
 -- MINGLA-INVARIANT: I-2830-PRE-DRAFT-DESIGN | issue #2830 | A revision-safe design choice lives on the shared setup plan before a brand_sites row exists.
 -- MINGLA-INVARIANT: I-2830-CONTEXT-WRITES-RECEIPTED | issue #2830 | Ari brand-context writes require owner authority, plan-and-context compare-and-set, and one canonical operation receipt.
+-- MINGLA-INVARIANT: I-2830-APPROVAL-LAST | issue #2830 | Ari's durable Website gap chain preserves dependency order and can ask for owner approval only after every earlier required or recommended context step.
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -17,6 +18,7 @@ DECLARE
   v_result jsonb;
   v_replay jsonb;
   v_job_id uuid;
+  v_pending_keys text[];
   v_context_revision text;
   v_operation_stale uuid := gen_random_uuid();
   v_operation_one uuid := gen_random_uuid();
@@ -211,7 +213,8 @@ BEGIN
   UPDATE public.brands SET profile_photo_url=NULL WHERE id=v_brand;
   v_result := public.ari_start_brand_completeness_job(v_brand);
   v_job_id := (v_result#>>'{job,id}')::uuid;
-  IF NOT (v_result#>'{job,pending_step_keys}' ?& ARRAY['social_links','profile_photo'])
+  IF NOT public.ari_has_active_brand_completeness_job(v_brand)
+    OR NOT (v_result#>'{job,pending_step_keys}' ?& ARRAY['social_links','profile_photo'])
     OR NOT (v_result#>'{job,completed_step_keys}' ?& ARRAY['name','design_key','contact_email'])
     OR NOT (v_result#>'{job,checkpoint,human_action_step_keys}' ? 'profile_photo')
     OR NOT (v_result#>'{job,checkpoint,blocked_step_keys}' ? 'profile_photo')
@@ -252,6 +255,7 @@ BEGIN
   v_result := public.ari_start_brand_completeness_job(v_brand);
   IF (v_result#>>'{job,id}')::uuid <> v_job_id
     OR v_result#>>'{job,status}' <> 'completed'
+    OR public.ari_has_active_brand_completeness_job(v_brand)
     OR jsonb_array_length(v_result#>'{job,pending_step_keys}') <> 0
     OR NOT (v_result#>'{job,completed_step_keys}' ?&
       ARRAY['social_links','profile_photo','contact_phone'])
@@ -401,6 +405,25 @@ BEGIN
     v_failed := SQLERRM IN ('sites_plan_not_ready','sites_context_incomplete');
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'direct provision accepted a newly reopened gap'; END IF;
+
+  -- The durable gap chain follows manifest dependency order and never asks
+  -- the owner to approve a plan before design and story/context are ready.
+  UPDATE public.brand_site_plans SET
+    design_key=NULL,approved_plan=NULL,approved_at=NULL,approved_by=NULL
+  WHERE brand_id=v_brand;
+  v_result := public.ari_start_brand_completeness_job(v_brand);
+  v_pending_keys := ARRAY(
+    SELECT jsonb_array_elements_text(v_result#>'{job,pending_step_keys}')
+  );
+  IF array_position(v_pending_keys,'design_key') IS NULL
+    OR array_position(v_pending_keys,'approved_plan') IS NULL
+    OR array_position(v_pending_keys,'design_key') >= array_position(v_pending_keys,'approved_plan')
+    OR array_position(v_pending_keys,'description') >= array_position(v_pending_keys,'approved_plan')
+    OR v_pending_keys[array_length(v_pending_keys,1)] <> 'approved_plan'
+    OR v_result#>>'{job,checkpoint,current_step}' = 'approved_plan'
+    OR (SELECT count(*) FROM unnest(v_pending_keys) key WHERE key='approved_plan') <> 1 THEN
+    RAISE EXCEPTION 'durable gap order did not keep approval last: %',v_result;
+  END IF;
 
   -- Cross-tenant reads and direct table access remain closed.
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v_other)::text,true);

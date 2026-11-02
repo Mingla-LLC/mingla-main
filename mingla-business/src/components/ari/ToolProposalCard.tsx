@@ -52,6 +52,13 @@ import {
   isValidAdCreativeOwnerKey,
 } from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
+import { formatEventProposalWhen } from "./eventProposalDisplay";
+import { websiteSetupProposalCopy } from "./websiteSetupProposalCopy";
+import {
+  ownerSafeProposalFields,
+  readServerPresentation,
+  toolProposalOwnerCopy,
+} from "./toolProposalCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -210,8 +217,14 @@ function humanizeToolName(toolName: string): string {
       return "Publish Website";
     case "rollback_site":
       return "Publish earlier Website version";
+    case "update_brand_context":
+    case "save_site_plan_answers":
+    case "save_site_plan_design":
+    case "create_site_draft":
+      return websiteSetupProposalCopy(toolName, {})?.verb ?? "Website setup";
     default:
-      return toolName.replace(/_/g, " ");
+      // #3355 P1 (D-5): owner words for every write, never the tool name.
+      return toolProposalOwnerCopy(toolName).verb;
   }
 }
 
@@ -249,6 +262,9 @@ function primaryIdentity(
   args: Record<string, unknown>,
   brandNamesById: Record<string, string>,
 ): string {
+  // #2830 — Website setup saves title the card with what is being saved.
+  const websiteSetup = websiteSetupProposalCopy(toolName, args);
+  if (websiteSetup) return websiteSetup.title;
   if (toolName === "create_brand") return (args.name as string) || "New brand";
   if (toolName === "create_event") return (args.title as string) || "New event";
   if (toolName === "update_event") return "Event update";
@@ -262,7 +278,10 @@ function primaryIdentity(
   if (typeof args.title === "string" && args.title) return args.title;
   if (typeof args.name === "string" && args.name) return args.name;
   if (typeof args.subject === "string" && args.subject) return args.subject;
-  return toolName.replace(/_/g, " ");
+  // #3355 P1 (D-5): the server's title, then the owner words for the tool.
+  return (
+    readServerPresentation(args)?.title ?? toolProposalOwnerCopy(toolName).title
+  );
 }
 
 function coverTypeLabel(type: unknown): string | null {
@@ -302,6 +321,19 @@ function fieldsFor(
       ? (args.__proposal_context as Record<string, unknown>)
       : {};
 
+  // #2830 — never fall through to the raw-argument listing below: it showed
+  // plan revisions and a context hash instead of the value being saved.
+  const websiteSetup = websiteSetupProposalCopy(toolName, args);
+  if (websiteSetup) return websiteSetup.fields;
+
+  // #3355 P7 — an Ari flow proposal whose rows the server wrote in plain
+  // words (the event flow's create / details / tickets / publish cards):
+  // show exactly those, never the raw arguments (coordinates, "public").
+  if (context.flow_rows_only === true) {
+    const server = readServerPresentation(args);
+    if (server && server.fields.length > 0) return server.fields;
+  }
+
   if (toolName === "create_discount") {
     if (typeof args.name === "string")
       out.push({ label: "Discount", value: args.name });
@@ -322,8 +354,9 @@ function fieldsFor(
       });
   }
   if (toolName === "pause_discount") {
-    if (typeof args.discount_id === "string")
-      out.push({ label: "Discount", value: args.discount_id });
+    // #3355 P1 (D-5): the discount's name, never its id.
+    if (typeof context.discount_name === "string")
+      out.push({ label: "Discount", value: context.discount_name });
     out.push({
       label: "Effect",
       value: "Stops new uses; existing orders keep their price",
@@ -477,15 +510,8 @@ function fieldsFor(
         out.push({ label: "Payment", value: context.payment_method });
       }
     }
-    if (toolName === "charge_installment_now") {
-      const id =
-        typeof args.installment_id === "string"
-          ? args.installment_id
-          : typeof context.installment_id === "string"
-            ? context.installment_id
-            : "";
-      if (id) out.push({ label: "Installment", value: `${id.slice(0, 8)}…` });
-    }
+    // #3355 P1 (D-5): charge_installment_now no longer prints a partial id;
+    // the confirm phrase and reason carry the scope.
     if (typeof args.reason === "string" && args.reason.trim()) {
       out.push({ label: "Reason", value: args.reason.trim() });
     }
@@ -511,9 +537,6 @@ function fieldsFor(
     }
     if (typeof args.change_summary === "string") {
       out.push({ label: "Exact change", value: args.change_summary });
-    }
-    if (typeof args.expected_revision === "string") {
-      out.push({ label: "Expected revision", value: args.expected_revision });
     }
     out.push({
       label: "Effect",
@@ -556,12 +579,6 @@ function fieldsFor(
   if (toolName === "manage_brand_discovery_currency") {
     if (typeof args.currency_code === "string") {
       out.push({ label: "Currency", value: args.currency_code.toUpperCase() });
-    }
-    if (typeof args.expected_state_version === "number") {
-      out.push({
-        label: "State version",
-        value: String(args.expected_state_version),
-      });
     }
     if (typeof args.decision === "string") {
       out.push({ label: "Decision", value: args.decision.replace(/_/g, " ") });
@@ -625,21 +642,17 @@ function fieldsFor(
       });
   }
   if (toolName === "create_event" || toolName === "update_event") {
-    if (typeof args.start_at === "string") {
-      const d = new Date(args.start_at);
-      if (!Number.isNaN(d.getTime())) {
-        const date = d.toLocaleString(undefined, {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        });
-        out.push({ label: "When", value: date });
-      }
-    }
+    const when = formatEventProposalWhen(
+      args.start_at,
+      args.end_at,
+      args.timezone,
+    );
+    if (when) out.push({ label: "When", value: when });
     if (typeof args.location_text === "string" && args.location_text) {
       out.push({ label: "Where", value: args.location_text });
+    }
+    if (typeof args.description === "string" && args.description.trim()) {
+      out.push({ label: "Event copy", value: args.description.trim() });
     }
     if (typeof args.brand_id === "string") {
       out.push({
@@ -725,17 +738,13 @@ function fieldsFor(
     if (toolName === "invite_scanner" && args.can_accept_payments === true) {
       out.push({ label: "Door payments", value: "Allowed" });
     }
-    if (typeof args.invitation_id === "string" && args.invitation_id) {
-      out.push({
-        label: "Invitation",
-        value: `${args.invitation_id.slice(0, 8)}…`,
-      });
-    }
-    if (typeof args.member_id === "string" && args.member_id) {
-      out.push({ label: "Member", value: `${args.member_id.slice(0, 8)}…` });
-    }
+    // #3355 P1 (D-5): no partial invitation/member ids on the card.
     if (toolName === "manage_brand_people" && typeof args.action === "string") {
-      out.push({ label: "Action", value: args.action });
+      const action = args.action.replace(/_/g, " ");
+      out.push({
+        label: "Change",
+        value: action.charAt(0).toUpperCase() + action.slice(1),
+      });
     }
     if (typeof args.phone_e164 === "string" && args.phone_e164.trim()) {
       out.push({ label: "Phone", value: args.phone_e164.trim() });
@@ -743,25 +752,10 @@ function fieldsFor(
     return out;
   }
   if (out.length === 0) {
-    const skip = new Set([
-      "brand_id",
-      "event_id",
-      "cover_media_url",
-      "cover_media_poster_url",
-      "cover_media_type",
-      "confirm_phrase",
-      "__proposal_context",
-    ]);
-    for (const [key, value] of Object.entries(args)) {
-      if (skip.has(key) || value == null || value === "") continue;
-      if (
-        typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean"
-      ) {
-        out.push({ label: key.replace(/_/g, " "), value: String(value) });
-      }
-    }
+    // #3355 P1 (D-5): the raw-argument listing is gone. The server's
+    // presentation (or, for an older proposal, the same plumbing filter on
+    // the Host) is the only generic fallback — no keys, ids or revisions.
+    return readServerPresentation(args)?.fields ?? ownerSafeProposalFields(args);
   }
   return out;
 }
@@ -950,7 +944,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [creatingForCover, setCreatingForCover] = useState(false);
   const [proposalError, setProposalError] = useState<string | null>(null);
 
-  const verb = humanizeToolName(toolName);
+  const verb = readServerPresentation(args)?.verb ?? humanizeToolName(toolName);
   // ORCH-1103 REWORK 3 — after a "Create & attach" commit the picker writes the
   // chosen cover into editedArgs, so the band must read editedArgs (not the
   // original proposal args) to reflect the freshly-attached cover.
@@ -1327,8 +1321,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               {isSiteDraftConfirm
                 ? "This confirmation updates the saved draft only. It will not publish the Website."
                 : isSiteRollbackConfirm
-                  ? "This is a separate rollback confirmation. The selected earlier revision will be validated and published as a new version."
-                  : "This is a separate publish confirmation. Mingla will validate and verify this exact revision before the public Website changes."}
+                  ? "This is a separate confirmation. Mingla checks the earlier version you picked, then publishes it as the newest one."
+                  : "This is a separate publish confirmation. Mingla checks this exact version before your public Website changes."}
             </Text>
           </View>
         ) : null}
@@ -1560,7 +1554,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   <Text style={styles.fieldLabel}>{f.label}</Text>
                   <Text
                     style={styles.fieldValue}
-                    numberOfLines={isAdPlanCreativeProposal ? 4 : 1}
+                    numberOfLines={
+                      isAdPlanCreativeProposal ||
+                        f.label === "Description" ||
+                        f.label === "Event copy"
+                        ? 4
+                        : 1
+                    }
                   >
                     {f.value}
                   </Text>

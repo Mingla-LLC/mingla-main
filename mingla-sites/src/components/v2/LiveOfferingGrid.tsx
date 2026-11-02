@@ -44,7 +44,8 @@ function Card({ card, context }: { card: OfferingCard; context: SiteEventContext
       {card.summary ? <p>{card.summary}</p> : null}
       {card.price ? <p className="offering-price">{card.price}</p> : null}
       <TrackedLink href={card.href} context={context} ctaKind="offering" offeringId={card.id} className={card.state.bookable ? "button accent offering-cta" : "offering-cta"}>
-        {card.cta}<span className="sr-only">: {card.title} on Mingla</span>
+        {/* #2830 — no colon: the link reads "Book Fixture coast walk on Mingla". */}
+        {card.cta}<span className="sr-only"> {card.title} on Mingla</span>
       </TrackedLink>
     </article>
   );

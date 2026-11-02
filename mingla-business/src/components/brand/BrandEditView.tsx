@@ -22,6 +22,7 @@
  */
 
 import React, {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -57,6 +58,7 @@ import { validateBrandContactEmail } from "../../utils/brandContactEmail";
 import {
   BRAND_PHONE_CHOOSE_COUNTRY_LABEL,
   brandContactWithSavedPhone,
+  brandPhoneCountryAfterAddressPick,
   brandPhoneCountrySourceForEdit,
   brandPhoneForEdit,
   brandPhoneForSave,
@@ -90,7 +92,8 @@ import { TopBar } from "../ui/TopBar";
 // everyone else rather than offered and then refused by the database. Uses the
 // existing `accountId` prop (the signed-in operator) — no new auth dependency.
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
-import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
+import { LazyBrandAvatarPickerSheet } from "./LazyBrandAvatarPickerSheet";
+import { BrandEditAddressField } from "./BrandEditAddressField";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -416,6 +419,10 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     }),
     [savedPhone, brandCountryCode],
   );
+  // #3355 — what the phone box shows right now, for the address field's
+  // late (free-text) placement to read; see brandPhoneCountryAfterAddressPick.
+  const latestPhoneTextRef = useRef<string>("");
+  latestPhoneTextRef.current = phoneEdit?.text ?? openedPhone.localText;
   const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
@@ -890,19 +897,38 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             ADDRESS
           </Text>
           <View style={styles.fieldsCol}>
-            <Input
-              variant="text"
-              value={draft.address ?? ""}
-              onChangeText={(v) =>
-                setDraft({
-                  ...draft,
-                  address: v.length === 0 ? null : v,
-                })
-              }
-              placeholder="e.g. 12 Old Street, London EC1V 9HL"
-              leadingIcon="location"
-              accessibilityLabel="Address (optional)"
-              clearable
+            {/* #3355 P5 (C3) — the same structured address search as brand
+                creation: a pick writes address, city, country and the point
+                together, so city/country can no longer go stale here. */}
+            <BrandEditAddressField
+              address={draft.address}
+              city={draft.city}
+              countryCode={draft.countryCode}
+              lat={draft.lat}
+              lng={draft.lng}
+              onChange={(patch) => {
+                setDraft((current) =>
+                  current === null ? current : { ...current, ...patch },
+                );
+                // #3355 — an empty phone box follows the new address's
+                // country on every pick; a typed number never moves. Reads
+                // the LATEST box (a free-text address places after a lookup,
+                // by which time the host may have typed a number).
+                if (patch.countryCode === undefined) return;
+                const phoneText = latestPhoneTextRef.current;
+                const follow = brandPhoneCountryAfterAddressPick(
+                  phoneText,
+                  patch.countryCode,
+                  PHONE_COUNTRIES,
+                );
+                if (follow === null) return;
+                setPhoneEdit({
+                  text: phoneText,
+                  countryIso: follow.iso,
+                  countrySource: follow.countrySource,
+                });
+              }}
+              testID="brand-edit-address"
             />
             <Text style={styles.kindHint}>
               Optional. We&apos;ll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
@@ -947,6 +973,11 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               // brand's own country, then the field's default. Never a fixed
               // UK flag over a number saved for somewhere else.
               defaultCountryIso={openedPhone.countryIso}
+              // #3355 — once edited, the chip shows the edit's country, so an
+              // address pick that moves an EMPTY box's country (see the
+              // address field above) moves the chip too. Untouched, the chip
+              // keeps the country it opened on.
+              countryIso={phoneEdit?.countryIso}
               onCountryChange={(country) => {
                 setPhoneEdit({
                   text: phoneEdit?.text ?? openedPhone.localText,
@@ -1186,17 +1217,21 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       {/* ORCH-0807 — brand avatar picker (Upload only). Sibling of the
           cover picker; mounted inside the parent host View per the
           sub-sheet-inside-parent rule. */}
-      {brand !== null && accountId !== null ? (
-        <BrandAvatarPickerSheet
-          visible={avatarPickerVisible}
-          brandId={brand.id}
-          accountId={accountId}
-          existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
-          currentPhotoUrl={draft?.photo ?? null}
-          onClose={handleCloseAvatarPicker}
-          onPicked={handleAvatarPicked}
-          onErrorToast={fireToast}
-        />
+      {/* #3355 — the picker loads when the owner opens it, through the one
+          lazy owner Ari's in-chat upload shares (#3493). */}
+      {brand !== null && accountId !== null && avatarPickerVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandAvatarPickerSheet
+            visible
+            brandId={brand.id}
+            accountId={accountId}
+            existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
+            currentPhotoUrl={draft?.photo ?? null}
+            onClose={handleCloseAvatarPicker}
+            onPicked={handleAvatarPicked}
+            onErrorToast={fireToast}
+          />
+        </Suspense>
       ) : null}
 
       {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}

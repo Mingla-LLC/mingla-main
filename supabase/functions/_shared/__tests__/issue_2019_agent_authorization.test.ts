@@ -20,6 +20,9 @@ const VALID_CREATE_EVENT_ARGS = {
   title: "Test",
   when_mode: "single",
   start_at: "2027-01-01T00:00:00Z",
+  // #3355 P7: Ari's create_event needs the owner's end time and time zone.
+  end_at: "2027-01-01T02:00:00Z",
+  timezone: "Europe/London",
   visibility: "public",
 };
 const tool = (name: string) => {
@@ -63,17 +66,20 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // verification capabilities extend the caller-bound registry; 152→172.
   // [TEST-MOD-APPROVED #2830] Durable Website completeness, pre-draft design,
   // bounded audit findings and evidence-backed brand-context writes extend the
-  // exact census; 172→176.
+  // exact census; 172→177.
+  // [TEST-MOD-APPROVED #3355] P2 brand readiness read + not-now pair; 177→180.
+  // #3355 P6 follow-up: tell_owner_in_brand_group (brand member); 180→181.
+  // #3355 P7: set_brand_payout_country (brand admin); 181→182.
   assert(
-    AGENT_TOOLS.length === 176,
-    `expected 176 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 182,
+    `expected 182 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 176,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 182,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 176,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 182,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -136,8 +142,11 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // [TEST-MOD-APPROVED #3355] The same 20 tools are present in the accepted
   // capability ledger; 152→172.
   // [TEST-MOD-APPROVED #2830] The four completeness tools are present in the
-  // accepted capability ledger; 172→176.
-  assert(rows.length === 176, `expected 176 ledger rows, got ${rows.length}`);
+  // accepted capability ledger; 172→177.
+  // [TEST-MOD-APPROVED #3355] The P2 readiness read + not-now pair; 177→180.
+  // #3355 P6 follow-up: tell_owner_in_brand_group; 180→181.
+  // #3355 P7: set_brand_payout_country; 181→182.
+  assert(rows.length === 182, `expected 182 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
@@ -196,8 +205,11 @@ Deno.test("#2019 canonical role boundary is caller-bound and monotonic", async (
     client(50, 40),
     UUID,
   );
+  // [TEST-MOD-APPROVED #3355 P6] get_payout_status now uses the server money
+  // predicate (D-11, see issue_3355_money_flow); get_tax_status keeps the
+  // rank boundary this case pins.
   await authorizeAgentTool(
-    tool("get_payout_status"),
+    tool("get_tax_status"),
     { brand_id: UUID },
     client(40, 30),
     UUID,
@@ -256,7 +268,8 @@ Deno.test("#2019 full rank x operation-class matrix", async () => {
   const classes = [
     ["get_brand_analytics", "scanner", 10],
     ["draft_campaign", "marketing_manager", 20],
-    ["get_payout_status", "finance_manager", 30],
+    // [TEST-MOD-APPROVED #3355 P6] payout status moved to the money predicate.
+    ["get_tax_status", "finance_manager", 30],
     ["create_event", "event_manager", 40],
     ["update_brand", "brand_admin", 50],
   ] as const;
@@ -275,7 +288,13 @@ Deno.test("#2019 full rank x operation-class matrix", async () => {
           name === "create_event"
             ? VALID_CREATE_EVENT_ARGS
             : name === "draft_campaign"
-            ? { brand_id: UUID, title: "Test" }
+            ? {
+              brand_id: UUID,
+              title: "Test",
+              channel: "email",
+              subject: "Test subject",
+              body: "Test email body.",
+            }
             : name === "update_brand"
             ? { brand_id: UUID, description: "Test" }
             : { brand_id: UUID },
