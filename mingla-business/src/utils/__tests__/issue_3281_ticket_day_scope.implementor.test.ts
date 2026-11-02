@@ -12,6 +12,7 @@ import {
   priceHelper,
   soldByTicketAndDay,
   tapValidDay,
+  ticketsOnAllDates,
   ticketsOnCurrentDays,
   ticketsWithoutDay,
 } from "../ticketDayScope";
@@ -127,6 +128,12 @@ describe("issue #3281 date mode switches", () => {
       days,
     );
     expect(next.map((t) => t.validDayIds)).toEqual([[], ["fri"], null]);
+  });
+
+  test("leaving multi-date clears lists the picker could no longer fix", () => {
+    const next = ticketsOnAllDates([ticket("sat", ["sat"]), ticket("all")]);
+    expect(next[0].validDayIds).toBeNull();
+    expect(next[1].validDayIds).toBeUndefined();
   });
 
   test("the floor is the busiest date", () => {

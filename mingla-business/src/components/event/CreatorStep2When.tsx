@@ -23,6 +23,7 @@
 
 import {
   deleteDateImpact,
+  ticketsOnAllDates,
   ticketsOnCurrentDays,
   ticketsWithoutDay,
 } from "../../utils/ticketDayScope";
@@ -626,6 +627,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       // issue #3281 — new dates get new ids, so a list keeps only what survives.
       if (to === "multi_date") {
         patch.tickets = ticketsOnCurrentDays(draft.tickets, patch.multiDates ?? []);
+      } else if (from === "multi_date") {
+        patch.tickets = ticketsOnAllDates(draft.tickets);
       }
       updateDraft(patch);
     },

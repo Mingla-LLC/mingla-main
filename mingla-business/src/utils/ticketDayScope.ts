@@ -109,6 +109,17 @@ export const ticketsOnCurrentDays = (
       : { ...ticket, validDayIds: liveDayIds(ticket.validDayIds, entries) },
   );
 
+/**
+ * Leaving multi-date hides the picker, so a list could never be fixed and the
+ * date save would refuse it. One date or a repeat has no list to keep.
+ */
+export const ticketsOnAllDates = (
+  tickets: readonly TicketStub[],
+): TicketStub[] =>
+  tickets.map((ticket) =>
+    isDayLimited(ticket) ? { ...ticket, validDayIds: null } : ticket,
+  );
+
 /** Passes sold on the ticket's busiest date. */
 export const busiestDaySold = (
   soldByDay: Readonly<Record<string, number>>,

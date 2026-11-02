@@ -332,7 +332,10 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       if (error instanceof DoorSaleError) {
         if (error.code === "door_ticket_capacity_exceeded") {
           setSubmitError("Not enough tickets left for this sale.");
-        } else if (error.code === "ticket_not_valid_on_chosen_days") {
+        } else if (
+          error.code === "ticket_not_valid_on_chosen_days" ||
+          error.code === "door_event_date_invalid"
+        ) {
           setSubmitError("One of these tickets isn't valid on that date.");
         } else if (error.code === "door_access_denied" || error.code === "42501") {
           setSubmitError("You don't have door access for this event.");
