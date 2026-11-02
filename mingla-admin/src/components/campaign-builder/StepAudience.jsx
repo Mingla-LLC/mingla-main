@@ -103,7 +103,7 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
       id: "prospecting",
       label: "Prospecting",
       split: stageSplits.prospecting,
-      detail: "Broad and lookalike audiences; buyers excluded.",
+      detail: "Broad audiences; past buyers excluded where the buyer list is ready.",
     },
     {
       id: "retarget",

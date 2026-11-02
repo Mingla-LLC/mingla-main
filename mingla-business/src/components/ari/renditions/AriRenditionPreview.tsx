@@ -542,7 +542,7 @@ function modelFor(
         body: "Ari prepared the audience and creative, but the host controls budget and launch.",
         rows: [
           ["Goal", "Sell final 40 tickets"],
-          ["Audience", "Past buyers + local lookalike"],
+          ["Audience", "Lagos, 21–35, live music fans"],
           ["Budget", "$120 over 4 days"],
           ["Creative", "2 variants ready"],
         ],
