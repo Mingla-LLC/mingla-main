@@ -6,7 +6,12 @@
 // deno-lint-ignore-file no-explicit-any
 import { withProposalPresentation } from "./ariPresentation/registry.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { assertCanCollect, isUuid, ToolError } from "./agentToolHelpers.ts";
+import {
+  assertCanCollect,
+  brandCanCollect,
+  isUuid,
+  ToolError,
+} from "./agentToolHelpers.ts";
 import { ticketPriceBelowMinimum } from "./money/providerMinimums.ts";
 
 export const PRICING_STATE_VALUES = [
@@ -572,6 +577,13 @@ export async function loadEventTicketState(
   return { event, tiers: (rows ?? []).map(normalizeLiveTier) };
 }
 
+/**
+ * #3355 P6 (Seth's decision 3): the one line on a paid draft ticket card when
+ * the brand can't take payments yet. The tier is still saved to the draft.
+ */
+export const DRAFT_PAID_TIER_HEADS_UP =
+  "You can add paid tickets now; you'll need payments set up before you publish.";
+
 export async function preflightTicketPricingProposal(
   toolName: string,
   args: Record<string, unknown>,
@@ -599,7 +611,24 @@ export async function preflightTicketPricingProposal(
     );
     const mustCheckPayout = !proposed.isFree &&
       (current === null || current.isFree);
-    if (mustCheckPayout) await assertCanCollect(client, event.brand_id);
+    // #3355 P6 (Seth's decision 3): a draft may hold paid tickets before
+    // payments are set up, like the Host form; publishing is the gate. A live
+    // or scheduled offering still needs payments before a new paid tier.
+    const isDraft = event.status === "draft";
+    let payoutReady: boolean | null = null;
+    if (mustCheckPayout && isDraft) {
+      // Only the heads-up depends on this read; a failed read never blocks
+      // a draft (the publish RPC decides later).
+      try {
+        payoutReady = await brandCanCollect(client, event.brand_id);
+      } catch (error) {
+        if (!(error instanceof ToolError)) throw error;
+        payoutReady = null;
+      }
+    } else if (mustCheckPayout) {
+      await assertCanCollect(client, event.brand_id);
+      payoutReady = true;
+    }
     const [{ data: brand }, { data: connectedAccount }] = await Promise.all([
       client.from("brands").select("default_currency")
         .eq("id", event.brand_id).maybeSingle(),
@@ -652,7 +681,15 @@ export async function preflightTicketPricingProposal(
       proposed_capacity: proposed.capacity,
       effective_currency: effectiveCurrency,
       available_at: proposed.availableAt,
-      payout_ready: mustCheckPayout ? true : null,
+      payout_ready: payoutReady,
+      ...(payoutReady === false
+        ? {
+          flow_rows: [{
+            label: "Heads-up",
+            value: DRAFT_PAID_TIER_HEADS_UP,
+          }],
+        }
+        : {}),
     };
   }
   if (toolName === "set_pricing_switches") {

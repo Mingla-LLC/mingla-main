@@ -135,19 +135,32 @@ export async function resolveEventBrand(
 }
 
 /**
- * Payout-readiness gate. Paid publish / paid tier create MUST call this.
+ * Whether the brand can take payments now (`pg_brand_can_collect`, the same
+ * RPC the Host uses). Throws PAYOUT_CHECK_FAILED when the read fails.
+ */
+export async function brandCanCollect(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<boolean> {
+  const { data, error } = await client.rpc("pg_brand_can_collect", {
+    p_brand_id: brandId,
+  });
+  if (error) throw new ToolError("PAYOUT_CHECK_FAILED", error.message);
+  return data === true ||
+    (data as { can_collect?: boolean } | null)?.can_collect === true;
+}
+
+/**
+ * Payout-readiness gate. Paid publish / a new paid LIVE tier MUST call this.
+ * A draft may hold paid tickets before payments are set up (#3355 P6, Seth's
+ * decision 3): drafts are checked at publish, like the Host form.
  * Reuses `pg_brand_can_collect` — same RPC the manual UI uses.
  */
 export async function assertCanCollect(
   client: SupabaseClient,
   brandId: string,
 ): Promise<void> {
-  const { data, error } = await client.rpc("pg_brand_can_collect", {
-    p_brand_id: brandId,
-  });
-  if (error) throw new ToolError("PAYOUT_CHECK_FAILED", error.message);
-  const ready = data === true ||
-    (data as { can_collect?: boolean } | null)?.can_collect === true;
+  const ready = await brandCanCollect(client, brandId);
   if (!ready) {
     throw new ToolError(
       "PAYOUT_NOT_READY",

@@ -17,7 +17,10 @@
 //     edge, Host and SQL minimum tables are identical;
 //   * market time zones; blank zones are filled or asked, never sent empty;
 //   * publish proposals read brand_readiness first and never block on items
-//     the server would not refuse.
+//     the server would not refuse;
+//   * Seth's decision 3: a paid tier on a DRAFT is proposed and saved for a
+//     brand that can't take payments yet, with a one-line heads-up; publishing
+//     it is refused with the plain fix; live tiers still need payments.
 //
 // Run: deno test --no-check --allow-env --allow-read \
 //   supabase/functions/_shared/__tests__/issue_3355_money_flow.implementor.test.ts
@@ -64,7 +67,11 @@ import {
   preflightReadinessProposal,
   preflightTripPackagePrices,
 } from "../money/proposeReadiness.ts";
-import { preflightTicketPricingProposal } from "../agentTicketPricing.ts";
+import {
+  DRAFT_PAID_TIER_HEADS_UP,
+  preflightTicketPricingProposal,
+  verifiedProposalArgs,
+} from "../agentTicketPricing.ts";
 import { moneyGateStep } from "../ariFlows/moneyGate.ts";
 import { findFlowDefinition, FLOW_DEFINITIONS } from "../ariFlows/index.ts";
 import type {
@@ -1004,4 +1011,176 @@ Deno.test("P6: a paid publish proposal hears its money blocker before the card; 
     publishClient({ tickets: [{ price: 15 }], readiness: null }),
   );
   assertEquals(unavailable, null);
+});
+
+// ── Decision 3: paid tickets in drafts before payments ──────────────────────
+
+const TIER_OP = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+/** An event (draft or live) on a brand that can or can't take payments. */
+function decision3Client(opts: {
+  status: "draft" | "scheduled";
+  canCollect: boolean | "error";
+  calls?: string[];
+}): Any {
+  return {
+    rpc(name: string) {
+      opts.calls?.push(name);
+      if (name === "pg_brand_can_collect") {
+        return Promise.resolve(
+          opts.canCollect === "error"
+            ? { data: null, error: { message: "read failed" } }
+            : { data: opts.canCollect, error: null },
+        );
+      }
+      if (name === "ari_execute_ticket_pricing_operation") {
+        return Promise.resolve({
+          data: { representation: "draft", tier: { id: TIER_OP } },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+    from(table: string) {
+      if (table === "events") {
+        return chain({
+          id: EVENT,
+          brand_id: BRAND,
+          event_type: "event",
+          status: opts.status,
+          currency: "NGN",
+          theme: { business_draft: { tickets: [] } },
+          deleted_at: null,
+        });
+      }
+      if (table === "brands") return chain({ default_currency: "NGN" });
+      return chain(opts.status === "draft" ? null : []);
+    },
+  };
+}
+
+const PAID_DRAFT_TIER = {
+  event_id: EVENT,
+  name: "Early bird",
+  is_free: false,
+  is_unlimited: true,
+  price_cents: 500000,
+};
+
+function upsertTool(): Any {
+  return DOMAIN_TOOLS.find((t) => t.name === "upsert_ticket_tier")!;
+}
+
+Deno.test("P6 decision 3: a paid tier on a draft is proposed for a brand that can't take payments, with a one-line heads-up", async () => {
+  const context = await preflightTicketPricingProposal(
+    "upsert_ticket_tier",
+    PAID_DRAFT_TIER,
+    decision3Client({ status: "draft", canCollect: false }),
+  );
+  assertEquals(context?.lifecycle, "draft");
+  assertEquals(context?.payout_ready, false);
+  assertEquals(
+    DRAFT_PAID_TIER_HEADS_UP,
+    "You can add paid tickets now; you'll need payments set up before you publish.",
+  );
+  // The card shows the heads-up as its own row, copy-gate clean.
+  const presentation = (verifiedProposalArgs(
+    PAID_DRAFT_TIER,
+    context,
+    "upsert_ticket_tier",
+  ).__proposal_context as Any).presentation;
+  assertEquals(
+    presentation.fields.filter((f: Any) => f.label === "Heads-up"),
+    [{ label: "Heads-up", value: DRAFT_PAID_TIER_HEADS_UP }],
+  );
+  assertEquals(ownerCopyViolations(DRAFT_PAID_TIER_HEADS_UP, "prose"), []);
+  // A brand that can take payments gets no heads-up.
+  const ready = await preflightTicketPricingProposal(
+    "upsert_ticket_tier",
+    PAID_DRAFT_TIER,
+    decision3Client({ status: "draft", canCollect: true }),
+  );
+  assertEquals(ready?.payout_ready, true);
+  assertEquals(ready?.flow_rows, undefined);
+  // A failed payments read never blocks a draft (publishing decides).
+  const unknown = await preflightTicketPricingProposal(
+    "upsert_ticket_tier",
+    PAID_DRAFT_TIER,
+    decision3Client({ status: "draft", canCollect: "error" }),
+  );
+  assertEquals(unknown?.payout_ready, null);
+});
+
+Deno.test("P6 decision 3: confirming the draft tier saves it; nothing refuses it for payments", async () => {
+  const calls: string[] = [];
+  const result = await upsertTool().executor(
+    PAID_DRAFT_TIER,
+    decision3Client({ status: "draft", canCollect: false, calls }),
+    USER,
+    { operationId: TIER_OP },
+  );
+  assertEquals(result.representation, "draft");
+  assert(calls.includes("ari_execute_ticket_pricing_operation"));
+  assert(!calls.includes("pg_brand_can_collect"), "drafts are checked at publish");
+});
+
+Deno.test("P6 decision 3: live tiers are unchanged — a new paid tier still needs payments before any card or write", async () => {
+  const preflight = await assertRejects(
+    () =>
+      preflightTicketPricingProposal(
+        "upsert_ticket_tier",
+        PAID_DRAFT_TIER,
+        decision3Client({ status: "scheduled", canCollect: false }),
+      ),
+    ToolError,
+  );
+  assertEquals(preflight.code, "PAYOUT_NOT_READY");
+  const calls: string[] = [];
+  const executed = await assertRejects(
+    () =>
+      upsertTool().executor(
+        PAID_DRAFT_TIER,
+        decision3Client({ status: "scheduled", canCollect: false, calls }),
+        USER,
+        { operationId: TIER_OP },
+      ),
+    ToolError,
+  );
+  assertEquals(executed.code, "PAYOUT_NOT_READY");
+  assert(!calls.includes("ari_execute_ticket_pricing_operation"));
+  const live = await preflightTicketPricingProposal(
+    "upsert_ticket_tier",
+    PAID_DRAFT_TIER,
+    decision3Client({ status: "scheduled", canCollect: true }),
+  );
+  assertEquals(live?.lifecycle, "live");
+  assertEquals(live?.payout_ready, true);
+});
+
+Deno.test("P6 decision 3: publishing that paid draft is refused with the plain fix before any card", async () => {
+  const blocked = await assertRejects(
+    () =>
+      preflightReadinessProposal(
+        "publish_event",
+        { event_id: EVENT },
+        publishClient({
+          tickets: [{ name: "Early bird", isFree: false, priceGbp: 5000 }],
+          readiness: readinessWith("publish_paid", ["money.can_sell"], {
+            can_sell: false,
+            sell_reason: "kyc_incomplete",
+          }, { "money.can_sell": false }),
+        }),
+      ),
+    ToolError,
+  );
+  assertEquals(blocked.code, "READINESS_BLOCKED");
+  assertEquals(
+    blocked.message,
+    [
+      "Before I can put this on sale, this needs doing:",
+      "- Ready to sell paid tickets: only the owner can do this — tell them?",
+      "Nothing was changed.",
+    ].join("\n"),
+  );
+  assertEquals(ownerCopyViolations(blocked.message, "prose"), []);
 });

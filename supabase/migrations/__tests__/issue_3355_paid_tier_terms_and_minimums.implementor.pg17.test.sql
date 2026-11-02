@@ -11,6 +11,9 @@
 --       currency with no verified minimum is not checked,
 --       and an existing below-minimum row is left alone (other edits and an
 --       unchanged price still save; nothing is backfilled).
+--   D3: Ari saves a paid tier on a draft for a brand that can't take
+--       payments (Host draft storage, no live ticket); publishing that draft is
+--       still refused; a live paid tier through Ari is still payout_not_ready.
 --   No publish regression: a valid paid publish and a valid free publish
 --   through business_publish_event_draft still succeed; a below-minimum paid
 --   publish is refused.
@@ -47,6 +50,12 @@ DECLARE
   v_price integer;
   v_updated timestamptz;
   v_def text;
+  v_ari_draft uuid := '33550000-0000-4000-8000-0000000006c8';
+  v_ari_live uuid := '33550000-0000-4000-8000-0000000006c9';
+  v_op uuid;
+  v_args jsonb;
+  v_result jsonb;
+  v_theme jsonb;
 BEGIN
   INSERT INTO auth.users(id,email) VALUES
     (v_owner,'owner-3355pm@example.invalid'),
@@ -339,6 +348,105 @@ BEGIN
   SELECT status INTO v_status FROM public.events WHERE id=v_low_draft;
   IF NOT v_failed OR v_status <> 'draft' THEN
     RAISE EXCEPTION 'a 20p paid publish must be refused and stay a draft (status %)', v_status;
+  END IF;
+
+  -- ── Decision 3: Ari may put paid tickets on a draft before payments ──────
+  -- The Lagos brand has no payment account, so it cannot take payments.
+  PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v_owner,'role','authenticated')::text,true);
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  IF public.pg_brand_can_collect(v_ngn_brand) THEN
+    RAISE EXCEPTION 'D3 fixture: the Lagos brand must not be able to take payments';
+  END IF;
+  INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency,theme)
+  VALUES
+    (v_ari_draft,v_ngn_brand,'Lagos draft supper','lagos-draft-3355pm','event','draft','draft','Africa/Lagos',NULL,
+     '{"business_draft":{"clientRevision":0,"tickets":[],"untouched":{"keep":true}}}'::jsonb),
+    (v_ari_live,v_ngn_brand,'Lagos free brunch','lagos-brunch-3355pm','event','scheduled','public','Africa/Lagos','NGN','{}'::jsonb);
+
+  v_op := '33550000-0000-4000-8000-0000000006e1';
+  v_args := jsonb_build_object('event_id',v_ari_draft,'name','Early bird',
+    'is_free',false,'is_unlimited',false,'price_cents',500000,'capacity',40);
+  INSERT INTO public.agent_pending_actions(id,user_id,tool_name,tool_args,status,source,
+    related_brand_id,related_event_id,server_proposed_at,execution_attested_at)
+  VALUES (v_op,v_owner,'upsert_ticket_tier',v_args,'executing','hub_experience',
+    v_ngn_brand,v_ari_draft,now(),now());
+  v_result := public.ari_execute_ticket_pricing_operation(v_op,'upsert_ticket_tier',v_args);
+  SELECT theme INTO v_theme FROM public.events WHERE id=v_ari_draft;
+  IF v_result->>'representation' IS DISTINCT FROM 'draft'
+     OR jsonb_array_length(v_theme#>'{business_draft,tickets}') <> 1
+     OR v_theme#>>'{business_draft,tickets,0,name}' <> 'Early bird'
+     OR (v_theme#>>'{business_draft,tickets,0,priceGbp}')::numeric <> 5000
+     OR (v_theme#>>'{business_draft,clientRevision}')::integer <> 1
+     OR v_theme#>>'{business_draft,untouched,keep}' <> 'true'
+  THEN
+    RAISE EXCEPTION 'D3: Ari must save a paid draft tier before payments (got %)', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id=v_ari_draft) THEN
+    RAISE EXCEPTION 'D3: a draft tier must stay in the draft, not become a live ticket';
+  END IF;
+  IF (SELECT currency FROM public.events WHERE id=v_ari_draft) IS DISTINCT FROM 'NGN' THEN
+    RAISE EXCEPTION 'D3: a paid draft tier takes the brand currency';
+  END IF;
+  -- The private writer is not callable by a signed-in member directly.
+  IF has_function_privilege('authenticated',
+       'public.issue_3355_ari_save_draft_ticket_tiers(uuid,jsonb,integer,uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'D3: the draft writer must be internal';
+  END IF;
+
+  -- Publishing that draft is still refused because the brand can't take payments.
+  v_failed := false;
+  BEGIN
+    PERFORM public.business_publish_event_draft(v_ari_draft, jsonb_build_object(
+      'title', 'Lagos draft supper',
+      'timezone', 'Africa/Lagos',
+      'is_online', true,
+      'online_url', 'https://example.com/live/3355pm-lagos',
+      'theme', jsonb_build_object('business_draft', jsonb_build_object(
+        'format', 'online',
+        'requestedVisibility', 'public',
+        'tickets', jsonb_build_array(jsonb_build_object(
+          'name', 'Early bird', 'isFree', false, 'price', 5000, 'capacity', 40,
+          'availableAt', 'both')),
+        'partyTypes', jsonb_build_array('festival'),
+        'vibeTags', jsonb_build_array('exclusive', 'vibrant', 'artsy'),
+        'whenMode', 'single',
+        'when', jsonb_build_object(
+          'date', to_char(now() + interval '10 days', 'YYYY-MM-DD'),
+          'doorsOpen', '20:00', 'endsAt', '23:00')
+      ))
+    ));
+  EXCEPTION WHEN OTHERS THEN
+    v_failed := true;
+    v_def := SQLERRM;
+  END;
+  SELECT status INTO v_status FROM public.events WHERE id=v_ari_draft;
+  IF NOT v_failed OR v_status <> 'draft' THEN
+    RAISE EXCEPTION 'D3: publishing paid tickets without payments must be refused (status %)', v_status;
+  END IF;
+  -- The publish money gate (pg_brand_can_collect inside the publish RPC).
+  IF v_def <> 'stripe_charges_disabled' THEN
+    RAISE EXCEPTION 'D3: paid publish refused for the wrong reason: %', v_def;
+  END IF;
+
+  -- Live: a new paid tier through Ari is still refused with payout_not_ready.
+  v_op := '33550000-0000-4000-8000-0000000006e2';
+  v_args := jsonb_build_object('event_id',v_ari_live,'name','Brunch',
+    'is_free',false,'is_unlimited',false,'price_cents',500000,'capacity',40);
+  INSERT INTO public.agent_pending_actions(id,user_id,tool_name,tool_args,status,source,
+    related_brand_id,related_event_id,server_proposed_at,execution_attested_at)
+  VALUES (v_op,v_owner,'upsert_ticket_tier',v_args,'executing','hub_experience',
+    v_ngn_brand,v_ari_live,now(),now());
+  v_failed := false;
+  BEGIN
+    PERFORM public.ari_execute_ticket_pricing_operation(v_op,'upsert_ticket_tier',v_args);
+  EXCEPTION WHEN OTHERS THEN
+    v_failed := SQLERRM = 'payout_not_ready';
+    IF NOT v_failed THEN
+      RAISE EXCEPTION 'D3: live paid tier refused for the wrong reason: %', SQLERRM;
+    END IF;
+  END;
+  IF NOT v_failed OR EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id=v_ari_live) THEN
+    RAISE EXCEPTION 'D3: a live paid tier must still need payments';
   END IF;
 END;
 $i3355pm$;

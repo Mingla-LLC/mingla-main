@@ -368,7 +368,12 @@ const upsertTicketTier = writeTool(
       operationId,
       tiers.reduce((max, tier) => Math.max(max, tier.displayOrder), -1) + 1,
     );
-    if (!next.isFree && (existing === null || existing.isFree)) {
+    // #3355 P6 (Seth's decision 3): drafts may hold paid tickets before
+    // payments are set up (checked at publish); live tiers still need them.
+    if (
+      event.status !== "draft" && !next.isFree &&
+      (existing === null || existing.isFree)
+    ) {
       await assertCanCollect(client, brandId);
     }
     return await callRpc(client, "ari_execute_ticket_pricing_operation", {

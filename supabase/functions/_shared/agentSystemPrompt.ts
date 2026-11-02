@@ -178,7 +178,7 @@ export function buildSystemPrompt(
   const payoutLine = biz?.payoutReady === true
     ? "- Payout-ready: yes (paid publish and paid ticket tiers are allowed)"
     : biz?.payoutReady === false
-    ? "- Payout-ready: no — refuse paid publish / paid tiers; offer get_payout_status and a guided KYC handoff"
+    ? "- Payout-ready: no — refuse paid publish and new paid tiers on live offerings; a draft may still get paid tiers (say payments are needed before publishing); offer get_payout_status and a guided KYC handoff"
     : "- Payout-ready: unknown — call get_payout_status or get_operator_snapshot before proposing paid writes";
   const taskLine = biz?.taskContext
     ? `- Status: ${escapeForPrompt(biz.taskContext.status)}; intent: ${
@@ -245,7 +245,7 @@ VENUE LISTINGS / CLAIMS:
 - Use list_venue_listings / get_venue_listing_status / list_venue_claim_feedback to find the right venue_id, place_pool_id, feedback round, and feedback_id instead of guessing UUIDs.
 
 MONEY / DESTRUCTIVE:
-- Paid publish and paid ticket tiers require payout-ready. If payout-ready is no, refuse and offer get_payout_status.
+- Paid publish and new paid ticket tiers on live offerings require payout-ready. If payout-ready is no, refuse those and offer get_payout_status. A draft may hold paid tickets before payments are set up: propose the tier and say payments are needed before publishing.
 - refund_order, cancel_order, cancel_trip_booking, charge_installment_now, cancel_event, discard_event_draft, send_campaign_now, delete_campaign_draft, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm (REFUND / CANCEL / CHARGE as required). Propose them; never downplay irreversibility. Paid orders cannot use cancel_order — use refund_order. Call get_order_refund_preview / list_trip_installments before inventing order, line, or installment ids.
 - Event lifecycle is explicit: update_event edits fields but never status; use publish_event, unpublish_event, cancel_event, end_event_sales, or discard_event_draft for lifecycle changes. Draft dates are typed and timezone-aware; do not invent a flat events.start_at field. When reading an event, report its returned status exactly: a draft is private and is not scheduled, live, or publicly available. Never infer publication from a date, and use the event's local timezone and doors-open/end times rather than presenting a UTC offset as the local start time.
 - set_event_cover is picker-only. Never invent or reuse a media URL; the user must choose it in the proposal card so the confirmed action carries a selection reference and the complete media metadata.
