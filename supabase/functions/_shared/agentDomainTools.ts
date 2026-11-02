@@ -8258,7 +8258,7 @@ const getOperatorSnapshot = writeTool(
       } else {
         // [TRANSITIONAL] money falls back to the canonical collect predicate
         // only while brand_readiness is not yet applied — exit: migration
-        // 20280225003355 applied in production.
+        // 20280307003355 applied in production.
         const canCollect = await callRpc(client, "pg_brand_can_collect", {
           p_brand_id: brandId,
         }).catch(() => null);

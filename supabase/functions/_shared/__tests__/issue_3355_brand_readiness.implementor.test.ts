@@ -609,7 +609,7 @@ Deno.test("#3355 P2: the not-now confirmation card names the item in owner words
 Deno.test("#3355 P2: edge item labels equal the migration catalogue (one home)", async () => {
   const sql = await Deno.readTextFile(
     new URL(
-      "supabase/migrations/20280225003355_issue_3355_brand_readiness.sql",
+      "supabase/migrations/20280307003355_issue_3355_brand_readiness.sql",
       ROOT,
     ),
   );

@@ -2,7 +2,7 @@
  * Issue #3355 P2 — the brand readiness item keys and their owner labels.
  *
  * The catalogue's single home is `public.brand_readiness_catalog`
- * (migration 20280225003355_issue_3355_brand_readiness.sql). This module only
+ * (migration 20280307003355_issue_3355_brand_readiness.sql). This module only
  * mirrors the keys and labels the edge needs before a read exists: the tool
  * schema enum for "not now" and the plain words on its confirmation card. The
  * parity test (`__tests__/issue_3355_brand_readiness.implementor.test.ts`)

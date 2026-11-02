@@ -72,7 +72,7 @@ export async function pendingExpiredByDbClock(
   if (error) {
     if (isMissingRpc(error)) {
       // [TRANSITIONAL] edge-clock fallback for the deploy window before
-      // 20280224003355 is applied — exit: the migration is live everywhere.
+      // 20280306003355 is applied — exit: the migration is live everywhere.
       return new Date(input.expiresAt).getTime() < Date.now();
     }
     throw new Error(`expiry_probe_failed: ${String(error.message ?? "")}`);
@@ -101,7 +101,7 @@ export async function claimPendingForConfirm(
   if (!isMissingRpc(error)) {
     throw new Error(`claim_failed: ${String(error.message ?? "")}`);
   }
-  // [TRANSITIONAL] pre-migration flip — exit: 20280224003355 applied.
+  // [TRANSITIONAL] pre-migration flip — exit: 20280306003355 applied.
   const { data: flipped, error: flipErr } = await client
     .from("agent_pending_actions")
     .update({

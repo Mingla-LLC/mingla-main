@@ -1,7 +1,7 @@
 /**
  * #3355 P5 — the Host's reader for the ONE canonical brand readiness answer.
  *
- * `brand_readiness(p_brand_id, p_action)` (migration 20280225003355) is the
+ * `brand_readiness(p_brand_id, p_action)` (migration 20280307003355) is the
  * server's single definition of "what is this brand missing, does it block
  * this action, who can fix it". Ari reads it in every flow; Home's brand,
  * profile and money to-do rows and the publish forms' money check read it

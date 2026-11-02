@@ -1,6 +1,6 @@
 -- Issue #3355 P8 — Ari's trip drafts save only facts the owner gave
 -- (implementor happy path + edges) for migration
--- 20280302003355_issue_3355_trip_seed_truth.sql.
+-- 20280312003355_issue_3355_trip_seed_truth.sql.
 --
 --   * A Lagos trip, 8–10 Jan, Africa/Lagos, with a picked departure and
 --     destination, is stored exactly as the Host app stores calendar days:
@@ -20,7 +20,7 @@
 --     the wizard's placeholder package.
 --   * ari_create_trip_draft is not callable by anon or authenticated.
 --
--- FAILS-ON-REVERT: restore 20280217003355's ari_execute_trip_operation (create
+-- FAILS-ON-REVERT: restore 20280305003355's ari_execute_trip_operation (create
 -- through biz_create_trip_draft with local-midnight days, the UTC default and
 -- the Standard package) and the happy-path, "no time zone" and "past date"
 -- blocks below raise.

@@ -1,6 +1,6 @@
 /**
  * Issue #3355 P3 — the flow run store: thin, typed wrappers around the
- * service-role RPCs in migration 20280226003355. The edge decides nothing
+ * service-role RPCs in migration 20280308003355. The edge decides nothing
  * about clocks or concurrency; the database does (lease, CAS, evidence).
  *
  * Deploy rule (SPEC §6): edge code merges before the migration is applied in

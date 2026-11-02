@@ -9,7 +9,7 @@ const confirm = await read("../../agent-confirm-action/index.ts");
 // database clock (agent_pending_action_claim_for_confirm), driven from here.
 const confirmClaim = await read("../../agent-confirm-action/pendingClaim.ts");
 const turnHygiene = await read(
-  "../../../migrations/20280224003355_issue_3355_ari_turn_hygiene.sql",
+  "../../../migrations/20280306003355_issue_3355_ari_turn_hygiene.sql",
 );
 const chat = await read("../../agent-chat/index.ts");
 const domains = await read("../agentDomainTools.ts");

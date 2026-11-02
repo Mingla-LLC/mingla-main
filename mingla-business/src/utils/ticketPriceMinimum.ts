@@ -2,7 +2,7 @@
  * Issue #3355 P6 — Seth's decision 6 at the Host ticket price field.
  *
  * The server refuses a NEW or CHANGED paid price below the payment provider's
- * minimum (migration 20280228003355). The price field says so as it is typed,
+ * minimum (migration 20280310003355). The price field says so as it is typed,
  * with the same words Ari uses. A tier whose saved price is unchanged is never
  * blocked: older below-minimum prices stay valid, exactly like the server.
  */

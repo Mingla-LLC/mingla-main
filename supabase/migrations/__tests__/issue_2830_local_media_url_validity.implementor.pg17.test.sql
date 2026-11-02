@@ -1,4 +1,4 @@
--- Regression for 20280227002830: the Website audit accepts loopback http
+-- Regression for 20280309002830: the Website audit accepts loopback http
 -- media only on a Sites service config marked environment='local'. Without
 -- that row (every hosted database), media must stay https-only.
 

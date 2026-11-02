@@ -17,7 +17,7 @@
  * MIRRORS (kept identical by
  * `__tests__/issue_3355_money_flow.implementor.test.ts`):
  *   - SQL: public.issue_3355_provider_minimum_charge_minor(text) in
- *     supabase/migrations/20280228003355_issue_3355_paid_tier_terms_and_minimums.sql
+ *     supabase/migrations/20280310003355_issue_3355_paid_tier_terms_and_minimums.sql
  *   - Host: mingla-business/src/constants/providerMinimumCharges.ts
  */
 

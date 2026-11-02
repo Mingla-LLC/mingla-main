@@ -1,6 +1,6 @@
 -- Issue #3355 P6 — Seth's decisions 5 and 6 on the server (implementor happy
 -- path + edges) for migration
--- 20280228003355_issue_3355_paid_tier_terms_and_minimums.sql.
+-- 20280310003355_issue_3355_paid_tier_terms_and_minimums.sql.
 --
 --   D5: a teammate who never accepted the Organiser Terms is refused when they
 --       turn a live free event paid (direct tier write AND the live tier patch

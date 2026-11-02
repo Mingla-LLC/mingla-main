@@ -125,7 +125,7 @@ export async function reconcileStalePendingActions(
 }
 
 // [TRANSITIONAL] the pre-#3355 check, used only while the
-// 20280224003355 migration is not applied yet (RPC missing) — exit: the
+// 20280306003355 migration is not applied yet (RPC missing) — exit: the
 // migration is live in every environment. It still honours replay
 // recognition so a claimed turn is never refused.
 async function legacyTurnRateLimit(

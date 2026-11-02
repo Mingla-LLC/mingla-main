@@ -17,7 +17,7 @@
  * request or a card, picked on a card, or the brand's own time zone shown on
  * the create card they confirm. The server side (ari_create_trip_draft)
  * refuses a missing zone, missing days and a past start, and creates no
- * package (migration 20280302003355).
+ * package (migration 20280312003355).
  */
 
 import { brandBlockersStep, brandCanWaitStep, listWords } from "../brandGate.ts";

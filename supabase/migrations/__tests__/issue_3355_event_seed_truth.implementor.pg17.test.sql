@@ -1,6 +1,6 @@
 -- Issue #3355 P7 — Ari's event drafts save only facts the owner gave
 -- (implementor happy path + edges) for migration
--- 20280229003355_issue_3355_event_seed_truth.sql.
+-- 20280311003355_issue_3355_event_seed_truth.sql.
 --
 --   * An Ari draft with the owner's end time, time zone and picked place is
 --     saved exactly: end = the owner's end (no two-hour default), the time

@@ -1,7 +1,7 @@
 -- Issue #3355 P8 — Ari's trip drafts save only facts the owner gave.
 --
 -- Supersedes the function bodies of the branch's earlier
--- 20280217003355_issue_3355_ari_trip_create_details.sql, which (audit D-17,
+-- 20280305003355_issue_3355_ari_trip_create_details.sql, which (audit D-17,
 -- F-3) filled gaps on the Ari path and changed the Host's create function:
 --   * time zone — COALESCE(timezone, 'UTC');
 --   * dates     — local midnight in the trip zone for BOTH ends, so a Lagos

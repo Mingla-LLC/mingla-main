@@ -8,7 +8,7 @@
  * last day 23:59:59 in the trip's time zone), departure and destination are
  * the picked places, and no package/tier was invented.
  *
- * Mutation check: revert the trip seed truth (20280302003355, the
+ * Mutation check: revert the trip seed truth (20280312003355, the
  * `biz_create_trip_draft` change that stopped creating a placeholder
  * package) and `pricing tiers` reads 1; make `trip_dates` store the start
  * day only and `last day` fails.

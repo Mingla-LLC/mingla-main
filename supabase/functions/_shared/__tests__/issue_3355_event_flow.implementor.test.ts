@@ -1047,7 +1047,7 @@ Deno.test("P7: picked places and ticket words are read strictly", () => {
 Deno.test("P7: the seed migration requires the owner's end and time zone on the Ari path", async () => {
   const sql = await Deno.readTextFile(
     new URL(
-      "supabase/migrations/20280229003355_issue_3355_event_seed_truth.sql",
+      "supabase/migrations/20280311003355_issue_3355_event_seed_truth.sql",
       ROOT,
     ),
   );

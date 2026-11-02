@@ -756,7 +756,7 @@ Deno.test("P6: the minimum-price table is identical in edge code, the Host app a
   assertEquals({ ...HOST_MINIMUMS }, { ...PROVIDER_MINIMUM_CHARGE_MINOR });
   const sql = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20280228003355_issue_3355_paid_tier_terms_and_minimums.sql",
+      "../../../migrations/20280310003355_issue_3355_paid_tier_terms_and_minimums.sql",
       import.meta.url,
     ),
   );

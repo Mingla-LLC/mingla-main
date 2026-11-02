@@ -4,7 +4,7 @@
  * I-MONEY-SELL-VS-PAYOUT-DISTINCT: every Ari money answer (get_payout_status,
  * the launch plan, the money gate, readiness answers) is built from the one
  * server split in `brand_readiness(...).money` (pg_brand_can_collect /
- * pg_brand_can_payout, migration 20280225003355) with a plain-English guide
+ * pg_brand_can_payout, migration 20280307003355) with a plain-English guide
  * per reason. A brand that can sell but can't be paid out yet (the Paystack
  * hold rail, a Stripe account without payouts) is never described as having
  * payouts enabled. Enforcing test:
