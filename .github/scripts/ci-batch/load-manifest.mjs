@@ -114,7 +114,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // proof entered the same inventories and filtered replays.
 // #3281: re-sealed after the door active date migration followed them.
 // #4226: re-sealed after the ticket buyer people migration and its proof followed them.
-export const BOOTSTRAP_SHA256 = "8a5c4ac4eb4ac9864f0ecde1a8d4b1ed005e106c54feba9ac952d4ca7541a8d8";
+// #3355: re-sealed after the renumbered #3355/#2830 migrations and proofs entered
+// the preserved inventories, and brand readiness, paid-tier terms and event seed
+// truth joined the deliberately pre-#1931 replay's skip list by exact filename (#2492).
+export const BOOTSTRAP_SHA256 = "2bcfb375c60217027ffab22c99d5c128c12434e5210e81e0c53f03e6459fd872";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
