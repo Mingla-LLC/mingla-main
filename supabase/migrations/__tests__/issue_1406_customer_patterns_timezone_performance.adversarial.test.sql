@@ -908,9 +908,10 @@ BEGIN
   WHERE actual_fingerprint <> expected_fingerprint;
 
   -- [TEST-MOD-APPROVED #3643] The shared terminal-schema replay exposes every
-  -- current business index: count=79 / hash=ef66cf29a41684d50c79bf943870ff4e.
-  IF v_index_count <> 79
-    OR v_index_fingerprint <> 'ef66cf29a41684d50c79bf943870ff4e'
+  -- current business index: count=80 / hash=8e7ec4e5428dd976a5d9a976d4821e59.
+  -- #3281 added event_dates_event_occurrence_key_unique.
+  IF v_index_count <> 80
+    OR v_index_fingerprint <> '8e7ec4e5428dd976a5d9a976d4821e59'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION
