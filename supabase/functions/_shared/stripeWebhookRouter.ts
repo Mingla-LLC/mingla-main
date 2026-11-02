@@ -1070,10 +1070,11 @@ async function handleRefundEvent(
     return brandId;
   }
 
-  // Find the order. Prefer metadata.mingla_order_id (set by refund-order edge function);
-  // fallback to lookup by payment_intent_id.
-  let orderId: string | null = orderIdHint;
-  if (!orderId && paymentIntentId) {
+  // Find the order by the refund's payment intent. #3281: metadata.mingla_order_id
+  // is editable on a dashboard refund, so it never chooses the order; a refund
+  // with no payment intent has no verifiable order and is audited as an orphan.
+  let orderId: string | null = null;
+  if (paymentIntentId) {
     const { data: orderRow, error: orderLookupError } = await supabase
       .from("orders")
       .select("id")
@@ -1083,6 +1084,11 @@ async function handleRefundEvent(
       throw new Error(`order lookup failed: ${orderLookupError.message}`);
     }
     orderId = orderRow?.id ?? null;
+  }
+  if (orderIdHint && orderId && orderIdHint !== orderId) {
+    console.warn(
+      "[stripe-webhook] refund order hint does not match its payment; using the payment's order",
+    );
   }
 
   if (!orderId) {

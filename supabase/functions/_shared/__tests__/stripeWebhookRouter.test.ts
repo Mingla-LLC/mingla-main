@@ -413,6 +413,30 @@ Deno.test("#3281 charge.refunded never records the charge as a refund", async ()
   assertEquals(db.inserts, []);
 });
 
+Deno.test("#3281 a refund's order hint never picks an order its payment did not pay for", async () => {
+  const db = new FakeDb();
+  await routeStripeEvent(db as never, {} as never, {
+    id: "evt_refund_hint",
+    type: "refund.updated",
+    account: "acct_123",
+    data: {
+      object: {
+        id: "re_3281",
+        object: "refund",
+        amount: 1000,
+        currency: "usd",
+        status: "succeeded",
+        payment_intent: "pi_unknown",
+        metadata: { mingla_order_id: "order_someone_else" },
+      },
+    },
+  });
+  assertEquals(
+    db.rpcs.some((call) => call.fn === "biz_refund_order_commit_from_webhook"),
+    false,
+  );
+});
+
 Deno.test("payout.failed upserts payout and dispatches remediation notification", async () => {
   const calls: unknown[] = [];
   const originalFetch = globalThis.fetch;
