@@ -617,16 +617,15 @@ const withTierExtras = async (
   eventId: string,
   tickets: TicketStub[],
 ): Promise<TicketStub[]> => {
-  if (tickets.length === 0) return tickets;
   try {
     const { data, error } = await supabase.rpc("business_event_ticket_extras", {
       p_event_id: eventId,
     });
-    if (error !== null || data === null || typeof data !== "object") return tickets;
+    if (error !== null || data === null) return tickets;
     const byTier = data as Record<string, unknown>;
     return tickets.map((ticket) => ({
       ...ticket,
-      extras: extrasFromServer(byTier[ticket.id] ?? []) ?? [],
+      extras: extrasFromServer(byTier[ticket.id]) ?? [],
     }));
   } catch {
     return tickets;

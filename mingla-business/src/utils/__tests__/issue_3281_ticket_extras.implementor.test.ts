@@ -134,23 +134,8 @@ describe("issue #3281 extras from the server", () => {
     expect(extrasFromServer({})).toBeUndefined();
   });
 
-  test("rows read into the editor shape, with sales", () => {
-    expect(
-      extrasFromServer([
-        {
-          id: "a1",
-          name: "Dinner",
-          description: null,
-          priceGbp: 15,
-          isUnlimited: false,
-          capacity: 40,
-          maxPerTicket: 2,
-          validDayIds: ["fri"],
-          soldCount: 3,
-        },
-        { id: 7, name: "bad" },
-      ]),
-    ).toEqual([
+  test("the server's normalized list reads straight into the editor", () => {
+    const rows = [
       {
         id: "a1",
         name: "Dinner",
@@ -162,6 +147,8 @@ describe("issue #3281 extras from the server", () => {
         validDayIds: ["fri"],
         soldCount: 3,
       },
-    ]);
+    ];
+    expect(extrasFromServer(rows)).toEqual(rows);
+    expect(extrasFromServer([])).toEqual([]);
   });
 });
