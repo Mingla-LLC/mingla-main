@@ -18,6 +18,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { AriFlowPlaceValue } from "../../services/agentChatService";
+import type { AriFlowPlaceMode } from "./ariFlowCards";
 import {
   MapboxAddressInput,
   type PlaceDetails,
@@ -29,6 +30,11 @@ export interface AriFlowPlaceCardProps {
   /** Offline, sending, or not the current card. */
   disabled: boolean;
   onSubmit: (place: AriFlowPlaceValue) => void;
+  /**
+   * #3355 P8 — "city": a trip's departure or destination. No venue name;
+   * the picked place's own name stands in for it. Default "venue".
+   */
+  mode?: AriFlowPlaceMode;
 }
 
 /** The place a Mapbox pick describes, or null when it has no city. */
@@ -53,7 +59,9 @@ export function placeFromPick(
 export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
   disabled,
   onSubmit,
+  mode = "venue",
 }) => {
+  const city = mode === "city";
   const [venueName, setVenueName] = useState("");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<PlaceDetails | null>(null);
@@ -62,14 +70,16 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
 
   return (
     <View style={styles.card}>
-      <Input
-        value={venueName}
-        onChangeText={setVenueName}
-        placeholder="Venue name, e.g. Shoreditch Town Hall"
-        accessibilityLabel="Venue name"
-        disabled={disabled}
-        testID="ari-flow-place-venue"
-      />
+      {city ? null : (
+        <Input
+          value={venueName}
+          onChangeText={setVenueName}
+          placeholder="Venue name, e.g. Shoreditch Town Hall"
+          accessibilityLabel="Venue name"
+          disabled={disabled}
+          testID="ari-flow-place-venue"
+        />
+      )}
       <MapboxAddressInput
         value={query}
         onChangeText={(next) => {
@@ -79,7 +89,12 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
         onPick={(details, selectedLabel) => {
           setPicked(details);
           setQuery(selectedLabel ?? details.formattedAddress);
-          if (!venueName.trim() && details.featureType === "poi") {
+          if (city) {
+            // The place the owner picked names itself ("Lagos").
+            setVenueName(
+              selectedLabel?.split(",")[0]?.trim() || details.city || "",
+            );
+          } else if (!venueName.trim() && details.featureType === "poi") {
             setVenueName(selectedLabel?.split(",")[0]?.trim() ?? "");
           }
         }}
@@ -87,11 +102,13 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
           setQuery("");
           setPicked(null);
         }}
-        placeholder="Search the address"
-        accessibilityLabel="Venue address"
+        placeholder={city ? "Search for a city or address" : "Search the address"}
+        accessibilityLabel={city ? "Trip place" : "Venue address"}
       />
       <Text style={styles.note}>
-        Pick the address from the suggestions so guests can find it.
+        {city
+          ? "Pick the place from the suggestions so travellers know where it is."
+          : "Pick the address from the suggestions so guests can find it."}
       </Text>
       <Button
         label="Use this place"

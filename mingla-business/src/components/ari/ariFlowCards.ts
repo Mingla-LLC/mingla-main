@@ -267,13 +267,29 @@ export function flowUploadKind(
 /**
  * #3355 P7 — the event flow's "Where is it?" card: answered with the Host's
  * address search (MapboxAddressInput) and a venue name, never typed text.
+ * #3355 P8 — the trip flow's departure and destination cards use the same
+ * search without a venue name ("city" mode).
  */
+export type AriFlowPlaceMode = "venue" | "city";
+
+const FLOW_PLACE_STEPS: Readonly<Record<string, AriFlowPlaceMode>> =
+  Object.freeze({
+    event_place: "venue",
+    trip_departure: "city",
+    trip_destination: "city",
+  });
+
+export function flowPlaceMode(
+  artefact: AriFlowArtefact,
+): AriFlowPlaceMode | null {
+  const mode = FLOW_PLACE_STEPS[artefact.step_key];
+  return mode && artefact.answer_mode === "form" && artefact.question_id !== null
+    ? mode
+    : null;
+}
+
 export function isFlowPlaceCard(artefact: AriFlowArtefact): boolean {
-  return (
-    artefact.step_key === "event_place" &&
-    artefact.answer_mode === "form" &&
-    artefact.question_id !== null
-  );
+  return flowPlaceMode(artefact) !== null;
 }
 
 /** #3355 P7 — the bound answer for a picked place. */
@@ -294,7 +310,9 @@ export function buildFlowPlaceAnswer(
   ) {
     return null;
   }
-  const shown = `${venue}, ${address}`;
+  const shown = flowPlaceMode(artefact) === "city"
+    ? address
+    : `${venue}, ${address}`;
   const label = shown.length > 200 ? `${shown.slice(0, 197)}…` : shown;
   return {
     answer: {

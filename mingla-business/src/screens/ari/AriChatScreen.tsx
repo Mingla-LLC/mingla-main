@@ -50,7 +50,10 @@ import {
 } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
-import type { AriFlowUploadKind } from "../../components/ari/ariFlowCards";
+import type {
+  AriFlowPlaceMode,
+  AriFlowUploadKind,
+} from "../../components/ari/ariFlowCards";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
@@ -1318,12 +1321,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               renderFlowPlace={({
                 disabled,
                 onPicked,
+                mode,
               }: {
                 disabled: boolean;
                 onPicked: (place: AriFlowPlaceValue) => void;
+                mode: AriFlowPlaceMode;
               }) => (
                 <React.Suspense fallback={null}>
-                  <AriFlowPlaceCard disabled={disabled} onSubmit={onPicked} />
+                  <AriFlowPlaceCard
+                    disabled={disabled}
+                    onSubmit={onPicked}
+                    mode={mode}
+                  />
                 </React.Suspense>
               )}
               online={online !== false}

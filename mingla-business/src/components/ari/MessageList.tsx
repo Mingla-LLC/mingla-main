@@ -61,11 +61,13 @@ import {
   earlierFlowCopyIds,
   flowArtefactOf,
   flowCardStatus,
+  flowPlaceMode,
   flowUploadAnswer,
   flowUploadKind,
   flowViewOnlyCopy,
   isFlowPlaceCard,
   newestOpenFlowArtefactId,
+  type AriFlowPlaceMode,
   type AriFlowUploadKind,
 } from "./ariFlowCards";
 import type { PendingActionView } from "../../hooks/useAgentChat";
@@ -202,6 +204,8 @@ export interface MessageListProps {
   renderFlowPlace?: (args: {
     disabled: boolean;
     onPicked: (place: AriFlowPlaceValue) => void;
+    /** #3355 P8 — "city" for a trip's departure / destination. */
+    mode: AriFlowPlaceMode;
   }) => React.ReactNode;
   /** #3355 P3 — offline disables answers with a plain explanation. */
   online?: boolean;
@@ -1016,6 +1020,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   {isResolvedFlow
                     ? null
                     : renderFlowPlace({
+                        mode: flowPlaceMode(flow) ?? "venue",
                         disabled: choicesDisabled || !online,
                         onPicked: (place) => {
                           const bound = buildFlowPlaceAnswer(flow, place);
