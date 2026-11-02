@@ -51,6 +51,37 @@ export interface BuyerConfirmationClient {
   ): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
 }
 
+// issue #3281 — decision 8: a confirmation names what was bought. Read apart
+// from the receipt, so nothing about this read can block a guest's confirmation.
+async function readExtraLines(
+  client: BuyerConfirmationClient,
+  orderId: string,
+  logPrefix: string,
+): Promise<Array<{ name: string; qty: number; amountCents: number }>> {
+  try {
+    const result = (await client
+      .from("order_add_on_line_items")
+      .select("add_on_name_at_order, quantity, total_cents")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true })) as QueryResult<ExtraRow[]>;
+    if (result.error !== null) {
+      console.error(`${logPrefix} extras lookup failed`, {
+        orderId,
+        message: result.error.message,
+      });
+    }
+    if (!Array.isArray(result.data)) return [];
+    return result.data.map((row) => ({
+      name: row.add_on_name_at_order,
+      qty: Math.max(Math.round(Number(row.quantity ?? 0)), 0),
+      amountCents: safeCents(row.total_cents),
+    }));
+  } catch (error) {
+    console.error(`${logPrefix} extras lookup failed`, { orderId, error });
+    return [];
+  }
+}
+
 export interface BuyerConfirmationOrderRow {
   buyer_email: string | null;
   buyer_phone_e164: string | null;
@@ -252,24 +283,7 @@ export async function buildBuyerConfirmationPayload(
       QueryResult<DiscountRow[]>,
     ];
 
-  // issue #3281 — decision 8: a confirmation names what was bought. Read apart
-  // from the receipt so a missing row can never block a guest's confirmation.
-  const extrasResult = (await client
-    .from("order_add_on_line_items")
-    .select("add_on_name_at_order, quantity, total_cents")
-    .eq("order_id", orderId)
-    .order("created_at", { ascending: true })) as QueryResult<ExtraRow[]>;
-  if (extrasResult.error !== null) {
-    console.error(`${logPrefix} extras lookup failed`, {
-      orderId,
-      message: extrasResult.error.message,
-    });
-  }
-  const extraLines = (extrasResult.data ?? []).map((row) => ({
-    name: row.add_on_name_at_order,
-    qty: Math.max(Math.round(Number(row.quantity ?? 0)), 0),
-    amountCents: safeCents(row.total_cents),
-  }));
+  const extraLines = await readExtraLines(client, orderId, logPrefix);
 
   if (orderResult.error !== null || orderResult.data === null) {
     console.error(`${logPrefix} order receipt lookup failed`, {
