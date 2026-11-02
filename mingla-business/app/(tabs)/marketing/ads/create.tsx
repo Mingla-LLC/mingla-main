@@ -35,6 +35,7 @@ import {
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import {
   hostAdMatchSubtitle,
+  hostAdScrollBottomPadding,
   initialHostAdConnections,
 } from "../../../../src/components/marketing/ads/hostAdBuilderRules";
 import { cachedHostAdSetup } from "../../../../src/components/marketing/ads/hostAdSetupCache";
@@ -93,8 +94,6 @@ const platformList = platformNames;
 
 const CITY_REF_PLATFORMS = ["meta", "tiktok", "google"];
 
-/** Height of the floating marketing action button plus a gap above it. */
-const FLOATING_ACTION_CLEARANCE = 72;
 
 const EMPTY_AD_VIDEO_PATCH: CoverPatch = {
   coverMediaUrl: null,
@@ -276,6 +275,8 @@ function ChoiceCard(props: {
           ? { checked: props.selected, disabled: props.disabled }
           : { selected: props.selected, disabled: props.disabled }
       }
+      // #4238: web screen readers read the tick state from aria-checked.
+      aria-checked={props.multiple ? props.selected : undefined}
       accessibilityLabel={props.title}
       testID={props.testID}
     >
@@ -326,7 +327,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   // stay reachable at full scroll (business web and native).
   const bottomChromeInset = useStickyFooterOffset();
   const scrollBottomStyle = useMemo(
-    () => ({ paddingBottom: bottomChromeInset + FLOATING_ACTION_CLEARANCE }),
+    () => ({ paddingBottom: hostAdScrollBottomPadding(bottomChromeInset) }),
     [bottomChromeInset],
   );
   const [setup, setSetup] = useState<HostAdSetup | null>(null);
@@ -1898,7 +1899,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             >
               <View style={styles.choiceText}>
                 <Text style={styles.choiceTitle}>
-                  {city.name}, {city.countryCode}
+                  {city.name}, {countryName(city.countryCode)}
                 </Text>
                 <Text style={styles.choiceSubtitle}>
                   {matchSubtitle(

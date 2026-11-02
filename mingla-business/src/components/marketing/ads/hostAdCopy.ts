@@ -41,6 +41,10 @@ export const HOST_AD_BANNED_WORDS: readonly RegExp[] = [
   /\blanding page views?\b/i,
   // Raw city keys such as "NG:lagos".
   /\b[A-Z]{2}:[a-z]/,
+  // #4238 retest 2: raw result, step and review-reason codes read aloud.
+  /\brsvp registrations?\b/i,
+  /\bfirst three host campaigns\b/i,
+  /\bSaved at (promote|audience|budget|creative|review)\b/,
 ];
 
 export function hostAdCopyIsPlain(text: string): boolean {
@@ -156,6 +160,12 @@ const RESULT_LABELS: Record<string, string> = {
   landing_page_views: "page visits",
   page_view: "page visits",
   conversions: "results",
+  rsvp_registration: "RSVPs",
+  rsvp_registrations: "RSVPs",
+  checkout_started: "checkouts started",
+  booking_confirmed: "bookings",
+  install: "app installs",
+  app_store_click: "app store visits",
   results: "results",
 };
 
@@ -164,6 +174,7 @@ const COST_PER_LABELS: Record<string, string> = {
   "sign-ups": "Cost per sign-up",
   bookings: "Cost per booking",
   "page visits": "Cost per visit",
+  RSVPs: "Cost per sign-up",
 };
 
 /** "Cost per sale", "Cost per visit", or "Cost per result". */
@@ -174,6 +185,32 @@ export function hostAdCostPerLabel(kind: string | null | undefined): string {
 export function hostAdResultLabel(kind: string | null | undefined): string {
   const key = String(kind ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   return RESULT_LABELS[key] ?? humanize(key).toLowerCase();
+}
+
+/** The builder steps, as a Host reads them ("Saved at: Budget and dates"). */
+const STEP_LABELS: Record<string, string> = {
+  promote: "What you're promoting",
+  audience: "Who sees it",
+  budget: "Budget and dates",
+  creative: "Video and words",
+  review: "Review and launch",
+};
+
+export function hostAdStepLabel(step: string | null | undefined): string {
+  const key = String(step ?? "").trim().toLowerCase();
+  return STEP_LABELS[key] ?? humanize(key);
+}
+
+/** Why Mingla is checking an ad, in a Host's words. */
+const REVIEW_REASON_LABELS: Record<string, string> = {
+  first_three_host_campaigns:
+    "Mingla checks a brand's first three ads before they run",
+};
+
+export function hostAdReviewReason(reason: string | null | undefined): string {
+  const raw = String(reason ?? "").trim();
+  if (/\s/.test(raw)) return raw;
+  return REVIEW_REASON_LABELS[raw.toLowerCase()] ?? humanize(raw);
 }
 
 const TIMELINE_LABELS: Record<string, string> = {

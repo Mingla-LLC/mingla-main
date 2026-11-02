@@ -8,6 +8,8 @@
  * Host adds a video, cancels a plan or taps Retry).
  */
 
+import { registerSignOutCleanup } from "../../../utils/signOutCleanups";
+
 export const HOST_AD_SETUP_TTL_MS = 30_000;
 
 type Entry<T> = { at: number; promise: Promise<T> };
@@ -35,3 +37,7 @@ export function cachedHostAdSetup<T>(
 export function clearHostAdSetupCache(): void {
   entries.clear();
 }
+
+// Logout clears everything (Constitution #6): a cached setup belongs to the
+// signed-in person and must never serve the next one.
+registerSignOutCleanup(clearHostAdSetupCache);

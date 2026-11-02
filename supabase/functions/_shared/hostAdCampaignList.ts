@@ -210,7 +210,8 @@ export function buildHostCampaignList(input: HostCampaignListInput) {
       cap_cents: cap,
       host_spend_equivalent_cents: hostSpend,
       spend_by_currency: spendByCurrency,
-      primary_result_label: text(hierarchy[0]) ?? "conversions",
+      // #4238: Host-visible; "results" when the page names no result kind.
+      primary_result_label: text(hierarchy[0]) ?? "results",
       primary_result_count: conversions.length,
       cost_per_result_cents: hostSpend !== null && conversions.length > 0
         ? Math.round(hostSpend / conversions.length)

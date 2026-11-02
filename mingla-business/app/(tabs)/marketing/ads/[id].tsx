@@ -43,6 +43,8 @@ import {
   humanize,
   platformName,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
+import { hostAdScrollBottomPadding } from "../../../../src/components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { randomId } from "../../../../src/utils/randomId";
 
@@ -59,6 +61,9 @@ function firstParam(value: string | string[] | undefined): string | null {
 }
 
 export default function HostAdDetailRoute(): React.ReactElement {
+  // #4238: keep the last buttons clear of the bottom nav and the floating
+  // action button at full scroll on phones (business web and native).
+  const scrollBottomPadding = hostAdScrollBottomPadding(useStickyFooterOffset());
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
   const permissions = useHostAdPermissions(brandId);
@@ -308,7 +313,12 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
   return (
     <View style={styles.host} testID="ads-detail-screen">
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: scrollBottomPadding },
+        ]}
+      >
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"

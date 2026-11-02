@@ -18,7 +18,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  HOST_AD_FLOATING_ACTION_CLEARANCE,
   hostAdMatchSubtitle,
+  hostAdScrollBottomPadding,
   initialHostAdConnections,
 } from "../hostAdBuilderRules";
 import {
@@ -30,6 +32,8 @@ import {
   hostAdCostPerLabel,
   hostAdPlaceList,
   hostAdResultLabel,
+  hostAdReviewReason,
+  hostAdStepLabel,
   hostAdTargetingNote,
 } from "../hostAdCopy";
 import { hostAdPageDetails } from "../hostAdPageLabels";
@@ -130,7 +134,7 @@ describe("#4238 D5, D7 and Extra A", () => {
   it("the step buttons clear the bottom nav and the floating button", () => {
     expect(createRoute).toContain("useStickyFooterOffset()");
     expect(createRoute).toContain(
-      "paddingBottom: bottomChromeInset + FLOATING_ACTION_CLEARANCE",
+      "paddingBottom: hostAdScrollBottomPadding(bottomChromeInset)",
     );
     expect(createRoute).toContain("contentContainerStyle={[styles.scroll, scrollBottomStyle]}");
   });
@@ -165,5 +169,98 @@ describe("#4238 D3 names and plain result words", () => {
     expect(detail).toContain("{costPerLabel}:");
     expect(detail).not.toContain('"conversions"');
     expect(detail).not.toContain("Cost per {primaryResultLabel}");
+  });
+});
+
+describe("#4238 retest 2: the detail page and Ads list stay reachable", () => {
+  const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+  const list = read("app/(tabs)/marketing/ads/index.tsx");
+  const layout = read("app/(tabs)/marketing/_layout.tsx");
+
+  it("the last button clears the bottom nav and the floating button (390×844)", () => {
+    // Hit-test model: at full scroll the last button's bottom edge sits
+    // `padding` above the screen bottom. The bottom nav occupies the
+    // sticky-footer offset (96 at zero safe area on a phone); the floating
+    // action button (up to 56 tall) sits just above it.
+    const viewportHeight = 844;
+    const navReserve = 96;
+    const fabHeight = 56;
+    const padding = hostAdScrollBottomPadding(navReserve);
+    const lastButtonBottom = viewportHeight - padding;
+    const coveredFrom = viewportHeight - navReserve - fabHeight;
+    expect(lastButtonBottom).toBeLessThanOrEqual(coveredFrom);
+    expect(HOST_AD_FLOATING_ACTION_CLEARANCE).toBeGreaterThanOrEqual(fabHeight);
+  });
+
+  it("the detail page and the Ads list pad their scroll content with it", () => {
+    for (const source of [detail, list]) {
+      expect(source).toContain(
+        "const scrollBottomPadding = hostAdScrollBottomPadding(useStickyFooterOffset());",
+      );
+      expect(source).toContain("{ paddingBottom: scrollBottomPadding },");
+    }
+    expect(detail).not.toContain("<ScrollView contentContainerStyle={styles.scroll}>");
+  });
+
+  it("the floating Create an ad button hides on the builder and the detail page only", () => {
+    const re = /\/marketing\/ads\/[^/]+/;
+    expect(layout).toContain("HOST_AD_SUBPAGE_RE.test(pathname)");
+    expect(layout).toContain(String.raw`const HOST_AD_SUBPAGE_RE = /\/marketing\/ads\/[^/]+/;`);
+    expect(re.test("/marketing/ads/create")).toBe(true);
+    expect(re.test("/marketing/ads/2f6b0a9e-1111-4111-8111-111111111111")).toBe(true);
+    expect(re.test("/marketing/ads")).toBe(false);
+    expect(re.test("/marketing")).toBe(false);
+  });
+});
+
+describe("#4238 retest 2: last plain-language fixes", () => {
+  const list = read("app/(tabs)/marketing/ads/index.tsx");
+
+  it("the Ads list says results in plain words", () => {
+    expect(list).toContain("{hostAdResultLabel(item.primaryResultLabel)}");
+    expect(hostAdResultLabel("conversions")).toBe("results");
+    expect(hostAdResultLabel("rsvp_registration")).toBe("RSVPs");
+    expect(hostAdCostPerLabel("rsvp_registration")).toBe("Cost per sign-up");
+    const server = read("../supabase/functions/_shared/hostAdCampaignList.ts");
+    expect(server).toContain('primary_result_label: text(hierarchy[0]) ?? "results"');
+  });
+
+  it("a saved draft names its step and a review reason is a sentence", () => {
+    expect(hostAdStepLabel("promote")).toBe("What you're promoting");
+    expect(hostAdStepLabel("budget")).toBe("Budget and dates");
+    expect(hostAdReviewReason("first_three_host_campaigns")).toBe(
+      "Mingla checks a brand's first three ads before they run",
+    );
+    expect(hostAdReviewReason("Please use a brighter video.")).toBe(
+      "Please use a brighter video.",
+    );
+    expect(read("src/services/hostAdLifecycle.ts")).toContain(
+      "reason: `Saved at: ${hostAdStepLabel(draft.current_step)}`,",
+    );
+  });
+
+  it("city chips show the full country name", () => {
+    expect(createRoute).toContain("{city.name}, {countryName(city.countryCode)}");
+    expect(createRoute).not.toContain("{city.name}, {city.countryCode}");
+  });
+
+  it("platform checkboxes expose aria-checked", () => {
+    expect(createRoute).toContain("aria-checked={props.multiple ? props.selected : undefined}");
+  });
+});
+
+describe("#4238 retest 2: sign-out clears the Ads setup cache", () => {
+  it("runs on the shared sign-out path", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { runSignOutCleanups } = require("../../../../utils/signOutCleanups") as {
+      runSignOutCleanups: () => void;
+    };
+    const loader = jest.fn((brandId: string) => Promise.resolve(brandId));
+    await cachedHostAdSetup("brand-signout", loader, { now: 1 });
+    await cachedHostAdSetup("brand-signout", loader, { now: 2 });
+    expect(loader).toHaveBeenCalledTimes(1);
+    runSignOutCleanups();
+    await cachedHostAdSetup("brand-signout", loader, { now: 3 });
+    expect(loader).toHaveBeenCalledTimes(2);
   });
 });

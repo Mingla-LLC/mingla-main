@@ -158,6 +158,30 @@ Deno.test("Extra B #4238 a Host may not choose bidding, promotion type or TikTok
   assertEquals(hostGoalBodyError({ platform: "meta", name: "x" }), null);
 });
 
+Deno.test("#4238 retest 2: a Host may not set manual bids inside budget", () => {
+  for (
+    const field of ["bid_type", "bid_price_cents", "cpc_bid_cents", "bid_cents"]
+  ) {
+    for (const value of ["BID_TYPE_CUSTOM", 150, null, 0, "", false]) {
+      assertEquals(
+        hostGoalBodyError({
+          platform: "tiktok",
+          budget: { type: "daily", amount_cents: 1000, [field]: value },
+        }),
+        "host_delivery_field_forbidden",
+        `budget.${field}=${JSON.stringify(value)} accepted`,
+      );
+    }
+  }
+  assertEquals(
+    hostGoalBodyError({
+      platform: "tiktok",
+      budget: { type: "daily", amount_cents: 1000, cap_cents: 5000 },
+    }),
+    null,
+  );
+});
+
 Deno.test("Extra C #4238 only a live account binds to a Host plan", () => {
   const requested = [{ platform: "meta", connection_id: "c1" }];
   const row = {
@@ -212,7 +236,7 @@ Deno.test("D3 #4238 Ari's ad card shows money in the brand currency and plain wo
   assertEquals(context.currency, "NGN");
   assertEquals(
     context.ad_provider_allocation,
-    "Facebook & Instagram: NGN 750,000.00 · split evenly across the apps",
+    "Facebook & Instagram: NGN 750,000.00 · split evenly across the apps",
   );
   assertEquals(context.ad_destination, "Event: Deserted Island");
   assert(String(context.ad_audience).startsWith("Nigeria, Ghana"));

@@ -1,5 +1,9 @@
 import type { HostAdCampaign } from "./hostAdCampaignService";
 import type { HostAdDraft, HostAdPlanAggregate } from "./hostAdPlanService";
+import {
+  hostAdReviewReason,
+  hostAdStepLabel,
+} from "../components/marketing/ads/hostAdCopy";
 
 export type HostAdLifecycle =
   | "draft"
@@ -119,7 +123,7 @@ function draftItem(draft: HostAdDraft): HostAdListItem {
     resultsValueCents: {},
     nextAction: "Continue draft",
     route: `/(tabs)/marketing/ads/create?draft_id=${draft.id}`,
-    reason: `Saved at ${draft.current_step.replaceAll("_", " ")}`,
+    reason: `Saved at: ${hostAdStepLabel(draft.current_step)}`,
     updatedAt: draft.updated_at,
   };
 }
@@ -156,7 +160,7 @@ function planItem(aggregate: HostAdPlanAggregate): HostAdListItem {
     resultsValueCents: {},
     nextAction: planNextAction(aggregate.plan.state),
     route: `/(tabs)/marketing/ads/create?plan_id=${aggregate.plan.id}`,
-    reason: typeof reason === "string" ? reason : null,
+    reason: typeof reason === "string" ? hostAdReviewReason(reason) : null,
     updatedAt: aggregate.plan.updated_at,
   };
 }

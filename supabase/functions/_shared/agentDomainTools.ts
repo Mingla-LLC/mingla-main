@@ -8152,25 +8152,22 @@ function adPlatformName(value: unknown): string {
   return HOST_AD_PLATFORM_NAMES[key] ?? adLabel(key);
 }
 
-/** #4238 D3: money on the Ari ad card, in the brand currency when known. */
+/**
+ * #4238: money on the Ari ad card, one way only: the currency code, then the
+ * amount with thousands separators ("NGN 1,500,000.00"). With no known
+ * currency, the plain amount.
+ */
 function formatAdMoney(value: unknown, currency: unknown): string {
   const cents = Number(value);
   if (!Number.isSafeInteger(cents) || cents < 0) return "not available yet";
   const code = typeof currency === "string" && /^[A-Z]{3}$/i.test(currency)
     ? currency.toUpperCase()
     : "";
-  if (code) {
-    try {
-      return new Intl.NumberFormat("en", { style: "currency", currency: code })
-        .format(cents / 100);
-    } catch {
-      return `${(cents / 100).toFixed(2)} ${code}`;
-    }
-  }
-  return (cents / 100).toLocaleString("en", {
+  const amount = (cents / 100).toLocaleString("en", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+  return code ? `${code} ${amount}` : amount;
 }
 
 /** "NG" → "Nigeria" for the Ari ad card (falls back to the code). */
@@ -8217,6 +8214,11 @@ const AD_RESULT_WORDS: Record<string, string> = {
   click: "page visits",
   landing_page_view: "page visits",
   page_view: "page visits",
+  rsvp_registration: "RSVPs",
+  checkout_started: "checkouts started",
+  booking_confirmed: "bookings",
+  install: "app installs",
+  app_store_click: "app store visits",
 };
 
 function adResultWords(value: unknown): string {

@@ -32,3 +32,15 @@ export function hostAdMatchSubtitle(
     ? "Matched on all platforms"
     : `Not found on ${missingNames}: remove it or turn those platforms off`;
 }
+
+/** Height of the floating marketing action button plus a gap above it. */
+export const HOST_AD_FLOATING_ACTION_CLEARANCE = 72;
+
+/**
+ * #4238: bottom padding for an ad screen's scroll content, so its last
+ * buttons clear the floating bottom nav (the sticky-footer offset) and the
+ * floating action button on phones.
+ */
+export function hostAdScrollBottomPadding(stickyFooterOffset: number): number {
+  return stickyFooterOffset + HOST_AD_FLOATING_ACTION_CLEARANCE;
+}

@@ -51,9 +51,12 @@ import {
   type HostAdLifecycle,
 } from "../../../../src/services/hostAdLifecycle";
 import {
-  humanize,
+  hostAdResultLabel,
+  hostAdReviewReason,
   platformName,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
+import { hostAdScrollBottomPadding } from "../../../../src/components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../../../src/utils/currency";
 
 function firstParam(value: string | string[] | undefined): string | null {
@@ -90,6 +93,9 @@ const FILTERS: { key: HostAdFilter; label: string }[] = [
 ];
 
 export default function MarketingAdsRoute(): React.ReactElement {
+  // #4238: keep the last buttons clear of the bottom nav and the floating
+  // action button at full scroll on phones (business web and native).
+  const scrollBottomPadding = hostAdScrollBottomPadding(useStickyFooterOffset());
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
   const walletQuery = useAdCreditWallet(brandId);
@@ -280,7 +286,10 @@ export default function MarketingAdsRoute(): React.ReactElement {
   return (
     <View style={styles.host} testID="ads-credit-screen">
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: scrollBottomPadding },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={
@@ -515,7 +524,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                     {item.kind === "campaign" ? (
                       <Text style={styles.campaignMeta}>
                         {item.primaryResultCount.toLocaleString()}{" "}
-                        {item.primaryResultLabel.replaceAll("_", " ")}
+                        {hostAdResultLabel(item.primaryResultLabel)}
                         {item.costPerResultCents !== null && item.currency
                           ? ` · ${formatCurrency(item.costPerResultCents, item.currency, true)} each`
                           : ""}
@@ -523,7 +532,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                     ) : null}
                     {item.reason ? (
                       <Text style={styles.planReason}>
-                        {/\s/.test(item.reason) ? item.reason : humanize(item.reason)}
+                        {hostAdReviewReason(item.reason)}
                       </Text>
                     ) : null}
                     <Text style={styles.nextAction}>{item.nextAction} →</Text>

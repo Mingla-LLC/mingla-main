@@ -262,7 +262,7 @@ Deno.test("#3697 Ari LAUNCH review shows immutable provider, rights and measurem
   assert(context);
   assertStringIncludes(
     String(context.ad_provider_allocation),
-    "NGN\u00a0300.00 → $19.00",
+    "NGN 300.00 → USD 19.00",
   );
   assertStringIncludes(
     String(context.ad_measurement),

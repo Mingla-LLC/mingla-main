@@ -96,7 +96,12 @@ Deno.test("#4238 RETEST D4 two accounts never share a readiness answer", async (
   const seen: string[] = [];
   const probes: SalesSignalProbes = {
     metaHasSignal: (client) => {
-      seen.push(String((client as { config?: { datasetId?: string } })?.config?.datasetId ?? "?"));
+      seen.push(
+        String(
+          (client as { config?: { datasetId?: string } })?.config?.datasetId ??
+            "?",
+        ),
+      );
       return Promise.resolve(seen.length === 1);
     },
     snapchatPurchases28d: () => Promise.resolve(0),
@@ -105,7 +110,11 @@ Deno.test("#4238 RETEST D4 two accounts never share a readiness answer", async (
   const t0 = 12_000_000;
   const a = await cachedSalesReadiness(metaRow("meta-a"), { probes, now: t0 });
   const b = await cachedSalesReadiness(metaRow("meta-b"), { probes, now: t0 });
-  assertEquals(seen.length, 2, "the second account reused the first one's answer");
+  assertEquals(
+    seen.length,
+    2,
+    "the second account reused the first one's answer",
+  );
   assertEquals(a.ready, true);
   assertEquals(b.ready, false);
   clearSalesReadinessCache();
@@ -237,7 +246,8 @@ Deno.test("#4238 RETEST D3 a GBP brand's Ari card shows pounds, never naira or d
   assert(context);
   assertEquals(context.currency, "GBP");
   const money = String(context.ad_provider_allocation);
-  assert(money.includes("£250.00"), money);
+  // #4238 retest 2: one money format on the card ("GBP 250.00").
+  assert(money.includes("GBP 250.00"), money);
   assert(!/NGN|₦|USD|\$/.test(money), money);
   assertEquals(context.ad_destination, "Event: River Supper Club");
   assert(String(context.ad_audience).startsWith("United Kingdom"));
@@ -253,6 +263,9 @@ Deno.test("#4238 RETEST D3 when Ads setup cannot be read the card invents no cur
   assert(context);
   assertEquals("currency" in context, false);
   const money = String(context.ad_provider_allocation);
-  assert(!/[A-Z]{3}|₦|£|\$/.test(money.replace(/Facebook|Instagram|TikTok/g, "")), money);
+  assert(
+    !/[A-Z]{3}|₦|£|\$/.test(money.replace(/Facebook|Instagram|TikTok/g, "")),
+    money,
+  );
   assert(money.includes("250.00"), money);
 });

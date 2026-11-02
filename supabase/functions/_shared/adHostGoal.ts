@@ -182,6 +182,17 @@ export const HOST_DELIVERY_BODY_FIELDS = [
   "tiktok_placement",
 ] as const;
 
+/**
+ * #4238: manual bids inside `budget` (TikTok bid_type / bid_price_cents,
+ * Google cpc_bid_cents, Snapchat bid_cents) are Mingla's choice too.
+ */
+export const HOST_BUDGET_BID_FIELDS = [
+  "bid_type",
+  "bid_price_cents",
+  "cpc_bid_cents",
+  "bid_cents",
+] as const;
+
 /** A Host create body that names its own objective or delivery choice is refused. */
 export function hostGoalBodyError(
   body: Record<string, unknown>,
@@ -189,9 +200,17 @@ export function hostGoalBodyError(
   if (HOST_GOAL_BODY_FIELDS.some((field) => body[field] !== undefined)) {
     return "plan_optimization_mismatch";
   }
-  return HOST_DELIVERY_BODY_FIELDS.some((field) => body[field] !== undefined)
-    ? "host_delivery_field_forbidden"
-    : null;
+  if (HOST_DELIVERY_BODY_FIELDS.some((field) => body[field] !== undefined)) {
+    return "host_delivery_field_forbidden";
+  }
+  const budget = body.budget;
+  if (
+    budget !== null && typeof budget === "object" && !Array.isArray(budget) &&
+    HOST_BUDGET_BID_FIELDS.some((field) =>
+      (budget as Record<string, unknown>)[field] !== undefined
+    )
+  ) return "host_delivery_field_forbidden";
+  return null;
 }
 
 /**
