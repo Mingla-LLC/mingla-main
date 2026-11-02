@@ -57,7 +57,11 @@ Deno.test("T10 every platform's id field is read", () => {
 
 Deno.test("T10 create checks the binding before it builds provider targeting or calls a provider", async () => {
   const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
-  const check = source.indexOf("audienceBindingMismatch({");
+  // The guard itself must be the condition: `if (audienceBindingMismatch({`.
+  const guard = /if \(\s*audienceBindingMismatch\(\{[\s\S]{0,400}?\}\)\s*\)\s*\{\s*return json\(\{\s*error: "plan_conflict",\s*detail: "audience_binding_mismatch",/;
+  const match = guard.exec(source);
+  assert(match, "create refuses a mismatched binding before anything else");
+  const check = match.index;
   const refusal = source.indexOf('detail: "audience_binding_mismatch"');
   const execution = source.indexOf("frozenExecutionTargeting = providerExecutionTargeting(");
   const firstProviderCreate = source.indexOf("createCampaign(", execution);
