@@ -6,17 +6,17 @@
  *   vibe (the server's four experience intents) → stops, 1 to 5, each a name,
  *   a short description and a place picked from the address search ("Add
  *   another stop" / "That's all") → time zone (the brand's, else its
- *   country's, else asked) → date and start time → end time → ONE create
- *   proposal → read back → "get it ready to publish?" → free or paid → the
- *   payout-country question when the brand has no currency → the price per
- *   person → ONE price proposal → publish-readiness from the Host publish
- *   checks + brand_readiness → publish ONLY when the owner asks, behind its
- *   own protected confirmation.
+ *   country's, else asked) → date and start time → end time → free or paid
+ *   → the payout-country question when the brand has no currency → the
+ *   price per person → ONE create proposal → read back → publish-readiness
+ *   from the Host publish checks + brand_readiness → publish ONLY when the
+ *   owner asks, behind its own protected confirmation.
  *
  * Every saved fact is the owner's (I-ARI-NO-INVENTED-FACTS): typed or picked
  * on a card, or the brand's own time zone shown on the create card they
- * confirm. No default price: the draft is saved "price not set" (not free)
- * until the owner chooses.
+ * confirm. The price is asked BEFORE the draft: the server stores a draft
+ * with no price as free (its one ticket is_free = total 0), so creating
+ * first would save "free" for an owner who never said so.
  */
 
 import { brandBlockersStep, brandCanWaitStep, listWords } from "../brandGate.ts";
@@ -51,6 +51,7 @@ import {
   doneWith as done,
   failedReason,
   offeringPriceStep,
+  type OwnerPrice,
   ownerAnswer as owner,
   priceAnswer,
   priceWords,
@@ -136,6 +137,8 @@ type ExperienceFacts = {
   timezone_source: "owner" | "brand" | "country" | null;
   start_at: string | null;
   end_at: string | null;
+  /** "free", or the owner's price per person; null until they choose. */
+  price: "free" | OwnerPrice | null;
 };
 
 export function experienceFacts(ctx: FlowContext): ExperienceFacts {
@@ -164,6 +167,11 @@ export function experienceFacts(ctx: FlowContext): ExperienceFacts {
       : null,
     start_at: stringAnswer(run, "start_at"),
     end_at: stringAnswer(run, "end_at"),
+    price: answer(run, "price_kind") === "free"
+      ? "free"
+      : answer(run, "price_kind") === "paid"
+      ? priceAnswer(ctx, "price")
+      : null,
   };
 }
 
@@ -672,6 +680,60 @@ const endStep: StepDefinition = {
   },
 };
 
+// ── Price (asked before the draft: a draft saved without a price is stored
+// as free by the server, so the owner chooses first) ──────────────────────
+
+const priceKindStep: StepDefinition = {
+  key: "experience_price_kind",
+  title: "Free or paid",
+  kind: "question",
+  depends_on: ["experience_end"],
+  policy: "blocking",
+  probe(ctx) {
+    const kind = answer(ctx.run, "price_kind");
+    if (kind === "free" || kind === "paid") {
+      return Promise.resolve(done("owner_price_kind", kind));
+    }
+    return Promise.resolve({
+      done: false,
+      ask: choiceQuestion({
+        noun: NOUN,
+        key: "price_kind",
+        title: "Free or paid",
+        text: "Is the experience free or paid?",
+        options: [
+          { id: "free", label: "Free" },
+          { id: "paid", label: "Paid" },
+        ],
+      }),
+    });
+  },
+  onAnswer(_ctx, choiceId) {
+    if (choiceId !== "free" && choiceId !== "paid") return Promise.resolve(null);
+    return Promise.resolve({
+      record: { state: "pending" },
+      answers: { price_kind: owner(choiceId), paid: owner(choiceId === "paid") },
+    });
+  },
+};
+
+const priceStep = offeringPriceStep({
+  key: "experience_price",
+  noun: NOUN,
+  dependsOn: "experience_price_kind",
+  answerKey: "price",
+  title: "Price per person",
+  needed: (ctx) => Promise.resolve(answer(ctx.run, "price_kind") === "paid"),
+  question: (example) =>
+    `What's the price per person? For example: ${example}.`,
+  label: "Price per person",
+  placeholder: (example) => `e.g. ${example}`,
+});
+
+/** Seth's decision 3: a draft can hold a price before payments are set up. */
+export const PAID_EXPERIENCE_HEADS_UP =
+  "You can save a price now; you'll need payments set up before you publish.";
+
 // ── The create proposal ───────────────────────────────────────────────────
 
 /** "2026-11-14" and "18:00" in the experience's own time zone. */
@@ -722,7 +784,7 @@ export function createExperienceArgs(
   if (
     !facts.title || !facts.description || facts.intents.length === 0 ||
     facts.stops.length === 0 || facts.stops.length > MAX_STOPS ||
-    !facts.timezone || !facts.start_at || !facts.end_at
+    !facts.timezone || !facts.start_at || !facts.end_at || !facts.price
   ) return null;
   const start = localParts(facts.start_at, facts.timezone);
   const end = localParts(facts.end_at, facts.timezone);
@@ -733,10 +795,16 @@ export function createExperienceArgs(
     experience_intents: facts.intents,
     stops: facts.stops.map(stopArg),
     location_mode: "per_stop",
-    // No default price: "whole" with is_free false is the Host draft's
-    // "price not set yet"; the price is asked when getting it ready.
+    // One price per person for the whole experience (the wizard's "whole"
+    // pricing), exactly as the owner chose: free, or their price.
     pricing_mode: "whole",
-    is_free: false,
+    ...(facts.price === "free"
+      ? { is_free: true }
+      : {
+        is_free: false,
+        whole_price_cents: facts.price.price_minor,
+        currency: facts.price.currency,
+      }),
     timezone: facts.timezone,
     whenMode: "single",
     when: { date: start.date, doorsOpen: start.time, endsAt: end.time },
@@ -745,6 +813,7 @@ export function createExperienceArgs(
 
 export function createExperienceRows(
   facts: ExperienceFacts,
+  canSell = true,
 ): { label: string; value: string }[] {
   const tz = facts.timezone ?? "UTC";
   const vibes = facts.intents.map((id) =>
@@ -775,9 +844,28 @@ export function createExperienceRows(
           : ""
       }`,
     },
-    { label: "Price", value: "Not set yet — I'll ask when you get it ready" },
+    {
+      label: "Price",
+      value: facts.price === "free"
+        ? "Free"
+        : facts.price
+        ? `${priceWords(facts.price)} per person`
+        : "",
+    },
+    {
+      label: "Heads-up",
+      value: facts.price && facts.price !== "free" && !canSell
+        ? PAID_EXPERIENCE_HEADS_UP
+        : "",
+    },
     { label: "Status", value: UNPUBLISHED_DRAFT_WORDS },
   ].filter((row) => row.value);
+}
+
+async function canSellNow(ctx: FlowContext): Promise<boolean> {
+  if (answer(ctx.run, "price_kind") !== "paid") return true;
+  const readiness = await ctx.deps.readiness("publish_paid").catch(() => null);
+  return readiness?.money.can_sell ?? true;
 }
 
 async function experienceRow(
@@ -791,7 +879,7 @@ const createStep: StepDefinition = {
   key: "experience_create",
   title: "Create the draft",
   kind: "proposal",
-  depends_on: ["experience_end"],
+  depends_on: ["experience_price"],
   policy: "blocking",
   subject_tools: ["create_experience"],
   async probe(ctx): Promise<ProbeResult> {
@@ -843,7 +931,7 @@ const createStep: StepDefinition = {
       propose: {
         tool_name: "create_experience",
         tool_args: args,
-        rows: createExperienceRows(facts),
+        rows: createExperienceRows(facts, await canSellNow(ctx)),
         rows_only: true,
       },
       ask: choiceQuestion({
@@ -859,226 +947,43 @@ const createStep: StepDefinition = {
       record: { data: {} },
     };
   },
-  onAnswer(ctx, choiceId) {
+  async onAnswer(ctx, choiceId) {
     if (choiceId === "cancel") {
-      return Promise.resolve({
+      return {
         record: { state: "asked" },
         cancel_run: true,
         ack: "Okay, I've stopped here. Nothing was created.",
-      });
+      };
     }
     if (choiceId === "change_when") {
-      return Promise.resolve({
+      return {
         record: { state: "pending" },
         answers: { start_at: owner(null), end_at: owner(null) },
         ack: "Okay. Nothing was saved.",
-      });
+      };
     }
-    if (choiceId !== "create") return Promise.resolve(null);
+    if (choiceId !== "create") return null;
     const facts = experienceFacts(ctx);
     const args = createExperienceArgs(ctx.run.brand_id, facts);
-    if (!args) return Promise.resolve(null);
-    return Promise.resolve({
+    if (!args) return null;
+    return {
       record: { state: "awaiting_approval", data: {} },
       propose: {
         tool_name: "create_experience",
         tool_args: args,
-        rows: createExperienceRows(facts),
+        rows: createExperienceRows(facts, await canSellNow(ctx)),
         rows_only: true,
       },
-    });
+    };
   },
 };
 
 // ── Publish-ready facts (after the draft exists) ──────────────────────────
 
-function wantsPublishReady(ctx: FlowContext): boolean {
-  return answer(ctx.run, "publish_ready") === true;
-}
-
 /** The Host's "price set": free, or a whole price above zero. */
 export function experienceHasPrice(row: FlowExperienceRow): boolean {
   return row.is_free || (row.whole_price_cents ?? 0) > 0;
 }
-
-const publishReadyStep: StepDefinition = {
-  key: "experience_publish_ready",
-  title: "Get it ready to publish",
-  kind: "question",
-  depends_on: ["experience_create"],
-  policy: "blocking",
-  probe(ctx) {
-    const value = answer(ctx.run, "publish_ready");
-    if (typeof value === "boolean") {
-      return Promise.resolve(done("owner_publish_ready", value));
-    }
-    return Promise.resolve({
-      done: false,
-      ask: choiceQuestion({
-        noun: NOUN,
-        key: "publish_ready",
-        title: "Get it ready to publish?",
-        text: "Want to get it ready to publish? I'll need the price.",
-        options: [
-          { id: "yes", label: "Yes, get it ready" },
-          { id: "not_now", label: "Not now" },
-        ],
-      }),
-    });
-  },
-  onAnswer(_ctx, choiceId) {
-    if (choiceId !== "yes" && choiceId !== "not_now") {
-      return Promise.resolve(null);
-    }
-    return Promise.resolve({
-      record: { state: "pending" },
-      answers: { publish_ready: owner(choiceId === "yes") },
-    });
-  },
-};
-
-async function needsPrice(ctx: FlowContext): Promise<boolean> {
-  if (!wantsPublishReady(ctx)) return false;
-  const row = await experienceRow(ctx);
-  return !!row && !experienceHasPrice(row);
-}
-
-const priceKindStep: StepDefinition = {
-  key: "experience_price_kind",
-  title: "Free or paid",
-  kind: "question",
-  depends_on: ["experience_publish_ready"],
-  policy: "blocking",
-  async probe(ctx) {
-    if (!await needsPrice(ctx)) return done("no_price_needed", true);
-    const kind = answer(ctx.run, "price_kind");
-    if (kind === "free" || kind === "paid") return done("owner_price_kind", kind);
-    return {
-      done: false,
-      ask: choiceQuestion({
-        noun: NOUN,
-        key: "price_kind",
-        title: "Free or paid",
-        text: "Is the experience free or paid?",
-        options: [
-          { id: "free", label: "Free" },
-          { id: "paid", label: "Paid" },
-        ],
-      }),
-    };
-  },
-  onAnswer(_ctx, choiceId) {
-    if (choiceId !== "free" && choiceId !== "paid") return Promise.resolve(null);
-    return Promise.resolve({
-      record: { state: "pending" },
-      answers: { price_kind: owner(choiceId), paid: owner(choiceId === "paid") },
-    });
-  },
-};
-
-const priceStep = offeringPriceStep({
-  key: "experience_price",
-  noun: NOUN,
-  dependsOn: "experience_price_kind",
-  answerKey: "price",
-  title: "Price per person",
-  needed: async (ctx) =>
-    answer(ctx.run, "price_kind") === "paid" && await needsPrice(ctx),
-  question: (example) =>
-    `What's the price per person? For example: ${example}.`,
-  label: "Price per person",
-  placeholder: (example) => `e.g. ${example}`,
-});
-
-/** Seth's decision 3: a draft can hold a price before payments are set up. */
-export const PAID_EXPERIENCE_HEADS_UP =
-  "You can save a price now; you'll need payments set up before you publish.";
-
-const priceSaveStep: StepDefinition = {
-  key: "experience_price_save",
-  title: "Save the price",
-  kind: "proposal",
-  depends_on: ["experience_price"],
-  policy: "blocking",
-  subject_tools: ["update_experience"],
-  async probe(ctx): Promise<ProbeResult> {
-    if (!wantsPublishReady(ctx)) return done("not_requested", true);
-    const row = await experienceRow(ctx);
-    if (!row) return done("no_subject", true);
-    const proposed = ctx.state?.state === "awaiting_approval";
-    if (experienceHasPrice(row)) {
-      return {
-        done: true,
-        note: proposed ? "Saved and checked: the price is on the draft." : undefined,
-        evidence: {
-          probe: "experience_price",
-          observed: row.is_free ? "free" : row.whole_price_cents,
-        },
-      };
-    }
-    if (proposed && ctx.trigger !== "confirm" && await proposalOpen(ctx)) {
-      return { done: false, wait: true };
-    }
-    const kind = answer(ctx.run, "price_kind");
-    const price = priceAnswer(ctx, "price");
-    if (kind !== "free" && !(kind === "paid" && price)) {
-      return done("no_price", true);
-    }
-    const refused = failedReason(
-      ctx,
-      "update_experience",
-      "The price didn't save, so nothing was changed.",
-    );
-    const readiness = kind === "paid"
-      ? await ctx.deps.readiness("publish_paid").catch(() => null)
-      : null;
-    const args: Record<string, unknown> = kind === "free"
-      ? { event_id: row.id, expected_revision: row.updated_at, is_free: true }
-      : {
-        event_id: row.id,
-        expected_revision: row.updated_at,
-        pricing_mode: "whole",
-        is_free: false,
-        whole_price_cents: price!.price_minor,
-        currency: price!.currency,
-      };
-    return {
-      done: false,
-      ...(refused ? { note: refused } : {}),
-      propose: {
-        tool_name: "update_experience",
-        tool_args: args,
-        rows: [
-          { label: "Experience", value: row.title },
-          {
-            label: "Price",
-            value: kind === "free" ? "Free" : `${priceWords(price!)} per person`,
-          },
-          ...(readiness && !readiness.money.can_sell
-            ? [{ label: "Heads-up", value: PAID_EXPERIENCE_HEADS_UP }]
-            : []),
-          { label: "Status", value: UNPUBLISHED_DRAFT_WORDS },
-        ],
-        rows_only: true,
-      },
-      ask: choiceQuestion({
-        noun: NOUN,
-        key: "price:ready",
-        title: "Save the price",
-        text: "Ready to save the price to the draft?",
-        options: [{ id: "save", label: "Save to the draft" }],
-      }),
-      record: { data: {} },
-    };
-  },
-  async onAnswer(ctx, choiceId) {
-    if (choiceId !== "save") return null;
-    const probe = await priceSaveStep.probe(ctx);
-    return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
-      : { record: { state: "pending" } };
-  },
-};
 
 /** The Host experience publish checks (biz_publish_experience). */
 export function experiencePublishGaps(row: FlowExperienceRow): string[] {
@@ -1122,11 +1027,10 @@ const publishStep: StepDefinition = {
   key: "experience_publish",
   title: "Publish",
   kind: "check",
-  depends_on: ["experience_price_save"],
+  depends_on: ["experience_create"],
   policy: "blocking",
   subject_tools: ["publish_experience"],
   async probe(ctx): Promise<ProbeResult> {
-    if (!wantsPublishReady(ctx)) return done("not_requested", true);
     if (answer(ctx.run, "publish_later") === true) {
       return done("owner_publish_later", true);
     }
@@ -1275,11 +1179,9 @@ export const CREATE_EXPERIENCE_FLOW: FlowDefinition = {
     timezoneStep,
     startStep,
     endStep,
-    createStep,
-    publishReadyStep,
     priceKindStep,
     priceStep,
-    priceSaveStep,
+    createStep,
     publishStep,
   ],
   summarize,

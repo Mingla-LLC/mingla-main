@@ -538,7 +538,25 @@ async function experienceToProposal(world: World, store: MemoryStore) {
     stepOf(await answer(world, store, (r) => form(r, { response: "14 November at 6pm" }))),
     "experience_end",
   );
-  return await answer(world, store, (r) => form(r, { response: "9pm" }));
+  // The price is the owner's choice, asked before the draft.
+  assertEquals(
+    stepOf(await answer(world, store, (r) => form(r, { response: "9pm" }))),
+    "experience_price_kind",
+  );
+  // Payments aren't set up: P6's money step lets the owner keep going
+  // (Seth's decision 3: a draft may hold a price before payments).
+  const money = await answer(world, store, (r) => choice(r, "paid"));
+  assertEquals(stepOf(money), "money_gate");
+  assert(money.kind === "artefact");
+  assertMatch(money.artefact.text, /bookings/);
+  const price = await answer(world, store, (r) => choice(r, "continue"));
+  assertEquals(stepOf(price), "experience_price");
+  assert(price.kind === "artefact");
+  assertMatch(price.artefact.text, /price per person\? For example: ₦/);
+  const wrong = await answer(world, store, (r) => form(r, { response: "£45" }));
+  assert(wrong.kind === "artefact");
+  assertMatch(wrong.artefact.text, /You typed £45, but .* prices are in NGN/);
+  return await answer(world, store, (r) => form(r, { response: "₦25,000" }));
 }
 
 function nextNov14Year(): number {
@@ -600,16 +618,19 @@ Deno.test("P9: an experience with two picked stops is one create proposal holdin
     location_mode: "per_stop",
     pricing_mode: "whole",
     is_free: false,
+    whole_price_cents: 2_500_000,
+    currency: "NGN",
     timezone: "Africa/Lagos",
     whenMode: "single",
     when: { date: `${year}-11-14`, doorsOpen: "18:00", endsAt: "21:00" },
-  }, "no price, no capacity, nothing the owner didn't give");
+  }, "the owner's price, no capacity, nothing the owner didn't give");
   assertEquals(proposed.rows_only, true);
   const rows = rowsText(proposed.rows);
   assertMatch(rows, /Stop 1: Market welcome — Meet your guide/);
   assertMatch(rows, /Stop 2: Suya on the island/);
   assertMatch(rows, /Time zone: Lagos time, from your brand/);
-  assertMatch(rows, /Price: Not set yet/);
+  assertMatch(rows, /Price: (?:₦|NGN\s)25,000\.00 per person/);
+  assertMatch(rows, /Heads-up: You can save a price now/);
   assertNotMatch(rows, /latitude|longitude|6\.45|3\.38|create_experience|private/i);
   // The create_experience schema accepts exactly these args.
   const schema = findTool("create_experience")!.parameters as {
@@ -629,67 +650,85 @@ Deno.test("P9: an experience with two picked stops is one create proposal holdin
   );
   assert(next.kind === "artefact");
   assertMatch(next.text, /Saved and checked: "Lagos Street Food Trail" with 2 stops is an unpublished draft/);
-  assertEquals(next.artefact.step_key, "experience_publish_ready");
+  assertEquals(next.artefact.step_key, "experience_publish");
   const run = await cur(store);
   assertEquals(run.subject_id, EXP_ID);
-  for (const key of ["title", "description", "intents", "stops", "start_at", "end_at"]) {
+  for (
+    const key of ["title", "description", "intents", "stops", "start_at", "end_at", "price_kind", "price"]
+  ) {
     assertEquals(run.answers[key]?.source, "owner", key);
   }
 });
 
-Deno.test("P9: getting an experience ready asks the price per person in the brand's currency and publishes only on the owner's word", async () => {
-  const world = freshWorld();
+Deno.test("P9: a free experience is saved free only because the owner said so, and publishes only on the owner's word", async () => {
+  const world = freshWorld({ canSell: true });
   const store = new MemoryStore();
-  const proposed = await experienceToProposal(world, store);
-  assert(proposed.kind === "propose");
-  await confirm(
+  await startRun(store, "create_experience", "Create an experience called Sunset Walk");
+  assertEquals(stepOf(await turn(world, store)), "experience_description");
+  await answer(world, store, (r) => form(r, { response: "A slow walk along the lagoon at sunset." }));
+  await answer(world, store, (r) => form(r, { choices: ["Romantic"] }));
+  await answer(world, store, (r) => form(r, { response: "Lagoon path" }));
+  await answer(world, store, (r) => form(r, { response: "Walk and watch the sun go down." }));
+  await answer(world, store, (r) => form(r, { place: SUYA }));
+  await answer(world, store, (r) => choice(r, "done"));
+  await answer(world, store, (r) => form(r, { response: "14 November at 6pm" }));
+  assertEquals(
+    stepOf(await answer(world, store, (r) => form(r, { response: "8pm" }))),
+    "experience_price_kind",
+  );
+  const proposed = await answer(world, store, (r) => choice(r, "free"));
+  assert(proposed.kind === "propose", `got ${proposed.kind}`);
+  assertEquals(proposed.tool_args.is_free, true);
+  assert(!("whole_price_cents" in proposed.tool_args));
+  assertMatch(rowsText(proposed.rows), /Price: Free/);
+  const ready = await confirm(
     world,
     store,
     "create_experience",
-    () => world.experiences.set(EXP_ID, experienceFrom(proposed.tool_args)),
+    () =>
+      world.experiences.set(EXP_ID, {
+        ...experienceFrom(proposed.tool_args),
+        is_free: true,
+      }),
     { event: { id: EXP_ID } },
   );
-  assertEquals(stepOf(await answer(world, store, (r) => choice(r, "yes"))), "experience_price_kind");
-  // Payments aren't set up: the money step lets the owner keep going.
-  const money = await answer(world, store, (r) => choice(r, "paid"));
-  const price = money.kind === "artefact" && money.artefact.step_key === "money_gate"
-    ? await answer(world, store, (r) => choice(r, "continue"))
-    : money;
-  assertEquals(stepOf(price), "experience_price");
-  assert(price.kind === "artefact");
-  assertMatch(price.artefact.text, /price per person\? For example: ₦/);
-  const wrong = await answer(world, store, (r) => form(r, { response: "£45" }));
-  assert(wrong.kind === "artefact");
-  assertMatch(wrong.artefact.text, /You typed £45, but .* prices are in NGN/);
-  const save = await answer(world, store, (r) => form(r, { response: "₦25,000" }));
-  assert(save.kind === "propose", `got ${save.kind}`);
-  assertEquals(save.tool_name, "update_experience");
-  assertEquals(save.tool_args, {
-    event_id: EXP_ID,
-    expected_revision: "2026-11-02T10:00:00.000000+00:00",
-    pricing_mode: "whole",
-    is_free: false,
-    whole_price_cents: 2_500_000,
-    currency: "NGN",
-  });
-  assertMatch(rowsText(save.rows), /Price: (?:₦|NGN\s)25,000\.00 per person/);
-  assertMatch(rowsText(save.rows), /Heads-up: You can save a price now/);
-  const ready = await confirm(world, store, "update_experience", () => {
-    const row = world.experiences.get(EXP_ID)!;
-    world.experiences.set(EXP_ID, { ...row, whole_price_cents: 2_500_000 });
-  });
   assert(ready.kind === "artefact");
   assertEquals(ready.artefact.step_key, "experience_publish");
-  // Payments aren't set up, so a paid experience is refused in plain words.
-  assertMatch(ready.artefact.text, /Can't publish yet: payment setup isn't finished/);
-  world.canSell = true;
-  const check = await answer(world, store, (r) => choice(r, "check"));
-  assert(check.kind === "artefact");
-  assertEquals(check.artefact.title, "Ready to publish");
+  assertEquals(ready.artefact.title, "Ready to publish");
   assertEquals(world.experiences.get(EXP_ID)!.status, "draft", "nothing published by itself");
   const publish = await answer(world, store, (r) => choice(r, "publish"));
   assert(publish.kind === "propose");
   assertEquals(publish.tool_name, "publish_experience");
+  assertEquals(publish.tool_args, {
+    event_id: EXP_ID,
+    expected_revision: "2026-11-02T10:00:00.000000+00:00",
+  });
+});
+
+Deno.test("P9: a paid experience on a brand that can't sell yet is saved, and publishing is refused in plain words", async () => {
+  const world = freshWorld();
+  const store = new MemoryStore();
+  const proposed = await experienceToProposal(world, store);
+  assert(proposed.kind === "propose");
+  const next = await confirm(
+    world,
+    store,
+    "create_experience",
+    () => world.experiences.set(EXP_ID, {
+      ...experienceFrom(proposed.tool_args),
+      whole_price_cents: 2_500_000,
+    }),
+    { event: { id: EXP_ID } },
+  );
+  assert(next.kind === "artefact");
+  assertMatch(next.artefact.text, /Can't publish yet: payment setup isn't finished/);
+  assert(!next.artefact.options.some((o) => o.id === "publish"));
+  world.canSell = true;
+  const check = await answer(world, store, (r) => choice(r, "check"));
+  assert(check.kind === "artefact");
+  assertEquals(check.artefact.title, "Ready to publish");
+  const later = await answer(world, store, (r) => choice(r, "later"));
+  assertEquals(later.kind, "completed");
 });
 
 Deno.test("P9: an experience is capped at five stops and its description cap matches its message", async () => {
@@ -1241,17 +1280,24 @@ Deno.test("P9: a venue create's bare id result becomes the run's subject", () =>
 });
 
 Deno.test("P9: experience args are refused without every owner fact (no defaults fill a gap)", () => {
-  assertEquals(
-    createExperienceArgs(BRAND, {
-      title: "T",
-      description: "Long enough here",
-      intents: ["romantic"],
-      stops: [],
-      timezone: "Africa/Lagos",
-      timezone_source: "brand",
-      start_at: "2027-01-01T18:00:00Z",
-      end_at: "2027-01-01T21:00:00Z",
-    }),
-    null,
-  );
+  const stop = {
+    name: "A",
+    description: "B",
+    place: { ...MARKET },
+  };
+  const facts = {
+    title: "T",
+    description: "Long enough here",
+    intents: ["romantic"],
+    stops: [stop],
+    timezone: "Africa/Lagos",
+    timezone_source: "brand" as const,
+    start_at: "2027-01-01T18:00:00Z",
+    end_at: "2027-01-01T21:00:00Z",
+    price: "free" as const,
+  };
+  assert(createExperienceArgs(BRAND, facts) !== null);
+  assertEquals(createExperienceArgs(BRAND, { ...facts, stops: [] }), null);
+  // No price chosen: no draft (the server would store it as free).
+  assertEquals(createExperienceArgs(BRAND, { ...facts, price: null }), null);
 });
