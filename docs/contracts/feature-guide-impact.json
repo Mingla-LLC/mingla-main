@@ -622,7 +622,8 @@
         "mingla-business/src/utils/homeBrandReadiness.ts",
         "packages/location-input/src/MapboxAddressInput.tsx",
         "mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx",
-        "mingla-business/src/components/location/LazyAddressMapPreview.tsx"
+        "mingla-business/src/components/location/LazyAddressMapPreview.tsx",
+        "packages/offering-rendering/GlassBlur.tsx"
       ]
     }
   ]
