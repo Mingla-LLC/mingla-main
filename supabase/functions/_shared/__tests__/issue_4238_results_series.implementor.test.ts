@@ -68,37 +68,135 @@ Deno.test("#4238 a day with visits but no spend row keeps spend null, not 0", as
   assertEquals(daily[0].page_visits, 5);
 });
 
-Deno.test("#4238 list summary: month spend, budgets, results and a 30-day sparkline", () => {
+type ListedCampaigns = Parameters<typeof buildHostListSummary>[0]["campaigns"];
+const summaryOf = (over: Partial<Parameters<typeof buildHostListSummary>[0]>) =>
+  buildHostListSummary({
+    campaigns: [] as unknown as ListedCampaigns,
+    rawCampaigns: [],
+    spend: [],
+    conversions: [],
+    allocations: [],
+    nowIso: "2026-11-02T12:00:00Z",
+    timeZone: "UTC",
+    convert: () => Promise.resolve(null),
+    ...over,
+  });
+
+Deno.test("#4238 list summary: month spend, budgets, results and a 30-day sparkline", async () => {
   const campaigns = [{
     currency: "USD",
     lifecycle: "live",
     campaign_ids: ["c1"],
     cap_cents: 10_000,
     primary_result_count: 3,
-  }] as unknown as Parameters<typeof buildHostListSummary>[0]["campaigns"];
-  const summary = buildHostListSummary({
+  }] as unknown as ListedCampaigns;
+  const summary = (await summaryOf({
     campaigns,
+    rawCampaigns: [{ id: "c1", platform: "meta", plan_version_id: "v1" }],
     spend: [
       { campaign_id: "c1", spend_date: "2026-11-01", spend_cents: 400, currency: "USD" },
       { campaign_id: "c1", spend_date: "2026-10-20", spend_cents: 100, currency: "USD" },
     ],
-    nowIso: "2026-11-02T12:00:00Z",
-  })!;
+    conversions: [
+      { campaign_id: "c1", created_at: "2026-11-01T09:00:00Z" },
+      { campaign_id: "c1", created_at: "2026-11-02T09:00:00Z" },
+      { campaign_id: "c1", created_at: "2026-10-30T09:00:00Z" },
+    ],
+  }))!;
   assertEquals(summary.spent_cents, 400, "this month only");
   assertEquals(summary.budget_cents, 10_000);
-  assertEquals(summary.results, 3);
+  assertEquals(summary.results, 2, "only this calendar month's results");
   assertEquals(summary.daily_spend.length, 30);
   assertEquals(summary.daily_spend.at(-2), { day: "2026-11-01", cents: 400 });
-  assertEquals(buildHostListSummary({ campaigns: [] as never, spend: [], nowIso: "2026-11-02T00:00:00Z" }), null);
+  assertEquals(await summaryOf({}), null);
 });
 
-Deno.test("#4238 list summary never sums mixed currencies", () => {
-  const campaigns = [{ currency: "NGN", lifecycle: "live", campaign_ids: ["c1"], cap_cents: 1, primary_result_count: 0 }] as never;
-  const summary = buildHostListSummary({
+// #4238 P1-3: Meta bills in USD; the brand's card reads NGN at the plan's
+// frozen rate, exactly like the detail page (cumulative conversion).
+Deno.test("#4238 list summary converts provider spend at each plan's frozen rate", async () => {
+  const campaigns = [{ currency: "NGN", lifecycle: "live", campaign_ids: ["c1", "c2"], cap_cents: 5_000_000 }] as unknown as ListedCampaigns;
+  const calls: string[] = [];
+  const summary = (await summaryOf({
     campaigns,
-    spend: [{ campaign_id: "c1", spend_date: "2026-11-01", spend_cents: 400, currency: "USD" }],
-    nowIso: "2026-11-02T12:00:00Z",
-  })!;
-  assertEquals(summary.spent_cents, null);
-  assertEquals(summary.daily_spend.at(-2)?.cents, null);
+    rawCampaigns: [
+      { id: "c1", platform: "meta", plan_version_id: "v1" },
+      { id: "c2", platform: "snapchat", plan_version_id: "v1" },
+    ],
+    spend: [
+      { campaign_id: "c1", spend_date: "2026-10-31", spend_cents: 100, currency: "USD" },
+      { campaign_id: "c1", spend_date: "2026-11-01", spend_cents: 333, currency: "USD" },
+      { campaign_id: "c2", spend_date: "2026-11-02", spend_cents: 1_000, currency: "NGN" },
+    ],
+    allocations: [
+      { plan_version_id: "v1", platform: "meta", host_currency: "NGN", provider_currency: "USD", fx_snapshot_id: "fx-meta" },
+      { plan_version_id: "v1", platform: "snapchat", host_currency: "NGN", provider_currency: "NGN", fx_snapshot_id: null },
+    ],
+    convert: ({ amount, source, target, snapshotId }) => {
+      calls.push(`${amount}:${source}->${target}@${snapshotId}`);
+      return Promise.resolve(Math.round(amount * 1550.5));
+    },
+  }))!;
+  // Meta: convert(433) - convert(100); Snapchat already NGN.
+  assertEquals(summary.spent_cents, Math.round(433 * 1550.5) - Math.round(100 * 1550.5) + 1_000);
+  assertEquals(summary.currency, "NGN");
+  assertEquals(calls.sort(), ["100:USD->NGN@fx-meta", "433:USD->NGN@fx-meta"]);
+  assertEquals(summary.daily_spend.at(-1), { day: "2026-11-02", cents: 1_000 });
+  assertEquals(summary.daily_spend.at(-2)?.cents, Math.round(333 * (Math.round(433 * 1550.5) / 433)));
+});
+
+Deno.test("#4238 list summary hides spend when any campaign can't be converted", async () => {
+  const campaigns = [{ currency: "NGN", lifecycle: "live", campaign_ids: ["c1", "c2"], cap_cents: 1 }] as unknown as ListedCampaigns;
+  const base = {
+    campaigns,
+    rawCampaigns: [
+      { id: "c1", platform: "meta", plan_version_id: "v1" },
+      { id: "c2", platform: "snapchat", plan_version_id: "v1" },
+    ],
+    spend: [
+      { campaign_id: "c1", spend_date: "2026-11-01", spend_cents: 400, currency: "USD" },
+      { campaign_id: "c2", spend_date: "2026-11-01", spend_cents: 900, currency: "NGN" },
+    ],
+  };
+  // No allocation (no frozen rate) for Meta: hidden, not "NGN 900".
+  const noRate = (await summaryOf({ ...base, convert: ({ amount }) => Promise.resolve(amount * 1500) }))!;
+  assertEquals(noRate.spent_cents, null);
+  assert(noRate.daily_spend.every((d) => d.cents === null));
+  // A failed conversion: hidden.
+  const failed = (await summaryOf({
+    ...base,
+    allocations: [{ plan_version_id: "v1", platform: "meta", host_currency: "NGN", provider_currency: "USD", fx_snapshot_id: "fx" }],
+    convert: () => Promise.resolve(null),
+  }))!;
+  assertEquals(failed.spent_cents, null);
+  // Mixed host currencies across ads: hidden.
+  const mixed = (await summaryOf({
+    ...base,
+    campaigns: [
+      { currency: "NGN", lifecycle: "live", campaign_ids: ["c1"], cap_cents: 1 },
+      { currency: "GBP", lifecycle: "live", campaign_ids: ["c2"], cap_cents: 1 },
+    ] as unknown as ListedCampaigns,
+  }))!;
+  assertEquals(mixed.spent_cents, null);
+});
+
+Deno.test("#4238 list summary counts the month in the brand's time zone", async () => {
+  const campaigns = [{ currency: "NGN", lifecycle: "live", campaign_ids: ["c1"], cap_cents: 1 }] as unknown as ListedCampaigns;
+  // 23:30 UTC on 31 Oct is 00:30 on 1 Nov in Lagos (UTC+1): November there.
+  const summary = (await summaryOf({
+    campaigns,
+    rawCampaigns: [{ id: "c1", platform: "meta", plan_version_id: "v1" }],
+    nowIso: "2026-10-31T23:30:00Z",
+    timeZone: "Africa/Lagos",
+    spend: [
+      { campaign_id: "c1", spend_date: "2026-10-31", spend_cents: 700, currency: "NGN" },
+      { campaign_id: "c1", spend_date: "2026-11-01", spend_cents: 50, currency: "NGN" },
+    ],
+    conversions: [
+      { campaign_id: "c1", created_at: "2026-10-31T23:10:00Z" }, // 00:10 1 Nov Lagos
+      { campaign_id: "c1", created_at: "2026-10-31T22:50:00Z" }, // 23:50 31 Oct Lagos
+    ],
+  }))!;
+  assertEquals(summary.spent_cents, 50, "October's spend is last month in Lagos");
+  assertEquals(summary.results, 1);
+  assertEquals(summary.daily_spend.at(-1), { day: "2026-11-01", cents: 50 });
 });

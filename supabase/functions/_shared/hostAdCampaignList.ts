@@ -368,59 +368,152 @@ export async function buildHostDailySeries(input: {
   return { daily, by_platform_spend };
 }
 
+/** "2026-11-02" for an instant in a time zone (UTC when the zone is unknown). */
+export function dayInZone(instantIso: string, timeZone: string | null): string {
+  const date = new Date(instantIso);
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timeZone || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/** Converts provider minor units into host minor units at a frozen rate. */
+export type ListSummaryConvert = (input: {
+  amount: number;
+  source: string;
+  target: string;
+  snapshotId: string | null;
+}) => Promise<number | null>;
+
 /**
- * The Host Ads list summary: this calendar month's spend against the budgets
- * of the ads running in it, results, and a 30-day daily spend sparkline in
- * host currency (null on a day whose spend is in another currency).
+ * The Host Ads list summary ("This month" card), in the brand currency.
+ *
+ * #4238 P1-3: provider-currency spend (Meta bills in USD) is converted with
+ * each plan's frozen exchange rate, the same way the detail page converts
+ * host_spend_equivalent_cents: the campaign's cumulative total is converted,
+ * and this month is that minus the converted total before the month. If any
+ * campaign's spend can't be converted (no allocation, mixed currencies, a
+ * failed conversion), spend is hidden (null) rather than shown partial.
+ * Months, days and results are counted in the brand's time zone. Results are
+ * only this calendar month's.
  */
-export function buildHostListSummary(input: {
+export async function buildHostListSummary(input: {
   campaigns: ReturnType<typeof buildHostCampaignList>;
+  /** ad_campaigns rows: id, platform, plan_version_id. */
+  rawCampaigns: Row[];
   spend: Row[];
+  /** ad_conversions rows: campaign_id, created_at. */
+  conversions: Row[];
+  /** ad_plan_provider_allocations rows. */
+  allocations: Row[];
   nowIso: string;
-}): {
+  timeZone: string | null;
+  convert: ListSummaryConvert;
+}): Promise<{
   currency: string | null;
   spent_cents: number | null;
   budget_cents: number;
   results: number;
   daily_spend: { day: string; cents: number | null }[];
-} | null {
+} | null> {
   if (input.campaigns.length === 0) return null;
-  const currencies = unique(input.campaigns.map((row) => row.currency));
+  const currencies = unique(input.campaigns.map((row) => row.currency))
+    .map((code) => code.toUpperCase());
   const currency = currencies.length === 1 ? currencies[0] : null;
-  const now = new Date(input.nowIso);
-  const monthStart = `${input.nowIso.slice(0, 7)}-01`;
-  const start = new Date(now.getTime() - 29 * 86_400_000).toISOString().slice(0, 10);
-  const daily: { day: string; cents: number | null }[] = [];
-  for (let i = 0; i < 30; i += 1) {
-    const day = new Date(Date.parse(`${start}T00:00:00Z`) + i * 86_400_000)
-      .toISOString().slice(0, 10);
-    const rows = input.spend.filter((row) => text(row.spend_date) === day);
-    const foreign = rows.some((row) => text(row.currency)?.toUpperCase() !== currency);
-    daily.push({
-      day,
-      cents: !currency || foreign
-        ? (rows.length === 0 && currency ? 0 : null)
-        : rows.reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0),
-    });
+  const today = dayInZone(input.nowIso, input.timeZone);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const windowStartMs = Date.parse(`${today}T00:00:00Z`) - 29 * 86_400_000;
+  const windowDays = Array.from({ length: 30 }, (_, i) =>
+    new Date(windowStartMs + i * 86_400_000).toISOString().slice(0, 10)
+  );
+  const dayHost = new Map<string, number>(windowDays.map((day) => [day, 0]));
+  let monthHost: number | null = currency ? 0 : null;
+
+  for (const campaign of input.rawCampaigns) {
+    if (monthHost === null) break;
+    const id = String(campaign.id);
+    const rows = input.spend.filter((row) => String(row.campaign_id) === id);
+    if (rows.length === 0) continue;
+    const amounts = rows.map((row) => integer(row.spend_cents));
+    const sources = unique(rows.map((row) => row.currency)).map((code) => code.toUpperCase());
+    if (amounts.some((value) => value === null) || sources.length !== 1) {
+      monthHost = null;
+      break;
+    }
+    const source = sources[0];
+    let snapshotId: string | null = null;
+    if (source !== currency) {
+      const allocation = input.allocations.find((row) =>
+        text(row.plan_version_id) === text(campaign.plan_version_id) &&
+        text(row.platform) === text(campaign.platform)
+      );
+      if (
+        !allocation || !text(campaign.plan_version_id) ||
+        text(allocation.provider_currency)?.toUpperCase() !== source ||
+        text(allocation.host_currency)?.toUpperCase() !== currency
+      ) {
+        monthHost = null;
+        break;
+      }
+      snapshotId = text(allocation.fx_snapshot_id);
+    }
+    const convert = (amount: number) =>
+      amount === 0
+        ? Promise.resolve(0)
+        : source === currency
+        ? Promise.resolve(amount)
+        : input.convert({ amount, source, target: currency!, snapshotId });
+    const total = rows.reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0);
+    const before = rows.filter((row) => (text(row.spend_date) ?? "") < monthStart)
+      .reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0);
+    const [totalHost, beforeHost] = await Promise.all([convert(total), convert(before)]);
+    if (
+      totalHost === null || beforeHost === null ||
+      !Number.isSafeInteger(totalHost) || !Number.isSafeInteger(beforeHost)
+    ) {
+      monthHost = null;
+      break;
+    }
+    monthHost += totalHost - beforeHost;
+    // The sparkline: each day's provider spend at this campaign's frozen rate.
+    const rate = total > 0 ? totalHost / total : 0;
+    for (const row of rows) {
+      const day = text(row.spend_date);
+      if (day && dayHost.has(day)) {
+        dayHost.set(day, (dayHost.get(day) ?? 0) + Math.round((integer(row.spend_cents) ?? 0) * rate));
+      }
+    }
   }
-  const monthRows = input.spend.filter((row) =>
-    (text(row.spend_date) ?? "") >= monthStart
+
+  const monthCampaignIds = new Set(
+    input.spend.filter((row) => (text(row.spend_date) ?? "") >= monthStart)
+      .map((row) => String(row.campaign_id)),
   );
-  const spentForeign = monthRows.some((row) =>
-    text(row.currency)?.toUpperCase() !== currency
-  );
-  const monthCampaignIds = new Set(monthRows.map((row) => String(row.campaign_id)));
   const running = input.campaigns.filter((row) =>
     ["live", "scheduled", "in_review"].includes(String(row.lifecycle)) ||
     row.campaign_ids.some((id) => monthCampaignIds.has(id))
   );
+  const listedIds = new Set(input.campaigns.flatMap((row) => row.campaign_ids));
+  const results = input.conversions.filter((row) => {
+    const at = text(row.created_at);
+    return listedIds.has(String(row.campaign_id)) && !!at &&
+      Number.isFinite(Date.parse(at)) &&
+      dayInZone(at, input.timeZone).slice(0, 7) === today.slice(0, 7);
+  }).length;
   return {
     currency,
-    spent_cents: !currency || spentForeign
-      ? null
-      : monthRows.reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0),
+    spent_cents: monthHost,
     budget_cents: running.reduce((sum, row) => sum + (row.cap_cents ?? 0), 0),
-    results: running.reduce((sum, row) => sum + row.primary_result_count, 0),
-    daily_spend: daily,
+    results,
+    daily_spend: windowDays.map((day) => ({
+      day,
+      cents: monthHost === null ? null : dayHost.get(day) ?? 0,
+    })),
   };
 }

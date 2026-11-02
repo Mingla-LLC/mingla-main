@@ -249,12 +249,12 @@ serve(async (req: Request): Promise<Response> => {
           typeof row.plan_version_id === "string" ? [row.plan_version_id] : [],
       )),
     ];
-    const [spend, conversions, adSets, versions, plans] = await Promise.all([
+    const [spend, conversions, adSets, versions, plans, allocations, brandRow] = await Promise.all([
       supabase.from("ad_spend_daily").select(
         "campaign_id,spend_cents,impressions,clicks,currency,spend_date",
       ).in("campaign_id", campaignIds),
       supabase.from("ad_conversions").select(
-        "campaign_id,value_cents,currency",
+        "campaign_id,value_cents,currency,created_at",
       ).in(
         "campaign_id",
         campaignIds,
@@ -273,9 +273,17 @@ serve(async (req: Request): Promise<Response> => {
           "id,current_version_id,state,updated_at",
         ).in("current_version_id", versionIds)
         : Promise.resolve({ data: [], error: null }),
+      // #4238 P1-3: the frozen rates the "This month" card converts with.
+      versionIds.length > 0
+        ? supabase.from("ad_plan_provider_allocations").select(
+          "plan_version_id,platform,host_currency,provider_currency,fx_snapshot_id",
+        ).in("plan_version_id", versionIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from("brands").select("default_timezone").eq("id", brandId)
+        .maybeSingle(),
     ]);
     const listError = spend.error ?? conversions.error ?? adSets.error ??
-      versions.error ?? plans.error;
+      versions.error ?? plans.error ?? allocations.error;
     if (listError) {
       return json({ error: "apply_failed", detail: listError.message }, 502);
     }
@@ -303,10 +311,29 @@ serve(async (req: Request): Promise<Response> => {
       ok: true,
       campaigns: listed,
       // #4238: the Ads list summary card (null when there are no ads).
-      summary: buildHostListSummary({
+      summary: await buildHostListSummary({
         campaigns: listed,
+        rawCampaigns: campaigns,
         spend: spend.data ?? [],
+        conversions: conversions.data ?? [],
+        allocations: allocations.data ?? [],
         nowIso,
+        timeZone: typeof brandRow.data?.default_timezone === "string"
+          ? brandRow.data.default_timezone
+          : null,
+        convert: async ({ amount, source, target, snapshotId }) => {
+          const { data: converted, error: conversionError } = await supabase
+            .rpc("ad_fx_convert_frozen_minor", {
+              p_amount: amount,
+              p_source: source,
+              p_target: target,
+              p_snapshot: snapshotId,
+            });
+          const value = Number(converted);
+          return conversionError || !Number.isSafeInteger(value) || value < 0
+            ? null
+            : value;
+        },
       }),
     });
   }
