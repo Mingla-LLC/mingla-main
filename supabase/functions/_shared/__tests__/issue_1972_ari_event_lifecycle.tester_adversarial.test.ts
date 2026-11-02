@@ -60,7 +60,8 @@ Deno.test("#1972 cancel and expiry return terminal state only after winning the 
   );
   const expiry = region(
     confirm,
-    'if (\n    pending.status === "pending"',
+    // #3355 P1 (D-14): expiry is decided by the database clock.
+    "if (expiredByDbClock) {",
     "const finalArgs",
   );
   for (
@@ -80,7 +81,8 @@ Deno.test("#1972 cancel and expiry return terminal state only after winning the 
 Deno.test("#1972 expiry cannot strand the proposal without a terminal receipt", () => {
   const expiry = region(
     confirm,
-    'if (\n    pending.status === "pending"',
+    // #3355 P1 (D-14): expiry is decided by the database clock.
+    "if (expiredByDbClock) {",
     "const finalArgs",
   );
   const stateWrite = expiry.indexOf('.update({ status: "expired" })');

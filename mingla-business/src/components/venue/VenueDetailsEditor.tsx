@@ -517,6 +517,8 @@ export function VenueDetailsEditor({
             selectionState={selectionState}
             selectedLabel={identityDraft.addressText}
             proximitySources={{
+              // #3355 — the brand's country ranks when the venue has no point.
+              brandPoint: { countryCode: brandCountryCode },
               draftPoint: {
                 lat: identityDraft.address?.lat ?? venue.lat,
                 lng: identityDraft.address?.lng ?? venue.lng,

@@ -332,7 +332,14 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the Extras schema migration the same way.
 // #4226: register the host contacts people migration and its proof the same way;
 // the #1995 blast suite now watches packages/brand-rendering/emailFooter.ts.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "837cbf00a3ebe36614bd86976c0bfbdc22fd05a39414d5d0caafa6558db34c3b";
+// #3281: register the webhook fee migration the same way.
+// #3281: register the Extras checkout migration and its proof the same way.
+// #3355 / #2830: register the renumbered #3355 and #2830 migrations and their
+// proofs the same way, plus the exact-file exclusion of brand readiness,
+// paid-tier terms and event seed truth from the deliberately pre-#1931 replay.
+// #3355: the Ari flow runs migration joins that exact-file exclusion.
+// #3281: register the Extras authoring migration and its proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f302ccdf542dfa2d0b0315890180baa5bebe1b46b240bd2ae7fb069c500a19da";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

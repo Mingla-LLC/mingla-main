@@ -259,6 +259,9 @@ jest.mock("../../../hooks/useAgentChat", () => ({
     // `chat.setSurface is not a function` before a single padding assertion
     // ran. Kept in the same order the hook returns them.
     setSurface: jest.fn(),
+    // #2830 — AriChatScreen sets the Website setup workflow context on mount.
+    // Mock-surface widening only; no clearance assertion changes.
+    setWorkflowContext: jest.fn(),
     activeTurn: null,
     stopTurn: jest.fn(),
     retryTurn: jest.fn(),

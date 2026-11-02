@@ -11,7 +11,9 @@ import { runScenarios } from "./run-scenarios.mjs";
 
 function option(name, fallback = null) {
   const prefix = `--${name}=`;
-  return process.argv.find((value) => value.startsWith(prefix))?.slice(prefix.length) ?? fallback;
+  return process.argv.find((value) => value.startsWith(prefix))?.slice(
+    prefix.length,
+  ) ?? fallback;
 }
 
 const supabaseUrl = process.env.ARI_EVAL_SUPABASE_URL;
@@ -21,28 +23,39 @@ const mode = option("mode", "local_live");
 const proposalId = option("proposal-id");
 const candidateVersionId = option("candidate-version-id");
 const ids = option("ids")?.split(",").filter(Boolean) ?? null;
-const maxCalls = Number(option("max-calls", "70"));
+const maxCalls = Number(option("max-calls", "450"));
 const traceFile = option("trace-file");
 
 if (!supabaseUrl || !anonKey || !adminToken) {
-  throw new Error("ARI_EVAL_SUPABASE_URL, ARI_EVAL_ANON_KEY and ARI_EVAL_ADMIN_TOKEN are required");
+  throw new Error(
+    "ARI_EVAL_SUPABASE_URL, ARI_EVAL_ANON_KEY and ARI_EVAL_ADMIN_TOKEN are required",
+  );
 }
 if (!["deterministic", "model", "local_live", "pilot"].includes(mode)) {
-  throw new Error("Governed behavioral mode must be deterministic, model, local_live or pilot");
+  throw new Error(
+    "Governed behavioral mode must be deterministic, model, local_live or pilot",
+  );
 }
 
 async function rpc(name, args) {
-  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/${name}`, {
-    method: "POST",
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${adminToken}`,
-      "content-type": "application/json",
+  const response = await fetch(
+    `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/${name}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        authorization: `Bearer ${adminToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(args),
     },
-    body: JSON.stringify(args),
-  });
+  );
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(`${name}: ${body?.message ?? body?.code ?? response.status}`);
+  if (!response.ok) {
+    throw new Error(
+      `${name}: ${body?.message ?? body?.code ?? response.status}`,
+    );
+  }
   return body;
 }
 
@@ -68,7 +81,9 @@ try {
 } catch (error) {
   await rpc("ari_admin_cancel_evaluation", {
     p_run_id: run.id,
-    p_reason: `Local runner stopped before completion: ${String(error?.message ?? error).slice(0, 300)}`,
+    p_reason: `Local runner stopped before completion: ${
+      String(error?.message ?? error).slice(0, 300)
+    }`,
   }).catch(() => undefined);
   throw error;
 }

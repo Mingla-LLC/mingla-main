@@ -10,7 +10,6 @@ import { recordApiCall } from "./apiHealthLog.ts";
 import { sanitizeGeminiContents } from "./agentGeminiContents.ts";
 // issue #3526 — model id + thinking level come from the single source.
 import {
-  GEMINI_MODEL_ID,
   GEMINI_THINKING_LEVEL_MINIMAL,
   geminiErrorFingerprint,
   geminiGenerateContentUrl,
@@ -19,6 +18,10 @@ import {
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
 const LOCAL_MAX_OUTPUT_TOKENS = 384;
+const LOCAL_CONTEXT_TOKENS = 32_768;
+// Keep an awaited local inference inside agent-chat's 115 s test budget so a
+// slow or wedged Ollama request cannot strand the chat beyond the loop deadline.
+export const ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS = 100_000;
 const TEMPERATURE = 0.3;
 
 export interface GeminiToolDef {
@@ -750,20 +753,6 @@ interface OllamaResponse {
   eval_count?: number;
 }
 
-function modelVersionFromEnvironment(): string {
-  try {
-    return Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
-      ? `local:${Deno.env.get("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct"}`
-      : GEMINI_MODEL_ID;
-  } catch (error) {
-    if (
-      error instanceof Deno.errors.PermissionDenied ||
-      (error instanceof Error && error.name === "NotCapable")
-    ) return GEMINI_MODEL_ID;
-    throw error;
-  }
-}
-
 function localModelConfig(): { baseUrl: string; modelId: string } | null {
   if (Deno.env.get("ARI_LOCAL_MODEL_ENABLED") !== "true") return null;
 
@@ -880,6 +869,7 @@ async function callLocalOllama(
   const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       model: config.modelId,
       stream: false,
@@ -900,6 +890,10 @@ async function callLocalOllama(
       })),
       options: {
         temperature: TEMPERATURE,
+        // Ari's tool contract plus a live setup plan can exceed Ollama's
+        // 4K default before the user sends an answer. Keep the local lane at
+        // the same practical context scale as the production reasoning path.
+        num_ctx: LOCAL_CONTEXT_TOKENS,
         num_predict: LOCAL_MAX_OUTPUT_TOKENS,
       },
     }),
@@ -940,7 +934,6 @@ async function callLocalOllama(
   };
 }
 
-// Keep importing the provider compiler permission-free. Runtime calls still
-// read the full local-model configuration, but schema and contract consumers
-// can inspect Ari's production model identity without --allow-env.
-export const ARI_MODEL_VERSION = modelVersionFromEnvironment();
+// Ari's recorded model identity lives in the leaf module (#3355) so callers
+// that only stamp it do not import this provider wrapper.
+export { ARI_MODEL_VERSION } from "./ariModelVersion.ts";

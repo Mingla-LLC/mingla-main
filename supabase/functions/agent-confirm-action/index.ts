@@ -58,12 +58,42 @@ import {
   type PostApprovalContinuation,
 } from "../_shared/agentPostApproval.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
+import { websiteSetupApprovedWriteFollowup } from "../_shared/agentWebsiteSetup.ts";
+import {
+  ariProposalExpiredResponse,
+  expiredProposalAnswer,
+} from "./proposalExpiry.ts";
+import {
+  isAmbiguousExecutionFailure,
+  toolErrorHttpStatus,
+} from "./executionOutcome.ts";
+import {
+  claimPendingForConfirm,
+  pendingExpiredByDbClock,
+} from "./pendingClaim.ts";
+import { retypeAriRefusal } from "../_shared/agentToolHelpers.ts";
+import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
+import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts";
+import {
+  type ConfirmNext,
+  flowNextAfterConfirm,
+  liveFlowRunFor,
+  websiteSetupNextAfterConfirm,
+} from "./confirmNext.ts";
+import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
   ari_ui?: unknown;
+  /**
+   * #3355 P3: "server" = this Host never authors a continuation message; the
+   * confirm response carries the next step instead.
+   */
+  continuation?: "server";
+  /** #3355 P3: confirmed from Website setup — return the next gap. */
+  workflow_context?: "website_setup";
 }
 
 type Response_ =
@@ -75,6 +105,9 @@ type Response_ =
     followup_text?: string;
     next_pending_action_id?: string;
     task_state_revision?: number;
+    /** #3355 P3: the next step, already persisted as an assistant row. */
+    next?: ConfirmNext | null;
+    flow_state?: FlowStateView | null;
   }
   | { kind: "cancelled"; pending_action_id: string }
   | {
@@ -151,6 +184,9 @@ async function appendPendingActivity(args: {
   }
 }
 
+// I-ARI-RECEIPT-SET-COMPLETE (#2830): every Ari write whose SQL commits through
+// agent_operation_receipt_begin is in this set. Declared and enforced in
+// __tests__/issue_2830_receipt_set_and_expiry.implementor.test.ts.
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "create_brand",
   "create_event",
@@ -201,6 +237,9 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "update_rsvp_contribution_settings",
   "set_rsvp_guest_status",
   "refund_rsvp_contribution",
+  // Issue #2830 — ari_update_brand_context begins and completes the shared
+  // #1972 operation receipt itself, so its ambiguous retry must replay too.
+  "update_brand_context",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -273,79 +312,9 @@ async function terminalizePending(
   };
 }
 
-/**
- * The HTTP status for a `ToolError` raised by a tool executor.
- *
- * 4xx = recoverable validation errors that the user can resolve by adjusting
- * their request (rename the brand, pick a different event, choose a different
- * visibility). 5xx is reserved for genuine server-side issues.
- *
- * Hoisted out of the catch block so it is CALLABLE by a test. Per #2113 a check
- * that can only read source text carries no information; the status mapping is
- * proven by executing this function, in
- * `supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts`.
- * The mapping itself is unchanged apart from the one branch named below.
- */
-export function toolErrorHttpStatus(code: string): number {
-  if (
-    ["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(code)
-  ) return 403;
-  if (["ROLE_CHECK_UNAVAILABLE", "PAYOUT_CHECK_FAILED"].includes(code)) {
-    return 503;
-  }
-  if (code === "INVALID_ARGS" || code === "SLUG_TAKEN") return 400;
-  if (
-    [
-      "PAYOUT_NOT_READY",
-      "TAX_REGISTRATION_REQUIRED",
-      "EVENT_CURRENCY_REQUIRED",
-    ].includes(code)
-  ) return 409;
-  // ORCH-1103 — delete refused because the brand has upcoming/live events.
-  // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
-  if (code === "DELETE_BLOCKED_BY_EVENTS") return 409;
-  // #1981 — paid cancel refused; organiser clears it by calling refund_order
-  // instead (same Host money-screen routing). Conflict / adjust-request → 409,
-  // never 500 (safe_to_retry).
-  if (code === "PAID_ORDER_MUST_REFUND") return 409;
-  if (code === "REFUND_PREVIEW_UNPRICED") return 409;
-  if (code === "DOMAIN_ACTION_REFUSED") return 409;
-  // issue #3645 — a paid publish by a member who has not accepted the Organiser
-  // Terms. Refused before any write; the member clears it by accepting in the
-  // app. A conflict the user resolves elsewhere, never a 500 (safe_to_retry).
-  if (code === "ORGANISER_TERMS_REQUIRED") return 409;
-  // issue #2592 — an optimistic-concurrency conflict. The resource moved under
-  // the caller, so the request is CORRECTLY refused and the caller resolves it
-  // by re-reading the current version. That is the same 409 the Edge-owned
-  // version-conflict siblings already return (`manage-stay-inventory`,
-  // `stay-reservations`, `manage-brand-discovery-currency` all map their stable
-  // conflict literal to 409). Before this branch a stale version fell through
-  // to 500 — a server fault, and the one status the Ari envelope contract
-  // classifies `safe_to_retry: true`, which is precisely what a deterministic
-  // caller mistake must never be told.
-  if (code === "VERSION_CONFLICT") return 409;
-  // issue #2009 (BINDING SPEC AMENDMENT 3B, Defect 4) — `business_set_event_visibility`
-  // refuses every transition entering or leaving Private while #1931's private-access
-  // release stays frozen. This is a KNOWN, EXPECTED, CORRECTLY-REFUSED request, not a
-  // server fault, and it previously fell through to 500.
-  //
-  // 400 rather than 403/409, to match this map's own semantics: the organiser resolves
-  // it by adjusting the requested value — the shipped copy is literally "Choose Public
-  // or Unlisted for now" — which is exactly the SLUG_TAKEN shape (a value the server
-  // will not accept in its current state). 403 is reserved here for access denial, and
-  // 409 for a conflict the user clears by acting on OTHER resources first
-  // (cancel/transfer the brand's events), neither of which describes this.
-  //
-  // CASE-INSENSITIVE ON PURPOSE, and this is the whole reason the branch works.
-  // Amendment 3B names the RPC's stable code `private_visibility_unavailable`, but the
-  // code that actually ARRIVES here is the UPPERCASED one: agentTools.ts's
-  // `issue2009VisibilityToolError` builds `new ToolError(code.toUpperCase(), copy)`.
-  // A branch matching only the lowercase literal would read correctly, pass a
-  // source-text check, and never once fire — the exact unfalsifiable-check bug class
-  // #2113 exists to stop. One condition, one branch, either spelling.
-  if (code.toUpperCase() === "PRIVATE_VISIBILITY_UNAVAILABLE") return 400;
-  return 500;
-}
+// The status map and the ambiguity decision live in executionOutcome.ts so
+// tests can execute them without starting this server.
+export { toolErrorHttpStatus } from "./executionOutcome.ts";
 
 interface ConversationTaskRow {
   id: string;
@@ -740,6 +709,15 @@ async function handleConfirmAction(args: {
   // CONFIRM path. `executing` is deliberately recoverable: the prior request
   // may have committed the domain write and lost its HTTP response. The domain
   // receipt turns this retry into a read of the committed result.
+  // #3355 P1: a newer proposal in this chat replaced this one. Nothing ran;
+  // the owner reviews the newest card instead.
+  if (pending.status === "superseded") {
+    return errorResponse(
+      409,
+      "STALE",
+      "A newer version of this change is waiting for you.",
+    );
+  }
   if (
     pending.status !== "pending" &&
     !(pending.status === "executing" &&
@@ -751,10 +729,24 @@ async function handleConfirmAction(args: {
       `Cannot confirm — current status: ${pending.status}`,
     );
   }
-  if (
-    pending.status === "pending" &&
-    new Date(pending.expires_at).getTime() < Date.now()
-  ) {
+  // #3355 P1 (D-14): the database clock decides expiry, not this worker's.
+  let expiredByDbClock = false;
+  if (pending.status === "pending") {
+    try {
+      expiredByDbClock = await pendingExpiredByDbClock(pendingStateClient, {
+        id: pending.id,
+        userId,
+        expiresAt: pending.expires_at,
+      });
+    } catch {
+      return errorResponse(
+        503,
+        "DEPENDENCY_UNAVAILABLE",
+        "Ari couldn't check this approval right now.",
+      );
+    }
+  }
+  if (expiredByDbClock) {
     // META-ORCH-1009 Sub-E (C2, SPEC §11.4): an expired Hub proposal must NOT
     // dead-end with a 410 "Ask Ari" redirect — this Hub flow never uses Ari.
     // Lazy-expire (preserves the I-ARI-PENDING-STATE-MACHINE pending->expired
@@ -814,6 +806,11 @@ async function handleConfirmAction(args: {
           );
         }
       }
+    }
+    if (expiredProposalAnswer(pending.source) === "ari_proposal_expired") {
+      // #2830 (D-3) — never a silent 200: the Ari Host used to clear the card
+      // and report success for an approval that saved nothing.
+      return ariProposalExpiredResponse();
     }
     return jsonResponse(200, {
       kind: "expired_regenerate",
@@ -1091,19 +1088,39 @@ async function handleConfirmAction(args: {
         );
       }
     }
-    const { data: flipped, error: flipErr } = await pendingStateClient
-      .from("agent_pending_actions")
-      .update({
+    // #3355 P1 (D-14): claim on the database clock. An approval that expired
+    // between the probe above and this flip is refused, never executed.
+    let claim: Awaited<ReturnType<typeof claimPendingForConfirm>>;
+    try {
+      claim = await claimPendingForConfirm(pendingStateClient, {
+        id: pending.id,
+        userId,
         status: "executing",
-        tool_args: finalArgs,
-        execution_attested_at: new Date().toISOString(),
-      })
-      .eq("id", pending.id)
-      .eq("user_id", userId)
-      .eq("status", "pending")
-      .select("id")
-      .maybeSingle();
-    if (flipErr || !flipped) {
+        toolArgs: finalArgs,
+      });
+    } catch {
+      return errorResponse(
+        409,
+        "WRONG_STATE",
+        "Race detected — this action was already handled",
+      );
+    }
+    if (claim.answer === "expired") {
+      try {
+        await terminalizePending(pendingStateClient, {
+          id: pending.id,
+          userId,
+          expectedStatus: "pending",
+          outcome: "expired",
+        });
+      } catch {
+        // Another request terminalized it first; the answer is the same.
+      }
+      return expiredProposalAnswer(pending.source) === "ari_proposal_expired"
+        ? ariProposalExpiredResponse()
+        : errorResponse(409, "EXPIRED", "This suggestion expired.");
+    }
+    if (claim.answer !== "claimed") {
       return errorResponse(
         409,
         "WRONG_STATE",
@@ -1128,7 +1145,11 @@ async function handleConfirmAction(args: {
       // #1972's receipt-backed dispatcher binds this UUID to the confirmed args.
       operationId: pending.id,
     });
-  } catch (err: any) {
+  } catch (rawErr: any) {
+    // #3355 P1 (D-9): a deterministic publish/money refusal from the database
+    // rolled the whole RPC back. Type it so it is terminal and worded, never
+    // RPC_FAILED -> "verifying the result".
+    const err: any = retypeAriRefusal(rawErr);
     const reason = err instanceof ToolError
       ? `${err.code}: ${err.message}`
       : (err?.message ?? "unknown");
@@ -1136,9 +1157,10 @@ async function handleConfirmAction(args: {
     // committed before the response was lost. Keep `executing` so confirm can
     // safely recover through the operation receipt. Deterministic pre-write
     // validation failures remain terminal.
-    const isAmbiguous = RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name) &&
-      (!(err instanceof ToolError) ||
-        ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code));
+    const isAmbiguous = isAmbiguousExecutionFailure(
+      RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
+      err,
+    );
     if (!isAmbiguous) {
       let terminalMessageId: string | undefined;
       try {
@@ -1182,6 +1204,39 @@ async function handleConfirmAction(args: {
             "TASK_RECOVERY_REQUIRED",
             "The action failed safely, but Ari needs a refresh to continue the plan.",
           );
+        }
+        // #3355 P7: a refused write inside a live flow run re-presents the
+        // step with the plain reason and the next choices (saved as Ari's
+        // row; the Host re-reads it with flow_resume). Without this the run
+        // sat waiting on a confirmation that had already failed: no card.
+        const failedBrandId = conversationTask?.row.brand_id ?? null;
+        if (failedBrandId) {
+          try {
+            await flowNextAfterConfirm({
+              userClient,
+              service: pendingStateClient,
+              userId,
+              conversationId: pending.conversation_id,
+              brand: {
+                id: failedBrandId,
+                name: conversationBrandName ?? "your brand",
+              },
+              failed: {
+                tool_name: tool.name,
+                message: err instanceof ToolError ? err.message : "",
+              },
+              promptVersion: TENANT_CONTEXT_VERSION,
+              modelVersion: ARI_MODEL_VERSION,
+            });
+          } catch (flowError) {
+            // The refusal is already saved and answered; the Host's resume
+            // re-reads the run either way.
+            console.error(JSON.stringify({
+              event: "ari_confirm_failed_next_failed",
+              tool_name: tool.name,
+              error: flowError instanceof Error ? flowError.name : "unknown",
+            }));
+          }
         }
       }
     }
@@ -1274,7 +1329,23 @@ async function handleConfirmAction(args: {
   let continuation: PostApprovalContinuation | null = null;
   const deterministicEventTaskFinished = tool.name === "create_event" &&
     conversationTask?.state.active_task?.intent === "create_event";
-  if (pending.conversation_id && !deterministicEventTaskFinished) {
+  // #2830 P4: a live engine run owns what comes next in this chat — no
+  // model continuation, and the receipt line comes from the runner's
+  // canonical re-read instead of a fixed "re-checking" line.
+  const liveRun = pending.conversation_id
+    ? await liveFlowRunFor({
+      service: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+    })
+    : null;
+  const websiteSetupFollowup = liveRun
+    ? null
+    : websiteSetupApprovedWriteFollowup(tool.name);
+  if (
+    pending.conversation_id && !deterministicEventTaskFinished &&
+    !websiteSetupFollowup && !liveRun
+  ) {
     const { data: loopEnabled, error: loopFlagError } = await userClient.rpc(
       "ari_agent_loop_enabled",
     );
@@ -1327,13 +1398,24 @@ async function handleConfirmAction(args: {
   // A weak continuation model must not append an unrelated research or scope
   // error after a successful event write; a genuine next protected proposal
   // is still persisted separately below.
-  const rawFollowupText = tool.name === "create_event"
+  const rawFollowupText = tool.name === "create_event" ||
+      (liveRun && websiteSetupApprovedWriteFollowup(tool.name))
     ? undefined
+    : tool.name === "draft_campaign" ||
+        tool.name === "update_campaign_draft"
+    ? buildFollowupText(tool.name, result)
+    : websiteSetupFollowup
+    ? websiteSetupFollowup
     : continuationHasScopeFailure
     ? buildFollowupText(tool.name, result)
     : continuation?.text ?? buildFollowupText(tool.name, result);
+  // #3355 P1 (D-6): the owner copy gate is the last word on follow-up text.
   const followupText = rawFollowupText
-    ? sanitizeAriUserFacingDiagnostics(rawFollowupText)
+    ? assertOwnerCopy(sanitizeAriUserFacingDiagnostics(rawFollowupText), {
+      fallback: "That's saved.",
+      surface: "confirm_followup",
+      mode: "prose",
+    })
     : undefined;
   const rendition = buildToolReceiptRendition({
     toolName: tool.name,
@@ -1410,7 +1492,9 @@ async function handleConfirmAction(args: {
       user_id: userId,
       conversation_id: pending.conversation_id,
       related_brand_id: pending.related_brand_id,
-      source: "ari_chat",
+      // #3355 P3: the column only accepts 'ari' | 'hub_*'; 'ari_chat' was
+      // refused, so chained follow-on proposals never persisted.
+      source: "ari",
       tool_name: continuation.toolName,
       tool_args: continuation.toolArgs,
       status: "pending",
@@ -1438,7 +1522,11 @@ async function handleConfirmAction(args: {
         },
         tool_calls: {
           tool_name: continuation.toolName,
-          args: continuation.toolArgs,
+          // #3355 P1 (D-5): the next card reads the server's owner words.
+          args: withProposalPresentation(
+            continuation.toolName,
+            continuation.toolArgs,
+          ),
           pending_action_id: nextPendingActionId,
         },
         prompt_version: TENANT_CONTEXT_VERSION,
@@ -1459,12 +1547,62 @@ async function handleConfirmAction(args: {
     }
   }
 
+  // #3355 P3 (3(b).5): the server decides and persists what comes next.
+  let next: ConfirmNext | null = null;
+  let flowState: FlowStateView | null = null;
+  const conversationBrandId = conversationTask?.row.brand_id ?? null;
+  if (pending.conversation_id && conversationBrandId) {
+    try {
+      const flow = await flowNextAfterConfirm({
+        userClient,
+        service: pendingStateClient,
+        userId,
+        conversationId: pending.conversation_id,
+        brand: {
+          id: conversationBrandId,
+          name: conversationBrandName ?? "your brand",
+        },
+        confirmed: { tool_name: tool.name, result },
+        promptVersion: TENANT_CONTEXT_VERSION,
+        modelVersion: ARI_MODEL_VERSION,
+      });
+      next = flow.next;
+      flowState = flow.flow_state;
+      if (
+        !next && !flowState && !nextPendingActionId &&
+        body.continuation === "server" &&
+        body.workflow_context === "website_setup"
+      ) {
+        next = await websiteSetupNextAfterConfirm({
+          userClient,
+          service: pendingStateClient,
+          userId,
+          conversationId: pending.conversation_id,
+          brand: { id: conversationBrandId, name: conversationBrandName },
+          toolName: tool.name,
+          promptVersion: TENANT_CONTEXT_VERSION,
+          modelVersion: ARI_MODEL_VERSION,
+        });
+      }
+    } catch (error) {
+      // The write is saved and verified; only the next step failed to load.
+      // The Host resumes it with flow_resume, never by sending a message.
+      console.error(JSON.stringify({
+        event: "ari_confirm_next_failed",
+        tool_name: tool.name,
+        error: error instanceof Error ? error.name : "unknown",
+      }));
+    }
+  }
+
   return jsonResponse(200, {
     kind: "executed",
     pending_action_id: pending.id,
     tool_name: tool.name,
     result,
     followup_text: followupText,
+    next,
+    flow_state: flowState,
     ...(nextPendingActionId
       ? { next_pending_action_id: nextPendingActionId }
       : {}),
@@ -1506,6 +1644,19 @@ export function buildFollowupText(
     }
     if (toolName === "update_event") {
       return `Updated. Anything else to change?`;
+    }
+    if (toolName === "draft_campaign" || toolName === "update_campaign_draft") {
+      const row = result as {
+        name?: unknown;
+        status?: unknown;
+        channel?: unknown;
+      } | null;
+      const name = typeof row?.name === "string" ? row.name.trim() : "";
+      if (!name || row?.status !== "draft") return undefined;
+      const channel = row.channel === "sms" ? "SMS" : "email";
+      return toolName === "draft_campaign"
+        ? `Saved “${name}” as an ${channel} campaign draft. Nothing has been scheduled or sent.`
+        : `Updated the saved campaign draft to “${name}”. Nothing has been scheduled or sent.`;
     }
     if (toolName === "create_experience") {
       const event = (result as { event?: unknown } | null)?.event;

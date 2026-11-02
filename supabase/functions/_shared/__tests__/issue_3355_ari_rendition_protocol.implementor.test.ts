@@ -66,7 +66,7 @@ Deno.test("#3355 capability negotiation is strict and text-only for old clients"
 
 Deno.test("#3355 read adapter bounds data, cites HTTPS sources, and removes secrets", () => {
   const rendition = buildToolReadRendition({
-    toolName: "research_social_profile",
+    toolName: "inspect_public_social_profile",
     capabilities: CAPABILITIES,
     envValue: "true",
     checkedAt: "2026-10-29T12:00:00.000Z",
@@ -84,13 +84,60 @@ Deno.test("#3355 read adapter bounds data, cites HTTPS sources, and removes secr
   assertExists(rendition);
   assertEquals(rendition.schema_version, 2);
   assertEquals(rendition.graphic, "social");
+  assertEquals(rendition.eyebrow, "Public research");
   const wire = JSON.stringify(rendition);
   assert(wire.includes("@mingla"));
   assert(wire.includes("https://social.example/mingla"));
+  assert(wire.includes("Profile"));
   assertFalse(wire.includes("must-not-render"));
   assertFalse(wire.includes("11111111-1111-4111-8111-111111111111"));
   assertFalse(wire.includes("http://social.example/insecure"));
   assert(rendition.blocks.length <= ARI_RENDITION_LIMITS.max_blocks);
+});
+
+Deno.test("#3355 workspace results do not expose infrastructure URLs or raw freshness", () => {
+  const rendition = buildToolReadRendition({
+    toolName: "list_events",
+    capabilities: CAPABILITIES,
+    envValue: "true",
+    checkedAt: "2026-10-30T18:34:16.171Z",
+    result: {
+      events: [{
+        title: "Sunday Rooftop Sessions",
+        city: "Lagos",
+        cover_url: "https://vz-a16fce08-6c6.b-cdn.net/event-cover.jpg",
+        stream_url: "https://stream.usemingla.com/events/123",
+      }],
+      checked_at: "2026-10-30T18:34:16.171Z",
+    },
+  });
+  assertExists(rendition);
+  const wire = JSON.stringify(rendition);
+  assertEquals(rendition.title, "Your events");
+  assertFalse(wire.includes("sources"));
+  assertFalse(wire.includes("b-cdn.net"));
+  assertFalse(wire.includes("stream.usemingla.com"));
+  assertFalse(wire.includes("2026-10-30T18:34:16.171Z"));
+});
+
+Deno.test("#3355 internal tool discovery stays out of user-facing result cards", () => {
+  for (const toolName of ["search_capabilities", "request_tools"]) {
+    assertEquals(
+      buildToolReadRendition({
+        toolName,
+        result: {
+          query: "tag waiters order",
+          matches: [{ name: "cancel_order", score: 1 }],
+          reason: "Need marketing tools to access propose_ad_plan",
+          requested: ["marketing", "listings"],
+          available: ["core", "brand", "money", "marketing"],
+        },
+        capabilities: CAPABILITIES,
+        envValue: "true",
+      }),
+      null,
+    );
+  }
 });
 
 Deno.test("#3355 every registered write tool has a generic safe proposal fallback", () => {
@@ -142,6 +189,54 @@ Deno.test("#3355 confirmed tools produce a durable generic receipt", () => {
   assertEquals(receipt.graphic, "event");
   assert(JSON.stringify(receipt).includes("Friday Dinner"));
   assertFalse(JSON.stringify(receipt.blocks).includes("22222222"));
+});
+
+Deno.test("#3355 ticket receipts show canonical price and capacity", () => {
+  const receipt = buildToolReceiptRendition({
+    toolName: "upsert_ticket_tier",
+    result: {
+      effective_currency: "NGN",
+      tiers: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "General Admission",
+        isFree: false,
+        isUnlimited: false,
+        priceGbp: 20000,
+        capacity: 80,
+        visibility: "public",
+      }],
+    },
+    pendingActionId: "22222222-2222-4222-8222-222222222222",
+    capabilities: CAPABILITIES,
+    envValue: "true",
+  });
+  assertExists(receipt);
+  const wire = JSON.stringify(receipt.blocks);
+  assert(wire.includes('"label":"Price","value":"NGN 20,000"'));
+  assert(wire.includes('"label":"Capacity","value":"80"'));
+  assert(wire.includes('"label":"Visibility","value":"Public"'));
+  assertFalse(wire.includes("11111111-1111-4111-8111-111111111111"));
+
+  const freeReceipt = buildToolReceiptRendition({
+    toolName: "upsert_ticket_tier",
+    result: {
+      tier: {
+        name: "Complimentary",
+        is_free: true,
+        is_unlimited: false,
+        quantity_total: 25,
+        is_hidden: true,
+      },
+    },
+    pendingActionId: "33333333-3333-4333-8333-333333333333",
+    capabilities: CAPABILITIES,
+    envValue: "true",
+  });
+  assertExists(freeReceipt);
+  const freeWire = JSON.stringify(freeReceipt.blocks);
+  assert(freeWire.includes('"label":"Price","value":"Free"'));
+  assert(freeWire.includes('"label":"Capacity","value":"25"'));
+  assert(freeWire.includes('"label":"Visibility","value":"Hidden"'));
 });
 
 Deno.test("#3355 event receipts render proof without database internals", () => {
@@ -240,6 +335,43 @@ Deno.test("#3355 event receipts preserve confirmed admission when the immediate 
   assert(wire.includes("20 guests · Free"));
   assert(wire.includes("details and cover"));
   assertFalse(wire.includes("details, tickets and cover"));
+});
+
+Deno.test("#3355 event receipt echoes confirmed date range, venue and grounded copy", () => {
+  const receipt = buildToolReceiptRendition({
+    toolName: "create_event",
+    result: {
+      event: {
+        title: "Seth Is Popping",
+        theme: {
+          business_draft: {
+            requestedVisibility: "private",
+            tickets: [{ capacity: 200, isFree: true }],
+          },
+        },
+      },
+    },
+    toolArgs: {
+      title: "Seth Is Popping",
+      start_at: "2026-11-15T17:00:00.000Z",
+      end_at: "2026-11-15T22:00:00.000Z",
+      timezone: "Africa/Lagos",
+      location_text: "Harmattan Club in Lagos",
+      description:
+        "Seth Is Popping takes place at Harmattan Club in Lagos on November 15, 2026, from 6:00 PM to 11:00 PM WAT. Free admission for up to 200 guests.",
+      tickets: [{ capacity: 200, isFree: true }],
+    },
+    brandName: "Harmattan Club",
+    pendingActionId: "33333333-3333-4333-8333-333333333333",
+    capabilities: CAPABILITIES,
+    envValue: "true",
+  });
+  assertExists(receipt);
+  const wire = JSON.stringify(receipt);
+  assert(wire.includes("Nov 15, 2026, 6:00 PM WAT – 11:00 PM WAT"));
+  assert(wire.includes("Harmattan Club in Lagos"));
+  assert(wire.includes("Free admission for up to 200 guests"));
+  assert(wire.includes("Review the saved details and add a cover"));
 });
 
 Deno.test("#3355 real chat and confirmation paths persist negotiated renditions", async () => {

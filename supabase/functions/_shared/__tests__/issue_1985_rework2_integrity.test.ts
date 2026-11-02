@@ -45,7 +45,7 @@ Deno.test("#1985 R2-1 a typed pause choice starts the stored replacement request
   const originalTask = structuredClone(first.state.active_task);
   const replacement = planEventTurn(
     first.state,
-    "Create another event tomorrow at 7pm called Sunset Sessions",
+    "Create another event tomorrow at 7pm until 10pm called Sunset Sessions",
     plannerContext("question-replace", "task-replace"),
   );
   assertEquals(replacement.state.active_task, originalTask);
@@ -67,14 +67,14 @@ Deno.test("#1985 R2-1 a typed pause choice starts the stored replacement request
   const confirmable = markAwaitingConfirmation(
     planEventTurn(
       IDLE_TASK_STATE,
-      "Create an event tomorrow at 7pm called Original Proposal",
+      "Create an event tomorrow at 7pm until 10pm called Original Proposal",
       plannerContext("question-confirmable", "task-confirmable"),
     ).state,
     "00000000-0000-4000-8000-000000000012",
   );
   const replacementWhileConfirmable = planEventTurn(
     confirmable,
-    "Create another event tomorrow at 9pm called Replacement Proposal",
+    "Create another event tomorrow at 9pm until 11pm called Replacement Proposal",
     plannerContext("question-confirmable-replace", "task-confirmable-replace"),
   );
   assertEquals(
@@ -109,7 +109,7 @@ Deno.test("#1985 R2-1 a typed pause choice starts the stored replacement request
 Deno.test("#1985 R2-2 edited create-event args replace canonical slots before a new pending ID is attached", () => {
   const ready = planEventTurn(
     IDLE_TASK_STATE,
-    "Create an event tomorrow at 7pm called Original Title",
+    "Create an event tomorrow at 7pm until 10pm called Original Title",
     plannerContext("question-ready", "task-ready"),
   ).state;
   const oldPendingId = "00000000-0000-4000-8000-000000000010";
@@ -122,6 +122,7 @@ Deno.test("#1985 R2-2 edited create-event args replace canonical slots before a 
       brand_id: "brand-owned",
       title: "Edited Title",
       start_at: "2026-08-16T18:00:00.000Z",
+      end_at: "2026-08-16T21:00:00.000Z",
       timezone: "Africa/Lagos",
       location_text: "Harbour Hall",
     },

@@ -4,8 +4,15 @@
 // #1972's shared atomic operation receipt.
 
 // deno-lint-ignore-file no-explicit-any
+import { withProposalPresentation } from "./ariPresentation/registry.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { assertCanCollect, isUuid, ToolError } from "./agentToolHelpers.ts";
+import {
+  assertCanCollect,
+  brandCanCollect,
+  isUuid,
+  ToolError,
+} from "./agentToolHelpers.ts";
+import { ticketPriceBelowMinimum } from "./money/providerMinimums.ts";
 
 export const PRICING_STATE_VALUES = [
   "inherit",
@@ -17,6 +24,12 @@ export const PRICING_STATE_VALUES = [
 export type PricingState = typeof PRICING_STATE_VALUES[number];
 
 const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
+  // #2830 P4 — plain-words rows the flow engine adds to its own proposals.
+  "flow_rows",
+  // #3355 P7 — the card shows only the engine's plain-words rows.
+  "flow_rows_only",
+  // #3355 — the engine's plain-words heading for its own proposal card.
+  "flow_title",
   "lifecycle",
   "action",
   "tier_name",
@@ -69,14 +82,23 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
 export function verifiedProposalArgs(
   toolArgs: Record<string, unknown>,
   proposalContext: Record<string, unknown> | null,
+  /**
+   * #3355 P1 (D-5): when given, the server's owner presentation for this tool
+   * is attached to the proposal context (registry.ts).
+   */
+  presentationToolName?: string,
 ): Record<string, unknown> {
-  if (proposalContext === null) return { ...toolArgs };
-  const safeContext = Object.fromEntries(
-    Object.entries(proposalContext).filter(([key]) =>
-      VERIFIED_PROPOSAL_CONTEXT_KEYS.has(key)
+  const verified = proposalContext === null ? { ...toolArgs } : {
+    ...toolArgs,
+    __proposal_context: Object.fromEntries(
+      Object.entries(proposalContext).filter(([key]) =>
+        VERIFIED_PROPOSAL_CONTEXT_KEYS.has(key)
+      ),
     ),
-  );
-  return { ...toolArgs, __proposal_context: safeContext };
+  };
+  return presentationToolName
+    ? withProposalPresentation(presentationToolName, verified)
+    : verified;
 }
 
 export interface CanonicalTicketTier {
@@ -282,6 +304,156 @@ export function applyTierPatch(
   return next;
 }
 
+/**
+ * Ground create-only ticket flags in the user's message. Small local models
+ * sometimes omit booleans required by the canonical draft even when the
+ * amount and capacity are explicit. Derive only those mechanical flags, and
+ * discard a model-invented tier id for a clearly requested new tier.
+ */
+export function groundNewTicketTierFields(
+  args: Record<string, unknown>,
+  requestText: string,
+): Record<string, unknown> {
+  const newTierRequested =
+    /\b(?:add|create)\s+(?:one|a|an|new)\b[\s\S]{0,100}\b(?:ticket(?:\s+tier)?|tier)\b/i
+      .test(requestText);
+  if (!newTierRequested) return args;
+
+  const grounded = { ...args };
+  delete grounded.tier_id;
+
+  const requestedPrice = /(?:[$£€₦]\s*\d|\b(?:USD|GBP|EUR|NGN|Naira)\s*\d)/i
+    .test(requestText);
+  if (typeof grounded.is_free !== "boolean") {
+    const explicitlyFree = /\b(?:free|complimentary|no[\s-]+charge)\b/i
+      .test(requestText) && !/\bnot\s+free\b/i.test(requestText);
+    if (explicitlyFree) {
+      grounded.is_free = true;
+    } else if (requestedPrice && typeof grounded.price_cents === "number") {
+      grounded.is_free = grounded.price_cents === 0;
+    }
+  }
+
+  const requestedCapacity = requestText.match(
+    /\bcapacity(?:\s+(?:for|of|at))?\s+(\d+)\b/i,
+  ) ?? requestText.match(/\bfor\s+(\d+)\s+(?:guests?|people|attendees)\b/i);
+  if (typeof grounded.is_unlimited !== "boolean") {
+    if (/\b(?:unlimited|uncapped|no\s+capacity\s+limit)\b/i.test(requestText)) {
+      grounded.is_unlimited = true;
+    } else if (
+      requestedCapacity && typeof grounded.capacity === "number" &&
+      grounded.capacity === Number(requestedCapacity[1])
+    ) {
+      grounded.is_unlimited = false;
+    }
+  }
+  return grounded;
+}
+
+/**
+ * True only when the request explicitly asks for a new ticket tier and gives
+ * the event, tier name, paid price, and finite capacity. This lets the
+ * orchestration layer require the ordinary approval proposal instead of
+ * accepting a model-written "type CONFIRM" message as a completed plan.
+ */
+export function isFullySpecifiedTicketTierWriteRequest(text: string): boolean {
+  const newTierRequested =
+    /\b(?:add|create)\s+(?:one|a|an|new)\b[\s\S]{0,100}\bticket(?:\s+tier)?\b/i
+      .test(text);
+  const namedTier =
+    /\b(?:add|create)\s+(?:one|a|an|new)\s+.{1,60}\s+(?:ticket(?:\s+tier)?|tier)\b/i
+      .test(text);
+  const namedEvent =
+    /\b(?:for|to)\s+(?:the\s+)?(?:saved\s+)?(?:private\s+)?draft\s+[“‘\"'][^”’\"']{2,100}[”’\"']/i
+      .test(text) ||
+    /\b(?:for|to)\s+(?:the\s+)?event\s+[“‘\"'][^”’\"']{2,100}[”’\"']/i
+      .test(text) ||
+    /\b(?:event|draft)\s+(?:called\s+)?[“‘\"']?[\w][^.!?;,\n”’\"']{1,80}/i
+      .test(text);
+  const explicitPrice =
+    /(?:[$£€₦]\s*\d[\d,]*(?:\.\d{1,2})?|\b(?:USD|GBP|EUR|NGN|Naira)\s*\d[\d,]*(?:\.\d{1,2})?)/i
+      .test(text);
+  const finiteCapacity =
+    /\bcapacity(?:\s+(?:for|of|at))?\s+\d+\b/i.test(text) ||
+    /\bfor\s+\d+\s+(?:guests?|people|attendees)\b/i.test(text);
+  return newTierRequested && namedTier && namedEvent && explicitPrice &&
+    finiteCapacity;
+}
+
+/** Keep a fully specified request to edit an existing tier from becoming an
+ * unrelated create proposal (for example, creating a second event with the
+ * existing event's name). */
+export function ticketTierProposalMismatch(
+  requestText: string,
+  proposedToolName: string,
+): boolean {
+  return isFullySpecifiedTicketTierWriteRequest(requestText) &&
+    proposedToolName !== "upsert_ticket_tier";
+}
+
+/** Reject text that substitutes a chat-only confirmation for the approval card. */
+export function ticketTierTextBypassesApproval(
+  requestText: string,
+  responseText: string,
+): boolean {
+  if (!isFullySpecifiedTicketTierWriteRequest(requestText)) return false;
+  return /\b(?:please\s+)?confirm\b[\s\S]{0,100}\b(?:save|add|create|proceed|continue)\b|\b(?:would\s+you\s+like|shall\s+i)\b[\s\S]{0,100}\b(?:save|add|create|proceed)\b|\bi(?:['’]ll|\s+will)\s+(?:add|create|save)\b/i
+    .test(responseText);
+}
+
+/** Build a compact confirmation receipt only from canonical ticket readback. */
+export function buildTicketTierReceipt(result: unknown): string | null {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return null;
+  }
+  const record = result as Record<string, unknown>;
+  const tiers = Array.isArray(record.tiers) ? record.tiers : [];
+  const tier = record.tier && typeof record.tier === "object" &&
+      !Array.isArray(record.tier)
+    ? record.tier as Record<string, unknown>
+    : tiers[0] && typeof tiers[0] === "object" && !Array.isArray(tiers[0])
+    ? tiers[0] as Record<string, unknown>
+    : null;
+  const name = typeof tier?.name === "string" ? tier.name.trim() : "";
+  if (!tier || !name) return null;
+
+  const isFree = tier.isFree === true || tier.is_free === true;
+  const rawAmount = typeof tier.priceGbp === "number"
+    ? tier.priceGbp
+    : typeof tier.price_cents === "number"
+    ? tier.price_cents / 100
+    : null;
+  const currency = typeof record.effective_currency === "string" &&
+      /^[A-Z]{3}$/.test(record.effective_currency)
+    ? record.effective_currency
+    : null;
+  const price = isFree
+    ? "free"
+    : rawAmount !== null && Number.isFinite(rawAmount) && currency
+    ? `${currency} ${
+      new Intl.NumberFormat("en", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(rawAmount)
+    }`
+    : null;
+  const capacity = typeof tier.capacity === "number"
+    ? tier.capacity
+    : typeof tier.quantity_total === "number"
+    ? tier.quantity_total
+    : null;
+  const details = [
+    price ? `${price}` : null,
+    capacity !== null ? `capacity ${capacity}` : null,
+  ].filter((value): value is string => value !== null);
+  const saved = `I saved and verified the “${name}” ticket tier${
+    details.length ? ` at ${details.join(", ")}` : ""
+  }.`;
+  return record.representation === "draft"
+    ? `${saved} The event remains a draft and is not published.`
+    : saved;
+}
+
 export function validateTier(
   tier: CanonicalTicketTier,
   _creating = false,
@@ -409,6 +581,13 @@ export async function loadEventTicketState(
   return { event, tiers: (rows ?? []).map(normalizeLiveTier) };
 }
 
+/**
+ * #3355 P6 (Seth's decision 3): the one line on a paid draft ticket card when
+ * the brand can't take payments yet. The tier is still saved to the draft.
+ */
+export const DRAFT_PAID_TIER_HEADS_UP =
+  "You can add paid tickets now; you'll need payments set up before you publish.";
+
 export async function preflightTicketPricingProposal(
   toolName: string,
   args: Record<string, unknown>,
@@ -436,7 +615,24 @@ export async function preflightTicketPricingProposal(
     );
     const mustCheckPayout = !proposed.isFree &&
       (current === null || current.isFree);
-    if (mustCheckPayout) await assertCanCollect(client, event.brand_id);
+    // #3355 P6 (Seth's decision 3): a draft may hold paid tickets before
+    // payments are set up, like the Host form; publishing is the gate. A live
+    // or scheduled offering still needs payments before a new paid tier.
+    const isDraft = event.status === "draft";
+    let payoutReady: boolean | null = null;
+    if (mustCheckPayout && isDraft) {
+      // Only the heads-up depends on this read; a failed read never blocks
+      // a draft (the publish RPC decides later).
+      try {
+        payoutReady = await brandCanCollect(client, event.brand_id);
+      } catch (error) {
+        if (!(error instanceof ToolError)) throw error;
+        payoutReady = null;
+      }
+    } else if (mustCheckPayout) {
+      await assertCanCollect(client, event.brand_id);
+      payoutReady = true;
+    }
     const [{ data: brand }, { data: connectedAccount }] = await Promise.all([
       client.from("brands").select("default_currency")
         .eq("id", event.brand_id).maybeSingle(),
@@ -450,6 +646,30 @@ export async function preflightTicketPricingProposal(
         "EVENT_CURRENCY_REQUIRED",
         "Connect a payout account with a currency before adding a paid tier",
       );
+    }
+    // #3355 P6 (Seth decision 6): a new or changed paid price must clear the
+    // payment provider's minimum. Said at price entry, before any card; the
+    // database refuses the same price (ticket_price_below_minimum).
+    const proposedCents = proposed.priceGbp == null
+      ? null
+      : Math.round(proposed.priceGbp * 100);
+    const currentCents = current?.priceGbp == null || current.isFree
+      ? null
+      : Math.round(current.priceGbp * 100);
+    if (
+      !proposed.isFree && proposedCents !== null &&
+      proposedCents !== currentCents && effectiveCurrency !== null
+    ) {
+      const belowMinimum = ticketPriceBelowMinimum(
+        proposedCents,
+        effectiveCurrency,
+      );
+      if (belowMinimum) {
+        throw new ToolError(
+          "TICKET_PRICE_BELOW_MINIMUM",
+          `${belowMinimum} Nothing was changed.`,
+        );
+      }
     }
     return {
       lifecycle: event.status === "draft" ? "draft" : "live",
@@ -465,7 +685,15 @@ export async function preflightTicketPricingProposal(
       proposed_capacity: proposed.capacity,
       effective_currency: effectiveCurrency,
       available_at: proposed.availableAt,
-      payout_ready: mustCheckPayout ? true : null,
+      payout_ready: payoutReady,
+      ...(payoutReady === false
+        ? {
+          flow_rows: [{
+            label: "Heads-up",
+            value: DRAFT_PAID_TIER_HEADS_UP,
+          }],
+        }
+        : {}),
     };
   }
   if (toolName === "set_pricing_switches") {

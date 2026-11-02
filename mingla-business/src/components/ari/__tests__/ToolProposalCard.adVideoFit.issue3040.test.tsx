@@ -45,12 +45,15 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 6; i += 1) await Promise.resolve();
 };
 
-const mount = async (args: Record<string, unknown>) => {
+const mount = async (
+  args: Record<string, unknown>,
+  toolName = "propose_ad_plan",
+) => {
   let renderer!: ReturnType<typeof TestRenderer.create>;
   await TestRenderer.act(async () => {
     renderer = TestRenderer.create(
       <ToolProposalCard
-        toolName="propose_ad_plan"
+        toolName={toolName}
         args={args}
         isExecuting={false}
         onConfirm={async () => ({ ok: true })}
@@ -94,6 +97,33 @@ describe("#3040 AD-04 on Ari's ad proposal card", () => {
     loadHostAdSetup.mockResolvedValue({ creatives: [{ id: CREATIVE }] });
     renderer = await mount({ brand_id: BRAND, creative_library_id: CREATIVE });
     expect(renderer.root.findAll((node) => node.props.testID === "ari-ad-video-fit")).toHaveLength(0);
+    renderer.unmount();
+  });
+
+  it("shows the grounded event copy on the confirmation proposal", async () => {
+    const copy = "Seth Is Popping takes place in Lagos on November 15, 2026.";
+    const renderer = await mount({
+      title: "Seth Is Popping",
+      description: copy,
+      start_at: "2026-11-15T17:00:00.000Z",
+      end_at: "2026-11-15T22:00:00.000Z",
+      timezone: "Africa/Lagos",
+      location_text: "Harmattan Club in Lagos",
+      visibility: "private",
+      tickets: [{ capacity: 200, isFree: true }],
+      brand_id: BRAND,
+    }, "create_event");
+    const visibleText = renderer.root.findAll((node) => node.type === "Text")
+      .map((node) => node.props.children)
+      .flat(Infinity)
+      .filter((value): value is string => typeof value === "string")
+      .join(" ");
+    expect(visibleText).toContain("Event copy");
+    expect(visibleText).toContain(copy);
+    const [eventCopy] = renderer.root.findAll(
+      (node) => node.type === "Text" && node.props.children === copy,
+    );
+    expect(eventCopy.props.numberOfLines).toBe(4);
     renderer.unmount();
   });
 });

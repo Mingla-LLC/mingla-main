@@ -22,6 +22,7 @@ import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopSheet } from "../ui/TopSheet";
+import { BrandMark } from "./BrandMark";
 import { LazyBrandCreationFlow } from "./LazyBrandCreationFlow";
 
 export interface BrandSwitcherSheetProps {
@@ -154,11 +155,11 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                         accessibilityLabel={`Switch to ${brand.displayName}`}
                         accessibilityState={{ selected: isActive }}
                       >
-                        <View style={styles.brandAvatar}>
-                          <Text style={styles.brandInitial}>
-                            {brand.displayName.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
+                        <BrandMark
+                          brand={brand}
+                          size={40}
+                          testID={`brand-switcher-mark-${brand.id}`}
+                        />
                         <View style={styles.brandTextCol}>
                           <Text style={styles.brandName} numberOfLines={1}>
                             {brand.displayName}
@@ -251,17 +252,6 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     backgroundColor: "rgba(235, 120, 37, 0.10)",
   },
-  brandAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-  },
-  brandInitial: { fontSize: typography.body.fontSize, fontWeight: "700", color: textTokens.primary },
   brandTextCol: { flex: 1 },
   brandName: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, fontWeight: "600", color: textTokens.primary },
   brandSub: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: textTokens.tertiary },

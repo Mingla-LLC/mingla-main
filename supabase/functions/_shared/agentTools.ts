@@ -9,6 +9,7 @@
 // I-ARI-USER-JWT-ONLY: executors NEVER use service role. The Supabase client
 // passed in is the user-scoped client built by agent-confirm-action.
 
+import { registerOwnerCopyToolNames } from "./ariOwnerCopy.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import {
@@ -31,6 +32,9 @@ import {
   ARI_10X_READ_ONLY,
   ARI_10X_TOOLS,
 } from "./agentAri10xTools.ts";
+// #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
+import { READINESS_READ_ONLY, READINESS_TOOLS } from "./agentReadinessTools.ts";
+import { isValidIanaTimezone } from "./agentRelativeTime.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
 
@@ -229,10 +233,10 @@ const createBrand: AgentToolDefinition = {
 const createEvent: AgentToolDefinition = {
   name: "create_event",
   description:
-    "Create an event under a brand owned by the user. Start time must be in the future. Timezone defaults to the user's preferred_timezone or UTC.",
+    "Create an event under a brand owned by the user. Start time must be in the future. Ask the owner for the end time and the time zone; never assume a length or a zone (#3355 P7).",
   parameters: {
     type: "object",
-    required: ["brand_id", "title", "when_mode", "visibility"],
+    required: ["brand_id", "title", "when_mode", "visibility", "timezone"],
     properties: {
       brand_id: {
         type: "string",
@@ -252,7 +256,8 @@ const createEvent: AgentToolDefinition = {
       },
       end_at: {
         type: "string",
-        description: "Optional ISO 8601 end datetime after start_at",
+        description:
+          "ISO 8601 end datetime after start_at, as the owner confirmed it. Required for single and recurring events; never assume a length.",
       },
       multi_dates: {
         type: "array",
@@ -322,13 +327,31 @@ const createEvent: AgentToolDefinition = {
       online_url: { type: "string", description: "URL if is_online" },
       timezone: {
         type: "string",
-        description: "IANA timezone (e.g., America/New_York). Defaults to UTC.",
+        description:
+          "IANA timezone (e.g., America/New_York): the brand's own time zone or the one the owner gave. Required; there is no default.",
       },
       visibility: {
         type: "string",
         enum: ["public", "unlisted", "private"],
         description:
-          "Requested visibility stored in the private draft; the event remains draft-only until publish.",
+          "Visibility for when the owner publishes; the draft stays unpublished until then. Private is refused while private access is not ready.",
+      },
+      format: {
+        type: "string",
+        enum: ["in_person", "online", "hybrid"],
+        description: "How people attend, as the owner said.",
+      },
+      location_address: {
+        type: "string",
+        description:
+          "Street address picked from the address search on the card (never typed or guessed)",
+      },
+      location_lat: { type: "number", description: "Picked place latitude" },
+      location_lng: { type: "number", description: "Picked place longitude" },
+      location_precision: { type: "string", enum: ["exact", "approximate"] },
+      hide_address_until_ticket: {
+        type: "boolean",
+        description: "Show the address only to ticket holders",
       },
       city: { type: "string", description: "Event city" },
       currency: { type: "string", description: "Optional ISO 4217 currency" },
@@ -412,6 +435,13 @@ const createEvent: AgentToolDefinition = {
         "visibility must be public, unlisted, or private",
       );
     }
+    // #3355 P7 (D-23): the owner's time zone, never a silent default.
+    if (!isString(args.timezone) || !isValidIanaTimezone(args.timezone)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "timezone is required: ask the owner which time zone the event is in",
+      );
+    }
     const whenMode = args.when_mode;
     if (!["single", "multi_date", "recurring"].includes(String(whenMode))) {
       throw new ToolError(
@@ -444,6 +474,17 @@ const createEvent: AgentToolDefinition = {
         throw new ToolError(
           "INVALID_ARGS",
           "start_at must be a valid future ISO datetime",
+        );
+      }
+      // #3355 P7 (D-23): the end the owner confirmed; never start + 2 hours.
+      const endDate = isString(args.end_at) ? new Date(args.end_at) : null;
+      if (
+        !endDate || Number.isNaN(endDate.getTime()) ||
+        endDate.getTime() <= startDate.getTime()
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "end_at is required after start_at: ask the owner when the event ends",
         );
       }
       if (
@@ -780,6 +821,11 @@ const updateEvent: AgentToolDefinition = {
       },
       is_online: { type: "boolean" },
       online_url: { type: "string" },
+      party_types: {
+        type: "array",
+        items: { type: "string" },
+        description: "Party type slugs the owner picked (draft only)",
+      },
       // issue #2009 + #1931 — `private` is NOT offerable: the database refuses
       // the Private boundary for EVERY writer until #2144, so advertising it
       // would be a dead tap. `draft` stays only as the idempotent no-op the
@@ -816,6 +862,7 @@ const updateEvent: AgentToolDefinition = {
       "is_online",
       "online_url",
       "timezone",
+      "party_types",
     ];
     const residualKeys = mutableKeys.filter((key) => args[key] !== undefined);
 
@@ -1629,10 +1676,12 @@ const createExperience: AgentToolDefinition = {
     if (!isString(args.title) || args.title.length > 120) {
       throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
     }
+    // #3355 P9: the message states the cap the check enforces (500, the
+    // schema's maxLength and the server's experience_description_invalid).
     if (!isString(args.narrative) || args.narrative.length > 500) {
       throw new ToolError(
         "INVALID_ARGS",
-        "narrative is required (1-2000 chars)",
+        "narrative is required (1-500 chars)",
       );
     }
     const { data, error } = await client.rpc(
@@ -1667,7 +1716,12 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   ...DOMAIN_TOOLS,
   ...SITE_AGENT_TOOLS,
   ...ARI_10X_TOOLS,
+  ...READINESS_TOOLS,
 ]);
+
+// #3355 P1 (D-5/D-6): the owner copy gate refuses every registered tool name,
+// generated from this registry rather than a hand-kept list.
+registerOwnerCopyToolNames(AGENT_TOOLS.map((tool) => tool.name));
 
 export function findTool(name: string): AgentTool | undefined {
   return AGENT_TOOLS.find((t) => t.name === name);
@@ -1681,6 +1735,7 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
   ...DOMAIN_READ_ONLY,
   ...SITE_AGENT_READ_ONLY,
   ...ARI_10X_READ_ONLY,
+  ...READINESS_READ_ONLY,
 ]);
 
 /** Reversible Ari-owned state that may advance inside the bounded loop. */

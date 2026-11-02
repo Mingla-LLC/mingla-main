@@ -99,25 +99,41 @@ describe("ORCH-1186 wizard map preview — buildStaticMapUrl contract", () => {
 // SOURCE — the wizard wiring (fails-on-revert under true line deletion).
 // ─────────────────────────────────────────────────────────────────────────────
 describe("ORCH-1186 wizard map preview — CreatorStep3Where wiring", () => {
+  // #3355 — the preview moved, unchanged, into the shared AddressMapPreview so
+  // Brand Edit renders the same one; the Where step passes the draft's coords.
   const SRC = strip(
     read("src/components/event/CreatorStep3Where.tsx"),
   );
+  const PREVIEW = strip(
+    read("src/components/location/AddressMapPreview.tsx"),
+  );
 
   test("builds the static-map URL from the picked address coords", () => {
-    expect(SRC).toContain("buildStaticMapUrl({");
-    expect(SRC).toContain("lat: draft.locationGeo?.lat ?? null");
-    expect(SRC).toContain("lng: draft.locationGeo?.lng ?? null");
+    // Through its one lazy owner, off the eager boot path (#3493).
+    expect(SRC).toContain("<LazyAddressMapPreview");
+    expect(read("src/components/location/LazyAddressMapPreview.tsx")).toContain(
+      'import("./AddressMapPreview")',
+    );
+    expect(SRC).toContain("lat={draft.locationGeo?.lat ?? null}");
+    expect(SRC).toContain("lng={draft.locationGeo?.lng ?? null}");
+    expect(PREVIEW).toContain("buildStaticMapUrl({");
+    expect(PREVIEW).toContain("lat: lat ?? null");
+    expect(PREVIEW).toContain("lng: lng ?? null");
   });
 
   test("renders the real map <Image> when a URL resolves", () => {
-    expect(SRC).toMatch(/mapUrl !== null \?/);
-    expect(SRC).toContain("<Image");
+    expect(PREVIEW).toMatch(/mapUrl !== null \?/);
+    expect(PREVIEW).toContain("<Image");
   });
 
   test("renders the honest empty state (no fabricated tile) when no URL", () => {
-    expect(SRC).toContain("Pick an address to preview the map");
+    expect(read("src/components/location/AddressMapPreview.tsx")).toContain(
+      "Pick an address to preview the map",
+    );
     // The old striped placeholder must NOT come back (rule 9).
-    expect(SRC).not.toContain("mapStripes");
-    expect(SRC).not.toContain("map preview");
+    for (const src of [SRC, PREVIEW]) {
+      expect(src).not.toContain("mapStripes");
+      expect(src).not.toContain("map preview");
+    }
   });
 });

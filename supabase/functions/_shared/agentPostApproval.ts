@@ -3,6 +3,8 @@
 // perform bounded reads and Ari-owned state updates, then either explains the
 // verified result or returns the next protected write as a proposal.
 
+import { ARI_STOPPED_HERE_LINE } from "./ariOwnerCopy.ts";
+import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { callGemini, type GeminiContentMessage } from "./agentGemini.ts";
 import { lintAriCopy, safeAriCopyFallback } from "./agentCopyLint.ts";
@@ -14,6 +16,7 @@ import {
   isReadOnlyAgentToolCall,
   ToolError,
 } from "./agentTools.ts";
+import { buildTicketTierReceipt } from "./agentTicketPricing.ts";
 import {
   type AriToolsetKey,
   inferAriToolsets,
@@ -48,6 +51,18 @@ function boundedJson(value: unknown, max = 8_000): string {
   }
 }
 
+/**
+ * #3355 P1 (D-7): what the owner reads when the post-approval run stops
+ * before the goal is done. The approved write itself is saved and verified;
+ * nothing else is — so this never claims the remaining plan was saved.
+ */
+export function postApprovalStopText(reason: string): string {
+  if (reason === "budget" || reason === "deadline") {
+    return `That's saved. ${ARI_STOPPED_HERE_LINE}`;
+  }
+  return "That's saved. I couldn't safely do the next step, so I stopped here.";
+}
+
 export async function continueAfterApprovedAction(args: {
   client: SupabaseClient;
   serviceClient: SupabaseClient;
@@ -56,6 +71,13 @@ export async function continueAfterApprovedAction(args: {
   toolName: string;
   result: unknown;
 }): Promise<PostApprovalContinuation | null> {
+  // Ticket pricing's confirmed operation returns the exact canonical tier
+  // that its SQL executor read back. Use that receipt directly; a second model
+  // pass adds latency and can replace a verified result with an unsafe claim.
+  if (args.toolName === "upsert_ticket_tier") {
+    const text = buildTicketTierReceipt(args.result);
+    if (text) return { kind: "text", text, observations: [] };
+  }
   const { data: rows, error } = await args.serviceClient
     .from("agent_messages")
     .select("role,content,created_at")
@@ -92,7 +114,9 @@ export async function continueAfterApprovedAction(args: {
     role: "user",
     parts: [{
       text:
-        `The user approved ${args.toolName}. The canonical Mingla readback is:\n${
+        `The user approved this change: ${
+          toolOwnerCopy(args.toolName).verb
+        }. The canonical Mingla readback is:\n${
           boundedJson(args.result)
         }\n\nContinue the existing goal now. Verify the result, complete safe reads and Ari-owned plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, give a concise receipt with completed, waiting, skipped, and human-owned steps.`,
     }],
@@ -212,15 +236,13 @@ export async function continueAfterApprovedAction(args: {
       toolName: loop.toolCall.name,
       toolArgs: loop.toolCall.args,
       text:
-        "The approved step is complete and verified. I continued the plan and prepared the next protected action for your review.",
+        "That's saved. The next change is ready for you to review.",
       observations: loop.observations,
     };
   }
   const rawText = loop.kind === "text"
     ? loop.text
-    : loop.reason === "budget" || loop.reason === "deadline"
-    ? "The approved step is complete and verified. I saved the remaining plan so it can resume without repeating completed work."
-    : "The approved step is complete. I could not safely continue after the recorded tool errors, so I stopped at the exact blocker.";
+    : postApprovalStopText(loop.reason);
   const usedResearch = loop.observations.some((item) =>
     [
       "search_public_web",

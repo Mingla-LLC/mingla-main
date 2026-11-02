@@ -35,6 +35,7 @@ import {
   AriAttachmentError,
   assertAttemptRunning,
   projectReadyAttachments,
+  readTurnAttachmentTexts,
   ReadyAttachmentRow,
 } from "../_shared/agentAttachments.ts";
 import {
@@ -46,10 +47,27 @@ import {
   isReadOnlyAgentToolCall,
   ToolError,
 } from "../_shared/agentTools.ts";
-import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
+import {
+  preflightReadinessProposal,
+  preflightTripPackagePrices,
+} from "../_shared/money/proposeReadiness.ts";
+import {
+  bindOwnerNoteProposal,
+  bindProposalTimezone,
+} from "../_shared/agentAri10xTools.ts";
+import {
+  formatMajorWithCode,
+  formatMinorWithCode,
+} from "../_shared/money/formatMinor.ts";
+import {
+  authorizeAgentTool,
+  OWNER_SPOKEN_REFUSAL_CODES,
+  validateAriCampaignDraftProposal,
+} from "../_shared/agentToolAuthorization.ts";
 import {
   buildServiceClient,
   enforceTurnRateLimit,
+  reconcileStalePendingActions,
 } from "../_shared/agentRateLimit.ts";
 import {
   AgentChoiceSubmissionV2,
@@ -59,11 +77,19 @@ import {
   validateChoiceSubmission,
 } from "../_shared/agentChoices.ts";
 import {
+  groundNewTicketTierFields,
+  isFullySpecifiedTicketTierWriteRequest,
   preflightTicketPricingProposal,
+  ticketTierProposalMismatch,
+  ticketTierTextBypassesApproval,
   verifiedProposalArgs,
 } from "../_shared/agentTicketPricing.ts";
-import { preflightMoneyProposal } from "../_shared/agentDomainTools.ts";
+import {
+  bindTripStandardPlaceholderProposal,
+  preflightMoneyProposal,
+} from "../_shared/agentDomainTools.ts";
 import { logError } from "../_shared/structuredLog.ts";
+import { buildGroundedCampaignDraft } from "../_shared/campaignPayloadContract.ts";
 import {
   AccessibleAgentBrand,
   requireAccessibleAgentBrand,
@@ -77,6 +103,7 @@ import {
   pendingQuestionPrompt,
   reconcilePendingAction,
   resumeInterruption,
+  stateForNewAgentProposal,
   TaskStateError,
   TaskStateV1,
 } from "../_shared/agentConversationState.ts";
@@ -117,9 +144,20 @@ import {
   buildAriCapabilityPlan,
   buildAriDeterministicReadReply,
   buildAriOnboardingResumeReply,
+  buildAriOnboardingSetupPlanCall,
+  buildAriOnboardingSetupReply,
+  findAriCampaignDraftId,
+  findAriRecentEventTitle,
   inferAriToolsets,
+  isAriOnboardingPlanProgressMessage,
+  needsAriCampaignDraftReview,
+  needsAriCampaignPerformanceRead,
+  needsAriCampaignWorkflow,
   needsAriCapabilityDiscovery,
   needsAriOnboardingResumeRead,
+  needsAriOnboardingSetupRead,
+  selectAriCampaignWorkflowTools,
+  selectAriOnboardingSetupTools,
   selectAriTools,
 } from "../_shared/agentToolsets.ts";
 import { lintAriCopy, safeAriCopyFallback } from "../_shared/agentCopyLint.ts";
@@ -127,16 +165,58 @@ import { recordAriTrainingTurn } from "../_shared/agentQuality.ts";
 import { buildAgentRunRendition } from "../_shared/agentRenditions.ts";
 import {
   buildBrandLaunchPlan,
+  isAriEventLaunchReadinessRequest,
   isBrandLaunchPlanRequest,
   launchPlanInitialCalls,
   launchPlanNeedsPublicResearch,
 } from "../_shared/agentLaunchPlan.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
+import {
+  assertOwnerCopy,
+  OWNER_PROSE_FALLBACK,
+  reconciledApprovalLine,
+} from "../_shared/ariOwnerCopy.ts";
 import { sweepInterruptedAriTurnAttemptsForUser } from "../_shared/agentTurnSweep.ts";
 import {
   canCompleteResearchFromSearchIndex,
   isStandalonePublicResearchRequest,
 } from "../_shared/agentWebResearch.ts";
+import {
+  decideFlowTurn,
+  flowChoices,
+  flowReplyStructured,
+  flowSideFailureText,
+  type FlowStateView,
+  isWebsiteSetupRequest,
+  markEngineOriginTurn,
+  parseFlowAnswer,
+  parseWebsiteSetupKickoff,
+  persistFlowRow,
+  staleFlowAnswer,
+  WEBSITE_SETUP_KICKOFF_DISPLAY,
+  websiteSetupKickoffInstruction,
+} from "../_shared/ariFlows/edge.ts";
+import {
+  createFlowStore,
+  flowEngineEnabled,
+} from "../_shared/ariFlows/store.ts";
+import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
+import { honestLoopStopText } from "../_shared/ariFlows/honestCopy.ts";
+import {
+  buildWebsiteSetupPresentation,
+  buildWebsiteSetupReply,
+  buildWebsiteSetupRetryPresentation,
+  detectWebsiteSetupIntent,
+  resolveWebsiteSetupContextAnswer,
+  websiteSetupContextAnswer,
+  websiteSetupCurrentTurnOnly,
+  websiteSetupDesignAnswer,
+  websiteSetupEffectiveIntent,
+  websiteSetupMergedPlanAnswers,
+  websiteSetupPlanAnswer,
+  websiteSetupPlanRevision,
+  websiteSetupWorkflowInitialCalls,
+} from "../_shared/agentWebsiteSetup.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -220,6 +300,14 @@ interface RequestBody {
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
   ari_ui?: unknown;
+  workflow_context?: "website_setup";
+  /** #3355 P3: a structured answer bound to the run's current question. */
+  flow_answer?: unknown;
+  /**
+   * #2830 P4: opening Website setup — a structured request, never a scripted
+   * message in the owner's name. Its bubble reads "Set up my Website".
+   */
+  website_setup_kickoff?: unknown;
 }
 
 type Response_ =
@@ -234,6 +322,18 @@ type Response_ =
     conversation_title: string;
     choices?: AgentChoicesV2;
     handoff_route?: string;
+    flow?: FlowArtefact;
+    flow_state?: FlowStateView | null;
+  }
+  | {
+    // #3355 P3 (I-ARI-BOUND-ANSWERS): the answered card is no longer the
+    // current one. Nothing was written; `next` is the card that is.
+    kind: "question_stale";
+    code: "QUESTION_STALE";
+    message: string;
+    conversation_id: string;
+    next: FlowArtefact | null;
+    flow_state: FlowStateView | null;
   }
   | {
     kind: "pending_action";
@@ -605,6 +705,8 @@ async function commitTextTurn(args: {
   handoffRoute?: string;
   structuredData?: Record<string, unknown>;
   resumed?: boolean;
+  flowArtefact?: FlowArtefact | null;
+  flowState?: FlowStateView | null;
 }): Promise<Response> {
   // Issue #3355: this is the final host-facing persistence boundary. Individual
   // tools and models should produce clean product copy, but no caller is
@@ -612,7 +714,15 @@ async function commitTextTurn(args: {
   // message reaches either durable history or the response envelope. Raw
   // diagnostic codes remain available in agent_run observations and the
   // Improvement Lab; they never become chat prose.
-  const publicText = sanitizeAriUserFacingDiagnostics(args.text);
+  // #3355 P1 (D-6): the owner copy gate is the last word on what is shown.
+  const publicText = assertOwnerCopy(
+    sanitizeAriUserFacingDiagnostics(args.text),
+    {
+      fallback: OWNER_PROSE_FALLBACK,
+      surface: "chat_text_turn",
+      mode: "prose",
+    },
+  );
   const assistantMessageId = crypto.randomUUID();
   const nowIso = new Date().toISOString();
   const finalState: TaskStateV1 =
@@ -642,12 +752,15 @@ async function commitTextTurn(args: {
   );
   const content = {
     text: publicText,
-    ...((args.choices || args.handoffRoute || args.structuredData)
+    ...((args.choices || args.handoffRoute || args.structuredData ||
+        args.flowArtefact || args.flowState)
       ? {
         structured: {
           ...(args.structuredData ?? {}),
           ...(args.choices ? { choices: args.choices } : {}),
           ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}),
+          ...(args.flowArtefact ? { flow: args.flowArtefact } : {}),
+          ...(args.flowState ? { flow_state: args.flowState } : {}),
         },
       }
       : {}),
@@ -801,6 +914,8 @@ async function commitTextTurn(args: {
       : "Plan with Ari",
     ...(args.choices ? { choices: args.choices } : {}),
     ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}),
+    ...(args.flowArtefact ? { flow: args.flowArtefact } : {}),
+    ...(args.flowState !== undefined ? { flow_state: args.flowState } : {}),
   });
 }
 
@@ -894,12 +1009,47 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
   }
   const ariUiCapabilities = parseAriUiCapabilities(body.ari_ui);
+  if (
+    body.workflow_context !== undefined &&
+    body.workflow_context !== "website_setup"
+  ) {
+    return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
+  }
 
   const choiceSubmission = body.choice_response === undefined
     ? null
     : validateChoiceSubmission(body.choice_response);
   if (body.choice_response !== undefined && !choiceSubmission) {
     return errorResponse(400, "BAD_REQUEST", "choice_response is invalid");
+  }
+  // #3355 P3 (I-ARI-BOUND-ANSWERS): a card answer is structured and bound to
+  // one run, step and question. Its display text is the owner's words only.
+  const flowAnswer = body.flow_answer === undefined
+    ? null
+    : parseFlowAnswer(body.flow_answer);
+  if (body.flow_answer !== undefined && (!flowAnswer || choiceSubmission)) {
+    return errorResponse(400, "BAD_REQUEST", "flow_answer is invalid");
+  }
+  if (flowAnswer && typeof body.message !== "string") {
+    body.message = flowAnswer.display_text;
+  }
+  const websiteKickoff = body.website_setup_kickoff === undefined
+    ? null
+    : parseWebsiteSetupKickoff(body.website_setup_kickoff);
+  if (
+    body.website_setup_kickoff !== undefined &&
+    (!websiteKickoff || flowAnswer || choiceSubmission ||
+      body.workflow_context !== "website_setup")
+  ) {
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      "website_setup_kickoff is invalid",
+    );
+  }
+  if (websiteKickoff) {
+    // The owner's bubble is the short neutral line, whatever was sent.
+    body.message = WEBSITE_SETUP_KICKOFF_DISPLAY;
   }
   const attachmentIds = Array.isArray(body.attachment_ids)
     ? body.attachment_ids.filter((id): id is string =>
@@ -997,20 +1147,37 @@ async function handle(req: Request): Promise<Response> {
     );
   }
 
-  const rateLimit = await enforceTurnRateLimit(userId, serviceClient);
-  if (!rateLimit.allowed) {
+  // #3355 P1 (D-13): an approval stuck past its executing lease is settled
+  // from its receipt (or marked unknown) before this turn is judged.
+  await reconcileStalePendingActions(userId, serviceClient);
+
+  // #3355 P1 (D-1): the cap is judged after turn recognition. A client turn
+  // that was already claimed is a replay and always returns its stored
+  // answer; only owner turns count; the reset time comes from the database.
+  const rateLimit = await enforceTurnRateLimit(
+    userId,
+    serviceClient,
+    body.client_turn_id,
+  );
+  // #2830 P4: opening Website setup is engine-generated, not an owner
+  // message: with the engine on it never counts toward (or is refused by)
+  // the daily cap. The in-flight guard still applies.
+  const kickoffExempt = websiteKickoff !== null && flowEngineEnabled() &&
+    !rateLimit.allowed && rateLimit.reason === "rate_limited_daily";
+  if (!rateLimit.allowed && !kickoffExempt) {
     const message = rateLimit.reason === "rate_limited_inflight"
       ? "Another action is currently being processed — please wait a moment"
-      : "You've reached today's chat limit. Resets in 24 hours.";
-    const cooldownUntil = rateLimit.resetAt ??
-      new Date(Date.now() + 5_000).toISOString();
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000),
-    );
+      : "You've reached today's Ari message limit.";
+    const retryAfterSeconds = rateLimit.retryAfterSeconds ??
+      (rateLimit.reason === "rate_limited_inflight" ? 5 : Math.max(
+        1,
+        Math.ceil(
+          (Date.parse(rateLimit.resetAt ?? "") - Date.now()) / 1000,
+        ) || 60,
+      ));
     return errorResponse(429, "RATE_LIMITED", message, {
       retry_after_seconds: retryAfterSeconds,
-      cooldown_until: cooldownUntil,
+      ...(rateLimit.resetAt ? { cooldown_until: rateLimit.resetAt } : {}),
     });
   }
 
@@ -1145,6 +1312,39 @@ async function handle(req: Request): Promise<Response> {
     }
   }
 
+  // #3355 P3: an answer to a card that is no longer current changes nothing
+  // and is not a turn. A replay of an already-accepted answer is not stale:
+  // the idempotent path below returns what it produced.
+  if (flowAnswer) {
+    const { data: acceptedRows } = body.conversation_id
+      ? await serviceClient.from("agent_messages")
+        .select("id")
+        .eq("conversation_id", body.conversation_id)
+        .eq("client_turn_id", body.client_turn_id)
+        .eq("role", "user")
+        .limit(1)
+      : { data: [] };
+    if (!acceptedRows || acceptedRows.length === 0) {
+      const stale = !body.conversation_id || !flowEngineEnabled()
+        ? { next: null, state: null }
+        : await staleFlowAnswer({
+          store: createFlowStore(serviceClient, userId),
+          conversationId: body.conversation_id,
+          answer: flowAnswer,
+        });
+      if (stale) {
+        return jsonResponse(200, {
+          kind: "question_stale",
+          code: "QUESTION_STALE",
+          message: "That question was replaced by a newer one.",
+          conversation_id: body.conversation_id ?? "",
+          next: stale.next,
+          flow_state: stale.state,
+        });
+      }
+    }
+  }
+
   const turnContent = {
     text: requestMessage,
     ...(choiceSubmission
@@ -1156,12 +1356,33 @@ async function handle(req: Request): Promise<Response> {
           },
         },
       }
+      : flowAnswer
+      ? {
+        structured: {
+          flow_answer: {
+            run_id: flowAnswer.run_id,
+            step_key: flowAnswer.step_key,
+            question_id: flowAnswer.question_id,
+            choice_id: flowAnswer.choice_id,
+          },
+        },
+      }
       : {}),
   };
   const requestDigest = await sha256Text(JSON.stringify({
     message: requestMessage,
     choice_response: choiceSubmission,
     brand_id: body.brand_id ?? null,
+    ...(flowAnswer
+      ? {
+        flow_answer: [
+          flowAnswer.run_id,
+          flowAnswer.step_key,
+          flowAnswer.question_id,
+          flowAnswer.choice_id,
+        ],
+      }
+      : {}),
   }));
   const manifestDigest = await sha256Text(attachmentIds.join(","));
   const { data: claimedRows, error: claimError } = await serviceClient.rpc(
@@ -1219,6 +1440,9 @@ async function handle(req: Request): Promise<Response> {
   const userMessageId = claimed.message_id;
   const attemptId = claimed.attempt_id;
   const attemptNumber = claimed.attempt_number;
+  if (websiteKickoff && flowEngineEnabled()) {
+    await markEngineOriginTurn(serviceClient, userId, attemptId);
+  }
   // A recovered same-id invocation may observe the winner already running.
   // Only the invocation that atomically changes accepted -> running owns any
   // failure finalization for this attempt.
@@ -1276,14 +1500,22 @@ async function handle(req: Request): Promise<Response> {
         .eq("conversation_id", conversationId)
         .eq("user_id", userId)
         .maybeSingle();
-      let outcome = pendingRecovery?.status as
-        | "executed"
-        | "failed"
-        | "cancelled"
-        | "expired"
-        | "executing"
-        | "pending"
-        | undefined;
+      // #3355 P1: a superseded proposal never ran (cancelled for the plan);
+      // failed_unknown is a stale executing row with no receipt (failed for
+      // the plan, worded honestly below).
+      const storedStatus = pendingRecovery?.status as string | undefined;
+      let outcome = (storedStatus === "superseded"
+        ? "cancelled"
+        : storedStatus === "failed_unknown"
+        ? "failed"
+        : storedStatus) as
+          | "executed"
+          | "failed"
+          | "cancelled"
+          | "expired"
+          | "executing"
+          | "pending"
+          | undefined;
       let recoveredResult = pendingRecovery?.executed_result as unknown;
       if (outcome === "executing") {
         const { data: toolRecovery } = await userClient.from("agent_messages")
@@ -1322,9 +1554,11 @@ async function handle(req: Request): Promise<Response> {
             ),
           });
           const recoveryMessageId = crypto.randomUUID();
-          const recoveryText = outcome === "executed"
-            ? "I reconciled the completed action once."
-            : `I reconciled the ${outcome} action.`;
+          // #3355 P1 (D-32): plain words for what happened to the earlier
+          // approval — never engine vocabulary.
+          const recoveryText = reconciledApprovalLine(
+            storedStatus === "failed_unknown" ? "failed_unknown" : outcome,
+          );
           const committed = await commitTaskAssistantTurn({
             client: serviceClient,
             userId,
@@ -1356,7 +1590,9 @@ async function handle(req: Request): Promise<Response> {
             `Recovered confirmation outcome ${outcome}.`,
           );
         } catch (err: unknown) {
-          if (err instanceof TaskStateError) return taskStateResponse(err);
+          if (err instanceof TaskStateError) {
+            return taskStateResponse(err);
+          }
           return taskStateResponse(
             new TaskStateError(
               "TASK_RECOVERY_REQUIRED",
@@ -1453,7 +1689,9 @@ async function handle(req: Request): Promise<Response> {
     }
 
     let liveChoices: AgentChoicesV2 | null = null;
-    let semanticMessage = requestMessage;
+    let semanticMessage = websiteKickoff
+      ? websiteSetupKickoffInstruction(websiteKickoff)
+      : requestMessage;
     if (choiceSubmission) {
       if (
         !taskState.pending_question ||
@@ -1558,6 +1796,255 @@ async function handle(req: Request): Promise<Response> {
       );
     }
 
+    // #3355 P3 — the flow engine's say before any other lane: deterministic
+    // readiness answers, the run's next step (one card at a time), bound card
+    // answers, and the readiness preamble before a new offering. "none"
+    // leaves every existing lane exactly as it was.
+    // #2830 P4: when the engine owns this chat's Website setup, the
+    // pre-engine Website lanes (durable Fix-all job, text-shaped answers)
+    // stay out of the turn. Flag off or migration missing: unchanged.
+    let websiteEngine = false;
+    // #3355 — the Website setup card a side question was asked from. If the
+    // model cannot answer, the card comes back with plain words (never an
+    // error that strands the flow).
+    let flowSide: {
+      artefact: FlowArtefact | null;
+      state: FlowStateView | null;
+    } | null = null;
+    const flowSideFailure = (): Promise<Response> => {
+      const sideChoices = flowSide?.artefact
+        ? flowChoices(flowSide.artefact)
+        : undefined;
+      return commitTextTurn({
+        client: serviceClient,
+        userId,
+        conversationId,
+        clientTurnId: body.client_turn_id,
+        previousState: taskState,
+        nextState: taskState,
+        expectedRevision: taskStateRevision,
+        previousSummary: conversationSummary,
+        text: flowSideFailureText(flowSide?.artefact ?? null),
+        classification: "flow_engine_side_failed",
+        startedAt: turnStartedAt,
+        ...(sideChoices ? { choices: sideChoices } : {}),
+        ...flowReplyStructured(flowSide?.artefact ?? null),
+        flowArtefact: flowSide?.artefact ?? null,
+        flowState: flowSide?.state ?? null,
+      });
+    };
+    if (activeBrand && !choiceSubmission) {
+      const otherLaneActive = body.workflow_context === "website_setup" ||
+        (taskState.active_task !== null &&
+          !["completed", "cancelled"].includes(taskState.status));
+      const decision = await decideFlowTurn({
+        service: serviceClient,
+        userClient,
+        userId,
+        brand: { id: activeBrand.id, name: activeBrand.name },
+        conversationId,
+        message: semanticMessage,
+        flowAnswer,
+        engineEnabled: flowEngineEnabled(),
+        otherLaneActive,
+        websiteSetup: body.workflow_context === "website_setup" ||
+          isWebsiteSetupRequest(semanticMessage),
+        // #3355: a contact list attached in the chat, read only when the
+        // import flow needs it (same scope checks as the model's read).
+        attachments: () =>
+          readTurnAttachmentTexts({
+            serviceClient,
+            attachmentIds,
+            userId,
+            conversationId,
+            messageId: userMessageId,
+            clientTurnId: body.client_turn_id,
+          }),
+      });
+      if (decision.kind === "side") {
+        websiteEngine = true;
+        flowSide = {
+          artefact: decision.artefact ?? null,
+          state: decision.state,
+        };
+      }
+      if (decision.kind === "propose") {
+        // #2830 P4: the owner's card answer becomes ONE protected proposal
+        // (server-built args against a fresh read). Nothing is written
+        // before the owner confirms it.
+        const tool = findTool(decision.tool_name);
+        if (!tool) {
+          return errorResponse(
+            500,
+            "INTERNAL",
+            "That change isn't available right now. Nothing was changed.",
+          );
+        }
+        try {
+          // #3355 P6 follow-up: a "Tell them" answer carries only the brand
+          // and the step; the server writes the note's exact words here.
+          decision.tool_args = await bindOwnerNoteProposal(
+            tool.name,
+            decision.tool_args,
+            userClient,
+            userId,
+          );
+          await authorizeAgentTool(
+            tool,
+            decision.tool_args,
+            userClient,
+            userId,
+          );
+        } catch (err: unknown) {
+          if (err instanceof ToolError) {
+            return await commitTextTurn({
+              client: serviceClient,
+              userId,
+              conversationId,
+              clientTurnId: body.client_turn_id,
+              previousState: taskState,
+              nextState: taskState,
+              expectedRevision: taskStateRevision,
+              previousSummary: conversationSummary,
+              text: assertOwnerCopy(
+                err.code === "ROLE_CHECK_UNAVAILABLE"
+                  ? "I couldn't check your role on this brand just now, so nothing was changed. Try again in a moment."
+                  : OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
+                  ? err.message
+                  : `${err.message} Nothing was changed.`,
+                {
+                  fallback:
+                    "Only a brand admin or the owner can make that change. Nothing was changed.",
+                  surface: "flow_refusal",
+                  mode: "prose",
+                },
+              ),
+              classification: "flow_engine_refused",
+              startedAt: turnStartedAt,
+              flowState: decision.state,
+            });
+          }
+          throw err;
+        }
+        if (decision.ack) {
+          await persistFlowRow({
+            service: serviceClient,
+            userId,
+            conversationId,
+            text: assertOwnerCopy(decision.ack, {
+              fallback: "Okay.",
+              surface: "flow_ack",
+              mode: "prose",
+            }),
+            artefact: null,
+            state: decision.state,
+            promptVersion: TENANT_CONTEXT_VERSION,
+            modelVersion: ARI_MODEL_VERSION,
+          });
+        }
+        return await commitPendingTurn({
+          client: serviceClient,
+          pendingClient: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          uiCapabilities: ariUiCapabilities,
+          previousState: taskState,
+          readyState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          toolName: tool.name,
+          toolArgs: decision.tool_args,
+          proposalContext: decision.rows.length > 0
+            ? {
+              flow_rows: decision.rows,
+              // #3355 P7: the engine wrote every row in plain words.
+              ...(decision.rows_only ? { flow_rows_only: true } : {}),
+              // #3355: the card's heading ("Import 48 contacts").
+              ...(decision.card_title
+                ? { flow_title: decision.card_title }
+                : {}),
+            }
+            : null,
+          classification: "flow_engine_proposal",
+          startedAt: turnStartedAt,
+        });
+      }
+      if (decision.kind === "stale") {
+        // Raced past the pre-claim check: nothing was applied. Close the turn
+        // honestly with the card that is current now.
+        return await commitTextTurn({
+          client: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          previousState: taskState,
+          nextState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          text: decision.next
+            ? "That question was replaced by a newer one, so nothing changed. The current one is below."
+            : "That question isn't open any more, so nothing changed.",
+          classification: "flow_engine_stale",
+          startedAt: turnStartedAt,
+          flowState: decision.state,
+        });
+      }
+      if (decision.kind === "reply") {
+        const choices = decision.artefact
+          ? flowChoices(decision.artefact)
+          : undefined;
+        return await commitTextTurn({
+          client: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          previousState: taskState,
+          nextState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          text: decision.text,
+          classification: decision.classification,
+          startedAt: turnStartedAt,
+          ...(choices ? { choices } : {}),
+          ...(decision.handoff_route
+            ? { handoffRoute: decision.handoff_route }
+            : {}),
+          // #2830 P4: a form card's control rides as its rendition on EVERY
+          // path that shows the card (a typed or card answer, a refusal, a
+          // resume), not only after a confirm — without it the question
+          // reached the owner as bare text with nothing to answer with.
+          ...flowReplyStructured(decision.artefact),
+          flowArtefact: decision.artefact,
+          flowState: decision.state,
+        });
+      }
+      if (decision.kind === "delegate") {
+        if (decision.state?.flow_key === "website_setup") websiteEngine = true;
+        // The gates passed: the offering lane now takes the owner's original
+        // request. What the owner just chose is said first, as Ari's own row.
+        if (decision.ack) {
+          await persistFlowRow({
+            service: serviceClient,
+            userId,
+            conversationId,
+            text: assertOwnerCopy(decision.ack, {
+              fallback: "Okay.",
+              surface: "flow_ack",
+              mode: "prose",
+            }),
+            artefact: null,
+            state: decision.state,
+            promptVersion: TENANT_CONTEXT_VERSION,
+            modelVersion: ARI_MODEL_VERSION,
+          });
+        }
+        if (decision.semantic_message.trim()) {
+          semanticMessage = decision.semantic_message;
+        }
+      }
+    }
+
     // Load last N messages
     // deno-fmt-ignore -- protected #2013 provenance gate requires this exact select boundary.
     const { data: historyRows } = await userClient
@@ -1574,6 +2061,13 @@ async function handle(req: Request): Promise<Response> {
         : HISTORY_WINDOW,
     );
     const history = (historyRows ?? []).reverse(); // oldest -> newest
+    const trustedCampaignSourceText = [
+      ...history.filter((row) => row.role === "user").map((row) => {
+        const content = row.content as Record<string, unknown> | null;
+        return typeof content?.text === "string" ? content.text : "";
+      }),
+      semanticMessage,
+    ].filter(Boolean).join("\n").slice(-8_000);
 
     // Load profile
     const { data: profileRow } = await userClient
@@ -1653,9 +2147,17 @@ async function handle(req: Request): Promise<Response> {
               `${String(tier.name ?? "Tier").slice(0, 40)} ${
                 tier.isFree === true
                   ? "free"
-                  : `${Number(tier.priceGbp ?? tier.price ?? 0).toFixed(2)} ${
-                    String(row.currency ?? "currency pending")
-                  }`
+                  : row.currency
+                  ? formatMajorWithCode(
+                    Number(tier.priceGbp ?? tier.price ?? 0),
+                    row.currency,
+                  ) ?? "price unavailable"
+                  : `${
+                    formatMajorWithCode(
+                      Number(tier.priceGbp ?? tier.price ?? 0),
+                      null,
+                    ) ?? "price unavailable"
+                  } currency pending`
               }`
             ).join("; ")
             : null,
@@ -1697,22 +2199,32 @@ async function handle(req: Request): Promise<Response> {
               `${String(tier.name ?? "Tier").slice(0, 40)} ${
                 tier.is_free === true
                   ? "free"
-                  : `${(Number(tier.price_cents ?? 0) / 100).toFixed(2)} ${
-                    String(tier.currency ?? "currency pending")
-                  }`
+                  : tier.currency
+                  ? formatMinorWithCode(tier.price_cents ?? 0, tier.currency) ??
+                    "price unavailable"
+                  : `${
+                    formatMinorWithCode(tier.price_cents ?? 0, null) ??
+                      "price unavailable"
+                  } currency pending`
               }`
             ).join("; ");
           }
         }
       }
       const probeBrand = activeBrand?.id;
-      try {
-        const { data: can } = await userClient.rpc("pg_brand_can_collect", {
-          p_brand_id: probeBrand,
-        });
-        payoutReady = can === true ||
-          (can as { can_collect?: boolean } | null)?.can_collect === true;
-      } catch {
+      // #3355 P1 (D-29): with no brand selected there is nothing to probe; the
+      // prompt says "unknown" rather than asking about an undefined brand.
+      if (probeBrand) {
+        try {
+          const { data: can } = await userClient.rpc("pg_brand_can_collect", {
+            p_brand_id: probeBrand,
+          });
+          payoutReady = can === true ||
+            (can as { can_collect?: boolean } | null)?.can_collect === true;
+        } catch {
+          payoutReady = null;
+        }
+      } else {
         payoutReady = null;
       }
     }
@@ -1900,9 +2412,40 @@ async function handle(req: Request): Promise<Response> {
       : null;
     const activeEventPlan = taskState.active_task?.intent === "create_event" &&
       !["completed", "cancelled"].includes(taskState.status);
+    // Website setup is a separate durable workflow. It must not be interpreted
+    // as an answer to an older event-planning question in the same thread.
+    const websiteSetupIntent = activeBrand && !websiteEngine
+      ? detectWebsiteSetupIntent(semanticMessage)
+      : null;
+    const websiteSetupWorkflow = body.workflow_context === "website_setup" &&
+      !websiteEngine;
+    const websiteSetupBoundary = websiteSetupWorkflow ||
+      websiteSetupIntent !== null;
+    if (websiteSetupBoundary) {
+      const currentTurn = websiteSetupCurrentTurnOnly(contents);
+      contents.splice(0, contents.length, ...currentTurn);
+    }
+    let activeWebsiteSetupJob = false;
+    if (websiteSetupWorkflow && activeBrand) {
+      const { data: hasWebsiteJob } = await userClient.rpc(
+        "ari_has_active_brand_completeness_job",
+        { p_brand_id: activeBrand.id },
+      );
+      activeWebsiteSetupJob = hasWebsiteJob === true;
+    }
+    // An owner returning from an upload or approval handoff resumes the
+    // durable job: fresh plan read, then the next gap, presented by the server.
+    const effectiveWebsiteSetupIntent = websiteSetupEffectiveIntent({
+      intent: websiteSetupIntent,
+      message: semanticMessage,
+      workflow: websiteSetupWorkflow,
+      activeFixAllJob: activeWebsiteSetupJob,
+    });
     const readInterruption = activeEventPlan &&
+      !websiteSetupBoundary &&
       isReadInterruption(semanticMessage);
-    const questionInterruption = activeEventPlan && !readInterruption &&
+    const questionInterruption = activeEventPlan &&
+      !websiteSetupBoundary && !readInterruption &&
       /\b(?:what|why|how|who|where|can you|do you)\b/i.test(semanticMessage) &&
       !/\b(?:today|tomorrow|next|this|month|week|am|pm|morning|afternoon|evening|title|called|named)\b/i
         .test(semanticMessage);
@@ -2018,7 +2561,8 @@ async function handle(req: Request): Promise<Response> {
     }
 
     if (
-      plannerContext && !readInterruption && !questionInterruption &&
+      plannerContext && !websiteSetupBoundary &&
+      !readInterruption && !questionInterruption &&
       (activeEventPlan || isCreateEventPlanningRequest(semanticMessage))
     ) {
       try {
@@ -2110,6 +2654,172 @@ async function handle(req: Request): Promise<Response> {
       }
     }
 
+    const structuredWebsiteDesign = websiteSetupWorkflow
+      ? websiteSetupDesignAnswer(semanticMessage)
+      : null;
+    const structuredWebsitePlanAnswer = websiteSetupWorkflow
+      ? websiteSetupPlanAnswer(semanticMessage)
+      : null;
+    // #2830 — brand-context answers (contact, location, links, theme, name,
+    // story) and owner-only steps (approval, uploads) are resolved here too,
+    // never by a model guess.
+    const structuredWebsiteContext =
+      websiteSetupWorkflow && !structuredWebsiteDesign &&
+        !structuredWebsitePlanAnswer
+        ? websiteSetupContextAnswer(semanticMessage)
+        : null;
+    if (
+      (structuredWebsiteDesign || structuredWebsitePlanAnswer ||
+        structuredWebsiteContext) &&
+      activeBrand &&
+      activeWebsiteSetupJob
+    ) {
+      const readTool = findTool("get_site_plan");
+      const tool = findTool(
+        structuredWebsiteDesign
+          ? "save_site_plan_design"
+          : structuredWebsiteContext
+          ? "update_brand_context"
+          : "save_site_plan_answers",
+      );
+      if (!readTool || !tool) {
+        return errorResponse(
+          500,
+          "INTERNAL",
+          "Website setup tools are unavailable.",
+        );
+      }
+      try {
+        // Always propose against a fresh read: the revisions below come from
+        // this read, never from an earlier turn.
+        const plan = await readTool.executor(
+          { brand_id: activeBrand.id },
+          userClient,
+          userId,
+          { operationId: null },
+        );
+        const revision = websiteSetupPlanRevision(plan);
+        if (revision === null) {
+          return errorResponse(
+            503,
+            "SITE_SERVICE_UNAVAILABLE",
+            "Ari could not refresh the current Website plan revision. Nothing was changed.",
+          );
+        }
+        const contextResolution = structuredWebsiteContext
+          ? resolveWebsiteSetupContextAnswer({
+            brandId: activeBrand.id,
+            plan,
+            answer: structuredWebsiteContext,
+          })
+          : null;
+        if (contextResolution?.kind === "unavailable") {
+          return errorResponse(
+            503,
+            "SITE_SERVICE_UNAVAILABLE",
+            "Ari could not refresh the current Website details. Nothing was changed.",
+          );
+        }
+        if (contextResolution?.kind === "retry") {
+          // Nothing is written. Re-ask the same one question with what was
+          // wrong, using the same controls the owner just used.
+          const retry = buildWebsiteSetupRetryPresentation({
+            fieldKey: contextResolution.fieldKey,
+            field: contextResolution.field,
+            brandId: activeBrand.id,
+            problem: contextResolution.problem,
+            completeness: contextResolution.completeness,
+          });
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: retry.text,
+            classification: "website_setup_structured_retry",
+            startedAt: turnStartedAt,
+            structuredData: { rendition: retry.rendition },
+          });
+        }
+        const proposalArgs = contextResolution?.kind === "proposal"
+          ? contextResolution.args
+          : structuredWebsiteDesign
+          ? {
+            brand_id: activeBrand.id,
+            expected_plan_revision: revision,
+            design_key: structuredWebsiteDesign.designKey,
+            source_type: "owner",
+            why: `The owner selected ${
+              structuredWebsiteDesign.designKey === "atelier"
+                ? "Atelier"
+                : "Voyage"
+            } during Website setup.`,
+            cites: [{
+              kind: "owner_words",
+              quote: structuredWebsiteDesign.ownerWords,
+            }],
+          }
+          : {
+            brand_id: activeBrand.id,
+            expected_plan_revision: revision,
+            answers: websiteSetupMergedPlanAnswers(
+              plan,
+              structuredWebsitePlanAnswer!.answers,
+            ),
+            why: `Save ${structuredWebsitePlanAnswer!.ownerWords} for ${
+              structuredWebsitePlanAnswer!.fieldLabel
+            }.`.slice(0, 300),
+            cites: [{
+              kind: "owner_words",
+              quote: structuredWebsitePlanAnswer!.ownerWords,
+            }],
+          };
+        await authorizeAgentTool(
+          tool,
+          proposalArgs,
+          userClient,
+          userId,
+        );
+        return await commitPendingTurn({
+          client: serviceClient,
+          pendingClient: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          uiCapabilities: ariUiCapabilities,
+          previousState: taskState,
+          readyState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          toolName: tool.name,
+          toolArgs: proposalArgs,
+          classification: "website_setup_structured_answer",
+          startedAt: turnStartedAt,
+        });
+      } catch (err: unknown) {
+        if (err instanceof ToolError) {
+          return errorResponse(
+            err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+            err.code,
+            err.message,
+          );
+        }
+        logError("structured Website answer failed", err, {
+          fn: "agent-chat",
+          revision: "2830-structured-answer-v2",
+        });
+        return errorResponse(
+          503,
+          "SITE_SERVICE_UNAVAILABLE",
+          "Ari could not refresh the Website plan. Nothing was changed.",
+        );
+      }
+    }
+
     const interruptionState = (readInterruption || questionInterruption)
       ? beginInterruption(taskState, {
         turn_id: body.client_turn_id,
@@ -2124,7 +2834,10 @@ async function handle(req: Request): Promise<Response> {
     // the governed flag is disabled or unavailable.
     const { data: agentLoopFlag, error: agentLoopFlagError } = await userClient
       .rpc("ari_agent_loop_enabled");
-    if (!agentLoopFlagError && agentLoopFlag === true) {
+    if (
+      websiteSetupBoundary ||
+      (!agentLoopFlagError && agentLoopFlag === true)
+    ) {
       if (
         !await appendActivity({
           client: serviceClient,
@@ -2176,15 +2889,43 @@ ARI 10X OPERATING CONTRACT
 ${boundedAgentContext}
 </caller_scoped_agent_context>`;
 
-      const selectedToolsets = new Set<AriToolsetKey>(
-        inferAriToolsets(semanticMessage),
-      );
-      let selectedTools = selectAriTools(
-        AGENT_TOOLS,
-        [...selectedToolsets],
-        8,
+      const onboardingResumeRequest = needsAriOnboardingResumeRead(
         semanticMessage,
       );
+      // #2830 — a Website setup turn never belongs to onboarding: its
+      // "Continue Website setup" answers would otherwise re-open the brand
+      // onboarding checklist.
+      const onboardingSetupRequest = !!activeBrand &&
+        !websiteSetupBoundary &&
+        !onboardingResumeRequest &&
+        (needsAriOnboardingSetupRead(semanticMessage) ||
+          onboardingPlan?.status === "active" &&
+            isAriOnboardingPlanProgressMessage(semanticMessage));
+      const campaignWorkflowRequest = !!activeBrand &&
+        needsAriCampaignWorkflow(semanticMessage);
+      const eventLaunchReadinessRequest = !!activeBrand &&
+        isAriEventLaunchReadinessRequest(semanticMessage);
+      const selectedToolsets = new Set<AriToolsetKey>(
+        onboardingSetupRequest
+          ? ["core", "brand", "onboarding"]
+          : eventLaunchReadinessRequest
+          ? ["core", "sites", "listings"]
+          : inferAriToolsets(semanticMessage),
+      );
+      if (websiteSetupBoundary) {
+        selectedToolsets.add("sites");
+        selectedToolsets.add("memory");
+      }
+      let selectedTools = onboardingSetupRequest
+        ? selectAriOnboardingSetupTools(AGENT_TOOLS)
+        : campaignWorkflowRequest
+        ? selectAriCampaignWorkflowTools(AGENT_TOOLS)
+        : selectAriTools(
+          AGENT_TOOLS,
+          [...selectedToolsets],
+          websiteSetupBoundary ? 16 : 12,
+          semanticMessage,
+        );
       try {
         compileGeminiToolDeclarations(selectedTools.map((tool) => ({
           name: tool.name,
@@ -2197,7 +2938,8 @@ ${boundedAgentContext}
         throw err;
       }
       const launchPlanRequest = activeBrand !== null &&
-        isBrandLaunchPlanRequest(semanticMessage);
+        (isBrandLaunchPlanRequest(semanticMessage) ||
+          eventLaunchReadinessRequest);
       const launchInitialCalls = launchPlanRequest && activeBrand
         ? launchPlanInitialCalls({
           brandId: activeBrand.id,
@@ -2205,6 +2947,12 @@ ${boundedAgentContext}
           includeResearch: launchPlanNeedsPublicResearch(semanticMessage),
         })
         : [];
+      if (eventLaunchReadinessRequest && activeBrand) {
+        launchInitialCalls.push({
+          name: "list_events",
+          args: { brand_id: activeBrand.id, upcoming_only: false, limit: 50 },
+        });
+      }
       const standaloneResearchRequest = isStandalonePublicResearchRequest(
         semanticMessage,
       );
@@ -2213,17 +2961,39 @@ ${boundedAgentContext}
       const capabilityDiscoveryRequest = needsAriCapabilityDiscovery(
         semanticMessage,
       );
-      const onboardingResumeRequest = needsAriOnboardingResumeRead(
-        semanticMessage,
+      const recentEventTitle = findAriRecentEventTitle(
+        history.filter((row) => row.role === "user").flatMap((row) => {
+          const content = row.content as Record<string, unknown> | null;
+          return typeof content?.text === "string" ? [content.text] : [];
+        }),
       );
       const deterministicRead = ariDeterministicReadPlan(
         semanticMessage,
         activeBrand?.id ?? null,
+        typeof taskState.active_task?.slots.title.value === "string"
+          ? taskState.active_task.slots.title.value
+          : recentEventTitle,
+        currentAttachmentParts.length > 0,
+        needsAriCampaignDraftReview(semanticMessage)
+          ? findAriCampaignDraftId(history)
+          : null,
       );
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
       );
-      const initialCalls = standaloneResearchRequest
+      const websiteInitialCalls = activeBrand && websiteSetupBoundary
+        ? websiteSetupWorkflowInitialCalls({
+          intent: effectiveWebsiteSetupIntent,
+          brandId: activeBrand.id,
+          activeFixAllJob: activeWebsiteSetupJob,
+        })
+        : [];
+      // #3355 P8 (D-16): initialCalls is the loop's read-only pre-pass; a
+      // write placed here can never run. Trips are created by the engine's
+      // create_trip flow (or proposed by the model when the engine is off).
+      const initialCalls = websiteInitialCalls.length > 0
+        ? websiteInitialCalls
+        : standaloneResearchRequest
         ? [{ name: "search_public_web", args: { query: semanticMessage } }]
         : launchInitialCalls.length > 0
         ? launchInitialCalls
@@ -2232,16 +3002,60 @@ ${boundedAgentContext}
           name: "search_capabilities",
           args: { query: semanticMessage, limit: 12 },
         }]
+        : campaignWorkflowRequest && activeBrand &&
+            needsAriCampaignPerformanceRead(semanticMessage)
+        ? [{
+          name: "get_brand_analytics",
+          args: { brand_id: activeBrand.id, question: semanticMessage },
+        }]
+        : onboardingSetupRequest && activeBrand
+        ? [
+          {
+            name: "get_operator_snapshot",
+            args: { brand_id: activeBrand.id },
+          },
+          {
+            name: "get_onboarding_plan",
+            args: { brand_id: activeBrand.id },
+          },
+          {
+            name: "build_host_onboarding_blueprint",
+            args: {
+              goal: semanticMessage.slice(0, 1000),
+              mode: "self_serve",
+              brand_id: activeBrand.id,
+              materials: ["message"],
+            },
+          },
+          buildAriOnboardingSetupPlanCall({
+            text: semanticMessage,
+            brandId: activeBrand.id,
+            brandName: activeBrand.name,
+            existingPlan: onboardingPlan,
+            hasAttachments: currentAttachmentParts.length > 0,
+          }),
+        ]
         : onboardingResumeRequest
         ? [{
           name: "get_onboarding_plan",
           args: { brand_id: activeBrand?.id ?? null },
         }]
+        : activeBrand &&
+            isFullySpecifiedTicketTierWriteRequest(semanticMessage)
+        ? [{
+          name: "list_events",
+          args: {
+            brand_id: activeBrand.id,
+            upcoming_only: false,
+            limit: 50,
+          },
+        }]
         : deterministicRead
         ? deterministicRead.calls
         : [];
       let lastProgressEvent: string | null = null;
-      const loopResult = await runAgentLoop({
+      let sideModelFailed = false;
+      const loopRun = runAgentLoop({
         // #3355 local verification uses a device-resident model. Preserve the
         // production 55s budget, but allow the explicitly enabled loopback
         // lane enough time for its first prompt compilation and one observed
@@ -2255,7 +3069,14 @@ ${boundedAgentContext}
           }
           : undefined,
         initialCalls,
-        completeAfterInitialReads: deterministicSafetyReply
+        completeAfterInitialReads: websiteSetupIntent
+          ? (observations) =>
+            buildWebsiteSetupReply(
+              websiteSetupIntent,
+              observations,
+              activeBrand?.name ?? null,
+            )
+          : deterministicSafetyReply
           ? () => deterministicSafetyReply
           : completeFromSearchIndex
           ? completeStandaloneResearchRead
@@ -2270,9 +3091,16 @@ ${boundedAgentContext}
                   (discovery.result as { matches?: unknown }).matches,
                 )
               ? (discovery.result as {
-                matches: Array<{ name?: unknown }>;
+                matches: Array<{ name?: unknown; description?: unknown }>;
               }).matches.flatMap((item) =>
-                typeof item?.name === "string" ? [item.name] : []
+                typeof item?.name === "string"
+                  ? [{
+                    name: item.name,
+                    ...(typeof item.description === "string"
+                      ? { description: item.description }
+                      : {}),
+                  }]
+                  : []
               )
               : [];
             return buildAriCapabilityPlan(
@@ -2292,6 +3120,18 @@ ${boundedAgentContext}
               activeBrand?.name ?? null,
             );
           }
+          : onboardingSetupRequest
+          ? (observations) =>
+            buildAriOnboardingSetupReply(
+              observations,
+              activeBrand?.name ?? "your brand",
+            )
+          : eventLaunchReadinessRequest && activeBrand
+          ? (observations) =>
+            buildBrandLaunchPlan({
+              brandName: activeBrand.name,
+              observations,
+            }).text
           : deterministicRead
           ? (observations) =>
             buildAriDeterministicReadReply(
@@ -2347,15 +3187,23 @@ ${boundedAgentContext}
             });
           }
           emitAriPhase("model_start", { operationState: "sending" });
-          const model = await callGemini({
-            systemPrompt: loopSystemPrompt,
-            contents: [...contents, ...observationContents],
-            tools: selectedTools.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            })),
-          });
+          let model: Awaited<ReturnType<typeof callGemini>>;
+          try {
+            model = await callGemini({
+              systemPrompt: loopSystemPrompt,
+              contents: [...contents, ...observationContents],
+              tools: selectedTools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+              })),
+            });
+          } catch (modelError) {
+            if (flowSide && !(modelError instanceof AriAttachmentError)) {
+              sideModelFailed = true;
+            }
+            throw modelError;
+          }
           return {
             textResponse: model.textResponse,
             toolCalls: model.toolCalls,
@@ -2369,6 +3217,55 @@ ${boundedAgentContext}
           if (isReadOnlyAgentToolCall(call.name, call.args)) return "read";
           return "write";
         },
+        validateProposal: (call) => {
+          if (ticketTierProposalMismatch(semanticMessage, call.name)) {
+            return {
+              code: "REQUESTED_TOOL_MISMATCH",
+              message:
+                "The user asked to add a ticket tier to an existing event. Do not create or edit an event. Use the canonical list_events result to identify the named event, then return upsert_ticket_tier for that event. If the event is missing or ambiguous, ask one precise question.",
+            };
+          }
+          if (call.name !== "draft_campaign") return null;
+          try {
+            validateAriCampaignDraftProposal(
+              call.args,
+              trustedCampaignSourceText,
+            );
+            return null;
+          } catch (error) {
+            const repairedArgs = buildGroundedCampaignDraft(
+              call.args,
+              trustedCampaignSourceText,
+              activeBrand?.name ?? "",
+            );
+            if (repairedArgs) {
+              try {
+                validateAriCampaignDraftProposal(
+                  repairedArgs,
+                  trustedCampaignSourceText,
+                );
+                call.args = repairedArgs;
+                return null;
+              } catch {
+                // Fall through to a model-visible correction instruction.
+              }
+            }
+            return {
+              code: error instanceof ToolError ? error.code : "INVALID_ARGS",
+              message: error instanceof Error
+                ? error.message
+                : "Remove unsupported campaign claims and provide a complete message.",
+            };
+          }
+        },
+        validateFinalText: (text) =>
+          ticketTierTextBypassesApproval(semanticMessage, text)
+            ? {
+              code: "WRITE_PROPOSAL_REQUIRED",
+              message:
+                "The user supplied the event, ticket name, price, and capacity. Return the matching upsert_ticket_tier tool call so the app can show its protected approval proposal. Do not ask the user to type a confirmation in chat. If the canonical event read shows a conflict or the target is ambiguous, ask one precise question instead.",
+            }
+            : null,
         executeTool: async (call) => {
           const tool = findTool(call.name);
           if (!tool) {
@@ -2415,7 +3312,7 @@ ${boundedAgentContext}
               const candidateTools = selectAriTools(
                 AGENT_TOOLS,
                 [...selectedToolsets],
-                8,
+                12,
                 semanticMessage,
               );
               compileGeminiToolDeclarations(candidateTools.map((item) => ({
@@ -2517,9 +3414,23 @@ ${boundedAgentContext}
             error.code === "TURN_STOPPED"),
         }),
       });
+      let loopResult: Awaited<typeof loopRun>;
+      try {
+        loopResult = await loopRun;
+      } catch (loopError) {
+        // #3355 — a side question asked while Website setup owns the chat:
+        // the model failing never strands the flow.
+        if (sideModelFailed) return await flowSideFailure();
+        throw loopError;
+      }
+      // The loop turns a model failure into a stop; during Website setup
+      // that is the same plain words and the current card.
+      if (sideModelFailed && loopResult.kind === "stopped") {
+        return await flowSideFailure();
+      }
 
       if (loopResult.kind === "proposal") {
-        if (activeEventPlan) {
+        if (activeEventPlan && !websiteSetupBoundary) {
           const resumedState = interruptionState.status === "interrupted"
             ? resumeInterruption(interruptionState)
             : taskState;
@@ -2550,32 +3461,80 @@ ${boundedAgentContext}
             `Unknown tool: ${loopResult.toolCall.name}`,
           );
         }
+        let proposalStage = "canonicalize";
         try {
           loopResult.toolCall.args = canonicalizeAgentProposalArgs(
             tool.name,
             loopResult.toolCall.args,
           );
+          if (tool.name === "upsert_ticket_tier") {
+            loopResult.toolCall.args = groundNewTicketTierFields(
+              loopResult.toolCall.args,
+              semanticMessage,
+            );
+          }
+          proposalStage = "bind_state";
           loopResult.toolCall.args = await bindAgentProposalState(
             tool.name,
             loopResult.toolCall.args,
             userClient,
           );
+          proposalStage = "bind_trip_placeholder";
+          loopResult.toolCall.args = await bindTripStandardPlaceholderProposal(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
+          proposalStage = "bind_timezone";
+          loopResult.toolCall.args = await bindProposalTimezone(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
+          // #3355 P6 follow-up: the server writes the owner note's words.
+          proposalStage = "bind_owner_note";
+          loopResult.toolCall.args = await bindOwnerNoteProposal(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+            userId,
+          );
+          proposalStage = "authorize";
           await authorizeAgentTool(
             tool,
             loopResult.toolCall.args,
             userClient,
             userId,
+            tool.name === "draft_campaign"
+              ? trustedCampaignSourceText
+              : undefined,
           );
+          proposalStage = "ticket_preflight";
           const pricingContext = await preflightTicketPricingProposal(
             tool.name,
             loopResult.toolCall.args,
             userClient,
           );
+          proposalStage = "money_preflight";
           const moneyContext = await preflightMoneyProposal(
             tool.name,
             loopResult.toolCall.args,
             userClient,
           );
+          // #3355 P6 (D-26): readiness at propose time; the publish RPC's
+          // own refusal stays the backstop.
+          proposalStage = "readiness_preflight";
+          const readinessContext = await preflightReadinessProposal(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
+          await preflightTripPackagePrices(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+          );
+          proposalStage = "commit_pending";
           return await commitPendingTurn({
             client: serviceClient,
             pendingClient: serviceClient,
@@ -2584,21 +3543,68 @@ ${boundedAgentContext}
             clientTurnId: body.client_turn_id,
             uiCapabilities: ariUiCapabilities,
             previousState: taskState,
-            readyState: taskState,
+            readyState: stateForNewAgentProposal(taskState),
             expectedRevision: taskStateRevision,
             previousSummary: conversationSummary,
             toolName: tool.name,
             toolArgs: loopResult.toolCall.args,
-            proposalContext: pricingContext || moneyContext
-              ? { ...(pricingContext ?? {}), ...(moneyContext ?? {}) }
+            proposalContext: pricingContext || moneyContext || readinessContext
+              ? {
+                ...(pricingContext ?? {}),
+                ...(moneyContext ?? {}),
+                ...(readinessContext ?? {}),
+              }
               : null,
             classification: "agent_loop_write_proposal",
             startedAt: turnStartedAt,
           });
         } catch (error: unknown) {
+          if (
+            error instanceof ToolError &&
+            OWNER_SPOKEN_REFUSAL_CODES.has(error.code)
+          ) {
+            // #3355 P6 (D-11/D-26): a money-role refusal or a readiness
+            // blocker is said to the owner in plain words before any card.
+            return await commitTextTurn({
+              client: serviceClient,
+              userId,
+              conversationId,
+              clientTurnId: body.client_turn_id,
+              previousState: taskState,
+              nextState: taskState,
+              expectedRevision: taskStateRevision,
+              previousSummary: conversationSummary,
+              text: error.message,
+              classification: "owner_refusal",
+              startedAt: turnStartedAt,
+            });
+          }
           if (error instanceof ToolError) {
+            console.warn(
+              "[agent-chat] proposal refused",
+              JSON.stringify({
+                tool_name: tool.name,
+                stage: proposalStage,
+                code: error.code,
+                ...(Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
+                  ? {
+                    detail: error.message.slice(0, 160),
+                    event_id: typeof loopResult.toolCall.args.event_id ===
+                        "string"
+                      ? loopResult.toolCall.args.event_id
+                      : null,
+                    brand_id: typeof loopResult.toolCall.args.brand_id ===
+                        "string"
+                      ? loopResult.toolCall.args.brand_id
+                      : null,
+                  }
+                  : {}),
+              }),
+            );
             return errorResponse(
-              error.code === "ROLE_CHECK_UNAVAILABLE"
+              error.code === "PAYOUT_NOT_READY"
+                ? 409
+                : error.code === "ROLE_CHECK_UNAVAILABLE"
                 ? 503
                 : error.code === "INVALID_ARGS"
                 ? 400
@@ -2624,20 +3630,60 @@ ${boundedAgentContext}
           "Ari stopped. Your message is still here.",
         );
       }
-      const launchPlan = launchPlanRequest && activeBrand
+      let launchPlan = launchPlanRequest && activeBrand
         ? buildBrandLaunchPlan({
           brandName: activeBrand.name,
           observations: loopResult.observations,
         })
         : null;
-      const rawLoopText = launchPlan?.text ??
-        (loopResult.kind === "text"
+      if (launchPlan && eventLaunchReadinessRequest && activeBrand) {
+        const savedEvents = buildAriDeterministicReadReply(
+          {
+            intent: "event_list",
+            calls: [{
+              name: "list_events",
+              args: {
+                brand_id: activeBrand.id,
+                upcoming_only: false,
+                limit: 50,
+              },
+            }],
+            ...(recentEventTitle ? { targetTitle: recentEventTitle } : {}),
+          },
+          loopResult.observations,
+          activeBrand.name,
+        );
+        launchPlan = {
+          ...launchPlan,
+          text: `${launchPlan.text}\n\nSaved event details:\n${
+            savedEvents ??
+              `I couldn't verify the saved event details for ${activeBrand.name}. The public page and publication state remain unverified.`
+          }`,
+        };
+      }
+      // #2830 — Website setup has its own customer-facing presentation.
+      // Generic run cards expose tool names and orchestration diagnostics that
+      // belong only in the engineering trace.
+      const websiteSetupPresentation = effectiveWebsiteSetupIntent &&
+          activeBrand
+        ? buildWebsiteSetupPresentation(
+          effectiveWebsiteSetupIntent,
+          loopResult.observations,
+          activeBrand.name,
+          activeBrand.id,
+        )
+        : null;
+      const rawLoopText = websiteSetupPresentation?.text ?? launchPlan?.text ??
+        (loopResult.kind === "stopped" &&
+            loopResult.observations.some((observation) =>
+              observation.error?.code === "WRITE_PROPOSAL_REQUIRED"
+            )
+          ? "I couldn't prepare the ticket change for approval, so nothing was saved. I need to verify the matching event and create its review card before you can approve the change."
+          : loopResult.kind === "text"
           ? loopResult.text
-          : loopResult.reason === "deadline"
-          ? "I reached this task's time limit. I kept the completed steps and can resume from here."
-          : loopResult.reason === "budget"
-          ? "I reached this task's safe step limit. I kept the completed steps and can resume from here."
-          : "I couldn't safely continue after the tool errors. I kept the evidence and have stated the blocker below.");
+          // #3355 P3: honest stop words — the loop only reads, so nothing
+          // changed; a verified refusal is named, nothing else is implied.
+          : honestLoopStopText(loopResult.reason, loopResult.observations));
       const usedResearch = loopResult.observations.some((observation) =>
         [
           "search_public_web",
@@ -2682,12 +3728,18 @@ ${boundedAgentContext}
           ? liveChoices
           : undefined,
         structuredData: {
-          rendition: buildAgentRunRendition({
-            renditionId: `run:${body.client_turn_id}`,
-            goal: semanticMessage,
-            result: loopResult,
-            ...(launchPlan ? { plan: launchPlan } : {}),
-          }),
+          ...(websiteSetupPresentation
+            ? { rendition: websiteSetupPresentation.rendition }
+            : websiteSetupBoundary
+            ? {}
+            : {
+              rendition: buildAgentRunRendition({
+                renditionId: `run:${body.client_turn_id}`,
+                goal: semanticMessage,
+                result: loopResult,
+                ...(launchPlan ? { plan: launchPlan } : {}),
+              }),
+            }),
           agent_run: {
             status: loopResult.kind,
             reason: loopResult.kind === "stopped" ? loopResult.reason : null,
@@ -2749,6 +3801,21 @@ ${boundedAgentContext}
         })),
       });
     } catch (err: any) {
+      // #3355 — a side question during Website setup: plain words and the
+      // card the owner was on, never an error that strands the flow.
+      if (flowSide && !(err instanceof AriAttachmentError)) {
+        try {
+          await assertAttemptRunning(
+            serviceClient,
+            attemptId,
+            userId,
+            attemptNumber,
+          );
+          return await flowSideFailure();
+        } catch (_stopped) {
+          // Stopped meanwhile: the ordinary failure path below says so.
+        }
+      }
       await failAttempt({
         client: serviceClient,
         attemptId,
@@ -3156,7 +4223,18 @@ ${boundedAgentContext}
           tool.name,
           gemini.toolCall.args,
         );
+        if (tool.name === "upsert_ticket_tier") {
+          gemini.toolCall.args = groundNewTicketTierFields(
+            gemini.toolCall.args,
+            semanticMessage,
+          );
+        }
         gemini.toolCall.args = await bindAgentProposalState(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        gemini.toolCall.args = await bindTripStandardPlaceholderProposal(
           tool.name,
           gemini.toolCall.args,
           userClient,
@@ -3179,11 +4257,27 @@ ${boundedAgentContext}
       // #2019: authorization precedes every persisted proposal.
       let proposalContext: Record<string, unknown> | null = null;
       try {
+        // #3355 P6 (D-27): never an empty time zone on an offering card.
+        gemini.toolCall.args = await bindProposalTimezone(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        // #3355 P6 follow-up: the server writes the owner note's words.
+        gemini.toolCall.args = await bindOwnerNoteProposal(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+          userId,
+        );
         await authorizeAgentTool(
           tool,
           gemini.toolCall.args,
           userClient,
           userId,
+          tool.name === "draft_campaign"
+            ? trustedCampaignSourceText
+            : undefined,
         );
         const pricingContext = await preflightTicketPricingProposal(
           tool.name,
@@ -3195,13 +4289,43 @@ ${boundedAgentContext}
           gemini.toolCall.args,
           userClient,
         );
-        if (pricingContext || moneyContext) {
+        // #3355 P6 (D-26): readiness at propose time (DB stays the backstop).
+        const readinessContext = await preflightReadinessProposal(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        await preflightTripPackagePrices(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        if (pricingContext || moneyContext || readinessContext) {
           proposalContext = {
             ...(pricingContext ?? {}),
             ...(moneyContext ?? {}),
+            ...(readinessContext ?? {}),
           };
         }
       } catch (err: unknown) {
+        if (
+          err instanceof ToolError && OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
+        ) {
+          // #3355 P6 (D-11/D-26): said in plain words before any card.
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: err.message,
+            classification: "owner_refusal",
+            startedAt: turnStartedAt,
+          });
+        }
         if (err instanceof ToolError) {
           const status = err.code === "ROLE_CHECK_UNAVAILABLE"
             ? 503
@@ -3228,7 +4352,7 @@ ${boundedAgentContext}
         clientTurnId: body.client_turn_id,
         uiCapabilities: ariUiCapabilities,
         previousState: taskState,
-        readyState: taskState,
+        readyState: stateForNewAgentProposal(taskState),
         expectedRevision: taskStateRevision,
         previousSummary: conversationSummary,
         toolName: tool.name,
@@ -3323,7 +4447,8 @@ async function commitPendingTurn(args: {
   const assistantMessageId = crypto.randomUUID();
   let nextState: TaskStateV1;
   try {
-    nextState = args.readyState.active_task?.intent === "create_event"
+    nextState = args.readyState.active_task?.intent === "create_event" &&
+        args.readyState.status === "ready_to_propose"
       ? markAwaitingConfirmation(args.readyState, pendingActionId)
       : args.readyState;
   } catch (err: unknown) {
@@ -3355,9 +4480,13 @@ async function commitPendingTurn(args: {
   }
 
   const nowIso = new Date().toISOString();
+  // #3355 P1 (D-5): the card and the rendition read the server's owner words
+  // for this change; the presentation rides in server-owned proposal context,
+  // which agent-confirm-action strips before authorization and execution.
   const proposalArgs = verifiedProposalArgs(
     args.toolArgs,
     args.proposalContext ?? null,
+    args.toolName,
   );
   const rendition = buildGenericProposalRendition({
     toolName: args.toolName,

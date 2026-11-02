@@ -2590,3 +2590,78 @@ export async function projectReadyAttachments(args: {
   }
   return parts;
 }
+
+/**
+ * #3355 — a turn's attachments as text, for the flow engine (a contact list
+ * attached in the chat). Same scope and integrity checks as the model's
+ * projection above: only this user's ready attachments on this exact message,
+ * and a derived text is used only when its size and digest match. Files with
+ * no readable text (images, PDFs, audio, video) come back with `text: null`,
+ * so the flow can say plainly what it can't read.
+ */
+export interface AriAttachmentText {
+  file_type: AriAttachmentFileType;
+  name: string;
+  text: string | null;
+}
+
+export async function readTurnAttachmentTexts(args: {
+  serviceClient: SupabaseClient;
+  attachmentIds: string[];
+  userId: string;
+  conversationId: string;
+  messageId: string;
+  clientTurnId: string;
+}): Promise<AriAttachmentText[]> {
+  if (args.attachmentIds.length === 0) return [];
+  const { data, error } = await args.serviceClient.from("agent_attachments")
+    .select(
+      "id,original_filename,file_type,derived_storage_path,derived_size_bytes,derived_sha256,display_order",
+    )
+    .in("id", args.attachmentIds)
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .eq("message_id", args.messageId)
+    .eq("client_turn_id", args.clientTurnId)
+    .eq("state", "ready");
+  if (error || !Array.isArray(data) || data.length !== args.attachmentIds.length) {
+    throw new AriAttachmentError("ATTACHMENT_SCOPE_DENIED");
+  }
+  const rows = [...data as Array<Record<string, unknown>>].sort((a, b) =>
+    Number(a.display_order ?? 0) - Number(b.display_order ?? 0)
+  );
+  const out: AriAttachmentText[] = [];
+  for (const row of rows) {
+    const fileType = row.file_type as AriAttachmentFileType;
+    const name = typeof row.original_filename === "string"
+      ? row.original_filename.slice(0, 120)
+      : "your file";
+    const path = typeof row.derived_storage_path === "string"
+      ? row.derived_storage_path
+      : null;
+    if (!path || !["csv", "text", "docx"].includes(fileType)) {
+      out.push({ file_type: fileType, name, text: null });
+      continue;
+    }
+    const { data: downloaded, error: downloadError } = await args
+      .serviceClient.storage.from(ARI_ATTACHMENT_BUCKET).download(path);
+    if (downloadError || !downloaded) {
+      throw new AriAttachmentError("UNREADABLE_FILE");
+    }
+    const bytes = new Uint8Array(await downloaded.arrayBuffer());
+    if (
+      bytes.length !== row.derived_size_bytes ||
+      await digestHex(bytes) !== row.derived_sha256
+    ) {
+      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    }
+    let text: string;
+    try {
+      text = textDecoder.decode(bytes);
+    } catch {
+      throw new AriAttachmentError("UNREADABLE_FILE");
+    }
+    out.push({ file_type: fileType, name, text });
+  }
+  return out;
+}

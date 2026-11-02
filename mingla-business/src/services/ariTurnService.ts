@@ -3,6 +3,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { supabase } from "./supabase";
+import type { AriFlowArtefact, AriFlowNext, AriFlowState } from "./agentChatService";
 
 export type AriAttemptStatus =
   | "accepted"
@@ -120,5 +121,35 @@ export function subscribeAriTurnActivity(
     const current = channel;
     channel = null;
     void supabase.removeChannel(current);
+  };
+}
+
+/**
+ * #3355 P3 — resume the chat's flow on mount, reload, reconnect, or when the
+ * owner comes back from a handoff. Not a turn: it never sends a message and
+ * never counts toward the daily limit.
+ */
+export interface AriFlowResumeResult {
+  flow_state: AriFlowState | null;
+  artefact: AriFlowArtefact | null;
+  next?: AriFlowNext | null;
+}
+
+export async function resumeAriFlow(
+  conversationId: string,
+  trigger: "resume" | "handoff_return" = "resume",
+): Promise<AriFlowResumeResult> {
+  const { data, error } = await supabase.functions.invoke<
+    AriFlowResumeResult & { code?: string }
+  >("agent-turn-control", {
+    body: { action: "flow_resume", conversation_id: conversationId, trigger },
+  });
+  if (error || !data || data.code) {
+    throw new Error(data?.code ?? "FLOW_RESUME_UNAVAILABLE");
+  }
+  return {
+    flow_state: data.flow_state ?? null,
+    artefact: data.artefact ?? null,
+    next: data.next ?? null,
   };
 }

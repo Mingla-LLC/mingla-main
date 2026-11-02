@@ -7,7 +7,12 @@
  */
 
 export type FeatureFlagKey =
-  "ari" | "marketingSend" | "paystack" | "accountSideToggle" | "sites";
+  | "ari"
+  | "marketingSend"
+  | "paystack"
+  | "accountSideToggle"
+  | "sites"
+  | "extras";
 
 function readEnvFlag(raw: string | undefined, defaultEnabled: boolean): boolean {
   if (raw === undefined || raw === "") {
@@ -34,6 +39,11 @@ export const featureFlags: Readonly<Record<FeatureFlagKey, boolean>> = {
   ),
   /** #2829 — generally available; the env value remains the emergency kill switch. */
   sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true),
+  /**
+   * #3281 — authoring Extras. Off until buyers can see and buy them (slice 4),
+   * so an organiser never sets up an extra nobody can purchase.
+   */
+  extras: readEnvFlag(process.env.EXPO_PUBLIC_FF_EXTRAS_ENABLED, false),
 };
 
 export function isFeatureEnabled(key: FeatureFlagKey): boolean {

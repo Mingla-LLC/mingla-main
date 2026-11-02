@@ -60,6 +60,13 @@ export interface AriRenditionActionV1 {
   disabled?: boolean;
 }
 
+/**
+ * #2830 — which Host control an input field uses, matching the real form.
+ * `phone` is the Brand details country chip + local number (Input
+ * variant="phone"); its chip's country is sent back as "Country: XX".
+ */
+export type AriRenditionFieldKind = "text" | "email" | "url" | "phone";
+
 export interface AriRenditionFieldV1 {
   id: string;
   label: string;
@@ -67,7 +74,19 @@ export interface AriRenditionFieldV1 {
   placeholder?: string;
   editable?: boolean;
   confirmationPhrase?: string;
+  kind?: AriRenditionFieldKind;
+  /** Phone only: the country the chip opens on (ISO 3166-1 alpha-2). */
+  countryIso?: string;
+  /** Phone only: chip text while nobody has chosen a country. */
+  countryPlaceholder?: string;
 }
+
+const FIELD_KINDS = new Set<AriRenditionFieldKind>([
+  "text",
+  "email",
+  "url",
+  "phone",
+]);
 
 export interface AriRenditionV1 {
   schema_version: 1;
@@ -365,8 +384,37 @@ function parseField(value: unknown): AriRenditionFieldV1 | null {
     ...(optionalText(source?.confirmationPhrase, 100)
       ? { confirmationPhrase: optionalText(source?.confirmationPhrase, 100) }
       : {}),
+    ...fieldKindProps(source),
   };
 }
+
+function fieldKindProps(
+  source: Record<string, unknown> | null,
+): Pick<AriRenditionFieldV1, "kind" | "countryIso" | "countryPlaceholder"> {
+  const kind = source?.kind;
+  if (!FIELD_KINDS.has(kind as AriRenditionFieldKind)) return {};
+  if (kind !== "phone") return { kind: kind as AriRenditionFieldKind };
+  const countryIso =
+    typeof source?.countryIso === "string" &&
+    /^[A-Z]{2}$/.test(source.countryIso)
+      ? source.countryIso
+      : undefined;
+  const countryPlaceholder = optionalDisplayText(
+    source?.countryPlaceholder,
+    40,
+  );
+  return {
+    kind: "phone",
+    ...(countryIso ? { countryIso } : {}),
+    ...(countryPlaceholder ? { countryPlaceholder } : {}),
+  };
+}
+/**
+ * Most options a choices block may carry: the 15 canonical party types and the
+ * 35 payout countries the Host chooser offers both fit.
+ */
+export const MAX_CHOICE_OPTIONS = 40;
+
 function parseOptions(
   value: unknown,
   max = 12,
@@ -780,7 +828,10 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
       : null;
   }
   if (raw.type === "choices") {
-    const options = parseOptions(raw.options, 12);
+    // #3355 P7 — a choices block may carry a full canonical list (15 party
+    // types). At 12 the whole card was dropped and the owner saw a question
+    // with nothing to pick.
+    const options = parseOptions(raw.options, MAX_CHOICE_OPTIONS);
     const selection =
       raw.selection === "single"
         ? "single"
@@ -916,11 +967,74 @@ export function ariRenditionCopyText(
   return rendition.blocks.find((block) => block.type === "code")?.code;
 }
 
+/**
+ * #2830 P0 (D-4 interim) — a rendition the owner can still answer: it is not
+ * already submitted/disabled and carries at least one action that sends an
+ * answer or decides a proposal. Route/external/local actions only navigate.
+ */
+export function isAnswerableAriRendition(rendition: AriRendition): boolean {
+  if (rendition.state === "submitted" || rendition.state === "disabled") {
+    return false;
+  }
+  return (rendition.actions ?? []).some(
+    (action) =>
+      action.behavior.type === "reply" ||
+      action.behavior.type === "submit" ||
+      action.behavior.type === "confirm" ||
+      action.behavior.type === "cancel",
+  );
+}
+
+/**
+ * #2830 P0 (D-4 interim) — only the NEWEST answerable rendition in a thread
+ * accepts submissions; every earlier one is answered or replaced. `entries`
+ * are in thread order (oldest first). Returns the live entry's key, or null.
+ * [TRANSITIONAL] client-side lock — exit: P3 server `current_artefact_id` +
+ * `QUESTION_STALE` make the server the authority on which card is live.
+ */
+export function newestAnswerableRenditionKey<K>(
+  entries: Iterable<readonly [K, AriRendition]>,
+): K | null {
+  let live: K | null = null;
+  for (const [key, rendition] of entries) {
+    if (isAnswerableAriRendition(rendition)) live = key;
+  }
+  return live;
+}
+
+/** #2830 — the only taps a superseded card still honours. */
+export function isSupersededRenditionTapAllowed(
+  action: AriRenditionActionV1,
+): boolean {
+  return (
+    action.behavior.type === "local" &&
+    (action.behavior.command === "dismiss" || action.behavior.command === "copy")
+  );
+}
+
+/** #2830 P4 — the labels of the options the owner chose on a card. */
+export function ariRenditionSelectedLabels(
+  rendition: AriRendition,
+  selectedOptionIds: readonly string[],
+): string[] {
+  const options =
+    rendition.schema_version === 1
+      ? [...(rendition.chips ?? []), ...(rendition.choices ?? [])]
+      : rendition.blocks
+          .filter((block) => block.type === "choices")
+          .flatMap((block) => block.options);
+  return options
+    .filter((option) => selectedOptionIds.includes(option.id))
+    .map((option) => option.label);
+}
+
 export function buildAriRenditionSubmission(input: {
   rendition: AriRendition;
   action: AriRenditionActionV1;
   selectedOptionIds: string[];
   fieldValue: string;
+  /** Phone fields: the country on the chip, when one is chosen. */
+  fieldCountryIso?: string | null;
 }): string {
   const options =
     input.rendition.schema_version === 1
@@ -936,6 +1050,10 @@ export function buildAriRenditionSubmission(input: {
       ? input.action.behavior.message
       : "Continue",
     choiceLabels.length > 0 ? `Choices: ${choiceLabels.join(", ")}` : null,
+    typeof input.fieldCountryIso === "string" &&
+    /^[A-Z]{2}$/.test(input.fieldCountryIso)
+      ? `Country: ${input.fieldCountryIso}`
+      : null,
     input.fieldValue.trim() ? `Response: ${input.fieldValue.trim()}` : null,
   ]
     .filter((part): part is string => !!part)

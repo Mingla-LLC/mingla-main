@@ -18,6 +18,10 @@ import type { AriErrorCode } from "../../services/agentReliability";
 export const ARI_CHAT_CONNECTION_COPY =
   "Ari could not connect — check your connection and try again.";
 
+/** #2830 — the one sentence for an Ari approval that timed out. */
+export const ARI_PROPOSAL_EXPIRED_COPY =
+  "That approval timed out, so nothing was saved. Ask me again and I'll redo it.";
+
 const INTERNAL_COPY =
   "Ari couldn't finish that request. Nothing was changed; try again shortly.";
 
@@ -30,11 +34,15 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "Your session expired. Sign in again to keep chatting with Ari.",
   FORBIDDEN:
     "Your role on this brand doesn't allow that. Nothing was changed.",
+  PAYOUT_NOT_READY:
+    "This brand can't accept paid tickets yet. Finish its payout setup first.",
   ROLE_REVOKED: "Your access to this brand changed. Nothing was changed.",
   TENANT_MISMATCH:
     "This chat belongs to a different brand. Start a new chat for this brand.",
   STALE_PROPOSAL:
     "That request is out of date. Nothing was changed; ask Ari again.",
+  // #2830 — an approval that timed out. The registry's own sentence, verbatim.
+  PROPOSAL_EXPIRED: ARI_PROPOSAL_EXPIRED_COPY,
   CONFLICT:
     "Something changed while Ari was working. Nothing was changed; try again.",
   RATE_LIMITED: "Ari is busy right now. Try again shortly.",

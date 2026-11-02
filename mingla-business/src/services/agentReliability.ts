@@ -73,9 +73,11 @@ export type AriErrorCode =
   | "VALIDATION_FAILED"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
+  | "PAYOUT_NOT_READY"
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "PROPOSAL_EXPIRED"
   | "CONFLICT"
   | "RATE_LIMITED"
   | "OFFLINE"
@@ -121,6 +123,11 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     safeToRetry: false,
     operationState: "none",
   },
+  PAYOUT_NOT_READY: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+  },
   ROLE_REVOKED: {
     retryability: "after_reauth",
     safeToRetry: false,
@@ -135,6 +142,12 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     retryability: "never",
     safeToRetry: false,
     operationState: "pending",
+  },
+  // #2830 — an Ari approval that timed out; nothing was saved.
+  PROPOSAL_EXPIRED: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "expired",
   },
   CONFLICT: {
     retryability: "after_backoff",

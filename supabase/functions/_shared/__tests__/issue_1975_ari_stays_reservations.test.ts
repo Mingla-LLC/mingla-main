@@ -393,9 +393,13 @@ Deno.test("#2592 B4 the guest phone schema publishes the same E.164 shape it enf
   );
 });
 
+// #3355 P9: save_settings left this list. A new Stay's FIRST settings save
+// has no version (biz_save_stay_settings_v2 requires none then and refuses a
+// missing one once settings exist), so it dispatches with expectedVersion
+// null — see issue_3355_p9_offering_flows.implementor.test.ts.
 Deno.test("#2592 B2 manage_stay_inventory refuses a mutation with no expected_version", async () => {
   const { client, captured } = captureClient();
-  for (const action of ["save_settings", "create_offering", "bulk_create"]) {
+  for (const action of ["create_offering", "bulk_create", "update_offering"]) {
     await assertRejects(
       () =>
         domainTool("manage_stay_inventory").executor(

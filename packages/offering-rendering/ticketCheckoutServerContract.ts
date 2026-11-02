@@ -8,6 +8,7 @@
 import {
   type CanonicalCheckoutLine,
   canonicalJson,
+  type CheckoutAddOnRequest,
   type CheckoutV2LineParseResult,
   isCheckoutAttemptId,
   normalizeCheckoutV2Lines,
@@ -31,8 +32,20 @@ export function normalizeCheckoutV2ServerLines(
       (row) => [row.ticketTypeId, row.byDate],
     ),
   );
+  const requestedAddOns = new Map(
+    (value as Array<{ ticketTypeId: string; addOns?: unknown }>).map(
+      (row) => [row.ticketTypeId, row.addOns],
+    ),
+  );
   const lines = [];
-  for (const line of parsed.lines) {
+  for (const parsedLine of parsed.lines) {
+    // issue #3281 — extras ride their ticket's line. The shape is checked
+    // here; the database prices them and refuses anything it can't sell.
+    const addOns = normalizeAddOns(
+      requestedAddOns.get(parsedLine.ticketTypeId),
+    );
+    if (addOns === "invalid") return invalid;
+    const line = addOns === null ? parsedLine : { ...parsedLine, addOns };
     const map = requested.get(line.ticketTypeId);
     if (map === undefined) {
       lines.push(line);
@@ -57,6 +70,35 @@ export function normalizeCheckoutV2ServerLines(
     lines.push({ ...line, quantity, byDate });
   }
   return { ok: true, lines };
+}
+
+/**
+ * issue #3281 — extras requested on one line: absent or empty is no extras;
+ * otherwise each is a unique uuid with a whole quantity, sorted by id so the
+ * attempt fingerprint doesn't depend on the order the buyer picked them.
+ */
+function normalizeAddOns(
+  value: unknown,
+): CheckoutAddOnRequest[] | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length > 50) return "invalid";
+  const seen = new Set<string>();
+  const addOns: CheckoutAddOnRequest[] = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") return "invalid";
+    const { addOnId, quantity } = entry as Record<string, unknown>;
+    if (
+      typeof addOnId !== "string" || !isCheckoutAttemptId(addOnId) ||
+      seen.has(addOnId) || !Number.isInteger(quantity) ||
+      Number(quantity) < 1 || Number(quantity) > 100_000
+    ) {
+      return "invalid";
+    }
+    seen.add(addOnId);
+    addOns.push({ addOnId, quantity: Number(quantity) });
+  }
+  if (addOns.length === 0) return null;
+  return addOns.sort((a, b) => a.addOnId.localeCompare(b.addOnId));
 }
 
 export function checkoutV2IdempotencyKey(input: {

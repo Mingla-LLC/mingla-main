@@ -25,6 +25,8 @@ const TOOL_FILES = [
   "supabase/functions/_shared/agentDomainTools.ts",
   "supabase/functions/_shared/agentSiteTools.ts",
   "supabase/functions/_shared/agentAri10xTools.ts",
+  // #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
+  "supabase/functions/_shared/agentReadinessTools.ts",
 ];
 const PROMPT_FILE = "supabase/functions/_shared/agentSystemPrompt.ts";
 

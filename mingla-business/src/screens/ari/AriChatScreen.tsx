@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as expoRouter from "expo-router";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
@@ -49,11 +50,21 @@ import {
 } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
+import {
+  ARI_FLOW_UPLOAD_COPY,
+  type AriFlowPlaceMode,
+  type AriFlowUploadKind,
+} from "../../components/ari/ariFlowCards";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import {
+  ariReturnPath,
+  isBrandEditRoute,
+  withReturnTo,
+} from "../../utils/brandEditReturn";
 import { AriWebsiteSetupPane } from "../../components/ari/AriWebsiteSetupPane";
 import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
@@ -62,9 +73,21 @@ import {
 } from "../../components/ari/renditions/ariRenditionProtocol";
 import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
-import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
-import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
-import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
+import type {
+  AgentChoiceSubmissionV2,
+  AriFlowAnswer,
+  AriFlowPlaceValue,
+} from "../../services/agentChatService";
+import {
+  ARI_PROPOSAL_EXPIRED_COPY,
+  ariChatErrorCopy,
+  shouldReportAriChatError,
+} from "./ariChatErrorCopy";
+import { isAriProposalExpired } from "./ariProposalExpiry";
+import {
+  claimWebsiteSetupAutoAudit,
+  websiteSetupAutoAuditKey,
+} from "./websiteSetupAutoAudit";
 import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 import { submitAriMessageFeedback } from "../../services/ariFeedbackService";
 
@@ -79,6 +102,7 @@ import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
 import {
   ariConversationScopeKey,
+  ariWebsiteSetupConversationScopeKey,
   hasStoredAriConversationSelection,
   resolveRestoredAriConversation,
   useAriConversationSelectionStore,
@@ -108,6 +132,19 @@ import { MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 const BOTTOM_NAV_CLEARANCE_PX = 80;
 
 /**
+ * #3355 P3 — expo-router's focus effect when the router provides it (tests
+ * and embedded hosts that stub the router simply skip handoff-return checks;
+ * the owner's next message re-checks on the server anyway).
+ */
+const useFocusEffectSafe: (effect: () => void | (() => void)) => void =
+  typeof (expoRouter as { useFocusEffect?: unknown }).useFocusEffect ===
+  "function"
+    ? (expoRouter as unknown as {
+        useFocusEffect: (effect: () => void | (() => void)) => void;
+      }).useFocusEffect
+    : () => undefined;
+
+/**
  * ORCH-1103 REWORK 3 — true when a confirm error means the pending action was
  * simply no longer "pending" (executed / cancelled / expired / raced), as
  * opposed to a real failure. The edge fn's confirmAgentAction collapses the
@@ -120,14 +157,6 @@ function isAlreadyResolvedError(message: string): boolean {
   return (
     m.includes("current status:") || // "Cannot confirm — current status: executed|cancelled|expired"
     m.includes("already handled") // "Race detected — this action was already handled"
-  );
-}
-
-function isExpiredActionError(code: string, message: string): boolean {
-  return (
-    code === "EXPIRED" ||
-    message.toLowerCase().includes("status: expired") ||
-    message.toLowerCase().includes("proposal expired")
   );
 }
 
@@ -189,6 +218,28 @@ const composerOccupiedPxFor = (
     ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
     : restingOccupiedPx;
 
+/*
+ * #3355 — the in-chat logo / cover upload (Brand details' own pickers).
+ * Loaded only when a live upload handoff is on screen, so the picker
+ * modules never join this screen's boot path or its render suites.
+ */
+// #3355 P7 — the address picker on Ari's "Where is it?" event card.
+// #3355 — the brand switcher loads when the owner opens it, as on Home (#3493).
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
+const AriFlowPlaceCard = React.lazy(() =>
+  import("../../components/ari/AriFlowPlaceCard").then((module) => ({
+    default: module.AriFlowPlaceCard,
+  })),
+);
+const AriFlowUploadCard = React.lazy(() =>
+  import("../../components/ari/AriFlowUploadCard").then((module) => ({
+    default: module.AriFlowUploadCard,
+  })),
+);
+
 export interface AriChatScreenProps {
   /**
    * #2830 — render inside a host that already owns the page chrome.
@@ -230,9 +281,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const requestedSetupPart = Array.isArray(sitesParams.setupPart)
     ? sitesParams.setupPart[0]
     : sitesParams.setupPart;
-  const setupPart = typeof requestedSetupPart === "string" && requestedSetupPart.length > 0
-    ? requestedSetupPart
-    : null;
+  const setupPart =
+    typeof requestedSetupPart === "string" && requestedSetupPart.length > 0
+      ? requestedSetupPart
+      : null;
   const websiteSetup = sitesIntent === "setup";
   const websiteSplit =
     (sitesIntent === "edit" || websiteSetup) &&
@@ -276,7 +328,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const [attachedCovers, setAttachedCovers] = useState<
     Record<string, { url: string | null; type: string | null }>
   >({});
-  const automaticSetupAudit = useRef<string | null>(null);
 
   // The composer swaps in `keyboardHeight` when the keyboard is up and
   // BOTTOM_NAV_CLEARANCE_PX when it is down; a plain KeyboardAvoidingView
@@ -290,7 +341,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const { user } = useAuth();
   const accountId = user?.id ?? null;
   const currentBrandId = useCurrentBrandStore((state) => state.currentBrandId);
-  const setCurrentBrandId = useCurrentBrandStore((state) => state.setCurrentBrandId);
+  const setCurrentBrandId = useCurrentBrandStore(
+    (state) => state.setCurrentBrandId,
+  );
   React.useEffect(() => {
     if (
       websiteSplit &&
@@ -304,10 +357,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const currentBrand = useCurrentBrand();
   const selectedBrandId = currentBrand?.id ?? null;
   const conversations = useConversationList(selectedBrandId);
-  const conversationScopeKey = ariConversationScopeKey(
-    accountId,
-    selectedBrandId,
-  );
+  const conversationScopeKey = websiteSetup
+    ? ariWebsiteSetupConversationScopeKey(accountId, selectedBrandId)
+    : ariConversationScopeKey(accountId, selectedBrandId);
   const storedConversationSelections = useAriConversationSelectionStore(
     (state) => state.selections,
   );
@@ -341,6 +393,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     persistConversationSelection,
   );
   React.useEffect(() => chat.setSurface(surface), [chat.setSurface, surface]);
+  React.useEffect(
+    () => chat.setWorkflowContext(websiteSetup ? "website_setup" : null),
+    [chat.setWorkflowContext, websiteSetup],
+  );
   const attachments = useAriAttachments({
     brandId: selectedBrandId,
     conversationId: chat.conversationId,
@@ -366,9 +422,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       storedConversationSelections,
       conversationScopeKey,
     );
+    // A first Website setup visit starts a dedicated thread instead of
+    // adopting the newest brand conversation (which may contain an active
+    // event plan). Once created, that setup thread restores normally.
     const storedSelection = hasStoredSelection
       ? storedConversationSelections[conversationScopeKey]
-      : undefined;
+      : websiteSetup
+        ? null
+        : undefined;
     const restoredConversationId = resolveRestoredAriConversation(
       storedSelection,
       conversations.conversations,
@@ -386,6 +447,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     restoredConversationScope,
     selectedBrandId,
     storedConversationSelections,
+    websiteSetup,
   ]);
   const previousBrandId = React.useRef(selectedBrandId);
   const brandScopeStable = previousBrandId.current === selectedBrandId;
@@ -498,7 +560,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 }
               })();
             }
-            setLocalError(ariChatErrorCopy(result.code));
+            // The failed user turn already owns the same safe copy and its
+            // Retry/Edit/Discard controls. Keep the explanation on that row;
+            // a second global toast obscures the thread and repeats the error.
           }
           return;
         }
@@ -535,6 +599,57 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
   };
 
+  // #3355 P3 — a flow card answer travels as a structured, bound answer.
+  // When the card opens a Host page (a handoff), coming back to this screen
+  // asks the server to re-check (flow_resume), never sends a message.
+  const flowHandoffOpenRef = React.useRef(false);
+  const handleFlowAnswer = async (
+    answer: AriFlowAnswer,
+    label: string,
+  ): Promise<void> => {
+    if (!online) {
+      setLocalError("You're offline — I'll pick up here when you're back.");
+      return;
+    }
+    const result = await chat.sendFlowAnswer(answer, label);
+    if (result.kind === "error") {
+      setLocalError(ariChatErrorCopy(result.code));
+    } else if (result.kind === "question_stale") {
+      setLocalError(
+        "That question was replaced by a newer one, so nothing changed.",
+      );
+    } else if (result.kind === "text" && result.handoff_route) {
+      flowHandoffOpenRef.current = true;
+      router.push(result.handoff_route as never);
+    }
+  };
+  // #2830 P4 — a card button that opens a Host page is a route, not an
+  // answer: it posts nothing in the owner's name. Coming back re-checks.
+  const handleFlowRoute = (route: string): void => {
+    flowHandoffOpenRef.current = true;
+    // #3355 bug 18 — Brand Edit returns here after a save, even when it has no
+    // back history (a direct web load used to land the owner on Account).
+    router.push(
+      (isBrandEditRoute(route)
+        ? withReturnTo(
+            route,
+            ariReturnPath({
+              brandId: sitesBrandId,
+              sitesIntent,
+              setupPart,
+            }),
+          )
+        : route) as never,
+    );
+  };
+  useFocusEffectSafe(
+    React.useCallback(() => {
+      if (!flowHandoffOpenRef.current) return;
+      flowHandoffOpenRef.current = false;
+      void chat.resumeFlow("handoff_return");
+    }, [chat.resumeFlow]),
+  );
+
   const handleConfirm = async (
     editedArgs?: Record<string, unknown>,
     // ORCH-1103 Q7 — when the create commit is fired ONLY to obtain a brandId
@@ -555,19 +670,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         result = await confirm.confirm(
           chat.pendingAction.pending_action_id,
           editedArgs,
+          websiteSetup ? "website_setup" : undefined,
         );
       } catch {
         const message = ariChatErrorCopy("EDGE_ERROR");
         setLocalError(message);
         return { ok: false, error: message };
       }
+      // #2830 (D-3) — a timed-out approval saved nothing. Say so, and never
+      // fall through to the success path (an older server's 200
+      // `expired_regenerate` used to clear the card as if it had worked).
+      if (isAriProposalExpired(result)) {
+        const message = ARI_PROPOSAL_EXPIRED_COPY;
+        setLocalError(message);
+        chat.clearPendingAction();
+        // #3355 P3: the server knows the current step; ask it, don't guess.
+        void chat.resumeFlow("resume");
+        return { ok: false, error: message, terminal: "expired" };
+      }
       if (result.kind === "error") {
-        if (isExpiredActionError(result.code, result.message)) {
-          const message = "This proposal expired. Ask Ari to propose it again.";
-          setLocalError(message);
-          chat.clearPendingAction();
-          return { ok: false, error: message, terminal: "expired" };
-        }
         // ORCH-1103 REWORK 3 — guard the already-executed / expired / raced case.
         // If the pending action is no longer "pending" the edge fn returns
         // WRONG_STATE ("Cannot confirm — current status: executed" / "…cancelled"
@@ -582,6 +703,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         }
         const message = ariChatErrorCopy(result.code);
         setLocalError(message);
+        // #3355 P7: a refused write inside a flow comes back with the step
+        // re-presented (the server saved it); read it so the chat never
+        // dead-ends on "That didn't go through".
+        void chat.resumeFlow("resume");
         return { ok: false, error: message };
       }
       if (result.kind === "proposal_replaced") {
@@ -599,6 +724,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         if (typeof r?.brand?.id === "string") brandId = r.brand.id;
       }
       if (!keepPending) chat.clearPendingAction();
+      // #3355 P3 (I-ARI-NO-CLIENT-AUTHORED-CONTINUATION): the confirm response
+      // carries the next step, already saved by the server as Ari's message.
+      // This screen never sends a message on the owner's behalf.
+      if (result.kind === "executed") {
+        chat.applyFlowState(result.flow_state);
+      }
       return { ok: true, brandId };
     } finally {
       chat.finishConfirmedActivity();
@@ -652,25 +783,35 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       chat.pendingAction ||
       disclosureNeeded ||
       !online
-    ) return;
-    const auditKey = `${sitesBrandId}:${setupPart ?? "overview"}`;
-    if (automaticSetupAudit.current === auditKey) return;
-    automaticSetupAudit.current = auditKey;
-    const focus = setupPart ? ` The selected plan part is ${setupPart}.` : "";
-    void chat.sendMessage(
-      `Start Website setup.${focus} Read get_site_plan, summarize completion and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Do not create a draft until setup and brand context are complete.`,
-      [],
-    ).then((result) => {
-      if (result.kind === "error") automaticSetupAudit.current = null;
-    }).catch(() => {
-      automaticSetupAudit.current = null;
-      setLocalError("Ari couldn’t start the Website audit. Try again.");
-    });
+    )
+      return;
+    // #2830 — claimed at module scope so a remount cannot re-send it.
+    const auditKey = websiteSetupAutoAuditKey(sitesBrandId, setupPart);
+    if (!claimWebsiteSetupAutoAudit(auditKey)) return;
+    // #2830 P4 — a structured request, never a scripted message in the
+    // owner's name: the bubble reads "Set up my Website", the server builds
+    // the instruction, and the flow engine re-presents the current step.
+    // The audit key stays claimed even when the send fails. Clearing it would
+    // re-arm this effect as soon as isSending flips back, re-sending on every
+    // failure (a rate limit then sustains itself forever). A failed start is
+    // retried by the owner from the failed message's Retry, never by a loop.
+    void chat
+      .startWebsiteSetup(setupPart ?? null)
+      .then((result) => {
+        if (result.kind === "error") {
+          setLocalError(
+            "Ari couldn’t start the Website audit. Use Retry on the message when you’re ready.",
+          );
+        }
+      })
+      .catch(() => {
+        setLocalError("Ari couldn’t start the Website audit. Try again.");
+      });
   }, [
     chat.isLoadingMessages,
     chat.isSending,
     chat.pendingAction,
-    chat.sendMessage,
+    chat.startWebsiteSetup,
     conversationSelectionReady,
     disclosureNeeded,
     online,
@@ -841,8 +982,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           activePart={setupPart}
           fixing={chat.isSending}
           onFixAll={() => {
+            // #3355 bug 19 — this is the owner's own bubble, so it is in the
+            // owner's words (no "durable job", "checkpoint", "re-audit"). It
+            // still names "Fix all … Website gaps", which the server keys the
+            // Fix-all job on; it matches WEBSITE_SETUP_FIX_ALL_MESSAGE in
+            // supabase/functions/_shared/agentWebsiteSetup.ts.
             handleSend(
-              "Fix all Website brand-context gaps. Resume the durable job, research safe public facts, ask one question at a time, confirm and checkpoint each write, and re-audit until required and recommended gaps are zero. Do not create a draft first.",
+              "Fix all my Website gaps with me, one question at a time. Look up public facts first, and save each change only after I approve it. Don’t build a draft yet.",
+            );
+          }}
+          onReviewGaps={() => {
+            handleSend(
+              "Review every remaining Website setup gap with me. Show what is verified, what is missing or uncertain, and which details need my action. Work through one gap at a time and do not create a draft first.",
             );
           }}
         />
@@ -1145,6 +1296,52 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               onSendChoice={(submission, label) =>
                 void handleChoice(submission, label)
               }
+              flowState={chat.flowState}
+              onFlowAnswer={(answer, label) =>
+                void handleFlowAnswer(answer, label)
+              }
+              onFlowRoute={handleFlowRoute}
+              renderFlowUpload={({
+                kind,
+                disabled,
+                onUploaded,
+                subjectId,
+              }: {
+                kind: AriFlowUploadKind;
+                disabled: boolean;
+                onUploaded: () => void;
+                subjectId?: string | null;
+              }) => (
+                <React.Suspense fallback={null}>
+                  <AriFlowUploadCard
+                    kind={kind}
+                    copy={ARI_FLOW_UPLOAD_COPY[kind]}
+                    brandId={selectedBrandId}
+                    accountId={accountId}
+                    disabled={disabled}
+                    onUploaded={onUploaded}
+                    eventId={subjectId ?? null}
+                  />
+                </React.Suspense>
+              )}
+              renderFlowPlace={({
+                disabled,
+                onPicked,
+                mode,
+              }: {
+                disabled: boolean;
+                onPicked: (place: AriFlowPlaceValue) => void;
+                mode: AriFlowPlaceMode;
+              }) => (
+                <React.Suspense fallback={null}>
+                  <AriFlowPlaceCard
+                    disabled={disabled}
+                    onSubmit={onPicked}
+                    mode={mode}
+                  />
+                </React.Suspense>
+              )}
+              online={online !== false}
               onRetryTurn={(clientTurnId) => {
                 if (!online) {
                   setLocalError(
@@ -1413,10 +1610,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         surface={surface}
       />
 
-      <BrandSwitcherSheet
-        visible={brandSwitcherOpen}
-        onClose={() => setBrandSwitcherOpen(false)}
-      />
+      {/* #3355 — the switcher loads when the owner opens it (#3493). */}
+      {brandSwitcherOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={() => setBrandSwitcherOpen(false)}
+          />
+        </React.Suspense>
+      ) : null}
 
       <AriAttachmentSourceSheet
         visible={attachmentSourceOpen}

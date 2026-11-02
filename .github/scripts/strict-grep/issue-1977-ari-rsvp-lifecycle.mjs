@@ -293,11 +293,15 @@ export function audit(base, plans = effectiveSuites()) {
     // 152→172 without changing the RSVP command owner.
     // #2830 adds durable Website completeness, pre-draft design, bounded
     // audit findings, and evidence-backed brand-context tools; 172→176.
-    if (parsed.audit?.registered_tool_count !== 176) {
-      failures.push("ledger audit registered_tool_count is not 176");
+    // [TEST-MOD-APPROVED #3355] The saved campaign draft readback and the P2
+    // brand readiness read + not-now pair; 176→180.
+    // #3355 P6 follow-up: tell_owner_in_brand_group; 180→181.
+    // #3355 P7: set_brand_payout_country; 181→182.
+    if (parsed.audit?.registered_tool_count !== 182) {
+      failures.push("ledger audit registered_tool_count is not 182");
     }
-    if (mapped.length !== 176 || new Set(mapped).size !== 176) {
-      failures.push("ledger mapped tool census is not 176 unique tools");
+    if (mapped.length !== 182 || new Set(mapped).size !== 182) {
+      failures.push("ledger mapped tool census is not 182 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||

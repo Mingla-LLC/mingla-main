@@ -55,7 +55,9 @@ export function check(sources) {
     "COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'",
     "COALESCE(OLD.theme,'{}'::jsonb) ? 'business_draft'",
   ]) if (!migration.includes(token)) failures.push(`closed visibility contract missing ${token}`);
-  if (!tools.includes('required: ["brand_id", "title", "when_mode", "visibility"]'))
+  // #3355 P7 added "timezone" to the required list; the rule is that
+  // visibility stays an explicit, required choice, wherever it sits.
+  if (!/required: \["brand_id", "title", "when_mode", "visibility"(, "[a-z_]+")*\]/.test(tools))
     failures.push("Ari create schema does not require an explicit visibility choice");
   if ((migration.match(/business_assert_event_visibility\(/g) ?? []).length < 8)
     failures.push("closed visibility validator is not shared by every lifecycle boundary");
@@ -176,7 +178,8 @@ if (process.argv.includes("--self-test")) {
     { ...sources, migration: sources.migration.replace("CREATE TRIGGER business_guard_event_publish_visibility", "CREATE TRIGGER removed_publish_visibility_guard") },
     { ...sources, migration: sources.migration.replace("NEW.visibility IS DISTINCT FROM v_expected_live_visibility", "false") },
     { ...sources, migration: sources.migration.replace("COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'", "true") },
-    { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"]', 'required: ["brand_id", "title", "when_mode"]') },
+    // Drop visibility whatever follows it (the list now ends with "timezone").
+    { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"', 'required: ["brand_id", "title", "when_mode"') },
 
     { ...sources, migration: sources.migration.replace("current_setting('request.jwt.claims',true)", "current_setting('request.jwt.claim.role',true)") },
     { ...sources, migration: sources.migration.replace(
