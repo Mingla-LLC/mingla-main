@@ -48,7 +48,7 @@ Deno.test("#4226 every email path prints the line exactly once and never the old
     preheader: "p",
     bodyHtml: "<p>Hi</p>",
     supportEmail: "support@usemingla.com",
-    logoUrl: "https://usemingla.com/logo.png",
+    logoUrl: "https://cdn.mingla-fixture.org/logo-fixture.png",
     footerAddress: "Mingla",
   });
   const admin = renderTransactionalEmail({
