@@ -33,6 +33,11 @@ import {
   hostAdVerdictLabel,
   platformNames,
 } from "../../../../src/components/marketing/ads/hostAdCopy";
+import {
+  hostAdMatchSubtitle,
+  initialHostAdConnections,
+} from "../../../../src/components/marketing/ads/hostAdBuilderRules";
+import { cachedHostAdSetup } from "../../../../src/components/marketing/ads/hostAdSetupCache";
 import { HostAdCountryPicker } from "../../../../src/components/marketing/ads/HostAdCountryPicker";
 import { HostAdPagePicker } from "../../../../src/components/marketing/ads/HostAdPagePicker";
 import {
@@ -58,6 +63,7 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   HOST_AD_SALES_PLATFORMS,
@@ -86,6 +92,9 @@ const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
 const platformList = platformNames;
 
 const CITY_REF_PLATFORMS = ["meta", "tiktok", "google"];
+
+/** Height of the floating marketing action button plus a gap above it. */
+const FLOATING_ACTION_CLEARANCE = 72;
 
 const EMPTY_AD_VIDEO_PATCH: CoverPatch = {
   coverMediaUrl: null,
@@ -141,17 +150,21 @@ function scheduleBoundaryIso(value: string, boundary: "start" | "end"): string |
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function hostAdBuilderHref(input: {
+/**
+ * #4238 D4: the builder keeps its place in the URL with setParams, never a
+ * replace. A replace remounted the screen on web, which reloaded Ads setup
+ * and, for ?plan_id=, resumed the plan again in a loop.
+ */
+function hostAdBuilderParams(input: {
   draftId: string;
   planId?: string | null;
   step: HostAdStepId;
-}): string {
-  const query = new URLSearchParams({
+}): Record<string, string | undefined> {
+  return {
     draft_id: input.draftId,
     step: input.step,
-  });
-  if (input.planId) query.set("plan_id", input.planId);
-  return `/(tabs)/marketing/ads/create?${query.toString()}`;
+    plan_id: input.planId ?? undefined,
+  };
 }
 
 function firstParam(value: string | string[] | undefined): string | null {
@@ -219,10 +232,8 @@ function aggregateHasProviderObjectEvidence(
 }
 
 /** "Matched on all platforms", or which platforms have no match. */
-function matchSubtitle(missing: readonly string[]): string {
-  return missing.length === 0
-    ? "Matched on all platforms"
-    : `Not found on ${platformList(missing)}: remove it or turn those platforms off`;
+function matchSubtitle(missing: readonly string[], selectedCount: number): string {
+  return hostAdMatchSubtitle(platformList(missing), missing.length, selectedCount);
 }
 
 /** "Ticket sales: Meta, Snapchat · Page visits: Google". */
@@ -310,6 +321,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
   const permissions = useHostAdPermissions(brandId);
+  // #4238 Extra A: the floating bottom nav and the floating "Create an ad"
+  // button sit over this screen on phones. Reserve both so the step buttons
+  // stay reachable at full scroll (business web and native).
+  const bottomChromeInset = useStickyFooterOffset();
+  const scrollBottomStyle = useMemo(
+    () => ({ paddingBottom: bottomChromeInset + FLOATING_ACTION_CLEARANCE }),
+    [bottomChromeInset],
+  );
   const [setup, setSetup] = useState<HostAdSetup | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -400,22 +419,31 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   useEffect(() => {
     if (requestedDraftId !== null || draftIdRef.current === null) return;
-    router.replace(
-      hostAdBuilderHref({
+    router.setParams(
+      hostAdBuilderParams({
         draftId: draftIdRef.current,
         planId: requestedPlanId,
         step: activeStepId,
-      }) as never,
+      }),
     );
   }, [activeStepId, requestedDraftId, requestedPlanId, router]);
 
-  const load = useCallback(async () => {
+  // #4238 D5: after a refresh or a direct link there is no history, so a bare
+  // router.back() did nothing. Go to the Ads list explicitly then.
+  const backToAds = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/marketing/ads" as never);
+  }, [router]);
+
+  const load = useCallback(async (force = false) => {
     if (!brandId || !permissions.canRead) return;
     setLoading(true);
     setError(null);
     try {
       const { loadHostAdSetup } = await loadHostAdPlanService();
-      setSetup(await loadHostAdSetup(brandId));
+      // #4238 D4: one setup read per brand for a short while (remounts,
+      // step changes and a resumed plan reuse it); Retry forces a fresh one.
+      setSetup(await cachedHostAdSetup(brandId, loadHostAdSetup, { force }));
     } catch (cause) {
       setError(
         hostAdSetupErrorCopy(
@@ -441,7 +469,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setError(null);
       try {
         const { loadHostAdSetup } = await loadHostAdPlanService();
-        const refreshed = await loadHostAdSetup(brandId);
+        const refreshed = await cachedHostAdSetup(brandId, loadHostAdSetup, {
+          force: true,
+        });
         const recorded = refreshed.creatives.find(
           (item) => item.id === creativeId,
         );
@@ -608,12 +638,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
         setActiveStepId("review");
         setMaxVisitedStep(HOST_AD_STEPS.length - 1);
         if (draftIdRef.current) {
-          router.replace(
-            hostAdBuilderHref({
+          router.setParams(
+      hostAdBuilderParams({
               draftId: draftIdRef.current,
               planId,
               step: "review",
-            }) as never,
+            }),
           );
         }
         if (aggregate.plan.state === "staff_review_required") {
@@ -700,7 +730,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       // #4238: a fresh ad starts on every ready platform and the brand's own
       // country (or none). A resumed plan below overrides both.
       if (!requestedPlanId) {
-        setConnections(setup.connections);
+        setConnections(initialHostAdConnections(setup.connections, null));
         setCountries(initialHostAdCountries(setup.brand_country_code));
       }
       setDraftReady(true);
@@ -726,11 +756,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
         setPage(
           setup.pages.find((item) => item.id === state.page_id) ?? null,
         );
-        const connectionIds = Array.isArray(state.connection_ids)
-          ? new Set(state.connection_ids)
-          : new Set();
+        // #4238: a draft that saved no platforms starts on every ready one.
         setConnections(
-          setup.connections.filter((item) => connectionIds.has(item.id)),
+          initialHostAdConnections(setup.connections, state.connection_ids),
         );
         setCreative(
           setup.creatives.find((item) => item.id === state.creative_id) ?? null,
@@ -811,12 +839,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
           setActiveStepId(restoredStep);
           setMaxVisitedStep(Math.max(0, restoredIndex));
           if (draftIdRef.current) {
-            router.replace(
-              hostAdBuilderHref({
+            router.setParams(
+      hostAdBuilderParams({
                 draftId: draftIdRef.current,
                 planId: draft.plan_id,
                 step: restoredStep,
-              }) as never,
+              }),
             );
           }
         }
@@ -830,6 +858,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
             ? String(cause.code)
             : "";
         if (code === "draft_not_found") {
+          // A fresh ad whose draft was never saved: same start as a new ad.
+          if (!requestedPlanId) {
+            setConnections(initialHostAdConnections(setup.connections, null));
+            setCountries(initialHostAdCountries(setup.brand_country_code));
+          }
           setDraftReady(true);
           setDraftSaveStatus("unsaved");
           return;
@@ -1063,12 +1096,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
     setActiveStepId(next.id);
     setMaxVisitedStep((current) => Math.max(current, nextIndex));
     if (draftIdRef.current) {
-      router.replace(
-        hostAdBuilderHref({
+      router.setParams(
+      hostAdBuilderParams({
           draftId: draftIdRef.current,
           planId: draftPlanIdRef.current ?? existingPlanId,
           step: next.id,
-        }) as never,
+        }),
       );
     }
     await persistDraft(draftSnapshot, next.id);
@@ -1572,7 +1605,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setNotice(
         "Ad cancelled. Any money you set aside is back in your Ads credit.",
       );
-      await load();
+      await load(true);
     } catch (cause) {
       setCancelError(
         hostAdErrorMessage(cause, "The plan could not be canceled."),
@@ -1618,7 +1651,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           illustration="users"
           title="Ads setup unavailable"
           description={error ?? "Try again."}
-          cta={{ label: "Retry", onPress: () => void load() }}
+          cta={{ label: "Retry", onPress: () => void load(true) }}
         />
       </View>
     );
@@ -1631,7 +1664,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           illustration="users"
           title={HOST_AD_UNAVAILABLE_TITLE}
           description={HOST_AD_UNAVAILABLE_BODY}
-          cta={{ label: "Back to Ads", onPress: () => router.back() }}
+          cta={{ label: "Back to Ads", onPress: backToAds }}
         />
       </View>
     );
@@ -1643,12 +1676,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
   return (
     <View style={styles.host}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, scrollBottomStyle]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.topRow}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={backToAds}
             accessibilityRole="button"
             accessibilityLabel="Back to Ads"
           >
@@ -1876,6 +1909,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                           !city.refs[connection.platform],
                       )
                       .map((connection) => connection.platform),
+                    connections.length,
                   )}
                 </Text>
               </View>
@@ -1959,6 +1993,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         (connection) => !interest.refs[connection.platform],
                       )
                       .map((connection) => connection.platform),
+                    connections.length,
                   )}
                 </Text>
               </View>

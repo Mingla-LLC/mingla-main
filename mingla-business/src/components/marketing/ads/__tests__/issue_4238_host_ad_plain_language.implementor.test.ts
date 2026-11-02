@@ -149,7 +149,7 @@ describe("#4238 plain-language Host ad screens", () => {
         "Reddit cannot preserve city targeting; the selected countries are broader.",
         ["NG"],
       ),
-    ).toBe("Reddit can't target cities, so it will show your ad across NG. Accept that or turn Reddit off.");
+    ).toBe("Reddit can't target cities, so it will show your ad across Nigeria. Accept that or turn Reddit off.");
     expect(
       hostAdTargetingNote("meta", "check_required", "Resolve Meta city keys for: Ikeja."),
     ).toBe("Facebook & Instagram couldn't find Ikeja. Remove it, or turn Facebook & Instagram off.");

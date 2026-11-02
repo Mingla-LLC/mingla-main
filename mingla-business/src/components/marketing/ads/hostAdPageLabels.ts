@@ -63,6 +63,17 @@ export function hostAdPageMeta(page: PageLike): string {
     .join(" · ");
 }
 
+/**
+ * "Sat 5 Dec · Lagos" — date and city only, for a card that already shows
+ * the type as a badge (#4238 D7: never print the type twice).
+ */
+export function hostAdPageDetails(page: PageLike): string {
+  const city = page.city?.trim() ? page.city.trim() : null;
+  return [hostAdPageDate(page.starts_at), city]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+}
+
 /** A cover we can draw as an image (event covers may be videos). */
 export function isImageCoverUrl(url: string | null | undefined): boolean {
   if (!url || !url.trim()) return false;

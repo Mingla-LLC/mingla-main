@@ -147,9 +147,17 @@ describe("#4238 HostAdPagePicker (T-B5)", () => {
     );
     const all = textOf(renderer.root as unknown as RenderNode);
     expect(all).not.toContain("https://");
-    expect(all).toContain("Event · Sat 5 Dec · Lagos");
-    expect(all).toContain("Venue · Abuja");
+    // The type shows once, as a badge; the detail line is date and city.
+    expect(all).toContain("Sat 5 Dec · Lagos");
+    expect(all).not.toContain("Event · Sat 5 Dec");
+    expect(all).toContain("Abuja");
+    expect(all).not.toContain("Venue · Abuja");
     expect(all).toContain("Brand page");
+    // Inside one card the type appears once (the badge), never in the details.
+    const brandRow = textOf(byTestId(renderer, "host-ad-page-b1")[0]);
+    expect(brandRow.split("Brand page").length - 1).toBe(1);
+    const eventRow = textOf(byTestId(renderer, "host-ad-page-e1")[0]);
+    expect(eventRow.split("Event").length - 1).toBe(1);
 
     const event = byTestId(renderer, "host-ad-page-e1")[0];
     expect(event.props.accessibilityLabel).toBe(

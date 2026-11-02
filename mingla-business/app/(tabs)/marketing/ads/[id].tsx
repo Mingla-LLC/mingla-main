@@ -36,7 +36,9 @@ import {
   resumeHostAdCampaignPlan,
 } from "../../../../src/services/hostAdCampaignService";
 import {
+  hostAdCostPerLabel,
   hostAdEventLabel,
+  hostAdResultLabel,
   hostAdStatusLabel,
   humanize,
   platformName,
@@ -263,9 +265,11 @@ export default function HostAdDetailRoute(): React.ReactElement {
   )
     ? payload.measurement.manifest.result_hierarchy
     : [];
-  const primaryResultLabel = String(
-    resultHierarchy[0] ?? "conversions",
-  ).replaceAll("_", " ");
+  // #4238 D3: plain result words ("ticket sales", "page visits", "results").
+  const primaryResultLabel = hostAdResultLabel(
+    String(resultHierarchy[0] ?? "results"),
+  );
+  const costPerLabel = hostAdCostPerLabel(String(resultHierarchy[0] ?? "results"));
   const impressions = payload.spend_daily.reduce(
     (total, row) => total + Number(row.impressions ?? 0),
     0,
@@ -421,7 +425,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
               <Text style={styles.metricNumber}>
                 {impressions.toLocaleString()}
               </Text>
-              <Text style={styles.metricLabel}>Impressions</Text>
+              <Text style={styles.metricLabel}>Times shown</Text>
             </View>
             <View style={styles.metricCell}>
               <Text style={styles.metricNumber}>{clicks.toLocaleString()}</Text>
@@ -435,7 +439,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
             </View>
           </View>
           <Text style={styles.muted} testID="ads-detail-cost-per-result">
-            Cost per {primaryResultLabel}:{" "}
+            {costPerLabel}:{" "}
             {costPerResult !== null && currency
               ? formatCurrency(costPerResult, currency, true)
               : "Shown once we have both spend and results"}

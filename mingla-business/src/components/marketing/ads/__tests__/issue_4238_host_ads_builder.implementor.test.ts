@@ -339,6 +339,7 @@ describe("#4238 ticket-sales goal (T-F3, T-F4, SC-14)", () => {
 
   it("SC-3 search works before any platform is ticked", () => {
     expect(createRoute).toContain("pick(connections) ?? pick(setup?.connections ?? [])");
-    expect(createRoute).toContain("setConnections(setup.connections);");
+    // #4238 D2: one start rule for fresh, restored and not-found drafts.
+    expect(createRoute).toContain("initialHostAdConnections(setup.connections, null)");
   });
 });

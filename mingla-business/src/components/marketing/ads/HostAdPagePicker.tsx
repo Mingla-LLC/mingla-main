@@ -19,7 +19,7 @@ import type { HostAdPage } from "../../../services/hostAdPlanService";
 import {
   type HostAdPageFilter,
   hostAdPageDate,
-  hostAdPageMeta,
+  hostAdPageDetails,
   hostAdPageTypeLabel,
   isImageCoverUrl,
   pageTypeFilters,
@@ -132,9 +132,11 @@ export function HostAdPagePicker({
                   <Text style={styles.badgeLabel}>{typeLabel}</Text>
                 </View>
               </View>
-              <Text style={styles.meta} numberOfLines={1}>
-                {hostAdPageMeta(page)}
-              </Text>
+              {hostAdPageDetails(page) ? (
+                <Text style={styles.meta} numberOfLines={1}>
+                  {hostAdPageDetails(page)}
+                </Text>
+              ) : null}
             </View>
             <View style={[styles.radio, isSelected && styles.radioSelected]} />
           </Pressable>

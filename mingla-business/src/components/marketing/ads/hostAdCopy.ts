@@ -7,6 +7,8 @@
  * no React, no I/O. It changes words only, never what the code does.
  */
 
+import { countryName } from "./hostAdCountries";
+
 /** Internal words a Host must never read (code identifiers may use them). */
 export const HOST_AD_BANNED_WORDS: readonly RegExp[] = [
   /\bproviders?\b/i,
@@ -33,10 +35,51 @@ export const HOST_AD_BANNED_WORDS: readonly RegExp[] = [
   /\bsafety cap\b/i,
   /\bledger\b/i,
   /\bservers?\b/i,
+  // #4238 D3: words Hosts don't use for results.
+  /\bconversions?\b/i,
+  /\bimpressions?\b/i,
+  /\blanding page views?\b/i,
+  // Raw city keys such as "NG:lagos".
+  /\b[A-Z]{2}:[a-z]/,
 ];
 
 export function hostAdCopyIsPlain(text: string): boolean {
   return !HOST_AD_BANNED_WORDS.some((pattern) => pattern.test(text));
+}
+
+/** "NG" → "Nigeria"; unknown codes stay as they are. */
+function countryWord(code: string): string {
+  const upper = code.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(upper) ? countryName(upper) : code.trim();
+}
+
+/** "lagos" → "Lagos", "port-harcourt" → "Port Harcourt". */
+function titleWords(value: string): string {
+  return value
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
+
+/**
+ * Turns a raw list from the audience check ("NG:lagos, GH:accra" or
+ * "NG, GH" or "live_music") into names: "Lagos, Nigeria and Accra, Ghana".
+ */
+export function hostAdPlaceList(raw: string): string {
+  const items = raw
+    .split(/\s*,\s*/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const city = /^([A-Za-z]{2}):(.+)$/.exec(item);
+      if (city) return `${titleWords(city[2])}, ${countryWord(city[1])}`;
+      if (/^[A-Za-z]{2}$/.test(item)) return countryWord(item);
+      return titleWords(item);
+    });
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join("; ")} and ${items[items.length - 1]}`;
 }
 
 export const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
@@ -94,6 +137,9 @@ export function hostAdStatusLabel(status: string | null | undefined): string {
 
 const RESULT_LABELS: Record<string, string> = {
   tickets: "ticket sales",
+  ticket_purchase: "ticket sales",
+  ticket_purchases: "ticket sales",
+  ticket_sales: "ticket sales",
   purchase: "ticket sales",
   purchases: "ticket sales",
   signups: "sign-ups",
@@ -102,6 +148,10 @@ const RESULT_LABELS: Record<string, string> = {
   reservations: "sign-ups",
   bookings: "bookings",
   clicks: "page visits",
+  click: "page visits",
+  link_click: "page visits",
+  sign_ups: "sign-ups",
+  page_visits: "page visits",
   landing_page_view: "page visits",
   landing_page_views: "page visits",
   page_view: "page visits",
@@ -109,8 +159,20 @@ const RESULT_LABELS: Record<string, string> = {
   results: "results",
 };
 
+const COST_PER_LABELS: Record<string, string> = {
+  "ticket sales": "Cost per sale",
+  "sign-ups": "Cost per sign-up",
+  bookings: "Cost per booking",
+  "page visits": "Cost per visit",
+};
+
+/** "Cost per sale", "Cost per visit", or "Cost per result". */
+export function hostAdCostPerLabel(kind: string | null | undefined): string {
+  return COST_PER_LABELS[hostAdResultLabel(kind)] ?? "Cost per result";
+}
+
 export function hostAdResultLabel(kind: string | null | undefined): string {
-  const key = String(kind ?? "").trim().toLowerCase();
+  const key = String(kind ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   return RESULT_LABELS[key] ?? humanize(key).toLowerCase();
 }
 
@@ -159,14 +221,16 @@ export function hostAdTargetingNote(
   const app = platformName(platform);
   const missing = /for: (.+?)\.?$/.exec(line)?.[1];
   if (/^Resolve .+ for: /.test(line) && missing) {
-    return `${app} couldn't find ${missing}. Remove it, or turn ${app} off.`;
+    return `${app} couldn't find ${hostAdPlaceList(missing)}. Remove it, or turn ${app} off.`;
   }
   if (/radius targeting needs at least one verified/i.test(line)) {
     return `${app} needs a city before it can use a distance. Add a city or turn ${app} off.`;
   }
   if (/cannot preserve city targeting/i.test(line)) {
     return `${app} can't target cities, so it will show your ad across ${
-      countries.length > 0 ? countries.join(", ") : "your whole country list"
+      countries.length > 0
+        ? hostAdPlaceList(countries.join(", "))
+        : "your whole country list"
     }. Accept that or turn ${app} off.`;
   }
   if (/radius/i.test(line)) {

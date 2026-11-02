@@ -59,7 +59,9 @@ function literalText(node: ts.Node): string | null {
     return node.text;
   }
   if (ts.isTemplateExpression(node)) {
-    return [node.head.text, ...node.templateSpans.map((span) => span.literal.text)].join(" … ");
+    // Join the fixed parts without adding spaces, so an id template such as
+    // `host_plan_${hash}` is still read as a code, not a sentence.
+    return [node.head.text, ...node.templateSpans.map((span) => span.literal.text)].join("…");
   }
   if (ts.isJsxText(node)) return node.text.replace(/\s+/g, " ").trim();
   return null;
