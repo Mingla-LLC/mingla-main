@@ -151,8 +151,12 @@ function moneyItemCard(args: {
     });
   } else if (item.fix.who_can_fix === "the brand owner") {
     text = `${itemLead(item)} ${OWNER_ONLY}`;
+    // #3355 P6 follow-up: "Tell them" drops a note in the brand group chat
+    // after the teammate confirms the exact words; Team stays as the way to
+    // find the owner directly.
+    options.push({ id: "tell_owner", label: "Tell them in the group chat" });
     options.push({
-      id: "tell_owner",
+      id: "open:team",
       label: "Find the owner in Team",
       route: `/brand/${brandId}/team`,
     });
@@ -313,6 +317,18 @@ export const moneyGateStep: StepDefinition = {
     }
     if (choiceId === "tell_owner" && itemKey) {
       const label = ctx.run.current_artefact?.handoff?.item_label;
+      const route = ctx.run.current_artefact?.handoff?.route ?? "";
+      if (ctx.run.brand_id && /\/payments\/onboard$/.test(route)) {
+        // One protected proposal; the server writes the note's words and
+        // checks there is a group chat the teammate can post in.
+        return Promise.resolve({
+          record: { state: "human_action", item_key: itemKey },
+          propose: {
+            tool_name: "tell_owner_in_brand_group",
+            tool_args: { brand_id: ctx.run.brand_id, about: "payment_setup" },
+          },
+        });
+      }
       return Promise.resolve({
         record: { state: "human_action", item_key: itemKey },
         ack:

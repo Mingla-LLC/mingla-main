@@ -50,7 +50,10 @@ import {
   preflightReadinessProposal,
   preflightTripPackagePrices,
 } from "../_shared/money/proposeReadiness.ts";
-import { bindProposalTimezone } from "../_shared/agentAri10xTools.ts";
+import {
+  bindOwnerNoteProposal,
+  bindProposalTimezone,
+} from "../_shared/agentAri10xTools.ts";
 import {
   formatMajorWithCode,
   formatMinorWithCode,
@@ -1864,6 +1867,14 @@ async function handle(req: Request): Promise<Response> {
           );
         }
         try {
+          // #3355 P6 follow-up: a "Tell them" answer carries only the brand
+          // and the step; the server writes the note's exact words here.
+          decision.tool_args = await bindOwnerNoteProposal(
+            tool.name,
+            decision.tool_args,
+            userClient,
+            userId,
+          );
           await authorizeAgentTool(
             tool,
             decision.tool_args,
@@ -1884,6 +1895,8 @@ async function handle(req: Request): Promise<Response> {
               text: assertOwnerCopy(
                 err.code === "ROLE_CHECK_UNAVAILABLE"
                   ? "I couldn't check your role on this brand just now, so nothing was changed. Try again in a moment."
+                  : OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
+                  ? err.message
                   : `${err.message} Nothing was changed.`,
                 {
                   fallback:
@@ -3458,6 +3471,14 @@ ${boundedAgentContext}
             loopResult.toolCall.args,
             userClient,
           );
+          // #3355 P6 follow-up: the server writes the owner note's words.
+          proposalStage = "bind_owner_note";
+          loopResult.toolCall.args = await bindOwnerNoteProposal(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+            userId,
+          );
           proposalStage = "authorize";
           await authorizeAgentTool(
             tool,
@@ -4221,6 +4242,13 @@ ${boundedAgentContext}
           tool.name,
           gemini.toolCall.args,
           userClient,
+        );
+        // #3355 P6 follow-up: the server writes the owner note's words.
+        gemini.toolCall.args = await bindOwnerNoteProposal(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+          userId,
         );
         await authorizeAgentTool(
           tool,

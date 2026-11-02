@@ -279,6 +279,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   save_memory_note: role("self", "optional_brand"),
   forget_memory_note: role("self", "none"),
   open_handoff: role("self", "optional_brand"),
+  // #3355 P6 follow-up — any accepted member may ask the owner in the brand
+  // group chat; issue_3720_send_brand_group_message re-checks membership as
+  // the caller.
+  tell_owner_in_brand_group: role("scanner", "brand"),
   get_market_rules: role("self", "none"),
   get_listing_type_capabilities: role("self", "none"),
   build_host_onboarding_blueprint: role("self", "none"),
@@ -390,6 +394,8 @@ export function moneyToolPredicate(
 /** Owner-facing refusal codes the chat says as plain words, not a toast. */
 export const OWNER_SPOKEN_REFUSAL_CODES: ReadonlySet<string> = new Set([
   "MONEY_ROLE_DENIED",
+  "OWNER_NOTE_NOT_NEEDED",
+  "OWNER_NOTE_UNAVAILABLE",
   "READINESS_BLOCKED",
   "TICKET_PRICE_BELOW_MINIMUM",
   "TIMEZONE_NEEDED",

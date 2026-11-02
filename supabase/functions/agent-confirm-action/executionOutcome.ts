@@ -64,6 +64,13 @@ export function toolErrorHttpStatus(code: string): number {
   // Terms. Refused before any write; the member clears it by accepting in the
   // app. A conflict the user resolves elsewhere, never a 500 (safe_to_retry).
   if (code === "ORGANISER_TERMS_REQUIRED") return 409;
+  // issue #3355 P6 follow-up — a "tell the owner" note that can't go out (no
+  // brand group chat the teammate can post in, the words went stale, or the
+  // caller is the owner). Nothing was sent; never a 500.
+  if (
+    ["OWNER_NOTE_UNAVAILABLE", "OWNER_NOTE_CHANGED", "OWNER_NOTE_NOT_NEEDED"]
+      .includes(code)
+  ) return 409;
   // issue #3355 P1 (D-9) — a deterministic publish/money refusal from the
   // database (ariRefusalCopy.ts). Nothing was saved; the owner clears it by
   // fixing the named thing, so it is a conflict, never a 500 or a 202.

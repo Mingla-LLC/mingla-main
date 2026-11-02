@@ -57,6 +57,12 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> =
       "Ask about this again",
       "Back on Ari's list",
     ),
+    // #3355 P6 follow-up — "Tell them" posts in the brand group chat.
+    tell_owner_in_brand_group: row(
+      "Message the owner",
+      "Tell the owner",
+      "Owner told in the group chat",
+    ),
     set_brand_pricing_defaults: row(
       "Update pricing defaults",
       "Pricing defaults",

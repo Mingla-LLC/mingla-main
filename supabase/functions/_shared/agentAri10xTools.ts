@@ -74,6 +74,10 @@ const LOCAL_CAPABILITIES = [
     "Prepare an allowlisted Mingla app destination for a human-owned step.",
   ],
   [
+    "tell_owner_in_brand_group",
+    "After confirmation, ask the brand owner in the brand group chat to do an owner-only step.",
+  ],
+  [
     "get_market_rules",
     "Read deterministic country, currency and payment-rail rules.",
   ],
@@ -766,10 +770,229 @@ const OWNER_ONLY_HANDOFFS: Readonly<Record<string, string>> = Object.freeze({
 export const OWNER_ONLY_HANDOFF_MESSAGE =
   "Only the owner can do this — tell them?";
 
+// #3355 P6 follow-up (Seth, 2026-11-01): "Tell them" drops a note in the
+// brand's group chat, sent as the teammate (their sign-in, so the group's
+// membership rules apply) and only after they confirm the exact words on a
+// card. No group the teammate can post in → the Team screen, said plainly.
+export const OWNER_NOTE_TEAM_FALLBACK =
+  "There's no brand group chat you can post in, so let the owner know from the Team screen.";
+
+/** What the owner is asked to do, per owner-only step (owner-facing words). */
+export const OWNER_NOTE_TOPICS: Readonly<
+  Record<string, { ask: string; where: string; destination: string }>
+> = Object.freeze({
+  payment_setup: {
+    ask: "set up payments",
+    where: "Payments",
+    destination: "payment_onboarding",
+  },
+});
+
+const OWNER_NOTE_TOPIC_BY_DESTINATION: Readonly<Record<string, string>> =
+  Object.freeze({ payment_onboarding: "payment_setup" });
+
+type JsonRecord = Record<string, unknown>;
+
+/**
+ * The brand's group chat the caller can post in as a team member, or null.
+ * Reads the caller's own groups (issue_3720_list_brand_groups, caller JWT);
+ * a support-only view never counts. A failed read is "no group": the caller
+ * is sent to the Team screen instead, never told a note was sent.
+ */
+export async function findCallerBrandGroup(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  const { data, error } = await client.rpc("issue_3720_list_brand_groups");
+  if (error || !Array.isArray(data)) return null;
+  const group = (data as JsonRecord[]).find((row) =>
+    String(row.brand_id ?? "").toLowerCase() === brandId.toLowerCase() &&
+    row.access_kind === "brand" && isUuid(row.conversation_id)
+  );
+  return group ? String(group.conversation_id) : null;
+}
+
+/** The note's exact words: owner-facing, no codes, ids or tool names. */
+export function ownerNoteText(args: {
+  teammateFirstName: string | null;
+  brandName: string;
+  topic: string;
+}): string {
+  const topic = OWNER_NOTE_TOPICS[args.topic];
+  if (!topic) {
+    throw new ToolError("INVALID_ARGS", "That isn't an owner-only step.");
+  }
+  const who = args.teammateFirstName?.trim() || "A teammate";
+  return `${who} asked Ari to ${topic.ask} for ${args.brandName}. Only the owner can do this. Could you take a look? It's in Mingla Host under ${args.brandName} > ${topic.where}.`;
+}
+
+async function teammateFirstName(
+  client: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await client.from("profiles")
+    .select("first_name,display_name")
+    .eq("id", userId).maybeSingle();
+  const row = (data ?? {}) as JsonRecord;
+  const first = typeof row.first_name === "string" ? row.first_name.trim() : "";
+  if (first) return first.split(/\s+/)[0];
+  const display = typeof row.display_name === "string"
+    ? row.display_name.trim()
+    : "";
+  return display ? display.split(/\s+/)[0] : null;
+}
+
+async function brandNameFor(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string> {
+  const { data, error } = await client.from("brands").select("name")
+    .eq("id", brandId).is("deleted_at", null).maybeSingle();
+  const name = typeof (data as JsonRecord | null)?.name === "string"
+    ? String((data as JsonRecord).name).trim()
+    : "";
+  if (error || !name) {
+    throw new ToolError(
+      "BRAND_ACCESS_DENIED",
+      "That brand or resource is unavailable",
+    );
+  }
+  return name;
+}
+
+/** The caller can do the step themselves (they don't need the owner). */
+async function callerOwnsStep(
+  client: SupabaseClient,
+  brandId: string,
+  topic: string,
+): Promise<boolean> {
+  const destination = OWNER_NOTE_TOPICS[topic]?.destination;
+  const check = destination ? OWNER_ONLY_HANDOFFS[destination] : undefined;
+  if (!check) return false;
+  const { data, error } = await client.rpc(check, { p_brand_id: brandId });
+  if (error) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not verify permissions right now",
+    );
+  }
+  return data === true;
+}
+
+/**
+ * Propose-time binding for tell_owner_in_brand_group: the server writes the
+ * exact note (the model never supplies the words) and where it goes, so the
+ * card shows precisely what will be sent. Said in plain words instead of a
+ * card when the caller is the owner or has no group to post in.
+ */
+export async function bindOwnerNoteProposal(
+  toolName: string,
+  args: JsonRecord,
+  client: SupabaseClient,
+  userId: string,
+): Promise<JsonRecord> {
+  if (toolName !== "tell_owner_in_brand_group") return args;
+  if (!isUuid(args.brand_id)) {
+    throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+  }
+  const topic = String(args.about ?? "");
+  if (!OWNER_NOTE_TOPICS[topic]) {
+    throw new ToolError("INVALID_ARGS", "That isn't an owner-only step.");
+  }
+  if (await callerOwnsStep(client, args.brand_id, topic)) {
+    throw new ToolError(
+      "OWNER_NOTE_NOT_NEEDED",
+      `You can ${OWNER_NOTE_TOPICS[topic].ask} yourself in ${
+        OWNER_NOTE_TOPICS[topic].where
+      }. Nothing was sent.`,
+    );
+  }
+  const [group, brandName, firstName] = await Promise.all([
+    findCallerBrandGroup(client, args.brand_id),
+    brandNameFor(client, args.brand_id),
+    teammateFirstName(client, userId),
+  ]);
+  if (!group) {
+    throw new ToolError(
+      "OWNER_NOTE_UNAVAILABLE",
+      `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+    );
+  }
+  return {
+    brand_id: args.brand_id,
+    about: topic,
+    send_to: `${brandName} group chat`,
+    message: ownerNoteText({
+      teammateFirstName: firstName,
+      brandName,
+      topic,
+    }),
+  };
+}
+
+const tellOwnerInBrandGroup: AgentToolDefinition = {
+  name: "tell_owner_in_brand_group",
+  description:
+    "After the teammate confirms, post one note in the brand's group chat asking the owner to do an owner-only step (payment setup). Sent as the teammate. The server writes the exact words; never write your own. Offer it when open_handoff returns requires_owner with tell_owner.via brand_group; when it says team_screen, say its message and link the Team screen instead.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id", "about"],
+    properties: {
+      brand_id: { type: "string", format: "uuid" },
+      about: { type: "string", enum: Object.keys(OWNER_NOTE_TOPICS) },
+      send_to: { type: "string", maxLength: 200 },
+      message: { type: "string", maxLength: 600 },
+    },
+  },
+  executor: async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const topic = String(args.about ?? "");
+    const conversationId = await findCallerBrandGroup(client, args.brand_id);
+    if (!conversationId) {
+      throw new ToolError(
+        "OWNER_NOTE_UNAVAILABLE",
+        `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+      );
+    }
+    // Send exactly the words the teammate confirmed, and only words the
+    // server would write today (a stale or altered note is refused).
+    const expected = ownerNoteText({
+      teammateFirstName: await teammateFirstName(client, userId),
+      brandName: await brandNameFor(client, args.brand_id),
+      topic,
+    });
+    if (args.message !== expected) {
+      throw new ToolError(
+        "OWNER_NOTE_CHANGED",
+        "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
+      );
+    }
+    const messageId = await callRpc<string>(
+      client,
+      "issue_3720_send_brand_group_message",
+      {
+        p_conversation_id: conversationId,
+        p_content: expected,
+        p_actor_mode: "brand",
+      },
+    );
+    return {
+      sent: true,
+      message_id: messageId,
+      conversation_id: conversationId,
+      sent_to: args.send_to ?? null,
+      message: expected,
+    };
+  },
+};
+
 const openHandoff: AgentToolDefinition = {
   name: "open_handoff",
   description:
-    "Return an allowlisted Mingla Host route for a human-owned or screen-specific step. This never accepts an arbitrary URL. Payment setup is owner-only: for anyone else it returns requires_owner instead of a route; say the message and offer to tell the owner through the Team screen.",
+    "Return an allowlisted Mingla Host route for a human-owned or screen-specific step. This never accepts an arbitrary URL. Payment setup is owner-only: for anyone else it returns requires_owner instead of a route; say the message. If tell_owner.via is brand_group, offer to tell them with tell_owner_in_brand_group (about = tell_owner.about); if it is team_screen, say tell_owner.message and link the Team screen.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -810,20 +1033,32 @@ const openHandoff: AgentToolDefinition = {
         );
       }
       if (data !== true) {
-        // "Tell them" goes through the existing team surface; Ari opens no
-        // new channel and sends nothing on its own.
+        // "Tell them" posts in the brand group chat after the teammate
+        // confirms (tell_owner_in_brand_group); Ari sends nothing on its own.
+        // No group they can post in → the Team screen, said plainly.
+        const teamRoute = HANDOFF_ROUTES.team.replace(
+          "{brand_id}",
+          String(args.brand_id),
+        );
+        const group = await findCallerBrandGroup(client, args.brand_id);
         return {
           destination,
           route: null,
           requires_owner: true,
           message: OWNER_ONLY_HANDOFF_MESSAGE,
-          tell_owner: {
-            route: HANDOFF_ROUTES.team.replace(
-              "{brand_id}",
-              String(args.brand_id),
-            ),
-            route_label: "Team",
-          },
+          tell_owner: group
+            ? {
+              via: "brand_group",
+              about: OWNER_NOTE_TOPIC_BY_DESTINATION[destination] ?? null,
+              route: teamRoute,
+              route_label: "Team",
+            }
+            : {
+              via: "team_screen",
+              message: OWNER_NOTE_TEAM_FALLBACK,
+              route: teamRoute,
+              route_label: "Team",
+            },
           reason,
           requires_human: true,
         };
@@ -1491,6 +1726,7 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   saveMemoryNote,
   forgetMemoryNote,
   openHandoff,
+  tellOwnerInBrandGroup,
   getMarketRules,
   getListingCapabilities,
   buildHostOnboardingBlueprint,

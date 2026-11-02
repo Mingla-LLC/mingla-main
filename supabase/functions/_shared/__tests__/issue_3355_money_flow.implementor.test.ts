@@ -183,10 +183,12 @@ Deno.test("P6: an event manager asking for a refund hears 'Only admins or financ
   const chat = await Deno.readTextFile(
     new URL("../../agent-chat/index.ts", import.meta.url),
   );
+  // Both model proposal paths speak the refusal; the flow-answer path (a
+  // "Tell them" note) says the same plain words without a second suffix.
   assertEquals(
     chat.match(/OWNER_SPOKEN_REFUSAL_CODES\.has\(/g)?.length,
-    2,
-    "both proposal paths speak the refusal",
+    3,
+    "every proposal path speaks the refusal",
   );
   assertEquals(chat.match(/classification: "owner_refusal"/g)?.length, 2);
 });
