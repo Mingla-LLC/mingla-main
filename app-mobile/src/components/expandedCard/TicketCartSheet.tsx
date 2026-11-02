@@ -773,19 +773,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
   const { query: quoteQuery, isDebouncing: quoteIsDebouncing } =
     useTicketQuote(quoteInput);
-  // issue #3281 — a checkout that carried extras and came back unfinished may
-  // have lost one to a sale in between; re-quote so the cart shows which.
-  const submittedWithExtrasRef = React.useRef(false);
-  useEffect(() => {
-    if (isSubmitting) {
-      submittedWithExtrasRef.current = quoteLines.some((l) => l.addOns !== undefined);
-      return;
-    }
-    if (!submittedWithExtrasRef.current) return;
-    submittedWithExtrasRef.current = false;
-    if (visible) void quoteQuery.refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSubmitting]);
   const quote = quoteQuery.data ?? null;
   const quoteIsLoading =
     quoteLines.length > 0 && (quoteIsDebouncing || quoteQuery.isFetching);
@@ -1525,6 +1512,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           return labels.length === 0 ? null : `${labels.join(", ")} only`;
         }}
         soldOut={(extra: PublicTicketExtra) => extraSoldOutOnLine(extra, lineDates)}
+        disabled={isSubmitting}
         theme={{
           accent: CONSUMER_TICKET_CART_THEME.accent!,
           textPrimary: CONSUMER_TICKET_CART_THEME.textPrimary!,

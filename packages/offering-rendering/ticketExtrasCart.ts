@@ -7,6 +7,9 @@
  *   cap = min(maxPerTicket × tickets on the line, places left)
  * where a date-limited extra counts its places on each date the line covers.
  * Prices are never computed here; the quote prices every extra.
+ *
+ * No array spread or array destructuring here: Explorer's class D payment
+ * suites load this file with no Babel runtime helpers installed.
  */
 
 import type { CheckoutAddOnRequest } from "./ticketCheckoutContract";
@@ -58,7 +61,9 @@ export function parsePublicTicketExtras(value: unknown): PublicTicketExtra[] {
         remaining = Math.max(0, Math.floor(raw.remaining));
       } else if (isRecord(raw.remaining)) {
         const byDate: Record<string, number> = {};
-        for (const [id, n] of Object.entries(raw.remaining)) {
+        const counts = raw.remaining;
+        for (const id of Object.keys(counts)) {
+          const n = counts[id];
           if (typeof n === "number") byDate[id] = Math.max(0, Math.floor(n));
         }
         remaining = byDate;
@@ -111,7 +116,7 @@ export function extrasCartDates(
   allDaysPass: boolean,
   now: number = Date.now(),
 ): string[] {
-  if (!allDaysPass) return [...chosenDateIds];
+  if (!allDaysPass) return chosenDateIds.slice();
   return occurrences
     .filter((occurrence) => Date.parse(occurrence.endAt) > now)
     .map((occurrence) => occurrence.id);
@@ -127,11 +132,12 @@ export function extrasLineDates(
   chosenDateIds: readonly string[],
 ): string[] {
   if (line?.byDate !== undefined) {
-    return Object.entries(line.byDate)
-      .filter(([, n]) => Number.isInteger(n) && n > 0)
-      .map(([id]) => id);
+    const byDate = line.byDate;
+    return Object.keys(byDate).filter(
+      (id) => Number.isInteger(byDate[id]) && byDate[id] > 0,
+    );
   }
-  if (ticketValidOccurrenceIds == null) return [...chosenDateIds];
+  if (ticketValidOccurrenceIds == null) return chosenDateIds.slice();
   return chosenDateIds.filter((id) => ticketValidOccurrenceIds.includes(id));
 }
 

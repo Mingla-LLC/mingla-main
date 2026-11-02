@@ -85,6 +85,17 @@ describe("issue #3281 — Explorer extras", () => {
     expect(quoteLine()?.addOns).toBeUndefined();
   });
 
+  test("the extras steppers lock while checkout is submitting", () => {
+    const props = makeTicketCartProps({ ...signedIn, tickets: withExtras([dinner()]) });
+    const renderer = mountTicketCart(props);
+    updateTicketCart(renderer, { ...props, isSubmitting: true });
+    const add = renderer.root.findAllByProps({
+      accessibilityLabel: "Add one Dinner to Weekend pass",
+    })[0];
+    expect(add.props.disabled).toBe(true);
+    expect(add.props.accessibilityState).toEqual({ disabled: true });
+  });
+
   test("deck and chat arrivals read extras from the event bundle", () => {
     const renderer = mountTicketCart(
       makeTicketCartProps({

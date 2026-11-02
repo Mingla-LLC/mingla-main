@@ -896,8 +896,9 @@ export const createTicketCheckout = async (
         // issue #3281 PR10 — JSON serialization omits undefined, so uniform
         // carts keep the same wire body while per-date carts forward the map.
         byDate: line.byDate,
-        // issue #3281 — the server prices extras; omitted when there are none.
-        addOns: line.addOns,
+        // issue #3281 — extras only on v2, whose attempt id covers them; the
+        // v1 idempotency key reads only tickets and quantities.
+        addOns: isCheckoutV2 ? line.addOns : undefined,
         ...(isCheckoutV2
           ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
           : {}),

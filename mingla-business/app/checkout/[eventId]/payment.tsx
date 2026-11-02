@@ -899,11 +899,17 @@ function CheckoutPaymentScreenContent({
             testID="issue-3281-extras-changed"
             onPress={(): void =>
               router.replace(
-                `/checkout/${eventId}${
-                  ticketLinkToken === null
-                    ? ""
-                    : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`
-                }` as never,
+                // The tickets step reads the chosen dates from its route.
+                `/checkout/${eventId}?${new URLSearchParams({
+                  ...(eventDateIds.length > 0
+                    ? { eventDateIds: eventDateIds.join(",") }
+                    : eventDateId !== null
+                      ? { eventDateId }
+                      : {}),
+                  ...(ticketLinkToken !== null
+                    ? { ticketLink: ticketLinkToken }
+                    : {}),
+                }).toString()}` as never,
               )
             }
           >

@@ -38,6 +38,8 @@ export interface TicketExtrasPickerProps {
   dateCaption?: (extra: PublicTicketExtra) => string | null;
   /** Whether a sold-out extra stays listed (true) or is hidden when unpicked. */
   soldOut?: (extra: PublicTicketExtra) => boolean;
+  /** True while checkout is submitting: the order being paid for can't change. */
+  disabled?: boolean;
   theme: TicketExtrasPickerTheme;
   testID?: string;
 }
@@ -51,6 +53,7 @@ export const TicketExtrasPicker: React.FC<TicketExtrasPickerProps> = ({
   formatMoney,
   dateCaption,
   soldOut,
+  disabled = false,
   theme,
   testID = "issue-3281-ticket-extras",
 }) => {
@@ -71,8 +74,8 @@ export const TicketExtrasPicker: React.FC<TicketExtrasPickerProps> = ({
         const quantity =
           selected?.find((entry) => entry.addOnId === extra.id)?.quantity ?? 0;
         const cap = caps[extra.id] ?? 0;
-        const canAdd = quantity < cap;
-        const canRemove = quantity > 0;
+        const canAdd = !disabled && quantity < cap;
+        const canRemove = !disabled && quantity > 0;
         const caption = dateCaption?.(extra) ?? null;
         const isSoldOut = cap === 0 && quantity === 0;
         return (

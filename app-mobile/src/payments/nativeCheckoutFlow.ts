@@ -39,10 +39,6 @@ import { initStripe } from "@stripe/stripe-react-native";
 //   https://paystack.com/docs/guides/using_the_paystack_checkout_in_a_mobile_webview/
 import * as WebBrowser from "expo-web-browser";
 
-import {
-  extrasRefusalCopy,
-  extrasRefusalIn,
-} from "@mingla/offering-rendering/ticketExtrasCart";
 import { supabase } from "../services/supabase";
 import {
   extractFunctionError,
@@ -59,6 +55,7 @@ import {
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
   nativeCheckoutBookedStartRaiseMessage,
   nativeCheckoutErrorMessage,
+  nativeCheckoutExtrasRaiseMessage,
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
 import {
@@ -995,8 +992,7 @@ export const useNativeCheckoutFlow = (): ((
         // before any payment exists; say so instead of the generic 409 copy.
         message:
           raiseCopy ??
-          extrasRefusalCopy(token) ??
-          extrasRefusalCopy(extrasRefusalIn(refusalDetail)) ??
+          nativeCheckoutExtrasRaiseMessage(token, refusalDetail) ??
           nativeCheckoutErrorMessage(token, status),
         token,
       };

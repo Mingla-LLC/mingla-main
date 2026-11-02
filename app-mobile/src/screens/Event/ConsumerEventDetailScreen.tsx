@@ -1084,6 +1084,15 @@ export default function ConsumerEventDetailScreen({
       } else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toastManager.show(result.message, "error");
+        // issue #3281 — an extra sold out after the quote; re-quote so the cart
+        // shows which. Only on that refusal: a closed payment page keeps its
+        // own hold, and a fresh quote would count it against the guest.
+        if (
+          result.outcome === "failed" &&
+          /^extras?_/.test(result.token ?? "")
+        ) {
+          void queryClient.invalidateQueries({ queryKey: ["ticket-checkout-quote"] });
+        }
       }
       return result;
     },
