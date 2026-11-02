@@ -134,7 +134,7 @@ export const ARI_ERROR_REGISTRY: Readonly<
     safeToRetry: false,
     operationState: "none",
     userMessage:
-      "This brand cannot accept paid tickets yet. Finish its Stripe or Paystack payout setup first.",
+      "This brand cannot accept paid tickets yet. Finish its payout setup first.",
   },
   ROLE_REVOKED: {
     httpStatus: 403,

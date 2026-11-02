@@ -298,7 +298,7 @@ Deno.test("#3355 payout readiness refusal keeps actionable user-facing semantics
   assertEquals(ARI_ERROR_REGISTRY.PAYOUT_NOT_READY.operationState, "none");
   assertMatch(
     ARI_ERROR_REGISTRY.PAYOUT_NOT_READY.userMessage,
-    /finish its Stripe or Paystack payout setup/i,
+    /finish its payout setup/i,
   );
 });
 

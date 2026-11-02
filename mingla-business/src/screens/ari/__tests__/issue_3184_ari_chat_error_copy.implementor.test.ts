@@ -96,7 +96,7 @@ describe("#3184 T-I6 Ari chat error copy never blames the connection for a refus
 
   it("explains why a brand cannot accept a paid ticket tier", () => {
     expect(ariChatErrorCopy("PAYOUT_NOT_READY")).toBe(
-      "This brand can't accept paid tickets yet. Finish its Stripe or Paystack payout setup first.",
+      "This brand can't accept paid tickets yet. Finish its payout setup first.",
     );
   });
 

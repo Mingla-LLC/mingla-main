@@ -55,7 +55,9 @@ export function check(sources) {
     "COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'",
     "COALESCE(OLD.theme,'{}'::jsonb) ? 'business_draft'",
   ]) if (!migration.includes(token)) failures.push(`closed visibility contract missing ${token}`);
-  if (!tools.includes('required: ["brand_id", "title", "when_mode", "visibility"]'))
+  // #3355 P7 added "timezone" to the required list; the rule is that
+  // visibility stays an explicit, required choice, wherever it sits.
+  if (!/required: \["brand_id", "title", "when_mode", "visibility"(, "[a-z_]+")*\]/.test(tools))
     failures.push("Ari create schema does not require an explicit visibility choice");
   if ((migration.match(/business_assert_event_visibility\(/g) ?? []).length < 8)
     failures.push("closed visibility validator is not shared by every lifecycle boundary");
