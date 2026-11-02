@@ -527,9 +527,21 @@ Deno.test("the same numbers on a UK brand: national numbers read as UK, coded on
     "+447700900456",
   ]);
   // The same parser as the brand phone field: a Nigerian national number
-  // under a UK brand is never turned into a UK number.
+  // under a UK brand is never turned into a UK number, and the row says why.
   const wrong = contactPhone("0803 123 4567", "GB");
   assertEquals(wrong.ok, false);
+  if (!wrong.ok) {
+    assertEquals(
+      wrong.problem,
+      "The phone looks like a Nigerian number. Write it with +234 in front and I can add it.",
+    );
+  }
+  const noCountry = contactPhone("0803 123 4567", null);
+  assertEquals(noCountry.ok, false);
+  assertEquals(contactPhone("+447700900123", null), {
+    ok: true,
+    e164: "+447700900123",
+  });
 });
 
 Deno.test("pasted text with no headers is read by content", () => {
@@ -662,7 +674,7 @@ Deno.test("happy path: paste, plain-words review, one protected card, saved coun
   assertMatch(text, /- 1 person needs a check/);
   assertMatch(text, /- 1 row will be skipped/);
   assertMatch(text, /No Contact \(row 7\): skipped, no phone number or email\./);
-  assertMatch(text, /Bad Phone \(row 8\): added with their email only/);
+  assertMatch(text, /Bad Phone \(row 8\): added with their email only\. Nigerian numbers have 10 digits after the 0 — you entered 5\./);
   assertMatch(text, /Tunde Bello · tunde@bello\.ng · \+2348052223333 \(row 3\)/);
   assertMatch(text, /did these people agree to hear from Coastline Collective\?/);
   assert(text.includes(renderContactImportAttestation(BRAND_NAME)));
@@ -802,7 +814,7 @@ Deno.test("problem rows never block: they are listed and the good rows can be im
   );
   if (review.kind !== "artefact") throw new Error("no review");
   assertMatch(review.artefact.text, /Nobody \(row 3\): skipped, no phone number or email\./);
-  assertMatch(review.artefact.text, /Broken \(row 4\): skipped, the phone number doesn't look like a Nigeria number/);
+  assertMatch(review.artefact.text, /Broken \(row 4\): skipped\. Nigerian numbers have 10 digits after the 0 — you entered 3\./);
   assertEquals(review.artefact.options[0].label, "Yes, they agreed — import 2");
   assertEquals(done.kind, "completed");
   assertEquals(world.people.map((p) => p.name), ["Ada", "Tunde"]);
@@ -820,7 +832,7 @@ Deno.test("a list with nobody usable asks again with the reasons; nothing is che
   if (again.kind !== "artefact") throw new Error("no card");
   assertEquals(again.artefact.step_key, CONTACT_LIST_STEP);
   assertMatch(again.artefact.text, /couldn't find anyone to add/);
-  assertMatch(again.artefact.text, /Also nobody \(row 3\): skipped, the email address isn't complete/);
+  assertMatch(again.artefact.text, /Also nobody \(row 3\): skipped\. The email address isn't complete\./);
   assertEquals(world.previews, 0);
 });
 

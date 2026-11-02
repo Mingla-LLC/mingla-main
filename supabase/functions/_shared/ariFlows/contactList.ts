@@ -25,7 +25,6 @@
 import { CONTACT_IMPORT_ALIASES } from "../contactImportContract.ts";
 import { isUndeliverableEmailDomain } from "../undeliverableEmail.ts";
 import { websiteSetupPhone } from "../agentWebsiteSetup.ts";
-import { COUNTRY_DIRECTORY } from "../../../../packages/phone-input/countryDirectory.ts";
 
 export interface ContactListRow {
   /** The row number the owner sees in their file (header row = 1). */
@@ -129,12 +128,6 @@ function cleanName(value: string): string {
     .replace(/^[,;\-–—|()]+|[,;\-–—|()]+$/g, "").trim().slice(0, 120);
 }
 
-function countryName(iso: string | null): string | null {
-  if (!iso) return null;
-  const entry = COUNTRY_DIRECTORY.find((country) => country.code === iso);
-  return entry?.name ?? null;
-}
-
 /**
  * One phone, by the brand phone field's rules. A number written with its
  * country code but no "+" ("2348031234567" on a UK brand) is read with the
@@ -165,13 +158,27 @@ export function contactPhone(
     });
     if (withPlus.ok) return { ok: true, e164: withPlus.value };
   }
-  const where = countryName(brandCountry);
-  return {
-    ok: false,
-    problem: brandCountry
-      ? `the phone number doesn't look like a ${where ?? brandCountry} number and has no country code`
-      : "the phone number has no country code, and your brand has no country set",
-  };
+  return { ok: false, problem: phoneProblemWords(first.problem, brandCountry) };
+}
+
+/**
+ * The shared parser's words are written for a form field ("Change the
+ * country to…"); a list row gets the same finding as a plain sentence.
+ */
+function phoneProblemWords(problem: string, brandCountry: string | null): string {
+  const looks =
+    /looks like an? (.+?) number, not an? \+\d+ one\. Change the country to (?:the )?.+? \((\+\d+)\)/
+      .exec(problem);
+  if (looks) {
+    return `The phone looks like a ${looks[1]} number. Write it with ${
+      looks[2]
+    } in front and I can add it.`;
+  }
+  if (!brandCountry) {
+    return "The phone has no country code, and your brand has no country set. Write it with its country code (like +44) and I can add it.";
+  }
+  const sentence = problem.trim().replace(/\.?$/, ".");
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
 /** Split one line by a delimiter, honouring double quotes. */
@@ -341,9 +348,9 @@ export function parseContactList(
     if (raw.emailRaw.trim()) {
       const candidate = cleanEmail(raw.emailRaw);
       if (!EMAIL_EXACT.test(candidate)) {
-        emailProblem = "the email address isn't complete";
+        emailProblem = "The email address isn't complete.";
       } else if (isUndeliverableEmailDomain(candidate)) {
-        emailProblem = "the email address is a test address that can't get mail";
+        emailProblem = "The email address is a test address that can't get mail.";
       } else email = candidate;
     }
     let phone: string | null = null;
@@ -363,7 +370,7 @@ export function parseContactList(
           ? (phoneProblem ? "bad_phone_skipped" : "bad_email_skipped")
           : "no_contact",
         words: why
-          ? `${label(raw)}: skipped, ${why}.`
+          ? `${label(raw)}: skipped. ${why}`
           : `${label(raw)}: skipped, no phone number or email.`,
       });
       continue;
@@ -372,14 +379,14 @@ export function parseContactList(
       problems.push({
         row: raw.row,
         kind: "bad_phone_kept_email",
-        words: `${label(raw)}: added with their email only — ${phoneProblem}.`,
+        words: `${label(raw)}: added with their email only. ${phoneProblem}`,
       });
     }
     if (emailProblem) {
       problems.push({
         row: raw.row,
         kind: "bad_email_kept_phone",
-        words: `${label(raw)}: added with their phone only — ${emailProblem}.`,
+        words: `${label(raw)}: added with their phone only. ${emailProblem}`,
       });
     }
 
