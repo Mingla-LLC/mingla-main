@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "contract": "I-ARI-LIVE-EVAL-EVIDENCE",
+  "purpose": "Runs of Ari's live flow evals (scripts/ari/eval/flows/run.mjs --record). Each eval drives the real agent-chat and agent-confirm-action with structured answers and asserts on saved records. A capability-ledger row's live_eval must cite a run here in which every named eval passed and lists that capability. The scenario registry lint (run-scenarios.mjs, mode registry-lint) is not behaviour evidence and never appears here.",
+  "runs": []
+}
