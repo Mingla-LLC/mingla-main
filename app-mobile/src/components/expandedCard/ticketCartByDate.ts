@@ -50,6 +50,38 @@ export const evenByDate = (
 export const uniformQuantity = (map: ByDateMap): number =>
   Math.max(0, ...Object.values(map));
 
+/**
+ * issue #3281 — a day-limited ticket on a per-day cart must name its dates when
+ * it covers only some chosen ones: a uniform line would charge the rest.
+ */
+export const dayLimitedQuantities = (
+  validIds: readonly string[] | null | undefined,
+  quantity: number,
+  chosenIds: readonly string[],
+  perDay: boolean,
+): { quantity: number; byDate?: Record<string, number> } => {
+  const inScope = chosenIds.filter((id) => validIds?.includes(id));
+  if (
+    validIds === null ||
+    validIds === undefined ||
+    !perDay ||
+    inScope.length === 0 ||
+    inScope.length === chosenIds.length
+  ) {
+    return { quantity };
+  }
+  return { quantity: quantity * inScope.length, byDate: evenByDate(inScope, quantity) };
+};
+
+export const ticketCoversAnyDate = (
+  validIds: readonly string[] | null | undefined,
+  chosenIds: readonly string[],
+): boolean =>
+  validIds === null ||
+  validIds === undefined ||
+  chosenIds.length === 0 ||
+  chosenIds.some((id) => validIds.includes(id));
+
 export const cartLineQuantities = (
   line: { quantity: number },
   map: ByDateMap | undefined,

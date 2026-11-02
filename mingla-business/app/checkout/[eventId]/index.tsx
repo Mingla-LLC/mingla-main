@@ -16,6 +16,12 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
+import {
+  dayLimitedLine,
+  perDateLine,
+  quantityPerDate,
+  ticketCoversAnyDate,
+} from "../../../src/components/checkout/byDateQuantities";
 import React, {
   useCallback,
   useContext,
@@ -219,6 +225,10 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     (on: boolean): void => {
       setSameTicketsForEveryDate(on);
       for (const line of lines) {
+        const validIds = publicEventQuery.data?.event?.tickets.find(
+          (ticket) => ticket.id === line.ticketTypeId,
+        )?.validOccurrenceIds;
+        const perDate = quantityPerDate(line);
         setLineQuantity({
           ticketTypeId: line.ticketTypeId,
           ticketName: line.ticketName,
@@ -227,19 +237,19 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           unitPriceAllIn: line.unitPriceAllIn,
           currency: line.currency,
           isFree: line.isFree,
-          quantity: line.quantity,
           paymentPlanChoice: line.paymentPlanChoice,
           ...(on
-            ? {}
-            : {
-                byDate: Object.fromEntries(
-                  eventDateIds.map((id) => [id, line.quantity]),
-                ),
-              }),
+            ? dayLimitedLine(
+                validIds,
+                perDate,
+                eventDateIds,
+                publicEventQuery.data?.multiDatePricingMode !== "all_days",
+              )
+            : perDateLine(validIds, perDate, eventDateIds)),
         });
       }
     },
-    [eventDateIds, lines, setLineQuantity],
+    [eventDateIds, lines, publicEventQuery.data, setLineQuantity],
   );
 
   // issue #2135 — seed the chosen occurrence into the cart (the SAME pattern the
@@ -351,6 +361,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
       const qty = seedMap[ticket.id];
       if (qty === undefined || qty <= 0) continue;
       if (ticket.availableAt === "door") continue;
+      // issue #3281 — a ticket that no longer covers the chosen dates has no row.
+      if (!ticketCoversAnyDate(ticket.validOccurrenceIds, seedEventDateIds)) continue;
       setLineQuantity({
         ticketTypeId: ticket.id,
         ticketName: ticket.name,
@@ -358,11 +370,17 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         unitPriceAllIn: ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
         currency: ticket.currency ?? ev.currency ?? "GBP",
         isFree: ticket.isFree,
-        quantity: qty,
+        ...dayLimitedLine(
+          ticket.validOccurrenceIds,
+          qty,
+          seedEventDateIds,
+          publicEventQuery.data?.multiDatePricingMode !== "all_days",
+        ),
       });
     }
   }, [
     publicEventQuery.data,
+    seedEventDateIds,
     seedParam,
     setLineQuantity,
     ticketLink.loading,
@@ -655,7 +673,11 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
               return (
                 <View key={dateId} style={styles.perDateBlock}>
                   <Text style={styles.perDateHeading}>{dateLabel}</Text>
-                  {visibleTickets.map((ticket) => {
+                  {visibleTickets
+                    .filter((ticket) =>
+                      ticketCoversAnyDate(ticket.validOccurrenceIds, [dateId]),
+                    )
+                    .map((ticket) => {
                     const line = lines.find((l) => l.ticketTypeId === ticket.id);
                     const qty = line?.byDate?.[dateId] ?? 0;
                     const maxHint =
@@ -702,9 +724,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                 </View>
               );
             })
-          : visibleTickets.map((ticket) => {
+          : visibleTickets
+              .filter((ticket) =>
+                ticketCoversAnyDate(ticket.validOccurrenceIds, eventDateIds),
+              )
+              .map((ticket) => {
               const line = lines.find((l) => l.ticketTypeId === ticket.id);
-              const qty = line?.quantity ?? 0;
+              const qty = line === undefined ? 0 : quantityPerDate(line);
               const maxHint =
                 eventDateIds.length >= 2 &&
                 ticket.maxPurchaseQty != null &&
@@ -734,7 +760,12 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                           ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
                         currency: ticket.currency ?? event.currency ?? "GBP",
                         isFree: ticket.isFree,
-                        quantity: next,
+                        ...dayLimitedLine(
+                          ticket.validOccurrenceIds,
+                          next,
+                          eventDateIds,
+                          pricingMode === "per_day",
+                        ),
                       })
                     }
                   />

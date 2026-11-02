@@ -107,6 +107,8 @@ import {
   byDateForDates,
   byDateTotal,
   cartLineQuantities,
+  dayLimitedQuantities,
+  ticketCoversAnyDate,
   evenByDate,
   uniformQuantity,
   withDateQuantity,
@@ -614,17 +616,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     multiDaySelection.pricingMode !== "all_days" &&
     quoteEventDateIds.length >= 2;
   const perDateActive = canSplitByDate && !sameTicketsForEveryDate;
+  const perDateIds = perDateActive ? quoteEventDateIds : null;
   const quoteLines = useMemo(
     () =>
       lines
         .filter((line) => line.quantity > 0)
         .map((line) => ({
           ticketTypeId: line.ticketTypeId,
-          ...cartLineQuantities(
-            line,
-            byDateByTicket[line.ticketTypeId],
-            perDateActive ? quoteEventDateIds : null,
-          ),
+          ...(perDateIds !== null
+            ? cartLineQuantities(
+                line,
+                byDateByTicket[line.ticketTypeId],
+                perDateIds,
+              )
+            : dayLimitedQuantities(
+                tickets?.find((t) => t.id === line.ticketTypeId)
+                  ?.validOccurrenceIds,
+                line.quantity,
+                quoteEventDateIds,
+                multiDaySelection?.pricingMode !== "all_days" &&
+                  multiDaySelection?.allDaysPass !== true,
+              )),
           paymentPlanChoice:
             planTiersByTicketId?.[line.ticketTypeId] !== undefined
               ? ("installments" as const)
@@ -634,9 +646,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     [
       byDateByTicket,
       lines,
-      perDateActive,
+      multiDaySelection?.allDaysPass,
+      multiDaySelection?.pricingMode,
+      perDateIds,
       planTiersByTicketId,
       quoteEventDateIds,
+      tickets,
     ],
   );
   const quoteInput = useMemo(
@@ -1379,7 +1394,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           ),
         );
       } else {
-        nextByDate[ticket.id] = evenByDate(quoteEventDateIds, line.quantity);
+        // A listed ticket starts only on the chosen dates it covers: its other
+        // rows are hidden, so a count there could never be cleared.
+        nextByDate[ticket.id] = evenByDate(
+          quoteEventDateIds.filter((id) =>
+            ticketCoversAnyDate(ticket.validOccurrenceIds, [id]),
+          ),
+          line.quantity,
+        );
         setLineQuantity(
           seedForTicket(ticket),
           byDateTotal(nextByDate[ticket.id]),
@@ -1404,6 +1426,20 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSplitByDate, quoteEventDateIds]);
+  // issue #3281 — a line can't stay on a ticket none of the chosen dates admit.
+  useEffect(() => {
+    for (const line of lines) {
+      const ticket = visibleTickets.find((t) => t.id === line.ticketTypeId);
+      if (
+        ticket !== undefined &&
+        line.quantity > 0 &&
+        !ticketCoversAnyDate(ticket.validOccurrenceIds, quoteEventDateIds)
+      ) {
+        setLineQuantity(seedForTicket(ticket), 0);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, quoteEventDateIds, visibleTickets]);
   const ticketRows = perDateActive && multiDaySelection !== null
     ? multiDaySelection.occurrences
         .filter((day) => quoteEventDateIds.includes(day.id))
@@ -1417,7 +1453,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               {formatOccurrenceLine(day, multiDaySelection.timezone) ??
                 "This date"}
             </Text>
-            {visibleTickets.map((ticket) => (
+            {visibleTickets
+              .filter((ticket) =>
+                ticketCoversAnyDate(ticket.validOccurrenceIds, [day.id]),
+              )
+              .map((ticket) => (
               <View key={`${day.id}-${ticket.id}`}>
                 {ticket.maxPurchaseQty != null && ticket.maxPurchaseQty > 0 ? (
                   <Text style={styles.perDateHint}>
@@ -1434,7 +1474,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             ))}
           </View>
         ))
-    : visibleTickets.map((ticket) => {
+    : visibleTickets
+        .filter((ticket) =>
+          ticketCoversAnyDate(ticket.validOccurrenceIds, quoteEventDateIds),
+        )
+        .map((ticket) => {
         const line = lines.find((l) => l.ticketTypeId === ticket.id);
         return renderQuantityRow(
           ticket,
