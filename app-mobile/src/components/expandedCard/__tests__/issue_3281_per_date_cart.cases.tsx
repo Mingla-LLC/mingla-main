@@ -110,6 +110,20 @@ describe("issue #3281 — Explorer per-date quantities", () => {
     expect(quoteLine().byDate).toBeUndefined();
   });
 
+  test("switching off starts a listed ticket only on its dates", () => {
+    const renderer = mountTicketCart(listed(["day-1", "day-2"]));
+    setSwitch(renderer, false);
+    expect(quoteLine()).toMatchObject({
+      quantity: 4,
+      byDate: { "day-1": 2, "day-2": 2 },
+    });
+  });
+
+  test("a line for a ticket off every chosen date leaves the cart", () => {
+    mountTicketCart(listed(["day-9"], ["day-1"]));
+    expect(mockTicketQuote.input?.lines ?? []).toHaveLength(0);
+  });
+
   test("switching off starts each date on the chosen quantity", () => {
     const renderer = mountTicketCart(props(DAYS));
     setSwitch(renderer, false);

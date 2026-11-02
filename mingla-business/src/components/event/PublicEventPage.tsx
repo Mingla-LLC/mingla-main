@@ -834,7 +834,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         })),
       };
     },
-    [acquisitionState, event, hideRemainingCount, occurrences],
+    [
+      acquisitionState,
+      event,
+      hideRemainingCount,
+      multiDatePricingMode,
+      occurrences,
+      selectedOccurrenceIds,
+    ],
   );
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
   const resolvedTheme = useMemo(

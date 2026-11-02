@@ -1393,7 +1393,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           ),
         );
       } else {
-        nextByDate[ticket.id] = evenByDate(quoteEventDateIds, line.quantity);
+        // A listed ticket starts only on the chosen dates it covers: its other
+        // rows are hidden, so a count there could never be cleared.
+        nextByDate[ticket.id] = evenByDate(
+          quoteEventDateIds.filter((id) =>
+            ticketCoversAnyDate(ticket.validOccurrenceIds, [id]),
+          ),
+          line.quantity,
+        );
         setLineQuantity(
           seedForTicket(ticket),
           byDateTotal(nextByDate[ticket.id]),
@@ -1431,7 +1438,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quoteEventDateIds]);
+  }, [lines, quoteEventDateIds, visibleTickets]);
   const ticketRows = perDateActive && multiDaySelection !== null
     ? multiDaySelection.occurrences
         .filter((day) => quoteEventDateIds.includes(day.id))

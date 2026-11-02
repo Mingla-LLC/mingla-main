@@ -78,6 +78,7 @@
         "supabase/functions/ticket-checkout-create/index.ts",
         "mingla-business/src/services/checkoutErrorCopy.ts",
         "app-mobile/src/hooks/usePublicEventBySlug.ts",
+        "app-mobile/src/services/publicEventTicketsService.ts",
         "app-mobile/src/payments/checkoutErrorMessages.ts",
         "mingla-business/src/components/checkout/byDateQuantities.ts",
         "mingla-business/src/components/event/PublicEventPage.tsx",
