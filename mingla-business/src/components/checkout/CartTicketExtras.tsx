@@ -23,6 +23,7 @@ import {
   extrasLineDates,
   extrasParentCount,
   extraSoldOutOnLine,
+  extrasCartDates,
   fitExtrasToLine,
   parsePublicTicketExtras,
   withExtraQuantity,
@@ -48,6 +49,8 @@ export interface CartTicketExtrasProps {
   line: CartLine | undefined;
   eventDateIds: readonly string[];
   occurrences: readonly PublicEventOccurrence[];
+  /** An all-days pass covers every date that hasn't ended, with none chosen. */
+  allDaysPass: boolean;
   currency: string;
 }
 
@@ -63,6 +66,7 @@ export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
   line,
   eventDateIds,
   occurrences,
+  allDaysPass,
   currency,
 }) => {
   const { setLineQuantity } = useCart();
@@ -79,8 +83,13 @@ export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
   );
   const parentCount = extrasParentCount(line);
   const lineDates = useMemo(
-    () => extrasLineDates(line, ticket.validOccurrenceIds, eventDateIds),
-    [line, ticket.validOccurrenceIds, eventDateIds],
+    () =>
+      extrasLineDates(
+        line,
+        ticket.validOccurrenceIds,
+        extrasCartDates(eventDateIds, occurrences, allDaysPass),
+      ),
+    [line, ticket.validOccurrenceIds, eventDateIds, occurrences, allDaysPass],
   );
   const caps = useMemo(() => {
     const out: Record<string, number> = {};

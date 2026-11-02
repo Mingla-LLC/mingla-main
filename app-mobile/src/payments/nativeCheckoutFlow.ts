@@ -39,6 +39,10 @@ import { initStripe } from "@stripe/stripe-react-native";
 //   https://paystack.com/docs/guides/using_the_paystack_checkout_in_a_mobile_webview/
 import * as WebBrowser from "expo-web-browser";
 
+import {
+  extrasRefusalCopy,
+  extrasRefusalIn,
+} from "@mingla/offering-rendering/ticketExtrasCart";
 import { supabase } from "../services/supabase";
 import {
   extractFunctionError,
@@ -987,8 +991,13 @@ export const useNativeCheckoutFlow = (): ((
       // against the fingerprint from the start, with its own spec.
       return {
         outcome: "failed",
+        // issue #3281 — an extra that sold out after the quote is refused
+        // before any payment exists; say so instead of the generic 409 copy.
         message:
-          raiseCopy ?? nativeCheckoutErrorMessage(token, status),
+          raiseCopy ??
+          extrasRefusalCopy(token) ??
+          extrasRefusalCopy(extrasRefusalIn(refusalDetail)) ??
+          nativeCheckoutErrorMessage(token, status),
         token,
       };
     }

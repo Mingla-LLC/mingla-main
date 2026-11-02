@@ -12,6 +12,7 @@ import {
 
 import {
   extraCap,
+  extrasCartDates,
   extrasLineDates,
   extrasParentCount,
   extrasRefusalCopy,
@@ -98,6 +99,19 @@ Deno.test("#3281 extras: a line's tickets and dates are counted the way the serv
   assertEquals(extrasLineDates({ quantity: 1, byDate: { [FRI]: 1, [SAT]: 0 } }, null, [FRI, SAT]), [FRI]);
   assertEquals(extrasLineDates({ quantity: 1 }, [SAT], [FRI, SAT]), [SAT]);
   assertEquals(extrasLineDates({ quantity: 1 }, null, [FRI, SAT]), [FRI, SAT]);
+});
+
+Deno.test("#3281 extras: an all-days pass reads every date that hasn't ended", () => {
+  const now = Date.parse("2027-03-02T00:00:00Z");
+  const occurrences = [
+    { id: FRI, endAt: "2027-03-01T22:00:00Z" },
+    { id: SAT, endAt: "2027-03-02T22:00:00Z" },
+  ];
+  assertEquals(extrasCartDates([], occurrences, true, now), [SAT]);
+  // Any other cart reads the guest's chosen dates.
+  assertEquals(extrasCartDates([FRI], occurrences, false, now), [FRI]);
+  const [dinner] = parsePublicTicketExtras([{ ...payload[0], validOccurrenceIds: [SAT], remaining: { [SAT]: 3 } }]);
+  assertEquals(extraCap(dinner, 1, extrasLineDates({ quantity: 1 }, null, extrasCartDates([], occurrences, true, now))), 2);
 });
 
 Deno.test("#3281 extras: a sold-out extra on the line's dates says so", () => {

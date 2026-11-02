@@ -105,6 +105,7 @@ import {
   extrasParentCount,
   extrasRefusalCopy,
   extraSoldOutOnLine,
+  extrasCartDates,
   fitExtrasToLine,
   parsePublicTicketExtras,
   withExtraQuantity,
@@ -356,6 +357,12 @@ export interface TicketCartSheetProps {
   /** From `usePublicEventTickets(eventId)`. `undefined` = loading. */
   tickets: ReadonlyArray<PublicTicketProps> | undefined;
   /**
+   * issue #3281 — the event bundle's tickets, read for their extras only. The
+   * deck and chat arrivals take `tickets` from a reader that has no extras;
+   * capacity still comes from `tickets`.
+   */
+  extrasTickets?: ReadonlyArray<PublicTicketProps>;
+  /**
    * ORCH-1016 REWORK (D2) — per-tier trip intake schemas keyed by
    * ticket_type_id (from `useTripIntakeSchemas(eventId)`). Empty/undefined when
    * the trip requires no intake (the common case) → no intake step renders.
@@ -465,6 +472,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   visible,
   eventId,
   tickets,
+  extrasTickets,
   fallbackCurrency,
   initialTicketTypeId,
   initialQuantity = 1,
@@ -641,10 +649,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const extrasByTicket = useMemo(() => {
     const out: Record<string, PublicTicketExtra[]> = {};
     for (const ticket of tickets ?? []) {
-      out[ticket.id] = parsePublicTicketExtras(ticket.buyerExtras);
+      out[ticket.id] = parsePublicTicketExtras(
+        ticket.buyerExtras ??
+          extrasTickets?.find((bundled) => bundled.id === ticket.id)
+            ?.buyerExtras,
+      );
     }
     return out;
-  }, [tickets]);
+  }, [extrasTickets, tickets]);
   const baseQuoteLines = useMemo(
     () =>
       lines
@@ -683,14 +695,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ],
   );
   // issue #3281 — each line's dates, for its extras' limits and captions.
+  // An all-days pass has no chosen dates; the server binds every date that
+  // hasn't ended, so its extras read those.
+  const extrasDates = useMemo(
+    () =>
+      extrasCartDates(
+        quoteEventDateIds,
+        multiDaySelection?.occurrences ?? [],
+        multiDaySelection?.allDaysPass === true,
+      ),
+    [multiDaySelection, quoteEventDateIds],
+  );
   const lineDatesFor = useCallback(
     (line: (typeof baseQuoteLines)[number] | undefined): string[] =>
       extrasLineDates(
         line,
         tickets?.find((t) => t.id === line?.ticketTypeId)?.validOccurrenceIds,
-        quoteEventDateIds,
+        extrasDates,
       ),
-    [quoteEventDateIds, tickets],
+    [extrasDates, tickets],
   );
   const quoteLines = useMemo(
     () =>
@@ -705,6 +728,22 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       }),
     [addOnsByTicket, baseQuoteLines, extrasByTicket, lineDatesFor],
   );
+  // Keep the guest's choices to what the cart can carry: a lowered count or a
+  // removed ticket doesn't come back with its old extras when raised again.
+  useEffect(() => {
+    const fitted: Record<string, CheckoutAddOnRequest[] | undefined> = {};
+    for (const line of quoteLines) {
+      if (line.addOns !== undefined) fitted[line.ticketTypeId] = line.addOns;
+    }
+    const same =
+      Object.keys(fitted).length ===
+        Object.values(addOnsByTicket).filter((v) => v !== undefined).length &&
+      Object.entries(fitted).every(
+        ([id, addOns]) =>
+          JSON.stringify(addOns) === JSON.stringify(addOnsByTicket[id]),
+      );
+    if (!same) setAddOnsByTicket(fitted);
+  }, [addOnsByTicket, quoteLines]);
   const quoteInput = useMemo(
     () => ({
       eventId,
@@ -734,6 +773,19 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
   const { query: quoteQuery, isDebouncing: quoteIsDebouncing } =
     useTicketQuote(quoteInput);
+  // issue #3281 — a checkout that carried extras and came back unfinished may
+  // have lost one to a sale in between; re-quote so the cart shows which.
+  const submittedWithExtrasRef = React.useRef(false);
+  useEffect(() => {
+    if (isSubmitting) {
+      submittedWithExtrasRef.current = quoteLines.some((l) => l.addOns !== undefined);
+      return;
+    }
+    if (!submittedWithExtrasRef.current) return;
+    submittedWithExtrasRef.current = false;
+    if (visible) void quoteQuery.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSubmitting]);
   const quote = quoteQuery.data ?? null;
   const quoteIsLoading =
     quoteLines.length > 0 && (quoteIsDebouncing || quoteQuery.isFetching);
@@ -870,6 +922,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       setDismissedSaleNotices([]);
       setSameTicketsForEveryDate(true);
       setByDateByTicket({});
+      setAddOnsByTicket({});
       setIntakeAnswers({});
       setIntakeErrors({});
       intakeUploadSessionRef.current = createIntakeUploadSessionId();
@@ -2327,6 +2380,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                         {formatCentsCurrency(line.lineNetCents, quote.currency)}
                       </Text>
                     </View>
+                  </View>
+                ))}
+                {/* issue #3281 — each extra the quote priced. */}
+                {(quote.extras ?? []).map((extra) => (
+                  <View
+                    key={extra.addOnId}
+                    style={styles.breakdownRow}
+                    testID="issue-3281-breakdown-extra"
+                  >
+                    <Text style={styles.breakdownLabel}>
+                      {extra.addOnName} × {extra.quantity}
+                    </Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatCentsCurrency(extra.totalCents, quote.currency)}
+                    </Text>
                   </View>
                 ))}
                 {quote.discounts.map((discount) => (

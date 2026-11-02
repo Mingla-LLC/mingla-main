@@ -190,6 +190,7 @@ function CheckoutPaymentScreenContent({
     discountCode,
     quote,
     quoteStatus,
+    quoteErrorCode,
     checkoutReview,
     setQuoteState,
     setCheckoutReview,
@@ -888,6 +889,26 @@ function CheckoutPaymentScreenContent({
 
         {paymentError !== null ? (
           <Text style={styles.errorText}>{paymentError}</Text>
+        ) : null}
+        {/* issue #3281 — the quote refused an extra (it sold out, say), so the
+            button stays off; say why and take the guest back to change it. */}
+        {quoteStatus === "error" && /extras?_/.test(quoteErrorCode ?? "") ? (
+          <Text
+            style={styles.errorText}
+            accessibilityRole="button"
+            testID="issue-3281-extras-changed"
+            onPress={(): void =>
+              router.replace(
+                `/checkout/${eventId}${
+                  ticketLinkToken === null
+                    ? ""
+                    : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`
+                }` as never,
+              )
+            }
+          >
+            {EXTRAS_CHANGED_MESSAGE}
+          </Text>
         ) : null}
         {/* #2331 — end of content: reopens the privacy bar. */}
         <PrivacyChoicesLink />

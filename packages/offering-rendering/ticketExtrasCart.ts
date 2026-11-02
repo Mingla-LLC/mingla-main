@@ -101,6 +101,23 @@ export function extrasParentCount(line: ExtrasParentLine | undefined): number {
 }
 
 /**
+ * The dates the cart is for. An all-days pass reaches checkout with no dates
+ * chosen and the server binds every date that hasn't ended, so extras read
+ * those; any other cart reads the guest's chosen dates.
+ */
+export function extrasCartDates(
+  chosenDateIds: readonly string[],
+  occurrences: ReadonlyArray<{ id: string; endAt: string }>,
+  allDaysPass: boolean,
+  now: number = Date.now(),
+): string[] {
+  if (!allDaysPass) return [...chosenDateIds];
+  return occurrences
+    .filter((occurrence) => Date.parse(occurrence.endAt) > now)
+    .map((occurrence) => occurrence.id);
+}
+
+/**
  * The dates a line's tickets are for: the per-date map's dates, else the chosen
  * dates the ticket admits. Empty on a single-date event.
  */

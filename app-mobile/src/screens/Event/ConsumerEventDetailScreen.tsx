@@ -1953,6 +1953,7 @@ export default function ConsumerEventDetailScreen({
         visible={cartVisible}
         eventId={seed.eventId}
         tickets={cartTickets}
+        extrasTickets={canonicalQuery.data?.event.tickets}
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}

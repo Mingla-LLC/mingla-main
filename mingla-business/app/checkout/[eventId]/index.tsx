@@ -803,6 +803,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                     line={line}
                     eventDateIds={eventDateIds}
                     occurrences={occurrences}
+                    allDaysPass={publicEventQuery.data?.allDaysPass === true}
                     currency={ticket.currency ?? event.currency ?? "GBP"}
                   />
                 </View>
@@ -817,6 +818,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                 line={lines.find((l) => l.ticketTypeId === ticket.id)}
                 eventDateIds={eventDateIds}
                 occurrences={occurrences}
+                allDaysPass={publicEventQuery.data?.allDaysPass === true}
                 currency={ticket.currency ?? event.currency ?? "GBP"}
               />
             ))
