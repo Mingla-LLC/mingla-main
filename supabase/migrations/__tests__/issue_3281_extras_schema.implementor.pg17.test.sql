@@ -425,6 +425,40 @@ BEGIN
       RAISE EXCEPTION 'a full cancellation must end refunded (cancel first: %)',v_cancel_first;
     END IF;
   END LOOP;
+
+  -- A Stripe dashboard refund arrives with no fee amount and must still reconcile.
+  v_race_order := gen_random_uuid();
+  INSERT INTO public.orders(
+    id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
+  ) VALUES (v_race_order,v_event,2000,'NGN','paid','pi-'||v_race_order,'ch-'||v_race_order,'legacy');
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES (v_race_order,v_tier,2,1000,2000);
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-dash-'||v_race_order,1000,'NGN',NULL,NULL);
+  IF (SELECT application_fee_refunded_cents IS NOT NULL
+             OR application_fee_refund_status <> 'unknown_legacy' OR status <> 'succeeded'
+        FROM public.refunds WHERE stripe_refund_id='re-dash-'||v_race_order)
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'partial_refund' THEN
+    RAISE EXCEPTION 'a dashboard refund must reconcile with its fee unknown';
+  END IF;
+
+  -- A webhook that settles a pending refund keeps the fee it already has.
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM public.biz_refund_order(v_race_order,
+    jsonb_build_array(jsonb_build_object(
+      'order_line_item_id',(SELECT id FROM public.order_line_items WHERE order_id=v_race_order),
+      'quantity',1)),
+    'The second ticket back','dash-hint-'||v_race_order);
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  SELECT id INTO v_manual FROM public.refunds WHERE order_id=v_race_order AND status='pending';
+  PERFORM public.issue_2097_finalize_not_applicable(v_manual,'paystack','re-hint-'||v_race_order);
+  UPDATE public.refunds SET status='pending' WHERE id=v_manual;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_race_order,'re-hint-'||v_race_order,1000,'NGN',NULL,
+    'dash-hint-'||v_race_order);
+  IF (SELECT status <> 'succeeded' OR application_fee_refunded_cents IS DISTINCT FROM 0
+        FROM public.refunds WHERE id=v_manual)
+     OR (SELECT payment_status FROM public.orders WHERE id=v_race_order) <> 'refunded' THEN
+    RAISE EXCEPTION 'a matched webhook must keep the stored fee';
+  END IF;
 END;
 $test$;
 
