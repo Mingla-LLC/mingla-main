@@ -117,7 +117,8 @@
         "mingla-business/src/components/checkout/TicketQuoteSummary.tsx",
         "packages/offering-rendering/TicketExtrasPicker.tsx",
         "packages/offering-rendering/discountQuote.ts",
-        "packages/offering-rendering/ticketExtrasCart.ts"
+        "packages/offering-rendering/ticketExtrasCart.ts",
+        "mingla-business/app/checkout/[eventId]/queue.tsx"
       ]
     },
     {
