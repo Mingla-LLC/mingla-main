@@ -64,56 +64,48 @@ AS $fn$
 $fn$;
 
 -- Adds `extras` to each ticket that has any, keeping the payload's key order
--- and the #3872 refundPolicy placement exactly as the reader produced them.
+-- (refundPolicy stays last, as #3872 and #3284 require). Anything that isn't an
+-- object with an extra on sale comes back untouched, byte for byte.
 CREATE FUNCTION public.issue_3281_attach_public_extras(p_payload json)
 RETURNS json
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $fn$
-  WITH body AS (
-    SELECT json_object_agg(entry.key,
-      CASE
-        WHEN entry.key = 'tickets' AND json_typeof(entry.value) = 'array'
-             AND EXISTS (
-               SELECT 1 FROM json_array_elements(entry.value) t
-                 JOIN public.ticket_add_ons a
-                   ON a.ticket_type_id = CASE WHEN (t->>'id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-                                              THEN (t->>'id')::uuid END
-                WHERE a.is_active) THEN COALESCE((
-          SELECT jsonb_agg(
-            item.value::jsonb || CASE
-              WHEN (item.value->>'id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-               AND public.issue_3281_public_ticket_extras((item.value->>'id')::uuid) <> '[]'::jsonb
-              THEN jsonb_build_object('extras',
-                     public.issue_3281_public_ticket_extras((item.value->>'id')::uuid))
-              ELSE '{}'::jsonb END
-            ORDER BY item.ordinality)
-          FROM json_array_elements(entry.value) WITH ORDINALITY item(value, ordinality)
-        ), '[]'::jsonb)::json
-        ELSE entry.value
-      END
-      ORDER BY entry.ordinality) AS payload
-    FROM json_each(p_payload) WITH ORDINALITY entry(key, value, ordinality)
-    WHERE entry.key <> 'refundPolicy'
-  )
-  SELECT CASE
-    -- No ticket has an extra: hand back the reader's payload untouched.
-    WHEN p_payload IS NULL OR json_typeof(p_payload) <> 'object'
-      OR NOT EXISTS (
-        SELECT 1 FROM json_array_elements(
-          CASE WHEN json_typeof(p_payload->'tickets') = 'array' THEN p_payload->'tickets' ELSE '[]'::json END) t
-          JOIN public.ticket_add_ons a
-            ON a.ticket_type_id = CASE WHEN (t->>'id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-                                       THEN (t->>'id')::uuid END
-         WHERE a.is_active) THEN p_payload
-    WHEN p_payload::jsonb ? 'refundPolicy' THEN
-      (left(body.payload::text, length(body.payload::text) - 1)
-        || ', "refundPolicy" : '
-        || COALESCE((p_payload->'refundPolicy')::text, 'null') || '}')::json
-    ELSE body.payload END
-  FROM body;
+DECLARE
+  v_uuid constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_out json;
+BEGIN
+  IF p_payload IS NULL OR json_typeof(p_payload) <> 'object'
+     OR json_typeof(p_payload->'tickets') IS DISTINCT FROM 'array'
+     OR NOT EXISTS (
+       SELECT 1 FROM json_array_elements(p_payload->'tickets') t
+         JOIN public.ticket_add_ons a
+           ON a.ticket_type_id = CASE WHEN (t->>'id') ~* v_uuid THEN (t->>'id')::uuid END
+        WHERE a.is_active) THEN
+    RETURN p_payload;
+  END IF;
+  SELECT json_object_agg(entry.key,
+      CASE WHEN entry.key = 'tickets' THEN (
+        SELECT jsonb_agg(
+          item.value::jsonb || CASE WHEN x.extras <> '[]'::jsonb
+            THEN jsonb_build_object('extras', x.extras) ELSE '{}'::jsonb END
+          ORDER BY item.ordinality)
+        FROM json_array_elements(entry.value) WITH ORDINALITY item(value, ordinality)
+        -- Each ticket's extras are read once.
+        CROSS JOIN LATERAL (
+          SELECT CASE WHEN (item.value->>'id') ~* v_uuid
+            THEN public.issue_3281_public_ticket_extras((item.value->>'id')::uuid)
+            ELSE '[]'::jsonb END AS extras
+        ) x
+      )::json
+      ELSE entry.value END
+      ORDER BY entry.ordinality)
+    INTO v_out
+    FROM json_each(p_payload) WITH ORDINALITY entry(key, value, ordinality);
+  RETURN v_out;
+END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.issue_3281_public_ticket_extras(uuid) FROM PUBLIC, anon, authenticated;
@@ -138,6 +130,9 @@ BEGIN
   SELECT regexp_replace(p.prosrc, E';\\s*$', '') INTO v_body
     FROM pg_proc p
    WHERE p.oid = 'public.pg_direct_event_checkout_bundle(uuid,text,text)'::regprocedure;
+  IF position('issue_3281_attach_public_extras' IN v_body) > 0 THEN
+    RAISE EXCEPTION 'issue_3281_public_extras_already_wrapped';
+  END IF;
   EXECUTE format(
     'CREATE OR REPLACE FUNCTION public.pg_direct_event_checkout_bundle('
     'p_event_id uuid DEFAULT NULL,p_brand_slug text DEFAULT NULL,p_event_slug text DEFAULT NULL) '

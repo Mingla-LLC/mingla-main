@@ -106,6 +106,20 @@ BEGIN
     RAISE EXCEPTION 'a held dinner must leave two on Friday, got %', v_extras;
   END IF;
 
+  -- Anything that isn't an object comes back untouched; refundPolicy stays last.
+  IF public.issue_3281_attach_public_extras(NULL) IS NOT NULL
+     OR public.issue_3281_attach_public_extras('[1,2]'::json)::text <> '[1,2]'
+     OR public.issue_3281_attach_public_extras('"x"'::json)::text <> '"x"' THEN
+    RAISE EXCEPTION 'a non-object payload must pass through';
+  END IF;
+  -- Key order is the reader's own: the bundle's last key (refundPolicy) stays last.
+  IF (SELECT string_agg(k, ',' ORDER BY n) FROM json_object_keys(
+        public.pg_direct_event_checkout_bundle(v_event,NULL,NULL)) WITH ORDINALITY o(k,n))
+     IS DISTINCT FROM (SELECT string_agg(k, ',' ORDER BY n) FROM json_object_keys(v_before::json) WITH ORDINALITY o(k,n))
+     OR position('"refundPolicy"' IN v_before) = 0 THEN
+    RAISE EXCEPTION 'extras must keep the reader''s key order, refundPolicy last';
+  END IF;
+
   -- The slug reader carries the same extras.
   IF NOT EXISTS (
     SELECT 1 FROM jsonb_array_elements(
