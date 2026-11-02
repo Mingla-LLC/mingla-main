@@ -48,6 +48,10 @@ import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
 import {
+  hostAdResultLabel,
+  platformName,
+} from "../marketing/ads/hostAdCopy";
+import {
   ariAdOwnerKey,
   isValidAdCreativeOwnerKey,
 } from "../../services/eventCoverVideoEdgeContract";
@@ -364,10 +368,14 @@ function fieldsFor(
           ? [args.platform]
           : [];
     if (platforms.length > 0) {
-      out.push({ label: "Platforms", value: platforms.join(", ") });
+      // #4238: platforms named the way Hosts know them.
+      out.push({
+        label: "Apps",
+        value: platforms.map((platform) => platformName(String(platform))).join(", "),
+      });
     }
     const budgetText = formatAdMoneyCents(budget, currency);
-    if (budgetText) out.push({ label: "Hard cap", value: budgetText });
+    if (budgetText) out.push({ label: "Total budget", value: budgetText });
     const dailyText = formatAdMoneyCents(daily, currency);
     if (dailyText) out.push({ label: "Daily total", value: dailyText });
     if (typeof context.ad_currency_policy === "string") {
@@ -375,7 +383,7 @@ function fieldsFor(
     }
     if (typeof context.ad_provider_allocation === "string") {
       out.push({
-        label: "Provider split",
+        label: "Budget per app",
         value: context.ad_provider_allocation,
       });
     }
@@ -387,40 +395,43 @@ function fieldsFor(
           : null;
     if (destination) {
       out.push({
-        label: "Destination",
+        label: "Page",
         value: destination,
       });
     }
     if (typeof context.ad_result === "string") {
-      out.push({ label: "Primary result", value: context.ad_result });
+      out.push({
+        label: "What we count",
+        value: hostAdResultLabel(context.ad_result.replace(/ /g, "_")),
+      });
     }
     if (typeof context.ad_audience === "string") {
       out.push({ label: "Audience", value: context.ad_audience });
     }
     if (typeof context.ad_targeting === "string") {
-      out.push({ label: "Provider fit", value: context.ad_targeting });
+      out.push({ label: "Audience check", value: context.ad_targeting });
     }
     if (typeof context.ad_schedule === "string") {
       out.push({ label: "Schedule", value: context.ad_schedule });
     }
     if (typeof context.ad_creative === "string") {
-      out.push({ label: "Creative", value: context.ad_creative });
+      out.push({ label: "Video", value: context.ad_creative });
     }
     if (typeof context.ad_copy === "string") {
-      out.push({ label: "Primary copy", value: context.ad_copy });
+      out.push({ label: "Ad text", value: context.ad_copy });
     }
     if (typeof context.ad_media_rights === "string") {
-      out.push({ label: "Media rights", value: context.ad_media_rights });
+      out.push({ label: "Video rights", value: context.ad_media_rights });
     }
     if (typeof context.ad_ai_disclosure === "string") {
-      out.push({ label: "AI disclosure", value: context.ad_ai_disclosure });
+      out.push({ label: "Made with AI?", value: context.ad_ai_disclosure });
     }
     if (typeof context.ad_measurement === "string") {
-      out.push({ label: "Measurement", value: context.ad_measurement });
+      out.push({ label: "Results", value: context.ad_measurement });
     }
     if (typeof context.ad_measurement_scope === "string") {
       out.push({
-        label: "Measurement scope",
+        label: "Sharing results",
         value: context.ad_measurement_scope,
       });
     }
@@ -428,14 +439,13 @@ function fieldsFor(
       out.push({ label: "Mingla fee", value: context.ad_fee });
     }
     if (typeof context.ad_credit === "string") {
-      out.push({ label: "Approval boundary", value: context.ad_credit });
+      out.push({ label: "Your money", value: context.ad_credit });
     }
     if (typeof context.ad_review === "string") {
-      out.push({ label: "Review", value: context.ad_review });
+      out.push({ label: "Checks", value: context.ad_review });
     }
-    if (typeof context.ad_binding === "string") {
-      out.push({ label: "Plan binding", value: context.ad_binding });
-    }
+    // #4238: the plan's binding (hash) is never shown to a Host; the
+    // approval still sends it to Mingla unchanged.
     return out;
   }
 
@@ -1450,7 +1460,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             <View style={styles.assuranceRow}>
               <Text style={styles.assuranceText}>
                 {isAdPlanProposal
-                  ? "LAUNCH authorizes only the exact immutable plan above. Mingla may hold credit and create provider objects; staff and provider review can still delay delivery."
+                  ? "Typing LAUNCH approves only the ad above. Mingla will set aside its budget from your Ads credit and set it up on each app. Mingla or the apps may check it first, so it can take a little while to start."
                   : `This cannot be undone from chat. Type ${moneyPhrase} to confirm.`}
               </Text>
             </View>

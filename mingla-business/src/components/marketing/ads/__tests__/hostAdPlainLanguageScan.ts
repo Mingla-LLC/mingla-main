@@ -40,7 +40,10 @@ const ARI_MESSAGE_PROPERTIES = new Set([
 export type CopyHit = { text: string; word: string; line: number };
 
 function isCopy(text: string): boolean {
-  return /[A-Za-z]/.test(text) && /\s/.test(text.trim());
+  const trimmed = text.trim();
+  // A sentence (has a space), or a one-word label such as "Creative".
+  return /[A-Za-z]/.test(trimmed) &&
+    (/\s/.test(trimmed) || /^[A-Z][a-z]+$/.test(trimmed));
 }
 
 function bannedWord(text: string): string | null {

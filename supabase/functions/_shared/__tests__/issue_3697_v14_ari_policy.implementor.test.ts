@@ -154,19 +154,26 @@ Deno.test("#3697 Ari plan proposal explains fee, currency and approval boundary"
   assertStringIncludes(String(context.ad_fee), "no second Mingla fee");
   assertStringIncludes(
     String(context.ad_currency_policy),
-    "settlement currency",
+    // #4238 plain-language pass: same policy, Host words.
+    "payout currency",
   );
-  assertStringIncludes(String(context.ad_provider_allocation), "meta: 150.00");
   assertStringIncludes(
     String(context.ad_provider_allocation),
-    "tiktok: 150.00",
+    "Facebook & Instagram: 150.00",
   );
-  assertStringIncludes(String(context.ad_credit), "no provider object");
+  assertStringIncludes(
+    String(context.ad_provider_allocation),
+    "TikTok: 150.00",
+  );
+  assertStringIncludes(
+    String(context.ad_credit),
+    "Nothing is set up on any app and no credit is spent",
+  );
   assertStringIncludes(
     String(context.ad_media_rights),
-    "no Mingla house reuse",
+    "used only for this ad",
   );
-  assertEquals(context.ad_ai_disclosure, "Not marked AI-generated");
+  assertEquals(context.ad_ai_disclosure, "Not made with AI");
 
   const wire = verifiedProposalArgs(PROPOSE_ARGS, {
     ...context,
@@ -263,10 +270,14 @@ Deno.test("#3697 Ari LAUNCH review shows immutable provider, rights and measurem
   );
   assertStringIncludes(
     String(context.ad_measurement_scope),
-    "retained 90 days",
+    "ad apps only get sales data when buyers agree",
   );
   assertStringIncludes(String(context.ad_media_rights), "authorized by brand");
-  assertStringIncludes(String(context.ad_credit), "held only after LAUNCH");
+  assertStringIncludes(
+    String(context.ad_credit),
+    "set aside only after you type LAUNCH",
+  );
+  assertEquals(String(context.ad_binding).includes(HASH.slice(0, 10)), false);
 });
 
 Deno.test("#3697 Ari caller adapter is auth.uid-bound and least privilege", async () => {

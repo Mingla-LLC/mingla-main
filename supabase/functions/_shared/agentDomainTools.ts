@@ -8151,6 +8151,24 @@ function adLabel(value: unknown): string {
   return String(value ?? "").replaceAll("_", " ");
 }
 
+/** #4238: "deserted-island" → "deserted island" for a Host-visible line. */
+function adSlugWords(value: unknown): string {
+  return String(value ?? "").replace(/[-_]+/g, " ").trim();
+}
+
+/** #4238: platforms named the way Hosts know them on the Ari ad card. */
+function adPlatformName(value: unknown): string {
+  const key = String(value ?? "");
+  return HOST_AD_PLATFORM_NAMES[key] ?? adLabel(key);
+}
+
+const AD_VERDICT_WORDS: Record<string, string> = {
+  exact: "matches who you picked",
+  broader: "will reach a wider group",
+  unavailable: "needs a change",
+  check_required: "needs a change",
+};
+
 /** #1981 / #3697 — proposal-time money context so Confirm cards show policy. */
 export async function preflightMoneyProposal(
   toolName: string,
@@ -8184,7 +8202,7 @@ export async function preflightMoneyProposal(
       const base = Math.floor(total / platforms.length);
       const remainder = total - base * platforms.length;
       return platforms.map((platform, index) =>
-        `${platform}: ${
+        `${adPlatformName(platform)}: ${
           formatAdMinor(base + (index < remainder ? 1 : 0), null)
         }`
       );
@@ -8214,8 +8232,7 @@ export async function preflightMoneyProposal(
     ].filter(Boolean).join(" · ");
     const destination = [
       adLabel(args.dest_page_type),
-      args.dest_brand_slug,
-      args.dest_entity_slug,
+      adSlugWords(args.dest_entity_slug ?? args.dest_brand_slug),
     ].filter((value) => typeof value === "string" && value.trim()).join(" · ");
     const start = typeof args.starts_at === "string"
       ? args.starts_at
@@ -8225,33 +8242,31 @@ export async function preflightMoneyProposal(
       ad_budget_cents: budget,
       ad_daily_budget_cents: daily,
       ad_currency_policy:
-        "Verified brand settlement currency is resolved and frozen when this plan is saved",
+        "You pay in your brand's payout currency. The exchange rate is fixed when you save this ad.",
       ad_platforms: platforms,
       ad_provider_allocation: split(budget).join(" · ") +
-        (platforms.length > 0
-          ? " · verified settlement currency; provider currency and FX freeze on save"
-          : ""),
+        (platforms.length > 0 ? " · split evenly across the apps" : ""),
       ad_destination: destination || "Public Mingla page",
-      ad_audience: audience || "Explicit audience required",
+      ad_audience: audience || "Choose who should see this ad",
       ad_schedule: `${start} → ${end}`,
       ad_copy: typeof args.primary_text === "string"
         ? args.primary_text
         : String(args.name ?? ""),
-      ad_creative: "Attach one brand-owned active video before confirming",
+      ad_creative: "Add one ready video from your brand before you confirm",
       ad_media_rights: `${
-        adLabel(args.rights_basis) || "rights basis required"
-      } · paid-media use confirmed · no Mingla house reuse`,
+        adLabel(args.rights_basis) || "say who owns the video"
+      } · OK to use in paid ads · used only for this ad`,
       ad_ai_disclosure: args.ai_generated === true
-        ? "AI-generated"
-        : "Not marked AI-generated",
+        ? "Made with AI"
+        : "Not made with AI",
       ad_measurement:
-        "Destination-derived result hierarchy, capture authority and consent rules freeze on save",
+        "We count results from the page you promote, and only share them with apps when buyers agree",
       ad_fee:
-        "15% is charged only when Ads credit is added; this plan adds no second Mingla fee",
+        "15% is charged only when Ads credit is added; this ad adds no second Mingla fee",
       ad_credit:
-        "This confirmation saves an immutable plan only; it creates no provider object and spends no credit",
+        "Confirming saves your ad only. Nothing is set up on any app and no credit is spent",
       ad_review:
-        "A separate typed LAUNCH review is required before credit is held or providers receive the ad",
+        "You'll type LAUNCH separately before any money is set aside or your ad goes to the apps",
     };
   }
   if (toolName === "approve_ad_plan") {
@@ -8271,7 +8286,7 @@ export async function preflightMoneyProposal(
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "The approval no longer matches the current immutable ad plan",
+        "This ad changed since you approved it. Check the latest version and approve it again.",
       );
     }
     const delivery = aggregate.version.canonical_plan.delivery_budgets as
@@ -8302,7 +8317,7 @@ export async function preflightMoneyProposal(
     const copy = canonical.copy as Record<string, unknown> | undefined;
     const countries = Array.isArray(audience?.countries)
       ? audience.countries.map(String).join(", ")
-      : "provider snapshot";
+      : "your countries";
     const cities = Array.isArray(audience?.cities)
       ? audience.cities.map((value) =>
         value && typeof value === "object"
@@ -8336,8 +8351,9 @@ export async function preflightMoneyProposal(
       interests.length > 0 ? interests.join(", ") : "",
     ].filter(Boolean).join(" · ");
     const targeting = aggregate.targeting_snapshots.map((row) =>
-      `${String(row.platform)} ${
-        String(row.verdict ?? "check required").replaceAll("_", " ")
+      `${adPlatformName(row.platform)} ${
+        AD_VERDICT_WORDS[String(row.verdict ?? "check_required")] ??
+          adLabel(row.verdict)
       }`
     ).join(" · ");
     const start = typeof schedule?.starts_at === "string"
@@ -8347,7 +8363,7 @@ export async function preflightMoneyProposal(
       ? schedule.ends_at
       : "no end date";
     const providerAllocation = aggregate.provider_allocations.map((row) => {
-      const platform = String(row.platform ?? "provider");
+      const platform = adPlatformName(row.platform ?? "app");
       const hostCurrency = String(
         row.host_currency ?? aggregate.version.host_currency,
       ).toUpperCase();
@@ -8365,56 +8381,46 @@ export async function preflightMoneyProposal(
     }).join(" · ");
     const resultHierarchy = Array.isArray(measurement?.result_hierarchy)
       ? measurement.result_hierarchy.map(adLabel).join(" → ")
-      : "result hierarchy unavailable";
-    const consent = measurement?.consent as
-      | Record<string, unknown>
-      | undefined;
+      : "results Mingla can see";
     return {
       ad_budget_cents: aggregate.version.host_budget_cents,
       ad_daily_budget_cents: daily,
       currency: aggregate.version.host_currency,
       ad_platforms: platforms,
       ad_destination: String(
-        destination?.title ?? destination?.canonical_url ??
-          destination?.page_type ?? "Public Mingla page",
-      ),
+        destination?.title ?? adLabel(destination?.page_type) ??
+          "Public Mingla page",
+      ) || "Public Mingla page",
       ad_result: String(
         destination?.result_kind ?? measurement?.primary_result ??
           "page conversion",
       ).replaceAll("_", " "),
       ad_currency_policy:
-        "Brand settlement currency and each provider-account currency are frozen in this version",
+        "You pay in your brand's payout currency. The exchange rate for each app is fixed for this ad.",
       ad_provider_allocation: providerAllocation ||
-        "Provider split unavailable",
+        "Budget split not available yet",
       ad_audience: audienceSummary,
-      ad_targeting: targeting || "Provider snapshots unavailable",
+      ad_targeting: targeting || "Not checked yet",
       ad_schedule: `${start} → ${end}`,
-      ad_creative: "Brand video prepared and bound",
-      ad_copy: String(copy?.primary ?? "No primary copy recorded"),
+      ad_creative: "Your brand video is ready for this ad",
+      ad_copy: String(copy?.primary ?? "No ad text yet"),
       ad_media_rights: `${
-        adLabel(mediaRights?.rights_basis) || "rights basis unavailable"
-      } · paid-media use confirmed · no Mingla house reuse`,
+        adLabel(mediaRights?.rights_basis) || "not confirmed"
+      } · OK to use in paid ads · used only for this ad`,
       ad_ai_disclosure: mediaRights?.ai_generated === true
-        ? "AI-generated"
-        : "Not marked AI-generated",
-      ad_measurement: `${
-        adLabel(measurement?.quality ?? "check required")
-      } · ${resultHierarchy}`,
-      ad_measurement_scope: `${
-        adLabel(
-          measurement?.capture_authority ?? "capture authority unavailable",
-        )
-      } · first-party touch ${
-        adLabel(consent?.first_party_touch ?? "policy unavailable")
-      } · browser pixels and platform sharing only when granted`,
+        ? "Made with AI"
+        : "Not made with AI",
+      ad_measurement: `We count ${resultHierarchy}`,
+      ad_measurement_scope:
+        "Mingla counts results itself · ad apps only get sales data when buyers agree",
       ad_fee:
         "15% applies only when Ads credit is added; this LAUNCH adds no second Mingla fee",
       ad_credit:
-        "The exact hard cap is held only after LAUNCH; unused credit returns after provider-final settlement",
+        "Your total budget is set aside only after you type LAUNCH. Money your ad doesn't spend comes back once each app confirms its final spend",
       ad_review: aggregate.plan.state === "staff_review_required"
-        ? "Mingla staff review required before activation"
-        : "Launch remains gated by readiness and provider review",
-      ad_binding: `${String(args.plan_hash).slice(0, 10)}… · immutable`,
+        ? "Mingla checks this ad before it starts"
+        : "Each app checks new ads first, so it may take a little while to start",
+      ad_binding: "This approval is tied to the exact ad above",
     };
   }
   if (toolName === "cancel_trip_booking") {

@@ -44,12 +44,45 @@ const HOST_AD_FILES = [
   "src/utils/homeAdLifecycle.ts",
 ];
 
+/** The ad-plan part of Ari's proposal card (other tools are out of scope). */
+function adCardSource(): string {
+  const card = read("src/components/ari/ToolProposalCard.tsx");
+  const start = card.indexOf('if (toolName === "propose_ad_plan" || toolName === "approve_ad_plan") {');
+  const end = card.indexOf("return out;", start);
+  const assurance = card.indexOf("isAdPlanProposal\n                  ?");
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  expect(assurance).toBeGreaterThan(-1);
+  return `${card.slice(start, end)}\n${card.slice(assurance, card.indexOf(":", card.indexOf('"', assurance) + 1) + 1)}`;
+}
+
 describe("#4238 plain-language Host ad screens", () => {
   it("no Host ad screen or helper shows an internal word", () => {
     const hits = HOST_AD_FILES.flatMap((file) =>
       scanHostCopy(read(file), file).map(
         (hit) => `${file}:${hit.line} [${hit.word}] ${hit.text}`,
       ),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("Ari's ad proposal card shows no internal word", () => {
+    const hits = scanHostCopy(adCardSource(), "ToolProposalCard.tsx").map(
+      (hit) => `ToolProposalCard:${hit.line} [${hit.word}] ${hit.text}`,
+    );
+    expect(hits).toEqual([]);
+    const card = read("src/components/ari/ToolProposalCard.tsx");
+    expect(card).not.toContain('label: "Plan binding"');
+  });
+
+  it("the facts Ari puts on its ad card are plain", () => {
+    const ari = read("../supabase/functions/_shared/agentDomainTools.ts");
+    const start = ari.indexOf('if (toolName === "propose_ad_plan") {', ari.indexOf("export async function preflightMoneyProposal("));
+    const end = ari.indexOf('if (toolName === "cancel_trip_booking") {', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const hits = scanHostCopy(ari.slice(start, end), "ari-card.ts").map(
+      (hit) => `ari-card:${hit.line} [${hit.word}] ${hit.text}`,
     );
     expect(hits).toEqual([]);
   });

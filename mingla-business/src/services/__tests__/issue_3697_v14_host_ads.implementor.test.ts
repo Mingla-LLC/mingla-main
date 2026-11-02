@@ -168,7 +168,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
 
   it("shows Ari's server-resolved brand currency without inventing a top-up", () => {
     expect(ariCard).toContain("context.ad_budget_cents");
-    expect(ariCard).toContain('label: "Hard cap"');
+    expect(ariCard).toContain('label: "Total budget"');
     expect(ariCard).toContain('label: "Daily total"');
     expect(ariCard).not.toContain('label: "Total top-up"');
   });
