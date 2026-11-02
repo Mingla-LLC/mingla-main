@@ -191,19 +191,22 @@ import {
   markEngineOriginTurn,
   parseFlowAnswer,
   parseWebsiteSetupKickoff,
-  WEBSITE_SETUP_KICKOFF_DISPLAY,
-  websiteSetupKickoffInstruction,
   persistFlowRow,
   staleFlowAnswer,
+  WEBSITE_SETUP_KICKOFF_DISPLAY,
+  websiteSetupKickoffInstruction,
 } from "../_shared/ariFlows/edge.ts";
-import { createFlowStore, flowEngineEnabled } from "../_shared/ariFlows/store.ts";
+import {
+  createFlowStore,
+  flowEngineEnabled,
+} from "../_shared/ariFlows/store.ts";
 import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { honestLoopStopText } from "../_shared/ariFlows/honestCopy.ts";
 import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
-  detectWebsiteSetupIntent,
   buildWebsiteSetupRetryPresentation,
+  detectWebsiteSetupIntent,
   resolveWebsiteSetupContextAnswer,
   websiteSetupContextAnswer,
   websiteSetupCurrentTurnOnly,
@@ -1166,14 +1169,12 @@ async function handle(req: Request): Promise<Response> {
       ? "Another action is currently being processed — please wait a moment"
       : "You've reached today's Ari message limit.";
     const retryAfterSeconds = rateLimit.retryAfterSeconds ??
-      (rateLimit.reason === "rate_limited_inflight"
-        ? 5
-        : Math.max(
-          1,
-          Math.ceil(
-            (Date.parse(rateLimit.resetAt ?? "") - Date.now()) / 1000,
-          ) || 60,
-        ));
+      (rateLimit.reason === "rate_limited_inflight" ? 5 : Math.max(
+        1,
+        Math.ceil(
+          (Date.parse(rateLimit.resetAt ?? "") - Date.now()) / 1000,
+        ) || 60,
+      ));
     return errorResponse(429, "RATE_LIMITED", message, {
       retry_after_seconds: retryAfterSeconds,
       ...(rateLimit.resetAt ? { cooldown_until: rateLimit.resetAt } : {}),
@@ -1589,7 +1590,9 @@ async function handle(req: Request): Promise<Response> {
             `Recovered confirmation outcome ${outcome}.`,
           );
         } catch (err: unknown) {
-          if (err instanceof TaskStateError) return taskStateResponse(err);
+          if (err instanceof TaskStateError) {
+            return taskStateResponse(err);
+          }
           return taskStateResponse(
             new TaskStateError(
               "TASK_RECOVERY_REQUIRED",
@@ -2667,7 +2670,8 @@ async function handle(req: Request): Promise<Response> {
         : null;
     if (
       (structuredWebsiteDesign || structuredWebsitePlanAnswer ||
-        structuredWebsiteContext) && activeBrand &&
+        structuredWebsiteContext) &&
+      activeBrand &&
       activeWebsiteSetupJob
     ) {
       const readTool = findTool("get_site_plan");

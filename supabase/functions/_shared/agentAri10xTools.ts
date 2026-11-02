@@ -812,8 +812,8 @@ export const OWNER_NOTE_TOPICS: Readonly<
   },
 });
 
-const OWNER_NOTE_TOPIC_BY_DESTINATION: Readonly<Record<string, string>> =
-  Object.freeze({ payment_onboarding: "payment_setup" });
+const OWNER_NOTE_TOPIC_BY_DESTINATION: Readonly<Record<string, string>> = Object
+  .freeze({ payment_onboarding: "payment_setup" });
 
 type JsonRecord = Record<string, unknown>;
 
@@ -1229,7 +1229,9 @@ const setBrandPayoutCountry: AgentToolDefinition = {
             action: "select_provider",
             brand_id: brandId,
           });
-        } else if (brand.payment_provider?.trim().toLowerCase() === "paystack") {
+        } else if (
+          brand.payment_provider?.trim().toLowerCase() === "paystack"
+        ) {
           await invokeFn(client, "brand-paystack-onboard", {
             action: "clear_provider",
             brand_id: brandId,

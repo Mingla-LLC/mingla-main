@@ -25,10 +25,7 @@ import {
   payoutCountryProposal,
 } from "../moneyGate.ts";
 import { brandBlockersStep, brandCanWaitStep } from "../brandGate.ts";
-import {
-  marketDefaultTimezone,
-  payoutRailFor,
-} from "../../payoutCountries.ts";
+import { marketDefaultTimezone, payoutRailFor } from "../../payoutCountries.ts";
 import { isValidIanaTimezone } from "../../agentRelativeTime.ts";
 import {
   providerMinimumChargeMinor,
@@ -47,10 +44,10 @@ import {
   formatEventClock,
   formatEventStart,
   isHomeLike,
-  PARTY_TYPES,
   parseEventEnd,
   parseEventStart,
   parseTimezoneAnswer,
+  PARTY_TYPES,
   type PickedPlace,
   suggestedEventEnd,
   zoneWords,
@@ -291,7 +288,11 @@ export function textQuestion(args: {
       noun,
       title: args.title,
       body: args.text,
-      field: { label: args.label, placeholder: args.placeholder, kind: args.kind },
+      field: {
+        label: args.label,
+        placeholder: args.placeholder,
+        kind: args.kind,
+      },
       problem,
     }),
     record: { data: { attempt: attemptOf(args.ctx) } },
@@ -310,8 +311,7 @@ export function payoutCountryQuestion(
 ): AskSpec {
   const problem = failed ?? problemOf(ctx);
   const title = "Choose your payout country";
-  const body =
-    `Prices need a currency. ${PAYOUT_COUNTRY_QUESTION}`;
+  const body = `Prices need a currency. ${PAYOUT_COUNTRY_QUESTION}`;
   return {
     kind: "question",
     answer_mode: "form",
@@ -423,7 +423,9 @@ const timezoneStep: StepDefinition = {
     // rules). Both are shown on the create card the owner confirms. Never
     // the device's zone and never UTC by default.
     const brand = await ctx.deps.brandFacts?.() ?? null;
-    if (brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)) {
+    if (
+      brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)
+    ) {
       return {
         done: true,
         evidence: {
@@ -621,7 +623,9 @@ const placeStep: StepDefinition = {
   policy: "blocking",
   probe(ctx) {
     const { format, place } = eventFacts(ctx);
-    if (format === "online") return Promise.resolve(done("not_in_person", true));
+    if (format === "online") {
+      return Promise.resolve(done("not_in_person", true));
+    }
     if (place) return Promise.resolve(done("owner_place", place.address));
     const problem = problemOf(ctx);
     // The Host shows its address search (MapboxAddressInput) on this card.
@@ -734,7 +738,9 @@ const linkStep: StepDefinition = {
     } catch {
       url = null;
     }
-    if (!url || !/^https?:$/.test(url.protocol) || !url.hostname.includes(".")) {
+    if (
+      !url || !/^https?:$/.test(url.protocol) || !url.hostname.includes(".")
+    ) {
       return Promise.resolve(
         retry(ctx, "That isn't a web link, so nothing was saved."),
       );
@@ -798,15 +804,23 @@ const duplicateStep: StepDefinition = {
       return done("owner_chose_new", true);
     }
     const facts = eventFacts(ctx);
-    if (!facts.title || !facts.start_at || !facts.timezone || !ctx.deps.eventsTitled) {
+    if (
+      !facts.title || !facts.start_at || !facts.timezone ||
+      !ctx.deps.eventsTitled
+    ) {
       return done("no_duplicate_check", true);
     }
     const rows = await ctx.deps.eventsTitled(facts.title);
-    const matches = duplicateDrafts(rows, {
-      title: facts.title,
-      start_at: facts.start_at,
-      timezone: facts.timezone,
-    }, new Date(), null);
+    const matches = duplicateDrafts(
+      rows,
+      {
+        title: facts.title,
+        start_at: facts.start_at,
+        timezone: facts.timezone,
+      },
+      new Date(),
+      null,
+    );
     if (matches.length === 0) return done("no_duplicate", facts.title);
     const first = matches[0];
     const when = (first.draft.when ?? {}) as Record<string, unknown>;
@@ -964,7 +978,10 @@ const createStep: StepDefinition = {
         note: proposed
           ? `Saved and checked: "${row.title}" is an unpublished draft — nobody can see it until you publish.`
           : undefined,
-        evidence: { probe: "events_exists", observed: { id: row.id, title: row.title, status: row.status } },
+        evidence: {
+          probe: "events_exists",
+          observed: { id: row.id, title: row.title, status: row.status },
+        },
       };
     }
     if (proposed && ctx.trigger !== "confirm" && await proposalOpen(ctx)) {
@@ -991,7 +1008,8 @@ const createStep: StepDefinition = {
     const ask: AskSpec = choiceQuestion({
       key: "create:ready",
       title: "Create the draft",
-      text: `Ready to save "${facts.title}" as an unpublished draft? Nobody can see it until you publish.`,
+      text:
+        `Ready to save "${facts.title}" as an unpublished draft? Nobody can see it until you publish.`,
       options: [{ id: "create", label: "Create the draft" }],
     });
     return {
@@ -1125,7 +1143,8 @@ const coverStep: StepDefinition = {
     return Promise.resolve({
       record: { state: "pending" },
       answers: { cover_skipped: owner(true) },
-      ack: "Okay, no cover for now. You can add one anytime before you publish.",
+      ack:
+        "Okay, no cover for now. You can add one anytime before you publish.",
     });
   },
 };
@@ -1158,7 +1177,9 @@ const partyStep: StepDefinition = {
         answer_mode: "form",
         reuse_key: `event:party:${attemptOf(ctx)}`,
         title: "Party type",
-        text: `${problem ? `${problem} ` : ""}What kind of event is it? Pick one or more.`,
+        text: `${
+          problem ? `${problem} ` : ""
+        }What kind of event is it? Pick one or more.`,
         options: [],
         rendition: formRendition({
           id: "party_types",
@@ -1281,7 +1302,10 @@ const detailsSaveStep: StepDefinition = {
           : undefined,
         evidence: {
           probe: "event_details",
-          observed: { party_types: row.party_types, description: !!row.description },
+          observed: {
+            party_types: row.party_types,
+            description: !!row.description,
+          },
         },
       };
     }
@@ -1333,13 +1357,18 @@ const detailsSaveStep: StepDefinition = {
     if (choiceId !== "save") return null;
     const probe = await detailsSaveStep.probe(ctx);
     return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
+      ? {
+        record: { state: "awaiting_approval", data: {} },
+        propose: probe.propose,
+      }
       : { record: { state: "pending" } };
   },
 };
 
 function draftTickets(row: FlowEventRow | null): unknown[] {
-  return Array.isArray(row?.draft.tickets) ? row!.draft.tickets as unknown[] : [];
+  return Array.isArray(row?.draft.tickets)
+    ? row!.draft.tickets as unknown[]
+    : [];
 }
 
 const ticketKindStep: StepDefinition = {
@@ -1353,7 +1382,9 @@ const ticketKindStep: StepDefinition = {
     const row = await subjectRow(ctx);
     if (draftTickets(row).length > 0) return done("event_tickets", true);
     const kind = answer(ctx.run, "ticket_kind");
-    if (kind === "free" || kind === "paid") return done("owner_ticket_kind", kind);
+    if (kind === "free" || kind === "paid") {
+      return done("owner_ticket_kind", kind);
+    }
     return {
       done: false,
       ask: choiceQuestion({
@@ -1559,7 +1590,7 @@ const ticketDetailsStep: StepDefinition = {
         title: paid ? "Price and number of tickets" : "How many can come",
         text: paid
           ? `What's the ticket price, and how many tickets? For example: ${example}, 60 tickets.`
-          : "How many people can come? Say a number, or \"no limit\".",
+          : 'How many people can come? Say a number, or "no limit".',
         label: paid ? "Price and tickets" : "Number of people",
         placeholder: paid ? `e.g. ${example}, 60 tickets` : "e.g. 60 people",
       }),
@@ -1593,8 +1624,8 @@ const ticketDetailsStep: StepDefinition = {
       return retry(
         ctx,
         paid
-          ? "I need a price and a number of tickets (or \"no limit\"). Nothing was saved."
-          : "I need a number of people (or \"no limit\"). Nothing was saved.",
+          ? 'I need a price and a number of tickets (or "no limit"). Nothing was saved.'
+          : 'I need a number of people (or "no limit"). Nothing was saved.',
       );
     }
     const brand = await ctx.deps.brandFacts?.() ?? null;
@@ -1654,7 +1685,10 @@ const ticketSaveStep: StepDefinition = {
         note: proposed
           ? "Saved and checked: the tickets are on the draft."
           : undefined,
-        evidence: { probe: "event_tickets", observed: draftTickets(row).length },
+        evidence: {
+          probe: "event_tickets",
+          observed: draftTickets(row).length,
+        },
       };
     }
     if (proposed && ctx.trigger !== "confirm" && await proposalOpen(ctx)) {
@@ -1675,7 +1709,11 @@ const ticketSaveStep: StepDefinition = {
     if (failedNow !== null || failedBefore !== null) {
       return {
         done: false,
-        ask: await ticketFailedQuestion(ctx, ticket, failedNow ?? failedBefore ?? ""),
+        ask: await ticketFailedQuestion(
+          ctx,
+          ticket,
+          failedNow ?? failedBefore ?? "",
+        ),
       };
     }
     const args = {
@@ -1695,7 +1733,11 @@ const ticketSaveStep: StepDefinition = {
       {
         label: "Price",
         value: ticket.paid
-          ? formatMinor(ticket.price_minor, brand?.default_currency ?? null, "en") ??
+          ? formatMinor(
+            ticket.price_minor,
+            brand?.default_currency ?? null,
+            "en",
+          ) ??
             String(ticket.price_minor / 100)
           : "Free",
       },
@@ -1730,7 +1772,10 @@ const ticketSaveStep: StepDefinition = {
   async onAnswer(ctx, choiceId) {
     if (choiceId === "no_tickets") {
       return {
-        record: { state: "skipped", reason: "owner_kept_draft_without_tickets" },
+        record: {
+          state: "skipped",
+          reason: "owner_kept_draft_without_tickets",
+        },
         ack:
           "Okay. The draft stays without tickets for now; you can add them anytime.",
       };
@@ -1756,7 +1801,10 @@ const ticketSaveStep: StepDefinition = {
     }
     const probe = await ticketSaveStep.probe(ctx);
     return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
+      ? {
+        record: { state: "awaiting_approval", data: {} },
+        propose: probe.propose,
+      }
       : { record: { state: "pending" } };
   },
 };
@@ -1781,7 +1829,9 @@ async function ticketFailedQuestion(
   });
   const options: { id: string; label: string; route?: string }[] = [];
   if (ticket.paid) {
-    const readiness = await ctx.deps.readiness("publish_paid").catch(() => null);
+    const readiness = await ctx.deps.readiness("publish_paid").catch(() =>
+      null
+    );
     const sell = readiness?.items.find((item) => item.key === "money.can_sell");
     if (sell?.fix.can_caller_fix && sell.fix.route) {
       options.push({
@@ -1816,7 +1866,9 @@ const visibilityStep: StepDefinition = {
   depends_on: ["event_tickets_save"],
   policy: "blocking",
   probe(ctx) {
-    if (!wantsPublishReady(ctx)) return Promise.resolve(done("not_requested", true));
+    if (!wantsPublishReady(ctx)) {
+      return Promise.resolve(done("not_requested", true));
+    }
     const value = answer(ctx.run, "visibility");
     if (value === "public" || value === "unlisted") {
       return Promise.resolve(done("owner_visibility", value));
@@ -1921,7 +1973,9 @@ const publishStep: StepDefinition = {
     if (row.status !== "draft") {
       return {
         done: true,
-        note: proposed ? `Published and checked: "${row.title}" is live.` : undefined,
+        note: proposed
+          ? `Published and checked: "${row.title}" is live.`
+          : undefined,
         evidence: { probe: "event_status", observed: row.status },
       };
     }
@@ -1942,7 +1996,9 @@ const publishStep: StepDefinition = {
         ask: choiceQuestion({
           key: `publish:blocked:${blockers.join("|")}`,
           title: "Not ready to publish yet",
-          text: `Can't publish yet: ${listWords(blockers)}. Your draft is saved; nobody can see it until you publish.`,
+          text: `Can't publish yet: ${
+            listWords(blockers)
+          }. Your draft is saved; nobody can see it until you publish.`,
           options: [
             { id: "publish", label: "Publish it" },
             { id: "check", label: "Check again" },
@@ -1960,7 +2016,8 @@ const publishStep: StepDefinition = {
       ask: choiceQuestion({
         key: `publish:ready:${visibility}`,
         title: "Ready to publish",
-        text: `Everything's ready. Publish "${row.title}" now as ${visibility}? Nothing goes live until you say so.`,
+        text:
+          `Everything's ready. Publish "${row.title}" now as ${visibility}? Nothing goes live until you say so.`,
         options: [
           { id: "publish", label: "Publish it" },
           { id: "later", label: "Not now" },
@@ -1973,7 +2030,8 @@ const publishStep: StepDefinition = {
       return {
         record: { state: "pending" },
         answers: { publish_later: owner(true) },
-        ack: "Okay. It stays an unpublished draft — nobody can see it until you publish.",
+        ack:
+          "Okay. It stays an unpublished draft — nobody can see it until you publish.",
       };
     }
     if (choiceId !== "publish") return null;

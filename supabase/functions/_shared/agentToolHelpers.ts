@@ -281,7 +281,9 @@ async function ariDomainRefusalFromInvoke(
       | { code?: unknown; detail?: unknown; error?: unknown; reason?: unknown }
       | null
       | undefined;
-    for (const candidate of [body?.code, body?.detail, body?.reason, body?.error]) {
+    for (
+      const candidate of [body?.code, body?.detail, body?.reason, body?.error]
+    ) {
       const refusal = ariDomainRefusal(candidate);
       if (refusal) return refusal;
     }

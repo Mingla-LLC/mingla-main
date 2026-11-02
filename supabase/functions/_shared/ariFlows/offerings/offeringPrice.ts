@@ -129,7 +129,12 @@ export function offeringPriceStep(args: {
         );
         return {
           done: false,
-          ask: payoutCountryQuestion(ctx, brand.country_code, failed, args.noun),
+          ask: payoutCountryQuestion(
+            ctx,
+            brand.country_code,
+            failed,
+            args.noun,
+          ),
         };
       }
       const example = examplePrice(currency ?? "GBP");
@@ -180,9 +185,14 @@ export function offeringPriceStep(args: {
       if (!currency) return { record: { state: "pending" } };
       const parsed = parseTypedPrice(response);
       if (!parsed) {
-        return retry(ctx, "I need a price, like the example. Nothing was saved.");
+        return retry(
+          ctx,
+          "I need a price, like the example. Nothing was saved.",
+        );
       }
-      if (parsed.typed_currencies && !parsed.typed_currencies.includes(currency)) {
+      if (
+        parsed.typed_currencies && !parsed.typed_currencies.includes(currency)
+      ) {
         return retry(
           ctx,
           `You typed ${parsed.typed_price}, but ${ctx.brandName}'s prices are in ${

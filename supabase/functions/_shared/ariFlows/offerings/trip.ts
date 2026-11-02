@@ -20,7 +20,11 @@
  * package (migration 20280312003355).
  */
 
-import { brandBlockersStep, brandCanWaitStep, listWords } from "../brandGate.ts";
+import {
+  brandBlockersStep,
+  brandCanWaitStep,
+  listWords,
+} from "../brandGate.ts";
 import {
   currencyWords,
   moneyGateStep,
@@ -290,7 +294,9 @@ const timezoneStep: StepDefinition = {
     // The brand's own zone, else its country's single zone; both are shown
     // on the create card the owner confirms. Never UTC by default.
     const brand = await ctx.deps.brandFacts?.() ?? null;
-    if (brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)) {
+    if (
+      brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)
+    ) {
       return done("brand_timezone", {
         timezone: brand.default_timezone,
         source: "brand",
@@ -348,7 +354,9 @@ function placeStep(args: {
     policy: "blocking",
     probe(ctx) {
       const place = placeAnswer(ctx.run, args.answerKey);
-      if (place) return Promise.resolve(done(`owner_${args.answerKey}`, place.address));
+      if (place) {
+        return Promise.resolve(done(`owner_${args.answerKey}`, place.address));
+      }
       const problem = typeof ctx.state?.data?.problem === "string"
         ? `${ctx.state.data.problem} `
         : "";
@@ -360,7 +368,8 @@ function placeStep(args: {
           answer_mode: "form",
           reuse_key: `${NOUN}:${args.answerKey}:${attemptOf(ctx)}`,
           title: args.title,
-          text: `${problem}${args.question} Pick it from the search suggestions.`,
+          text:
+            `${problem}${args.question} Pick it from the search suggestions.`,
           options: [],
           record: { data: { attempt: attemptOf(ctx) } },
         },
@@ -550,7 +559,8 @@ const createStep: StepDefinition = {
         noun: NOUN,
         key: "create:ready",
         title: "Create the draft",
-        text: `Ready to save "${facts.title}" as an unpublished draft? Nobody can see it until you publish.`,
+        text:
+          `Ready to save "${facts.title}" as an unpublished draft? Nobody can see it until you publish.`,
         options: [
           { id: "create", label: "Create the draft" },
           { id: "change_dates", label: "Change the dates" },
@@ -650,7 +660,9 @@ const packageKindStep: StepDefinition = {
   async probe(ctx) {
     if (!await needsPackage(ctx)) return done("no_package_needed", true);
     const kind = answer(ctx.run, "package_kind");
-    if (kind === "free" || kind === "paid") return done("owner_package_kind", kind);
+    if (kind === "free" || kind === "paid") {
+      return done("owner_package_kind", kind);
+    }
     return {
       done: false,
       ask: choiceQuestion({
@@ -671,7 +683,10 @@ const packageKindStep: StepDefinition = {
     }
     return Promise.resolve({
       record: { state: "pending" },
-      answers: { package_kind: owner(choiceId), paid: owner(choiceId === "paid") },
+      answers: {
+        package_kind: owner(choiceId),
+        paid: owner(choiceId === "paid"),
+      },
     });
   },
 };
@@ -691,14 +706,21 @@ type PackageAnswer = {
 export function parsePackageAnswer(
   text: string,
   paid: boolean,
-): { name: string | null; price_major: number | null; capacity: number | null; typed_price?: string; typed_currencies?: string[] } | null {
+): {
+  name: string | null;
+  price_major: number | null;
+  capacity: number | null;
+  typed_price?: string;
+  typed_currencies?: string[];
+} | null {
   const normalized = text.replace(/\btravell?ers?\b/gi, "people");
   const parsed = parseTicketAnswer(normalized, paid);
   if (!parsed) return null;
-  const name = text.split(/[,;\n]/).map((part) => part.trim()).find((part) =>
-    /[A-Za-z]/.test(part) && !/\d/.test(part) && !/[£$€₦]/.test(part) &&
-    !/^(?:free|no limit|unlimited)$/i.test(part)
-  ) ?? null;
+  const name =
+    text.split(/[,;\n]/).map((part) => part.trim()).find((part) =>
+      /[A-Za-z]/.test(part) && !/\d/.test(part) && !/[£$€₦]/.test(part) &&
+      !/^(?:free|no limit|unlimited)$/i.test(part)
+    ) ?? null;
   return {
     name: name ? cleanTitle(name).slice(0, 80) : null,
     price_major: parsed.price_major,
@@ -798,9 +820,14 @@ const packageDetailsStep: StepDefinition = {
     const shape = paid
       ? "I need the package name, its price and the number of spots."
       : "I need the package name and the number of spots.";
-    if (!parsed || !parsed.capacity) return retry(ctx, `${shape} Nothing was saved.`);
+    if (!parsed || !parsed.capacity) {
+      return retry(ctx, `${shape} Nothing was saved.`);
+    }
     if (!parsed.name) {
-      return retry(ctx, `Give the package a name too. ${shape} Nothing was saved.`);
+      return retry(
+        ctx,
+        `Give the package a name too. ${shape} Nothing was saved.`,
+      );
     }
     const brand = await ctx.deps.brandFacts?.() ?? null;
     const currency = currencyOf(brand?.default_currency);
@@ -1017,7 +1044,9 @@ const packageSaveStep: StepDefinition = {
     if (row.packages.length > 0) {
       return {
         done: true,
-        note: proposed ? "Saved and checked: the package is on the draft." : undefined,
+        note: proposed
+          ? "Saved and checked: the package is on the draft."
+          : undefined,
         evidence: { probe: "trip_packages", observed: row.packages.length },
       };
     }
@@ -1075,7 +1104,11 @@ const packageSaveStep: StepDefinition = {
       {
         label: "Price",
         value: pkg.paid
-          ? formatMinor(pkg.price_minor, brand?.default_currency ?? null, "en") ??
+          ? formatMinor(
+            pkg.price_minor,
+            brand?.default_currency ?? null,
+            "en",
+          ) ??
             String(pkg.price_minor / 100)
           : "Free",
       },
@@ -1111,15 +1144,22 @@ const packageSaveStep: StepDefinition = {
   async onAnswer(ctx, choiceId) {
     if (choiceId === "no_package") {
       return {
-        record: { state: "skipped", reason: "owner_kept_draft_without_package" },
-        ack: "Okay. The draft stays without a package for now; you can add one anytime.",
+        record: {
+          state: "skipped",
+          reason: "owner_kept_draft_without_package",
+        },
+        ack:
+          "Okay. The draft stays without a package for now; you can add one anytime.",
       };
     }
     if (choiceId === "retry") return { record: { state: "pending" } };
     if (choiceId !== "save") return null;
     const probe = await packageSaveStep.probe(ctx);
     return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
+      ? {
+        record: { state: "awaiting_approval", data: {} },
+        propose: probe.propose,
+      }
       : { record: { state: "pending" } };
   },
 };
@@ -1129,7 +1169,10 @@ export const TRIP_REFUND_OPTIONS: ReadonlyArray<{
   id: string;
   label: string;
   words: string;
-  policy: { kind: string; tiers: { days_before_start: number; refund_pct: number }[] };
+  policy: {
+    kind: string;
+    tiers: { days_before_start: number; refund_pct: number }[];
+  };
 }> = Object.freeze([
   {
     id: "flexible",
@@ -1173,7 +1216,10 @@ export const TRIP_REFUND_OPTIONS: ReadonlyArray<{
     id: "no_refunds",
     label: "No refunds",
     words: "No refunds once booked",
-    policy: { kind: "custom", tiers: [{ days_before_start: 0, refund_pct: 0 }] },
+    policy: {
+      kind: "custom",
+      tiers: [{ days_before_start: 0, refund_pct: 0 }],
+    },
   },
 ]);
 
@@ -1197,7 +1243,9 @@ const refundStep: StepDefinition = {
         key: "refund_policy",
         title: "Refund policy",
         text: `Which refund policy should travellers get? ${
-          TRIP_REFUND_OPTIONS.map((option) => `${option.label}: ${option.words}.`)
+          TRIP_REFUND_OPTIONS.map((option) =>
+            `${option.label}: ${option.words}.`
+          )
             .join(" ")
         }`,
         options: TRIP_REFUND_OPTIONS.map(({ id, label }) => ({ id, label })),
@@ -1230,8 +1278,13 @@ const refundSaveStep: StepDefinition = {
     if (row.refund_policy) {
       return {
         done: true,
-        note: proposed ? "Saved and checked: the refund policy is on the draft." : undefined,
-        evidence: { probe: "trip_refund_policy", observed: row.refund_policy.kind ?? true },
+        note: proposed
+          ? "Saved and checked: the refund policy is on the draft."
+          : undefined,
+        evidence: {
+          probe: "trip_refund_policy",
+          observed: row.refund_policy.kind ?? true,
+        },
       };
     }
     if (proposed && ctx.trigger !== "confirm" && await proposalOpen(ctx)) {
@@ -1257,7 +1310,10 @@ const refundSaveStep: StepDefinition = {
           refund_policy: option.policy,
         },
         rows: [
-          { label: "Refund policy", value: `${option.label} — ${option.words}` },
+          {
+            label: "Refund policy",
+            value: `${option.label} — ${option.words}`,
+          },
           { label: "Status", value: UNPUBLISHED_DRAFT_WORDS },
         ],
         rows_only: true,
@@ -1276,7 +1332,10 @@ const refundSaveStep: StepDefinition = {
     if (choiceId !== "save") return null;
     const probe = await refundSaveStep.probe(ctx);
     return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
+      ? {
+        record: { state: "awaiting_approval", data: {} },
+        propose: probe.propose,
+      }
       : { record: { state: "pending" } };
   },
 };
@@ -1300,7 +1359,9 @@ async function publishBlockers(
   row: FlowTripRow,
 ): Promise<string[]> {
   const paid = row.packages.some((pkg) => pkg.price_cents > 0);
-  const readiness = await ctx.deps.readiness(paid ? "publish_paid" : "publish_free");
+  const readiness = await ctx.deps.readiness(
+    paid ? "publish_paid" : "publish_free",
+  );
   const blocking = readiness.items.filter((item) =>
     item.blocks_action && item.severity !== "done"
   ).map(publishBlockerClause);
@@ -1325,7 +1386,9 @@ const publishStep: StepDefinition = {
     if (row.status !== "draft") {
       return {
         done: true,
-        note: proposed ? `Published and checked: "${row.title}" is live.` : undefined,
+        note: proposed
+          ? `Published and checked: "${row.title}" is live.`
+          : undefined,
         evidence: { probe: "trip_status", observed: row.status },
       };
     }
@@ -1349,7 +1412,9 @@ const publishStep: StepDefinition = {
           noun: NOUN,
           key: `publish:blocked:${blockers.join("|")}`,
           title: "Not ready to publish yet",
-          text: `Can't publish yet: ${listWords(blockers)}. Your draft is saved; nobody can see it until you publish.`,
+          text: `Can't publish yet: ${
+            listWords(blockers)
+          }. Your draft is saved; nobody can see it until you publish.`,
           options: [
             {
               id: "open",
@@ -1370,7 +1435,8 @@ const publishStep: StepDefinition = {
         noun: NOUN,
         key: "publish:ready",
         title: "Ready to publish",
-        text: `Everything's ready. Publish "${row.title}" now? Nothing goes live until you say so.`,
+        text:
+          `Everything's ready. Publish "${row.title}" now? Nothing goes live until you say so.`,
         options: [
           { id: "publish", label: "Publish it" },
           { id: "later", label: "Not now" },
@@ -1383,7 +1449,8 @@ const publishStep: StepDefinition = {
       return {
         record: { state: "pending" },
         answers: { publish_later: owner(true) },
-        ack: "Okay. It stays an unpublished draft — nobody can see it until you publish.",
+        ack:
+          "Okay. It stays an unpublished draft — nobody can see it until you publish.",
       };
     }
     if (choiceId === "check") return { record: { state: "pending" } };
@@ -1402,7 +1469,10 @@ const publishStep: StepDefinition = {
         rows: [
           { label: "Trip", value: row.title },
           ...(row.start_at && row.end_at
-            ? [{ label: "When", value: tripDaysWords(row.start_at, row.end_at) }]
+            ? [{
+              label: "When",
+              value: tripDaysWords(row.start_at, row.end_at),
+            }]
             : []),
         ],
         rows_only: true,
@@ -1420,7 +1490,8 @@ function summarize(run: FlowRun): {
   if (created?.state !== "done" || !created.evidence) return null;
   const observed = created.evidence.observed as { title?: string } | undefined;
   const title = observed?.title ? `"${observed.title}"` : "Your trip";
-  const published = run.step_states.trip_publish?.evidence?.probe === "trip_status";
+  const published =
+    run.step_states.trip_publish?.evidence?.probe === "trip_status";
   return {
     title: published ? "Your trip is live" : "Your trip draft",
     text: published

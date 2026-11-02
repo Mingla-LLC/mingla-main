@@ -251,7 +251,9 @@ function identityOf(args: Record<string, unknown>): string | null {
  * proposal context is whitelisted), and copy-gated like every other row.
  */
 function flowRows(context: unknown): PresentationField[] {
-  if (context === null || typeof context !== "object" || Array.isArray(context)) {
+  if (
+    context === null || typeof context !== "object" || Array.isArray(context)
+  ) {
     return [];
   }
   const rows = (context as Record<string, unknown>).flow_rows;
@@ -270,7 +272,9 @@ function flowRows(context: unknown): PresentationField[] {
 
 /** #3355 — the engine's own heading for its proposal, copy-gated. */
 function flowTitleOf(context: unknown): string | null {
-  if (context === null || typeof context !== "object" || Array.isArray(context)) {
+  if (
+    context === null || typeof context !== "object" || Array.isArray(context)
+  ) {
     return null;
   }
   const title = (context as Record<string, unknown>).flow_title;

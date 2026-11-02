@@ -19,7 +19,11 @@
  * first would save "free" for an owner who never said so.
  */
 
-import { brandBlockersStep, brandCanWaitStep, listWords } from "../brandGate.ts";
+import {
+  brandBlockersStep,
+  brandCanWaitStep,
+  listWords,
+} from "../brandGate.ts";
 import { moneyGateStep } from "../moneyGate.ts";
 import { marketDefaultTimezone } from "../../payoutCountries.ts";
 import { isValidIanaTimezone } from "../../agentRelativeTime.ts";
@@ -51,8 +55,8 @@ import {
   doneWith as done,
   failedReason,
   offeringPriceStep,
-  type OwnerPrice,
   ownerAnswer as owner,
+  type OwnerPrice,
   priceAnswer,
   priceWords,
 } from "./offeringPrice.ts";
@@ -235,7 +239,8 @@ const descriptionStep: StepDefinition = {
         text:
           "Describe the experience in a sentence or two — what guests will do. I'll save exactly what you write.",
         label: "Description",
-        placeholder: "e.g. Taste your way through five of Lagos's best street food stalls.",
+        placeholder:
+          "e.g. Taste your way through five of Lagos's best street food stalls.",
       }),
     });
   },
@@ -275,7 +280,9 @@ const vibeStep: StepDefinition = {
   policy: "blocking",
   probe(ctx) {
     const { intents } = experienceFacts(ctx);
-    if (intents.length > 0) return Promise.resolve(done("owner_intents", intents));
+    if (intents.length > 0) {
+      return Promise.resolve(done("owner_intents", intents));
+    }
     const problem = problemOf(ctx);
     const body = "What's the vibe? Pick one or more.";
     return Promise.resolve({
@@ -346,9 +353,13 @@ const stopNameStep: StepDefinition = {
   policy: "blocking",
   probe(ctx) {
     const run = ctx.run;
-    if (stopsFinished(run)) return Promise.resolve(done("stops_finished", stopsOf(run).length));
+    if (stopsFinished(run)) {
+      return Promise.resolve(done("stops_finished", stopsOf(run).length));
+    }
     const draft = stopDraft(run);
-    if (draft.added) return Promise.resolve(done("stop_added", stopsOf(run).length));
+    if (draft.added) {
+      return Promise.resolve(done("stop_added", stopsOf(run).length));
+    }
     if (draft.name) return Promise.resolve(done("owner_stop_name", draft.name));
     const n = stopNumber(run);
     return Promise.resolve({
@@ -372,7 +383,9 @@ const stopNameStep: StepDefinition = {
     if (response === null) return Promise.resolve(null);
     const name = cleanTitle(response);
     if (name.length < 2) {
-      return Promise.resolve(retry(ctx, "I need a stop name of at least two letters."));
+      return Promise.resolve(
+        retry(ctx, "I need a stop name of at least two letters."),
+      );
     }
     return Promise.resolve({
       record: { state: "pending" },
@@ -389,10 +402,16 @@ const stopDescriptionStep: StepDefinition = {
   policy: "blocking",
   probe(ctx) {
     const run = ctx.run;
-    if (stopsFinished(run)) return Promise.resolve(done("stops_finished", true));
+    if (stopsFinished(run)) {
+      return Promise.resolve(done("stops_finished", true));
+    }
     const draft = stopDraft(run);
-    if (draft.added) return Promise.resolve(done("stop_added", stopsOf(run).length));
-    if (draft.description) return Promise.resolve(done("owner_stop_description", true));
+    if (draft.added) {
+      return Promise.resolve(done("stop_added", stopsOf(run).length));
+    }
+    if (draft.description) {
+      return Promise.resolve(done("owner_stop_description", true));
+    }
     return Promise.resolve({
       done: false,
       ask: textQuestion({
@@ -434,7 +453,9 @@ const stopPlaceStep: StepDefinition = {
   policy: "blocking",
   probe(ctx) {
     const run = ctx.run;
-    if (stopsFinished(run)) return Promise.resolve(done("stops_finished", true));
+    if (stopsFinished(run)) {
+      return Promise.resolve(done("stops_finished", true));
+    }
     const draft = stopDraft(run);
     if (draft.added) {
       // The stop was just added; the "another stop?" card is next.
@@ -449,9 +470,9 @@ const stopPlaceStep: StepDefinition = {
         answer_mode: "form",
         reuse_key: `${NOUN}:stop${stopNumber(run)}:place:${attemptOf(ctx)}`,
         title: `Where is "${draft.name ?? `stop ${stopNumber(run)}`}"?`,
-        text: `${
-          problem ? `${problem} ` : ""
-        }Where is "${draft.name ?? "this stop"}"? Pick the address from the search suggestions, so guests can find it.`,
+        text: `${problem ? `${problem} ` : ""}Where is "${
+          draft.name ?? "this stop"
+        }"? Pick the address from the search suggestions, so guests can find it.`,
         options: [],
         record: { data: { attempt: attemptOf(ctx) } },
       },
@@ -509,7 +530,9 @@ const stopMoreStep: StepDefinition = {
         noun: NOUN,
         key: `stops:${stops.length}`,
         title: "Another stop?",
-        text: `Added "${last?.name ?? "the stop"}". Add another stop, or is that all?`,
+        text: `Added "${
+          last?.name ?? "the stop"
+        }". Add another stop, or is that all?`,
         options: [
           { id: "another", label: "Add another stop" },
           { id: "done", label: "That's all" },
@@ -548,7 +571,9 @@ const timezoneStep: StepDefinition = {
     // The brand's own zone, else its country's single zone; both are shown
     // on the create card the owner confirms. Never UTC by default.
     const brand = await ctx.deps.brandFacts?.() ?? null;
-    if (brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)) {
+    if (
+      brand?.default_timezone && isValidIanaTimezone(brand.default_timezone)
+    ) {
       return done("brand_timezone", {
         timezone: brand.default_timezone,
         source: "brand",
@@ -709,10 +734,15 @@ const priceKindStep: StepDefinition = {
     });
   },
   onAnswer(_ctx, choiceId) {
-    if (choiceId !== "free" && choiceId !== "paid") return Promise.resolve(null);
+    if (choiceId !== "free" && choiceId !== "paid") {
+      return Promise.resolve(null);
+    }
     return Promise.resolve({
       record: { state: "pending" },
-      answers: { price_kind: owner(choiceId), paid: owner(choiceId === "paid") },
+      answers: {
+        price_kind: owner(choiceId),
+        paid: owner(choiceId === "paid"),
+      },
     });
   },
 };
@@ -737,7 +767,10 @@ export const PAID_EXPERIENCE_HEADS_UP =
 // ── The create proposal ───────────────────────────────────────────────────
 
 /** "2026-11-14" and "18:00" in the experience's own time zone. */
-function localParts(iso: string, timezone: string): { date: string; time: string } {
+function localParts(
+  iso: string,
+  timezone: string,
+): { date: string; time: string } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
@@ -798,13 +831,11 @@ export function createExperienceArgs(
     // One price per person for the whole experience (the wizard's "whole"
     // pricing), exactly as the owner chose: free, or their price.
     pricing_mode: "whole",
-    ...(facts.price === "free"
-      ? { is_free: true }
-      : {
-        is_free: false,
-        whole_price_cents: facts.price.price_minor,
-        currency: facts.price.currency,
-      }),
+    ...(facts.price === "free" ? { is_free: true } : {
+      is_free: false,
+      whole_price_cents: facts.price.price_minor,
+      currency: facts.price.currency,
+    }),
     timezone: facts.timezone,
     whenMode: "single",
     when: { date: start.date, doorsOpen: start.time, endsAt: end.time },
@@ -920,7 +951,8 @@ const createStep: StepDefinition = {
           noun: NOUN,
           key: "create:incomplete",
           title: "Create the draft",
-          text: "I'm missing a detail for this experience, so nothing was created.",
+          text:
+            "I'm missing a detail for this experience, so nothing was created.",
           options: [{ id: "cancel", label: "Stop here" }],
         }),
       };
@@ -938,7 +970,8 @@ const createStep: StepDefinition = {
         noun: NOUN,
         key: "create:ready",
         title: "Create the draft",
-        text: `Ready to save "${facts.title}" as an unpublished draft? Nobody can see it until you publish.`,
+        text:
+          `Ready to save "${facts.title}" as an unpublished draft? Nobody can see it until you publish.`,
         options: [
           { id: "create", label: "Create the draft" },
           { id: "change_when", label: "Change the date" },
@@ -1013,7 +1046,9 @@ async function publishBlockers(
   row: FlowExperienceRow,
 ): Promise<string[]> {
   const paid = !row.is_free && (row.whole_price_cents ?? 0) > 0;
-  const readiness = await ctx.deps.readiness(paid ? "publish_paid" : "publish_free");
+  const readiness = await ctx.deps.readiness(
+    paid ? "publish_paid" : "publish_free",
+  );
   const blocking = readiness.items.filter((item) =>
     item.blocks_action && item.severity !== "done"
   ).map(publishBlockerClause);
@@ -1040,7 +1075,9 @@ const publishStep: StepDefinition = {
     if (row.status !== "draft") {
       return {
         done: true,
-        note: proposed ? `Published and checked: "${row.title}" is live.` : undefined,
+        note: proposed
+          ? `Published and checked: "${row.title}" is live.`
+          : undefined,
         evidence: { probe: "experience_status", observed: row.status },
       };
     }
@@ -1064,7 +1101,9 @@ const publishStep: StepDefinition = {
           noun: NOUN,
           key: `publish:blocked:${blockers.join("|")}`,
           title: "Not ready to publish yet",
-          text: `Can't publish yet: ${listWords(blockers)}. Your draft is saved; nobody can see it until you publish.`,
+          text: `Can't publish yet: ${
+            listWords(blockers)
+          }. Your draft is saved; nobody can see it until you publish.`,
           options: [
             {
               id: "open",
@@ -1085,7 +1124,8 @@ const publishStep: StepDefinition = {
         noun: NOUN,
         key: "publish:ready",
         title: "Ready to publish",
-        text: `Everything's ready. Publish "${row.title}" now? Nothing goes live until you say so.`,
+        text:
+          `Everything's ready. Publish "${row.title}" now? Nothing goes live until you say so.`,
         options: [
           { id: "publish", label: "Publish it" },
           { id: "later", label: "Not now" },
@@ -1098,7 +1138,8 @@ const publishStep: StepDefinition = {
       return {
         record: { state: "pending" },
         answers: { publish_later: owner(true) },
-        ack: "Okay. It stays an unpublished draft — nobody can see it until you publish.",
+        ack:
+          "Okay. It stays an unpublished draft — nobody can see it until you publish.",
       };
     }
     if (choiceId === "check") return { record: { state: "pending" } };

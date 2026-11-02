@@ -178,7 +178,9 @@ function moneyItemCard(args: {
       `${text} Deposits and instalments need payouts to reach the bank first.`;
   } else {
     options.push({ id: "continue", label: "Keep going" });
-    text = `${text} You can still build this ${noun} with ${paidThing(noun)} now.`;
+    text = `${text} You can still build this ${noun} with ${
+      paidThing(noun)
+    } now.`;
   }
 
   return {
@@ -363,8 +365,9 @@ export const moneyGateStep: StepDefinition = {
           ...(itemKey ? { item_key: itemKey } : {}),
           reason: "money_at_publish",
         },
-        ack:
-          `Okay. I'll build it now; ${saleWords(ctx.def.noun)} once payments are ready.`,
+        ack: `Okay. I'll build it now; ${
+          saleWords(ctx.def.noun)
+        } once payments are ready.`,
       });
     }
     if (choiceId === "no_installments") {

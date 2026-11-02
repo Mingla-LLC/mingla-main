@@ -1026,7 +1026,10 @@ Deno.test("#3355 P7: a refused publish confirm never reads as started; the publi
       failed: { tool_name: "publish_site", message: "The site isn't ready." },
     }),
   );
-  assert(back.artefact.title !== "Publishing your Website", back.artefact.title);
+  assert(
+    back.artefact.title !== "Publishing your Website",
+    back.artefact.title,
+  );
   assertEquals(back.artefact.step_key, "publish");
   assertEquals(w.published, false);
 });
@@ -1911,7 +1914,11 @@ Deno.test("#3355 bug 20: the first-offering card offers what the brand chose to 
   // Trips and experiences: both, plus the skip.
   {
     const w = world([], { site: { id: SITE }, built: true });
-    w.fields.get("offerings_selected")!.value = ["trips", "experiences", "venue_play"];
+    w.fields.get("offerings_selected")!.value = [
+      "trips",
+      "experiences",
+      "venue_play",
+    ];
     const store = new MemoryStore(OWNER);
     const card = asArtefact(await step(w, store, await startRun(store), {}));
     assertEquals(

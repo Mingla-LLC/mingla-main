@@ -58,7 +58,9 @@ function callerClient(brand: Brand, opts: { canUpdate?: boolean } = {}) {
           // update(...).eq().is().select("id")
           if (!patch) return resolve({ data: [], error: null });
           log.push(`update ${JSON.stringify(patch)}`);
-          if (opts.canUpdate === false) return resolve({ data: [], error: null });
+          if (opts.canUpdate === false) {
+            return resolve({ data: [], error: null });
+          }
           Object.assign(brand, patch);
           return resolve({ data: [{ id: brand.id }], error: null });
         },
@@ -148,25 +150,49 @@ Deno.test("payout country: refusals write nothing", async () => {
   const set = freshBrand({ default_currency: "USD" });
   const first = callerClient(set);
   const err = await assertRejects(
-    () => tool.executor({ brand_id: BRAND, country_code: "GB" }, first.client, "u", {}),
+    () =>
+      tool.executor(
+        { brand_id: BRAND, country_code: "GB" },
+        first.client,
+        "u",
+        {},
+      ),
     ToolError,
   );
   assertEquals((err as ToolError).code, "PAYOUT_COUNTRY_ALREADY_SET");
   assertEquals(first.log, []);
   const unsupported = callerClient(freshBrand());
   const err2 = await assertRejects(
-    () => tool.executor({ brand_id: BRAND, country_code: "AU" }, unsupported.client, "u", {}),
+    () =>
+      tool.executor(
+        { brand_id: BRAND, country_code: "AU" },
+        unsupported.client,
+        "u",
+        {},
+      ),
     ToolError,
   );
   assertEquals((err2 as ToolError).code, "PAYOUT_COUNTRY_UNSUPPORTED");
   assertEquals(unsupported.log, []);
   const denied = callerClient(freshBrand(), { canUpdate: false });
   const err3 = await assertRejects(
-    () => tool.executor({ brand_id: BRAND, country_code: "GB" }, denied.client, "u", {}),
+    () =>
+      tool.executor(
+        { brand_id: BRAND, country_code: "GB" },
+        denied.client,
+        "u",
+        {},
+      ),
     ToolError,
   );
   assertEquals((err3 as ToolError).code, "PERMISSION_DENIED");
-  for (const code of ["PAYOUT_COUNTRY_ALREADY_SET", "PAYOUT_COUNTRY_UNSUPPORTED", "PAYOUT_COUNTRY_NOT_SAVED"]) {
+  for (
+    const code of [
+      "PAYOUT_COUNTRY_ALREADY_SET",
+      "PAYOUT_COUNTRY_UNSUPPORTED",
+      "PAYOUT_COUNTRY_NOT_SAVED",
+    ]
+  ) {
     assertEquals(toolErrorHttpStatus(code), 409, code);
   }
 });
@@ -194,5 +220,8 @@ Deno.test("payout country: a confirmed brand-admin write, registered everywhere 
     requiredRole: "brand_admin",
     resource: "brand",
   });
-  assertEquals(WRITE_TOOL_OWNER_COPY.set_brand_payout_country, HOST_COPY.set_brand_payout_country);
+  assertEquals(
+    WRITE_TOOL_OWNER_COPY.set_brand_payout_country,
+    HOST_COPY.set_brand_payout_country,
+  );
 });

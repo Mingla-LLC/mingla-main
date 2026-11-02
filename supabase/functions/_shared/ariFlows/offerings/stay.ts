@@ -19,7 +19,11 @@
  * exclusive_units priced per booking.
  */
 
-import { brandBlockersStep, brandCanWaitStep, listWords } from "../brandGate.ts";
+import {
+  brandBlockersStep,
+  brandCanWaitStep,
+  listWords,
+} from "../brandGate.ts";
 import { moneyGateStep } from "../moneyGate.ts";
 import { marketDefaultTimezone } from "../../payoutCountries.ts";
 import { isValidIanaTimezone } from "../../agentRelativeTime.ts";
@@ -110,14 +114,18 @@ const venueStep: StepDefinition = {
         note: stringAnswer(ctx.run, "venue_id")
           ? undefined
           : `I'll add it to ${venue.name}, your approved Stay venue.`,
-        evidence: { probe: "stay_venue", observed: { id: venue.id, name: venue.name } },
+        evidence: {
+          probe: "stay_venue",
+          observed: { id: venue.id, name: venue.name },
+        },
       };
     }
     const approved = await stayVenues(ctx);
     if (approved.length === 0) {
       const all = await ctx.deps.venues?.() ?? [];
       const inReview = all.filter((venue) =>
-        venue.venue_category === "stay" && venue.claim_status === "pending_review"
+        venue.venue_category === "stay" &&
+        venue.claim_status === "pending_review"
       );
       return {
         done: false,
@@ -128,11 +136,17 @@ const venueStep: StepDefinition = {
           text: inReview.length > 0
             ? `A stay goes on a Stay venue Mingla has approved. ${
               listWords(inReview.map((venue) => `"${venue.name}"`))
-            } ${inReview.length === 1 ? "is" : "are"} still in review — ${VENUE_REVIEW_WORDS} Nothing was created.`
+            } ${
+              inReview.length === 1 ? "is" : "are"
+            } still in review — ${VENUE_REVIEW_WORDS} Nothing was created.`
             : "A stay goes on a Stay venue Mingla has approved, and you don't have one yet. Add your venue first — or say \"create a venue\" and I'll set it up with you. Nothing was created.",
           options: [
             ...(inReview.length === 0
-              ? [{ id: "add_venue", label: "Add a venue", route: "/venue/create" }]
+              ? [{
+                id: "add_venue",
+                label: "Add a venue",
+                route: "/venue/create",
+              }]
               : []),
             { id: "check", label: "Check again" },
             { id: "cancel", label: "Stop here" },
@@ -171,7 +185,9 @@ const venueStep: StepDefinition = {
   },
   textAnswer(_ctx, text) {
     const response = text.trim();
-    return response ? { choices: [response], country: null, response: "" } : null;
+    return response
+      ? { choices: [response], country: null, response: "" }
+      : null;
   },
   async onAnswer(ctx, choiceId, given): Promise<AnswerOutcome | null> {
     if (choiceId === "cancel") {
@@ -333,7 +349,9 @@ const timezoneStep: StepDefinition = {
   },
 };
 
-function stayZone(ctx: FlowContext): { timezone: string; source: string } | null {
+function stayZone(
+  ctx: FlowContext,
+): { timezone: string; source: string } | null {
   const observed = ctx.run.step_states.stay_timezone?.evidence?.observed as
     | { timezone?: unknown; source?: unknown }
     | undefined;
@@ -382,7 +400,9 @@ export function parseCheckTimes(
 function clockWords(time: string): string {
   const [h, m] = time.split(":").map(Number);
   const hour = h % 12 === 0 ? 12 : h % 12;
-  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`;
+  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""}${
+    h < 12 ? "am" : "pm"
+  }`;
 }
 
 const timesStep: StepDefinition = {
@@ -456,7 +476,9 @@ export function staySettingsPayload(
   const raw = stay?.settings_raw ?? {};
   const kept: Record<string, unknown> = {};
   for (const [column, key] of RAW_SETTINGS_KEYS) {
-    if (raw[column] !== undefined && raw[column] !== null) kept[key] = raw[column];
+    if (raw[column] !== undefined && raw[column] !== null) {
+      kept[key] = raw[column];
+    }
   }
   const current = stay?.settings;
   return {
@@ -481,7 +503,9 @@ const settingsSaveStep: StepDefinition = {
     if (staySettingsComplete(stay)) {
       return {
         done: true,
-        note: proposed ? "Saved and checked: the stay settings are complete." : undefined,
+        note: proposed
+          ? "Saved and checked: the stay settings are complete."
+          : undefined,
         evidence: { probe: "stay_settings_complete", observed: true },
       };
     }
@@ -533,11 +557,15 @@ const settingsSaveStep: StepDefinition = {
           },
           {
             label: "Check-in",
-            value: payload.checkInTime ? clockWords(String(payload.checkInTime)) : "",
+            value: payload.checkInTime
+              ? clockWords(String(payload.checkInTime))
+              : "",
           },
           {
             label: "Check-out",
-            value: payload.checkOutTime ? clockWords(String(payload.checkOutTime)) : "",
+            value: payload.checkOutTime
+              ? clockWords(String(payload.checkOutTime))
+              : "",
           },
         ].filter((row) => row.value),
         rows_only: true,
@@ -556,7 +584,10 @@ const settingsSaveStep: StepDefinition = {
     if (choiceId !== "save") return null;
     const probe = await settingsSaveStep.probe(ctx);
     return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
+      ? {
+        record: { state: "awaiting_approval", data: {} },
+        propose: probe.propose,
+      }
       : { record: { state: "pending" } };
   },
 };
@@ -629,7 +660,9 @@ const nameStep: StepDefinition = {
     const response = formResponse(choiceId, given);
     if (response === null) return null;
     const name = cleanTitle(response);
-    if (name.length < 2) return retry(ctx, "I need a name of at least two letters.");
+    if (name.length < 2) {
+      return retry(ctx, "I need a name of at least two letters.");
+    }
     const stay = await inventory(ctx);
     if (
       stay?.offerings.some((offering) =>
@@ -658,7 +691,10 @@ export function parseStaySize(text: string, kind: string): StaySize | null {
       .exec(text);
   const g = guests ? Number(guests[1] ?? guests[2]) : NaN;
   let q = quantity ? Number(quantity[1] ?? quantity[2]) : NaN;
-  if (Number.isNaN(q) && kind === "place" && /\b(?:just one|only one|one of them|just 1)\b/i.test(text)) {
+  if (
+    Number.isNaN(q) && kind === "place" &&
+    /\b(?:just one|only one|one of them|just 1)\b/i.test(text)
+  ) {
     q = 1;
   }
   if (!(g >= 1 && g <= 1000) || !(q >= 1 && q <= 10000)) return null;
@@ -672,7 +708,9 @@ const sizeStep: StepDefinition = {
   depends_on: ["stay_name"],
   policy: "blocking",
   probe(ctx) {
-    if (answer(ctx.run, "size")) return Promise.resolve(done("owner_size", true));
+    if (answer(ctx.run, "size")) {
+      return Promise.resolve(done("owner_size", true));
+    }
     const room = stringAnswer(ctx.run, "kind") === "room";
     return Promise.resolve({
       done: false,
@@ -693,7 +731,10 @@ const sizeStep: StepDefinition = {
   onAnswer(ctx, choiceId, given) {
     const response = formResponse(choiceId, given);
     if (response === null) return Promise.resolve(null);
-    const size = parseStaySize(response, stringAnswer(ctx.run, "kind") ?? "room");
+    const size = parseStaySize(
+      response,
+      stringAnswer(ctx.run, "kind") ?? "room",
+    );
     if (!size) {
       return Promise.resolve(retry(
         ctx,
@@ -734,7 +775,9 @@ const policyStep: StepDefinition = {
   depends_on: ["stay_price"],
   policy: "blocking",
   probe(ctx) {
-    if (stringAnswer(ctx.run, "policy")) return Promise.resolve(done("owner_policy", true));
+    if (stringAnswer(ctx.run, "policy")) {
+      return Promise.resolve(done("owner_policy", true));
+    }
     return Promise.resolve({
       done: false,
       ask: textQuestion({
@@ -779,7 +822,9 @@ export function createStayOfferingPayload(
   const name = stringAnswer(run, "name");
   const size = answer(run, "size") as StaySize | undefined;
   const policy = stringAnswer(run, "policy");
-  if ((kind !== "room" && kind !== "place") || !name || !size || !price || !policy) {
+  if (
+    (kind !== "room" && kind !== "place") || !name || !size || !price || !policy
+  ) {
     return null;
   }
   return {
@@ -828,7 +873,9 @@ const createStep: StepDefinition = {
       return {
         done: true,
         note: proposed
-          ? `Saved and checked: "${made.name}" is on ${venue?.name ?? "your venue"} as a draft — guests can't book it until you publish.`
+          ? `Saved and checked: "${made.name}" is on ${
+            venue?.name ?? "your venue"
+          } as a draft — guests can't book it until you publish.`
           : undefined,
         evidence: {
           probe: "stay_offering_exists",
@@ -871,7 +918,8 @@ const createStep: StepDefinition = {
         noun: NOUN,
         key: "create:ready",
         title: "Create the stay",
-        text: `Ready to add "${name}" to ${venue.name} as a draft? Guests can't book it until you publish.`,
+        text:
+          `Ready to add "${name}" to ${venue.name} as a draft? Guests can't book it until you publish.`,
         options: [{ id: "create", label: "Create the stay" }],
       }),
       record: { data: {} },
@@ -888,7 +936,10 @@ const createStep: StepDefinition = {
     if (choiceId !== "create") return null;
     const probe = await createStep.probe(ctx);
     return "propose" in probe
-      ? { record: { state: "awaiting_approval", data: {} }, propose: probe.propose }
+      ? {
+        record: { state: "awaiting_approval", data: {} },
+        propose: probe.propose,
+      }
       : { record: { state: "pending" } };
   },
 };
@@ -912,21 +963,31 @@ function stayCreateProposal(
     },
     rows: [
       { label: "Venue", value: venue.name },
-      { label: kind === "room" ? "Room" : "Place", value: String(payload.name) },
+      {
+        label: kind === "room" ? "Room" : "Place",
+        value: String(payload.name),
+      },
       { label: "Guests", value: `Up to ${payload.maxGuests}` },
       {
         label: "How many",
         value: `${payload.quantity} ${
           kind === "room"
             ? Number(payload.quantity) === 1 ? "room" : "rooms"
-            : Number(payload.quantity) === 1 ? "place" : "places"
+            : Number(payload.quantity) === 1
+            ? "place"
+            : "places"
         }`,
       },
-      { label: "Price", value: `${priceWords(price)} ${placePriceWording(kind)}` },
+      {
+        label: "Price",
+        value: `${priceWords(price)} ${placePriceWording(kind)}`,
+      },
       {
         label: "Cancellation",
-        value: String((payload.policy as { cancellationPolicy: string })
-          .cancellationPolicy),
+        value: String(
+          (payload.policy as { cancellationPolicy: string })
+            .cancellationPolicy,
+        ),
       },
       { label: "Status", value: STAY_DRAFT_WORDS },
     ],
@@ -966,7 +1027,9 @@ const publishStep: StepDefinition = {
     if (made.status === "live") {
       return {
         done: true,
-        note: proposed ? `Published and checked: "${made.name}" is live.` : undefined,
+        note: proposed
+          ? `Published and checked: "${made.name}" is live.`
+          : undefined,
         evidence: { probe: "stay_offering_status", observed: made.status },
       };
     }
@@ -993,11 +1056,17 @@ const publishStep: StepDefinition = {
           : "publish:ready",
         title: blockers.length > 0 ? "Not ready to publish yet" : "Publish?",
         text: blockers.length > 0
-          ? `It's saved as a draft. Before guests can book: ${listWords(blockers)}.`
+          ? `It's saved as a draft. Before guests can book: ${
+            listWords(blockers)
+          }.`
           : `It's saved as a draft. Publish ${venue.name}'s stay now? Nothing goes live until you say so.`,
         options: blockers.length > 0
           ? [
-            { id: "open", label: "Open the venue", route: `/venue/${venue.id}` },
+            {
+              id: "open",
+              label: "Open the venue",
+              route: `/venue/${venue.id}`,
+            },
             { id: "check", label: "Check again" },
             { id: "later", label: "Not now" },
           ]
@@ -1038,7 +1107,10 @@ const publishStep: StepDefinition = {
         },
         rows: [
           { label: "Venue", value: venue.name },
-          { label: "Publishes", value: "The Stay and its ready draft rooms and places" },
+          {
+            label: "Publishes",
+            value: "The Stay and its ready draft rooms and places",
+          },
         ],
         rows_only: true,
       },
