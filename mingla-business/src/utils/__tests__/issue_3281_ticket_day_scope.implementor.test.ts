@@ -3,6 +3,7 @@ import { describe, expect, test } from "@jest/globals";
 import type { MultiDateEntry, TicketStub } from "../../store/draftEventStore";
 import {
   busiestDaySold,
+  capacityHelper,
   coverageCaution,
   dayScopeHelper,
   deleteDateImpact,
@@ -163,6 +164,12 @@ describe("issue #3281 copy", () => {
     expect(priceHelper(3, undefined, "£60", "£180")).toBeNull();
     expect(priceHelper(3, "per_day", "£60", "£180")).toContain("pays £180");
     expect(priceHelper(1, "all_days", "£60", "£60")).toBe("Guests pay £60 for this day.");
+  });
+
+  test("capacity arithmetic hides when the mode is unknown", () => {
+    expect(capacityHelper(null, days, 10, undefined)).toBeNull();
+    expect(capacityHelper(null, days, 10, "all_days")).toContain("Each guest uses 1");
+    expect(capacityHelper(["fri", "sat"], days, 10, undefined)).toContain("Up to 10 guests");
   });
 
   test("the field helper follows the list", () => {

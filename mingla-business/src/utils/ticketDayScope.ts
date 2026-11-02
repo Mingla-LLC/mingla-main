@@ -178,8 +178,10 @@ export const capacityHelper = (
   entries: Entries,
   capacity: number | null,
   pricingMode: "per_day" | "all_days" | undefined,
-): string => {
+): string | null => {
   if (scopeIds === null || scopeIds === undefined) {
+    // What a guest uses depends on the mode, so say nothing when it is unknown.
+    if (pricingMode === undefined) return null;
     return pricingMode === "all_days"
       ? "Shared across all dates. Each guest uses 1, however many days they pick."
       : "Shared across all dates. A guest who picks 2 days uses 2.";

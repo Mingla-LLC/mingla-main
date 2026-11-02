@@ -131,9 +131,13 @@ export const buildEventSalesSummary = ({
   // (0-order, pre-bank) computation; the DISPLAY label hides when null.
   const displayCurrency = currencyCodeOrNull(eventCurrency ?? brandDefaultCurrency);
   const ticketCapacity = summarizeTicketCapacity(tickets);
-  const perNightCapacity = capacityPerNight ? ticketCapacity.finiteCapacity : null;
+  // issue #3281 — a listed ticket's capacity is per date, so a sum mixes units.
+  const anyDayLimited = tickets.some((ticket) => ticket.validDayIds != null);
+  const perNightCapacity =
+    capacityPerNight && !anyDayLimited ? ticketCapacity.finiteCapacity : null;
   // issue #3313 — a per-night capacity is never a denominator for the run.
-  const finiteCapacity = capacityPerNight ? null : ticketCapacity.finiteCapacity;
+  const finiteCapacity =
+    capacityPerNight || anyDayLimited ? null : ticketCapacity.finiteCapacity;
   const { hasUnlimitedTickets } = ticketCapacity;
   const isReady =
     orders !== null && !(suppliedReadStatus === undefined && hasError);

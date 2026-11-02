@@ -1002,7 +1002,15 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     validDayIds,
   ]);
 
-  // issue #3281 — the row's answer, and the price sentence under the input.
+  // issue #3281 — the row's answer, and the sentences under the inputs.
+  const dayCapacityHelper = dayScoped
+    ? capacityHelper(
+        validDayIds,
+        dayScopeEntries ?? [],
+        Number.isFinite(parsedCapacityValue) ? parsedCapacityValue : null,
+        dayScopePricingMode,
+      )
+    : null;
   const validDayLabel =
     validDayIds === null
       ? "All dates"
@@ -1327,15 +1335,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 <Text style={styles.helperHint}>
                   Each date of this event can sell this many.
                 </Text>
-              ) : dayScoped ? (
-                <Text style={styles.helperHint}>
-                  {capacityHelper(
-                    validDayIds,
-                    dayScopeEntries ?? [],
-                    Number.isFinite(parsedCapacityValue) ? parsedCapacityValue : null,
-                    dayScopePricingMode,
-                  )}
-                </Text>
+              ) : dayCapacityHelper !== null ? (
+                <Text style={styles.helperHint}>{dayCapacityHelper}</Text>
               ) : null}
             </View>
           ) : null}

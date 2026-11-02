@@ -56,7 +56,7 @@ import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCu
 import { randomUuid } from "../../utils/randomId";
 import { useRecordDoorSale } from "../../hooks/useEventDoorSales";
 import { useEventDateKeys } from "../../hooks/useEventDateKeys";
-import { formatDraftDayScopeLabel } from "../../utils/ticketDayScope";
+import { formatMultiDateList } from "../../utils/eventDateDisplay";
 import {
   DoorSaleError,
   type RecordDoorSaleResult,
@@ -487,8 +487,10 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               ) : (
                 doorDates.map(([id, key]) => {
                   const active = id === doorDateId;
+                  // The time too: two entries can share a calendar day.
+                  const entry = event.multiDates?.find((e) => e.id === key);
                   const label =
-                    formatDraftDayScopeLabel(event.multiDates ?? [], [key]) ?? key;
+                    entry !== undefined ? formatMultiDateList([entry])[0] : key;
                   return (
                     <Pressable
                       key={id}
