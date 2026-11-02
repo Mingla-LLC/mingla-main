@@ -159,10 +159,22 @@ AS $fn$
 DECLARE
   v_cents integer := public.issue_3281_extras_refund_cents(p_order_id, p_lines, NULL);
 BEGIN
-  IF v_cents > 0 AND EXISTS (
-    SELECT 1 FROM public.refunds r
-     WHERE r.order_id = p_order_id AND r.status = 'pending'
-  ) THEN
+  -- A free extra waits too: it is still recorded as returned.
+  IF public.issue_3281_refund_returns_all_tickets(p_order_id, p_lines, NULL)
+     AND EXISTS (
+       SELECT 1 FROM public.order_add_on_line_items item
+        WHERE item.order_id = p_order_id
+          AND NOT EXISTS (
+            SELECT 1 FROM public.refund_add_on_line_items ra
+              JOIN public.refunds r ON r.id = ra.refund_id
+             WHERE ra.order_add_on_line_item_id = item.id
+               AND r.status IN ('pending', 'succeeded')
+          )
+     )
+     AND EXISTS (
+       SELECT 1 FROM public.refunds r
+        WHERE r.order_id = p_order_id AND r.status = 'pending'
+     ) THEN
     RAISE EXCEPTION 'refund_pending_on_order' USING ERRCODE = 'P0013';
   END IF;
   RETURN v_cents;
@@ -340,8 +352,7 @@ BEGIN
   FROM public.refunds
   WHERE metadata->>'idempotency_key' = p_idempotency_key
     AND order_id = p_order_id
-  LIMIT 1
-  FOR UPDATE;
+  LIMIT 1;
 
   IF FOUND THEN
     v_stored_manifest := v_existing_refund.metadata->'refund_request_manifest';
@@ -595,8 +606,7 @@ BEGIN
   FROM public.refunds
   WHERE metadata->>'idempotency_key' = p_idempotency_key
     AND order_id = p_order_id
-  LIMIT 1
-  FOR UPDATE;
+  LIMIT 1;
 
   IF FOUND THEN
     v_stored_manifest := v_existing_refund.metadata->'refund_request_manifest';
@@ -816,7 +826,7 @@ BEGIN
 
   SELECT * INTO v_existing FROM public.refunds
    WHERE metadata->>'idempotency_key' = p_idempotency_key AND order_id = p_order_id
-   LIMIT 1 FOR UPDATE;
+   LIMIT 1;
   IF FOUND THEN
     v_manifest := v_existing.metadata->'refund_request_manifest';
     IF v_manifest IS NULL

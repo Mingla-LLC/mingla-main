@@ -15,6 +15,8 @@ DECLARE
   v_item uuid := gen_random_uuid();
   v_plain_order uuid := gen_random_uuid();
   v_plain_line uuid := gen_random_uuid();
+  v_free_order uuid := gen_random_uuid();
+  v_free_line uuid := gen_random_uuid();
   v_one jsonb;
   v_preview jsonb;
   v_result jsonb;
@@ -35,17 +37,23 @@ BEGIN
     id,event_id,total_cents,currency,payment_status,stripe_payment_intent_id,stripe_charge_id,source
   ) VALUES
     (v_order,v_event,5500,'NGN','paid','pi-extras','ch-extras','legacy'),
-    (v_plain_order,v_event,1000,'NGN','paid','pi-plain','ch-plain','legacy');
+    (v_plain_order,v_event,1000,'NGN','paid','pi-plain','ch-plain','legacy'),
+    (v_free_order,v_event,2000,'NGN','paid','pi-free','ch-free','legacy');
   INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
     VALUES
       (v_line,v_order,v_tier,2,1000,2000),
-      (v_plain_line,v_plain_order,v_tier,1,1000,1000);
+      (v_plain_line,v_plain_order,v_tier,1,1000,1000),
+      (v_free_line,v_free_order,v_tier,2,1000,2000);
   INSERT INTO public.ticket_add_ons(id,ticket_type_id,name,price_cents,quantity_total)
     VALUES (v_extra,v_tier,'Friday dinner',3500,40);
   INSERT INTO public.order_add_on_line_items(
     id,order_id,ticket_add_on_id,ticket_type_id,add_on_name_at_order,
     ticket_type_name_at_order,quantity,unit_price_cents,total_cents
   ) VALUES (v_item,v_order,v_extra,v_tier,'Friday dinner','Friday VIP',1,3500,3500);
+  INSERT INTO public.order_add_on_line_items(
+    order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
+    quantity,unit_price_cents,total_cents
+  ) VALUES (v_free_order,v_tier,'Welcome drink','Friday VIP',1,0,0);
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
 
   -- An order with no extras refunds exactly as before.
@@ -54,6 +62,17 @@ BEGIN
     'Guest cannot make the date','plain-1');
   IF (SELECT amount_cents FROM public.refunds WHERE order_id=v_plain_order) <> 1000 THEN
     RAISE EXCEPTION 'a plain refund must not change, got %',v_result;
+  END IF;
+
+  -- A free extra is recorded as returned, so it waits like a paid one.
+  v_one := jsonb_build_array(jsonb_build_object('order_line_item_id',v_free_line,'quantity',1));
+  PERFORM public.biz_refund_order(v_free_order,v_one,'First of two tickets back','free-1');
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.biz_refund_order(v_free_order,v_one,'Second ticket while pending','free-2');
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'refund_pending_on_order' THEN
+    RAISE EXCEPTION 'a free extra must wait for a pending refund, got %',v_raised;
   END IF;
 
   -- Limited capacity needs a number, and two refunds wait on the order row.
@@ -65,6 +84,13 @@ BEGIN
   IF position('FROM public.orders WHERE id = p_order_id FOR UPDATE' IN pg_get_functiondef('public.biz_refund_order(uuid,jsonb,text,text)'::regprocedure)) = 0
      OR position('FROM public.orders WHERE id = p_order_id FOR UPDATE' IN pg_get_functiondef('public.admin_refund_order(uuid,jsonb,text,text)'::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'manual refunds must lock the order';
+  END IF;
+  -- Settlement locks a refund before its order, so holding the order a retry
+  -- must not wait on the refund.
+  IF pg_get_functiondef('public.biz_refund_order(uuid,jsonb,text,text)'::regprocedure) ~ 'LIMIT 1\s+FOR UPDATE'
+     OR pg_get_functiondef('public.admin_refund_order(uuid,jsonb,text,text)'::regprocedure) ~ 'LIMIT 1\s+FOR UPDATE'
+     OR pg_get_functiondef('public.issue_3872_cancel_refund_order(uuid,jsonb,text,text)'::regprocedure) ~ 'LIMIT 1\s+FOR UPDATE' THEN
+    RAISE EXCEPTION 'a retry must only read the refund';
   END IF;
 
   -- The first ticket back keeps the dinner.
