@@ -58,6 +58,10 @@ DECLARE
   v_on_sale boolean := false;
   v_sale_end timestamptz;
   v_last_bookable timestamptz;
+  v_any_unkeyed boolean := false;
+  v_keys text[];
+  v_dates_covered integer := 0;
+  v_next_covered timestamptz;
   v_going integer;
   v_avail text;
   v_reason text;
@@ -219,7 +223,7 @@ BEGIN
     -- The offering is bookable until the latest of those: a tier valid only for
     -- the early dates never stretches the ad to the last date (#4238 P3).
     WITH sellable AS (
-      SELECT tt.id, tt.sale_end_at,
+      SELECT tt.id, tt.sale_end_at, tt.valid_occurrence_keys,
         (SELECT max(CASE WHEN v_page_type = 'trip' THEN d.start_at ELSE d.end_at END)
          FROM public.event_dates d
          WHERE d.event_id = v_e.id
@@ -265,10 +269,28 @@ BEGIN
     )
     SELECT
       count(*) > 0,
-      max(LEAST(s.covered_last, s.sale_end_at))
-    INTO v_on_sale, v_sale_end
+      max(LEAST(s.covered_last, s.sale_end_at)),
+      coalesce(bool_or(s.valid_occurrence_keys IS NULL), false),
+      (SELECT array_agg(DISTINCT k) FROM sellable s2, unnest(s2.valid_occurrence_keys) k)
+    INTO v_on_sale, v_sale_end, v_any_unkeyed, v_keys
     FROM sellable s;
   END IF;
+
+  -- #4238 r6: "Covers all N dates" and the picker's "+N more dates" count only
+  -- the bookable dates that something on sale actually covers (an RSVP with
+  -- room covers every bookable date; a keyed tier only its own dates).
+  SELECT count(*)::integer, min(d.start_at)
+  INTO v_dates_covered, v_next_covered
+  FROM public.event_dates d
+  WHERE d.event_id = v_e.id
+    AND d.cancelled_at IS NULL
+    AND coalesce(d.status, 'active') = 'active'
+    AND (CASE WHEN v_page_type = 'trip' THEN d.start_at ELSE d.end_at END) > now()
+    AND (
+      v_page_type = 'rsvp'
+      OR v_any_unkeyed
+      OR d.occurrence_key = ANY (coalesce(v_keys, ARRAY[]::text[]))
+    );
 
   IF v_on_sale IS NOT TRUE THEN
     RETURN v_base || jsonb_build_object(
@@ -305,9 +327,9 @@ BEGIN
 
   RETURN v_base || jsonb_build_object(
     'ok', true,
-    'starts_at', v_next,
-    'next_date', v_next,
-    'dates_remaining', v_dates_remaining,
+    'starts_at', coalesce(v_next_covered, v_next),
+    'next_date', coalesce(v_next_covered, v_next),
+    'dates_remaining', coalesce(nullif(v_dates_covered, 0), v_dates_remaining),
     'last_bookable_at', v_last_bookable,
     'canonical_url', v_url,
     'availability', v_avail,

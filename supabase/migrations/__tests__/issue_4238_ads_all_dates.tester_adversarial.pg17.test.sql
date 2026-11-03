@@ -320,9 +320,11 @@ SELECT pg_temp.ok(
   'X9 the launch gate is not ready once only a past date is left');
 
 -- ── X10 ──
+-- #4238 r6 rework (P3-2): dates_remaining counts only dates something on sale
+-- covers, so the one ticketed future date (kd2) is the count, not kd2 + kd3.
 SELECT pg_temp.ok((pg_temp.r('event', 'keyed-early-only')->>'ok')::boolean
-  AND (pg_temp.r('event', 'keyed-early-only')->>'dates_remaining')::int = 2,
-  'X10 a keyed tier valid for a future date keeps the series promotable');
+  AND (pg_temp.r('event', 'keyed-early-only')->>'dates_remaining')::int = 1,
+  'X10 a keyed tier valid for a future date keeps the series promotable, counting only its date');
 SELECT pg_temp.ok(pg_temp.r('event', 'keyed-past-only')->>'availability' = 'nothing_on_sale',
   'X10 a keyed tier valid only for a past date → nothing_on_sale');
 

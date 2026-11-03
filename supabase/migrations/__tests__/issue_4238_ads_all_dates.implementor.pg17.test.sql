@@ -25,6 +25,8 @@
 --       availability_reason}; a member still sees title + reason in the list.
 --   T14 a tier valid only for the early dates caps last_bookable_at at the end
 --       of the last date it covers.
+--   T15 dates_remaining / next_date count only the dates something on sale
+--       covers ("Covers all N dates", the picker's "+N more dates").
 --
 -- MINGLA-INVARIANT: I-4238-AD-SERIES-ENDS-AT-LAST-BOOKABLE-DATE | issue #4238 | A dated offering can be advertised while one of its dates can still be booked (an event, RSVP or experience date until it ends, a trip departure until it starts; cancelled dates never count); its first date passing never ends it.
 -- MINGLA-INVARIANT: I-4238-AD-SOMETHING-ON-SALE | issue #4238 | An offering can be advertised only when something can be bought or RSVPed now: a listed, enabled, online, open ticket inside its sale window with places left for a bookable date, or an RSVP with room or a waitlist; a trip also needs bookings open before its deadline.
@@ -421,10 +423,37 @@ VALUES ('42380000-1000-4000-8000-000000000098', 'Early', 500000, 'NGN', NULL, tr
 DO $t14$
 DECLARE j jsonb := pg_temp.r('event', 'keyed-early');
 BEGIN
-  PERFORM pg_temp.t_assert((j->>'ok')::boolean AND (j->>'dates_remaining')::int = 2, 'T14 keyed-early series promotable');
+  -- r6: only the date a ticket covers is counted ("Covers 1 date").
+  PERFORM pg_temp.t_assert((j->>'ok')::boolean AND (j->>'dates_remaining')::int = 1, 'T14 keyed-early series promotable, covering its one ticketed date');
   PERFORM pg_temp.t_assert(abs(extract(epoch FROM (j->>'last_bookable_at')::timestamptz - (now() + interval '7 days 3 hours'))) < 5,
     'T14 last_bookable_at = end of the last date anything is on sale for (not the last date)');
 END $t14$;
+
+
+-- ── T15 dates_remaining counts only dates something on sale covers ──
+-- Dates in 7, 14 and 21 days; the only tier covers the 7- and 14-day dates.
+-- An RSVP with room covers every bookable date.
+INSERT INTO public.events(id, brand_id, title, slug, status, event_type, visibility, timezone)
+VALUES ('42380000-1000-4000-8000-000000000097', '42380000-0000-4000-8000-000000000010',
+        'Offering keyed-two', 'keyed-two', 'scheduled', 'event', 'public', 'Africa/Lagos');
+INSERT INTO public.event_dates(event_id, start_at, end_at, is_master, timezone, occurrence_key) VALUES
+  ('42380000-1000-4000-8000-000000000097', now() + interval '7 days', now() + interval '7 days 3 hours', true, 'Africa/Lagos', 'kt1'),
+  ('42380000-1000-4000-8000-000000000097', now() + interval '14 days', now() + interval '14 days 3 hours', false, 'Africa/Lagos', 'kt2'),
+  ('42380000-1000-4000-8000-000000000097', now() + interval '21 days', now() + interval '21 days 3 hours', false, 'Africa/Lagos', 'kt3');
+INSERT INTO public.ticket_types(event_id, name, price_cents, currency, quantity_total, is_unlimited, valid_occurrence_keys)
+VALUES ('42380000-1000-4000-8000-000000000097', 'Two nights', 500000, 'NGN', NULL, true, ARRAY['kt2', 'kt3']);
+DO $t15$
+DECLARE j jsonb := pg_temp.r('event', 'keyed-two'); w jsonb := pg_temp.r('event', 'weekly');
+  rs jsonb := pg_temp.r('rsvp', 'rsvp-off-feed');
+BEGIN
+  PERFORM pg_temp.t_assert((j->>'ok')::boolean AND (j->>'dates_remaining')::int = 2,
+    'T15 a tier covering 2 of 3 dates counts 2');
+  PERFORM pg_temp.t_assert(abs(extract(epoch FROM (j->>'next_date')::timestamptz - (now() + interval '14 days'))) < 5
+    AND j->>'starts_at' = j->>'next_date',
+    'T15 next_date is the next date a ticket covers');
+  PERFORM pg_temp.t_assert((w->>'dates_remaining')::int = 3, 'T15 an unkeyed tier still covers every bookable date');
+  PERFORM pg_temp.t_assert((rs->>'dates_remaining')::int = 1, 'T15 an open RSVP covers its bookable date');
+END $t15$;
 
 SELECT set_config('request.jwt.claim.sub', '', false);
 \echo 'issue #4238 ads all dates: all passed'
