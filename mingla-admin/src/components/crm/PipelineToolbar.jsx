@@ -1,51 +1,61 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { SearchInput } from "../ui/SearchInput";
-import { MISSING_CITY, MISSING_CITY_LABEL, Segmented, Select } from "./fields";
+import { FilterSelect } from "../ui/FilterSelect";
+import { MISSING_CITY, MISSING_CITY_LABEL, Select } from "./fields";
 import { MissingCityLayer } from "./MissingCityLayer";
-import { NO_REGION, regionSlug } from "../../lib/crmModel";
-
-const VIEWS = [
-  { value: "board", label: "Board" },
-  { value: "list", label: "List" },
-  { value: "region", label: "By region" },
-];
-const WHOSE = [
-  { value: false, label: "Everyone" },
-  { value: true, label: "Mine" },
-];
+import { NO_REGION, ownerLabel, regionSlug } from "../../lib/crmModel";
+import { OWNER_NONE } from "../../lib/crmUrl";
+import { DUE_OPTIONS } from "../../lib/outreachView";
 
 /**
- * Search, ICP, region, Everyone/Mine and the three views. Each control writes
- * to the address through onChange(patch, { replace }): typing and filters
- * replace the address; switching view adds a history entry.
+ * Issue #4255 — the one filter row of Hosts and creators: search, then four
+ * dropdowns (Owner, Due, Type, Region). Every filter filters the funnel and
+ * the board together, and lives in the address: each control writes through
+ * onChange(patch, { replace: true }). The board is the only view (D8), so
+ * there is no view switch.
  */
 export function PipelineToolbar({
+  pipeline,
   state,
   def,
   regions,
+  team = [],
+  me = "",
   hasNoRegion = false,
   disabled = false,
   canAddRegion = false,
   onRefreshRegions,
   onChange,
-  extra = null,
 }) {
   const [cityMissing, setCityMissing] = useState(false);
   const regionRef = useRef(null);
+  const regionId = useId();
   const closeCityMissing = () => {
     setCityMissing(false);
     regionRef.current?.focus();
   };
-  const icpOptions = (def?.icps || []).map((i) => ({ value: i.id, label: i.label }));
+  const icpOptions = [{ value: "", label: "Any" }, ...(def?.icps || []).map((i) => ({ value: i.id, label: i.label }))];
   const regionOptions = (regions || []).map((r) => ({
     value: regionSlug(r.name),
     label: r.is_live ? r.name : `${r.name} (not live yet)`,
   }));
+  regionOptions.unshift({ value: "", label: "Any" });
   if (hasNoRegion || state.region === NO_REGION) regionOptions.push({ value: NO_REGION, label: "No region yet" });
   regionOptions.push({ value: MISSING_CITY, label: MISSING_CITY_LABEL });
+  const mates = (Array.isArray(team) ? team : []).filter((p) => p?.email && p.email !== me);
+  const ownerOptions = [
+    { value: "", label: "Everyone" },
+    { value: "mine", label: "Mine" },
+    ...mates.map((p) => ({ value: p.email, label: ownerLabel(p.email, team) })),
+    { value: OWNER_NONE, label: "Unassigned" },
+  ];
+  if (state.owner && state.owner !== OWNER_NONE && !ownerOptions.some((o) => o.value === state.owner)) {
+    ownerOptions.splice(ownerOptions.length - 1, 0, { value: state.owner, label: state.owner });
+  }
+  const ownerValue = state.mine ? "mine" : state.owner || "";
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div data-pipeline-filters="" className="flex flex-wrap items-center gap-2">
       <SearchInput
         className="w-full sm:w-64"
         inputClassName="min-h-11"
@@ -57,44 +67,33 @@ export function PipelineToolbar({
         onChange={(e) => onChange({ q: e.target.value }, { replace: true })}
         onClear={() => onChange({ q: "" }, { replace: true })}
       />
-      <Select
-        aria-label="ICP"
-        className="!w-full sm:!w-auto"
-        value={state.icp}
+      <FilterSelect
+        name="owner"
+        label="Owner"
+        value={ownerValue}
         disabled={disabled}
-        placeholder="All ICPs"
-        options={icpOptions}
-        onChange={(e) => onChange({ icp: e.target.value }, { replace: true })}
+        options={ownerOptions}
+        onChange={(v) => onChange(v === "mine" ? { mine: true, owner: "" } : { mine: false, owner: v }, { replace: true })}
       />
-      <Select
-        aria-label="Region"
-        ref={regionRef}
-        className="!w-full sm:!w-auto"
-        value={state.region}
-        disabled={disabled}
-        placeholder="All regions"
-        options={regionOptions}
-        onChange={(e) => {
-          // "City missing?" is a question, not a filter: the filter stays.
-          if (e.target.value === MISSING_CITY) setCityMissing(true);
-          else onChange({ region: e.target.value }, { replace: true });
-        }}
-      />
-      <Segmented
-        label="Whose records"
-        options={WHOSE}
-        value={state.mine}
-        disabled={disabled}
-        onChange={(mine) => onChange({ mine }, { replace: true })}
-      />
-      {extra}
-      <Segmented
-        label="View"
-        options={VIEWS}
-        value={state.view}
-        disabled={disabled}
-        onChange={(view) => onChange({ view }, { replace: false })}
-      />
+      <FilterSelect name="due" label="Due" value={state.due} disabled={disabled} options={DUE_OPTIONS[pipeline] || DUE_OPTIONS.hosts} onChange={(v) => onChange({ due: v }, { replace: true })} />
+      <FilterSelect name="icp" label="Type" value={state.icp} disabled={disabled} options={icpOptions} onChange={(v) => onChange({ icp: v }, { replace: true })} />
+      <label htmlFor={regionId} className="inline-flex min-w-0 items-center gap-2 text-[12.5px] font-semibold text-[var(--color-text-secondary)]">
+        <span className="whitespace-nowrap">Region</span>
+        <Select
+          id={regionId}
+          ref={regionRef}
+          data-filter="region"
+          className="!w-auto min-h-11 max-w-[220px] text-[13px]"
+          value={state.region}
+          disabled={disabled}
+          options={regionOptions}
+          onChange={(e) => {
+            // "City missing?" is a question, not a filter: the filter stays.
+            if (e.target.value === MISSING_CITY) setCityMissing(true);
+            else onChange({ region: e.target.value }, { replace: true });
+          }}
+        />
+      </label>
       {cityMissing && (
         <MissingCityLayer canAddRegion={canAddRegion} onClose={closeCityMissing} onRefresh={onRefreshRegions} />
       )}

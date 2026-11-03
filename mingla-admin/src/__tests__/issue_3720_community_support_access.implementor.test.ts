@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   AREA,
+  BLOG_AREA,
   canOpenPage,
   COMMUNITY_OPERATIONS_AREA,
   COMMUNITY_SUPPORT_AREA,
@@ -58,9 +59,11 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       .map((tab: { id: string }) => tab.id),
     tabs.map((tab) => tab.id),
   );
+  // #4255: Blog follows its own area (blog), which the server gives every
+  // active teammate; a Support row alone no longer shows it.
   assertEquals(
     communitySupportTabsForAccess(
-      access(COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA),
+      access(COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA, BLOG_AREA),
       tabs,
     )
       .map((tab: { id: string }) => tab.id),
@@ -82,6 +85,7 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
         COMMUNITY_SUPPORT_AREA,
         SUPPORT_OPERATIONS_AREA,
         COMMUNITY_OPERATIONS_AREA,
+        BLOG_AREA,
       ),
       tabs,
     ).map((tab: { id: string }) => tab.id),

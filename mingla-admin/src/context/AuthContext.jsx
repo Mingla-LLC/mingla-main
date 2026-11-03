@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import { supabase } from "../lib/supabase";
 import { normalizeAccess } from "../lib/access";
 import { runSignOutCleanup } from "../lib/signOutCleanup";
+import { clearEmailDraftStorage } from "../lib/emailDrafts";
 
 const AuthContext = createContext(null);
 
@@ -140,6 +141,8 @@ export function AuthProvider({ children }) {
     setAccessError(false);
     // Remembered lists outside React state go with the person (rule 6).
     runSignOutCleanup();
+    // #4255: an unsaved email copy never outlives the session in this browser.
+    try { clearEmailDraftStorage(globalThis.localStorage); } catch { /* storage unavailable */ }
   }, []);
 
   /**

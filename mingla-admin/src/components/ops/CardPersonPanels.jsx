@@ -8,6 +8,7 @@
 //     (owner and admins): publish it to hosts, or say it is not needed.
 // Spend and publish approvals are the card's own actions (WorkDetail).
 import { AlertCard } from "../ui/Card";
+import { SideLink } from "../ui/PanelStack";
 import { DraftsPage } from "../../pages/DraftsPage";
 import { useAuth } from "../../context/AuthContext";
 import { useOpsPoll } from "../../hooks/useOpsWork";
@@ -15,6 +16,7 @@ import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import * as ops from "../../services/opsService";
 import { isRoadmapApproval, opsErrorWords, todayIso } from "../../lib/opsModel";
 import { cardRecordIds, isSendCard } from "../../lib/workViews";
+import { isFullAdmin } from "../../lib/access";
 import { WordingCard } from "./WordingQueue";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -37,7 +39,7 @@ export function CardDrafts({ card }) {
       {records.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
           This card is not linked to a host or creator, so its draft is not shown here.{" "}
-          <a href="#/work-board?drafts=all" className={`font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open all my drafts</a>
+          <SideLink side={{ kind: "drafts", id: "all" }} href="#/work-board?drafts=all" className={`font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open all my drafts</SideLink>
         </p>
       ) : (
         records.map((id) => <DraftsPage key={id} embedded={{ search: `record=${id}` }} />)
@@ -48,7 +50,7 @@ export function CardDrafts({ card }) {
 
 export function CardWording({ card, onChanged }) {
   const { access } = useAuth();
-  const canTell = access?.role === "owner" || access?.role === "admin";
+  const canTell = isFullAdmin(access);
   const show = canTell && isRoadmapApproval(card) && card?.status === "person" && !card?.archived;
   const read = useOpsPoll(() => ops.listReview(todayIso()), { key: `${access?.email || ""}|wording-card|${card?.id || ""}`, intervalMs: 0, enabled: show });
   const people = usePeopleDirectory();

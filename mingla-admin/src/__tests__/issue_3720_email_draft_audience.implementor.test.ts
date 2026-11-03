@@ -48,9 +48,18 @@ Deno.test("#3720 host-only drafts keep their filters; one chosen person is kept"
   assertEquals(restoreDraftAudience(null, DEFAULTS).filters.userType, "host");
 });
 
+// #4255: drafts are shared on the server now. Every restore (a shared draft,
+// the one-time move of a local draft, a crash-recovery copy) goes through
+// composerStateFromDraft, which is the only reader of a stored audience.
 Deno.test("#3720 the composer restores drafts only through the host-default guard", async () => {
   const composer = await Deno.readTextFile(new URL("../components/email/EmailComposer.jsx", import.meta.url));
-  assertMatch(composer, /restoreDraftAudience\(saved, EMPTY_FILTERS\)/);
+  const drafts = await Deno.readTextFile(new URL("../lib/emailDrafts.js", import.meta.url));
+  assertMatch(drafts, /const restored = restoreDraftAudience\(audience, defaultFilters\);/);
+  for (const m of composer.matchAll(/applyComposerState\(([^;]*)\);/g)) {
+    if (m[1].startsWith("(state)")) continue;
+    assertMatch(m[1], /^(composerStateFromDraft\(|state\b)/, `applyComposerState(${m[1]}) bypasses the guard`);
+  }
+  assertMatch(composer, /const state = composerStateFromDraft\(row, EMPTY_FILTERS\);/);
   assertNotMatch(composer, /\["everyone", "segment", "person"\]\.includes\(saved\.audienceMode\)/);
-  assertNotMatch(composer, /setAudienceMode\(saved\.audienceMode\)/);
+  assertNotMatch(composer, /setAudienceMode\((saved|row|recovery|legacy)\.(audience\.)?audienceMode\)/);
 });

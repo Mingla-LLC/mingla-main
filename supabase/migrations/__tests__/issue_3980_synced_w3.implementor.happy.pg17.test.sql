@@ -1,5 +1,6 @@
 -- Issue #3980 synced program, Wave 3 -- the operations redesign, on the fully
 -- replayed PG17 schema.
+-- MINGLA-INVARIANT: I-4256-NO-AUTO-PROMO-CARDS | issue #4256 | Mingla makes no giveaway and ads card by itself while ops_settings.auto_promo_cards is off, which is how it ships; a person opens one when a giveaway is wanted.
 -- MINGLA-INVARIANT: I-3980-AUTO-STEPS-FROM-TIMELINE | issue #3980 | Mingla makes at most one open card per automatic step key from events, promised events and repeating hosts, re-dates and closes them as the timeline changes, and makes none while the owner has automatic steps switched off.
 --
 -- What it proves (each check is recorded and reported together):
@@ -297,6 +298,16 @@ begin
   v := pg_temp.w3_person('owner', 'select public.ops_setting_set(''marketing_owner'', ''"bo.w33980@test.local"''::jsonb)::text');
   v := pg_temp.w3_person('owner', 'select public.ops_setting_set(''auto_steps'', ''true''::jsonb)::text');
   perform pg_temp.w3_check('W3-AUTO', 'the owner switches automatic steps on', pg_temp.w3_j(v)->'settings'->>'auto_steps', 'true');
+  -- #4256: giveaway and ads cards are opened by a person. As shipped, a run
+  -- makes every other step but no giveaway card; switched on, it makes them.
+  perform pg_temp.w3_check('W4256-PROMO-OFF', 'giveaway cards ship switched off',
+    (select value::text from public.ops_settings where key = 'auto_promo_cards'), 'false');
+  v_res := public.ops_reconcile();
+  perform pg_temp.w3_check('W4256-PROMO-OFF', 'switched off, the run still makes the go-live card',
+    split_part(pg_temp.w3_card('golive:event:' || pg_temp.w3_id('e_draft')), '/', 1), '1');
+  perform pg_temp.w3_check('W4256-PROMO-OFF', 'but no giveaway and ads card, for any event',
+    (select count(*) from public.ops_work_cards where auto_key like 'promo:event:%' or kit_step = -21)::text, '0');
+  update public.ops_settings set value = 'true'::jsonb where key = 'auto_promo_cards';
   perform pg_temp.w3_check('W3-AUTO', 'which records when follow-through starts (X3)',
     ((pg_temp.w3_j(v)->'settings'->>'follow_through_since') is not null and (select value::text from public.ops_settings where key = 'follow_through_since') <> 'null')::text, 'true');
 

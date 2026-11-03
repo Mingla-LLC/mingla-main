@@ -1,11 +1,17 @@
 // Issue #3802 (Wave 1) — the Hosts and Creators boards (#/hosts, #/creators).
 //
 // Issue #4130 (Wave 4a): drawn inside Hosts and creators (#/outreach), which
-// passes the page tabs and the counts over every card (OutreachContext). The
-// list, sorted by due date, is the default; chips pick Due today / This week /
-// Stale / Replied, waiting on us; the board shows only the late stages
-// (Replied onward); phone numbers are hidden from card text; stale cards can
-// get a new due date in bulk (owner and admins, with a confirmation).
+// passes the page tabs (OutreachContext); phone numbers are hidden from card
+// text; stale cards can get a new due date in bulk (owner and admins, with a
+// confirmation).
+//
+// Issue #4255 (card 606): the board is the only view (D8). Every stage is a
+// column and a Stale column comes first (D1); a stale card is only in Stale,
+// tagged with its stage (D2). One filter row of dropdowns filters the funnel
+// and the board together, and the funnel and the column headers are the only
+// counts, so every number on the page is the cards you can see. A card opens
+// in the first side panel; a work card, event or drafts linked from it open
+// in the second, beside it (components/ui/PanelStack).
 //
 // One page, two pipelines. Everything it shows comes from the crm_* server
 // functions through the hooks below; this file never talks to the database
@@ -42,16 +48,16 @@ import {
 import { NEW_CARD, buildCrmSearch, cleanCrmState, parseCrmSearch, sameCrmState } from "../lib/crmUrl";
 import { PipelineToolbar } from "../components/crm/PipelineToolbar";
 import { PipelineBoard, PipelineBoardSkeleton } from "../components/crm/PipelineBoard";
-import { PipelineList } from "../components/crm/PipelineList";
-import { PipelineByRegion } from "../components/crm/PipelineByRegion";
 import { RecordDrawer } from "../components/crm/RecordDrawer";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
 import { PipelineOverlays } from "../components/crm/CrmLayer";
-import { AgentPromptStrip } from "../components/agent/AgentPromptStrip";
 import { HostNextContext, useHostNext } from "../hooks/useOpsWork";
-import { HOST_FILTERS, hostMissing, hostPassesFilter } from "../lib/opsModel";
-import { DUE_CHIPS, filterByDueChip, forDisplay, lateStageDef, lateStageIds, lateStageRange } from "../lib/outreachView";
+import { hostMissing, hostPassesFilter } from "../lib/opsModel";
+import { boardColumns, filterByDueChip, forDisplay, stageCounts } from "../lib/outreachView";
+import { PanelLinksContext, PanelStack } from "../components/ui/PanelStack";
+import { SidePanel } from "../components/panels/SidePanel";
+import { usePanelStack } from "../hooks/usePanelStack";
 import { OutreachContext } from "../components/outreach/OutreachContext";
 import { FunnelStrip } from "../components/outreach/FunnelStrip";
 import { ResetDueModal } from "../components/outreach/ResetDueModal";
@@ -105,8 +111,6 @@ function PipelinePage({ pipeline, onTabChange }) {
 
   const title = pipeline === "creators" ? "Creators" : "Hosts";
   const singular = pipeline === "creators" ? "creator" : "host";
-  const promptIcp = def?.icps?.find((item) => item.id === state.icp)?.label || "";
-  const promptRegion = state.region === NO_REGION ? NO_REGION : regionBySlug(config?.regions, state.region)?.name || "";
 
   const patch = useCallback(
     (changes, { replace = false } = {}) => {
@@ -132,33 +136,30 @@ function PipelinePage({ pipeline, onTabChange }) {
   }, [state.region, config]);
 
   const filtered = useMemo(
-    () => filterRecords(pipe.records, { q: state.q, icp: state.icp, regionId, mine: state.mine, me }),
-    [pipe.records, state.q, state.icp, regionId, state.mine, me]
+    () => filterRecords(pipe.records, { q: state.q, icp: state.icp, regionId, mine: state.mine, me, owner: state.owner }),
+    [pipe.records, state.q, state.icp, regionId, state.mine, me, state.owner]
   );
-  // #3980 (R1): each host's next dated thing, for the next-event line, the
-  // "No next event" and "Go live soon" filters and their count.
+  // #3980 (R1): each host's next dated thing, for the next-event line and the
+  // "No next event" and "Go live soon" Due choices.
   const isHostBoard = pipeline === "hosts";
   const hostNext = useHostNext(isHostBoard ? pipe.records.map((r) => r.id) : [], { enabled: isHostBoard && !!def });
+  const hostDue = isHostBoard && (state.due === "nonext" || state.due === "soon") ? state.due : "";
   const shown = useMemo(
-    () => (isHostBoard && state.filter ? filtered.filter((r) => hostPassesFilter(hostNext.byId[r.id], state.filter)) : filtered),
-    [isHostBoard, state.filter, filtered, hostNext.byId]
+    () => (hostDue ? filtered.filter((r) => hostPassesFilter(hostNext.byId[r.id], hostDue)) : filtered),
+    [hostDue, filtered, hostNext.byId]
   );
-  const noNextCount = isHostBoard ? filtered.filter((r) => hostNext.byId[r.id]?.needs_next).length : 0;
-  // #4130: the due chip, then what the list and board draw (phone numbers
-  // hidden from card text; the board holds only the late stages).
+  // #4255: the Due choice, then the board. Every card that passes the filters
+  // is in exactly one column (lib/outreachView.js boardColumns), and the funnel
+  // counts the same cards, so the numbers on the page are the cards shown.
   const dueShown = useMemo(() => filterByDueChip(shown, state.due, today), [shown, state.due, today]);
-  const listRecords = useMemo(() => dueShown.map(forDisplay), [dueShown]);
-  const boardDef = useMemo(() => (def ? lateStageDef(def) : def), [def]);
-  const boardRecords = useMemo(() => {
-    const late = new Set(lateStageIds(def));
-    return dueShown.filter((r) => late.has(r.stage)).map(forDisplay);
-  }, [dueShown, def]);
-  const counts = outreach?.summary?.data?.pipelines?.[pipeline] || null;
+  const columns = useMemo(() => (def ? boardColumns(def, dueShown.map(forDisplay), today) : []), [def, dueShown, today]);
+  const funnelCounts = useMemo(() => stageCounts(dueShown), [dueShown]);
   const isAdmin = canOpenPage(access, "overview");
   const [resetOpen, setResetOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState("");
-  const filtersOn = hasActiveFilters(state) || !!state.filter || !!state.due;
+  const filtersOn = hasActiveFilters(state);
+  const stack = usePanelStack(search, setSearch);
 
   // ── Open card ───────────────────────────────────────────────────────────
   const [focus, setFocus] = useState(null); // { id, field }
@@ -171,13 +172,21 @@ function PipelinePage({ pipeline, onTabChange }) {
     (id, { field = null, replace = false } = {}) => {
       setFocus(field ? { id, field } : null);
       if (!replace && !stateRef.current.card) cardEntryPushed.current = true;
-      patch({ card: id }, { replace });
+      // A new first panel starts without a second one.
+      patch({ card: id, side: "" }, { replace });
     },
     [patch]
   );
   const closeCard = useCallback(() => {
     setFocus(null);
     if (!stateRef.current.card) return;
+    // #4255: with a second panel open, both close here (Back would only
+    // close the second one).
+    if (stateRef.current.side) {
+      cardEntryPushed.current = false;
+      patch({ card: "", side: "" }, { replace: true });
+      return;
+    }
     if (cardEntryPushed.current) {
       cardEntryPushed.current = false;
       window.history.back();
@@ -510,10 +519,11 @@ function PipelinePage({ pipeline, onTabChange }) {
     if (cfg.error) cfg.retry();
     else pipe.refetch();
   };
-  const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false, filter: "", due: "" }, { replace: true });
+  const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false, owner: "", due: "" }, { replace: true });
 
-  // #4130: a new due date on the stale cards on screen (Stale chip), in bulk.
-  const staleOnScreen = state.due === "stale" ? dueShown : [];
+  // #4130: a new due date on the stale cards on screen, in bulk. #4255: from
+  // the Stale column's header (owner and admins).
+  const staleOnScreen = columns.find((c) => c.id === "stale")?.cards || [];
   const confirmReset = async (newDue) => {
     setResetBusy(true);
     setResetError("");
@@ -526,7 +536,6 @@ function PipelinePage({ pipeline, onTabChange }) {
         description: Number(res?.skipped) > 0 ? `${res.skipped} had already changed, so they were left alone.` : undefined,
       });
       pipe.refetch();
-      outreach?.retrySummary?.();
     } catch (err) {
       setResetError(errorWords(err));
     } finally {
@@ -547,38 +556,24 @@ function PipelinePage({ pipeline, onTabChange }) {
     </Button>
   );
 
+  const resetButton = isAdmin && staleOnScreen.length > 0 ? (
+    <Button variant="secondary" size="sm" icon={CalendarClock} className="min-h-11" disabled={!ready || !online} onClick={() => { setResetError(""); setResetOpen(true); }}>
+      Reset {staleOnScreen.length.toLocaleString()} due {staleOnScreen.length === 1 ? "date" : "dates"}
+    </Button>
+  ) : null;
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={outreach ? "Hosts and creators" : title}
-        description={outreach
-          ? "Who to contact next, sorted by when it’s due. The board is kept for the small late stages."
-          : `${canDrag ? "Drag a card to move it, or use the arrow on the card." : "Use the arrow on a card to move it."} Click a card to see and edit everything about it.`}
+        description={`${canDrag ? "Drag a card to move it, or use the arrow on the card." : "Use the arrow on a card to move it."} Stale cards wait in the first column until they get a new next-step date.`}
         actions={addButton("primary", "md", addButtonRef)}
         tabs={outreach?.tabs || null}
       />
 
-      {outreach && (
-        outreach.summary.status === "error" ? (
-          <AlertCard
-            variant="error"
-            title="Couldn't load the funnel and due counts"
-            action={<Button variant="secondary" size="sm" onClick={outreach.retrySummary}>Retry</Button>}
-          >
-            {loadErrorWords(outreach.summary.error)}
-          </AlertCard>
-        ) : counts && def ? (
-          <FunnelStrip def={def} stages={counts.stages} label={`${title} funnel`} />
-        ) : outreach.summary.status === "loading" ? (
-          <Skeleton height={96} style={{ borderRadius: 12 }} />
-        ) : null
-      )}
-
       {!online && (
         <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>
       )}
-
-      <AgentPromptStrip routine="new_batch" pipeline={pipeline} icp={promptIcp} region={promptRegion} mine={state.mine} />
 
       {loadError ? (
         <AlertCard
@@ -594,54 +589,25 @@ function PipelinePage({ pipeline, onTabChange }) {
         </AlertCard>
       ) : (
         <>
-          <div role="group" aria-label="Due" className="flex flex-wrap items-center gap-2">
-            {(DUE_CHIPS[pipeline] || []).map((chip) => {
-              const on = state.due === chip.id;
-              const n = counts ? counts[chip.key] : null;
-              return (
-                <button
-                  key={chip.id}
-                  type="button"
-                  aria-pressed={on}
-                  data-due-chip={chip.id}
-                  disabled={!ready}
-                  onClick={() => patch({ due: on ? "" : chip.id }, { replace: true })}
-                  className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] disabled:opacity-60 ${on ? "border-[var(--color-text-primary)] bg-[var(--color-text-primary)] text-[var(--color-background-primary)]" : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
-                >
-                  {chip.label}
-                  {n != null && <span className="tabular-nums">· {Number(n).toLocaleString()}</span>}
-                </button>
-              );
-            })}
-            {isAdmin && state.due === "stale" && staleOnScreen.length > 0 && (
-              <Button variant="secondary" icon={CalendarClock} className="min-h-11" disabled={!ready || !online} onClick={() => { setResetError(""); setResetOpen(true); }}>
-                Reset {staleOnScreen.length.toLocaleString()} due {staleOnScreen.length === 1 ? "date" : "dates"}
-              </Button>
-            )}
-          </div>
+          {/* #4255: the funnel counts the cards the board shows, after the same filters. */}
+          {ready ? (
+            <FunnelStrip def={def} stages={funnelCounts} label={`${title} funnel`} />
+          ) : (
+            <Skeleton height={96} style={{ borderRadius: 12 }} />
+          )}
 
           <PipelineToolbar
+            pipeline={pipeline}
             state={state}
             def={def}
             regions={config?.regions}
+            team={config?.team}
+            me={me}
             hasNoRegion={pipe.records.some((r) => !r.region_id)}
             disabled={!ready}
             canAddRegion={!!config?.me?.can_add_region}
             onRefreshRegions={cfg.retry}
             onChange={patch}
-            extra={isHostBoard ? HOST_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                aria-pressed={state.filter === f.value}
-                disabled={!ready}
-                onClick={() => patch({ filter: state.filter === f.value ? "" : f.value }, { replace: true })}
-                className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] disabled:opacity-60 ${state.filter === f.value ? "border-[var(--color-text-primary)] bg-[var(--color-text-primary)] text-[var(--color-background-primary)]" : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
-              >
-                {f.label}
-                {f.value === "nonext" && <span className="tabular-nums">{hostNext.loading && !hostNext.data ? "…" : noNextCount}</span>}
-              </button>
-            )) : null}
           />
 
           {ready && pipe.truncated && (
@@ -650,67 +616,36 @@ function PipelinePage({ pipeline, onTabChange }) {
 
           <HostNextContext.Provider value={isHostBoard ? hostNext.byId : null}>
           {loading ? (
-            state.view === "board" ? (
-              <PipelineBoardSkeleton />
-            ) : state.view === "list" ? (
-              <PipelineList def={def} records={[]} regions={[]} team={[]} today={today} loading onOpen={openRecord} />
-            ) : (
-              <Skeleton height={220} style={{ borderRadius: 12 }} />
-            )
+            <PipelineBoardSkeleton />
           ) : pipe.records.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--gray-300)] bg-[var(--color-background-primary)] px-4 py-12 text-center">
               <p className="max-w-md text-sm text-[var(--color-text-secondary)]">
                 {pipeline === "hosts"
                   ? canOpenPage(access, "beta-leads")
-                    ? "No hosts yet. Add the first one, or turn a beta lead into a host."
-                    : "No hosts yet. Add the first one."
-                  : "No creators yet. Add the first one."}
+                    ? "No hosts yet. Add the first one with Add host above, or turn a beta lead into a host."
+                    : "No hosts yet. Add the first one with Add host above."
+                  : "No creators yet. Add the first one with Add creator above."}
               </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {addButton()}
-                {pipeline === "hosts" && canOpenPage(access, "beta-leads") && (
-                  <Button variant="secondary" onClick={() => onTabChange?.("beta-leads")}>
-                    Open Beta leads
-                  </Button>
-                )}
-              </div>
+              {pipeline === "hosts" && canOpenPage(access, "beta-leads") && (
+                <Button variant="secondary" onClick={() => onTabChange?.("beta-leads")}>
+                  Open Beta leads
+                </Button>
+              )}
             </div>
           ) : dueShown.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--gray-300)] bg-[var(--color-background-primary)] px-4 py-12 text-center">
               <p className="text-sm text-[var(--color-text-secondary)]">No {singular}s match.</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {filtersOn && (
-                  <Button variant="secondary" className="min-h-11" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                )}
-                {addButton()}
-              </div>
+              {filtersOn && (
+                <Button variant="secondary" className="min-h-11" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
             </div>
-          ) : state.view === "list" ? (
-            <PipelineList
-              def={def}
-              records={listRecords}
-              regions={config.regions}
-              team={config.team}
-              today={today}
-              onOpen={openRecord}
-            />
-          ) : state.view === "region" ? (
-            <PipelineByRegion
-              def={def}
-              records={dueShown}
-              regions={config.regions}
-              onPickRegion={(slug) => patch({ region: slug, view: "board" })}
-            />
           ) : (
-            <>
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              The board shows {lateStageRange(def)}. Earlier stages are in the list.
-            </p>
             <PipelineBoard
-              def={boardDef}
-              records={boardRecords}
+              def={def}
+              columns={columns}
+              staleAction={resetButton}
               regions={config.regions}
               team={config.team}
               today={today}
@@ -720,7 +655,6 @@ function PipelinePage({ pipeline, onTabChange }) {
               onOpen={openRecord}
               onMove={requestMove}
             />
-            </>
           )}
           </HostNextContext.Provider>
         </>
@@ -732,50 +666,58 @@ function PipelinePage({ pipeline, onTabChange }) {
           question in "dialog", which is always above an open card. */}
       <PipelineOverlays
         card={
-          ready && state.card === NEW_CARD && !holding ? (
-            <Drawer open onClose={closeCard} title={`New ${singular}`}>
-              {/* Room at the end of the form, so a message shown over it on a
-                  phone never hides its last fields (components/ui/Toast.jsx). */}
-              <div style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
-                <AddRecordForm
-                  pipeline={pipeline}
-                  def={def}
-                  config={config}
-                  records={pipe.records}
-                  defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
-                  disabled={!online}
-                  canAddRegion={!!config?.me?.can_add_region}
-                  onRefreshRegions={cfg.retry}
-                  onCreate={handleCreate}
-                  onOpenExisting={(id) => openCard(id, { replace: true })}
-                  onCancel={closeCard}
-                />
-              </div>
-            </Drawer>
-          ) : ready && openId ? (
-            <RecordDrawer
-              key={openId}
-              pipeline={pipeline}
-              def={def}
-              config={config}
-              recordId={openId}
-              listRecord={openRecordInList}
-              pipe={drawerPipe}
-              online={online}
-              canDelete={canDelete}
-              focusField={focus?.id === openId ? focus.field : null}
-              activityTick={activityTick}
-              suspended={!!reasonFor}
-              holding={holding}
-              guardRef={guardRef}
-              onDirtyChange={handleDirtyChange}
-              onClose={closeCard}
-              onRequestMove={requestMove}
-              onDelete={handleDelete}
-              onOpenCard={(id) => openCard(id, { replace: true })}
-              onRefreshRegions={cfg.retry}
+          <PanelLinksContext.Provider value={stack.links}>
+            <PanelStack
+              stack={stack}
+              first={
+                ready && state.card === NEW_CARD && !holding ? (
+                  <Drawer open onClose={closeCard} title={`New ${singular}`}>
+                    {/* Room at the end of the form, so a message shown over it on a
+                        phone never hides its last fields (components/ui/Toast.jsx). */}
+                    <div style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
+                      <AddRecordForm
+                        pipeline={pipeline}
+                        def={def}
+                        config={config}
+                        records={pipe.records}
+                        defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
+                        disabled={!online}
+                        canAddRegion={!!config?.me?.can_add_region}
+                        onRefreshRegions={cfg.retry}
+                        onCreate={handleCreate}
+                        onOpenExisting={(id) => openCard(id, { replace: true })}
+                        onCancel={closeCard}
+                      />
+                    </div>
+                  </Drawer>
+                ) : ready && openId ? (
+                  <RecordDrawer
+                    key={openId}
+                    pipeline={pipeline}
+                    def={def}
+                    config={config}
+                    recordId={openId}
+                    listRecord={openRecordInList}
+                    pipe={drawerPipe}
+                    online={online}
+                    canDelete={canDelete}
+                    focusField={focus?.id === openId ? focus.field : null}
+                    activityTick={activityTick}
+                    suspended={!!reasonFor}
+                    holding={holding}
+                    guardRef={guardRef}
+                    onDirtyChange={handleDirtyChange}
+                    onClose={closeCard}
+                    onRequestMove={requestMove}
+                    onDelete={handleDelete}
+                    onOpenCard={(id) => openCard(id, { replace: true })}
+                    onRefreshRegions={cfg.retry}
+                  />
+                ) : null
+              }
+              second={stack.side ? <SidePanel side={stack.side} onClose={stack.closeSide} onChanged={() => pipe.refetch({ quiet: true })} /> : null}
             />
-          ) : null
+          </PanelLinksContext.Provider>
         }
         dialog={
           reasonFor ? (

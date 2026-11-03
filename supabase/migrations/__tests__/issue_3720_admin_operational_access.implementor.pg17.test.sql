@@ -3,6 +3,8 @@
 -- teammate Support and team-notification access, plus role-scoped Data room.
 -- [TEST-MOD-APPROVED #3988] Support is now an explicit role that also covers
 -- Community; a staff row alone, or a Community row alone, opens nothing.
+-- #4255: every active teammate also gets the Blog tab area (blog) and the
+-- email_drafts role area; the Founding partner ('dual') holds an admin_users seat.
 -- Runs after the complete migration replay and rolls every fixture back.
 -- MINGLA-INVARIANT: I-3720-ADMIN-OPERATIONAL-ACCESS | issue #3720 | Operational grants never confer admin_console and require accepted Admin team membership.
 \set ON_ERROR_STOP on
@@ -36,9 +38,11 @@ INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
 INSERT INTO public.admin_team_members (email, role, status, accepted_at) VALUES
   ('issue3720-access-support@test.local', 'growth', 'active', now()),
   ('issue3720-access-community@test.local', 'growth', 'active', now()),
-  ('issue3720-access-dual@test.local', 'partner', 'active', now()),
   ('issue3720-access-ordinary@test.local', 'growth', 'active', now()),
   ('issue3720-access-invited@test.local', 'growth', 'invited', null);
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('issue3720-access-dual@test.local', 'partner', 'active', now());
 
 INSERT INTO public.support_staff (user_id, enabled, available, role) VALUES
   ('37200000-0000-4000-a100-000000000003', true, false, 'staff'),
@@ -94,25 +98,25 @@ $$;
 
 DO $proof$
 BEGIN
-  IF pg_temp.t3720_operational('owner') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room}'
-     OR pg_temp.t3720_operational('admin') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room}' THEN
+  IF pg_temp.t3720_operational('owner') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room,blog}'
+     OR pg_temp.t3720_operational('admin') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room,blog}' THEN
     RAISE EXCEPTION 'full_admin_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('support') <> '{community_support,community_support_support,team_notifications,community_support_community}' THEN
+  IF pg_temp.t3720_operational('support') <> '{community_support,community_support_support,team_notifications,community_support_community,blog}' THEN
     RAISE EXCEPTION 'support_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('community') <> '{team_notifications}' THEN
+  IF pg_temp.t3720_operational('community') <> '{team_notifications,blog}' THEN
     RAISE EXCEPTION 'community_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('dual') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room}' THEN
+  IF pg_temp.t3720_operational('dual') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room,blog}' THEN
     RAISE EXCEPTION 'dual_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('ordinary') <> '{team_notifications}'
+  IF pg_temp.t3720_operational('ordinary') <> '{team_notifications,blog}'
      OR pg_temp.t3720_operational('invited') <> '{}'
      OR pg_temp.t3720_operational('outsider') <> '{}' THEN
     RAISE EXCEPTION 'inactive_disabled_or_non_team_grant_widened_access';
   END IF;
-  IF pg_temp.t3720_base_areas('support') <> '["role_home", "crm", "beta_leads"]' THEN
+  IF pg_temp.t3720_base_areas('support') <> '["role_home", "crm", "beta_leads", "email_drafts"]' THEN
     RAISE EXCEPTION 'base_role_area_contract_changed';
   END IF;
   IF has_function_privilege('anon', 'public.admin_team_my_operational_areas()', 'EXECUTE')

@@ -122,13 +122,11 @@ Deno.test("#3802 Wave 2: Admin defaults to Calendar, with the six-stage Board an
     "published",
   ]);
   assertEquals(monthWindow("2026-10").days.length, 42);
-  // #4130: Wave 4a split the Calendar into two tabs. With no view in the address,
-  // Event runway opens on the runway list and Content opens on the posts board;
-  // Month stays one click away. The runway table replaced the grouped state list.
-  assertMatch(PAGE, /\? p\.get\("view"\) : defaultView\(show\)/);
-  assertMatch(PAGE, /function defaultView\(show\) \{\s*return show === "posts" \? "board" : "list";\s*\}/);
-// [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): Month (MonthGrid), List by state with the posts list, and the Posts board.
-  assertMatch(PAGE, /<MonthGrid [\s\S]*<RunwayTable [\s\S]*<PostsList [\s\S]*<BoardView /);
+  // #4255: Month is the default and the only other view is the posts Board;
+  // the runway table and posts list are gone.
+  assertMatch(PAGE, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
+  assertMatch(PAGE, /<MonthGrid [\s\S]*<BoardView /);
+  assert(!PAGE.includes("<RunwayTable"));
 });
 
 Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit comments", () => {

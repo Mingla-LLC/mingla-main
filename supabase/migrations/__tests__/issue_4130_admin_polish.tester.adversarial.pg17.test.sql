@@ -64,8 +64,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('ta-admin@mingla-fixture.org', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('ta-growth@mingla-fixture.org', 'growth', 'active', now()),
-  ('ta-partner@mingla-fixture.org', 'partner', 'active', now()),
   ('ta-support@mingla-fixture.org', 'growth', 'active', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('ta-partner@mingla-fixture.org', 'partner', 'active', now());
 insert into public.support_staff (user_id, enabled, available, display_name, role)
 values ('41307777-0000-4000-a000-000000000005', true, true, 'TA support', 'staff');
 insert into public.creator_accounts (id, email) values ('41307777-0000-4000-a000-000000000007', 'ta-host@mingla-fixture.org');
@@ -335,8 +337,9 @@ begin
     pg_temp.ta_as('admin', format($q$select public.admin_set_internal_account(%L, true, '   ')::text$q$, v_host)), 'ERR:%reason_required%');
   perform pg_temp.ta_like('T-PEOPLE', 'Sales and marketing cannot mark staff/test',
     pg_temp.ta_as('growth', format($q$select public.admin_set_internal_account(%L, true, 'TA')::text$q$, v_host)), 'ERR:%not_authorized%');
-  perform pg_temp.ta_like('T-PEOPLE', 'a founding partner cannot mark staff/test',
-    pg_temp.ta_as('partner', format($q$select public.admin_set_internal_account(%L, true, 'TA')::text$q$, v_host)), 'ERR:%not_authorized%');
+  -- #4255 (D3): a Founding partner holds a full-admin seat, so it may mark staff/test.
+  perform pg_temp.ta_like('T-PEOPLE', 'a founding partner may mark staff/test',
+    pg_temp.ta_as('partner', format($q$select public.admin_set_internal_account(%L, true, 'TA')::text$q$, v_host)), '%"is_internal": true%');
   perform pg_temp.ta_like('T-PEOPLE', 'marking someone who does not exist is refused',
     pg_temp.ta_as('admin', $q$select public.admin_set_internal_account('41307777-0000-4000-a000-0000000000ff', true, 'TA')::text$q$), 'ERR:%not_found%');
 
@@ -357,7 +360,7 @@ begin
 
   perform pg_temp.ta_check('T-PEOPLE', 'every mark and unmark is audited with the signed-in admin',
     (select count(*)::text from public.admin_audit_log a where a.target_id in (v_host::text, v_ruled::text)
-       and a.action in ('person.mark_internal', 'person.unmark_internal')), '3');
+       and a.action in ('person.mark_internal', 'person.unmark_internal')), '4');
 
   -- A refused delete: a signed-in teammate deleting rows directly removes nothing.
   perform pg_temp.ta_as('admin', format($q$with d as (delete from public.profiles where id = %L returning 1) select count(*)::text from d$q$, v_host));
@@ -485,8 +488,8 @@ begin
     pg_temp.ta_as('support', $q$select public.community_can('moderate')::text$q$), 'true');
   perform pg_temp.ta_check('T-SUPP', 'Sales and marketing cannot moderate',
     pg_temp.ta_as('growth', $q$select public.community_can('moderate')::text$q$), 'false');
-  perform pg_temp.ta_check('T-SUPP', 'a founding partner cannot moderate',
-    pg_temp.ta_as('partner', $q$select public.community_can('moderate')::text$q$), 'false');
+  perform pg_temp.ta_check('T-SUPP', 'a founding partner moderates like an admin (#4255 D3)',
+    pg_temp.ta_as('partner', $q$select public.community_can('moderate')::text$q$), 'true');
   perform pg_temp.ta_like('T-SUPP', 'a support teammate cannot read announcement delivery numbers',
     pg_temp.ta_as('support', $q$select count(*)::text from public.issue_3720_admin_announcement_deliveries()$q$), 'ERR:42501:%');
   perform pg_temp.ta_like('T-SUPP', 'Sales and marketing cannot read announcement delivery numbers',
@@ -495,8 +498,8 @@ begin
     pg_temp.ta_as('support', $q$select (public.admin_team_my_operational_areas() @> array['community_support_support', 'community_support_community'])::text$q$), 'true');
   perform pg_temp.ta_check('T-SUPP', 'Sales and marketing gets neither area',
     pg_temp.ta_as('growth', $q$select (public.admin_team_my_operational_areas() && array['community_support_support', 'community_support_community'])::text$q$), 'false');
-  perform pg_temp.ta_check('T-SUPP', 'a founding partner gets neither area',
-    pg_temp.ta_as('partner', $q$select (public.admin_team_my_operational_areas() && array['community_support_support', 'community_support_community'])::text$q$), 'false');
+  perform pg_temp.ta_check('T-SUPP', 'a founding partner gets both areas like an admin (#4255 D3)',
+    pg_temp.ta_as('partner', $q$select (public.admin_team_my_operational_areas() @> array['community_support_support', 'community_support_community'])::text$q$), 'true');
   perform pg_temp.ta_like('T-SUPP', 'a support teammate cannot open the admin Dashboard numbers',
     pg_temp.ta_as('support', $q$select public.admin_dashboard_summary(null)::text$q$), 'ERR:%not_authorized%');
 end;

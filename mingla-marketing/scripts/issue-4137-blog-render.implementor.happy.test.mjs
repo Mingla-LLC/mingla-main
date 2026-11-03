@@ -14,7 +14,7 @@
 //   AC-P6  event card: editor title + city eyebrow + Open in Mingla; passed event absent
 //   AC-P7  CTAs are DeviceLink anchors with the Explorer phone OneLink in data-cta-phone-href
 //   AC-P8  no newsletter / sign-up / email field
-//   AC-P9  no iframe before a click
+//   AC-P9  (#4255 D6) the YouTube player is on the page, lazy and inline; nothing else frames
 //   AC-P10 hostile rich text renders inert
 //   AC-P13 preview banner + noindex; wrong token 404
 //
@@ -233,8 +233,14 @@ try {
 
   // AC-P8, AC-P9, AC-P10.
   assert.doesNotMatch(visible, /newsletter|subscribe|sign up|type="email"/i)
-  assert.doesNotMatch(visible, /<iframe/i, '#4137 AC-P9: no iframe before a click')
-  assert.match(visible, /Play video: A walk around the lake/)
+  // #4255 (D6): the video block's player is on the page when the post opens.
+  const frames = [...visible.matchAll(/<iframe\b[^>]*>/gi)].map((m) => m[0])
+  assert.equal(frames.length, 1, '#4255 AC-P9: exactly one frame, the video player')
+  assert.match(frames[0], /src="https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?playsinline=1&amp;rel=0"/, '#4255: youtube-nocookie, inline')
+  assert.match(frames[0], /loading="lazy"/, '#4255: lazy')
+  assert.match(frames[0], /title="A walk around the lake"/)
+  assert.doesNotMatch(frames[0], /autoplay/, '#4255: never autoplays')
+  assert.doesNotMatch(visible, /Play video: A walk around the lake/, '#4255: no click-to-load poster for video')
   assert.match(visible, /Open on Instagram/)
   assert.match(visible, /Things to do in Raleigh/)
   const article = /<article>([\s\S]*?)<\/article>/.exec(visible)?.[1] ?? ''

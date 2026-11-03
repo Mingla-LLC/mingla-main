@@ -3,13 +3,13 @@
 // "Nothing here." when empty. Columns keep at least 220px; when the board is
 // narrower they scroll sideways inside the board box only, never the page.
 import { Avatars } from "./OpsChip";
-import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards, personReasonLabel, waitingColumnCount, workStatusLabel } from "../../lib/opsModel";
+import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, personReasonLabel, waitingColumnCount } from "../../lib/opsModel";
 import { draftItemTitle } from "../../lib/workViews";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 
-export function WorkColumnCard({ card, selected, onSelect, showStatus = false, draftsReady = 0 }) {
+export function WorkColumnCard({ card, selected, onSelect, draftsReady = 0 }) {
   const reasons = cardReasons(card);
   return (
     <button
@@ -28,8 +28,6 @@ export function WorkColumnCard({ card, selected, onSelect, showStatus = false, d
         </span>
       )}
       <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] text-[var(--color-text-tertiary)]">
-        {/* Grouped by Person or Event there are no status columns, so each card says its status. */}
-        {showStatus && workStatusLabel(card.status) && <span data-card-status={card.status} className="rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-text-secondary)]">{workStatusLabel(card.status)}</span>}
         {(card.owners || []).length ? <Avatars people={card.owners} /> : <span aria-label="No owner" className="inline-grid h-6 w-6 place-items-center rounded-full border border-dashed border-[var(--gray-400)] text-[10px]">?</span>}
         {card.due_on && <span className="tabular-nums">{dayLabel(card.due_on)}</span>}
         {card.auto && <span>from the timeline</span>}
@@ -103,31 +101,6 @@ export function WorkColumns({ cards = [], selectedId, onSelect, today, drafts = 
           );
         })}
       </div>
-    </div>
-  );
-}
-
-/**
- * Group by Person or Event: the same cards as a grouped list (each group's
- * name and count, its cards side by side as space allows). Never shown with
- * the column board.
- */
-export function WorkGroups({ cards = [], group, selectedId, onSelect }) {
-  const groups = groupCards(cards, group);
-  return (
-    <div data-work-groups={group} className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-2">
-      {groups.length === 0 && <p className="px-1.5 py-1 text-[12.5px] text-[var(--color-text-tertiary)]">Nothing here.</p>}
-      {groups.map((g) => (
-        <section key={g.key} aria-labelledby={`work-group-${g.key}`} className="flex min-w-0 flex-col gap-2">
-          <h2 id={`work-group-${g.key}`} className="flex items-center justify-between gap-2 px-1 pt-1 text-[12.5px] font-semibold text-[var(--color-text-primary)]">
-            <span className={`min-w-0 ${WORDS}`}>{g.title}</span>
-            <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{g.cards.length}</span>
-          </h2>
-          <ul className="grid min-w-0 gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))" }}>
-            {g.cards.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} showStatus /></li>)}
-          </ul>
-        </section>
-      ))}
     </div>
   );
 }

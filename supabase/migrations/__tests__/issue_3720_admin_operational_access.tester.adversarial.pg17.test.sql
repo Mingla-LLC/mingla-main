@@ -3,6 +3,7 @@
 -- every accepted active teammate without widening full-admin authority.
 -- [TEST-MOD-APPROVED #3988] Support is now an explicit role (an enabled row on
 -- a current teammate) and covers Community too; disabling the row removes it.
+-- #4255: every active teammate also gets the Blog tab area (blog).
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -41,7 +42,7 @@ DO $proof$
 DECLARE v_answer text;
 BEGIN
   v_answer := pg_temp.t3720_adversarial_call('37200000-0000-4000-a200-000000000001');
-  IF v_answer <> '{community_support,community_support_support,team_notifications,community_support_community}'
+  IF v_answer <> '{community_support,community_support_support,team_notifications,community_support_community,blog}'
      OR v_answer LIKE '%admin_console%' THEN
     RAISE EXCEPTION 'active_support_scope_widened:%', v_answer;
   END IF;
@@ -55,7 +56,7 @@ BEGIN
      SET enabled = false
    WHERE user_id = '37200000-0000-4000-a200-000000000001';
   IF pg_temp.t3720_adversarial_call('37200000-0000-4000-a200-000000000001') <>
-     '{team_notifications}' THEN
+     '{team_notifications,blog}' THEN
     RAISE EXCEPTION 'disabled_support_row_still_grants_support';
   END IF;
 

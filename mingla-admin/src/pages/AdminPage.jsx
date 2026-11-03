@@ -28,16 +28,17 @@ import { AgentStatusList } from "../components/agent/AgentTeamList";
 import { listProfiles, setProfile } from "../services/teamProfileService";
 import { opsErrorWords } from "../lib/opsModel";
 
-// Issue #3802 — Team and roles (owner only).
+// Issue #3802 — Team and roles. #4255 (D4): the owner, admins and Founding
+// partners manage everyone except the owner (and never themselves).
 //
 // #4130 (Wave 4b): one table with tabs (People, Invited, Removed),
 // last active on each person, and every change in a drawer: Invite opens one
 // from the header, a row opens one with that person's role, name, activity and
-// access. The page is the owner's (team_manage). Careers is its own page again
+// access. The page is for team_manage holders (owner, admin, partner). Careers is its own page again
 // (Seth's call), with the access it always had.
 //
 // Every read and write on this page goes through the server: the roster and
-// the invitation states are read with two owner-only functions, membership is
+// the invitation states are read with two team_manage functions, membership is
 // changed with admin_team_set_member, and invitations are sent by the
 // admin-team-invite function. The page never writes a membership table and
 // never logs team actions itself (the server records them).
@@ -47,13 +48,13 @@ const NOTICE_MS = 8000;
 const HIGHLIGHT_MS = 2500;
 
 const ROLE_OPTION_TEXT = {
-  admin: "Admin — everything except changing roles",
-  growth: "Sales and marketing — their own home; outreach and content tools as they launch",
-  partner: "Founding partner — their own home; company view as it launches",
+  admin: "Admin — everything, including inviting and changing teammates",
+  growth: "Sales and marketing — their own home, outreach, email and blog",
+  partner: "Founding partner — everything an admin can do",
 };
 
 const TEAM_ERRORS = {
-  forbidden: "Only the owner can change team access.",
+  forbidden: "Only the owner, admins and Founding partners can change team access.",
   cannot_change_self: "You can't change your own access.",
   cannot_change_owner: "The owner's access can't be changed here.",
   invalid_email: "That doesn't look like an email address.",
@@ -94,6 +95,8 @@ export function AdminPage() {
   const { addToast } = useToast();
   const { access } = useAuth();
   const canTeam = canOpenOwnPage(access, "admin");
+  // Names and GitHub usernames stay the owner's to set (ops_profile_set).
+  const canEditNames = canTeam && access?.role === "owner";
   const [requestedTab, openTab] = useHashTab("admin");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [managing, setManaging] = useState(null);   // email whose drawer is open
@@ -137,7 +140,7 @@ export function AdminPage() {
   const [formInUse, setFormInUse] = useState("");
   const [rowsInUse, setRowsInUse] = useState({});  // email -> true
 
-  // #3980 Display names and GitHub usernames (owner only), keyed by email:
+  // #3980 Display names and GitHub usernames (owner only, canEditNames), keyed by email:
   // { name, login, savedName, savedLogin, fallback, state, error }.
   const [profiles, setProfiles] = useState({});
   const [profilesError, setProfilesError] = useState("");
@@ -189,7 +192,7 @@ export function AdminPage() {
     if (canTeam) load();
   }, [load, canTeam]);
 
-  // #4130: when each teammate was last active (owner only, like the list).
+  // #4130: when each teammate was last active (team_manage, like the list).
   useEffect(() => {
     if (!canTeam) return undefined;
     let live = true;
@@ -201,7 +204,7 @@ export function AdminPage() {
 
   // Names load beside the roster; admin_team_list stays as it is.
   useEffect(() => {
-    if (!canTeam) return undefined;
+    if (!canEditNames) return undefined;
     let live = true;
     listProfiles().then((rows) => {
       if (!live) return;
@@ -213,7 +216,7 @@ export function AdminPage() {
       setProfilesError("");
     }).catch((err) => { if (live) setProfilesError(opsErrorWords(err)); });
     return () => { live = false; };
-  }, [canTeam]);
+  }, [canEditNames]);
 
   const editProfile = (email, field, value) =>
     setProfiles((prev) => ({ ...prev, [email]: { ...(prev[email] || { name: "", login: "", savedName: "", savedLogin: "", fallback: "" }), [field]: value, state: "", error: "", warning: "" } }));

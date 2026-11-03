@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   AREA,
+  BLOG_AREA,
   COMMUNITY_OPERATIONS_AREA,
   COMMUNITY_SUPPORT_AREA,
   SUPPORT_OPERATIONS_AREA,
@@ -96,7 +97,8 @@ Deno.test("each tab's contract lists exactly the RPCs and Edge Functions its pan
 });
 
 Deno.test("each tab maps to one known area and the access filter honours it", () => {
-  const known = new Set([AREA.ADMIN_CONSOLE, COMMUNITY_OPERATIONS_AREA, SUPPORT_OPERATIONS_AREA]);
+  // #4255: Email and Blog are shown to every teammate by their own areas.
+  const known = new Set([AREA.ADMIN_CONSOLE, COMMUNITY_OPERATIONS_AREA, SUPPORT_OPERATIONS_AREA, AREA.EMAIL_DRAFTS, BLOG_AREA]);
   const tabs = Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).map((id) => ({ id, label: id }));
   assertEquals(COMMUNITY_SUPPORT_TAB_CAPABILITY, Object.fromEntries(
     Object.entries(COMMUNITY_SUPPORT_TAB_CONTRACT).map(([tab, row]) => [tab, row.area]),
@@ -114,6 +116,11 @@ Deno.test("each tab maps to one known area and the access filter honours it", ()
       assertEquals(shown([COMMUNITY_SUPPORT_AREA, row.area]), true, `${tab} hidden from its own area`);
       const other = row.area === COMMUNITY_OPERATIONS_AREA ? SUPPORT_OPERATIONS_AREA : COMMUNITY_OPERATIONS_AREA;
       assertEquals(shown([COMMUNITY_SUPPORT_AREA, other]), false, `${tab} shown without its area`);
+      if (row.area === AREA.EMAIL_DRAFTS || row.area === BLOG_AREA) {
+        // #4255: a teammate with no Support or Community role still sees it.
+        assertEquals(shown([row.area]), true, `${tab} hidden from a plain teammate`);
+        assertEquals(shown([SUPPORT_OPERATIONS_AREA, COMMUNITY_OPERATIONS_AREA]), false, `${tab} shown without its area`);
+      }
     }
   }
 });
@@ -134,4 +141,17 @@ Deno.test("the server derives each operational area from its tab RPC guard predi
   // The areas function never reads a staff table directly.
   const areasBody = areas.slice(0, areas.indexOf("$$; REVOKE"));
   assertEquals(/support_staff|community_staff/.test(areasBody), false);
+});
+
+// #4255: the Blog tab area comes from the blog write predicate itself, and the
+// email_drafts area is in the one role-to-areas map for every role.
+Deno.test("#4255: Blog and Email tab areas come from the server's own predicates", async () => {
+  const sql = (await Deno.readTextFile(
+    new URL("../../../supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql", import.meta.url),
+  )).replace(/\s+/g, " ");
+  assert(sql.includes("IF public.issue_4137_blog_can_write(auth.uid()) THEN v_areas := array_append(v_areas, 'blog');"));
+  assert(sql.includes("SELECT p_user_id IS NOT NULL AND COALESCE(public.issue_3720_active_team_member(p_user_id), false);"));
+  for (const role of ["owner", "admin", "partner", "growth"]) {
+    assert(new RegExp(`WHEN '${role}' THEN ARRAY\\[[^\\]]*'email_drafts'\\]`).test(sql), `${role} lacks email_drafts`);
+  }
 });

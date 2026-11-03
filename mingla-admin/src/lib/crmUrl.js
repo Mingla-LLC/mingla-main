@@ -1,15 +1,22 @@
 // Issue #3802 (Wave 1) — the address of a Hosts or Creators view.
 //
-// Pure module. Every view, filter set and open card has its own address:
-//   #/hosts?view=list&q=palm&icp=event_organizer&region=lagos&mine=1&card=<id>
+// Pure module. Every filter set and open card has its own address:
+//   #/hosts?q=palm&icp=event_organizer&region=lagos&mine=1&due=stale&card=<id>
 // Defaults are left out, so the plain board is just #/hosts.
+//
+// Issue #4255: the board is the only view (D8). An old `view=list` or
+// `view=region` link opens the board (the value is ignored). The Owner
+// dropdown is `mine=1` (Mine) or `owner=<teammate>|none`; the host toggles of
+// #3980 (`filter=nonext|soon`) are Due choices now; `side=<kind>:<id>` is the
+// linked item open in the second panel.
 //
 // Whatever is in the address is treated as untrusted: a value that is not
 // plainly well-formed is dropped here, and a well-formed value that names
 // nothing real (an ICP or region that does not exist) is dropped by
 // cleanCrmState() once the lists are loaded.
 
-export const CRM_VIEWS = ["board", "list", "region"];
+import { parseSideValue, sideValue } from "./panelStack.js";
+
 export const NEW_CARD = "new";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,24 +24,26 @@ const ID_WORD = /^[a-z][a-z0-9_]{0,39}$/;
 const SLUG = /^[a-z0-9-]{1,60}$/;
 const MAX_Q = 80;
 
-// #4130 (Wave 4a): the list, sorted by due date, is the default view; the
-// board is kept for the small late stages (#/hosts?view=board).
 export const EMPTY_CRM_STATE = Object.freeze({
-  view: "list",
   q: "",
   icp: "",
   region: "",
   mine: false,
   card: "",
-  // #3980 (R1): the Hosts board's two toggle filters, and "fill in" (open
-  // the card on its first missing field).
-  filter: "",
+  // #3980 (R1): "fill in" (open the card on its first missing field).
   fill: false,
-  // #4130 (Wave 4a): the due chips (lib/outreachView.js DUE_CHIP_IDS).
+  // #4130 (Wave 4a) / #4255: the Due dropdown (lib/outreachView.js DUE_OPTIONS).
   due: "",
+  // #4255: the Owner dropdown's teammate ("" = everyone, "none" = unassigned).
+  owner: "",
+  // #4255: the item open in the second panel ("host:<id>").
+  side: "",
 });
-export const HOST_FILTER_VALUES = ["nonext", "soon"];
-export const DUE_VALUES = ["today", "week", "stale", "replied", "noregion", "nodue"];
+// #3980's two host toggles, read from old links into Due.
+const OLD_HOST_FILTERS = ["nonext", "soon"];
+export const DUE_VALUES = ["today", "week", "stale", "replied", "nonext", "soon", "noregion", "nodue"];
+export const OWNER_NONE = "none";
+const EMAIL = /^[^\s@?&#=]{1,64}@[^\s@?&#=]{1,190}$/;
 
 /** The part of a hash after "?", or "" when there is none. */
 export function hashSearch(hash) {
@@ -61,8 +70,6 @@ export function parseCrmSearch(search) {
   } catch {
     return state;
   }
-  const view = params.get("view");
-  if (view && CRM_VIEWS.includes(view)) state.view = view;
   const q = params.get("q");
   if (typeof q === "string" && q.length <= MAX_Q) state.q = q;
   const icp = params.get("icp");
@@ -72,11 +79,16 @@ export function parseCrmSearch(search) {
   if (params.get("mine") === "1") state.mine = true;
   const card = params.get("card");
   if (card && (card === NEW_CARD || UUID.test(card))) state.card = card.toLowerCase();
-  const filter = params.get("filter");
-  if (filter && HOST_FILTER_VALUES.includes(filter)) state.filter = filter;
   if (params.get("fill") === "1" && state.card && state.card !== NEW_CARD) state.fill = true;
   const due = params.get("due");
   if (due && DUE_VALUES.includes(due)) state.due = due;
+  const filter = params.get("filter");
+  if (!state.due && filter && OLD_HOST_FILTERS.includes(filter)) state.due = filter;
+  const owner = String(params.get("owner") || "").toLowerCase();
+  if (owner === OWNER_NONE || EMAIL.test(owner)) state.owner = owner;
+  if (state.owner) state.mine = false;
+  const side = sideValue(parseSideValue(params.get("side") || ""));
+  if (side) state.side = side;
   return state;
 }
 
@@ -89,15 +101,16 @@ export function parseCrmHash(hash) {
 export function buildCrmSearch(state) {
   const s = { ...EMPTY_CRM_STATE, ...(state || {}) };
   const params = new URLSearchParams();
-  if (s.view && s.view !== EMPTY_CRM_STATE.view && CRM_VIEWS.includes(s.view)) params.set("view", s.view);
   if (typeof s.q === "string" && s.q !== "" && s.q.length <= MAX_Q) params.set("q", s.q);
   if (s.icp && ID_WORD.test(s.icp)) params.set("icp", s.icp);
   if (s.region && SLUG.test(s.region)) params.set("region", s.region);
-  if (s.mine) params.set("mine", "1");
+  if (s.mine && !s.owner) params.set("mine", "1");
+  if (s.owner && (s.owner === OWNER_NONE || EMAIL.test(s.owner))) params.set("owner", s.owner);
   if (s.card && (s.card === NEW_CARD || UUID.test(s.card))) params.set("card", s.card);
-  if (s.filter && HOST_FILTER_VALUES.includes(s.filter)) params.set("filter", s.filter);
   if (s.fill && s.card && s.card !== NEW_CARD) params.set("fill", "1");
   if (s.due && DUE_VALUES.includes(s.due)) params.set("due", s.due);
+  const side = sideValue(parseSideValue(s.side || ""));
+  if (side) params.set("side", side);
   return params.toString();
 }
 
@@ -131,7 +144,6 @@ export function targetSliceHash(icp, regionSlug) {
   return buildCrmHash("hosts", { icp, region: regionSlug });
 }
 
-const EMAIL = /^[^\s@?&#=]{1,64}@[^\s@?&#=]{1,190}$/;
 
 /** #/team-dashboard?person=<teammate email>: whose due cards are listed. */
 export function parseTeamSearch(search) {

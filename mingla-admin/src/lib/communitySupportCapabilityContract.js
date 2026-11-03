@@ -19,6 +19,10 @@
 const ADMIN = "admin_console";
 const COMMUNITY = "community_support_community";
 const SUPPORT = "community_support_support";
+// #4255: every active teammate (server: admin_team_role_areas, and
+// issue_4137_blog_can_write via admin_team_my_operational_areas).
+const EMAIL_DRAFTS = "email_drafts";
+const BLOG = "blog";
 
 export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   announcements: Object.freeze({
@@ -128,13 +132,16 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze(["brand-group-files"]),
   }),
   email: Object.freeze({
-    area: ADMIN,
+    area: EMAIL_DRAFTS,
     panel: "pages/EmailPage.jsx",
+    // The panel reaches admin-send-email through its own fetch helper and the
+    // shared drafts through components/email (lib/emailDrafts.js); both let
+    // any active teammate in (#4255 D5).
     rpcs: Object.freeze([]),
     functions: Object.freeze([]),
   }),
   blog: Object.freeze({
-    area: SUPPORT,
+    area: BLOG,
     panel: "components/blog/BlogPanel.jsx",
     rpcs: Object.freeze([
       "issue_4137_blog_create_post",

@@ -130,7 +130,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355: register the Ari flow engine flag migration and its proof the same way.
 // #4238: re-sealed after the list-audience migration, its proof and the tester's adversarial proof joined the same replays.
 // #4250: re-sealed after the profiles admin-flag drop, its proof and its adversarial proof joined the same replays.
-export const BOOTSTRAP_SHA256 = "a7fbf91817becd98772d70fa6f7cf07d592855fa2fe35d6296c81609cd376efe";
+// #3281: register the Explorer buyable-date migration and its proof the same way.
+// #4251: register the going-RSVPs cover type migration and its proof the same way.
+// #4256: register the no-auto-promo-cards migration the same way.
+// #4255: register the admin access and Work closed-range migrations the same way.
+export const BOOTSTRAP_SHA256 = "40379b983507946939318eff8a6c3f8c16a797f039d55d082f1301170d4370f3";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -53,8 +53,10 @@ BEGIN
      OR has_function_privilege('authenticated','public.issue_3720_log_data_room_access(uuid,text,text,boolean)','EXECUTE') THEN
     RAISE EXCEPTION 'wave6_acl_open';
   END IF;
+  -- #4255 (D3): partner is a full-admin seat (it lives in admin_users), so only
+  -- growth must stay out of the admin areas.
   IF public.admin_team_role_areas('growth') && ARRAY['admin_console','team_manage']::text[]
-     OR public.admin_team_role_areas('partner') && ARRAY['admin_console','team_manage']::text[] THEN
+     OR NOT (public.admin_team_role_areas('partner') @> ARRAY['admin_console','team_manage']::text[]) THEN
     RAISE EXCEPTION 'nonadmin_privilege_drift';
   END IF;
 END;

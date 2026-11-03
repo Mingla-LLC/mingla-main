@@ -7,6 +7,7 @@
 // themselves from what is saved here.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../ui/Button";
+import { SideLink } from "../ui/PanelStack";
 import { FixesList } from "../ops/FixesList";
 import { StatePill } from "../ops/StateDot";
 import { JustHappened } from "../ops/JustHappened";
@@ -182,13 +183,13 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
               <ul className="flex min-w-0 flex-col gap-1">
                 {upcoming.map((u) => (
                   <li key={u.key} className="min-w-0">
-                    <a href={calendarHref(u.kind, u.id, u.on)} className={`flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-[var(--gray-200)] px-3 py-2 hover:bg-[var(--gray-50)] ${FOCUS}`}>
+                    <SideLink side={{ kind: u.kind, id: u.id }} href={calendarHref(u.kind, u.id, u.on)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-[var(--gray-200)] px-3 py-2 hover:bg-[var(--gray-50)] ${FOCUS}`}>
                       <span className="min-w-0 flex-1">
                         <span className={`block text-[13px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{u.title}</span>
                         <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{dayLong(u.on)}{u.repeats ? " · repeats" : ""}{u.moment ? " · promo moment" : ""}</span>
                       </span>
                       <StatePill state={u.state} />
-                    </a>
+                    </SideLink>
                     {u.row && (cancelling === u.id ? (
                       <div className="mt-1 flex min-w-0 flex-wrap items-end gap-2">
                         <label className="flex min-w-[12rem] flex-1 flex-col">
@@ -288,10 +289,10 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
           <ul className="flex min-w-0 flex-col gap-1">
             {work.map((c) => (
               <li key={c.id}>
-                <a href={`#/work-board?card=${c.id}`} className={`flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`} aria-label={`${c.title}: ${workWords(c)}. Open the card`}>
+                <SideLink side={{ kind: "card", id: c.id }} href={`#/work-board?card=${c.id}`} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`} aria-label={`${c.title}: ${workWords(c)}. Open the card`}>
                   <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{c.title}{isRecapWorkCard(c) ? <span className="ml-2 inline-flex rounded-full bg-[var(--color-brand-50)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-brand-700)]">T+2 recap</span> : null}</span>
                   <span className="whitespace-nowrap text-[12.5px] text-[var(--color-text-tertiary)]">{workWords(c)}</span>
-                </a>
+                </SideLink>
               </li>
             ))}
           </ul>

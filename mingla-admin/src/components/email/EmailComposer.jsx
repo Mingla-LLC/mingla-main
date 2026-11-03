@@ -5,6 +5,8 @@ import {
   CalendarClock,
   ChevronDown,
   FileImage,
+  FilePlus,
+  FileText,
   Heading2,
   Image as ImageIcon,
   Italic,
@@ -14,6 +16,7 @@ import {
   Minus,
   Monitor,
   Newspaper,
+  Save,
   Send,
   Smartphone,
   Sparkles,
@@ -28,6 +31,10 @@ import { Input } from "../ui/Input";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import { Badge } from "../ui/Badge";
+import { isFullAdmin } from "../../lib/access";
+import { formatRelativeTime } from "../../lib/formatters";
 import { EmailBlogPostPicker } from "./EmailBlogPostPicker";
 import {
   APP_STATUS_OPTIONS,
@@ -43,11 +50,28 @@ import {
   presetIsActive,
 } from "../../lib/emailAudience";
 import {
-  EMAIL_DRAFT_KEY,
-  EMAIL_DRAFT_VERSION,
-  LEGACY_EMAIL_DRAFT_KEYS,
-  restoreDraftAudience,
-} from "../../lib/emailDraftAudience";
+  DRAFT_STATUS_LABELS,
+  canEditDraft,
+  clearRecoveryCopy,
+  composerStateFromDraft,
+  draftAuthorLabel,
+  draftErrorMessage,
+  draftFingerprint,
+  draftPayload,
+  hasDraftContent,
+  isDraftConflict,
+  legacyDraftPayload,
+  legacyDraftToMigrate,
+  markLegacyDraftMigrated,
+  readRecoveryCopy,
+  writeRecoveryCopy,
+} from "../../lib/emailDrafts";
+import {
+  deleteEmailDraft,
+  getEmailDraft,
+  listEmailDrafts,
+  saveEmailDraft,
+} from "../../services/emailDraftsService";
 import {
   appendEmailBlogPost,
   emailBlogPostValidationError,
@@ -66,7 +90,16 @@ const TOKENS = [
 
 const SAMPLE_VALUES = Object.fromEntries(TOKENS.map((token) => [token.value, token.example]));
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const DRAFT_KEY = EMAIL_DRAFT_KEY;
+// #4255: a saved draft autosaves this long after the last change.
+const AUTOSAVE_MS = 2500;
+
+function browserStorage() {
+  try {
+    return globalThis.localStorage || null;
+  } catch {
+    return null;
+  }
+}
 
 function blockId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -237,6 +270,23 @@ function LocalEmailPreview({ subject, documentValue }) {
 
 export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired, openTemplateManager = false }) {
   const { addToast } = useToast();
+  const { access, session } = useAuth();
+  const myUserId = session?.user?.id || null;
+  const myEmail = access?.email || session?.user?.email || "";
+  const isAdmin = isFullAdmin(access);
+  // #4255 — the shared draft open in the composer (null: not saved yet).
+  const [draft, setDraft] = useState(null);
+  const [savedFingerprint, setSavedFingerprint] = useState(null);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftError, setDraftError] = useState(null);
+  const [draftConflict, setDraftConflict] = useState(false);
+  const [drafts, setDrafts] = useState([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsError, setDraftsError] = useState(null);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [pendingDraftDeleteId, setPendingDraftDeleteId] = useState("");
+  const [discardPrompt, setDiscardPrompt] = useState(null);
+  const draftSavingRef = useRef(false);
   const [audienceMode, setAudienceMode] = useState("segment");
   const [recipientQuery, setRecipientQuery] = useState("");
   const [recipientMatches, setRecipientMatches] = useState([]);
@@ -290,47 +340,232 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     setFilters((current) => ({ ...current, [key]: value }));
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        let raw = localStorage.getItem(DRAFT_KEY);
-        for (const legacyKey of LEGACY_EMAIL_DRAFT_KEYS) {
-          if (!raw) raw = localStorage.getItem(legacyKey);
-          localStorage.removeItem(legacyKey);
-        }
-        const saved = JSON.parse(raw || "null");
-        if (!saved || ![1, EMAIL_DRAFT_VERSION].includes(saved.version)) return;
-        // A restored draft never pre-selects an Explorer-reaching audience.
-        const restored = restoreDraftAudience(saved, EMPTY_FILTERS);
-        setAudienceMode(restored.audienceMode);
-        setFilters(restored.filters);
-        if (restored.audienceMode === "person") setSelectedRecipient(saved.selectedRecipient);
-        if (typeof saved.subject === "string") setSubject(saved.subject);
-        if (Array.isArray(saved.document) && saved.document.length) setDocumentValue(saved.document);
-        if (["now", "later"].includes(saved.scheduleMode)) setScheduleMode(saved.scheduleMode);
-        if (typeof saved.scheduledLocal === "string") setScheduledLocal(saved.scheduledLocal);
-      } catch {
-        localStorage.removeItem(DRAFT_KEY);
-      }
-    }, 0);
-    return () => clearTimeout(timer);
+  const currentPayload = useMemo(() => draftPayload({
+    subject,
+    documentValue,
+    audienceMode,
+    filters,
+    selectedRecipient,
+    status: draft?.status || "draft",
+  }), [audienceMode, documentValue, draft?.status, filters, selectedRecipient, subject]);
+  const currentFingerprint = useMemo(() => draftFingerprint(currentPayload), [currentPayload]);
+  const draftDirty = savedFingerprint !== currentFingerprint &&
+    (draft !== null || hasDraftContent({ subject, document: documentValue }));
+  const draftEditable = canEditDraft(draft, { userId: myUserId, isAdmin });
+
+  const applyComposerState = useCallback((state) => {
+    setAudienceMode(state.audienceMode);
+    setFilters(state.filters);
+    setSelectedRecipient(state.audienceMode === "person" ? state.selectedRecipient : null);
+    setRecipientQuery("");
+    setSubject(state.subject || "");
+    setDocumentValue(state.document?.length ? state.document : defaultDocument());
   }, []);
 
+  // Open a stored draft in the composer. Its fingerprint is what "saved" means.
+  const openDraft = useCallback((row) => {
+    const state = composerStateFromDraft(row, EMPTY_FILTERS);
+    applyComposerState(state);
+    setDraft(row);
+    setDraftConflict(false);
+    setDraftError(null);
+    setSavedFingerprint(draftFingerprint(draftPayload({
+      subject: state.subject,
+      documentValue: state.document?.length ? state.document : defaultDocument(),
+      audienceMode: state.audienceMode,
+      filters: state.filters,
+      selectedRecipient: state.selectedRecipient,
+      status: row.status,
+    })));
+  }, [applyComposerState]);
+
+  const refreshDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    setDraftsError(null);
+    try {
+      setDrafts(await listEmailDrafts());
+    } catch (error) {
+      setDraftsError(error.message || "Drafts could not be loaded.");
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  // First load: move this browser's old local draft to the server once, else
+  // restore an unsaved crash-recovery copy, then load the team's drafts.
   useEffect(() => {
+    let cancelled = false;
+    const storage = browserStorage();
+    async function start() {
+      const legacy = legacyDraftToMigrate(storage);
+      if (legacy) {
+        try {
+          const row = await saveEmailDraft({ id: null, ...legacyDraftPayload(legacy) });
+          if (cancelled) return;
+          markLegacyDraftMigrated(storage);
+          openDraft(row);
+          addToast({ variant: "success", title: "Your saved draft is now shared", description: "Find it under Drafts. Your team can read it too." });
+        } catch (error) {
+          if (cancelled) return;
+          // Nothing is lost: the local copy stays and opens as before.
+          applyComposerState(composerStateFromDraft(legacy, EMPTY_FILTERS));
+          addToast({ variant: "error", title: "Your saved draft couldn't be shared yet", description: draftErrorMessage(error) });
+        }
+      } else {
+        const recovery = readRecoveryCopy(storage);
+        if (recovery) {
+          applyComposerState(composerStateFromDraft(recovery, EMPTY_FILTERS));
+          if (recovery.draftId) {
+            try {
+              const row = await getEmailDraft(recovery.draftId);
+              if (cancelled) return;
+              if (row) {
+                setDraft(row);
+                if (row.revision !== recovery.revision) setDraftConflict(true);
+              }
+            } catch {
+              // The list load below shows the error if the server is unreachable.
+            }
+          }
+        }
+      }
+      if (!cancelled) await refreshDrafts();
+    }
+    void start();
+    return () => { cancelled = true; };
+    // Runs once per composer mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Crash recovery: only an unsaved change is kept in this browser.
+  useEffect(() => {
+    const storage = browserStorage();
     const timer = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({
-        version: EMAIL_DRAFT_VERSION,
+      if (!draftDirty) {
+        clearRecoveryCopy(storage);
+        return;
+      }
+      writeRecoveryCopy(storage, {
+        draftId: draft?.id,
+        revision: draft?.revision,
+        subject,
+        documentValue,
         audienceMode,
         filters,
         selectedRecipient,
-        subject,
-        document: documentValue,
-        scheduleMode,
-        scheduledLocal,
-      }));
+      });
     }, 300);
     return () => clearTimeout(timer);
-  }, [audienceMode, documentValue, filters, scheduleMode, scheduledLocal, selectedRecipient, subject]);
+  }, [audienceMode, documentValue, draft?.id, draft?.revision, draftDirty, filters, selectedRecipient, subject]);
+
+  const saveDraft = useCallback(async ({ status, asCopy = false, quiet = false } = {}) => {
+    if (draftSavingRef.current) return null;
+    const nextStatus = status || draft?.status || "draft";
+    const payload = { ...currentPayload, status: nextStatus };
+    const creating = asCopy || !draft || !draftEditable;
+    draftSavingRef.current = true;
+    setDraftSaving(true);
+    setDraftError(null);
+    try {
+      const row = await saveEmailDraft({
+        id: creating ? null : draft.id,
+        revision: creating ? null : draft.revision,
+        ...payload,
+      });
+      setDraft(row);
+      setDraftConflict(false);
+      setSavedFingerprint(draftFingerprint(payload));
+      clearRecoveryCopy(browserStorage());
+      setDrafts((current) => [row, ...current.filter((item) => item.id !== row.id)]);
+      if (!quiet) {
+        addToast({
+          variant: "success",
+          title: nextStatus === "ready_for_review" ? "Marked ready for review" : creating && draft ? "Saved as your copy" : "Draft saved",
+        });
+      }
+      return row;
+    } catch (error) {
+      if (isDraftConflict(error)) setDraftConflict(true);
+      setDraftError(draftErrorMessage(error));
+      if (!quiet) addToast({ variant: "error", title: "Draft not saved", description: draftErrorMessage(error) });
+      return null;
+    } finally {
+      draftSavingRef.current = false;
+      setDraftSaving(false);
+    }
+  }, [addToast, currentPayload, draft, draftEditable]);
+
+  // Autosave a draft that is already shared, a moment after the last change.
+  useEffect(() => {
+    if (!draft || !draftEditable || !draftDirty || draftConflict || sending) return undefined;
+    const timer = setTimeout(() => { void saveDraft({ quiet: true }); }, AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [draft, draftConflict, draftDirty, draftEditable, saveDraft, sending]);
+
+  function startNewEmail() {
+    setDraft(null);
+    setSavedFingerprint(null);
+    setDraftConflict(false);
+    setDraftError(null);
+    setSubject("");
+    setDocumentValue(defaultDocument());
+    setAudienceMode("segment");
+    setFilters(EMPTY_FILTERS);
+    setSelectedRecipient(null);
+    setRecipientQuery("");
+    setScheduleMode("now");
+    setScheduledLocal("");
+    clearRecoveryCopy(browserStorage());
+  }
+
+  // Leaving unsaved work: save it when we may, otherwise ask first.
+  async function leaveCurrentEmail(next) {
+    if (!draftDirty) {
+      next();
+      return;
+    }
+    if (draft && draftEditable && !draftConflict) {
+      const saved = await saveDraft({ quiet: true });
+      if (saved) {
+        next();
+        return;
+      }
+    }
+    setDiscardPrompt(() => next);
+  }
+
+  async function reloadLatestDraft() {
+    if (!draft) return;
+    try {
+      const row = await getEmailDraft(draft.id);
+      if (!row) {
+        setDraft(null);
+        setSavedFingerprint(null);
+        setDraftConflict(false);
+        setDraftError("This draft was deleted. Save yours as a new draft.");
+        return;
+      }
+      openDraft(row);
+      clearRecoveryCopy(browserStorage());
+    } catch (error) {
+      setDraftError(draftErrorMessage(error));
+    }
+  }
+
+  async function removeDraft(row) {
+    try {
+      await deleteEmailDraft(row.id);
+      setDrafts((current) => current.filter((item) => item.id !== row.id));
+      setPendingDraftDeleteId("");
+      if (draft?.id === row.id) {
+        setDraft(null);
+        setSavedFingerprint(null);
+      }
+      addToast({ variant: "success", title: "Draft deleted" });
+    } catch (error) {
+      addToast({ variant: "error", title: "Could not delete draft", description: draftErrorMessage(error) });
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -716,7 +951,16 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       setRecipientQuery("");
       setScheduleMode("now");
       setScheduledLocal("");
-      localStorage.removeItem(DRAFT_KEY);
+      // #4255: a sent email leaves the shared drafts (when we may remove it).
+      const sentDraft = draft;
+      setDraft(null);
+      setSavedFingerprint(null);
+      clearRecoveryCopy(browserStorage());
+      if (sentDraft && draftEditable) {
+        deleteEmailDraft(sentDraft.id)
+          .then(() => setDrafts((current) => current.filter((item) => item.id !== sentDraft.id)))
+          .catch((error) => addToast({ variant: "error", title: "Email sent, but its draft is still listed", description: draftErrorMessage(error) }));
+      }
     } catch (error) {
       if (error?.name === "SessionExpiredError") onSessionExpired?.();
       else addToast({ variant: "error", title: "Campaign was not queued", description: error.message });
@@ -737,6 +981,49 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
             Preview is available, but sending is disabled until the Resend provider is configured.
           </div>
         )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--gray-200)] px-4 py-3 sm:px-5" data-email-draft-bar>
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+              <span className="truncate">{draft ? (draft.subject || "Untitled draft") : "New email"}</span>
+              {draft ? <Badge variant={draft.status === "ready_for_review" ? "info" : "default"}>{DRAFT_STATUS_LABELS[draft.status] || "Draft"}</Badge> : null}
+            </p>
+            <p className="text-xs text-[var(--color-text-tertiary)]" aria-live="polite">
+              {draftSaving
+                ? "Saving…"
+                : draft
+                  ? `${draftAuthorLabel(draft, myEmail) === "You" ? "Your draft" : `${draftAuthorLabel(draft, myEmail)}'s draft`} · ${draftDirty ? "Unsaved changes" : `Saved ${formatRelativeTime(draft.updated_at)}`}${draftEditable ? "" : " · Read only for you"}`
+                  : draftDirty
+                    ? "Not saved yet. Save it to share it with your team."
+                    : "Drafts are shared with your team."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" icon={FileText} onClick={() => { setDraftsOpen(true); void refreshDrafts(); }}>
+              Drafts{drafts.length ? ` (${drafts.length})` : ""}
+            </Button>
+            <Button variant="secondary" size="sm" icon={FilePlus} onClick={() => void leaveCurrentEmail(startNewEmail)} disabled={draftSaving}>
+              New email
+            </Button>
+            <Button variant="secondary" size="sm" icon={Save} onClick={() => void saveDraft({ status: "draft" })} loading={draftSaving} disabled={draftConflict}>
+              {draft && !draftEditable ? "Save as my copy" : "Save draft"}
+            </Button>
+            <Button size="sm" onClick={() => void saveDraft({ status: "ready_for_review" })} disabled={draftSaving || draftConflict || (draft?.status === "ready_for_review" && !draftDirty)}>
+              Ready for review
+            </Button>
+          </div>
+          {(draftConflict || draftError) && (
+            <div role="alert" className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <p>{draftError || "Someone saved this draft after you opened it. Load their version, or save yours as a copy."}</p>
+              {draftConflict && (
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <button type="button" className="font-semibold underline" onClick={() => void reloadLatestDraft()}>Load their version</button>
+                  <button type="button" className="font-semibold underline" onClick={() => void saveDraft({ asCopy: true })}>Save mine as a copy</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="border-b border-[var(--gray-200)] px-4 py-4 sm:px-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -1066,6 +1353,108 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
         existingPostIds={new Set(documentValue.filter((block) => block.type === "blog_post" && block.id !== blogPickerBlockId).map((block) => block.postId))}
         onChoose={chooseBlogPost}
       />
+
+      <Modal open={draftsOpen} onClose={() => setDraftsOpen(false)} title="Team email drafts" size="md">
+        <ModalBody>
+          {draftsLoading && drafts.length === 0 ? (
+            <div className="flex justify-center py-8"><Spinner /></div>
+          ) : draftsError ? (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <p>{draftsError}</p>
+              <button type="button" className="mt-2 font-semibold underline" onClick={() => void refreshDrafts()}>Try again</button>
+            </div>
+          ) : drafts.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-[var(--gray-300)] px-4 py-6 text-center text-sm text-[var(--color-text-tertiary)]">
+              No drafts yet. Save an email as a draft and your whole team can open it here.
+            </p>
+          ) : (
+            <ul className="max-h-96 space-y-2 overflow-y-auto pr-1" aria-label="Email drafts">
+              {drafts.map((row) => {
+                const editable = canEditDraft(row, { userId: myUserId, isAdmin });
+                return (
+                  <li key={row.id} className={`rounded-lg border px-3 py-3 ${draft?.id === row.id ? "border-[var(--color-brand-300)] bg-[var(--color-brand-50)]" : "border-[var(--gray-200)] bg-[var(--color-background-primary)]"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{row.subject || "Untitled draft"}</p>
+                        <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
+                          {draftAuthorLabel(row, myEmail)} · edited {formatRelativeTime(row.updated_at)}
+                        </p>
+                        <div className="mt-1"><Badge variant={row.status === "ready_for_review" ? "info" : "default"}>{DRAFT_STATUS_LABELS[row.status] || "Draft"}</Badge></div>
+                      </div>
+                      {pendingDraftDeleteId !== row.id && (
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-[var(--color-brand-700)] hover:underline"
+                            onClick={() => void leaveCurrentEmail(() => { openDraft(row); setDraftsOpen(false); })}
+                          >
+                            Open
+                          </button>
+                          {editable && (
+                            <button type="button" className="text-xs font-semibold text-red-600 hover:underline" onClick={() => setPendingDraftDeleteId(row.id)}>
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {pendingDraftDeleteId === row.id && (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">
+                        <span>Delete this draft for the whole team?</span>
+                        <span className="flex items-center gap-2">
+                          <button type="button" onClick={() => setPendingDraftDeleteId("")} className="font-semibold hover:underline">Keep</button>
+                          <button type="button" onClick={() => void removeDraft(row)} className="rounded-md bg-red-600 px-2.5 py-1 font-semibold text-white hover:bg-red-700">Delete</button>
+                        </span>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDraftsOpen(false)}>Done</Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal open={discardPrompt !== null} onClose={() => setDiscardPrompt(null)} title="Leave this email?" size="sm">
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {draft && !draftEditable
+              ? "You can't save changes to someone else's draft. Save yours as a copy first, or leave without saving."
+              : "This email has changes that aren't saved. Save it as a draft first, or leave without saving."}
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDiscardPrompt(null)}>Stay</Button>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              const next = discardPrompt;
+              const saved = await saveDraft({ asCopy: Boolean(draft && !draftEditable) });
+              if (saved) {
+                setDiscardPrompt(null);
+                next?.();
+              }
+            }}
+            loading={draftSaving}
+          >
+            {draft && !draftEditable ? "Save as my copy" : "Save draft"}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              const next = discardPrompt;
+              setDiscardPrompt(null);
+              clearRecoveryCopy(browserStorage());
+              next?.();
+            }}
+          >
+            Leave without saving
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <Modal open={linkOpen} onClose={() => setLinkOpen(false)} title="Add hyperlink" size="sm">
         <ModalBody>

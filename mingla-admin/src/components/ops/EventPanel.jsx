@@ -3,10 +3,11 @@
 // List view). With an event (or a promised event) selected: its state, what just happened, the one sentence that says
 // why, the eight steps made by themselves, the host and the cards linked to
 // it. Two columns from 1180px, stacked below; no overlay.
-import { forwardRef } from "react";
+import { forwardRef, useId } from "react";
 import { X } from "lucide-react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
+import { SideLink } from "../ui/PanelStack";
 import { OpsChip } from "./OpsChip";
 import { StatePill } from "./StateDot";
 import { EventSteps } from "./EventSteps";
@@ -32,8 +33,9 @@ function Loading({ label }) {
   );
 }
 
-const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, headingRef) {
+const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, embedded = false, actions = null }, headingRef) {
   const detail = useOpsAnchor(selection);
+  const uid = useId();
   if (detail.loading) return <Loading label="Loading the event…" />;
   if (detail.error && !detail.data) {
     return (
@@ -55,9 +57,11 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, h
             <StatePill state={data.state} />
             {a.kind === "expected" && <OpsChip dashed>{type === "Promo moment" ? "Promo moment" : "Promised"}</OpsChip>}
           </span>
-          <button type="button" aria-label="Close the event" onClick={onBack} className={`inline-grid h-11 w-11 place-items-center rounded-full text-[var(--color-text-tertiary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>
-            <X aria-hidden="true" className="h-4 w-4" />
-          </button>
+          {!embedded && (
+            <button type="button" aria-label="Close the event" onClick={onBack} className={`inline-grid h-11 w-11 place-items-center rounded-full text-[var(--color-text-tertiary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <JustHappened target={`${a.kind}:${a.id}`} items={data.changes} />
         <div className="min-w-0">
@@ -65,32 +69,34 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, h
           <p className={`mt-0.5 text-[13px] text-[var(--color-text-tertiary)] ${WORDS}`}>{host?.name || a.brand_name || "No host card yet"} · {dayLong(a.start_on)}</p>
         </div>
         {data.say && <p className={`rounded-xl bg-[var(--gray-100)] px-3 py-2.5 text-[13.5px] text-[var(--color-text-primary)] ${WORDS}`}>{data.say}</p>}
+        {/* #4255: the Calendar's Make a card and Plan a post live here now. */}
+        {typeof actions === "function" ? actions(a) : actions}
         <EventSteps steps={Array.isArray(data.steps) ? data.steps : []} doneCount={Number(data.done_count || 0)} />
 
-        <section aria-labelledby="event-host-heading" className="flex min-w-0 flex-col gap-1 border-t border-[var(--gray-200)] pt-3">
-          <h3 id="event-host-heading" className="text-[13px] font-semibold text-[var(--color-text-primary)]">Host</h3>
+        <section aria-labelledby={`${uid}-host`} className="flex min-w-0 flex-col gap-1 border-t border-[var(--gray-200)] pt-3">
+          <h3 id={`${uid}-host`} className="text-[13px] font-semibold text-[var(--color-text-primary)]">Host</h3>
           {host ? (
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
               <span className={`min-w-0 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{host.name}{host.owners?.length ? ` · ${host.owners.join(", ")}` : " · No owner yet"}</span>
-              <a href={buildCrmHash("hosts", { card: host.record_id })} className={LINK}>Open host</a>
+              <SideLink side={{ kind: "host", id: host.record_id }} href={buildCrmHash("hosts", { card: host.record_id })} className={LINK}>Open host</SideLink>
             </div>
           ) : (
             <p className="text-[13px] text-[var(--color-text-secondary)]">No host card is linked to this brand yet.</p>
           )}
         </section>
 
-        <section aria-labelledby="event-cards-heading" className="flex min-w-0 flex-col gap-1 border-t border-[var(--gray-200)] pt-3">
-          <h3 id="event-cards-heading" className="text-[13px] font-semibold text-[var(--color-text-primary)]">Work cards</h3>
+        <section aria-labelledby={`${uid}-cards`} className="flex min-w-0 flex-col gap-1 border-t border-[var(--gray-200)] pt-3">
+          <h3 id={`${uid}-cards`} className="text-[13px] font-semibold text-[var(--color-text-primary)]">Work cards</h3>
           {cards.length === 0 ? (
             <p className="text-[13px] text-[var(--color-text-secondary)]">No work cards are linked to this event yet.</p>
           ) : (
             <ul className="flex min-w-0 flex-col gap-1">
               {cards.map((c) => (
                 <li key={c.id}>
-                  <a href={`#/work-board?card=${c.id}`} className={`flex min-h-11 min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg px-1 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`}>
+                  <SideLink side={{ kind: "card", id: c.id }} href={`#/work-board?card=${c.id}`} className={`flex min-h-11 w-full min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg px-1 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`}>
                     <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>Card {c.number}: {c.title}{c.due_on ? ` · due ${dayLabel(c.due_on)}` : ""}</span>
                     <OpsChip tone={c.status === "done" ? "success" : c.blocked ? "error" : "brand"} className="shrink-0 whitespace-nowrap">{c.blocked && c.status !== "done" ? "Blocked" : WORK_STATUSES.find((s) => s.value === c.status)?.label || c.status}</OpsChip>
-                  </a>
+                  </SideLink>
                 </li>
               ))}
             </ul>
@@ -101,8 +107,8 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, h
   );
 });
 
-export const EventPanel = forwardRef(function EventPanel({ selection, onBack, online }, headingRef) {
+export const EventPanel = forwardRef(function EventPanel({ selection, onBack, online, embedded = false, actions = null }, headingRef) {
   return selection
-    ? <SelectedEvent key={`${selection.kind}:${selection.id}`} ref={headingRef} selection={selection} onBack={onBack} online={online} />
+    ? <SelectedEvent key={`${selection.kind}:${selection.id}`} ref={headingRef} selection={selection} onBack={onBack} online={online} embedded={embedded} actions={actions} />
     : null;
 });

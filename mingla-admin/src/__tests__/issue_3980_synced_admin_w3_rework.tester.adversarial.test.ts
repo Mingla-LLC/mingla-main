@@ -30,12 +30,12 @@ import {
 } from "../lib/peopleField.js";
 import {
   bandShort,
-  groupCards,
   hostUpcomingRows,
   needsYouCaughtUp,
   needsYouStartTab,
   runwayLabel,
 } from "../lib/opsModel.js";
+import { periodRows } from "../lib/workViews.js";
 
 // deno-lint-ignore no-explicit-any
 const fieldKey = fieldKeyJs as (state: unknown, key: string, opts: any) => { state: { open: boolean; hi: number }; pick?: string; remove?: string; refused?: string };
@@ -137,18 +137,20 @@ Deno.test("#3980 W3 rework tester D4: a series lists only its dates not yet publ
   assertEquals(hostUpcomingRows([], [oldServer], "2026-10-20").length, 1, "an answer without dates still shows the series once");
 });
 
-Deno.test("#3980 W3 rework tester GROUP: Person groups a two-owner card under each and an ownerless card under No owner; Event puts no event last", () => {
+// #4255: the grouped board is gone; the period views list per person instead.
+Deno.test("#3980 W3 rework tester GROUP: per person, a two-owner card is under each and an ownerless card under No owner, last", () => {
   const cards = [
     { id: "a", status: "todo", owners: [{ email: "seth@usemingla.com", name: "Seth" }, { email: "kunle@usemingla.com", name: "Kunle" }], anchor: null },
     { id: "b", status: "doing", owners: [], anchor: { kind: "event", id: "e1", title: "Lantern Night", start_on: "2026-11-06" } },
     { id: "c", status: "person", owners: [{ email: "seth@usemingla.com", name: "Seth" }], anchor: { kind: "event", id: "e0", title: "Gala", start_on: "2026-10-30" } },
   ];
-  const byPerson = groupCards(cards, "person");
-  const of = (title: string) => byPerson.find((g: { title: string }) => g.title === title)?.cards.map((c: { id: string }) => c.id);
+  const win = { view: "today", from: new Date(0), to: new Date(8.64e15), dueBy: "2999-12-31" };
+  const blocked = cards.map((c) => ({ ...c, blocked: true }));
+  const { rows } = periodRows(blocked, win, [{ email: "seth@usemingla.com", name: "Seth" }, { email: "kunle@usemingla.com", name: "Kunle" }]);
+  const of = (name: string) => rows.find((r: { name: string }) => r.name === name)?.blocked.map((c: { id: string }) => c.id);
   assertEquals(of("Seth"), ["a", "c"]);
   assertEquals(of("Kunle"), ["a"]);
   assertEquals(of("No owner"), ["b"]);
-  const byEvent = groupCards(cards, "event");
-  assertEquals(byEvent.map((g: { key: string }) => g.key), ["event:e0", "event:e1", "none"]);
-  assertEquals(groupCards([], "person"), []);
+  assertEquals(rows.map((r: { name: string }) => r.name), ["Seth", "Kunle", "No owner"]);
+  assertEquals(periodRows([], win, []).rows, []);
 });

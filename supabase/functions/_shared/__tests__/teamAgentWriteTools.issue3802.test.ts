@@ -115,7 +115,8 @@ Deno.test("#3802 W-1: twenty-six tools, each group together, each saying what it
     WRITES,
   );
   assertEquals(toolsForRole("growth").length, 25);
-  assertEquals(toolsForRole("partner").length, 25);
+  // #4255 (D3): a Founding partner holds a full-admin seat, so it is offered the admin tool too.
+  assertEquals(toolsForRole("partner").length, 26);
   assertEquals(toolsForRole("admin").length, 26);
   assertEquals(toolsForRole("owner").length, 26);
   assertEquals(

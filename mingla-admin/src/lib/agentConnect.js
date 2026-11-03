@@ -374,7 +374,8 @@ export const AGENT_ABILITIES = [
 
 /** The abilities this role is offered, grouped in page order. */
 export function abilitiesFor(role) {
-  const admin = role === "owner" || role === "admin";
+  // #4255 (D3): a Founding partner holds a full-admin seat too.
+  const admin = role === "owner" || role === "admin" || role === "partner";
   const groups = [];
   for (const a of AGENT_ABILITIES) {
     if (a.adminOnly && !admin) continue;

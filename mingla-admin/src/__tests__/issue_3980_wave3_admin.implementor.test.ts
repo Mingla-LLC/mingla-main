@@ -126,7 +126,8 @@ Deno.test("#3980 W3 Plan this launch: shown in the event panel only while the ev
   assertMatch(planner, /ops\.addWork\(cards, requestKey\("kit"\)\)/);
   assertMatch(planner, /Blocked until go-live/);
   assertMatch(planner, /label: "Open Work board"/);
-  assertMatch(read("pages/ContentCalendarPage.jsx"), /<EventPanel ref=\{eventHeadingRef\} selection=\{route\.event\} onSelect=\{selectEvent\} onBack=\{clearEvent\} online=\{online\} \/>/);
+  // #4255: the event opens in the first side panel, with the Calendar's two actions.
+  assertMatch(read("pages/ContentCalendarPage.jsx"), /<EventPanel selection=\{route\.event\} onBack=\{closeFirst\} online=\{online\} embedded actions=\{actionsFor\(route\.event\)\} \/>/);
 });
 
 Deno.test("#3980 W3 a held giveaway card: Override only for the owner or an admin, with a reason of 10 characters or more", () => {
