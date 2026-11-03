@@ -1579,6 +1579,8 @@ SET search_path = ''
 AS $function$
   SELECT p_user_id IS NOT NULL AND COALESCE(public.issue_3720_active_team_member(p_user_id), false);
 $function$;
+REVOKE ALL ON FUNCTION public.issue_4137_blog_can_write(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4137_blog_can_write(uuid) TO authenticated, service_role;
 COMMENT ON FUNCTION public.issue_4137_blog_can_write(uuid) IS
   '#4137, #4255: blog writer = any active teammate (admin_users or admin_team_members, active). It is also the Blog tab area (admin_team_my_operational_areas), so the tab and its RPCs agree.';
 
