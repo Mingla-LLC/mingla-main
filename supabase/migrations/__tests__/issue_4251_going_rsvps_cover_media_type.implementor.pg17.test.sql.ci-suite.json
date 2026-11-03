@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4251_going_rsvps_cover_media_type.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4251-going-rsvps-cover-media-type-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
