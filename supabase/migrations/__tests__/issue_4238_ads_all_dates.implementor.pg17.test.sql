@@ -20,10 +20,18 @@
 --   T11 last_bookable_at = least(last date, last sale end, trip deadline).
 --   T12 ad_advertisable_pages: include_unavailable on/off, order, unlisted
 --       event listed, anon cannot execute, non-member 42501.
+--   T13 a non-member resolving a private, unpublished, unlisted-trip/experience
+--       or deleted-brand page gets only {ok, code, page_type, availability,
+--       availability_reason}; a member still sees title + reason in the list.
+--   T14 a tier valid only for the early dates caps last_bookable_at at the end
+--       of the last date it covers.
 --
 -- MINGLA-INVARIANT: I-4238-AD-SERIES-ENDS-AT-LAST-BOOKABLE-DATE | issue #4238 | A dated offering can be advertised while one of its dates can still be booked (an event, RSVP or experience date until it ends, a trip departure until it starts; cancelled dates never count); its first date passing never ends it.
 -- MINGLA-INVARIANT: I-4238-AD-SOMETHING-ON-SALE | issue #4238 | An offering can be advertised only when something can be bought or RSVPed now: a listed, enabled, online, open ticket inside its sale window with places left for a bookable date, or an RSVP with room or a waitlist; a trip also needs bookings open before its deadline.
+-- MINGLA-INVARIANT: I-4238-AD-REFUSAL-IS-BARE | issue #4238 | The signed-in ad resolver refuses a page that is not open to the public (private, unpublished, moderation-blocked, deleted brand, unlisted trip or experience) with only ok, code, page_type, availability and availability_reason; title, cover, city, ids and slugs come only from the membership-checked list.
 -- MINGLA-INVARIANT: I-4238-AD-UNLISTED-FOLLOWS-THE-LINK | issue #4238 | Unlisted events and RSVPs can be advertised because their link opens; unlisted trips and experiences cannot, because their link does not; private, unpublished and moderation-blocked offerings never can.
+
+BEGIN;
 
 CREATE OR REPLACE FUNCTION pg_temp.t_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
@@ -333,5 +341,91 @@ BEGIN
   END;
 END $t12b$;
 
+-- ── T13 bare refusals (I-4238-AD-REFUSAL-IS-BARE) ──
+-- A signed-in account that is not a brand member, guessing brand + slug,
+-- learns nothing about a page that is not open to the public: only
+-- {ok, code, page_type, availability, availability_reason}. A member still
+-- sees the title and the reason through the membership-checked list.
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, created_at, updated_at)
+VALUES ('42380000-0000-4000-8000-000000000020', '42380000-0000-4000-8000-000000000001',
+        'Gone Brand', 'issue-4238-gone', 'NGN', now(), now());
+INSERT INTO public.events(id, brand_id, title, slug, status, event_type, visibility, timezone, city, cover_media_url)
+VALUES ('42380000-1000-4000-8000-000000000099', '42380000-0000-4000-8000-000000000020',
+        'Gone brand party', 'gone-party', 'scheduled', 'event', 'public', 'Africa/Lagos', 'Yaba', 'https://cdn.test/gone.jpg');
+INSERT INTO public.event_dates(event_id, start_at, end_at, is_master, timezone)
+VALUES ('42380000-1000-4000-8000-000000000099', now() + interval '7 days', now() + interval '7 days 3 hours', true, 'Africa/Lagos');
+-- The delete guard refuses a brand with events; a deleted brand whose rows
+-- survived is the case the resolver must still refuse bare.
+SET LOCAL session_replication_role = replica;
+UPDATE public.brands SET deleted_at = now() WHERE id = '42380000-0000-4000-8000-000000000020';
+SET LOCAL session_replication_role = origin;
+UPDATE public.events SET city = 'Ikoyi', cover_media_url = 'https://cdn.test/secret.jpg'
+WHERE brand_id = '42380000-0000-4000-8000-000000000010';
+
+SELECT set_config('request.jwt.claim.sub', '42380000-0000-4000-8000-000000000003', false);
+SELECT set_config('request.jwt.claims', '{"sub":"42380000-0000-4000-8000-000000000003","role":"authenticated"}', false);
+SET ROLE authenticated;
+DO $t13$
+DECLARE j jsonb; k text;
+  v_cases text[][] := ARRAY[
+    ARRAY['event', 'issue-4238-dates', 'private-event', 'private'],
+    ARRAY['event', 'issue-4238-dates', 'unpublished-event', 'draft'],
+    ARRAY['trip', 'issue-4238-dates', 'unlisted-trip', 'unlisted'],
+    ARRAY['experience', 'issue-4238-dates', 'unlisted-experience', 'unlisted'],
+    ARRAY['event', 'issue-4238-gone', 'gone-party', 'draft']];
+  i int;
+BEGIN
+  FOR i IN 1..array_length(v_cases, 1) LOOP
+    j := public.ad_destination_resolve(v_cases[i][1], v_cases[i][2], v_cases[i][3]);
+    PERFORM pg_temp.t_assert((j->>'ok')::boolean IS FALSE AND j->>'availability' = v_cases[i][4],
+      'T13 non-member refused ' || v_cases[i][3] || ' as ' || v_cases[i][4]);
+    FOR k IN SELECT jsonb_object_keys(j) LOOP
+      PERFORM pg_temp.t_assert(k IN ('ok', 'code', 'page_type', 'availability', 'availability_reason'),
+        'T13 ' || v_cases[i][3] || ' refusal key "' || k || '" is one of the bare five');
+    END LOOP;
+    PERFORM pg_temp.t_assert(j::text NOT LIKE '%Offering%' AND j::text NOT LIKE '%cdn.test%'
+      AND j::text NOT LIKE '%Ikoyi%' AND j::text NOT LIKE '%Gone%' AND j::text NOT LIKE '%42380000%',
+      'T13 ' || v_cases[i][3] || ' refusal carries no title, cover, city, brand or id');
+  END LOOP;
+END $t13$;
+RESET ROLE;
+
+SELECT set_config('request.jwt.claim.sub', '42380000-0000-4000-8000-000000000002', false);
+SELECT set_config('request.jwt.claims', '{"sub":"42380000-0000-4000-8000-000000000002","role":"authenticated"}', false);
+SET ROLE authenticated;
+SELECT pg_temp.t_assert((SELECT title = 'Offering private-event' AND availability = 'private'
+    AND availability_reason = 'admin.dest.private' AND canonical_url IS NULL AND NOT ok
+  FROM public.ad_advertisable_pages('private-event', NULL, true, '42380000-0000-4000-8000-000000000010', 0)
+  WHERE entity_slug = 'private-event'),
+  'T13 a member still sees their own private page''s title and reason in the picker');
+SELECT pg_temp.t_assert((SELECT title = 'Offering unlisted-trip' AND availability_reason = 'admin.dest.unlisted'
+  FROM public.ad_advertisable_pages('unlisted-trip', NULL, true, '42380000-0000-4000-8000-000000000010', 0)
+  WHERE entity_slug = 'unlisted-trip'),
+  'T13 a member still sees their own unlisted trip''s title and reason');
+RESET ROLE;
+
+SELECT set_config('request.jwt.claim.sub', '', false);
+SELECT set_config('request.jwt.claims', '', false);
+
+-- ── T14 a tier valid only for the early dates caps last_bookable_at ──
+-- Dates in 7 and 21 days; the only ticket covers the 7-day date. Nothing is on
+-- sale for the 21-day date, so the ad ends when the 7-day date ends.
+INSERT INTO public.events(id, brand_id, title, slug, status, event_type, visibility, timezone)
+VALUES ('42380000-1000-4000-8000-000000000098', '42380000-0000-4000-8000-000000000010',
+        'Offering keyed-early', 'keyed-early', 'scheduled', 'event', 'public', 'Africa/Lagos');
+INSERT INTO public.event_dates(event_id, start_at, end_at, is_master, timezone, occurrence_key) VALUES
+  ('42380000-1000-4000-8000-000000000098', now() + interval '7 days', now() + interval '7 days 3 hours', true, 'Africa/Lagos', 'ke1'),
+  ('42380000-1000-4000-8000-000000000098', now() + interval '21 days', now() + interval '21 days 3 hours', false, 'Africa/Lagos', 'ke2');
+INSERT INTO public.ticket_types(event_id, name, price_cents, currency, quantity_total, is_unlimited, valid_occurrence_keys)
+VALUES ('42380000-1000-4000-8000-000000000098', 'Early', 500000, 'NGN', NULL, true, ARRAY['ke1']);
+DO $t14$
+DECLARE j jsonb := pg_temp.r('event', 'keyed-early');
+BEGIN
+  PERFORM pg_temp.t_assert((j->>'ok')::boolean AND (j->>'dates_remaining')::int = 2, 'T14 keyed-early series promotable');
+  PERFORM pg_temp.t_assert(abs(extract(epoch FROM (j->>'last_bookable_at')::timestamptz - (now() + interval '7 days 3 hours'))) < 5,
+    'T14 last_bookable_at = end of the last date anything is on sale for (not the last date)');
+END $t14$;
+
 SELECT set_config('request.jwt.claim.sub', '', false);
 \echo 'issue #4238 ads all dates: all passed'
+ROLLBACK;

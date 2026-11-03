@@ -81,6 +81,7 @@ BEGIN
     RETURN jsonb_build_object(
       'ok', false,
       'code', 'destination_not_public',
+      'page_type', NULL,
       'availability', 'draft',
       'availability_reason', 'admin.dest.draft'
     );
@@ -109,10 +110,18 @@ BEGIN
     'timezone', v_tz
   );
 
+  -- Refusals for pages that are not open to the public (moderation-blocked,
+  -- unpublished, private, unlisted trip/experience) carry ONLY
+  -- {ok, code, page_type, availability, availability_reason}: the signed-in
+  -- resolver hands this to any account that guesses a brand + slug, so it must
+  -- not leak the title, cover, city, ids or slugs (I-4238-AD-REFUSAL-IS-BARE).
+  -- Brand members and admins read the detail for greyed-out rows from
+  -- ad_advertisable_pages, which checks membership.
+
   -- Moderation read block: never advertisable.
   IF public.issue_1931_event_ordinary_read_blocked(v_e.id) THEN
-    RETURN v_base || jsonb_build_object(
-      'ok', false, 'code', 'destination_not_public',
+    RETURN jsonb_build_object(
+      'ok', false, 'code', 'destination_not_public', 'page_type', v_page_type,
       'availability', 'private', 'availability_reason', 'admin.dest.private'
     );
   END IF;
@@ -122,23 +131,23 @@ BEGIN
      OR v_e.slug !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
      OR v_e.brand_slug IS NULL OR length(v_e.brand_slug) > 160
      OR v_e.brand_slug !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$' THEN
-    RETURN v_base || jsonb_build_object(
-      'ok', false, 'code', 'destination_not_public',
+    RETURN jsonb_build_object(
+      'ok', false, 'code', 'destination_not_public', 'page_type', v_page_type,
       'availability', 'draft', 'availability_reason', 'admin.dest.draft'
     );
   END IF;
 
   -- Unlisted trips/experiences do not open from their link ('listing' gate).
   IF v_e.visibility = 'hidden' AND v_page_type IN ('trip', 'experience') THEN
-    RETURN v_base || jsonb_build_object(
-      'ok', false, 'code', 'destination_unlisted_not_linkable',
+    RETURN jsonb_build_object(
+      'ok', false, 'code', 'destination_unlisted_not_linkable', 'page_type', v_page_type,
       'availability', 'unlisted', 'availability_reason', 'admin.dest.unlisted'
     );
   END IF;
 
   IF v_e.visibility NOT IN ('public', 'hidden') THEN
-    RETURN v_base || jsonb_build_object(
-      'ok', false, 'code', 'destination_not_public',
+    RETURN jsonb_build_object(
+      'ok', false, 'code', 'destination_not_public', 'page_type', v_page_type,
       'availability', 'private', 'availability_reason', 'admin.dest.private'
     );
   END IF;
@@ -151,8 +160,8 @@ BEGIN
   END IF;
 
   IF v_e.status NOT IN ('scheduled', 'live') THEN
-    RETURN v_base || jsonb_build_object(
-      'ok', false, 'code', 'destination_not_public',
+    RETURN jsonb_build_object(
+      'ok', false, 'code', 'destination_not_public', 'page_type', v_page_type,
       'availability', 'draft', 'availability_reason', 'admin.dest.draft'
     );
   END IF;
@@ -205,8 +214,20 @@ BEGIN
       OR v_e.rsvp_waitlist_enabled IS TRUE;
     v_sale_end := NULL;
   ELSE
+    -- Each sellable tier is bookable until the earlier of its sale end and the
+    -- last bookable date it covers (a keyed tier covers only its own dates).
+    -- The offering is bookable until the latest of those: a tier valid only for
+    -- the early dates never stretches the ad to the last date (#4238 P3).
     WITH sellable AS (
-      SELECT tt.id, tt.sale_end_at
+      SELECT tt.id, tt.sale_end_at,
+        (SELECT max(CASE WHEN v_page_type = 'trip' THEN d.start_at ELSE d.end_at END)
+         FROM public.event_dates d
+         WHERE d.event_id = v_e.id
+           AND d.cancelled_at IS NULL
+           AND coalesce(d.status, 'active') = 'active'
+           AND (CASE WHEN v_page_type = 'trip' THEN d.start_at ELSE d.end_at END) > now()
+           AND (tt.valid_occurrence_keys IS NULL
+                OR d.occurrence_key = ANY (tt.valid_occurrence_keys))) AS covered_last
       FROM public.ticket_types tt
       WHERE tt.event_id = v_e.id
         AND tt.deleted_at IS NULL
@@ -244,8 +265,7 @@ BEGIN
     )
     SELECT
       count(*) > 0,
-      CASE WHEN count(*) > 0 AND bool_and(s.sale_end_at IS NOT NULL)
-        THEN max(s.sale_end_at) ELSE NULL END
+      max(LEAST(s.covered_last, s.sale_end_at))
     INTO v_on_sale, v_sale_end
     FROM sellable s;
   END IF;
@@ -260,7 +280,9 @@ BEGIN
     );
   END IF;
 
-  -- The last moment anyone can still book (I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT).
+  -- The last moment anyone can still book (I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT):
+  -- for tickets, the latest moment any sellable tier can still be bought for a
+  -- date it covers (v_sale_end); for an RSVP, the last date.
   v_last_bookable := LEAST(
     v_last_date,
     v_sale_end,
