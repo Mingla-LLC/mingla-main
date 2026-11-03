@@ -8,10 +8,11 @@
  * built and never shown). Every Cancel asks once.
  */
 import React, { useCallback } from "react";
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { glass } from "../../constants/designSystem";
 import { COUNTRIES } from "../../constants/countries";
+import { useSharePersonalInvite } from "../../hooks/useFriendShareLink";
 import { ChatAvatar } from "./ChatAvatar";
 import { maskPhone, type ReceivedRow, type SentRow } from "./friendsSheetModel";
 
@@ -56,17 +57,9 @@ export function RequestsView({
   const timeAgo = useTimeAgo();
 
   // Issue #4114 QA: the share sheet for an invite whose text did not go out
-  // (same message and link as Add a friend's "Share an invite").
-  const shareInvite = useCallback(async (): Promise<void> => {
-    try {
-      // SHARE-NON-CONTENT:invite
-      await Share.share({
-        message: t("connections:af_share_message", { link: "https://go.usemingla.com/w36m" }),
-      });
-    } catch (error: unknown) {
-      console.warn("[RequestsView] share failed:", error);
-    }
-  }, [t]);
+  // (same message and link as Add a friend's "Share an invite"). #4261: my
+  // personal link, never the bare install link.
+  const { share: shareInvite } = useSharePersonalInvite();
 
   const confirmCancel = useCallback(
     (row: SentRow) => {
