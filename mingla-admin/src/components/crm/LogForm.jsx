@@ -3,6 +3,8 @@ import { Button } from "../ui/Button";
 import { CONTROL_CLASS, Field, LABEL_CLASS, Segmented, Select, TEXTAREA_CLASS } from "./fields";
 import { newRequestKey } from "../../services/crmService";
 import { logRuleWarning } from "../../lib/crmModel";
+import { usePanelDraft } from "../../hooks/usePanelDraft";
+import { DraftKeptNote } from "../ui/PanelStack";
 
 const KINDS = [
   { value: "note", label: "Note" },
@@ -20,7 +22,8 @@ const DIRECTIONS = [
  */
 export function LogForm({ record, config, disabled = false, onSubmit }) {
   const [kind, setKind] = useState("note");
-  const [body, setBody] = useState("");
+  // #4255: the note being written is kept per card while panels change beside it.
+  const [body, setBody, bodyDraft] = usePanelDraft(record?.id ? `record:${record.id}:log` : "", "");
   const [channel, setChannel] = useState(record.channel || "");
   const [direction, setDirection] = useState("outbound");
   const [messageRef, setMessageRef] = useState("");
@@ -141,6 +144,7 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
           placeholder="What happened?"
           className={TEXTAREA_CLASS}
         />
+        <DraftKeptNote kept={bodyDraft.kept} onDiscard={bodyDraft.clear} />
       </div>
       {kind === "touch" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
