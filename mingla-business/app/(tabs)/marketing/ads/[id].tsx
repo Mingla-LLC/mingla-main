@@ -46,7 +46,10 @@ import {
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../../../src/components/marketing/ads/results/AdResultsSection";
-import { hostAdDetailCostPerResult } from "../../../../src/components/marketing/ads/results/adResultsSeries";
+import {
+  hostAdCostPerResultLine,
+  hostAdDetailCostPerResult,
+} from "../../../../src/components/marketing/ads/results/adResultsSeries";
 import {
   goBackToAds,
   hostAdScrollBottomPadding,
@@ -446,10 +449,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
             onRetry={() => void load()}
           />
           <Text style={styles.muted} testID="ads-detail-cost-per-result">
-            {costPerLabel}:{" "}
-            {costPerResult !== null
-              ? formatCurrency(costPerResult.cents, costPerResult.currency, true)
-              : "Shown once we have both spend and results"}
+            {hostAdCostPerResultLine(costPerLabel, costPerResult)}
           </Text>
         </GlassCard>
 

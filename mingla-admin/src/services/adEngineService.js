@@ -236,6 +236,23 @@ export async function confirmAudienceTerms(connectionId) {
   });
 }
 
+/**
+ * #4238: a brand's time zone, so Admin counts a Host ad's days the same way
+ * the Host app does. Null for no brand, or when it can't be read.
+ */
+export async function getBrandTimeZone(brandId) {
+  if (!brandId) return null;
+  const { data, error } = await supabase
+    .from("brands")
+    .select("default_timezone")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) return null;
+  return typeof data?.default_timezone === "string" && data.default_timezone
+    ? data.default_timezone
+    : null;
+}
+
 /** Daily spend, shown, clicks, visits and results per campaign (admin RPC). */
 export async function getCampaignDailySeries(campaignIds, timeZone) {
   return supabase.rpc("ad_campaign_daily_series", {

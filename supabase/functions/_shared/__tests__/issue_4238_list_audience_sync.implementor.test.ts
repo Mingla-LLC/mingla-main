@@ -538,3 +538,26 @@ Deno.test("T8 P2-2 a refused first upload keeps the new provider audience id; th
   assertEquals(calls.filter((c) => c.op === "create").length, 0, "no second audience");
   assertEquals(calls.filter((c) => c.op === "add").map((c) => [c.providerId, c.n]), [["meta-aud-1", 150]]);
 });
+
+Deno.test("T8 rework: a row that falls below the minimum drops the stale terms_not_accepted code", async () => {
+  const db = new FakeDb(baseTables(
+    [definition("a1", "brand:b1:guests", 50)],
+    [],
+    {
+      ad_list_audience_platforms: [{
+        audience_id: "a1",
+        platform: "meta",
+        state: "terms_required",
+        error_code: "terms_not_accepted",
+        provider_audience_id: null,
+        needed_count: null,
+      }],
+      ad_platform_audience_terms: [{ connection_id: "conn-meta", platform: "meta", state: "accepted" }],
+    },
+  ));
+  const calls: Call[] = [];
+  await syncListAudiences({ db, kind: "daily", transports: { meta: fakeTransport("meta", calls) }, redditEnabled: false, now: () => T0 });
+  assertEquals(calls, []);
+  const row = db.tables.ad_list_audience_platforms.find((r) => r.audience_id === "a1" && r.platform === "meta");
+  assertEquals([row?.state, row?.needed_count, row?.error_code], ["below_minimum", 50, null]);
+});

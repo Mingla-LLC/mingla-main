@@ -783,12 +783,12 @@ export async function syncListAudiences(input: {
         const needed = neededCount(platform, "lookalike", memberCount, countryCount);
         if (!providerId) {
           if (needed !== null) {
-            await upsertState(def, platform, { state: "below_minimum", needed_count: needed });
+            await upsertState(def, platform, { state: "below_minimum", needed_count: needed, error_code: null });
           } else if (
             !seedState || seedState.state !== "ready" ||
             typeof seedState.provider_audience_id !== "string"
           ) {
-            await upsertState(def, platform, { state: "pending", needed_count: null });
+            await upsertState(def, platform, { state: "pending", needed_count: null, error_code: null });
           } else {
             const created = await transport.createLookalike(
               audienceProviderName({
@@ -828,7 +828,7 @@ export async function syncListAudiences(input: {
       const needed = neededCount(platform, "list", memberCount);
       if (!providerId) {
         if (needed !== null) {
-          await upsertState(def, platform, { state: "below_minimum", needed_count: needed });
+          await upsertState(def, platform, { state: "below_minimum", needed_count: needed, error_code: null });
           result.cursor = { after: item.key };
           continue;
         }

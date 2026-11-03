@@ -134,6 +134,11 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
           <Text style={styles.axisText}>{shortDay(series.points[series.points.length - 1].day)}</Text>
         </View>
       )}
+      {series.budget !== null && series.pauseAt !== null ? (
+        <Text style={styles.note} testID="ad-spend-chart-pause-note">
+          {HOST_AD_RESULTS_COPY.pauseNote}
+        </Text>
+      ) : null}
       {!series.inHostCurrency ? (
         <Text style={styles.note} testID="ad-spend-chart-usd">
           {HOST_AD_RESULTS_COPY.usdOnly}

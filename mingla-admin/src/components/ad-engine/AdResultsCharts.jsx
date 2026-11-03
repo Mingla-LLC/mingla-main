@@ -39,6 +39,32 @@ function shortDay(day) {
   );
 }
 
+/**
+ * #4238 wave 2 rework: spend axis ticks in currency units, not minor units
+ * (12000 cents reads "120", 1,250,000 cents "12.5K").
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper shared with its tests
+export function spendAxisTick(cents) {
+  const units = Math.max(0, Number(cents) || 0) / 100;
+  const trim = (value) => value.toFixed(1).replace(/\.0$/, "");
+  if (units >= 1_000_000) return `${trim(units / 1_000_000)}M`;
+  if (units >= 10_000) return `${trim(units / 1_000)}K`;
+  return Math.round(units).toLocaleString("en-US");
+}
+
+/**
+ * #4238 wave 2 rework: the zone the daily series counts days in. A Host
+ * campaign uses its brand's time zone, the same zone the Host app uses
+ * (host-ad-campaign get: brands.default_timezone); a Mingla campaign keeps
+ * its plan's schedule zone.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper shared with its tests
+export function resultsSeriesZone({ brandTimeZone, scheduleTimeZone }) {
+  if (typeof brandTimeZone === "string" && brandTimeZone) return brandTimeZone;
+  if (typeof scheduleTimeZone === "string" && scheduleTimeZone) return scheduleTimeZone;
+  return "UTC";
+}
+
 /** One row per day across the campaigns (provider currency), nulls kept. */
 // eslint-disable-next-line react-refresh/only-export-components -- pure helper shared with its tests
 export function buildAdminResultsSeries(rows) {
@@ -161,7 +187,7 @@ export function AdResultsCharts({ rows, capCents, loading = false, error = null 
               <ComposedChart data={series.days} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="4 5" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} width={48} />
+                <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={spendAxisTick} />
                 <Tooltip formatter={(value) => money(value)} />
                 <Bar dataKey="spend" name="Spend" fill={SERIES[0]} isAnimationActive={false} />
                 <Line dataKey="cumulative" name="Spent so far" stroke={SERIES[1]} dot={false} isAnimationActive={false} />
@@ -196,7 +222,7 @@ export function AdResultsCharts({ rows, capCents, loading = false, error = null 
                   data={series.platforms.map((p) => ({ ...p, name: PLATFORM_LABEL[p.platform] ?? p.platform }))}
                   margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
                 >
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={spendAxisTick} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
                   <Tooltip formatter={(value) => money(value)} />
                   <Bar dataKey="spend" name="Spend" fill={SERIES[2]} isAnimationActive={false} />

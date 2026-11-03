@@ -595,6 +595,8 @@ export const HOST_AD_RESULTS_COPY = {
   chartError: "We couldn't load the chart. Your totals above are still right.",
   visitsNote: "Page visits are counted when people land on your page from this ad.",
   whereFrom: "Where results came from",
+  /** Explains the chart's "98%" mark (#4238 wave 2 rework). */
+  pauseNote: "Dashed line: your budget. 98%: we pause your ad when 98% of the budget is spent.",
 } as const;
 
 /** "No ticket sales counted yet. We count them when people buy on Mingla…" */

@@ -7,6 +7,7 @@
  * the server converts cumulative totals (host-ad-campaign `daily`).
  */
 
+import { formatHostAdMoneyCents } from "../hostAdMoney";
 import type {
   HostAdDailyPoint,
   HostAdPlatformSpend,
@@ -146,6 +147,34 @@ export function hostAdDetailCostPerResult(input: {
     : input.daily.reduce((sum, point) => sum + (point.results ?? 0), 0);
   const cents = hostAdCostPerResult(spend, results);
   return cents !== null && currency ? { cents, currency } : null;
+}
+
+/**
+ * #4238 wave 2 rework: "Cost per sale: NGN 103,333.33", written the same way
+ * as the results headline ("You've spent NGN 310,000.00 …"), never with a
+ * symbol beside a code.
+ */
+export function hostAdCostPerResultLine(
+  costPerLabel: string,
+  costPerResult: { cents: number; currency: string } | null,
+): string {
+  const amount = costPerResult
+    ? formatHostAdMoneyCents(costPerResult.cents, costPerResult.currency)
+    : null;
+  return `${costPerLabel}: ${amount ?? "Shown once we have both spend and results"}`;
+}
+
+/**
+ * #4238 wave 2 rework: the chart's right-axis value in a 40 px gutter at
+ * 390 px. "77,500.00" was clipped to "77,500.(", so the axis shows whole
+ * units, shortened past four digits: 950, 9,999, 77.5K, 1.2M.
+ */
+export function compactAxisAmount(cents: number): string {
+  const units = Math.max(0, cents) / 100;
+  const trim = (value: number) => value.toFixed(1).replace(/\.0$/, "");
+  if (units >= 1_000_000) return `${trim(units / 1_000_000)}M`;
+  if (units >= 10_000) return `${trim(units / 1_000)}K`;
+  return Math.round(units).toLocaleString("en-US");
 }
 
 export type FunnelStep = {

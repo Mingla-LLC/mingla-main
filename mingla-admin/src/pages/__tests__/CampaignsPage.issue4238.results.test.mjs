@@ -62,3 +62,30 @@ test("T17 the page shows Results over time between the cap card and Conversions 
   assert.equal((charts.match(/isAnimationActive=\{false\}/g) ?? []).length, 4);
   assert.match(charts, /height=\{220\}/);
 });
+
+test("T17 rework: the spend axis reads currency units, never cents", async () => {
+  await withVite(async (vite) => {
+    const { spendAxisTick } = await vite.ssrLoadModule("/src/components/ad-engine/AdResultsCharts.jsx");
+    assert.equal(spendAxisTick(1200), "12");
+    assert.equal(spendAxisTick(95_000), "950");
+    assert.equal(spendAxisTick(1_250_000), "12.5K");
+    assert.equal(spendAxisTick(150_000_000), "1.5M");
+  });
+  const chart = fs.readFileSync(path.join(adminRoot, "src/components/ad-engine/AdResultsCharts.jsx"), "utf8");
+  // Both spend axes (daily spend and spend per platform) format their ticks.
+  assert.match(chart, /<YAxis tick=\{\{ fontSize: 11 \}\} width=\{48\} tickFormatter=\{spendAxisTick\} \/>/);
+  assert.match(chart, /<XAxis type="number" tick=\{\{ fontSize: 11 \}\} tickFormatter=\{spendAxisTick\} \/>/);
+});
+
+test("T17 rework: a Host ad's days are counted in its brand's zone, as on Host", async () => {
+  await withVite(async (vite) => {
+    const { resultsSeriesZone } = await vite.ssrLoadModule("/src/components/ad-engine/AdResultsCharts.jsx");
+    assert.equal(resultsSeriesZone({ brandTimeZone: "Africa/Lagos", scheduleTimeZone: "Europe/London" }), "Africa/Lagos");
+    assert.equal(resultsSeriesZone({ brandTimeZone: null, scheduleTimeZone: "Europe/London" }), "Europe/London");
+    assert.equal(resultsSeriesZone({ brandTimeZone: null, scheduleTimeZone: undefined }), "UTC");
+  });
+  const page = fs.readFileSync(path.join(adminRoot, "src/pages/CampaignsPage.jsx"), "utf8");
+  assert.match(page, /getBrandTimeZone\(seriesBrandId\)/);
+  assert.match(page, /const seriesZone = resultsSeriesZone\(\{\s*brandTimeZone:/);
+  assert.doesNotMatch(page, /const seriesZone = selectedCampaign\?\.plan_version\?\.schedule_time_zone \?\? "UTC";/);
+});

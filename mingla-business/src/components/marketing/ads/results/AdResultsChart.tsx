@@ -24,7 +24,12 @@ import {
   usePlotHeight,
   usePlotWidth,
 } from "./chartParts";
-import { linePath, shortDay, type ResultsSeries } from "./adResultsSeries";
+import {
+  compactAxisAmount,
+  linePath,
+  shortDay,
+  type ResultsSeries,
+} from "./adResultsSeries";
 
 export function resultsChartLabel(
   series: ResultsSeries,
@@ -103,7 +108,7 @@ export function AdResultsChart(props: {
           ) : null}
           {costPoints.length > 0 ? (
             <SvgText x={width + 4} y={12} fill={textTokens.tertiary} fontSize="11">
-              {formatHostAdMoneyCents(maxCost, props.currency)?.split(" ").pop() ?? ""}
+              {compactAxisAmount(maxCost)}
             </SvgText>
           ) : null}
         </Svg>

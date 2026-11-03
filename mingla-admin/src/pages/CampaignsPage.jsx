@@ -26,7 +26,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AlertCard, SectionCard } from "../components/ui/Card";
-import { AdResultsCharts } from "../components/ad-engine/AdResultsCharts";
+import { AdResultsCharts, resultsSeriesZone } from "../components/ad-engine/AdResultsCharts";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
@@ -38,6 +38,7 @@ import {
   cancelAdminAdPlan,
   campaignAction,
   getCampaignConversions,
+  getBrandTimeZone,
   getCampaignDailySeries,
   getCampaignDetail,
   getPlanSettlements,
@@ -551,8 +552,26 @@ export function CampaignsPage({ embedded = false }) {
     const siblings = campaignsForPlan(campaigns ?? [], selectedCampaign).map((row) => row.id);
     return siblings.length > 0 ? siblings : selectedId ? [selectedId] : [];
   }, [campaigns, selectedCampaign, selectedId]);
-  const seriesZone = selectedCampaign?.plan_version?.schedule_time_zone ?? "UTC";
-  const seriesKey = seriesIds.join(",");
+  // #4238: a Host ad's days are counted in its brand's zone, as on Host.
+  const seriesBrandId =
+    selectedCampaign?.owner_kind === "host" ? selectedCampaign?.brand_id ?? null : null;
+  const [brandZone, setBrandZone] = useState({ brandId: null, zone: null });
+  useEffect(() => {
+    if (!seriesBrandId) return;
+    let active = true;
+    void getBrandTimeZone(seriesBrandId).then((zone) => {
+      if (active) setBrandZone({ brandId: seriesBrandId, zone });
+    });
+    return () => {
+      active = false;
+    };
+  }, [seriesBrandId]);
+  const brandZoneReady = !seriesBrandId || brandZone.brandId === seriesBrandId;
+  const seriesZone = resultsSeriesZone({
+    brandTimeZone: seriesBrandId && brandZoneReady ? brandZone.zone : null,
+    scheduleTimeZone: selectedCampaign?.plan_version?.schedule_time_zone,
+  });
+  const seriesKey = brandZoneReady ? seriesIds.join(",") : "";
   useEffect(() => {
     if (!seriesKey) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
