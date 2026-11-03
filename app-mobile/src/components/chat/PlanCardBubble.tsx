@@ -162,9 +162,19 @@ export function PlanPollBlock({
       {plan.options.map((option) => {
         const mine = option.voterIds.includes(viewerId);
         const share = Math.min(1, option.voterIds.length / size);
-        // [TRANSITIONAL] The prototype's "Added by {name} · " prefix and "No votes yet"
-        // have no B0 copy keys yet (reported); until they land the line lists voters only.
-        const votersText = option.voterIds.map((id) => (id === viewerId ? t("chat:you") : nameOf(id))).join(", ");
+        // [TRANSITIONAL] `plan_option_added_by` / `plan_option_no_votes` are not in
+        // the B0 copy yet (reported); the defaultValue is the prototype's en copy
+        // until the keys land in chat.json.
+        const voters = option.voterIds.map((id) => (id === viewerId ? t("chat:you") : nameOf(id))).join(", ");
+        const addedBy = option.addedBy
+          ? t("chat:plan_option_added_by", {
+              name: option.addedBy === viewerId ? t("chat:you") : nameOf(option.addedBy),
+              defaultValue: "Added by {{name}}",
+            })
+          : null;
+        const votersText = voters
+          ? [addedBy, voters].filter(Boolean).join(" · ")
+          : t("chat:plan_option_no_votes", { defaultValue: "No votes yet" });
         const label = formatPlanTime(option.startsAt, i18n.language);
         return (
           <TouchableOpacity

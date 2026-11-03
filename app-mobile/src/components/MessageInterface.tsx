@@ -169,6 +169,7 @@ import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptor
 import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
 import type { ChatPlan, GroupEventPayload, PlanEventPayload, PlanQuoteSnapshot } from "../types/chatPlans";
 import { PlanCardBubble } from "./chat/PlanCardBubble";
+import { PlanFormSheet } from "./chat/PlanFormSheet";
 import { PlanTimePickerSheet } from "./chat/PlanTimePickerSheet";
 import { PlanActionsMenu, PlanEditSheet } from "./chat/PlanEditSheet";
 import { GroupJoinRequestCard } from "./chat/GroupJoinRequestCard";
@@ -1068,6 +1069,7 @@ export default function MessageInterface({
   const [planMenuFor, setPlanMenuFor] = useState<ChatPlan | null>(null);
   const [planEditFor, setPlanEditFor] = useState<ChatPlan | null>(null);
   const [highlightPlanId, setHighlightPlanId] = useState<string | null>(null);
+  const [showPlanForm, setShowPlanForm] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const safeInsets = useSafeAreaInsets();
@@ -3421,9 +3423,16 @@ export default function MessageInterface({
         title={linkBrowserUrl ?? ''}
         onClose={() => setLinkBrowserUrl(null)}
       />
-      {/* Issue #4261: a plan's long-press menu, its edit dialog and "Lock it in" with no time vote. */}
+      {/* Issue #4261: the plan form, a plan's long-press menu, its edit dialog and "Lock it in" with no time vote. */}
       {planConversationId ? (
         <>
+          <PlanFormSheet
+            visible={showPlanForm}
+            onClose={() => setShowPlanForm(false)}
+            conversationId={planConversationId}
+            senderId={currentUserId}
+            chatName={headerTitle}
+          />
           <PlanActionsMenu
             plan={planMenuFor}
             onClose={() => setPlanMenuFor(null)}
@@ -3550,6 +3559,14 @@ export default function MessageInterface({
               setPendingMedia((prev) => prev.filter((_, i) => i !== index));
             }}
             onSend={handleSendPickedMedia}
+            onAddPlan={planConversationId ? () => {
+              setShowAttachmentMenu(false);
+              setShowPlanForm(true);
+            } : undefined}
+            onPickFromDeck={isCollabChat && collabSessionId ? () => {
+              setShowAttachmentMenu(false);
+              handleOpenCollabDeckView("swipe");
+            } : undefined}
           />
         )}
         {/* Issue #4114 Wave 6 (D10): "Sending to {event}" — only with two or
