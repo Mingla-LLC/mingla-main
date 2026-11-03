@@ -687,6 +687,9 @@ export class CalendarService {
       event_title: string | null;
       event_slug: string | null;
       cover_media_url: string | null;
+      // #4251: added by 20280322004251. Absent on a server that predates it,
+      // so the row keeps a null type and the card shows its date tile.
+      cover_media_type?: string | null;
       timezone: string | null;
       location_text: string | null;
       is_online: boolean | null;
@@ -711,7 +714,12 @@ export class CalendarService {
         plusGuestNames: [],
         displayName: row.display_name ?? null,
         coverMediaUrl: row.cover_media_url ?? null,
-        coverMediaType: null,
+        coverMediaType:
+          row.cover_media_type === "image" ||
+          row.cover_media_type === "video" ||
+          row.cover_media_type === "gif"
+            ? row.cover_media_type
+            : null,
         eventId: row.event_id,
         eventTitle: row.event_title ?? "Event",
         eventSlug: row.event_slug ?? "",

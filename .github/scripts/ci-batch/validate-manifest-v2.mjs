@@ -344,8 +344,9 @@ export function phase3dContractDigest(manifest) {
 // #4238: register the list-audience migration, its proof and the tester's adversarial proof the same way.
 // #4250: register the profiles admin-flag drop, its proof and its adversarial proof the same way.
 // #3281: register the Explorer buyable-date migration and its proof the same way.
+// #4251: register the going-RSVPs cover type migration and its proof the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5034978dc2d738c7e6e5e49724ff5f95dee51bc16c8ad5d3f943958201fe3dc1";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "cdf812793523426bfad8501a75f09007877c249dfb206b5a706ef7aa9138961b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
