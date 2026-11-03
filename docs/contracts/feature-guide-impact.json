@@ -745,7 +745,7 @@
     {
       "capability_key": "staff-work-board",
       "paths": [
-        "supabase/migrations/20280321004256_issue_4256_no_auto_promo_cards.sql"
+        "supabase/migrations/20280323004256_issue_4256_no_auto_promo_cards.sql"
       ]
     }
   ]
