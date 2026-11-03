@@ -70,8 +70,10 @@ async function requireAdmin(user: AdminClient): Promise<boolean> {
     return false;
   }
   const access = result.data as { role?: unknown; status?: unknown };
+  // #4255 (D3): a Founding partner holds a full-admin seat too.
   return access.status === "active" &&
-    (access.role === "owner" || access.role === "admin");
+    (access.role === "owner" || access.role === "admin" ||
+      access.role === "partner");
 }
 
 async function reviewFor(
