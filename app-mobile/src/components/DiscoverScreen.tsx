@@ -10,6 +10,7 @@ import { DiscoverCard } from "./discover/DiscoverCard";
 import { DiscoverEmptyState } from "./discover/DiscoverEmptyState";
 import { DiscoverGridSkeleton } from "./discover/DiscoverGridSkeleton";
 import { DiscoverHeader } from "./discover/DiscoverHeader";
+import { discoverLoadState } from "./discover/discoverLoadState";
 import { canonicalDiscoverCardPath } from "./discover/discoverCardRoute";
 import { DISCOVER_GRID_GAP, DISCOVER_GRID_SIDE_PADDING, discoverGridCellWidth } from "./discover/discoverGridLayout";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -275,7 +276,18 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const selectedLabels = selectedDiscoverFilterLabels(appliedFilters, facets.data?.groups ?? []);
   const filterLabel = selectedLabels.length > 0 ? t("filters.button_selected", { summary: selectedLabels.slice(0, 2).join(" · ") }) : t("filters.button", "Filters");
   const total = facets.data?.selected.total ?? 0;
-  const countLabel = visibleKinds.length === 0
+  const loadState = discoverLoadState({
+    anchorSet: anchor !== null,
+    facetsLoaded: Boolean(facets.data),
+    facetsFailed: Boolean(facets.error),
+    feedLoaded: Boolean(feed.data),
+    feedFailed: Boolean(feed.error),
+    visibleKindCount: visibleKinds.length,
+    itemCount: items.length,
+  });
+  const countLabel = loadState.countPending
+    ? ""
+    : visibleKinds.length === 0
     ? t("count.nothing", "Nothing yet")
     : discoverCountIsCapped(facets.data?.selected.tm ?? null)
       ? t("count.capped", { count: total, defaultValue: `${total}+` })
@@ -410,8 +422,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 320 && feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
   }, [evaluateViewability, feed]);
 
-  const cityEmpty = !facets.isLoading && facets.data && visibleKinds.length === 0;
-  const filteredEmpty = !feed.isLoading && !cityEmpty && items.length === 0;
+  const { cityEmpty, filteredEmpty } = loadState;
   const toggleCityWatch = useCallback(async () => {
     try {
       if (cityWatch.subscribed) {
@@ -429,7 +440,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <DiscoverHeader ref={pillRowRef} title={t("title", "Discover")} cityUnsetLabel={t("city.set", "Set city")} cityLabel={city?.name ?? null} cityA11y={city ? t("city.a11y", { city: city.name }) : t("city.a11y_unset", "Set your city for Discover")} visibleKinds={visibleKinds} selectedKind={selectedKind} kindLabels={kindLabels} resultLabel={countLabel} filterLabel={filterLabel} filterCount={selectionCount} filterOpen={filterOpen} filterDisabled={Boolean(cityEmpty)} onCityPress={() => setCityPickerOpen(true)} onKindSelect={switchKind} onFilterPress={() => { setFilterOpen((open) => !open); }} pillTargetRef={coachPills.targetRef} filterTargetRef={coachFilters.targetRef} />
       <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={refresh} tintColor="#eb7825" title={isPullRefreshing ? t("loading.refreshing", "Refreshing events…") : undefined} titleColor="rgba(255,255,255,.72)" colors={["#eb7825"]} progressBackgroundColor="#1b1e24" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
-        {facets.isLoading || feed.isLoading ? <DiscoverGridSkeleton /> : null}
+        {loadState.showSkeleton ? <DiscoverGridSkeleton /> : null}
         {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
         {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={() => facets.data?.nearestCity && setCity({ name: facets.data.nearestCity.label, stateCode: null, countryCode: null, lat: facets.data.nearestCity.lat, lng: facets.data.nearestCity.lng })} /> : null}
         {filteredEmpty ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
