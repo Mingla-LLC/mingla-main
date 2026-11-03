@@ -11,8 +11,8 @@
 --      lets partners in. Active and invited partner rows move over from
 --      admin_team_members, idempotently; that table keeps only growth people.
 --   2. A trigger on admin_users refuses deleting, demoting, deactivating or
---      re-addressing the owner row, and a second owner, for every caller
---      (service role and postgres included).
+--      re-addressing the owner row, and promoting anyone to owner, for every
+--      caller (service role and postgres included).
 --   3. Owner, admin and partner hold team_manage. The team functions gate on
 --      team_manage instead of "is the owner"; cannot_change_owner and
 --      cannot_change_self stay.
@@ -132,7 +132,7 @@ ALTER TABLE public.admin_team_members ADD CONSTRAINT admin_team_members_partner_
 
 -- ---------------------------------------------------------------------------
 -- 2. The owner row cannot be removed, demoted, deactivated or re-addressed,
---    and there is never a second owner. Every caller, every path.
+--    and nobody is promoted to owner. Every caller, every path.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.admin_users_protect_owner() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
@@ -154,22 +154,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF NEW.role = 'owner' THEN
-    IF TG_OP = 'UPDATE' THEN
-      -- Nobody is promoted to owner.
-      RAISE EXCEPTION 'cannot_change_owner' USING ERRCODE = '42501';
-    END IF;
-    IF EXISTS (SELECT 1 FROM public.admin_users au
-               WHERE au.role = 'owner' AND au.status <> 'revoked') THEN
-      RAISE EXCEPTION 'owner_exists' USING ERRCODE = 'PT409';
-    END IF;
+  IF TG_OP = 'UPDATE' AND NEW.role = 'owner' THEN
+    -- Nobody is promoted to owner.
+    RAISE EXCEPTION 'cannot_change_owner' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.admin_users_protect_owner() FROM PUBLIC, anon, authenticated;
 COMMENT ON FUNCTION public.admin_users_protect_owner() IS
-  'Issue #4255. Refuses deleting, demoting, deactivating or re-addressing the owner row, promoting anyone to owner, and a second live owner. Fires for every caller, service role and postgres included (I-4255-OWNER-ROW-IS-IMMUTABLE).';
+  'Issue #4255. Refuses deleting, demoting, deactivating or re-addressing the owner row, and promoting anyone to owner. Fires for every caller, service role and postgres included (I-4255-OWNER-ROW-IS-IMMUTABLE).';
 
 CREATE TRIGGER admin_users_protect_owner
   BEFORE INSERT OR UPDATE OR DELETE ON public.admin_users

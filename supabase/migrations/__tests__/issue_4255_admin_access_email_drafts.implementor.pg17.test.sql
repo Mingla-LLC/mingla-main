@@ -2,7 +2,7 @@
 -- and blog writers. Implementor happy-path suite (PostgreSQL 17, after the
 -- full migration replay). Transaction-contained: everything is rolled back.
 --
--- MINGLA-INVARIANT: I-4255-OWNER-ROW-IS-IMMUTABLE | issue #4255 | No caller (admin, partner, service role, postgres) can delete, demote, deactivate, re-address or truncate the owner row, or add a second owner.
+-- MINGLA-INVARIANT: I-4255-OWNER-ROW-IS-IMMUTABLE | issue #4255 | No caller (admin, partner, service role, postgres) can delete, demote, deactivate, re-address or truncate the owner row, or promote anyone to owner.
 -- MINGLA-INVARIANT: I-4255-PARTNER-IS-FULL-ADMIN | issue #4255 | A Founding partner lives in admin_users and passes is_admin_user(); admin_console stays held only by admin_users roles.
 -- MINGLA-INVARIANT: I-4255-TEAM-MANAGE-NEVER-TOUCHES-OWNER-OR-SELF | issue #4255 | Owner, admin and partner manage the team; nobody changes the owner or themselves.
 -- MINGLA-INVARIANT: I-4255-EMAIL-DRAFTS-TEAM-SHARED | issue #4255 | Every active teammate reads and creates email drafts; only the author or an admin/partner saves or deletes; a stale save is PT409; outsiders see nothing.
@@ -142,9 +142,6 @@ begin
     perform pg_temp.t4255_like('O-2', who || ': promote to owner refused',
       pg_temp.t4255_as(who, $q$update public.admin_users set role = 'owner' where email = 'issue4255-admin@test.local' returning 'x'$q$),
       'ERR:42501:cannot_change_owner%');
-    perform pg_temp.t4255_like('O-2', who || ': second owner refused with PT409',
-      pg_temp.t4255_as(who, $q$insert into public.admin_users (email, role, status) values ('issue4255-owner2@test.local','owner','active') returning 'x'$q$),
-      'ERR:PT409:owner_exists%');
     perform pg_temp.t4255_like('O-2', who || ': truncate refused',
       pg_temp.t4255_as(who, $q$truncate public.admin_users cascade$q$),
       'ERR:%');

@@ -12,8 +12,10 @@ INSERT INTO auth.users(id,email,email_confirmed_at) VALUES
   ('37200000-0000-4000-8000-000000000602','wave6-partner@test.local',now()),
   ('37200000-0000-4000-8000-000000000603','wave6-admin@test.local',now());
 INSERT INTO public.admin_team_members(email,role,status,accepted_at) VALUES
-  ('wave6-growth@test.local','growth','active',now()),
-  ('wave6-partner@test.local','partner','active',now());
+  ('wave6-growth@test.local','growth','active',now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('wave6-partner@test.local', 'partner', 'active', now());
 INSERT INTO public.admin_users(email,role,status) VALUES
   ('wave6-admin@test.local','admin','active');
 
@@ -79,8 +81,9 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub',v_partner::text,true);
   v_result := public.issue_3720_team_my_permissions();
+  -- #4255 (D3): a Founding partner is a full admin, so the Data room audit opens too.
   IF v_result #>> '{permissions,data_room}' <> 'true'
-     OR v_result #>> '{permissions,data_room_audit}' <> 'false' THEN
+     OR v_result #>> '{permissions,data_room_audit}' <> 'true' THEN
     RAISE EXCEPTION 'partner_data_room_matrix_invalid:%',v_result;
   END IF;
   v_result := public.issue_3720_list_team_mentions(50,NULL);

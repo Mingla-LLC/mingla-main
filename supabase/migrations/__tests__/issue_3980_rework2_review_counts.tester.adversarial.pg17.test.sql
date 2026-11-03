@@ -48,8 +48,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('gia.v3980@test.local', 'growth', 'active', now()),
   ('hal.v3980@test.local', 'growth', 'active', now()),
-  ('pia.v3980@test.local', 'partner', 'active', now()),
-  ('lou.v3980@test.local', 'growth', 'revoked', now());
+  ('lou.v3980@test.local', 'growth', 'revoked', now()),
+  -- #4255 (D3): a Founding partner is a full admin and sees every card, so the
+  -- "only watches the card" proof uses a growth teammate (still keyed 'partner').
+  ('pia.v3980@test.local', 'growth', 'active', now());
 
 -- One event 40 days out, public, for anchored cards.
 set local session_replication_role = replica;

@@ -17,8 +17,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802d-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('issue3802d-growth@test.local', 'growth', 'active', now()),
-  ('issue3802d-partner@test.local', 'partner', 'active', now()),
   ('issue3802d-removed@test.local', 'growth', 'revoked', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('issue3802d-partner@test.local', 'partner', 'active', now());
 
 insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by)
 values ('38020000-0000-4000-f100-000000000001', 'hosts', 'Issue3802d Host', 'prospect',
@@ -74,7 +76,9 @@ begin
   admin_answer := pg_temp.t3802d_call('admin');
   perform pg_temp.t3802d_check('owner succeeds', owner_answer not like 'ERR:%', left(owner_answer, 240));
   perform pg_temp.t3802d_check('admin succeeds', admin_answer not like 'ERR:%', left(admin_answer, 240));
-  foreach owner_answer in array array[pg_temp.t3802d_call('growth'), pg_temp.t3802d_call('partner'), pg_temp.t3802d_call('removed'), pg_temp.t3802d_call('anon')] loop
+  -- #4255 (D3): a Founding partner is a full admin and reads the team summary too.
+  perform pg_temp.t3802d_check('partner succeeds', pg_temp.t3802d_call('partner') not like 'ERR:%', left(pg_temp.t3802d_call('partner'), 240));
+  foreach owner_answer in array array[pg_temp.t3802d_call('growth'), pg_temp.t3802d_call('removed'), pg_temp.t3802d_call('anon')] loop
     perform pg_temp.t3802d_check('unauthorised caller is refused', owner_answer like 'ERR:%', owner_answer);
   end loop;
 

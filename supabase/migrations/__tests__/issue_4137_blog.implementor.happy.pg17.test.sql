@@ -213,7 +213,12 @@ $t$;
 DO $t$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_proc WHERE proname IN ('is_support_staff', 'issue_3988_capabilities', 'admin_team_my_operational_areas')
-             AND (prosrc ILIKE '%blog%' OR NOT prosecdef)) THEN
+             AND (prosrc ILIKE '%blog%' OR NOT prosecdef)
+             -- #4255: the operational areas carry the Blog tab area, computed
+             -- from issue_4137_blog_can_write itself (and nothing else blog).
+             AND NOT (proname = 'admin_team_my_operational_areas' AND prosecdef
+                      AND regexp_replace(prosrc, '\s+', ' ', 'g') LIKE '%IF public.issue_4137_blog_can_write(auth.uid()) THEN v_areas := array_append(v_areas, ''blog''); END IF;%'
+                      AND (length(prosrc) - length(replace(lower(prosrc), 'blog', ''))) / 4 = 4)) THEN
     RAISE EXCEPTION 'AC-DB13: a #3988 function was changed by the blog';
   END IF;
   IF (SELECT count(*) FROM pg_proc WHERE proname IN ('is_support_staff', 'issue_3988_capabilities', 'admin_team_my_operational_areas')) <> 3 THEN
@@ -231,7 +236,8 @@ BEGIN
     ('41370000-0000-4000-a000-000000000002'::uuid, true, false, 'teammate'),
     ('41370000-0000-4000-a000-000000000003'::uuid, true, true, 'lead'),
     ('41370000-0000-4000-a000-000000000004'::uuid, true, true, 'admin (email casing differs)'),
-    ('41370000-0000-4000-a000-000000000005'::uuid, false, false, 'disabled lead'),
+    -- #4255: any active teammate writes; a disabled Support row only loses publishing.
+    ('41370000-0000-4000-a000-000000000005'::uuid, true, false, 'disabled lead (still an active teammate)'),
     ('41370000-0000-4000-a000-000000000006'::uuid, false, false, 'lead who left the team')
   ) AS t(id, can_write, can_publish, who) LOOP
     IF public.issue_4137_blog_can_write(r.id) IS DISTINCT FROM r.can_write THEN

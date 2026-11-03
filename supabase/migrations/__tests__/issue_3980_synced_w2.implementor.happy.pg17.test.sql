@@ -59,7 +59,9 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('di.w23980@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('ada.w23980@test.local', 'growth', 'active', now()),
-  ('sue.w23980@test.local', 'growth', 'active', now()),
+  ('sue.w23980@test.local', 'growth', 'active', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
   ('cy.w23980@test.local', 'partner', 'active', now());
 set local session_replication_role = replica;
 insert into public.support_staff (user_id, enabled, available, role) values ('39820000-0000-4000-a000-000000000004', true, true, 'staff');
@@ -519,7 +521,8 @@ begin
       where w.auto_key = 'guide_live:w2-guide-proven:pr-97001' and p.role = 'watcher')
       || '/' || (select status || ':' || close_kind from public.ops_work_cards where auto_key = 'guide_live:w2-guide-proven:pr-97001')
       || '/' || v_told::text,
-    'di.w23980@test.local,sue.w23980@test.local/done:system/3');
+    -- #4255 (D3): the Founding partner (cy) is a full admin, so it is included like di.
+    'cy.w23980@test.local,di.w23980@test.local,sue.w23980@test.local/done:system/4');
   perform pg_temp.t3980w2_as('service', 'select public.ops_reconcile()::text');
   perform pg_temp.t3980w2_check('B2', 'a record is applied once',
     (select count(*)::text from public.product_truth_audit a join public.product_capabilities c on c.id = a.capability_id
@@ -530,7 +533,8 @@ begin
   v := pg_temp.t3980w2_person('support', $q$select public.ops_feature_guide_release('w2-guide-waiting')::text$q$);
   perform pg_temp.t3980w2_check('B2', 'an entry on an incomplete record shows what it waits for',
     coalesce(pg_temp.t3980w2_get(v, 'record'), 'null') || ':' || pg_temp.t3980w2_get(v, 'pending', 'missing', '0'), 'null:the live check');
-  v := pg_temp.t3980w2_person('partner', $q$select public.ops_feature_guide_release('w2-guide-proven')::text$q$);
+  -- #4255 (D3): a Founding partner is a full admin now; a growth teammate has no Support.
+  v := pg_temp.t3980w2_person('growth', $q$select public.ops_feature_guide_release('w2-guide-proven')::text$q$);
   perform pg_temp.t3980w2_like('B2', 'a teammate without Support cannot', v, 'ERR:42501:forbidden:%');
   v := pg_temp.t3980w2_person('growth', $q$select public.ops_release_records_list('{"incomplete":true,"limit":5}'::jsonb)::text$q$);
   perform pg_temp.t3980w2_check('B2', 'the release list shows incomplete records with their problems in words',

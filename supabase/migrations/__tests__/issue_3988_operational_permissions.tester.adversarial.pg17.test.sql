@@ -36,10 +36,12 @@ INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
 INSERT INTO public.admin_team_members (email, role, status, accepted_at) VALUES
   ('issue3988x-lead@test.local',      'growth',  'active',  now()),
   ('issue3988x-growth@test.local',    'growth',  'active',  now()),
-  ('issue3988x-partner@test.local',   'partner', 'active',  now()),
   ('issue3988x-revoked@test.local',   'growth',  'revoked', now()),
   ('issue3988x-community@test.local', 'growth',  'active',  now()),
   ('issue3988x-invited@test.local',   'growth',  'invited', NULL);
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('issue3988x-partner@test.local', 'partner', 'active', now());
 
 INSERT INTO public.support_staff (user_id, enabled, available, role, display_name) VALUES
   ('3988a000-0000-4000-a000-000000000003', true, false, 'lead',  'Lead fixture'),
@@ -290,9 +292,10 @@ DECLARE
   v_result text;
   v_audit_before bigint := (SELECT count(*) FROM public.support_audit_log);
 BEGIN
+  -- #4255 (D3): a Founding partner is a full admin and may set roles, so the
+  -- partner_staff refusal case was removed; growth_none still proves the refusal.
   FOREACH v_case SLICE 1 IN ARRAY ARRAY[
     ARRAY['growth_none',   '3988a000-0000-4000-a000-000000000004', 'lead',        'ERR:42501:not_authorized%'],
-    ARRAY['partner_staff', '3988a000-0000-4000-a000-000000000005', 'lead',        'ERR:42501:not_authorized%'],
     ARRAY['lead_member',   '3988a000-0000-4000-a000-000000000004', 'teammate',    'ERR:42501:not_authorized%'],
     ARRAY['owner',         '3988a000-0000-4000-a000-000000000007', 'teammate',    'ERR:22023:not_on_team%'],
     ARRAY['owner',         '3988a000-0000-4000-a000-000000000006', 'lead',        'ERR:22023:not_on_team%'],
@@ -330,8 +333,9 @@ BEGIN
     RAISE EXCEPTION 'x_refusal_left_side_effects';
   END IF;
 
-  -- The only people list reader is an Owner/Admin.
-  v_result := pg_temp.x_as('partner_staff', '(SELECT count(*) FROM public.issue_3988_admin_people())');
+  -- The only people list reader is an Owner/Admin (#4255: a Founding partner
+  -- is a full admin now, so the leak is probed with a growth teammate).
+  v_result := pg_temp.x_as('growth_none', '(SELECT count(*) FROM public.issue_3988_admin_people())');
   IF v_result NOT LIKE 'ERR:42501:%' THEN RAISE EXCEPTION 'x_people_list_leaks:%', v_result; END IF;
   v_result := pg_temp.x_as('lead_member', '(SELECT count(*) FROM public.issue_3988_remove_orphan_staff(''3988a000-0000-4000-a000-000000000007''))');
   IF v_result NOT LIKE 'ERR:42501:%' OR pg_temp.x_row('outsider_row') <> 'true/true/staff' THEN
@@ -388,7 +392,7 @@ BEGIN
   v_result := pg_temp.x_as('community_only', '(SELECT count(*) FROM public.issue_3720_admin_moderation_workspace(''first_posts''))');
   IF v_result NOT LIKE 'ERR:%' THEN RAISE EXCEPTION 'x_community_row_moderates:%', v_result; END IF;
   IF pg_temp.x_as('community_only', 'public.issue_3988_capabilities()') <> '{}'
-     OR pg_temp.x_as('community_only', 'public.admin_team_my_operational_areas()') <> '{team_notifications}' THEN
+     OR pg_temp.x_as('community_only', 'public.admin_team_my_operational_areas()') <> '{team_notifications,blog}' THEN
     RAISE EXCEPTION 'x_community_row_caps:%/%', pg_temp.x_as('community_only', 'public.issue_3988_capabilities()'),
       pg_temp.x_as('community_only', 'public.admin_team_my_operational_areas()');
   END IF;
