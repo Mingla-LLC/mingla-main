@@ -174,7 +174,8 @@ describe("#4238 D3 names and plain result words", () => {
     expect(hostAdCostPerLabel("clicks")).toBe("Cost per visit");
     expect(hostAdCostPerLabel("results")).toBe("Cost per result");
     const detail = read("app/(tabs)/marketing/ads/[id].tsx");
-    expect(detail).toContain("{costPerLabel}:");
+    // #4238 rework 2: the line is built by hostAdCostPerResultLine (code, not symbol).
+    expect(detail).toContain("{hostAdCostPerResultLine(costPerLabel, costPerResult)}");
     expect(detail).not.toContain('"conversions"');
     expect(detail).not.toContain("Cost per {primaryResultLabel}");
   });
