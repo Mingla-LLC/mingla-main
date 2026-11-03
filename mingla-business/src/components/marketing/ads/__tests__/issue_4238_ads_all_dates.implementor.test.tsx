@@ -309,3 +309,109 @@ describe("#4238 J4 builder schedule rules", () => {
     );
   });
 });
+
+describe("#4238 J5 (rework) the end-date field and its sentence name the same day in the page's zone", () => {
+  // [last bookable moment, page zone, that moment's day in the page zone]
+  const PAGES: [string, string, string][] = [
+    ["2026-12-06T23:30:00Z", "Africa/Lagos", "2026-12-07"],
+    ["2026-12-07T04:30:00Z", "America/Los_Angeles", "2026-12-06"],
+    ["2026-12-07T10:00:00Z", "Pacific/Kiritimati", "2026-12-08"],
+    ["2026-12-06T12:00:00Z", "Asia/Tokyo", "2026-12-06"],
+    ["2026-12-06T23:59:00Z", "UTC", "2026-12-06"],
+  ];
+  const VIEWERS = ["America/New_York", "Africa/Lagos", "Pacific/Kiritimati", "America/Los_Angeles", "UTC"];
+  const originalTz = process.env.TZ;
+  afterAll(() => {
+    process.env.TZ = originalTz;
+  });
+
+  const cases = VIEWERS.flatMap((viewer) => PAGES.map(([last, zone, day]) => [viewer, last, zone, day] as const));
+  it.each(cases)("viewer %s, last bookable %s in %s", (viewer, last, zone, day) => {
+    process.env.TZ = viewer;
+    const page = base({ last_bookable_at: last, timezone: zone });
+    const limit = hostAdScheduleLimit(page, (iso) => hostAdPageDate(iso, page.timezone));
+    expect(limit?.lastDay).toBe(day);
+    const named = new Intl.DateTimeFormat("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(new Date(`${day}T12:00:00Z`));
+    expect(limit?.label).toBe(named);
+    // Picking the named day is allowed, and runs to the last bookable moment.
+    expect(hostAdScheduleError("", day, limit)).toBeNull();
+    const endOfPickedDay = new Date(`${day}T23:59:59.999`).toISOString();
+    expect(hostAdScheduleEndIso(endOfPickedDay, limit, day)).toBe(new Date(last).toISOString());
+    // The day after is refused in words that name the same day.
+    const next = new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    expect(hostAdScheduleError("", next, limit)).toBe(
+      `Your ad can run until ${named}, the last day people can book. Pick an earlier end date.`,
+    );
+  });
+
+  it("an unknown page zone falls back to the viewer's day for both", () => {
+    process.env.TZ = "America/New_York";
+    const page = base({ last_bookable_at: "2026-12-06T23:30:00Z", timezone: "Mars/Olympus_Mons" });
+    const limit = hostAdScheduleLimit(page, (iso) => hostAdPageDate(iso, page.timezone));
+    expect(limit?.lastDay).toBe("2026-12-06");
+    expect(limit?.label).toBe("Sun 6 Dec");
+  });
+});
+
+describe("#4238 J6 (rework) a greyed-out row's reason is readable (>= 4.5:1)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { StyleSheet } = require("react-native") as typeof import("react-native");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ds = require("../../../../constants/designSystem") as typeof import("../../../../constants/designSystem");
+
+  type Rgba = [number, number, number, number];
+  const parse = (value: string): Rgba => {
+    if (value.startsWith("#")) {
+      const hex = value.slice(1);
+      return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).concat(1) as Rgba;
+    }
+    const nums = value.match(/[\d.]+/g)!.map(Number);
+    return [nums[0], nums[1], nums[2], nums[3] ?? 1];
+  };
+  const over = (top: Rgba, bottom: Rgba, extraAlpha = 1): Rgba => {
+    const a = top[3] * extraAlpha;
+    return [0, 1, 2].map((i) => top[i] * a + bottom[i] * (1 - a)).concat(1) as Rgba;
+  };
+  const luminance = ([r, g, b]: Rgba): number => {
+    const ch = (c: number) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+  };
+  const contrast = (a: Rgba, b: Rgba): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it("no dimming above the reason, and it measures at least 4.5:1 on the row", () => {
+    const renderer = render(
+      <HostAdPagePicker
+        pages={[base({ id: "gone", title: "Old Night", availability: "ended", ok: false })]}
+        selected={null}
+        onSelect={jest.fn()}
+      />,
+    );
+    const reason = byTestId(renderer, "host-ad-page-reason-gone")[0] as RenderNode & {
+      parent: (RenderNode & { parent: unknown }) | null;
+    };
+    let opacity = 1;
+    let node: { props?: Record<string, unknown>; parent?: unknown } | null = reason;
+    while (node) {
+      const flat = StyleSheet.flatten(node.props?.style as never) as { opacity?: number } | undefined;
+      if (typeof flat?.opacity === "number") opacity *= flat.opacity;
+      node = (node.parent as typeof node) ?? null;
+    }
+    expect(opacity).toBe(1);
+    const color = (StyleSheet.flatten(reason.props.style as never) as { color: string }).color;
+    const row = over(parse(ds.glass.tint.chrome.idle), parse(ds.canvas.discover));
+    const ink = over(parse(color), row, opacity);
+    expect(contrast(ink, row)).toBeGreaterThanOrEqual(4.5);
+    renderer.unmount();
+  });
+});

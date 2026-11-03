@@ -127,11 +127,7 @@ export function HostAdPagePicker({
         return (
           <Pressable
             key={`${page.page_type}:${page.id}`}
-            style={[
-              styles.row,
-              isSelected && styles.rowSelected,
-              unavailable && styles.rowUnavailable,
-            ]}
+            style={[styles.row, isSelected && styles.rowSelected]}
             onPress={unavailable ? undefined : () => onSelect(page)}
             disabled={unavailable}
             accessibilityRole="radio"
@@ -142,18 +138,22 @@ export function HostAdPagePicker({
             {isImageCoverUrl(page.cover_url) ? (
               <Image
                 source={{ uri: page.cover_url as string }}
-                style={styles.cover}
+                style={[styles.cover, unavailable && styles.dimmed]}
                 accessibilityIgnoresInvertColors
               />
             ) : (
-              <View style={[styles.cover, styles.tile]}>
+              <View
+                style={[styles.cover, styles.tile, unavailable && styles.dimmed]}
+              >
                 <Text style={styles.tileLetter}>
                   {typeLabel.slice(0, 1)}
                 </Text>
               </View>
             )}
             <View style={styles.text}>
-              <View style={styles.titleRow}>
+              {/* #4238: only the page's own details dim; the reason the Host
+                  needs to read stays at full strength (>= 4.5:1). */}
+              <View style={[styles.titleRow, unavailable && styles.dimmed]}>
                 <Text style={styles.title} numberOfLines={2}>
                   {page.title}
                 </Text>
@@ -162,7 +162,10 @@ export function HostAdPagePicker({
                 </View>
               </View>
               {details ? (
-                <Text style={styles.meta} numberOfLines={1}>
+                <Text
+                  style={[styles.meta, unavailable && styles.dimmed]}
+                  numberOfLines={1}
+                >
                   {details}
                 </Text>
               ) : null}
@@ -224,7 +227,7 @@ const styles = StyleSheet.create({
     borderColor: SELECTED,
     backgroundColor: "rgba(255,122,24,.11)",
   },
-  rowUnavailable: { opacity: 0.5 },
+  dimmed: { opacity: 0.5 },
   cover: {
     width: 56,
     height: 56,
@@ -263,7 +266,9 @@ const styles = StyleSheet.create({
   },
   badgeLabel: { ...typography.caption, color: textTokens.secondary },
   meta: { ...typography.caption, color: textTokens.secondary },
-  reason: { ...typography.caption, color: textTokens.secondary, fontStyle: "italic" },
+  // #4238: the greyed-out row's reason, full strength: text.primary over the
+  // dark canvas measures well above 4.5:1 (secondary at 0.5 opacity was 3.42).
+  reason: { ...typography.caption, color: textTokens.primary },
   radio: {
     width: 18,
     height: 18,

@@ -47,6 +47,7 @@ const HOST_AD_FILES = [
   "src/screens/hostAds/HostAdListScreen.tsx",
   "src/components/marketing/ads/HostAdPagePicker.tsx",
   "src/components/marketing/ads/HostAdCountryPicker.tsx",
+  "src/components/marketing/ads/hostAdBuilderRules.ts",
   "src/components/marketing/ads/hostAdCopy.ts",
   "src/components/marketing/ads/hostAdCountries.ts",
   "src/components/marketing/ads/hostAdGoal.ts",
@@ -60,6 +61,12 @@ const HOST_AD_FILES = [
   "src/services/adCreditService.ts",
   "src/utils/adVideoFit.ts",
   "src/utils/homeAdLifecycle.ts",
+];
+
+// Paths relative to the repo root: shared server helpers whose sentences a
+// Host reads on Ari's ad cards and refusals (#4238 rework).
+const SHARED_HOST_COPY_FILES = [
+  "supabase/functions/_shared/adScheduleBound.ts",
 ];
 
 const SKIP_ATTRIBUTES = new Set([
@@ -252,10 +259,16 @@ function selfTest(words) {
   const okAri = ari.length === 1;
   const clean = scanHostCopy(words, 'const a = <Text testID="lane_hash">Your ad is running.</Text>;', "clean.tsx");
   const okClean = clean.length === 0;
+  // #4238 rework: the builder rules and Ari's shared schedule/refusal helper
+  // write Host-visible sentences; they must stay on the scan list.
+  const okCovered =
+    HOST_AD_FILES.includes("src/components/marketing/ads/hostAdBuilderRules.ts") &&
+    SHARED_HOST_COPY_FILES.includes("supabase/functions/_shared/adScheduleBound.ts");
+  console.log(`self-test: builder rules + Ari schedule helper scanned=${okCovered}`);
   console.log(`self-test: old Host wording flagged=${okHost} (${JSON.stringify(got)})`);
   console.log(`self-test: old Ari message flagged=${okAri}`);
   console.log(`self-test: plain copy + code ids pass=${okClean}`);
-  if (!(okHost && okAri && okClean)) {
+  if (!(okHost && okAri && okClean && okCovered)) {
     console.error(`FAIL [${TAG}] self-test: the scanner no longer catches the old wording.`);
     process.exit(1);
   }
@@ -275,6 +288,17 @@ function main() {
   // 1. Every Host ad screen and helper.
   for (const file of HOST_AD_FILES) {
     const src = read(file);
+    if (src !== null) report(file, scanHostCopy(words, src, file));
+  }
+
+  // 1b. Shared server helpers that write Host-visible sentences.
+  for (const file of SHARED_HOST_COPY_FILES) {
+    let src = null;
+    try {
+      src = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
+    } catch (e) {
+      fail(`cannot read ${file} (${e.code ?? e.message})`);
+    }
     if (src !== null) report(file, scanHostCopy(words, src, file));
   }
 
@@ -347,7 +371,7 @@ function main() {
     console.error("Fix: say it the way a Host would (see hostAdCopy.ts), or move the text into a copy helper.");
     process.exit(1);
   }
-  console.log(`OK [${TAG}]: ${HOST_AD_FILES.length} Host ad files, the Ari ad card and Ari ad tools use plain words (${words.length} banned patterns).`);
+  console.log(`OK [${TAG}]: ${HOST_AD_FILES.length + SHARED_HOST_COPY_FILES.length} Host ad files, the Ari ad card and Ari ad tools use plain words (${words.length} banned patterns).`);
 }
 
 main();

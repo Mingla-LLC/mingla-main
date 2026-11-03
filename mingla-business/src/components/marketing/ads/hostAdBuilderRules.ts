@@ -69,11 +69,16 @@ export function goBackToAds(router: HostAdBackRouter): void {
  * later end (ad-plan create_version); these rules default and cap it first.
  */
 export type HostAdScheduleLimit = {
-  /** The viewer's local calendar day of the last bookable moment (the date field's unit). */
+  /**
+   * The last day people can book, "YYYY-MM-DD", in the page's own time zone
+   * (the viewer's calendar only when the zone is unknown). It is the date
+   * field's last selectable day AND the day the sentence names, so the Host
+   * is never told "until Mon 7 Dec" by a field that stops at 6 Dec (#4238 P2).
+   */
   lastDay: string;
   /** The exact last bookable moment. */
   lastIso: string;
-  /** That day in the page's own time zone, for the sentence ("Sat 6 Dec"). */
+  /** That same day in words, for the sentence ("Sat 6 Dec"). */
   label: string;
 };
 
@@ -81,18 +86,40 @@ function localDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+/** "YYYY-MM-DD" of an instant in an IANA zone, or null for an unknown zone. */
+function dayInZone(date: Date, timezone: string | null | undefined): string | null {
+  if (!timezone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const part = (type: string): string | undefined =>
+      parts.find((item) => item.type === type)?.value;
+    const year = part("year");
+    const month = part("month");
+    const day = part("day");
+    return year && month && day ? `${year}-${month}-${day}` : null;
+  } catch {
+    return null;
+  }
+}
+
 export function hostAdScheduleLimit(
-  page: { last_bookable_at?: string | null } | null | undefined,
+  page: { last_bookable_at?: string | null; timezone?: string | null } | null | undefined,
   label: (iso: string) => string | null,
 ): HostAdScheduleLimit | null {
   const iso = page?.last_bookable_at;
   if (!iso) return null;
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
+  const lastDay = dayInZone(date, page?.timezone) ?? localDay(date);
   return {
-    lastDay: localDay(date),
+    lastDay,
     lastIso: date.toISOString(),
-    label: label(iso) ?? localDay(date),
+    label: label(iso) ?? lastDay,
   };
 }
 
@@ -114,13 +141,18 @@ export function hostAdScheduleError(
 
 /**
  * The end the plan sends: the chosen day's end, but never past the last
- * bookable moment; the last bookable moment when no end is chosen.
+ * bookable moment; the last bookable moment when no end is chosen, or when
+ * the chosen day IS the last day people can book (it runs to the end of
+ * booking, whatever the viewer's own time zone).
  */
 export function hostAdScheduleEndIso(
   endIso: string | null,
   limit: HostAdScheduleLimit | null,
+  endDay?: string,
 ): string | null {
   if (!limit) return endIso;
-  if (!endIso) return limit.lastIso;
+  if (!endIso || (endDay !== undefined && endDay === limit.lastDay)) {
+    return limit.lastIso;
+  }
   return Date.parse(endIso) > Date.parse(limit.lastIso) ? limit.lastIso : endIso;
 }

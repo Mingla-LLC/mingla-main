@@ -1495,6 +1495,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         endsAt: hostAdScheduleEndIso(
           scheduleBoundaryIso(endDate, "end"),
           scheduleLimit,
+          endDate,
         ),
         acceptBroader: forceAcceptance || acceptBroader,
         rightsConfirmed,
