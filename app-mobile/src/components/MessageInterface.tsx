@@ -166,6 +166,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptorV1 } from '@mingla/sharing';
 import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
+import type { PlanQuoteSnapshot } from "../types/chatPlans";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -223,7 +224,7 @@ interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: "text" | "image" | "video" | "file" | "card" | "system";
+  type: "text" | "image" | "video" | "file" | "card" | "system" | "plan";
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
@@ -241,6 +242,10 @@ interface Message {
   isRead?: boolean;
   replyToId?: string;
   marketingCampaignId?: string | null;
+  /** Issue #4261: the plan this message is about (its card, or a comment on it). */
+  planId?: string;
+  /** Issue #4261: the sender's picks on that plan when the comment was sent. */
+  planQuote?: PlanQuoteSnapshot | null;
   isSystem?: boolean;
   systemPayload?: CollabDeadEndBannerPayload;  // ORCH-1058B
   /** Issue #4114 Wave 3: direct_message_reactions rows for this message. */

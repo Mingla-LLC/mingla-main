@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
 import type { CardTagEntry, MentionEntry } from './messagingService';
 import type { BusinessEventCard } from '../types/mergedDiscover';
+import type { PlanQuoteSnapshot } from '../types/chatPlans';
 
 export interface Friend {
   id: string;
@@ -49,7 +50,7 @@ export interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system';  // ORCH-0667: + 'card'; ORCH-1058B: + 'system'
+  type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system' | 'plan';  // ORCH-0667: + 'card'; ORCH-1058B: + 'system'; #4261: + 'plan'
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
@@ -67,6 +68,10 @@ export interface Message {
   isRead?: boolean;
   replyToId?: string;
   marketingCampaignId?: string | null;
+  /** Issue #4261: messages.plan_id — the plan card, or a comment on that plan. */
+  planId?: string;
+  /** Issue #4261: messages.plan_quote — the sender's picks when the comment was sent. */
+  planQuote?: PlanQuoteSnapshot | null;
   isSystem?: boolean;
   // ORCH-1058B: structured collab dead-end banner payload (chips + button data).
   // Typed loosely (CollabDeadEndBannerPayload) to avoid a circular import.

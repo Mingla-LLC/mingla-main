@@ -70,10 +70,21 @@ interface BoardSessionCallbacks {
   onMatchPromoted?: (savedCardId: string, experienceId: string) => void;
 }
 
+/**
+ * Issue #4261: what a plan chat hears on its `chat-plans:<conversationId>`
+ * channel. `planId` is the changed plan (null when the event carried none).
+ */
+export interface ChatPlanRealtimeListener {
+  onPlanChange: (planId: string | null) => void;
+  onJoinRequestChange?: () => void;
+}
+
 export class RealtimeService {
   private channels: Map<string, RealtimeChannel> = new Map();
   private boardSessionCallbackSets: Map<string, BoardSessionCallbacks[]> = new Map();
   private authenticatedChannelTokens: Map<string, string> = new Map();
+  /** Issue #4261: listeners of each `chat-plans:<conversationId>` channel. */
+  private chatPlanListeners: Map<string, Set<ChatPlanRealtimeListener>> = new Map();
   private offlineQueue: QueuedAction[] = [];
   private isOnline: boolean = true;
   private queueProcessing: boolean = false;
@@ -353,6 +364,63 @@ export class RealtimeService {
     this.channels.clear();
     this.authenticatedChannelTokens.clear();
     this.boardSessionCallbackSets.clear();
+    // Issue #4261 (Constitution #6): the plan channels go with every other one on logout.
+    this.chatPlanListeners.clear();
+  }
+
+  /**
+   * Issue #4261 (spec 4.5): one channel per open plan chat — `chat_plans` and
+   * `group_join_requests` rows of that conversation (RLS gates delivery).
+   * Returns the unsubscribe; the channel closes when its last listener leaves
+   * and on logout (`unsubscribeAll`).
+   */
+  subscribeToChatPlans(conversationId: string, listener: ChatPlanRealtimeListener): () => void {
+    const channelName = `chat-plans:${conversationId}`;
+    let listeners = this.chatPlanListeners.get(channelName);
+    if (!listeners) {
+      listeners = new Set();
+      this.chatPlanListeners.set(channelName, listeners);
+    }
+    listeners.add(listener);
+
+    if (!this.channels.has(channelName)) {
+      const planIdOf = (row: unknown): string | null => {
+        const id = row && typeof row === "object" ? (row as { id?: unknown }).id : null;
+        return typeof id === "string" ? id : null;
+      };
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "chat_plans", filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            const planId = planIdOf(payload.new) ?? planIdOf(payload.old);
+            this.chatPlanListeners.get(channelName)?.forEach((entry) => entry.onPlanChange(planId));
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "group_join_requests", filter: `conversation_id=eq.${conversationId}` },
+          () => {
+            this.chatPlanListeners.get(channelName)?.forEach((entry) => entry.onJoinRequestChange?.());
+          },
+        )
+        .subscribe((status) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.warn(`[realtimeService] ${channelName} ${status}; plans refresh on the next read`);
+          }
+        });
+      this.channels.set(channelName, channel);
+    }
+
+    return () => {
+      const current = this.chatPlanListeners.get(channelName);
+      current?.delete(listener);
+      if (!current || current.size === 0) {
+        this.chatPlanListeners.delete(channelName);
+        this.removeChannel(channelName, { preserveBoardCallbacks: true });
+      }
+    };
   }
 
   // Get active channels
