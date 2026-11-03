@@ -14,8 +14,9 @@ import {
   hostAdPageSellsTickets,
 } from "../components/marketing/ads/hostAdGoal";
 import {
+  HOST_AD_OWNED_ERROR_COPY,
   hostAdVideoFailedMessage,
-  platformName,
+  hostAdVideoPendingMessage,
 } from "../components/marketing/ads/hostAdCopy";
 
 const PREPARED_VIDEO_PLATFORMS = new Set([
@@ -636,7 +637,7 @@ export async function prepareHostAdPlan(
   ) {
     throw new HostAdPlanError(
       "validation_error",
-      "Choose at least one app to show your ad on.",
+      HOST_AD_OWNED_ERROR_COPY.noApps,
     );
   }
   const destinationKey = [
@@ -975,7 +976,7 @@ export function providerCreatePayload(
     (row) => row.platform === platform,
   );
   if (!snapshot)
-    throw new HostAdPlanError("plan_conflict", "We couldn't find who this ad is for. Check your ad again before starting it.");
+    throw new HostAdPlanError("plan_conflict", HOST_AD_OWNED_ERROR_COPY.noAudienceOwner);
   const audience = snapshot.audience_intent;
   const deliveryBudgets = canonical.delivery_budgets as
     Record<string, Record<string, unknown>> | undefined;
@@ -1125,7 +1126,7 @@ async function prepareBoundVideoPlatforms(
   if (!creativeId) {
     throw new HostAdPlanError(
       "creative_required",
-      "This ad has no video yet. Add a ready video and check your ad again.",
+      HOST_AD_OWNED_ERROR_COPY.noVideo,
     );
   }
   for (const allocation of aggregate.provider_allocations) {
@@ -1169,7 +1170,7 @@ async function prepareBoundVideoPlatforms(
         if (attempt === 59) {
           throw new HostAdPlanError(
             "provider_prepare_pending",
-            `${platformName(platform)} is still getting your video ready. Try again in a few minutes.`,
+            hostAdVideoPendingMessage(platform),
           );
         }
       }
@@ -1216,7 +1217,7 @@ function assertCurrentVersion(
   ) {
     throw new HostAdPlanError(
       "plan_conflict",
-      "This ad changed since you last looked. Go back to the review step and check it again.",
+      HOST_AD_OWNED_ERROR_COPY.changed,
     );
   }
 }
@@ -1262,7 +1263,7 @@ export async function launchHostAdPlan(input: {
   if (aggregate.plan.state === "staff_review_required") {
     throw new HostAdPlanError(
       "staff_review",
-      "Mingla is still checking your ad. We'll let you know when it's approved.",
+      HOST_AD_OWNED_ERROR_COPY.inReview,
     );
   }
   if (
@@ -1277,7 +1278,7 @@ export async function launchHostAdPlan(input: {
   ) {
     throw new HostAdPlanError(
       "funding_required",
-      "Set aside the money for this ad before you start it.",
+      HOST_AD_OWNED_ERROR_COPY.fundingRequired,
     );
   }
   await invoke("ad-plan", {
@@ -1311,7 +1312,7 @@ export async function launchHostAdPlan(input: {
     if (!campaignId) {
       const cause = new HostAdPlanError(
         "provider_create_failed",
-        "An app didn't confirm your ad was set up. Try starting it again in a minute.",
+        HOST_AD_OWNED_ERROR_COPY.notConfirmed,
       );
       await recordCreateFailure(aggregate, platform, cause);
       throw cause;

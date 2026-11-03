@@ -253,8 +253,12 @@ describe("#4238 Host ad copy modules return plain words", () => {
       hostAdErrorMessage({ code: "plan_preflight_failed", detail: "budget_below_minimum" }),
     ).toContain("Your daily budget is too low");
     expect(
-      hostAdErrorMessage({ code: "validation_error", detail: "x", message: "Add a campaign name." }),
-    ).toBe("Add a campaign name.");
+      hostAdErrorMessage({
+        code: "validation_error",
+        detail: "x",
+        message: "Choose at least one app to show your ad on.",
+      }),
+    ).toBe("Choose at least one app to show your ad on.");
     for (const message of [
       "provider_create_failed in lane business",
       "provider create returned no campaign id",

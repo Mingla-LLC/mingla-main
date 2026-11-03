@@ -79,8 +79,10 @@ describe("#4238 hostAdErrorMessage never passes technical text", () => {
     },
   );
 
-  it("keeps a plain sentence the app wrote", () => {
-    expect(hostAdErrorMessage(new HostAdPlanError("x", "Add a campaign name."))).toBe("Add a campaign name.");
+  it("keeps a sentence the app owns", () => {
+    expect(
+      hostAdErrorMessage(new HostAdPlanError("x", "Set aside the money for this ad before you start it.")),
+    ).toBe("Set aside the money for this ad before you start it.");
   });
 });
 

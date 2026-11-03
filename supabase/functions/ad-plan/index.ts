@@ -12,6 +12,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPlatform } from "../_shared/adChannel.ts";
+import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import {
   type AdAudienceIntent,
   compileTargetingPlan,
@@ -346,8 +347,10 @@ function parsePlatformList(value: unknown): Platform[] | null {
   return platforms;
 }
 
+// #4238 P2-a: Postgres text ("canceling statement due to statement timeout")
+// stays in the server log; the Host gets the raised code or a neutral one.
 function databaseFailure(error: { message?: string; code?: string } | null) {
-  const detail = error?.message ?? "database_operation_failed";
+  const detail = hostSafeDatabaseDetail(error, "ad-plan");
   const status = error?.code === "P0002"
     ? 404
     : error?.code === "22023"
@@ -608,7 +611,11 @@ async function normalizedAllocations(
         return {
           ok: false,
           status: 422,
-          detail: error?.message ?? "provider_quote_unavailable",
+          detail: hostSafeDatabaseDetail(
+            error,
+            "ad-plan quote",
+            "provider_quote_unavailable",
+          ),
         };
       }
       let providerDeliveryBudget = allocation.host_delivery_budget_cents;
@@ -628,8 +635,11 @@ async function normalizedAllocations(
           return {
             ok: false,
             status: 422,
-            detail: conversionError?.message ??
+            detail: hostSafeDatabaseDetail(
+              conversionError,
+              "ad-plan fx",
               "provider_delivery_quote_unavailable",
+            ),
           };
         }
         providerDeliveryBudget = converted;
@@ -1851,8 +1861,13 @@ export async function handleAdPlan(
       return {
         ...row,
         ready: !resolveError && effectiveSnapshot?.ready === true,
-        readiness_code: resolveError?.message ?? effectiveSnapshot?.code ??
-          null,
+        readiness_code: resolveError
+          ? hostSafeDatabaseDetail(
+            resolveError,
+            "ad-plan readiness",
+            "destination_readiness_unavailable",
+          )
+          : effectiveSnapshot?.code ?? null,
         provider_readiness: Array.isArray(
             effectiveSnapshot?.provider_readiness,
           )
@@ -2081,8 +2096,13 @@ export async function handleAdPlan(
     ) {
       return json({
         error: "plan_preflight_failed",
-        detail: destinationError?.message ??
-          (certificationMode
+        detail: destinationError
+          ? hostSafeDatabaseDetail(
+            destinationError,
+            "ad-plan destination",
+            "destination_not_ready",
+          )
+          : (certificationMode
             ? "app_certification_readiness_required"
             : resolvedDestination?.code ?? "destination_not_ready"),
       }, 422);

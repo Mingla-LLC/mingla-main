@@ -50,6 +50,7 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -1427,7 +1428,10 @@ serve(async (req: Request): Promise<Response> => {
     if (launchableError) {
       return json({
         error: "plan_not_launchable",
-        detail: launchableError.message,
+        detail: hostSafeDatabaseDetail(
+          launchableError,
+          "admin-ad-create-campaign launch",
+        ),
       }, 409);
     }
     const canonicalPlan = version.canonical_plan as Record<string, unknown>;
@@ -3415,9 +3419,14 @@ serve(async (req: Request): Promise<Response> => {
           ),
         });
       } catch (error) {
+        // #4238 P2-a: a stage lookup can throw a raw database error.
         return json({
           error: "stage_preflight_failed",
-          detail: error instanceof Error ? error.message : String(error),
+          detail: hostSafeDatabaseDetail(
+            error,
+            "admin-ad-create-campaign stage",
+            "stage_preflight_failed",
+          ),
         }, 422);
       }
     }

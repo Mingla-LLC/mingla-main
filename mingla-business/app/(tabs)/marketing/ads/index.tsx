@@ -379,7 +379,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.kicker}>Available credit</Text>
             <Text style={styles.balance} testID="ads-credit-balance">
-              {formatCurrency(balanceCents, currency, true)}
+              {formatHostAdMoneyCents(balanceCents, currency) ??
+                formatCurrency(balanceCents, currency, true)}
             </Text>
             <Text style={styles.sub}>
               Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any

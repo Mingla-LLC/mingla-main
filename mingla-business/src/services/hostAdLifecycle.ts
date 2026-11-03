@@ -155,7 +155,9 @@ function planItem(aggregate: HostAdPlanAggregate): HostAdListItem {
       : null,
     currency: aggregate.version.host_currency,
     capCents: aggregate.version.host_budget_cents,
-    spendCents: 0,
+    // #4238: a plan row has not launched (a launched plan shows as its
+    // campaign), so it has no spend to show: "NGN 1,500,000.00 budget".
+    spendCents: null,
     spendByCurrency: [],
     primaryResultLabel: "results",
     primaryResultCount: 0,
@@ -273,6 +275,51 @@ export function hostAdListRowMoney(
   }
   if (providerSpend) return `${providerSpend} spent on the apps`;
   return "Budget set before launch";
+}
+
+/**
+ * #4238: plan states before anything was created on the apps. Nothing can
+ * have been spent yet, so the money line names only the budget.
+ */
+export const HOST_AD_PRE_LAUNCH_PLAN_STATES: ReadonlySet<string> = new Set([
+  "draft",
+  "validating",
+  "ready_for_funding",
+  "funding_pending",
+  "funded_held",
+  "staff_review_required",
+  "staff_approved",
+  "changes_requested",
+  "staff_rejected",
+  "payment_failed",
+  "expired",
+  "cancelled_before_create",
+]);
+
+/**
+ * #4238: the top money line on an ad's page, in the same "NGN 1,500,000.00"
+ * style as the Ads list and the Results card. An ad that hasn't launched
+ * reads "NGN 1,500,000.00 budget", never "Spent NGN 0.00 of …".
+ */
+export function hostAdDetailMoneyLine(input: {
+  spentCents: number | null;
+  capCents: number;
+  currency: string;
+  planState: string | null;
+}): string {
+  const budget = formatHostAdMoneyCents(input.capCents, input.currency) ?? "";
+  const launched =
+    input.planState === null || !HOST_AD_PRE_LAUNCH_PLAN_STATES.has(input.planState);
+  if (!launched && (input.spentCents === null || input.spentCents === 0)) {
+    return `${budget} budget`;
+  }
+  const spent =
+    input.spentCents !== null
+      ? formatHostAdMoneyCents(input.spentCents, input.currency)
+      : null;
+  return spent
+    ? `Spent ${spent} of your ${budget} budget`
+    : `${budget} set aside · we can't show spend in your currency yet`;
 }
 
 export function hostAdMatchesFilter(

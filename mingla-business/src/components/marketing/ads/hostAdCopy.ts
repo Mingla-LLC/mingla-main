@@ -110,7 +110,6 @@ export function platformName(platform: string): string {
   return HOST_AD_PLATFORM_NAMES[platform] ?? humanize(platform);
 }
 
-/** "Snapchat", "Snapchat and TikTok", "Facebook & Instagram, Snapchat and TikTok". */
 /**
  * #4238: the video still failed after the app already retried it once, so
  * the server's "Retry this platform." would ask the Host to repeat what we
@@ -120,6 +119,11 @@ export function hostAdVideoFailedMessage(platform: string): string {
   return `${platformName(platform)} couldn't use this video. Try a different video.`;
 }
 
+export function hostAdVideoPendingMessage(platform: string): string {
+  return `${platformName(platform)} is still getting your video ready. Try again in a few minutes.`;
+}
+
+/** "Snapchat", "Snapchat and TikTok", "Facebook & Instagram, Snapchat and TikTok". */
 export function platformNames(platforms: readonly string[]): string {
   const names = platforms.map(platformName);
   if (names.length <= 1) return names.join("");
@@ -474,11 +478,32 @@ const FALLBACK_ERROR =
   "That didn't work just now. Try again in a minute, or contact Mingla support if it keeps happening.";
 
 /**
- * #4238: transport and SDK text ("Edge Function returned a non-2xx status
- * code", "Failed to fetch") is never a sentence for a Host.
+ * #4238 P2-a: sentences the app itself throws on the Host ad screens. A
+ * service error's message is the server's detail, and the server can send
+ * text we did not write (a Host once read "canceling statement due to
+ * statement timeout"), so only these sentences, the ERROR_COPY texts and the
+ * per-app video lines are ever shown as they are.
  */
-const HOST_AD_TECHNICAL_TEXT =
-  /edge function|non-2xx|status code|\bhttps?\b|\bfetch\b|\bjson\b|\brequest failed\b|\bnetwork request\b|\bundefined\b|\bnull\b|\bexception\b|\bstack\b|\btrace\b|\bsupabase\b/i;
+export const HOST_AD_OWNED_ERROR_COPY = {
+  noApps: "Choose at least one app to show your ad on.",
+  noVideo: "This ad has no video yet. Add a ready video and check your ad again.",
+  noAudienceOwner: "We couldn't find who this ad is for. Check your ad again before starting it.",
+  changed: "This ad changed since you last looked. Go back to the review step and check it again.",
+  inReview: "Mingla is still checking your ad. We'll let you know when it's approved.",
+  fundingRequired: "Set aside the money for this ad before you start it.",
+  videoNotShown: "Your ad video is saved, but it didn't show up here yet. Try linking it again.",
+  notConfirmed: "An app didn't confirm your ad was set up. Try starting it again in a minute.",
+} as const;
+
+function hostAdOwnsMessage(message: string): boolean {
+  if ((Object.values(HOST_AD_OWNED_ERROR_COPY) as string[]).includes(message)) return true;
+  if (ERROR_COPY.some((entry) => entry.text === message)) return true;
+  return Object.keys(HOST_AD_PLATFORM_NAMES).some(
+    (platform) =>
+      message === hostAdVideoFailedMessage(platform) ||
+      message === hostAdVideoPendingMessage(platform),
+  );
+}
 
 /** A plain sentence for any error the Host ad screens can hit. */
 export function hostAdErrorMessage(cause: unknown, fallback = FALLBACK_ERROR): string {
@@ -491,17 +516,11 @@ export function hostAdErrorMessage(cause: unknown, fallback = FALLBACK_ERROR): s
   for (const entry of ERROR_COPY) {
     if (entry.match.test(haystack)) return entry.text;
   }
-  // A sentence the app wrote itself (e.g. "Add a campaign name.") is shown as
-  // is when it is already plain; raw codes and technical text never are.
+  // Only a sentence the app owns is shown as is. Anything else, however
+  // plain it looks, may be server or database text, so the Host reads the
+  // fallback instead.
   const message = typeof coded.message === "string" ? coded.message.trim() : "";
-  if (
-    /\s/.test(message) &&
-    !/[_{}]|[a-z][A-Z]/.test(message) &&
-    !HOST_AD_TECHNICAL_TEXT.test(message) &&
-    hostAdCopyIsPlain(message)
-  ) {
-    return message;
-  }
+  if (hostAdOwnsMessage(message)) return message;
   return fallback;
 }
 

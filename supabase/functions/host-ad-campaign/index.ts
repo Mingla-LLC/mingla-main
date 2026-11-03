@@ -18,6 +18,7 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -238,7 +239,10 @@ serve(async (req: Request): Promise<Response> => {
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) {
-      return json({ error: "apply_failed", detail: error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
     }
     const campaigns = data ?? [];
     if (campaigns.length === 0) {
@@ -287,7 +291,10 @@ serve(async (req: Request): Promise<Response> => {
     const listError = spend.error ?? conversions.error ?? adSets.error ??
       versions.error ?? plans.error ?? allocations.error;
     if (listError) {
-      return json({ error: "apply_failed", detail: listError.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(listError, "host-ad-campaign list"),
+      }, 502);
     }
     const adSetIds = (adSets.data ?? []).map((row: { id: string }) => row.id);
     const ads = adSetIds.length > 0
@@ -296,7 +303,10 @@ serve(async (req: Request): Promise<Response> => {
       ).in("ad_set_id", adSetIds)
       : { data: [], error: null };
     if (ads.error) {
-      return json({ error: "apply_failed", detail: ads.error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(ads.error, "host-ad-campaign ads"),
+      }, 502);
     }
     const nowIso = new Date().toISOString();
     // #4238: the plan's frozen rate, the same conversion the card and the
@@ -368,7 +378,10 @@ serve(async (req: Request): Promise<Response> => {
       .eq("owner_kind", "host")
       .maybeSingle();
     if (error) {
-      return json({ error: "apply_failed", detail: error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
     }
     if (!data) {
       return json(
@@ -818,7 +831,9 @@ serve(async (req: Request): Promise<Response> => {
       if (planCampaignError || !planCampaigns?.length) {
         return json({
           error: "stop_request_failed",
-          detail: planCampaignError?.message ?? "plan_campaigns_missing",
+          detail: planCampaignError
+            ? hostSafeDatabaseDetail(planCampaignError, "host-ad-campaign stop")
+            : "plan_campaigns_missing",
         }, 409);
       }
       const [planResult, allocationResult] = await Promise.all([
@@ -833,7 +848,9 @@ serve(async (req: Request): Promise<Response> => {
       ) {
         return json({
           error: "stop_request_failed",
-          detail: planResult.error?.message ?? "plan_state_not_endable",
+          detail: planResult.error
+            ? hostSafeDatabaseDetail(planResult.error, "host-ad-campaign stop")
+            : "plan_state_not_endable",
         }, 409);
       }
       const expectedPlatforms = new Set(
@@ -873,7 +890,10 @@ serve(async (req: Request): Promise<Response> => {
         if (settlementError) {
           return json({
             error: "stop_request_failed",
-            detail: settlementError.message,
+            detail: hostSafeDatabaseDetail(
+              settlementError,
+              "host-ad-campaign stop",
+            ),
             campaign_id: target.id,
             settlements,
           }, 409);
@@ -1034,7 +1054,10 @@ serve(async (req: Request): Promise<Response> => {
         .select("id")
         .maybeSingle();
       if (error) {
-        return json({ error: "apply_failed", detail: error.message }, 502);
+        return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
       }
       if (!paused) {
         return json({
@@ -1231,7 +1254,10 @@ serve(async (req: Request): Promise<Response> => {
     if (launchableError) {
       return json({
         error: "plan_not_launchable",
-        detail: launchableError.message,
+        detail: hostSafeDatabaseDetail(
+          launchableError,
+          "host-ad-campaign launch",
+        ),
       }, 409);
     }
 
@@ -1314,7 +1340,10 @@ serve(async (req: Request): Promise<Response> => {
         detail: error.message,
         idempotencyKey: `ads_launch:host:${campaignId}:claim_failed`,
       });
-      return json({ error: "apply_failed", detail: error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
     }
     if (!claimed?.id) {
       // Another launch won the claim; debit was idempotent on campaign key.

@@ -24,6 +24,7 @@ import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
 import {
+  HOST_AD_OWNED_ERROR_COPY,
   HOST_AD_PLATFORM_NAMES,
   hostAdCountingLines,
   hostAdErrorMessage,
@@ -480,7 +481,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           (item) => item.id === creativeId,
         );
         if (!recorded) {
-          throw new Error("Your ad video is saved, but it didn't show up here yet. Try linking it again.");
+          throw new Error(HOST_AD_OWNED_ERROR_COPY.videoNotShown);
         }
         linkedCreativeIdRef.current = creativeId;
         setUnlinkedCreativeId(null);

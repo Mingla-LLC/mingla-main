@@ -47,6 +47,7 @@ import {
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../../../src/components/marketing/ads/results/AdResultsSection";
 import { formatHostAdMoneyCents } from "../../../../src/components/marketing/ads/hostAdMoney";
+import { hostAdDetailMoneyLine } from "../../../../src/services/hostAdLifecycle";
 import {
   hostAdCostPerResultLine,
   hostAdDetailCostPerResult,
@@ -347,9 +348,12 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
           <Text style={styles.metric}>
             {currency
-              ? spent !== null
-                ? `Spent ${formatCurrency(spent, currency, true)} of your ${formatCurrency(cap, currency, true)} budget`
-                : `${formatCurrency(cap, currency, true)} set aside · we can't show spend in your currency yet`
+              ? hostAdDetailMoneyLine({
+                  spentCents: spent,
+                  capCents: cap,
+                  currency,
+                  planState: payload.plan_state ?? null,
+                })
               : "We can't confirm exchange rates right now, so you can't fund or launch ads for the moment. Try again later."}
           </Text>
           {payload.host_spend_equivalent_quality === "frozen_plan_fx" ? (
