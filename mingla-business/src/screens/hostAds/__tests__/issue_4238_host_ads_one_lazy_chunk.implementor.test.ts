@@ -59,7 +59,8 @@ describe("#4238 Host Ads load as one lazy chunk", () => {
   it("Ari's ad card and the design system do not pull Host Ads modules into the boot chunk", () => {
     const card = read("src/components/ari/ToolProposalCard.tsx");
     expect(card).not.toContain("marketing/ads/hostAdCopy");
-    expect(card).toContain('import { adPlatformName } from "../../utils/adVideoFit";');
+    expect(card).not.toContain("marketing/ads/hostAdMoney");
+    expect(card).toContain('from "../../hooks/useHostAdCardWords";');
     expect(read("src/constants/designSystem.ts")).not.toContain("hostAdCharts");
     expect(read("src/components/marketing/ads/results/hostAdChartColors.ts")).toContain(
       "export const hostAdCharts",

@@ -331,7 +331,12 @@ describe("#4238 retest 3: Ari card money and result labels, city rows, ready sta
     expect(formatHostAdMoneyCents(150_000_000, "NGN")).toBe("NGN 1,500,000.00");
     expect(formatHostAdMoneyCents(25_000, "gbp")).toBe("GBP 250.00");
     const card = read("src/components/ari/ToolProposalCard.tsx");
-    expect(card).toContain("return formatHostAdMoneyCents(cents, currency);");
+    // #4238: the card formats with this same function, loaded on intent from
+    // the Host Ads chunk (useHostAdCardWords), never imported into the card.
+    expect(card).toContain("return words.formatMoney(cents, currency);");
+    expect(card).not.toContain("marketing/ads/hostAdMoney");
+    const loader = read("src/hooks/useHostAdCardWords.ts");
+    expect(loader).toContain("formatMoney: kit.formatHostAdMoneyCents,");
     expect(card).not.toContain("verified settlement currency on save");
   });
 

@@ -396,6 +396,7 @@
         "mingla-business/src/components/ari/MessageList.tsx",
         "mingla-business/src/components/ari/ResponseCard.tsx",
         "mingla-business/src/components/ari/ToolProposalCard.tsx",
+        "mingla-business/src/hooks/useHostAdCardWords.ts",
         "mingla-business/src/components/ari/ariAttachmentPicker.native.ts",
         "mingla-business/src/components/ari/ariAttachmentPicker.ts",
         "mingla-business/src/components/ari/renditions/AriRenditionGraphic.tsx",

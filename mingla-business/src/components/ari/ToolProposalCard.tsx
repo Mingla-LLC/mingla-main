@@ -47,10 +47,13 @@ import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
-// #4238: only the boot-chunk platform names and the money format here, never
-// the Host Ads words module (it loads with the Host Ads screens).
-import { formatHostAdMoneyCents } from "../marketing/ads/hostAdMoney";
-import { adPlatformName } from "../../utils/adVideoFit";
+// #4238: the Host ad money format and app names load on intent from the Host
+// Ads chunk; importing them here would hoist them into the boot chunk.
+import {
+  HOST_AD_CARD_WORDS_PENDING,
+  useHostAdCardWords,
+  type HostAdCardWords,
+} from "../../hooks/useHostAdCardWords";
 import {
   ariAdOwnerKey,
   isValidAdCreativeOwnerKey,
@@ -301,15 +304,33 @@ function coverTypeLabel(type: unknown): string | null {
 }
 
 // #4238: one money format everywhere on this card ("NGN 1,500,000.00"),
-// the same formatter the server uses for Ari's "Budget per app" lines.
-function formatMoneyCents(cents: unknown, currency: unknown): string | null {
+// the same formatter the server uses for Ari's "Budget per app" lines. Until
+// it loads (useHostAdCardWords) the field shows a placeholder in its place.
+function formatMoneyCents(
+  cents: unknown,
+  currency: unknown,
+  words: HostAdCardWords | null,
+): string | null {
   if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
-  return formatHostAdMoneyCents(cents, currency);
+  if (!words) return HOST_AD_CARD_WORDS_PENDING;
+  return words.formatMoney(cents, currency);
 }
 
-function formatAdMoneyCents(cents: unknown, currency: unknown): string | null {
-  const formatted = formatMoneyCents(cents, currency);
-  if (!formatted) return null;
+/** Tools whose card shows Host ad money or ad apps (needs useHostAdCardWords). */
+const HOST_AD_WORDS_TOOLS = new Set([
+  "propose_ad_plan",
+  "approve_ad_plan",
+  "refund_order",
+  "cancel_trip_booking",
+]);
+
+function formatAdMoneyCents(
+  cents: unknown,
+  currency: unknown,
+  words: HostAdCardWords | null,
+): string | null {
+  const formatted = formatMoneyCents(cents, currency, words);
+  if (!formatted || !words) return formatted;
   return typeof currency === "string" && /^[a-z]{3}$/i.test(currency.trim())
     ? formatted
     : `${formatted} · in your brand's payout currency`;
@@ -319,6 +340,7 @@ function fieldsFor(
   toolName: string,
   args: Record<string, unknown>,
   brandNamesById: Record<string, string> = {},
+  words: HostAdCardWords | null = null,
 ): Field[] {
   const out: Field[] = [];
   const context =
@@ -406,12 +428,14 @@ function fieldsFor(
       // #4238: platforms named the way Hosts know them.
       out.push({
         label: "Apps",
-        value: platforms.map((platform) => adPlatformName(String(platform))).join(", "),
+        value: words
+          ? platforms.map((platform) => words.platformName(String(platform))).join(", ")
+          : HOST_AD_CARD_WORDS_PENDING,
       });
     }
-    const budgetText = formatAdMoneyCents(budget, currency);
+    const budgetText = formatAdMoneyCents(budget, currency, words);
     if (budgetText) out.push({ label: "Total budget", value: budgetText });
-    const dailyText = formatAdMoneyCents(daily, currency);
+    const dailyText = formatAdMoneyCents(daily, currency, words);
     if (dailyText) out.push({ label: "Daily total", value: dailyText });
     if (typeof context.ad_currency_policy === "string") {
       out.push({ label: "Currency", value: context.ad_currency_policy });
@@ -497,6 +521,7 @@ function fieldsFor(
       const total = formatMoneyCents(
         context.refundable_total_cents,
         context.currency,
+        words,
       );
       if (total) out.push({ label: "Refund total", value: total });
       if (typeof context.line_count === "number") {
@@ -516,6 +541,7 @@ function fieldsFor(
       const total = formatMoneyCents(
         context.refund_total_cents,
         context.currency,
+        words,
       );
       if (total) out.push({ label: "Refund total", value: total });
       else out.push({ label: "Refund total", value: "Preview pending" });
@@ -1138,6 +1164,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         : null;
   // #3040 AD-04 — the same per-platform fit sentence Host Ads shows, from the
   // same server-computed fit, for the video this proposal will run.
+  const hostAdWords = useHostAdCardWords(HOST_AD_WORDS_TOOLS.has(toolName));
   const adVideoFitSummary = useAdVideoFitSummary(
     isAdPlanCreativeProposal && typeof args.brand_id === "string"
       ? args.brand_id
@@ -1439,9 +1466,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
-            {fieldsFor(toolName, liveArgs).length > 0 ? (
+            {fieldsFor(toolName, liveArgs, {}, hostAdWords).length > 0 ? (
               <View style={styles.fields}>
-                {fieldsFor(toolName, liveArgs).map((f, i) => (
+                {fieldsFor(toolName, liveArgs, {}, hostAdWords).map((f, i) => (
                   <View key={i} style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>{f.label}</Text>
                     <Text
@@ -1562,9 +1589,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           />
         ) : (
           !isTypeConfirm &&
-          fieldsFor(toolName, liveArgs, brandNamesById).length > 0 && (
+          fieldsFor(toolName, liveArgs, brandNamesById, hostAdWords).length > 0 && (
             <View style={styles.fields}>
-              {fieldsFor(toolName, liveArgs, brandNamesById).map((f, i) => (
+              {fieldsFor(toolName, liveArgs, brandNamesById, hostAdWords).map((f, i) => (
                 <View key={i} style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>{f.label}</Text>
                   <Text

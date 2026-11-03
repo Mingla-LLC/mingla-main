@@ -25,14 +25,6 @@ const PLATFORM_NAMES: Record<AdVideoFitPlatform, string> = {
   reddit: "Reddit",
 };
 
-/**
- * #4238 — an ad app as a Host knows it ("Facebook & Instagram"). Ari's ad
- * card reads it from here: this module is already in the boot chunk, so the
- * card never pulls the Host Ads words module into it.
- */
-export const adPlatformName = (platform: string): string =>
-  PLATFORM_NAMES[platform as AdVideoFitPlatform] ?? platform;
-
 /** "A", "A and B", "A, B and C". */
 export const joinWithAnd = (items: readonly string[]): string => {
   if (items.length <= 1) return items[0] ?? "";

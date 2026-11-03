@@ -13,3 +13,7 @@ export { default as HostAdListScreen } from "./HostAdListScreen";
 export { default as HostAdCreateScreen } from "./HostAdCreateScreen";
 export { default as HostAdDetailScreen } from "./HostAdDetailScreen";
 export * from "../../services/hostAdPlanService";
+// #4238: Ari's ad card reads these on intent (hooks/useHostAdCardWords) so
+// they never ship in the boot chunk.
+export { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
+export { platformName } from "../../components/marketing/ads/hostAdCopy";
