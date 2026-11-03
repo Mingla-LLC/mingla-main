@@ -2,7 +2,7 @@
  * #4238 — one matcher for every surface that turns a Host's place or interest
  * into one ad app's own targeting id (Host builder, Ari, Admin builder).
  *
- * MINGLA-INVARIANT: I-4238-PER-APP-MATCH | issue #4238 | Each ad app is
+ * Guards I-4238-PER-APP-MATCH (declared in the test below). Each ad app is
  * matched on its own: a place or interest is looked up in that app's own list
  * and the app's best result is used. No surface requires one app's name to
  * equal another app's name (Meta "Live music" never equals TikTok "Music ›

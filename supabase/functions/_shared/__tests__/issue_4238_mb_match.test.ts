@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4238-ERROR-IS-NOT-MISSING | issue #4238 | A provider error during a targeting search is returned with `unavailable: true` and is shown as "Couldn't check <app>. Try again", never recorded as no match.
+// MINGLA-INVARIANT: I-4238-PER-APP-MATCH | issue #4238 | Each ad app is matched on its own: a place or interest is looked up in that app's own list and the app's best result is used; no surface requires one app's name to equal another app's name.
 /**
  * #4238 media-buyer, wave A — each app is matched on its own, and an app
  * error is never read as "not found".
@@ -5,7 +7,6 @@
  * Guards I-4238-PER-APP-MATCH and I-4238-ERROR-IS-NOT-MISSING
  * (declared in ../adTargetingMatch.ts and here).
  *
- * MINGLA-INVARIANT: I-4238-ERROR-IS-NOT-MISSING | issue #4238 | A provider error during a targeting search is returned with `unavailable: true` and is shown as "Couldn't check <app>. Try again", never recorded as no match.
  */
 import {
   assert,

@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4238-NO-SILENT-COPY-CUT | issue #4238 | A Host plan whose words are longer than an app allows is refused before any money is set aside (copy_too_long:<app>:<field>); Host payloads never cut text to fit.
+// MINGLA-INVARIANT: I-4238-APP-MINIMUM-BEFORE-HOLD | issue #4238 | Every app's daily budget in a Host plan clears that app's own daily minimum before any money is set aside (ad-plan create_version refuses budget_below_app_minimum:<app>).
 /**
  * #4238 media-buyer, wave C (server) — the Host's button mapped to each
  * app's own value, words refused (never cut) when over an app's limit, each

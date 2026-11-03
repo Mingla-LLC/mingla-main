@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4238-LIVE-EDIT-CAPS-WITHIN-TOTAL | issue #4238 | The per-app caps of a Host live edit never add up, in the brand's money at each campaign's frozen rate, to more than the new total; host_ad_amend_live refuses caps above it (PT409).
+// MINGLA-INVARIANT: I-4238-LIVE-EDIT-CLAIM-BEFORE-PUSH | issue #4238 | A Host live edit is claimed under the plan lock (host_ad_live_edit_claim) before any provider push; a same-key retry returns the saved edit; a once-a-day refusal never undoes a push.
 /**
  * #4238 media-buyer, rework after tester round 8 — a Host changing a live
  * ad's budget. Guards I-4238-LIVE-EDIT-CAPS-WITHIN-TOTAL and

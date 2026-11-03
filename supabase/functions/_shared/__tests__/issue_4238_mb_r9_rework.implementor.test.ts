@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-ESTIMATE-RATE-DURABLE | issue #4238 | Host reach estimates are limited per brand and per user in the database (ad_host_estimate_rate_hit), never only in edge memory, and a limiter that cannot answer refuses the estimate.
 /**
  * #4238 media-buyer, rework after tester round 8 (implementor), Deno side:
  *

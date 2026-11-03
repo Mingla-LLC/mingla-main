@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT | issue #4238 | An ad plan for a dated offering ends on or before the offering's last bookable moment (the earliest of its last bookable date, its last ticket sale end and a trip's booking deadline); ad-plan refuses a missing or later end.
 /**
  * Issue #4238 — one ad promotes every date of a series.
  *
@@ -15,7 +16,6 @@
  *       the server greys out is refused BEFORE the card with the picker's own
  *       reason; the page lookup ignores slug case and spaces.
  *
- * MINGLA-INVARIANT: I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT | issue #4238 | An ad plan for a dated offering ends on or before the offering's last bookable moment (the earliest of its last bookable date, its last ticket sale end and a trip's booking deadline); ad-plan refuses a missing or later end.
  */
 import {
   assert,

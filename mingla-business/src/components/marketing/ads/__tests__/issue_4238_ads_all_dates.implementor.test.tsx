@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-AD-PICKER-SAYS-WHY | issue #4238 | The Host page picker shows a page that can't be promoted greyed out with a plain reason and never lets it be chosen.
 /**
  * #4238 — one ad promotes every date of a series (Host picker + builder).
  *
@@ -9,7 +10,6 @@
  *   J4  Builder rules: the end defaults to and is capped at the last day
  *       people can book; the plan never sends a later end.
  *
- * MINGLA-INVARIANT: I-4238-AD-PICKER-SAYS-WHY | issue #4238 | The Host page picker shows a page that can't be promoted greyed out with a plain reason and never lets it be chosen.
  */
 
 import React from "react";

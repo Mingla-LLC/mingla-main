@@ -270,8 +270,8 @@
         "supabase/functions/ad-plan/index.ts",
         "supabase/functions/admin-ad-targeting-search/index.ts",
         "supabase/functions/host-ad-campaign/index.ts",
-        "supabase/migrations/20280321004238_issue_4238_ads_all_dates.sql",
-        "supabase/migrations/20280324004238_issue_4238_ads_media_buyer.sql"
+        "supabase/migrations/20280325004238_issue_4238_ads_all_dates.sql",
+        "supabase/migrations/20280326004238_issue_4238_ads_media_buyer.sql"
       ]
     },
     {

@@ -1,4 +1,5 @@
 \set ON_ERROR_STOP on
+-- MINGLA-INVARIANT: I-4238-SETTLE-AMENDED-CAP | issue #4238 | Settlement of a Host or Mingla campaign compares final spend with the amended provider cap when a governed budget change exists, else the first cap (ad_finalize_campaign_settlement).
 
 -- Issue #4238 media-buyer — run after the full migration chain on PostgreSQL 17
 -- as supabase_admin over 127.0.0.1.

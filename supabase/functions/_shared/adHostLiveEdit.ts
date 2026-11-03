@@ -2,11 +2,11 @@
  * #4238 media-buyer, wave D — a Host changes a live ad's budget and/or end
  * date, once a day.
  *
- * MINGLA-INVARIANT: I-4238-LIVE-EDIT-ONCE-A-DAY | issue #4238 | A Host live ad's budget/end date changes at most once per 24 hours, the end never passes the last bookable moment, the new total never drops below spend so far, and Ads credit moves in the same transaction as the change (host_ad_amend_live). Enforced by supabase/migrations/__tests__/issue_4238_ads_media_buyer.implementor.pg17.test.sql (M4) and supabase/functions/_shared/__tests__/issue_4238_mb_live_edit.test.ts.
+ * Guards I-4238-LIVE-EDIT-ONCE-A-DAY (declared in its enforcing test under _shared/__tests__/).
  *
- * MINGLA-INVARIANT: I-4238-LIVE-EDIT-CAPS-WITHIN-TOTAL | issue #4238 | The per-app caps of a Host live edit never add up (in the brand's money, at each campaign's frozen rate) to more than the new total: planHostLiveEdit gives each app its spend plus a share of what is left, and host_ad_amend_live refuses caps above the new total (PT409). Enforced by supabase/functions/_shared/__tests__/issue_4238_mb_live_edit_r9.implementor.test.ts and supabase/migrations/__tests__/issue_4238_ads_media_buyer_r9.implementor.pg17.test.sql.
+ * Guards I-4238-LIVE-EDIT-CAPS-WITHIN-TOTAL (declared in its enforcing test under _shared/__tests__/).
  *
- * MINGLA-INVARIANT: I-4238-LIVE-EDIT-CLAIM-BEFORE-PUSH | issue #4238 | A Host live edit is claimed under the plan lock (host_ad_live_edit_claim) before any provider push, so a second tap or device never pushes; a same-key retry returns the saved edit; a once-a-day refusal never undoes a push. Enforced by supabase/functions/_shared/__tests__/issue_4238_mb_live_edit_r9.implementor.test.ts and supabase/migrations/__tests__/issue_4238_ads_media_buyer_r9.implementor.pg17.test.sql.
+ * Guards I-4238-LIVE-EDIT-CLAIM-BEFORE-PUSH (declared in its enforcing test under _shared/__tests__/).
  *
  * Order: claim the edit under the plan lock (caller, host-ad-campaign) →
  * plan (pure) → push each changed daily budget (Meta, Snapchat, TikTok — the

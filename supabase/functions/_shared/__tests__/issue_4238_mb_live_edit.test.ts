@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-LIVE-EDIT-ONCE-A-DAY | issue #4238 | A Host live ad's budget/end date changes at most once per 24 hours, the end never passes the last bookable moment, the new total never drops below spend so far, and Ads credit moves in the same transaction as the change (host_ad_amend_live).
 /**
  * #4238 media-buyer, wave D — a Host changes a live ad's budget and end
  * date: once a day, never past the last bookable moment, never under spend,

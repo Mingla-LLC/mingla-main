@@ -3,7 +3,7 @@
  * owner for ad-plan (checks before money), admin-ad-create-campaign (what each
  * app receives) and Ari. Pure.
  *
- * MINGLA-INVARIANT: I-4238-NO-SILENT-COPY-CUT | issue #4238 | A Host plan whose words are longer than an app allows is refused before any money is set aside (copy_too_long:<app>:<field>); Host payloads never cut text to fit. Enforced by supabase/functions/_shared/__tests__/issue_4238_mb_creative.test.ts.
+ * Guards I-4238-NO-SILENT-COPY-CUT (declared in supabase/functions/_shared/__tests__/issue_4238_mb_creative.test.ts).
  */
 
 import type { Platform } from "./adChannelCore.ts";

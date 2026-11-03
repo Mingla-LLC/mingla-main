@@ -9,7 +9,7 @@
  * bucket in public.ad_host_estimate_rate (ad_host_estimate_rate_hit).
  * Fails CLOSED: if the limiter cannot answer, no estimate is made.
  *
- * MINGLA-INVARIANT: I-4238-ESTIMATE-RATE-DURABLE | issue #4238 | Host reach estimates are limited per brand and per user in the database (ad_host_estimate_rate_hit), never only in edge memory, and the limiter failing refuses the estimate. Enforced by supabase/functions/_shared/__tests__/issue_4238_mb_r9_rework.implementor.test.ts and supabase/migrations/__tests__/issue_4238_ads_media_buyer_r9.implementor.pg17.test.sql.
+ * Guards I-4238-ESTIMATE-RATE-DURABLE (declared in supabase/functions/_shared/__tests__/issue_4238_mb_r9_rework.implementor.test.ts).
  */
 
 export const HOST_ESTIMATE_WINDOW_SECONDS = 60;
