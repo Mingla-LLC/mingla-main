@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4238",
+  "target": {
+    "kind": "function",
+    "name": "agent-chat"
+  },
+  "basePolicySha256": "351c1752d781b98eb0b01153f3ade019efa8cbaa6fc0d70909d9196493b2e7cc",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUSINESS_WEB_ORIGIN",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "658a05bff49323fe1e5c44c3c80542da09c329920f4b028e17dbaee6fe778a1e",
+  "reason": "Issue #4238 Ari ad tools build Host links through _shared/adDestination.ts, which reads BUSINESS_WEB_ORIGIN and falls back to the production Host web origin when it is unset, so the name is optional."
+}

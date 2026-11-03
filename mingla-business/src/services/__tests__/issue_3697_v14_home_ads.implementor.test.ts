@@ -104,7 +104,7 @@ describe("#3697 Host Home Ads lifecycle", () => {
       "utf8",
     );
     const detail = fs.readFileSync(
-      path.join(ROOT, "app/(tabs)/marketing/ads/[id].tsx"),
+      path.join(ROOT, "src/screens/hostAds/HostAdDetailScreen.tsx"),
       "utf8",
     );
     expect(detail).toContain('variant="typeToConfirm"');

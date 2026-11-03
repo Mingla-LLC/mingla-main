@@ -341,7 +341,8 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the Extras authoring migration and its proof the same way.
 // #3281: register the public Extras migration and its proof the same way.
 // #3355: register the Ari flow engine flag migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "089e015cf67bdd18b3bf0d3da5799d125ef6eab3ae9c4dde593d7aa81a6688b8";
+// #4238: register the list-audience migration, its proof and the tester's adversarial proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9607c5f6c446219083a211df9d06271699d79df40132683c5e9f93be8cd14077";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

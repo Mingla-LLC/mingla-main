@@ -155,6 +155,7 @@ ari.ads.approve_ad_plan
 ari.ads.pause_ad_campaign
 ari.ads.end_ad_campaign
 ari.ads.get_ad_campaign_report
+ari.ads.list_ad_audiences
 ari.brand.audit_log
 ari.brand.discovery_currency
 ari.event.door_sale

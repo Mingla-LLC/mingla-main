@@ -80,6 +80,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN_SRC = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(ADMIN_SRC, "../..");
 const read = (p) => fs.readFileSync(p, "utf8");
+// #4238: the wizard trees now hold a co-located __tests__/ folder. List every
+// source FILE under a tree (recursing into any nested source folder) and skip
+// test folders, which are not builder code. A bare readdirSync handed the
+// folder itself to read() and failed with EISDIR.
+const sourceFilesUnder = (rel) =>
+  fs
+    .readdirSync(path.join(ADMIN_SRC, rel), { withFileTypes: true })
+    .flatMap((entry) => {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) return entry.name === "__tests__" ? [] : sourceFilesUnder(child);
+      return entry.isFile() ? [child] : [];
+    });
 
 // ── A4.b copy-cap BOUNDARY attacks (exactly at / one past every cap) ─────────
 
@@ -1149,9 +1161,7 @@ describe("SC-10 + destination-filter source traps", () => {
   it("no campaign-builder file references the action service OR the launch action string", () => {
     const files = [
       "pages/CampaignBuilderPage.jsx",
-      ...fs
-        .readdirSync(path.join(ADMIN_SRC, "components/campaign-builder"))
-        .map((f) => `components/campaign-builder/${f}`),
+      ...sourceFilesUnder("components/campaign-builder"),
     ];
     for (const file of files) {
       const source = read(path.join(ADMIN_SRC, file));

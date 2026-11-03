@@ -3,7 +3,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const route = fs.readFileSync(
-  path.join(ROOT, "app/(tabs)/marketing/ads/create.tsx"),
+  path.join(ROOT, "src/screens/hostAds/HostAdCreateScreen.tsx"),
   "utf8",
 );
 
@@ -13,7 +13,8 @@ describe("issue #3697 Host Ads five-stage builder", () => {
       "What are you promoting?",
       "Who should see it?",
       "Budget and dates",
-      "Creative and copy",
+      // #4238 plain-language pass.
+      "Video and words",
       "Review and launch",
     ]) {
       expect(route).toContain(label);

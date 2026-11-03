@@ -25,6 +25,7 @@ describe("#1981 ToolProposalCard MONEY_CONFIRM_TOOLS", () => {
     expect(source).toContain("formatMoneyCents");
     expect(source).toContain("refund_total_cents");
     expect(source).toContain("zero_priced_remaining");
-    expect(source).toMatch(/isMoneyConfirm && moneyPhrase[\s\S]*fieldsFor\(toolName, liveArgs\)/);
+    // #4238: fieldsFor also takes the on-intent Host ad words (money format).
+    expect(source).toMatch(/isMoneyConfirm && moneyPhrase[\s\S]*fieldsFor\(toolName, liveArgs[,)]/);
   });
 });

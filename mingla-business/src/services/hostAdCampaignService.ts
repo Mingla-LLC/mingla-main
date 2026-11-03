@@ -47,7 +47,41 @@ export type HostAdCampaign = {
   } | null;
 };
 
+/** #4238 wave 2: one day of results, host currency where convertible. */
+export type HostAdDailyPoint = {
+  day: string;
+  spend_host_cents: number | null;
+  spend_provider_cents: number | null;
+  provider_currency: string | null;
+  impressions: number | null;
+  clicks: number | null;
+  page_visits: number | null;
+  results: number | null;
+};
+
+export type HostAdPlatformSpend = {
+  platform: string;
+  spend_provider_cents: number;
+  provider_currency: string | null;
+  results: number;
+};
+
+/** #4238 wave 2: the Ads list summary card (this month). */
+export type HostAdListSummary = {
+  currency: string | null;
+  spent_cents: number | null;
+  budget_cents: number;
+  results: number;
+  daily_spend: { day: string; cents: number | null }[];
+};
+
 export type HostAdCampaignDetail = {
+  /** #4238 wave 2: results over time ([] on older servers). */
+  daily?: HostAdDailyPoint[];
+  by_platform_spend?: HostAdPlatformSpend[];
+  time_zone?: string;
+  /** "unavailable" when the daily series could not be read. */
+  daily_error?: string;
   campaign: HostAdCampaign & Record<string, unknown>;
   plan_campaigns: (HostAdCampaign & Record<string, unknown>)[];
   plan_state: string | null;
@@ -158,6 +192,22 @@ export class HostAdCampaignError extends Error {
   }
 }
 
+/**
+ * #4238 — the error code in a 2xx edge-function body, only when it is a
+ * non-empty string. Edge envelopes carry `error: null` on success, and
+ * admin-ad-creative-prepare carries an error OBJECT beside `state: "failed"`
+ * so the caller can retry; neither is a failed request.
+ *
+ * Defined here because this service is already in the boot chunk (Home reads
+ * it); `./edgeErrorCode` re-exports it for the services in the Host Ads chunk,
+ * so the helper costs no extra boot-chunk module.
+ */
+export function edgeErrorCode(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const value = (data as { error?: unknown }).error;
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
 async function invokeHostAd<T>(
   body: Record<string, unknown>,
   functionName = "host-ad-campaign",
@@ -177,11 +227,13 @@ async function invokeHostAd<T>(
     }
     throw new HostAdCampaignError(
       payload?.error ?? "network",
-      payload?.detail ?? error.message ?? "host_ad_failed",
+      payload?.detail ?? payload?.error ?? "host_ad_failed",
       payload?.detail ?? null,
     );
   }
-  if (data && typeof data === "object" && "error" in data) {
+  // #4238: an edge envelope carries `error: null` on success. Fail only on a
+  // real error code string, never on the key or an error object.
+  if (edgeErrorCode(data) !== null) {
     const errBody = data as { error: string; detail?: string };
     throw new HostAdCampaignError(
       errBody.error || "unknown",
@@ -192,14 +244,19 @@ async function invokeHostAd<T>(
   return data as T;
 }
 
-export async function listHostAdCampaigns(
+/** #4238 wave 2: the list plus its summary card (null with no ads). */
+export async function listHostAdCampaignPage(
   brandId: string,
-): Promise<HostAdCampaign[]> {
-  const res = await invokeHostAd<{ ok: true; campaigns: HostAdCampaign[] }>({
+): Promise<{ campaigns: HostAdCampaign[]; summary: HostAdListSummary | null }> {
+  const res = await invokeHostAd<{
+    ok: true;
+    campaigns: HostAdCampaign[];
+    summary?: HostAdListSummary | null;
+  }>({
     action: "list",
     brand_id: brandId,
   });
-  return res.campaigns ?? [];
+  return { campaigns: res.campaigns ?? [], summary: res.summary ?? null };
 }
 
 export async function getHostAdCampaign(
