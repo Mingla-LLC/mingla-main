@@ -197,6 +197,7 @@ insert into public.ops_expected_events (id, record_id, title, event_type, expect
   ('39880000-0000-4000-d100-000000000003', '39880000-0000-4000-c100-000000000003', 'W3R Monthly', 'event', (now() AT TIME ZONE 'UTC')::date + 9, 'month', 'w3r', 'w3r'),
   ('39880000-0000-4000-d100-000000000004', '39880000-0000-4000-c100-000000000004', 'W3R Once', 'event', (now() AT TIME ZONE 'UTC')::date + 40, 'none', 'w3r', 'w3r');
 update public.ops_settings set value = 'true'::jsonb where key = 'auto_steps';
+update public.ops_settings set value = 'true'::jsonb where key = 'auto_promo_cards'; -- #4256: giveaway cards are off as shipped
 
 create function pg_temp.w3r_today() returns date language sql as $fn$ select (now() AT TIME ZONE 'UTC')::date $fn$;
 -- The open rolling card of a series as "<count>/<due offset>/<instructions>".
