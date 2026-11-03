@@ -16,6 +16,7 @@ import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import * as ops from "../../services/opsService";
 import { isRoadmapApproval, opsErrorWords, todayIso } from "../../lib/opsModel";
 import { cardRecordIds, isSendCard } from "../../lib/workViews";
+import { isFullAdmin } from "../../lib/access";
 import { WordingCard } from "./WordingQueue";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -49,7 +50,7 @@ export function CardDrafts({ card }) {
 
 export function CardWording({ card, onChanged }) {
   const { access } = useAuth();
-  const canTell = access?.role === "owner" || access?.role === "admin";
+  const canTell = isFullAdmin(access);
   const show = canTell && isRoadmapApproval(card) && card?.status === "person" && !card?.archived;
   const read = useOpsPoll(() => ops.listReview(todayIso()), { key: `${access?.email || ""}|wording-card|${card?.id || ""}`, intervalMs: 0, enabled: show });
   const people = usePeopleDirectory();
