@@ -52,7 +52,10 @@
 -- complete self-check with the closed import-provenance function and tables.
 -- #4130: crm_team_pulse is a separately guarded dashboard reader, not a
 -- pipeline command owned by the historical #3802 self-check.
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/"`
+-- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
+-- admin, partner) gates team changes, so the re-run self-check blocks below
+-- check growth only for admin areas and accept the team_manage gate.
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -83,10 +86,12 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802w-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('issue3802w-growth@test.local',   'growth',  'active',  now()),
-  ('issue3802w-partner@test.local',  'partner', 'active',  now()),
   ('issue3802w-invited@test.local',  'growth',  'invited', null),
   ('issue3802w-revoked@test.local',  'partner', 'revoked', now()),
   ('tunde.a@issue3802w.test.local',  'growth',  'active',  now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('issue3802w-partner@test.local', 'partner', 'active', now());
 
 -- Things a host can be linked to. Triggers and foreign keys are off for the
 -- fixture rows only (they need none of the product's side effects).
@@ -255,10 +260,11 @@ declare
 begin
   for c in
     select * from (values
+      -- #4255 (D3, D4): admin and partner hold team_manage; partner is a full admin.
       ('owner',    'true',  'true',  'true',  'true',  'false'),
-      ('admin',    'true',  'false', 'true',  'true',  'false'),
+      ('admin',    'true',  'true',  'true',  'true',  'false'),
       ('growth',   'false', 'false', 'true',  'true',  'true'),
-      ('partner',  'false', 'false', 'true',  'true',  'true'),
+      ('partner',  'true',  'true',  'true',  'true',  'false'),
       ('growth2',  'false', 'false', 'true',  'true',  'true'),
       ('invited',  'false', 'false', 'false', 'false', 'false'),
       ('revoked',  'false', 'false', 'false', 'false', 'false'),
@@ -280,18 +286,18 @@ begin
   end loop;
 
   perform pg_temp.t3802w_check('W1-2', 'areas: owner',
-    public.admin_team_role_areas('owner')::text, '{admin_console,team_manage,crm,beta_leads}');
+    public.admin_team_role_areas('owner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
   perform pg_temp.t3802w_check('W1-2', 'areas: admin',
-    public.admin_team_role_areas('admin')::text, '{admin_console,crm,beta_leads}');
+    public.admin_team_role_areas('admin')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
   perform pg_temp.t3802w_check('W1-2', 'areas: growth',
-    public.admin_team_role_areas('growth')::text, '{role_home,crm,beta_leads}');
+    public.admin_team_role_areas('growth')::text, '{role_home,crm,beta_leads,email_drafts}');
   perform pg_temp.t3802w_check('W1-2', 'areas: partner',
-    public.admin_team_role_areas('partner')::text, '{role_home,crm,beta_leads}');
+    public.admin_team_role_areas('partner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
   perform pg_temp.t3802w_check('W1-2', 'areas: anything else',
     public.admin_team_role_areas('nope')::text || public.admin_team_role_areas(null)::text, '{}{}');
-  perform pg_temp.t3802w_check('W1-2', 'growth access lists the three areas in order',
+  perform pg_temp.t3802w_check('W1-2', 'growth access lists its areas in order',
     pg_temp.t3802w_as('growth', $q$select public.admin_team_my_access()->>'areas'$q$),
-    '["role_home", "crm", "beta_leads"]');
+    '["role_home", "crm", "beta_leads", "email_drafts"]');
   perform pg_temp.t3802w_check('W1-2', 'invited growth still has no areas',
     pg_temp.t3802w_as('invited', $q$select public.admin_team_my_access()->>'areas'$q$), '[]');
   -- The full-admin authority was not touched by this work.
@@ -344,9 +350,9 @@ begin
         ('crm_record_set_owners',     format($q$select public.crm_record_set_owners(%L, array[%L])::text$q$, pg_temp.t3802w_id('base'), v_email), 'ok'),
         ('crm_record_log',            format($q$select public.crm_record_log(%L, '{"kind": "note", "body": "hello"}'::jsonb, %L)::text$q$, pg_temp.t3802w_id('base'), 'w11-log-' || v_who), 'ok'),
         ('crm_record_delete',         $q$select public.crm_record_delete('38020000-0000-4000-cfff-000000000002')::text$q$,
-                                      case when v_who in ('owner', 'admin') then 'ERR:P0002:not_found:%' else 'ERR:42501:forbidden: Only an owner or admin can delete. Mark it as lost instead.' end),
+                                      case when v_who in ('owner', 'admin', 'partner') then 'ERR:P0002:not_found:%' else 'ERR:42501:forbidden: Only an owner or admin can delete. Mark it as lost instead.' end),
         ('crm_record_restore',        $q$select public.crm_record_restore('38020000-0000-4000-cfff-000000000002')::text$q$,
-                                      case when v_who in ('owner', 'admin') then 'ERR:P0002:not_found:%' else 'ERR:42501:forbidden: Only an owner or admin can restore a deleted record.' end)
+                                      case when v_who in ('owner', 'admin', 'partner') then 'ERR:P0002:not_found:%' else 'ERR:42501:forbidden: Only an owner or admin can restore a deleted record.' end)
       ) as v(fn, sql, want)
     loop
       v_got := pg_temp.t3802w_as(v_who, f.sql);
@@ -1150,7 +1156,8 @@ begin
   v_id := pg_temp.t3802w_id('del');
   v_before := pg_temp.t3802w_snapshot();
   v_audit := pg_temp.t3802w_audit();
-  foreach v_who in array array['growth', 'partner', 'growth2'] loop
+  -- #4255 (D3): a Founding partner is a full admin and may delete; growth may not.
+  foreach v_who in array array['growth', 'growth2'] loop
     perform pg_temp.t3802w_check('W1-9', v_who || ' cannot delete, even their own record',
       pg_temp.t3802w_as(v_who, format($q$select public.crm_record_delete(%L)::text$q$, v_id)),
       'ERR:42501:forbidden: Only an owner or admin can delete. Mark it as lost instead.');
@@ -1679,11 +1686,12 @@ begin
   -- The Beta leads reader is limited to full admins.
   insert into public.beta_access_leads (brand_type, brand_name, contact_name, city, email, consent, source)
   values (array['restaurant'], 'Issue3802w Lead', 'Ada', 'Lagos', 'issue3802w-lead@test.local', true, 'organiser_marketing');
-  foreach v_who in array array['owner', 'admin'] loop
+  -- #4255 (D3): a Founding partner is a full admin and reads them too.
+  foreach v_who in array array['owner', 'admin', 'partner'] loop
     perform pg_temp.t3802w_check('W1-12', v_who || ' still reads beta leads',
       pg_temp.t3802w_as(v_who, $q$select count(*)::text from public.admin_beta_leads_list() where brand_name = 'Issue3802w Lead'$q$), '1');
   end loop;
-  foreach v_who in array array['growth', 'partner', 'invited', 'revoked', 'consumer', 'service'] loop
+  foreach v_who in array array['growth', 'invited', 'revoked', 'consumer', 'service'] loop
     perform pg_temp.t3802w_check('W1-12', v_who || ' is refused by the full-admin beta leads reader',
       pg_temp.t3802w_as(v_who, $q$select count(*)::text from public.admin_beta_leads_list()$q$), 'ERR:42501:forbidden');
   end loop;

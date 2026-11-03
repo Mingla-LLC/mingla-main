@@ -87,12 +87,18 @@ insert into public.admin_users (email, role, status) values
   ('issue3802t-unconfadm@test.local', 'admin', 'invited');
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('issue3802t-growth@test.local',    'growth',  'active', now()),
-  ('issue3802t-partner@test.local',   'partner', 'active', now()),
   ('issue3802t-mixedauth@test.local', 'growth',  'active', now()),
-  ('issue3802t-unconf2@test.local',   'partner', 'active', now());
+  -- #4255: unconf2 proves a TEAM row needs a confirmed mailbox, so it is a
+  -- growth row (partners moved to admin_users, like admins).
+  ('issue3802t-unconf2@test.local',   'growth',  'active', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('issue3802t-partner@test.local', 'partner', 'active', now());
 insert into public.admin_team_members (email, role, status) values
   ('issue3802t-unconf@test.local', 'growth',  'invited'),
-  ('issue3802t-inv@test.local',    'partner', 'invited');
+  -- #4255: inv proves the previous activation function never reaches the
+  -- team table, so it stays a team (growth) invitation.
+  ('issue3802t-inv@test.local',    'growth',  'invited');
 
 create temp table t3802x_results (seq serial primary key, test text, label text, ok boolean, detail text) on commit drop;
 
@@ -279,7 +285,8 @@ begin
        from pg_trigger t
       where t.tgrelid in ('public.admin_users'::regclass, 'public.admin_team_members'::regclass)
         and not t.tgisinternal),
-    'admin_team_members.admin_team_members_guard_exclusive/O,admin_users.admin_users_guard_exclusive/O');
+    -- #4255: plus the owner-row protection (row and TRUNCATE).
+    'admin_team_members.admin_team_members_guard_exclusive/O,admin_users.admin_users_guard_exclusive/O,admin_users.admin_users_protect_owner/O,admin_users.admin_users_protect_owner_truncate/O');
   perform pg_temp.t3802x_check('X-1', 'no rewrite rule on either table',
     (select count(*)::text from pg_rules where schemaname = 'public'
        and tablename in ('admin_users', 'admin_team_members')), '0');
@@ -319,7 +326,8 @@ begin
   perform pg_temp.t3802x_check('X-1', 'the full-admin role vocabulary is closed',
     (select pg_get_constraintdef(oid) from pg_constraint where conname = 'admin_users_role_check'
        and conrelid = 'public.admin_users'::regclass),
-    $c$CHECK ((role = ANY (ARRAY['owner'::text, 'admin'::text])))$c$);
+    -- #4255 (D3): the Founding partner seat joins the full-admin table.
+    $c$CHECK ((role = ANY (ARRAY['owner'::text, 'admin'::text, 'partner'::text])))$c$);
 end;
 $x1$;
 
@@ -478,7 +486,7 @@ begin
     pg_temp.t3802x_as('trusted', $q$with x as (insert into public.admin_team_members (email, role, status) values ('issue3802t-legacy@test.local', 'growth', 'invited') returning 1) select count(*)::text from x$q$),
     'ERR:23505:team_membership_conflict%');
   perform pg_temp.t3802x_like('X-3', 'padded invited full admin blocks a team row',
-    pg_temp.t3802x_as('trusted', $q$with x as (insert into public.admin_team_members (email, role, status) values ('issue3802t-pad@test.local', 'partner', 'active') returning 1) select count(*)::text from x$q$),
+    pg_temp.t3802x_as('trusted', $q$with x as (insert into public.admin_team_members (email, role, status) values ('issue3802t-pad@test.local', 'growth', 'active') returning 1) select count(*)::text from x$q$),
     'ERR:23505:team_membership_conflict%');
   -- And a live team row blocks a full-admin row in any spelling, on insert,
   -- on revival and on a change of address.
@@ -488,13 +496,13 @@ begin
       'ERR:23505:team_membership_conflict%');
   end loop;
   perform pg_temp.t3802x_like('X-3', 'a full-admin row cannot be re-addressed onto a live team member',
-    pg_temp.t3802x_as('trusted', $q$with x as (update public.admin_users set email = 'Issue3802T-Partner@Test.Local' where email = 'issue3802t-other@test.local' returning 1) select count(*)::text from x$q$),
+    pg_temp.t3802x_as('trusted', $q$with x as (update public.admin_users set email = 'Issue3802T-Growth@Test.Local' where email = 'issue3802t-other@test.local' returning 1) select count(*)::text from x$q$),
     'ERR:23505:team_membership_conflict%');
   perform pg_temp.t3802x_check('X-3', 'a revoked full-admin row in another spelling is allowed beside a live team row',
-    pg_temp.t3802x_as('trusted', $q$with x as (insert into public.admin_users (email, role, status) values ('Issue3802T-Partner@Test.Local', 'admin', 'revoked') returning 1) select count(*)::text from x$q$),
+    pg_temp.t3802x_as('trusted', $q$with x as (insert into public.admin_users (email, role, status) values ('Issue3802T-Growth@Test.Local', 'admin', 'revoked') returning 1) select count(*)::text from x$q$),
     '1');
   perform pg_temp.t3802x_like('X-3', '...and cannot be revived while the team row is live',
-    pg_temp.t3802x_as('trusted', $q$with x as (update public.admin_users set status = 'active' where email = 'Issue3802T-Partner@Test.Local' returning 1) select count(*)::text from x$q$),
+    pg_temp.t3802x_as('trusted', $q$with x as (update public.admin_users set status = 'active' where email = 'Issue3802T-Growth@Test.Local' returning 1) select count(*)::text from x$q$),
     'ERR:23505:team_membership_conflict%');
 
   -- The owner moves a mixed-case full admin to a team role, typing it a third way.
@@ -595,18 +603,19 @@ begin
   perform pg_temp.t3802x_check('X-4', 'claimed address of the owner cannot list',
     pg_temp.t3802x_as('consumer', $q$select count(*)::text from public.admin_team_list()$q$, 'issue3802t-owner@test.local'),
     'ERR:42501:forbidden');
+  -- #4255 (D4): an admin manages the team in their own right, never as the owner.
   perform pg_temp.t3802x_check('X-4', 'an admin claiming the owner address is still an admin',
     pg_temp.t3802x_as('admin', $q$select public.admin_team_role() || '/' || public.admin_team_can('team_manage')::text$q$, 'issue3802t-owner@test.local'),
-    'admin/false');
-  perform pg_temp.t3802x_check('X-4', 'an admin claiming the owner address cannot write',
-    pg_temp.t3802x_as('admin', $q$select public.admin_team_set_member('issue3802t-consumer@test.local', 'admin', 'invited')::text$q$, 'issue3802t-owner@test.local'),
-    'ERR:42501:forbidden');
+    'admin/true');
+  perform pg_temp.t3802x_check('X-4', 'an admin claiming the owner address still cannot change the owner',
+    pg_temp.t3802x_as('admin', $q$select public.admin_team_set_member('issue3802t-owner@test.local', 'admin', 'invited')::text$q$, 'issue3802t-owner@test.local'),
+    'ERR:42501:cannot_change_owner');
 
   -- The previous self-activation function never reaches the team table.
   perform pg_temp.t3802x_check('X-4', 'previous activation function called by an invited team member',
     coalesce(pg_temp.t3802x_as('inv', $q$select public.activate_invited_admin()::text$q$), ''), '');
   perform pg_temp.t3802x_check('X-4', '...leaves their invitation pending',
-    pg_temp.t3802x_live('issue3802t-inv@test.local'), 'team:partner:invited');
+    pg_temp.t3802x_live('issue3802t-inv@test.local'), 'team:growth:invited');
   perform pg_temp.t3802x_check('X-4', '...and gives them no full-admin answer',
     pg_temp.t3802x_as('inv', $q$select public.is_admin_user()::text$q$), 'false');
 
@@ -709,21 +718,25 @@ begin
     end if;
     -- I3
     v_view := pg_temp.t3802x_as('fuzz', $q$select coalesce(public.admin_team_role(), '-') || '|' || public.is_admin_user()::text || '|' || public.admin_team_can('admin_console')::text || '|' || public.admin_team_can('team_manage')::text || '|' || public.admin_team_can('role_home')::text || '|' || coalesce(public.admin_team_my_access()->>'role', '-') || ':' || coalesce(public.admin_team_my_access()->>'status', '-') || ':' || coalesce(public.admin_team_my_access()->>'areas', '-')$q$);
+    -- #4255 (D3, D4): a Founding partner holds a full-admin seat in
+    -- admin_users; admin and partner hold team_manage; every role holds
+    -- email_drafts.
     v_want_view := case
-      when v_live_after = 'full:admin:active'   then 'admin|true|true|false|false|admin:active:["admin_console", "crm", "beta_leads"]'
+      when v_live_after = 'full:admin:active'   then 'admin|true|true|true|false|admin:active:["admin_console", "team_manage", "crm", "beta_leads", "email_drafts"]'
       when v_live_after = 'full:admin:invited'  then '-|false|false|false|false|admin:invited:[]'
-      when v_live_after = 'team:growth:active'  then 'growth|false|false|false|true|growth:active:["role_home", "crm", "beta_leads"]'
-      when v_live_after = 'team:partner:active' then 'partner|false|false|false|true|partner:active:["role_home", "crm", "beta_leads"]'
+      when v_live_after = 'full:partner:active' then 'partner|true|true|true|false|partner:active:["admin_console", "team_manage", "crm", "beta_leads", "email_drafts"]'
+      when v_live_after = 'full:partner:invited' then '-|false|false|false|false|partner:invited:[]'
+      when v_live_after = 'team:growth:active'  then 'growth|false|false|false|true|growth:active:["role_home", "crm", "beta_leads", "email_drafts"]'
       when v_live_after = 'team:growth:invited' then '-|false|false|false|false|growth:invited:[]'
-      when v_live_after = 'team:partner:invited' then '-|false|false|false|false|partner:invited:[]'
       when v_live_after = 'none'                then '-|false|false|false|false|-:-:-'
       else '<unexpected live state ' || v_live_after || '>' end;
     if v_view is distinct from v_want_view then
       v_viol := v_viol || ('I3 access [' || coalesce(v_view, '<null>') || '] does not match stored state [' || v_live_after || '] ' || v_tag);
     end if;
     -- I4
-    if exists (select 1 from public.admin_users a where lower(btrim(a.email)) = c_email and a.role <> 'admin')
-       or exists (select 1 from public.admin_team_members m where m.role not in ('growth', 'partner')) then
+    if exists (select 1 from public.admin_users a where lower(btrim(a.email)) = c_email and a.role not in ('admin', 'partner'))
+       or exists (select 1 from public.admin_team_members m where m.role not in ('growth', 'partner'))
+       or exists (select 1 from public.admin_team_members m where m.role = 'partner' and m.status <> 'revoked') then
       v_viol := v_viol || ('I4 role outside the allowed set ' || v_tag);
     end if;
     if (select md5(to_jsonb(a)::text) from public.admin_users a where a.email = 'issue3802t-owner@test.local') is distinct from v_owner_row then
@@ -755,7 +768,7 @@ begin
       v_viol := v_viol || ('I7 a row was deleted ' || v_tag);
     end if;
     -- I8
-    if (v_live_after = 'full:admin:active') is distinct from
+    if (v_live_after in ('full:admin:active', 'full:partner:active')) is distinct from
        exists (select 1 from public.admin_users a where a.email = c_email and a.status = 'active') then
       v_viol := v_viol || ('I8 server-style lookup disagrees ' || v_tag);
     end if;
@@ -811,12 +824,12 @@ begin
   perform pg_temp.t3802x_check('X-5', 'steps walked', v_steps::text, '4246');
   perform pg_temp.t3802x_check('X-5', 'invariant violations: ' || coalesce(array_to_string(v_first[1:12], ' || '), ''), v_nviol::text, '0');
   -- The walk is not vacuous: every membership state was reached.
-  foreach s in array array['none', 'full:admin:invited', 'full:admin:active', 'team:growth:invited', 'team:growth:active', 'team:partner:invited', 'team:partner:active'] loop
+  foreach s in array array['none', 'full:admin:invited', 'full:admin:active', 'team:growth:invited', 'team:growth:active', 'full:partner:invited', 'full:partner:active'] loop
     perform pg_temp.t3802x_check('X-5', 'state reached: ' || s, (s = any (v_reached))::text, 'true');
   end loop;
   perform pg_temp.t3802x_check('X-5', 'no other state was ever reached',
     (select count(*)::text from unnest(v_reached) x
-      where x not in ('none', 'full:admin:invited', 'full:admin:active', 'team:growth:invited', 'team:growth:active', 'team:partner:invited', 'team:partner:active')), '0');
+      where x not in ('none', 'full:admin:invited', 'full:admin:active', 'team:growth:invited', 'team:growth:active', 'full:partner:invited', 'full:partner:active')), '0');
   perform pg_temp.t3802x_check('X-5', 'every sequence was undone', (pg_temp.t3802x_world() = v_world)::text, 'true');
 end;
 $x5$;
@@ -875,29 +888,40 @@ begin
     end loop;
   end loop;
 
-  -- An admin (not the owner) calls every new function.
+  -- #4255 (D4): an admin (not the owner) manages the team, but never the
+  -- owner and never themself, and nobody can assign the owner role.
   perform pg_temp.t3802x_check('X-6', 'admin: role and areas',
     pg_temp.t3802x_as('admin', $q$select public.admin_team_role() || '/' || public.admin_team_can('admin_console')::text || '/' || public.admin_team_can('team_manage')::text || '/' || public.admin_team_can('role_home')::text$q$),
-    'admin/true/false/false');
+    'admin/true/true/false');
   perform pg_temp.t3802x_check('X-6', 'admin: self-activation returns their own access and changes nothing',
     (pg_temp.t3802x_as('admin', $q$select public.admin_team_activate_self()::text$q$)::jsonb ->> 'role'), 'admin');
-  perform pg_temp.t3802x_check('X-6', 'admin: roster refused',
-    pg_temp.t3802x_as('admin', $q$select count(*)::text from public.admin_team_list()$q$), 'ERR:42501:forbidden');
-  foreach v_target in array array['issue3802t-admin@test.local', 'issue3802t-owner@test.local', 'issue3802t-growth@test.local', 'issue3802t-consumer@test.local', 'issue3802t-inv@test.local'] loop
-    foreach v_role in array array['owner', 'admin', 'growth', 'partner'] loop
+  perform pg_temp.t3802x_check('X-6', 'admin: roster readable',
+    (pg_temp.t3802x_as('admin', $q$select count(*)::text from public.admin_team_list()$q$) not like 'ERR:%')::text, 'true');
+  foreach v_target in array array['issue3802t-admin@test.local', 'issue3802t-owner@test.local'] loop
+    foreach v_role in array array['admin', 'growth', 'partner'] loop
       foreach v_status in array array['invited', 'active', 'revoked'] loop
         perform pg_temp.t3802x_check('X-6', 'admin cannot set ' || v_target || ' to ' || v_role || '/' || v_status,
           pg_temp.t3802x_as('admin', format($q$select public.admin_team_set_member(%L, %L, %L)::text$q$, v_target, v_role, v_status)),
-          'ERR:42501:forbidden');
+          case when v_target = 'issue3802t-admin@test.local' then 'ERR:42501:cannot_change_self' else 'ERR:42501:cannot_change_owner' end);
       end loop;
     end loop;
   end loop;
-  -- A team member tries to lift themself or a colleague.
+  foreach v_target in array array['issue3802t-admin@test.local', 'issue3802t-owner@test.local', 'issue3802t-growth@test.local', 'issue3802t-consumer@test.local', 'issue3802t-inv@test.local'] loop
+    foreach v_status in array array['invited', 'active', 'revoked'] loop
+      perform pg_temp.t3802x_check('X-6', 'admin cannot make ' || v_target || ' an owner (' || v_status || ')',
+        pg_temp.t3802x_as('admin', format($q$select public.admin_team_set_member(%L, 'owner', %L)::text$q$, v_target, v_status)),
+        'ERR:22023:invalid_role');
+    end loop;
+  end loop;
+  -- A team member tries to lift themself or a colleague. (#4255: a Founding
+  -- partner is a full admin, so they are refused only for being themself.)
   foreach v_who in array array['growth', 'partner'] loop
     foreach v_role in array array['owner', 'admin', 'growth', 'partner'] loop
       perform pg_temp.t3802x_check('X-6', v_who || ' cannot set self to ' || v_role,
         pg_temp.t3802x_as(v_who, format($q$select public.admin_team_set_member('issue3802t-%s@test.local', %L, 'active')::text$q$, v_who, v_role)),
-        'ERR:42501:forbidden');
+        case when v_who = 'growth' then 'ERR:42501:forbidden'
+             when v_role = 'owner' then 'ERR:22023:invalid_role'
+             else 'ERR:42501:cannot_change_self' end);
     end loop;
     perform pg_temp.t3802x_check('X-6', v_who || ': self-activation returns their own access and changes nothing',
       (pg_temp.t3802x_as(v_who, $q$select public.admin_team_activate_self()::text$q$)::jsonb ->> 'role'), v_who);
@@ -948,11 +972,15 @@ begin
   perform pg_temp.t3802x_check('X-7', 'team member direct read answers with no rows',
     pg_temp.t3802x_as('growth', $q$select count(*)::text from public.admin_users$q$), '0');
   -- The inline form existing policies use, evaluated as each caller.
-  foreach v_who in array array['growth', 'partner', 'consumer', 'unconf2'] loop
+  -- #4255 (D3): a Founding partner holds a full-admin row, so the control below covers it.
+  foreach v_who in array array['growth', 'consumer', 'unconf2'] loop
     perform pg_temp.t3802x_check('X-7', v_who || ': inline full-admin lookup is false',
       pg_temp.t3802x_as(v_who, $q$select exists (select 1 from public.admin_users au where lower(au.email) = lower(current_setting('request.jwt.claim.email', true)) and au.status = 'active')::text$q$),
       'false');
   end loop;
+  perform pg_temp.t3802x_check('X-7', 'control: the same lookup is true for a Founding partner',
+    pg_temp.t3802x_as('partner', $q$select exists (select 1 from public.admin_users au where lower(au.email) = lower(current_setting('request.jwt.claim.email', true)) and au.status = 'active')::text$q$),
+    'true');
   perform pg_temp.t3802x_check('X-7', 'control: the same lookup is true for an admin',
     pg_temp.t3802x_as('admin', $q$select exists (select 1 from public.admin_users au where lower(au.email) = lower(current_setting('request.jwt.claim.email', true)) and au.status = 'active')::text$q$),
     'true');
@@ -993,26 +1021,27 @@ begin
   perform pg_temp.t3802x_check('X-8', 'removed person: nothing changed', (pg_temp.t3802x_world() = v_world)::text, 'true');
   perform pg_temp.t3802x_check('X-8', 'removed person: no audit row', pg_temp.t3802x_audit()::text, v_audit::text);
 
-  -- Invited again in the other role.
-  r := pg_temp.t3802x_as('owner', $q$select public.admin_team_set_member('issue3802t-comeback@test.local', 'partner', 'invited')::text$q$);
+  -- Invited again in the other role (#4255: growth, the non-admin team role;
+  -- a Founding partner now holds a full-admin seat like an admin).
+  r := pg_temp.t3802x_as('owner', $q$select public.admin_team_set_member('issue3802t-comeback@test.local', 'growth', 'invited')::text$q$);
   perform pg_temp.t3802x_check('X-8', 'invite again reports the role they last held',
     (r::jsonb -> 'previous')::text || '/' || (r::jsonb ->> 'changed'), '{"role": "admin", "status": "revoked"}/true');
   perform pg_temp.t3802x_check('X-8', 'one live membership: an invitation',
-    pg_temp.t3802x_live('issue3802t-comeback@test.local'), 'team:partner:invited');
+    pg_temp.t3802x_live('issue3802t-comeback@test.local'), 'team:growth:invited');
   perform pg_temp.t3802x_check('X-8', 'the new invitation carries no old acceptance',
     (select (accepted_at is null)::text from public.admin_team_members where email = 'issue3802t-comeback@test.local'), 'true');
   perform pg_temp.t3802x_check('X-8', 'the owner cannot switch the fresh invitation on for them',
-    pg_temp.t3802x_as('owner', $q$select public.admin_team_set_member('issue3802t-comeback@test.local', 'partner', 'active')::text$q$), 'ERR:22023:never_activated');
+    pg_temp.t3802x_as('owner', $q$select public.admin_team_set_member('issue3802t-comeback@test.local', 'growth', 'active')::text$q$), 'ERR:22023:never_activated');
   perform pg_temp.t3802x_check('X-8', 'invited again: shown the invitation, no areas, no role',
     pg_temp.t3802x_as('comeback', $q$select (public.admin_team_my_access()->>'role') || '/' || (public.admin_team_my_access()->>'status') || '/' || (public.admin_team_my_access()->>'areas') || '/' || coalesce(public.admin_team_role(), '<none>')$q$),
-    'partner/invited/[]/<none>');
-  perform pg_temp.t3802x_check('X-8', 'they accept and are a partner, not a full admin',
-    pg_temp.t3802x_as('comeback', $q$select (public.admin_team_activate_self()->>'role') || '/' || public.is_admin_user()::text$q$), 'partner/false');
+    'growth/invited/[]/<none>');
+  perform pg_temp.t3802x_check('X-8', 'they accept and are a growth teammate, not a full admin',
+    pg_temp.t3802x_as('comeback', $q$select (public.admin_team_activate_self()->>'role') || '/' || public.is_admin_user()::text$q$), 'growth/false');
   perform pg_temp.t3802x_check('X-8', 'their old full-admin row stays revoked',
     (select status from public.admin_users where email = 'issue3802t-comeback@test.local'), 'revoked');
-  perform pg_temp.t3802x_check('X-8', 'the roster shows them once, as a partner',
+  perform pg_temp.t3802x_check('X-8', 'the roster shows them once, as a growth teammate',
     pg_temp.t3802x_as('owner', $q$select string_agg(role || '/' || status, ',') from public.admin_team_list() where email = 'issue3802t-comeback@test.local'$q$),
-    'partner/active');
+    'growth/active');
 end;
 $x8$;
 
@@ -1027,7 +1056,7 @@ declare
   r record;
 begin
   select count(*), count(*) filter (where not ok) into v_total, v_failed from t3802x_results;
-  if v_total < 572 then
+  if v_total < 545 then  -- #4255: the admin refusal grid narrowed to the owner and self
     raise exception 'ISSUE-3802 TESTER FAIL: only % checks ran; the suite did not execute fully', v_total;
   end if;
   if v_failed > 0 then
@@ -1088,7 +1117,8 @@ begin
     select * from (values
       -- label, target as typed by session 1, request 1, target as typed by session 2, request 2
       ('R-1', ' Issue3802T-Race-A@Test.Local ', 'growth', 'invited', 'issue3802t-race-a@test.local', 'admin',  'invited'),
-      ('R-2', 'issue3802t-race-b@test.local',   'partner', 'invited', 'ISSUE3802T-RACE-B@test.local', 'partner', 'invited')
+      -- #4255: growth keeps this race in the team table (a partner seat is in admin_users now).
+      ('R-2', 'issue3802t-race-b@test.local',   'growth', 'invited', 'ISSUE3802T-RACE-B@test.local', 'growth', 'invited')
     ) as v(label, e1, role1, status1, e2, role2, status2)
   loop
     begin

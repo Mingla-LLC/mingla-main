@@ -659,7 +659,7 @@ BEGIN
   IF v_role IN ('admin', 'partner') THEN
     UPDATE public.admin_users
        SET status = 'active', accepted_at = now()
-     WHERE lower(btrim(email)) = v_email AND status = 'invited';
+     WHERE lower(btrim(email)) = v_email AND status = 'invited' AND role = v_role;
     GET DIAGNOSTICS v_a = ROW_COUNT;
   ELSE
     UPDATE public.admin_team_members

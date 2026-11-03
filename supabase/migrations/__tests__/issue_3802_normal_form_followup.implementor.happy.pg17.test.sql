@@ -30,7 +30,10 @@
 \set ON_ERROR_STOP on
 \set t3802c_new_file `cat supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
 \set t3802c_body `sed '/^BEGIN;$/d; /^COMMIT;$/d' supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
-\set t3802c_check `sed -n '/^DO \$nfcheck\$/,/^\$nfcheck\$;/p' supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
+-- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
+-- admin, partner) gates team changes, so the re-run self-check blocks below
+-- check growth only for admin areas and accept the team_manage gate.
+\set t3802c_check `sed -n '/^DO \$nfcheck\$/,/^\$nfcheck\$;/p' supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802c_old_fn `sed -n '/^CREATE FUNCTION public.crm_ident_key(/,/^\$\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql | sed '1s/^CREATE FUNCTION/CREATE OR REPLACE FUNCTION/'`
 \set t3802c_old_hits `sed -n '/^CREATE FUNCTION public.crm_identifier_hits(/,/^\$\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql | sed '1s/^CREATE FUNCTION/CREATE OR REPLACE FUNCTION/'`
 \set t3802c_old_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
