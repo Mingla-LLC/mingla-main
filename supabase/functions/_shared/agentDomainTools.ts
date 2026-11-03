@@ -4250,7 +4250,11 @@ const proposeAdPlan = writeTool(
     if (seriesPage && seriesPage.ok === false) {
       throw new ToolError("INVALID_ARGS", adPageRefusalWords(seriesPage));
     }
-    const effectiveEnd = adEffectiveScheduleEnd(args.ends_at, seriesPage);
+    const effectiveEnd = adEffectiveScheduleEnd(
+      args.ends_at,
+      seriesPage,
+      args.starts_at,
+    );
     if (!effectiveEnd.ok) {
       throw new ToolError("INVALID_ARGS", effectiveEnd.message);
     }
@@ -8707,7 +8711,11 @@ export async function preflightMoneyProposal(
     if (promotedPage && promotedPage.ok === false) {
       throw new ToolError("INVALID_ARGS", adPageRefusalWords(promotedPage));
     }
-    const cardEnd = adEffectiveScheduleEnd(args.ends_at, promotedPage);
+    const cardEnd = adEffectiveScheduleEnd(
+      args.ends_at,
+      promotedPage,
+      args.starts_at,
+    );
     if (!cardEnd.ok) {
       throw new ToolError("INVALID_ARGS", cardEnd.message);
     }

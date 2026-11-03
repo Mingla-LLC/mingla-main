@@ -116,10 +116,23 @@ export function adScheduleWords(
 export function adEffectiveScheduleEnd(
   endsAt: unknown,
   page: Record<string, unknown> | null | undefined,
+  startsAt?: unknown,
 ): { ok: true; endsAt: string | null } | { ok: false; message: string } {
   const end = typeof endsAt === "string" && endsAt.trim() ? endsAt : null;
   const limit = isoMillis(page?.last_bookable_at);
   if (limit === null) return { ok: true, endsAt: end };
+  // #4238 r6: a start at or past the last bookable moment is refused here,
+  // before Ari's card, in the Host builder's own sentence (the server refuses
+  // it as schedule_starts_after_last_date only after Confirm).
+  const startMs = isoMillis(startsAt);
+  if (startMs !== null && startMs >= limit) {
+    return {
+      ok: false,
+      message: `Your ad has to start by ${
+        adDayLabel(page?.last_bookable_at, page?.timezone)
+      }, the last day people can book.`,
+    };
+  }
   if (end === null) {
     return { ok: true, endsAt: new Date(limit).toISOString() };
   }

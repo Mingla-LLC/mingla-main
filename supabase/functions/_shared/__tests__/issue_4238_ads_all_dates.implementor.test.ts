@@ -521,3 +521,43 @@ Deno.test("D6: Ari's approve (LAUNCH) card names plain days in the page's zone, 
     "Starts after approval · runs until Mon 7 Dec",
   );
 });
+
+Deno.test("D7 (r6): Ari refuses a start at or past the last bookable moment before the card, in the builder's sentence", async () => {
+  const { preflightMoneyProposal } = await import("../agentDomainTools.ts");
+  const sentence = "Your ad has to start by Mon 7 Dec, the last day people can book.";
+  for (const startsAt of ["2026-12-06T23:30:00.000Z", "2026-12-07T05:00:00Z"]) {
+    const actions: string[] = [];
+    await assertRejects(
+      () =>
+        preflightMoneyProposal(
+          "propose_ad_plan",
+          { ...D6_ARGS, starts_at: startsAt },
+          d6Client(D6_PAGE, actions),
+        ),
+      Error,
+      sentence,
+    );
+    assertEquals(actions, ["host_setup"]);
+  }
+  // A start just before the limit is fine.
+  const ok = await preflightMoneyProposal(
+    "propose_ad_plan",
+    { ...D6_ARGS, starts_at: "2026-12-06T23:29:00.000Z" },
+    d6Client(D6_PAGE, []),
+  ) as Record<string, unknown>;
+  assertEquals(ok.ad_schedule, "Starts Mon 7 Dec · runs until Mon 7 Dec");
+  // The builder's sentence, word for word.
+  const rules = await Deno.readTextFile(
+    new URL(
+      "../../../../mingla-business/src/components/marketing/ads/hostAdBuilderRules.ts",
+      import.meta.url,
+    ),
+  );
+  assert(
+    rules.includes("`Your ad has to start by ${limit.label}, the last day people can book.`"),
+  );
+  assertEquals(
+    adEffectiveScheduleEnd(undefined, D6_PAGE, "2026-12-07T00:00:00Z"),
+    { ok: false, message: sentence },
+  );
+});
