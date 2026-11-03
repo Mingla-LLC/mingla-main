@@ -3927,15 +3927,23 @@ export async function ariCheckedAudienceNames(
   const raw = args.audience_keys;
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw) || raw.length > 3) {
-    throw new ToolError("AD_AUDIENCE_NOT_OWNED", "An ad can use up to 3 of the brand's own audiences.");
+    throw new ToolError(
+      "AD_AUDIENCE_NOT_OWNED",
+      "An ad can use up to 3 of the brand's own audiences.",
+    );
   }
   const keys = [...new Set(raw.map((key) => String(key)))];
   if (keys.length === 0) return [];
   const prefix = `brand:${String(args.brand_id ?? "").toLowerCase()}:`;
-  if (!isUuid(args.brand_id) || keys.some((key) => !key.startsWith(prefix) || key.endsWith(":seed"))) {
+  if (
+    !isUuid(args.brand_id) ||
+    keys.some((key) => !key.startsWith(prefix) || key.endsWith(":seed"))
+  ) {
     throw new ToolError("AD_AUDIENCE_NOT_OWNED", AD_AUDIENCE_NOT_OWNED);
   }
-  const { data, error } = await client.rpc("host_ad_audiences", { p_brand_id: args.brand_id });
+  const { data, error } = await client.rpc("host_ad_audiences", {
+    p_brand_id: args.brand_id,
+  });
   if (error) {
     throw new ToolError(
       "AD_AUDIENCE_NOT_OWNED",
@@ -3943,12 +3951,15 @@ export async function ariCheckedAudienceNames(
     );
   }
   const rows = (data ?? []) as Record<string, unknown>[];
+  const upper = (value: unknown) => String(value).trim().toUpperCase();
   const countries = Array.isArray(args.countries)
-    ? [...new Set(args.countries.map((value) => String(value).trim().toUpperCase()))]
+    ? [...new Set(args.countries.map(upper))]
     : [];
   return keys.map((key) => {
     const row = rows.find((item) => item.audience_key === key);
-    if (!row) throw new ToolError("AD_AUDIENCE_NOT_OWNED", AD_AUDIENCE_NOT_OWNED);
+    if (!row) {
+      throw new ToolError("AD_AUDIENCE_NOT_OWNED", AD_AUDIENCE_NOT_OWNED);
+    }
     if (
       row.kind === "lookalike" &&
       !(countries.length === 1 && countries[0] === row.lookalike_country)
@@ -3968,7 +3979,7 @@ export async function ariCheckedAudienceNames(
 // RPC runs under the caller's JWT and refuses brands the caller can't read.
 const listAdAudiences = writeTool(
   "list_ad_audiences",
-  "List the brand's own ad audiences (past guests, contacts, people like your guests) with their size in words and which apps they're ready on. Names and sizes only: never people. Each size is already plain words (\"About 250 people\", \"Fewer than 10 people\", \"No people yet\", \"Building now\"); repeat it exactly as given and never turn it into a number. A lookalike has no size (size is null), so say only which apps are building it. Use the returned keys in propose_ad_plan audience_keys; never invent keys.",
+  'List the brand\'s own ad audiences (past guests, contacts, people like your guests) with their size in words and which apps they\'re ready on. Names and sizes only: never people. Each size is already plain words ("About 250 people", "Fewer than 10 people", "No people yet", "Building now"); repeat it exactly as given and never turn it into a number. A lookalike has no size (size is null), so say only which apps are building it. Use the returned keys in propose_ad_plan audience_keys; never invent keys.',
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
@@ -8898,7 +8909,9 @@ export async function preflightMoneyProposal(
       const known = rowsError ? [] : (rows ?? []) as Record<string, unknown>[];
       audienceNames = chosenKeys.map((key) => {
         const row = known.find((item) => item.audience_key === key);
-        return row ? ariAudienceName(row) : "An audience that is no longer available";
+        return row
+          ? ariAudienceName(row)
+          : "An audience that is no longer available";
       }).join(" · ");
     }
     return {
