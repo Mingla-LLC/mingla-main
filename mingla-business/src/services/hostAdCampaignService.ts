@@ -229,12 +229,6 @@ async function invokeHostAd<T>(
   return data as T;
 }
 
-export async function listHostAdCampaigns(
-  brandId: string,
-): Promise<HostAdCampaign[]> {
-  return (await listHostAdCampaignPage(brandId)).campaigns;
-}
-
 /** #4238 wave 2: the list plus its summary card (null with no ads). */
 export async function listHostAdCampaignPage(
   brandId: string,
