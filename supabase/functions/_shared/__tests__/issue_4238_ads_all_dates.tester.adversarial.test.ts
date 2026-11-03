@@ -16,8 +16,8 @@
  *     saved for any refusal. A page without dates is not bounded.
  *  A. Ari's propose_ad_plan executor: no end → the plan carries the last
  *     bookable moment; a later end, or a page the server greys out, stops
- *     BEFORE any plan is opened. A slug in a different case slips past Ari's
- *     own lookup (no default, no cap) — the server bound in C is the backstop.
+ *     BEFORE any plan is opened. A slug in a different case gets the same
+ *     default and cap (#4238 rework); the server bound in C is the backstop.
  *  F. freeze_targeting and the launch path cannot move the schedule.
  *
  * Fails on revert: deleting the adScheduleBoundError call in ad-plan
@@ -466,7 +466,8 @@ Deno.test("#4238 A Ari refuses a later end BEFORE opening any plan, in plain wor
 Deno.test("#4238 A Ari refuses a greyed-out page BEFORE opening any plan", async () => {
   for (
     const [availability, words] of [
-      ["ended", /dates for that page have passed/],
+      // #4238 rework: Ari now gives the picker's own reason word for word.
+      ["ended", /All its dates have passed/],
       ["nothing_on_sale", /Nothing is on sale/],
       ["private", /private/],
       ["unlisted", /Unlisted/],
@@ -487,12 +488,12 @@ Deno.test("#4238 A Ari refuses a greyed-out page BEFORE opening any plan", async
   }
 });
 
-Deno.test("#4238 A a differently-cased slug slips past Ari's own cap (server bound is the backstop)", async () => {
-  // The SQL resolver lower-cases slugs, so "Sunday-Rooftop" is the same page
-  // to the server; Ari's lookup is exact, so it finds no page, sets no default
-  // end and applies no cap. The plan therefore reaches create_version with
-  // the hostile end — where ad-plan's adScheduleBoundError refuses it (C).
-  const { message, schedule } = await propose(
+Deno.test("#4238 A a differently-cased slug gets Ari's own cap too (and the server bound stays the backstop)", async () => {
+  // #4238 rework (P3): the SQL resolver lower-cases slugs, and so does Ari's
+  // lookup now, so "Sunday-Rooftop" is the same page to both. A later end is
+  // refused before any plan opens; with no end the default is the last
+  // bookable moment. ad-plan's adScheduleBoundError still refuses it (C).
+  const late = await propose(
     {
       ...ARI_ARGS,
       dest_entity_slug: "Sunday-Rooftop",
@@ -500,8 +501,20 @@ Deno.test("#4238 A a differently-cased slug slips past Ari's own cap (server bou
     },
     SERIES_PAGE,
   );
-  assertEquals(message, null);
-  assertEquals(schedule?.ends_at, "2027-06-01T00:00:00Z");
+  assert(
+    late.message && /last day people can book/.test(late.message),
+    String(late.message),
+  );
+  assertEquals(
+    late.bodies.map((row) => String(row.body.action)),
+    ["host_setup"],
+  );
+  const open = await propose(
+    { ...ARI_ARGS, dest_entity_slug: " Sunday-Rooftop ", dest_brand_slug: "FEMZY" },
+    SERIES_PAGE,
+  );
+  assertEquals(open.message, null);
+  assertEquals(open.schedule?.ends_at, "2026-12-06T22:00:00.000Z");
   const server = await createVersion(DATED, {
     ends_at: "2027-06-01T00:00:00Z",
   });

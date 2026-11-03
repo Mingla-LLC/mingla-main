@@ -30,7 +30,9 @@ import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 import { destinationDescriptorOf } from "./adDestination.ts";
 import {
   adEffectiveScheduleEnd,
+  adFindSetupPage,
   adPageRefusalWords,
+  adScheduleWords,
   adSeriesDatesWords,
 } from "./adScheduleBound.ts";
 import { formatHostAdMoneyCents } from "./adMoneyFormat.ts";
@@ -4244,17 +4246,7 @@ const proposeAdPlan = writeTool(
     // #4238: one ad covers every date of a series and ends by the last day
     // people can book. A page the server can't promote is refused in plain
     // words; no end means the last bookable moment; a later end is refused.
-    const seriesPage = (Array.isArray(setup.pages) ? setup.pages : []).find(
-      (page) =>
-        page.page_type === String(args.dest_page_type) &&
-        page.brand_slug === String(args.dest_brand_slug) &&
-        (String(args.dest_page_type) === "brand" ||
-          (page.entity_slug ?? undefined) ===
-            (typeof args.dest_entity_slug === "string" &&
-                args.dest_entity_slug.trim()
-              ? args.dest_entity_slug.trim()
-              : undefined)),
-    );
+    const seriesPage = adFindSetupPage(setup.pages, args);
     if (seriesPage && seriesPage.ok === false) {
       throw new ToolError("INVALID_ARGS", adPageRefusalWords(seriesPage));
     }
@@ -8702,24 +8694,24 @@ export async function preflightMoneyProposal(
         brandCurrency = typeof setup?.currency === "string"
           ? setup.currency
           : null;
-        promotedPage = (Array.isArray(setup?.pages) ? setup.pages : [])
-          .find((page: Record<string, unknown>) =>
-            page?.page_type === String(args.dest_page_type ?? "") &&
-            page?.brand_slug === String(args.dest_brand_slug ?? "") &&
-            (String(args.dest_page_type) === "brand" ||
-              (page?.entity_slug ?? null) ===
-                (typeof args.dest_entity_slug === "string"
-                  ? args.dest_entity_slug.trim()
-                  : null))
-          );
+        promotedPage = adFindSetupPage(setup?.pages, args);
       } catch (error) {
         console.warn("[ari-ad-card] brand currency unavailable", {
           error: error instanceof Error ? error.name : "unknown",
         });
       }
     }
+    // #4238: a page the server can't promote, or an end past its last
+    // bookable day, is refused here, before any card, with the same reason
+    // the Host picker shows (not only after Confirm).
+    if (promotedPage && promotedPage.ok === false) {
+      throw new ToolError("INVALID_ARGS", adPageRefusalWords(promotedPage));
+    }
     const cardEnd = adEffectiveScheduleEnd(args.ends_at, promotedPage);
-    const cardEndsAt = cardEnd.ok ? cardEnd.endsAt : args.ends_at;
+    if (!cardEnd.ok) {
+      throw new ToolError("INVALID_ARGS", cardEnd.message);
+    }
+    const cardEndsAt = cardEnd.endsAt;
     const adDates = adSeriesDatesWords(promotedPage);
     const days = hostAdScheduleDays(args.starts_at, cardEndsAt);
     const daily = Number(
@@ -8776,10 +8768,6 @@ export async function preflightMoneyProposal(
     const destination = pageWord && pageName
       ? `${pageWord}: ${pageName}`
       : pageWord || pageName;
-    const start = typeof args.starts_at === "string"
-      ? args.starts_at
-      : "starts after approval";
-    const end = typeof cardEndsAt === "string" ? cardEndsAt : "no end date";
     return {
       ad_budget_cents: budget,
       ad_daily_budget_cents: daily,
@@ -8795,7 +8783,12 @@ export async function preflightMoneyProposal(
       ...(audienceNames.length > 0
         ? { ad_audiences: audienceNames.join(" · ") }
         : {}),
-      ad_schedule: `${start} → ${end}`,
+      // #4238: plain days in the page's own time zone, never a raw timestamp.
+      ad_schedule: adScheduleWords(
+        args.starts_at,
+        cardEndsAt,
+        promotedPage?.timezone,
+      ),
       ad_copy: typeof args.primary_text === "string"
         ? args.primary_text
         : String(args.name ?? ""),
@@ -8908,12 +8901,6 @@ export async function preflightMoneyProposal(
           adLabel(row.verdict)
       }`
     ).join(" · ");
-    const start = typeof schedule?.starts_at === "string"
-      ? schedule.starts_at
-      : "starts after approval";
-    const end = typeof schedule?.ends_at === "string"
-      ? schedule.ends_at
-      : "no end date";
     const providerAllocation = aggregate.provider_allocations.map((row) => {
       const platform = adPlatformName(row.platform ?? "app");
       const hostCurrency = String(
@@ -8987,7 +8974,12 @@ export async function preflightMoneyProposal(
       ad_audience: audienceSummary,
       ...(audienceNames ? { ad_audiences: audienceNames } : {}),
       ad_targeting: targeting || "Not checked yet",
-      ad_schedule: `${start} → ${end}`,
+      // #4238: plain days in the page's own time zone, never a raw timestamp.
+      ad_schedule: adScheduleWords(
+        schedule?.starts_at,
+        schedule?.ends_at,
+        destination?.timezone,
+      ),
       ad_creative: "Your brand video is ready for this ad",
       ad_copy: String(copy?.primary ?? "No ad text yet"),
       ad_media_rights: `${

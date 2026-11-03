@@ -90,6 +90,25 @@ export function adSeriesDatesWords(
 }
 
 /**
+ * #4238: the Schedule row on Ari's ad cards, in plain words and in the
+ * page's own time zone (UTC when unknown), never a raw timestamp:
+ * "Starts after approval · runs until Mon 7 Dec". It names the same day as
+ * the Dates row (adSeriesDatesWords) when the ad runs to the last bookable
+ * moment.
+ */
+export function adScheduleWords(
+  startsAt: unknown,
+  endsAt: unknown,
+  timezone?: unknown,
+): string {
+  const startDay = adDayLabel(startsAt, timezone);
+  const endDay = adDayLabel(endsAt, timezone);
+  const start = startDay ? `Starts ${startDay}` : "Starts after approval";
+  const end = endDay ? `runs until ${endDay}` : "no end date";
+  return `${start} · ${end}`;
+}
+
+/**
  * #4238: the end an ad on a dated page uses. No end → the last bookable
  * moment; a later end → refused in plain words. Pages without dates keep the
  * caller's end.
@@ -116,27 +135,65 @@ export function adEffectiveScheduleEnd(
   return { ok: true, endsAt: end };
 }
 
-/** #4238: why a page can't be promoted, in plain words (Ari and Host). */
-export function adPageRefusalWords(
+/**
+ * #4238: why a page can't be promoted — the SAME reason the Host picker shows
+ * on a greyed-out row (mingla-business hostAdPageUnavailableReason), so Ari
+ * and the picker never disagree. Keep the two lists word-for-word in step;
+ * the #4238 Deno suite reads the picker source to check.
+ */
+export function adPageUnavailableReason(
   page: Record<string, unknown> | null | undefined,
 ): string {
   const type = String(page?.page_type ?? "");
   switch (page?.availability) {
     case "draft":
-      return "That page isn't published yet, so it can't be promoted.";
+      return "Not published yet.";
     case "private":
-      return "That page is private, so an ad can't link to it.";
+      return "This page is private, so an ad can't link to it.";
     case "unlisted":
-      return "Unlisted trips and experiences can't be promoted. Make it public first.";
+      return type === "experience"
+        ? "Unlisted experiences can't be promoted. Make it public to promote it."
+        : "Unlisted trips can't be promoted. Make it public to promote it.";
     case "ended":
-      return "All the dates for that page have passed, so it can't be promoted.";
+      return "All its dates have passed.";
     case "nothing_on_sale":
-      return type === "rsvp"
-        ? "That RSVP has no spots left, so it can't be promoted."
-        : "Nothing is on sale for that page right now, so it can't be promoted.";
+      return type === "rsvp" ? "No spots left." : "Nothing is on sale right now.";
     case "bookings_closed":
-      return "Bookings are closed for that trip, so it can't be promoted.";
+      return "Bookings are closed.";
+    case "not_live":
+      return "Your website isn't live yet.";
     default:
-      return "That page can't be promoted right now.";
+      return "Can't be promoted right now.";
   }
+}
+
+/** #4238: Ari's refusal for a page it can't promote, with the picker's reason. */
+export function adPageRefusalWords(
+  page: Record<string, unknown> | null | undefined,
+): string {
+  return `That page can't be promoted. ${adPageUnavailableReason(page)}`;
+}
+
+/**
+ * #4238: the Host's own page from ads setup that Ari's arguments name.
+ * Slugs compare trimmed and lower-cased, as the SQL resolver does, so a
+ * differently-cased slug still gets the default end, the cap and the refusal.
+ */
+export function adFindSetupPage(
+  pages: unknown,
+  args: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const norm = (value: unknown): string =>
+    typeof value === "string" ? value.trim().toLowerCase() : "";
+  const type = norm(args.dest_page_type);
+  const brand = norm(args.dest_brand_slug);
+  const entity = norm(args.dest_entity_slug);
+  if (!type || !brand) return undefined;
+  return (Array.isArray(pages) ? pages : []).find(
+    (page: Record<string, unknown>) =>
+      page !== null && typeof page === "object" &&
+      norm(page.page_type) === type &&
+      norm(page.brand_slug) === brand &&
+      (type === "brand" || norm(page.entity_slug) === entity),
+  );
 }
