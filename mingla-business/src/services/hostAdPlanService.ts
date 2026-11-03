@@ -51,6 +51,17 @@ export type HostAdPage = {
   city: string | null;
   cover_url: string | null;
   result_kind: string | null;
+  /**
+   * #4238: the server's verdict and, for dated pages, the next date, how many
+   * dates are left, the last moment anyone can book and the page's time zone.
+   * A page with `ok: false` is shown greyed out with its reason.
+   */
+  ok?: boolean;
+  availability_reason?: string | null;
+  next_date?: string | null;
+  last_bookable_at?: string | null;
+  dates_remaining?: number | null;
+  timezone?: string | null;
 };
 
 /** #4238: what this ad optimises for on each platform (frozen in the plan). */

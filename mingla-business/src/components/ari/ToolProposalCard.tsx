@@ -458,6 +458,11 @@ function fieldsFor(
         value: destination,
       });
     }
+    // #4238: one ad covers every date of a series, until the last day people
+    // can book (the server writes this sentence).
+    if (typeof context.ad_dates === "string" && context.ad_dates) {
+      out.push({ label: "Dates", value: context.ad_dates });
+    }
     if (typeof context.ad_result === "string") {
       // The server already writes this in plain words (agentDomainTools
       // adResultWords), so the card shows it as given.

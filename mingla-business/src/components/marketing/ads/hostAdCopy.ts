@@ -464,6 +464,32 @@ const ERROR_COPY: { match: RegExp; text: string }[] = [
     match: /insufficient|balance/,
     text: "You don't have enough Ads credit for this budget. Add credit or lower the budget.",
   },
+  // #4238: dated pages — the ad ends by the last day people can book, and the
+  // page must still have something to buy.
+  {
+    match: /schedule_end_required|schedule_ends_after_last_date/,
+    text: "Your ad can't run past the last day people can book. Pick an earlier end date.",
+  },
+  {
+    match: /schedule_starts_after_last_date/,
+    text: "Your ad has to start before the last day people can book.",
+  },
+  {
+    match: /destination_ended/,
+    text: "All the dates for this page have passed, so it can't be promoted.",
+  },
+  {
+    match: /destination_nothing_on_sale/,
+    text: "Nothing is on sale for this page right now. Put tickets on sale, then try again.",
+  },
+  {
+    match: /destination_bookings_closed/,
+    text: "Bookings are closed for this trip, so it can't be promoted.",
+  },
+  {
+    match: /destination_unlisted_not_linkable/,
+    text: "Unlisted trips and experiences can't be promoted. Make it public, then try again.",
+  },
   {
     match: /destination|not_public|page_not/,
     text: "The page you're promoting isn't public right now. Publish it again, then try.",

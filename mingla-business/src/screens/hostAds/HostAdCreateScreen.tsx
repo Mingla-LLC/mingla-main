@@ -39,9 +39,16 @@ import {
 import {
   goBackToAds,
   hostAdMatchSubtitle,
+  hostAdScheduleEndIso,
+  hostAdScheduleError,
+  hostAdScheduleLimit,
   hostAdScrollBottomPadding,
   initialHostAdConnections,
 } from "../../components/marketing/ads/hostAdBuilderRules";
+import {
+  hostAdPageDate,
+  hostAdPageUnavailableReason,
+} from "../../components/marketing/ads/hostAdPageLabels";
 import { cachedHostAdSetup } from "../../components/marketing/ads/hostAdSetupCache";
 import { HostAdCountryPicker } from "../../components/marketing/ads/HostAdCountryPicker";
 import { HostAdAudiencePicker } from "../../components/marketing/ads/HostAdAudiencePicker";
@@ -925,9 +932,17 @@ export default function HostAdCreateRoute(): React.ReactElement {
     () => localCalendarDate(new Date().toISOString()),
     [],
   );
+  // #4238: a page the server says can't be promoted (a restored draft or
+  // plan whose page has since ended) names its reason instead.
   const promoteError = !page
     ? "Choose the Mingla page people should land on."
-    : null;
+    : hostAdPageUnavailableReason(page);
+  // #4238: an ad on a dated page ends by the last day people can book.
+  const scheduleLimit = useMemo(
+    () =>
+      hostAdScheduleLimit(page, (iso) => hostAdPageDate(iso, page?.timezone)),
+    [page],
+  );
   const audienceError =
     connections.length === 0
       ? "Choose at least one app to show your ad on."
@@ -954,7 +969,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ? "The start date cannot be in the past."
           : endDate !== "" && endDate < (startDate || today)
             ? "The end date must be on or after the start date."
-            : null;
+            : hostAdScheduleError(startDate, endDate, scheduleLimit);
   const creativeError = !creative
     ? "Choose a ready video."
     : !rightsConfirmed
@@ -1477,7 +1492,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
         dailyBudgetCents,
         capCents,
         startsAt: scheduleBoundaryIso(startDate, "start"),
-        endsAt: scheduleBoundaryIso(endDate, "end"),
+        endsAt: hostAdScheduleEndIso(
+          scheduleBoundaryIso(endDate, "end"),
+          scheduleLimit,
+        ),
         acceptBroader: forceAcceptance || acceptBroader,
         rightsConfirmed,
         rightsBasis,
@@ -1822,6 +1840,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
             onSelect={(item) => {
               setPage(item);
               if (!hostAdPageSellsTickets(item)) setOptimization("visits");
+              // #4238: default the end to the last day people can book.
+              const limit = hostAdScheduleLimit(item, (iso) =>
+                hostAdPageDate(iso, item.timezone),
+              );
+              if (limit && endDate === "") setEndDate(limit.lastDay);
               setPrepared(null);
             }}
           />
@@ -2163,6 +2186,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 label="Start date (optional)"
                 value={startDate}
                 min={today}
+                max={scheduleLimit?.lastDay}
                 onChangeValue={(value) => {
                   setStartDate(value);
                   if (endDate && value && endDate < value) setEndDate(value);
@@ -2177,6 +2201,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 label="End date (optional)"
                 value={endDate}
                 min={startDate || today}
+                max={scheduleLimit?.lastDay}
                 onChangeValue={(value) => {
                   setEndDate(value);
                   setPrepared(null);
@@ -2187,8 +2212,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
             </View>
           </View>
           <Text style={styles.helper}>
-            Leave the start empty to begin after approval. Leave the end empty
-            to stop at the hard cap instead of a calendar date.
+            {scheduleLimit
+              ? `Leave the start empty to begin after approval. Your ad runs until ${scheduleLimit.label} at the latest, the last day people can book.`
+              : "Leave the start empty to begin after approval. Leave the end empty to stop at the hard cap instead of a calendar date."}
           </Text>
           </GlassCard>
         ) : null}

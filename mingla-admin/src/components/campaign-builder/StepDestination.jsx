@@ -311,6 +311,9 @@ export function StepDestination({
                     {row.master_start_at
                       ? ` · ${new Date(row.master_start_at).toLocaleDateString()}`
                       : ""}
+                    {row.dates_remaining > 1
+                      ? ` · +${row.dates_remaining - 1} more`
+                      : ""}
                   </p>
                   {guidance && (
                     <p className="text-[10px] text-[var(--color-warning-700)] mt-0.5">

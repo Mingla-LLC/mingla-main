@@ -62,3 +62,65 @@ export function goBackToAds(router: HostAdBackRouter): void {
   if (router.canGoBack()) router.back();
   else router.replace(HOST_ADS_LIST_HREF as never);
 }
+
+/**
+ * #4238 I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT: an ad on a dated page runs
+ * until the last moment anyone can book it, never later. The server refuses a
+ * later end (ad-plan create_version); these rules default and cap it first.
+ */
+export type HostAdScheduleLimit = {
+  /** The viewer's local calendar day of the last bookable moment (the date field's unit). */
+  lastDay: string;
+  /** The exact last bookable moment. */
+  lastIso: string;
+  /** That day in the page's own time zone, for the sentence ("Sat 6 Dec"). */
+  label: string;
+};
+
+function localDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function hostAdScheduleLimit(
+  page: { last_bookable_at?: string | null } | null | undefined,
+  label: (iso: string) => string | null,
+): HostAdScheduleLimit | null {
+  const iso = page?.last_bookable_at;
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    lastDay: localDay(date),
+    lastIso: date.toISOString(),
+    label: label(iso) ?? localDay(date),
+  };
+}
+
+/** The plain sentence for a start or end past the last bookable day, or null. */
+export function hostAdScheduleError(
+  startDate: string,
+  endDate: string,
+  limit: HostAdScheduleLimit | null,
+): string | null {
+  if (!limit) return null;
+  if (startDate !== "" && startDate > limit.lastDay) {
+    return `Your ad has to start by ${limit.label}, the last day people can book.`;
+  }
+  if (endDate !== "" && endDate > limit.lastDay) {
+    return `Your ad can run until ${limit.label}, the last day people can book. Pick an earlier end date.`;
+  }
+  return null;
+}
+
+/**
+ * The end the plan sends: the chosen day's end, but never past the last
+ * bookable moment; the last bookable moment when no end is chosen.
+ */
+export function hostAdScheduleEndIso(
+  endIso: string | null,
+  limit: HostAdScheduleLimit | null,
+): string | null {
+  if (!limit) return endIso;
+  if (!endIso) return limit.lastIso;
+  return Date.parse(endIso) > Date.parse(limit.lastIso) ? limit.lastIso : endIso;
+}

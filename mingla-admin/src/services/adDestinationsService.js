@@ -69,7 +69,11 @@ export async function listAdvertisablePages({
     brand_name: row.brand_name ?? row.title,
     cover_media_url: row.cover_url,
     city: row.city,
-    master_start_at: row.starts_at,
+    // #4238: a series shows its NEXT bookable date, not its first one.
+    master_start_at: row.next_date ?? row.starts_at,
+    dates_remaining: row.dates_remaining ?? null,
+    last_bookable_at: row.last_bookable_at ?? null,
+    timezone: row.timezone ?? null,
     page_type: row.page_type,
     dest_url: row.canonical_url,
     availability: row.availability,
