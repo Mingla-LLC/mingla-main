@@ -678,6 +678,51 @@ function stableRenditionId(prefix: string, toolName: string): string {
   return `${prefix}:${safe || "tool"}`;
 }
 
+/*
+ * #2830 — get_brand_site answers a brand with no website with machine states
+ * (website_state "not_set_up", setup_role "brand_admin_or_owner"). The generic
+ * card printed those verbatim, so a host saw internal codes. These two states
+ * get a plain-words card; any other result keeps the generic presentation.
+ */
+function websiteStatePresentation(
+  toolName: string,
+  result: unknown,
+): { title: string; body: string; blocks: Record<string, unknown>[] } | null {
+  if (toolName !== "get_brand_site") return null;
+  const state = record(result)?.website_state;
+  if (state === "not_set_up") {
+    return {
+      title: "Your website isn't set up yet",
+      body:
+        "Ari can build it with you, one question at a time. Nothing goes public until you publish it.",
+      blocks: [{
+        type: "key_value",
+        version: 1,
+        id: "website-state",
+        rows: [
+          { label: "Website", value: "Not set up yet" },
+          { label: "Who can set it up", value: "Brand owners and admins" },
+          { label: "Where", value: "Brand profile → Website" },
+        ],
+      }],
+    };
+  }
+  if (state === "not_available") {
+    return {
+      title: "Websites aren't available for this brand yet",
+      body:
+        "Ari noted your interest, so you can hear when websites open for this brand.",
+      blocks: [{
+        type: "key_value",
+        version: 1,
+        id: "website-state",
+        rows: [{ label: "Website", value: "Not available yet" }],
+      }],
+    };
+  }
+  return null;
+}
+
 export function buildToolReadRendition(args: {
   toolName: string;
   result: unknown;
@@ -689,6 +734,20 @@ export function buildToolReadRendition(args: {
   // Toolset negotiation and capability search are private reasoning steps. A
   // user should see Ari's answer, never its internal discovery payload.
   if (INTERNAL_REASONING_TOOLS.has(args.toolName)) return null;
+  const websiteState = websiteStatePresentation(args.toolName, args.result);
+  if (websiteState) {
+    return {
+      schema_version: 2,
+      rendition_id: stableRenditionId("read", args.toolName),
+      kind: "result",
+      eyebrow: "Mingla workspace",
+      title: websiteState.title,
+      body: websiteState.body,
+      state: "ready",
+      graphic: "site",
+      blocks: websiteState.blocks,
+    };
+  }
   const research = PUBLIC_RESEARCH_TOOLS.has(args.toolName);
   const presentation = READ_TITLES[args.toolName];
   return {

@@ -137,7 +137,9 @@ export function parseFeatureGuide(body) {
 }
 
 const PRODUCT_PATH = /^(?:app-mobile|mingla-admin|mingla-business|mingla-marketing|mingla-site-cms|mingla-sites|packages|supabase\/functions|supabase\/migrations)\//;
-const NON_PRODUCT_PATH = /(?:^|\/)(?:__tests__|fixtures)\/|(?:[._](?:test|spec)\.[^/]+$)|[.]ci-suite[.]json$/;
+// #3493: a project's scripts/ci/ holds CI tooling (gates, bundle ratchets), not
+// shipped product code, so changing it never needs a capability key.
+const NON_PRODUCT_PATH = /(?:^|\/)(?:__tests__|fixtures)\/|^[^/]+\/scripts\/ci\/|(?:[._](?:test|spec)\.[^/]+$)|[.]ci-suite[.]json$/;
 const CATALOG_REF_FIELDS = new Set(["source_path", "test_path", "migration_path"]);
 const CATALOG_REFS_FIELDS = new Set(["claim_refs", "source_refs"]);
 
