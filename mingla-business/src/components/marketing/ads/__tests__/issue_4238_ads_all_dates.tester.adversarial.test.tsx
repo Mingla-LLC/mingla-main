@@ -1,4 +1,6 @@
 /**
+ * @jest-environment ./__tests__/support/issue3801TimeZoneEnvironment.cjs
+ *
  * #4238 — tester adversarial suite for the Host picker and builder.
  * Different angles from the implementor's J1-J4:
  *
@@ -28,8 +30,13 @@
  * run until Mon 7 Dec ... Pick an earlier end date."
  */
 
-// Force the viewer's zone before any Date is made (Node re-reads TZ).
-process.env.TZ = "America/New_York";
+// Force the viewer's zone before any Date is made. #4238 r6 rework: inside a
+// Jest sandbox `process.env` is a copy, so assigning TZ there changed nothing
+// and this file only "ran in New York" on a New York machine (CI is UTC). The
+// #3801 environment switches the real process zone; T0 still proves it.
+(globalThis as unknown as { __setProcessTimeZone: (zone: string) => void }).__setProcessTimeZone(
+  "America/New_York",
+);
 
 import { hostAdPageDate, hostAdPageLastDay, hostAdPageSchedule, hostAdPageUnavailableReason } from "../hostAdPageLabels";
 import {

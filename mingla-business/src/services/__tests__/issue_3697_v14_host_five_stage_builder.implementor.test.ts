@@ -39,11 +39,12 @@ describe("issue #3697 Host Ads five-stage builder", () => {
     expect(route).toContain('label="End date (optional)"');
     expect(route).toContain("start_date: startDate");
     expect(route).toContain("end_date: endDate");
-    expect(route).toContain('startsAt: scheduleBoundaryIso(startDate, "start")');
-    // #4238: the end is the chosen day's end, capped at the last day people
-    // can book on a dated page (hostAdScheduleEndIso).
-    expect(route).toContain("endsAt: hostAdScheduleEndIso(");
-    expect(route).toContain('scheduleBoundaryIso(endDate, "end")');
+    // #4238 r6: start and end are frozen from the chosen days in the page's
+    // own zone, the end capped at the last day people can book
+    // (hostAdScheduleIsos; its behaviour is tested in issue_4238_ads_all_dates).
+    expect(route).toContain(
+      "...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page?.timezone)",
+    );
   });
 
   it("gates forward navigation by the current stage while keeping back navigation available", () => {
