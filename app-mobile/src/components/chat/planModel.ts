@@ -556,3 +556,28 @@ export function scheduledPlans(plans: readonly ChatPlan[]): Array<ChatPlan & { s
     (plan): plan is ChatPlan & { scheduledAt: string } => plan.status === "scheduled" && typeof plan.scheduledAt === "string",
   );
 }
+
+/**
+ * The header strip's inputs from the plan list: Matches = every plan still
+ * being decided (flagged when it waits on the viewer), Plans = the locked-in
+ * plans with a time.
+ */
+export function planHeaderInputs(plans: readonly ChatPlan[], viewerId: string): {
+  matches: Array<{ id: string; card_data: Record<string, unknown>; needsVote: boolean }>;
+  scheduled: Array<{ savedCardId: string; cardData: Record<string, unknown>; scheduledAt: string; planRef: PlanRef }>;
+} {
+  const matches = plans
+    .filter((plan) => plan.status === "deciding")
+    .map((plan) => ({
+      id: plan.id,
+      card_data: { title: plan.title, image: planPhoto(plan) ?? undefined },
+      needsVote: needsMyVote(plan, viewerId),
+    }));
+  const scheduled = scheduledPlans(plans).map((plan) => ({
+    savedCardId: plan.savedCardId ?? "",
+    cardData: plan.source === "deck" && plan.cardData ? plan.cardData : { title: plan.title },
+    scheduledAt: plan.scheduledAt,
+    planRef: planRefOf(plan),
+  }));
+  return { matches, scheduled };
+}

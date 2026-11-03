@@ -33,6 +33,7 @@ import {
   orderMatches,
   parsePlanQuote,
   planErrorKey,
+  planHeaderInputs,
   planQuoteNote,
   quickDays,
   rsvpSummary,
@@ -41,6 +42,7 @@ import {
   toggledChoice,
   viewerQuoteSnapshot,
 } from "../planModel.ts";
+import { buildCollabHeaderStrip, planStripTap } from "../chatHeaderModel.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -295,4 +297,30 @@ Deno.test("votes, RSVPs and thumbs post no chat line (phone side)", async () => 
     assert(!/notifyPlanMessage|sendMessage|notify-message/.test(body), `${hook} sends no push and no chat line`);
     assert(/onMutate:/.test(body) && /rollback\(/.test(body), `${hook} is optimistic with a rollback`);
   }
+});
+
+Deno.test("header strip from the plan list: Matches {n}, {n} to vote, next plan opens its card", () => {
+  const plans = [
+    plan("todo", { reactions: { up: [], down: [] } }),
+    plan("done", { reactions: { up: [ME], down: [] } }),
+    plan("chatLocked", { status: "scheduled", scheduledAt: "2099-01-02T19:00:00Z" }),
+    plan("deckLocked", { source: "deck", savedCardId: "sc1", cardData: { title: "Afro jazz" }, status: "scheduled", scheduledAt: "2099-01-03T19:00:00Z" }),
+  ];
+  const inputs = planHeaderInputs(plans, ME);
+  const strip = buildCollabHeaderStrip({
+    actionIds: ["matches", "swipe", "plans"],
+    matches: inputs.matches,
+    matchesLoading: false,
+    plans: inputs.scheduled,
+    plansLoading: false,
+    seenMatchIds: new Set(),
+    now: Date.parse("2026-11-03T12:00:00Z"),
+    untitled: "A plan",
+  });
+  assertEquals(strip.matches?.count, 2, "two plans being decided");
+  assertEquals(strip.matches?.toVote, 1, "one waits on my vote");
+  assertEquals(strip.plan?.title, "chatLocked", "the soonest locked-in plan");
+  assertEquals(planStripTap(strip.plan, "plan"), { kind: "chatPlan", planId: "chatLocked" }, "a chat plan jumps to its card");
+  assertEquals(planStripTap({ savedCardId: "sc1", planRef: { kind: "deck", savedCardId: "sc1" } }, "plan"), { kind: "card", savedCardId: "sc1" }, "a deck plan opens its place card");
+  assertEquals(planStripTap(strip.plan, "more"), { kind: "sheet" }, "+N more opens Plans");
 });

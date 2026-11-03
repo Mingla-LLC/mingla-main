@@ -50,11 +50,13 @@ import {
 } from "./connections/brandChannelModel";
 import { getDisplayName } from "../utils/getDisplayName";
 import {
-  SavedToSessionCardsSheet,
-  ScheduleSheet,
   useCollabPlanCard,
   useSessionSavedCardsForSheet,
 } from "./chat/CollabSessionChatBanners";
+import { PlanMatchesSheet } from "./chat/PlanMatchesSheet";
+import { PlansSheet } from "./chat/PlansSheet";
+import { useQueryClient } from "@tanstack/react-query";
+import { planKeys } from "../hooks/queryKeys";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
 import {
@@ -170,11 +172,12 @@ import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
 import type { ChatPlan, GroupEventPayload, PlanEventPayload, PlanQuoteSnapshot } from "../types/chatPlans";
 import { PlanCardBubble } from "./chat/PlanCardBubble";
 import { PlanFormSheet } from "./chat/PlanFormSheet";
+import { PlanCommentsSheet } from "./chat/PlanCommentsSheet";
 import { PlanTimePickerSheet } from "./chat/PlanTimePickerSheet";
 import { PlanActionsMenu, PlanEditSheet } from "./chat/PlanEditSheet";
 import { GroupJoinRequestCard } from "./chat/GroupJoinRequestCard";
 import { useCancelPlan, useChatPlans, useChatPlansRealtime, useLockPlan, useUpdatePlan } from "../hooks/useChatPlans";
-import { chatPlanKindOf, formatPlanTime, planQuoteNote, viewerQuoteSnapshot } from "./chat/planModel";
+import { chatPlanKindOf, formatPlanTime, planHeaderInputs, planQuoteNote, viewerQuoteSnapshot } from "./chat/planModel";
 import { toastManager } from "./ui/Toast";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -766,7 +769,7 @@ export default function MessageInterface({
   // Stable for the thread's renderItem and bubble handlers.
   const openCollabPlanCardRef = useRef(openCollabPlanCard);
   openCollabPlanCardRef.current = openCollabPlanCard;
-  const { session: collabSession, isAdmin: isCollabSessionAdmin } = useBoardSession(
+  const { session: collabSession } = useBoardSession(
     collabSessionId ?? undefined,
   );
   const groupSettingsParticipants = useMemo(() => {
@@ -799,59 +802,49 @@ export default function MessageInterface({
     headerParticipants,
     isCollabSessionGroupChat,
   ]);
-  const {
-    savedCards: matchedSessionCards,
-    isLoading: matchedSessionCardsLoading,
-  } = useSessionSavedCardsForSheet(
-    collabSessionId,
-    // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
-    { onMatchPromoted: HapticFeedback.light },
+  const queryClient = useQueryClient();
+  // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
+  // Issue #4261: it also refreshes the plan list (a deck match is a plan).
+  const handleMatchPromoted = useCallback(() => {
+    HapticFeedback.light();
+    if (planConversationId) void queryClient.invalidateQueries({ queryKey: planKeys.conversation(planConversationId) });
+  }, [planConversationId, queryClient]);
+  useSessionSavedCardsForSheet(collabSessionId, { onMatchPromoted: handleMatchPromoted });
+  // Issue #4261: the header strip reads the chat's plan list — Matches are the
+  // plans still being decided ("{n} to vote" waits on you), Plans the
+  // locked-in ones. Shown in every plan chat, only once there is something.
+  const planStripInputs = useMemo(
+    () => planHeaderInputs(chatPlansPayload?.plans ?? [], planViewerId ?? ""),
+    [chatPlansPayload?.plans, planViewerId],
   );
   const collabHeaderActions = useMemo(
     () =>
-      isCollabChat
+      isPlanChat
         ? getCollabChatHeaderActions({
-            matchesCount: matchedSessionCards.length,
-            scheduledCount: scheduledCardsQuery.rows.length,
-            matchesLoading: matchedSessionCardsLoading,
-            scheduledLoading: scheduledCardsQuery.isLoading,
+            matchesCount: planStripInputs.matches.length,
+            scheduledCount: planStripInputs.scheduled.length,
+            matchesLoading: chatPlansQuery.isLoading,
+            scheduledLoading: chatPlansQuery.isLoading,
           })
         : [],
-    [
-      isCollabChat,
-      matchedSessionCards.length,
-      matchedSessionCardsLoading,
-      scheduledCardsQuery.isLoading,
-      scheduledCardsQuery.rows.length,
-    ],
+    [chatPlansQuery.isLoading, isPlanChat, planStripInputs],
   );
-  // Issue #4114 Wave 3 (D9): the header strip — matched places and the next
-  // plan — from the two hooks above. No new queries.
-  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(collabSessionId);
+  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(planConversationId);
   const collabHeaderStrip = useMemo(
     () =>
-      isCollabChat
+      isPlanChat
         ? buildCollabHeaderStrip({
             actionIds: collabHeaderActions.map((action) => action.id),
-            matches: matchedSessionCards,
-            matchesLoading: matchedSessionCardsLoading,
-            plans: scheduledCardsQuery.rows,
-            plansLoading: scheduledCardsQuery.isLoading,
+            matches: planStripInputs.matches,
+            matchesLoading: chatPlansQuery.isLoading,
+            plans: planStripInputs.scheduled,
+            plansLoading: chatPlansQuery.isLoading,
             seenMatchIds,
             now: Date.now(),
             untitled: t('chat:planUntitled'),
           })
         : null,
-    [
-      collabHeaderActions,
-      isCollabChat,
-      matchedSessionCards,
-      matchedSessionCardsLoading,
-      scheduledCardsQuery.isLoading,
-      scheduledCardsQuery.rows,
-      seenMatchIds,
-      t,
-    ],
+    [chatPlansQuery.isLoading, collabHeaderActions, isPlanChat, planStripInputs, seenMatchIds, t],
   );
   const collabHeaderStripLabels = useMemo<ChatHeaderStripLabels>(
     () => ({
@@ -864,6 +857,7 @@ export default function MessageInterface({
       openMatches: t('chat:a11yOpenMatches'),
       openPlans: t('chat:a11yOpenPlans'),
       openPlan: (title: string, time: string) => t('chat:a11yOpenPlan', { title, time }),
+      toVote: (count: number) => t('chat:strip_to_vote', { count }),
     }),
     [t],
   );
@@ -889,8 +883,6 @@ export default function MessageInterface({
       : isGroupChat
         ? t('chat:peopleInChat', { count: headerParticipantCount })
         : null;
-  const collabParticipantCount =
-    (collabSession?.participants as any[] | undefined)?.length || headerParticipantCount;
   const inputRef = useRef<TextInput>(null);
   const chatController = useChatInputController({
     participants: participantsQuery.data ?? [],
@@ -2227,7 +2219,7 @@ export default function MessageInterface({
   };
 
   const handleCollabStripPress = (view: "matches" | "plans") => {
-    if (view === "matches") markMatchesSeen(matchedSessionCards.map(matchKey));
+    if (view === "matches") markMatchesSeen(planStripInputs.matches.map(matchKey));
     handleOpenCollabDeckView(view);
   };
 
@@ -3194,6 +3186,10 @@ export default function MessageInterface({
         stripLabels={collabHeaderStripLabels}
         onStripPress={handleCollabStripPress}
         onPlanPress={handleCollabPlanPress}
+        onChatPlanPress={(planId) => {
+          HapticFeedback.medium();
+          if (!jumpToPlanCard(planId)) setShowCollabPlansSheet(true);
+        }}
         locale={i18n.language}
       />
 
@@ -3426,6 +3422,13 @@ export default function MessageInterface({
       {/* Issue #4261: the plan form, a plan's long-press menu, its edit dialog and "Lock it in" with no time vote. */}
       {planConversationId ? (
         <>
+          <PlanCommentsSheet
+            plan={planCommentsFor}
+            onClose={() => setPlanCommentsFor(null)}
+            nameOf={planNameOf}
+            viewerId={planViewerId}
+            onReply={startPlanReply}
+          />
           <PlanFormSheet
             visible={showPlanForm}
             onClose={() => setShowPlanForm(false)}
@@ -3975,26 +3978,44 @@ export default function MessageInterface({
         />
       ) : null}
 
-      {isCollabChat && collabSessionId ? (
+      {/* Issue #4261: Matches and Plans read the chat's plan list (deck matches and chat plans). */}
+      {planConversationId ? (
         <>
-          <SavedToSessionCardsSheet
+          <PlanMatchesSheet
             visible={showCollabMatchesSheet}
             onClose={() => setShowCollabMatchesSheet(false)}
-            sessionId={collabSessionId}
-            currentUserId={currentUserId}
-            savedCards={matchedSessionCards}
-            savedCardsLoading={matchedSessionCardsLoading}
-            participantCount={collabParticipantCount}
+            conversationId={planConversationId}
+            payload={chatPlansPayload}
+            isLoading={chatPlansQuery.isLoading}
+            isError={chatPlansQuery.isError}
+            onRetry={() => void chatPlansQuery.refetch()}
+            nameOf={planNameOf}
+            onComment={(plan) => {
+              setShowCollabMatchesSheet(false);
+              startPlanReply(plan);
+            }}
+            onSeeInChat={(plan) => {
+              setShowCollabMatchesSheet(false);
+              if (!jumpToPlanCard(plan.id)) showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+            }}
             accountPreferences={accountPreferences}
-            isAdmin={isCollabSessionAdmin}
           />
-          <ScheduleSheet
+          <PlansSheet
             visible={showCollabPlansSheet}
             onClose={() => setShowCollabPlansSheet(false)}
-            sessionId={collabSessionId}
-            currentUserId={currentUserId}
-            accountPreferences={accountPreferences}
+            payload={chatPlansPayload}
+            isLoading={chatPlansQuery.isLoading}
+            isError={chatPlansQuery.isError}
+            onRetry={() => void chatPlansQuery.refetch()}
+            nameOf={planNameOf}
+            onOpenChatPlan={(plan) => {
+              setShowCollabPlansSheet(false);
+              if (!plan.messageVisible || !jumpToPlanCard(plan.id)) {
+                showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+              }
+            }}
             planCard={collabPlanCard}
+            accountPreferences={accountPreferences}
           />
         </>
       ) : null}
@@ -4005,6 +4026,8 @@ export default function MessageInterface({
         onClose={() => setShowMoreOptionsMenu(false)}
         sessionId={friend.sessionId ?? ""}
         sessionName={headerTitle}
+        // Issue #4261: the group link section (Wave B1) reads the chat id.
+        conversationId={conversationId ?? undefined}
         sessionCreatorId={friend.sessionCreatorId ?? undefined}
         currentUserId={currentUserId ?? undefined}
         isAdmin={friend.isSessionAdmin ?? (!!currentUserId && friend.sessionCreatorId === currentUserId)}

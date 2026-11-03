@@ -19,6 +19,7 @@ import {
   ChatPlanError,
   createPlan,
   fetchChatPlans,
+  listPlanComments,
   lockPlan,
   notifyDeckPlanLocked,
   notifyPlanMessage,
@@ -26,6 +27,7 @@ import {
   setPlanRsvp,
   setPlanVote,
   updatePlan,
+  type PlanCommentRow,
 } from '../services/chatPlansService';
 import { realtimeService } from '../services/realtimeService';
 import { toastManager } from '../components/ui/Toast';
@@ -71,6 +73,16 @@ export function useChatPlans(conversationId: string | null | undefined, enabled:
     enabled: enabled && !!conversationId,
     staleTime: PLANS_STALE_MS,
     queryFn: () => fetchChatPlans(conversationId as string),
+  });
+}
+
+/** A plan's comments (ordinary chat messages that carry its `plan_id`). */
+export function usePlanComments(planId: string | null | undefined) {
+  return useQuery<PlanCommentRow[]>({
+    queryKey: planKeys.comments(planId ?? ''),
+    enabled: !!planId,
+    staleTime: PLANS_STALE_MS,
+    queryFn: () => listPlanComments(planId as string),
   });
 }
 
