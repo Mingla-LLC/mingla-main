@@ -19,6 +19,7 @@ export const ticketQuoteKeys = {
         line.ticketTypeId,
         line.quantity,
         line.byDate ?? null,
+        line.addOns ?? null,
         line.paymentPlanChoice ?? null,
       ]),
       input.eventDateId ?? null,

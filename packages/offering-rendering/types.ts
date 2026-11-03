@@ -45,6 +45,11 @@ export interface PublicTicketProps {
   name: string;
   /** issue #3281 — this ticket's dates by `event_dates.id`, null for All dates. */
   validOccurrenceIds?: readonly string[] | null;
+  /**
+   * issue #3281 — the reader's raw `extras`, unparsed; carts read it with
+   * `parsePublicTicketExtras` (ticketExtrasCart.ts).
+   */
+  buyerExtras?: unknown;
   /** issue #3281 — "Fri 2 Oct" on a day-limited ticket, null otherwise. */
   dayScopeLabel?: string | null;
   /** issue #3281 — true when none of the guest's chosen days are valid. */

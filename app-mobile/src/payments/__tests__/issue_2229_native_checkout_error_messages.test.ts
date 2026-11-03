@@ -163,7 +163,8 @@ describe("#2229 T-3 — the native checkout error mapper is TOTAL", () => {
 
 describe("#2229 T-4 — every buyer string says whether money moved", () => {
   it("each owned constant carries a charged / not-charged clause", () => {
-    expect(NATIVE_CHECKOUT_MESSAGES).toHaveLength(17);
+    // issue #3281 adds the extras refusal (18).
+    expect(NATIVE_CHECKOUT_MESSAGES).toHaveLength(18);
     for (const message of NATIVE_CHECKOUT_MESSAGES) {
       expect(message.toLowerCase()).toContain("charged");
     }

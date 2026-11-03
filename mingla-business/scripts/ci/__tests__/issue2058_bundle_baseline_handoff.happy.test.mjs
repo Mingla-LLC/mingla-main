@@ -22,6 +22,10 @@ import {
   verifyRolloutEvidence,
   verifyPullRequest,
 } from "../bundle-baseline-pr-handoff.mjs";
+import {
+  parseFeatureGuide,
+  parseIssueRefs,
+} from "../../../../.github/scripts/release-records/lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../../../");
@@ -222,6 +226,18 @@ describe("#2058 handoff state machine", () => {
     assert.equal(api.pulls[0].head.sha, GENERATED);
     assert.ok(api.events.indexOf("create-commit") < api.events.indexOf(`create-ref:${result.branch}`));
     assert.ok(api.events.indexOf(`create-ref:${result.branch}`) < api.events.indexOf(`create-pr:${result.branch}`));
+  });
+
+  test("#3493 the created PR body carries the issue link and Feature Guide line", async () => {
+    const api = new FakeApi();
+    await runHandoff(api, options());
+    const { title, body } = api.pulls[0];
+    // The release-record parser is the reader that matters: without both lines
+    // every ratchet merge raises Work board link and Feature Guide reminders.
+    assert.deepEqual(parseIssueRefs(title, body), [{ number: 3493, relation: "toward" }]);
+    const guide = parseFeatureGuide(body);
+    assert.equal(guide.kind, "none");
+    assert.ok(guide.reason, "Feature Guide: none needs a reason");
   });
 
   test("a valid branch-only orphan is deleted and trusted-recreated, never adopted", async () => {

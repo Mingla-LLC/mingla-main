@@ -275,6 +275,9 @@ ROLLBACK;
 -- expressions still read hide_remaining_count_setting) and removes only the
 -- top-level hideRemainingCount key. H-07e/H-08d allow #3281 keys between
 -- hideRemainingCount and recurrenceRule.
+-- [TEST-MOD-APPROVED #3281] Extras (20280315003281) wrap the reader once more to
+-- attach each ticket's extras. H-07 peels that outer wrapper first, checks it is
+-- exactly the extras step, then checks the #3872 wrapper and body as before.
 BEGIN;
 DO $h07$
 DECLARE
@@ -282,6 +285,9 @@ DECLARE
   v_src text; v_wrapper_src text; v_before_src text; v_event uuid;
   v_wrapper_prefix constant text := E'WITH issue_3872_original(payload) AS MATERIALIZED (\n';
   v_wrapper_suffix constant text := E'\n)\nSELECT public.issue_3872_enrich_public_ticket_payload';
+  v_extras_prefix constant text := E'WITH issue_3281_original(payload) AS MATERIALIZED (\n';
+  v_extras_suffix constant text :=
+    E'\n)\nSELECT public.issue_3281_attach_public_extras(payload) FROM issue_3281_original;';
   v_cte_hunk constant text :=
        E'      -- issue #3314 — the organiser''s "Hide remaining count", read from the raw\n'
     || E'      -- row (theme.business_event.settings), never from the public_theme above:\n'
@@ -313,6 +319,12 @@ BEGIN
 
   SELECT p.prosrc INTO v_wrapper_src FROM pg_proc p
    WHERE p.oid = 'public.pg_direct_event_checkout_bundle(uuid,text,text)'::regprocedure;
+  PERFORM pg_temp.h3314_assert(
+    left(v_wrapper_src,length(v_extras_prefix))=v_extras_prefix
+      AND right(v_wrapper_src,length(v_extras_suffix))=v_extras_suffix,
+    'H-07 #3281 wraps the bundle with exactly the extras step');
+  v_wrapper_src:=substring(v_wrapper_src FROM length(v_extras_prefix)+1
+    FOR length(v_wrapper_src)-length(v_extras_prefix)-length(v_extras_suffix));
   PERFORM pg_temp.h3314_assert(
     left(v_wrapper_src,length(v_wrapper_prefix))=v_wrapper_prefix
       AND strpos(v_wrapper_src,v_wrapper_suffix)>length(v_wrapper_prefix),

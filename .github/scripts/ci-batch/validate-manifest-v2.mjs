@@ -339,8 +339,10 @@ export function phase3dContractDigest(manifest) {
 // paid-tier terms and event seed truth from the deliberately pre-#1931 replay.
 // #3355: the Ari flow runs migration joins that exact-file exclusion.
 // #3281: register the Extras authoring migration and its proof the same way.
+// #3281: register the public Extras migration and its proof the same way.
+// #3355: register the Ari flow engine flag migration and its proof the same way.
 // #4238: register the list-audience migration, its proof and the tester's adversarial proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "df5f699e62ed17dddea18ab49a14a5cd6e3512ff66fb72a428bf2303266a7c6c";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9607c5f6c446219083a211df9d06271699d79df40132683c5e9f93be8cd14077";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

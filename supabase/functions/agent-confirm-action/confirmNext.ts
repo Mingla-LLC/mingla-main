@@ -32,8 +32,8 @@ import {
 } from "../_shared/ariFlows/edge.ts";
 import {
   createFlowStore,
-  flowEngineEnabled,
   type FlowStore,
+  readFlowEngineEnabled,
 } from "../_shared/ariFlows/store.ts";
 import type {
   FlowArtefact,
@@ -170,7 +170,7 @@ export async function liveFlowRunFor(args: {
   enabled?: boolean;
   store?: FlowStore;
 }): Promise<{ flow_key: string; id: string } | null> {
-  if (!(args.enabled ?? flowEngineEnabled())) return null;
+  if (!(args.enabled ?? await readFlowEngineEnabled(args.service))) return null;
   try {
     const store = args.store ?? createFlowStore(args.service, args.userId);
     const run = await store.getForConversation(args.conversationId);
@@ -204,7 +204,7 @@ export async function flowNextAfterConfirm(args: {
   /** Test seam: the canonical reads. */
   probes?: FlowProbeDeps;
 }): Promise<ConfirmNextResult> {
-  if (!(args.enabled ?? flowEngineEnabled())) {
+  if (!(args.enabled ?? await readFlowEngineEnabled(args.service))) {
     return { next: null, flow_state: null };
   }
   const { outcome, run } = await runFlowForConversation({

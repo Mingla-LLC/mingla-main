@@ -50,6 +50,7 @@
 import React, {
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -70,10 +71,12 @@ import { eventPublicPath } from "../../../src/constants/publicUrls";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  getTicketCheckoutStatus,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
+import { QueryClientContext } from "@tanstack/react-query";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import { queueContractOptInFields } from "../../../src/services/queueDeviceToken";
@@ -134,6 +137,18 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
+// issue #3281 — kept here, not in a shared module, so it stays out of the
+// eager chunk; the tickets step says which extra changed.
+const EXTRAS_CHANGED_MESSAGE =
+  "One of your extras changed. Go back to your tickets to update it.";
+
+// issue #3281 — checkout states whose provider page can still take payment.
+const RESUMABLE_SESSION_STATUSES = new Set([
+  "awaiting_web_redirect",
+  "requires_payment",
+  "processing_payment",
+]);
+
 export default function CheckoutPaymentScreen(): React.ReactElement {
   return (
     <Suspense fallback={null}>
@@ -185,11 +200,14 @@ function CheckoutPaymentScreenContent({
     discountCode,
     quote,
     quoteStatus,
+    quoteErrorCode,
     checkoutReview,
     setQuoteState,
     setCheckoutReview,
     setLineQuantity,
     setBuyer,
+    setEventDateId,
+    setEventDateIds,
     eventDateId,
     eventDateIds,
     checkoutAttemptIdFor,
@@ -237,6 +255,15 @@ function CheckoutPaymentScreenContent({
     fingerprint: string;
     handoff: TicketCheckoutProviderHandoff;
   } | null>(null);
+  // issue #3281 — re-quotes after an expired handoff is forgotten. Tolerates a
+  // missing provider, like the cart step's cache read.
+  const queryClient = useContext(QueryClientContext);
+  // issue #3281 — the handoff restored after a provider cancel, if any.
+  const [resumedHandoff, setResumedHandoff] = useState<{
+    fingerprint: string;
+    totalCents: number;
+    currency: string;
+  } | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId,
     ticketLinkToken,
@@ -256,8 +283,21 @@ function CheckoutPaymentScreenContent({
     eventDateIds: [...eventDateIds],
     email: buyer.email.trim().toLowerCase(),
     phone: buyer.phone.trim(),
-    lines: lines.map((l) => [l.ticketTypeId, l.quantity]),
+    // issue #3281 — a change of dates or extras is a different cart.
+    lines: lines.map((l) => [
+      l.ticketTypeId,
+      l.quantity,
+      l.byDate ?? null,
+      l.addOns ?? null,
+    ]),
   });
+  // issue #3281 — back from a provider cancel with the cart unchanged, the
+  // page re-followed is the one priced at the accepted total. A fresh quote
+  // at a different total means the price moved: that cart starts again.
+  const resumable =
+    resumedHandoff !== null &&
+    resumedHandoff.fingerprint === cartFingerprint &&
+    (quote === null || quote.buyerTotalCents === resumedHandoff.totalCents);
 
   /**
    * Full-page navigation to the provider. Returns false ONLY where
@@ -297,9 +337,48 @@ function CheckoutPaymentScreenContent({
           currency: l.currency,
           isFree: l.isFree,
           quantity: l.quantity,
+          // issue #3281 — a retry pays for the same dates and extras.
+          byDate: l.byDate,
         });
+        // issue #3281 — then its extras, which only an existing line takes.
+        if (Array.isArray(l.addOns)) {
+          setLineQuantity({ ...l, addOns: l.addOns });
+        }
       }
       setBuyer(payload.buyer);
+      // issue #3281 — and the dates they were for, or a per-date cart can't quote.
+      if (payload.eventDateIds !== undefined && payload.eventDateIds.length > 0) {
+        setEventDateIds(payload.eventDateIds);
+      }
+      if (typeof payload.eventDateId === "string") {
+        setEventDateId(payload.eventDateId);
+      }
+      // issue #3281 — the page this cart was already handed. Pay re-follows it
+      // while the cart is unchanged, so the first checkout's hold stays theirs.
+      // Only an https page is ever followed back out of storage.
+      const stored = payload.providerHandoff as
+        | Record<string, unknown>
+        | undefined;
+      if (
+        stored !== undefined &&
+        stored !== null &&
+        typeof stored.fingerprint === "string" &&
+        typeof stored.redirectUrl === "string" &&
+        stored.redirectUrl.startsWith("https://") &&
+        Number.isInteger(stored.totalCents) &&
+        typeof stored.currency === "string" &&
+        payload.providerHandoff !== undefined
+      ) {
+        providerHandoffRef.current = {
+          fingerprint: payload.providerHandoff.fingerprint,
+          handoff: {
+            checkoutSessionId: payload.checkoutSessionId,
+            buyerStatusToken: payload.buyerStatusToken,
+            redirectUrl: payload.providerHandoff.redirectUrl,
+          },
+        };
+        setResumedHandoff(payload.providerHandoff);
+      }
     }
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mount;
@@ -365,6 +444,59 @@ function CheckoutPaymentScreenContent({
     async (acceptedQuote?: TicketQuote): Promise<void> => {
       if (processing) return;
       if (eventId === null) return;
+      // issue #3281 — an unchanged cart back from a provider cancel re-follows
+      // its page; it needs no fresh quote, which would count its own hold. The
+      // checkout must still be open: a paid one goes to confirmation, and an
+      // expired or failed one is forgotten so this tap creates a new checkout.
+      const resumedPage = providerHandoffRef.current;
+      if (acceptedQuote === undefined && resumable && resumedPage !== null) {
+        let replay = true;
+        try {
+          setProcessing(true);
+          const status = await getTicketCheckoutStatus(
+            resumedPage.handoff.checkoutSessionId,
+            resumedPage.handoff.buyerStatusToken,
+          );
+          if (status.order !== null || status.status === "paid_completed") {
+            router.replace(`/checkout/${eventId}/confirm` as never);
+            return;
+          }
+          replay = RESUMABLE_SESSION_STATUSES.has(status.status);
+        } catch {
+          // No answer: the provider page itself says whether it can still pay.
+        }
+        if (replay) {
+          if (assignLocation(resumedPage.handoff.redirectUrl)) return;
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+          return;
+        }
+        setProcessing(false);
+        providerHandoffRef.current = null;
+        setResumedHandoff(null);
+        const storage = (globalThis as unknown as { sessionStorage?: Storage })
+          .sessionStorage;
+        const saved = readCheckoutResumePayload(storage, eventId);
+        if (saved !== null) {
+          const { providerHandoff: _expired, ...rest } = saved;
+          writeCheckoutResumePayload(storage, eventId, rest);
+        }
+        // A fresh quote now prices this cart; Pay starts a new checkout. The
+        // last quote may have failed against that checkout's own hold, and no
+        // quote input changed, so ask again.
+        void queryClient?.invalidateQueries({
+          queryKey: ["ticket-checkout-quote"],
+        });
+        return;
+      }
+      // The price moved since that page was handed: it is the old price, so it
+      // is forgotten and this cart starts a new checkout below.
+      if (acceptedQuote === undefined && resumedHandoff !== null && !resumable) {
+        if (providerHandoffRef.current?.fingerprint === cartFingerprint) {
+          providerHandoffRef.current = null;
+        }
+        setResumedHandoff(null);
+      }
       const activeQuote = acceptedQuote ?? quote;
       if (
         activeQuote === null ||
@@ -528,6 +660,14 @@ function CheckoutPaymentScreenContent({
             ...(eventDateIds.length > 0
               ? { eventDateIds: [...eventDateIds] }
               : {}),
+            eventDateId,
+            // issue #3281 — a cancel return re-follows this page (see restore).
+            providerHandoff: {
+              fingerprint: cartFingerprint,
+              redirectUrl: handoff.redirectUrl,
+              totalCents: activeQuote.buyerTotalCents,
+              currency: activeQuote.currency,
+            },
           });
           if (assignLocation(handoff.redirectUrl)) return;
           // Sandbox / test environments where location.assign is unavailable.
@@ -552,7 +692,13 @@ function CheckoutPaymentScreenContent({
           // every handled refusal as "Edge Function returned a non-2xx status
           // code"; the mapper is total and turns each bounded case into a
           // sentence that also says whether money moved.
-          const message = paidCheckoutErrorMessage(error);
+          // issue #3281 — an extra changed after the quote; the tickets step
+          // names which one.
+          const message = /^extras?_/.test(
+            (error as { code?: string } | null)?.code ?? "",
+          )
+            ? EXTRAS_CHANGED_MESSAGE
+            : paidCheckoutErrorMessage(error);
           setPaymentError(message);
           mixpanelService.track("ticket_checkout_failed", {
             surface,
@@ -744,15 +890,21 @@ function CheckoutPaymentScreenContent({
       processing,
       quote,
       quoteStatus,
+      queryClient,
+      resumable,
+      resumedHandoff,
       setCheckoutReview,
       router,
       ticketLinkToken,
     ],
   );
 
+
   const displayAllIn =
     quote === null
-      ? "Updating…"
+      ? resumable
+        ? formatQuoteMoney(resumedHandoff.totalCents, resumedHandoff.currency)
+        : "Updating…"
       : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
 
   // Render an empty shell while defensive guards redirect.
@@ -866,6 +1018,34 @@ function CheckoutPaymentScreenContent({
         {paymentError !== null ? (
           <Text style={styles.errorText}>{paymentError}</Text>
         ) : null}
+        {/* issue #3281 — the quote refused an extra (it sold out, say), so the
+            button stays off; say why and take the guest back to change it. */}
+        {!resumable &&
+        quoteStatus === "error" &&
+        /extras?_/.test(quoteErrorCode ?? "") ? (
+          <Text
+            style={styles.errorText}
+            accessibilityRole="button"
+            testID="issue-3281-extras-changed"
+            onPress={(): void =>
+              router.replace(
+                // The tickets step reads the chosen dates from its route.
+                `/checkout/${eventId}?${new URLSearchParams({
+                  ...(eventDateIds.length > 0
+                    ? { eventDateIds: eventDateIds.join(",") }
+                    : eventDateId !== null
+                      ? { eventDateId }
+                      : {}),
+                  ...(ticketLinkToken !== null
+                    ? { ticketLink: ticketLinkToken }
+                    : {}),
+                }).toString()}` as never,
+              )
+            }
+          >
+            {EXTRAS_CHANGED_MESSAGE}
+          </Text>
+        ) : null}
         {/* #2331 — end of content: reopens the privacy bar. */}
         <PrivacyChoicesLink />
       </ScrollView>
@@ -891,7 +1071,10 @@ function CheckoutPaymentScreenContent({
           loading={processing}
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
-          disabled={processing || quoteStatus !== "ready" || quote === null}
+          disabled={
+            processing ||
+            (!resumable && (quoteStatus !== "ready" || quote === null))
+          }
           accessibilityLabel={`Pay ${displayAllIn} with card`}
         />
       </View>

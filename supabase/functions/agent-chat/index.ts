@@ -198,7 +198,7 @@ import {
 } from "../_shared/ariFlows/edge.ts";
 import {
   createFlowStore,
-  flowEngineEnabled,
+  readFlowEngineEnabled,
 } from "../_shared/ariFlows/store.ts";
 import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { honestLoopStopText } from "../_shared/ariFlows/honestCopy.ts";
@@ -1151,6 +1151,9 @@ async function handle(req: Request): Promise<Response> {
   // from its receipt (or marked unknown) before this turn is judged.
   await reconcileStalePendingActions(userId, serviceClient);
 
+  // #3355: the flow engine switch is a feature flag (no secret), read once.
+  const engineOn = await readFlowEngineEnabled(serviceClient);
+
   // #3355 P1 (D-1): the cap is judged after turn recognition. A client turn
   // that was already claimed is a replay and always returns its stored
   // answer; only owner turns count; the reset time comes from the database.
@@ -1162,7 +1165,7 @@ async function handle(req: Request): Promise<Response> {
   // #2830 P4: opening Website setup is engine-generated, not an owner
   // message: with the engine on it never counts toward (or is refused by)
   // the daily cap. The in-flight guard still applies.
-  const kickoffExempt = websiteKickoff !== null && flowEngineEnabled() &&
+  const kickoffExempt = websiteKickoff !== null && engineOn &&
     !rateLimit.allowed && rateLimit.reason === "rate_limited_daily";
   if (!rateLimit.allowed && !kickoffExempt) {
     const message = rateLimit.reason === "rate_limited_inflight"
@@ -1325,7 +1328,7 @@ async function handle(req: Request): Promise<Response> {
         .limit(1)
       : { data: [] };
     if (!acceptedRows || acceptedRows.length === 0) {
-      const stale = !body.conversation_id || !flowEngineEnabled()
+      const stale = !body.conversation_id || !engineOn
         ? { next: null, state: null }
         : await staleFlowAnswer({
           store: createFlowStore(serviceClient, userId),
@@ -1440,7 +1443,7 @@ async function handle(req: Request): Promise<Response> {
   const userMessageId = claimed.message_id;
   const attemptId = claimed.attempt_id;
   const attemptNumber = claimed.attempt_number;
-  if (websiteKickoff && flowEngineEnabled()) {
+  if (websiteKickoff && engineOn) {
     await markEngineOriginTurn(serviceClient, userId, attemptId);
   }
   // A recovered same-id invocation may observe the winner already running.
@@ -1845,7 +1848,7 @@ async function handle(req: Request): Promise<Response> {
         conversationId,
         message: semanticMessage,
         flowAnswer,
-        engineEnabled: flowEngineEnabled(),
+        engineEnabled: engineOn,
         otherLaneActive,
         websiteSetup: body.workflow_context === "website_setup" ||
           isWebsiteSetupRequest(semanticMessage),

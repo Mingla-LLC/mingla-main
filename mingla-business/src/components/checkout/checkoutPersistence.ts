@@ -52,6 +52,20 @@ export interface CheckoutResumePayload {
   bookedEndAt?: string | null;
   /** issue #3281 R2 — guest party size. Optional for older entries. */
   partySize?: number | null;
+  /**
+   * issue #3281 — the provider page this cart was already handed, so a cancel
+   * return re-follows it instead of creating a second checkout (#2188). The
+   * first checkout still holds the guest's places, extras included; a fresh
+   * quote would count that hold against them. Optional for older entries.
+   * Unchecked here (this module is in the eager chunk); the payment step
+   * checks it before following it.
+   */
+  providerHandoff?: {
+    fingerprint: string;
+    redirectUrl: string;
+    totalCents: number;
+    currency: string;
+  };
 }
 
 export const checkoutResumeStorageKey = (eventId: string): string =>

@@ -126,8 +126,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355: re-sealed after the Ari flow runs migration joined that skip list by exact
 // filename (it links runs to ari_agent_jobs from the skipped control-plane migration).
 // #3281: register the Extras authoring migration and its proof the same way.
+// #3281: register the public Extras migration and its proof the same way.
+// #3355: register the Ari flow engine flag migration and its proof the same way.
 // #4238: re-sealed after the list-audience migration, its proof and the tester's adversarial proof joined the same replays.
-export const BOOTSTRAP_SHA256 = "e1331f04875c4880d2504207a3a730da5b629f497054ba4af0be4c14bee20167";
+export const BOOTSTRAP_SHA256 = "57fd373ae5b1375776a16e9d6ae9f586b72883ef7496283cfa7742f125d04041";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

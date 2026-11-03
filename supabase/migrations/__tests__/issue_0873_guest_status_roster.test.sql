@@ -240,6 +240,11 @@ BEGIN
 END;
 $response$;
 
+-- #3355: a live event turning paid needs the acting member's Organiser Terms.
+UPDATE public.brand_team_members
+SET mingla_tos_version_accepted='1.0',mingla_tos_accepted_at=now()
+WHERE brand_id='87300000-0000-4000-8000-000000000010'
+  AND user_id='87300000-0000-4000-8000-000000000001';
 INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_unlimited)
 VALUES('87300000-0000-4000-8000-000000000070','87300000-0000-4000-8000-000000000020','General',1000,'USD',true);
 INSERT INTO public.orders(id,event_id,buyer_user_id,buyer_email,buyer_name,buyer_phone,buyer_phone_e164,total_cents,currency,payment_status)

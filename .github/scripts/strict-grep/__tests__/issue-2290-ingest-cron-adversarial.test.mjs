@@ -340,7 +340,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // Proven in the loop below like the pairs above.
   const issue4238Pairs = [
     {
-      file: "supabase/migrations/20280315004238_issue_4238_ad_list_audiences.sql",
+      file: "supabase/migrations/20280318004238_issue_4238_ad_list_audiences.sql",
       job: "issue_4238_ad_list_audience_removals_hourly",
     },
   ];

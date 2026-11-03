@@ -43,12 +43,19 @@ BEGIN
   VALUES
     (v_buyer_event,v_brand,'Buyer Refund','buyer-refund','ended','NGN'),
     (v_admin_event,v_brand,'Admin Refund','admin-refund','ended','NGN');
+  -- These NGN 60 / NGN 40 tiers predate the #3355 provider minimum, which
+  -- only checks a price being set now; legacy rows like these exist in
+  -- production, so the fixture seeds them past that one trigger.
+  ALTER TABLE public.ticket_types
+    DISABLE TRIGGER trg_zz_issue_3355_ticket_type_paid_price_rules;
   INSERT INTO public.ticket_types(id,event_id,name,price_cents)
   VALUES
     (v_buyer_ticket_a,v_buyer_event,'Buyer A',6000),
     (v_buyer_ticket_b,v_buyer_event,'Buyer B',4000),
     (v_admin_ticket_a,v_admin_event,'Admin A',6000),
     (v_admin_ticket_b,v_admin_event,'Admin B',4000);
+  ALTER TABLE public.ticket_types
+    ENABLE TRIGGER trg_zz_issue_3355_ticket_type_paid_price_rules;
   INSERT INTO public.orders(
     id,event_id,total_cents,currency,payment_status,
     stripe_payment_intent_id,stripe_charge_id,source
