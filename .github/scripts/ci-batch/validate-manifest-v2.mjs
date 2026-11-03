@@ -340,7 +340,8 @@ export function phase3dContractDigest(manifest) {
 // #3355: the Ari flow runs migration joins that exact-file exclusion.
 // #3281: register the Extras authoring migration and its proof the same way.
 // #3281: register the public Extras migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "72a0ccb1a4bb655ce90173b12ea9a56d9260045a3e1cd92952f537ee6307e4b8";
+// #3355: register the Ari flow engine flag migration and its proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "089e015cf67bdd18b3bf0d3da5799d125ef6eab3ae9c4dde593d7aa81a6688b8";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

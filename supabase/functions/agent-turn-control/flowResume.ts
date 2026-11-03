@@ -15,9 +15,9 @@ import {
 } from "../_shared/ariFlows/edge.ts";
 import {
   createFlowStore,
-  flowEngineEnabled,
   FlowEngineUnavailable,
   type FlowStore,
+  readFlowEngineEnabled,
 } from "../_shared/ariFlows/store.ts";
 import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { LIVE_FLOW_STATUSES } from "../_shared/ariFlows/types.ts";
@@ -34,7 +34,7 @@ export async function resumeFlowForHost(args: {
   enabled?: boolean;
   store?: FlowStore;
 }): Promise<{ status: number; body: Record<string, unknown> }> {
-  if (!(args.enabled ?? flowEngineEnabled())) {
+  if (!(args.enabled ?? await readFlowEngineEnabled(args.service))) {
     return { status: 200, body: { flow_state: null, artefact: null } };
   }
   const { data: conversation, error } = await args.userClient

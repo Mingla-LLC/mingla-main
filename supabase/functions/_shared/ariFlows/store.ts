@@ -6,7 +6,9 @@
  * Deploy rule (SPEC §6): edge code merges before the migration is applied in
  * production, so a missing function (PGRST202) is `FlowEngineUnavailable` and
  * every caller falls back to the pre-engine path. The engine is also behind
- * `ARI_FLOW_ENGINE=on` (default off).
+ * the `ari_flow_engine` row in `public.feature_flags` (default off), or
+ * `ARI_FLOW_ENGINE=on` for a local stack or an eval run. Production never
+ * uses the env name: the Supabase secret budget is full (#3355 switch-off).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -35,6 +37,45 @@ export function flowEngineEnabled(
   value: string | undefined = Deno.env.get("ARI_FLOW_ENGINE"),
 ): boolean {
   return value === "on";
+}
+
+export const FLOW_ENGINE_FLAG_KEY = "ari_flow_engine";
+const FLOW_ENGINE_FLAG_TTL_MS = 15_000;
+let flowEngineFlagCache: { value: boolean; at: number } | null = null;
+
+/** Test seam: forget the cached flag read. */
+export function resetFlowEngineFlagCache(): void {
+  flowEngineFlagCache = null;
+}
+
+/**
+ * Whether the flow engine runs for this request: the env override, else the
+ * `ari_flow_engine` feature flag, read with the service client and cached
+ * per isolate for 15 s. A failed read is off (the pre-engine path stands).
+ */
+export async function readFlowEngineEnabled(
+  service: SupabaseClient,
+  env: string | undefined = Deno.env.get("ARI_FLOW_ENGINE"),
+  now: number = Date.now(),
+): Promise<boolean> {
+  if (flowEngineEnabled(env)) return true;
+  if (
+    flowEngineFlagCache &&
+    now - flowEngineFlagCache.at < FLOW_ENGINE_FLAG_TTL_MS
+  ) return flowEngineFlagCache.value;
+  let value = false;
+  try {
+    const { data, error } = await service.from("feature_flags")
+      .select("is_enabled")
+      .eq("flag_key", FLOW_ENGINE_FLAG_KEY)
+      .maybeSingle();
+    value = !error &&
+      (data as { is_enabled?: unknown } | null)?.is_enabled === true;
+  } catch (_error) {
+    value = false;
+  }
+  flowEngineFlagCache = { value, at: now };
+  return value;
 }
 
 type JsonRecord = Record<string, unknown>;
