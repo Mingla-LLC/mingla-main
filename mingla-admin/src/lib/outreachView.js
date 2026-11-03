@@ -1,9 +1,14 @@
-// Issue #4130 (Wave 4a) — Hosts and creators: the funnel, the due chips, the
-// late-stage board and phone masking. Pure: no React, no Supabase.
+// Issue #4130 (Wave 4a) — Hosts and creators: the funnel, the due filter,
+// the board and phone masking. Pure: no React, no Supabase.
 //
-// The counts on the funnel and the chips come from outreach_summary (every
-// card, server-side). The list a chip shows is the loaded cards filtered by
-// the SAME rules as the server's counts (pinned by a test):
+// Issue #4255 (card 606): the board is the only view and it never hides a
+// card. Every stage is a column, Lost/Passed last, and a Stale column comes
+// first (D1); a stale card sits ONLY in Stale, tagged with its stage (D2).
+// The funnel and the column headers are the only counts on the page and both
+// count the cards the board shows, after the same filters. One rule decides
+// stale everywhere (isStale: due before today, not Lost or Passed).
+//
+// The Due filter keeps the server's outreach_summary rules (pinned by a test):
 //   today    due on the viewer's today, not Lost or Passed
 //   week     due from today to today + 6, not Lost or Passed
 //   stale    due before today, not Lost or Passed
@@ -13,21 +18,29 @@
 
 const TERMINAL = new Set(["lost", "passed"]);
 
-export const DUE_CHIPS = Object.freeze({
+// The Due dropdown. "No next event" and "Go live soon" need each host's next
+// dated thing (ops_host_next), so the page applies those two itself.
+export const DUE_OPTIONS = Object.freeze({
   hosts: Object.freeze([
-    { id: "today", label: "Due today", key: "due_today" },
-    { id: "week", label: "This week", key: "due_week" },
-    { id: "stale", label: "Stale", key: "stale" },
-    { id: "replied", label: "Replied, waiting on us", key: "replied" },
+    { value: "", label: "Any" },
+    { value: "today", label: "Due today" },
+    { value: "week", label: "This week" },
+    { value: "stale", label: "Stale" },
+    { value: "replied", label: "Replied, waiting on us" },
+    { value: "nonext", label: "No next event" },
+    { value: "soon", label: "Go live soon" },
+    { value: "nodue", label: "No due date" },
   ]),
   creators: Object.freeze([
-    { id: "week", label: "Due this week", key: "due_week" },
-    { id: "stale", label: "Stale", key: "stale" },
-    { id: "noregion", label: "No region", key: "no_region" },
-    { id: "nodue", label: "No due date", key: "no_due" },
+    { value: "", label: "Any" },
+    { value: "week", label: "This week" },
+    { value: "stale", label: "Stale" },
+    { value: "noregion", label: "No region" },
+    { value: "nodue", label: "No due date" },
   ]),
 });
 
+/** Due choices this module decides by itself (the rest need host-next rows). */
 export const DUE_CHIP_IDS = Object.freeze(["today", "week", "stale", "replied", "noregion", "nodue"]);
 
 function addDays(isoDay, n) {
@@ -61,8 +74,13 @@ export function inDueChip(record, chip, today) {
 
 export function filterByDueChip(records, chip, today) {
   const list = Array.isArray(records) ? records : [];
-  if (!chip) return list;
+  if (!chip || !DUE_CHIP_IDS.includes(chip)) return list;
   return list.filter((r) => inDueChip(r, chip, today));
+}
+
+/** The one stale rule: due before today, not Lost or Passed. */
+export function isStale(record, today) {
+  return inDueChip(record, "stale", today);
 }
 
 /** Ids of the loaded cards that are stale: what "Reset due dates" sends. */
@@ -101,26 +119,63 @@ export function funnelSteps(def, stageCounts) {
   return steps;
 }
 
+/** Each stage's count among `records` (the cards on the board), for the funnel. */
+export function stageCounts(records) {
+  const out = {};
+  for (const r of Array.isArray(records) ? records : []) {
+    if (!r || typeof r.stage !== "string") continue;
+    out[r.stage] = (out[r.stage] || 0) + 1;
+  }
+  return out;
+}
+
+/** A column shows this many cards first, then "Show all N". */
+export const COLUMN_PAGE = 8;
+
+function byDueOldestFirst(a, b) {
+  const da = typeof a?.due_on === "string" ? a.due_on : "9999-99-99";
+  const db = typeof b?.due_on === "string" ? b.due_on : "9999-99-99";
+  if (da !== db) return da < db ? -1 : 1;
+  return String(a?.name || "").localeCompare(String(b?.name || ""));
+}
+
 /**
- * The stages the board shows: from Replied to the last stage before Lost or
- * Passed. Early stages are hundreds of cards and live in the list.
+ * The board's columns for the cards on screen (already filtered):
+ *   stale    first: every stale card, oldest due date first, whatever its stage
+ *   <stage>  one per stage, in order, without the stale cards; Lost/Passed is
+ *            last and starts folded
+ *   other    only when a card names a stage the pipeline no longer has, so no
+ *            card is ever dropped (it is reported once)
+ * Every card is in exactly one column, so the columns add up to the cards.
  */
-export function lateStageDef(def) {
-  const stages = def?.stages || [];
-  const from = stages.findIndex((s) => s.id === "replied");
-  if (from < 0) return def;
-  return { ...def, stages: stages.slice(from).filter((s) => !s.terminal) };
+export function boardColumns(def, records, today, { warn = (msg) => console.warn(msg) } = {}) {
+  const stages = Array.isArray(def?.stages) ? def.stages : [];
+  const known = new Set(stages.map((s) => s.id));
+  const list = Array.isArray(records) ? records : [];
+  const stale = [];
+  const byStage = new Map(stages.map((s) => [s.id, []]));
+  const other = [];
+  for (const r of list) {
+    if (!r) continue;
+    if (isStale(r, today)) stale.push(r);
+    else if (known.has(r.stage)) byStage.get(r.stage).push(r);
+    else other.push(r);
+  }
+  if (other.length) warn(`[outreach] ${other.length} card(s) name a stage this pipeline does not have: shown under Other`);
+  const columns = [
+    { id: "stale", label: "Stale", hint: "Past their next-step date", kind: "stale", stageId: null, terminal: false, cards: stale.sort(byDueOldestFirst) },
+    ...stages.map((s) => ({ id: s.id, label: s.label, hint: s.hint || "", kind: "stage", stageId: s.id, auto: !!s.auto, terminal: !!s.terminal, cards: byStage.get(s.id).sort(byDueOldestFirst) })),
+  ];
+  if (other.length) columns.push({ id: "other", label: "Other", hint: "A stage this pipeline no longer has", kind: "other", stageId: null, terminal: false, cards: other.sort(byDueOldestFirst) });
+  return columns;
 }
 
-export function lateStageIds(def) {
-  return (lateStageDef(def)?.stages || []).map((s) => s.id);
-}
-
-/** "Replied → Live": the board's range in words. */
-export function lateStageRange(def) {
-  const stages = lateStageDef(def)?.stages || [];
-  if (!stages.length) return "";
-  return `${stages[0].label} → ${stages[stages.length - 1].label}`;
+/** How many cards a column shows: 8 (none for a folded Lost/Passed), or all. */
+export function columnShown(column, expanded) {
+  const cards = Array.isArray(column?.cards) ? column.cards : [];
+  if (expanded) return { shown: cards, hidden: 0 };
+  const limit = column?.terminal ? 0 : COLUMN_PAGE;
+  return { shown: cards.slice(0, limit), hidden: Math.max(0, cards.length - limit) };
 }
 
 // A run of digits with the usual phone separators, optionally starting with "+".

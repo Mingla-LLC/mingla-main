@@ -204,7 +204,7 @@ export function ownerLabel(email, team) {
  * Filter a loaded pipeline. `regionId` is a region id, or NO_REGION for
  * records without one. `mine` keeps the records `me` (an email) owns.
  */
-export function filterRecords(records, { q = "", icp = "", regionId = "", mine = false, me = "" } = {}) {
+export function filterRecords(records, { q = "", icp = "", regionId = "", mine = false, me = "", owner = "" } = {}) {
   const needle = String(q || "").trim().toLowerCase();
   const needleKey = nameKey(needle);
   const ident = identNeedles(needle, String(q || "").trim());
@@ -212,6 +212,8 @@ export function filterRecords(records, { q = "", icp = "", regionId = "", mine =
     if (icp && r.icp !== icp) return false;
     if (regionId === NO_REGION ? !!r.region_id : regionId && r.region_id !== regionId) return false;
     if (mine && !(Array.isArray(r.owners) && r.owners.includes(me))) return false;
+    // #4255: the Owner dropdown's teammate, or "none" (no owner yet).
+    if (owner === "none" ? Array.isArray(r.owners) && r.owners.length > 0 : owner && !(Array.isArray(r.owners) && r.owners.includes(owner))) return false;
     if (!needle) return true;
     const name = String(r.name || "").toLowerCase();
     return (
@@ -222,8 +224,8 @@ export function filterRecords(records, { q = "", icp = "", regionId = "", mine =
   });
 }
 
-export function hasActiveFilters({ q, icp, region, mine } = {}) {
-  return !!(String(q || "").trim() || icp || region || mine);
+export function hasActiveFilters({ q, icp, region, mine, owner, due } = {}) {
+  return !!(String(q || "").trim() || icp || region || mine || owner || due);
 }
 
 /** { stageId: [records] } with every stage of the pipeline present. */
@@ -244,39 +246,6 @@ export function sortForList(records) {
     if (da !== db) return da < db ? -1 : 1;
     return String(a.name || "").localeCompare(String(b.name || ""));
   });
-}
-
-/**
- * The By-region table: one row per region that has a matching record, in the
- * order the server lists regions, then a "No region" row when any exist.
- */
-export function byRegionTable(def, records, regions) {
-  const stages = (def?.stages || []).map((s) => s.id);
-  const rows = new Map();
-  const blank = () => Object.fromEntries(stages.map((id) => [id, 0]));
-  for (const r of Array.isArray(records) ? records : []) {
-    const key = r.region_id || NO_REGION;
-    if (!rows.has(key)) rows.set(key, { counts: blank(), total: 0 });
-    const row = rows.get(key);
-    if (Object.hasOwn(row.counts, r.stage)) row.counts[r.stage] += 1;
-    row.total += 1;
-  }
-  const out = [];
-  for (const region of regions || []) {
-    const row = rows.get(region.id);
-    if (row) out.push({ regionId: region.id, slug: regionSlug(region.name), name: region.name, ...row });
-  }
-  // A record whose region is no longer in the list still counts somewhere.
-  let none = rows.get(NO_REGION) || null;
-  const known = new Set((regions || []).map((r) => r.id));
-  for (const [key, row] of rows) {
-    if (key === NO_REGION || known.has(key)) continue;
-    if (!none) none = { counts: blank(), total: 0 };
-    for (const id of stages) none.counts[id] += row.counts[id];
-    none.total += row.total;
-  }
-  if (none) out.push({ regionId: NO_REGION, slug: NO_REGION, name: "No region", ...none });
-  return out;
 }
 
 /**

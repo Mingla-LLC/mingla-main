@@ -222,14 +222,13 @@ function ContentSide({ side, onClose, onChanged }) {
   );
 }
 
-function EventSide({ side, onClose, children }) {
+function EventSide({ side, onClose, actions }) {
   const online = useOnline();
   const selection = useMemo(() => ({ kind: side.kind, id: side.id }), [side.kind, side.id]);
   return (
     <Drawer open onClose={onClose} title={side.kind === "expected" ? "Promised event" : "Event"}>
       <div className="flex min-w-0 flex-col gap-2">
-        <EventPanel selection={selection} onBack={onClose} online={online} embedded />
-        {children}
+        <EventPanel selection={selection} onBack={onClose} online={online} embedded actions={actions} />
         <FullPageLink side={side} />
       </div>
     </Drawer>
@@ -249,8 +248,9 @@ function DraftsSide({ side, onClose }) {
 
 /**
  * Panel two. `onChanged(kind)` lets the page refresh what it shows after a
- * change made in the panel (a card closed, a post moved). `eventActions` adds
- * the Calendar's own actions under an event.
+ * change made in the panel (a card closed, a post moved). `eventActions`
+ * (a function of the event, or null) adds the Calendar's own actions to an
+ * event.
  */
 export function SidePanel({ side, onClose, onChanged, eventActions = null }) {
   if (!side) return null;
@@ -264,7 +264,7 @@ export function SidePanel({ side, onClose, onChanged, eventActions = null }) {
       return <ContentSide side={side} onClose={onClose} onChanged={() => onChanged?.("content")} />;
     case "event":
     case "expected":
-      return <EventSide side={side} onClose={onClose}>{eventActions}</EventSide>;
+      return <EventSide side={side} onClose={onClose} actions={eventActions} />;
     case "drafts":
       return <DraftsSide side={side} onClose={onClose} />;
     default:
