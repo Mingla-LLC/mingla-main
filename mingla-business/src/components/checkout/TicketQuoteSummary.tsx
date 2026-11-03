@@ -46,6 +46,17 @@ export const TicketQuoteSummary: React.FC<TicketQuoteSummaryProps> = ({
           </View>
         </View>
       ))}
+      {/* issue #3281 — each extra the server priced, under the tickets. */}
+      {(quote.extras ?? []).map((extra) => (
+        <View key={extra.addOnId} style={styles.row} testID="issue-3281-quote-extra">
+          <Text style={styles.label}>
+            {extra.quantity} × {extra.addOnName}
+          </Text>
+          <Text style={styles.value}>
+            {formatQuoteMoney(extra.totalCents, quote.currency)}
+          </Text>
+        </View>
+      ))}
       {quote.discounts.map((discount) => (
         <View key={discount.discountId} style={styles.row}>
           <Text style={styles.discountLabel}>{discount.name}</Text>

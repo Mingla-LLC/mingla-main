@@ -92,7 +92,12 @@ export default function CheckoutQueueScreen(): React.ReactElement {
           currency: l.currency,
           isFree: l.isFree,
           quantity: l.quantity,
+          // issue #3281 — a reload keeps the dates and extras it was for.
+          byDate: l.byDate,
         });
+        if (Array.isArray(l.addOns)) {
+          setLineQuantity({ ...l, addOns: l.addOns });
+        }
       }
       setBuyer(payload.buyer);
       if (payload.eventDateIds && payload.eventDateIds.length > 0) {

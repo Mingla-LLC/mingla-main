@@ -528,7 +528,11 @@ function buildPullBody({ sourceSha, direction, summary, commonRaw, commonBrotli,
     `| eager payload brotli | ${eagerBrotli} B |\n\n` +
     `**What this changes:** only the measured baseline used by the per-PR delta gate.\n\n` +
     `**What this does not change:** \`HARD_CEILING\` or \`PR_DELTA_ALLOWANCE\`. ` +
-    `No automation approves or merges this PR; all normal checks and human review remain required.`;
+    `No automation approves or merges this PR; all normal checks and human review remain required.\n\n` +
+    // #3493 owns the boot payload budget. Without these two lines the merge bot
+    // cannot write a release record and the Work board raises link reminders.
+    `Issue: toward #3493\n` +
+    `Feature Guide: none — measured baseline only, no user-facing change`;
 }
 
 export async function runHandoff(api, options) {

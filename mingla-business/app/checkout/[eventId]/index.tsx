@@ -36,6 +36,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
@@ -72,6 +73,11 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
+import {
+  extrasRefusalCopy,
+  extrasRefusalIn,
+} from "@mingla/offering-rendering/ticketExtrasCart";
 import { JoinWaitlistSheet } from "../../../src/components/waitlist/JoinWaitlistSheet";
 // ORCH-0850 [End-not-start parity systemic]: route the past gate through the
 // canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
@@ -209,12 +215,18 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const {
     lines,
     quoteStatus,
+    quoteErrorCode,
     eventDateIds,
     setLineQuantity,
     setEventDateId,
     setEventDateIds,
   } = useCart();
   const totals = useCartQuoteTotals();
+  // issue #3281 — a quote refused over an extra says which choice to change.
+  const extrasRefusal =
+    quoteStatus === "error"
+      ? extrasRefusalCopy(extrasRefusalIn(quoteErrorCode))
+      : null;
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
   // #3281 / #4204 — this choice belongs only to the deferred ticket-selection
   // route. Keeping it out of the root CartProvider prevents host-only UI state
@@ -786,9 +798,40 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                       })
                     }
                   />
+                  <CartTicketExtras
+                    ticket={ticket}
+                    line={line}
+                    eventDateIds={eventDateIds}
+                    occurrences={occurrences}
+                    allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                    currency={ticket.currency ?? event.currency ?? "GBP"}
+                  />
                 </View>
               );
             })}
+        {/* issue #3281 — per-date carts pick extras once per ticket, after the dates. */}
+        {eventDateIds.length >= 2 && !sameTicketsForEveryDate
+          ? visibleTickets.map((ticket) => (
+              <CartTicketExtras
+                key={`extras-${ticket.id}`}
+                ticket={ticket}
+                line={lines.find((l) => l.ticketTypeId === ticket.id)}
+                eventDateIds={eventDateIds}
+                occurrences={occurrences}
+                allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                currency={ticket.currency ?? event.currency ?? "GBP"}
+              />
+            ))
+          : null}
+        {extrasRefusal !== null ? (
+          <Text
+            style={styles.extrasRefusal}
+            testID="issue-3281-extras-refusal"
+            accessibilityLiveRegion="polite"
+          >
+            {extrasRefusal}
+          </Text>
+        ) : null}
         {/* #2331 — end of content: reopens the privacy bar. */}
         <PrivacyChoicesLink />
       </ScrollView>
@@ -853,6 +896,11 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  extrasRefusal: {
+    color: semantic.error,
+    fontSize: 14,
+    marginTop: spacing.sm,
+  },
   host: {
     flex: 1,
     backgroundColor: "#0c0e12",
