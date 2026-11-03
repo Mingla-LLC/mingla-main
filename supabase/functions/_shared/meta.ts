@@ -1303,6 +1303,20 @@ export const metaAdapter: ChannelAdapter = {
     });
   },
 
+  // #4238: Host live edit — the ad set's end_time (ISO 8601). Unverified
+  // against a live write; the request is Graph's standard field update.
+  setEndTime: async (conn, level, externalId, endIso) => {
+    if (level !== "ad_set") {
+      throw new AdApiError({
+        platform: "meta",
+        code: "unsupported_level",
+        message: "Meta end times live on the ad set.",
+      });
+    }
+    const client = resolveMetaClient(conn);
+    await metaGraph(client, "POST", externalId, { end_time: endIso });
+  },
+
   getBudget: async (conn, _level, externalId) => {
     const client = resolveMetaClient(conn);
     const payload = await metaGraph(client, "GET", externalId, {

@@ -804,7 +804,20 @@ export default function HostAdCreateRoute(): React.ReactElement {
           return;
         }
         setPage(
-          setup.pages.find((item) => item.id === state.page_id) ?? null,
+          setup.pages.find((item) => item.id === state.page_id) ??
+            // #4238 Duplicate: a copied draft names its page by key.
+            setup.pages.find(
+              (item) =>
+                typeof state.page_key === "string" &&
+                [
+                  item.page_type,
+                  item.brand_slug,
+                  item.page_type === "brand" ? null : item.entity_slug,
+                ]
+                  .filter(Boolean)
+                  .join(":") === state.page_key,
+            ) ??
+            null,
         );
         // #4238: a draft that saved no platforms starts on every ready one.
         setConnections(

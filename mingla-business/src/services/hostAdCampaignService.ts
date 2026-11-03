@@ -76,6 +76,10 @@ export type HostAdListSummary = {
 };
 
 export type HostAdCampaignDetail = {
+  /** #4238 wave D: the plan behind this ad (live edits, duplicate). */
+  plan_id?: string | null;
+  /** #4238 wave D: when the budget or end date last changed. */
+  last_live_edit_at?: string | null;
   /** #4238 wave 2: results over time ([] on older servers). */
   daily?: HostAdDailyPoint[];
   by_platform_spend?: HostAdPlatformSpend[];
@@ -342,6 +346,31 @@ export async function cancelHostAdCampaign(input: {
     action: "cancel",
     brand_id: input.brandId,
     campaign_id: input.campaignId,
+    idempotency_key: input.idempotencyKey,
+  });
+}
+
+/**
+ * #4238 wave D: change a live ad's total budget and/or end date (once a
+ * day). The extra money is set aside from Ads credit at once; a lower
+ * budget gives the difference back.
+ */
+export async function changeHostAdLive(input: {
+  brandId: string;
+  planId: string;
+  newBudgetCents?: number | null;
+  newEndsAt?: string | null;
+  idempotencyKey: string;
+}): Promise<{
+  daily_not_pushed: string[];
+  end_not_pushed: string[];
+}> {
+  return invokeHostAd({
+    action: "change_live",
+    brand_id: input.brandId,
+    plan_id: input.planId,
+    ...(input.newBudgetCents ? { new_budget_cents: input.newBudgetCents } : {}),
+    ...(input.newEndsAt ? { new_ends_at: input.newEndsAt } : {}),
     idempotency_key: input.idempotencyKey,
   });
 }

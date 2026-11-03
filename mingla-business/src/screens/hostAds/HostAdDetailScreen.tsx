@@ -47,6 +47,18 @@ import {
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../components/marketing/ads/results/AdResultsSection";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
+import {
+  HostAdLiveEditCard,
+  hostAdLiveEditDoneNote,
+  hostAdLiveEditError,
+} from "../../components/marketing/ads/HostAdLiveEditCard";
+import {
+  hostAdLearningAlert,
+  hostAdPacingAlert,
+} from "../../components/marketing/ads/hostAdAlerts";
+import { changeHostAdLive } from "../../services/hostAdCampaignService";
+import { duplicateHostAdPlan } from "../../services/hostAdPlanService";
+import { randomUuid } from "../../utils/randomId";
 import { hostAdDetailMoneyLine } from "../../services/hostAdLifecycle";
 import {
   hostAdCostPerResultLine,
@@ -90,6 +102,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const [destructiveError, setDestructiveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<HostAdCampaignDetail | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canRead) return;
@@ -106,6 +119,61 @@ export default function HostAdDetailRoute(): React.ReactElement {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // #4238 wave D: budget and end date, once a day.
+  const onLiveEdit = useCallback(
+    async (input: { newBudgetCents: number | null; newEndsAt: string | null }) => {
+      const planId = payload?.plan_id;
+      if (brandId === null || !planId || !permissions.canFund) return;
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        const result = await changeHostAdLive({
+          brandId,
+          planId,
+          newBudgetCents: input.newBudgetCents,
+          newEndsAt: input.newEndsAt,
+          idempotencyKey: randomUuid(),
+        });
+        setNotice(hostAdLiveEditDoneNote(result));
+        await load();
+      } catch (cause) {
+        setError(
+          hostAdLiveEditError(
+            cause !== null && typeof cause === "object" && "code" in cause
+              ? String(cause.code)
+              : null,
+          ),
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [brandId, load, payload?.plan_id, permissions.canFund],
+  );
+
+  // #4238 wave D: the same setup as a new draft for the next event.
+  const onDuplicate = useCallback(async () => {
+    const planId = payload?.plan_id;
+    if (brandId === null || !planId || !permissions.canPlan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const draftId = await duplicateHostAdPlan({
+        brandId,
+        planId,
+        newDraftId: randomUuid(),
+      });
+      router.push(
+        `/(tabs)/marketing/ads/create?draft_id=${draftId}&step=promote` as never,
+      );
+    } catch {
+      setError("We couldn't copy this ad just now. Try again in a minute.");
+    } finally {
+      setBusy(false);
+    }
+  }, [brandId, payload?.plan_id, permissions.canPlan, router]);
 
   const onPause = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canPause)
@@ -375,6 +443,85 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 })
                 .join(" · ")}
             </Text>
+          ) : null}
+          {notice ? (
+            <Text style={styles.muted} testID="ads-detail-notice">{notice}</Text>
+          ) : null}
+          {(() => {
+            const startedAt =
+              typeof c.starts_at === "string"
+                ? c.starts_at
+                : typeof c.created_at === "string"
+                  ? c.created_at
+                  : null;
+            const nowIso = new Date().toISOString();
+            const learning = hostAdLearningAlert({
+              name,
+              live: isLive,
+              startedAt,
+              nowIso,
+              timezone: payload.time_zone,
+            });
+            const pacing = hostAdPacingAlert({
+              live: isLive,
+              spentCents: spent,
+              dailyCents: payload.plan_campaigns.reduce(
+                (sum, row) => sum + Number(row.daily_budget_cents ?? 0),
+                0,
+              ) || null,
+              capCents: cap > 0 ? cap : null,
+              startedAt,
+              nowIso,
+              timezone: payload.time_zone,
+              currency,
+            });
+            return (
+              <>
+                {learning ? (
+                  <View style={styles.banner} testID="ads-detail-learning">
+                    <Text style={styles.bannerTitle}>{learning.title}</Text>
+                    <Text style={styles.muted}>{learning.body}</Text>
+                  </View>
+                ) : null}
+                {pacing ? (
+                  <View style={styles.banner} testID="ads-detail-pacing">
+                    <Text style={styles.bannerTitle}>{pacing.title}</Text>
+                    <Text style={styles.muted}>{pacing.body}</Text>
+                  </View>
+                ) : null}
+              </>
+            );
+          })()}
+          {!isEnded && currency && payload.plan_id && permissions.canFund ? (
+            <HostAdLiveEditCard
+              currency={currency}
+              currentTotalCents={cap}
+              spentCents={spent}
+              currentEndsAt={
+                payload.plan_campaigns
+                  .map((row) => row.ends_at)
+                  .filter((value): value is string => typeof value === "string")
+                  .sort()
+                  .pop() ?? null
+              }
+              timezone={payload.time_zone}
+              lastEditAt={payload.last_live_edit_at ?? null}
+              nowIso={new Date().toISOString()}
+              busy={busy}
+              onSubmit={onLiveEdit}
+            />
+          ) : null}
+          {payload.plan_id && permissions.canPlan ? (
+            <Pressable
+              style={styles.actionBtn}
+              disabled={busy}
+              onPress={() => void onDuplicate()}
+              accessibilityRole="button"
+              accessibilityLabel="Duplicate this ad"
+              testID="ads-detail-duplicate"
+            >
+              <Text style={styles.actionLabel}>Duplicate</Text>
+            </Pressable>
           ) : null}
           {capUsed !== null ? (
             <Text style={styles.progress}>{capUsed}% of budget used</Text>
@@ -695,6 +842,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  banner: {
+    gap: 4,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,122,24,.10)",
+  },
+  bannerTitle: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
   host: {
     flex: 1,
     backgroundColor: canvas.discover,

@@ -567,6 +567,18 @@ export interface ChannelAdapter {
   ): Promise<{ cents: number; field: string }>;
 
   /**
+   * #4238: move an ad set's end time (Host live edit). Only apps whose create
+   * path set an end time need it (Meta's ad set end_time); the others run
+   * until Mingla's spend sync stops them at ads_campaigns.ends_at.
+   */
+  setEndTime?(
+    conn: AdConnectionRow,
+    level: Exclude<EntityLevel, "ad">,
+    externalId: string,
+    endIso: string,
+  ): Promise<void>;
+
+  /**
    * §4.4b compensating-cleanup hook (optional — Google's atomic mutate never
    * needs it). meta → DELETE /{campaign_id} (cascades the ad set); reddit →
    * PATCH configured_status:"DELETED" (no DELETE verb exists — R-5).

@@ -1446,3 +1446,102 @@ export async function launchHostAdPlan(input: {
   }
   return { state: "launched", planId: input.planId, campaigns };
 }
+
+/**
+ * #4238 P1 Duplicate: a new draft with the same setup as an existing plan —
+ * the page, apps, places, interests, people, button, words and budget — with
+ * a "Copy of" name, no dates and the video rights to confirm again. Nothing
+ * is funded and nothing reaches an app until the Host checks and launches it.
+ */
+export function hostAdDraftFromPlan(
+  aggregate: HostAdPlanAggregate,
+): Record<string, unknown> {
+  const canonical = aggregate.version.canonical_plan;
+  const destination = recordValue(canonical.destination) ?? {};
+  const audience = recordValue(canonical.audience_intent) ?? {};
+  const copy = recordValue(canonical.copy) ?? {};
+  const deliveryBudgets = (canonical.delivery_budgets ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const picks = hostAdSelectionsFromCanonical(canonical);
+  const goal = recordValue(canonical.optimization_by_platform) ?? {};
+  const selection = recordValue(canonical.audience_selection) ?? {};
+  const daily = aggregate.provider_allocations.reduce(
+    (sum, allocation) =>
+      sum +
+      Number(deliveryBudgets[String(allocation.platform)]?.host_amount_cents ?? 0),
+    0,
+  );
+  const total = aggregate.provider_allocations.reduce(
+    (sum, allocation) => sum + Number(allocation.host_budget_cents ?? 0),
+    0,
+  );
+  const name = String(canonical.name ?? "").trim();
+  return {
+    page_key: [
+      destination.page_type,
+      destination.brand_slug,
+      destination.page_type === "brand" ? null : destination.entity_slug,
+    ]
+      .filter(Boolean)
+      .join(":"),
+    connection_ids: aggregate.provider_allocations.map((allocation) =>
+      String(allocation.connection_id),
+    ),
+    creative_id: canonical.creative_library_id ?? null,
+    rights_confirmed: false,
+    rights_basis: recordValue(canonical.media_rights)?.rights_basis ?? "owned",
+    ai_generated: recordValue(canonical.media_rights)?.ai_generated === true,
+    name: `Copy of ${name}`.slice(0, 120),
+    primary_text: String(copy.primary ?? ""),
+    headline: String(copy.headline ?? ""),
+    countries: Array.isArray(audience.countries) ? audience.countries : [],
+    optimization: Object.values(goal).includes("sales") ? "sales" : "visits",
+    age_min: String(audience.ageMin ?? 21),
+    age_max: String(audience.ageMax ?? 45),
+    gender: ["men", "women"].includes(String(audience.gender))
+      ? audience.gender
+      : "all",
+    cities: picks.places.map(hostAdPlaceForSave),
+    excluded_places: picks.excluded.map(hostAdPlaceForSave),
+    interests: picks.interests,
+    languages: Array.isArray(audience.languages) ? audience.languages : [],
+    radius_km: String(
+      typeof audience.radiusKm === "number" ? audience.radiusKm : 17,
+    ),
+    audience_keys: Array.isArray(selection.include_keys)
+      ? selection.include_keys
+      : [],
+    exclude_past_buyers: Array.isArray(selection.exclude_keys),
+    cta: canonical.call_to_action ?? null,
+    budget_mode: canonical.budget_mode === "total" ? "total" : "daily",
+    daily_amount: String(daily / 100),
+    cap_amount: String(total / 100),
+    total_amount: String(total / 100),
+    start_date: "",
+    end_date: "",
+    accept_broader: false,
+    prepared: null,
+    active_plan_state: null,
+    provider_object_evidence: false,
+    duplicated_from_plan_id: aggregate.plan.id,
+  };
+}
+
+export async function duplicateHostAdPlan(input: {
+  brandId: string;
+  planId: string;
+  newDraftId: string;
+}): Promise<string> {
+  const aggregate = await getHostAdPlan(input.planId);
+  const draft = await saveHostAdDraft({
+    draftId: input.newDraftId,
+    brandId: input.brandId,
+    expectedRevision: 0,
+    currentStep: "promote",
+    draftState: hostAdDraftFromPlan(aggregate),
+    planId: null,
+  });
+  return draft.id;
+}

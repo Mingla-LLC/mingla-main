@@ -41,6 +41,12 @@ import {
   setCampaignTreeStatus,
 } from "../_shared/adCampaignProviderSync.ts";
 import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
+import type { Platform } from "../_shared/adChannelCore.ts";
+import {
+  type HostLiveCampaign,
+  planHostLiveEdit,
+  runHostLiveEdit,
+} from "../_shared/adHostLiveEdit.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -205,6 +211,9 @@ serve(async (req: Request): Promise<Response> => {
     ? "pause"
     : action === "end" || action === "cancel"
     ? "end"
+    // #4238: changing a live ad's budget moves money, like funding it.
+    : action === "change_live"
+    ? "fund"
     : null;
   if (!requiredPermission) {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
@@ -226,6 +235,10 @@ serve(async (req: Request): Promise<Response> => {
   }
   if (allowed !== true) {
     return json({ error: "forbidden", detail: "permission_denied" }, 403);
+  }
+
+  if (action === "change_live") {
+    return await changeLive(supabase, user.id, brandId, body);
   }
 
   if (action === "list") {
@@ -341,6 +354,27 @@ serve(async (req: Request): Promise<Response> => {
       allocations: allocations.data ?? [],
       convert: convertFrozen,
     });
+    // #4238 wave D: "Paused because…" on the list — the latest pause reason
+    // per ad (the same reason the detail page shows).
+    const { data: pauses } = await supabase.from("ad_status_events")
+      .select("campaign_id,provider_response,created_at")
+      .in("campaign_id", campaignIds).eq("action", "pause")
+      .order("created_at", { ascending: false }).limit(200);
+    const pauseReasonByCampaign = new Map<string, string>();
+    for (const row of (pauses ?? []) as Record<string, unknown>[]) {
+      const reason = (row.provider_response as Record<string, unknown> | null)
+        ?.reason;
+      const id = String(row.campaign_id ?? "");
+      if (typeof reason === "string" && !pauseReasonByCampaign.has(id)) {
+        pauseReasonByCampaign.set(id, reason);
+      }
+    }
+    for (const item of listed as Record<string, unknown>[]) {
+      const ids = Array.isArray(item.campaign_ids) ? item.campaign_ids : [item.id];
+      const reason = ids.map((id) => pauseReasonByCampaign.get(String(id)))
+        .find((value) => typeof value === "string");
+      if (reason) item.pause_reason = reason;
+    }
     return json({
       ok: true,
       campaigns: listed,
@@ -399,6 +433,10 @@ serve(async (req: Request): Promise<Response> => {
       : null;
     let planMeasurement: Record<string, unknown> | null = null;
     let providerAllocations: Record<string, unknown>[] = [];
+    // #4238 wave D: the plan id (for live edits and duplicate), the current
+    // total (after any live edit) and when it last changed.
+    let planId: string | null = null;
+    let lastLiveEditAt: string | null = null;
     if (
       typeof data.plan_version_id === "string" &&
       typeof data.plan_hash === "string"
@@ -415,7 +453,7 @@ serve(async (req: Request): Promise<Response> => {
           .eq("brand_id", brandId)
           .eq("owner_kind", "host")
           .order("platform"),
-        supabase.from("ad_plans").select("state")
+        supabase.from("ad_plans").select("id,state")
           .eq("current_version_id", data.plan_version_id).maybeSingle(),
         supabase.from("ad_plan_versions")
           .select("host_currency,host_budget_cents,canonical_plan")
@@ -430,6 +468,7 @@ serve(async (req: Request): Promise<Response> => {
       if (siblings?.length) planCampaigns = siblings;
       providerAllocations = allocations ?? [];
       planState = typeof plan?.state === "string" ? plan.state : null;
+      planId = typeof plan?.id === "string" ? plan.id : null;
       planCurrency = typeof version?.host_currency === "string"
         ? version.host_currency
         : planCurrency;
@@ -705,9 +744,26 @@ serve(async (req: Request): Promise<Response> => {
           : value;
       },
     });
+    if (planId) {
+      const [{ data: hold }, { data: lastEdit }] = await Promise.all([
+        supabase.from("ad_plan_funding_holds").select("amount_cents,state")
+          .eq("plan_version_id", data.plan_version_id).maybeSingle(),
+        supabase.from("host_ad_live_edits").select("created_at")
+          .eq("plan_id", planId).order("created_at", { ascending: false })
+          .limit(1).maybeSingle(),
+      ]);
+      if (hold?.state === "held" && Number.isSafeInteger(hold.amount_cents)) {
+        planCapCents = hold.amount_cents;
+      }
+      lastLiveEditAt = typeof lastEdit?.created_at === "string"
+        ? lastEdit.created_at
+        : null;
+    }
     return json({
       ok: true,
       campaign: data,
+      plan_id: planId,
+      last_live_edit_at: lastLiveEditAt,
       plan_campaigns: planCampaigns,
       daily: series?.daily ?? [],
       by_platform_spend: series?.by_platform_spend ?? [],
@@ -1420,3 +1476,104 @@ serve(async (req: Request): Promise<Response> => {
 
   return json({ error: "validation_error", detail: "action_invalid" }, 400);
 });
+
+/**
+ * #4238 media-buyer, wave D: change a live Host ad's total budget and/or end
+ * date (once a day). Body: { brand_id, plan_id, new_budget_cents?,
+ * new_ends_at?, idempotency_key }. Money moves only in host_ad_amend_live.
+ */
+// deno-lint-ignore no-explicit-any
+async function changeLive(db: any, actorId: string, brandId: string, body: Record<string, unknown>): Promise<Response> {
+  const planId = typeof body.plan_id === "string" ? body.plan_id : "";
+  const key = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  if (!UUID_REGEX.test(planId) || key.length < 8 || key.length > 160) {
+    return json({ error: "validation_error", detail: "change_live_invalid" }, 400);
+  }
+  const { data: plan, error: planError } = await db.from("ad_plans")
+    .select("id,brand_id,owner_kind,state,current_version_id,destination_family,destination_key")
+    .eq("id", planId).maybeSingle();
+  if (planError) return json({ error: "plan_lookup_failed" }, 503);
+  if (!plan || plan.owner_kind !== "host" || plan.brand_id !== brandId || !plan.current_version_id) {
+    return json({ error: "forbidden", detail: "plan_not_found" }, 403);
+  }
+  const versionId = String(plan.current_version_id);
+  const [{ data: version }, { data: campaigns }, { data: allocations }, { data: hold }, { data: lastEdit }] =
+    await Promise.all([
+      db.from("ad_plan_versions").select("id,plan_hash").eq("id", versionId).maybeSingle(),
+      db.from("ad_campaigns").select("*").eq("plan_version_id", versionId).order("id"),
+      db.from("ad_plan_provider_allocations").select("*").eq("plan_version_id", versionId),
+      db.from("ad_plan_funding_holds").select("amount_cents,currency,state").eq("plan_version_id", versionId).maybeSingle(),
+      db.from("host_ad_live_edits").select("created_at").eq("plan_id", planId)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+  const rows = (campaigns ?? []) as Record<string, unknown>[];
+  if (!version || rows.length === 0 || !hold || hold.state !== "held") {
+    return json({ error: "plan_conflict", detail: "plan_not_live" }, 409);
+  }
+  const { data: destination } = await db.rpc("ad_plan_destination_resolve", {
+    p_destination_family: plan.destination_family,
+    p_destination_key: plan.destination_key,
+    p_platforms: rows.map((row) => row.platform),
+  });
+  let hostSpend = 0;
+  const lines: HostLiveCampaign[] = [];
+  for (const row of rows) {
+    const allocation = ((allocations ?? []) as Record<string, unknown>[])
+      .find((item) => item.platform === row.platform) ?? {};
+    const { data: spendRows } = await db.from("ad_spend_daily")
+      .select("spend_cents").eq("campaign_id", row.id);
+    const providerSpend = ((spendRows ?? []) as Record<string, unknown>[])
+      .reduce((sum, item) => sum + Number(item.spend_cents ?? 0), 0);
+    let spendInHost = providerSpend;
+    if (row.provider_currency !== hold.currency && providerSpend > 0) {
+      const { data: converted, error } = await db.rpc("fx_convert_minor", {
+        p_amount: providerSpend,
+        p_source: row.provider_currency,
+        p_target: hold.currency,
+        p_snapshot: row.fx_snapshot_id,
+      });
+      if (error || !Number.isSafeInteger(converted)) {
+        return json({ error: "plan_conflict", detail: "spend_unknown" }, 409);
+      }
+      spendInHost = Number(converted);
+    }
+    hostSpend += spendInHost;
+    lines.push({
+      id: String(row.id),
+      platform: row.platform as Platform,
+      host_budget_cents: Number(allocation.host_budget_cents),
+      host_delivery_budget_cents: Number(allocation.host_delivery_budget_cents),
+      provider_budget_cents: Number(allocation.provider_budget_cents),
+      provider_delivery_budget_cents: Number(allocation.provider_delivery_budget_cents),
+      current_cap_cents: Number(row.amended_provider_budget_cents ?? row.provider_budget_cents),
+      current_daily_cents: Number(row.amended_provider_delivery_budget_cents ?? row.provider_delivery_budget_cents),
+      provider_spend_cents: providerSpend,
+    });
+  }
+  const currentEnds = rows.map((row) => row.ends_at).filter((v): v is string => typeof v === "string").sort().pop() ?? null;
+  const planned = planHostLiveEdit({
+    planState: String(plan.state),
+    lastEditAt: lastEdit?.created_at ?? null,
+    nowMs: Date.now(),
+    newHostBudgetCents: body.new_budget_cents,
+    newEndsAt: body.new_ends_at,
+    currentHostBudgetCents: Number(hold.amount_cents),
+    currentEndsAt: currentEnds,
+    lastBookableAt: typeof destination?.last_bookable_at === "string" ? destination.last_bookable_at : null,
+    hostSpendCents: hostSpend,
+    campaigns: lines,
+  });
+  if (!planned.ok) {
+    return json({ error: planned.error }, planned.error === "host_ad_live_edit_once_a_day" ? 409 : 422);
+  }
+  const result = await runHostLiveEdit({ db, getAdapter }, {
+    plan: planned,
+    versionId,
+    planHash: String(version.plan_hash),
+    campaigns: rows,
+    actorId,
+    idempotencyKey: `host_live_${planId}_${key}`.slice(0, 200),
+    previousEndsAt: currentEnds,
+  });
+  return json(result.body, result.status);
+}

@@ -62,6 +62,8 @@ const HOST_AD_FILES = [
   "src/components/marketing/ads/HostAdCreativeExtras.tsx",
   "src/components/marketing/ads/hostAdBudget.ts",
   "src/components/marketing/ads/hostAdCreativeRules.ts",
+  "src/components/marketing/ads/HostAdLiveEditCard.tsx",
+  "src/components/marketing/ads/hostAdAlerts.ts",
   "src/components/marketing/AdCreditLedgerRow.tsx",
   "src/components/marketing/AdCreditQuoteSheet.tsx",
   "src/services/hostAdPlanService.ts",
