@@ -455,7 +455,8 @@
         "supabase/migrations/20280307003355_issue_3355_brand_readiness.sql",
         "supabase/migrations/20280308003355_issue_3355_ari_flow_runs.sql",
         "supabase/functions/_shared/ariModelVersion.ts",
-        "supabase/functions/agent-turn-control/function-policy.issue-3355.patch.json"
+        "supabase/functions/agent-turn-control/function-policy.issue-3355.patch.json",
+        "supabase/migrations/20280316003355_issue_3355_ari_flow_engine_flag.sql"
       ]
     },
     {
