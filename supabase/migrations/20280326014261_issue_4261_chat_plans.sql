@@ -404,7 +404,7 @@ REVOKE ALL ON FUNCTION public.chat_plan_check_time(timestamptz, text) FROM PUBLI
 GRANT EXECUTE ON FUNCTION public.chat_plan_check_time(timestamptz, text) TO service_role;
 
 -- ── Message triggers ────────────────────────────────────────────────────────
--- MINGLA-INVARIANT lives in the pg17 suite: I-4261-PLAN-MESSAGES-RPC-ONLY.
+-- Declared beside its pg17 suite: I-4261-PLAN-MESSAGES-RPC-ONLY.
 -- Only clients are guarded (the house pattern: auth.role() authenticated or
 -- anon). The plan RPCs open the gate with a transaction-local setting and
 -- close it again; foreign-key cascades (nested triggers) pass.
@@ -558,7 +558,7 @@ CREATE TRIGGER tg_4261_bump_plan_on_comment
   EXECUTE FUNCTION public.tg_4261_bump_plan_on_comment();
 
 -- ── Deck matches get their chat_plans row ──────────────────────────────────
--- MINGLA-INVARIANT lives in the pg17 suite: I-4261-ONE-PLAN-ENTITY.
+-- Declared beside its pg17 suite: I-4261-ONE-PLAN-ENTITY.
 CREATE OR REPLACE FUNCTION public.tg_4261_deck_plan_on_saved_card()
  RETURNS trigger
  LANGUAGE plpgsql
