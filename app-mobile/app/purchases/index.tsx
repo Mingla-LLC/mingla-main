@@ -202,6 +202,7 @@ export default function PurchasesRoute(): React.ReactElement {
                     {group.items.map((item) => (
                       <PurchaseCard
                         key={item.key}
+                        dimmed={period === "past"}
                         item={item}
                         onPress={() => openItem(item)}
                       />
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 11,
   },
-  cardList: { gap: 12 },
+  cardList: { gap: 8 },
   loading: { alignItems: "center", paddingVertical: 64, gap: 12 },
   loadingText: { color: "rgba(255,255,255,0.62)", fontSize: 14 },
   notice: {

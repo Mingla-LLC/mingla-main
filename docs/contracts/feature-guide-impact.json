@@ -119,7 +119,10 @@
         "packages/offering-rendering/discountQuote.ts",
         "packages/offering-rendering/ticketExtrasCart.ts",
         "mingla-business/app/checkout/[eventId]/queue.tsx",
-        "mingla-business/src/components/checkout/checkoutPersistence.ts"
+        "mingla-business/src/components/checkout/checkoutPersistence.ts",
+        "app-mobile/app/purchases/index.tsx",
+        "app-mobile/jest.issue2774.render.cjs",
+        "supabase/migrations/20280322004251_issue_4251_going_rsvps_cover_media_type.sql"
       ]
     },
     {
@@ -737,6 +740,12 @@
       "paths": [
         "mingla-business/src/components/marketing/AdCreditLedgerRow.tsx",
         "mingla-business/src/services/adCreditService.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-work-board",
+      "paths": [
+        "supabase/migrations/20280323004256_issue_4256_no_auto_promo_cards.sql"
       ]
     }
   ]
