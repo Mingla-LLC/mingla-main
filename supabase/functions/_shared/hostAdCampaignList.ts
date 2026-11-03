@@ -392,6 +392,114 @@ export type ListSummaryConvert = (input: {
 }) => Promise<number | null>;
 
 /**
+ * #4238: one campaign's provider-currency spend amounts in the host currency,
+ * at that plan's frozen rate (ad_plan_provider_allocations.fx_snapshot_id).
+ * The "This month" card and each Ads list row both convert with this, the
+ * same rule the detail page uses for host_spend_equivalent_cents. Null when
+ * the spend can't be converted (mixed or unknown currencies, no matching
+ * allocation, or a failed conversion).
+ */
+export async function frozenCampaignSpendInHost(input: {
+  campaign: Row;
+  rows: Row[];
+  allocations: Row[];
+  hostCurrency: string;
+  amounts: number[];
+  convert: ListSummaryConvert;
+}): Promise<number[] | null> {
+  const currency = input.hostCurrency.toUpperCase();
+  if (input.rows.length === 0) return input.amounts.map(() => 0);
+  const sources = unique(input.rows.map((row) => row.currency)).map((code) =>
+    code.toUpperCase()
+  );
+  if (
+    input.rows.some((row) => integer(row.spend_cents) === null) ||
+    sources.length !== 1
+  ) {
+    return null;
+  }
+  const source = sources[0];
+  let snapshotId: string | null = null;
+  if (source !== currency) {
+    const allocation = input.allocations.find((row) =>
+      text(row.plan_version_id) === text(input.campaign.plan_version_id) &&
+      text(row.platform) === text(input.campaign.platform)
+    );
+    if (
+      !allocation || !text(input.campaign.plan_version_id) ||
+      text(allocation.provider_currency)?.toUpperCase() !== source ||
+      text(allocation.host_currency)?.toUpperCase() !== currency
+    ) {
+      return null;
+    }
+    snapshotId = text(allocation.fx_snapshot_id);
+  }
+  const converted = await Promise.all(input.amounts.map((amount) =>
+    amount === 0
+      ? Promise.resolve(0)
+      : source === currency
+      ? Promise.resolve(amount)
+      : input.convert({ amount, source, target: currency, snapshotId })
+  ));
+  return converted.some((value) =>
+      value === null || !Number.isSafeInteger(value) || value < 0
+    )
+    ? null
+    : converted as number[];
+}
+
+/**
+ * #4238 wave 2 rework: an Ads list row billed in another currency (Meta bills
+ * in USD) carried host_spend_equivalent_cents null, so the row fell back to
+ * "$200.00" while the card and detail page showed the host currency. Each
+ * row's spend is now converted with the plan's frozen rate.
+ */
+export async function withHostSpendEquivalent(
+  listed: ReturnType<typeof buildHostCampaignList>,
+  input: {
+    rawCampaigns: Row[];
+    spend: Row[];
+    allocations: Row[];
+    convert: ListSummaryConvert;
+  },
+): Promise<ReturnType<typeof buildHostCampaignList>> {
+  return await Promise.all(listed.map(async (row) => {
+    if (row.host_spend_equivalent_cents !== null) return row;
+    const hostCurrency = text(row.currency)?.toUpperCase() ?? "";
+    if (!/^[A-Z]{3}$/.test(hostCurrency)) return row;
+    let hostSpend: number | null = 0;
+    for (const id of row.campaign_ids) {
+      const campaign = input.rawCampaigns.find((item) => String(item.id) === id);
+      const rows = input.spend.filter((item) => String(item.campaign_id) === id);
+      const total = rows.reduce((sum, item) => sum + (integer(item.spend_cents) ?? 0), 0);
+      const converted = campaign
+        ? await frozenCampaignSpendInHost({
+          campaign,
+          rows,
+          allocations: input.allocations,
+          hostCurrency,
+          amounts: [total],
+          convert: input.convert,
+        })
+        : null;
+      if (converted === null) {
+        hostSpend = null;
+        break;
+      }
+      hostSpend += converted[0];
+    }
+    if (hostSpend === null) return row;
+    return {
+      ...row,
+      host_spend_equivalent_cents: hostSpend,
+      cost_per_result_cents: row.primary_result_count > 0
+        ? Math.round(hostSpend / row.primary_result_count)
+        : null,
+    };
+  }));
+}
+
+/**
  * The Host Ads list summary ("This month" card), in the brand currency.
  *
  * #4238 P1-3: provider-currency spend (Meta bills in USD) is converted with
@@ -440,46 +548,22 @@ export async function buildHostListSummary(input: {
     const id = String(campaign.id);
     const rows = input.spend.filter((row) => String(row.campaign_id) === id);
     if (rows.length === 0) continue;
-    const amounts = rows.map((row) => integer(row.spend_cents));
-    const sources = unique(rows.map((row) => row.currency)).map((code) => code.toUpperCase());
-    if (amounts.some((value) => value === null) || sources.length !== 1) {
-      monthHost = null;
-      break;
-    }
-    const source = sources[0];
-    let snapshotId: string | null = null;
-    if (source !== currency) {
-      const allocation = input.allocations.find((row) =>
-        text(row.plan_version_id) === text(campaign.plan_version_id) &&
-        text(row.platform) === text(campaign.platform)
-      );
-      if (
-        !allocation || !text(campaign.plan_version_id) ||
-        text(allocation.provider_currency)?.toUpperCase() !== source ||
-        text(allocation.host_currency)?.toUpperCase() !== currency
-      ) {
-        monthHost = null;
-        break;
-      }
-      snapshotId = text(allocation.fx_snapshot_id);
-    }
-    const convert = (amount: number) =>
-      amount === 0
-        ? Promise.resolve(0)
-        : source === currency
-        ? Promise.resolve(amount)
-        : input.convert({ amount, source, target: currency!, snapshotId });
     const total = rows.reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0);
     const before = rows.filter((row) => (text(row.spend_date) ?? "") < monthStart)
       .reduce((sum, row) => sum + (integer(row.spend_cents) ?? 0), 0);
-    const [totalHost, beforeHost] = await Promise.all([convert(total), convert(before)]);
-    if (
-      totalHost === null || beforeHost === null ||
-      !Number.isSafeInteger(totalHost) || !Number.isSafeInteger(beforeHost)
-    ) {
+    const converted = await frozenCampaignSpendInHost({
+      campaign,
+      rows,
+      allocations: input.allocations,
+      hostCurrency: currency!,
+      amounts: [total, before],
+      convert: input.convert,
+    });
+    if (converted === null) {
       monthHost = null;
       break;
     }
+    const [totalHost, beforeHost] = converted;
     monthHost += totalHost - beforeHost;
     // The sparkline: each day's provider spend at this campaign's frozen rate.
     const rate = total > 0 ? totalHost / total : 0;

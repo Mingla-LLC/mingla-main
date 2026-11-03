@@ -32,6 +32,8 @@ import {
   buildHostDailySeries,
   buildHostListSummary,
   type DailySeriesRow,
+  type ListSummaryConvert,
+  withHostSpendEquivalent,
 } from "../_shared/hostAdCampaignList.ts";
 import {
   isSyntheticHostExternalId,
@@ -297,7 +299,24 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "apply_failed", detail: ads.error.message }, 502);
     }
     const nowIso = new Date().toISOString();
-    const listed = buildHostCampaignList({
+    // #4238: the plan's frozen rate, the same conversion the card and the
+    // detail page use.
+    const convertFrozen: ListSummaryConvert = async (
+      { amount, source, target, snapshotId },
+    ) => {
+      const { data: converted, error: conversionError } = await supabase
+        .rpc("ad_fx_convert_frozen_minor", {
+          p_amount: amount,
+          p_source: source,
+          p_target: target,
+          p_snapshot: snapshotId,
+        });
+      const value = Number(converted);
+      return conversionError || !Number.isSafeInteger(value) || value < 0
+        ? null
+        : value;
+    };
+    const listed = await withHostSpendEquivalent(buildHostCampaignList({
       campaigns,
       versions: versions.data ?? [],
       plans: plans.data ?? [],
@@ -306,6 +325,11 @@ serve(async (req: Request): Promise<Response> => {
       adSets: adSets.data ?? [],
       ads: ads.data ?? [],
       nowIso,
+    }), {
+      rawCampaigns: campaigns,
+      spend: spend.data ?? [],
+      allocations: allocations.data ?? [],
+      convert: convertFrozen,
     });
     return json({
       ok: true,
@@ -321,19 +345,7 @@ serve(async (req: Request): Promise<Response> => {
         timeZone: typeof brandRow.data?.default_timezone === "string"
           ? brandRow.data.default_timezone
           : null,
-        convert: async ({ amount, source, target, snapshotId }) => {
-          const { data: converted, error: conversionError } = await supabase
-            .rpc("ad_fx_convert_frozen_minor", {
-              p_amount: amount,
-              p_source: source,
-              p_target: target,
-              p_snapshot: snapshotId,
-            });
-          const value = Number(converted);
-          return conversionError || !Number.isSafeInteger(value) || value < 0
-            ? null
-            : value;
-        },
+        convert: convertFrozen,
       }),
     });
   }

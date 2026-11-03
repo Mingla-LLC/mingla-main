@@ -1,6 +1,8 @@
 // Issue #4238 wave 2 rework 2 — implementor happy-path tests.
 // (1) Ari's list_ad_audiences returns the Host app's size words, never a bare
 //     number below 10, and nothing for a lookalike.
+// (3) An Ads list row billed in USD shows the host currency at the plan's
+//     frozen rate, the same total the card converts.
 // (2) admin-ad-create-campaign runs the frozen-audience binding guard on
 //     validate_only too, before any provider call.
 // Fakes only: no provider, no database.
@@ -8,6 +10,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { ariAudienceSizeWords, DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { validateOnlyAudienceBinding } from "../adAudienceBinding.ts";
+import { buildHostCampaignList, buildHostListSummary, withHostSpendEquivalent } from "../hostAdCampaignList.ts";
 
 const BRAND = "b4238000-0000-4000-8000-000000000001";
 const RIVAL = "b4238000-0000-4000-8000-0000000000c9";
@@ -142,4 +145,54 @@ Deno.test("#4238 admin-ad-create-campaign runs the validate guard before any pla
   const firstBranch = src.indexOf('if (platform === "google") {');
   assert(guard > 0, "validate_only binding guard is wired");
   assert(guard < firstBranch, "guard runs before any provider branch");
+});
+
+// ── Ads list row currency ──────────────────────────────────────────────────
+
+Deno.test("#4238 a USD-billed Ads list row is converted at the plan's frozen rate", async () => {
+  const campaigns = [{
+    id: "c-meta", name: "Island", status: "ACTIVE", platform: "meta", currency: "USD",
+    plan_version_id: "v1", starts_at: "2026-10-20T00:00:00.000Z", created_at: "2026-10-01T00:00:00.000Z",
+  }];
+  const spend = [
+    { campaign_id: "c-meta", spend_cents: 12_000, currency: "USD", spend_date: "2026-11-01", impressions: 10, clicks: 1 },
+    { campaign_id: "c-meta", spend_cents: 8_000, currency: "USD", spend_date: "2026-11-02", impressions: 10, clicks: 1 },
+  ];
+  const conversions = [
+    { campaign_id: "c-meta", created_at: "2026-11-02T10:00:00.000Z" },
+    { campaign_id: "c-meta", created_at: "2026-11-02T11:00:00.000Z" },
+  ];
+  const allocations = [{ plan_version_id: "v1", platform: "meta", host_currency: "NGN", provider_currency: "USD", fx_snapshot_id: "fx-1" }];
+  const calls: unknown[] = [];
+  const convert = ({ amount, source, target, snapshotId }: { amount: number; source: string; target: string; snapshotId: string | null }) => {
+    calls.push({ amount, source, target, snapshotId });
+    return Promise.resolve(source === "USD" && target === "NGN" && snapshotId === "fx-1" ? amount * 1500 : null);
+  };
+  const base = buildHostCampaignList({
+    campaigns,
+    versions: [{ id: "v1", host_currency: "NGN", host_budget_cents: 150_000_000, canonical_plan: { name: "Island" } }],
+    plans: [{ id: "p1", current_version_id: "v1", state: "live", updated_at: "2026-11-02T00:00:00.000Z" }],
+    spend, conversions, adSets: [], ads: [], nowIso: "2026-11-02T12:00:00.000Z",
+  });
+  assertEquals(base[0].host_spend_equivalent_cents, null, "before: the row had no host-currency spend");
+  const listed = await withHostSpendEquivalent(base, { rawCampaigns: campaigns, spend, allocations, convert });
+  assertEquals(listed[0].currency, "NGN");
+  assertEquals(listed[0].host_spend_equivalent_cents, 30_000_000);
+  assertEquals(listed[0].cost_per_result_cents, 15_000_000);
+  assertEquals(calls[0], { amount: 20_000, source: "USD", target: "NGN", snapshotId: "fx-1" });
+  // The card converts the same campaign to the same total.
+  const summary = await buildHostListSummary({
+    campaigns: listed, rawCampaigns: campaigns, spend, conversions, allocations,
+    nowIso: "2026-11-02T12:00:00.000Z", timeZone: "Africa/Lagos", convert,
+  });
+  assertEquals(summary?.spent_cents, listed[0].host_spend_equivalent_cents);
+  // No frozen rate: the row stays unconverted rather than guessing.
+  const unconverted = await withHostSpendEquivalent(base, { rawCampaigns: campaigns, spend, allocations: [], convert });
+  assertEquals(unconverted[0].host_spend_equivalent_cents, null);
+});
+
+Deno.test("#4238 host-ad-campaign list converts rows before it answers", async () => {
+  const src = await Deno.readTextFile(new URL("../../host-ad-campaign/index.ts", import.meta.url));
+  assert(/const listed = await withHostSpendEquivalent\(buildHostCampaignList\(/.test(src));
+  assert(/convert: convertFrozen,/.test(src));
 });
