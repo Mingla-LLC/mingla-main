@@ -75,10 +75,14 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802x-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('issue3802x-growth@test.local',  'growth',  'active',  now()),
-  ('issue3802x-partner@test.local', 'partner', 'active',  now()),
   ('issue3802x-invited@test.local', 'growth',  'invited', null),
   ('issue3802x-revoked@test.local', 'partner', 'revoked', now()),
-  ('issue3802x-unconf@test.local',  'growth',  'active',  now());
+  ('issue3802x-unconf@test.local',  'growth',  'active',  now()),
+  -- #4255 (D3): a Founding partner is a full admin now. This suite's 'partner'
+  -- persona is kept as a second non-admin teammate (growth), so every refusal
+  -- below still proves what a non-admin teammate cannot do. Partner-as-admin is
+  -- proven by issue_4255_admin_access_email_drafts.implementor.pg17.test.sql.
+  ('issue3802x-partner@test.local', 'growth',  'active',  now());
 
 -- Brands with every kind of listing. "live" is what the rule should answer.
 create temp table x_brands (k text primary key, id uuid not null, live boolean not null, has_event boolean not null) on commit drop;
@@ -473,7 +477,8 @@ begin
   -- The four roles are still let in afterwards (the refusals are not a blanket).
   foreach v_who in array array['owner','admin','growth','partner'] loop
     perform pg_temp.x_eq('XA-2', v_who || ' is let in and named correctly',
-      pg_temp.x_as(v_who, $$select public.crm_config()->'me'->>'role'$$), v_who);
+      pg_temp.x_as(v_who, $$select public.crm_config()->'me'->>'role'$$),
+      case v_who when 'partner' then 'growth' else v_who end);  -- #4255: this persona is growth here
     perform pg_temp.x_eq('XA-2', v_who || ' can read the pipeline',
       pg_temp.x_as(v_who, $$select public.crm_records_list('hosts')->>'pipeline'$$), 'hosts');
   end loop;
@@ -1258,10 +1263,11 @@ declare
   v_role text;
   v_code text;
 begin
-  perform pg_temp.x_eq('XA-13', 'owner areas',   public.admin_team_role_areas('owner')::text,   '{admin_console,team_manage,crm,beta_leads}');
-  perform pg_temp.x_eq('XA-13', 'admin areas',   public.admin_team_role_areas('admin')::text,   '{admin_console,crm,beta_leads}');
-  perform pg_temp.x_eq('XA-13', 'growth areas',  public.admin_team_role_areas('growth')::text,  '{role_home,crm,beta_leads}');
-  perform pg_temp.x_eq('XA-13', 'partner areas', public.admin_team_role_areas('partner')::text, '{role_home,crm,beta_leads}');
+  -- #4255 (D3, D4): owner, admin and partner are equal full-admin seats.
+  perform pg_temp.x_eq('XA-13', 'owner areas',   public.admin_team_role_areas('owner')::text,   '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+  perform pg_temp.x_eq('XA-13', 'admin areas',   public.admin_team_role_areas('admin')::text,   '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+  perform pg_temp.x_eq('XA-13', 'growth areas',  public.admin_team_role_areas('growth')::text,  '{role_home,crm,beta_leads,email_drafts}');
+  perform pg_temp.x_eq('XA-13', 'partner areas', public.admin_team_role_areas('partner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
   foreach v_role in array array['OWNER','Owner',' owner','owner ','admin_console','superadmin','service_role','authenticated','anon',
                                 'postgres','member','invited','revoked','','*','%','owner,admin','growth;partner'] loop
     perform pg_temp.x_eq('XA-13', 'no areas for the role word [' || v_role || ']', public.admin_team_role_areas(v_role)::text, '{}');
@@ -1276,7 +1282,7 @@ begin
     perform pg_temp.x_eq('XA-13', v_who || ': pipelines area',
       pg_temp.x_as(v_who, $$select public.admin_team_can('crm')::text$$), (v_who in ('owner', 'admin', 'growth', 'partner'))::text);
     perform pg_temp.x_eq('XA-13', v_who || ': team management area',
-      pg_temp.x_as(v_who, $$select public.admin_team_can('team_manage')::text$$), (v_who = 'owner')::text);
+      pg_temp.x_as(v_who, $$select public.admin_team_can('team_manage')::text$$), (v_who in ('owner', 'admin'))::text);
   end loop;
   perform pg_temp.x_like('XA-13', 'the new roles still cannot read the team list',
     pg_temp.x_as('growth', 'select count(*)::text from public.admin_team_list()'), 'ERR:42501:%');
@@ -1390,7 +1396,7 @@ begin
   perform pg_temp.x_eq('XA-14', 'this suite''s current people are, one row each',
     (select string_agg((e->>'email') || '=' || (e->>'role') || '/' || (e->>'status'), ',' order by e->>'email')
        from jsonb_array_elements(v_got->'team') e where e->>'email' like 'issue3802x-%'),
-    'issue3802x-admin@test.local=admin/active,issue3802x-growth@test.local=growth/active,issue3802x-invited@test.local=growth/invited,issue3802x-owner@test.local=owner/active,issue3802x-partner@test.local=partner/active,issue3802x-unconf@test.local=growth/active');
+    'issue3802x-admin@test.local=admin/active,issue3802x-growth@test.local=growth/active,issue3802x-invited@test.local=growth/invited,issue3802x-owner@test.local=owner/active,issue3802x-partner@test.local=growth/active,issue3802x-unconf@test.local=growth/active');
   perform pg_temp.x_like('XA-14', 'a revoked person cannot be made an owner of a card',
     pg_temp.x_as('partner', format($$select public.crm_record_set_owners(%L, array['issue3802x-revoked@test.local'])::text$$, v_id)), 'ERR:22023:unknown_owner:%');
   perform pg_temp.x_like('XA-14', 'an outsider cannot be made an owner of a card',

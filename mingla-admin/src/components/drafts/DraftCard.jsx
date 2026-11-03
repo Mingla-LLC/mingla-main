@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { SectionCard } from "../ui/Card";
+import { SideLink } from "../ui/PanelStack";
 import { DraftEditor } from "./DraftEditor";
 import { channelLabel, draftErrorWords, remainingUndoMs } from "../../lib/draftModel";
 import { timeAgo } from "../../lib/formatters";
@@ -88,7 +89,7 @@ export function DraftCard({ draft, online, busy, busyAction, offlineHelpId, deep
   const removedHelpId = `draft-removed-help-${draft.id}`;
   const actionHelpId = `draft-action-help-${draft.id}`;
   const openControl = removed || busy ? <Button type="button" variant="ghost" icon={FileText} disabled className="min-h-11" aria-describedby={removed ? removedHelpId : undefined}>{openWords}</Button>
-    : <a href={`#/${draft.record.pipeline}?record=${draft.record.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-transparent px-4 text-sm font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--gray-100)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2"><FileText className="h-4 w-4" aria-hidden="true" />{openWords}<ArrowRight className="h-4 w-4" aria-hidden="true" /></a>;
+    : <SideLink side={{ kind: draft.record.pipeline === "creators" ? "creator" : "host", id: draft.record.id }} href={`#/${draft.record.pipeline}?record=${draft.record.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-transparent px-4 text-sm font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--gray-100)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2"><FileText className="h-4 w-4" aria-hidden="true" />{openWords}<ArrowRight className="h-4 w-4" aria-hidden="true" /></SideLink>;
   const primary = <Button type="button" icon={Copy} loading={action === "copying" || action === "marking"} disabled={!!markReason} aria-describedby={markReason ? (!online ? offlineHelpId : actionHelpId) : undefined} onClick={mark}
     className="min-h-11 bg-[var(--color-brand-800)] hover:bg-[var(--color-brand-900)] active:bg-[var(--color-brand-900)] focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-[var(--color-background-primary)] max-sm:w-full">{action === "copying" ? "Copying…" : action === "marking" ? "Marking sent…" : "Copy and mark sent"}</Button>;
   const edit = !editing ? <Button ref={editRef} type="button" variant="secondary" icon={Pencil} disabled={busy} className="min-h-11" onClick={() => setEditor(true)}>Edit</Button> : null;

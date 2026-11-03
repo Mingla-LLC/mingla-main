@@ -66,7 +66,10 @@ function roleDescription(capabilities, isLead) {
       ? "You're a Support lead: you work both Community and Support, and approve support issues for the product team."
       : "You're a Support teammate: you work both Community and Support.";
   }
-  return capabilities.canSupport ? "Your assigned Host support workspace." : "Your assigned Community workspace.";
+  if (capabilities.canSupport) return "Your assigned Host support workspace.";
+  if (capabilities.canCommunity) return "Your assigned Community workspace.";
+  // #4255: every teammate writes team email and blog posts.
+  return "Write and send team email, and write blog posts.";
 }
 
 export function SupportCommunityConsole({ pageId }) {
@@ -90,7 +93,8 @@ export function SupportCommunityConsole({ pageId }) {
     ? requestedTab
     : visibleTabs[0]?.id || null;
   const capabilities = communitySupportCapabilities(access);
-  // Inviting is the Owner's team_manage power (the same area Admin → Team uses).
+  // Inviting is the team_manage power (#4255: owner, admin and partner; the
+  // same area Team and roles uses).
   const canInvite = Array.isArray(access?.areas) && access.areas.includes(AREA.TEAM_MANAGE);
   const isLead = myStaffRole === "lead";
   const onSupportPage = pageId === "support";
@@ -242,8 +246,8 @@ export function SupportCommunityConsole({ pageId }) {
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} onCounts={onInboxCounts} />
       )}
-      {activeTab === "email" && <EmailPage embedded />}
-      {activeTab === "blog" && capabilities.canSupport && <BlogPanel onCounts={onBlogCounts} />}
+      {activeTab === "email" && capabilities.canEmail && <EmailPage embedded />}
+      {activeTab === "blog" && capabilities.canBlog && <BlogPanel onCounts={onBlogCounts} />}
       {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
 
       {activeTab === "announcements" && <AnnouncementsPanel />}

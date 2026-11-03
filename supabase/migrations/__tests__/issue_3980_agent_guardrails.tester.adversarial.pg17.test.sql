@@ -64,8 +64,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('gia.x3980@test.local', 'growth', 'active', now()),
   ('hal.x3980@test.local', 'growth', 'active', now()),
-  ('pia.x3980@test.local', 'partner', 'active', now()),
   ('lou.x3980@test.local', 'growth', 'revoked', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('pia.x3980@test.local', 'partner', 'active', now());
 
 -- One event 40 days out, public, for anchored cards.
 set local session_replication_role = replica;
@@ -544,9 +546,10 @@ begin
       || CASE WHEN pg_temp.tx_person(w, format('select public.ops_release(null, array[%L]::uuid[])::text', v_claim)) like 'ERR:%' THEN 'n' ELSE 'y' END
       || ' ';
   end loop;
+  -- #4255 (D3): a Founding partner holds a full-admin seat, so it matches admin.
   -- columns: config, calendar, archive, sprint goal, gate override, team overview, conversion preview, forced release
   perform pg_temp.tx_check('X-ROLES', 'who may do what, by role',
-    btrim(v_out), 'owner:yyyyyyyy admin:yyyyyyny growth:yynnnnnn partner:yynnnnnn leaver:nnnnnnnn nobody:nnnnnnnn');
+    btrim(v_out), 'owner:yyyyyyyy admin:yyyyyyny growth:yynnnnnn partner:yyyyyyny leaver:nnnnnnnn nobody:nnnnnnnn');
   perform pg_temp.tx_like('X-ROLES', 'an admin is told the conversion is the owner''s',
     pg_temp.tx_person('admin', 'select public.ops_next_action_preview()::text'), 'ERR:42501:owner_only:%');
   perform pg_temp.tx_like('X-ROLES', 'and so is the owner''s own agent',

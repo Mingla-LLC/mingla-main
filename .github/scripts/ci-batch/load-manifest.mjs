@@ -132,8 +132,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4250: re-sealed after the profiles admin-flag drop, its proof and its adversarial proof joined the same replays.
 // #3281: register the Explorer buyable-date migration and its proof the same way.
 // #4251: register the going-RSVPs cover type migration and its proof the same way.
+// #4256: register the no-auto-promo-cards migration the same way.
+// #4255: register the admin access and Work closed-range migrations the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
-export const BOOTSTRAP_SHA256 = "f78b09ce7001c93ada0af84e37c0f122950d29dcd0c99b0a7f1431001fe1e246";
+export const BOOTSTRAP_SHA256 = "1042068f58a26d4f1e84e027fb18e2ea2be4bf2df0c3008e213e00e398572627";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

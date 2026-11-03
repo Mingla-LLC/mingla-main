@@ -162,23 +162,21 @@ Deno.test("#3980 rework 2: To review counts exactly what its tabs list", () => {
   assertMatch(list, /window\.addEventListener\(REVIEW_CHANGED, refresh\)/);
 });
 
-Deno.test("#3980 rework 2: Back to runway returns focus to what opened the panel", () => {
+// #4255: the list view and its runway rows are gone, and an event, a day or a
+// post opens in a side panel (a Drawer). The Drawer keeps where focus was and
+// gives it back on close, so closing returns focus to the chip that opened it.
+Deno.test("#3980 rework 2: closing an event or a day returns focus to what opened the panel", () => {
   const page = code("pages/ContentCalendarPage.jsx");
-  const openDay = page.slice(page.indexOf("const openDay = (key) => {"), page.indexOf("const clearDay"));
-  assertMatch(openDay, /rememberOpener\(\);/);
-  const selectEvent = page.slice(page.indexOf("const selectEvent = (selection, onDate) => {"), page.indexOf("const clearEvent"));
-  assertMatch(selectEvent, /rememberOpener\(\);/);
-  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D9, conductor decision X5a): no runway list remains to go back to; closing returns to the calendar and still focuses the opener.
-  assertMatch(page, /const clearEvent = \(\) => backToCalendar\("event"\);/);
-  assertMatch(page, /const clearDay = \(\) => backToCalendar\("day"\);/);
-  assertMatch(page, /"data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-calendar-date", "data-runway-row"/);
-  assertMatch(page, /target\?\.focus\?\.\(\);/);
-  assertMatch(page, /if \(!target \|\| document\.activeElement !== target\) eventHeadingRef\.current\?\.focus\?\.\(\);/);
+  assertNotMatch(page, /data-runway-row|rememberOpener|Back to runway/);
+  assertMatch(page, /<Drawer open onClose=\{closeFirst\} title=\{route\.event\.kind === "expected" \? "Promised event" : "Event"\}>/);
+  assertMatch(page, /<DayPanel day=\{route\.day\} entries=\{dayItems\} onClose=\{closeFirst\} \/>/);
+  const drawer = code("components/ui/Drawer.jsx");
+  assertMatch(drawer, /previousFocusRef\.current = document\.activeElement;/);
+  assertMatch(drawer, /if \(previousFocusRef\.current\?\.focus\) previousFocusRef\.current\.focus\(\);/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): one chip id per event or promised date in the month.
   assertMatch(page, /data-calendar-chip=\{e\.id\}/);
   assertMatch(page, /data-calendar-more=\{key\}/);
   const panel = code("components/ops/EventPanel.jsx");
-  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D9, conductor decision X5a): the runway list left the event panel; its rows (data-runway-row) live in List view, where focus returns.
   assertNotMatch(panel, /RunwayList/);
-  assertMatch(page, /data-runway-row=\{`\$\{r\.anchor_kind\}:\$\{r\.anchor_id\}`\}/);
 });
+

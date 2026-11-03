@@ -1083,14 +1083,15 @@ test("#3802 H-9: six keys used at once, sixty requests: every answer is for the 
       "codex",
       "team_summary",
     ],
+    // #4255: the harness's 'partner' person is a growth teammate now.
     [
       s.keys["partner.claude"],
       s.emails.partner,
-      "partner",
+      "growth",
       "claude",
       "team_summary",
     ],
-    [partner2.key, s.emails.partner, "partner", "codex", "team_summary"],
+    [partner2.key, s.emails.partner, "growth", "codex", "team_summary"],
   ];
   await s.sql(
     "delete from public.team_agent_calls where owner_email like 'issue3802h-%';",

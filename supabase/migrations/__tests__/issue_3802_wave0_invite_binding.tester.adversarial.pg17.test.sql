@@ -353,16 +353,26 @@ begin
   perform pg_temp.t3802t_check('AX-7', 'nothing landed in the team table',
     (select count(*)::text from public.admin_team_members where email = 'issue3802t-role@test.local'), '0');
 
-  -- reset, invite as growth, rewrite the row's role under the opened invite
+  -- reset, invite as growth: #4255 growth is the only live team role, so the
+  -- team table refuses a rewrite to partner outright.
   perform pg_temp.t3802t_as('owner', $q$select public.admin_team_set_member('issue3802t-role@test.local','growth','revoked')$q$);
   perform pg_temp.t3802t_issue('role', 'growth', 'role-2');
   perform pg_temp.t3802t_open('role-2', 'role');
-  update public.admin_team_members set role = 'partner'
-    where email = 'issue3802t-role@test.local' and status = 'invited';
+  perform pg_temp.t3802t_like('AX-7', 'a live team row cannot be rewritten to partner',
+    pg_temp.t3802t_as('postgres', $q$update public.admin_team_members set role = 'partner'
+      where email = 'issue3802t-role@test.local' and status = 'invited' returning 'x'$q$),
+    'ERR:23514:%');
+
+  -- reset, invite as admin, rewrite the full-admin row's role under the opened invite
+  perform pg_temp.t3802t_as('owner', $q$select public.admin_team_set_member('issue3802t-role@test.local','growth','revoked')$q$);
+  perform pg_temp.t3802t_issue('role', 'admin', 'role-3');
+  perform pg_temp.t3802t_open('role-3', 'role');
+  update public.admin_users set role = 'partner'
+    where lower(btrim(email)) = 'issue3802t-role@test.local' and status = 'invited';
   perform pg_temp.t3802t_check('AX-7', 'a role rewritten under the opened invite blocks activation',
     pg_temp.t3802t_as('role', $q$select public.admin_team_activate_self()->>'status'$q$), 'invited');
   perform pg_temp.t3802t_check('AX-7', 'the membership stays invited',
-    (select status from public.admin_team_members where email = 'issue3802t-role@test.local'), 'invited');
+    (select status from public.admin_users where lower(btrim(email)) = 'issue3802t-role@test.local'), 'invited');
 end;
 $ax7$;
 

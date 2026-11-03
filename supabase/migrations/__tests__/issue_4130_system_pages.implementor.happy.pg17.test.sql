@@ -17,7 +17,8 @@
 --   C-05  Restarting the tour for everyone: an admin who is not the owner is
 --         refused; the owner must type RESTART and give a reason; then every
 --         account's tour restarts and one audit row is written.
---   C-06  Last active on Team and roles is the owner's to read: the later of a
+--   C-06  Last active on Team and roles is for team_manage (owner, admin,
+--         partner since #4255) to read: the later of a
 --         teammate's last sign-in and last recorded admin action.
 -- MINGLA-INVARIANT: I-4130-SYSTEM-PAGES-ADMIN-ONLY | issue #4130 | The place funnel and flag board are admin-only aggregates; a flag changes only through admin_set_feature_flag with a reason and an audit row; restarting the tour for everyone is owner-only, needs the typed word RESTART and a reason, and writes an audit row.
 
@@ -239,9 +240,10 @@ BEGIN
   VALUES ('w4b-admin6@mingla-fixture.org', 'fixture.action', 'fixture', 'x', now() - interval '1 day');
 
   SET LOCAL ROLE authenticated;
+  -- #4255 (D4): admins manage Team and roles too, so they read Last active.
   PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
-  PERFORM pg_temp.w4b_assert(pg_temp.w4b_refused('SELECT public.admin_team_last_active()', 'owner_only'),
-    'C-06 an admin who is not the owner is refused');
+  PERFORM pg_temp.w4b_assert(jsonb_typeof(public.admin_team_last_active()) = 'array',
+    'C-06 an admin (team_manage) reads last active');
 
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   SELECT r INTO v_row FROM jsonb_array_elements(public.admin_team_last_active()) r

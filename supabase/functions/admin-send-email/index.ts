@@ -629,6 +629,19 @@ async function processDueCampaign(supabase: ServiceClient) {
   return await processClaimedCampaign(supabase, campaign);
 }
 
+/** Is the signed-in caller an active Mingla team member? Fails closed. */
+export async function isActiveTeammate(
+  userClient: { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> },
+): Promise<boolean> {
+  try {
+    const { data, error } = await userClient.rpc("admin_team_role");
+    return !error && typeof data === "string" &&
+      ["owner", "admin", "partner", "growth"].includes(data);
+  } catch (_err) {
+    return false;
+  }
+}
+
 export async function handler(req: Request) {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -655,13 +668,11 @@ export async function handler(req: Request) {
       token,
     );
     if (authError || !user) return jsonResponse({ error: "Unauthorized" }, 401);
-    const { data: adminRow } = await supabase.from("admin_users")
-      .select("id")
-      .eq("email", user.email)
-      .eq("status", "active")
-      .maybeSingle();
-    if (!adminRow) {
-      return jsonResponse({ error: "Forbidden: admin access required" }, 403);
+    // #4255 (D5): everyone on the team can write and send email. The caller's
+    // own client asks the database, so this is the same "active teammate"
+    // answer every Admin page uses (owner, admin, partner or growth).
+    if (!(await isActiveTeammate(userSupabase))) {
+      return jsonResponse({ error: "Forbidden: team access required" }, 403);
     }
 
     if (action === "check_provider") {

@@ -17,6 +17,7 @@ export function RecordCard({
   regions,
   team,
   today,
+  stageTag = "",
   pending = false,
   disabled = false,
   canDrag = false,
@@ -60,6 +61,12 @@ export function RecordCard({
       ].join(" ")}
     >
       <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">{record.name}</p>
+      {/* #4255 (D2): a stale card sits only in Stale and says its stage. */}
+      {stageTag && (
+        <p className="mt-1" data-stage-tag={record.stage}>
+          <Badge variant="outline">{stageTag}</Badge>
+        </p>
+      )}
       {rule && (
         <p className="mt-1" title={rule.reason || undefined}>
           <Badge variant={rule.variant}>{rule.label}</Badge>

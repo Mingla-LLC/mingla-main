@@ -267,6 +267,7 @@ do $once$
 declare v text; v_first text;
 begin
   v := pg_temp.w3t_person('owner', 'select public.ops_setting_set(''auto_steps'', ''true''::jsonb)::text');
+  update public.ops_settings set value = 'true'::jsonb where key = 'auto_promo_cards'; -- #4256: giveaway cards are off as shipped
   v_first := (select value #>> '{}' from public.ops_settings where key = 'follow_through_since');
   perform pg_temp.w3t_check('T-ONCE', 'switching on records when follow-through starts',
     (public.ops_try_timestamptz(v_first) is not null and public.ops_try_timestamptz(v_first) <= now())::text, 'true');

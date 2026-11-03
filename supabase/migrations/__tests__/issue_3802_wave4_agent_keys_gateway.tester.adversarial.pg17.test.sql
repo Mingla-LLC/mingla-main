@@ -67,8 +67,12 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802ta-owner@test.local', 'owner', 'active', now()),
   ('issue3802ta-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at)
-select email, case who when 'partner' then 'partner' else 'growth' end, 'active', now()
-from t3802ta_people where who in ('growth', 'partner', 'leaver', 'mover');
+select email, 'growth', 'active', now()
+from t3802ta_people where who in ('growth', 'leaver', 'mover');
+-- #4255: a Founding partner holds an admin_users seat now.
+insert into public.admin_users (email, role, status, accepted_at)
+select email, 'partner', 'active', now()
+from t3802ta_people where who = 'partner';
 
 set local session_replication_role = replica;
 insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
@@ -743,8 +747,9 @@ begin
 
   -- Things that must leave every key row as it was.
   perform pg_temp.t3802ta_next();
-  v := pg_temp.t3802ta_as('admin', $q$select public.admin_team_set_member('issue3802ta-leaver@test.local', 'growth', 'revoked')::text$q$);
-  perform pg_temp.t3802ta_ok('TA-7', 'a full admin who is not the owner cannot remove anyone', v like 'ERR:42501:%', left(v, 120));
+  -- #4255 (D4): admins manage the team now, but never the owner.
+  v := pg_temp.t3802ta_as('admin', $q$select public.admin_team_set_member('issue3802ta-owner@test.local', 'growth', 'revoked')::text$q$);
+  perform pg_temp.t3802ta_ok('TA-7', 'a full admin who is not the owner cannot remove the owner', v like 'ERR:42501:cannot_change_owner%', left(v, 120));
   v := pg_temp.t3802ta_as('growth', $q$select public.admin_team_set_member('issue3802ta-leaver@test.local', 'growth', 'revoked')::text$q$);
   perform pg_temp.t3802ta_ok('TA-7', 'a teammate cannot remove anyone', v like 'ERR:42501:%', left(v, 120));
   v := pg_temp.t3802ta_as('owner', $q$select public.admin_team_set_member('issue3802ta-newcomer@test.local', 'growth', 'invited')::text$q$);

@@ -3,6 +3,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   AREA,
+  BLOG_AREA,
   COMMUNITY_OPERATIONS_AREA,
   COMMUNITY_SUPPORT_AREA,
   DATA_ROOM_AREA,
@@ -38,6 +39,8 @@ Deno.test("additional page exceptions stay one-to-one with server capabilities",
     "community-support": [COMMUNITY_SUPPORT_AREA],
     notifications: [TEAM_NOTIFICATIONS_AREA],
     "data-room": [DATA_ROOM_AREA],
+    // #4255: the Email and Blog tabs' areas open Support (never Community).
+    "support-content": [AREA.EMAIL_DRAFTS, BLOG_AREA],
   });
   const candidate = access(COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA);
   assertEquals(canOpenPage(candidate, "community-support"), true);

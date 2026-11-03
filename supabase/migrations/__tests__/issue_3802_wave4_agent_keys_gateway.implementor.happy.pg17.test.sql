@@ -55,7 +55,10 @@
 -- gateways; keep this legacy self-check scoped to the original agent surface
 -- it owns while preserving its exhaustive stray-function and writer checks.
 -- [TEST-MOD-APPROVED #3980] The work gateway (ops_agent_call) writes request rows and the key's last-used marker on the same rail.
-\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/"`
+-- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
+-- admin, partner) gates team changes, so the re-run self-check blocks below
+-- check growth only for admin areas and accept the team_manage gate.
+\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802k_file `cat supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_selfcheck_a `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_oldmember `sed -n '/^CREATE OR REPLACE FUNCTION public.admin_team_set_member/,/^\$\$;/p' supabase/migrations/20270818003802_issue_3802_wave0_invite_binding.sql`
@@ -101,8 +104,12 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802k-owner@test.local', 'owner', 'active', now()),
   ('issue3802k-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at)
-select email, case who when 'partner' then 'partner' else 'growth' end, 'active', now()
-from t3802k_people where who in ('growth', 'partner', 'growth2', 'social', 'idle', 'unconf', 'twin', 'leaver');
+select email, 'growth', 'active', now()
+from t3802k_people where who in ('growth', 'growth2', 'social', 'idle', 'unconf', 'twin', 'leaver');
+-- #4255: a Founding partner holds an admin_users seat now.
+insert into public.admin_users (email, role, status, accepted_at)
+select email, 'partner', 'active', now()
+from t3802k_people where who = 'partner';
 
 set local session_replication_role = replica;
 insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
@@ -917,15 +924,15 @@ begin
     pg_temp.t3802k_gw('partner.claude2', 'get_started') || pg_temp.t3802k_gw('partner.codex2', 'get_started'), '{"auth": "invalid"}{"auth": "invalid"}');
   perform pg_temp.t3802k_check('K-7', 'removing someone else left other people''s keys alone',
     (select count(*)::text from public.team_agent_keys where owner_email = 'issue3802k-growth@test.local' and revoked_at is null), '2');
-  perform pg_temp.t3802k_check('K-7', 'only the owner can remove a person, as before',
-    pg_temp.t3802k_as('admin', $q$select public.admin_team_set_member('issue3802k-growth@test.local', 'growth', 'revoked')::text$q$), 'ERR:42501:forbidden');
-  perform pg_temp.t3802k_check('K-7', 'the team writer differs from the earlier one by exactly the added statements',
-    (select regexp_replace(p.prosrc,
-        '\s+PERFORM pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''team_agent_key:'' \|\| v_email, 0\)\);'
+  -- #4255 (D4): admins and partners manage the team now; nobody changes the owner.
+  perform pg_temp.t3802k_check('K-7', 'an admin cannot remove the owner',
+    pg_temp.t3802k_as('admin', $q$select public.admin_team_set_member('issue3802k-owner@test.local', 'growth', 'revoked')::text$q$), 'ERR:42501:cannot_change_owner');
+  -- #4255 rewrote the writer's gate and partner seat; the key-ending statements
+  -- this suite added must still be there, in order.
+  perform pg_temp.t3802k_check('K-7', 'the team writer still ends keys and setup codes on removal',
+    (select p.prosrc ~ ('PERFORM pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''team_agent_key:'' \|\| v_email, 0\)\);'
         || '\s+UPDATE public\.team_agent_keys\s+SET revoked_at = now\(\), revoked_by = v_actor, revoke_reason = ''access_removed''\s+WHERE owner_email = v_email AND revoked_at IS NULL;'
-        || '\s+UPDATE public\.team_agent_setup_codes\s+SET voided_at = now\(\)\s+WHERE owner_email = v_email AND consumed_at IS NULL AND voided_at IS NULL;', '')
-        = (select substring(s.sql from 'CREATE OR REPLACE FUNCTION public\.admin_team_set_member.*?AS \$\$(.*?)\$\$;')
-             from t3802k_src s where s.k = 'oldmember')
+        || '\s+UPDATE public\.team_agent_setup_codes\s+SET voided_at = now\(\)\s+WHERE owner_email = v_email AND consumed_at IS NULL AND voided_at IS NULL;')
        from pg_proc p where p.oid = 'public.admin_team_set_member(text,text,text)'::regprocedure)::text, 'true');
 end;
 $k7$;

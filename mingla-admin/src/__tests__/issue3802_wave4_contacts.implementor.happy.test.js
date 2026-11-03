@@ -367,12 +367,11 @@ describe("#3802 C-4: the contact rule on screen", () => {
     assert.ok(FORM.includes("{logRuleWarning(record, { kind, direction }) && ("));
     assert.ok(FORM.includes('<Button type="submit" size="sm" className="max-sm:h-11" loading={busy} disabled={disabled}>'));
   });
-  it("the card, the list and the drawer draw it", () => {
+  it("the card and the drawer draw it (#4255: the list view is gone)", () => {
     const CARD = read("components/crm/RecordCard.jsx");
     assert.ok(CARD.includes("aria-label={recordOpenLabel(record, team)}"));
     assert.ok(/\{rule && \(\s*<p className="mt-1" title=\{rule\.reason \|\| undefined\}>\s*<Badge variant=\{rule\.variant\}>\{rule\.label\}<\/Badge>/.test(CARD));
-    const LIST = read("components/crm/PipelineList.jsx");
-    assert.ok(LIST.includes("const rule = contactRuleView(row, team);") && LIST.includes("<Badge variant={rule.variant}>{rule.label}</Badge>"));
+    assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineList.jsx")), "#4255: the list view was removed (D8)");
     const DRAWER = read("components/crm/RecordDrawer.jsx");
     assert.ok(DRAWER.includes("const rule = contactRuleView(record, config.team);"));
     assert.ok(/\{rule && \(\s*<p\s+role="status"/.test(DRAWER));

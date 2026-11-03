@@ -24,6 +24,7 @@ import {
 import { PageHeader } from "../components/ui/PageHeader";
 import { EmailComposer } from "../components/email/EmailComposer";
 import { audienceFilterWords } from "../lib/emailAudience";
+import { AREA } from "../lib/access";
 
 class SessionExpiredError extends Error {
   constructor(message = SESSION_EXPIRED_MESSAGE) {
@@ -44,6 +45,16 @@ const SUB_TABS = [
   { id: "templates", label: "Templates" },
   { id: "unsubscribes", label: "Unsubscribes" },
 ];
+
+// #4255: every teammate writes and sends (D5). Send history and the
+// unsubscribe list read admin-only tables, so only admins see those tabs.
+const ADMIN_ONLY_SUB_TABS = new Set(["history", "unsubscribes"]);
+
+export function emailSubTabsFor(access) {
+  const isAdmin = access?.status === "active" && Array.isArray(access?.areas) &&
+    access.areas.includes(AREA.ADMIN_CONSOLE);
+  return isAdmin ? SUB_TABS : SUB_TABS.filter((tab) => !ADMIN_ONLY_SUB_TABS.has(tab.id));
+}
 
 // #3720 Slice B — only segments the edge actually filters. City / tier /
 // last_active were UI-only and silently sent to everyone (bug 4).
@@ -148,8 +159,10 @@ async function callEdgeFunction(payload, { retried = false } = {}) {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export function EmailPage({ embedded = false } = {}) {
-  const { signOut } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState("send");
+  const { signOut, access } = useAuth();
+  const subTabs = emailSubTabsFor(access);
+  const [requestedSubTab, setActiveSubTab] = useState("send");
+  const activeSubTab = subTabs.some((tab) => tab.id === requestedSubTab) ? requestedSubTab : "send";
   const [providerConfigured, setProviderConfigured] = useState(true);
   const [providerChecked, setProviderChecked] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -189,10 +202,10 @@ export function EmailPage({ embedded = false } = {}) {
       {!embedded ? (
         <PageHeader
           title="Email"
-          tabs={<Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />}
+          tabs={<Tabs tabs={subTabs} activeTab={activeSubTab} onChange={setActiveSubTab} />}
         />
       ) : (
-        <Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
+        <Tabs tabs={subTabs} activeTab={activeSubTab} onChange={setActiveSubTab} />
       )}
       {sessionExpired && (
         <div

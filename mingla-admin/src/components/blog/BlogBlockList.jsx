@@ -6,6 +6,7 @@ import { Modal, ModalBody } from "../ui/Modal";
 import { BlogBlockToolbar } from "./BlogBlockToolbar";
 import { BlogCityPicker } from "./BlogCityPicker";
 import { BlogInsertMenu } from "./BlogInsertMenu";
+import { BlogLinkPicker } from "./BlogLinkPicker";
 import { BlogMediaPicker } from "./BlogMediaPicker";
 import { BlogOfferingPicker } from "./BlogOfferingPicker";
 import { BlogPlacePicker } from "./BlogPlacePicker";

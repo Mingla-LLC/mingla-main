@@ -50,7 +50,10 @@
 -- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete self-check.
 -- #4130: crm_team_pulse is a separately guarded dashboard reader, not a
 -- pipeline command owned by the historical #3802 self-check.
-\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/"`
+-- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
+-- admin, partner) gates team changes, so the re-run self-check blocks below
+-- check growth only for admin areas and accept the team_manage gate.
+\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802h_rekey `sed -n '/^-- issue-3802-pr3 rekey: begin/,/^-- issue-3802-pr3 rekey: end/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 \set t3802h_oldkey `sed -n '/^CREATE FUNCTION public.crm_name_key/,/^\$\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
 
@@ -93,10 +96,14 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802h-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('issue3802h-growth@test.local',   'growth',  'active',  now()),
-  ('issue3802h-partner@test.local',  'partner', 'active',  now()),
   ('issue3802h-invited@test.local',  'growth',  'invited', null),
   ('issue3802h-revoked@test.local',  'partner', 'revoked', now()),
-  ('issue3802h-growth2@test.local',  'growth',  'active',  now());
+  ('issue3802h-growth2@test.local',  'growth',  'active',  now()),
+  -- #4255 (D3): a Founding partner is a full admin now (proven by
+  -- issue_4255_admin_access_email_drafts.implementor.pg17.test.sql). This
+  -- suite keeps its 'partner' persona as a non-admin teammate (growth), so its
+  -- refusals still prove what a non-admin teammate cannot do.
+  ('issue3802h-partner@test.local',  'growth',  'active',  now());
 
 -- Fixture rows only: no product side effects are wanted.
 set local session_replication_role = replica;
@@ -864,7 +871,7 @@ begin
   foreach v_who in array array['owner', 'admin', 'growth', 'partner'] loop
     perform pg_temp.t3802h_check('H-6', v_who || ' gets the home summary, with their own role',
       pg_temp.t3802h_get(pg_temp.t3802h_as(v_who, $q$select public.crm_home_summary()::text$q$), 'me', 'role'),
-      case v_who when 'owner' then 'owner' when 'admin' then 'admin' when 'growth' then 'growth' else 'partner' end);
+      case v_who when 'owner' then 'owner' when 'admin' then 'admin' else 'growth' end);  -- #4255: the 'partner' persona is growth here
   end loop;
   foreach v_who in array array['invited', 'revoked', 'consumer', 'service'] loop
     perform pg_temp.t3802h_like('H-6', v_who || ' is refused the home summary',
@@ -1185,11 +1192,13 @@ begin
   begin
     create or replace function public.admin_team_role_areas(p_role text) returns text[]
     language sql immutable set search_path = '' as $f$
+      -- #4255: the 'partner' persona is a growth teammate in this suite, so the
+      -- growth row loses beta_leads here and an admin is the one who keeps it.
       select case p_role
-        when 'owner'   then array['admin_console','team_manage','crm','beta_leads']
-        when 'admin'   then array['admin_console','crm','beta_leads']
-        when 'growth'  then array['role_home','crm','beta_leads']
-        when 'partner' then array['role_home','crm']
+        when 'owner'   then array['admin_console','team_manage','crm','beta_leads','email_drafts']
+        when 'admin'   then array['admin_console','team_manage','crm','beta_leads','email_drafts']
+        when 'partner' then array['admin_console','team_manage','crm','beta_leads','email_drafts']
+        when 'growth'  then array['role_home','crm','email_drafts']
         else array[]::text[]
       end
     $f$;
@@ -1202,9 +1211,9 @@ begin
     v_notes := v_notes || pg_temp.t3802h_note('and the home summary gives them no beta lead count, while the rest still works',
       coalesce(pg_temp.t3802h_get(pg_temp.t3802h_as('partner', $q$select public.crm_home_summary()::text$q$), 'beta_leads_new'), 'none')
         || '/' || pg_temp.t3802h_get(pg_temp.t3802h_as('partner', $q$select public.crm_home_summary()::text$q$), 'me', 'role'),
-      'none/partner');
+      'none/growth');
     v_notes := v_notes || pg_temp.t3802h_note('someone who still holds the area is unaffected',
-      (pg_temp.t3802h_jb(pg_temp.t3802h_as('growth', $q$select public.crm_beta_leads_list()::text$q$)) ? 'leads')::text, 'true');
+      (pg_temp.t3802h_jb(pg_temp.t3802h_as('admin', $q$select public.crm_beta_leads_list()::text$q$)) ? 'leads')::text, 'true');
     raise exception 'issue3802h_undo';
   exception when others then
     if sqlerrm <> 'issue3802h_undo' then
@@ -1213,7 +1222,7 @@ begin
   end;
   perform pg_temp.t3802h_record('H-8', v_notes);
   perform pg_temp.t3802h_check('H-8', 'the area map is back as it was',
-    array_to_string(public.admin_team_role_areas('partner'), ','), 'role_home,crm,beta_leads');
+    array_to_string(public.admin_team_role_areas('partner'), ','), 'admin_console,team_manage,crm,beta_leads,email_drafts');
 
   -- The full-admin reader is untouched.
   perform pg_temp.t3802h_check('H-8', 'the full-admin reader still refuses the rest of the team',
@@ -1468,8 +1477,9 @@ begin
         pg_temp.t3802h_get(r, 'status') || '/' || pg_temp.t3802h_get(r, 'email') || '/' || (select count(*)::text from public.admin_team_invites where email = c.email),
         'invited/' || c.email || '/1');
     end if;
-    -- Anyone who is not the owner learns nothing about the address.
-    foreach v_who in array array['admin', 'growth', 'partner', 'consumer'] loop
+    -- Anyone who cannot manage the team learns nothing about the address
+    -- (#4255 D4: admins manage the team, so they are not in this list).
+    foreach v_who in array array['growth', 'partner', 'consumer'] loop
       perform pg_temp.t3802h_check('H-10', v_who || ' inviting ' || c.label || ' gets the same refusal as for any address',
         pg_temp.t3802h_as(v_who, format($q$select public.admin_team_issue_invite(%L, 'growth', %L)::text$q$, c.email, md5(c.email) || md5(c.label))),
         'ERR:42501:forbidden');

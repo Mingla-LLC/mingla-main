@@ -188,8 +188,10 @@ BEGIN
   INSERT INTO public.admin_users(email, role, status) VALUES ('w5-admin@mingla-fixture.org', 'admin', 'active')
   ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
   INSERT INTO public.admin_team_members(email, role, status, accepted_at) VALUES
-    ('w5-partner@mingla-fixture.org', 'partner', 'active', now()),
     ('w5-growth@mingla-fixture.org',  'growth',  'active', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('w5-partner@mingla-fixture.org', 'partner', 'active', now());
 
   -- ── C-02 the gate ──────────────────────────────────────────────────────────
   FOREACH v_fn IN ARRAY ARRAY['admin_data_room_users', 'admin_data_room_overview',

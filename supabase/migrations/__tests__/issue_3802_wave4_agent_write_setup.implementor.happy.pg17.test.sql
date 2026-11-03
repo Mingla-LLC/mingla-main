@@ -37,9 +37,12 @@
 -- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete CRM self-check.
 -- #4130: crm_team_pulse is a separately guarded dashboard reader, not a
 -- pipeline command owned by the historical #3802 self-check.
-\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/"`
+-- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
+-- admin, partner) gates team changes, so the re-run self-check blocks below
+-- check growth only for admin areas and accept the team_manage gate.
+\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 -- [TEST-MOD-APPROVED #3980] The work gateway (ops_agent_call) writes request rows and the key's last-used marker on the same rail.
-\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/"`
+\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
 -- ===========================================================================
@@ -76,8 +79,12 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802b-owner@test.local', 'owner', 'active', now()),
   ('issue3802b-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at)
-select email, case who when 'partner' then 'partner' else 'growth' end, 'active', now()
-from t3802b_people where who in ('growth', 'partner', 'growth2', 'social', 'leaver');
+select email, 'growth', 'active', now()
+from t3802b_people where who in ('growth', 'growth2', 'social', 'leaver');
+-- #4255: a Founding partner holds an admin_users seat now.
+insert into public.admin_users (email, role, status, accepted_at)
+select email, 'partner', 'active', now()
+from t3802b_people where who = 'partner';
 
 set local session_replication_role = replica;
 insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
