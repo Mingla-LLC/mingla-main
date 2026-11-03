@@ -12,7 +12,7 @@ import type { HostAdCampaign } from "../services/hostAdCampaignService";
 export type HomeAdDestructiveAction = "cancel" | "end";
 
 const NETWORK_LABELS: Readonly<Record<string, string>> = {
-  meta: "Meta",
+  meta: "Facebook & Instagram",
   tiktok: "TikTok",
   google: "Google",
   snapchat: "Snapchat",

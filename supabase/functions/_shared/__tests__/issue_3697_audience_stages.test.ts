@@ -35,7 +35,6 @@ Deno.test("#3697 stage plan excludes event buyers everywhere and stores 70/20/10
       row("M4", "brand", 5_000),
       row("M5", "event", 1_100),
       row("M6", "event", 600, "buyers"),
-      row("M9", "market", 12_000),
     ],
   });
   assert(plan);

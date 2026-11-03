@@ -55,22 +55,21 @@ const MINIMUM_AUDIENCE_SIZE = 1000 as const;
 
 const CODES: Record<
   PaidSocialPlatform,
-  { prospecting: string[]; retarget: string[]; checkout: string; buyer: string }
+  { retarget: string[]; checkout: string; buyer: string }
 > = {
+  // #4238: the prospecting slot is filled by the plan's selected customer
+  // lists / lookalikes (prospectingAudienceIds), not by a pixel code.
   meta: {
-    prospecting: ["M9"],
     retarget: ["M1", "M2", "M3", "M4"],
     checkout: "M5",
     buyer: "M6",
   },
   snapchat: {
-    prospecting: ["S6"],
     retarget: ["S1", "S2"],
     checkout: "S3",
     buyer: "S4",
   },
   tiktok: {
-    prospecting: ["T6"],
     retarget: ["T1", "T2"],
     checkout: "T3",
     buyer: "T4",
@@ -214,6 +213,11 @@ export function buildAdStagePlan(input: {
   eventId: string;
   totalBudgetCents: number;
   enabledStages?: Partial<Record<AdStage, boolean>>;
+  /**
+   * #4238: provider ids of the plan's selected list audiences, resolved
+   * server-side from audience_selection (never from a request body).
+   */
+  prospectingAudienceIds?: string[];
 }): AdStagePlan | null {
   const platform = paidSocialPlatform(input.platform);
   if (!platform) return null;
@@ -261,15 +265,12 @@ export function buildAdStagePlan(input: {
     input.brandId,
     input.eventId,
   );
-  const lookalikes = codes.prospecting.map((code) =>
-    qualifyingAudience(
-      rows,
-      code,
-      input.market,
-      input.brandId,
-      input.eventId,
-    ).row
-  ).filter((row): row is AdAudienceRow => row !== null);
+  const prospectingIds = [
+    ...new Set(
+      (input.prospectingAudienceIds ?? []).map((id) => String(id).trim())
+        .filter(Boolean),
+    ),
+  ];
 
   const executable: Record<AdStage, boolean> = {
     prospecting: enabled.prospecting && !blocked,
@@ -291,7 +292,11 @@ export function buildAdStagePlan(input: {
     codes: items.map((row) => row.code),
     sizes: Object.fromEntries(items.map((row) => [row.code, row.approx_size])),
   });
-  const prospecting = rowsFor(lookalikes);
+  const prospecting = {
+    ids: prospectingIds,
+    codes: [] as string[],
+    sizes: {} as Record<string, number | null>,
+  };
   const retarget = rowsFor(retargetRows);
   const abandoners = rowsFor(checkout.row ? [checkout.row] : []);
 
@@ -318,7 +323,8 @@ export function buildAdStagePlan(input: {
       : !enabled[name]
       ? "Stage turned off."
       : reason,
-    advantageAudience: name === "prospecting",
+    // With an attached list or lookalike, Advantage+ must not widen past it.
+    advantageAudience: name === "prospecting" && prospectingIds.length === 0,
     frequencyCap: name !== "prospecting" && platform !== "tiktok"
       ? { impressions: 3, days: 7 }
       : null,

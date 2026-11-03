@@ -1463,6 +1463,8 @@ export function CampaignBuilderPage() {
           time_zone: scheduleZone,
         },
         audience_intent: audienceIntent,
+        // #4238 wave 2: list keys only; the server resolves provider ids.
+        audience_selection: { include_keys: audience.audienceKeys ?? [] },
         stage_selection: audience.stages ?? {
           prospecting: true,
           retarget: true,
@@ -2388,6 +2390,8 @@ export function CampaignBuilderPage() {
               audience={audience}
               onAudienceChange={setAudience}
               channelRows={plannedRows}
+              brandId={firstDestination?.brand_id ?? null}
+              brandName={firstDestination?.brand_name ?? null}
             />
           )}
           {stepId === "budget" && (

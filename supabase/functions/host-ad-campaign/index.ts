@@ -18,6 +18,7 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -27,7 +28,14 @@ import {
   getAdapter,
   isPlatform,
 } from "../_shared/adChannel.ts";
-import { buildHostCampaignList } from "../_shared/hostAdCampaignList.ts";
+import {
+  buildHostCampaignList,
+  buildHostDailySeries,
+  buildHostListSummary,
+  type DailySeriesRow,
+  type ListSummaryConvert,
+  withHostSpendEquivalent,
+} from "../_shared/hostAdCampaignList.ts";
 import {
   isSyntheticHostExternalId,
   setCampaignTreeStatus,
@@ -231,7 +239,10 @@ serve(async (req: Request): Promise<Response> => {
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) {
-      return json({ error: "apply_failed", detail: error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
     }
     const campaigns = data ?? [];
     if (campaigns.length === 0) {
@@ -244,12 +255,12 @@ serve(async (req: Request): Promise<Response> => {
           typeof row.plan_version_id === "string" ? [row.plan_version_id] : [],
       )),
     ];
-    const [spend, conversions, adSets, versions, plans] = await Promise.all([
+    const [spend, conversions, adSets, versions, plans, allocations, brandRow] = await Promise.all([
       supabase.from("ad_spend_daily").select(
-        "campaign_id,spend_cents,impressions,clicks,currency",
+        "campaign_id,spend_cents,impressions,clicks,currency,spend_date",
       ).in("campaign_id", campaignIds),
       supabase.from("ad_conversions").select(
-        "campaign_id,value_cents,currency",
+        "campaign_id,value_cents,currency,created_at",
       ).in(
         "campaign_id",
         campaignIds,
@@ -268,11 +279,22 @@ serve(async (req: Request): Promise<Response> => {
           "id,current_version_id,state,updated_at",
         ).in("current_version_id", versionIds)
         : Promise.resolve({ data: [], error: null }),
+      // #4238 P1-3: the frozen rates the "This month" card converts with.
+      versionIds.length > 0
+        ? supabase.from("ad_plan_provider_allocations").select(
+          "plan_version_id,platform,host_currency,provider_currency,fx_snapshot_id",
+        ).in("plan_version_id", versionIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from("brands").select("default_timezone").eq("id", brandId)
+        .maybeSingle(),
     ]);
     const listError = spend.error ?? conversions.error ?? adSets.error ??
-      versions.error ?? plans.error;
+      versions.error ?? plans.error ?? allocations.error;
     if (listError) {
-      return json({ error: "apply_failed", detail: listError.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(listError, "host-ad-campaign list"),
+      }, 502);
     }
     const adSetIds = (adSets.data ?? []).map((row: { id: string }) => row.id);
     const ads = adSetIds.length > 0
@@ -281,19 +303,59 @@ serve(async (req: Request): Promise<Response> => {
       ).in("ad_set_id", adSetIds)
       : { data: [], error: null };
     if (ads.error) {
-      return json({ error: "apply_failed", detail: ads.error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(ads.error, "host-ad-campaign ads"),
+      }, 502);
     }
+    const nowIso = new Date().toISOString();
+    // #4238: the plan's frozen rate, the same conversion the card and the
+    // detail page use.
+    const convertFrozen: ListSummaryConvert = async (
+      { amount, source, target, snapshotId },
+    ) => {
+      const { data: converted, error: conversionError } = await supabase
+        .rpc("ad_fx_convert_frozen_minor", {
+          p_amount: amount,
+          p_source: source,
+          p_target: target,
+          p_snapshot: snapshotId,
+        });
+      const value = Number(converted);
+      return conversionError || !Number.isSafeInteger(value) || value < 0
+        ? null
+        : value;
+    };
+    const listed = await withHostSpendEquivalent(buildHostCampaignList({
+      campaigns,
+      versions: versions.data ?? [],
+      plans: plans.data ?? [],
+      spend: spend.data ?? [],
+      conversions: conversions.data ?? [],
+      adSets: adSets.data ?? [],
+      ads: ads.data ?? [],
+      nowIso,
+    }), {
+      rawCampaigns: campaigns,
+      spend: spend.data ?? [],
+      allocations: allocations.data ?? [],
+      convert: convertFrozen,
+    });
     return json({
       ok: true,
-      campaigns: buildHostCampaignList({
-        campaigns,
-        versions: versions.data ?? [],
-        plans: plans.data ?? [],
+      campaigns: listed,
+      // #4238: the Ads list summary card (null when there are no ads).
+      summary: await buildHostListSummary({
+        campaigns: listed,
+        rawCampaigns: campaigns,
         spend: spend.data ?? [],
         conversions: conversions.data ?? [],
-        adSets: adSets.data ?? [],
-        ads: ads.data ?? [],
-        nowIso: new Date().toISOString(),
+        allocations: allocations.data ?? [],
+        nowIso,
+        timeZone: typeof brandRow.data?.default_timezone === "string"
+          ? brandRow.data.default_timezone
+          : null,
+        convert: convertFrozen,
       }),
     });
   }
@@ -316,7 +378,10 @@ serve(async (req: Request): Promise<Response> => {
       .eq("owner_kind", "host")
       .maybeSingle();
     if (error) {
-      return json({ error: "apply_failed", detail: error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
     }
     if (!data) {
       return json(
@@ -598,10 +663,56 @@ serve(async (req: Request): Promise<Response> => {
       placementMap.set(key, current);
     }
 
+    // #4238: results over time for the Host charts. Missing data stays null;
+    // a failed series read hides the charts (daily_error) and keeps totals.
+    const { data: brandZone } = await supabase.from("brands")
+      .select("default_timezone").eq("id", brandId).maybeSingle();
+    const timeZone = typeof brandZone?.default_timezone === "string" &&
+        brandZone.default_timezone
+      ? brandZone.default_timezone
+      : "UTC";
+    const { data: seriesRows, error: seriesError } = await supabase.rpc(
+      "ad_campaign_daily_series",
+      { p_campaign_ids: planCampaignIds, p_time_zone: timeZone },
+    );
+    const series = seriesError ? null : await buildHostDailySeries({
+      rows: ((seriesRows ?? []) as DailySeriesRow[]).map((row) => ({
+        ...row,
+        spend_cents: row.spend_cents === null ? null : Number(row.spend_cents),
+        impressions: row.impressions === null ? null : Number(row.impressions),
+        clicks: row.clicks === null ? null : Number(row.clicks),
+        page_visits: row.page_visits === null ? null : Number(row.page_visits),
+        results: row.results === null ? null : Number(row.results),
+      })),
+      hostCurrency: planCurrency,
+      convert: async ({ amount, platform, source }) => {
+        const allocation = providerAllocations.find((row) =>
+          row.platform === platform
+        );
+        if (!allocation || !planCurrency) return null;
+        const { data: converted, error: conversionError } = await supabase
+          .rpc("ad_fx_convert_frozen_minor", {
+            p_amount: amount,
+            p_source: source,
+            p_target: planCurrency,
+            p_snapshot: typeof allocation.fx_snapshot_id === "string"
+              ? allocation.fx_snapshot_id
+              : null,
+          });
+        const value = Number(converted);
+        return conversionError || !Number.isSafeInteger(value) || value < 0
+          ? null
+          : value;
+      },
+    });
     return json({
       ok: true,
       campaign: data,
       plan_campaigns: planCampaigns,
+      daily: series?.daily ?? [],
+      by_platform_spend: series?.by_platform_spend ?? [],
+      time_zone: timeZone,
+      ...(seriesError ? { daily_error: "unavailable" } : {}),
       plan_state: planState,
       plan_currency: planCurrency,
       plan_cap_cents: planCapCents,
@@ -720,7 +831,9 @@ serve(async (req: Request): Promise<Response> => {
       if (planCampaignError || !planCampaigns?.length) {
         return json({
           error: "stop_request_failed",
-          detail: planCampaignError?.message ?? "plan_campaigns_missing",
+          detail: planCampaignError
+            ? hostSafeDatabaseDetail(planCampaignError, "host-ad-campaign stop")
+            : "plan_campaigns_missing",
         }, 409);
       }
       const [planResult, allocationResult] = await Promise.all([
@@ -735,7 +848,9 @@ serve(async (req: Request): Promise<Response> => {
       ) {
         return json({
           error: "stop_request_failed",
-          detail: planResult.error?.message ?? "plan_state_not_endable",
+          detail: planResult.error
+            ? hostSafeDatabaseDetail(planResult.error, "host-ad-campaign stop")
+            : "plan_state_not_endable",
         }, 409);
       }
       const expectedPlatforms = new Set(
@@ -775,7 +890,10 @@ serve(async (req: Request): Promise<Response> => {
         if (settlementError) {
           return json({
             error: "stop_request_failed",
-            detail: settlementError.message,
+            detail: hostSafeDatabaseDetail(
+              settlementError,
+              "host-ad-campaign stop",
+            ),
             campaign_id: target.id,
             settlements,
           }, 409);
@@ -936,7 +1054,10 @@ serve(async (req: Request): Promise<Response> => {
         .select("id")
         .maybeSingle();
       if (error) {
-        return json({ error: "apply_failed", detail: error.message }, 502);
+        return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
       }
       if (!paused) {
         return json({
@@ -1133,7 +1254,10 @@ serve(async (req: Request): Promise<Response> => {
     if (launchableError) {
       return json({
         error: "plan_not_launchable",
-        detail: launchableError.message,
+        detail: hostSafeDatabaseDetail(
+          launchableError,
+          "host-ad-campaign launch",
+        ),
       }, 409);
     }
 
@@ -1216,7 +1340,10 @@ serve(async (req: Request): Promise<Response> => {
         detail: error.message,
         idempotencyKey: `ads_launch:host:${campaignId}:claim_failed`,
       });
-      return json({ error: "apply_failed", detail: error.message }, 502);
+      return json({
+        error: "apply_failed",
+        detail: hostSafeDatabaseDetail(error, "host-ad-campaign"),
+      }, 502);
     }
     if (!claimed?.id) {
       // Another launch won the claim; debit was idempotent on campaign key.

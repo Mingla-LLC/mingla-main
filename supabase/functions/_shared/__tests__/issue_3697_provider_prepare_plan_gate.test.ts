@@ -41,7 +41,8 @@ function binding(
     requestedPlanHash: HASH,
     requestedCreativeId: CREATIVE_ID,
     requestedPlatform: "meta",
-    requestedLane: "business",
+    // #4238 D1: a Host plan runs on the consumer lane.
+    requestedLane: "consumer",
     requestedBrandId: BRAND_ID,
     ...patch,
   };
@@ -94,8 +95,13 @@ Deno.test("#3697 provider preparation accepts only the exact confirmed binding",
 
 Deno.test("#3697 provider preparation enforces owner lane and brand", () => {
   assertEquals(
-    creativePreparationBindingError(binding({ requestedLane: "consumer" })),
+    creativePreparationBindingError(binding({ requestedLane: "business" })),
     "plan_lane_mismatch",
+  );
+  // #4238: a Host caller may omit the lane; the plan owner decides it.
+  assertEquals(
+    creativePreparationBindingError(binding({ requestedLane: undefined })),
+    null,
   );
   assertEquals(
     creativePreparationBindingError(binding({ requestedBrandId: PLAN_ID })),

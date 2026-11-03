@@ -7,8 +7,8 @@ const read = (relative: string): string =>
 
 describe("issue #3697 v1.4 Host Ads program", () => {
   const service = read("src/services/hostAdPlanService.ts");
-  const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
-  const adsRoute = read("app/(tabs)/marketing/ads/index.tsx");
+  const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
+  const adsRoute = read("src/screens/hostAds/HostAdListScreen.tsx");
   const tabActions = read("src/components/marketing/marketingTabActions.ts");
   const ariCard = read("src/components/ari/ToolProposalCard.tsx");
   const campaignService = read("src/services/hostAdCampaignService.ts");
@@ -20,9 +20,10 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   it("links the Ads tab to a concrete Host builder", () => {
     expect(tabActions).toContain('label: "Create an ad"');
     expect(tabActions).toContain('href: "/(tabs)/marketing/ads/create"');
-    expect(createRoute).toContain("Prepare immutable plan");
-    expect(createRoute).toContain("Hold funds");
-    expect(createRoute).toContain("Launch approved plan");
+    // #4238 plain-language pass: same steps, Host words.
+    expect(createRoute).toContain("Check my ad");
+    expect(createRoute).toContain("Set aside the money");
+    expect(createRoute).toContain("Start my ad");
     expect(adsRoute).toContain("useHostAdPlans");
     expect(adsRoute).toContain('testID="ads-campaigns-empty"');
     expect(adsRoute).not.toContain("Plans in progress");
@@ -41,11 +42,11 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).not.toMatch(/currency:\s*input\./);
     expect(service).toContain('phrase: "LAUNCH"');
     expect(service).toContain("input.connections.map");
-    expect(createRoute).toContain("one or more connected platforms");
+    expect(createRoute).toContain("where it runs and one ready video");
     expect(service).toContain("provider_estimate");
     expect(service).toContain("estimate_observed_at");
-    expect(createRoute).toContain("Provider estimates overlap");
-    expect(createRoute).toContain("Do not add these estimates");
+    expect(createRoute).toContain("Reach numbers overlap");
+    expect(createRoute).toContain("Don&apos;t add the numbers up");
   });
 
   it("stops the first three for staff review before provider create", () => {
@@ -55,8 +56,8 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     const createIndex = service.lastIndexOf('"admin-ad-create-campaign"');
     expect(reviewIndex).toBeGreaterThan(-1);
     expect(createIndex).toBeGreaterThan(reviewIndex);
-    expect(createRoute).toContain("no provider object exists");
-    expect(createRoute).toContain("Cancel plan and release funds");
+    expect(createRoute).toContain("Your money is set aside while Mingla checks your ad.");
+    expect(createRoute).toContain("Cancel ad and get my money back");
   });
 
   it("runs provider validation only after funding, confirmation and media preparation", () => {
@@ -83,7 +84,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('phrase: "CANCEL PLAN"');
     expect(createRoute).toContain('confirmText="CANCEL PLAN"');
     expect(createRoute).toContain("aggregateHasProviderObjectEvidence");
-    expect(createRoute).toContain("Provider object evidence is recorded");
+    expect(createRoute).toContain("This ad was already set up on at least one app.");
   });
 
   it("creates every provider object paused before any Host activation", () => {
@@ -109,18 +110,18 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('"creating_paused_objects"');
     expect(service).toContain('action: "record_create_failure"');
     expect(service).not.toContain("item.value.campaigns.length === 0");
-    expect(createRoute).toContain("Retry provider creation and launch");
+    expect(createRoute).toContain("Try starting my ad again");
   });
 
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
-    const detailRoute = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detailRoute = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(campaignService).toContain('"admin-ad-campaign-action"');
     expect(planEndpoint).toContain('action === "cancel_before_create"');
     expect(hostCampaignEndpoint).toContain("campaign_ids: planCampaigns.map");
     expect(hostCampaignEndpoint).toContain('from("ad_campaign_settlements")');
     expect(campaignService).toContain("settlements:");
-    expect(detailRoute).toContain("Stop and settlement");
-    expect(detailRoute).toContain("Final provider spend");
+    expect(detailRoute).toContain("Getting your money back");
+    expect(detailRoute).toContain("Final spend on the app");
   });
 
   it("reuses the shared resumable video picker instead of inventing an Ads uploader", () => {
@@ -140,14 +141,23 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(planEndpoint).toContain('action === "host_setup"');
     expect(planEndpoint).toContain("ad_can_host_action");
     expect(planEndpoint).toContain('p_action: "read"');
-    expect(planEndpoint).toContain(
-      "id,platform,lane,currency,status,connected,updated_at",
+    // #4238: Hosts get a projection of each ready account, never its lane,
+    // token variable, external ids or provider extra.
+    const projection = planEndpoint.slice(
+      planEndpoint.indexOf("const hostConnections = connectionRows.map"),
+      planEndpoint.indexOf("const rawCountry"),
     );
+    expect(projection).toContain("platform: row.platform");
+    expect(projection).toContain("sales:");
+    expect(projection).not.toContain("token_env_var");
+    expect(projection).not.toContain("external_account_id");
+    expect(projection).not.toContain("extra");
+    expect(projection).not.toContain("lane");
     expect(planEndpoint).not.toContain('select("*,secret');
   });
 
   it("keeps planning, funding, launch, pause and end as separate grants", () => {
-    const detailRoute = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detailRoute = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(createRoute).toContain("permissions.canPlan");
     expect(createRoute).toContain("permissions.canFund");
     expect(createRoute).toContain("permissions.canLaunch");
@@ -158,7 +168,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
 
   it("shows Ari's server-resolved brand currency without inventing a top-up", () => {
     expect(ariCard).toContain("context.ad_budget_cents");
-    expect(ariCard).toContain('label: "Hard cap"');
+    expect(ariCard).toContain('label: "Total budget"');
     expect(ariCard).toContain('label: "Daily total"');
     expect(ariCard).not.toContain('label: "Total top-up"');
   });

@@ -61,6 +61,8 @@ export function buildPaidSocialStageRuntime(input: {
     >
     & { namePrefix: string; targeting: Row };
   budgetMode: "daily" | "lifetime";
+  /** #4238: ready provider ids of the plan's selected list audiences. */
+  prospectingAudienceIds?: string[];
 }): PaidSocialStageRuntime {
   const spark = input.platform === "tiktok"
     ? tiktokSparkSelection(input.canonicalPlan)
@@ -91,6 +93,7 @@ export function buildPaidSocialStageRuntime(input: {
     eventId: input.eventId,
     totalBudgetCents: input.totalBudgetCents,
     enabledStages,
+    prospectingAudienceIds: input.prospectingAudienceIds ?? [],
   });
   if (!plan) throw new Error("paid_social_stage_plan_required");
   const adSets = buildStagedAdSetPlan({

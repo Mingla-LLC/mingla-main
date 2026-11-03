@@ -171,9 +171,20 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `ari_message_feedback(user_id,assistant_message_id)`, backed by the
   // migration's unique constraint; census +1 (102).
   //
+  // #4238 Host ad list audiences, census +5 (107). Every arbiter is a
+  // non-partial key from `20280318004238_issue_4238_ad_list_audiences.sql`:
+  //   +1  `ad_list_audiences (audience_key)` — admin-ad-audiences/index.ts;
+  //       arbiter: the column's non-partial `UNIQUE` constraint.
+  //   +1  `ad_list_audience_platforms (audience_id,platform)` —
+  //       _shared/adListAudienceProvider.ts; arbiter: the table's
+  //       `PRIMARY KEY (audience_id, platform)`.
+  //   +3  `ad_platform_audience_terms (connection_id)` — one call site in
+  //       _shared/adListAudienceProvider.ts and two in admin-ad-audiences;
+  //       arbiter: `connection_id uuid PRIMARY KEY`.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 102);
+  assert.equal(sites.length, 107);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

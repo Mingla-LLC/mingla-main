@@ -6,8 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "../../context/AuthContext";
 import {
-  listHostAdCampaigns,
+  listHostAdCampaignPage,
   type HostAdCampaign,
+  type HostAdListSummary,
 } from "../../services/hostAdCampaignService";
 
 export const hostAdCampaignKeys = {
@@ -19,6 +20,8 @@ export const hostAdCampaignKeys = {
 export function useHostAdCampaigns(brandId: string | null): {
   campaigns: HostAdCampaign[];
   liveCampaigns: HostAdCampaign[];
+  /** #4238 wave 2: this month's spend, budget and results (null: no ads). */
+  summary: HostAdListSummary | null;
   isLoading: boolean;
   isError: boolean;
   isRefetching: boolean;
@@ -29,15 +32,16 @@ export function useHostAdCampaigns(brandId: string | null): {
   const query = useQuery({
     queryKey: hostAdCampaignKeys.byBrand(brandId),
     enabled,
-    queryFn: () => listHostAdCampaigns(brandId as string),
+    queryFn: () => listHostAdCampaignPage(brandId as string),
   });
-  const campaigns = query.data ?? [];
+  const campaigns = query.data?.campaigns ?? [];
   const liveCampaigns = campaigns.filter(
     (c) => String(c.status).toUpperCase() === "ACTIVE",
   );
   return {
     campaigns,
     liveCampaigns,
+    summary: query.data?.summary ?? null,
     isLoading: query.isLoading,
     isError: query.isError,
     isRefetching: query.isRefetching,

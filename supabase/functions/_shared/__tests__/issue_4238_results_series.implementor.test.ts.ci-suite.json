@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_results_series.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-results-series--shared",
+  "profile": "deno-2-unit"
+}

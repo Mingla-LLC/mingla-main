@@ -8,6 +8,8 @@
  * regression-testable without provider or database I/O.
  */
 
+import { adLaneForOwner } from "./adChannelCore.ts";
+
 export type CreativePreparationPlan = {
   id: string;
   owner_kind: "mingla" | "host";
@@ -42,7 +44,8 @@ export type CreativePreparationBinding = {
   requestedPlanHash: string;
   requestedCreativeId: string;
   requestedPlatform: string;
-  requestedLane: "consumer" | "business";
+  /** Absent means "the lane this plan's owner uses" (#4238). */
+  requestedLane?: "consumer" | "business";
   requestedBrandId: string;
 };
 
@@ -68,11 +71,13 @@ export function creativePreparationBindingError(
     return "plan_not_launch_confirmed";
   }
   if (!binding.confirmationPresent) return "plan_confirmation_missing";
+  const expectedLane = adLaneForOwner(plan.owner_kind);
+  if ((binding.requestedLane ?? expectedLane) !== expectedLane) {
+    return "plan_lane_mismatch";
+  }
   if (plan.owner_kind === "mingla") {
-    if (binding.requestedLane !== "consumer") return "plan_lane_mismatch";
     if (binding.requestedBrandId) return "plan_brand_mismatch";
   } else {
-    if (binding.requestedLane !== "business") return "plan_lane_mismatch";
     if (
       !plan.brand_id || plan.brand_id !== binding.requestedBrandId
     ) return "plan_brand_mismatch";

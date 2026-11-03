@@ -13,23 +13,15 @@ import {
 } from "../../constants/designSystem";
 import type { AdCreditLedgerRow as LedgerRow } from "../../services/adCreditService";
 import { formatCurrency } from "../../utils/currency";
+import { hostAdLedgerLabel } from "./ads/hostAdCopy";
 
 export interface AdCreditLedgerRowProps {
   row: LedgerRow;
 }
 
-function kindLabel(kind: string): string {
-  switch (kind) {
-    case "top_up":
-      return "Top-up";
-    case "withdraw":
-      return "Withdraw";
-    case "unspend_return":
-      return "Returned to credit";
-    default:
-      return kind;
-  }
-}
+// #4238: every ledger kind has a plain label; an unknown kind never shows
+// its raw code.
+const kindLabel = hostAdLedgerLabel;
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);

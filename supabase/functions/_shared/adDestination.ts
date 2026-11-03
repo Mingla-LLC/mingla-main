@@ -193,6 +193,22 @@ const ENTITY_TYPES = new Set<DestinationPageType>([
   "marketing",
 ]);
 
+/**
+ * #4238: the descriptor a create call sends: page_type, brand_slug and
+ * entity_slug only. A plan's canonical destination is the full resolver
+ * result, which requireDescriptor refuses (destination_descriptor_unknown_field).
+ */
+export function destinationDescriptorOf(
+  destination: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of DESTINATION_KEYS) {
+    const value = destination?.[key];
+    if (typeof value === "string" && value.trim()) out[key] = value;
+  }
+  return out;
+}
+
 function requireDescriptor(input: unknown): DestinationDescriptor {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new AdDestinationError(
