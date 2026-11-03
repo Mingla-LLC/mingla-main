@@ -7,8 +7,8 @@ const read = (relative: string): string =>
 
 describe("issue #3697 v1.4 Host Ads program", () => {
   const service = read("src/services/hostAdPlanService.ts");
-  const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
-  const adsRoute = read("app/(tabs)/marketing/ads/index.tsx");
+  const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
+  const adsRoute = read("src/screens/hostAds/HostAdListScreen.tsx");
   const tabActions = read("src/components/marketing/marketingTabActions.ts");
   const ariCard = read("src/components/ari/ToolProposalCard.tsx");
   const campaignService = read("src/services/hostAdCampaignService.ts");
@@ -114,7 +114,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   });
 
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
-    const detailRoute = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detailRoute = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(campaignService).toContain('"admin-ad-campaign-action"');
     expect(planEndpoint).toContain('action === "cancel_before_create"');
     expect(hostCampaignEndpoint).toContain("campaign_ids: planCampaigns.map");
@@ -157,7 +157,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   });
 
   it("keeps planning, funding, launch, pause and end as separate grants", () => {
-    const detailRoute = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detailRoute = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(createRoute).toContain("permissions.canPlan");
     expect(createRoute).toContain("permissions.canFund");
     expect(createRoute).toContain("permissions.canLaunch");

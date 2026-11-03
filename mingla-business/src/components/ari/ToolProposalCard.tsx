@@ -47,11 +47,10 @@ import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
-import {
-  hostAdResultLabel,
-  platformName,
-} from "../marketing/ads/hostAdCopy";
+// #4238: only the boot-chunk platform names and the money format here, never
+// the Host Ads words module (it loads with the Host Ads screens).
 import { formatHostAdMoneyCents } from "../marketing/ads/hostAdMoney";
+import { adPlatformName } from "../../utils/adVideoFit";
 import {
   ariAdOwnerKey,
   isValidAdCreativeOwnerKey,
@@ -407,7 +406,7 @@ function fieldsFor(
       // #4238: platforms named the way Hosts know them.
       out.push({
         label: "Apps",
-        value: platforms.map((platform) => platformName(String(platform))).join(", "),
+        value: platforms.map((platform) => adPlatformName(String(platform))).join(", "),
       });
     }
     const budgetText = formatAdMoneyCents(budget, currency);
@@ -436,10 +435,9 @@ function fieldsFor(
       });
     }
     if (typeof context.ad_result === "string") {
-      out.push({
-        label: "What we count",
-        value: hostAdResultLabel(context.ad_result),
-      });
+      // The server already writes this in plain words (agentDomainTools
+      // adResultWords), so the card shows it as given.
+      out.push({ label: "What we count", value: context.ad_result });
     }
     if (typeof context.ad_audience === "string") {
       out.push({ label: "Audience", value: context.ad_audience });

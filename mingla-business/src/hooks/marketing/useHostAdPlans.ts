@@ -7,7 +7,7 @@ import {
   type HostAdDraft,
   type HostAdPlanAggregate,
 } from "../../services/hostAdPlanService";
-import { loadHostAdPlanService } from "../../services/lazyHostAdPlanService";
+import { loadHostAdPlanService } from "../../screens/hostAds/hostAdKitService";
 
 const EMPTY_IDS: string[] = [];
 const EMPTY_MAP: Record<string, string> = {};

@@ -7,7 +7,7 @@ const read = (relative: string): string =>
 
 describe("issue #3697 Host provider targeting parity", () => {
   const service = read("src/services/hostAdPlanService.ts");
-  const create = read("app/(tabs)/marketing/ads/create.tsx");
+  const create = read("src/screens/hostAds/HostAdCreateScreen.tsx");
   const search = read(
     "../supabase/functions/admin-ad-targeting-search/index.ts",
   );

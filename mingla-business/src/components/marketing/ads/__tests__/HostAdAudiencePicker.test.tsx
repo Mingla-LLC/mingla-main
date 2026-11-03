@@ -194,7 +194,7 @@ describe("#4238 T12 HostAdAudiencePicker", () => {
     expect(service).toContain("audience_selection: {");
     expect(service).toMatch(/includeAudienceIds\?: never;/);
     expect(service).toMatch(/const refs: HostTargetingRefs = \{/);
-    const create = fs.readFileSync(path.join(__dirname, "../../../../../app/(tabs)/marketing/ads/create.tsx"), "utf8");
+    const create = fs.readFileSync(path.join(__dirname, "../../../../../src/screens/hostAds/HostAdCreateScreen.tsx"), "utf8");
     expect(create).toContain("audience_keys: audienceKeys");
     expect(create).toContain("<HostAdAudiencePicker");
     expect(create).toContain('testID="host-ad-review-audiences"');

@@ -3,7 +3,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const route = fs.readFileSync(
-  path.join(ROOT, "app/(tabs)/marketing/ads/create.tsx"),
+  path.join(ROOT, "src/screens/hostAds/HostAdCreateScreen.tsx"),
   "utf8",
 );
 

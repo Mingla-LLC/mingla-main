@@ -42,9 +42,9 @@ const WORDS_FILE = "src/components/marketing/ads/hostAdCopy.ts";
 
 // Paths relative to mingla-business/.
 const HOST_AD_FILES = [
-  "app/(tabs)/marketing/ads/create.tsx",
-  "app/(tabs)/marketing/ads/[id].tsx",
-  "app/(tabs)/marketing/ads/index.tsx",
+  "src/screens/hostAds/HostAdCreateScreen.tsx",
+  "src/screens/hostAds/HostAdDetailScreen.tsx",
+  "src/screens/hostAds/HostAdListScreen.tsx",
   "src/components/marketing/ads/HostAdPagePicker.tsx",
   "src/components/marketing/ads/HostAdCountryPicker.tsx",
   "src/components/marketing/ads/hostAdCopy.ts",
@@ -317,7 +317,7 @@ function main() {
   }
 
   // 5. The plan hash is never shown, but is still sent to Mingla.
-  const create = read("app/(tabs)/marketing/ads/create.tsx");
+  const create = read("src/screens/hostAds/HostAdCreateScreen.tsx");
   const service = read("src/services/hostAdPlanService.ts");
   if (create !== null) {
     if (create.includes("{prepared.planHash}")) fail("create.tsx renders {prepared.planHash} on screen");
@@ -329,7 +329,7 @@ function main() {
   }
 
   // 6. The typed confirmations stay, and are explained.
-  const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+  const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
   if (create !== null) {
     for (const needle of ['launchPhrase !== "LAUNCH"', "Type LAUNCH to start your ad.", 'confirmText="CANCEL PLAN"']) {
       if (!create.includes(needle)) fail(`create.tsx lost the typed confirmation ${JSON.stringify(needle)}`);

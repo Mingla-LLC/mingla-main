@@ -152,7 +152,7 @@ describe("#4238 ADV-1 no invented country", () => {
   });
 
   it("keeps the builder free of a Nigeria fallback anywhere", () => {
-    const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
+    const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
     expect(createRoute).not.toMatch(/\?\?\s*"NG"/);
     expect(createRoute).not.toMatch(/useState\(\s*"NG"\s*\)/);
     const countries = read("src/components/marketing/ads/hostAdCountries.ts");
@@ -295,7 +295,7 @@ describe("#4238 ADV-4 the server owns the lane and the hash stays hidden", () =>
   });
 
   it("no Host screen prints the plan hash; the approval still carries it", () => {
-    const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
+    const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
     expect(createRoute).not.toMatch(/\{\s*prepared\.planHash\s*\}/);
     expect(createRoute).not.toMatch(/plan hash/i);
     expect(createRoute).toMatch(/planHash: prepared\.planHash/);

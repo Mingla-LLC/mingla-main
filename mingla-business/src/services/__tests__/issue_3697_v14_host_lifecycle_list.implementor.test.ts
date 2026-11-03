@@ -6,7 +6,7 @@ const read = (relative: string): string =>
   fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 describe("issue #3697 Host Ads lifecycle list", () => {
-  const route = read("app/(tabs)/marketing/ads/index.tsx");
+  const route = read("src/screens/hostAds/HostAdListScreen.tsx");
   const lifecycle = read("src/services/hostAdLifecycle.ts");
   const planService = read("src/services/hostAdPlanService.ts");
   const endpoint = read("../supabase/functions/host-ad-campaign/index.ts");
@@ -46,7 +46,7 @@ describe("issue #3697 Host Ads lifecycle list", () => {
   });
 
   it("makes resume aggregate-wide, permissioned and typed", () => {
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     const campaigns = read("src/services/hostAdCampaignService.ts");
     expect(campaigns).toContain(
       "export async function resumeHostAdCampaignPlan",

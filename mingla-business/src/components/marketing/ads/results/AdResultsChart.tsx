@@ -10,11 +10,11 @@ import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import {
   glass,
-  hostAdCharts,
   spacing,
   text as textTokens,
   typography,
 } from "../../../../constants/designSystem";
+import { hostAdCharts } from "./hostAdChartColors";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { hostAdCostPerLabel, hostAdNoResultsLine, hostAdResultLabel } from "../hostAdCopy";
 import {

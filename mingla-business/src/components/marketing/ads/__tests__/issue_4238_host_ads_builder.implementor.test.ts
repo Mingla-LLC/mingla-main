@@ -62,7 +62,7 @@ const ROOT = path.resolve(__dirname, "../../../../..");
 const read = (relative: string): string =>
   fs.readFileSync(path.join(ROOT, relative), "utf8");
 
-const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
+const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
 
 describe("#4238 page labels (T-B1..B4)", () => {
   it("T-B1 reads type, date and city", () => {

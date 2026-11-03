@@ -26,13 +26,13 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
   });
 
   it("Ads list + detail routes replace the placeholder", () => {
-    const route = read("app/(tabs)/marketing/ads/index.tsx");
+    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
     expect(route).toContain("useHostAdCampaigns");
     expect(route).toContain("ads-campaigns-empty");
     expect(route).not.toContain("ads-campaigns-placeholder");
     expect(route).toContain("paystackReference");
     expect(route).toContain("mingla_adc_");
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(detail).toContain("ads-detail-screen");
     expect(detail).toContain("ads-detail-pause");
     expect(detail).toContain("ads-detail-end");
@@ -80,7 +80,7 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(plan).not.toContain('lane: "business"');
     expect(plan).toContain("plan_version_id: aggregate.version.id");
     expect(plan).toContain("plan_hash: aggregate.version.plan_hash");
-    const route = read("app/(tabs)/marketing/ads/create.tsx");
+    const route = read("src/screens/hostAds/HostAdCreateScreen.tsx");
     expect(route).toContain("host-ad-add-video");
     expect(route).toContain('mediaMode="video-only"');
   });

@@ -135,10 +135,10 @@ describe("#4238 P3 code-style money", () => {
   });
 
   it("no symbol-style money is left on the ad page top line or the credit card", () => {
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(detail).not.toMatch(/Spent \$\{formatCurrency/);
     expect(detail).not.toMatch(/\$\{formatCurrency\(cap, currency, true\)\} set aside/);
-    const index = read("app/(tabs)/marketing/ads/index.tsx");
+    const index = read("src/screens/hostAds/HostAdListScreen.tsx");
     const card = index.slice(index.indexOf("Available credit"), index.indexOf("Top-ups keep"));
     expect(card).toContain("formatHostAdMoneyCents(balanceCents, currency)");
     for (const line of [

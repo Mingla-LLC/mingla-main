@@ -7,7 +7,7 @@ const read = (relative: string): string =>
   fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 describe("issue #3697 Host server draft resume", () => {
-  const route = read("app/(tabs)/marketing/ads/create.tsx");
+  const route = read("src/screens/hostAds/HostAdCreateScreen.tsx");
   const service = read("src/services/hostAdPlanService.ts");
 
   it("mints PostgreSQL-compatible draft UUIDs in every client runtime", () => {

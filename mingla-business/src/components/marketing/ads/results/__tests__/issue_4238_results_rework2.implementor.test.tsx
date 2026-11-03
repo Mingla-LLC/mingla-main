@@ -120,7 +120,7 @@ describe("#4238 results P3s", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path") as typeof import("path");
     const page = fs.readFileSync(
-      path.join(__dirname, "../../../../../../app/(tabs)/marketing/ads/[id].tsx"),
+      path.join(__dirname, "../../../../../../src/screens/hostAds/HostAdDetailScreen.tsx"),
       "utf8",
     );
     expect(page).toContain("{hostAdCostPerResultLine(costPerLabel, costPerResult)}");

@@ -46,7 +46,7 @@ import { formatHostAdMoneyCents } from "../hostAdMoney";
 const ROOT = path.resolve(__dirname, "../../../../..");
 const read = (relative: string): string =>
   fs.readFileSync(path.join(ROOT, relative), "utf8");
-const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
+const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
 
 const available = [
   { id: "meta-1", platform: "meta" },
@@ -173,7 +173,7 @@ describe("#4238 D3 names and plain result words", () => {
     expect(hostAdCostPerLabel("ticket_purchase")).toBe("Cost per sale");
     expect(hostAdCostPerLabel("clicks")).toBe("Cost per visit");
     expect(hostAdCostPerLabel("results")).toBe("Cost per result");
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     // #4238 rework 2: the line is built by hostAdCostPerResultLine (code, not symbol).
     expect(detail).toContain("{hostAdCostPerResultLine(costPerLabel, costPerResult)}");
     expect(detail).not.toContain('"conversions"');
@@ -182,8 +182,8 @@ describe("#4238 D3 names and plain result words", () => {
 });
 
 describe("#4238 retest 2: the detail page and Ads list stay reachable", () => {
-  const detail = read("app/(tabs)/marketing/ads/[id].tsx");
-  const list = read("app/(tabs)/marketing/ads/index.tsx");
+  const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
+  const list = read("src/screens/hostAds/HostAdListScreen.tsx");
   const layout = read("app/(tabs)/marketing/_layout.tsx");
 
   it("the last button clears the bottom nav and the floating button (390×844)", () => {
@@ -223,7 +223,7 @@ describe("#4238 retest 2: the detail page and Ads list stay reachable", () => {
 });
 
 describe("#4238 retest 2: last plain-language fixes", () => {
-  const list = read("app/(tabs)/marketing/ads/index.tsx");
+  const list = read("src/screens/hostAds/HostAdListScreen.tsx");
 
   it("the Ads list says results in plain words", () => {
     expect(list).toContain("{hostAdResultLabel(item.primaryResultLabel)}");
@@ -319,7 +319,11 @@ describe("#4238 retest 3: Ari card money and result labels, city rows, ready sta
 
   it("the Ari card passes the server's result word straight to the label", () => {
     const card = read("src/components/ari/ToolProposalCard.tsx");
-    expect(card).toContain("value: hostAdResultLabel(context.ad_result),");
+    // The server writes ad_result in plain words (adResultWords); the card
+    // shows it as given and no longer loads the Host Ads words module (#4238
+    // boot-chunk fix), so it must not re-map or mangle it.
+    expect(card).toContain('out.push({ label: "What we count", value: context.ad_result });');
+    expect(card).not.toContain("marketing/ads/hostAdCopy");
     expect(card).not.toContain('context.ad_result.replace(/ /g, "_")');
   });
 
@@ -340,7 +344,7 @@ describe("#4238 retest 3: Ari card money and result labels, city rows, ready sta
   it("an approved ad waiting for LAUNCH reads Ready to start, not Draft", () => {
     const lifecycle = read("src/services/hostAdLifecycle.ts");
     expect(lifecycle).toContain('{ statusLabel: "Ready to start" }');
-    const list = read("app/(tabs)/marketing/ads/index.tsx");
+    const list = read("src/screens/hostAds/HostAdListScreen.tsx");
     expect(list).toContain("{item.statusLabel ?? LIFECYCLE_LABEL[item.lifecycle]}");
   });
 });
@@ -366,7 +370,7 @@ describe("#4238 retest 4: back link, ledger words, counting lines, card title", 
   });
 
   it("the detail page and the builder both use the shared back helper", () => {
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(detail).toContain("onPress={() => goBackToAds(router)}");
     expect(detail).not.toContain("router.back()");
     expect(createRoute).toContain("const backToAds = useCallback(() => goBackToAds(router), [router]);");

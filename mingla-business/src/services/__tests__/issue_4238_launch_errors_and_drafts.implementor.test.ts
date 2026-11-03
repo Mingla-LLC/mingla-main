@@ -232,14 +232,14 @@ describe("#4238 finished drafts leave the Ads list", () => {
   });
 
   it("the Ads list page passes both to buildHostAdList", () => {
-    const route = fs.readFileSync(path.resolve(__dirname, "../../../app/(tabs)/marketing/ads/index.tsx"), "utf8");
+    const route = fs.readFileSync(path.resolve(__dirname, "../../../src/screens/hostAds/HostAdListScreen.tsx"), "utf8");
     expect(route).toMatch(/buildHostAdList\(\{[^}]*launchedPlanIds,[^}]*planIdByVersionId,/);
   });
 });
 
 describe("#4238 detail header app spend uses the Results money style", () => {
   it("formats provider spend with formatHostAdMoneyCents", () => {
-    const detail = fs.readFileSync(path.resolve(__dirname, "../../../app/(tabs)/marketing/ads/[id].tsx"), "utf8");
+    const detail = fs.readFileSync(path.resolve(__dirname, "../../../src/screens/hostAds/HostAdDetailScreen.tsx"), "utf8");
     const block = detail.slice(detail.indexOf("What the apps say they spent"), detail.indexOf(".join(\" · \")", detail.indexOf("What the apps say they spent")));
     expect(block).toContain("formatHostAdMoneyCents(");
     expect(block).not.toContain("formatCurrency(");

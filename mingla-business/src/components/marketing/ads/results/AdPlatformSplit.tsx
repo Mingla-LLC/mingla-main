@@ -8,12 +8,12 @@ import { StyleSheet, Text, View } from "react-native";
 
 import {
   glass,
-  hostAdCharts,
   radius,
   spacing,
   text as textTokens,
   typography,
 } from "../../../../constants/designSystem";
+import { hostAdCharts } from "./hostAdChartColors";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { platformName } from "../hostAdCopy";
 import type { PlatformBar } from "./adResultsSeries";

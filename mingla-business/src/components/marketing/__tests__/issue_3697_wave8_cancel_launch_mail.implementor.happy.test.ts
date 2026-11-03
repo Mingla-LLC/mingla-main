@@ -13,7 +13,7 @@ function read(rel: string): string {
 
 describe("issue #3697 Wave 8 Cancel / End / filters", () => {
   it("detail shows Cancel or End never both (spend-gated)", () => {
-    const detail = read("app/(tabs)/marketing/ads/[id].tsx");
+    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(detail).toContain("ads-detail-cancel");
     expect(detail).toContain("ads-detail-end");
     expect(detail).toContain("canCancel");
@@ -34,7 +34,7 @@ describe("issue #3697 Wave 8 Cancel / End / filters", () => {
   });
 
   it("Ads list has status filters", () => {
-    const route = read("app/(tabs)/marketing/ads/index.tsx");
+    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
     expect(route).toContain("ads-campaign-filters");
     // [TEST-MOD-APPROVED #3697] filters now cover the complete v1.4 lifecycle
     // and generate stable IDs from the canonical filter keys.
