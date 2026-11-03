@@ -143,10 +143,20 @@ const MOUNTS = [
     poolCards: true,
     note: "Collab session view.",
   },
+  // [TEST-MOD-APPROVED #4261] the chat's Matches and Plans sheets moved out of
+  // CollabSessionChatBanners.tsx into PlanMatchesSheet / PlansSheet.
   {
-    file: "app-mobile/src/components/chat/CollabSessionChatBanners.tsx",
+    file: "app-mobile/src/components/chat/PlanMatchesSheet.tsx",
     poolCards: true,
-    note: "Collab Matches + Plans sheets (ORCH-1054).",
+    note: "Chat Matches sheet: a deck match's Details (ORCH-1054 / #4261).",
+  },
+  {
+    file: "app-mobile/src/components/chat/PlansSheet.tsx",
+    poolCards: false,
+    note:
+      "Chat Plans sheet (#4261). It renders the target useCollabPlanCard built " +
+      "(planTarget in CollabSessionChatBanners.tsx → expansionTargetFromSavedPayload, " +
+      "pinned by orch-1054 C2); it never builds card data itself.",
   },
   {
     file: "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx",

@@ -107,24 +107,31 @@ check(
 // `savedCardToExpandedCardData` for places/curated and routes brand experiences
 // to `businessEvent` so Book survives (#1672).
 const expansionHelper = read("app-mobile/src/utils/expansionTargetFromSavedPayload.ts");
+// [TEST-MOD-APPROVED #4261] the chat's Matches sheet is PlanMatchesSheet
+// (SavedToSessionCardsSheet was removed); its deck "Details" path is checked
+// there. The Plans path stays the shared planTarget helper in the banners file.
+const planMatchesRel = "app-mobile/src/components/chat/PlanMatchesSheet.tsx";
+const planMatches = read(planMatchesRel);
 check(
   "C2 [FAILS-ON-REVERT] both Matches+Plans open paths use savedCardToExpandedCardData",
   /import \{ expansionTargetFromSavedPayload \} from "\.\.\/\.\.\/utils\/expansionTargetFromSavedPayload";/.test(
     banners,
   ) &&
+    /import \{ expansionTargetFromSavedPayload \} from "\.\.\/\.\.\/utils\/expansionTargetFromSavedPayload";/.test(
+      planMatches,
+    ) &&
     /savedCardToExpandedCardData\(payload\)/.test(expansionHelper) &&
     /isBrandExperiencePayload\(payload\)/.test(expansionHelper) &&
-    (banners.match(/expansionTargetFromSavedPayload\(/g) ?? []).length >= 2 &&
     // [TEST-MOD-APPROVED #4114] the Plans open path is the shared planTarget
     // helper (header strip, thread rows and the Plans sheet all use it).
     /function planTarget\(item: CollabPlanCardSource\): ExpansionTarget \| null \{\s*return expansionTargetFromSavedPayload\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\);/.test(
       banners,
     ) &&
     (banners.match(/const target = planTarget\(item\);/g) ?? []).length >= 2 &&
-    /expansionTargetFromSavedPayload\(\s*\{[\s\S]*?\.\.\.\(card\.card_data \|\| card\.experience_data \|\| \{\}\),[\s\S]*?sourceRecordId: card\.saved_card_id \|\| card\.id,[\s\S]*?savedCardId: card\.saved_card_id \|\| card\.id,[\s\S]*?\}\s*\)/.test(
-      banners,
+    /expansionTargetFromSavedPayload\(\s*\{[\s\S]*?\.\.\.plan\.cardData,[\s\S]*?sourceRecordId: plan\.savedCardId,[\s\S]*?savedCardId: plan\.savedCardId,[\s\S]*?\}\s*\)/.test(
+      planMatches,
     ),
-  "Plans (ScheduleSheet) and Matches (SavedToSessionCardsSheet) must both map via the shared canonical mapper (brand experiences via expansionTargetFromSavedPayload → Book).",
+  "Plans (planTarget, PlansSheet) and Matches (PlanMatchesSheet) must both map via the shared canonical mapper (brand experiences via expansionTargetFromSavedPayload → Book).",
 );
 
 // ── 3. The shared mapper mirrors the deck: curated pass-through verbatim. ──

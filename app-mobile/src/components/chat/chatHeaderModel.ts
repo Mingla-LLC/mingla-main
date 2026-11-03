@@ -9,9 +9,12 @@
  *   6 top + 48 title row + 6 gap + 40 strip + 8 bottom = 108pt
  *
  * Everything here is pure and dependency-free (no React Native) so it runs
- * under Deno. The strip reads only data the chat already loads
- * (`useSessionSavedCardsForSheet` and `useSessionScheduledCards`) and keeps the
- * show-only-if-non-empty rules of `getCollabChatHeaderActions`.
+ * under Deno. Issue #4261: the strip reads the chat's plan list
+ * (`chat_plans_for_conversation`, through `planHeaderInputs` in planModel):
+ * matches are the plans still being decided (deck matches and chat plans),
+ * "{n} to vote" counts the ones waiting on you, and the plan cell is the next
+ * locked-in plan. It keeps the show-only-if-non-empty rules of
+ * `getCollabChatHeaderActions`.
  */
 
 export const CHAT_HEADER_METRICS = {
@@ -36,20 +39,27 @@ export function chatHeaderHeight(showStrip: boolean): number {
 
 export type CollabHeaderActionId = "matches" | "swipe" | "plans";
 
-/** A matched (not yet locked) card, as `useSessionSavedCardsForSheet` returns it. */
+/** Issue #4261: which plan a strip cell or Plans row opens. */
+export type HeaderPlanRef = { kind: "chat"; planId: string } | { kind: "deck"; savedCardId: string };
+
+/** A plan still being decided (a deck match or a chat plan). */
 export interface HeaderMatchInput {
   id: string;
   saved_card_id?: string;
   card_data?: unknown;
   experience_data?: unknown;
+  /** Issue #4261: waiting on the viewer's vote (planModel.needsMyVote). */
+  needsVote?: boolean;
 }
 
-/** A locked plan, as `useSessionScheduledCards` returns it. */
+/** A locked-in plan. */
 export interface HeaderPlanInput {
   savedCardId: string;
   cardData: Record<string, unknown> | null;
   scheduledAt: string;
   lockedByDisplayName?: string;
+  /** Issue #4261: the plan to open (a chat plan has no saved card). */
+  planRef?: HeaderPlanRef;
 }
 
 export interface MatchesCellModel {
@@ -60,6 +70,8 @@ export interface MatchesCellModel {
   names: string;
   /** True when a match exists that this phone has not opened yet. */
   hasUnseen: boolean;
+  /** Issue #4261: matches waiting on the viewer's vote ("{n} to vote"). */
+  toVote: number;
   loading: boolean;
 }
 
@@ -73,6 +85,8 @@ export interface PlanCellModel {
   loading: boolean;
   /** The saved card of the plan shown, so tapping it opens that plan's card. */
   savedCardId: string;
+  /** Issue #4261: the plan shown (chat plans open their card in the thread). */
+  planRef: HeaderPlanRef | null;
 }
 
 export interface CollabHeaderStripModel {
@@ -179,6 +193,7 @@ export function buildCollabHeaderStrip(input: {
       photos,
       names: names.join(", "),
       hasUnseen: hasUnseenMatches(input.matches.map(matchKey), input.seenMatchIds),
+      toVote: input.matches.filter((match) => match.needsVote === true).length,
       loading: input.matchesLoading && input.matches.length === 0,
     };
   }
@@ -194,6 +209,7 @@ export function buildCollabHeaderStrip(input: {
       moreCount: upcoming.length > 0 ? upcoming.length - 1 : 0,
       loading: input.plansLoading && input.plans.length === 0,
       savedCardId: shown?.savedCardId ?? "",
+      planRef: shown?.planRef ?? (shown?.savedCardId ? { kind: "deck", savedCardId: shown.savedCardId } : null),
     };
   }
 
@@ -204,9 +220,16 @@ export function buildCollabHeaderStrip(input: {
  * Issue #4114: what a tap on the strip's plan cell does. The plan itself (date
  * tile and name) opens THAT plan's card; "+N more" opens the Plans sheet.
  */
-export type PlanStripTap = { kind: "card"; savedCardId: string } | { kind: "sheet" };
+export type PlanStripTap =
+  | { kind: "card"; savedCardId: string }
+  | { kind: "chatPlan"; planId: string }
+  | { kind: "sheet" };
 
-export function planStripTap(plan: Pick<PlanCellModel, "savedCardId"> | null, part: "plan" | "more"): PlanStripTap {
+export function planStripTap(
+  plan: (Pick<PlanCellModel, "savedCardId"> & { planRef?: HeaderPlanRef | null }) | null,
+  part: "plan" | "more",
+): PlanStripTap {
+  if (part === "plan" && plan?.planRef?.kind === "chat") return { kind: "chatPlan", planId: plan.planRef.planId };
   if (part === "plan" && plan?.savedCardId) return { kind: "card", savedCardId: plan.savedCardId };
   return { kind: "sheet" };
 }

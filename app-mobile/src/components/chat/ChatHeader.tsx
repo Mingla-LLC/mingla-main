@@ -47,6 +47,8 @@ export interface ChatHeaderStripLabels {
   openPlans: string;
   /** Issue #4114: the plan cell opens that plan's card. */
   openPlan: (title: string, time: string) => string;
+  /** Issue #4261: "{n} to vote" under the matches count. */
+  toVote?: (count: number) => string;
 }
 
 export interface ChatHeaderProps {
@@ -81,6 +83,8 @@ export interface ChatHeaderProps {
    * "+N more" still goes to the Plans sheet through `onStripPress("plans")`.
    */
   onPlanPress?: (savedCardId: string) => void;
+  /** Issue #4261: the plan cell shows a chat plan; tapping it jumps to its card. */
+  onChatPlanPress?: (planId: string) => void;
   locale?: string;
 }
 
@@ -162,6 +166,7 @@ export function ChatHeader({
   stripLabels,
   onStripPress,
   onPlanPress,
+  onChatPlanPress,
   locale,
 }: ChatHeaderProps): React.ReactElement {
   const stripVisible = Boolean(strip?.visible && stripLabels);
@@ -314,7 +319,7 @@ export function ChatHeader({
                 onPress={() => onStripPress?.("matches")}
                 activeOpacity={0.72}
                 accessibilityRole="button"
-                accessibilityLabel={`${stripLabels.openMatches}. ${stripLabels.matchesCount(strip.matches.count)}${strip.matches.hasUnseen ? `, ${stripLabels.newMatches}` : ""}`}
+                accessibilityLabel={`${stripLabels.openMatches}. ${stripLabels.matchesCount(strip.matches.count)}${strip.matches.toVote > 0 && stripLabels.toVote ? `, ${stripLabels.toVote(strip.matches.toVote)}` : strip.matches.hasUnseen ? `, ${stripLabels.newMatches}` : ""}`}
                 testID="chat-header-matches"
               >
                 {strip.matches.photos.length > 0 ? (
@@ -338,7 +343,11 @@ export function ChatHeader({
                       ? stripLabels.matchesLoading
                       : stripLabels.matchesCount(strip.matches.count)}
                   </Text>
-                  {strip.matches.names ? (
+                  {strip.matches.toVote > 0 && stripLabels.toVote ? (
+                    <Text style={[styles.cellMeta, styles.toVote]} numberOfLines={1} testID="chat-header-to-vote">
+                      {stripLabels.toVote(strip.matches.toVote)}
+                    </Text>
+                  ) : strip.matches.names ? (
                     <Text style={styles.cellMeta} numberOfLines={1}>
                       {strip.matches.names}
                     </Text>
@@ -357,6 +366,7 @@ export function ChatHeader({
               const handlePlanPart = (part: "plan" | "more") => {
                 const tap = planStripTap(plan, part);
                 if (tap.kind === "card" && onPlanPress) onPlanPress(tap.savedCardId);
+                else if (tap.kind === "chatPlan" && onChatPlanPress) onChatPlanPress(tap.planId);
                 else onStripPress?.("plans");
               };
               return (
@@ -595,6 +605,10 @@ const styles = StyleSheet.create({
   cellMeta: {
     fontSize: 11.5,
     color: chatTokens.textMuted,
+  },
+  toVote: {
+    color: chatTokens.tagDeck,
+    fontWeight: "700",
   },
   unseenDot: {
     width: 8,

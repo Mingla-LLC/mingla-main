@@ -7,6 +7,7 @@ import { PlaceCuratedChatCard } from './PlaceCuratedChatCard';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
+import { PlanQuoteBlock } from './PlanQuoteBlock';
 import { ChatCardChip } from './ChatCardChip';
 import { CollabLocationChips } from '../collab/CollabLocationChips';
 import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
@@ -106,6 +107,13 @@ interface MessageBubbleProps {
   isRead: boolean;
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
+  /**
+   * Issue #4261: a comment on a plan quotes the plan and the sender's picks
+   * (server snapshot) instead of the replied-to message; tapping it opens the
+   * plan's comments.
+   */
+  planQuote?: { title: string; note: string } | null;
+  onPlanQuotePress?: () => void;
   onCardBubbleTap?: (payload: CardPayload, messageId: string) => void;  // ORCH-0667
   /** Issue #4114: a plan system row ("Scheduled for ...") opens that plan's card. */
   onPlanRowPress?: () => void;
@@ -574,6 +582,8 @@ function MessageBubbleImpl({
   isRead,
   replyTo,
   onScrollToMessage,
+  planQuote,
+  onPlanQuotePress,
   onCardBubbleTap,
   onPlanRowPress,
   onMentionTap,
@@ -683,7 +693,7 @@ function MessageBubbleImpl({
           ]}
           testID={cardSize ? 'chat-media-card' : undefined}
         >
-          {showSenderName || replyTo ? (
+          {showSenderName || replyTo || planQuote ? (
             <View style={cardSize ? styles.mediaCardHeader : null}>
               {showSenderName ? (
                 <Text
@@ -697,7 +707,14 @@ function MessageBubbleImpl({
                 </Text>
               ) : null}
 
-              {replyTo && (
+              {planQuote ? (
+                <PlanQuoteBlock
+                  title={planQuote.title}
+                  note={planQuote.note}
+                  variant={isMe ? 'sent' : 'received'}
+                  onPress={onPlanQuotePress}
+                />
+              ) : replyTo && (
                 <ReplyQuoteBlock
                   senderName={replyTo.senderName}
                   previewText={replyTo.content}

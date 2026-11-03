@@ -492,3 +492,44 @@ export function chatAvatarSpec(input: ChatAvatarInput): ChatAvatarSpec {
     }
   }
 }
+
+// ── Issue #4261: the last-message preview text ─────────────────────────────
+export interface ChatPreviewMessageLike {
+  content?: string | null;
+  message_type?: string | null;
+  card_payload?: unknown;
+}
+
+export type ChatPreviewTranslate = (key: string, params?: Record<string, unknown>) => string;
+
+function planTitleOf(message: ChatPreviewMessageLike): string {
+  const content = (message.content ?? "").replace(/\s+/g, " ").trim();
+  // The plan message's content is "<first name> added a plan: <title>".
+  const marker = " added a plan: ";
+  const at = content.indexOf(marker);
+  return at >= 0 ? content.slice(at + marker.length).trim() : content;
+}
+
+/**
+ * The chat list's preview of a last message. Photos, videos and files keep
+ * their labels; a plan reads "Plan: {title}"; a plan or group system row
+ * (`plan_event` / `group_event`) reads its own content; everything else is the
+ * message text on one line.
+ */
+export function chatPreviewText(message: ChatPreviewMessageLike | null | undefined, t: ChatPreviewTranslate): string {
+  if (!message) return "";
+  switch (message.message_type) {
+    case "image":
+      return t("chat:photoPreview");
+    case "file":
+      return t("chat:filePreview");
+    case "video":
+      return t("chat:videoPreview");
+    case "plan": {
+      const title = planTitleOf(message);
+      return title ? t("chat:plan_preview", { title }) : t("chat:plan_chip");
+    }
+    default:
+      return (message.content ?? "").replace(/\s+/g, " ").trim();
+  }
+}
