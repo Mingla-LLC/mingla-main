@@ -28,6 +28,11 @@ import {
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
 import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 import { destinationDescriptorOf } from "./adDestination.ts";
+import {
+  adEffectiveScheduleEnd,
+  adPageRefusalWords,
+  adSeriesDatesWords,
+} from "./adScheduleBound.ts";
 import { formatHostAdMoneyCents } from "./adMoneyFormat.ts";
 import {
   HOST_SALES_GOAL_PLATFORMS,
@@ -4219,19 +4224,6 @@ const proposeAdPlan = writeTool(
         "That video isn't ready or doesn't belong to this brand. Pick another ready video.",
       );
     }
-    const cap = Number(args.budget_cents);
-    const days = hostAdScheduleDays(args.starts_at, args.ends_at);
-    const daily = Number(args.daily_budget_cents ?? Math.ceil(cap / days));
-    if (
-      !Number.isSafeInteger(cap) || cap < 100 || !Number.isSafeInteger(daily) ||
-      daily < 100 * platforms.length || cap < 100 * platforms.length ||
-      daily > cap
-    ) {
-      throw new ToolError(
-        "INVALID_ARGS",
-        "budget_cents and daily_budget_cents are invalid",
-      );
-    }
     // #4238: a Host cannot read ad_connections under RLS (admin-only), so the
     // ready accounts come from the same server-owned Host setup the Business
     // builder uses. The server decides which lane those accounts are on.
@@ -4249,6 +4241,41 @@ const proposeAdPlan = writeTool(
     const setupConnections = Array.isArray(setup.connections)
       ? setup.connections
       : [];
+    // #4238: one ad covers every date of a series and ends by the last day
+    // people can book. A page the server can't promote is refused in plain
+    // words; no end means the last bookable moment; a later end is refused.
+    const seriesPage = (Array.isArray(setup.pages) ? setup.pages : []).find(
+      (page) =>
+        page.page_type === String(args.dest_page_type) &&
+        page.brand_slug === String(args.dest_brand_slug) &&
+        (String(args.dest_page_type) === "brand" ||
+          (page.entity_slug ?? undefined) ===
+            (typeof args.dest_entity_slug === "string" &&
+                args.dest_entity_slug.trim()
+              ? args.dest_entity_slug.trim()
+              : undefined)),
+    );
+    if (seriesPage && seriesPage.ok === false) {
+      throw new ToolError("INVALID_ARGS", adPageRefusalWords(seriesPage));
+    }
+    const effectiveEnd = adEffectiveScheduleEnd(args.ends_at, seriesPage);
+    if (!effectiveEnd.ok) {
+      throw new ToolError("INVALID_ARGS", effectiveEnd.message);
+    }
+    const scheduleEndsAt = effectiveEnd.endsAt;
+    const cap = Number(args.budget_cents);
+    const days = hostAdScheduleDays(args.starts_at, scheduleEndsAt);
+    const daily = Number(args.daily_budget_cents ?? Math.ceil(cap / days));
+    if (
+      !Number.isSafeInteger(cap) || cap < 100 || !Number.isSafeInteger(daily) ||
+      daily < 100 * platforms.length || cap < 100 * platforms.length ||
+      daily > cap
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "budget_cents and daily_budget_cents are invalid",
+      );
+    }
     const connections = platforms.map((platform) =>
       setupConnections.find((connection) =>
         connection.platform === platform && isUuid(connection.id)
@@ -4330,7 +4357,7 @@ const proposeAdPlan = writeTool(
         ...(typeof args.starts_at === "string"
           ? { starts_at: args.starts_at }
           : {}),
-        ...(typeof args.ends_at === "string" ? { ends_at: args.ends_at } : {}),
+        ...(scheduleEndsAt ? { ends_at: scheduleEndsAt } : {}),
       },
       audience_intent: {
         countries,
@@ -8664,22 +8691,37 @@ export async function preflightMoneyProposal(
     // #4238 D3: the card shows money in the brand's own currency. Ads setup
     // is the server-owned answer; without it the card shows plain amounts.
     let brandCurrency: string | null = null;
+    // #4238: the promoted page (dated pages carry their last bookable day).
+    let promotedPage: Record<string, unknown> | undefined;
     if (client && isUuid(args.brand_id)) {
       try {
         const setup = await invokeFn(client, "ad-plan", {
           action: "host_setup",
           brand_id: args.brand_id,
-        }) as { currency?: unknown };
+        }) as { currency?: unknown; pages?: unknown };
         brandCurrency = typeof setup?.currency === "string"
           ? setup.currency
           : null;
+        promotedPage = (Array.isArray(setup?.pages) ? setup.pages : [])
+          .find((page: Record<string, unknown>) =>
+            page?.page_type === String(args.dest_page_type ?? "") &&
+            page?.brand_slug === String(args.dest_brand_slug ?? "") &&
+            (String(args.dest_page_type) === "brand" ||
+              (page?.entity_slug ?? null) ===
+                (typeof args.dest_entity_slug === "string"
+                  ? args.dest_entity_slug.trim()
+                  : null))
+          );
       } catch (error) {
         console.warn("[ari-ad-card] brand currency unavailable", {
           error: error instanceof Error ? error.name : "unknown",
         });
       }
     }
-    const days = hostAdScheduleDays(args.starts_at, args.ends_at);
+    const cardEnd = adEffectiveScheduleEnd(args.ends_at, promotedPage);
+    const cardEndsAt = cardEnd.ok ? cardEnd.endsAt : args.ends_at;
+    const adDates = adSeriesDatesWords(promotedPage);
+    const days = hostAdScheduleDays(args.starts_at, cardEndsAt);
     const daily = Number(
       args.daily_budget_cents ??
         (Number.isSafeInteger(budget) ? Math.ceil(budget / days) : 0),
@@ -8737,7 +8779,7 @@ export async function preflightMoneyProposal(
     const start = typeof args.starts_at === "string"
       ? args.starts_at
       : "starts after approval";
-    const end = typeof args.ends_at === "string" ? args.ends_at : "no end date";
+    const end = typeof cardEndsAt === "string" ? cardEndsAt : "no end date";
     return {
       ad_budget_cents: budget,
       ad_daily_budget_cents: daily,
@@ -8748,6 +8790,7 @@ export async function preflightMoneyProposal(
       ad_provider_allocation: split(budget).join(" · ") +
         (platforms.length > 0 ? " · split evenly across the apps" : ""),
       ad_destination: destination || "Public Mingla page",
+      ...(adDates ? { ad_dates: adDates } : {}),
       ad_audience: audience || "Choose who should see this ad",
       ...(audienceNames.length > 0
         ? { ad_audiences: audienceNames.join(" · ") }
@@ -8923,6 +8966,10 @@ export async function preflightMoneyProposal(
         destination?.title ?? adLabel(destination?.page_type) ??
           "Public Mingla page",
       ) || "Public Mingla page",
+      // #4238: the saved page covers every date until its last bookable day.
+      ...(adSeriesDatesWords(destination)
+        ? { ad_dates: adSeriesDatesWords(destination) as string }
+        : {}),
       // #4238: the first measured result names what we count ("RSVPs" for
       // an RSVP page, "bookings" for reservations), not the page's broad
       // result kind ("signups").

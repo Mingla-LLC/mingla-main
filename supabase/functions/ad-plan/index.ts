@@ -38,6 +38,7 @@ import {
   validateStageCreativeRows,
 } from "../_shared/adStageCreativeSelection.ts";
 import { tiktokSparkSelection } from "../_shared/adTikTokSpark.ts";
+import { adScheduleBoundError } from "../_shared/adScheduleBound.ts";
 import {
   applyLibraryFilters,
   creativeFitGateFailure,
@@ -1169,7 +1170,8 @@ export async function handleAdPlan(
             userDb.rpc("ad_advertisable_pages", {
               p_query: null,
               p_types: null,
-              p_include_unavailable: false,
+              // #4238 R10: the Host sees pages it can't promote, with why.
+              p_include_unavailable: true,
               p_brand_id: brandId,
               p_page: page,
             })
@@ -2105,6 +2107,19 @@ export async function handleAdPlan(
           : (certificationMode
             ? "app_certification_readiness_required"
             : resolvedDestination?.code ?? "destination_not_ready"),
+      }, 422);
+    }
+    // #4238 I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT: an ad on a dated offering
+    // ends by the last moment anyone can still book it. A missing or later
+    // end is refused here, before any version exists.
+    const scheduleError = adScheduleBoundError(
+      canonicalInput.schedule,
+      resolvedDestination,
+    );
+    if (scheduleError) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: scheduleError,
       }, 422);
     }
     if (certificationMode) {
