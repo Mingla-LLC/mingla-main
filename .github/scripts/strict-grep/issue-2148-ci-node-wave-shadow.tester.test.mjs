@@ -111,6 +111,10 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // together when #1860 replaced stale workflow-text membership with the canonical
 // effective migration plan. Paths, order, the other 31 hashes, and both lock
 // call sites remain unchanged.
+// [TEST-MOD-APPROVED #3493] One lock VALUE re-banked: the #2058 handoff happy
+// suite gained a case proving ratchet PR bodies carry the issue link and
+// Feature Guide line. Paths, order, the other hashes, and both lock call sites
+// remain unchanged; the value was derived from the file on disk.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -135,7 +139,7 @@ app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift
 app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs 7de49d59fbeae670bce9f6b94a666c2ce201fc4b4c736fe5d762cee143f0818d
 app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs 042ef629b4a03643a6ce34f0c2d7645d610d11926cfa2860ae68c644ddd31c60
 app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs 66a87430d62e2e0c110240f2b9c8314e661fbd5c66c437caad520171bd217d4e
-mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 48a7f8e61f3e7668d233a359bbe4d1540eb8642bd0c1349c85401acd36a73e1f
+mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 487c099f5407ff1c8304418046fd33ef6e228ef17725c26c8eabf00d6ba37ae2
 packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e90662357992fa8a24142bc0caa8d8b61c9bb5c00d14ea4eaa8640e
 packages/card-identity/__tests__/card_identity_single_source.test.mjs 537507cbf17a718d1a75c644850b02e8b6bc0789255906c4ea74550a5f71eec4
 scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 3c377ee6bd6860704961477c2512482628848e895f6a65d23081915afa6f7022
