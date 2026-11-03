@@ -79,8 +79,33 @@ Deno.test("#4238 retest 3 Ari and its card use the one formatter", async () => {
       import.meta.url,
     ),
   );
-  assert(card.includes("return formatHostAdMoneyCents(cents, currency);"));
+  // The card formats with the one formatter, loaded on intent from the Host
+  // Ads chunk (useHostAdCardWords) so it stays out of the boot chunk.
+  assert(card.includes("return words.formatMoney(cents, currency);"));
+  assert(!card.includes("marketing/ads/hostAdMoney"));
+  const words = await Deno.readTextFile(
+    new URL(
+      "../../../../mingla-business/src/hooks/useHostAdCardWords.ts",
+      import.meta.url,
+    ),
+  );
+  assert(words.includes("formatMoney: kit.formatHostAdMoneyCents,"));
+  const kit = await Deno.readTextFile(
+    new URL(
+      "../../../../mingla-business/src/screens/hostAds/HostAdScreens.ts",
+      import.meta.url,
+    ),
+  );
+  assert(
+    kit.includes(
+      'export { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";',
+    ),
+  );
+  // No hand-rolled money string on the card's path, fallback included (the
+  // fallback uses the app's shared currency formatter).
   assert(!card.includes("`${amount} ${code}`"));
+  assert(!words.includes("`${amount} ${code}`"));
+  assert(!words.includes("toFixed("));
 });
 
 // ── Retest 4: "What we count" on the LAUNCH card ────────────────────────────

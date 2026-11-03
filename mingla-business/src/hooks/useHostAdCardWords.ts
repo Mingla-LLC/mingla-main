@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 
 import { loadHostAdPlanService } from "../services/lazyHostAdPlanService";
+import { formatCurrency } from "../utils/currency";
 
 export type HostAdCardWords = {
   formatMoney: (cents: number, currency: unknown) => string | null;
@@ -22,18 +23,15 @@ export const HOST_AD_CARD_WORDS_PENDING = "Loading…";
 
 /**
  * Used only if the Host Ads chunk cannot load (offline, failed deploy): the
- * amount and the app key still show, so a Host never approves an unseen
- * budget.
+ * amount still shows, through the app's shared currency formatter (already
+ * in the boot chunk), so a Host never approves an unseen budget. No currency
+ * code means no amount we can name honestly, so the row is left out.
  */
 const FALLBACK_WORDS: HostAdCardWords = {
-  formatMoney: (cents, currency) => {
-    const code =
-      typeof currency === "string" && /^[A-Za-z]{3}$/.test(currency.trim())
-        ? currency.trim().toUpperCase()
-        : "";
-    const amount = (cents / 100).toFixed(2);
-    return code ? `${code} ${amount}` : amount;
-  },
+  formatMoney: (cents, currency) =>
+    typeof currency === "string" && /^[A-Za-z]{3}$/.test(currency.trim())
+      ? formatCurrency(cents, currency.trim().toUpperCase(), true)
+      : null,
   platformName: (platform) => platform,
 };
 
