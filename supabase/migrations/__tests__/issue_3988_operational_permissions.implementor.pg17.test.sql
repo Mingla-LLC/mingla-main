@@ -37,9 +37,11 @@ INSERT INTO public.admin_team_members (email, role, status, accepted_at) VALUES
   ('issue3988-teammate@test.local', 'growth', 'active', now()),
   ('issue3988-lead@test.local', 'growth', 'active', now()),
   ('issue3988-off@test.local', 'growth', 'active', now()),
-  ('issue3988-partner@test.local', 'partner', 'active', now()),
   ('issue3988-revoked@test.local', 'growth', 'revoked', now()),
   ('issue3988-leftover@test.local', 'growth', 'active', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('issue3988-partner@test.local', 'partner', 'active', now());
 
 INSERT INTO public.support_staff (user_id, enabled, available, role) VALUES
   ('39880000-0000-4000-a100-000000000003', true, false, 'staff'),
@@ -121,10 +123,12 @@ BEGIN
 END;
 $ticket$;
 
+-- #4255: every active teammate also gets the Blog tab area (blog), last; the
+-- Founding partner holds an admin_users seat and gets what an admin gets.
 DO $proof$
 DECLARE
-  v_full constant text := '{community_support,community_support_support,team_notifications,community_support_community,data_room}';
-  v_team constant text := '{community_support,community_support_support,team_notifications,community_support_community}';
+  v_full constant text := '{community_support,community_support_support,team_notifications,community_support_community,data_room,blog}';
+  v_team constant text := '{community_support,community_support_support,team_notifications,community_support_community,blog}';
   v_who text;
   v_areas text;
   v_has_community boolean;
@@ -142,10 +146,10 @@ BEGIN
   IF pg_temp.t3988_areas('partner') <> v_full THEN
     RAISE EXCEPTION 'partner_teammate_areas_wrong:%', pg_temp.t3988_areas('partner');
   END IF;
-  IF pg_temp.t3988_areas('off') <> '{team_notifications}' THEN
+  IF pg_temp.t3988_areas('off') <> '{team_notifications,blog}' THEN
     RAISE EXCEPTION 'role_off_still_opens_tabs:%', pg_temp.t3988_areas('off');
   END IF;
-  IF pg_temp.t3988_areas('leftover') <> '{team_notifications}' THEN
+  IF pg_temp.t3988_areas('leftover') <> '{team_notifications,blog}' THEN
     RAISE EXCEPTION 'leftover_community_row_grants_access:%', pg_temp.t3988_areas('leftover');
   END IF;
   IF pg_temp.t3988_areas('revoked') <> '{}' OR pg_temp.t3988_areas('outsider') <> '{}' THEN
@@ -278,9 +282,10 @@ DECLARE
   v_result text;
   v_row record;
 BEGIN
+  -- #4255 (D3): the Founding partner is a full admin, so it is "included" like an admin.
   v_result := pg_temp.t3988_as('owner',
     '(SELECT string_agg(email || ''='' || role || ''/'' || team_status || ''/'' || effective, '','' ORDER BY email) FROM public.issue_3988_admin_people() WHERE email LIKE ''issue3988-%'')');
-  IF v_result <> 'issue3988-admin@test.local=included_rota/active/true,issue3988-lead@test.local=lead/active/true,issue3988-leftover@test.local=off/active/true,issue3988-off@test.local=off/active/true,issue3988-outsider@test.local=off/none/false,issue3988-owner@test.local=included_rota/active/true,issue3988-partner@test.local=teammate/active/true,issue3988-revoked@test.local=off/none/false,issue3988-teammate@test.local=teammate/active/true' THEN
+  IF v_result <> 'issue3988-admin@test.local=included_rota/active/true,issue3988-lead@test.local=lead/active/true,issue3988-leftover@test.local=off/active/true,issue3988-off@test.local=off/active/true,issue3988-outsider@test.local=off/none/false,issue3988-owner@test.local=included_rota/active/true,issue3988-partner@test.local=included_rota/active/true,issue3988-revoked@test.local=off/none/false,issue3988-teammate@test.local=teammate/active/true' THEN
     RAISE EXCEPTION 'people_list_wrong:%', v_result;
   END IF;
   IF pg_temp.t3988_as('teammate', '(SELECT count(*) FROM public.issue_3988_admin_people())') NOT LIKE 'ERR:42501:%' THEN
@@ -290,7 +295,7 @@ BEGIN
   -- Turn the "off" teammate on: both Community and Support appear at once.
   v_result := pg_temp.t3988_as('admin',
     '(SELECT role FROM public.issue_3988_set_permissions(''39880000-0000-4000-a100-000000000005'', ''teammate'', NULL))');
-  IF v_result <> 'teammate' OR pg_temp.t3988_areas('off') <> '{community_support,community_support_support,team_notifications,community_support_community}' THEN
+  IF v_result <> 'teammate' OR pg_temp.t3988_areas('off') <> '{community_support,community_support_support,team_notifications,community_support_community,blog}' THEN
     RAISE EXCEPTION 'set_teammate_did_not_take_effect:%:%', v_result, pg_temp.t3988_areas('off');
   END IF;
   IF pg_temp.t3988_as('off', '(SELECT count(*) FROM public.issue_3720_admin_list_posts(''idea'', ''all''))') LIKE 'ERR:%' THEN
@@ -300,7 +305,7 @@ BEGIN
   -- Turn the teammate off: every tab, alert and ticket goes away.
   v_result := pg_temp.t3988_as('owner',
     '(SELECT role FROM public.issue_3988_set_permissions(''39880000-0000-4000-a100-000000000003'', ''off'', NULL))');
-  IF v_result <> 'off' OR pg_temp.t3988_areas('teammate') <> '{team_notifications}'
+  IF v_result <> 'off' OR pg_temp.t3988_areas('teammate') <> '{team_notifications,blog}'
      OR pg_temp.t3988_as('teammate', '(SELECT count(*) FROM public.issue_3720_admin_moderation_workspace(''first_posts''))') NOT LIKE 'ERR:42501:%'
      OR pg_temp.t3988_as('teammate', '(SELECT count(*) FROM public.support_tickets)') <> '0'
      OR EXISTS (SELECT 1 FROM public.issue_3988_support_alert_recipients() r(id) WHERE r.id = '39880000-0000-4000-a100-000000000003') THEN
@@ -368,7 +373,7 @@ BEGIN
         FROM t3988_people p LEFT JOIN public.support_staff s ON s.user_id = p.id
        WHERE p.who IN ('owner','off','partner','leftover','outsider','revoked','lead'));
   END IF;
-  IF pg_temp.t3988_areas('leftover') <> '{community_support,community_support_support,team_notifications,community_support_community}' THEN
+  IF pg_temp.t3988_areas('leftover') <> '{community_support,community_support_support,team_notifications,community_support_community,blog}' THEN
     RAISE EXCEPTION 'backfilled_community_row_not_support_teammate';
   END IF;
 END;
@@ -377,7 +382,7 @@ $backfill$;
 -- 9. Functions owned elsewhere keep their contracts; new RPCs are not public.
 DO $contracts$
 BEGIN
-  IF pg_temp.t3988_as('off', 'public.admin_team_my_access()->>''areas''') <> '["role_home", "crm", "beta_leads"]' THEN
+  IF pg_temp.t3988_as('off', 'public.admin_team_my_access()->>''areas''') <> '["role_home", "crm", "beta_leads", "email_drafts"]' THEN
     RAISE EXCEPTION 'base_role_area_contract_changed:%', pg_temp.t3988_as('off', 'public.admin_team_my_access()->>''areas''');
   END IF;
   IF has_function_privilege('anon', 'public.issue_3988_capabilities()', 'EXECUTE')

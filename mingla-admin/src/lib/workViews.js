@@ -17,25 +17,111 @@ export const WORK_VIEWS = Object.freeze([
 ]);
 const VIEW_VALUES = WORK_VIEWS.map((v) => v.value);
 
+// #4255: one "Show" filter (Needs attention became one of its options, D9)
+// and one "Linked to" filter. With the owner and the search they filter every
+// tab the same way (workFilter below).
+export const WORK_SHOW = Object.freeze([
+  Object.freeze({ value: "", label: "All cards" }),
+  Object.freeze({ value: "watch", label: "Cards I watch" }),
+  Object.freeze({ value: "attention", label: "Needs attention" }),
+  Object.freeze({ value: "overdue", label: "Overdue" }),
+  Object.freeze({ value: "blocked", label: "Blocked" }),
+]);
+export const WORK_LINKED = Object.freeze([
+  Object.freeze({ value: "", label: "Anything" }),
+  Object.freeze({ value: "host", label: "Hosts" }),
+  Object.freeze({ value: "creator", label: "Creators" }),
+  Object.freeze({ value: "calendar", label: "Calendar" }),
+]);
+const SHOW_VALUES = WORK_SHOW.map((o) => o.value).filter(Boolean);
+const LINKED_VALUES = WORK_LINKED.map((o) => o.value).filter(Boolean);
+
 /**
- * The view, person filter, search and draft drawers in the Work address.
- * `owner` is a teammate's address (the person chips); `who=watching` keeps
- * the old "cards I watch" filter. `draft`, `record` and `drafts=all` open the
- * message-draft drawers that replace the old Needs you page.
+ * The view, filters, search and draft drawers in the Work address.
+ * `owner` is a teammate's address; `show` and `linked` are the two filter
+ * dropdowns. Old addresses still open: `tab=attention` is Show: Needs
+ * attention, `tab=activity` is Today (Agent activity sits at its foot),
+ * `who=watching` is Show: Cards I watch. `draft`, `record` and `drafts=all`
+ * open the message-draft panels.
  */
 export function parseWorkView(search) {
   const p = new URLSearchParams(typeof search === "string" ? search : "");
   const owner = String(p.get("owner") || "").trim().toLowerCase();
   const draft = p.get("draft");
   const record = p.get("record");
+  const tab = p.get("tab");
+  let view = VIEW_VALUES.includes(p.get("view")) ? p.get("view") : "board";
+  if (tab === "activity") view = "today";
+  let show = SHOW_VALUES.includes(p.get("show")) ? p.get("show") : "";
+  if (!show && tab === "attention") show = "attention";
+  if (!show && p.get("who") === "watching") show = "watch";
   return {
-    view: VIEW_VALUES.includes(p.get("view")) ? p.get("view") : "board",
+    view,
     owner: owner && owner.includes("@") && owner.length <= 320 ? owner : null,
     q: String(p.get("q") || "").slice(0, 160),
+    show,
+    linked: LINKED_VALUES.includes(p.get("linked")) ? p.get("linked") : "",
     draft: draft && UUID_RE.test(draft) ? draft : null,
     record: record && UUID_RE.test(record) ? record : null,
     allDrafts: p.get("drafts") === "all",
   };
+}
+
+function linkKinds(card) {
+  const kinds = new Set((Array.isArray(card?.links) ? card.links : []).map((l) => l?.kind));
+  if (card?.anchor?.kind === "event" || card?.anchor?.kind === "expected") kinds.add(card.anchor.kind);
+  return kinds;
+}
+
+function isOverdue(card, today) {
+  if (!card || card.status === "done" || !card.due_on) return false;
+  if (typeof card.overdue === "boolean") return card.overdue;
+  return typeof today === "string" && String(card.due_on).slice(0, 10) < today;
+}
+
+/**
+ * Needs attention, on a card: blocked, waiting on a person, overdue, with no
+ * owner, or doing with no update for a week (the card's red reasons).
+ */
+export function needsAttention(card, today, reasons = []) {
+  if (!card || card.status === "done") return false;
+  return !!card.blocked || card.status === "person" || isOverdue(card, today) || (Array.isArray(reasons) && reasons.length > 0);
+}
+
+/**
+ * The one filter every Work tab runs first. `me` is the viewer's address
+ * (Show: Cards I watch), `reasonsOf(card)` the card's red reasons (Needs
+ * attention), `today` the viewer's YYYY-MM-DD.
+ */
+export function workFilter(cards, { owner = null, show = "", linked = "", q = "", me = "", today = "", reasonsOf = null } = {}) {
+  const needle = String(q || "").trim().toLowerCase();
+  const mine = String(me || "").toLowerCase();
+  const who = String(owner || "").toLowerCase();
+  return (Array.isArray(cards) ? cards : []).filter((c) => {
+    if (!c || c.archived) return false;
+    if (who && !(c.owners || []).some((o) => String(o.email || "").toLowerCase() === who)) return false;
+    if (needle) {
+      const hay = `${c.title || ""} ${c.instructions || ""}`.toLowerCase();
+      const num = String(c.number ?? "");
+      if (!hay.includes(needle) && needle !== num && needle !== `card ${num}`) return false;
+    }
+    if (linked) {
+      const kinds = linkKinds(c);
+      if (linked === "calendar" ? !(kinds.has("event") || kinds.has("expected") || kinds.has("content")) : !kinds.has(linked)) return false;
+    }
+    switch (show) {
+      case "watch":
+        return (c.watchers || []).some((o) => String(o.email || "").toLowerCase() === mine);
+      case "attention":
+        return needsAttention(c, today, reasonsOf ? reasonsOf(c) : []);
+      case "overdue":
+        return isOverdue(c, today);
+      case "blocked":
+        return c.status !== "done" && !!c.blocked;
+      default:
+        return true;
+    }
+  });
 }
 
 // ── Periods, in the viewer's own time ────────────────────────────────────
@@ -127,6 +213,117 @@ export function viewerTimeZone() {
   } catch {
     return null;
   }
+}
+
+// ── #4255: Today, This week and This month share one layout ─────────────
+
+function localIso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export const PERIOD_VIEWS = Object.freeze(["today", "week", "month"]);
+
+/**
+ * The window of a period tab, in the viewer's own time:
+ *   from, to  Done means closed at or after `from` and before `to`
+ *   dueBy     open cards count when due on or before this day, overdue or
+ *             undated
+ * Today counts done since yesterday 09:00 (the standup), This week since
+ * Monday 00:00, This month since the 1st.
+ */
+export function periodWindow(view, now = new Date()) {
+  const d = at(now);
+  const tomorrow = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  if (view === "week") {
+    const from = weekStart(d);
+    const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 7);
+    const last = new Date(to.getFullYear(), to.getMonth(), to.getDate() - 1);
+    return { view, from, to, dueBy: localIso(last), note: `${shortDay(localIso(from))} to ${shortDay(localIso(last))} · done this week · open cards due by ${shortDay(localIso(last))}, overdue or undated` };
+  }
+  if (view === "month") {
+    const from = new Date(d.getFullYear(), d.getMonth(), 1);
+    const to = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    const last = new Date(to.getFullYear(), to.getMonth(), 0);
+    return { view, from, to, dueBy: localIso(last), note: `${monthName(d)} · done this month · open cards due by ${shortDay(localIso(last))}, overdue or undated` };
+  }
+  return { view: "today", from: standupSince(d), to: tomorrow, dueBy: localIso(d), note: "Done since yesterday 09:00 · open cards due today, overdue or undated" };
+}
+
+export const PERIOD_BUCKETS = Object.freeze([
+  Object.freeze({ key: "done", label: "Done" }),
+  Object.freeze({ key: "doing", label: "Doing" }),
+  Object.freeze({ key: "blocked", label: "Blocked" }),
+  Object.freeze({ key: "waiting", label: "Waiting on a person" }),
+]);
+
+/** Which list of a period a card is in, or null (a To do card, or out of the window). */
+export function periodBucket(card, win) {
+  if (!card || card.archived || !win) return null;
+  if (card.status === "done") {
+    const closed = card.closed_at ? new Date(card.closed_at).getTime() : NaN;
+    return Number.isFinite(closed) && closed >= at(win.from).getTime() && closed < at(win.to).getTime() ? "done" : null;
+  }
+  const due = card.due_on ? String(card.due_on).slice(0, 10) : null;
+  if (due && win.dueBy && due > win.dueBy) return null;
+  if (card.blocked) return "blocked";
+  if (card.status === "doing") return "doing";
+  if (card.status === "person") return "waiting";
+  return null;
+}
+
+const NO_OWNER = "";
+
+/**
+ * Per person, the four lists of a period: Done, Doing, Blocked, Waiting on a
+ * person. A card with two owners is listed under both; one with none under
+ * "No owner". `people` (the team, in its order) names the rows; owners not
+ * on the team come after them. `totals` count each card once.
+ */
+export function periodRows(cards, win, people = []) {
+  const totals = { done: 0, doing: 0, blocked: 0, waiting: 0 };
+  const byEmail = new Map();
+  const names = new Map();
+  const row = (email, name) => {
+    if (!byEmail.has(email)) byEmail.set(email, { email, name, done: [], doing: [], blocked: [], waiting: [] });
+    return byEmail.get(email);
+  };
+  for (const p of Array.isArray(people) ? people : []) if (p?.email && !p.invited) names.set(String(p.email).toLowerCase(), p.name || p.email);
+  for (const card of Array.isArray(cards) ? cards : []) {
+    const bucket = periodBucket(card, win);
+    if (!bucket) continue;
+    totals[bucket] += 1;
+    const owners = Array.isArray(card.owners) && card.owners.length ? card.owners : [{ email: NO_OWNER, name: "No owner" }];
+    for (const o of owners) {
+      const email = String(o.email || "").toLowerCase();
+      row(email, email ? names.get(email) || o.name || email : "No owner")[bucket].push(card);
+    }
+  }
+  const byDue = (a, b) => String(a.due_on || "9999").localeCompare(String(b.due_on || "9999")) || (Number(a.number) || 0) - (Number(b.number) || 0);
+  const byClosed = (a, b) => String(b.closed_at || "").localeCompare(String(a.closed_at || ""));
+  for (const r of byEmail.values()) {
+    r.done.sort(byClosed);
+    r.doing.sort(byDue);
+    r.blocked.sort(byDue);
+    r.waiting.sort(byDue);
+  }
+  const order = [...names.keys()];
+  const rows = [...byEmail.values()].sort((a, b) => {
+    if (a.email === NO_OWNER) return 1;
+    if (b.email === NO_OWNER) return -1;
+    const ia = order.indexOf(a.email);
+    const ib = order.indexOf(b.email);
+    if (ia !== ib) return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib);
+    return a.name.localeCompare(b.name);
+  });
+  return { totals, rows };
+}
+
+/** A list shows its first three; "+N more" shows the rest. */
+export const PERIOD_LIST_LIMIT = 3;
+
+export function periodShown(list, expanded, limit = PERIOD_LIST_LIMIT) {
+  const all = Array.isArray(list) ? list : [];
+  return expanded ? { shown: all, more: 0 } : { shown: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
 
 // ── Words ────────────────────────────────────────────────────────────────

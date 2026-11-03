@@ -69,8 +69,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('ada.w3980@test.local', 'growth', 'active', now()),
   ('bo.w3980@test.local', 'growth', 'active', now()),
-  ('cy.w3980@test.local', 'partner', 'active', now()),
   ('fay.w3980@test.local', 'growth', 'revoked', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('cy.w3980@test.local', 'partner', 'active', now());
 
 create temp table t3980_results (seq serial primary key, test text, label text, ok boolean, detail text) on commit drop;
 create temp table t3980_ids (k text primary key, v text) on commit drop;
@@ -479,8 +481,10 @@ declare v text; c public.ops_work_cards; v_id text := pg_temp.t3980_id('late_pro
 begin
   v := pg_temp.t3980_person('growth2', format('select public.ops_gate_override(%L, %L)::text', v_id, 'The host is paying for the boost themselves.'));
   perform pg_temp.t3980_like('W3-OVERRIDE', 'a Sales and marketing teammate cannot override', v, 'ERR:42501:forbidden:%');
-  v := pg_temp.t3980_person('partner', format('select public.ops_gate_override(%L, %L)::text', v_id, 'The host is paying for the boost themselves.'));
-  perform pg_temp.t3980_like('W3-OVERRIDE', 'a founding partner cannot override', v, 'ERR:42501:forbidden:%');
+  -- #4255 (D3): a Founding partner is a full admin now and may override, so the
+  -- refusal is proven with a removed teammate instead.
+  v := pg_temp.t3980_person('leaver', format('select public.ops_gate_override(%L, %L)::text', v_id, 'The host is paying for the boost themselves.'));
+  perform pg_temp.t3980_like('W3-OVERRIDE', 'a removed teammate cannot override', v, 'ERR:42501:%');
   v := pg_temp.t3980_agent_sql('owner', 'claude', format('select public.ops_gate_override(%L, %L)::text', v_id, 'The host is paying for the boost themselves.'));
   perform pg_temp.t3980_like('W3-OVERRIDE', 'the owner''s agent cannot override', v, 'ERR:42501:forbidden:%');
   v := pg_temp.t3980_person('owner', format('select public.ops_gate_override(%L, %L)::text', v_id, ''));

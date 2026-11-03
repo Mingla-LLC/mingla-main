@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isFullAdmin } from "../lib/access";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Badge } from "../components/ui/Badge";
@@ -52,8 +53,9 @@ export function DraftsPage({ embedded = null }) {
   const review = embedded ? { ...parsedReview, tab: "messages" } : parsedReview;
   const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : tab === "told" ? "tab=told" : "tab=messages");
   const { access } = useAuth();
-  // What hosts are told is decided by the owner and admins only.
-  const canTell = access?.role === "owner" || access?.role === "admin";
+  // What hosts are told is decided by the owner and admins only (#4255: a
+  // Founding partner holds a full-admin seat too).
+  const canTell = isFullAdmin(access);
   const online = useOnline();
   const reduced = useReducedMotion();
   const counts = useDraftCountValue();

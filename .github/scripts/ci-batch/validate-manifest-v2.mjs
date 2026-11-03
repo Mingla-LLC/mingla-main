@@ -346,7 +346,8 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the Explorer buyable-date migration and its proof the same way.
 // #4251: register the going-RSVPs cover type migration and its proof the same way.
 // #4256: register the no-auto-promo-cards migration the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a92bf7124e501683739af29ba1e37abd23364c25739233f1e6db5606ab773ae3";
+// #4255: register the admin access and Work closed-range migrations the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "213236192c19b0ef44e414700b3b30641da99b71d12b679f9a7bbbe52c405bb6";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

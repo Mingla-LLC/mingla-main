@@ -215,7 +215,9 @@ describe("#4130 W0-4: access is the union of the replaced pages, never wider", (
     for (const [hub, tabs] of Object.entries(PAGE_HUB_TABS)) {
       assert.deepEqual([...PAGE_ACCESS_UNION[hub]].sort(), tabs.map((t) => t.hosts).sort(), hub);
     }
-    assert.deepEqual(PAGE_ACCESS_UNION.support, ["community-support"]);
+    // #4255: Support also opens for the Email and Blog tabs' areas (every
+    // teammate), through the support-content pseudo page; Community does not.
+    assert.deepEqual(PAGE_ACCESS_UNION.support, ["community-support", "support-content"]);
     assert.deepEqual(PAGE_ACCESS_UNION.community, ["community-support"]);
   });
   it("for every combination of areas, a merged page opens exactly when one of its old pages did", () => {

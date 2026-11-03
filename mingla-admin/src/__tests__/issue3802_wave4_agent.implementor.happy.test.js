@@ -298,7 +298,8 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
   it("a growth person is not shown the owner's tool; an owner is", () => {
     const tools = (role) => abilitiesFor(role).flatMap((g) => g.items.map((i) => i.tool));
     assert.equal(tools("growth").includes("team_summary"), false);
-    assert.equal(tools("partner").includes("team_summary"), false);
+    // #4255 (D3): a Founding partner is offered what an admin is.
+    assert.deepEqual(tools("partner"), offered);
     assert.deepEqual(tools("owner"), offered);
     assert.deepEqual(tools("admin"), offered);
     assert.deepEqual(tools(undefined), tools("growth"));

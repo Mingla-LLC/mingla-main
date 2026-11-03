@@ -22,7 +22,7 @@ import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
-export function ContentDrawer({ activeId, detail, config, online, loading, focusTarget, onFocusHandled, onClose, onChanged, onMove, onDeleted, suspended = false }) {
+export function ContentDrawer({ activeId, detail, config, online, loading, focusTarget, onFocusHandled, onClose, onChanged, onMove, onDeleted, suspended = false, footerExtra = null }) {
   const [viewDetail, setViewDetail] = useState(detail || null);
   const [item, setItem] = useState(detail?.item || null);
   const directory = usePeopleDirectory();
@@ -154,6 +154,7 @@ export function ContentDrawer({ activeId, detail, config, online, loading, focus
         <section aria-labelledby="content-comments"><h3 id="content-comments" className="text-sm font-semibold text-[var(--color-text-primary)]">Comments</h3><div className="mt-2 space-y-2">{(viewDetail?.comments || []).length ? viewDetail.comments.map((row) => <div key={row.id} className="rounded-lg bg-[var(--gray-50)] p-3 text-sm"><p className="whitespace-pre-wrap text-[var(--color-text-primary)]">{row.body}</p><p className="mt-1 text-xs text-[var(--color-text-tertiary)]">{row.display_name || row.actor_email}{row.via ? " via agent" : ""}</p></div>) : <p className="text-sm text-[var(--color-text-secondary)]">No comments yet.</p>}</div><p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Mention teammates with @</p><div className="mt-1"><NoteBox team={directory.people} label="New comment" postLabel="Comment" disabled={disabled} busy={busy === "Commenting"} onPost={addComment} /></div></section>
         {confirmDelete && <AlertCard variant="error" title="Delete this content card?"><p>This removes it from every calendar view.</p><div className="mt-3 flex gap-2"><Button type="button" variant="danger" className="min-h-11" loading={busy === "Deleting"} onClick={remove}>Delete card</Button><Button type="button" variant="secondary" className="min-h-11" onClick={() => setConfirmDelete(false)}>Keep card</Button></div></AlertCard>}
       </div>}
+      {footerExtra}
     </Drawer>
   );
 }

@@ -26,7 +26,26 @@ export const AREA = {
   CRM: "crm",
   // Beta leads, for the whole team (issue #3802, Wave 1).
   BETA_LEADS: "beta_leads",
+  // Shared email drafts and sending, for the whole team (issue #4255, D5).
+  EMAIL_DRAFTS: "email_drafts",
 };
+
+// Issue #4255 (D3): owner, admin and Founding partner are the full-admin
+// seats. The server decides access through the areas it sends; this list only
+// says which labels name a full-admin seat in the UI (for example, who sees
+// admin-only wording on a card).
+export const FULL_ADMIN_ROLES = Object.freeze(["owner", "admin", "partner"]);
+
+/** Is this person an active full admin (owner, admin or Founding partner)? */
+export function isFullAdmin(access) {
+  return Boolean(
+    access &&
+      access.status === "active" &&
+      FULL_ADMIN_ROLES.includes(access.role) &&
+      Array.isArray(access.areas) &&
+      access.areas.includes(AREA.ADMIN_CONSOLE),
+  );
+}
 
 // Issue #3720 operational capabilities. These are intentionally outside AREA:
 // AREA remains the role-to-area contract pinned by #3802, while these values
@@ -37,11 +56,18 @@ export const SUPPORT_OPERATIONS_AREA = "community_support_support";
 export const COMMUNITY_OPERATIONS_AREA = "community_support_community";
 export const TEAM_NOTIFICATIONS_AREA = "team_notifications";
 export const DATA_ROOM_AREA = "data_room";
+// Issue #4255: the Blog tab, computed by the server from
+// issue_4137_blog_can_write (any active teammate).
+export const BLOG_AREA = "blog";
 
 export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   "community-support": Object.freeze([COMMUNITY_SUPPORT_AREA]),
   notifications: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
   "data-room": Object.freeze([DATA_ROOM_AREA]),
+  // Issue #4255: the Email and Blog tabs on the Support page, for every
+  // teammate. A pseudo page id (never in the menu) so it widens Support only,
+  // never Community.
+  "support-content": Object.freeze([AREA.EMAIL_DRAFTS, BLOG_AREA]),
 });
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any
@@ -80,7 +106,7 @@ export const PAGE_ACCESS_UNION = Object.freeze({
   settings: Object.freeze(["settings", "place-intelligence-trial"]),
   // #4130 (Seth): Team and roles is the owner's again (team_manage only);
   // Careers is its own page with its own access, so it is not merged here.
-  support: Object.freeze(["community-support"]),
+  support: Object.freeze(["community-support", "support-content"]),
   community: Object.freeze(["community-support"]),
 });
 

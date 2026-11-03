@@ -142,16 +142,18 @@ Deno.test("#3980 W3 rework D9: nothing sits under the month, every list follows 
   const panel = code("components/ops/EventPanel.jsx");
   // With nothing open, only the calendar box: no right column, no runway list.
   assertMatch(page, /: <div className="flex min-w-0 flex-col gap-4">\{box\}<\/div>\}/);
+  assertNotMatch(page, /TwoColumn/);
   assertNotMatch(panel, /RunwayList|useOpsRunway/);
   assertMatch(panel, /: null;/);
   for (const [name, text] of [["page", page], ["panel", panel]]) assertNotMatch(text, /Back to runway/, name);
   // A day lists what Show says; the undated posts button shows only with posts.
   // #4130: the day list reads the month's events with test brands left out.
-  assertMatch(page, /dayEntries\(route\.day, monthData, calendar\.items, route\.show\)/);
+  // #4255: a state tile shows events only, so the day follows it too (monthShow).
+  assertMatch(page, /dayEntries\(route\.day, monthData, calendar\.items, monthShow\)/);
   assertMatch(page, /\{show !== "events" && <Button [^>]*onClick=\{onUndated\}/);
-  // List view keeps the grouped list and the posts list, each behind Show.
-  assertMatch(page, /route\.show !== "posts" && \(runway\.error/);
-  assertMatch(page, /route\.show !== "events" && <PostsList /);
+  // #4255: List view is gone; Board follows Show (no posts under Events).
+  assertNotMatch(page, /PostsList|RunwayTable/);
+  assertMatch(page, /const boardItems = route\.show === "events" \? \[\] : calendar\.items;/);
 });
 
 Deno.test("#3980 W3 rework D10: the four plain states, never the old runway words", () => {
@@ -179,8 +181,10 @@ Deno.test("#3980 W3 rework: Work groups by Status, Person or Event, one board at
   assertNotMatch(page, /aria-label="Group by"/);
   assertNotMatch(page, /<WorkGroups /);
   assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
-  assertMatch(page, /<PersonChips people=\{people\.people\} owner=\{ownerFilter\}/);
-  assertMatch(code("components/ops/WorkColumns.jsx"), /export function WorkGroups\(\{ cards = \[\], group, selectedId, onSelect \}\)/);
+  // #4255: the person chips became the Owner dropdown of the one filter bar,
+  // and the dead WorkGroups component is deleted.
+  assertMatch(page, /<FilterSelect name="owner" label="Owner" value=\{ownerFilter \|\| ""\}/);
+  assertNotMatch(code("components/ops/WorkColumns.jsx"), /WorkGroups/);
 });
 
 Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names, three entries a day, a compact sprint strip", () => {

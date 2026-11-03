@@ -1,17 +1,20 @@
 // Issue #3980 (R2, R6) — the eight launch steps of an event, made by
 // themselves: done, skipped (went live too late) or still to come, with the
 // date and who does each. The two key steps are bold.
+import { useId } from "react";
 import { Check } from "lucide-react";
 import { dayLabel } from "../../lib/opsModel";
+import { SideLink } from "../ui/PanelStack";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 export function EventSteps({ steps = [], doneCount = 0 }) {
+  const uid = useId();
   const total = steps.length || 8;
   const pct = Math.round((Math.min(doneCount, total) / total) * 100);
   return (
-    <section aria-labelledby="event-steps-heading" className="flex min-w-0 flex-col gap-2 border-t border-[var(--gray-200)] pt-3">
-      <h3 id="event-steps-heading" className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
+    <section aria-labelledby={`${uid}-steps`} className="flex min-w-0 flex-col gap-2 border-t border-[var(--gray-200)] pt-3">
+      <h3 id={`${uid}-steps`} className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
         <span>Steps (made by themselves)</span>
         <span className="text-[12.5px] font-normal tabular-nums text-[var(--color-text-tertiary)]">{doneCount} of {total}</span>
       </h3>
@@ -30,7 +33,7 @@ export function EventSteps({ steps = [], doneCount = 0 }) {
                 <span className={`block break-normal [overflow-wrap:normal] text-[13px] text-[var(--color-text-primary)] ${s.key ? "font-semibold" : ""} ${s.state === "skip" ? "line-through" : ""}`}>{s.title}</span>
                 <span className="block break-normal [overflow-wrap:normal] text-[12px] text-[var(--color-text-tertiary)]">
                   {s.state === "skip" ? "Skipped: went live too late" : s.who}
-                  {s.card ? <> · <a href={`#/work-board?card=${s.card.id}`} className={`inline-flex min-h-11 min-w-11 items-center rounded font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {s.card.number}</a></> : null}
+                  {s.card ? <> · <SideLink side={{ kind: "card", id: s.card.id }} href={`#/work-board?card=${s.card.id}`} className={`inline-flex min-h-11 min-w-11 items-center rounded font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {s.card.number}</SideLink></> : null}
                 </span>
                 <span className="sr-only">{s.state === "done" ? "Done" : s.state === "skip" ? "Skipped" : "To come"}</span>
               </span>

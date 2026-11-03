@@ -56,8 +56,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('ada.w3980@test.local', 'growth', 'active', now()),
   ('bo.w3980@test.local', 'growth', 'active', now()),
-  ('cy.w3980@test.local', 'partner', 'active', now()),
   ('fay.w3980@test.local', 'growth', 'revoked', now());
+-- #4255: a Founding partner holds an admin_users seat now.
+INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+  ('cy.w3980@test.local', 'partner', 'active', now());
 
 create temp table t3980_results (seq serial primary key, test text, label text, ok boolean, detail text) on commit drop;
 create temp table t3980_ids (k text primary key, v text) on commit drop;

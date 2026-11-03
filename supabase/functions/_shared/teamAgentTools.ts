@@ -1474,7 +1474,8 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
 };
 
 /** Roles that are offered the owner-and-admin tools. */
-export const ADMIN_ROLES: readonly string[] = ["owner", "admin"];
+// #4255 (D3): a Founding partner holds a full-admin seat too.
+export const ADMIN_ROLES: readonly string[] = ["owner", "admin", "partner"];
 
 const TOOLS_BY_NAME = new Map<string, TeamAgentTool>(
   TEAM_AGENT_TOOLS.map((t) => [t.name, t]),

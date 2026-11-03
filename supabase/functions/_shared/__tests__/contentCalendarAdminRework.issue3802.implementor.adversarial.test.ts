@@ -112,7 +112,8 @@ Deno.test("#3802 Wave 2 adversarial: removed, offline, focus, touch and route st
     /document\.getElementById\(focusTarget\)[\s\S]*control\.focus\(\)/,
   );
   assertMatch(PAGE, /card: \/\^\[0-9a-f-\]\{36\}\$\/i/);
-  assertMatch(PAGE, /view: \["calendar", "board", "list"\]/);
+  // #4255: Month and Board only; any other view in the address opens Month.
+  assertMatch(PAGE, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
   assertMatch(PAGE, /month: \/\^\\d\{4\}/);
   assertMatch(PAGE, /matchMedia\("\(pointer: coarse\)"\)/);
   assertMatch(PAGE, /draggable=\{!coarse\}/);

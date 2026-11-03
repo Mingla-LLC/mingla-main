@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ArrowRight, ExternalLink, FileText } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
+import { SideLink } from "../ui/PanelStack";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
@@ -94,6 +95,7 @@ export function RecordDrawer({
   onDelete,
   onOpenCard,
   onRefreshRegions,
+  footerExtra = null,
 }) {
   const { addToast } = useToast();
   const uid = useId();
@@ -727,7 +729,8 @@ export function RecordDrawer({
           </p>
         )}
         {draftCount > 0 && (
-          <a
+          <SideLink
+            side={{ kind: "drafts", id: record.id }}
             href={`#/drafts?record=${record.id}`}
             aria-label={`${draftCount} ${draftCount === 1 ? "draft" : "drafts"} waiting for ${record.name}. Review drafts.`}
             className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
@@ -735,7 +738,7 @@ export function RecordDrawer({
             <FileText aria-hidden="true" className="h-4 w-4 shrink-0" />
             <span>{draftCount} {draftCount === 1 ? "draft" : "drafts"} waiting</span>
             <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0" />
-          </a>
+          </SideLink>
         )}
         {isHosts && (
           <OnMinglaSection
@@ -994,6 +997,7 @@ export function RecordDrawer({
             </Button>
           </div>
         )}
+        {footerExtra}
       </div>
     </Drawer>
   );

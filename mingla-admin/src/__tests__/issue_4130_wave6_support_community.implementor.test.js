@@ -23,6 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AREA,
+  BLOG_AREA,
   COMMUNITY_OPERATIONS_AREA,
   COMMUNITY_SUPPORT_AREA,
   SUPPORT_OPERATIONS_AREA,
@@ -128,41 +129,51 @@ describe("W6-2 Support and Community are real pages", () => {
 
 describe("W6-3 access is unchanged", () => {
   const person = (areas, role = "growth") => ({ email: "t@example.test", role, status: "active", areas });
+  // #4255: every active teammate also holds email_drafts and blog (the server
+  // sends both), so the Email and Blog tabs open on Support for everyone, and
+  // Support opens for a teammate with no Support or Community role.
+  const TEAM = [AREA.EMAIL_DRAFTS, BLOG_AREA];
   const PEOPLE = {
     admin: person([AREA.ADMIN_CONSOLE], "admin"),
-    supportTeammate: person([AREA.ROLE_HOME, COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA, COMMUNITY_OPERATIONS_AREA]),
-    supportOnly: person([COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA]),
-    communityOnly: person([COMMUNITY_SUPPORT_AREA, COMMUNITY_OPERATIONS_AREA]),
-    salesOnly: person([AREA.ROLE_HOME, AREA.CRM]),
+    supportTeammate: person([AREA.ROLE_HOME, COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA, COMMUNITY_OPERATIONS_AREA, ...TEAM]),
+    supportOnly: person([COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA, ...TEAM]),
+    communityOnly: person([COMMUNITY_SUPPORT_AREA, COMMUNITY_OPERATIONS_AREA, ...TEAM]),
+    salesOnly: person([AREA.ROLE_HOME, AREA.CRM, ...TEAM]),
   };
-  // What each person saw in the console before the split, content tabs only.
+  // What each person saw in the console before the split, content tabs only,
+  // plus (#4255) Email and Blog for every teammate.
   const BEFORE = {
     admin: Object.keys(OLD_TAB_HOME).sort(),
-    supportTeammate: ["blog", "brand-groups", "enquiry-reports", "feature-guide", "ideas", "moderation", "questions", "support"],
-    supportOnly: ["blog", "brand-groups", "feature-guide", "support"],
-    communityOnly: ["enquiry-reports", "ideas", "moderation", "questions"],
-    salesOnly: [],
+    supportTeammate: ["blog", "brand-groups", "email", "enquiry-reports", "feature-guide", "ideas", "moderation", "questions", "support"],
+    supportOnly: ["blog", "brand-groups", "email", "feature-guide", "support"],
+    communityOnly: ["blog", "email", "enquiry-reports", "ideas", "moderation", "questions"],
+    salesOnly: ["blog", "email"],
   };
 
   it("each person sees exactly the tabs they saw before, split over the two pages", () => {
     for (const [who, access] of Object.entries(PEOPLE)) {
       const support = ids(communitySupportTabsForAccess(access, SUPPORT_PAGE_TABS));
       const community = ids(communitySupportTabsForAccess(access, COMMUNITY_PAGE_TABS));
-      const opens = canOpenPage(access, "support");
-      assert.equal(canOpenPage(access, "community"), opens, who);
-      assert.equal(opens, canOpenPage(access, "community-support"), `${who}: page access is the old console's`);
-      assert.deepEqual(opens ? [...support, ...community].sort() : [], BEFORE[who], who);
+      const opensSupport = canOpenPage(access, "support");
+      const opensCommunity = canOpenPage(access, "community");
+      assert.equal(opensCommunity, canOpenPage(access, "community-support"), `${who}: Community keeps the old console's access`);
+      assert.equal(opensSupport, opensCommunity || access.areas.some((a) => TEAM.includes(a)), `${who}: Support adds only the team content areas`);
+      assert.deepEqual([...(opensSupport ? support : []), ...(opensCommunity ? community : [])].sort(), BEFORE[who], who);
     }
   });
 
-  it("Admin-only tabs stay Admin-only", () => {
-    for (const tab of ["email", "team", "announcements", "roadmap", "product"]) {
+  it("Admin-only tabs stay Admin-only; Email and Blog are every teammate's", () => {
+    for (const tab of ["team", "announcements", "roadmap", "product"]) {
       assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT[tab].area, AREA.ADMIN_CONSOLE, tab);
     }
+    assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT.email.area, AREA.EMAIL_DRAFTS);
+    assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT.blog.area, BLOG_AREA);
     const page = read("pages/CommunitySupportPage.jsx");
     assert.match(page, /communitySupportTabsForAccess\(access, pageTabs\)/);
     assert.match(page, /activeTab === "team" && capabilities\.isAdmin && <TeamRolesPanel/);
     assert.match(page, /activeTab === "product" && capabilities\.isAdmin && <ProductInboxPanel \/>/);
+    assert.match(page, /activeTab === "email" && capabilities\.canEmail && <EmailPage embedded \/>/);
+    assert.match(page, /activeTab === "blog" && capabilities\.canBlog && <BlogPanel/);
   });
 
   it("every tab on either page has its contract row, and the two pages hold them all", () => {

@@ -273,14 +273,17 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
     assert.match(page, /<DraftsPage key=\{view\.draft \|\| view\.record \|\| "all"\} embedded=\{\{ search: view\.draft \? `draft=\$\{view\.draft\}` : view\.record \? `record=\$\{view\.record\}` : "" \}\} \/>/);
     assert.match(page, /onOpenDraft=\{\(d\) => go\(\{ draft: d\.id \}\)\}/);
   });
-  it("the person chips filter on the server; the views read the new functions through the one service", () => {
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q \}\)/);
+  // #4255: the person chips became the Owner dropdown of the one filter bar;
+  // it still filters the board on the server, and only while the board is on
+  // screen. Today, This week and This month read their window (loadPeriod).
+  it("the owner filters on the server; the views read the new functions through the one service", () => {
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, enabled: onBoard \}\)/);
     assert.match(code("hooks/useOpsWork.js"), /\.\.\.\(owner \? \{ owner \} : \{\}\)/);
     const service = read("services/opsService.js");
     assert.match(service, /supabase\.rpc\("ops_events_since", \{ p_since: since, p_owner: owner \|\| null \}\)/);
     assert.match(service, /supabase\.rpc\("ops_period_summary", \{ p_from: from, p_to: to, p_owner: owner \|\| null, p_tz: tz \|\| null \}\)/);
     assert.match(read("services/crmService.js"), /supabase\.rpc\("crm_team_pulse", \{ p_from: from, p_to: to \}\)/);
-    assert.match(code("components/ops/WorkViews.jsx"), /<LoadError title=\{title\} message=\{opsErrorWords\(read\.error\)\} onRetry=\{\(\) => read\.refetch\(\)\} \/>/);
+    assert.match(code("components/ops/WorkViews.jsx"), /<LoadError title="Couldn’t load these cards" message=\{opsErrorWords\(read\.error\)\} onRetry=\{\(\) => read\.refetch\(\)\} \/>/);
   });
 });
 

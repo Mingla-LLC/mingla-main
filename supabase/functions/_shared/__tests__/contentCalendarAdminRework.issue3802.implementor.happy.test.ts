@@ -98,12 +98,10 @@ Deno.test("#3802 Wave 2 rework: calendar is Monday-first and mobile becomes a se
 });
 
 Deno.test("#3802 Wave 2 rework: List, links, touch and motion states are explicit", () => {
-  for (
-    const heading of ["Title", "Stage", "Owners", "Publish time", "Channels"]
-  ) {
-    assert(PAGE.includes(`<span>${heading}</span>`), heading);
-  }
-  assertMatch(PAGE, /md:hidden">Stage:/);
+  // #4255: the List view and its table are gone; Month and Board remain.
+  assert(!PAGE.includes("<RunwayTable"));
+  assert(!PAGE.includes("<PostsList"));
+  assertMatch(PAGE, /<MonthGrid [\s\S]*<BoardView /);
   assertEquals(
     safeHttpsUrl("https://example.com/path"),
     "https://example.com/path",

@@ -71,8 +71,11 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802y-admin@test.local', 'admin', 'active', now());
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('issue3802y-growth@test.local',  'growth',  'active', now()),
-  ('issue3802y-partner@test.local', 'partner', 'active', now()),
-  ('issue3802y-growth2@test.local', 'growth',  'active', now());
+  ('issue3802y-growth2@test.local', 'growth',  'active', now()),
+  -- #4255 (D3): a Founding partner is a full admin now (proven by
+  -- issue_4255_admin_access_email_drafts.implementor.pg17.test.sql). This
+  -- suite keeps its 'partner' persona as a non-admin teammate (growth).
+  ('issue3802y-partner@test.local', 'growth',  'active', now());
 
 set local session_replication_role = replica;
 insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
@@ -1058,8 +1061,10 @@ begin
         (select (i.token_hash = md5(r.label) || md5(r.label || 'x'))::text || '/' || (i.email = lower(btrim(r.invited)))::text from public.admin_team_invites i where i.email = lower(btrim(r.invited))), 'true/true');
     end if;
     -- Nobody but the owner learns anything: the same refusal for every address.
-    perform pg_temp.y_eq('XB-10', r.label || ': an admin, the two team roles and an ordinary account are refused the same way for it',
-      pg_temp.y_as('admin', format('select public.admin_team_issue_invite(%L, %L, %L)::text', r.invited, 'growth', repeat('a', 64)))
+    -- #4255 (D4): admins manage the team now, so a second growth teammate
+    -- takes the admin's place in this refusal row.
+    perform pg_temp.y_eq('XB-10', r.label || ': two non-admin teammates, a third and an ordinary account are refused the same way for it',
+      pg_temp.y_as('growth2', format('select public.admin_team_issue_invite(%L, %L, %L)::text', r.invited, 'growth', repeat('a', 64)))
         || '|' || pg_temp.y_as('growth', format('select public.admin_team_issue_invite(%L, %L, %L)::text', r.invited, 'growth', repeat('a', 64)))
         || '|' || pg_temp.y_as('partner', format('select public.admin_team_issue_invite(%L, %L, %L)::text', r.invited, 'growth', repeat('a', 64)))
         || '|' || pg_temp.y_as('consumer', format('select public.admin_team_issue_invite(%L, %L, %L)::text', r.invited, 'growth', repeat('a', 64))),

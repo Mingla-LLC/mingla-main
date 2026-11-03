@@ -182,7 +182,8 @@ describe("#3802 S-3: who may open what did not move", () => {
       agent: "crm",
       guide: "crm",
     });
-    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads" });
+    // #4255: email_drafts (Email tab and sending) is a server area for every teammate.
+    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", EMAIL_DRAFTS: "email_drafts" });
   });
   it("every other page still needs the full admin console", () => {
     for (const item of NAV_ITEMS) {

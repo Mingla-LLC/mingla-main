@@ -299,7 +299,7 @@ begin
     pg_temp.t3802b_as('g', $q$select public.admin_team_my_access()->>'status'$q$), 'invited');
   r := pg_temp.t3802b_as('g', $q$select public.admin_team_activate_self()::text$q$);
   perform pg_temp.t3802b_check('B-2', 'growth activates', r::jsonb::text,
-    '{"role": "growth", "areas": ["role_home", "crm", "beta_leads"], "email": "issue3802b-g@test.local", "status": "active"}');
+    '{"role": "growth", "areas": ["role_home", "crm", "beta_leads", "email_drafts"], "email": "issue3802b-g@test.local", "status": "active"}');
   perform pg_temp.t3802b_check('B-2', 'the invitation is gone', pg_temp.t3802b_state('g'), 'none');
   perform pg_temp.t3802b_check('B-2', 'the used link no longer exists', pg_temp.t3802b_peek('g1'), 'invalid');
   perform pg_temp.t3802b_check('B-2', 'one audit row, in their own name',
@@ -325,8 +325,9 @@ begin
   perform pg_temp.t3802b_check('B-2', 'partner opens their link', pg_temp.t3802b_open('p1', 'p'), 'redeemed');
   perform pg_temp.t3802b_check('B-2', 'partner activates',
     pg_temp.t3802b_as('p', $q$select public.admin_team_activate_self()->>'status'$q$), 'active');
-  perform pg_temp.t3802b_check('B-2', 'and is a partner, not a full admin',
-    pg_temp.t3802b_as('p', $q$select public.admin_team_role() || '/' || public.is_admin_user()::text$q$), 'partner/false');
+  -- #4255 (D3): a Founding partner holds a full-admin seat.
+  perform pg_temp.t3802b_check('B-2', 'and is a partner with a full-admin seat',
+    pg_temp.t3802b_as('p', $q$select public.admin_team_role() || '/' || public.is_admin_user()::text$q$), 'partner/true');
 
   -- Admin, through the previous function (what the previous client calls).
   perform pg_temp.t3802b_check('B-2', 'second admin opens their link', pg_temp.t3802b_open('la1', 'la'), 'redeemed');
@@ -560,7 +561,8 @@ declare
   v_bad text;
 begin
   -- admin and g are active; twinv is invited-by-address only; consumer has nothing.
-  foreach v_who in array array['admin', 'g', 'p', 'twinv', 'consumer'] loop
+  -- #4255 (D4): admins and partners (admin, p) send and list invitations now.
+  foreach v_who in array array['g', 'twinv', 'consumer'] loop
     perform pg_temp.t3802b_check('B-8', v_who || ': sending an invitation is refused',
       pg_temp.t3802b_as(v_who, format($q$select public.admin_team_issue_invite('issue3802b-someone@test.local', 'growth', %L)::text$q$, pg_temp.t3802b_h('nope'))),
       'ERR:42501:forbidden');
@@ -625,16 +627,22 @@ declare
 begin
   perform pg_temp.t3802b_check('B-9', 'owner invites swap as growth', pg_temp.t3802b_field(pg_temp.t3802b_issue('swap', 'growth', 's1'), 'changed'), 'true');
   perform pg_temp.t3802b_check('B-9', 'swap opens', pg_temp.t3802b_open('s1', 'swap'), 'redeemed');
-  -- The stored role is rewritten behind the invitation's back.
-  update public.admin_team_members set role = 'partner' where email = 'issue3802b-swap@test.local';
+  -- The stored role is rewritten behind the invitation's back. #4255: growth is
+  -- the only live team role now (a Founding partner holds a full-admin seat),
+  -- so the table itself refuses the rewrite, and the invitation still
+  -- activates exactly the role it was sent for.
+  perform pg_temp.t3802b_like('B-9', 'a live team row cannot be rewritten to another role',
+    pg_temp.t3802b_as('postgres', $q$with x as (update public.admin_team_members set role = 'partner' where email = 'issue3802b-swap@test.local' returning 1) select count(*)::text from x$q$),
+    'ERR:23514:%admin_team_members_partner_moved%');
   v_audit := pg_temp.t3802b_audit();
-  perform pg_temp.t3802b_check('B-9', 'the invitation does not activate a different role',
-    pg_temp.t3802b_as('swap', $q$select (public.admin_team_activate_self()->>'role') || '/' || (public.admin_team_my_access()->>'status')$q$),
-    'partner/invited');
-  perform pg_temp.t3802b_check('B-9', 'their row is still invited',
+  perform pg_temp.t3802b_check('B-9', 'the invitation activates the role it was sent for',
+    pg_temp.t3802b_as('swap', $q$select (public.admin_team_activate_self()->>'role') || '/' || 'activated'$q$)
+      || '/' || pg_temp.t3802b_as('swap', $q$select public.admin_team_my_access()->>'status'$q$),
+    'growth/activated/active');
+  perform pg_temp.t3802b_check('B-9', 'their row is active with that role',
     (select role || '/' || status || '/' || (accepted_at is null)::text
-       from public.admin_team_members where email = 'issue3802b-swap@test.local'), 'partner/invited/true');
-  perform pg_temp.t3802b_check('B-9', 'no audit row', pg_temp.t3802b_audit()::text, v_audit::text);
+       from public.admin_team_members where email = 'issue3802b-swap@test.local'), 'growth/active/false');
+  perform pg_temp.t3802b_check('B-9', 'one audit row', pg_temp.t3802b_audit()::text, (v_audit + 1)::text);
   perform pg_temp.t3802b_check('B-9', 'a team invitation never opens the full-admin table',
     coalesce(pg_temp.t3802b_as('swap', $q$select public.activate_invited_admin()::text$q$), '')
       || '/' || pg_temp.t3802b_as('swap', $q$select public.is_admin_user()::text$q$), '/false');
@@ -783,7 +791,8 @@ begin
        from pg_trigger t
       where t.tgrelid in ('public.admin_users'::regclass, 'public.admin_team_members'::regclass)
         and not t.tgisinternal),
-    'admin_team_members.admin_team_members_guard_exclusive/O,admin_users.admin_users_guard_exclusive/O');
+    -- #4255: plus the owner-row protection (row and TRUNCATE).
+    'admin_team_members.admin_team_members_guard_exclusive/O,admin_users.admin_users_guard_exclusive/O,admin_users.admin_users_protect_owner/O,admin_users.admin_users_protect_owner_truncate/O');
   perform pg_temp.t3802b_check('B-13', 'functions in any schema that write the invitations table',
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -843,7 +852,7 @@ declare
   r record;
 begin
   select count(*), count(*) filter (where not ok) into v_total, v_failed from t3802b_results;
-  if v_total < 342 then
+  if v_total < 339 then  -- #4255: admin and partner left the B-8 refusal list
     raise exception 'ISSUE-3802 INVITES FAIL: only % checks ran; the suite did not execute fully', v_total;
   end if;
   if v_failed > 0 then

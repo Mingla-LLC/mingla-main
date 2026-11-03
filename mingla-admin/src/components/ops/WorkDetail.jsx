@@ -45,6 +45,9 @@ import { CardHistory } from "./CardHistory";
 import { NoteBox } from "./NoteBox";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 import { CardDrafts, CardWording } from "./CardPersonPanels";
+import { DraftKeptNote, SideLink } from "../ui/PanelStack";
+import { usePanelDraft } from "../../hooks/usePanelDraft";
+import { linkSide } from "../../lib/panelStack";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
@@ -81,10 +84,12 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [busy, setBusy] = useState("");
   const [form, setForm] = useState("");
   const [linking, setLinking] = useState(false);
-  const [title, setTitle] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [doneMeans, setDoneMeans] = useState("");
-  const [result, setResult] = useState("");
+  // #4255: what is typed is kept per card (lib/panelDrafts.js) until it is
+  // saved, so it survives a linked item opening, closing or changing beside it.
+  const [title, setTitle, titleDraft] = usePanelDraft(`work:${cardId}:title`, card?.title || "");
+  const [instructions, setInstructions, instructionsDraft] = usePanelDraft(`work:${cardId}:instructions`, card?.instructions || "");
+  const [doneMeans, setDoneMeans, doneMeansDraft] = usePanelDraft(`work:${cardId}:done_means`, card?.done_means || "");
+  const [result, setResult, resultDraft] = usePanelDraft(`work:${cardId}:result`, card?.result || "");
   const [blockReason, setBlockReason] = useState("");
   // Title and Done means grow with their text and never clip it.
   const titleGrow = useAutoGrow(title);
@@ -99,12 +104,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [saveState, setSaveState] = useState("");
   const idle = useRef(null);
 
-  useEffect(() => {
-    setTitle(card?.title || "");
-    setInstructions(card?.instructions || "");
-    setDoneMeans(card?.done_means || "");
-    setResult(card?.result || "");
-  }, [card?.id, card?.revision]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setForm(""); setLinking(false); setSaveState(""); }, [cardId]);
   useEffect(() => () => clearTimeout(idle.current), []);
 
@@ -138,10 +137,13 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
 
   const update = (changes, success) => run("save", () => ops.updateWork(card.id, changes, card.revision), success);
 
+  const drafts = { title: titleDraft, instructions: instructionsDraft, done_means: doneMeansDraft, result: resultDraft };
   const saveText = async (field, value, current) => {
-    if (!card || (value || "").trim() === (current || "").trim()) return;
+    if (!card) return;
+    if ((value || "").trim() === (current || "").trim()) { drafts[field]?.clear(); return; }
     setSaveState("Saving…");
     const answer = await update({ [field]: value });
+    if (answer) drafts[field]?.clear();
     setSaveState(answer ? "Saved" : "");
   };
 
@@ -194,6 +196,8 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
         <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · {card.auto ? "Made from the timeline" : `Added by ${agentName(card.created_by_name, card.created_via)}`}</span>
         {saveState && <span role="status" className="ml-auto text-[12px] text-[var(--color-text-tertiary)]">{saveState}</span>}
+        {/* #4255: typed but not saved yet; kept while panels change beside it. */}
+        <DraftKeptNote className="w-full" kept={Object.values(drafts).some((d) => d.kept)} onDiscard={() => Object.values(drafts).forEach((d) => d.clear())} />
       </div>
       {card.archived && <AlertCard variant="warning" title="This card was removed.">It is kept for the record and can’t be changed.</AlertCard>}
       {cardReasons(card).length > 0 && !card.archived && (
@@ -283,7 +287,13 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           <ul className="flex min-w-0 flex-wrap gap-1.5">
             {card.links.map((l) => (
               <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
-                <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
+                {l.exists && linkSide(l) ? (
+                  <SideLink side={linkSide(l)} aria-label={`Open ${l.label}`} className={`inline-flex min-h-8 min-w-0 items-center break-words rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
+                    <span><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}</span>
+                  </SideLink>
+                ) : (
+                  <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
+                )}
                 <button type="button" aria-label={`Unlink ${l.label}`} disabled={locked || card.status === "done"} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`-my-1.5 -mr-1 inline-grid h-11 w-11 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
               </li>
             ))}
@@ -415,7 +425,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             </>}
             {card.status === "person" && <>
               <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "sendback" ? "" : "sendback")}>Send back</Button>
-              {draftHref && <a href={draftHref} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
+              {draftHref && <a href={draftHref} target="_blank" rel="noopener" title="Opens in a new tab, so this card stays as it is" className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
               {action && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(action.action)}>{action.label}</Button>}
               {!action && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "close" ? "" : "close")}>Close with proof</Button>}
             </>}
@@ -458,7 +468,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
 
       {!card.archived && (
         <Section title="Notes">
-          <NoteBox team={team} disabled={locked} busy={busy === "note"} onPost={async (body, emails) => {
+          <NoteBox draftKey={`work:${card.id}:note`} team={team} disabled={locked} busy={busy === "note"} onPost={async (body, emails) => {
             setBusy("note");
             try {
               const answer = await ops.noteWork(card.id, body, emails, requestKey("web_note"));

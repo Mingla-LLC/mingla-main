@@ -112,7 +112,9 @@ Deno.test("#3980 P3: names, tabs, calendar targets, guide notices and staff draf
   assertMatch(code("components/people/PeopleField.jsx"), /<span title=\{name\} className="min-w-0 truncate">\{name\}<\/span>/);
   // P3-2: the Work tabs wrap at 375 px instead of running off the screen.
   // #4130: the Work views (Board, Today, This week, This month) still wrap at 375 px.
-  assertMatch(code("pages/WorkBoardPage.jsx"), /<Segmented label="Work view" wrap /);
+  // #4255: they are one row of tabs now, which scrolls sideways inside itself.
+  assertMatch(code("pages/WorkBoardPage.jsx"), /<Tabs tabs=\{WORK_VIEWS\.map\(\(v\) => \(\{ id: v\.value, label: v\.label \}\)\)\}/);
+  assertMatch(code("components/ui/Tabs.jsx"), /admin-control-scroll min-w-0 overflow-x-auto/);
   // P3-3: the narrow calendar's dot button is a 44 px target.
   assertMatch(code("pages/ContentCalendarPage.jsx"), /data-calendar-day-dense=\{key\}[\s\S]*?-mx-1 flex min-h-11 w-\[calc\(100%\+0\.5rem\)\]/);
   // P3-5 and P3-8, in the migrations.

@@ -636,17 +636,20 @@
     {
       "capability_key": "staff-email",
       "paths": [
-        "mingla-admin/src/pages/EmailPage.jsx",
         "mingla-admin/src/components/email/EmailComposer.jsx",
         "mingla-admin/src/lib/emailAudience.js",
+        "mingla-admin/src/lib/emailDrafts.js",
+        "mingla-admin/src/pages/EmailPage.jsx",
+        "mingla-admin/src/services/emailDraftsService.js",
+        "packages/brand-rendering/emailFooter.ts",
+        "supabase/functions/_shared/email/copy.ts",
+        "supabase/functions/_shared/email/footerLine.ts",
         "supabase/functions/admin-send-email/audience.ts",
         "supabase/functions/admin-send-email/index.ts",
         "supabase/functions/admin-send-email/model.ts",
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
-        "packages/brand-rendering/emailFooter.ts",
-        "supabase/functions/_shared/email/copy.ts",
         "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
-        "supabase/functions/_shared/email/footerLine.ts"
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
       ]
     },
     {
@@ -745,7 +748,113 @@
     {
       "capability_key": "staff-work-board",
       "paths": [
+        "mingla-admin/src/components/ops/CardPersonPanels.jsx",
+        "mingla-admin/src/components/ops/EventPanel.jsx",
+        "mingla-admin/src/components/ops/EventSteps.jsx",
+        "mingla-admin/src/components/ops/NeedsAttention.jsx",
+        "mingla-admin/src/components/ops/NoteBox.jsx",
+        "mingla-admin/src/components/ops/WorkColumns.jsx",
+        "mingla-admin/src/components/ops/WorkDetail.jsx",
+        "mingla-admin/src/components/ops/WorkViews.jsx",
+        "mingla-admin/src/components/ops/workToday.js",
+        "mingla-admin/src/components/panels/SidePanel.jsx",
+        "mingla-admin/src/components/ui/Drawer.jsx",
+        "mingla-admin/src/components/ui/FilterSelect.jsx",
+        "mingla-admin/src/components/ui/PanelStack.jsx",
+        "mingla-admin/src/components/ui/Toast.jsx",
+        "mingla-admin/src/hooks/useOpsWork.js",
+        "mingla-admin/src/hooks/usePanelDraft.js",
+        "mingla-admin/src/hooks/usePanelStack.js",
+        "mingla-admin/src/lib/opsModel.js",
+        "mingla-admin/src/lib/panelDrafts.js",
+        "mingla-admin/src/lib/panelStack.js",
+        "mingla-admin/src/lib/workViews.js",
+        "mingla-admin/src/pages/WorkBoardPage.jsx",
+        "supabase/migrations/20280323004255_issue_4255_work_list_closed_range.sql",
         "supabase/migrations/20280323004256_issue_4256_no_auto_promo_cards.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-crm",
+      "paths": [
+        "mingla-admin/src/components/crm/LogForm.jsx",
+        "mingla-admin/src/components/crm/OnMinglaSection.jsx",
+        "mingla-admin/src/components/crm/PipelineBoard.jsx",
+        "mingla-admin/src/components/crm/PipelineByRegion.jsx",
+        "mingla-admin/src/components/crm/PipelineList.jsx",
+        "mingla-admin/src/components/crm/PipelineToolbar.jsx",
+        "mingla-admin/src/components/crm/RecordCard.jsx",
+        "mingla-admin/src/components/crm/RecordDrawer.jsx",
+        "mingla-admin/src/components/outreach/FunnelStrip.jsx",
+        "mingla-admin/src/components/panels/SidePanel.jsx",
+        "mingla-admin/src/components/ui/Drawer.jsx",
+        "mingla-admin/src/components/ui/FilterSelect.jsx",
+        "mingla-admin/src/components/ui/PanelStack.jsx",
+        "mingla-admin/src/components/ui/Toast.jsx",
+        "mingla-admin/src/hooks/usePanelDraft.js",
+        "mingla-admin/src/hooks/usePanelStack.js",
+        "mingla-admin/src/lib/crmModel.js",
+        "mingla-admin/src/lib/crmUrl.js",
+        "mingla-admin/src/lib/outreachView.js",
+        "mingla-admin/src/lib/panelDrafts.js",
+        "mingla-admin/src/lib/panelStack.js",
+        "mingla-admin/src/pages/HostsAndCreatorsHub.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-drafts",
+      "paths": [
+        "mingla-admin/src/components/drafts/DraftCard.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-content-calendar",
+      "paths": [
+        "mingla-admin/src/components/contentCalendar/ContentDrawer.jsx",
+        "mingla-admin/src/components/panels/SidePanel.jsx",
+        "mingla-admin/src/components/ui/Drawer.jsx",
+        "mingla-admin/src/components/ui/FilterSelect.jsx",
+        "mingla-admin/src/components/ui/PanelStack.jsx",
+        "mingla-admin/src/components/ui/Toast.jsx",
+        "mingla-admin/src/hooks/usePanelDraft.js",
+        "mingla-admin/src/hooks/usePanelStack.js",
+        "mingla-admin/src/lib/panelDrafts.js",
+        "mingla-admin/src/lib/panelStack.js",
+        "mingla-admin/src/pages/ContentCalendarPage.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-team-roles",
+      "paths": [
+        "mingla-admin/src/context/AuthContext.jsx",
+        "mingla-admin/src/lib/communitySupportAccess.js",
+        "mingla-admin/src/lib/communitySupportCapabilityContract.js",
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/lib/communitySupportAccess.js",
+        "mingla-admin/src/lib/communitySupportCapabilityContract.js",
+        "mingla-admin/src/pages/CommunitySupportPage.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-my-agent",
+      "paths": [
+        "mingla-admin/src/lib/agentConnect.js",
+        "supabase/functions/_shared/teamAgentTools.ts"
+      ]
+    },
+    {
+      "capability_key": "web-blog",
+      "paths": [
+        "mingla-admin/src/components/blog/BlogBlockList.jsx",
+        "mingla-marketing/components/blog/blocks/embed.tsx",
+        "mingla-marketing/components/blog/blocks/video-embed.tsx",
+        "packages/blog-document/src/index.ts",
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
       ]
     }
   ]

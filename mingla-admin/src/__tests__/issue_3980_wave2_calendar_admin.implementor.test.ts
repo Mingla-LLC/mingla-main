@@ -98,12 +98,13 @@ Deno.test("#3980 W2 the Calendar: new title, layer chips, two columns, the panel
   const page = read("pages/ContentCalendarPage.jsx");
   // #4130: the approved Calendar description (Event runway and Content tabs).
   assertMatch(page, /<PageHeader title="Calendar" description="Events that need promoting, and the posts we are making\."/);
-  assertMatch(page, /<TwoColumn ref=\{eventDetailRef\} detailLabel="Event details" list=\{box\} detail=\{right\} \/>/);
-  // #4130: the runway list is the Event runway table (RunwayTable), as designed.
-  assertMatch(page, /<MonthGrid [\s\S]*<Legend [\s\S]*<RunwayTable [\s\S]*<PostsList /);
-  assertMatch(page, /view: \["calendar", "board", "list"\]/);
-  assertMatch(page, /<BoardView items=\{calendar\.items\}/);
-  assertMatch(page, /md:hidden">Stage:/);
+  // #4255: Month and Board only; the event, a day or a post opens in the side
+  // panels instead of a second column, and the runway table and posts list are gone.
+  assertMatch(page, /<PanelStack stack=\{stack\} first=\{first\} second=\{second\} \/>/);
+  assertMatch(page, /<MonthGrid [\s\S]*<Legend /);
+  assertNotMatch(page, /RunwayTable|PostsList|TwoColumn/);
+  assertMatch(page, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
+  assertMatch(page, /<BoardView items=\{boardItems\}/);
   assertMatch(page, /Nothing on this day\./);
   assertNotMatch(page, /ad_plans|ad_campaigns/);
   for (const words of ["Ready to promote", "Promote now", "Too late for promo", "Not live yet"]) assert(read("lib/opsModel.js").includes(words), words);

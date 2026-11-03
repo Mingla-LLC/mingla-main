@@ -10,6 +10,9 @@ import {
   blogDocumentWordCount,
   blogEmbedFrameSrc,
   blogReadMinutes,
+  blogVideoFrameSrc,
+  BLOG_INLINE_FRAME_PROVIDERS,
+  BLOG_VIDEO_FRAME_ALLOW,
   parseBlogRichText,
   sanitizeBlogRichText,
   validateBlogDocument,
@@ -139,7 +142,7 @@ Deno.test("#4137 references, word count and read minutes", () => {
 Deno.test("#4137 embeds, cover rule and readiness ids", () => {
   assertEquals(
     blogEmbedFrameSrc({ id: "e00001", type: "embed", provider: "youtube", url: "https://youtu.be/dQw4w9WgXcQ" }),
-    "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+    "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?playsinline=1&rel=0",
   );
   assertEquals(blogEmbedFrameSrc({ id: "e00002", type: "embed", provider: "instagram", url: "https://www.instagram.com/p/abc/" }), null);
   assert(blogCoverIsFeatureSize(2400, 1200));
@@ -149,4 +152,26 @@ Deno.test("#4137 embeds, cover rule and readiness ids", () => {
     "title", "category", "slug", "cover_present", "cover_size", "image_alt", "image_source",
     "links_live", "places_live", "offerings_public", "city_links", "seo_lengths",
   ]);
+});
+
+// #4255 (D6) — the YouTube player sits on the page when the post opens and
+// plays inline. Fails on revert: the old URL carried autoplay=1 and no
+// playsinline, and YouTube and Vimeo were click-to-load.
+Deno.test("#4255 video frames play inline and never autoplay", () => {
+  const youtube = blogVideoFrameSrc({ id: "v00001", type: "video", provider: "youtube", videoId: "dQw4w9WgXcQ", title: "A walk" });
+  assertEquals(youtube, "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?playsinline=1&rel=0");
+  const vimeo = blogVideoFrameSrc({ id: "v00002", type: "video", provider: "vimeo", videoId: "123456789", title: "A walk" });
+  assertEquals(vimeo, "https://player.vimeo.com/video/123456789?playsinline=1");
+  for (const url of [youtube, vimeo]) {
+    assert(!/autoplay/.test(url), url);
+    assert(new URL(url).searchParams.get("playsinline") === "1", url);
+  }
+  assertEquals(new URL(youtube).hostname, "www.youtube-nocookie.com");
+  assertEquals(
+    blogEmbedFrameSrc({ id: "e00003", type: "embed", provider: "vimeo", url: "https://vimeo.com/123456789" }),
+    "https://player.vimeo.com/video/123456789?playsinline=1",
+  );
+  assertEquals([...BLOG_INLINE_FRAME_PROVIDERS].sort(), ["vimeo", "youtube"]);
+  assert(!BLOG_VIDEO_FRAME_ALLOW.includes("autoplay"));
+  assert(BLOG_VIDEO_FRAME_ALLOW.includes("fullscreen"));
 });
