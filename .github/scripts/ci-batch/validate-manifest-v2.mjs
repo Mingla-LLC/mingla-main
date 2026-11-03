@@ -343,7 +343,8 @@ export function phase3dContractDigest(manifest) {
 // #3355: register the Ari flow engine flag migration and its proof the same way.
 // #4238: register the list-audience migration, its proof and the tester's adversarial proof the same way.
 // #4250: register the profiles admin-flag drop, its proof and its adversarial proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "256f3c256b654098fb3ff0070d87c3584e1e7843e5fc460b60bf4d9494432444";
+// #3281: register the Explorer buyable-date migration and its proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "fe6ab593ec41187dd4e529b4e037ba2c9a38292ec231d964729fe0378c7f8d1c";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
