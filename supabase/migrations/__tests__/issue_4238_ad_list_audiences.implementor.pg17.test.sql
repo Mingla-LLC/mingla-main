@@ -463,6 +463,9 @@ $t6$;
 ROLLBACK;
 
 -- T5: concurrency — needs a committed second session (dblink). ----------------
+-- dblink may already be installed in another schema (CI's template database has
+-- it outside `extensions`), so CREATE ... WITH SCHEMA can be a no-op. Resolve the
+-- schema it actually lives in and call it through that.
 CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA extensions;
 BEGIN;
 DO $t5$
@@ -470,19 +473,23 @@ DECLARE
   v_id constant uuid := '42380000-0000-4000-a000-0000000005aa';
   v_state text;
   v_conn text := format('host=127.0.0.1 dbname=%s user=%s', current_database(), current_user);
+  v_schema text;
 BEGIN
+  SELECT n.nspname INTO STRICT v_schema
+  FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+  WHERE e.extname = 'dblink';
   -- Session 1 holds the refresh lock for this audience id.
   PERFORM pg_advisory_xact_lock(hashtext('ad_list_audience:' || v_id::text));
-  PERFORM extensions.dblink_connect('t4238', v_conn);
+  EXECUTE format('SELECT %I.dblink_connect(%L, %L)', v_schema, 't4238', v_conn);
   BEGIN
-    PERFORM * FROM extensions.dblink('t4238', format(
+    EXECUTE format('SELECT r.x FROM %I.dblink(%L, %L) AS r(x text)', v_schema, 't4238', format(
       $q$ SELECT set_config('request.jwt.claim.role','service_role',false);
-          SELECT public.ad_list_audience_refresh(%L)::text $q$, v_id)) AS r(x text);
+          SELECT public.ad_list_audience_refresh(%L)::text $q$, v_id));
     v_state := 'no_error';
   EXCEPTION WHEN OTHERS THEN
     v_state := SQLERRM;
   END;
-  PERFORM extensions.dblink_disconnect('t4238');
+  EXECUTE format('SELECT %I.dblink_disconnect(%L)', v_schema, 't4238');
   PERFORM pg_temp.t4238_assert(v_state LIKE '%ad_list_audience_refresh_in_progress%',
     'T5 a concurrent refresh raises ad_list_audience_refresh_in_progress (got ' || v_state || ')');
 END
