@@ -139,3 +139,30 @@ export const brandEnquiryKeys = {
     [...brandEnquiryKeys.all, 'thread', userId, enquiryId] as const,
   brandIdentity: (ref: string) => [...brandEnquiryKeys.all, 'brandIdentity', ref] as const,
 };
+
+// Issue #4261 — plans in chats (chat plans and deck matches share one entity).
+// `conversation` is the one list read per plan chat; realtime and every plan
+// mutation invalidate it.
+export const planKeys = {
+  all: ['chatPlans'] as const,
+  conversation: (conversationId: string) =>
+    [...planKeys.all, 'conversation', conversationId] as const,
+  comments: (planId: string) => [...planKeys.all, 'comments', planId] as const,
+  placeSearch: (query: string, lat: number | null | undefined, lng: number | null | undefined) =>
+    [...planKeys.all, 'places', query, lat ?? 'none', lng ?? 'none'] as const,
+};
+
+// Issue #4261 — a group chat's shareable link and its join requests.
+export const groupLinkKeys = {
+  all: ['groupLink'] as const,
+  link: (conversationId: string) => [...groupLinkKeys.all, 'link', conversationId] as const,
+  joinRequests: (conversationId: string) =>
+    [...groupLinkKeys.all, 'requests', conversationId] as const,
+  preview: (token: string) => [...groupLinkKeys.all, 'preview', token] as const,
+};
+
+// Issue #4261 — the viewer's personal reusable invite link.
+export const friendShareKeys = {
+  all: ['friendShare'] as const,
+  link: (userId: string) => [...friendShareKeys.all, 'link', userId] as const,
+};
