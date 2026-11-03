@@ -148,7 +148,9 @@ export async function startSuite(tag: string, block: string): Promise<Suite> {
      set local session_replication_role = replica;
      insert into public.admin_users (email, role, status, accepted_at) values (:'e1', 'admin', 'active', now());
      insert into public.admin_team_members (email, role, status, accepted_at) values
-       (:'e2', 'growth', 'active', now()), (:'e3', 'partner', 'active', now()), (:'e4', 'growth', 'active', now());
+       -- #4255 (D3): a Founding partner holds a full-admin seat now; this
+       -- harness keeps its 'partner' person as a second non-admin teammate.
+       (:'e2', 'growth', 'active', now()), (:'e3', 'growth', 'active', now()), (:'e4', 'growth', 'active', now());
      set local session_replication_role = origin;
      commit;`,
     {
