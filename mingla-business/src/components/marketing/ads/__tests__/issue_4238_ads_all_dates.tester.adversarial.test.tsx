@@ -13,6 +13,14 @@
  *       city, link, internal reason keys), whatever the server sends.
  *   T4  Every new sentence passes the plain-language gate and names no
  *       internal code; every new server code maps to a written sentence.
+ *   T5  (r6) The START field shares the end's cap (max = lastDay). Any start
+ *       day the field and hostAdScheduleError accept must begin BEFORE the
+ *       last bookable moment, or ad-plan refuses it with
+ *       schedule_starts_after_last_date after the Host pressed Continue.
+ *       RED on d0da9040f for a New York viewer: lastDay became the EVENT's
+ *       day (Mon 7 Dec for 00:30 Lagos) while the start is still the
+ *       viewer's midnight (05:00Z 7 Dec, after 23:30Z 6 Dec). Green on
+ *       6af8f16b6, where lastDay was the viewer's day.
  *
  * T2 is RED on 8a5c84770 for a New York viewer of a Lagos event whose last
  * bookable moment is 00:30 Lagos: the sentence says "Mon 7 Dec" while the
@@ -194,6 +202,31 @@ describe("#4238 T4 every new sentence is plain and names no code", () => {
       "destination_unlisted_not_linkable",
     ]) {
       expect(hostAdErrorMessage({ code: "plan_preflight_failed", detail })).not.toBe(fallback);
+    }
+  });
+});
+
+/** The builder's own start-of-day boundary (HostAdCreateScreen scheduleBoundaryIso). */
+const startOfLocalDay = (day: string): string => new Date(`${day}T00:00:00.000`).toISOString();
+
+describe("#4238 T5 a start day the builder accepts begins before the last bookable moment", () => {
+  const CASES: [string, string, string][] = [
+    // [last_bookable_at, event zone, why]
+    ["2026-12-06T23:30:00Z", "Africa/Lagos", "00:30 Mon in Lagos; New York midnight Mon is 05:00Z"],
+    ["2026-12-06T10:30:00Z", "Pacific/Kiritimati", "00:30 Mon in Kiritimati is Sat evening in New York"],
+    ["2026-12-06T22:00:00Z", "Africa/Lagos", "23:00 Sun in Lagos, 17:00 Sun in New York"],
+    ["2026-12-07T04:30:00Z", "America/Los_Angeles", "20:30 Sun in LA"],
+  ];
+
+  it.each(CASES)("%s in %s (%s)", (last, zone) => {
+    const p = page({ last_bookable_at: last, timezone: zone });
+    const limit = hostAdScheduleLimit(p, (iso) => hostAdPageDate(iso, p.timezone));
+    expect(limit).not.toBeNull();
+    // The latest start day the field lets the Host pick (max={lastDay}).
+    const latestStart = limit!.lastDay;
+    if (hostAdScheduleError(latestStart, "", limit) === null) {
+      // The builder sends this start; the server refuses start >= last bookable.
+      expect(Date.parse(startOfLocalDay(latestStart))).toBeLessThan(Date.parse(last));
     }
   });
 });
