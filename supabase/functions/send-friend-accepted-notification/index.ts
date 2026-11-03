@@ -4,6 +4,7 @@
 // (system/relational). Rename deferred to a separate ORCH.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { acceptedNotificationCopy, parseAcceptedSource } from "./acceptedCopy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +16,9 @@ interface FriendAcceptedPayload {
   accepterId: string;
   senderId: string;
   requestId?: string;
+  // Issue #4261: "share_link" when the accepter joined through the sender's
+  // personal invite link. Absent = the ordinary accepted-request copy.
+  source?: string;
 }
 
 serve(async (req) => {
@@ -62,6 +66,7 @@ serve(async (req) => {
 
     const payload: FriendAcceptedPayload = await req.json();
     const { accepterId, senderId, requestId } = payload;
+    const source = parseAcceptedSource(payload.source);
 
     // Enforce: JWT user must be the accepter (the person who accepted the friend request)
     if (accepterId !== jwtUser.id) {
@@ -98,6 +103,8 @@ serve(async (req) => {
         ? `${accepterProfile.first_name} ${accepterProfile.last_name}`
         : accepterProfile?.username || "Someone");
 
+    const copy = acceptedNotificationCopy({ accepterName, accepterId, senderId, requestId, source });
+
     // Send notification via notify-dispatch (handles preference checks, quiet hours, etc.)
     const notifyUrl = `${SUPABASE_URL}/functions/v1/notify-dispatch`;
     let pushSent = false;
@@ -111,11 +118,11 @@ serve(async (req) => {
         body: JSON.stringify({
           userId: senderId,
           type: "friend_request_accepted",
-          title: `${accepterName} accepted your request`,
-          body: "You're now connected \u2014 start planning together!",
+          title: copy.title,
+          body: copy.body,
           data: {
             deepLink: `mingla://connections?userId=${accepterId}`,
-            type: "friend_accepted",
+            type: copy.dataType,
             accepterId: accepterId,
             accepterName: accepterName,
             requestId: requestId,
@@ -123,7 +130,7 @@ serve(async (req) => {
           actorId: accepterId,
           relatedId: requestId || null,
           relatedType: "friend_request",
-          idempotencyKey: `friend_request_accepted:${accepterId}:${requestId || senderId}`,
+          idempotencyKey: copy.idempotencyKey,
           pushOverrides: {
             androidChannelId: "social",
           },
