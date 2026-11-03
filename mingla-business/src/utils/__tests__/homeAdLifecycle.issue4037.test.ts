@@ -17,7 +17,7 @@ describe("#4037 Home Ads presentation policy", () => {
   });
 
   test.each([
-    ["meta", "Meta"],
+    ["meta", "Facebook & Instagram"],
     ["tiktok", "TikTok"],
     ["google", "Google"],
     ["snapchat", "Snapchat"],
@@ -28,7 +28,7 @@ describe("#4037 Home Ads presentation policy", () => {
 
   test("deduplicates network labels in provider order", () => {
     expect(homeAdNetworkList(["meta", "tiktok", "meta"])).toBe(
-      "Meta · TikTok",
+      "Facebook & Instagram · TikTok",
     );
   });
 

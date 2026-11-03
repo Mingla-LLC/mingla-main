@@ -33,8 +33,10 @@
  * Only auth (401/403) and input validation (400) hard-fail.
  *
  * verify_jwt = true. Active admins may search either lane; an authenticated
- * Host planner may search only the business lane for a brand where
- * ad_can_host_action(..., plan) is true. Authorization still precedes input
+ * Host planner (owner_kind "host") searches the lane adLaneForOwner("host")
+ * decides (#4238 D1: Mingla's consumer accounts) for a brand where
+ * ad_can_host_action(..., plan) is true. A Host request naming another lane is
+ * refused with lane_owner_mismatch. Authorization still precedes input
  * validation. No token ever appears in a response — shared adapters send
  * Bearer headers and normalize/scrub provider errors.
  */
@@ -52,6 +54,10 @@ import {
   type Lane,
   type Platform,
 } from "../_shared/adChannel.ts";
+import {
+  hostSafeSearchWarning,
+  resolveOwnerLane,
+} from "../_shared/adChannelCore.ts";
 import {
   metaSearch,
   parseMetaGeoResults,
@@ -107,7 +113,12 @@ type Kind = (typeof KINDS)[number];
  * Pure fail-open surface for a provider error — never leaks a token (the
  * adapters normalize + scrub), always a short, user-safe note.
  */
-function failOpen(err: unknown): { results: []; warning: string } {
+function failOpen(
+  err: unknown,
+  hostCaller = false,
+): { results: []; warning: string } {
+  // #4238 D6: a Host never sees provider text (it can name secrets or IDs).
+  if (hostCaller) return { results: [], warning: hostSafeSearchWarning(err) };
   const warning = err instanceof AdApiError
     ? err.message
     : err instanceof AdNotConnectedError
@@ -364,12 +375,14 @@ serve(async (req: Request): Promise<Response> => {
     .eq("email", user.email)
     .eq("status", "active")
     .maybeSingle();
-  const requestedLane = body.lane ?? "consumer";
+  // #4238: Host callers say who they are (owner_kind "host") and send no lane;
+  // the lane comes from adLaneForOwner on the server.
+  const hostCaller = body.owner_kind === "host";
   const requestedBrandId = typeof body.brand_id === "string"
     ? body.brand_id.trim()
     : "";
   if (!adminRow) {
-    if (requestedLane !== "business" || !UUID_RE.test(requestedBrandId)) {
+    if (!hostCaller || !UUID_RE.test(requestedBrandId)) {
       return json({ error: "forbidden" }, 403);
     }
     const { data: canPlan, error: permissionError } = await supabase.rpc(
@@ -387,7 +400,10 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform;
-  const lane = requestedLane;
+  const laneResolution = resolveOwnerLane(
+    hostCaller ? "host" : "mingla",
+    body.lane,
+  );
   const kind = body.kind;
   const q = typeof body.q === "string" ? body.q.trim() : "";
   const country = typeof body.country === "string" && body.country.trim()
@@ -396,11 +412,14 @@ serve(async (req: Request): Promise<Response> => {
   if (!isPlatform(platform)) {
     return json({ error: "validation_error", detail: "platform_invalid" }, 400);
   }
+  if (!laneResolution.ok) {
+    return laneResolution.detail === "lane_owner_mismatch"
+      ? json({ error: "validation_error", detail: "lane_owner_mismatch" }, 422)
+      : json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  }
+  const lane = laneResolution.lane;
   if (!isLane(lane)) {
     return json({ error: "validation_error", detail: "lane_invalid" }, 400);
-  }
-  if (!adminRow && lane !== "business") {
-    return json({ error: "forbidden" }, 403);
   }
   if (
     typeof kind !== "string" || !(KINDS as readonly string[]).includes(kind)
@@ -438,6 +457,6 @@ serve(async (req: Request): Promise<Response> => {
     return json(out);
   } catch (err) {
     // FAIL-OPEN: never block the wizard on a provider error.
-    return json(failOpen(err));
+    return json(failOpen(err, hostCaller));
   }
 });

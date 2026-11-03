@@ -198,7 +198,58 @@
     {
       "capability_key": "marketing-host-ads",
       "paths": [
-        "mingla-business/app/(tabs)/marketing/ads/create.tsx"
+        "mingla-business/app/(tabs)/marketing/_layout.tsx",
+        "mingla-business/app/(tabs)/marketing/ads/create.tsx",
+        "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdAudiencePicker.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdCountryPicker.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdPagePicker.tsx",
+        "mingla-business/src/components/marketing/ads/hostAdBuilderRules.ts",
+        "mingla-business/src/components/marketing/ads/hostAdCopy.ts",
+        "mingla-business/src/components/marketing/ads/hostAdCountries.ts",
+        "mingla-business/src/components/marketing/ads/hostAdGoal.ts",
+        "mingla-business/src/components/marketing/ads/hostAdMoney.ts",
+        "mingla-business/src/components/marketing/ads/hostAdPageLabels.ts",
+        "mingla-business/src/components/marketing/ads/hostAdSetupCache.ts",
+        "mingla-business/src/components/marketing/ads/hostAdSetupCopy.ts",
+        "mingla-business/src/components/marketing/ads/results/AdFunnelRow.tsx",
+        "mingla-business/src/components/marketing/ads/results/AdListSummaryCard.tsx",
+        "mingla-business/src/components/marketing/ads/results/AdPlatformSplit.tsx",
+        "mingla-business/src/components/marketing/ads/results/AdResultsChart.tsx",
+        "mingla-business/src/components/marketing/ads/results/AdResultsSection.tsx",
+        "mingla-business/src/components/marketing/ads/results/AdSpendChart.tsx",
+        "mingla-business/src/components/marketing/ads/results/adResultsSeries.ts",
+        "mingla-business/src/components/marketing/ads/results/chartParts.tsx",
+        "mingla-business/src/components/marketing/ads/results/hostAdChartColors.ts",
+        "mingla-business/src/constants/designSystem.ts",
+        "mingla-business/src/hooks/marketing/useHostAdCampaigns.ts",
+        "mingla-business/src/hooks/marketing/useHostAdPlans.ts",
+        "mingla-business/src/screens/hostAds/HostAdCreateScreen.tsx",
+        "mingla-business/src/screens/hostAds/HostAdDetailScreen.tsx",
+        "mingla-business/src/screens/hostAds/HostAdListScreen.tsx",
+        "mingla-business/src/screens/hostAds/HostAdScreens.ts",
+        "mingla-business/src/screens/hostAds/hostAdKitService.ts",
+        "mingla-business/src/services/edgeErrorCode.ts",
+        "mingla-business/src/services/hostAdCampaignService.ts",
+        "mingla-business/src/services/hostAdLifecycle.ts",
+        "mingla-business/src/services/hostAdPlanService.ts",
+        "mingla-business/src/services/lazyHostAdPlanService.ts",
+        "mingla-business/src/utils/adVideoFit.ts",
+        "mingla-business/src/utils/homeAdLifecycle.ts",
+        "packages/phone-input/CountryPickerModal.tsx",
+        "supabase/functions/_shared/adAudienceBinding.ts",
+        "supabase/functions/_shared/adChannelCore.ts",
+        "supabase/functions/_shared/adCreativePreparationPlan.ts",
+        "supabase/functions/_shared/adDatabaseErrorDetail.ts",
+        "supabase/functions/_shared/adDestination.ts",
+        "supabase/functions/_shared/adHostGoal.ts",
+        "supabase/functions/_shared/adListAudienceRules.ts",
+        "supabase/functions/_shared/adMoneyFormat.ts",
+        "supabase/functions/_shared/adSalesReadiness.ts",
+        "supabase/functions/_shared/hostAdCampaignList.ts",
+        "supabase/functions/ad-plan/index.ts",
+        "supabase/functions/admin-ad-targeting-search/index.ts",
+        "supabase/functions/host-ad-campaign/index.ts"
       ]
     },
     {
@@ -345,6 +396,7 @@
         "mingla-business/src/components/ari/MessageList.tsx",
         "mingla-business/src/components/ari/ResponseCard.tsx",
         "mingla-business/src/components/ari/ToolProposalCard.tsx",
+        "mingla-business/src/hooks/useHostAdCardWords.ts",
         "mingla-business/src/components/ari/ariAttachmentPicker.native.ts",
         "mingla-business/src/components/ari/ariAttachmentPicker.ts",
         "mingla-business/src/components/ari/renditions/AriRenditionGraphic.tsx",
@@ -458,7 +510,9 @@
         "supabase/migrations/20280308003355_issue_3355_ari_flow_runs.sql",
         "supabase/functions/_shared/ariModelVersion.ts",
         "supabase/functions/agent-turn-control/function-policy.issue-3355.patch.json",
-        "supabase/migrations/20280316003355_issue_3355_ari_flow_engine_flag.sql"
+        "supabase/migrations/20280316003355_issue_3355_ari_flow_engine_flag.sql",
+        "supabase/functions/agent-chat/function-policy.issue-4238.patch.json",
+        "supabase/functions/agent-confirm-action/function-policy.issue-4238.patch.json"
       ]
     },
     {
@@ -652,6 +706,36 @@
         "mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx",
         "mingla-business/src/components/location/LazyAddressMapPreview.tsx",
         "packages/offering-rendering/GlassBlur.tsx"
+      ]
+    },
+    {
+      "capability_key": "staff-ads",
+      "paths": [
+        "mingla-admin/src/components/ad-engine/AdAudiencesPanel.jsx",
+        "mingla-admin/src/components/ad-engine/AdResultsCharts.jsx",
+        "mingla-admin/src/components/campaign-builder/StepAudience.jsx",
+        "mingla-admin/src/pages/CampaignsPage.jsx",
+        "mingla-admin/src/services/adEngineService.js",
+        "supabase/functions/_shared/adAudienceDefinitions.ts",
+        "supabase/functions/_shared/adAudienceProvider.ts",
+        "supabase/functions/_shared/adAudienceStages.ts",
+        "supabase/functions/_shared/adListAudienceProvider.ts",
+        "supabase/functions/_shared/adStageRuntime.ts",
+        "supabase/functions/_shared/adTargetingCompiler.ts",
+        "supabase/functions/_shared/meta.ts",
+        "supabase/functions/_shared/tiktok.ts",
+        "supabase/functions/admin-ad-audiences/function-policy.json",
+        "supabase/functions/admin-ad-audiences/index.ts",
+        "supabase/functions/admin-ad-create-campaign/index.ts",
+        "supabase/functions/admin-ad-creative-prepare/index.ts",
+        "supabase/migrations/20280318004238_issue_4238_ad_list_audiences.sql"
+      ]
+    },
+    {
+      "capability_key": "marketing-ad-credit",
+      "paths": [
+        "mingla-business/src/components/marketing/AdCreditLedgerRow.tsx",
+        "mingla-business/src/services/adCreditService.ts"
       ]
     }
   ]

@@ -27,6 +27,44 @@
 
 export type Platform = "meta" | "tiktok" | "snapchat" | "google" | "reddit";
 export type Lane = "consumer" | "business";
+
+/**
+ * #4238 D1: Host and Ari ads run on Mingla's consumer accounts. This is the
+ * ONLY place that decision lives; change it only with Seth. Host and Ari
+ * callers never send a lane — every server resolves it with adLaneForOwner.
+ */
+export const HOST_AD_LANE: Lane = "consumer";
+
+/** The provider-account lane an ad owner uses. Admin (mingla) stays consumer. */
+export function adLaneForOwner(owner: "mingla" | "host"): Lane {
+  return owner === "host" ? HOST_AD_LANE : "consumer";
+}
+
+export type OwnerLaneResolution =
+  | { ok: true; lane: Lane }
+  | { ok: false; detail: "lane_invalid" | "lane_owner_mismatch" };
+
+/**
+ * #4238: resolve the lane for a request from its owner. A Host request may omit
+ * the lane; a Host request that names a different lane is REFUSED (never
+ * silently rewritten), so an old client that still sends "business" gets a
+ * clear lane_owner_mismatch. Admin (mingla) keeps `body.lane ?? "consumer"`.
+ */
+export function resolveOwnerLane(
+  owner: "mingla" | "host",
+  bodyLane: unknown,
+): OwnerLaneResolution {
+  if (bodyLane === undefined || bodyLane === null) {
+    return { ok: true, lane: adLaneForOwner(owner) };
+  }
+  if (bodyLane !== "consumer" && bodyLane !== "business") {
+    return { ok: false, detail: "lane_invalid" };
+  }
+  if (owner === "host" && bodyLane !== HOST_AD_LANE) {
+    return { ok: false, detail: "lane_owner_mismatch" };
+  }
+  return { ok: true, lane: bodyLane };
+}
 export type EntityLevel = "campaign" | "ad_set" | "ad";
 
 export const PLATFORMS: readonly Platform[] = [
@@ -553,4 +591,30 @@ export interface ChannelAdapter {
 export interface AuthedClient {
   platform: Platform;
   [key: string]: unknown;
+}
+
+/** #4238 D6: the only search warning a Host ever sees for a failed lookup. */
+export const HOST_SEARCH_UNAVAILABLE =
+  "Search isn't available for this app right now. Try again in a few minutes, or keep your ad to whole countries.";
+
+/**
+ * #4238 D6: Host callers never see a provider's own error text (it can name
+ * Function Secrets or account IDs). The full detail goes to server logs only.
+ */
+export function hostSafeSearchWarning(
+  err: unknown,
+  log: (message: string, detail: Record<string, unknown>) => void = (
+    message,
+    detail,
+  ) => console.warn(message, detail),
+): string {
+  log("[targeting-search] host search failed", {
+    name: err instanceof Error ? err.name : typeof err,
+    platform: err instanceof AdApiError || err instanceof AdNotConnectedError
+      ? err.platform
+      : null,
+    code: err instanceof AdApiError ? err.code : null,
+    message: err instanceof Error ? err.message : String(err),
+  });
+  return HOST_SEARCH_UNAVAILABLE;
 }

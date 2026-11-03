@@ -30,7 +30,7 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
   });
 
   it("ships the ads route with view-error before denial, and wallet wiring", () => {
-    const route = read("app/(tabs)/marketing/ads/index.tsx");
+    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
     expect(route).toContain("useAdCreditWallet");
     expect(route).toContain("AdCreditQuoteSheet");
     expect(route).toContain("ads-credit-screen");
@@ -88,7 +88,7 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(sheet).toContain("randomId");
     expect(sheet).toContain("idempotencyKey");
     expect(sheet).toContain("topUpIdemRef");
-    const route = read("app/(tabs)/marketing/ads/index.tsx");
+    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
     expect(route).toContain("checkoutSessionId");
     expect(route).toContain("ad_credit_top_up");
     const edge = read("../supabase/functions/ad-credit/index.ts");

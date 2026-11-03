@@ -290,6 +290,69 @@ export async function tiktokApi(
   return (payload.data ?? {}) as Record<string, unknown>;
 }
 
+/**
+ * #4238: upload one customer file (a CSV of SHA-256 hashes, one identifier
+ * type per file) for a custom audience. Multipart, as TikTok documents for
+ * dmp/custom_audience/file/upload/. The caller computes the MD5
+ * file_signature and has already passed the hashes through assertHashOnly.
+ * Returns the file_path to pass to create / update.
+ */
+export async function tiktokUploadAudienceFile(
+  client: TikTokClient,
+  input: { calculateType: string; csv: string; signature: string },
+  opts: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
+): Promise<string> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
+  const form = new FormData();
+  form.append("advertiser_id", client.advertiserId);
+  form.append("calculate_type", input.calculateType);
+  form.append("file_signature", input.signature);
+  form.append(
+    "file",
+    new Blob([input.csv], { type: "text/csv" }),
+    "mingla_audience.csv",
+  );
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${client.apiBase}/open_api/${client.apiVersion}/dmp/custom_audience/file/upload/`,
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Access-Token": client.token },
+        body: form,
+      },
+    );
+  } catch {
+    clearTimeout(timer);
+    throw new AdApiError({ platform: "tiktok", code: "network_error", message: "tiktok_audience_file_upload_failed" });
+  }
+  clearTimeout(timer);
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = await response.json() as Record<string, unknown>;
+  } catch {
+    payload = {};
+  }
+  const normalized = normalizeTikTokError(payload);
+  if (!response.ok || normalized.code !== 0) {
+    // Code only: an audience upload response is never echoed.
+    throw new AdApiError({
+      platform: "tiktok",
+      code: normalized.code ?? `http_${response.status}`,
+      message: "tiktok_audience_file_upload_failed",
+    });
+  }
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const path = typeof data.file_path === "string" ? data.file_path : "";
+  if (!path) {
+    throw new AdApiError({ platform: "tiktok", code: "file_path_missing", message: "tiktok_audience_file_path_missing" });
+  }
+  return path;
+}
+
 export type TikTokSparkPost = {
   itemId: string;
   itemType: "VIDEO" | "CAROUSEL";

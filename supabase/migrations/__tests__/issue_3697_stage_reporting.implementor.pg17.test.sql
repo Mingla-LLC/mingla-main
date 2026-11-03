@@ -6,12 +6,13 @@ DECLARE
   v_acl text;
   v_function_acl text;
 BEGIN
-  IF COALESCE((
-    SELECT is_enabled
-    FROM public.feature_flags
+  -- #4238 removed the dead buyer-list flag; customer lists are now the
+  -- ad_list_audiences engine (see issue_4238_ad_list_audiences tests).
+  IF EXISTS (
+    SELECT 1 FROM public.feature_flags
     WHERE flag_key = 'ad_buyer_list_sync_enabled'
-  ), true) THEN
-    RAISE EXCEPTION '#3697 buyer-list sync flag must ship off';
+  ) THEN
+    RAISE EXCEPTION '#4238 the dead buyer-list sync flag must be gone';
   END IF;
   IF to_regclass('public.ad_stage_metrics_daily') IS NULL THEN
     RAISE EXCEPTION '#3697 ad_stage_metrics_daily missing';

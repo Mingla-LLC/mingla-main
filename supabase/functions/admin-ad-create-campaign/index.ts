@@ -50,6 +50,7 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -201,7 +202,17 @@ import {
   googleTotalDaysOk,
   parseCampaignSchedule,
 } from "../_shared/adMoney.ts";
-import type { Platform } from "../_shared/adChannelCore.ts";
+import { type Platform, resolveOwnerLane } from "../_shared/adChannelCore.ts";
+import {
+  hostAdGoalFields,
+  hostGoalBodyError,
+  hostOptimizationFor,
+} from "../_shared/adHostGoal.ts";
+import { PURCHASE_SIGNAL_MIN_28D } from "../_shared/adSalesReadiness.ts";
+import {
+  frozenAudienceBinding,
+  validateOnlyAudienceBinding,
+} from "../_shared/adAudienceBinding.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
   compatibleMetaValidateReference,
@@ -215,7 +226,6 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const PURCHASE_SIGNAL_MIN_28D = 20;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -618,6 +628,8 @@ async function preparePaidSocialStages(
     totalBudgetCents: number;
     baseAdSet: Parameters<typeof buildPaidSocialStageRuntime>[0]["baseAdSet"];
     budgetMode: "daily" | "lifetime";
+    /** #4238: the frozen, server-bound list audience ids (prospecting). */
+    prospectingAudienceIds: string[];
   },
 ): Promise<PaidSocialStagePreparation> {
   if (!input.canonicalPlan) throw new Error("stage_plan_version_required");
@@ -645,6 +657,7 @@ async function preparePaidSocialStages(
     totalBudgetCents: input.totalBudgetCents,
     baseAdSet: input.baseAdSet,
     budgetMode: input.budgetMode,
+    prospectingAudienceIds: input.prospectingAudienceIds,
   });
   if (runtime.creativeSource === "tiktok_spark") {
     return { runtime, creativeRows: [] };
@@ -917,18 +930,21 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform ?? "meta";
-  const lane = body.lane ?? "consumer";
+  // #4238 D1: a Host lane comes from adLaneForOwner; a Host body naming another
+  // lane (an old client still naming the business lane) is refused, never
+  // rewritten.
+  const laneResolution = resolveOwnerLane(requestedOwnerKind, body.lane);
   if (!isPlatform(platform)) {
     return json({ error: "validation_error", detail: "platform_invalid" }, 400);
   }
+  if (!laneResolution.ok) {
+    return laneResolution.detail === "lane_owner_mismatch"
+      ? json({ error: "validation_error", detail: "lane_owner_mismatch" }, 422)
+      : json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  }
+  const lane = laneResolution.lane;
   if (!isLane(lane)) {
     return json({ error: "validation_error", detail: "lane_invalid" }, 400);
-  }
-  if (requestedOwnerKind === "host" && lane !== "business") {
-    return json({
-      error: "validation_error",
-      detail: "host_requires_business_lane",
-    }, 422);
   }
 
   if (requestedOwnerKind === "host") {
@@ -1015,6 +1031,65 @@ serve(async (req: Request): Promise<Response> => {
         detail: "host_video_creative_required",
       }, 422);
     }
+
+    // #4238: clients never author Host objectives; the plan hash does. The
+    // goal is derived from canonical_plan.optimization_by_platform of the
+    // exact bound version, before any objective field below is read.
+    const hostPlanVersionId = typeof body.plan_version_id === "string"
+      ? body.plan_version_id.trim()
+      : "";
+    const hostPlanHash = typeof body.plan_hash === "string"
+      ? body.plan_hash.trim().toLowerCase()
+      : "";
+    if (
+      !UUID_REGEX.test(hostPlanVersionId) ||
+      !/^[0-9a-f]{64}$/.test(hostPlanHash)
+    ) {
+      return json({
+        error: "plan_required",
+        detail: "plan_version_and_hash_required",
+      }, 409);
+    }
+    const goalBodyError = hostGoalBodyError(body);
+    if (goalBodyError) {
+      return json({ error: "plan_conflict", detail: goalBodyError }, 409);
+    }
+    const { data: hostVersion, error: hostVersionError } = await supabase
+      .from("ad_plan_versions")
+      .select("id,plan_id,plan_hash,canonical_plan")
+      .eq("id", hostPlanVersionId)
+      .eq("plan_hash", hostPlanHash)
+      .maybeSingle();
+    if (hostVersionError) return json({ error: "plan_lookup_failed" }, 503);
+    const { data: hostPlan, error: hostPlanError } = hostVersion
+      ? await supabase.from("ad_plans").select("owner_kind,brand_id")
+        .eq("id", hostVersion.plan_id).maybeSingle()
+      : { data: null, error: null };
+    if (hostPlanError) return json({ error: "plan_lookup_failed" }, 503);
+    if (
+      !hostVersion || !hostPlan || hostPlan.owner_kind !== "host" ||
+      hostPlan.brand_id !== requestedBrandId
+    ) {
+      return json({
+        error: "plan_conflict",
+        detail: "plan_version_hash_mismatch",
+      }, 409);
+    }
+    const hostCanonical = hostVersion.canonical_plan &&
+        typeof hostVersion.canonical_plan === "object"
+      ? hostVersion.canonical_plan as Record<string, unknown>
+      : {};
+    const hostOptimization = hostOptimizationFor(hostCanonical, platform);
+    const hostGoal = hostOptimization
+      ? hostAdGoalFields(platform, hostOptimization)
+      : null;
+    if (!hostGoal) {
+      return json({
+        error: "plan_conflict",
+        detail: "plan_optimization_mismatch",
+      }, 409);
+    }
+    Object.assign(body, hostGoal);
   }
 
   // ISSUE-1002 [multi-destination fan-out] — REJECTED in Wave 2 (#3707 / A3-11).
@@ -1175,6 +1250,8 @@ serve(async (req: Request): Promise<Response> => {
   // #3697 (C-13) — the creative the verified frozen plan version carries.
   let frozenCreativeLibraryId: string | null = null;
   let boundPlanHash: string | null = null;
+  // #4238: ready list-audience ids the frozen snapshot carries (prospecting).
+  let boundProspectingAudienceIds: string[] = [];
   // #3697: once a plan is bound, its owner_kind/brand_id are the only
   // ownership authority for the ad_campaigns row (see adPlanCampaignBinding).
   let boundPlanOwnership: BoundPlanOwnership | null = null;
@@ -1295,6 +1372,23 @@ serve(async (req: Request): Promise<Response> => {
         409,
       );
     }
+    // #4238 SC-9 (I-4238-AUDIENCE-SERVER-BOUND): defence in depth at create.
+    // Every audience id in the frozen snapshot must be a ready list audience
+    // on this platform, selected by this version, and (Host) the plan
+    // brand's own; the frozen ids must equal exactly that set.
+    {
+      const binding = await frozenAudienceBinding(supabase, {
+        platform,
+        canonicalPlan: version.canonical_plan,
+        compiled: targetingSnapshot.compiled_targeting,
+        ownerKind: String(plan.owner_kind),
+        planBrandId: typeof plan.brand_id === "string" ? plan.brand_id : null,
+      });
+      if (!binding.ok) {
+        return json({ error: "plan_conflict", detail: binding.detail }, 409);
+      }
+      boundProspectingAudienceIds = binding.prospectingAudienceIds;
+    }
     frozenExecutionTargeting = providerExecutionTargeting(
       platform,
       targetingSnapshot.audience_intent as Record<string, unknown>,
@@ -1334,7 +1428,10 @@ serve(async (req: Request): Promise<Response> => {
     if (launchableError) {
       return json({
         error: "plan_not_launchable",
-        detail: launchableError.message,
+        detail: hostSafeDatabaseDetail(
+          launchableError,
+          "admin-ad-create-campaign launch",
+        ),
       }, 409);
     }
     const canonicalPlan = version.canonical_plan as Record<string, unknown>;
@@ -1400,7 +1497,20 @@ serve(async (req: Request): Promise<Response> => {
       planHash,
       providerDeliveryBudgetCents: providerAmountCents,
     });
-  } else if (requestedOwnerKind === "host") {
+  } else {
+    // #4238 (I-4238-AUDIENCE-SERVER-BOUND): validate_only runs the same
+    // frozen-audience binding guard before any provider call.
+    const binding = await validateOnlyAudienceBinding(supabase, {
+      platform,
+      body,
+      ownerKind: requestedOwnerKind,
+      brandId: requestedOwnerKind === "host" ? requestedBrandId : null,
+    });
+    if (!binding.ok) {
+      return json({ error: "plan_conflict", detail: binding.detail }, 409);
+    }
+  }
+  if (body.validate_only === true && requestedOwnerKind === "host") {
     const authority = await resolveAdBrandCurrency(supabase, requestedBrandId);
     if (!authority.ok) {
       return json({
@@ -3286,6 +3396,7 @@ serve(async (req: Request): Promise<Response> => {
             targeting: adSetInputS.targeting,
           },
           budgetMode: "daily",
+          prospectingAudienceIds: boundProspectingAudienceIds,
         });
         const belowFloorS = snapStages.runtime.adSets.find((stage) =>
           stage.budgetCents * 10_000 < SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO
@@ -3308,9 +3419,14 @@ serve(async (req: Request): Promise<Response> => {
           ),
         });
       } catch (error) {
+        // #4238 P2-a: a stage lookup can throw a raw database error.
         return json({
           error: "stage_preflight_failed",
-          detail: error instanceof Error ? error.message : String(error),
+          detail: hostSafeDatabaseDetail(
+            error,
+            "admin-ad-create-campaign stage",
+            "stage_preflight_failed",
+          ),
         }, 422);
       }
     }
@@ -4425,6 +4541,7 @@ serve(async (req: Request): Promise<Response> => {
               targeting: baseTargetingT,
             },
             budgetMode: "daily",
+            prospectingAudienceIds: boundProspectingAudienceIds,
           });
           const belowFloorT = tiktokStages.runtime.adSets.find((stage) =>
             !validateTikTokBudgetFloor({
@@ -6097,6 +6214,7 @@ serve(async (req: Request): Promise<Response> => {
           ...(schedule.ends_at ? { endTime: schedule.ends_at } : {}),
         },
         budgetMode: budgetType,
+        prospectingAudienceIds: boundProspectingAudienceIds,
       });
       const minimumPerStage = budgetType === "lifetime"
         ? floorCents * (schedule.days as number)

@@ -1,5 +1,10 @@
 import type { HostAdCampaign } from "./hostAdCampaignService";
 import type { HostAdDraft, HostAdPlanAggregate } from "./hostAdPlanService";
+import {
+  hostAdReviewReason,
+  hostAdStepLabel,
+} from "../components/marketing/ads/hostAdCopy";
+import { formatHostAdMoneyCents } from "../components/marketing/ads/hostAdMoney";
 
 export type HostAdLifecycle =
   | "draft"
@@ -36,6 +41,8 @@ export type HostAdListItem = {
   route: string;
   reason: string | null;
   updatedAt: string | null;
+  /** #4238: a plainer status than the lifecycle bucket, when there is one. */
+  statusLabel?: string;
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -99,7 +106,7 @@ function draftItem(draft: HostAdDraft): HostAdListItem {
             name:
               stringValue(creativeRow?.name) ??
               stringValue(creativeState?.name) ??
-              "Creative in progress",
+              "Video in progress",
             kind:
               stringValue(creativeRow?.kind) ??
               stringValue(creativeState?.kind) ??
@@ -119,7 +126,7 @@ function draftItem(draft: HostAdDraft): HostAdListItem {
     resultsValueCents: {},
     nextAction: "Continue draft",
     route: `/(tabs)/marketing/ads/create?draft_id=${draft.id}`,
-    reason: `Saved at ${draft.current_step.replaceAll("_", " ")}`,
+    reason: `Saved at: ${hostAdStepLabel(draft.current_step)}`,
     updatedAt: draft.updated_at,
   };
 }
@@ -144,19 +151,26 @@ function planItem(aggregate: HostAdPlanAggregate): HostAdListItem {
       stringValue(destination?.dest_url) ??
       stringValue(destination?.url),
     creative: creativeId
-      ? { name: "Creative selected", kind: "video", previewUrl: null }
+      ? { name: "Video chosen", kind: "video", previewUrl: null }
       : null,
     currency: aggregate.version.host_currency,
     capCents: aggregate.version.host_budget_cents,
-    spendCents: 0,
+    // #4238: a plan row has not launched (a launched plan shows as its
+    // campaign), so it has no spend to show: "NGN 1,500,000.00 budget".
+    spendCents: null,
     spendByCurrency: [],
     primaryResultLabel: "results",
     primaryResultCount: 0,
     costPerResultCents: null,
     resultsValueCents: {},
     nextAction: planNextAction(aggregate.plan.state),
+    // #4238: approved (or funded) and waiting for LAUNCH is not a draft.
+    ...(aggregate.plan.state === "staff_approved" ||
+      aggregate.plan.state === "funded_held"
+      ? { statusLabel: "Ready to start" }
+      : {}),
     route: `/(tabs)/marketing/ads/create?plan_id=${aggregate.plan.id}`,
-    reason: typeof reason === "string" ? reason : null,
+    reason: typeof reason === "string" ? hostAdReviewReason(reason) : null,
     updatedAt: aggregate.plan.updated_at,
   };
 }
@@ -187,7 +201,7 @@ function campaignItem(campaign: HostAdCampaign): HostAdListItem {
     nextAction: campaign.next_action,
     route: `/(tabs)/marketing/ads/${campaign.id}`,
     reason: campaign.creative?.review_status?.toUpperCase().includes("REJECT")
-      ? "Provider rejected the creative"
+      ? "An app turned down your video"
       : null,
     updatedAt: campaign.updated_at ?? campaign.created_at,
   };
@@ -197,13 +211,28 @@ export function buildHostAdList(input: {
   drafts: HostAdDraft[];
   plans: HostAdPlanAggregate[];
   campaigns: HostAdCampaign[];
+  /** #4238: plans already created on the apps (live, ended, …). */
+  launchedPlanIds?: readonly string[];
+  /** #4238: plan version id → plan id, to tie a campaign to its plan. */
+  planIdByVersionId?: Readonly<Record<string, string>>;
 }): HostAdListItem[] {
-  const representedPlanIds = new Set(input.plans.map((item) => item.plan.id));
+  // A draft is hidden when its plan already shows as its own row, or when
+  // that plan already has a campaign or was launched: the draft is finished.
+  const versionToPlan = input.planIdByVersionId ?? {};
+  const hiddenPlanIds = new Set<string>([
+    ...input.plans.map((item) => item.plan.id),
+    ...(input.launchedPlanIds ?? []),
+    ...input.campaigns.flatMap((campaign) => {
+      const planId = campaign.plan_version_id
+        ? versionToPlan[campaign.plan_version_id]
+        : undefined;
+      return planId ? [planId] : [];
+    }),
+  ]);
   return [
     ...input.drafts
       .filter(
-        (draft) =>
-          draft.plan_id === null || !representedPlanIds.has(draft.plan_id),
+        (draft) => draft.plan_id === null || !hiddenPlanIds.has(draft.plan_id),
       )
       .map(draftItem),
     ...input.plans.map(planItem),
@@ -211,6 +240,86 @@ export function buildHostAdList(input: {
   ].sort((left, right) =>
     String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")),
   );
+}
+
+/**
+ * #4238: the money line on an Ads list row, written like the Results card
+ * ("NGN 42,000.00 of NGN 100,000.00 spent"). Spend is the Host-currency
+ * equivalent; a zero or missing budget is hidden, never written as
+ * "NGN 0.00 cap". When spend is only known in the apps' own currencies, it
+ * is shown in those ("USD 137.00").
+ */
+export function hostAdListRowMoney(
+  item: Pick<HostAdListItem, "currency" | "capCents" | "spendCents" | "spendByCurrency">,
+): string {
+  const budget =
+    item.capCents !== null && item.capCents > 0
+      ? formatHostAdMoneyCents(item.capCents, item.currency)
+      : null;
+  const spent =
+    item.currency !== null && item.spendCents !== null
+      ? formatHostAdMoneyCents(item.spendCents, item.currency)
+      : null;
+  if (spent) return budget ? `${spent} of ${budget} spent` : `${spent} spent`;
+  const providerSpend = item.spendByCurrency
+    .filter((row) => Number(row.spend_cents) > 0)
+    .flatMap((row) => {
+      const money = formatHostAdMoneyCents(row.spend_cents, row.currency);
+      return money ? [money] : [];
+    })
+    .join(" · ");
+  if (budget && item.currency !== null) {
+    return providerSpend
+      ? `${budget} budget · ${providerSpend} spent on the apps`
+      : `${budget} budget`;
+  }
+  if (providerSpend) return `${providerSpend} spent on the apps`;
+  return "Budget set before launch";
+}
+
+/**
+ * #4238: plan states before anything was created on the apps. Nothing can
+ * have been spent yet, so the money line names only the budget.
+ */
+export const HOST_AD_PRE_LAUNCH_PLAN_STATES: ReadonlySet<string> = new Set([
+  "draft",
+  "validating",
+  "ready_for_funding",
+  "funding_pending",
+  "funded_held",
+  "staff_review_required",
+  "staff_approved",
+  "changes_requested",
+  "staff_rejected",
+  "payment_failed",
+  "expired",
+  "cancelled_before_create",
+]);
+
+/**
+ * #4238: the top money line on an ad's page, in the same "NGN 1,500,000.00"
+ * style as the Ads list and the Results card. An ad that hasn't launched
+ * reads "NGN 1,500,000.00 budget", never "Spent NGN 0.00 of …".
+ */
+export function hostAdDetailMoneyLine(input: {
+  spentCents: number | null;
+  capCents: number;
+  currency: string;
+  planState: string | null;
+}): string {
+  const budget = formatHostAdMoneyCents(input.capCents, input.currency) ?? "";
+  const launched =
+    input.planState === null || !HOST_AD_PRE_LAUNCH_PLAN_STATES.has(input.planState);
+  if (!launched && (input.spentCents === null || input.spentCents === 0)) {
+    return `${budget} budget`;
+  }
+  const spent =
+    input.spentCents !== null
+      ? formatHostAdMoneyCents(input.spentCents, input.currency)
+      : null;
+  return spent
+    ? `Spent ${spent} of your ${budget} budget`
+    : `${budget} set aside · we can't show spend in your currency yet`;
 }
 
 export function hostAdMatchesFilter(

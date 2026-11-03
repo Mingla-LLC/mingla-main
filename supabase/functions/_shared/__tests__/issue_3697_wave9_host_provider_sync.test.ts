@@ -77,9 +77,10 @@ Deno.test("#3697 closeout: Ari reviews a required video across all five provider
   assert(tools.includes('"snapchat"'));
   assert(tools.includes('"reddit"'));
   assert(tools.includes("buildHostAdCreatePayload"));
+  // #4238 plain-language pass: same refusal, Host words.
   assert(
     tools.includes(
-      "creative_library_id must be a uuid of a READY video creative",
+      "This ad needs a ready video. Add one, then I'll check the ad again.",
     ),
   );
   const prompt = await Deno.readTextFile(

@@ -77,6 +77,12 @@ interface CountryPickerContentProps {
   >;
   /** Optional theme overrides matching PhoneInput's theme prop. */
   theme?: PhoneInputTheme;
+  /**
+   * #4238 — show the dial code on each row (default true, the phone picker).
+   * A country-only picker (Host ads targeting) passes false: no dial code is
+   * rendered, searched or announced.
+   */
+  showDialCode?: boolean;
 }
 
 interface CountryPickerModalProps extends CountryPickerContentProps {
@@ -93,6 +99,22 @@ type WebViewStyle = Omit<ViewStyle, "position"> & {
 };
 
 const ROW_HEIGHT = 48;
+
+/** Search the directory by name, ISO code and (when shown) dial code. */
+export function filterCountryList(
+  countries: readonly CountryData[],
+  search: string,
+  showDialCode = true,
+): readonly CountryData[] {
+  if (!search.trim()) return countries;
+  const query = search.toLowerCase().trim();
+  return countries.filter(
+    (c) =>
+      c.name.toLowerCase().includes(query) ||
+      (showDialCode && c.dialCode.includes(query)) ||
+      c.code.toLowerCase().includes(query),
+  );
+}
 
 /** ORCH-1171: Done-only toolbar height (matches app-mobile keyboardConstants). */
 const KEYBOARD_TOOLBAR_HEIGHT = 42;
@@ -121,6 +143,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
   iconRenderer,
   labels,
   theme,
+  showDialCode = true,
 }) => {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
@@ -137,16 +160,10 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
       ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT
       : insets.bottom;
 
-  const filteredCountries = useMemo(() => {
-    if (!search.trim()) return COUNTRIES;
-    const query = search.toLowerCase().trim();
-    return COUNTRIES.filter(
-      (c) =>
-        c.name.toLowerCase().includes(query) ||
-        c.dialCode.includes(query) ||
-        c.code.toLowerCase().includes(query),
-    );
-  }, [search]);
+  const filteredCountries = useMemo(
+    () => filterCountryList(COUNTRIES, search, showDialCode),
+    [search, showDialCode],
+  );
 
   const handleSearch = useCallback((text: string): void => {
     setSearch(text);
@@ -217,14 +234,18 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
           onPress={() => handleSelect(item.code)}
           android_ripple={{ color: t.divider, borderless: false }}
           accessibilityRole="button"
-          accessibilityLabel={`${item.name} ${item.dialCode}`}
+          accessibilityLabel={
+            showDialCode ? `${item.name} ${item.dialCode}` : item.name
+          }
           accessibilityState={{ selected: isSelected }}
         >
           <Text style={styles.flag}>{item.flag}</Text>
           <Text style={countryNameStyle} numberOfLines={1}>
             {item.name}
           </Text>
-          <Text style={dialCodeStyle}>{item.dialCode}</Text>
+          {showDialCode ? (
+            <Text style={dialCodeStyle}>{item.dialCode}</Text>
+          ) : null}
           {isSelected ? (
             <View style={styles.checkmark}>
               {iconRenderer("checkmark", { size: 20, color: t.accent })}
@@ -242,6 +263,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
       t.rowPressedBackground,
       countryNameStyle,
       dialCodeStyle,
+      showDialCode,
     ],
   );
 
@@ -315,6 +337,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   iconRenderer,
   labels,
   theme,
+  showDialCode,
 }) => {
   return (
     <Modal
@@ -333,6 +356,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
             iconRenderer={iconRenderer}
             labels={labels}
             theme={theme}
+            showDialCode={showDialCode}
           />
         </SafeAreaProvider>
         <KeyboardToolbar
