@@ -21,6 +21,7 @@ import {
   splitBudget,
   unfundedEligibleChannels,
 } from "../../lib/adBuilder/channelPlan";
+import { adminScheduleLimitNote } from "../../lib/adBuilder/scheduleBound";
 import {
   scheduleTimeZoneOptions,
   timeZoneLabel,
@@ -52,6 +53,9 @@ export function StepBudget({
   currency,
   currencyBlockedReason = null,
   scheduleTimeZone = "UTC",
+  // #4238: the chosen page's last bookable moment (dated pages only).
+  scheduleLimit = null,
+  scheduleBoundError = null,
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const currencyCode =
@@ -290,6 +294,7 @@ export function StepBudget({
             type="datetime-local"
             className="w-full h-9 rounded-md border border-[var(--gray-300)] px-2 text-sm"
             value={budget.startsAtLocal ?? ""}
+            max={scheduleLimit?.maxLocal ?? undefined}
             onChange={(e) => {
               const local = e.target.value;
               set({
@@ -309,6 +314,7 @@ export function StepBudget({
             type="datetime-local"
             className="w-full h-9 rounded-md border border-[var(--gray-300)] px-2 text-sm"
             value={budget.endsAtLocal ?? ""}
+            max={scheduleLimit?.maxLocal ?? undefined}
             onChange={(e) => {
               const local = e.target.value;
               set({
@@ -319,6 +325,20 @@ export function StepBudget({
           />
         </label>
       </div>
+
+      {scheduleLimit && (
+        <p
+          className="text-xs text-[var(--color-text-secondary)]"
+          data-testid="schedule-limit-note"
+        >
+          {adminScheduleLimitNote(scheduleLimit)}
+        </p>
+      )}
+      {scheduleBoundError && (
+        <AlertCard variant="error" title="Check the end date">
+          {scheduleBoundError}
+        </AlertCard>
+      )}
 
       {mode === "daily" && (
         <label className="space-y-1.5 block max-w-sm">
