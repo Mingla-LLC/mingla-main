@@ -4,7 +4,6 @@
  * read and stop boundary; v1.4 pause now shares Admin's aggregate action engine.
  */
 
-import { edgeErrorCode } from "./edgeErrorCode";
 import { supabase } from "./supabase";
 
 export type HostAdCampaign = {
@@ -191,6 +190,22 @@ export class HostAdCampaignError extends Error {
     this.code = code;
     this.detail = detail;
   }
+}
+
+/**
+ * #4238 — the error code in a 2xx edge-function body, only when it is a
+ * non-empty string. Edge envelopes carry `error: null` on success, and
+ * admin-ad-creative-prepare carries an error OBJECT beside `state: "failed"`
+ * so the caller can retry; neither is a failed request.
+ *
+ * Defined here because this service is already in the boot chunk (Home reads
+ * it); `./edgeErrorCode` re-exports it for the services in the Host Ads chunk,
+ * so the helper costs no extra boot-chunk module.
+ */
+export function edgeErrorCode(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const value = (data as { error?: unknown }).error;
+  return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
 async function invokeHostAd<T>(

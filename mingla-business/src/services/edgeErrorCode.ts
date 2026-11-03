@@ -1,11 +1,7 @@
 /**
  * #4238 — the error code in a 2xx edge-function body, only when it is a
- * non-empty string. Edge envelopes carry `error: null` on success, and
- * admin-ad-creative-prepare carries an error OBJECT beside `state: "failed"`
- * so the caller can retry; neither is a failed request.
+ * non-empty string (`error: null` and error objects are not failures).
+ * The one definition lives in hostAdCampaignService, which is already in the
+ * boot chunk; this re-export keeps the import path for the Host Ads chunk.
  */
-export function edgeErrorCode(data: unknown): string | null {
-  if (!data || typeof data !== "object") return null;
-  const value = (data as { error?: unknown }).error;
-  return typeof value === "string" && value.trim() !== "" ? value : null;
-}
+export { edgeErrorCode } from "./hostAdCampaignService";
