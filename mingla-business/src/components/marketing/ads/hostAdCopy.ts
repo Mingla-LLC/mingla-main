@@ -338,7 +338,7 @@ export function hostAdVerdictLabel(verdict: string): string {
  */
 /** #4238: compiler lines that are already plain sentences for a Host. */
 const HOST_AD_PLAIN_NOTE =
-  /^(Facebook & Instagram|TikTok|Snapchat|Google|Reddit) (needs at least|allows at most|uses the wider area|can't leave out places|can't use a pin|can't pick languages|uses a circle|shows your ad to people in every language)|^We couldn't find the address for your pin\.$/;
+  /^(Facebook & Instagram|TikTok|Snapchat|Google|Reddit) (needs at least|allows at most|uses the wider area|can't leave out places|can't use a pin|can't pick languages|uses a circle|shows your ad to people in every language)|^We couldn't find the address for your pin\.$|^Couldn't check .+ on (Facebook & Instagram|TikTok|Snapchat|Google|Reddit)\. Try again\.$/;
 
 /** "region:NG:lagos state" / "pin:NG:x" → "NG:lagos state" for the place list. */
 function stripPlaceKinds(raw: string): string {

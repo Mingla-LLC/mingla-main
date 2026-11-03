@@ -3,6 +3,7 @@
  * split so every app gets its own minimum first and the rest evenly.
  * Pure: amounts are whole minor units in the brand's money.
  */
+import { platformName, platformNames } from "./hostAdCopy";
 
 /** "YYYY-MM-DD" → whole days from start to end, both counted (≥ 1). */
 export function hostAdDaysInRun(startDay: string, endDay: string): number | null {
@@ -81,6 +82,23 @@ export function hostAdSplitWithMinimums(
     minimumTotalCents,
     short: null,
   };
+}
+
+/**
+ * #4238 r8 P3: the plain line when the daily amount can't cover every app's
+ * minimum. One app short: that app and its minimum. Several: the combined
+ * minimum, so the Host isn't told one amount and then refused again.
+ */
+export function hostAdBudgetShortMessage(
+  split: Pick<HostAdSplit, "ok" | "rows" | "minimumTotalCents" | "short">,
+  money: (cents: number) => string,
+): string | null {
+  if (split.ok || !split.short) return null;
+  const shortRows = split.rows.filter((row) => row.dailyCents < row.minimumCents);
+  if (shortRows.length <= 1) {
+    return `${platformName(split.short.platform)} needs about ${money(split.short.minimumCents)} a day. Raise the budget, or turn it off.`;
+  }
+  return `Your ${split.rows.length} apps need about ${money(split.minimumTotalCents)} a day together (${platformNames(shortRows.map((row) => row.platform))} are short). Raise the budget, or turn an app off.`;
 }
 
 /** Split a total in proportion to the daily shares (largest remainder). */

@@ -81,3 +81,56 @@ export async function notifyAdLaunchAttempt(
     });
   }
 }
+
+export type HostLiveEditProblemAlertInput = {
+  planId: string;
+  brandId: string;
+  actorId: string | null;
+  kind: "undo_failed" | "not_reverted";
+  platforms: string[];
+  detail: string;
+  idempotencyKey: string;
+};
+
+/**
+ * #4238 r8 P2-1: a Host live edit left an app on an amount Mingla did not
+ * record (an undo failed, or another edit won after a push). Same inbox as
+ * launch attempts. Fire-and-forget: never throws to callers.
+ */
+export async function notifyHostLiveEditProblem(
+  input: HostLiveEditProblemAlertInput,
+): Promise<void> {
+  try {
+    const recipients = launchAttemptRecipients();
+    if (recipients.length === 0) {
+      console.warn("[host-live-edit] recipients missing; alert not sent", {
+        planId: input.planId,
+      });
+      return;
+    }
+    const what = input.kind === "undo_failed"
+      ? "A live budget change failed and Mingla could NOT undo it."
+      : "A live budget change was pushed but another edit was recorded first.";
+    await sendOpsAlertEmail({
+      subject: `[Ads live edit CHECK] ${input.platforms.join(", ")} · plan ${
+        input.planId.slice(0, 8)
+      }`,
+      paragraphs: [
+        what,
+        `Apps to check: ${input.platforms.join(", ")} (the daily budget there may not match Mingla's record).`,
+        `Plan ID: ${input.planId}`,
+        `Brand ID: ${input.brandId}`,
+        `Actor: ${input.actorId ?? "(unknown)"}`,
+        `Detail: ${input.detail.trim().slice(0, 500)}`,
+      ],
+      recipients,
+      idempotencyKey: `host_live_problem_${input.kind}_${input.idempotencyKey}`
+        .slice(0, 200),
+    });
+  } catch (err) {
+    console.error("[host-live-edit] ops alert failed (non-fatal)", {
+      planId: input.planId,
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}

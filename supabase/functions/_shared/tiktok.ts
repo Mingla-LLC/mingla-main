@@ -79,6 +79,7 @@ import {
   type CreateCampaignInput,
   type EntityLevel,
   TIKTOK_CTA_MAP,
+  tiktokCallToActionCode,
 } from "./adChannelCore.ts";
 
 // ── Env config (NAMES per SPEC §7 — values live in Function Secrets) ──────────
@@ -2269,11 +2270,28 @@ export interface TikTokAdSpec {
   /** Spark Pull: an existing organic post owned by linked @usemingla TT_USER. */
   tiktokItemId?: string;
   adText: string;
-  /** TikTok CTAs are bare display strings (TIKTOK_CTA_MAP) — default "Learn more". */
+  /**
+   * TikTok's CallToAction code (TIKTOK_CTA_MAP) — default LEARN_MORE. A
+   * display label from an older builder is mapped to its code.
+   */
   callToAction?: string;
   /** A1.0-5: the canonical dest_url — NEVER the OneLink. */
   landingPageUrl: string;
   utmParams?: TikTokUtmParam[];
+}
+
+/** #4238 r8 P2-5: always an enum code in the body; an unknown value is refused. */
+function tiktokCtaForBody(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") return TIKTOK_CTA_MAP.default;
+  const code = tiktokCallToActionCode(value);
+  if (!code) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "call_to_action_invalid",
+      message: `TikTok has no button "${value.slice(0, 40)}".`,
+    });
+  }
+  return code;
 }
 
 export function buildTikTokAdBody(
@@ -2312,7 +2330,7 @@ export function buildTikTokAdBody(
       identity_type: spec.identityType,
       identity_id: spec.identityId,
       tiktok_item_id: tiktokItemId,
-      call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
+      call_to_action: tiktokCtaForBody(spec.callToAction),
       landing_page_url: spec.landingPageUrl,
       operation_status: "DISABLE",
     };
@@ -2376,7 +2394,7 @@ export function buildTikTokAdBody(
     // (SUSPECTED/DOC wire shape — pinned by the PAUSED acceptance probe downstream).
     ...(adFormat === "SINGLE_VIDEO" ? { video_id: videoId } : {}),
     ad_text: spec.adText,
-    call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
+    call_to_action: tiktokCtaForBody(spec.callToAction),
     // A1.0-5 (PROOF D-P1): the ad-visible destination is the canonical public
     // page — NEVER the OneLink; attribution rides in utm_params.
     landing_page_url: spec.landingPageUrl,

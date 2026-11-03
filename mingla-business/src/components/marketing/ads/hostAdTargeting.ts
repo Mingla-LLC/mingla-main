@@ -100,6 +100,45 @@ export function hostAdInterestKey(name: string): string {
   return normName(name);
 }
 
+/** One pending app lookup: which list, the item's key, and the app. */
+export type HostAdPendingLookup = {
+  list: "include" | "exclude" | "interest";
+  key: string;
+  app: HostAdApp;
+};
+
+/**
+ * #4238 r8 P1-4: the pending lookups as one stable string for an effect's
+ * dependency list. JSON, never a joined string: a place's key is free text
+ * ("pin:NG:landmark beach, oniru, lekki") and may hold any separator.
+ */
+export function hostAdPendingLookupSignature(
+  items: readonly HostAdPendingLookup[],
+): string {
+  return items.length === 0
+    ? ""
+    : JSON.stringify(items.map((item) => [item.list, item.key, item.app]));
+}
+
+/** The pending lookups back from hostAdPendingLookupSignature. */
+export function hostAdPendingLookups(signature: string): HostAdPendingLookup[] {
+  if (signature === "") return [];
+  const parsed: unknown = JSON.parse(signature);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((row): HostAdPendingLookup[] => {
+    if (!Array.isArray(row) || row.length !== 3) return [];
+    const [list, key, app] = row as unknown[];
+    if (
+      (list !== "include" && list !== "exclude" && list !== "interest") ||
+      typeof key !== "string" ||
+      typeof app !== "string"
+    ) {
+      return [];
+    }
+    return [{ list, key, app: app as HostAdApp }];
+  });
+}
+
 /** The text an app is asked for: a pin's last part ("…, Lekki" → "Lekki"). */
 export function hostAdLookupQuery(place: Pick<HostAdPlace, "name" | "kind">): string {
   if (placeKind(place) !== "pin") return place.name.trim();
@@ -457,11 +496,14 @@ export function hostAdAppReviewStatus(input: {
   verdict: string;
   places: readonly HostAdPlace[];
   interests: readonly HostAdInterestPick[];
+  /** The server check's lines; a failed server lookup is "Couldn't check". */
+  checks?: readonly string[];
 }): "Ready" | "Ready (wider area)" | "Needs a choice" | "Couldn't check" | "Can't run yet" {
   const { app } = input;
   if (
     input.places.some((place) => place.errors?.[app]) ||
-    input.interests.some((interest) => interest.errors?.[app])
+    input.interests.some((interest) => interest.errors?.[app]) ||
+    (input.checks ?? []).some((line) => /^Couldn't check .+\. Try again\.$/.test(line))
   ) return "Couldn't check";
   if (input.places.some((place) => place.offers?.[app])) return "Needs a choice";
   if (input.verdict === "unavailable") return "Can't run yet";

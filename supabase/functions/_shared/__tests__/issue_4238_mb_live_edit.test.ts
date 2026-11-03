@@ -62,8 +62,10 @@ Deno.test("D1 caps follow the frozen ratio; Google keeps its daily amount", () =
     newEndsAt: "2026-12-06T22:59:00Z",
   });
   if (!plan.ok) throw new Error(plan.error);
-  // NGN 90,000 shared like the plan's caps: NGN 45,000 each at 1,700/3,000,000.
-  assertEquals(plan.lines.map((l) => l.new_provider_budget_cents), [2550, 2550]);
+  // r9 (P1-1): each app keeps its spend (USD 5) plus its half of what is
+  // left (NGN 75,000 / 2 at 1,700/3,000,000 = 2,125, less one cent for the
+  // frozen-rate rounding), so the caps can never add up past NGN 90,000.
+  assertEquals(plan.lines.map((l) => l.new_provider_budget_cents), [2624, 2624]);
   // What is left (NGN 75,000) over 27 days, at the frozen daily ratio.
   assertEquals(plan.lines[0].new_provider_delivery_budget_cents, 92);
   assertEquals(plan.lines[1].new_provider_delivery_budget_cents, 200);
@@ -71,7 +73,7 @@ Deno.test("D1 caps follow the frozen ratio; Google keeps its daily amount", () =
   assertEquals(plan.newEndsAt, "2026-12-06T22:59:00.000Z");
 });
 
-Deno.test("D1 the record failing reverts the app pushes", async () => {
+Deno.test("D1 the record failing (not a lost race) reverts the app pushes", async () => {
   const calls: string[] = [];
   let last = 0;
   const adapter = {
@@ -99,7 +101,10 @@ Deno.test("D1 the record failing reverts the app pushes", async () => {
         resolve({ data: table === "ad_sets" ? [{ external_adset_id: "as1" }] : [] });
       return q;
     },
-    rpc: () => Promise.resolve({ data: null, error: { code: "PT409", message: "host_ad_live_edit_once_a_day" } }),
+    // r9 (P1-2): a once-a-day refusal is a lost race and is never undone
+    // (issue_4238_mb_live_edit_r9.implementor.test.ts); any other record
+    // failure still reverts.
+    rpc: () => Promise.resolve({ data: null, error: { code: "XX000", message: "connection reset" } }),
   };
   const plan = planHostLiveEdit({
     ...base,
@@ -118,7 +123,7 @@ Deno.test("D1 the record failing reverts the app pushes", async () => {
     previousEndsAt: "2026-11-20T22:59:00Z",
   });
   assertEquals(result.status, 409, JSON.stringify(result.body));
-  assertEquals(result.body.error, "host_ad_live_edit_once_a_day");
+  assertEquals(result.body.error, "host_ad_live_edit_not_recorded");
   // Pushed: budget then end time; reverted in reverse order.
   assertEquals(calls, [
     // NGN 75,000 left over 27 days, at the frozen daily ratio.

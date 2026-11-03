@@ -4,7 +4,7 @@
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -48,6 +48,8 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../components/marketing/ads/results/AdResultsSection";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
 import {
+  hostAdLiveEditAttempt,
+  type HostAdLiveEditAttempt,
   HostAdLiveEditCard,
   hostAdLiveEditDoneNote,
   hostAdLiveEditError,
@@ -121,11 +123,23 @@ export default function HostAdDetailRoute(): React.ReactElement {
     void load();
   }, [load]);
 
-  // #4238 wave D: budget and end date, once a day.
+  // #4238 wave D: budget and end date, once a day. r8 P1-2: one key per
+  // edit attempt (reused by a second tap or a retry), and never two saves
+  // in flight at once.
+  const liveEditAttempt = useRef<HostAdLiveEditAttempt | null>(null);
+  const liveEditInFlight = useRef(false);
   const onLiveEdit = useCallback(
     async (input: { newBudgetCents: number | null; newEndsAt: string | null }) => {
       const planId = payload?.plan_id;
       if (brandId === null || !planId || !permissions.canFund) return;
+      if (liveEditInFlight.current) return;
+      liveEditInFlight.current = true;
+      const attempt = hostAdLiveEditAttempt(
+        liveEditAttempt.current,
+        { planId, ...input },
+        randomUuid,
+      );
+      liveEditAttempt.current = attempt;
       setBusy(true);
       setError(null);
       setNotice(null);
@@ -135,23 +149,28 @@ export default function HostAdDetailRoute(): React.ReactElement {
           planId,
           newBudgetCents: input.newBudgetCents,
           newEndsAt: input.newEndsAt,
-          idempotencyKey: randomUuid(),
+          idempotencyKey: attempt.key,
         });
+        liveEditAttempt.current = null;
         setNotice(hostAdLiveEditDoneNote(result));
         await load();
       } catch (cause) {
+        const failure = cause !== null && typeof cause === "object"
+          ? (cause as { code?: unknown; detail?: unknown })
+          : null;
         setError(
           hostAdLiveEditError(
-            cause !== null && typeof cause === "object" && "code" in cause
-              ? String(cause.code)
-              : null,
+            failure && "code" in failure ? String(failure.code) : null,
+            typeof failure?.detail === "string" ? failure.detail : null,
+            payload?.plan_currency ?? null,
           ),
         );
       } finally {
+        liveEditInFlight.current = false;
         setBusy(false);
       }
     },
-    [brandId, load, payload?.plan_id, permissions.canFund],
+    [brandId, load, payload?.plan_currency, payload?.plan_id, permissions.canFund],
   );
 
   // #4238 wave D: the same setup as a new draft for the next event.

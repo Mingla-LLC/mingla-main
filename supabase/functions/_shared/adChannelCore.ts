@@ -228,15 +228,56 @@ export const META_CTA_MAP: Record<MinglaOffering, string> = {
   default: "LEARN_MORE",
 };
 
-// TikTok CTAs are bare display strings (no enum in the schema); auto-translated.
+// #4238 r8 P2-5: TikTok's call_to_action is an enum of uppercase codes, not
+// display strings. Verified (read-only) against TikTok's own Marketing API
+// spec, enum package "CallToAction" (GET_TICKETS_NOW, BOOK_NOW, SIGN_UP,
+// LEARN_MORE, GET_SHOWTIMES, …):
+// https://github.com/tiktok/tiktok-business-api-sdk/blob/main/yml_files/smart_plus_ad_create.yml
+// (call_to_action_list[].call_to_action). Until #4238 the map sent display
+// strings ("Get ticket now"), which TikTok's enum does not hold.
 export const TIKTOK_CTA_MAP: Record<MinglaOffering, string> = {
-  ticketed_event: "Get ticket now",
-  bookable: "Book now",
-  restaurant: "Learn more",
-  venue: "Learn more",
-  upcoming_event: "Get showtimes",
-  default: "Learn more",
+  ticketed_event: "GET_TICKETS_NOW",
+  bookable: "BOOK_NOW",
+  restaurant: "LEARN_MORE",
+  venue: "LEARN_MORE",
+  upcoming_event: "GET_SHOWTIMES",
+  default: "LEARN_MORE",
 };
+
+/** TikTok's CallToAction codes Mingla uses (same source as TIKTOK_CTA_MAP). */
+export const TIKTOK_CTA_CODES: ReadonlySet<string> = new Set([
+  "GET_TICKETS_NOW",
+  "BOOK_NOW",
+  "SIGN_UP",
+  "LEARN_MORE",
+  "GET_SHOWTIMES",
+  "SHOP_NOW",
+  "APPLY_NOW",
+  "CONTACT_US",
+  "ORDER_NOW",
+  "INTERESTED",
+  "READ_MORE",
+  "VIEW_NOW",
+]);
+
+/**
+ * The code TikTok takes for a button, from a code or from one of the display
+ * labels older builders and saved drafts still send ("Get ticket now").
+ * Null when it is neither (the caller refuses it rather than guess).
+ */
+export function tiktokCallToActionCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const code = trimmed.toUpperCase().replace(/[^A-Z]+/g, "_").replace(/^_|_$/g, "");
+  if (TIKTOK_CTA_CODES.has(code)) return code;
+  const labels: Record<string, string> = {
+    GET_TICKET_NOW: "GET_TICKETS_NOW",
+    GET_TICKETS: "GET_TICKETS_NOW",
+    BUY_TICKETS: "GET_TICKETS_NOW",
+  };
+  return labels[code] ?? null;
+}
 
 export const SNAPCHAT_CTA_MAP: Record<MinglaOffering, string> = {
   ticketed_event: "BUY_TICKETS",

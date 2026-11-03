@@ -63,6 +63,7 @@ import {
 import {
   type HostAdBudgetMode,
   hostAdAllocations,
+  hostAdBudgetShortMessage,
   hostAdDaysInRun,
 } from "../../components/marketing/ads/hostAdBudget";
 import {
@@ -90,6 +91,8 @@ import {
   hostAdPlaceAppStatus,
   hostAdPlaceFromSaved,
   hostAdPlaceKey,
+  hostAdPendingLookups,
+  hostAdPendingLookupSignature,
   hostAdPlaceNeedsLookup,
   type HostAdPlace,
   type HostAdPlaceKind,
@@ -1119,7 +1122,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       : capCents < dailyBudgetCents
         ? "Your total budget must be at least one day of spend."
         : !allocation.split.ok && allocation.split.short
-          ? `${PLATFORM_LABELS[allocation.split.short.platform] ?? allocation.split.short.platform} needs about ${formatMoney(setup?.currency ?? "", allocation.split.short.minimumCents)} a day. Raise the budget, or turn it off.`
+          ? hostAdBudgetShortMessage(allocation.split, (cents) => formatMoney(setup?.currency ?? "", cents))
         : startDate !== "" && startDate < today
           ? "The start date cannot be in the past."
           : endDate !== "" && endDate < (startDate || today)
@@ -1398,7 +1401,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   // Look up every place and interest an app has no answer for yet: new
   // places, and every place again when the Host turns an app on.
-  const unresolvedSignature = [
+  const unresolvedSignature = hostAdPendingLookupSignature([
     ...cities.flatMap((place) =>
       activeApps
         .filter(
@@ -1409,7 +1412,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             !place.errors?.[app] &&
             !place.missing?.[app],
         )
-        .map((app) => `include|${hostAdPlaceKey(place)}|${app}`),
+        .map((app) => ({ list: "include" as const, key: hostAdPlaceKey(place), app })),
     ),
     ...excludedPlaces.flatMap((place) =>
       activeApps
@@ -1420,7 +1423,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             !place.errors?.[app] &&
             !place.missing?.[app],
         )
-        .map((app) => `exclude|${hostAdPlaceKey(place)}|${app}`),
+        .map((app) => ({ list: "exclude" as const, key: hostAdPlaceKey(place), app })),
     ),
     ...interests.flatMap((interest) =>
       activeApps
@@ -1431,9 +1434,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
             !interest.errors?.[app] &&
             !interest.missing?.[app],
         )
-        .map((app) => `interest|${hostAdInterestKey(interest.name)}|${app}`),
+        .map((app) => ({
+          list: "interest" as const,
+          key: hostAdInterestKey(interest.name),
+          app,
+        })),
     ),
-  ].join(",");
+  ]);
   const citiesRef = useRef(cities);
   citiesRef.current = cities;
   const excludedRef = useRef(excludedPlaces);
@@ -1442,8 +1449,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   interestsRef.current = interests;
   useEffect(() => {
     if (!brandId || unresolvedSignature === "") return;
-    for (const item of unresolvedSignature.split(",")) {
-      const [list, key, app] = item.split("|") as [string, string, HostAdApp];
+    for (const { list, key, app } of hostAdPendingLookups(unresolvedSignature)) {
       if (list === "interest") {
         const interest = interestsRef.current.find(
           (row) => hostAdInterestKey(row.name) === key,
@@ -1454,7 +1460,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       const source = list === "include" ? citiesRef.current : excludedRef.current;
       const place = source.find((row) => hostAdPlaceKey(row) === key);
       if (place) {
-        void lookupPlaceOnApp(list as "include" | "exclude", place, app);
+        void lookupPlaceOnApp(list, place, app);
       }
     }
   }, [brandId, lookupInterestOnApp, lookupPlaceOnApp, unresolvedSignature]);
@@ -2782,6 +2788,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       verdict: row.verdict,
                       places: cities,
                       interests,
+                      checks: row.checks_required ?? [],
                     })}
                   </Text>
                   {[

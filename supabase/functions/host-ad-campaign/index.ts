@@ -40,13 +40,18 @@ import {
   isSyntheticHostExternalId,
   setCampaignTreeStatus,
 } from "../_shared/adCampaignProviderSync.ts";
-import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
+import {
+  notifyAdLaunchAttempt,
+  notifyHostLiveEditProblem,
+} from "../_shared/adLaunchAttemptOpsAlert.ts";
 import type { Platform } from "../_shared/adChannelCore.ts";
 import {
   type HostLiveCampaign,
+  type HostLiveEditProblem,
   planHostLiveEdit,
   runHostLiveEdit,
 } from "../_shared/adHostLiveEdit.ts";
+import { providerDailyMinimumCents } from "../_shared/adHostPlanRules.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -1496,10 +1501,69 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
   if (!plan || plan.owner_kind !== "host" || plan.brand_id !== brandId || !plan.current_version_id) {
     return json({ error: "forbidden", detail: "plan_not_found" }, 403);
   }
+  // #4238 r8 P1-2: claim the edit under the plan lock BEFORE any app is
+  // touched. A same-key retry gets the saved edit; a second tap or device
+  // gets "in progress" / "once a day" and never pushes.
+  const editKey = `host_live_${planId}_${key}`.slice(0, 200);
+  const { data: claim, error: claimError } = await db.rpc("host_ad_live_edit_claim", {
+    p_plan_id: planId,
+    p_actor_id: actorId,
+    p_idempotency_key: editKey,
+  });
+  if (claimError) {
+    const message = String(claimError.message ?? "");
+    const code = [
+      "host_ad_live_edit_once_a_day",
+      "host_ad_live_edit_in_progress",
+      "host_ad_live_edit_state_invalid",
+    ].find((item) => message.includes(item));
+    if (!code) {
+      console.error("[host-ad-campaign] live edit claim failed:", message.slice(0, 300));
+    }
+    return json({ error: code ?? "host_ad_live_edit_not_recorded" }, code ? 409 : 503);
+  }
+  if (claim?.replay === true) {
+    return json({
+      ok: true,
+      replayed: true,
+      edit: claim.edit ?? null,
+      daily_not_pushed: [],
+      end_not_pushed: [],
+    }, 200);
+  }
+  let recorded = false;
+  try {
+    const result = await planAndRunLiveEdit(db, actorId, brandId, plan, editKey, body);
+    recorded = result.status === 200;
+    return json(result.body, result.status);
+  } finally {
+    if (!recorded) {
+      const { error: releaseError } = await db.rpc("host_ad_live_edit_release", {
+        p_plan_id: planId,
+        p_idempotency_key: editKey,
+      });
+      // The claim lapses on its own after 10 minutes if this fails.
+      if (releaseError) {
+        console.error("[host-ad-campaign] live edit release failed:", String(releaseError.message ?? "").slice(0, 300));
+      }
+    }
+  }
+}
+
+async function planAndRunLiveEdit(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  actorId: string,
+  brandId: string,
+  plan: Record<string, unknown>,
+  editKey: string,
+  body: Record<string, unknown>,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const planId = String(plan.id);
   const versionId = String(plan.current_version_id);
   const [{ data: version }, { data: campaigns }, { data: allocations }, { data: hold }, { data: lastEdit }] =
     await Promise.all([
-      db.from("ad_plan_versions").select("id,plan_hash").eq("id", versionId).maybeSingle(),
+      db.from("ad_plan_versions").select("id,plan_hash,canonical_plan").eq("id", versionId).maybeSingle(),
       db.from("ad_campaigns").select("*").eq("plan_version_id", versionId).order("id"),
       db.from("ad_plan_provider_allocations").select("*").eq("plan_version_id", versionId),
       db.from("ad_plan_funding_holds").select("amount_cents,currency,state").eq("plan_version_id", versionId).maybeSingle(),
@@ -1508,13 +1572,23 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
     ]);
   const rows = (campaigns ?? []) as Record<string, unknown>[];
   if (!version || rows.length === 0 || !hold || hold.state !== "held") {
-    return json({ error: "plan_conflict", detail: "plan_not_live" }, 409);
+    return { status: 409, body: { error: "plan_conflict", detail: "plan_not_live" } };
   }
   const { data: destination } = await db.rpc("ad_plan_destination_resolve", {
     p_destination_family: plan.destination_family,
     p_destination_key: plan.destination_key,
     p_platforms: rows.map((row) => row.platform),
   });
+  // #4238 r8 P2-2: each app's daily minimum, the same rule create_version uses.
+  const { data: connectionRows, error: connectionError } = await db.from("ad_connections")
+    .select("id,platform,currency,extra")
+    .in("id", rows.map((row) => String(row.connection_id)));
+  if (connectionError) {
+    return { status: 503, body: { error: "plan_lookup_failed" } };
+  }
+  const optimizationByPlatform = (
+    (version.canonical_plan as Record<string, unknown> | null)?.optimization_by_platform ?? {}
+  ) as Record<string, unknown>;
   let hostSpend = 0;
   const lines: HostLiveCampaign[] = [];
   for (const row of rows) {
@@ -1533,11 +1607,13 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
         p_snapshot: row.fx_snapshot_id,
       });
       if (error || !Number.isSafeInteger(converted)) {
-        return json({ error: "plan_conflict", detail: "spend_unknown" }, 409);
+        return { status: 409, body: { error: "plan_conflict", detail: "spend_unknown" } };
       }
       spendInHost = Number(converted);
     }
     hostSpend += spendInHost;
+    const connection = ((connectionRows ?? []) as Record<string, unknown>[])
+      .find((item) => item.id === row.connection_id) ?? {};
     lines.push({
       id: String(row.id),
       platform: row.platform as Platform,
@@ -1548,6 +1624,11 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
       current_cap_cents: Number(row.amended_provider_budget_cents ?? row.provider_budget_cents),
       current_daily_cents: Number(row.amended_provider_delivery_budget_cents ?? row.provider_delivery_budget_cents),
       provider_spend_cents: providerSpend,
+      provider_daily_minimum_cents: providerDailyMinimumCents(
+        String(row.platform),
+        connection,
+        optimizationByPlatform[String(row.platform)] === "sales" ? "sales" : "visits",
+      ),
     });
   }
   const currentEnds = rows.map((row) => row.ends_at).filter((v): v is string => typeof v === "string").sort().pop() ?? null;
@@ -1564,16 +1645,51 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
     campaigns: lines,
   });
   if (!planned.ok) {
-    return json({ error: planned.error }, planned.error === "host_ad_live_edit_once_a_day" ? 409 : 422);
+    return {
+      status: planned.error === "host_ad_live_edit_once_a_day" ? 409 : 422,
+      body: planned.detail ? { error: planned.error, detail: planned.detail } : { error: planned.error },
+    };
   }
-  const result = await runHostLiveEdit({ db, getAdapter }, {
+  const onProblem = async (problem: HostLiveEditProblem): Promise<void> => {
+    // Recorded on each affected campaign's status trail, then staff alerted.
+    const affected = rows.filter((row) => problem.platforms.includes(row.platform as Platform));
+    if (affected.length > 0) {
+      const { error } = await db.from("ad_status_events").insert(affected.map((row) => ({
+        campaign_id: row.id,
+        platform: row.platform,
+        entity: "campaign",
+        action: "budget_change",
+        actor: actorId,
+        from_status: row.status ?? null,
+        to_status: row.status ?? null,
+        external_ids: { plan_id: planId, plan_version_id: versionId },
+        provider_response: {
+          host_live_edit_problem: problem.kind,
+          detail: problem.detail.slice(0, 500),
+          idempotency_key: editKey,
+        },
+      })));
+      if (error) {
+        console.error("[host-ad-campaign] live edit problem not recorded:", String(error.message ?? "").slice(0, 300));
+      }
+    }
+    await notifyHostLiveEditProblem({
+      planId,
+      brandId,
+      actorId,
+      kind: problem.kind,
+      platforms: problem.platforms,
+      detail: problem.detail,
+      idempotencyKey: editKey,
+    });
+  };
+  return await runHostLiveEdit({ db, getAdapter, onProblem }, {
     plan: planned,
     versionId,
     planHash: String(version.plan_hash),
     campaigns: rows,
     actorId,
-    idempotencyKey: `host_live_${planId}_${key}`.slice(0, 200),
+    idempotencyKey: editKey,
     previousEndsAt: currentEnds,
   });
-  return json(result.body, result.status);
 }

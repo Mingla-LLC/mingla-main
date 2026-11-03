@@ -30,11 +30,13 @@ export const HOST_AD_CTA_BY_PLATFORM: Record<
     signup: "SIGN_UP",
     learn: "LEARN_MORE",
   },
+  // TikTok's CallToAction enum codes (see TIKTOK_CTA_MAP in adChannelCore.ts
+  // for the cited source).
   tiktok: {
-    tickets: "Get ticket now",
-    book: "Book now",
-    signup: "Sign up",
-    learn: "Learn more",
+    tickets: "GET_TICKETS_NOW",
+    book: "BOOK_NOW",
+    signup: "SIGN_UP",
+    learn: "LEARN_MORE",
   },
   snapchat: {
     tickets: "BUY_TICKETS",

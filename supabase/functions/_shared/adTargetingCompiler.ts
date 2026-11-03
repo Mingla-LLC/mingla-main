@@ -96,6 +96,11 @@ export type ProviderTargetingRefs = {
     string,
     { latitude: number; longitude: number } | null
   >;
+  /**
+   * #4238 r8 P2-4: keys whose server lookup FAILED (an error, not "no such
+   * place"). Set by the server only; the Host reads "Couldn't check".
+   */
+  locationCoordinateFailures?: string[];
   /** normalized interest name -> provider-native id/category. */
   interestIds?: Record<string, string>;
   /** #4238: ISO language code -> provider-native language/locale id. */
@@ -408,6 +413,23 @@ function coordinatesForCity(
   return null;
 }
 
+function coordinateLookupFailed(
+  city: AudienceCity,
+  refs: ProviderTargetingRefs,
+): boolean {
+  return Array.isArray(refs.locationCoordinateFailures) &&
+    refs.locationCoordinateFailures.includes(cityKey(city));
+}
+
+/** "Couldn't check Lagos and Ikeja on Snapchat. Try again." */
+function couldNotCheck(places: AudienceCity[], app: string): string {
+  const names = places.map((city) => String(city.name).trim());
+  const list = names.length <= 1
+    ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Couldn't check ${list} on ${app}. Try again.`;
+}
+
 export function compileProviderTargeting(
   platform: Platform,
   rawIntent: AdAudienceIntent,
@@ -464,7 +486,12 @@ export function compileProviderTargeting(
     }
     if (metaPins.length) {
       const points = metaPins.map((city) => coordinatesForCity(city, refs));
-      if (points.some((point) => point === null)) {
+      const failed = metaPins.filter((city, index) =>
+        points[index] === null && coordinateLookupFailed(city, refs)
+      );
+      if (failed.length) {
+        checksRequired.push(couldNotCheck(failed, "Facebook & Instagram"));
+      } else if (points.some((point) => point === null)) {
         checksRequired.push("We couldn't find the address for your pin.");
       } else {
         (compiled.geo_locations as Record<string, unknown>).custom_locations =
@@ -626,7 +653,10 @@ export function compileProviderTargeting(
     if (cities.length) {
       const coordinates = cities.map((city) => coordinatesForCity(city, refs));
       const invalid = cities.filter((_, index) => coordinates[index] === null);
-      if (invalid.length) {
+      const failed = invalid.filter((city) => coordinateLookupFailed(city, refs));
+      if (failed.length) {
+        checksRequired.push(couldNotCheck(failed, "Snapchat"));
+      } else if (invalid.length) {
         checksRequired.push(
           `Resolve Snapchat coordinates for: ${
             invalid.map(cityKey).join(", ")
@@ -655,7 +685,12 @@ export function compileProviderTargeting(
     }
     if (excludedPlaces.length) {
       const points = excludedPlaces.map((city) => coordinatesForCity(city, refs));
-      if (points.some((point) => point === null)) {
+      const failed = excludedPlaces.filter((city, index) =>
+        points[index] === null && coordinateLookupFailed(city, refs)
+      );
+      if (failed.length) {
+        checksRequired.push(couldNotCheck(failed, "Snapchat"));
+      } else if (points.some((point) => point === null)) {
         checksRequired.push(
           `Resolve Snapchat coordinates for left-out places: ${
             excludedPlaces.map(cityKey).join(", ")

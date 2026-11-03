@@ -35,7 +35,8 @@ import {
   fetchProviderAudienceEstimate,
 } from "../_shared/adProviderEstimate.ts";
 import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
-import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
+import { forwardGeocodeLookup } from "../_shared/mapboxGeocode.ts";
+import { checkHostEstimateRate } from "../_shared/adHostEstimateRate.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
@@ -166,8 +167,7 @@ type HostAdAction =
   | "end"
   | "review";
 
-/** #4238: best-effort per-instance guard and cache for Host reach reads. */
-const HOST_ESTIMATE_LAST_CALL = new Map<string, number>();
+/** #4238: best-effort per-instance cache for Host reach reads (the limit is in the database). */
 const HOST_ESTIMATE_CACHE = new Map<
   string,
   { at: number; rows: Record<string, unknown>[] }
@@ -369,6 +369,8 @@ async function withServerTargetingCoordinates(
     string,
     { latitude: number; longitude: number } | null
   > = {};
+  // #4238 r8 P2-4: a failed lookup is "couldn't check", never "not found".
+  const failures: string[] = [];
   await Promise.all(places.map(async (rawCity) => {
     const city = asRecord(rawCity);
     if (!city) return;
@@ -376,21 +378,23 @@ async function withServerTargetingCoordinates(
     if (!platforms.includes("snapchat") && city.kind !== "pin") return;
     const key = targetingCityKey(city);
     if (!key) return;
-    const resolved = await forwardGeocodeText(
+    const resolved = await forwardGeocodeLookup(
       `${String(city.name).trim()}, ${String(city.countryCode).trim()}`,
     );
-    coordinates[key] = resolved
+    coordinates[key] = resolved.status === "found"
       ? {
         latitude: resolved.lat,
         longitude: resolved.lng,
       }
       : null;
+    if (resolved.status === "failed") failures.push(key);
   }));
   const out = { ...refs };
   for (const platform of pinPlatforms) {
     out[platform] = {
       ...(refs[platform] ?? {}),
       locationCoordinates: coordinates,
+      locationCoordinateFailures: failures,
     };
   }
   return out;
@@ -1309,10 +1313,12 @@ export async function handleAdPlan(
     });
     if (allowed !== true) return json({ error: "forbidden" }, 403);
     const now = Date.now();
-    if (now - (HOST_ESTIMATE_LAST_CALL.get(brandId) ?? 0) < 3_000) {
-      return json({ error: "rate_limited", detail: "estimate_too_soon" }, 429);
+    // #4238 r8 P2-3: per brand and per user, in the database (never only in
+    // this isolate's memory). Fails closed.
+    const rate = await checkHostEstimateRate(db, brandId, actor.id);
+    if (!rate.allowed) {
+      return json({ error: rate.error, detail: rate.detail }, rate.status);
     }
-    HOST_ESTIMATE_LAST_CALL.set(brandId, now);
     const refs = stripClientAudienceRefs(
       (asRecord(body.refs_by_platform) ?? {}) as Partial<
         Record<Platform, ProviderTargetingRefs>

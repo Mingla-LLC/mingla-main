@@ -119,8 +119,14 @@ export function matchPlace(
   if (atLevel.length > 0) {
     return { state: "match", best: rankByName(query, atLevel)[0] };
   }
+  // #4238 r8 P3: only a LARGER area is "wider". A city an app returns for a
+  // region the Host asked for is narrower, never offered as wider.
   const wider = [
-    ...candidates.filter((row) => !candidateAtKind(row, kind)),
+    ...candidates.filter((row) =>
+      !candidateAtKind(row, kind) &&
+      !(kind === "region" && candidateLevel(row) !== "" &&
+        CITY_LEVELS.has(candidateLevel(row)))
+    ),
     ...widerCandidates,
   ];
   if (wider.length > 0) {

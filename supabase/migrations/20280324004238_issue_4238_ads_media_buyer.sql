@@ -12,7 +12,12 @@
 --      flag adProviderEstimate.ts reads), audited. Ships OFF.
 --   3. host_ad_live_edits + host_ad_amend_live — a Host changes a live ad's
 --      budget and end date once a day; Ads credit is set aside or given back
---      in the same transaction.
+--      in the same transaction. host_ad_live_edit_claims +
+--      host_ad_live_edit_claim/_release claim the edit under the plan lock
+--      before any app is touched; the caps may never add up to more than the
+--      new total.
+--   3b. ad_host_estimate_rate + ad_host_estimate_rate_hit — a durable limit
+--      on Host reach estimates, per brand and per user.
 --   4. ad_finalize_campaign_settlement — the overspend check reads the amended
 --      provider cap (a raised cap must not flag "attention required").
 --
@@ -42,8 +47,8 @@ DROP POLICY IF EXISTS ad_platform_country_availability_admin_read
 CREATE POLICY ad_platform_country_availability_admin_read
   ON public.ad_platform_country_availability
   FOR SELECT TO authenticated USING (public.is_admin_user());
-REVOKE ALL ON public.ad_platform_country_availability FROM anon, PUBLIC;
-REVOKE INSERT, UPDATE, DELETE ON public.ad_platform_country_availability FROM authenticated;
+-- #1856: nothing for anon/PUBLIC and only SELECT (RLS: admins) for authenticated.
+REVOKE ALL ON public.ad_platform_country_availability FROM anon, authenticated, PUBLIC;
 GRANT SELECT ON public.ad_platform_country_availability TO authenticated;
 GRANT ALL ON public.ad_platform_country_availability TO service_role;
 
@@ -138,8 +143,8 @@ ALTER TABLE public.ad_ops_switch_events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ad_ops_switch_events_admin_read ON public.ad_ops_switch_events;
 CREATE POLICY ad_ops_switch_events_admin_read ON public.ad_ops_switch_events
   FOR SELECT TO authenticated USING (public.is_admin_user());
-REVOKE ALL ON public.ad_ops_switch_events FROM anon, PUBLIC;
-REVOKE INSERT, UPDATE, DELETE ON public.ad_ops_switch_events FROM authenticated;
+-- #1856: nothing for anon/PUBLIC and only SELECT (RLS: admins) for authenticated.
+REVOKE ALL ON public.ad_ops_switch_events FROM anon, authenticated, PUBLIC;
 GRANT SELECT ON public.ad_ops_switch_events TO authenticated;
 GRANT ALL ON public.ad_ops_switch_events TO service_role;
 
@@ -221,10 +226,130 @@ ALTER TABLE public.host_ad_live_edits ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS host_ad_live_edits_admin_read ON public.host_ad_live_edits;
 CREATE POLICY host_ad_live_edits_admin_read ON public.host_ad_live_edits
   FOR SELECT TO authenticated USING (public.is_admin_user());
-REVOKE ALL ON public.host_ad_live_edits FROM anon, PUBLIC;
-REVOKE INSERT, UPDATE, DELETE ON public.host_ad_live_edits FROM authenticated;
+-- #1856: nothing for anon/PUBLIC and only SELECT (RLS: admins) for authenticated.
+REVOKE ALL ON public.host_ad_live_edits FROM anon, authenticated, PUBLIC;
 GRANT SELECT ON public.host_ad_live_edits TO authenticated;
 GRANT ALL ON public.host_ad_live_edits TO service_role;
+
+-- A live edit is claimed under the plan lock BEFORE any app is touched, so
+-- two taps or two devices never both push (#4238 r8 P1-2). One claim per
+-- plan; it ends when host_ad_amend_live records the edit or the edge
+-- function releases it after a failed push. A claim left by a crashed
+-- request lapses after 10 minutes.
+CREATE TABLE IF NOT EXISTS public.host_ad_live_edit_claims (
+  plan_id uuid PRIMARY KEY REFERENCES public.ad_plans(id) ON DELETE CASCADE,
+  idempotency_key text NOT NULL
+    CHECK (char_length(btrim(idempotency_key)) BETWEEN 8 AND 200),
+  actor_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  claimed_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  CONSTRAINT host_ad_live_edit_claims_window CHECK (expires_at > claimed_at)
+);
+
+COMMENT ON TABLE public.host_ad_live_edit_claims IS
+  'Issue #4238: the one in-flight Host live edit per plan, taken under the plan lock before any provider push (host_ad_live_edit_claim) and cleared when the edit is recorded (host_ad_amend_live) or released after a failed push.';
+
+ALTER TABLE public.host_ad_live_edit_claims ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS host_ad_live_edit_claims_admin_read ON public.host_ad_live_edit_claims;
+CREATE POLICY host_ad_live_edit_claims_admin_read ON public.host_ad_live_edit_claims
+  FOR SELECT TO authenticated USING (public.is_admin_user());
+REVOKE ALL ON public.host_ad_live_edit_claims FROM anon, authenticated, PUBLIC;
+GRANT SELECT ON public.host_ad_live_edit_claims TO authenticated;
+GRANT ALL ON public.host_ad_live_edit_claims TO service_role;
+
+-- Returns {replay: true, edit} when this key was already recorded (the
+-- saved edit), else {replay: false, claimed: true}. PT409 when another edit
+-- is in flight or one was recorded in the last 24 hours.
+CREATE OR REPLACE FUNCTION public.host_ad_live_edit_claim(
+  p_plan_id uuid,
+  p_actor_id uuid,
+  p_idempotency_key text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_key text := btrim(coalesce(p_idempotency_key, ''));
+  v_plan public.ad_plans%ROWTYPE;
+  v_existing public.host_ad_live_edits%ROWTYPE;
+  v_claim public.host_ad_live_edit_claims%ROWTYPE;
+BEGIN
+  IF char_length(v_key) < 8 OR char_length(v_key) > 200 THEN
+    RAISE EXCEPTION 'host_ad_live_edit_key_invalid' USING ERRCODE = '22023';
+  END IF;
+  SELECT * INTO v_plan FROM public.ad_plans WHERE id = p_plan_id FOR UPDATE;
+  IF NOT FOUND OR v_plan.owner_kind <> 'host' THEN
+    RAISE EXCEPTION 'host_ad_live_edit_state_invalid' USING ERRCODE = '55000';
+  END IF;
+  -- Same key, already recorded: the saved edit (checked under the lock).
+  SELECT * INTO v_existing FROM public.host_ad_live_edits
+  WHERE idempotency_key = v_key;
+  IF FOUND THEN
+    IF v_existing.plan_id <> v_plan.id THEN
+      RAISE EXCEPTION 'host_ad_live_edit_key_invalid' USING ERRCODE = '22023';
+    END IF;
+    RETURN jsonb_build_object('replay', true, 'edit', to_jsonb(v_existing));
+  END IF;
+  SELECT * INTO v_claim FROM public.host_ad_live_edit_claims
+  WHERE plan_id = v_plan.id;
+  IF FOUND AND v_claim.expires_at > now() THEN
+    RAISE EXCEPTION 'host_ad_live_edit_in_progress' USING ERRCODE = 'PT409';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.host_ad_live_edits e
+    WHERE e.plan_id = v_plan.id AND e.created_at > now() - interval '24 hours'
+  ) THEN
+    RAISE EXCEPTION 'host_ad_live_edit_once_a_day' USING ERRCODE = 'PT409';
+  END IF;
+  INSERT INTO public.host_ad_live_edit_claims (
+    plan_id, idempotency_key, actor_id, claimed_at, expires_at
+  ) VALUES (v_plan.id, v_key, p_actor_id, now(), now() + interval '10 minutes')
+  ON CONFLICT (plan_id) DO UPDATE
+  SET idempotency_key = EXCLUDED.idempotency_key,
+      actor_id = EXCLUDED.actor_id,
+      claimed_at = EXCLUDED.claimed_at,
+      expires_at = EXCLUDED.expires_at;
+  RETURN jsonb_build_object('replay', false, 'claimed', true);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.host_ad_live_edit_claim(uuid, uuid, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.host_ad_live_edit_claim(uuid, uuid, text)
+  TO service_role;
+
+COMMENT ON FUNCTION public.host_ad_live_edit_claim(uuid, uuid, text) IS
+  'Issue #4238: claims the one in-flight Host live edit for a plan under the plan lock, before any provider push. Same key already recorded = the saved edit (replay). PT409 host_ad_live_edit_in_progress / host_ad_live_edit_once_a_day otherwise.';
+
+CREATE OR REPLACE FUNCTION public.host_ad_live_edit_release(
+  p_plan_id uuid,
+  p_idempotency_key text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_count integer;
+BEGIN
+  DELETE FROM public.host_ad_live_edit_claims
+  WHERE plan_id = p_plan_id
+    AND idempotency_key = btrim(coalesce(p_idempotency_key, ''));
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count > 0;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.host_ad_live_edit_release(uuid, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.host_ad_live_edit_release(uuid, text)
+  TO service_role;
+
+COMMENT ON FUNCTION public.host_ad_live_edit_release(uuid, text) IS
+  'Issue #4238: releases this key''s live-edit claim after a push failed and nothing was recorded, so the Host can try again.';
 
 -- p_changes: [{campaign_id, new_provider_budget_cents,
 --              new_provider_delivery_budget_cents}] covering every campaign
@@ -278,13 +403,12 @@ DECLARE
   v_prev_cap bigint;
   v_prev_daily bigint;
   v_count integer;
+  v_caps_host bigint := 0;
   v_key text := btrim(coalesce(p_idempotency_key, ''));
 BEGIN
   IF char_length(v_key) < 8 OR char_length(v_key) > 200 THEN
     RAISE EXCEPTION 'host_ad_live_edit_key_invalid' USING ERRCODE = '22023';
   END IF;
-  SELECT * INTO v_existing FROM public.host_ad_live_edits WHERE idempotency_key = v_key;
-  IF FOUND THEN RETURN v_existing; END IF;
   IF p_changes IS NULL OR jsonb_typeof(p_changes) <> 'array' THEN
     RAISE EXCEPTION 'host_ad_live_edit_changes_invalid' USING ERRCODE = '22023';
   END IF;
@@ -300,6 +424,23 @@ BEGIN
     RAISE EXCEPTION 'ad_plan_version_hash_mismatch' USING ERRCODE = '22023';
   END IF;
   SELECT * INTO v_plan FROM public.ad_plans WHERE id = v_version.plan_id FOR UPDATE;
+  -- #4238 r8 P1-2: the same-key replay runs AFTER the plan lock, so a
+  -- concurrent retry with the same key waits and gets the saved edit.
+  SELECT * INTO v_existing FROM public.host_ad_live_edits WHERE idempotency_key = v_key;
+  IF FOUND THEN
+    IF v_existing.plan_id <> v_plan.id THEN
+      RAISE EXCEPTION 'host_ad_live_edit_key_invalid' USING ERRCODE = '22023';
+    END IF;
+    RETURN v_existing;
+  END IF;
+  -- Another request holds this plan's live-edit claim: it is pushing now.
+  IF EXISTS (
+    SELECT 1 FROM public.host_ad_live_edit_claims k
+    WHERE k.plan_id = v_plan.id AND k.idempotency_key <> v_key
+      AND k.expires_at > now()
+  ) THEN
+    RAISE EXCEPTION 'host_ad_live_edit_in_progress' USING ERRCODE = 'PT409';
+  END IF;
   IF v_plan.owner_kind <> 'host'
      OR v_plan.current_version_id IS DISTINCT FROM v_version.id
      OR v_plan.state NOT IN (
@@ -526,6 +667,14 @@ BEGIN
         RAISE EXCEPTION 'ad_budget_cap_below_spend:%:%', v_new_cap, v_spend_provider
           USING ERRCODE = '22023';
       END IF;
+      -- #4238 r8 P1-1: the caps, in the brand's money at each campaign's
+      -- frozen rate, may never add up to more than the new total.
+      v_caps_host := v_caps_host + CASE
+        WHEN v_campaign.provider_currency = v_hold.currency::text THEN v_new_cap
+        ELSE public.ad_fx_convert_frozen_minor(
+          v_new_cap, v_campaign.provider_currency::char(3),
+          v_hold.currency, v_campaign.fx_snapshot_id)
+      END;
       v_prev_cap := coalesce(v_campaign.amended_provider_budget_cents, v_campaign.provider_budget_cents);
       v_prev_daily := coalesce(
         v_campaign.amended_provider_delivery_budget_cents,
@@ -568,6 +717,10 @@ BEGIN
           'new_daily', v_new_daily, 'new_host_budget_cents', v_new_budget)
       );
     END LOOP;
+    IF v_caps_host > v_new_budget THEN
+      RAISE EXCEPTION 'host_ad_live_edit_caps_exceed_budget:%:%', v_caps_host, v_new_budget
+        USING ERRCODE = 'PT409';
+    END IF;
   END IF;
 
   -- Mingla's spend sync stops every app at this end (and pushes where it can).
@@ -586,6 +739,9 @@ BEGIN
     coalesce(p_new_ends_at, v_previous_ends), v_delta, v_spend_host,
     v_ledger.id, p_actor_id
   ) RETURNING * INTO v_edit;
+  -- The edit is recorded: this key's claim is done.
+  DELETE FROM public.host_ad_live_edit_claims
+  WHERE plan_id = v_plan.id AND idempotency_key = v_key;
   RETURN v_edit;
 END;
 $function$;
@@ -597,6 +753,66 @@ GRANT EXECUTE ON FUNCTION public.host_ad_amend_live(uuid, text, bigint, timestam
 
 COMMENT ON FUNCTION public.host_ad_amend_live(uuid, text, bigint, timestamptz, jsonb, uuid, text, jsonb) IS
   'Issue #4238: a Host changes a live ad''s total budget and/or end date, once a day (PT409 otherwise). The end is capped at the last bookable moment (PT409). A raise takes the extra from Ads credit now; a lower gives it back; both with ledger rows, in one transaction. Idempotent on the key.';
+
+-- ── 3b. Host reach estimates: a durable limit, per brand and per user ──────
+-- #4238 r8 P2-3. Same pattern as biz_web_follow_rate_hit (#3682): one row
+-- per bucket, one atomic upsert, on the database clock. Server-only.
+CREATE TABLE IF NOT EXISTS public.ad_host_estimate_rate (
+  bucket_key text PRIMARY KEY CHECK (char_length(bucket_key) BETWEEN 1 AND 200),
+  window_started_at timestamptz NOT NULL,
+  hit_count integer NOT NULL DEFAULT 0 CHECK (hit_count >= 0)
+);
+
+COMMENT ON TABLE public.ad_host_estimate_rate IS
+  'Issue #4238: rate buckets for Host reach estimates (ad-plan host_estimate), per brand and per user. Written only by ad_host_estimate_rate_hit.';
+
+ALTER TABLE public.ad_host_estimate_rate ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.ad_host_estimate_rate FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ad_host_estimate_rate TO service_role;
+
+-- True = over the limit (refuse). An empty key is treated as limited.
+CREATE OR REPLACE FUNCTION public.ad_host_estimate_rate_hit(
+  p_bucket_key text,
+  p_window_seconds integer DEFAULT 60,
+  p_max_hits integer DEFAULT 20
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_now timestamptz := now();
+  v_window interval := make_interval(secs => GREATEST(coalesce(p_window_seconds, 60), 1));
+  v_hit integer;
+BEGIN
+  IF p_bucket_key IS NULL OR btrim(p_bucket_key) = '' THEN
+    RETURN true;
+  END IF;
+  INSERT INTO public.ad_host_estimate_rate AS r (
+    bucket_key, window_started_at, hit_count
+  ) VALUES (left(btrim(p_bucket_key), 200), v_now, 1)
+  ON CONFLICT (bucket_key) DO UPDATE
+  SET window_started_at = CASE
+        WHEN r.window_started_at + v_window <= v_now THEN v_now
+        ELSE r.window_started_at
+      END,
+      hit_count = CASE
+        WHEN r.window_started_at + v_window <= v_now THEN 1
+        ELSE r.hit_count + 1
+      END
+  RETURNING r.hit_count INTO v_hit;
+  RETURN v_hit > GREATEST(coalesce(p_max_hits, 20), 1);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.ad_host_estimate_rate_hit(text, integer, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ad_host_estimate_rate_hit(text, integer, integer)
+  TO service_role;
+
+COMMENT ON FUNCTION public.ad_host_estimate_rate_hit(text, integer, integer) IS
+  'Issue #4238: counts one Host reach estimate in a bucket (host_estimate:brand:<id> / host_estimate:user:<id>); true = over the limit for the window. Server-only.';
 
 -- ── 4. Settlement reads the amended cap ──────────────────────────────────────
 -- Body copied verbatim from 20271101003697 (its latest definition) with one

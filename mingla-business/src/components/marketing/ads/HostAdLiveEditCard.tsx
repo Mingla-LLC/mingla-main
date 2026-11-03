@@ -9,7 +9,7 @@ import { Pressable, Text, View } from "react-native";
 import { Button } from "../../ui/Button";
 import { DateField } from "../../ui/DateField";
 import { Input } from "../../ui/Input";
-import { platformNames } from "./hostAdCopy";
+import { platformName, platformNames } from "./hostAdCopy";
 import { formatHostAdMoneyCents } from "./hostAdMoney";
 import { hostAdStyles as s } from "./hostAdBuilderStyles";
 import { hostAdDayBoundaryIso, hostAdDayOf } from "./hostAdBuilderRules";
@@ -23,18 +23,45 @@ export type HostAdLiveEditResult = {
 const ERRORS: Record<string, string> = {
   host_ad_live_edit_once_a_day:
     "You can change this ad once a day. Try again tomorrow.",
+  host_ad_live_edit_in_progress:
+    "This ad is already being changed. Wait a moment, then check the ad again.",
   host_ad_live_edit_end_after_last_bookable:
     "That's after the last day people can book. Pick an earlier end date.",
   host_ad_live_edit_below_spend:
-    "That's less than this ad has already spent. Pick a higher total.",
+    "That's no more than this ad has already spent. Pick a higher total, or end the ad.",
+  host_ad_live_edit_caps_exceed_budget:
+    "We couldn't split that total across the apps. Nothing was changed; try a slightly higher total.",
   host_ad_live_edit_end_in_past: "Pick an end date in the future.",
   ad_credit_insufficient:
     "There isn't enough Ads credit for that. Add credit, or pick a lower total.",
+  // #4238 r8 P2-2: TikTok's own minimum is checked before Mingla asks, so a
+  // refusal here is TikTok's limit on how much or how often a budget moves.
   tiktok_budget_update_failed:
-    "TikTok didn't take that change. TikTok only lets a daily budget move by about a third at a time; try a smaller change.",
+    "TikTok didn't take that change, so nothing was changed. TikTok limits how much and how often a daily budget can change; try a smaller change, or try again tomorrow.",
 };
 
-export function hostAdLiveEditError(code: string | null | undefined): string {
+/**
+ * The plain message for a refused change. `detail` carries the app for an
+ * app minimum ("tiktok:790500") or a failed undo ("meta,tiktok").
+ */
+export function hostAdLiveEditError(
+  code: string | null | undefined,
+  detail?: string | null,
+  currency?: string | null,
+): string {
+  if (code === "host_ad_live_edit_below_app_minimum" && detail) {
+    const [platform, cents] = detail.split(":");
+    const amount = formatHostAdMoneyCents(Number(cents), currency ?? "");
+    return amount
+      ? `${platformName(platform)} needs about ${amount} a day. Pick a higher total or a sooner end date.`
+      : `That's under ${platformName(platform)}'s daily minimum. Pick a higher total or a sooner end date.`;
+  }
+  // #4238 r8 P2-1: an undo failed. Never "Nothing was changed".
+  if (code === "host_ad_live_edit_undo_failed") {
+    const apps = (detail ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+    const who = apps.length > 0 ? platformNames(apps) : "One of the apps";
+    return `We couldn't finish the change. ${who} may still be on the new daily amount. Mingla's team has been told and will put it right; you don't need to do anything.`;
+  }
   return (code && ERRORS[code]) ??
     "We couldn't change your ad just now. Nothing was changed; try again in a minute.";
 }
@@ -47,7 +74,53 @@ export function hostAdLiveEditDoneNote(result: HostAdLiveEditResult): string {
       `${platformNames(result.daily_not_pushed)} keep their daily amount; Mingla stops them at your new total.`,
     );
   }
+  // #4238 r8 P3: the apps that don't take an end date from Mingla.
+  if (result.end_not_pushed.length > 0) {
+    notes.push(
+      `Mingla stops ${platformNames(result.end_not_pushed)} at your new end date.`,
+    );
+  }
   return notes.join(" ");
+}
+
+export type HostAdLiveEditAttempt = { signature: string; key: string };
+
+/**
+ * #4238 r8 P1-2: one idempotency key per edit attempt. A second tap, or a
+ * retry of the same change after an error, reuses the key (the server then
+ * returns the saved edit instead of pushing twice); a different change gets
+ * a new one. The caller forgets the attempt once the change is saved.
+ */
+export function hostAdLiveEditAttempt(
+  previous: HostAdLiveEditAttempt | null,
+  input: { planId: string; newBudgetCents: number | null; newEndsAt: string | null },
+  mintKey: () => string,
+): HostAdLiveEditAttempt {
+  const signature = JSON.stringify([input.planId, input.newBudgetCents, input.newEndsAt]);
+  return previous !== null && previous.signature === signature
+    ? previous
+    : { signature, key: mintKey() };
+}
+
+/** "Wed 4 Nov, 22:25" in the page's own time zone (viewer's when unknown). */
+export function hostAdLiveEditWhen(iso: string, timezone?: string | null): string {
+  const date = new Date(iso);
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  };
+  if (timezone) {
+    try {
+      return new Intl.DateTimeFormat("en-GB", { ...options, timeZone: timezone }).format(date);
+    } catch {
+      // Unknown zone on this device: the viewer's own clock below.
+    }
+  }
+  return new Intl.DateTimeFormat("en-GB", options).format(date);
 }
 
 export function HostAdLiveEditCard(props: {
@@ -88,7 +161,7 @@ export function HostAdLiveEditCard(props: {
       {next ? (
         <Text style={s.helper} testID="host-ad-live-edit-wait">
           You changed this ad in the last day. You can change it again after{" "}
-          {new Date(next).toLocaleString()}.
+          {hostAdLiveEditWhen(next, props.timezone)}.
         </Text>
       ) : null}
       {open && !next ? (
