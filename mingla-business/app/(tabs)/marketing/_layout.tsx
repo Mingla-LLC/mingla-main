@@ -27,6 +27,9 @@ import { canvas, spacing } from "../../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
 
+/** /marketing/ads/create and /marketing/ads/<id>, never the Ads list itself. */
+const HOST_AD_SUBPAGE_RE = /\/marketing\/ads\/[^/]+/;
+
 const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../../src/components/brand/BrandSwitcherSheet");
   return { default: mod.BrandSwitcherSheet };
@@ -97,7 +100,10 @@ export default function MarketingTabLayout(): React.ReactElement {
   }, []);
 
   // Focused authoring routes hide both action entry points.
-  const hideActions = pathname.includes("/campaigns/compose");
+  // #4238: the ad builder and the ad detail page have their own primary
+  // buttons; the floating "Create an ad" button would cover them.
+  const hideActions = pathname.includes("/campaigns/compose") ||
+    HOST_AD_SUBPAGE_RE.test(pathname);
 
   return (
     <View

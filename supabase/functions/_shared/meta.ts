@@ -222,7 +222,15 @@ export async function metaGraph(
   method: "GET" | "POST" | "DELETE",
   path: string,
   params?: Record<string, unknown>,
-  opts: { timeoutMs?: number } = {},
+  opts: {
+    timeoutMs?: number;
+    /**
+     * #4238: send DELETE params as a JSON body instead of the query string.
+     * DELETE /{audience_id}/users carries up to 10,000 hashes (~700 KB); in
+     * the URL that breaks request-size limits and puts hashes in access logs.
+     */
+    deleteBody?: boolean;
+  } = {},
 ): Promise<Record<string, unknown>> {
   const timeoutMs = opts.timeoutMs ?? 15_000;
   const base = `${client.config.graphBase}/${client.config.apiVersion}`;
@@ -240,7 +248,7 @@ export async function metaGraph(
     },
   };
   if (params && Object.keys(params).length > 0) {
-    if (method === "GET" || method === "DELETE") {
+    if (method === "GET" || (method === "DELETE" && opts.deleteBody !== true)) {
       const qs = new URLSearchParams();
       for (const [key, value] of Object.entries(params)) {
         if (value === undefined || value === null) continue;

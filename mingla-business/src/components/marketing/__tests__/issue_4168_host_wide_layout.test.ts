@@ -84,7 +84,7 @@ describe("#4168 Host wide-screen design contract", () => {
   it("only applies desktop flex-basis sizing when columns are side by side", () => {
     for (const file of [
       "app/(tabs)/marketing/index.tsx",
-      "app/(tabs)/marketing/ads/index.tsx",
+      "src/screens/hostAds/HostAdListScreen.tsx",
       "src/components/support/CommunityTabPanel.tsx",
       "src/components/support/SupportTabPanel.tsx",
     ]) {
@@ -93,7 +93,7 @@ describe("#4168 Host wide-screen design contract", () => {
       expect(contents).toMatch(/Wide: \{ flexBasis: 0, flexGrow:/);
     }
 
-    const ads = source("app/(tabs)/marketing/ads/index.tsx");
+    const ads = source("src/screens/hostAds/HostAdListScreen.tsx");
     expect(ads).toContain('flexDirection: "column-reverse"');
   });
 

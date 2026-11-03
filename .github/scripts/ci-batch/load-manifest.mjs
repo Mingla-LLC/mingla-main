@@ -128,8 +128,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the Extras authoring migration and its proof the same way.
 // #3281: register the public Extras migration and its proof the same way.
 // #3355: register the Ari flow engine flag migration and its proof the same way.
+// #4238: re-sealed after the list-audience migration, its proof and the tester's adversarial proof joined the same replays.
+// #4250: re-sealed after the profiles admin-flag drop, its proof and its adversarial proof joined the same replays.
+// #3281: register the Explorer buyable-date migration and its proof the same way.
 // #4251: register the going-RSVPs cover type migration and its proof the same way.
-export const BOOTSTRAP_SHA256 = "04c11d428cd3e376706ce36b5fee80d2516b74d89040db6888f0547d7f134665";
+export const BOOTSTRAP_SHA256 = "cd15a0a75241b23975cec0f0455381cef3fa56f5c6de7ec5c399a1015b9f037c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

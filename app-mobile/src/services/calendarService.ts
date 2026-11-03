@@ -687,7 +687,7 @@ export class CalendarService {
       event_title: string | null;
       event_slug: string | null;
       cover_media_url: string | null;
-      // #4251: added by 20280319004251. Absent on a server that predates it,
+      // #4251: added by 20280322004251. Absent on a server that predates it,
       // so the row keeps a null type and the card shows its date tile.
       cover_media_type?: string | null;
       timezone: string | null;

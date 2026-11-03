@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ad-plan/__tests__/issue_4238_neutral_db_errors.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-neutral-db-errors-ad-plan",
+  "profile": "deno-2-unit"
+}

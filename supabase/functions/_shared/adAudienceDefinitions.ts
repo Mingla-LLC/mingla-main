@@ -34,19 +34,16 @@ const WINDOWS: Record<string, number> = {
   M6: 395,
   M7: 180,
   M8: 365,
-  M9: 30,
   S1: 30,
   S2: 30,
   S3: 14,
   S4: 395,
   S5: 365,
-  S6: 30,
   T1: 30,
   T2: 30,
   T3: 14,
   T4: 395,
   T5: 365,
-  T6: 30,
 };
 
 const CODE_PLATFORM: Record<string, PaidSocialPlatform> = Object.fromEntries([
@@ -274,8 +271,4 @@ export function buildAudienceDefinition(
     windowDays,
     rule,
   };
-}
-
-export function customerListCode(platform: PaidSocialPlatform): string {
-  return platform === "meta" ? "M8" : platform === "snapchat" ? "S5" : "T5";
 }

@@ -1,5 +1,8 @@
 /**
- * Issue #3697 — provider audience wire requests and buyer-list privacy guard.
+ * Issue #3697 — provider website-audience wire requests.
+ *
+ * #4238: customer lists moved to adListAudienceProvider.ts; the old buyer
+ * batch and its JSON-wide guard (which rejected most real hashes) are gone.
  *
  * This module is deliberately pure. The admin audience worker resolves the
  * provider connection, loads one server-owned ad_audiences row, and only then
@@ -9,6 +12,7 @@
 
 import type { AudienceDefinition } from "./adAudienceDefinitions.ts";
 import type { PaidSocialPlatform } from "./adAudienceStages.ts";
+import { metaDeliveryState } from "./adListAudienceProvider.ts";
 
 export type AudienceProviderRequest = {
   method: "GET" | "POST";
@@ -23,24 +27,16 @@ export type AudienceProviderContext = {
   definition: AudienceDefinition;
 };
 
-export type HashedBuyerIdentifier = {
-  email_sha256?: string | null;
-  phone_sha256?: string | null;
-  tracking_opt_out?: boolean | null;
-};
-
-export type BuyerIdentifierBatch = {
-  emailSha256: string[];
-  phoneSha256: string[];
-};
-
 export type AudienceProviderFact = {
   platformAudienceId: string;
   approxSize: number | null;
   providerReady: boolean;
+  /**
+   * #4238 O-4: Meta's own delivery verdict, when it gave one. ACTIVE / 200
+   * means ready whatever the (privacy-floored) size reads.
+   */
+  providerState?: "ready" | "too_small" | "creating";
 };
-
-const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 function required(value: string, code: string): string {
   const clean = value.trim();
@@ -310,17 +306,20 @@ export function audienceProviderFact(
     if (!id) throw new Error("meta_audience_id_missing");
     const lower = finiteCount(payload.approximate_count_lower_bound);
     const upper = finiteCount(payload.approximate_count_upper_bound);
+    // #4238 O-4: delivery_status decides readiness. The old reader preferred
+    // operation_status, so audiences Meta reported ACTIVE stayed "creating".
+    const delivered = metaDeliveryState(payload);
     const operation = record(payload.operation_status);
-    const delivery = record(payload.delivery_status);
-    const statusCode = String(operation?.code ?? delivery?.code ?? "")
-      .toLowerCase();
+    const statusCode = String(operation?.code ?? "").toLowerCase();
     return {
       platformAudienceId: id,
       approxSize: lower !== null && upper !== null
         ? Math.floor((lower + upper) / 2)
         : lower ?? upper,
-      providerReady: !statusCode ||
-        ["200", "normal", "ready", "active"].includes(statusCode),
+      providerReady: delivered !== null
+        ? delivered !== "creating"
+        : !statusCode || ["200", "normal", "ready", "active"].includes(statusCode),
+      ...(delivered ? { providerState: delivered } : {}),
     };
   }
   if (platform === "snapchat") {
@@ -355,51 +354,4 @@ export function audienceProviderFact(
       ? false
       : !status || ["READY", "AVAILABLE", "VALID", "ACTIVE"].includes(status),
   };
-}
-
-/**
- * Customer-file boundary: flag-off refuses before reading any identifier;
- * opted-out rows are removed; malformed or raw values are dropped; the result
- * contains SHA-256 hex only.
- */
-export function buildHashedBuyerBatch(
-  enabled: boolean,
-  rows: readonly HashedBuyerIdentifier[],
-): BuyerIdentifierBatch {
-  if (!enabled) throw new Error("buyer_list_sync_disabled");
-  const emailSha256 = new Set<string>();
-  const phoneSha256 = new Set<string>();
-  for (const row of rows) {
-    if (row.tracking_opt_out === true) continue;
-    const email = String(row.email_sha256 ?? "").trim().toLowerCase();
-    const phone = String(row.phone_sha256 ?? "").trim().toLowerCase();
-    if (SHA256_HEX.test(email)) emailSha256.add(email);
-    if (SHA256_HEX.test(phone)) phoneSha256.add(phone);
-  }
-  return {
-    emailSha256: [...emailSha256],
-    phoneSha256: [...phoneSha256],
-  };
-}
-
-export function assertHashedBuyerWire(value: unknown): void {
-  const json = JSON.stringify(value);
-  const obviousRaw = /@|\+?[0-9][0-9 ()-]{6,}/.test(json);
-  if (obviousRaw) throw new Error("buyer_list_contains_unhashed_identifier");
-  const strings: string[] = [];
-  const walk = (candidate: unknown): void => {
-    if (typeof candidate === "string") strings.push(candidate);
-    else if (Array.isArray(candidate)) candidate.forEach(walk);
-    else if (candidate && typeof candidate === "object") {
-      Object.values(candidate as Record<string, unknown>).forEach(walk);
-    }
-  };
-  walk(value);
-  for (const candidate of strings) {
-    if (
-      candidate.startsWith("sha256:") && !SHA256_HEX.test(candidate.slice(7))
-    ) {
-      throw new Error("buyer_list_hash_invalid");
-    }
-  }
 }

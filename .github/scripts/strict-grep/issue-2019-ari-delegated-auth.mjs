@@ -156,7 +156,8 @@ function check(s, manifest) {
   // brand readiness read + not-now pair extend that denominator to 180.
   // #3355 P6 follow-up: tell_owner_in_brand_group (brand member); 180→181.
   // #3355 P7: set_brand_payout_country (brand admin); 181→182.
-  if (declarationCount !== 182) failures.push(`expected 182 declarations, got ${declarationCount}`);
+  // #4238 wave 2: list_ad_audiences (Host Ads read); 182→183.
+  if (declarationCount !== 183) failures.push(`expected 183 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

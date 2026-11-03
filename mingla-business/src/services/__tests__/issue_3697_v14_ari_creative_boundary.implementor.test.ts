@@ -31,7 +31,8 @@ describe("#3697 Ari creative-before-freeze boundary", () => {
     expect(service).not.toContain('"admin-ad-creative-upload"');
     expect(service).not.toContain('"admin-ad-creative-prepare"');
     expect(approve).toContain('"admin-ad-creative-prepare"');
-    expect(approve).toContain('lane: "business"');
+    // #4238 D1: Ari sends no lane; the server resolves it from the plan owner.
+    expect(approve).not.toContain("lane:");
     expect(approve.indexOf('action: "confirm_launch"')).toBeLessThan(
       approve.indexOf('"admin-ad-creative-prepare"'),
     );
@@ -39,15 +40,14 @@ describe("#3697 Ari creative-before-freeze boundary", () => {
 
   it("renders the exact fee, currency, provider, rights and LAUNCH boundaries", () => {
     const card = read("src/components/ari/ToolProposalCard.tsx");
+    // #4238 plain-language pass: the same facts with Host labels.
     expect(card).toContain('label: "Currency"');
-    expect(card).toContain('label: "Provider split"');
-    expect(card).toContain('label: "Media rights"');
-    expect(card).toContain('label: "AI disclosure"');
-    expect(card).toContain('label: "Measurement scope"');
+    expect(card).toContain('label: "Budget per app"');
+    expect(card).toContain('label: "Video rights"');
+    expect(card).toContain('label: "Made with AI?"');
+    expect(card).toContain('label: "Sharing results"');
     expect(card).toContain('label: "Mingla fee"');
-    expect(card).toContain('label: "Approval boundary"');
-    expect(card).toContain(
-      "LAUNCH authorizes only the exact immutable plan above",
-    );
+    expect(card).toContain('label: "Your money"');
+    expect(card).toContain("Typing LAUNCH approves only the ad above.");
   });
 });

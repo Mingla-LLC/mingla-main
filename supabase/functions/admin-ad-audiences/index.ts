@@ -1,10 +1,22 @@
 /**
- * Issue #3697 — Admin audience inventory and daily @usemingla sync.
+ * Issue #3697 / #4238 — Admin audience inventory and the daily @usemingla sync.
+ * This is the sole audience provider writer (website audiences and, since
+ * #4238, customer lists and lookalikes).
  *
- * list: active-admin read only
- * refresh: active-admin provider reads only (never creates)
- * sync: service-role cron only; creates missing Meta/Snap/TikTok audiences and
- *       refreshes provider sizes. This is the sole audience provider writer.
+ * list:              active-admin read (website audiences, list audiences, terms)
+ * refresh:           active-admin provider reads only (never creates)
+ * sync:              service-role daily cron: website audiences, then list sync
+ * removals:          service-role hourly cron: dirty refreshes + removals only
+ * create_definition: Admin creates a Mingla-wide list / lookalike, or ensures a
+ *                    brand's three lists
+ * retire_definition: Admin retires a definition (next sync deletes it)
+ * preview:           Admin count preview (counts only, never members)
+ * check_terms:       Admin read-only terms check (Meta tos_accepted)
+ * confirm_terms:     Admin records that they accepted terms in the provider UI.
+ *                    It never calls a provider to accept anything.
+ *
+ * Logging: never a hash, a per-person count or a provider body
+ * (I-4238-AUDIENCE-HASH-ONLY).
  */
 
 // @ts-ignore Deno runtime import.
@@ -25,7 +37,36 @@ import type { AdConnectionRow } from "../_shared/adChannel.ts";
 import { AdApiError, AdNotConnectedError } from "../_shared/adChannel.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import { resolveSnapchatClient, snapchatApi } from "../_shared/snapchat.ts";
-import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
+import {
+  resolveTikTokClient,
+  resolveTikTokGeo,
+  tiktokApi,
+  tiktokUploadAudienceFile,
+} from "../_shared/tiktok.ts";
+import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
+import { md5Hex } from "../_shared/adCreativePrepare.ts";
+import {
+  buildMetaListCreate,
+  buildMetaLookalike,
+  buildMetaTermsRead,
+  sendMetaListUsers,
+  buildRedditUsers,
+  buildSnapListCreate,
+  buildSnapLookalike,
+  buildSnapUsers,
+  buildTikTokAudienceFile,
+  buildTikTokDelete,
+  buildTikTokListCreate,
+  buildTikTokListUpdate,
+  buildTikTokLookalike,
+  listAudienceErrorCode,
+  type ListTransport,
+  type MemberHashRow,
+  parseListFact,
+  parseMetaTerms,
+  syncListAudiences,
+} from "../_shared/adListAudienceProvider.ts";
+import type { ListPlatform } from "../_shared/adListAudienceRules.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -198,6 +239,8 @@ async function readAudience(
 function localStatus(
   fact: AudienceProviderFact,
 ): "creating" | "ready" | "too_small" {
+  // #4238 O-4: Meta's delivery verdict wins (ACTIVE -> ready).
+  if (fact.providerState) return fact.providerState;
   if (!fact.providerReady || fact.approxSize === null) return "creating";
   return fact.approxSize < 1000 ? "too_small" : "ready";
 }
@@ -382,6 +425,364 @@ async function refreshRows(db: any, rows: Record<string, unknown>[]) {
   return results;
 }
 
+// ── #4238 customer lists and lookalikes ──────────────────────────────────────
+
+const LIST_PROVIDERS: ListPlatform[] = ["meta", "snapchat", "tiktok", "reddit", "google"];
+
+function unsupported(code: string): never {
+  throw new Error(code);
+}
+
+/** Real provider transports. Tests use fakes; nothing here logs a body. */
+async function listTransport(
+  connection: AdConnectionRow,
+): Promise<ListTransport> {
+  const accountId = connection.external_account_id;
+  if (connection.platform === "meta") {
+    const client = resolveMetaClient(connection);
+    let session = Date.now();
+    const send = (
+      providerId: string,
+      action: "add" | "remove",
+      members: MemberHashRow[],
+    ) =>
+      sendMetaListUsers({
+        graph: (method, path, params, opts) =>
+          metaGraph(client, method, path, params, opts),
+        audienceId: providerId,
+        action,
+        members,
+        sessionId: () => (session += 1),
+      });
+    const read = async (id: string) =>
+      parseListFact(
+        "meta",
+        await metaGraph(client, "GET", id, {
+          fields: "id,approximate_count_lower_bound,delivery_status,operation_status",
+        }),
+        id,
+      );
+    return {
+      connectionId: connection.id,
+      createList: async (name) => {
+        const request = buildMetaListCreate(accountId, name);
+        return parseListFact("meta", await metaGraph(client, "POST", request.path, request.body));
+      },
+      createLookalike: async (name, seedId, country) => {
+        const request = buildMetaLookalike({ accountId, name, originAudienceId: seedId, country });
+        return parseListFact("meta", await metaGraph(client, "POST", request.path, request.body));
+      },
+      send,
+      read,
+      remove: async (id) => {
+        await metaGraph(client, "DELETE", id);
+      },
+    };
+  }
+  if (connection.platform === "snapchat") {
+    const client = await resolveSnapchatClient(connection);
+    return {
+      connectionId: connection.id,
+      createList: async (name) => {
+        const request = buildSnapListCreate(accountId, name);
+        return parseListFact("snapchat", await snapchatApi(client, "POST", request.path, request.body));
+      },
+      createLookalike: async (name, seedId, country) => {
+        const request = buildSnapLookalike({ accountId, name, seedSegmentId: seedId, country });
+        return parseListFact("snapchat", await snapchatApi(client, "POST", request.path, request.body));
+      },
+      send: async (providerId, action, members) => {
+        for (const [schema, hashes] of [
+          ["EMAIL_SHA256", members.map((m) => m.email_sha256).filter((h): h is string => !!h)],
+          ["PHONE_SHA256", members.map((m) => m.phone_sha256).filter((h): h is string => !!h)],
+        ] as const) {
+          if (hashes.length === 0) continue;
+          const request = buildSnapUsers({ segmentId: providerId, action, schema, hashes });
+          await snapchatApi(client, request.method as "POST" | "DELETE", request.path, request.body);
+        }
+      },
+      read: async (id) =>
+        parseListFact("snapchat", await snapchatApi(client, "GET", `segments/${id}`), id),
+      remove: async (id) => {
+        await snapchatApi(client, "DELETE", `segments/${id}`);
+      },
+    };
+  }
+  if (connection.platform === "tiktok") {
+    const client = resolveTikTokClient(connection);
+    const upload = async (type: "EMAIL_SHA256" | "PHONE_SHA256", hashes: string[]) => {
+      const file = buildTikTokAudienceFile(type, hashes);
+      return await tiktokUploadAudienceFile(client, {
+        calculateType: file.calculateType,
+        csv: file.csv,
+        signature: md5Hex(new TextEncoder().encode(file.csv)),
+      });
+    };
+    const read = async (id: string) =>
+      parseListFact(
+        "tiktok",
+        await tiktokApi(client, "GET", "dmp/custom_audience/get/", {
+          advertiser_id: client.advertiserId,
+          custom_audience_ids: [id],
+        }),
+        id,
+      );
+    return {
+      connectionId: connection.id,
+      // TikTok creates a list from files, so creation and the first upload
+      // are one step (one calculate_type per file: email file first).
+      createWithMembers: async (name, members) => {
+        const emails = members.map((m) => m.email_sha256).filter((h): h is string => !!h);
+        const phones = members.map((m) => m.phone_sha256).filter((h): h is string => !!h);
+        const type = emails.length >= phones.length ? "EMAIL_SHA256" : "PHONE_SHA256";
+        const path = await upload(type, type === "EMAIL_SHA256" ? emails : phones);
+        const request = buildTikTokListCreate({
+          advertiserId: client.advertiserId,
+          name,
+          calculateType: type,
+          filePaths: [path],
+        });
+        return parseListFact("tiktok", await tiktokApi(client, "POST", request.path, request.body));
+      },
+      createList: () => unsupported("tiktok_list_create_needs_members"),
+      createLookalike: async (name, seedId, country) => {
+        const [locationId] = await resolveTikTokGeo(connection, [country]);
+        const request = buildTikTokLookalike({
+          advertiserId: client.advertiserId,
+          name,
+          sourceAudienceId: seedId,
+          locationId,
+        });
+        return parseListFact("tiktok", await tiktokApi(client, "POST", request.path, request.body));
+      },
+      send: async (providerId, action, members) => {
+        const hashes = members.map((m) => m.email_sha256).filter((h): h is string => !!h);
+        if (hashes.length === 0) return;
+        const path = await upload("EMAIL_SHA256", hashes);
+        const request = buildTikTokListUpdate({
+          advertiserId: client.advertiserId,
+          audienceId: providerId,
+          action: action === "add" ? "APPEND" : "REMOVE",
+          filePaths: [path],
+        });
+        await tiktokApi(client, "POST", request.path, request.body);
+      },
+      read,
+      remove: async (id) => {
+        const request = buildTikTokDelete(client.advertiserId, id);
+        await tiktokApi(client, "POST", request.path, request.body);
+      },
+    };
+  }
+  if (connection.platform === "reddit") {
+    return {
+      connectionId: connection.id,
+      // O-3: Reddit create / lookalike paths are unverified; never guessed.
+      createList: () => unsupported("reddit_audience_endpoint_unverified"),
+      createLookalike: () => unsupported("reddit_audience_endpoint_unverified"),
+      send: async (providerId, action, members) => {
+        const client = await resolveRedditClient(connection);
+        const hashes = members.map((m) => m.email_sha256).filter((h): h is string => !!h);
+        if (hashes.length === 0) return;
+        const request = buildRedditUsers({
+          audienceId: providerId,
+          action: action === "add" ? "ADD" : "REMOVE",
+          hashes,
+        });
+        await redditRequest(client, "PATCH", request.path, request.body);
+      },
+      read: () => unsupported("reddit_audience_endpoint_unverified"),
+      remove: () => unsupported("reddit_audience_endpoint_unverified"),
+    };
+  }
+  // Google: Customer Match needs Data Manager credentials Mingla does not have
+  // yet (N-6). The worker marks Google ineligible / terms_required before it
+  // could reach this transport; if it ever does, it fails closed.
+  return {
+    connectionId: connection.id,
+    createList: () => unsupported("google_data_manager_unavailable"),
+    createLookalike: () => unsupported("google_lookalikes_unsupported"),
+    send: () => unsupported("google_data_manager_unavailable"),
+    read: () => unsupported("google_data_manager_unavailable"),
+    remove: () => unsupported("google_data_manager_unavailable"),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function listTransports(db: any): Promise<Partial<Record<ListPlatform, ListTransport>>> {
+  const { data, error } = await db.from("ad_connections").select("*")
+    .eq("lane", "consumer").eq("connected", true).eq("status", "connected")
+    .in("platform", LIST_PROVIDERS);
+  if (error) throw error;
+  const out: Partial<Record<ListPlatform, ListTransport>> = {};
+  for (const row of data ?? []) {
+    try {
+      out[row.platform as ListPlatform] = await listTransport(row as AdConnectionRow);
+    } catch (error) {
+      console.error("[admin-ad-audiences] list transport unavailable", {
+        platform: row.platform,
+        error_code: listAudienceErrorCode(error),
+      });
+    }
+  }
+  return out;
+}
+
+// deno-lint-ignore no-explicit-any
+async function redditListsEnabled(db: any): Promise<boolean> {
+  const { data } = await db.from("feature_flags").select("is_enabled")
+    .eq("flag_key", "ad_reddit_list_audiences_enabled").maybeSingle();
+  return data?.is_enabled === true;
+}
+
+// deno-lint-ignore no-explicit-any
+async function runListSync(db: any, kind: "daily" | "removals", budgetMs: number, cursor: unknown) {
+  const cursorRecord = record(cursor);
+  return await syncListAudiences({
+    db,
+    kind,
+    transports: await listTransports(db),
+    redditEnabled: await redditListsEnabled(db),
+    budgetMs,
+    cursor: typeof cursorRecord.after === "string" ? { after: cursorRecord.after } : null,
+  });
+}
+
+const SOURCES = new Set(["users", "buyers", "contacts", "everyone"]);
+const PAGE_TYPES = new Set(["event", "rsvp", "trip", "experience", "venue"]);
+
+async function sha8(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Admin definition from a request body; validated against the table CHECKs. */
+// deno-lint-ignore no-explicit-any
+async function definitionFromBody(db: any, body: Record<string, unknown>): Promise<
+  { ok: true; row: Record<string, unknown> } | { ok: false; detail: string }
+> {
+  if (typeof body.lookalike_of === "string") {
+    const country = String(body.country ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(country)) return { ok: false, detail: "country_invalid" };
+    const { data: seed } = await db.from("ad_list_audiences").select("*")
+      .eq("audience_key", body.lookalike_of).eq("status", "active").maybeSingle();
+    if (!seed || seed.kind !== "list") return { ok: false, detail: "seed_not_found" };
+    return {
+      ok: true,
+      row: {
+        audience_key: `mingla:lookalike:${await sha8(String(seed.audience_key))}_${country.toLowerCase()}`,
+        owner_kind: "mingla",
+        brand_id: null,
+        kind: "lookalike",
+        source: seed.source,
+        seed_audience_id: seed.id,
+        lookalike_country: country,
+        display_name: `People like ${seed.display_name}`.slice(0, 90) + ` (${country})`,
+      },
+    };
+  }
+  const source = String(body.source ?? "");
+  if (!SOURCES.has(source)) return { ok: false, detail: "source_invalid" };
+  const filterIn = record(body.filter);
+  const filter: Record<string, string> = {};
+  const scope: string[] = [];
+  if (filterIn.country) {
+    const cc = String(filterIn.country).trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(cc)) return { ok: false, detail: "country_invalid" };
+    filter.country = cc;
+    scope.push(`cc_${cc.toLowerCase()}`);
+  }
+  if (filterIn.city) {
+    const city = String(filterIn.city).trim().toLowerCase();
+    if (!/^[a-z0-9 ._'-]{1,80}$/.test(city)) return { ok: false, detail: "city_invalid" };
+    filter.city = city;
+    scope.push(`city_${city.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`);
+  }
+  if (filterIn.page_type) {
+    const pageType = String(filterIn.page_type);
+    if (!PAGE_TYPES.has(pageType)) return { ok: false, detail: "page_type_invalid" };
+    filter.page_type = pageType;
+    scope.push(`kind_${pageType}`);
+  }
+  const displayName = String(body.display_name ?? "").trim();
+  if (displayName.length < 1 || displayName.length > 100) {
+    return { ok: false, detail: "display_name_invalid" };
+  }
+  return {
+    ok: true,
+    row: {
+      audience_key: `mingla:${source}:${scope.length ? scope.join("_") : "all"}`,
+      owner_kind: "mingla",
+      brand_id: null,
+      kind: "list",
+      source,
+      filter,
+      display_name: displayName,
+    },
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function listAudienceInventory(db: any) {
+  const [defs, platforms, terms, brands] = await Promise.all([
+    db.from("ad_list_audiences").select(
+      "id,audience_key,owner_kind,brand_id,kind,source,filter,lookalike_country,display_name,host_visible,member_count,member_count_by_country,members_refreshed_at,requested_at,last_used_at,status,created_at",
+    ).order("owner_kind").order("audience_key"),
+    db.from("ad_list_audience_platforms").select(
+      "audience_id,platform,state,needed_count,approx_size,last_synced_at,error_code",
+    ),
+    db.from("ad_platform_audience_terms").select(
+      "connection_id,platform,state,eligibility,checked_at,admin_confirmed_at,detail_code",
+    ),
+    db.from("ad_connections").select("id,platform,external_account_id")
+      .eq("lane", "consumer").in("platform", LIST_PROVIDERS),
+  ]);
+  const error = defs.error ?? platforms.error ?? terms.error ?? brands.error;
+  if (error) throw error;
+  const brandIds = [...new Set((defs.data ?? []).map((row: Record<string, unknown>) => row.brand_id).filter(Boolean))];
+  const { data: brandRows } = brandIds.length > 0
+    ? await db.from("brands").select("id,name").in("id", brandIds)
+    : { data: [] };
+  const brandName = new Map((brandRows ?? []).map((row: Record<string, unknown>) => [row.id, row.name]));
+  const termsByConnection = new Map((terms.data ?? []).map((row: Record<string, unknown>) => [row.connection_id, row]));
+  return {
+    list_audiences: (defs.data ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      brand_name: row.brand_id ? brandName.get(row.brand_id) ?? null : null,
+      platforms: (platforms.data ?? []).filter((item: Record<string, unknown>) =>
+        item.audience_id === row.id
+      ).map((item: Record<string, unknown>) => ({
+        platform: item.platform,
+        state: item.state,
+        needed_count: item.needed_count,
+        approx_size: item.approx_size,
+        error_code: item.error_code,
+      })),
+    })),
+    // One row per consumer connection, "unknown" until checked.
+    terms: (brands.data ?? []).map((connection: Record<string, unknown>) => {
+      const row = (termsByConnection.get(connection.id) ?? {}) as Record<string, unknown>;
+      return {
+        connection_id: connection.id,
+        platform: connection.platform,
+        account_id: String(connection.external_account_id ?? "").replace(/^act_/, ""),
+        state: row.state ?? "unknown",
+        eligibility: row.eligibility ?? "unknown",
+        checked_at: row.checked_at ?? null,
+        admin_confirmed_at: row.admin_confirmed_at ?? null,
+        detail_code: row.detail_code ?? null,
+      };
+    }),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function adminUserId(db: any, req: Request): Promise<string | null> {
+  const header = req.headers.get("authorization") ?? "";
+  const { data } = await db.auth.getUser(header.replace(/^Bearer\s+/i, ""));
+  return data?.user?.id ?? null;
+}
+
 // Supabase query builders are thenables. Build a fresh one after a provider
 // refresh instead of awaiting the same builder twice and risking stale rows.
 // deno-lint-ignore no-explicit-any
@@ -423,12 +824,25 @@ serve(async (req: Request): Promise<Response> => {
   if (!service && !admin) return json({ error: "unauthorized" }, 401);
 
   const action = body.action ?? "list";
-  if (!["list", "refresh", "sync"].includes(String(action))) {
+  if (
+    ![
+      "list",
+      "refresh",
+      "sync",
+      "removals",
+      "create_definition",
+      "retire_definition",
+      "preview",
+      "check_terms",
+      "confirm_terms",
+    ].includes(String(action))
+  ) {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
-  if (action === "sync" && !service) {
+  if ((action === "sync" || action === "removals") && !service) {
     return json({ error: "forbidden", detail: "service_role_required" }, 403);
   }
+  const startedAt = Date.now();
 
   try {
     if (action === "sync") {
@@ -485,12 +899,174 @@ serve(async (req: Request): Promise<Response> => {
       const { data: ended } = await db.rpc("ad_audience_end_expired", {
         p_now: new Date().toISOString(),
       });
+      // #4238: customer lists and lookalikes, inside the cron's 55 s window.
+      const lists = await runListSync(
+        db,
+        "daily",
+        Math.max(5_000, 40_000 - (Date.now() - startedAt)),
+        body.cursor,
+      );
       return json({
         ok: true,
         ensured: seeds.length,
         refreshed: synced.length,
         ended: ended ?? 0,
+        lists: {
+          more: lists.more,
+          cursor: lists.cursor,
+          adds: lists.adds,
+          removes: lists.removes,
+          errors: lists.errors,
+        },
       });
+    }
+
+    if (action === "removals") {
+      // Continue an unfinished daily run first, else push removals only.
+      const { data: last } = await db.from("ad_list_audience_sync_runs")
+        .select("kind,more,cursor").order("started_at", { ascending: false })
+        .limit(1).maybeSingle();
+      const continuing = last?.kind === "daily" && last?.more === true;
+      const lists = await runListSync(
+        db,
+        continuing ? "daily" : "removals",
+        40_000,
+        continuing ? last?.cursor : null,
+      );
+      return json({ ok: true, continued_daily: continuing, ...lists });
+    }
+
+    if (action === "create_definition") {
+      if (typeof body.brand_id === "string") {
+        if (!UUID_RE.test(body.brand_id)) {
+          return json({ error: "validation_error", detail: "brand_id_invalid" }, 400);
+        }
+        const { data, error } = await db.rpc("ad_list_audience_ensure_brand", {
+          p_brand_id: body.brand_id,
+        });
+        if (error) throw error;
+        await db.from("ad_list_audiences").update({ requested_at: new Date().toISOString() })
+          .eq("brand_id", body.brand_id);
+        return json({ ok: true, ensured: (data ?? []).length, ...(await listAudienceInventory(db)) });
+      }
+      const parsed = await definitionFromBody(db, body);
+      if (!parsed.ok) return json({ error: "validation_error", detail: parsed.detail }, 400);
+      const created_by = await adminUserId(db, req);
+      const { data: row, error } = await db.from("ad_list_audiences")
+        .upsert({ ...parsed.row, created_by, status: "active", requested_at: new Date().toISOString() }, {
+          onConflict: "audience_key",
+        }).select("id").single();
+      if (error) throw error;
+      const { error: refreshError } = await db.rpc("ad_list_audience_refresh", { p_audience_id: row.id });
+      if (refreshError && refreshError.code !== "PT409") throw refreshError;
+      return json({ ok: true, ...(await listAudienceInventory(db)) });
+    }
+
+    if (action === "retire_definition") {
+      const key = typeof body.audience_key === "string" ? body.audience_key : "";
+      const { data, error } = await db.from("ad_list_audiences")
+        .update({ status: "retired", updated_at: new Date().toISOString() })
+        .eq("audience_key", key).select("id");
+      if (error) throw error;
+      if (!data?.length) return json({ error: "validation_error", detail: "audience_not_found" }, 404);
+      return json({ ok: true, ...(await listAudienceInventory(db)) });
+    }
+
+    if (action === "preview") {
+      // A throwaway definition, refreshed and deleted in the same request:
+      // only counts leave the database.
+      const parsed = await definitionFromBody(db, body);
+      if (!parsed.ok) return json({ error: "validation_error", detail: parsed.detail }, 400);
+      if (parsed.row.kind === "lookalike") {
+        const { data: seed } = await db.from("ad_list_audiences").select("member_count_by_country")
+          .eq("id", parsed.row.seed_audience_id).maybeSingle();
+        const country = String(parsed.row.lookalike_country);
+        const n = Number(record(seed?.member_count_by_country)[country] ?? 0);
+        return json({ ok: true, member_count: n, by_country: { [country]: n } });
+      }
+      const previewKey = `mingla:preview:${crypto.randomUUID().replace(/-/g, "")}`;
+      const { data: row, error } = await db.from("ad_list_audiences")
+        .insert({ ...parsed.row, audience_key: previewKey, status: "active" })
+        .select("id").single();
+      if (error) throw error;
+      try {
+        const { data: counts, error: refreshError } = await db.rpc("ad_list_audience_refresh", {
+          p_audience_id: row.id,
+        });
+        if (refreshError) throw refreshError;
+        const { data: after } = await db.from("ad_list_audiences")
+          .select("member_count_by_country").eq("id", row.id).maybeSingle();
+        return json({
+          ok: true,
+          member_count: Number(record(counts).member_count ?? 0),
+          by_country: record(after?.member_count_by_country),
+        });
+      } finally {
+        await db.from("ad_list_audiences").delete().eq("id", row.id);
+      }
+    }
+
+    if (action === "check_terms" || action === "confirm_terms") {
+      const connectionId = typeof body.connection_id === "string" ? body.connection_id : "";
+      if (!UUID_RE.test(connectionId)) {
+        return json({ error: "validation_error", detail: "connection_id_invalid" }, 400);
+      }
+      const { data: connection } = await db.from("ad_connections").select("*")
+        .eq("id", connectionId).maybeSingle();
+      if (!connection) return json({ error: "validation_error", detail: "connection_not_found" }, 404);
+      const nowIso = new Date().toISOString();
+      if (action === "confirm_terms") {
+        // Records the Admin's own acceptance in the provider UI. No provider
+        // call is made, and nothing is accepted on anyone's behalf.
+        const { error } = await db.from("ad_platform_audience_terms").upsert({
+          connection_id: connectionId,
+          platform: connection.platform,
+          admin_confirmed_at: nowIso,
+          admin_confirmed_by: await adminUserId(db, req),
+          ...(connection.platform === "google" ? {} : { state: "accepted" }),
+          updated_at: nowIso,
+        }, { onConflict: "connection_id" });
+        if (error) throw error;
+        return json({ ok: true, ...(await listAudienceInventory(db)) });
+      }
+      let state = "unknown";
+      let eligibility = "unknown";
+      let detail: string | null = null;
+      try {
+        if (connection.platform === "meta") {
+          const request = buildMetaTermsRead(connection.external_account_id);
+          state = parseMetaTerms(
+            await metaGraph(resolveMetaClient(connection as AdConnectionRow), "GET", request.path, request.body),
+          );
+        } else if (connection.platform === "google") {
+          // Customer Match targeting needs more than USD 50,000 lifetime spend.
+          const { data: spend } = await db.from("ad_spend_daily").select("spend_cents,currency")
+            .eq("platform", "google");
+          const usd = (spend ?? []).filter((row: Record<string, unknown>) => row.currency === "USD")
+            .reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.spend_cents ?? 0), 0);
+          eligibility = usd > 5_000_000 ? "eligible" : "ineligible";
+          detail = eligibility === "eligible" ? null : "google_lifetime_spend_below_50k";
+        } else {
+          // Snap, TikTok and Reddit have no documented terms read; a terms
+          // error during sync records not_accepted.
+          detail = "terms_detected_on_first_upload";
+        }
+      } catch (error) {
+        detail = listAudienceErrorCode(error);
+      }
+      const { data: existing } = await db.from("ad_platform_audience_terms").select("*")
+        .eq("connection_id", connectionId).maybeSingle();
+      const { error } = await db.from("ad_platform_audience_terms").upsert({
+        connection_id: connectionId,
+        platform: connection.platform,
+        state: state === "unknown" ? existing?.state ?? "unknown" : state,
+        eligibility: eligibility === "unknown" ? existing?.eligibility ?? "unknown" : eligibility,
+        checked_at: nowIso,
+        detail_code: detail,
+        updated_at: nowIso,
+      }, { onConflict: "connection_id" });
+      if (error) throw error;
+      return json({ ok: true, ...(await listAudienceInventory(db)) });
     }
 
     const requestedPlatform = platform(body.platform);
@@ -539,9 +1115,7 @@ serve(async (req: Request): Promise<Response> => {
       ? await audienceListQuery(db, filters)
       : { data: rows, error: null };
     if (latestError) throw latestError;
-    const { data: buyerFlag } = await db.from("feature_flags")
-      .select("is_enabled").eq("flag_key", "ad_buyer_list_sync_enabled")
-      .maybeSingle();
+    const inventory = await listAudienceInventory(db);
     return json({
       ok: true,
       audiences: (latest ?? []).map((row: Record<string, unknown>) => ({
@@ -551,7 +1125,7 @@ serve(async (req: Request): Promise<Response> => {
         brand: undefined,
         event: undefined,
       })),
-      buyer_list_sync_enabled: buyerFlag?.is_enabled === true,
+      ...inventory,
     });
   } catch (error) {
     console.error("[admin-ad-audiences]", publicError(error));

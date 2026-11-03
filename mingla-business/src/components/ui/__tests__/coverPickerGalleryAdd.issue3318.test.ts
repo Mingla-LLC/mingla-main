@@ -625,6 +625,10 @@ const NON_SAVING_HOSTS: Array<[string, number]> = [
   // #3355 — Ari's in-chat brand cover upload (Brand details' brand target, no gallery).
   // #3355 P7 — the brand cover and the event cover, neither keeps a gallery.
   ["components/ari/AriFlowUploadCard.tsx", 2],
+  // #4238 — the Host ad builder's video picker (no gallery). It moved from the
+  // app/(tabs)/marketing/ads/create.tsx route (outside this src walk) into the
+  // lazy Host Ads screens, so it is classified here now.
+  ["screens/hostAds/HostAdCreateScreen.tsx", 1],
 ];
 
 describe("issue #3319 — Additional photos only where they are saved", () => {

@@ -47,6 +47,13 @@ import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
+// #4238: the Host ad money format and app names load on intent from the Host
+// Ads chunk; importing them here would hoist them into the boot chunk.
+import {
+  HOST_AD_CARD_WORDS_PENDING,
+  useHostAdCardWords,
+  type HostAdCardWords,
+} from "../../hooks/useHostAdCardWords";
 import {
   ariAdOwnerKey,
   isValidAdCreativeOwnerKey,
@@ -275,6 +282,11 @@ function primaryIdentity(
       (toolName === "update_brand" ? "Brand update" : "This brand")
     );
   }
+  // #4238: Host ad cards read as plain titles, never the raw tool name.
+  if (toolName === "approve_ad_plan") return "Start this ad";
+  if (toolName === "pause_ad_campaign") return "Pause this ad";
+  if (toolName === "end_ad_campaign") return "End this ad";
+  if (toolName === "get_ad_campaign_report") return "How this ad is doing";
   if (typeof args.title === "string" && args.title) return args.title;
   if (typeof args.name === "string" && args.name) return args.name;
   if (typeof args.subject === "string" && args.subject) return args.subject;
@@ -291,28 +303,44 @@ function coverTypeLabel(type: unknown): string | null {
   return null;
 }
 
-function formatMoneyCents(cents: unknown, currency: unknown): string | null {
+// #4238: one money format everywhere on this card ("NGN 1,500,000.00"),
+// the same formatter the server uses for Ari's "Budget per app" lines. Until
+// it loads (useHostAdCardWords) the field shows a placeholder in its place.
+function formatMoneyCents(
+  cents: unknown,
+  currency: unknown,
+  words: HostAdCardWords | null,
+): string | null {
   if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
-  const code =
-    typeof currency === "string" && currency.trim()
-      ? currency.trim().toUpperCase()
-      : "";
-  const amount = (cents / 100).toFixed(2);
-  return code ? `${amount} ${code}` : amount;
+  if (!words) return HOST_AD_CARD_WORDS_PENDING;
+  return words.formatMoney(cents, currency);
 }
 
-function formatAdMoneyCents(cents: unknown, currency: unknown): string | null {
-  const formatted = formatMoneyCents(cents, currency);
-  if (!formatted) return null;
+/** Tools whose card shows Host ad money or ad apps (needs useHostAdCardWords). */
+const HOST_AD_WORDS_TOOLS = new Set([
+  "propose_ad_plan",
+  "approve_ad_plan",
+  "refund_order",
+  "cancel_trip_booking",
+]);
+
+function formatAdMoneyCents(
+  cents: unknown,
+  currency: unknown,
+  words: HostAdCardWords | null,
+): string | null {
+  const formatted = formatMoneyCents(cents, currency, words);
+  if (!formatted || !words) return formatted;
   return typeof currency === "string" && /^[a-z]{3}$/i.test(currency.trim())
     ? formatted
-    : `${formatted} · verified settlement currency on save`;
+    : `${formatted} · in your brand's payout currency`;
 }
 
 function fieldsFor(
   toolName: string,
   args: Record<string, unknown>,
   brandNamesById: Record<string, string> = {},
+  words: HostAdCardWords | null = null,
 ): Field[] {
   const out: Field[] = [];
   const context =
@@ -397,18 +425,24 @@ function fieldsFor(
           ? [args.platform]
           : [];
     if (platforms.length > 0) {
-      out.push({ label: "Platforms", value: platforms.join(", ") });
+      // #4238: platforms named the way Hosts know them.
+      out.push({
+        label: "Apps",
+        value: words
+          ? platforms.map((platform) => words.platformName(String(platform))).join(", ")
+          : HOST_AD_CARD_WORDS_PENDING,
+      });
     }
-    const budgetText = formatAdMoneyCents(budget, currency);
-    if (budgetText) out.push({ label: "Hard cap", value: budgetText });
-    const dailyText = formatAdMoneyCents(daily, currency);
+    const budgetText = formatAdMoneyCents(budget, currency, words);
+    if (budgetText) out.push({ label: "Total budget", value: budgetText });
+    const dailyText = formatAdMoneyCents(daily, currency, words);
     if (dailyText) out.push({ label: "Daily total", value: dailyText });
     if (typeof context.ad_currency_policy === "string") {
       out.push({ label: "Currency", value: context.ad_currency_policy });
     }
     if (typeof context.ad_provider_allocation === "string") {
       out.push({
-        label: "Provider split",
+        label: "Budget per app",
         value: context.ad_provider_allocation,
       });
     }
@@ -420,40 +454,46 @@ function fieldsFor(
           : null;
     if (destination) {
       out.push({
-        label: "Destination",
+        label: "Page",
         value: destination,
       });
     }
     if (typeof context.ad_result === "string") {
-      out.push({ label: "Primary result", value: context.ad_result });
+      // The server already writes this in plain words (agentDomainTools
+      // adResultWords), so the card shows it as given.
+      out.push({ label: "What we count", value: context.ad_result });
     }
     if (typeof context.ad_audience === "string") {
       out.push({ label: "Audience", value: context.ad_audience });
     }
+    // #4238: the brand's own audiences this ad uses, by plain name.
+    if (typeof context.ad_audiences === "string" && context.ad_audiences) {
+      out.push({ label: "People you know", value: context.ad_audiences });
+    }
     if (typeof context.ad_targeting === "string") {
-      out.push({ label: "Provider fit", value: context.ad_targeting });
+      out.push({ label: "Audience check", value: context.ad_targeting });
     }
     if (typeof context.ad_schedule === "string") {
       out.push({ label: "Schedule", value: context.ad_schedule });
     }
     if (typeof context.ad_creative === "string") {
-      out.push({ label: "Creative", value: context.ad_creative });
+      out.push({ label: "Video", value: context.ad_creative });
     }
     if (typeof context.ad_copy === "string") {
-      out.push({ label: "Primary copy", value: context.ad_copy });
+      out.push({ label: "Ad text", value: context.ad_copy });
     }
     if (typeof context.ad_media_rights === "string") {
-      out.push({ label: "Media rights", value: context.ad_media_rights });
+      out.push({ label: "Video rights", value: context.ad_media_rights });
     }
     if (typeof context.ad_ai_disclosure === "string") {
-      out.push({ label: "AI disclosure", value: context.ad_ai_disclosure });
+      out.push({ label: "Made with AI?", value: context.ad_ai_disclosure });
     }
     if (typeof context.ad_measurement === "string") {
-      out.push({ label: "Measurement", value: context.ad_measurement });
+      out.push({ label: "Results", value: context.ad_measurement });
     }
     if (typeof context.ad_measurement_scope === "string") {
       out.push({
-        label: "Measurement scope",
+        label: "Sharing results",
         value: context.ad_measurement_scope,
       });
     }
@@ -461,14 +501,13 @@ function fieldsFor(
       out.push({ label: "Mingla fee", value: context.ad_fee });
     }
     if (typeof context.ad_credit === "string") {
-      out.push({ label: "Approval boundary", value: context.ad_credit });
+      out.push({ label: "Your money", value: context.ad_credit });
     }
     if (typeof context.ad_review === "string") {
-      out.push({ label: "Review", value: context.ad_review });
+      out.push({ label: "Checks", value: context.ad_review });
     }
-    if (typeof context.ad_binding === "string") {
-      out.push({ label: "Plan binding", value: context.ad_binding });
-    }
+    // #4238: the plan's binding (hash) is never shown to a Host; the
+    // approval still sends it to Mingla unchanged.
     return out;
   }
 
@@ -482,6 +521,7 @@ function fieldsFor(
       const total = formatMoneyCents(
         context.refundable_total_cents,
         context.currency,
+        words,
       );
       if (total) out.push({ label: "Refund total", value: total });
       if (typeof context.line_count === "number") {
@@ -501,6 +541,7 @@ function fieldsFor(
       const total = formatMoneyCents(
         context.refund_total_cents,
         context.currency,
+        words,
       );
       if (total) out.push({ label: "Refund total", value: total });
       else out.push({ label: "Refund total", value: "Preview pending" });
@@ -1123,6 +1164,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         : null;
   // #3040 AD-04 — the same per-platform fit sentence Host Ads shows, from the
   // same server-computed fit, for the video this proposal will run.
+  const hostAdWords = useHostAdCardWords(HOST_AD_WORDS_TOOLS.has(toolName));
   const adVideoFitSummary = useAdVideoFitSummary(
     isAdPlanCreativeProposal && typeof args.brand_id === "string"
       ? args.brand_id
@@ -1424,9 +1466,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
-            {fieldsFor(toolName, liveArgs).length > 0 ? (
+            {fieldsFor(toolName, liveArgs, {}, hostAdWords).length > 0 ? (
               <View style={styles.fields}>
-                {fieldsFor(toolName, liveArgs).map((f, i) => (
+                {fieldsFor(toolName, liveArgs, {}, hostAdWords).map((f, i) => (
                   <View key={i} style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>{f.label}</Text>
                     <Text
@@ -1444,7 +1486,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             <View style={styles.assuranceRow}>
               <Text style={styles.assuranceText}>
                 {isAdPlanProposal
-                  ? "LAUNCH authorizes only the exact immutable plan above. Mingla may hold credit and create provider objects; staff and provider review can still delay delivery."
+                  ? "Typing LAUNCH approves only the ad above. Mingla will set aside its budget from your Ads credit and set it up on each app. Mingla or the apps may check it first, so it can take a little while to start."
                   : `This cannot be undone from chat. Type ${moneyPhrase} to confirm.`}
               </Text>
             </View>
@@ -1547,9 +1589,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           />
         ) : (
           !isTypeConfirm &&
-          fieldsFor(toolName, liveArgs, brandNamesById).length > 0 && (
+          fieldsFor(toolName, liveArgs, brandNamesById, hostAdWords).length > 0 && (
             <View style={styles.fields}>
-              {fieldsFor(toolName, liveArgs, brandNamesById).map((f, i) => (
+              {fieldsFor(toolName, liveArgs, brandNamesById, hostAdWords).map((f, i) => (
                 <View key={i} style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>{f.label}</Text>
                   <Text

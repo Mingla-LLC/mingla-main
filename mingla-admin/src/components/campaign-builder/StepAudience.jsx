@@ -20,7 +20,7 @@ import { Input } from "../ui/Input";
 import { SearchInput } from "../ui/SearchInput";
 import { MultiSelect } from "../ui/MultiSelect";
 import { TARGETING_SEARCH_PROXY_ENABLED } from "../../lib/adBuilder/flags";
-import { searchTargeting } from "../../services/adEngineService";
+import { listAdAudiences, searchTargeting } from "../../services/adEngineService";
 import {
   CITY_SEARCH_PLATFORMS,
   INTEREST_SEARCH_PLATFORMS,
@@ -35,6 +35,128 @@ import {
   stageSplitLabels,
   validateAudience,
 } from "../../lib/adBuilder/audienceRules";
+
+// ── #4238 wave 2: customer lists and lookalikes ────────────────────────────
+
+export const LIST_AUDIENCE_MAX = 3;
+const LIST_TABS = [
+  { id: "mingla", label: "Mingla-wide" },
+  { id: "brand", label: "This brand" },
+  { id: "all", label: "All brands" },
+];
+
+/** Tab + search filter over the inventory; retired and hidden seeds never show. */
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper shared with its tests
+export function filterListAudiences(audiences, { tab, query, brandId, brandName }) {
+  const q = String(query ?? "").trim().toLowerCase();
+  return (audiences ?? []).filter((row) => {
+    if (row.status !== "active" || row.host_visible === false) return false;
+    if (tab === "mingla" && row.owner_kind !== "mingla") return false;
+    if (
+      tab === "brand" &&
+      (row.owner_kind !== "host" ||
+        !((brandId && row.brand_id === brandId) || (brandName && row.brand_name === brandName)))
+    ) {
+      return false;
+    }
+    if (tab === "all" && row.owner_kind !== "host") return false;
+    if (!q) return true;
+    return [row.display_name, row.brand_name, row.audience_key]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(q));
+  });
+}
+
+function readyApps(row) {
+  return (row.platforms ?? []).filter((item) => item.state === "ready").map((item) => item.platform);
+}
+
+export function ListAudiencePicker({ audiences, selected, onChange, brandId, brandName, loadError }) {
+  const [tab, setTab] = useState("mingla");
+  const [query, setQuery] = useState("");
+  const rows = filterListAudiences(audiences, { tab, query, brandId, brandName });
+  const picked = selected ?? [];
+  const full = picked.length >= LIST_AUDIENCE_MAX;
+  return (
+    <section className="space-y-3" aria-label="Customer lists and lookalikes">
+      <div>
+        <h3 className="text-base font-semibold">Customer lists and lookalikes</h3>
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          Pick up to {LIST_AUDIENCE_MAX}. Prospecting shows the ad to these
+          people (or people like them); with none, it&apos;s broad. Sizes are
+          counts only.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {LIST_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            onClick={() => setTab(item.id)}
+            className={[
+              "min-h-9 rounded-full border px-3 text-sm",
+              tab === item.id
+                ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] font-semibold"
+                : "border-[var(--gray-200)]",
+            ].join(" ")}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <SearchInput value={query} onChange={setQuery} placeholder="Search lists" />
+      {loadError ? (
+        <p className="text-sm text-[var(--color-error-700)]">{loadError}</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          No lists here yet. Create Mingla-wide lists in Ads → Audiences.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {rows.map((row) => {
+            const on = picked.includes(row.audience_key);
+            const apps = readyApps(row);
+            const disabled = !on && (full || apps.length === 0);
+            return (
+              <button
+                key={row.audience_key}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                disabled={disabled}
+                onClick={() =>
+                  onChange(
+                    on
+                      ? picked.filter((key) => key !== row.audience_key)
+                      : [...picked, row.audience_key],
+                  )
+                }
+                className={[
+                  "rounded-xl border p-3 text-left",
+                  on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]" : "border-[var(--gray-200)]",
+                  disabled ? "opacity-60" : "",
+                ].join(" ")}
+              >
+                <div className="font-semibold">
+                  {row.brand_name ? `${row.brand_name} · ` : ""}
+                  {row.display_name}
+                </div>
+                <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                  {Number(row.member_count ?? 0).toLocaleString("en-US")} people ·{" "}
+                  {apps.length > 0
+                    ? `Ready on ${apps.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}`
+                    : "Not ready on any app yet"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 const PLATFORM_LABEL = {
   meta: "Meta",
@@ -73,9 +195,24 @@ function useDebouncedResults(runner, deps, delay = 300) {
   return { results, loading, warning, reset: () => setResults([]) };
 }
 
-export function StepAudience({ audience, onAudienceChange, channelRows }) {
+export function StepAudience({ audience, onAudienceChange, channelRows, brandId = null, brandName = null }) {
   const errors = validateAudience(audience);
   const set = (patch) => onAudienceChange({ ...audience, ...patch });
+
+  // #4238 wave 2: the list-audience inventory (counts and states only).
+  const [listAudiences, setListAudiences] = useState([]);
+  const [listError, setListError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    listAdAudiences({}).then(({ data, error }) => {
+      if (!live) return;
+      if (error) setListError("Customer lists could not be loaded. Prospecting stays broad.");
+      else setListAudiences(data?.list_audiences ?? []);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const pickedPlatforms = channelRows
     .filter((r) => r.eligible)
@@ -103,7 +240,7 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
       id: "prospecting",
       label: "Prospecting",
       split: stageSplits.prospecting,
-      detail: "Broad and lookalike audiences; buyers excluded.",
+      detail: "Prospecting uses your chosen lists or lookalikes; with none, it's broad.",
     },
     {
       id: "retarget",
@@ -309,6 +446,15 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           enabled warm stages. Location and age apply to prospecting.
         </p>
       </div>
+
+      <ListAudiencePicker
+        audiences={listAudiences}
+        selected={audience.audienceKeys ?? []}
+        onChange={(audienceKeys) => set({ audienceKeys })}
+        brandId={brandId}
+        brandName={brandName}
+        loadError={listError}
+      />
 
       <section className="space-y-3" aria-label="Audience stages">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

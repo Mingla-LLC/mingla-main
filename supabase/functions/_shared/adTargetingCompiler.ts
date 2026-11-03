@@ -46,9 +46,11 @@ export type ProviderTargetingRefs = {
   /** normalized interest name -> provider-native id/category. */
   interestIds?: Record<string, string>;
   /**
-   * Provider audience ids loaded server-side from public.ad_audiences.
-   * These fields are deliberately refs, not browser audience intent: callers
-   * cannot smuggle an arbitrary Custom Audience / Segment id into a plan.
+   * Provider audience ids resolved server-side: #3697 pixel audiences from
+   * public.ad_audiences, and #4238 customer lists / lookalikes from the plan's
+   * audience_selection. Callers cannot supply them: ad-plan freeze_targeting
+   * deletes these three fields from every request ref before compiling, and
+   * admin-ad-create-campaign re-checks the frozen ids (I-4238-AUDIENCE-SERVER-BOUND).
    */
   includeAudienceIds?: string[];
   excludeAudienceIds?: string[];
@@ -533,6 +535,8 @@ export function compileProviderTargeting(
         } else compiled.audience_ids = resolved.ids;
       }
     }
+    // #4238: Customer Match user lists stay separate from interest audiences.
+    if (includeAudienceIds.length) compiled.user_list_ids = includeAudienceIds;
   } else {
     compiled.country_codes = intent.countries;
     if (cities.length) {
@@ -553,6 +557,10 @@ export function compileProviderTargeting(
     compiled.gender = intent.gender ?? "all";
     if (interests.length) {
       compiled.interests = interests.map((item) => item.name);
+    }
+    // #4238: Reddit customer-list audiences.
+    if (includeAudienceIds.length) {
+      compiled.custom_audience_ids = includeAudienceIds;
     }
   }
 
@@ -715,6 +723,9 @@ export function providerExecutionTargeting(
       ...(Array.isArray(compiled.audience_ids)
         ? { audiences: compiled.audience_ids }
         : {}),
+      ...(Array.isArray(compiled.user_list_ids)
+        ? { user_lists: compiled.user_list_ids }
+        : {}),
     };
   }
 
@@ -728,6 +739,9 @@ export function providerExecutionTargeting(
     ...(gender ? { genders: gender } : {}),
     ...(Array.isArray(compiled.interests) && compiled.interests.length > 0
       ? { passthrough: { reddit: { interests: compiled.interests } } }
+      : {}),
+    ...(Array.isArray(compiled.custom_audience_ids)
+      ? { custom_audience_ids: compiled.custom_audience_ids }
       : {}),
   };
 }

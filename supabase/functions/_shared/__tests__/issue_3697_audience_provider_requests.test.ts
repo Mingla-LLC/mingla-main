@@ -5,9 +5,8 @@ import {
 
 import { buildAudienceDefinition } from "../adAudienceDefinitions.ts";
 import {
-  assertHashedBuyerWire,
+  audienceProviderFact,
   buildAudienceProviderRequest,
-  buildHashedBuyerBatch,
 } from "../adAudienceProvider.ts";
 
 const base = {
@@ -126,30 +125,27 @@ Deno.test("#3697 Snap market pool uses documented website-event rules", () => {
   });
 });
 
-Deno.test("#3697 buyer-list sync is flag-off and hash-only", () => {
-  assertThrows(
-    () => buildHashedBuyerBatch(false, []),
-    Error,
-    "buyer_list_sync_disabled",
-  );
-  const hashA = "a".repeat(64);
-  const hashB = "b".repeat(64);
-  const batch = buildHashedBuyerBatch(true, [
-    { email_sha256: hashA, phone_sha256: hashB },
-    { email_sha256: hashA },
-    { email_sha256: "buyer@example.com", phone_sha256: "+15551234567" },
-    { email_sha256: "c".repeat(64), tracking_opt_out: true },
-  ]);
-  assertEquals(batch, { emailSha256: [hashA], phoneSha256: [hashB] });
-  assertHashedBuyerWire({
-    users: [
-      ...batch.emailSha256.map((value) => `sha256:${value}`),
-      ...batch.phoneSha256.map((value) => `sha256:${value}`),
-    ],
+// #4238: the buyer-list batch and its broken guard were replaced by
+// adListAudienceProvider.assertHashOnly (see issue_4238 provider tests).
+// #4238 O-4: Meta's delivery_status decides readiness.
+Deno.test("#4238 O-4 a Meta website audience Meta reports ACTIVE reads ready", () => {
+  const fact = audienceProviderFact("meta", {
+    id: "120200000000001",
+    approximate_count_lower_bound: 20,
+    approximate_count_upper_bound: 20,
+    delivery_status: { code: 200, description: "This audience is ready for use." },
+    operation_status: { code: 441, description: "We're finding people" },
   });
-  assertThrows(
-    () => assertHashedBuyerWire({ users: ["buyer@example.com"] }),
-    Error,
-    "buyer_list_contains_unhashed_identifier",
-  );
+  assertEquals(fact.providerState, "ready");
+  assertEquals(fact.providerReady, true);
+  const active = audienceProviderFact("meta", {
+    id: "120200000000002",
+    delivery_status: { code: "ACTIVE" },
+  });
+  assertEquals(active.providerState, "ready");
+  const small = audienceProviderFact("meta", {
+    id: "120200000000003",
+    delivery_status: { code: 300 },
+  });
+  assertEquals(small.providerState, "too_small");
 });

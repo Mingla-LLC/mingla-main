@@ -1,7 +1,7 @@
 -- #4251 — fetch_user_going_rsvps returns cover_media_type on BOTH branches
 -- (the caller's own RSVP and a plus-one row matched to them), appended after
 -- every earlier column, with the ORCH-1392 self-scope gate and grants intact.
--- FAILS-ON-REVERT: without 20280319004251 the function has no cover_media_type
+-- FAILS-ON-REVERT: without 20280322004251 the function has no cover_media_type
 -- column, so the signature check and the row reads below raise.
 \set ON_ERROR_STOP on
 BEGIN;

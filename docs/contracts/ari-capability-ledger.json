@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 182,
-    "capability_count": 194,
+    "registered_tool_count": 183,
+    "capability_count": 195,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 181,
+      "registered_unverified": 182,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2933,6 +2933,55 @@
       ],
       "confidence": "medium",
       "verified_at": "2026-10-13"
+    },
+    {
+      "id": "ari.ads.list_ad_audiences",
+      "domain": "ads",
+      "outcome": "Read the brand's own ad audience names and rough sizes",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "authorization_actions": [
+        "read"
+      ],
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/create.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listAdAudiences"
+          }
+        ]
+      },
+      "ari_tool": "list_ad_audiences",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:list_ad_audiences toward #4238 wave 2"
+        }
+      ],
+      "owning_issues": [
+        4238,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-11-02"
     },
     {
       "id": "ari.marketing.update_draft",

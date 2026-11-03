@@ -6,8 +6,18 @@
  * settlement currency and the server freezes account currency + FX authority.
  */
 
+import { edgeErrorCode } from "./edgeErrorCode";
 import { supabase } from "./supabase";
 import type { AdVideoFit } from "../utils/adVideoFit";
+import {
+  HOST_AD_SALES_PLATFORMS,
+  hostAdPageSellsTickets,
+} from "../components/marketing/ads/hostAdGoal";
+import {
+  HOST_AD_OWNED_ERROR_COPY,
+  hostAdVideoFailedMessage,
+  hostAdVideoPendingMessage,
+} from "../components/marketing/ads/hostAdCopy";
 
 const PREPARED_VIDEO_PLATFORMS = new Set([
   "meta",
@@ -37,15 +47,34 @@ export type HostAdPage = {
   brand_name: string;
   canonical_url: string;
   availability: string;
+  starts_at: string | null;
+  city: string | null;
+  cover_url: string | null;
+  result_kind: string | null;
 };
 
+/** #4238: what this ad optimises for on each platform (frozen in the plan). */
+export type HostAdOptimization = "visits" | "sales";
+
+export {
+  HOST_AD_SALES_PAGE_TYPES,
+  HOST_AD_SALES_PLATFORMS,
+  hostAdPageSellsTickets,
+  hostOptimizationSummary,
+} from "../components/marketing/ads/hostAdGoal";
+
+/**
+ * #4238 D1: the server decides which provider account a Host ad uses; the
+ * client never sees or sends a lane.
+ */
 export type HostAdConnection = {
   id: string;
   platform: HostAdPlatform;
-  lane: "business";
   currency: string;
   status: string;
   connected: boolean;
+  /** Read-only preview of the server's Sales signal gate. */
+  sales: { ready: boolean; reason: string };
 };
 
 export type HostAdTargetingCity = {
@@ -106,12 +135,84 @@ export type HostAdDraft = {
   updated_at: string;
 };
 
+/** #4238 wave 2: the state of one audience on one ad app. */
+export type HostAdAudiencePlatformState = {
+  platform: HostAdPlatform;
+  state:
+    | "pending"
+    | "below_minimum"
+    | "syncing"
+    | "ready"
+    | "too_small"
+    | "terms_required"
+    | "ineligible"
+    | "unsupported"
+    | "error"
+    | "retired";
+  neededCount: number | null;
+};
+
+/** #4238 wave 2: the brand's own audience, names and rough sizes only. */
+export type HostAdAudience = {
+  audienceKey: string;
+  name: string;
+  kind: "list" | "lookalike";
+  approxSize: number | null;
+  lookalikeCountry: string | null;
+  platforms: HostAdAudiencePlatformState[];
+};
+
+/** Server rows → typed audiences. Unknown shapes are dropped, never guessed. */
+export function hostAdAudiencesFromSetup(raw: unknown): HostAdAudience[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item): HostAdAudience[] => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.audience_key !== "string" || !row.audience_key) return [];
+    const platforms = Array.isArray(row.platforms) ? row.platforms : [];
+    return [{
+      audienceKey: row.audience_key,
+      name: typeof row.display_name === "string" ? row.display_name : "",
+      kind: row.kind === "lookalike" ? "lookalike" : "list",
+      approxSize:
+        typeof row.approx_size === "number" && Number.isFinite(row.approx_size)
+          ? row.approx_size
+          : null,
+      lookalikeCountry:
+        typeof row.lookalike_country === "string"
+          ? row.lookalike_country
+          : null,
+      platforms: platforms.flatMap((value): HostAdAudiencePlatformState[] => {
+        if (!value || typeof value !== "object") return [];
+        const state = value as Record<string, unknown>;
+        if (typeof state.platform !== "string" || typeof state.state !== "string") {
+          return [];
+        }
+        return [{
+          platform: state.platform as HostAdPlatform,
+          state: state.state as HostAdAudiencePlatformState["state"],
+          neededCount:
+            typeof state.needed_count === "number" ? state.needed_count : null,
+        }];
+      }),
+    }];
+  });
+}
+
 export type HostAdSetup = {
+  /** false when no ad platform is ready for Hosts yet. */
+  available: boolean;
+  /** brands.country_code, upper-cased ISO-3166 alpha-2, or null. */
+  brand_country_code: string | null;
   currency: string;
   pages: HostAdPage[];
   connections: HostAdConnection[];
   creatives: HostAdCreative[];
   plans: HostAdPlanRow[];
+  /** #4238 wave 2: the brand's own audiences ([] when none or unavailable). */
+  audiences: HostAdAudience[];
+  /** "unavailable" when the audiences could not be loaded. */
+  audiences_error?: "unavailable";
 };
 
 export type TargetingSnapshot = {
@@ -260,14 +361,19 @@ async function invoke<T>(
     } catch {
       payload = null;
     }
-    const rawDetail = payload?.detail ?? payload?.message ?? error.message;
+    // #4238: never use the SDK's own text ("Edge Function returned a non-2xx
+    // status code") as detail; the Host would read it. Fall back to the
+    // server's code, then to a neutral code.
+    const rawDetail =
+      payload?.detail ?? payload?.message ?? payload?.error ?? "request_failed";
     const detail =
-      typeof rawDetail === "string"
-        ? rawDetail
-        : JSON.stringify(rawDetail ?? "request_failed");
+      typeof rawDetail === "string" ? rawDetail : JSON.stringify(rawDetail);
     throw new HostAdPlanError(payload?.error ?? "network", detail);
   }
-  if (data && typeof data === "object" && "error" in data) {
+  // #4238: an edge envelope carries `error: null` on success, and
+  // admin-ad-creative-prepare carries an error OBJECT beside `state:"failed"`
+  // so its caller can retry. Fail only on a real error code string.
+  if (edgeErrorCode(data) !== null) {
     const payload = data as { error: string; detail?: unknown };
     throw new HostAdPlanError(
       payload.error,
@@ -280,11 +386,13 @@ async function invoke<T>(
 }
 
 export async function loadHostAdSetup(brandId: string): Promise<HostAdSetup> {
-  const result = await invoke<{ ok: true } & HostAdSetup>("ad-plan", {
+  const result = await invoke<
+    { ok: true } & Omit<HostAdSetup, "audiences"> & { audiences?: unknown }
+  >("ad-plan", {
     action: "host_setup",
     brand_id: brandId,
   });
-  return result;
+  return { ...result, audiences: hostAdAudiencesFromSetup(result.audiences) };
 }
 
 export async function searchHostAdTargeting(input: {
@@ -297,7 +405,6 @@ export async function searchHostAdTargeting(input: {
   return invoke("admin-ad-targeting-search", {
     brand_id: input.brandId,
     owner_kind: "host",
-    lane: "business",
     platform: input.platform,
     kind: input.kind,
     q: input.query,
@@ -363,9 +470,30 @@ export async function listHostAdPlans(
   return (await listHostAdWorkspace(brandId)).plans;
 }
 
+/**
+ * #4238: plan states that mean the ad was created on the apps (live, ended
+ * and everything between). A draft for such a plan is finished, not open.
+ */
+const HOST_PLAN_LAUNCHED_STATES = new Set([
+  "platform_review",
+  "scheduled",
+  "live",
+  "pause_requested",
+  "paused",
+  "stop_requested",
+  "settling",
+  "ended",
+  "platform_rejected",
+  "partially_ready",
+  "partially_live",
+  "settlement_attention_required",
+]);
+
 export async function listHostAdWorkspace(brandId: string): Promise<{
   plans: HostAdPlanAggregate[];
   drafts: HostAdDraft[];
+  launchedPlanIds: string[];
+  planIdByVersionId: Record<string, string>;
 }> {
   const result = await invoke<{
     plans: HostAdPlanRow[];
@@ -388,6 +516,16 @@ export async function listHostAdWorkspace(brandId: string): Promise<{
       item.status === "fulfilled" ? [item.value] : [],
     ),
     drafts: result.drafts ?? [],
+    launchedPlanIds: (result.plans ?? [])
+      .filter((plan) => HOST_PLAN_LAUNCHED_STATES.has(plan.state))
+      .map((plan) => plan.id),
+    planIdByVersionId: Object.fromEntries(
+      (result.plans ?? []).flatMap((plan) =>
+        typeof plan.current_version_id === "string"
+          ? [[plan.current_version_id, plan.id]]
+          : [],
+      ),
+    ),
   };
 }
 
@@ -415,6 +553,9 @@ export type PrepareHostAdPlanInput = {
   rightsConfirmed: boolean;
   rightsBasis: "owned" | "licensed" | "authorized_by_brand";
   aiGenerated: boolean;
+  optimization: HostAdOptimization;
+  /** #4238 wave 2: the brand's own audience keys (0-3). */
+  audienceKeys?: string[];
 };
 
 export type PreparedHostAdPlan = {
@@ -425,6 +566,8 @@ export type PreparedHostAdPlan = {
   targeting: TargetingSnapshot[];
   measurement: Record<string, unknown> | null;
   mediaRights: Record<string, unknown> | null;
+  /** #4238: the frozen per-platform goal; absent on plans saved before it. */
+  optimizationByPlatform?: Record<string, unknown> | null;
   providerValidations: {
     platform: HostAdPlatform;
     result: Record<string, unknown>;
@@ -449,6 +592,41 @@ function targetingCityKey(city: { name: string; countryCode: string }): string {
   return `${city.countryCode.trim().toUpperCase()}:${targetingName(city.name)}`;
 }
 
+/**
+ * #4238: the per-platform goal frozen into the plan hash. "sales" only where
+ * the page sells tickets, the platform has a sales path and its signal is
+ * ready; everything else optimises for page visits. The server re-validates.
+ */
+export function hostOptimizationByPlatform(
+  optimization: HostAdOptimization,
+  page: Pick<HostAdPage, "page_type" | "result_kind">,
+  connections: Pick<HostAdConnection, "platform" | "sales">[],
+): Record<string, HostAdOptimization> {
+  return Object.fromEntries(
+    connections.map((connection) => [
+      connection.platform,
+      optimization === "sales" &&
+      hostAdPageSellsTickets(page) &&
+      connection.sales?.ready === true &&
+      HOST_AD_SALES_PLATFORMS.includes(connection.platform)
+        ? "sales"
+        : "visits",
+    ]),
+  );
+}
+
+/**
+ * #4238: the only refs a Host client may send. Audience ids are deliberately
+ * absent: they come from audience_selection, resolved on the server.
+ */
+export type HostTargetingRefs = {
+  locationIds?: Record<string, string>;
+  interestIds?: Record<string, string>;
+  includeAudienceIds?: never;
+  excludeAudienceIds?: never;
+  advantageAudience?: never;
+};
+
 export async function prepareHostAdPlan(
   input: PrepareHostAdPlanInput,
 ): Promise<PreparedHostAdPlan> {
@@ -459,7 +637,7 @@ export async function prepareHostAdPlan(
   ) {
     throw new HostAdPlanError(
       "validation_error",
-      "Choose at least one connected platform, without duplicates.",
+      HOST_AD_OWNED_ERROR_COPY.noApps,
     );
   }
   const destinationKey = [
@@ -519,13 +697,11 @@ export async function prepareHostAdPlan(
           return id ? [[targetingName(interest.name), id]] : [];
         }),
       );
-      return [
-        connection.platform,
-        {
-          ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
-          ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
-        },
-      ];
+      const refs: HostTargetingRefs = {
+        ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
+        ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
+      };
+      return [connection.platform, refs];
     }),
   );
   const copy = {
@@ -563,6 +739,15 @@ export async function prepareHostAdPlan(
       },
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
+      // #4238 wave 2: the server checks these are this brand's own.
+      audience_selection: {
+        include_keys: [...new Set(input.audienceKeys ?? [])].slice(0, 3),
+      },
+      optimization_by_platform: hostOptimizationByPlatform(
+        input.optimization,
+        input.page,
+        input.connections,
+      ),
       broader_acceptance: Object.fromEntries(
         input.connections.map((connection) => [
           connection.platform,
@@ -614,6 +799,9 @@ export async function prepareHostAdPlan(
     mediaRights:
       (versioned.version.canonical_plan.media_rights as
         Record<string, unknown> | undefined) ?? null,
+    optimizationByPlatform: recordValue(
+      versioned.version.canonical_plan.optimization_by_platform,
+    ),
     // Provider-native video copies do not exist yet. Exact provider validation
     // runs only after funding, review and launch confirmation bind this plan.
     providerValidations: [],
@@ -752,7 +940,25 @@ function hostExecutionTargeting(
   };
 }
 
-function providerCreatePayload(
+/**
+ * #4238: the destination descriptor admin-ad-create-campaign accepts, and
+ * only that. canonical_plan.destination is the full ad_plan_destination_resolve
+ * result (ok, ready, title, canonical_url, destination_family, ...); create's
+ * resolver refuses any other key (destination_descriptor_unknown_field), so
+ * sending it whole failed every Host create at the validate step.
+ */
+export function hostAdDestinationDescriptor(
+  destination: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of ["page_type", "brand_slug", "entity_slug"] as const) {
+    const value = destination?.[key];
+    if (typeof value === "string" && value.trim()) out[key] = value;
+  }
+  return out;
+}
+
+export function providerCreatePayload(
   aggregate: HostAdPlanAggregate,
   allocation: Record<string, unknown>,
   validateOnly = false,
@@ -770,7 +976,7 @@ function providerCreatePayload(
     (row) => row.platform === platform,
   );
   if (!snapshot)
-    throw new HostAdPlanError("plan_conflict", "Targeting snapshot is missing");
+    throw new HostAdPlanError("plan_conflict", HOST_AD_OWNED_ERROR_COPY.noAudienceOwner);
   const audience = snapshot.audience_intent;
   const deliveryBudgets = canonical.delivery_budgets as
     Record<string, Record<string, unknown>> | undefined;
@@ -781,9 +987,10 @@ function providerCreatePayload(
   );
   const providerCap = Number(allocation.provider_budget_cents);
   const commonTargeting = hostExecutionTargeting(snapshot);
+  // #4238: no lane (the server derives it from the owner) and no objective
+  // fields (the server derives them from the plan's optimization_by_platform).
   const base: Record<string, unknown> = {
     platform,
-    lane: "business",
     owner_kind: "host",
     brand_id: aggregate.plan.brand_id,
     plan_version_id: aggregate.version.id,
@@ -792,8 +999,8 @@ function providerCreatePayload(
       validateOnly ? "_validate" : ""
     }`.slice(0, 120),
     name: String(canonical.name ?? "Mingla promotion"),
-    destination,
-    destinations: [destination],
+    destination: hostAdDestinationDescriptor(destination),
+    destinations: [hostAdDestinationDescriptor(destination)],
     audience_intent: audience,
     copy_intent: copy,
     creative_intent: {
@@ -820,9 +1027,6 @@ function providerCreatePayload(
   if (platform === "tiktok") {
     return {
       ...base,
-      objective: "TRAFFIC",
-      optimization_goal: "TRAFFIC_LANDING_PAGE_VIEW",
-      billing_event: "CPC",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -835,7 +1039,6 @@ function providerCreatePayload(
   if (platform === "reddit") {
     return {
       ...base,
-      objective: "CLICKS",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -846,8 +1049,6 @@ function providerCreatePayload(
   if (platform === "snapchat") {
     return {
       ...base,
-      objective: "TRAFFIC",
-      optimization_goal: "SWIPES",
       creative: {
         kind: "video",
         creative_library_id: creativeId,
@@ -872,9 +1073,6 @@ function providerCreatePayload(
   }
   return {
     ...base,
-    objective: "OUTCOME_TRAFFIC",
-    optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS",
     creative: {
       kind: "video",
       creative_library_id: creativeId,
@@ -928,7 +1126,7 @@ async function prepareBoundVideoPlatforms(
   if (!creativeId) {
     throw new HostAdPlanError(
       "creative_required",
-      "The immutable plan has no recorded video creative",
+      HOST_AD_OWNED_ERROR_COPY.noVideo,
     );
   }
   for (const allocation of aggregate.provider_allocations) {
@@ -944,7 +1142,6 @@ async function prepareBoundVideoPlatforms(
             action,
             creative_library_id: creativeId,
             platform,
-            lane: "business",
             brand_id: aggregate.plan.brand_id,
             plan_version_id: aggregate.version.id,
             plan_hash: aggregate.version.plan_hash,
@@ -955,7 +1152,7 @@ async function prepareBoundVideoPlatforms(
           if (retried) {
             throw new HostAdPlanError(
               "provider_prepare_failed",
-              `${platform}: ${row.error?.message ?? "The ad platform could not prepare this video"}`,
+              hostAdVideoFailedMessage(platform),
             );
           }
           action = "retry";
@@ -973,7 +1170,7 @@ async function prepareBoundVideoPlatforms(
         if (attempt === 59) {
           throw new HostAdPlanError(
             "provider_prepare_pending",
-            `${platform} is still preparing the video; resume this exact plan shortly`,
+            hostAdVideoPendingMessage(platform),
           );
         }
       }
@@ -1020,7 +1217,7 @@ function assertCurrentVersion(
   ) {
     throw new HostAdPlanError(
       "plan_conflict",
-      "This is no longer the current plan version",
+      HOST_AD_OWNED_ERROR_COPY.changed,
     );
   }
 }
@@ -1066,7 +1263,7 @@ export async function launchHostAdPlan(input: {
   if (aggregate.plan.state === "staff_review_required") {
     throw new HostAdPlanError(
       "staff_review",
-      "Mingla staff approval is still required",
+      HOST_AD_OWNED_ERROR_COPY.inReview,
     );
   }
   if (
@@ -1081,7 +1278,7 @@ export async function launchHostAdPlan(input: {
   ) {
     throw new HostAdPlanError(
       "funding_required",
-      "Hold the approved budget before launch",
+      HOST_AD_OWNED_ERROR_COPY.fundingRequired,
     );
   }
   await invoke("ad-plan", {
@@ -1115,7 +1312,7 @@ export async function launchHostAdPlan(input: {
     if (!campaignId) {
       const cause = new HostAdPlanError(
         "provider_create_failed",
-        "Provider create returned no campaign ID",
+        HOST_AD_OWNED_ERROR_COPY.notConfirmed,
       );
       await recordCreateFailure(aggregate, platform, cause);
       throw cause;

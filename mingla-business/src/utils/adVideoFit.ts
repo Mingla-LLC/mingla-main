@@ -18,7 +18,7 @@ export type AdVideoFit = {
 };
 
 const PLATFORM_NAMES: Record<AdVideoFitPlatform, string> = {
-  meta: "Meta",
+  meta: "Facebook & Instagram",
   tiktok: "TikTok",
   snapchat: "Snapchat",
   google: "Google",
