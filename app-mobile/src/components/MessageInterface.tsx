@@ -137,6 +137,7 @@ import { prepareContentShare } from "../services/contentShareAdapter";
 import { clearContentShareOperationId, sendContentShareToRecipients } from "../services/contentShareDeliveryService";
 import { nativeContentCardSnapshotService } from "../services/nativeContentCardSnapshotService";
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
+import { expansionTargetFromSavedPayload } from "../utils/expansionTargetFromSavedPayload";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useSessionScheduledCards } from "../hooks/useSessionScheduledCards";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -166,7 +167,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptorV1 } from '@mingla/sharing';
 import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
-import type { PlanQuoteSnapshot } from "../types/chatPlans";
+import type { ChatPlan, GroupEventPayload, PlanEventPayload, PlanQuoteSnapshot } from "../types/chatPlans";
+import { PlanCardBubble } from "./chat/PlanCardBubble";
+import { PlanTimePickerSheet } from "./chat/PlanTimePickerSheet";
+import { PlanActionsMenu, PlanEditSheet } from "./chat/PlanEditSheet";
+import { GroupJoinRequestCard } from "./chat/GroupJoinRequestCard";
+import { useCancelPlan, useChatPlans, useChatPlansRealtime, useLockPlan, useUpdatePlan } from "../hooks/useChatPlans";
+import { chatPlanKindOf, formatPlanTime, planQuoteNote, viewerQuoteSnapshot } from "./chat/planModel";
+import { toastManager } from "./ui/Toast";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -296,6 +304,8 @@ interface ThreadRow {
   /** Issue #4114 Wave 7: space under and above the row (media cards get 14pt). */
   bottomGap: number;
   topGap: number;
+  /** Issue #4261: a comment on a plan quotes the plan and the sender's picks. */
+  planQuote: { planId: string; title: string; note: string } | null;
 }
 
 const EMPTY_EMOJIS: string[] = [];
@@ -372,6 +382,8 @@ interface MessageInterfaceProps {
     replyToId?: string,
     mentions?: MentionEntry[],
     cardTags?: CardTagEntry[],
+    /** Issue #4261: a comment on a plan with no visible plan message (a deck match). */
+    planId?: string,
   ) => void;
   messages: Message[];
   /**
@@ -579,6 +591,23 @@ export default function MessageInterface({
     : isDmCollabActive
       ? dmCollabSession?.id ?? null
       : null;
+  // Issue #4261: chats that hold plans (1:1, collab groups, plain groups).
+  const chatPlanKind = chatPlanKindOf({
+    isGroupChat,
+    linkedEntityType: friend.linkedEntityType ?? null,
+    sessionId: friend.sessionId ?? null,
+    programKind: friend.programKind ?? null,
+    isBrandChannel: brandChannel !== null,
+    isBlocked,
+    isUnfriended,
+    isDeletedAccount,
+  });
+  const isPlanChat = chatPlanKind !== null && Boolean(conversationId);
+  const planConversationId = isPlanChat ? conversationId : null;
+  const chatPlansQuery = useChatPlans(planConversationId, isPlanChat);
+  useChatPlansRealtime(planConversationId, isPlanChat);
+  const chatPlansPayload = chatPlansQuery.data ?? null;
+  const planViewerId = chatPlansPayload?.viewerId ?? currentUserId ?? null;
   // The starter sets their vibes while the invite is still out, so the prefs
   // sheet follows the live session even before it is active.
   const prefsSessionId: string | null = collabSessionId ?? (isDirectChat ? dmCollabSession?.id ?? null : null);
@@ -1027,7 +1056,18 @@ export default function MessageInterface({
     isMe: boolean;
     /** Issue #4114 Wave 6: the quoted message's event chat (a reply goes there). */
     conversationId?: string;
+    /**
+     * Issue #4261: replying to a plan. A chat plan whose card is visible replies
+     * to that message (the server derives the plan); otherwise the send names
+     * the plan id (deck matches have no card message).
+     */
+    plan?: { planId: string; title: string; viaPlanId: boolean };
   } | null>(null);
+  // Issue #4261: plan dialogs and the card highlight after a jump.
+  const [planLockTimeFor, setPlanLockTimeFor] = useState<ChatPlan | null>(null);
+  const [planMenuFor, setPlanMenuFor] = useState<ChatPlan | null>(null);
+  const [planEditFor, setPlanEditFor] = useState<ChatPlan | null>(null);
+  const [highlightPlanId, setHighlightPlanId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const safeInsets = useSafeAreaInsets();
@@ -1226,12 +1266,21 @@ export default function MessageInterface({
     sendCoordinator.requestSend({
       read: chatController.readText,
       send: () => {
-        const replyToId = replyingTo?.messageId;
+        const planReply = replyingTo?.plan;
+        const replyToId = planReply?.viaPlanId ? undefined : replyingTo?.messageId;
         const { content, mentions, cardTags } = chatController.serializeForSend();
         // Clear first, synchronously, then send.
         clearComposerAfterSend();
         setReplyingTo(null); // Clear reply state immediately
-        onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
+        onSendMessage(
+          content,
+          "text",
+          undefined,
+          replyToId,
+          mentions,
+          cardTags,
+          planReply?.viaPlanId ? planReply.planId : undefined,
+        );
         stopTyping();
         HapticFeedback.light();
       },
@@ -2271,7 +2320,7 @@ export default function MessageInterface({
           senderName,
           content: message.content,
           timestamp: message.timestamp,
-          type: message.type === 'system' ? 'text' : message.type,
+          type: message.type === 'system' || message.type === 'plan' ? 'text' : message.type,
           fileUrl: message.fileUrl,
           fileName: message.fileName,
           fileSize: message.fileSize,
@@ -2338,6 +2387,13 @@ export default function MessageInterface({
             : { senderName: '', content: '', isDeleted: true, messageId: message.replyToId }
           : undefined,
         isRead: message.isMe && !message.id.startsWith("temp-") && (message.isRead === true),
+        planQuote: message.planId && message.planQuote && message.type !== 'plan' && !message.isSystem
+          ? {
+              planId: message.planId,
+              title: message.planQuote.title,
+              note: planQuoteNote(message.planQuote, i18n.language, undefined, (key, params) => t(`chat:${key}`, params)),
+            }
+          : null,
         dayLabel,
         showNewDivider: message.id === newDividerMessageId,
         eventMarker: brandChannel && eventMarkerIds?.has(message.id)
@@ -2379,6 +2435,123 @@ export default function MessageInterface({
       conversationId: row.message.conversationId,
     });
   }, []);
+
+  // ── Issue #4261: plans in the thread ─────────────────────────
+  /** A chat member's name, or null when this phone does not know them yet. */
+  const resolveMemberName = useCallback((userId: string | null | undefined): string | null => {
+    if (!userId) return null;
+    if (userId === currentUserId) return currentUserName?.trim() || t('chat:you');
+    const fromParticipants = participantsQuery.data?.find((participant) => participant.userId === userId)?.displayName;
+    if (fromParticipants) return cleanName(fromParticipants);
+    const fromHeader = headerParticipants.find((participant) => participant.id === userId);
+    return fromHeader ? getHeaderParticipantName(fromHeader) : null;
+    // cleanName / getHeaderParticipantName are pure helpers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, currentUserName, headerParticipants, participantsQuery.data, t]);
+  const planNameOf = useCallback(
+    (userId: string | null): string => resolveMemberName(userId) ?? t('chat:planSetBySomeone'),
+    [resolveMemberName, t],
+  );
+  const [planCommentsFor, setPlanCommentsFor] = useState<ChatPlan | null>(null);
+
+  /**
+   * Issue #4261 (spec 5.5 #9): a plan / group system row in local time from its
+   * payload; anything this phone cannot name falls back to the server's prose.
+   */
+  const planSystemRowText = useCallback((payload: PlanEventPayload | GroupEventPayload, fallback: string): string => {
+    if (payload.kind === 'plan_event') {
+      const title = chatPlansPayload?.plans.find((plan) => plan.id === payload.planId)?.title;
+      const name = resolveMemberName(payload.actorId);
+      if (!title || !name) return fallback;
+      if (payload.event === 'time_added' && payload.startsAt) {
+        return t('chat:plan_event_time_added', { name, time: formatPlanTime(payload.startsAt, i18n.language), title });
+      }
+      if (payload.event === 'locked' && payload.scheduledAt) {
+        return t('chat:plan_event_locked', { name, time: formatPlanTime(payload.scheduledAt, i18n.language), title });
+      }
+      if (payload.event === 'cancelled') return t('chat:plan_event_cancelled', { name, title });
+      return fallback;
+    }
+    if (payload.event === 'joined_by_link') {
+      const name = resolveMemberName(payload.userId);
+      const sharer = resolveMemberName(payload.sharerId);
+      return name && sharer ? t('chat:group_event_joined', { name, sharer }) : fallback;
+    }
+    if (payload.event === 'members_added') {
+      const actor = resolveMemberName(payload.actorId);
+      const names = (payload.userIds ?? []).map((id) => resolveMemberName(id));
+      if (!actor || names.length === 0 || names.some((name) => !name)) return fallback;
+      const list = names as string[];
+      const joined = list.length === 1 ? list[0] : t('chat:plan_quote_and', { list: list.slice(0, -1).join(', '), last: list[list.length - 1] });
+      return t('chat:group_event_members_added', { actor, names: joined });
+    }
+    return fallback;
+  }, [chatPlansPayload?.plans, i18n.language, resolveMemberName, t]);
+
+  /** Reply on a plan: quote it in the composer bar with my current picks. */
+  const startPlanReply = useCallback((plan: ChatPlan) => {
+    const viaPlanId = !(plan.source === 'chat' && plan.messageId && plan.messageVisible);
+    const note = planViewerId
+      ? planQuoteNote(viewerQuoteSnapshot(plan, planViewerId), i18n.language, undefined, (key, params) => t(`chat:${key}`, params))
+      : '';
+    setReplyingTo({
+      messageId: viaPlanId ? '' : (plan.messageId as string),
+      senderName: plan.title,
+      content: note,
+      isMe: true,
+      plan: { planId: plan.id, title: plan.title, viaPlanId },
+    });
+    setTimeout(() => inputRef.current?.focus?.(), 50);
+  }, [i18n.language, planViewerId, t]);
+
+  /** Scroll the thread to a plan's card and outline it for a second. */
+  const jumpToPlanCard = useCallback((planId: string): boolean => {
+    const index = threadRowsRef.current.findIndex(
+      (row) => (row.message.cardPayload as { kind?: string; planId?: string } | undefined)?.kind === 'plan'
+        && (row.message.cardPayload as { planId?: string }).planId === planId,
+    );
+    if (index < 0) return false;
+    flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    setHighlightPlanId(planId);
+    setTimeout(() => setHighlightPlanId((current) => (current === planId ? null : current)), 1000);
+    return true;
+  }, []);
+
+  const openPlanPlace = useCallback((plan: ChatPlan) => {
+    const place = plan.place;
+    if (!place) return;
+    if (place.poolId) {
+      const target = expansionTargetFromSavedPayload({
+        id: place.poolId,
+        placePoolId: place.poolId,
+        title: place.name ?? plan.title,
+        address: place.address ?? undefined,
+        image: place.photoUrl ?? undefined,
+        lat: place.lat ?? undefined,
+        lng: place.lng ?? undefined,
+        location: place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : undefined,
+      });
+      if (target?.kind === 'nightOut') {
+        setExpandedCardFromChat(target.data);
+        setShowExpandedCardFromChat(true);
+        return;
+      }
+    }
+    const label = place.name ?? place.address ?? plan.title;
+    const hasCoords = place.lat != null && place.lng != null;
+    const query = encodeURIComponent(hasCoords ? label : place.address ?? label);
+    const url = Platform.OS === 'ios'
+      ? hasCoords ? `maps:?q=${query}&ll=${place.lat},${place.lng}` : `maps:?q=${query}`
+      : hasCoords ? `geo:${place.lat},${place.lng}?q=${place.lat},${place.lng}(${query})` : `geo:0,0?q=${query}`;
+    Linking.openURL(url).catch((error: unknown) => {
+      console.warn('[MessageInterface] could not open maps', error);
+      toastManager.error(t('chat:plan_action_failed'));
+    });
+  }, [t]);
+
+  const planLockMutation = useLockPlan(planConversationId ?? '', planViewerId);
+  const planUpdateMutation = useUpdatePlan(planConversationId ?? '');
+  const planCancelMutation = useCancelPlan(planConversationId ?? '', planViewerId);
 
   // Reactions: awaited, and a failure is never silent (ConnectionsPage rolls
   // the pill back and toasts; anything thrown here toasts too).
@@ -2627,7 +2800,82 @@ export default function MessageInterface({
       </View>
     ) : null;
 
+    // Issue #4261: a plan card, full width, read from the chat's plan list.
+    const planCardPayload = item.message.cardPayload as { kind?: string; planId?: string } | undefined;
+    if (planConversationId && planCardPayload?.kind === 'plan' && typeof planCardPayload.planId === 'string') {
+      const cardPlanId = planCardPayload.planId;
+      return (
+        <>
+          <PlanCardBubble
+            planId={cardPlanId}
+            conversationId={planConversationId}
+            fallbackContent={item.message.content}
+            senderName={item.senderName}
+            isMe={item.message.isMe}
+            nameOf={planNameOf}
+            onReply={startPlanReply}
+            onOpenComments={setPlanCommentsFor}
+            onOpenPlace={openPlanPlace}
+            onOpenLink={handleLinkPress}
+            onRequestLockTime={setPlanLockTimeFor}
+            onLongPress={setPlanMenuFor}
+            highlighted={highlightPlanId === cardPlanId}
+          />
+          {eventMarker}
+          {newDivider}
+          {daySeparator}
+        </>
+      );
+    }
+
     if (item.message.isSystem) {
+      // Issue #4261: plan and group rows (spec 5.5 #9). Unknown kinds keep the
+      // existing content rendering below.
+      const planEventPayload = item.message.cardPayload as unknown as PlanEventPayload | GroupEventPayload | undefined;
+      if (
+        planEventPayload?.kind === 'group_event' &&
+        planEventPayload.event === 'join_request' &&
+        planEventPayload.requestId &&
+        conversationId
+      ) {
+        return (
+          <>
+            <GroupJoinRequestCard
+              conversationId={conversationId}
+              requestId={planEventPayload.requestId}
+              groupName={headerTitle}
+              fallbackText={item.message.content}
+            />
+            {eventMarker}
+            {newDivider}
+            {daySeparator}
+          </>
+        );
+      }
+      if (planEventPayload?.kind === 'plan_event' || planEventPayload?.kind === 'group_event') {
+        const rowText = planSystemRowText(planEventPayload, item.message.content);
+        const jumpPlanId = planEventPayload.kind === 'plan_event' && planEventPayload.event !== 'cancelled'
+          ? planEventPayload.planId
+          : null;
+        return (
+          <>
+            <MessageBubble
+              message={{ ...item.bubble, content: rowText }}
+              onSystemTokenPress={handleSystemTokenPress}
+              onPlanRowPress={jumpPlanId ? () => {
+                if (!jumpToPlanCard(jumpPlanId)) showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+              } : undefined}
+              isMe={item.message.isMe}
+              groupPosition={item.groupPosition}
+              showTimestamp={false}
+              isRead={false}
+            />
+            {eventMarker}
+            {newDivider}
+            {daySeparator}
+          </>
+        );
+      }
       // Issue #4114 Wave 5: the collab rows of a 1:1 chat (started / joined / ended).
       const dmCollabPayload = item.message.cardPayload as unknown;
       if (isDmCollabEventPayload(dmCollabPayload)) {
@@ -2710,6 +2958,11 @@ export default function MessageInterface({
               isRead={item.isRead}
               replyTo={item.replyTo}
               onScrollToMessage={handleScrollToMessage}
+              planQuote={item.planQuote}
+              onPlanQuotePress={item.planQuote ? () => {
+                const quoted = chatPlansPayload?.plans.find((plan) => plan.id === item.planQuote?.planId);
+                if (quoted) setPlanCommentsFor(quoted);
+              } : undefined}
               showSenderName={item.showSenderName}
               reactions={item.reactions}
               onReactionPress={onToggleReaction ? toggleReaction : undefined}
@@ -2761,6 +3014,17 @@ export default function MessageInterface({
     startReply,
     t,
     toggleReaction,
+    planConversationId,
+    planNameOf,
+    startPlanReply,
+    openPlanPlace,
+    highlightPlanId,
+    planSystemRowText,
+    jumpToPlanCard,
+    chatPlansPayload?.plans,
+    conversationId,
+    headerTitle,
+    showNotification,
   ]);
 
   // ── Issue #4114 Wave 3: Android back ─────────────────────────
@@ -3157,6 +3421,39 @@ export default function MessageInterface({
         title={linkBrowserUrl ?? ''}
         onClose={() => setLinkBrowserUrl(null)}
       />
+      {/* Issue #4261: a plan's long-press menu, its edit dialog and "Lock it in" with no time vote. */}
+      {planConversationId ? (
+        <>
+          <PlanActionsMenu
+            plan={planMenuFor}
+            onClose={() => setPlanMenuFor(null)}
+            onReply={startPlanReply}
+            onEdit={setPlanEditFor}
+            onCancelPlan={(plan) => planCancelMutation.mutate({ plan })}
+          />
+          <PlanEditSheet
+            plan={planEditFor}
+            busy={planUpdateMutation.isPending}
+            onClose={() => setPlanEditFor(null)}
+            onSave={(plan, title, note) =>
+              planUpdateMutation.mutate({ plan, title, note }, { onSuccess: () => setPlanEditFor(null) })
+            }
+          />
+          <PlanTimePickerSheet
+            visible={planLockTimeFor !== null}
+            onClose={() => setPlanLockTimeFor(null)}
+            planTitle={planLockTimeFor?.title ?? ''}
+            busy={planLockMutation.isPending}
+            onConfirm={(scheduledAt) => {
+              if (!planLockTimeFor) return;
+              planLockMutation.mutate(
+                { plan: planLockTimeFor, scheduledAt },
+                { onSuccess: () => setPlanLockTimeFor(null) },
+              );
+            }}
+          />
+        </>
+      ) : null}
       <ViewOncePhotoViewer
         url={viewOncePhotoUrl}
         onClose={closeViewOnceViewer}
@@ -3275,6 +3572,7 @@ export default function MessageInterface({
               onClose={() => setReplyingTo(null)}
               theme="dark"
               closeLabel={t('chat:a11yCancelReply')}
+              planHeading={replyingTo.plan ? t('chat:plan_replying_to', { title: replyingTo.plan.title }) : undefined}
             />
           </View>
         )}
@@ -3382,7 +3680,11 @@ export default function MessageInterface({
               onBlur={stopTyping}
               accessibilityLabel={t('chat:a11yMessageInput')}
               placeholder={
-                pendingMedia.length > 0 ? t('chat:addCaption') : t('chat:typeMessage')
+                pendingMedia.length > 0
+                  ? t('chat:addCaption')
+                  : replyingTo?.plan
+                    ? t('chat:plan_composer_placeholder', { title: replyingTo.plan.title })
+                    : t('chat:typeMessage')
               }
               placeholderTextColor="rgba(255, 255, 255, 0.4)"
               style={[

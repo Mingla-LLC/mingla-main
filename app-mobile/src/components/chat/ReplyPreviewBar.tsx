@@ -11,6 +11,11 @@ interface ReplyPreviewBarProps {
   /** Issue #4114 Wave 3: the dark chat screen passes `dark`; other hosts keep light. */
   theme?: 'light' | 'dark';
   closeLabel?: string;
+  /**
+   * Issue #4261: replying to a plan. The bar reads "Replying to plan: {title}"
+   * (this label, in the deck tag colour) over your current picks (previewText).
+   */
+  planHeading?: string;
 }
 
 /**
@@ -24,14 +29,19 @@ export function ReplyPreviewBar({
   onClose,
   theme = 'light',
   closeLabel = 'Cancel reply',
+  planHeading,
 }: ReplyPreviewBarProps): React.ReactElement {
   const dark = theme === 'dark';
+  const isPlan = Boolean(planHeading);
   return (
-    <View style={[styles.container, dark && styles.containerDark]}>
-      <View style={[styles.accentBar, isOwnMessage ? styles.accentBarOwn : styles.accentBarOther]} />
+    <View style={[styles.container, dark && styles.containerDark]} testID={isPlan ? 'chat-reply-plan-bar' : undefined}>
+      <View style={[styles.accentBar, isOwnMessage || isPlan ? styles.accentBarOwn : styles.accentBarOther]} />
       <View style={styles.content}>
-        <Text style={[styles.senderName, dark && styles.senderNameDark]} numberOfLines={1}>
-          {senderName}
+        <Text
+          style={[styles.senderName, dark && styles.senderNameDark, isPlan && styles.planHeading]}
+          numberOfLines={1}
+        >
+          {planHeading ?? senderName}
         </Text>
         <Text style={[styles.previewText, dark && styles.previewTextDark]} numberOfLines={1}>
           {previewText}
@@ -69,6 +79,11 @@ const styles = StyleSheet.create({
   },
   previewTextDark: {
     color: chatTokens.textSoft,
+  },
+  planHeading: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: chatTokens.tagDeck,
   },
   accentBar: {
     width: 3,
