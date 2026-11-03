@@ -1,9 +1,9 @@
+// MINGLA-INVARIANT: I-4238-HOST-AD-LANE-SINGLE-OWNER | issue #4238 | The provider lane for Host and Ari ads is decided only by HOST_AD_LANE in supabase/functions/_shared/adChannelCore.ts; no business-lane literal exists in the Host or Ari path (T-A1..T-A8).
+// MINGLA-INVARIANT: I-4238-HOST-AD-GOAL-SERVER-OWNED | issue #4238 | Host and Ari provider objective fields are derived on the server from canonical_plan.optimization_by_platform inside the plan hash; clients never send them (T-F1..T-F7).
 /**
  * #4238 — Host and Ari ads run on Mingla's consumer accounts, and the Host
  * ad goal is owned by the server.
  *
- * invariant: {"id":"I-PROPOSED-HOST-AD-LANE-SINGLE-OWNER","status":"DRAFT","issue":4238,"rule":"The provider lane for Host and Ari ads is decided only by HOST_AD_LANE in supabase/functions/_shared/adChannelCore.ts; no lane: \"business\" literal exists in the Host/Ari path.","gate":"this file: T-A1..T-A8"}
- * invariant: {"id":"I-PROPOSED-HOST-AD-GOAL-SERVER-OWNED","status":"DRAFT","issue":4238,"rule":"Host and Ari provider objective fields are derived server-side from canonical_plan.optimization_by_platform (inside the plan hash); clients never send them.","gate":"this file: T-F1..T-F7"}
  *
  * Fails on revert: T-A1 fails if HOST_AD_LANE goes back to "business"; T-A4
  * fails if any Host/Ari file names the business lane again; T-F1 fails if
