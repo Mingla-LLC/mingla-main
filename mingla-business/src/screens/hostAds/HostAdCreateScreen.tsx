@@ -54,6 +54,25 @@ import { HostAdAudiencePicker } from "../../components/marketing/ads/HostAdAudie
 import { HostAdPagePicker } from "../../components/marketing/ads/HostAdPagePicker";
 import { HostAdPlacesEditor } from "../../components/marketing/ads/HostAdPlacesEditor";
 import { HostAdInterestsEditor } from "../../components/marketing/ads/HostAdInterestsEditor";
+import { HostAdBudgetPanel } from "../../components/marketing/ads/HostAdBudgetPanel";
+import {
+  HostAdCtaPicker,
+  HostAdPreview,
+  HostAdTextCounters,
+  HostAdUtmTags,
+} from "../../components/marketing/ads/HostAdCreativeExtras";
+import {
+  type HostAdBudgetMode,
+  hostAdAllocations,
+  hostAdDaysInRun,
+} from "../../components/marketing/ads/hostAdBudget";
+import {
+  HOST_AD_CTA_OPTIONS,
+  type HostAdCtaId,
+  hostAdCopyError,
+  hostAdDefaultCta,
+  isHostAdCtaId,
+} from "../../components/marketing/ads/hostAdCreativeRules";
 import {
   HostAdReachMeter,
   type HostAdReachMeterRow,
@@ -122,6 +141,7 @@ import { loadHostAdPlanService } from "./hostAdKitService";
 import { hostAdOwnerKey } from "../../services/eventCoverVideoEdgeContract";
 import { randomUuid } from "../../utils/randomId";
 import { adVideoFitSummaryFor } from "../../utils/adVideoFit";
+import { hostOptimizationByPlatform } from "../../services/hostAdPlanService";
 
 // #4238: platforms are named the way Hosts know them.
 const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
@@ -364,6 +384,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [targetingSearchBusy] = useState(false);
   const [dailyAmount, setDailyAmount] = useState("30");
   const [capAmount, setCapAmount] = useState("210");
+  // #4238 P1: a total for the run by default; per day as an option.
+  const [budgetMode, setBudgetMode] = useState<HostAdBudgetMode>("total");
+  const [totalAmount, setTotalAmount] = useState("");
+  // #4238 P1: the button; defaults from the page once it is picked.
+  const [cta, setCta] = useState<HostAdCtaId | null>(null);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [activeStepId, setActiveStepId] = useState<HostAdStepId>(
@@ -632,6 +657,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setEndDate(
         hostAdDayOf(String(schedule?.ends_at ?? ""), matchedPage?.timezone),
       );
+      // Plans from before the total budget were set per day.
+      setBudgetMode(canonical.budget_mode === "total" ? "total" : "daily");
+      setTotalAmount(
+        String(
+          aggregate.provider_allocations.reduce(
+            (sum, allocation) =>
+              sum + Number(allocation.host_budget_cents ?? 0),
+            0,
+          ) / 100,
+        ),
+      );
+      if (isHostAdCtaId(canonical.call_to_action)) setCta(canonical.call_to_action);
       setExistingPlanId(aggregate.plan.id);
       draftPlanIdRef.current = aggregate.plan.id;
       setProviderObjectEvidence(aggregateHasProviderObjectEvidence(aggregate));
@@ -863,6 +900,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
           setDailyAmount(state.daily_amount);
         }
         if (typeof state.cap_amount === "string") setCapAmount(state.cap_amount);
+        if (state.budget_mode === "total" || state.budget_mode === "daily") {
+          setBudgetMode(state.budget_mode);
+        } else if (typeof state.daily_amount === "string") {
+          // Drafts from before the total budget were set per day.
+          setBudgetMode("daily");
+        }
+        if (typeof state.total_amount === "string") {
+          setTotalAmount(state.total_amount);
+        }
+        if (isHostAdCtaId(state.cta)) setCta(state.cta);
         if (typeof state.start_date === "string") setStartDate(state.start_date);
         if (typeof state.end_date === "string") setEndDate(state.end_date);
         if (typeof state.accept_broader === "boolean") {
@@ -976,8 +1023,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setOptimization("visits");
     }
   }, [optimization, pageSellsTickets, salesReadyPlatforms.length]);
-  const dailyBudgetCents = parseMoney(dailyAmount);
-  const capCents = parseMoney(capAmount);
+  const enteredDailyCents = parseMoney(dailyAmount);
+  const enteredCapCents = parseMoney(capAmount);
+  const totalCents = parseMoney(totalAmount);
   const radiusKmNumber = Number(radiusKm);
   // #4238 r6: "today" and both date fields are the page's own calendar.
   const today = useMemo(
@@ -1025,16 +1073,52 @@ export default function HostAdCreateRoute(): React.ReactElement {
               Number(ageMin) > Number(ageMax)
             ? "Use an age range between 13 and 100."
             : null;
+  // #4238 P1: each app's minimum first, then the rest evenly.
+  const runDays =
+    endDate !== "" ? hostAdDaysInRun(startDate || today, endDate) : null;
+  const appMinimums = useMemo(() => {
+    const goals = page
+      ? hostOptimizationByPlatform(optimization, page, connections)
+      : {};
+    return Object.fromEntries(
+      (setup?.minimums ?? []).map((row) => [
+        row.platform,
+        goals[row.platform] === "sales"
+          ? row.sales_daily_minimum_cents
+          : row.visits_daily_minimum_cents,
+      ]),
+    ) as Record<string, number | undefined>;
+  }, [connections, optimization, page, setup?.minimums]);
+  const allocation = hostAdAllocations({
+    mode: budgetMode,
+    totalCents: budgetMode === "total" ? totalCents : enteredCapCents,
+    dailyCents: enteredDailyCents,
+    days: runDays,
+    apps: activeApps,
+    minimums: appMinimums,
+  });
+  const dailyBudgetCents = allocation.dailyTotalCents;
+  const capCents = allocation.capTotalCents;
   const budgetError =
-    dailyBudgetCents <= 0
+    budgetMode === "total" && endDate === ""
+      ? "Pick an end date, or switch to a daily budget."
+      : budgetMode === "total" && totalCents <= 0
+        ? "Enter a total budget."
+        : dailyBudgetCents <= 0
       ? "Enter a daily budget."
       : capCents < dailyBudgetCents
         ? "Your total budget must be at least one day of spend."
+        : !allocation.split.ok && allocation.split.short
+          ? `${PLATFORM_LABELS[allocation.split.short.platform] ?? allocation.split.short.platform} needs about ${formatMoney(setup?.currency ?? "", allocation.split.short.minimumCents)} a day. Raise the budget, or turn it off.`
         : startDate !== "" && startDate < today
           ? "The start date cannot be in the past."
           : endDate !== "" && endDate < (startDate || today)
             ? "The end date must be on or after the start date."
             : hostAdScheduleError(startDate, endDate, scheduleLimit);
+  const copyError = hostAdCopyError(activeApps, {
+    primary: primaryText.trim(),
+    headline: (headline.trim() || name.trim()),
+  });
   const creativeError = !creative
     ? "Choose a ready video."
     : !rightsConfirmed
@@ -1043,7 +1127,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         ? "Add a campaign name."
         : primaryText.trim().length < 3
           ? "Add the primary ad text."
-          : null;
+          : copyError;
   const stepErrors: Record<HostAdStepId, string | null> = {
     promote: promoteError,
     audience: audienceError,
@@ -1079,6 +1163,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
       audience_keys: audienceKeys,
       daily_amount: dailyAmount,
       cap_amount: capAmount,
+      budget_mode: budgetMode,
+      total_amount: totalAmount,
+      cta,
       start_date: startDate,
       end_date: endDate,
       accept_broader: acceptBroader,
@@ -1091,6 +1178,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
       acceptBroader,
       activePlanState,
       audienceKeys,
+      budgetMode,
+      cta,
+      totalAmount,
       ageMax,
       ageMin,
       aiGenerated,
@@ -1538,6 +1628,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
         gender,
         dailyBudgetCents,
         capCents,
+        budgetMode,
+        shares: {
+          dailyCents: allocation.split.rows.map((row) => row.dailyCents),
+          capCents: allocation.capShares,
+        },
+        cta: cta ?? hostAdDefaultCta(page?.page_type),
         // #4238 r6: both in the page's own zone, like the fields.
         ...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page?.timezone),
         acceptBroader: forceAcceptance || acceptBroader,
@@ -2214,38 +2310,75 @@ export default function HostAdCreateRoute(): React.ReactElement {
               />
             </View>
           ) : null}
-          <Text style={styles.sectionTitle}>Set the spend and schedule boundaries</Text>
+          <Text style={styles.sectionTitle}>How much?</Text>
           <Text style={styles.helper}>
-            You pay and see every amount in {setup.currency}. We split your
-            budget evenly across the apps you picked, and the exchange rate is
-            fixed when you confirm your ad.
+            You pay and see every amount in {setup.currency}. The exchange rate
+            is fixed when you check your ad.
           </Text>
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Daily budget ({setup.currency})</Text>
+          {budgetMode === "total" ? (
+            <>
+              <Text style={styles.label}>Total for the whole run ({setup.currency})</Text>
               <Input
-                value={dailyAmount}
+                value={totalAmount}
                 onChangeText={(value) => {
-                  setDailyAmount(value);
+                  setTotalAmount(value);
                   setPrepared(null);
                 }}
                 variant="number"
-                accessibilityLabel="Daily budget"
+                accessibilityLabel="Total budget for the whole run"
+                testID="host-ad-total-budget"
               />
+            </>
+          ) : (
+            <View style={styles.fieldRow}>
+              <View style={styles.fieldHalf}>
+                <Text style={styles.label}>Daily budget ({setup.currency})</Text>
+                <Input
+                  value={dailyAmount}
+                  onChangeText={(value) => {
+                    setDailyAmount(value);
+                    setPrepared(null);
+                  }}
+                  variant="number"
+                  accessibilityLabel="Daily budget"
+                />
+              </View>
+              <View style={styles.fieldHalf}>
+                <Text style={styles.label}>Never more than ({setup.currency})</Text>
+                <Input
+                  value={capAmount}
+                  onChangeText={(value) => {
+                    setCapAmount(value);
+                    setPrepared(null);
+                  }}
+                  variant="number"
+                  accessibilityLabel="Total budget for this ad"
+                />
+              </View>
             </View>
-            <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Total budget ({setup.currency})</Text>
-              <Input
-                value={capAmount}
-                onChangeText={(value) => {
-                  setCapAmount(value);
-                  setPrepared(null);
-                }}
-                variant="number"
-                accessibilityLabel="Total budget for this ad"
-              />
-            </View>
-          </View>
+          )}
+          <HostAdBudgetPanel
+            mode={budgetMode}
+            onMode={(mode) => {
+              setBudgetMode(mode);
+              setPrepared(null);
+            }}
+            currency={setup.currency}
+            days={runDays}
+            split={allocation.split}
+            dailyTotalCents={allocation.dailyTotalCents}
+            onUseRecommended={(dailyCents) => {
+              if (budgetMode === "total" && runDays) {
+                setTotalAmount(String((dailyCents * runDays) / 100));
+              } else {
+                setDailyAmount(String(dailyCents / 100));
+                if (enteredCapCents < dailyCents) {
+                  setCapAmount(String((dailyCents * 7) / 100));
+                }
+              }
+              setPrepared(null);
+            }}
+          />
           <Text style={styles.helper}>
             {dailyBudgetCents > 0 && capCents > 0
               ? `${formatMoney(setup.currency, dailyBudgetCents)} per day · never more than ${formatMoney(setup.currency, capCents)} in total`
@@ -2448,6 +2581,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
             placeholder="Tickets are moving"
             accessibilityLabel="Ad headline"
           />
+          <HostAdTextCounters
+            apps={activeApps}
+            primary={primaryText.trim()}
+            headline={headline.trim() || name.trim()}
+          />
+          <HostAdCtaPicker
+            value={cta ?? hostAdDefaultCta(page?.page_type)}
+            onChange={(value) => {
+              setCta(value);
+              setPrepared(null);
+            }}
+            apps={activeApps}
+          />
+          {creative ? (
+            <Text style={styles.helper} testID="host-ad-video-fit">
+              {adVideoFitSummaryFor({
+                creatives: setup.creatives,
+                heldId: creative.id,
+                linked: creative,
+              }) ?? "This video fits the apps you picked."}
+            </Text>
+          ) : null}
+          <HostAdPreview
+            apps={activeApps}
+            posterUrl={creative?.poster_url ?? null}
+            brandName={brand?.displayName ?? page?.brand_name ?? "Your brand"}
+            primary={primaryText.trim()}
+            headline={headline.trim() || name.trim()}
+            cta={cta ?? hostAdDefaultCta(page?.page_type)}
+          />
+          <HostAdUtmTags apps={activeApps} adName={name.trim()} />
           </GlassCard>
         ) : null}
 
@@ -2505,6 +2669,34 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   )}
                 </Text>
               ) : null}
+              <View style={styles.targetingRow} testID="host-ad-review-summary">
+                <Text style={styles.choiceTitle}>Your ad at a glance</Text>
+                {allocation.split.rows.map((row) => (
+                  <Text key={row.platform} style={styles.choiceSubtitle}>
+                    {PLATFORM_LABELS[row.platform] ?? row.platform}:{" "}
+                    {formatMoney(setup.currency, row.dailyCents)} a day
+                  </Text>
+                ))}
+                <Text style={styles.choiceSubtitle}>
+                  Button:{" "}
+                  {HOST_AD_CTA_OPTIONS.find(
+                    (option) =>
+                      option.id === (cta ?? hostAdDefaultCta(page?.page_type)),
+                  )?.label}
+                </Text>
+                {cities.length > 0 ? (
+                  <Text style={styles.choiceSubtitle}>
+                    Places:{" "}
+                    {cities
+                      .map((place) =>
+                        place.kind === "region"
+                          ? place.name
+                          : `${place.name} (${place.radiusKm ?? radiusKmNumber} km)`,
+                      )
+                      .join(", ")}
+                  </Text>
+                ) : null}
+              </View>
               {prepared.measurement ? (
                 <View style={styles.targetingRow}>
                   <Text style={styles.choiceTitle}>How we count results</Text>

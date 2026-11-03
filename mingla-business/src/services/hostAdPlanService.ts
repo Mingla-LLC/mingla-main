@@ -232,6 +232,12 @@ export type HostAdSetup = {
   availability?: HostAdAvailabilityRow[];
   /** #4238: apps that give a reach number (staff switch). */
   reach_enabled?: Partial<Record<HostAdPlatform, boolean>>;
+  /** #4238: each app's daily minimum in the brand's money (visits / sales). */
+  minimums?: {
+    platform: HostAdPlatform;
+    visits_daily_minimum_cents?: number;
+    sales_daily_minimum_cents?: number;
+  }[];
 };
 
 export type TargetingSnapshot = {
@@ -568,6 +574,15 @@ export type PrepareHostAdPlanInput = {
   audienceKeys?: string[];
   /** #4238 P1: leave out people who already bought (the brand's past guests). */
   excludePastBuyers?: boolean;
+  /** #4238 P1: the button (frozen; the server maps it to each app's own). */
+  cta?: "tickets" | "book" | "signup" | "learn";
+  /** #4238 P1: how the Host set the budget (total for the run, or per day). */
+  budgetMode?: "total" | "daily";
+  /**
+   * #4238 P1: per-app daily and cap shares, in `connections` order
+   * (minimums first, then even). Absent: an even split, as before.
+   */
+  shares?: { dailyCents: number[]; capCents: number[] };
 };
 
 export type PreparedHostAdPlan = {
@@ -782,11 +797,14 @@ export async function prepareHostAdPlan(
     primary: input.primaryText,
     headline: input.headline,
   };
-  const capShares = splitCents(input.capCents, input.connections.length);
-  const dailyShares = splitCents(
-    input.dailyBudgetCents,
-    input.connections.length,
-  );
+  const capShares =
+    input.shares?.capCents.length === input.connections.length
+      ? input.shares.capCents
+      : splitCents(input.capCents, input.connections.length);
+  const dailyShares =
+    input.shares?.dailyCents.length === input.connections.length
+      ? input.shares.dailyCents
+      : splitCents(input.dailyBudgetCents, input.connections.length);
   const versioned = await invoke<{
     version: {
       id: string;
@@ -823,6 +841,8 @@ export async function prepareHostAdPlan(
       },
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
+      ...(input.cta ? { call_to_action: input.cta } : {}),
+      ...(input.budgetMode ? { budget_mode: input.budgetMode } : {}),
       // #4238 wave 2: the server checks these are this brand's own.
       audience_selection: {
         include_keys: [...new Set(input.audienceKeys ?? [])]
@@ -1119,9 +1139,9 @@ export function providerCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        ad_text: primary
-          .replace(/\p{Extended_Pictographic}/gu, "")
-          .slice(0, 100),
+        // #4238: TikTok doesn't show emoji (the builder says so); nothing is
+        // cut — create_version refused text over 100 characters.
+        ad_text: primary.replace(/\p{Extended_Pictographic}/gu, ""),
       },
     };
   }
@@ -1131,7 +1151,7 @@ export function providerCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headline: primary.slice(0, 300),
+        headline: primary,
       },
     };
   }
@@ -1141,7 +1161,7 @@ export function providerCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headline: headline.slice(0, 34),
+        headline,
         brand_name: String(destination.brand_slug ?? "Mingla").slice(0, 32),
       },
     };
@@ -1152,9 +1172,9 @@ export function providerCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headlines: [headline.slice(0, 40)],
-        long_headlines: [primary.slice(0, 90)],
-        descriptions: [primary.slice(0, 90)],
+        headlines: [headline],
+        long_headlines: [primary],
+        descriptions: [primary],
         business_name: String(destination.brand_slug ?? "Mingla").slice(0, 25),
       },
       keywords: [],
@@ -1166,8 +1186,7 @@ export function providerCreatePayload(
       kind: "video",
       creative_library_id: creativeId,
       message: primary,
-      headline: headline.slice(0, 255),
-      call_to_action_type: "LEARN_MORE",
+      headline,
       ai_generated:
         (canonical.media_rights as Record<string, unknown> | undefined)
           ?.ai_generated === true,

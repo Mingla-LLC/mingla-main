@@ -620,6 +620,14 @@ export function applySpecialAdCategoryRestrictions(
 // ── Pure request-body builders (unit-testable; the exact wire shapes) ─────────
 
 /** A4.g url_tags UTM template — without it PostHog/GA are blind to paid traffic. */
+/**
+ * #4238: a Host ad's url_tags — standard utm_source/medium/campaign, plus the
+ * Mingla click ids that match sales to the ad (mc_id and friends).
+ */
+export function metaHostUrlTags(utmQuery: string): string {
+  return `${utmQuery}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&campaign_id={{campaign.id}}`;
+}
+
 export const META_URL_TAGS =
   "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&campaign_id={{campaign.id}}";
 
@@ -858,7 +866,7 @@ export function buildMetaCreativeBody(
     object_story_spec: objectStorySpec,
     ...(assetFeedSpec ? { asset_feed_spec: assetFeedSpec } : {}),
     // A4.g url_tags UTM template.
-    url_tags: META_URL_TAGS,
+    url_tags: input.urlTags ?? META_URL_TAGS,
   };
   // ISSUE-939: mirror the IG identity at the adcreatives top level (per the
   // validate-only proof). Only present when configured — see igIdentity above.

@@ -100,8 +100,15 @@ import {
 } from "../_shared/adTikTokSpark.ts";
 import { providerExecutionTargeting } from "../_shared/adTargetingCompiler.ts";
 import {
+  hostAdUtmQuery,
+  hostAdUtmSlug,
+  hostCtaForPlatform,
+  isHostAdCta,
+} from "../_shared/adHostCreative.ts";
+import {
   applySpecialAdCategoryRestrictions,
   buildMetaGeoLocations,
+  metaHostUrlTags,
   normalizeMetaExcludedGeo,
   normalizeMetaLocales,
   buildMetaInterestFlexibleSpec,
@@ -1092,6 +1099,20 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     Object.assign(body, hostGoal);
+    // #4238 P1: the Host's button comes from the plan, mapped to this app's
+    // own value; a client value is never used for a Host ad.
+    const frozenCta = hostCanonical.call_to_action;
+    const ctaValue = isHostAdCta(frozenCta)
+      ? hostCtaForPlatform(platform as Platform, frozenCta)
+      : null;
+    const creativeBody = objectRecord(body.creative) ?? {};
+    delete creativeBody.call_to_action;
+    delete creativeBody.call_to_action_type;
+    if (ctaValue) {
+      if (platform === "meta") creativeBody.call_to_action_type = ctaValue;
+      else creativeBody.call_to_action = ctaValue;
+    }
+    body.creative = creativeBody;
   }
 
   // ISSUE-1002 [multi-destination fan-out] — REJECTED in Wave 2 (#3707 / A3-11).
@@ -1119,6 +1140,10 @@ serve(async (req: Request): Promise<Response> => {
   if (!name) {
     return json({ error: "validation_error", detail: "name_required" }, 400);
   }
+  // #4238 P1: Host landing links carry standard UTM tags (read-only).
+  const hostUtmQuery = requestedOwnerKind === "host"
+    ? hostAdUtmQuery(platform as Platform, name)
+    : null;
 
   const objective = typeof body.objective === "string"
     ? body.objective
@@ -1894,7 +1919,10 @@ serve(async (req: Request): Promise<Response> => {
       const demandGenInput: GoogleDemandGenVideoInput = {
         name,
         dailyBudgetCents: providerAmountCents,
-        finalUrl: destUrlGV,
+        // #4238: Host landing links carry the standard UTM tags.
+        finalUrl: hostUtmQuery
+          ? `${destUrlGV}${destUrlGV.includes("?") ? "&" : "?"}${hostUtmQuery}`
+          : destUrlGV,
         trackingUrlTemplate: trackingUrlTemplateGV,
         businessName: businessNameGV,
         headlines: headlinesGV,
@@ -3200,7 +3228,9 @@ serve(async (req: Request): Promise<Response> => {
     const destVenueIdS = resolvedDestinationS.venue_id;
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
-    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
+    }${
+      hostUtmQuery ?? "utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}"
+    }&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
@@ -4710,8 +4740,11 @@ serve(async (req: Request): Promise<Response> => {
           callToAction: ctaT,
           utmParams: [
             { key: "utm_source", value: "tiktok" },
-            { key: "utm_medium", value: "paid" },
-            { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
+            { key: "utm_medium", value: hostUtmQuery ? "paid_social" : "paid" },
+            {
+              key: "utm_campaign",
+              value: hostUtmQuery ? hostAdUtmSlug(name) : "__CAMPAIGN_ID__",
+            },
             { key: "utm_content", value: "__CID__" },
             { key: "mc_id", value: "__CAMPAIGN_ID__" },
             { key: "campaign_id", value: "__CAMPAIGN_ID__" },
@@ -5446,7 +5479,15 @@ serve(async (req: Request): Promise<Response> => {
         ad: {
           name: `${name} — ad`,
           clickUrl: destUrlR, // canonical page — never the OneLink (D-P1)
-          utmCampaign: campaignRowIdR,
+          // #4238: a Host ad's utm_campaign is the ad's name; Mingla's own
+          // id rides as mc_id so results still match sales to the ad.
+          utmCampaign: hostUtmQuery ? hostAdUtmSlug(name) : campaignRowIdR,
+          ...(hostUtmQuery
+            ? {
+              utmMedium: "paid_social",
+              extraQueryParameters: [{ name: "mc_id", value: campaignRowIdR }],
+            }
+            : {}),
         },
       });
 
@@ -6162,6 +6203,7 @@ serve(async (req: Request): Promise<Response> => {
     callToActionType: typeof creative.call_to_action_type === "string"
       ? creative.call_to_action_type
       : "LEARN_MORE",
+    ...(hostUtmQuery ? { urlTags: metaHostUrlTags(hostUtmQuery) } : {}),
     aiGenerated: creative.ai_generated === true, // GR-61 self_ai_disclosure
     campaignName: name,
     adName: `${name} — ad`,

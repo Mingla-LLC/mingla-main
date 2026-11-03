@@ -1,3 +1,5 @@
+import { metaBudgetCategoryForGoal } from "./adChannelCore.ts";
+
 /**
  * #4238 — Host ad plan rules checked by ad-plan before any money moves.
  * Pure: the caller reads the rows; this decides.
@@ -80,4 +82,55 @@ export function reachCacheKey(input: unknown): string {
     );
   };
   return JSON.stringify(sorted(input));
+}
+
+/**
+ * #4238 P1: each app's daily minimum in the provider account's currency
+ * (USD floors from adMoney; Meta from the connection's own floors). Null
+ * when the account bills in a currency the floors are not written in.
+ */
+export function providerDailyMinimumCents(
+  platform: string,
+  connection: { currency?: unknown; extra?: unknown },
+  optimization: "visits" | "sales",
+): number | null {
+  const currency = String(connection.currency ?? "").toUpperCase();
+  if (currency !== "USD") return null;
+  if (platform === "meta") {
+    const floors = (connection.extra as Record<string, unknown> | null)
+      ?.minimum_budgets as Record<string, unknown> | undefined;
+    // The same category the create path checks (metaBudgetCategoryForGoal).
+    const category = metaBudgetCategoryForGoal(
+      optimization === "sales" ? "OFFSITE_CONVERSIONS" : "LANDING_PAGE_VIEWS",
+    );
+    const raw = floors?.[category];
+    // Same fallback as perDayFloorCents until the connection floors load.
+    return typeof raw === "number" && raw > 0 ? Math.ceil(raw) : 500;
+  }
+  const table: Record<string, number> = {
+    tiktok: 5000,
+    snapchat: 2000,
+    reddit: 500,
+    google: 0,
+  };
+  return table[platform] ?? null;
+}
+
+/** The first allocation whose provider daily budget is under its app minimum. */
+export function allocationBelowMinimum(
+  rows: readonly {
+    platform: string;
+    provider_delivery_budget_cents: number;
+    minimum_cents: number | null;
+  }[],
+): { platform: string; minimum_cents: number } | null {
+  for (const row of rows) {
+    if (
+      row.minimum_cents !== null &&
+      row.provider_delivery_budget_cents < row.minimum_cents
+    ) {
+      return { platform: row.platform, minimum_cents: row.minimum_cents };
+    }
+  }
+  return null;
 }

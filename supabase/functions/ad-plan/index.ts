@@ -22,9 +22,12 @@ import {
   appUnavailableInEveryCountry,
   type CountryAvailabilityRow,
   countriesAppCannotRunIn,
+  allocationBelowMinimum,
+  providerDailyMinimumCents,
   reachCacheKey,
   reachMeter,
 } from "../_shared/adHostPlanRules.ts";
+import { hostCopyTooLong, isHostAdCta } from "../_shared/adHostCreative.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import { buildAdMeasurementManifest } from "../_shared/adMeasurement.ts";
 import {
@@ -188,6 +191,50 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
   return city.kind === "region" || city.kind === "pin"
     ? `${city.kind}:${country}:${name}`
     : `${country}:${name}`;
+}
+
+/**
+ * #4238 P1: each connected app's daily minimum converted to the brand's
+ * currency with the active FX rate, rounded up. Visits and sales minimums
+ * are both given; an app whose minimum can't be worked out is left out.
+ */
+async function hostDailyMinimums(
+  db: Db,
+  connections: AdConnectionRow[],
+  hostCurrency: string,
+): Promise<Record<string, unknown>[]> {
+  const { data: snapshot } = await db.from("fx_rate_snapshots")
+    .select("id").eq("status", "active")
+    .order("fetched_at", { ascending: false }).limit(1).maybeSingle();
+  const out: Record<string, unknown>[] = [];
+  for (const connection of connections) {
+    const row: Record<string, unknown> = { platform: connection.platform };
+    for (const goal of ["visits", "sales"] as const) {
+      const provider = providerDailyMinimumCents(
+        connection.platform,
+        connection as unknown as Record<string, unknown>,
+        goal,
+      );
+      if (provider === null) continue;
+      if (connection.currency === hostCurrency) {
+        row[`${goal}_daily_minimum_cents`] = provider;
+        continue;
+      }
+      if (!snapshot?.id) continue;
+      const { data: converted, error } = await db.rpc("fx_convert_minor", {
+        p_amount: provider,
+        p_source: connection.currency,
+        p_target: hostCurrency,
+        p_snapshot: snapshot.id,
+      });
+      if (!error && Number.isSafeInteger(converted)) {
+        // A 2% margin so a small rate move before checking doesn't refuse it.
+        row[`${goal}_daily_minimum_cents`] = Math.ceil(Number(converted) * 1.02);
+      }
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 /** #4238: staff-marked app/country pairs (missing = works). */
@@ -1436,6 +1483,9 @@ export async function handleAdPlan(
       availability: availability.rows.filter((row) =>
         row.status === "not_available"
       ),
+      // #4238 P1: each app's daily minimum in the brand's money, so the Host
+      // sees it before any money is set aside (the server re-checks).
+      minimums: await hostDailyMinimums(db, connectionRows, authority.currency),
       // #4238: whether each app gives a reach number (staff switch).
       reach_enabled: Object.fromEntries(
         connectionRows.map((row) => [
@@ -2362,6 +2412,58 @@ export async function handleAdPlan(
         return json({
           error: "plan_preflight_failed",
           detail: `app_not_available_in_country:${unavailable}`,
+        }, 422);
+      }
+      // #4238 P1: the button is one of the four, frozen in the plan hash.
+      if (
+        canonicalInput.call_to_action !== undefined &&
+        !isHostAdCta(canonicalInput.call_to_action)
+      ) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: "call_to_action_invalid",
+        }, 422);
+      }
+      // #4238 I-4238-NO-SILENT-COPY-CUT: words longer than an app allows are
+      // refused here, before money, never cut at create.
+      const tooLong = hostCopyTooLong(
+        platforms,
+        asRecord(canonicalInput.copy) ?? {},
+      );
+      if (tooLong) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `copy_too_long:${tooLong.platform}:${tooLong.field}:${tooLong.max}`,
+        }, 422);
+      }
+      // #4238 I-4238-APP-MINIMUM-BEFORE-HOLD: every app's daily budget clears
+      // its own minimum before any money is set aside.
+      const { data: minimumConnections, error: minimumError } = await db
+        .from("ad_connections").select("id,platform,currency,extra")
+        .in("id", normalized.rows.map((row) => String(row.connection_id)));
+      if (minimumError) return databaseFailure(minimumError);
+      const below = allocationBelowMinimum(normalized.rows.map((row) => {
+        const connection = (minimumConnections ?? []).find((
+          item: Record<string, unknown>,
+        ) => item.id === row.connection_id) ?? {};
+        return {
+          platform: String(row.platform),
+          provider_delivery_budget_cents: Number(
+            row.provider_delivery_budget_cents,
+          ),
+          minimum_cents: providerDailyMinimumCents(
+            String(row.platform),
+            connection,
+            optimization.map[String(row.platform)] === "sales"
+              ? "sales"
+              : "visits",
+          ),
+        };
+      }));
+      if (below) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `budget_below_app_minimum:${below.platform}`,
         }, 422);
       }
     }

@@ -456,6 +456,8 @@ export interface CreateCreativeInput {
   videoId?: string;
   videoThumbnailImageHash?: string;
   callToActionType?: string;
+  /** #4238: Host plans send the standard UTM tags instead of the house ones. */
+  urlTags?: string;
   /** GR-61 — true when the delivered creative contains materially generated pixels. */
   aiGenerated?: boolean;
   campaignName?: string;
