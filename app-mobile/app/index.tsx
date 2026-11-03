@@ -2722,10 +2722,8 @@ function AppContent() {
           return;
         }
         case 'toast': {
-          // [TRANSITIONAL] an unnamed group drops the name from the sentence —
-          // exit: a dedicated "Asked to join the group" key in chat.json.
           const message = action.key === 'chat:group_join_requested'
-            ? i18n.t(action.key, { name: name ?? '' }).replace(/\s+\./, '.')
+            ? (name ? i18n.t(action.key, { name }) : i18n.t('chat:group_join_requested_unnamed'))
             : i18n.t(action.key);
           if (action.tone === 'info') toastManager.info(message);
           else toastManager.error(message);

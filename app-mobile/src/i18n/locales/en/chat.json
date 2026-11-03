@@ -452,5 +452,11 @@
   "plan_quote_voting": "Voting on a time",
   "plans_empty_any": "No plans yet.",
   "matches_card_a11y": "Card {{index}}: {{title}}",
-  "group_link_admin_only_hint": "Only the group admin can change this"
+  "group_link_admin_only_hint": "Only the group admin can change this",
+  "plan_option_added_by": "Added by {{name}}",
+  "plan_option_no_votes": "No votes yet",
+  "matches_no_place": "No place yet",
+  "plan_search_partial_failure": "Some results couldn't load.",
+  "group_join_requested_unnamed": "Asked to join the group. A member will let you in.",
+  "group_link_full": "This group is full"
 }

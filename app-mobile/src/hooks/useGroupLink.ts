@@ -127,7 +127,7 @@ export function useDecideJoinRequest(conversationId: string, groupName: string) 
     onError: (error) => {
       console.warn("[useDecideJoinRequest] failed:", error.message);
       toastManager.error(
-        error.message === "conflict_group_full" ? i18n.t("chat:group_link_unavailable") : failureCopy(error),
+        error.message === "conflict_group_full" ? i18n.t("chat:group_link_full") : failureCopy(error),
       );
     },
   });

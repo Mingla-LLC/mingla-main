@@ -1963,6 +1963,10 @@ function ConnectionsPageRefactored({
       mediaHeight: typeof msg.media_height === "number" ? msg.media_height : undefined,
       mediaAlbumId: msg.media_album_id ?? undefined,
       mediaExpired: msg.media_expired_at ? true : undefined,
+      // Issue #4261: the plan a message belongs to (its card, or a comment on
+      // it) and the sender's picks when the comment was sent.
+      planId: msg.plan_id ?? undefined,
+      planQuote: msg.plan_quote ?? null,
     }),
     []
   );
@@ -3308,6 +3312,8 @@ function ConnectionsPageRefactored({
             width: current.mediaWidth ?? null,
             height: current.mediaHeight ?? null,
             albumId: current.mediaAlbumId ?? null,
+            // Issue #4261: a deck-match comment (carried on the bubble so a retry keeps it).
+            planId: current.planId ?? null,
           },
         );
 
@@ -3602,6 +3608,7 @@ function ConnectionsPageRefactored({
     replyToId?: string,
     mentions: MentionEntry[] = [],
     cardTags: CardTagEntry[] = [],
+    planId?: string,
   ) => {
     if (!activeChat || !user?.id) return;
     // Photos, videos and files go through handleSendMedia (the attach sheet).
@@ -3631,6 +3638,7 @@ function ConnectionsPageRefactored({
       mentions,
       cardTags,
       marketingCampaignId: null,
+      planId,
     };
     postOptimisticMessage(conversationId, optimisticMsg);
     await deliverMessage(conversationId, optimisticMsg);

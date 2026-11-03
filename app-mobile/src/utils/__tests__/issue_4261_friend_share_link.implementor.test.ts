@@ -140,7 +140,7 @@ Deno.test("opening a group link: each join_group_by_link answer maps to one acti
   assertEquals(groupJoinAction({ status: "requested" }, null), { type: "toast", key: "chat:group_join_requested", tone: "info" }, "requested");
   assertEquals(groupJoinAction(null, "not_found"), { type: "toast", key: "chat:group_link_reset_toast", tone: "error" }, "reset link");
   assertEquals(groupJoinAction(null, "unavailable").key, "chat:group_link_unavailable", "blocked: generic");
-  assertEquals(groupJoinAction(null, "conflict_group_full").key, "chat:group_link_unavailable", "full");
+  assertEquals(groupJoinAction(null, "conflict_group_full").key, "chat:group_link_full", "full");
   assertEquals(groupJoinAction(null, "boom").key, "chat:plan_action_failed", "anything else");
   assertEquals(groupChatUrl("c1"), "mingla://chat/c1?type=group", "plain chat url");
   assertEquals(groupChatUrl("c1", "s1"), "mingla://chat/c1?type=group&sessionId=s1", "session chat url");

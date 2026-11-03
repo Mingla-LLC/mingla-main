@@ -376,9 +376,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
               </TouchableOpacity>
             ))}
             {search.partialFailure ? (
-              // [TRANSITIONAL] `plan_search_partial_failure` is not in the B0 copy yet
-              // (reported); the defaultValue is the spec's en copy until it lands.
-              <Text style={styles.subLabel}>{t("chat:plan_search_partial_failure", { defaultValue: "Some results couldn't load." })}</Text>
+              <Text style={styles.subLabel}>{t("chat:plan_search_partial_failure")}</Text>
             ) : null}
             {search.hasQuery ? <Text style={styles.attribution}>{t("chat:plan_search_attribution")}</Text> : null}
           </View>

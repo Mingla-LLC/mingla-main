@@ -64,6 +64,9 @@ const CHAT_KEYS: Record<string, string[]> = {
   group_add_people_cta: ["count"], group_add_friends_heading: [], group_add_all_in: [], group_add_share_instead: [],
   group_add_history_note: [], group_add_skipped: ["count"], group_join_requested: ["name"],
   group_link_reset_toast: [], group_link_unavailable: [], strip_to_vote: ["count"], plan_preview: ["title"],
+  // Wave C: copy B2/B1 shipped behind defaultValue fallbacks, now real keys.
+  plan_option_added_by: ["name"], plan_option_no_votes: [], matches_no_place: [], plan_search_partial_failure: [],
+  group_join_requested_unnamed: [], group_link_full: [],
 };
 
 const CONNECTIONS_KEYS: Record<string, string[]> = {
@@ -94,4 +97,51 @@ Deno.test("#4261 B0: attribution copy names Mapbox, never Google (spec O-7)", as
   if (!/Mapbox/.test(chat.plan_search_attribution) || /Google/.test(chat.plan_search_attribution)) {
     throw new Error(`attribution: ${chat.plan_search_attribution}`);
   }
+});
+
+// ── Wave C: integration pins (source checks; these files import React Native,
+// so a Deno suite cannot load them — it reads them instead).
+// FAILS-ON-REVERT: drop the plan fields from transformMessage, stop forwarding
+// planId to sendMessage, put the inline preview back in ChatListItem, drop the
+// join-request invalidation, or restore a defaultValue fallback.
+const SRC = new URL("../../", import.meta.url);
+const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+const readSrc = async (path: string) => stripComments(await Deno.readTextFile(new URL(path, SRC)));
+
+Deno.test("#4261 C: ConnectionsPage carries plan fields both ways", async () => {
+  const page = await readSrc("components/ConnectionsPage.tsx");
+  const transform = page.slice(page.indexOf("const transformMessage = useCallback("), page.indexOf("const persistMessages"));
+  if (!/planId:\s*msg\.plan_id\s*\?\?\s*undefined/.test(transform)) throw new Error("transformMessage drops plan_id");
+  if (!/planQuote:\s*msg\.plan_quote\s*\?\?\s*null/.test(transform)) throw new Error("transformMessage drops plan_quote");
+  const send = page.slice(page.indexOf("const handleSendMessage = async ("), page.indexOf("const handleSendMedia = async ("));
+  if (!/cardTags: CardTagEntry\[\] = \[\],\s*planId\?: string,/.test(send)) throw new Error("handleSendMessage ignores the 7th planId argument");
+  if (!/marketingCampaignId: null,\s*planId,/.test(send)) throw new Error("the optimistic bubble does not carry planId");
+  const deliver = page.slice(page.indexOf("const deliverMessage = async ("), page.indexOf("const handleSendMessage = async ("));
+  if (!/planId:\s*current\.planId\s*\?\?\s*null/.test(deliver)) throw new Error("deliverMessage does not pass planId to sendMessage");
+});
+
+Deno.test("#4261 C: the chat list preview comes from chatPreviewText", async () => {
+  const item = await readSrc("components/connections/ChatListItem.tsx");
+  if (!/const text = chatPreviewText\(lastMessage, t\);/.test(item)) throw new Error("ChatListItem does not use chatPreviewText");
+  if (/message_type === 'image'\) text =/.test(item)) throw new Error("the old inline preview is back");
+});
+
+Deno.test("#4261 C: a join request change refreshes that chat's requests", async () => {
+  const realtime = await readSrc("services/realtimeService.ts");
+  if (!/table: "group_join_requests", filter: `conversation_id=eq\.\$\{conversationId\}`/.test(realtime)) {
+    throw new Error("the plan channel does not listen to group_join_requests");
+  }
+  const hook = await readSrc("hooks/useChatPlans.ts");
+  if (!/onJoinRequestChange: \(\) => \{\s*void queryClient\.invalidateQueries\(\{ queryKey: groupLinkKeys\.joinRequests\(conversationId\) \}\);/.test(hook)) {
+    throw new Error("onJoinRequestChange does not invalidate groupLinkKeys.joinRequests");
+  }
+});
+
+Deno.test("#4261 C: no defaultValue fallbacks remain for the Wave C keys", async () => {
+  for (const file of ["components/chat/PlanCardBubble.tsx", "components/chat/PlanFormSheet.tsx", "components/chat/PlanMatchesSheet.tsx"]) {
+    if (/defaultValue/.test(await readSrc(file))) throw new Error(`${file}: a defaultValue fallback is back`);
+  }
+  const index = await readSrc("../app/index.tsx");
+  if (!/i18n\.t\('chat:group_join_requested_unnamed'\)/.test(index)) throw new Error("unnamed group toast key missing");
+  if (/\.replace\(\/\\s\+\\\.\/, '\.'\)/.test(index)) throw new Error("the name-dropping string patch is back");
 });

@@ -44,6 +44,7 @@ import {
   CHAT_SEPARATOR_INSET,
   chatAvatarSpec,
   chatKind,
+  chatPreviewText,
   formatChatListTime,
   formatUpcomingEventTag,
   isUnreadChat,
@@ -159,13 +160,7 @@ function ChatListItemImpl({
   );
 
   const preview = useMemo(() => {
-    let text = '';
-    if (lastMessage) {
-      if (lastMessage.message_type === 'image') text = t('chat:photoPreview');
-      else if (lastMessage.message_type === 'file') text = t('chat:filePreview');
-      else if (lastMessage.message_type === 'video') text = t('chat:videoPreview');
-      else text = (lastMessage.content || '').replace(/\s+/g, ' ').trim();
-    }
+    const text = chatPreviewText(lastMessage, t);
     if (text && lastMessage && isBrandChannel) {
       // "{event} · {last message}" (the event the newest message came from).
       const line = lastMessage.sender_id && lastMessage.sender_id === currentUserId

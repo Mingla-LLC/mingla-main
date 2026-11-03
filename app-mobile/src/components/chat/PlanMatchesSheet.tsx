@@ -133,7 +133,7 @@ function MatchCard({
         </View>
         <View style={styles.body}>
           <Text style={styles.title} numberOfLines={2}>{plan.title}</Text>
-          <Text style={styles.placeLine} numberOfLines={1}>{placeLine || t("chat:matches_no_place", { defaultValue: "No place yet" })}</Text>
+          <Text style={styles.placeLine} numberOfLines={1}>{placeLine || t("chat:matches_no_place")}</Text>
 
           <View style={styles.likeRow}>
             <Text style={styles.likedBy} numberOfLines={1}>

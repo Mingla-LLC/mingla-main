@@ -161,6 +161,8 @@ export function shareJoinedNotificationBody(
 
 export type GroupJoinToastKey =
   | "chat:group_join_requested"
+  | "chat:group_join_requested_unnamed"
+  | "chat:group_link_full"
   | "chat:group_link_reset_toast"
   | "chat:group_link_unavailable"
   | "chat:plan_action_failed";
@@ -192,7 +194,8 @@ export function groupJoinAction(
 ): GroupJoinAction {
   if (errorCode) {
     if (errorCode === "not_found") return { type: "toast", key: "chat:group_link_reset_toast", tone: "error" };
-    if (errorCode === "unavailable" || errorCode === "not_allowed" || errorCode === "conflict_group_full") {
+    if (errorCode === "conflict_group_full") return { type: "toast", key: "chat:group_link_full", tone: "error" };
+    if (errorCode === "unavailable" || errorCode === "not_allowed") {
       return { type: "toast", key: "chat:group_link_unavailable", tone: "error" };
     }
     return { type: "toast", key: "chat:plan_action_failed", tone: "error" };
