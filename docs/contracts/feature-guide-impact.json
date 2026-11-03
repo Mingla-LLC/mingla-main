@@ -314,7 +314,8 @@
         "supabase/functions/_shared/contentShareService.ts",
         "supabase/functions/discover-merged-events/_business-query.ts",
         "supabase/functions/discover-merged-events/_types.ts",
-        "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql"
+        "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql",
+        "supabase/migrations/20280320003281_issue_3281_explorer_hides_unbuyable_events.sql"
       ]
     },
     {
