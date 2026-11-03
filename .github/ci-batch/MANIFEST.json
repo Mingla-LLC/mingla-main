@@ -20562,6 +20562,8 @@
         "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.tester_adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.tester_adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -25368,6 +25370,8 @@
         "supabase/migrations/__tests__/issue_4226_ticket_buyer_people.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.tester_adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4250_drop_profiles_is_admin.tester_adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -52626,5 +52630,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "da2846de5a09abd66f6ae55b031271d1af1a6254148b2965178786029e6373c1"
+  "phase3eContractSha256": "7613b4cb3407b69a030a676a28cfd7da110a7b4d480c92806f573c85f930c944"
 }

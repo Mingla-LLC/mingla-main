@@ -128,7 +128,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the Extras authoring migration and its proof the same way.
 // #3281: register the public Extras migration and its proof the same way.
 // #3355: register the Ari flow engine flag migration and its proof the same way.
-export const BOOTSTRAP_SHA256 = "0f5f4149fcb567714ad4a383427b4a7e9ba2abba65a17bb2c6553ca123e0a7d9";
+export const BOOTSTRAP_SHA256 = "f8a64299ecedabf0097eed8df6fea4bceb1c9222905dc1be1727beba35501c4f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
