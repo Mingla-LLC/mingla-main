@@ -17,9 +17,9 @@
 --      team_manage instead of "is the owner"; cannot_change_owner and
 --      cannot_change_self stay.
 --   4. Gates that named ('owner','admin') name partner too.
---   5. New table admin_email_drafts: every active teammate reads and creates;
---      the author or an admin/partner updates or deletes. Saves go through
---      admin_email_draft_save, which raises PT409 on a stale revision.
+--   5. New table admin_email_drafts: every active teammate reads (RLS) and
+--      creates; the author or an admin/partner saves or deletes. Writes go only
+--      through admin_email_draft_save / _delete; a stale save raises PT409.
 --   6. email_templates is readable by every active teammate (writes stay with
 --      admins). Every active teammate may upload email images.
 --   7. issue_4137_blog_can_write means any active teammate. Publishing is
@@ -659,7 +659,7 @@ BEGIN
   IF v_role IN ('admin', 'partner') THEN
     UPDATE public.admin_users
        SET status = 'active', accepted_at = now()
-     WHERE lower(btrim(email)) = v_email AND status = 'invited' AND role = v_role;
+     WHERE lower(btrim(email)) = v_email AND status = 'invited';
     GET DIAGNOSTICS v_a = ROW_COUNT;
   ELSE
     UPDATE public.admin_team_members
@@ -1606,7 +1606,7 @@ CREATE TABLE public.admin_email_drafts (
 );
 CREATE INDEX admin_email_drafts_updated_idx ON public.admin_email_drafts (updated_at DESC);
 COMMENT ON TABLE public.admin_email_drafts IS
-  'Issue #4255. Email drafts shared by the whole team. Every active teammate reads and creates; the author or an admin/partner updates or deletes (I-4255-EMAIL-DRAFTS-TEAM-SHARED). audience is restored through the client''s restoreDraftAudience, which never pre-selects an Explorer-reaching audience.';
+  'Issue #4255. Email drafts shared by the whole team. Every active teammate reads (RLS) and creates; the author or an admin/partner saves or deletes, only through admin_email_draft_save / admin_email_draft_delete (I-4255-EMAIL-DRAFTS-TEAM-SHARED). audience is restored through the client''s restoreDraftAudience, which never pre-selects an Explorer-reaching audience.';
 
 -- Author fields are set by the server and never change; every write bumps the
 -- revision and stamps who edited last.
@@ -1643,26 +1643,18 @@ CREATE TRIGGER admin_email_drafts_stamp
   BEFORE INSERT OR UPDATE ON public.admin_email_drafts
   FOR EACH ROW EXECUTE FUNCTION public.admin_email_drafts_stamp();
 
+-- Clients read through RLS and write only through the two functions below
+-- (the project's grant guard, audit_overbroad_table_grants, allows clients
+-- SELECT on a table and nothing else). The functions apply the write rule:
+-- any active teammate creates; the author or an admin/partner saves or deletes.
 ALTER TABLE public.admin_email_drafts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.admin_email_drafts FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.admin_email_drafts TO authenticated;
+GRANT SELECT ON public.admin_email_drafts TO authenticated;
 GRANT ALL ON public.admin_email_drafts TO service_role;
 
 CREATE POLICY admin_email_drafts_team_read ON public.admin_email_drafts
   FOR SELECT TO authenticated
   USING (public.issue_4255_is_active_teammate());
-CREATE POLICY admin_email_drafts_team_insert ON public.admin_email_drafts
-  FOR INSERT TO authenticated
-  WITH CHECK (public.issue_4255_is_active_teammate() AND author_id = auth.uid());
-CREATE POLICY admin_email_drafts_author_or_admin_update ON public.admin_email_drafts
-  FOR UPDATE TO authenticated
-  USING (public.issue_4255_is_active_teammate()
-         AND (author_id = auth.uid() OR public.is_admin_user()))
-  WITH CHECK (public.issue_4255_is_active_teammate());
-CREATE POLICY admin_email_drafts_author_or_admin_delete ON public.admin_email_drafts
-  FOR DELETE TO authenticated
-  USING (public.issue_4255_is_active_teammate()
-         AND (author_id = auth.uid() OR public.is_admin_user()));
 
 -- Save one draft. p_id NULL creates; otherwise p_revision must match the
 -- stored revision, or the save is refused with PT409 (someone saved first).
@@ -1799,6 +1791,11 @@ BEGIN
   IF has_table_privilege('anon', 'public.admin_email_drafts', 'SELECT')
      OR has_table_privilege('anon', 'public.admin_email_drafts', 'INSERT') THEN
     RAISE EXCEPTION 'issue 4255 self-check: anon can touch admin_email_drafts';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.admin_email_drafts', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.admin_email_drafts', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.admin_email_drafts', 'DELETE') THEN
+    RAISE EXCEPTION 'issue 4255 self-check: clients can write admin_email_drafts directly';
   END IF;
   FOREACH v_fn IN ARRAY ARRAY[
     'public.admin_users_protect_owner()',

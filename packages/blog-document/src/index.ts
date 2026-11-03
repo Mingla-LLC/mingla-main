@@ -626,7 +626,11 @@ export function blogDocumentReferences(doc: BlogDocument): BlogDocumentReference
 // Embeds
 // ---------------------------------------------------------------------------
 
-/** The click-to-load iframe URL for an embed, or null when it renders as a link card. */
+/**
+ * The iframe URL for an embed, or null when it renders as a link card.
+ * #4255 (D6): YouTube and Vimeo frames are on the page as it opens (inline
+ * players); Spotify stays click-to-load.
+ */
 export function blogEmbedFrameSrc(block: EmbedBlock): string | null {
   if (!embedHostAllowed(block.provider, block.url)) return null
   const url = new URL(block.url)
@@ -643,20 +647,31 @@ export function blogEmbedFrameSrc(block: EmbedBlock): string | null {
       ? parts[0]
       : parts[0] === 'watch' ? url.searchParams.get('v') ?? ''
       : parts[0] === 'shorts' || parts[0] === 'embed' ? parts[1] ?? '' : ''
-    return id && VIDEO_ID.test(id) ? `https://www.youtube-nocookie.com/embed/${id}` : null
+    return id && VIDEO_ID.test(id) ? `https://www.youtube-nocookie.com/embed/${id}?playsinline=1&rel=0` : null
   }
   if (block.provider === 'vimeo') {
     const id = parts.find((part) => /^[0-9]{6,12}$/.test(part))
-    return id ? `https://player.vimeo.com/video/${id}` : null
+    return id ? `https://player.vimeo.com/video/${id}?playsinline=1` : null
   }
   return null
 }
 
+/**
+ * #4255 (D6): the player is on the page when the post opens and plays inline
+ * where it sits (playsinline keeps iOS from going full screen). It no longer
+ * autoplays: the reader presses play in the player itself.
+ */
 export function blogVideoFrameSrc(block: VideoBlock): string {
   return block.provider === 'youtube'
-    ? `https://www.youtube-nocookie.com/embed/${block.videoId}?autoplay=1`
-    : `https://player.vimeo.com/video/${block.videoId}?autoplay=1`
+    ? `https://www.youtube-nocookie.com/embed/${block.videoId}?playsinline=1&rel=0`
+    : `https://player.vimeo.com/video/${block.videoId}?playsinline=1`
 }
+
+/** Providers whose frame is on the page as it opens (#4255 D6). */
+export const BLOG_INLINE_FRAME_PROVIDERS: ReadonlySet<BlogEmbedProvider> = new Set(['youtube', 'vimeo'])
+
+/** The iframe `allow` list for an inline video player. */
+export const BLOG_VIDEO_FRAME_ALLOW = 'accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen'
 
 export const BLOG_EMBED_PROVIDER_LABELS: Readonly<Record<BlogEmbedProvider, string>> = {
   spotify: 'Spotify', youtube: 'YouTube', vimeo: 'Vimeo', instagram: 'Instagram', tiktok: 'TikTok', x: 'X',

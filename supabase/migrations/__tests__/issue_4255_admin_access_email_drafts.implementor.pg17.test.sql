@@ -5,7 +5,7 @@
 -- MINGLA-INVARIANT: I-4255-OWNER-ROW-IS-IMMUTABLE | issue #4255 | No caller (admin, partner, service role, postgres) can delete, demote, deactivate, re-address or truncate the owner row, or promote anyone to owner.
 -- MINGLA-INVARIANT: I-4255-PARTNER-IS-FULL-ADMIN | issue #4255 | A Founding partner lives in admin_users and passes is_admin_user(); admin_console stays held only by admin_users roles.
 -- MINGLA-INVARIANT: I-4255-TEAM-MANAGE-NEVER-TOUCHES-OWNER-OR-SELF | issue #4255 | Owner, admin and partner manage the team; nobody changes the owner or themselves.
--- MINGLA-INVARIANT: I-4255-EMAIL-DRAFTS-TEAM-SHARED | issue #4255 | Every active teammate reads and creates email drafts; only the author or an admin/partner saves or deletes; a stale save is PT409; outsiders see nothing.
+-- MINGLA-INVARIANT: I-4255-EMAIL-DRAFTS-TEAM-SHARED | issue #4255 | Every active teammate reads and creates email drafts; only the author or an admin/partner saves or deletes, only through the two RPCs; a stale save is PT409; outsiders see nothing.
 --
 -- Runs as the image's admin role: the bare CI image ships auth.users without
 -- email_confirmed_at, which is added here and rolled back.
@@ -286,8 +286,8 @@ begin
   perform pg_temp.t4255_like('E-3', 'growth2 cannot save someone else''s draft',
     pg_temp.t4255_as('growth2', format($q$select public.admin_email_draft_save(%L, 'Hijack', '[]'::jsonb, '{}'::jsonb, 'draft', 1)::text$q$, v_id)),
     'ERR:42501:forbidden%');
-  perform pg_temp.t4255_check('E-3', 'growth2 cannot update it directly either',
-    pg_temp.t4255_as('growth2', format($q$with u as (update public.admin_email_drafts set subject = 'Hijack' where id = %L returning 1) select count(*)::text from u$q$, v_id)), '0');
+  perform pg_temp.t4255_like('E-3', 'nobody writes the table directly (author included)',
+    pg_temp.t4255_as('growth', format($q$with u as (update public.admin_email_drafts set subject = 'Hijack' where id = %L returning 1) select count(*)::text from u$q$, v_id)), 'ERR:42501:%');
   perform pg_temp.t4255_like('E-3', 'growth2 cannot delete it',
     pg_temp.t4255_as('growth2', format($q$select public.admin_email_draft_delete(%L)::text$q$, v_id)), 'ERR:42501:forbidden%');
 
@@ -300,9 +300,11 @@ begin
     'ERR:PT409:draft_changed%');
   perform pg_temp.t4255_check('E-4', 'the author saves at the current revision',
     pg_temp.t4255_as('growth', format($q$select (public.admin_email_draft_save(%L, 'Launch note v3', '[]'::jsonb, '{}'::jsonb, 'draft', 2)->>'revision')$q$, v_id)), '3');
-  perform pg_temp.t4255_check('E-4', 'author cannot be rewritten by a direct update',
-    pg_temp.t4255_as('growth', format($q$update public.admin_email_drafts set author_email = 'x@test.local', author_id = '42550000-0000-4000-8000-000000000005' where id = %L returning author_email$q$, v_id)),
+  perform pg_temp.t4255_check('E-4', 'author fields survive even a trusted direct update',
+    pg_temp.t4255_as('service_role', format($q$update public.admin_email_drafts set author_email = 'x@test.local', author_id = '42550000-0000-4000-8000-000000000005' where id = %L returning author_email$q$, v_id)),
     'issue4255-growth@test.local');
+  perform pg_temp.t4255_check('E-4', 'the grant guard reports nothing new for the drafts table',
+    pg_temp.t4255_as('postgres', $q$select count(*)::text from public.audit_overbroad_table_grants() where not is_baselined and relation_name = 'admin_email_drafts'$q$), '0');
   perform pg_temp.t4255_like('E-5', 'invalid status refused',
     pg_temp.t4255_as('growth', $q$select public.admin_email_draft_save(null, 's', '[]'::jsonb, '{}'::jsonb, 'sent', null)::text$q$), 'ERR:22023:invalid_status%');
   perform pg_temp.t4255_like('E-5', 'outsider cannot create a draft',

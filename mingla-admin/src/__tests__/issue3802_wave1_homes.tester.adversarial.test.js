@@ -275,8 +275,9 @@ describe("#3802 TA-3: access for every combination of areas", () => {
   const subsets = [];
   for (let mask = 0; mask < 1 << AREAS.length; mask++) subsets.push(AREAS.filter((_, i) => mask & (1 << i)));
 
-  it("there are five areas, and Beta leads is one of them", () => {
-    assert.deepEqual([...AREAS].sort(), ["admin_console", "beta_leads", "crm", "role_home", "team_manage"]);
+  // #4255: email_drafts is the sixth (Email tab and sending, every teammate).
+  it("there are six areas, and Beta leads is one of them", () => {
+    assert.deepEqual([...AREAS].sort(), ["admin_console", "beta_leads", "crm", "email_drafts", "role_home", "team_manage"]);
   });
 
   it("Beta leads opens with its own area and with nothing else; the Team dashboard only with the admin area", () => {

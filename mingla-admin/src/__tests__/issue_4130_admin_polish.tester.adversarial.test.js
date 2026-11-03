@@ -341,12 +341,15 @@ describe("T-BRANDS: the Payments rule and the boards name a brand the same way",
 });
 
 describe("T-DROOM and T-SUPP: who sees what", () => {
+  // #4255: the server's areas now. Owner, admin and Founding partner are the
+  // full-admin seats (D3, D4); every teammate holds email_drafts and blog.
+  const FULL = ["admin_console", "team_manage", "crm", "beta_leads", "email_drafts", "data_room", "community_support", "community_support_support", "community_support_community", "team_notifications", "blog"];
   const roles = {
-    owner: { email: "o@x.org", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads", "data_room", "community_support", "community_support_support", "community_support_community", "team_notifications"] },
-    admin: { email: "a@x.org", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads", "data_room", "community_support", "community_support_support", "community_support_community", "team_notifications"] },
-    growth: { email: "g@x.org", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads", "team_notifications"] },
-    partner: { email: "p@x.org", role: "partner", status: "active", areas: ["role_home", "crm", "beta_leads", "data_room", "team_notifications"] },
-    support: { email: "s@x.org", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads", "community_support", "community_support_support", "community_support_community", "team_notifications"] },
+    owner: { email: "o@x.org", role: "owner", status: "active", areas: FULL },
+    admin: { email: "a@x.org", role: "admin", status: "active", areas: FULL },
+    growth: { email: "g@x.org", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads", "email_drafts", "team_notifications", "blog"] },
+    partner: { email: "p@x.org", role: "partner", status: "active", areas: FULL },
+    support: { email: "s@x.org", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads", "email_drafts", "community_support", "community_support_support", "community_support_community", "team_notifications", "blog"] },
     invitedAdmin: { email: "i@x.org", role: "admin", status: "invited", areas: ["admin_console", "data_room"] },
   };
   const acc = Object.fromEntries(Object.entries(roles).map(([k, v]) => [k, normalizeAccess(v)]));
@@ -369,9 +372,11 @@ describe("T-DROOM and T-SUPP: who sees what", () => {
 
   it("money, people and settings pages stay closed to every team role", () => {
     for (const page of ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "people", "brands", "settings", "feature-flags", "subscriptions", "pricing", "team-dashboard", "overview"]) {
-      for (const who of ["growth", "partner", "support", "invitedAdmin"]) {
+      for (const who of ["growth", "support", "invitedAdmin"]) {
         assert.equal(canOpenPage(acc[who], page), false, `${who} can open ${page}`);
       }
+      // #4255 (D3): a Founding partner is a full admin, money pages included.
+      assert.equal(canOpenPage(acc.partner, page), true, `partner cannot open ${page}`);
     }
   });
 
@@ -384,23 +389,24 @@ describe("T-DROOM and T-SUPP: who sees what", () => {
 
   it("a retired address for a page you cannot open is denied, not silently opened", () => {
     assert.equal(resolveRoute("users", acc.growth, ["users", "people"]).denied, true);
-    assert.equal(resolveRoute("stripe-mode", acc.partner, ["stripe-mode"]).denied, true);
+    assert.equal(resolveRoute("stripe-mode", acc.support, ["stripe-mode"]).denied, true);
   });
 
   it("Support and Community tabs per role", () => {
     const ids = (a, tabs) => communitySupportTabsForAccess(a, tabs).map((t) => t.id);
     assert.deepEqual(ids(acc.admin, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));
     assert.deepEqual(ids(acc.admin, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
-    assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support", "blog"]);
+    assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support", "email", "blog"]);
     const supportCommunity = ids(acc.support, COMMUNITY_PAGE_TABS);
     for (const adminOnly of ["announcements", "roadmap", "product"]) {
       assert.equal(supportCommunity.includes(adminOnly), false, `support teammate sees ${adminOnly}`);
     }
     assert.ok(supportCommunity.includes("moderation"));
     assert.ok(supportCommunity.includes("enquiry-reports"));
-    assert.deepEqual(ids(acc.growth, SUPPORT_PAGE_TABS), []);
+    assert.deepEqual(ids(acc.growth, SUPPORT_PAGE_TABS), ["email", "blog"]);
     assert.deepEqual(ids(acc.growth, COMMUNITY_PAGE_TABS), []);
-    assert.deepEqual(ids(acc.partner, COMMUNITY_PAGE_TABS), []);
+    assert.deepEqual(ids(acc.partner, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
+    assert.deepEqual(ids(acc.partner, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));
     assert.deepEqual(ids(acc.invitedAdmin, COMMUNITY_PAGE_TABS), []);
   });
 });
