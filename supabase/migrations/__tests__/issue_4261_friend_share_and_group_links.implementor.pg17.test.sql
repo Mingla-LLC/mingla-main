@@ -53,6 +53,18 @@
 
 BEGIN;
 
+-- The bare PostgreSQL image has no Supabase Realtime server, so the ORCH-0931
+-- session_updated broadcast trigger would fail on realtime.send. Switch that
+-- one trigger off for this transaction when realtime.send is missing (the
+-- ROLLBACK restores it). Same pattern as issue_4114_dm_collab.
+DO $realtime_stub$
+BEGIN
+  IF to_regprocedure('realtime.send(jsonb,text,text,boolean)') IS NULL THEN
+    ALTER TABLE public.collaboration_sessions
+      DISABLE TRIGGER tr_collaboration_sessions_broadcast_session_updated;
+  END IF;
+END $realtime_stub$;
+
 CREATE TEMP TABLE t4261a_ids (tag text PRIMARY KEY, id uuid NOT NULL);
 CREATE TEMP TABLE t4261a_vals (tag text PRIMARY KEY, val text);
 GRANT SELECT ON t4261a_ids TO authenticated;
