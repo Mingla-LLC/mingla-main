@@ -571,7 +571,8 @@
         "mingla-admin/src/lib/peopleSegments.js",
         "mingla-admin/src/services/peopleService.js",
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
-        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql"
+        "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
+        "supabase/migrations/20280317004250_issue_4250_drop_profiles_is_admin.sql"
       ]
     },
     {
