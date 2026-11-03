@@ -487,6 +487,13 @@ function fieldsFor(
     if (typeof context.ad_copy === "string") {
       out.push({ label: "Ad text", value: context.ad_copy });
     }
+    // #4238: the button and the read-only tracking tags on the link.
+    if (typeof context.ad_button === "string") {
+      out.push({ label: "Button", value: context.ad_button });
+    }
+    if (typeof context.ad_tracking === "string") {
+      out.push({ label: "Link tracking", value: context.ad_tracking });
+    }
     if (typeof context.ad_media_rights === "string") {
       out.push({ label: "Video rights", value: context.ad_media_rights });
     }

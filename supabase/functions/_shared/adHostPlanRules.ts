@@ -134,3 +134,65 @@ export function allocationBelowMinimum(
   }
   return null;
 }
+
+/**
+ * #4238 P1: the daily split Hosts and Ari use — each app's minimum first,
+ * the rest evenly (largest remainder); the parts add up exactly. When the
+ * daily amount can't cover the minimums, an even split (the server then
+ * refuses the plan with budget_below_app_minimum before any money moves).
+ */
+export function splitDailyWithMinimums(
+  daily: number,
+  platforms: readonly string[],
+  minimums: Readonly<Record<string, number | undefined>>,
+): number[] {
+  const even = (total: number): number[] => {
+    if (platforms.length === 0 || total <= 0) return platforms.map(() => 0);
+    const base = Math.floor(total / platforms.length);
+    const rest = total - base * platforms.length;
+    return platforms.map((_, index) => base + (index < rest ? 1 : 0));
+  };
+  const mins = platforms.map((p) => Math.max(0, Math.ceil(minimums[p] ?? 0)));
+  const sum = mins.reduce((a, b) => a + b, 0);
+  if (daily < sum) return even(daily);
+  const extra = even(daily - sum);
+  return mins.map((min, index) => min + extra[index]);
+}
+
+/** Split a total in proportion to weights (largest remainder, exact sum). */
+export function splitProportional(total: number, weights: readonly number[]): number[] {
+  const sum = weights.reduce((a, b) => a + b, 0);
+  if (weights.length === 0 || total <= 0 || sum <= 0) {
+    const base = weights.length ? Math.floor(total / weights.length) : 0;
+    return weights.map((_, i) => base + (i < total - base * weights.length ? 1 : 0));
+  }
+  const raw = weights.map((w) => (total * w) / sum);
+  const out = raw.map(Math.floor);
+  let rest = total - out.reduce((a, b) => a + b, 0);
+  raw.map((v, i) => ({ i, f: v - out[i] })).sort((a, b) => b.f - a.f || a.i - b.i)
+    .forEach(({ i }) => {
+      if (rest > 0) {
+        out[i] += 1;
+        rest -= 1;
+      }
+    });
+  return out;
+}
+
+/** setup.minimums rows → daily minimum per app for the plan's goals. */
+export function minimumsFromSetup(
+  rows: unknown,
+  goals: Readonly<Record<string, string>>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!Array.isArray(rows)) return out;
+  for (const raw of rows) {
+    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const platform = String(row.platform ?? "");
+    const value = goals[platform] === "sales"
+      ? row.sales_daily_minimum_cents
+      : row.visits_daily_minimum_cents;
+    if (platform && typeof value === "number") out[platform] = value;
+  }
+  return out;
+}

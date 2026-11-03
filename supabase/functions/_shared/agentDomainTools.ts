@@ -40,6 +40,11 @@ import {
   HOST_SALES_GOAL_PLATFORMS,
   hostPageSellsTickets,
 } from "./adHostGoal.ts";
+import {
+  minimumsFromSetup,
+  splitDailyWithMinimums,
+  splitProportional,
+} from "./adHostPlanRules.ts";
 // issue #2291 — ONE contract for what a channel_payload must contain. Ari is
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
@@ -3731,10 +3736,8 @@ export function buildHostAdCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        ad_text: primary.replace(/\p{Extended_Pictographic}/gu, "").slice(
-          0,
-          100,
-        ),
+        // #4238: never cut (create_version refused over-long words).
+        ad_text: primary.replace(/\p{Extended_Pictographic}/gu, ""),
       },
     };
   }
@@ -3744,7 +3747,7 @@ export function buildHostAdCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headline: primary.slice(0, 300),
+        headline: primary,
       },
     };
   }
@@ -3754,7 +3757,7 @@ export function buildHostAdCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headline: name.slice(0, 34),
+        headline: name,
         brand_name: String(destination.brand_slug ?? "Mingla").slice(0, 32),
       },
     };
@@ -3765,9 +3768,9 @@ export function buildHostAdCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headlines: [name.slice(0, 40)],
-        long_headlines: [primary.slice(0, 90)],
-        descriptions: [primary.slice(0, 90)],
+        headlines: [name],
+        long_headlines: [primary],
+        descriptions: [primary],
         business_name: String(destination.brand_slug ?? "Mingla").slice(0, 25),
       },
       keywords: [],
@@ -3779,8 +3782,8 @@ export function buildHostAdCreatePayload(
       kind: "video",
       creative_library_id: creativeId,
       message: primary,
-      headline: name.slice(0, 255),
-      call_to_action_type: "LEARN_MORE",
+      // #4238: the button comes from the plan, mapped on the server.
+      headline: name,
       ai_generated: aiGenerated,
     },
     special_ad_categories: [],
@@ -3801,71 +3804,140 @@ function ariTargetingResultName(
   return String(meta.city ?? meta.name ?? value.name ?? "").trim();
 }
 
-async function resolveAriTargetingRefs(
+type AriPlace = {
+  name: string;
+  countryCode: string;
+  kind?: "city" | "region" | "pin";
+  radiusKm?: number;
+};
+
+/** The key the server compiler reads ids under (regions and pins prefixed). */
+function ariPlaceKey(place: AriPlace): string {
+  const base = `${place.countryCode}:${normalizedAdTargetName(place.name)}`;
+  return place.kind === "region" || place.kind === "pin"
+    ? `${place.kind}:${base}`
+    : base;
+}
+
+/**
+ * #4238 I-4238-PER-APP-MATCH: Ari asks each app on its own (the server's
+ * one matcher, `match: true`), the same as the Host builder and Admin. A
+ * wider area an app offers (TikTok "Lagos State") is used and said on the
+ * card — approving the card accepts it. An app error is recorded as
+ * "Couldn't check", never as not found (I-4238-ERROR-IS-NOT-MISSING).
+ */
+export async function resolveAriTargetingRefs(
   client: any,
   brandId: string,
   platforms: string[],
-  cities: Array<{ name: string; countryCode: string }>,
+  cities: AriPlace[],
   interests: string[],
-): Promise<Record<string, unknown>> {
+  excluded: AriPlace[] = [],
+  languages: string[] = [],
+): Promise<{
+  refs: Record<string, unknown>;
+  notes: string[];
+}> {
   const refsByPlatform: Record<string, {
     locationIds?: Record<string, string>;
     interestIds?: Record<string, string>;
+    languageIds?: Record<string, string>;
   }> = {};
+  const notes: string[] = [];
+  const ask = async (body: Record<string, unknown>) => {
+    try {
+      return await invokeFn(client, "admin-ad-targeting-search", {
+        owner_kind: "host",
+        brand_id: brandId,
+        match: true,
+        ...body,
+      }) as {
+        unavailable?: boolean;
+        match?: {
+          state?: string;
+          best?: { id?: unknown; name?: unknown };
+          wider?: { id?: unknown; name?: unknown };
+        };
+      };
+    } catch {
+      return { unavailable: true };
+    }
+  };
   await Promise.all(platforms.map(async (platform) => {
+    const app = HOST_AD_PLATFORM_NAMES[platform] ?? platform;
     const locationIds: Record<string, string> = {};
     const interestIds: Record<string, string> = {};
-    if (["meta", "tiktok", "google"].includes(platform)) {
-      await Promise.all(cities.map(async (city) => {
-        const response = await invokeFn(client, "admin-ad-targeting-search", {
-          owner_kind: "host",
-          brand_id: brandId,
-          platform,
-          kind: "city",
-          q: city.name,
-          country: city.countryCode,
-        }) as { results?: Array<Record<string, unknown>> };
-        const exact = (response.results ?? []).find((candidate) =>
-          normalizedAdTargetName(ariTargetingResultName(candidate)) ===
-            normalizedAdTargetName(city.name)
+    const languageIds: Record<string, string> = {};
+    const lookup = async (place: AriPlace, leaveOut: boolean) => {
+      const needs = place.kind === "pin"
+        ? platform === "tiktok"
+        : ["meta", "tiktok", "google"].includes(platform) &&
+          (!leaveOut || platform === "meta");
+      if (!needs) return;
+      const parts = place.name.split(",").map((part) => part.trim())
+        .filter(Boolean);
+      const response = await ask({
+        platform,
+        kind: place.kind === "region" ? "region" : "city",
+        q: place.kind === "pin" ? parts[parts.length - 1] ?? place.name : place.name,
+        country: place.countryCode,
+      });
+      if (response.unavailable) {
+        notes.push(`Couldn't check ${app} for ${place.name}. Try again.`);
+        return;
+      }
+      const best = response.match?.state === "match"
+        ? response.match.best
+        : response.match?.state === "wider"
+        ? response.match.wider
+        : null;
+      const id = typeof best?.id === "string" ? best.id.trim() : "";
+      if (!id) {
+        notes.push(`${app} couldn't find ${place.name}.`);
+        return;
+      }
+      locationIds[ariPlaceKey(place)] = id;
+      if (response.match?.state === "wider" && place.kind !== "pin") {
+        notes.push(
+          `${app} only knows ${String(best?.name ?? "a wider area")}, not ${place.name}, so it uses that wider area.`,
         );
-        const id = exact?.id;
-        if (typeof id === "string" && id.trim()) {
-          locationIds[
-            `${city.countryCode}:${normalizedAdTargetName(city.name)}`
-          ] = id.trim();
-        }
-      }));
-    }
+      }
+    };
+    await Promise.all([
+      ...cities.map((place) => lookup(place, false)),
+      ...excluded.map((place) => lookup(place, true)),
+    ]);
     if (platform === "reddit") {
       for (const interest of interests) {
         interestIds[normalizedAdTargetName(interest)] = interest;
       }
     } else {
       await Promise.all(interests.map(async (interest) => {
-        const response = await invokeFn(client, "admin-ad-targeting-search", {
-          owner_kind: "host",
-          brand_id: brandId,
-          platform,
-          kind: "interest",
-          q: interest,
-        }) as { results?: Array<Record<string, unknown>> };
-        const exact = (response.results ?? []).find((candidate) =>
-          normalizedAdTargetName(String(candidate.name ?? "")) ===
-            normalizedAdTargetName(interest)
-        );
-        const id = exact?.id;
-        if (typeof id === "string" && id.trim()) {
-          interestIds[normalizedAdTargetName(interest)] = id.trim();
+        const response = await ask({ platform, kind: "interest", q: interest });
+        if (response.unavailable) {
+          notes.push(`Couldn't check ${app} for ${interest}. Try again.`);
+          return;
         }
+        const best = response.match?.state === "match" ? response.match.best : null;
+        const id = typeof best?.id === "string" ? best.id.trim() : "";
+        if (id) interestIds[normalizedAdTargetName(interest)] = id;
+        else notes.push(`${app} has nothing like ${interest}.`);
+      }));
+    }
+    if (platform === "meta") {
+      await Promise.all(languages.map(async (code) => {
+        const response = await ask({ platform, kind: "language", q: code });
+        const id = response.match?.best?.id;
+        if (typeof id === "string" && id) languageIds[code] = id;
       }));
     }
     refsByPlatform[platform] = {
       ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
       ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
+      ...(Object.keys(languageIds).length > 0 ? { languageIds } : {}),
     };
   }));
-  return refsByPlatform;
+  return { refs: refsByPlatform, notes };
 }
 
 const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
@@ -4059,11 +4131,41 @@ const proposeAdPlan = writeTool(
         properties: {
           name: { type: "string", minLength: 1, maxLength: 120 },
           country_code: { type: "string", minLength: 2, maxLength: 2 },
+          // #4238: a city (default), a whole region/state, or a pin (an
+          // address), each with its own distance (default 17 km).
+          kind: { type: "string", enum: ["city", "region", "pin"] },
+          radius_km: { type: "number", minimum: 0.1, maximum: 100 },
         },
         required: ["name", "country_code"],
       },
     },
-    radius_km: { type: "number", minimum: 1, maximum: 80 },
+    radius_km: { type: "number", minimum: 1, maximum: 100 },
+    // #4238: places to leave out (Facebook & Instagram and Snapchat only).
+    excluded_places: {
+      type: "array",
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          country_code: { type: "string", minLength: 2, maxLength: 2 },
+          kind: { type: "string", enum: ["city", "region"] },
+        },
+        required: ["name", "country_code"],
+      },
+    },
+    languages: {
+      type: "array",
+      maxItems: 5,
+      items: { type: "string", enum: ["en", "fr", "ar", "pt", "es"] },
+    },
+    call_to_action: {
+      type: "string",
+      enum: ["tickets", "book", "signup", "learn"],
+    },
+    budget_mode: { type: "string", enum: ["total", "daily"] },
+    exclude_past_buyers: { type: "boolean" },
     interests: {
       type: "array",
       maxItems: 20,
@@ -4158,11 +4260,37 @@ const proposeAdPlan = writeTool(
             !Array.isArray(value)
           ? value as Record<string, unknown>
           : {};
+        const kind = row.kind === "region" || row.kind === "pin"
+          ? row.kind as "region" | "pin"
+          : undefined;
+        const ownRadius = typeof row.radius_km === "number"
+          ? row.radius_km
+          : typeof args.radius_km === "number"
+          ? args.radius_km
+          : 17;
         return {
           name: String(row.name ?? "").trim(),
           countryCode: String(row.country_code ?? "").trim().toUpperCase(),
+          ...(kind ? { kind } : {}),
+          // #4238: Seth's default of 17 km (Meta's floor around a city).
+          ...(kind === "region" ? {} : { radiusKm: ownRadius }),
         };
       })
+      : [];
+    const excludedPlaces = Array.isArray(args.excluded_places)
+      ? args.excluded_places.map((value) => {
+        const row = value !== null && typeof value === "object"
+          ? value as Record<string, unknown>
+          : {};
+        return {
+          name: String(row.name ?? "").trim(),
+          countryCode: String(row.country_code ?? "").trim().toUpperCase(),
+          ...(row.kind === "region" ? { kind: "region" as const } : {}),
+        };
+      }).filter((place) => place.name && countries.includes(place.countryCode))
+      : [];
+    const languages = Array.isArray(args.languages)
+      ? [...new Set(args.languages.map(String))]
       : [];
     if (
       cities.some((city) =>
@@ -4184,12 +4312,12 @@ const proposeAdPlan = writeTool(
       : Number(args.radius_km);
     if (
       radiusKm !== null &&
-      (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 80 ||
+      (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 100 ||
         cities.length === 0)
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "radius_km requires at least one city and must be from 1 through 80",
+        "radius_km requires at least one city and must be from 1 through 100",
       );
     }
     const gender = ["all", "men", "women"].includes(String(args.gender))
@@ -4286,13 +4414,23 @@ const proposeAdPlan = writeTool(
         } for this brand yet`,
       );
     }
-    const split = (total: number) => {
-      const base = Math.floor(total / platforms.length);
-      const remainder = total - base * platforms.length;
-      return platforms.map((_, index) => base + (index < remainder ? 1 : 0));
-    };
-    const capShares = split(cap);
-    const dailyShares = split(daily);
+    // #4238 P1: each app's minimum first, then the rest evenly; caps follow
+    // the daily shares (the server refuses an app under its minimum).
+    const setupMinimums = (setup as { minimums?: unknown }).minimums;
+    const goalsForSplit = Object.fromEntries(platforms.map((platform, index) => [
+      platform,
+      args.optimize_for === "sales" &&
+          connections[index]?.sales?.ready === true &&
+          (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
+        ? "sales"
+        : "visits",
+    ]));
+    const dailyShares = splitDailyWithMinimums(
+      daily,
+      platforms,
+      minimumsFromSetup(setupMinimums, goalsForSplit),
+    );
+    const capShares = splitProportional(cap, dailyShares.map((v) => Math.max(1, v)));
     const destination = {
       page_type: String(args.dest_page_type),
       brand_slug: String(args.dest_brand_slug),
@@ -4301,13 +4439,16 @@ const proposeAdPlan = writeTool(
         ? { entity_slug: args.dest_entity_slug.trim() }
         : {}),
     };
-    const targetingRefs = await resolveAriTargetingRefs(
+    const targeting = await resolveAriTargetingRefs(
       client,
       String(args.brand_id),
       platforms,
       cities,
       interests,
+      excludedPlaces,
+      languages,
     );
+    const targetingRefs = targeting.refs;
     const opened = await invokeFn(client, "ad-plan", {
       action: "open",
       client_kind: "ari",
@@ -4358,18 +4499,39 @@ const proposeAdPlan = writeTool(
       audience_intent: {
         countries,
         ...(cities.length > 0 ? { cities } : {}),
-        ...(radiusKm !== null ? { radiusKm } : {}),
         ...(typeof args.age_min === "number" ? { ageMin: args.age_min } : {}),
         ...(typeof args.age_max === "number" ? { ageMax: args.age_max } : {}),
         gender,
         ...(interests.length > 0
           ? { interests: interests.map((name) => ({ name })) }
           : {}),
+        ...(excludedPlaces.length > 0 ? { excludedPlaces } : {}),
+        ...(languages.length > 0 ? { languages } : {}),
       },
+      // #4238: the picks per app, read back by key (same as the builder).
+      targeting_selection: {
+        places: cities.map((place) => ({
+          ...place,
+          refs: Object.fromEntries(platforms.flatMap((platform) => {
+            const id = (targetingRefs[platform] as { locationIds?: Record<string, string> } | undefined)
+              ?.locationIds?.[ariPlaceKey(place)];
+            return id ? [[platform, id]] : [];
+          })),
+        })),
+        excluded: excludedPlaces.map((place) => ({ ...place, refs: {} })),
+        interests: interests.map((name) => ({ name, refs: {} })),
+      },
+      ...(typeof args.call_to_action === "string"
+        ? { call_to_action: args.call_to_action }
+        : {}),
+      budget_mode: args.budget_mode === "daily" ? "daily" : "total",
       copy: {
         primary: typeof args.primary_text === "string"
           ? args.primary_text
           : String(args.name),
+        // #4238: the name is the headline (Snapchat 34, Google 40); the
+        // server refuses one that is too long instead of cutting it.
+        headline: String(args.name),
       },
       creative_library_id: args.creative_library_id,
       creative_url: null,
@@ -4380,6 +4542,10 @@ const proposeAdPlan = writeTool(
         include_keys: Array.isArray(args.audience_keys)
           ? [...new Set(args.audience_keys.map((key) => String(key)))]
           : [],
+        // #4238: leave out the brand's past guests (on unless Ari was told not to).
+        ...(args.exclude_past_buyers === false
+          ? {}
+          : { exclude_keys: [`brand:${String(args.brand_id).toLowerCase()}:guests`] }),
       },
       media_rights: {
         rights_confirmed: true,
@@ -4444,6 +4610,8 @@ const proposeAdPlan = writeTool(
         visits: platforms.filter((p) => optimizationByPlatform[p] === "visits"),
       },
       targeting_snapshots: frozen.targeting_snapshots ?? [],
+      // #4238: each app's own answer, in plain words.
+      ...(targeting.notes.length > 0 ? { note: targeting.notes.join(" ") } : {}),
       ready_for_funding: !blocked,
       next_step: blocked
         ? "Some apps can't reach exactly who you picked. Change the places or interests, or accept the wider audience, and I'll check the ad again."
@@ -8689,15 +8857,18 @@ export async function preflightMoneyProposal(
     let brandCurrency: string | null = null;
     // #4238: the promoted page (dated pages carry their last bookable day).
     let promotedPage: Record<string, unknown> | undefined;
+    // #4238: each app's daily minimum, for the minimums-first split.
+    let cardMinimums: Record<string, number> = {};
     if (client && isUuid(args.brand_id)) {
       try {
         const setup = await invokeFn(client, "ad-plan", {
           action: "host_setup",
           brand_id: args.brand_id,
-        }) as { currency?: unknown; pages?: unknown };
+        }) as { currency?: unknown; pages?: unknown; minimums?: unknown };
         brandCurrency = typeof setup?.currency === "string"
           ? setup.currency
           : null;
+        cardMinimums = minimumsFromSetup(setup?.minimums, {});
         promotedPage = adFindSetupPage(setup?.pages, args);
       } catch (error) {
         console.warn("[ari-ad-card] brand currency unavailable", {
@@ -8726,18 +8897,25 @@ export async function preflightMoneyProposal(
       args.daily_budget_cents ??
         (Number.isSafeInteger(budget) ? Math.ceil(budget / days) : 0),
     );
+    // #4238 P1: each app's share of the total follows its daily share —
+    // its minimum first, then the rest evenly (even when minimums are unknown).
     const split = (total: number) => {
       if (
         !Number.isSafeInteger(total) || total <= 0 || platforms.length === 0
       ) {
         return [];
       }
-      const base = Math.floor(total / platforms.length);
-      const remainder = total - base * platforms.length;
+      const dailyShares = splitDailyWithMinimums(
+        Number.isSafeInteger(daily) && daily > 0 ? daily : total,
+        platforms,
+        cardMinimums,
+      );
+      const shares = splitProportional(
+        total,
+        dailyShares.map((value) => Math.max(1, value)),
+      );
       return platforms.map((platform, index) =>
-        `${adPlatformName(platform)}: ${
-          formatAdMoney(base + (index < remainder ? 1 : 0), brandCurrency)
-        }`
+        `${adPlatformName(platform)}: ${formatAdMoney(shares[index], brandCurrency)}`
       );
     };
     const countries = Array.isArray(args.countries)
@@ -8746,20 +8924,49 @@ export async function preflightMoneyProposal(
       )
         .join(", ")
       : "";
+    // #4238: each place with its own distance (regions have none).
     const cities = Array.isArray(args.cities)
-      ? args.cities.map((value) =>
+      ? args.cities.map((value) => {
+        const row = value && typeof value === "object"
+          ? value as Record<string, unknown>
+          : {};
+        const name = String(row.name ?? "");
+        if (!name) return "";
+        if (row.kind === "region") return `${name} (whole region)`;
+        const km = typeof row.radius_km === "number"
+          ? row.radius_km
+          : typeof args.radius_km === "number"
+          ? args.radius_km
+          : 17;
+        return row.kind === "pin" ? `pin at ${name}, ${km} km` : `${name}, ${km} km`;
+      }).filter(Boolean)
+      : [];
+    const leftOut = Array.isArray(args.excluded_places)
+      ? args.excluded_places.map((value) =>
         value && typeof value === "object"
           ? String((value as Record<string, unknown>).name ?? "")
           : ""
       ).filter(Boolean)
+      : [];
+    const languageWords: Record<string, string> = {
+      en: "English",
+      fr: "French",
+      ar: "Arabic",
+      pt: "Portuguese",
+      es: "Spanish",
+    };
+    const languageNames = Array.isArray(args.languages)
+      ? args.languages.map((code) => languageWords[String(code)] ?? "").filter(Boolean)
       : [];
     const interests = Array.isArray(args.interests)
       ? args.interests.map(String).filter(Boolean)
       : [];
     const audience = [
       countries,
-      cities.length > 0 ? cities.join(", ") : "",
-      typeof args.radius_km === "number" ? `${args.radius_km} km radius` : "",
+      cities.length > 0 ? cities.join("; ") : "",
+      leftOut.length > 0 ? `leaving out ${leftOut.join(", ")}` : "",
+      languageNames.length > 0 ? `in ${languageNames.join(", ")}` : "",
+      args.exclude_past_buyers === false ? "" : "not people who already bought",
       typeof args.age_min === "number" || typeof args.age_max === "number"
         ? `ages ${String(args.age_min ?? 13)}–${String(args.age_max ?? "100+")}`
         : "",
@@ -8784,7 +8991,23 @@ export async function preflightMoneyProposal(
         "You pay in your brand's payout currency. The exchange rate is fixed when you save this ad.",
       ad_platforms: platforms,
       ad_provider_allocation: split(budget).join(" · ") +
-        (platforms.length > 0 ? " · split evenly across the apps" : ""),
+        (platforms.length === 0
+          ? ""
+          : Object.keys(cardMinimums).length > 0
+          ? " · each app gets its minimum first, then the rest evenly"
+          : " · split evenly across the apps"),
+      // #4238 P1: the button and the tracking tags on the link.
+      ad_button: ({
+        tickets: "Get tickets",
+        book: "Book now",
+        signup: "Sign up",
+        learn: "Learn more",
+      } as Record<string, string>)[String(args.call_to_action ?? "")] ??
+        "Picked for the page (Get tickets for events)",
+      ad_tracking: `utm_source per app · utm_medium=paid_social · utm_campaign=${
+        String(args.name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "").slice(0, 60) || "mingla-ad"
+      }`,
       ad_destination: destination || "Public Mingla page",
       ...(adDates ? { ad_dates: adDates } : {}),
       ad_audience: audience || "Choose who should see this ad",

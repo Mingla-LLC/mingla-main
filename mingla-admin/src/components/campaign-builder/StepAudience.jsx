@@ -20,7 +20,11 @@ import { Input } from "../ui/Input";
 import { SearchInput } from "../ui/SearchInput";
 import { MultiSelect } from "../ui/MultiSelect";
 import { TARGETING_SEARCH_PROXY_ENABLED } from "../../lib/adBuilder/flags";
-import { listAdAudiences, searchTargeting } from "../../services/adEngineService";
+import {
+  listAdAudiences,
+  pickTargetingMatch,
+  searchTargeting,
+} from "../../services/adEngineService";
 import {
   CITY_SEARCH_PLATFORMS,
   INTEREST_SEARCH_PLATFORMS,
@@ -297,6 +301,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows, brandId 
     ) {
       setResolvingCity(true);
       try {
+        // #4238: each app answers on its own (the server's matcher); a
+        // wider area is used and flagged on the chip; an app error is
+        // "couldn't check", never "not found".
         const [tiktok, google] = await Promise.all([
           pickedPlatforms.includes("tiktok")
             ? searchTargeting({
@@ -304,6 +311,7 @@ export function StepAudience({ audience, onAudienceChange, channelRows, brandId 
                 kind: "city",
                 q: cityName,
                 country: cc,
+                match: true,
               })
             : Promise.resolve({ data: null }),
           pickedPlatforms.includes("google")
@@ -312,20 +320,32 @@ export function StepAudience({ audience, onAudienceChange, channelRows, brandId 
                 kind: "city",
                 q: cityName,
                 country: cc,
+                match: true,
               })
             : Promise.resolve({ data: null }),
         ]);
-        const tiktokFirst = (tiktok.data?.results ?? [])[0];
-        if (tiktokFirst?.id)
-          chip.tiktok = { location_ids: [String(tiktokFirst.id)] };
-        const googleFirst = (google.data?.results ?? [])[0];
-        if (googleFirst?.id) {
+        const tiktokPick = pickedPlatforms.includes("tiktok")
+          ? pickTargetingMatch(tiktok.data)
+          : { state: "none" };
+        if (tiktokPick.id) {
+          chip.tiktok = { location_ids: [tiktokPick.id] };
+        }
+        const googlePick = pickedPlatforms.includes("google")
+          ? pickTargetingMatch(google.data)
+          : { state: "none" };
+        if (googlePick.id) {
           chip.google = {
-            name: String(googleFirst.meta?.name ?? cityName),
-            country_code: String(googleFirst.meta?.country_code ?? cc),
-            criterion_id: String(googleFirst.id),
+            name: String(googlePick.meta?.name ?? cityName),
+            country_code: String(googlePick.meta?.country_code ?? cc),
+            criterion_id: googlePick.id,
           };
         }
+        chip.matchNotes = [
+          tiktokPick.state === "wider" ? `TikTok uses ${tiktokPick.name} (wider area)` : null,
+          tiktokPick.state === "unchecked" ? "Couldn't check TikTok — try again" : null,
+          googlePick.state === "wider" ? `Google uses ${googlePick.name} (wider area)` : null,
+          googlePick.state === "unchecked" ? "Couldn't check Google — try again" : null,
+        ].filter(Boolean);
       } catch {
         chip.tiktok = null;
       } finally {
@@ -595,6 +615,11 @@ export function StepAudience({ audience, onAudienceChange, channelRows, brandId 
                     <span className="text-[10px] text-[var(--color-text-tertiary)]">
                       {on.join(" · ")}
                     </span>
+                    {Array.isArray(c.matchNotes) && c.matchNotes.length > 0 ? (
+                      <span className="text-[10px] text-[var(--color-warning-700,#b45309)]">
+                        {c.matchNotes.join(" · ")}
+                      </span>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => removeCity(c.id)}
