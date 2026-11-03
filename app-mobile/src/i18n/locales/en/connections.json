@@ -189,5 +189,10 @@
   "af_send_failed": "Couldn't send that. Try again.",
   "chat_menu_paired_view": "Birthday, holidays and saves",
   "preview_no_messages": "No messages yet",
-  "host_chat_in_business_app": "Open the Mingla Business app to manage this event chat."
+  "host_chat_in_business_app": "Open the Mingla Business app to manage this event chat.",
+  "af_share_link_failed": "Couldn't load your invite link. Try again.",
+  "af_invite_joined": "YOUR INVITE · Joined and connected {{count}}",
+  "af_reset_link": "Reset link",
+  "af_reset_link_confirm": "The old link stops working. A new one is made for you.",
+  "invite_connected": "You and {{name}} are friends"
 }
