@@ -235,9 +235,9 @@ describe("#3802 M-4: addresses", () => {
     assert.equal(targetSliceHash("event_organizer", "lagos"), "#/hosts?icp=event_organizer&region=lagos");
     assert.deepEqual({ icp: parseCrmHash(targetSliceHash("event_organizer", "new-york")).icp, region: parseCrmHash(targetSliceHash("event_organizer", "new-york")).region }, { icp: "event_organizer", region: "new-york" });
     assert.equal(targetSliceHash("<script>", "../x"), "#/hosts");
-    // #4130: the list is the default view now, so it is left out of the address.
+    // #4255: the board is the only view, so no view is ever in the address.
     assert.equal(buildCrmHash("hosts", { view: "list", mine: true }), "#/hosts?mine=1");
-    assert.equal(buildCrmHash("creators", { view: "board" }), "#/creators?view=board");
+    assert.equal(buildCrmHash("creators", { view: "board" }), "#/creators");
   });
   it("the Team dashboard's person filter round-trips, and anything that is not an address is dropped", () => {
     assert.equal(buildTeamSearch({ person: "Tunde@UseMingla.com" }), "person=tunde%40usemingla.com");
@@ -520,7 +520,8 @@ describe("#3802 M-10: the five re-test items", () => {
   it("(b) a toast button pressed from the keyboard hands focus to the open card", () => {
     assert.match(TOAST, /function focusReturn\(toastEl, elsewhere\)/);
     assert.match(TOAST, /const inside = !!toastEl && toastEl\.contains\(document\.activeElement\);/);
-    assert.match(TOAST, /const panels = document\.querySelectorAll\(DIALOG_PANEL\);/);
+    // #4255: a docked side panel (PanelStack) takes focus back the same way.
+    assert.match(TOAST, /const panels = document\.querySelectorAll\(`\$\{DIALOG_PANEL\}, \[data-panel-focus\]`\);/);
     assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\.focusAfter\);\s*onDismiss\(toast\.id\);\s*toast\.action\.onClick\?\.\(\);\s*restoreFocus\(\);/);
     assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\?\.focusAfter\);\s*onDismiss\(toast\.id\);\s*restoreFocus\(\);/);
     assert.match(TOAST, /const DIALOG_PANEL = '\[role="dialog"\]\[aria-modal="true"\]';/);
@@ -561,7 +562,7 @@ describe("#3802 M-11: the three smoke-test items", () => {
   });
   it("and that column still never looks like a place to drop", () => {
     assert.match(BOARD, /const isOver = over && !refused;/);
-    assert.match(BOARD, /if \(refusal\(stage\.id\)\) \{\s*e\.dataTransfer\.dropEffect = "none";\s*return;\s*\}\s*e\.preventDefault\(\);/);
+    assert.match(BOARD, /if \(refusal\(stageId\)\) \{\s*e\.dataTransfer\.dropEffect = "none";\s*return;\s*\}\s*e\.preventDefault\(\);/);
     assert.match(BOARD, /dropped\.current = true;/);
   });
   it("a card panel is drawn outside the page's own box, so its first paint is full height", () => {
@@ -569,7 +570,9 @@ describe("#3802 M-11: the three smoke-test items", () => {
     // top of the page (see the rework suite for the stacking order).
     const LAYER = read("components/crm/CrmLayer.jsx");
     assert.match(LAYER, /typeof document === "undefined" \? box : createPortal\(box, document\.body\)/);
-    assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
+    // #4255: the card panels are the first of the two side panels, drawn by the
+    // PanelStack inside the same layer.
+    assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*<PanelLinksContext\.Provider value=\{stack\.links\}>\s*<PanelStack\s+stack=\{stack\}\s+first=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
     assert.match(PAGE, /\) : ready && openId \? \(\s*<RecordDrawer/);
     assert.ok(!/createPortal/.test(PAGE), "the page draws an overlay outside the layer component");
   });
@@ -577,7 +580,7 @@ describe("#3802 M-11: the three smoke-test items", () => {
     assert.match(TOAST, /const SIDE_PANEL = `aside\$\{DIALOG_PANEL\}`;/);
     assert.match(TOAST, /const \{ beside: besidePanel, fill \} = useStackPlace\(toasts\.length > 0\);/);
     assert.match(TOAST, /window\.matchMedia\("\(min-width: 640px\)"\)\.matches/);
-    assert.match(TOAST, /const next = stackPlace\(window\.innerWidth, panel \? panel\.offsetWidth : 0, wide\);/);
+    assert.match(TOAST, /const next = stackPlace\(window\.innerWidth, Math\.max\(panel \? panel\.offsetWidth : 0, docked \? docked\.offsetWidth : 0\), wide\);/);
     assert.match(TOAST, /besidePanel > 0\s*\? \{ zIndex: "var\(--z-toast\)", bottom: "1\.5rem", left: `\$\{EDGE_GAP\}px`, right: `\$\{besidePanel \+ PANEL_GAP\}px` \}\s*: \{ zIndex: "var\(--z-toast\)", bottom: "calc\(1\.5rem \+ var\(--toast-lift, 0px\)\)" \}/);
     assert.match(read("components/ui/Drawer.jsx"), /<aside\s+ref=\{panelRef\}\s+tabIndex=\{-1\}\s+role="dialog"\s+aria-modal="true"/);
   });

@@ -35,10 +35,13 @@ Deno.test("#3980 final: the runway list keeps its rows across remounts so Back t
   assertMatch(runway, /cache: RUNWAY_CACHE/);
   // The cache is per signed-in person.
   assertMatch(runway, /key: `\$\{access\?\.email \|\| ""\}\|runway`/);
-  // The page still focuses the opener's row by its runway id after Back.
+  // #4255: the runway list is gone (Month and Board only). An event opens in a
+  // side panel, which is a Drawer: closing it puts focus back on the month chip
+  // that opened it (components/ui/Drawer.jsx keeps where focus was).
   const page = code("pages/ContentCalendarPage.jsx");
-  assertMatch(page, /"data-runway-row"\]\.find/);
-  assertMatch(page, /opener\?\.selector \? document\.querySelector\(opener\.selector\) : null/);
+  assertNotMatch(page, /data-runway-row/);
+  assertMatch(page, /<Drawer open onClose=\{closeFirst\} title=\{route\.event\.kind === "expected" \? "Promised event" : "Event"\}>/);
+  assertMatch(code("components/ui/Drawer.jsx"), /if \(previousFocusRef\.current\?\.focus\) previousFocusRef\.current\.focus\(\);/);
 });
 
 Deno.test("#3980 final: Messages never says Nothing waiting under a Draft needed list", () => {

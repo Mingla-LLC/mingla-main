@@ -9,9 +9,10 @@
 //          open Tool leads.
 //   INT-3  The Dashboard's "Needs you today" lists failed announcement pushes
 //          (Wave 6's reading), for admins only; a failed read is never "nothing".
-//   INT-4  Calendar Event runway: the designed table, "Make a card" through the
-//          existing checked Work add with a confirmation, "Plan a post" through
-//          the existing Add content form; no new sender.
+//   INT-4  Calendar Event runway: "Make a card" through the existing checked
+//          Work add with a confirmation, "Plan a post" through the existing
+//          Add content form; no new sender. #4255: the runway table is gone and
+//          both actions sit in the event panel (and the page header).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -200,16 +201,15 @@ describe("#4130 INT-4 Calendar Event runway", () => {
     assert.ok(runwayCardItem({ ...draft, title: "x".repeat(400) }, "m").title.length <= 160);
     assert.equal(runwayPostTitle(live), "Promote Sea & Soundtrack");
   });
-  it("the page draws the table and uses only the existing write paths", () => {
+  it("the event panel offers both actions and uses only the existing write paths", () => {
     const page = stripComments(read("pages/ContentCalendarPage.jsx"));
-    const heads = [...page.slice(page.indexOf("function RunwayTable")).matchAll(/<th scope="col"[^>]*>([^<]*)</g)].map((m) => m[1]).filter(Boolean);
-    assert.deepEqual(heads, ["Event", "Host", "When (local)", "Live?", "Promotion window"]);
-    assert.match(page, /<RunwayTable rows=\{runwayRows\}/);
+    assert.ok(!/RunwayTable|<table/.test(page), "#4255: the runway table is gone");
+    assert.match(page, /<EventPanel selection=\{route\.event\} onBack=\{closeFirst\} online=\{online\} embedded actions=\{actionsFor\(route\.event\)\} \/>/);
     assert.match(page, /await ops\.addWork\(\[runwayCardItem\(cardFor, people\.me\)\]/);
     assert.match(page, /<Modal open=\{!!cardFor\} onClose=\{closeCard\} title="Make a Work card\?"/);
-    assert.match(page, /const planPost = \(row\) => \{ setTitle\(runwayPostTitle\(row\)\);[^}]*setAddOpen\(true\); \};/);
+    assert.match(page, /const planPost = \(row\) => \{ setTitle\(row \? runwayPostTitle\(row\) : ""\);[^}]*setAddOpen\(true\); \};/);
     assert.equal(/supabase\.rpc|\bfetch\(|from "\.\.\/lib\/supabase"/.test(page), false, "no new sender on the page");
-    // The row buttons only open the confirmation or the form.
-    assert.match(page, /onMakeCard=\{\(r\) => setCardFor\(r\)\}/);
+    // The panel's buttons only open the confirmation or the form.
+    assert.match(page, /onMakeCard: \(row\) => setCardFor\(row\), onPlanPost: planPost/);
   });
 });

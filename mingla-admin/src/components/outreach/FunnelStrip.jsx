@@ -1,6 +1,7 @@
 // Issue #4130 (Wave 4a) — the funnel on top of Hosts and creators: each stage's
-// count over every card, and what share of the stage before reached it. The
-// weakest step is marked: it is the biggest leak in outreach.
+// count, and what share of the stage before reached it. The weakest step is
+// marked: it is the biggest leak in outreach. #4255: it counts the cards on
+// the board for the filters set, so it always agrees with the columns.
 import { funnelSteps } from "../../lib/outreachView";
 
 export function FunnelStrip({ def, stages, label }) {
@@ -29,7 +30,7 @@ export function FunnelStrip({ def, stages, label }) {
           </li>
         ))}
       </ol>
-      <p className="mt-3 text-xs text-[var(--color-text-tertiary)]">Cards in each stage now, across every region and owner. Lost and Passed are left out.</p>
+      <p className="mt-3 text-xs text-[var(--color-text-tertiary)]">Cards on the board in each stage, for the filters set (stale cards count in their stage). Lost and Passed are left out.</p>
     </section>
   );
 }

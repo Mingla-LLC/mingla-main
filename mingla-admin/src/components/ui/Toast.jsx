@@ -34,7 +34,8 @@ function focusReturn(toastEl, elsewhere) {
       const active = document.activeElement;
       // Something took focus on purpose (the action opened a card, say).
       if (active && active !== document.body && document.body.contains(active) && !toastEl.contains(active)) return;
-      const panels = document.querySelectorAll(DIALOG_PANEL);
+      // #4255: a docked side panel (PanelStack) counts as an open panel too.
+      const panels = document.querySelectorAll(`${DIALOG_PANEL}, [data-panel-focus]`);
       const panel = panels.length > 0 ? panels[panels.length - 1] : null;
       if (panel && typeof panel.focus === "function") {
         panel.focus();
@@ -116,10 +117,12 @@ function useStackPlace(active) {
     if (!active) return undefined;
     const measure = () => {
       const panel = document.querySelector(SIDE_PANEL);
+      // #4255: the docked side panels (one or two, PanelStack) are one box.
+      const docked = document.querySelector("[data-panel-stack]");
       const wide = typeof window.matchMedia === "function" && window.matchMedia("(min-width: 640px)").matches;
       // offsetWidth, not the on-screen box: the panel slides in, and its
       // width is the same from the first frame.
-      const next = stackPlace(window.innerWidth, panel ? panel.offsetWidth : 0, wide);
+      const next = stackPlace(window.innerWidth, Math.max(panel ? panel.offsetWidth : 0, docked ? docked.offsetWidth : 0), wide);
       setPlace((prev) => (prev.beside === next.beside && prev.fill === next.fill ? prev : next));
     };
     measure();

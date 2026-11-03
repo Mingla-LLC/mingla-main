@@ -351,10 +351,9 @@ export function initials(name) {
   return parts.length === 1 ? parts[0].slice(0, 2).toUpperCase() : `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-export const GROUPS = ["status", "person", "event"];
 export const WHO = ["all", "mine", "watching"];
 
-/** The Work board's address: card, group, who, week and the add form. */
+/** The Work board's address: card, who, week and the add form. */
 export function parseWorkSearch(search) {
   const p = new URLSearchParams(typeof search === "string" ? search : "");
   const card = p.get("card");
@@ -362,7 +361,6 @@ export function parseWorkSearch(search) {
   return {
     card: card && UUID_RE.test(card) ? card : null,
     cardInvalid: card !== null && !UUID_RE.test(card),
-    group: GROUPS.includes(p.get("group")) ? p.get("group") : "status",
     who: WHO.includes(p.get("who")) ? p.get("who") : "all",
     week: week && DATE_RE.test(week) ? mondayOf(week) : null,
     add: p.get("add") === "1",
@@ -372,7 +370,6 @@ export function parseWorkSearch(search) {
 export function buildWorkSearch(state) {
   const p = new URLSearchParams();
   if (state.card) p.set("card", state.card);
-  if (state.group && state.group !== "status") p.set("group", state.group);
   if (state.who && state.who !== "all") p.set("who", state.who);
   if (state.week) p.set("week", state.week);
   if (state.add) p.set("add", "1");
@@ -510,41 +507,6 @@ export function closeKindLabel(kind) {
 export function proofBadge(item) {
   if (item?.verified) return "Checked by Mingla";
   return item?.by_agent ? "Agent's word" : "Person's note";
-}
-
-const STATUS_ORDER = ["todo", "doing", "person", "done"];
-
-/** Cards grouped for the board: by status, by owner or by event. */
-export function groupCards(cards, group) {
-  const list = Array.isArray(cards) ? cards : [];
-  if (group === "person") {
-    const by = new Map();
-    for (const card of list) {
-      const owners = Array.isArray(card.owners) && card.owners.length ? card.owners : [{ email: "", name: "No owner" }];
-      for (const o of owners) {
-        const key = o.email || "none";
-        if (!by.has(key)) by.set(key, { key, title: o.name || o.email || "No owner", cards: [] });
-        by.get(key).cards.push(card);
-      }
-    }
-    return [...by.values()].sort((a, b) => a.title.localeCompare(b.title));
-  }
-  if (group === "event") {
-    const by = new Map();
-    for (const card of list) {
-      const a = card.anchor;
-      const key = a?.id ? `${a.kind}:${a.id}` : "none";
-      const title = a?.id ? `${a.title}${a.start_on ? ` · ${dayLabel(a.start_on)}` : ""}` : "No event";
-      if (!by.has(key)) by.set(key, { key, title, sort: a?.start_on || "9999", cards: [] });
-      by.get(key).cards.push(card);
-    }
-    return [...by.values()].sort((a, b) => (a.key === "none") - (b.key === "none") || a.sort.localeCompare(b.sort));
-  }
-  return STATUS_ORDER.map((status) => ({
-    key: status,
-    title: status === "done" ? "Done this week" : WORK_STATUSES.find((s) => s.value === status).label,
-    cards: list.filter((card) => card.status === status),
-  }));
 }
 
 /** Mention candidates for "@" text: active teammates whose name starts with what was typed. */
@@ -963,8 +925,7 @@ export function dayLong(value) {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-/** Work tab and Needs attention group in the Work page address. */
-export const WORK_TABS = ["board", "attention", "activity"];
+/** Needs attention groups (the server's ops_attention answer). */
 export const ATTENTION_GROUPS = [
   { key: "noowner", label: "No owner" },
   { key: "overdue", label: "Overdue" },
@@ -974,15 +935,6 @@ export const ATTENTION_GROUPS = [
   { key: "engineering", label: "Engineering" },
 ];
 
-export function parseWorkTab(search) {
-  const p = new URLSearchParams(typeof search === "string" ? search : "");
-  const tab = p.get("tab");
-  const att = p.get("att");
-  return {
-    tab: WORK_TABS.includes(tab) ? tab : "board",
-    att: ATTENTION_GROUPS.some((g) => g.key === att) ? att : null,
-  };
-}
 
 /** The Work board's four columns. "Done this week" holds cards closed since Monday. */
 export const WORK_COLUMNS = [

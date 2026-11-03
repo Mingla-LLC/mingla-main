@@ -100,7 +100,8 @@ Deno.test("#3980 rework: the month grid beside the event panel never scrolls sid
   assertMatch(grid, /onClick=\{\(\) => onDay\(key\)\}/);
   assertMatch(grid, /more<\/button>/);
   assertMatch(page, /<DayPanel /);
-  assertMatch(page, /p\.set\("day", key\)/);
+  // #4255: the day opens in the first side panel.
+  assertMatch(page, /const openDay = \(key\) => openFirst\("day", key\);/);
   assertNotMatch(page, /overflow-wrap:anywhere|break-all|hyphens-auto/);
   assertMatch(page, /"@container min-w-0 overflow-hidden rounded-xl/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (P3): titles show from a 640px box, so at 1440 with an event

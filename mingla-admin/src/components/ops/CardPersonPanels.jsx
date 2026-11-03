@@ -8,6 +8,7 @@
 //     (owner and admins): publish it to hosts, or say it is not needed.
 // Spend and publish approvals are the card's own actions (WorkDetail).
 import { AlertCard } from "../ui/Card";
+import { SideLink } from "../ui/PanelStack";
 import { DraftsPage } from "../../pages/DraftsPage";
 import { useAuth } from "../../context/AuthContext";
 import { useOpsPoll } from "../../hooks/useOpsWork";
@@ -37,7 +38,7 @@ export function CardDrafts({ card }) {
       {records.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
           This card is not linked to a host or creator, so its draft is not shown here.{" "}
-          <a href="#/work-board?drafts=all" className={`font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open all my drafts</a>
+          <SideLink side={{ kind: "drafts", id: "all" }} href="#/work-board?drafts=all" className={`font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open all my drafts</SideLink>
         </p>
       ) : (
         records.map((id) => <DraftsPage key={id} embedded={{ search: `record=${id}` }} />)

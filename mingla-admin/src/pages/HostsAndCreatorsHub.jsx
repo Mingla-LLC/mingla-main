@@ -3,19 +3,19 @@
 // Replaces the Wave 0 hub. The tabs keep their addresses (#/outreach?tab=hosts,
 // old #/hosts and #/creators links redirect here) and each tab is shown only
 // to whoever could open the old page (lib/access.js canOpenOwnPage). The
-// counts on the tabs, the funnel and the due chips come from one server read
-// over every card (outreach_summary); the board itself is the existing
-// PipelinePage, which draws the one page header with these tabs in it.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useServerRead } from "../hooks/useServerRead";
+// board itself is the existing PipelinePage, which draws the one page header
+// with these tabs in it.
+//
+// Issue #4255: the tabs carry no totals any more. The funnel and the column
+// headers are the page's only counts, and both count the cards on the board
+// for the filters set (so a number never disagrees with what is shown).
+import { useEffect, useMemo, useState } from "react";
 import { Tabs } from "../components/ui/Tabs";
 import { useAuth } from "../context/AuthContext";
 import { canOpenOwnPage } from "../lib/access";
 import { hubTabFromHash, hubTabHash, hubTabs } from "../lib/adminRoutes";
-import { localToday } from "../lib/crmModel";
 import { HostedPageContext } from "../components/layout/hostedPageContext";
 import { OutreachContext } from "../components/outreach/OutreachContext";
-import { getOutreachSummary } from "../services/dashboardService";
 import { HostsPage, CreatorsPage } from "./PipelinePage";
 
 const PAGE_ID = "outreach";
@@ -41,23 +41,16 @@ export function OutreachPage({ onTabChange }) {
   const active = visible.find((tab) => tab.id === requested) || visible[0] || null;
   const alias = useMemo(() => (active ? { page: PAGE_ID, tab: active.id, hosts: active.hosts } : null), [active]);
 
-  const loadSummary = useCallback(() => getOutreachSummary(localToday()), []);
-  const summaryRead = useServerRead(loadSummary);
-  const { status, data, error, retry } = summaryRead;
-
   const context = useMemo(() => {
     const tabs = visible.length > 1 ? (
       <Tabs
-        tabs={visible.map((tab) => {
-          const total = data?.pipelines?.[tab.hosts]?.total;
-          return { id: tab.id, label: total == null ? tab.label : `${tab.label} · ${Number(total).toLocaleString()}` };
-        })}
+        tabs={visible.map((tab) => ({ id: tab.id, label: tab.label }))}
         activeTab={active?.id}
         onChange={(tabId) => { window.location.hash = hubTabHash(PAGE_ID, tabId); }}
       />
     ) : null;
-    return { summary: { status, data, error }, retrySummary: retry, tabs, tabId: active?.id || null };
-  }, [visible, active, status, data, error, retry]);
+    return { tabs, tabId: active?.id || null };
+  }, [visible, active]);
 
   if (!active) return null;
   const Hosted = COMPONENTS[active.hosts];

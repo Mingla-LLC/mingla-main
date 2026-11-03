@@ -58,7 +58,6 @@ const TOAST_CONTEXT = read("context/ToastContext.jsx");
 const SERVICE = read("services/crmService.js");
 const PROMPT = read("components/crm/ReasonPrompt.jsx");
 const BOARD = read("components/crm/PipelineBoard.jsx");
-const LIST = read("components/crm/PipelineList.jsx");
 const HOOK = read("hooks/useCrmPipeline.js");
 const HEADER = read("components/layout/Header.jsx");
 const MIGRATION = fs.readFileSync(
@@ -422,7 +421,7 @@ describe("#3802 R-8: the smaller items", () => {
 
   it("a column that will not take the card does not look like a drop target", () => {
     assert.match(BOARD, /const isOver = over && !refused;/);
-    assert.match(BOARD, /if \(refusal\(stage\.id\)\) \{\s*e\.dataTransfer\.dropEffect = "none";\s*return;\s*\}\s*e\.preventDefault\(\);/);
+    assert.match(BOARD, /if \(refusal\(stageId\)\) \{\s*e\.dataTransfer\.dropEffect = "none";\s*return;\s*\}\s*e\.preventDefault\(\);/);
     assert.match(BOARD, /block\.token === "stage_sets_itself" \|\| block\.token === "stage_is_live"/);
     assert.match(BOARD, /Can&apos;t drop here\. \{refused\.message\}/);
   });
@@ -439,8 +438,9 @@ describe("#3802 R-8: the smaller items", () => {
     assert.match(BOARD, /const endDrag = \(\) => \{\s*stopScrolling\(\);/);
   });
 
-  it("a name in the list is a comfortable tap target", () => {
-    assert.match(LIST, /className="flex min-h-11 w-full /);
+  // #4255: the list view is gone (D8); "Show all N" is the board's tap target.
+  it("a column's Show all is a comfortable tap target", () => {
+    assert.match(BOARD, /data-show-all=\{column\.id\}[\s\S]{0,200}className="min-h-11 /);
   });
 
   it("the breadcrumb never reads 'Admin' for the two non-admin roles, and names their own home", () => {

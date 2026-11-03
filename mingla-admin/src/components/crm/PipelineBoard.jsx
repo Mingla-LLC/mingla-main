@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "../ui/Skeleton";
 import { RecordCard } from "./RecordCard";
-import { groupByStage, moveBlocker } from "../../lib/crmModel";
+import { moveBlocker, stageLabel } from "../../lib/crmModel";
+import { columnShown } from "../../lib/outreachView";
 
 // A column never grows past the screen: its cards scroll inside it, so a
 // column of 200 cards is as tall as a column of 5.
@@ -32,14 +33,18 @@ export function PipelineBoardSkeleton() {
 }
 
 /**
- * The board: one column per stage. It scrolls sideways inside its own box, so
- * the page itself never scrolls sideways. Dragging is offered only where there
- * is a mouse or trackpad; the arrow on each card and the stage menu inside the
- * card work everywhere.
+ * The board: a Stale column, then one column per stage (lib/outreachView.js
+ * boardColumns). It scrolls sideways inside its own box, so the page itself
+ * never scrolls sideways. Dragging is offered only where there is a mouse or
+ * trackpad; the arrow on each card and the stage menu inside the card work
+ * everywhere. Stale is not a stage: a card cannot be dropped there (a future
+ * next-step date takes it out). #4255: a column shows 8 cards, then
+ * "Show all N"; its count is always every card in it.
  */
 export function PipelineBoard({
   def,
-  records,
+  columns,
+  staleAction = null,
   regions,
   team,
   today,
@@ -51,7 +56,8 @@ export function PipelineBoard({
 }) {
   const [dragId, setDragId] = useState(null);
   const [overStage, setOverStage] = useState(null);
-  const groups = groupByStage(def, records);
+  const [expanded, setExpanded] = useState({});
+  const records = columns.flatMap((c) => c.cards);
   const dragged = dragId ? records.find((r) => r.id === dragId) || null : null;
 
   // Sideways auto-scroll while dragging near an edge.
@@ -153,24 +159,28 @@ export function PipelineBoard({
       className="max-w-full overflow-x-auto rounded-[var(--radius-md)] pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
     >
       <div className={BOARD_CLASS}>
-        {def.stages.map((stage) => {
-          const cards = groups[stage.id] || [];
-          const over = overStage === stage.id && dragId !== null;
-          const refused = over ? refusal(stage.id) : null;
+        {columns.map((column) => {
+          const stageId = column.stageId;
+          const cards = column.cards;
+          const droppable = !!stageId && canDrag && !disabled;
+          const over = !!stageId && overStage === stageId && dragId !== null;
+          const refused = over ? refusal(stageId) : null;
           const isOver = over && !refused;
+          const { shown, hidden } = columnShown(column, !!expanded[column.id]);
           return (
             <section
-              key={stage.id}
-              aria-label={`${stage.label}, ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-              data-stage={stage.id}
+              key={column.id}
+              aria-label={`${column.label}, ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+              data-stage={stageId || undefined}
+              data-column={column.id}
               onDragOver={
-                canDrag && !disabled
+                droppable
                   ? (e) => {
-                      if (overStage !== stage.id) setOverStage(stage.id);
-                      lastOver.current = { stage: stage.id, at: e.timeStamp };
+                      if (overStage !== stageId) setOverStage(stageId);
+                      lastOver.current = { stage: stageId, at: e.timeStamp };
                       // Not calling preventDefault is what tells the browser
                       // "no drop here": the pointer shows the not-allowed sign.
-                      if (refusal(stage.id)) {
+                      if (refusal(stageId)) {
                         e.dataTransfer.dropEffect = "none";
                         return;
                       }
@@ -180,27 +190,30 @@ export function PipelineBoard({
                   : undefined
               }
               onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget)) setOverStage((s) => (s === stage.id ? null : s));
+                if (!e.currentTarget.contains(e.relatedTarget)) setOverStage((s) => (s === stageId ? null : s));
               }}
-              onDrop={canDrag && !disabled ? (e) => handleDrop(e, stage.id) : undefined}
+              onDrop={droppable ? (e) => handleDrop(e, stageId) : undefined}
               className={[
                 COLUMN_CLASS,
+                column.kind === "stale" ? "bg-[var(--color-warning-50)]" : "",
+                column.terminal && !expanded[column.id] ? "min-h-0" : "",
                 isOver ? "outline outline-2 -outline-offset-2 outline-[var(--color-brand-500)]" : "",
                 refused ? "cursor-not-allowed opacity-70 outline-dashed outline-1 -outline-offset-1 outline-[var(--gray-400)]" : "",
               ].join(" ")}
             >
               <div className="flex items-center justify-between gap-2 px-0.5">
                 <h3 className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text-primary)]">
-                  {stage.label}
-                  {stage.auto && (
+                  {column.label}
+                  {column.auto && (
                     <span className="rounded-full bg-[var(--color-background-primary)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
                       auto
                     </span>
                   )}
                 </h3>
-                <span className="text-xs tabular-nums text-[var(--color-text-tertiary)]">{cards.length}</span>
+                <span data-column-count={column.id} className="text-xs tabular-nums text-[var(--color-text-tertiary)]">{cards.length}</span>
               </div>
-              <p className="px-0.5 text-xs text-[var(--color-text-tertiary)]">{stage.hint}</p>
+              {column.hint && <p className="px-0.5 text-xs text-[var(--color-text-tertiary)]">{column.hint}</p>}
+              {column.kind === "stale" && staleAction}
               {refused && (
                 <p role="status" className="rounded-[var(--radius-sm)] bg-[var(--color-background-primary)] px-2 py-1.5 text-xs text-[var(--color-text-secondary)]">
                   Can&apos;t drop here. {refused.message}
@@ -208,11 +221,11 @@ export function PipelineBoard({
               )}
               {cards.length === 0 ? (
                 <p className="rounded-[var(--radius-sm)] border border-dashed border-[var(--gray-300)] px-2 py-4 text-center text-xs text-[var(--color-text-tertiary)]">
-                  {stage.auto ? "Fills in by itself" : canDrag ? "Drop a card here" : "Nothing here yet"}
+                  {column.kind === "stale" ? "Nothing is past its date" : column.auto ? "Fills in by itself" : canDrag && stageId ? "Drop a card here" : "Nothing here yet"}
                 </p>
               ) : (
                 <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 py-0.5">
-                  {cards.map((record) => (
+                  {shown.map((record) => (
                   <RecordCard
                     key={record.id}
                     record={record}
@@ -220,6 +233,7 @@ export function PipelineBoard({
                     regions={regions}
                     team={team}
                     today={today}
+                    stageTag={column.kind === "stale" ? stageLabel(def, record.stage) : ""}
                     pending={pendingIds.has(record.id)}
                     disabled={disabled}
                     canDrag={canDrag}
@@ -229,6 +243,16 @@ export function PipelineBoard({
                     onDragEnd={handleDragEnd}
                   />
                   ))}
+                  {hidden > 0 && (
+                    <button
+                      type="button"
+                      data-show-all={column.id}
+                      onClick={() => setExpanded((x) => ({ ...x, [column.id]: true }))}
+                      className="min-h-11 rounded-[var(--radius-sm)] border border-dashed border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+                    >
+                      {shown.length === 0 ? `Show ${cards.length}` : `Show all ${cards.length}`}
+                    </button>
+                  )}
                 </div>
               )}
             </section>
