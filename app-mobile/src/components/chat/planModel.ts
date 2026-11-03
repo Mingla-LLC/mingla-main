@@ -395,7 +395,7 @@ export function quickDays(now: Date): QuickDay[] {
 
 // ---------------------------------------------------------------------------
 // Place results: pool first, then Mapbox, then the typed row
-// MINGLA-INVARIANT: I-4261-PLACE-SEARCH-POOL-FIRST | issue #4261 | Place results list Mingla pool rows before Mapbox rows, and the typed address row last.
+// (Invariant I-4261-PLACE-SEARCH-POOL-FIRST is declared beside its test, issue_4261_plan_model.)
 // ---------------------------------------------------------------------------
 
 export interface PlacePoolRowInput {
