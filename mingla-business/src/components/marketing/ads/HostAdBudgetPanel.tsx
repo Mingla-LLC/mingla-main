@@ -58,7 +58,7 @@ export function HostAdBudgetPanel(props: {
       ) : null}
       {props.split.rows.length > 0 ? (
         <View style={s.card}>
-          <Text style={s.title}>How it's split each day</Text>
+          <Text style={s.title}>How it&apos;s split each day</Text>
           {props.split.rows.map((row) => (
             <View key={row.platform} style={s.appRow} testID={`host-ad-split-${row.platform}`}>
               <View style={s.appBadge}>

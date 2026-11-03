@@ -3228,12 +3228,16 @@ serve(async (req: Request): Promise<Response> => {
     const destVenueIdS = resolvedDestinationS.venue_id;
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
-    }${
-      hostUtmQuery ?? "utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}"
-    }&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
+    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
+    // #4238: a Host ad's standard tags; Mingla's click ids stay alongside.
+    const snapLinkS = hostUtmQuery
+      ? `${destUrlS}${
+        destUrlS.includes("?") ? "&" : "?"
+      }${hostUtmQuery}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`
+      : snapTrackedDestUrlS;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
-    const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
+    const webViewUrlCheck = validateSnapchatWebViewUrl(snapLinkS);
     if (!webViewUrlCheck.ok) {
       return json({
         error: webViewUrlCheck.detail,
@@ -3424,7 +3428,7 @@ serve(async (req: Request): Promise<Response> => {
     const creativeInputS:
       & CreateCreativeInput
       & SnapchatCreateCreativeExtensions = {
-        destUrl: snapTrackedDestUrlS, // canonical page + documented Snap campaign macro
+        destUrl: snapLinkS, // canonical page + documented Snap campaign macro
         message: headlineS, // interface-required; Snap creatives carry headline, not message
         headline: headlineS,
         callToActionType: ctaS,

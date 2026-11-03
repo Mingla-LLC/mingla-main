@@ -637,7 +637,9 @@ export function compileProviderTargeting(
           country_code: city.countryCode,
           latitude: coordinates[index]!.latitude,
           longitude: coordinates[index]!.longitude,
-          radius: city.radiusKm ?? intent.radiusKm ?? 10,
+          // #4238: a region is a wide circle around its middle (50 km).
+          radius: city.radiusKm ??
+            (placeKind(city) === "region" ? 50 : intent.radiusKm ?? 10),
           unit: "kilometer",
         }));
       }

@@ -349,28 +349,3 @@ export async function cancelHostAdCampaign(input: {
     idempotency_key: input.idempotencyKey,
   });
 }
-
-/**
- * #4238 wave D: change a live ad's total budget and/or end date (once a
- * day). The extra money is set aside from Ads credit at once; a lower
- * budget gives the difference back.
- */
-export async function changeHostAdLive(input: {
-  brandId: string;
-  planId: string;
-  newBudgetCents?: number | null;
-  newEndsAt?: string | null;
-  idempotencyKey: string;
-}): Promise<{
-  daily_not_pushed: string[];
-  end_not_pushed: string[];
-}> {
-  return invokeHostAd({
-    action: "change_live",
-    brand_id: input.brandId,
-    plan_id: input.planId,
-    ...(input.newBudgetCents ? { new_budget_cents: input.newBudgetCents } : {}),
-    ...(input.newEndsAt ? { new_ends_at: input.newEndsAt } : {}),
-    idempotency_key: input.idempotencyKey,
-  });
-}

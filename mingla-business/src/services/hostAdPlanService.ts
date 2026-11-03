@@ -1545,3 +1545,32 @@ export async function duplicateHostAdPlan(input: {
   });
   return draft.id;
 }
+
+/**
+ * #4238 wave D: change a live ad's total budget and/or end date (once a
+ * day). The extra money is set aside from Ads credit at once; a lower
+ * budget gives the difference back. Lives in the lazy Host Ads chunk.
+ */
+export async function changeHostAdLive(input: {
+  brandId: string;
+  planId: string;
+  newBudgetCents?: number | null;
+  newEndsAt?: string | null;
+  idempotencyKey: string;
+}): Promise<{ daily_not_pushed: string[]; end_not_pushed: string[] }> {
+  const result = await invoke<{
+    daily_not_pushed?: string[];
+    end_not_pushed?: string[];
+  }>("host-ad-campaign", {
+    action: "change_live",
+    brand_id: input.brandId,
+    plan_id: input.planId,
+    ...(input.newBudgetCents ? { new_budget_cents: input.newBudgetCents } : {}),
+    ...(input.newEndsAt ? { new_ends_at: input.newEndsAt } : {}),
+    idempotency_key: input.idempotencyKey,
+  });
+  return {
+    daily_not_pushed: result.daily_not_pushed ?? [],
+    end_not_pushed: result.end_not_pushed ?? [],
+  };
+}

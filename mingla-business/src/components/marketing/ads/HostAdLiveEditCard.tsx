@@ -107,7 +107,7 @@ export function HostAdLiveEditCard(props: {
           />
           {validTotal && delta > 0 ? (
             <Text style={s.subtitle} testID="host-ad-live-edit-delta">
-              We'll set aside {money(delta)} more from your Ads credit now.
+              We&apos;ll set aside {money(delta)} more from your Ads credit now.
             </Text>
           ) : null}
           {validTotal && delta < 0 ? (

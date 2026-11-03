@@ -56,9 +56,10 @@ import {
   hostAdLearningAlert,
   hostAdPacingAlert,
 } from "../../components/marketing/ads/hostAdAlerts";
-import { changeHostAdLive } from "../../services/hostAdCampaignService";
-import { duplicateHostAdPlan } from "../../services/hostAdPlanService";
-import { randomUuid } from "../../utils/randomId";
+import {
+  changeHostAdLive,
+  duplicateHostAdPlan,
+} from "../../services/hostAdPlanService";
 import { hostAdDetailMoneyLine } from "../../services/hostAdLifecycle";
 import {
   hostAdCostPerResultLine,
@@ -69,7 +70,7 @@ import {
   hostAdScrollBottomPadding,
 } from "../../components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../utils/currency";
-import { randomId } from "../../utils/randomId";
+import { randomId, randomUuid } from "../../utils/randomId";
 
 function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;

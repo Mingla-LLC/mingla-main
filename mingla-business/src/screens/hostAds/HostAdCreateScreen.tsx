@@ -28,7 +28,6 @@ import {
   HOST_AD_PLATFORM_NAMES,
   hostAdCountingLines,
   hostAdErrorMessage,
-  hostAdPlaceName,
   hostAdReachLine,
   hostAdStatusLabel,
   hostAdTargetingNote,
@@ -97,7 +96,6 @@ import {
   HOST_AD_LANGUAGE_NAMES,
 } from "../../components/marketing/ads/hostAdTargeting";
 import {
-  countryName,
   initialHostAdCountries,
 } from "../../components/marketing/ads/hostAdCountries";
 import {
@@ -381,7 +379,6 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [reachLoading, setReachLoading] = useState(false);
   // #4238 wave 2: the brand's own audiences (keys only; the server resolves).
   const [audienceKeys, setAudienceKeys] = useState<string[]>([]);
-  const [targetingSearchBusy] = useState(false);
   const [dailyAmount, setDailyAmount] = useState("30");
   const [capAmount, setCapAmount] = useState("210");
   // #4238 P1: a total for the run by default; per day as an option.
