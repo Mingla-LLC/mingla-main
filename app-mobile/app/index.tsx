@@ -74,6 +74,8 @@ import {
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
 import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
+// Issue #4261 — personal invite links and group links (pure decisions).
+import { groupChatUrl, groupJoinAction } from "../src/utils/friendShareLink";
 import { router, useLocalSearchParams } from "expo-router";
 import type { Href } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
@@ -895,6 +897,10 @@ function AppContent() {
   // like isAuthenticated are not.
   const userIdRef = useRef<string | undefined>(undefined);
   userIdRef.current = user?.id;
+  // Issue #4261 — links opened before onboarding is done wait for it.
+  const onboardedRef = useRef(false);
+  onboardedRef.current = profile?.has_completed_onboarding === true;
+  const groupJoinInFlightRef = useRef(false);
   const userEmailRef = useRef<string | undefined>(undefined);
   userEmailRef.current = user?.email?.trim().toLowerCase() || undefined;
   // Generation counter for refreshAllSessions() concurrency protection.
@@ -1066,6 +1072,41 @@ function AppContent() {
       afEventFiredRef.current = false;
     }
   }, [user?.id, isLoadingAuth, profile]);
+
+  // Issue #4261 — a personal invite link or group link opened before sign-up
+  // runs once this account has finished onboarding (spec 5.2). Once per
+  // signed-in account per app run; the claims are idempotent server-side.
+  const heldLinksRunForRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = user?.id ?? null;
+    if (!id || profile?.has_completed_onboarding !== true) return;
+    if (heldLinksRunForRef.current === id) return;
+    heldLinksRunForRef.current = id;
+    void (async () => {
+      await claimHeldFriendShare({ announce: true });
+      await joinHeldGroupInvite();
+    })().catch((e) => console.warn('[OneLink] held invite links failed:', e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hoisted helpers read refs
+  }, [user?.id, profile?.has_completed_onboarding]);
+
+  // Issue #4261 — logout clears the held invite and group link tokens
+  // (Constitution #6): the AsyncStorage copies go with the private-key sweep,
+  // the in-memory copies go here, so the next account never inherits them.
+  const heldLinksUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = user?.id ?? null;
+    const previous = heldLinksUserRef.current;
+    heldLinksUserRef.current = id;
+    if (!previous || id) return;
+    heldLinksRunForRef.current = null;
+    void (async () => {
+      const [{ clearPendingFriendInvite }, { clearPendingGroupInvite }] = await Promise.all([
+        import("../src/services/pendingFriendInvite"),
+        import("../src/services/pendingGroupInvite"),
+      ]);
+      await Promise.all([clearPendingFriendInvite(), clearPendingGroupInvite()]);
+    })().catch((e) => console.warn('[OneLink] logout clear of held links failed:', e));
+  }, [user?.id]);
 
   // Fire trial_expired_no_conversion once if trial lapsed without converting.
   useTrialExpiryTracking(user?.id);
@@ -2610,6 +2651,96 @@ function AppContent() {
   //     (ATTRIBUTION-ONLY for this build — no credit-apply RPC; SPEC §E.1(b)).
   // Declared as a hoisted function so the mount effect that registers the sink
   // (above) can reference it; it reads live refs, never stale render state.
+  // Issue #4261 — claim a held personal invite link (friend_share) for the
+  // signed-in account. Skips a token this account already claimed. With
+  // `announce`, a new friendship toasts "You and {name} are friends".
+  async function claimHeldFriendShare(opts: { announce: boolean }): Promise<void> {
+    if (!userIdRef.current) return;
+    const { hydratePendingFriendInvite, claimPendingFriendInvite } = await import(
+      "../src/services/pendingFriendInvite"
+    );
+    const held = await hydratePendingFriendInvite();
+    if (!held || held.kind !== 'share' || held.inviterId) return;
+    const claim = await claimPendingFriendInvite();
+    if (claim.status === 'error') {
+      // Kept held: the next launch retries.
+      console.warn('[OneLink] friend_share claim failed:', claim.message);
+      return;
+    }
+    if (claim.status === 'refused') {
+      console.warn('[OneLink] friend_share claim refused:', claim.reason);
+      return;
+    }
+    if (claim.status !== 'claimed' || !claim.connected || !opts.announce) return;
+    const { fetchPersonName } = await import("../src/services/friendShareLinkService");
+    const name = await fetchPersonName(claim.inviterId);
+    if (name) toastManager.success(i18n.t('connections:invite_connected', { name }));
+  }
+
+  // Issue #4261 — join a held group link: connect to whoever shared it first,
+  // then join_group_by_link, then open the chat / accept the session invite /
+  // say a member will let them in (spec 5.2).
+  async function joinHeldGroupInvite(): Promise<void> {
+    const me = userIdRef.current;
+    if (!me || groupJoinInFlightRef.current) return;
+    const { hydratePendingGroupInvite, clearPendingGroupInvite } = await import(
+      "../src/services/pendingGroupInvite"
+    );
+    const held = await hydratePendingGroupInvite();
+    if (!held) return;
+    groupJoinInFlightRef.current = true;
+    try {
+      if (held.shareToken) await claimHeldFriendShare({ announce: false });
+      const { previewGroupLink, joinGroupByLink } = await import("../src/services/groupLinkService");
+      const name = await previewGroupLink(held.groupToken)
+        .then((preview) => preview.name)
+        .catch(() => null);
+      let result: Awaited<ReturnType<typeof joinGroupByLink>> | null = null;
+      let code: string | null = null;
+      try {
+        result = await joinGroupByLink(held.groupToken, held.shareToken ?? null);
+      } catch (e) {
+        code = e instanceof Error ? e.message : 'unknown';
+      }
+      const action = groupJoinAction(result, code);
+      // A server answer (a result or an RPC refusal) is final; a transport
+      // failure keeps the link held for the next launch.
+      const finalCodes = ['not_found', 'unavailable', 'not_allowed', 'conflict_group_full', 'invalid_input'];
+      if (!code || finalCodes.includes(code)) await clearPendingGroupInvite();
+      switch (action.type) {
+        case 'open_chat':
+          handleDeepLinkRef.current(groupChatUrl(action.conversationId, action.sessionId));
+          return;
+        case 'accept_then_open': {
+          const { acceptCollaborationInvite } = await import("../src/services/collaborationInviteService");
+          const accepted = await acceptCollaborationInvite({ userId: me, inviteId: action.inviteId });
+          if (!accepted.success) {
+            toastManager.error(i18n.t('chat:plan_action_failed'));
+            return;
+          }
+          handleDeepLinkRef.current(groupChatUrl(action.conversationId, action.sessionId));
+          return;
+        }
+        case 'toast': {
+          // [TRANSITIONAL] an unnamed group drops the name from the sentence —
+          // exit: a dedicated "Asked to join the group" key in chat.json.
+          const message = action.key === 'chat:group_join_requested'
+            ? i18n.t(action.key, { name: name ?? '' }).replace(/\s+\./, '.')
+            : i18n.t(action.key);
+          if (action.tone === 'info') toastManager.info(message);
+          else toastManager.error(message);
+          return;
+        }
+        default: {
+          const never: never = action;
+          return never;
+        }
+      }
+    } finally {
+      groupJoinInFlightRef.current = false;
+    }
+  }
+
   function dispatchOneLinkDestination(dest: OneLinkDestination): void {
     if (!dest) return;
     try {
@@ -2679,6 +2810,56 @@ function AppContent() {
               handleDeepLinkRef.current('mingla://connections?tab=requests');
             } catch (e) {
               console.warn('[OneLink] friend_invite handling failed:', e);
+            }
+          })();
+          return;
+        }
+
+        case 'friend_share': {
+          // Issue #4261 — someone's personal invite link. Held like
+          // friend_invite (survives install + onboarding); keep their referral
+          // code. Signed in and onboarded: claim now (connects straight away),
+          // say who, open Friends. Otherwise the onboarding friends step
+          // claims it and shows "You're friends with {name}".
+          if (dest.referralCode) {
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          void (async () => {
+            try {
+              const { setPendingFriendShare } = await import("../src/services/pendingFriendInvite");
+              await setPendingFriendShare(dest.token);
+              if (!userIdRef.current || !onboardedRef.current) return;
+              await claimHeldFriendShare({ announce: true });
+              handleDeepLinkRef.current('mingla://connections');
+            } catch (e) {
+              console.warn('[OneLink] friend_share handling failed:', e);
+            }
+          })();
+          return;
+        }
+
+        case 'group_invite': {
+          // Issue #4261 — a group chat's link, optionally carrying the
+          // sharer's personal token (the joiner is connected to them first).
+          if (dest.referralCode) {
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          void (async () => {
+            try {
+              const { setPendingGroupInvite } = await import("../src/services/pendingGroupInvite");
+              await setPendingGroupInvite(dest.groupToken, dest.shareToken);
+              if (dest.shareToken) {
+                const { setPendingFriendShare } = await import("../src/services/pendingFriendInvite");
+                await setPendingFriendShare(dest.shareToken);
+              }
+              if (!userIdRef.current || !onboardedRef.current) return;
+              await joinHeldGroupInvite();
+            } catch (e) {
+              console.warn('[OneLink] group_invite handling failed:', e);
             }
           })();
           return;
