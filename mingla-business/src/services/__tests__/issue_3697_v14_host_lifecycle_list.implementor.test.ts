@@ -37,7 +37,9 @@ describe("issue #3697 Host Ads lifecycle list", () => {
     expect(endpoint).toContain("buildHostCampaignList");
     expect(route).toContain("item.creative?.previewUrl");
     expect(route).toContain("item.destination");
-    expect(route).toContain("item.spendByCurrency");
+    // #4238: the row's money line moved into hostAdListRowMoney().
+    expect(route).toContain("hostAdListRowMoney(item)");
+    expect(lifecycle).toContain("item.spendByCurrency");
     expect(route).toContain("item.primaryResultCount");
     expect(route).toContain("item.costPerResultCents");
     expect(route).toContain("{item.nextAction} →");

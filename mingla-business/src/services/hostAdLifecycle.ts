@@ -4,6 +4,7 @@ import {
   hostAdReviewReason,
   hostAdStepLabel,
 } from "../components/marketing/ads/hostAdCopy";
+import { formatHostAdMoneyCents } from "../components/marketing/ads/hostAdMoney";
 
 export type HostAdLifecycle =
   | "draft"
@@ -237,6 +238,41 @@ export function buildHostAdList(input: {
   ].sort((left, right) =>
     String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")),
   );
+}
+
+/**
+ * #4238: the money line on an Ads list row, written like the Results card
+ * ("NGN 42,000.00 of NGN 100,000.00 spent"). Spend is the Host-currency
+ * equivalent; a zero or missing budget is hidden, never written as
+ * "NGN 0.00 cap". When spend is only known in the apps' own currencies, it
+ * is shown in those ("USD 137.00").
+ */
+export function hostAdListRowMoney(
+  item: Pick<HostAdListItem, "currency" | "capCents" | "spendCents" | "spendByCurrency">,
+): string {
+  const budget =
+    item.capCents !== null && item.capCents > 0
+      ? formatHostAdMoneyCents(item.capCents, item.currency)
+      : null;
+  const spent =
+    item.currency !== null && item.spendCents !== null
+      ? formatHostAdMoneyCents(item.spendCents, item.currency)
+      : null;
+  if (spent) return budget ? `${spent} of ${budget} spent` : `${spent} spent`;
+  const providerSpend = item.spendByCurrency
+    .filter((row) => Number(row.spend_cents) > 0)
+    .flatMap((row) => {
+      const money = formatHostAdMoneyCents(row.spend_cents, row.currency);
+      return money ? [money] : [];
+    })
+    .join(" · ");
+  if (budget && item.currency !== null) {
+    return providerSpend
+      ? `${budget} budget · ${providerSpend} spent on the apps`
+      : `${budget} budget`;
+  }
+  if (providerSpend) return `${providerSpend} spent on the apps`;
+  return "Budget set before launch";
 }
 
 export function hostAdMatchesFilter(

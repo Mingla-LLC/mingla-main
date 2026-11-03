@@ -47,6 +47,7 @@ import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
 import {
   buildHostAdList,
+  hostAdListRowMoney,
   hostAdMatchesFilter,
   type HostAdFilter,
   type HostAdLifecycle,
@@ -59,6 +60,7 @@ import {
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import { hostAdScrollBottomPadding } from "../../../../src/components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../../../src/utils/currency";
+import { formatHostAdMoneyCents } from "../../../../src/components/marketing/ads/hostAdMoney";
 
 function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
@@ -476,17 +478,14 @@ export default function MarketingAdsRoute(): React.ReactElement {
             </View>
           ) : (
             filteredAds.map((item) => {
-              const hasMoney = item.currency !== null && item.capCents !== null;
-              const providerSpend = item.spendByCurrency
-                .map((row) =>
-                  formatCurrency(row.spend_cents, row.currency, true),
-                )
-                .join(" · ");
-              const money = hasMoney
-                ? item.spendCents !== null
-                  ? `${formatCurrency(item.spendCents, item.currency as string, true)} of ${formatCurrency(item.capCents as number, item.currency as string, true)} spent`
-                  : `${formatCurrency(item.capCents as number, item.currency as string, true)} cap · ${providerSpend || "spend unavailable"}`
-                : "Budget set before launch";
+              const money = hostAdListRowMoney(item);
+              const costEach =
+                item.costPerResultCents !== null && item.currency
+                  ? formatHostAdMoneyCents(
+                      Math.round(item.costPerResultCents),
+                      item.currency,
+                    )
+                  : null;
               return (
                 <Pressable
                   key={`${item.kind}:${item.id}`}
@@ -538,9 +537,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                       <Text style={styles.campaignMeta}>
                         {item.primaryResultCount.toLocaleString()}{" "}
                         {hostAdResultLabel(item.primaryResultLabel)}
-                        {item.costPerResultCents !== null && item.currency
-                          ? ` · ${formatCurrency(item.costPerResultCents, item.currency, true)} each`
-                          : ""}
+                        {costEach ? ` · ${costEach} each` : ""}
                       </Text>
                     ) : null}
                     {item.reason ? (

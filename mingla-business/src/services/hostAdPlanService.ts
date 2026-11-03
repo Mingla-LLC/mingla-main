@@ -13,7 +13,10 @@ import {
   HOST_AD_SALES_PLATFORMS,
   hostAdPageSellsTickets,
 } from "../components/marketing/ads/hostAdGoal";
-import { platformName } from "../components/marketing/ads/hostAdCopy";
+import {
+  hostAdVideoFailedMessage,
+  platformName,
+} from "../components/marketing/ads/hostAdCopy";
 
 const PREPARED_VIDEO_PLATFORMS = new Set([
   "meta",
@@ -1148,7 +1151,7 @@ async function prepareBoundVideoPlatforms(
           if (retried) {
             throw new HostAdPlanError(
               "provider_prepare_failed",
-              `${platformName(platform)}: ${row.error?.message ?? "couldn't get your video ready. Try again, or use a different video."}`,
+              hostAdVideoFailedMessage(platform),
             );
           }
           action = "retry";

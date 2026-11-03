@@ -111,6 +111,15 @@ export function platformName(platform: string): string {
 }
 
 /** "Snapchat", "Snapchat and TikTok", "Facebook & Instagram, Snapchat and TikTok". */
+/**
+ * #4238: the video still failed after the app already retried it once, so
+ * the server's "Retry this platform." would ask the Host to repeat what we
+ * just did. Admin keeps the server text; the Host reads this.
+ */
+export function hostAdVideoFailedMessage(platform: string): string {
+  return `${platformName(platform)} couldn't use this video. Try a different video.`;
+}
+
 export function platformNames(platforms: readonly string[]): string {
   const names = platforms.map(platformName);
   if (names.length <= 1) return names.join("");
