@@ -9,9 +9,14 @@ import {
 } from "../../services/hostAdPlanService";
 import { loadHostAdPlanService } from "../../services/lazyHostAdPlanService";
 
+const EMPTY_IDS: string[] = [];
+const EMPTY_MAP: Record<string, string> = {};
+
 export function useHostAdPlans(brandId: string | null): {
   plans: HostAdPlanAggregate[];
   drafts: HostAdDraft[];
+  launchedPlanIds: string[];
+  planIdByVersionId: Record<string, string>;
   isLoading: boolean;
   isError: boolean;
   isRefetching: boolean;
@@ -33,6 +38,8 @@ export function useHostAdPlans(brandId: string | null): {
   return {
     plans: query.data?.plans ?? [],
     drafts: query.data?.drafts ?? [],
+    launchedPlanIds: query.data?.launchedPlanIds ?? EMPTY_IDS,
+    planIdByVersionId: query.data?.planIdByVersionId ?? EMPTY_MAP,
     isLoading: query.isLoading,
     isError: query.isError,
     isRefetching: query.isRefetching,

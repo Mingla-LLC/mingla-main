@@ -5,6 +5,7 @@
  * (USD/GBP). Withdraw refund + Paystack stay deferred.
  */
 
+import { edgeErrorCode } from "./edgeErrorCode";
 import { supabase } from "./supabase";
 
 export type AdCreditAppErrorCode =
@@ -132,19 +133,13 @@ async function invokeAdCredit<T>(
     ];
     throw new AdCreditAppError(
       known.includes(code) ? code : "network",
-      payload?.detail ?? error.message ?? "ad_credit_failed",
+      payload?.detail ?? payload?.error ?? "ad_credit_failed",
       payload?.detail ?? null,
     );
   }
-  // #4238: an edge envelope carries `error: null` on success (e.g.
-  // admin-ad-creative-prepare when the video is ready). Fail only on a real
-  // error value, never on the mere presence of the key.
-  if (
-    data &&
-    typeof data === "object" &&
-    (data as { error?: unknown }).error !== null &&
-    (data as { error?: unknown }).error !== undefined
-  ) {
+  // #4238: an edge envelope carries `error: null` on success. Fail only on a
+  // real error code string, never on the key or an error object.
+  if (edgeErrorCode(data) !== null) {
     const errBody = data as { error: string; detail?: string };
     throw new AdCreditAppError(
       (errBody.error as AdCreditAppErrorCode) || "unknown",

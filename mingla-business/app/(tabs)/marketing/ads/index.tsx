@@ -202,9 +202,18 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const campaigns = campaignsQuery.campaigns;
   const plans = plansQuery.plans;
   const drafts = plansQuery.drafts;
+  const launchedPlanIds = plansQuery.launchedPlanIds;
+  const planIdByVersionId = plansQuery.planIdByVersionId;
   const adItems = useMemo(
-    () => buildHostAdList({ drafts, plans, campaigns }),
-    [campaigns, drafts, plans],
+    () =>
+      buildHostAdList({
+        drafts,
+        plans,
+        campaigns,
+        launchedPlanIds,
+        planIdByVersionId,
+      }),
+    [campaigns, drafts, launchedPlanIds, planIdByVersionId, plans],
   );
   const filteredAds = useMemo(
     () => adItems.filter((item) => hostAdMatchesFilter(item, campaignFilter)),

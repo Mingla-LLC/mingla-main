@@ -4,6 +4,7 @@
  * read and stop boundary; v1.4 pause now shares Admin's aggregate action engine.
  */
 
+import { edgeErrorCode } from "./edgeErrorCode";
 import { supabase } from "./supabase";
 
 export type HostAdCampaign = {
@@ -211,19 +212,13 @@ async function invokeHostAd<T>(
     }
     throw new HostAdCampaignError(
       payload?.error ?? "network",
-      payload?.detail ?? error.message ?? "host_ad_failed",
+      payload?.detail ?? payload?.error ?? "host_ad_failed",
       payload?.detail ?? null,
     );
   }
-  // #4238: an edge envelope carries `error: null` on success (e.g.
-  // admin-ad-creative-prepare when the video is ready). Fail only on a real
-  // error value, never on the mere presence of the key.
-  if (
-    data &&
-    typeof data === "object" &&
-    (data as { error?: unknown }).error !== null &&
-    (data as { error?: unknown }).error !== undefined
-  ) {
+  // #4238: an edge envelope carries `error: null` on success. Fail only on a
+  // real error code string, never on the key or an error object.
+  if (edgeErrorCode(data) !== null) {
     const errBody = data as { error: string; detail?: string };
     throw new HostAdCampaignError(
       errBody.error || "unknown",

@@ -208,13 +208,28 @@ export function buildHostAdList(input: {
   drafts: HostAdDraft[];
   plans: HostAdPlanAggregate[];
   campaigns: HostAdCampaign[];
+  /** #4238: plans already created on the apps (live, ended, …). */
+  launchedPlanIds?: readonly string[];
+  /** #4238: plan version id → plan id, to tie a campaign to its plan. */
+  planIdByVersionId?: Readonly<Record<string, string>>;
 }): HostAdListItem[] {
-  const representedPlanIds = new Set(input.plans.map((item) => item.plan.id));
+  // A draft is hidden when its plan already shows as its own row, or when
+  // that plan already has a campaign or was launched: the draft is finished.
+  const versionToPlan = input.planIdByVersionId ?? {};
+  const hiddenPlanIds = new Set<string>([
+    ...input.plans.map((item) => item.plan.id),
+    ...(input.launchedPlanIds ?? []),
+    ...input.campaigns.flatMap((campaign) => {
+      const planId = campaign.plan_version_id
+        ? versionToPlan[campaign.plan_version_id]
+        : undefined;
+      return planId ? [planId] : [];
+    }),
+  ]);
   return [
     ...input.drafts
       .filter(
-        (draft) =>
-          draft.plan_id === null || !representedPlanIds.has(draft.plan_id),
+        (draft) => draft.plan_id === null || !hiddenPlanIds.has(draft.plan_id),
       )
       .map(draftItem),
     ...input.plans.map(planItem),

@@ -6,6 +6,7 @@
  * settlement currency and the server freezes account currency + FX authority.
  */
 
+import { edgeErrorCode } from "./edgeErrorCode";
 import { supabase } from "./supabase";
 import type { AdVideoFit } from "../utils/adVideoFit";
 import {
@@ -356,22 +357,19 @@ async function invoke<T>(
     } catch {
       payload = null;
     }
-    const rawDetail = payload?.detail ?? payload?.message ?? error.message;
+    // #4238: never use the SDK's own text ("Edge Function returned a non-2xx
+    // status code") as detail; the Host would read it. Fall back to the
+    // server's code, then to a neutral code.
+    const rawDetail =
+      payload?.detail ?? payload?.message ?? payload?.error ?? "request_failed";
     const detail =
-      typeof rawDetail === "string"
-        ? rawDetail
-        : JSON.stringify(rawDetail ?? "request_failed");
+      typeof rawDetail === "string" ? rawDetail : JSON.stringify(rawDetail);
     throw new HostAdPlanError(payload?.error ?? "network", detail);
   }
-  // #4238: an edge envelope carries `error: null` on success (e.g.
-  // admin-ad-creative-prepare when the video is ready). Fail only on a real
-  // error value, never on the mere presence of the key.
-  if (
-    data &&
-    typeof data === "object" &&
-    (data as { error?: unknown }).error !== null &&
-    (data as { error?: unknown }).error !== undefined
-  ) {
+  // #4238: an edge envelope carries `error: null` on success, and
+  // admin-ad-creative-prepare carries an error OBJECT beside `state:"failed"`
+  // so its caller can retry. Fail only on a real error code string.
+  if (edgeErrorCode(data) !== null) {
     const payload = data as { error: string; detail?: unknown };
     throw new HostAdPlanError(
       payload.error,
@@ -468,9 +466,30 @@ export async function listHostAdPlans(
   return (await listHostAdWorkspace(brandId)).plans;
 }
 
+/**
+ * #4238: plan states that mean the ad was created on the apps (live, ended
+ * and everything between). A draft for such a plan is finished, not open.
+ */
+const HOST_PLAN_LAUNCHED_STATES = new Set([
+  "platform_review",
+  "scheduled",
+  "live",
+  "pause_requested",
+  "paused",
+  "stop_requested",
+  "settling",
+  "ended",
+  "platform_rejected",
+  "partially_ready",
+  "partially_live",
+  "settlement_attention_required",
+]);
+
 export async function listHostAdWorkspace(brandId: string): Promise<{
   plans: HostAdPlanAggregate[];
   drafts: HostAdDraft[];
+  launchedPlanIds: string[];
+  planIdByVersionId: Record<string, string>;
 }> {
   const result = await invoke<{
     plans: HostAdPlanRow[];
@@ -493,6 +512,16 @@ export async function listHostAdWorkspace(brandId: string): Promise<{
       item.status === "fulfilled" ? [item.value] : [],
     ),
     drafts: result.drafts ?? [],
+    launchedPlanIds: (result.plans ?? [])
+      .filter((plan) => HOST_PLAN_LAUNCHED_STATES.has(plan.state))
+      .map((plan) => plan.id),
+    planIdByVersionId: Object.fromEntries(
+      (result.plans ?? []).flatMap((plan) =>
+        typeof plan.current_version_id === "string"
+          ? [[plan.current_version_id, plan.id]]
+          : [],
+      ),
+    ),
   };
 }
 

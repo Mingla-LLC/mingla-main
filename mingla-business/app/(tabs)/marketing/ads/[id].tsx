@@ -46,6 +46,7 @@ import {
 } from "../../../../src/components/marketing/ads/hostAdCopy";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../../../src/components/marketing/ads/results/AdResultsSection";
+import { formatHostAdMoneyCents } from "../../../../src/components/marketing/ads/hostAdMoney";
 import {
   hostAdCostPerResultLine,
   hostAdDetailCostPerResult,
@@ -360,9 +361,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
             <Text style={styles.muted}>
               What the apps say they spent:{" "}
               {payload.provider_spend_by_currency
-                .map((row) =>
-                  formatCurrency(row.spend_cents, row.currency, true),
-                )
+                .flatMap((row) => {
+                  // #4238: same "USD 137.00" style as the Results card.
+                  const money = formatHostAdMoneyCents(
+                    row.spend_cents,
+                    row.currency,
+                  );
+                  return money ? [money] : [];
+                })
                 .join(" · ")}
             </Text>
           ) : null}

@@ -464,6 +464,13 @@ const ERROR_COPY: { match: RegExp; text: string }[] = [
 const FALLBACK_ERROR =
   "That didn't work just now. Try again in a minute, or contact Mingla support if it keeps happening.";
 
+/**
+ * #4238: transport and SDK text ("Edge Function returned a non-2xx status
+ * code", "Failed to fetch") is never a sentence for a Host.
+ */
+const HOST_AD_TECHNICAL_TEXT =
+  /edge function|non-2xx|status code|\bhttps?\b|\bfetch\b|\bjson\b|\brequest failed\b|\bnetwork request\b|\bundefined\b|\bnull\b|\bexception\b|\bstack\b|\btrace\b|\bsupabase\b/i;
+
 /** A plain sentence for any error the Host ad screens can hit. */
 export function hostAdErrorMessage(cause: unknown, fallback = FALLBACK_ERROR): string {
   const coded = (cause !== null && typeof cause === "object" ? cause : {}) as CodedError;
@@ -481,6 +488,7 @@ export function hostAdErrorMessage(cause: unknown, fallback = FALLBACK_ERROR): s
   if (
     /\s/.test(message) &&
     !/[_{}]|[a-z][A-Z]/.test(message) &&
+    !HOST_AD_TECHNICAL_TEXT.test(message) &&
     hostAdCopyIsPlain(message)
   ) {
     return message;
