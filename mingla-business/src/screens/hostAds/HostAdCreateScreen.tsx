@@ -38,9 +38,10 @@ import {
 } from "../../components/marketing/ads/hostAdCopy";
 import {
   goBackToAds,
+  hostAdDayOf,
   hostAdMatchSubtitle,
-  hostAdScheduleEndIso,
   hostAdScheduleError,
+  hostAdScheduleIsos,
   hostAdScheduleLimit,
   hostAdScrollBottomPadding,
   initialHostAdConnections,
@@ -142,23 +143,6 @@ function hostAdStepId(value: string | null | undefined): HostAdStepId | null {
   return HOST_AD_STEPS.some((step) => step.id === value)
     ? (value as HostAdStepId)
     : null;
-}
-
-function localCalendarDate(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function scheduleBoundaryIso(value: string, boundary: "start" | "end"): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const time = boundary === "start" ? "00:00:00.000" : "23:59:59.999";
-  const date = new Date(`${value}T${time}`);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /**
@@ -629,8 +613,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ) / 100,
         ),
       );
-      setStartDate(localCalendarDate(String(schedule?.starts_at ?? "")));
-      setEndDate(localCalendarDate(String(schedule?.ends_at ?? "")));
+      // #4238 r6: the date fields are read in the page's own zone.
+      setStartDate(
+        hostAdDayOf(String(schedule?.starts_at ?? ""), matchedPage?.timezone),
+      );
+      setEndDate(
+        hostAdDayOf(String(schedule?.ends_at ?? ""), matchedPage?.timezone),
+      );
       setExistingPlanId(aggregate.plan.id);
       draftPlanIdRef.current = aggregate.plan.id;
       setProviderObjectEvidence(aggregateHasProviderObjectEvidence(aggregate));
@@ -928,9 +917,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const dailyBudgetCents = parseMoney(dailyAmount);
   const capCents = parseMoney(capAmount);
   const radiusKmNumber = Number(radiusKm);
+  // #4238 r6: "today" and both date fields are the page's own calendar.
   const today = useMemo(
-    () => localCalendarDate(new Date().toISOString()),
-    [],
+    () => hostAdDayOf(new Date().toISOString(), page?.timezone),
+    [page?.timezone],
   );
   // #4238: a page the server says can't be promoted (a restored draft or
   // plan whose page has since ended) names its reason instead.
@@ -1491,12 +1481,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
         gender,
         dailyBudgetCents,
         capCents,
-        startsAt: scheduleBoundaryIso(startDate, "start"),
-        endsAt: hostAdScheduleEndIso(
-          scheduleBoundaryIso(endDate, "end"),
-          scheduleLimit,
-          endDate,
-        ),
+        // #4238 r6: both in the page's own zone, like the fields.
+        ...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page?.timezone),
         acceptBroader: forceAcceptance || acceptBroader,
         rightsConfirmed,
         rightsBasis,

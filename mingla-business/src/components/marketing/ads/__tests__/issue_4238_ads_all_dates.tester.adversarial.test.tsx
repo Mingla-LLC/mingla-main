@@ -32,7 +32,12 @@
 process.env.TZ = "America/New_York";
 
 import { hostAdPageDate, hostAdPageLastDay, hostAdPageSchedule, hostAdPageUnavailableReason } from "../hostAdPageLabels";
-import { hostAdScheduleEndIso, hostAdScheduleError, hostAdScheduleLimit } from "../hostAdBuilderRules";
+import {
+  hostAdDayBoundaryIso,
+  hostAdScheduleEndIso,
+  hostAdScheduleError,
+  hostAdScheduleLimit,
+} from "../hostAdBuilderRules";
 import { hostAdCopyIsPlain, hostAdErrorMessage } from "../hostAdCopy";
 import type { HostAdPage } from "../../../../services/hostAdPlanService";
 
@@ -206,8 +211,14 @@ describe("#4238 T4 every new sentence is plain and names no code", () => {
   });
 });
 
-/** The builder's own start-of-day boundary (HostAdCreateScreen scheduleBoundaryIso). */
-const startOfLocalDay = (day: string): string => new Date(`${day}T00:00:00.000`).toISOString();
+/**
+ * The builder's own start-of-day boundary. #4238 r6 rework: the screen now
+ * sends the start through hostAdDayBoundaryIso in the page's zone (it used to
+ * be the viewer's midnight), so T5 measures the real function the screen
+ * calls instead of a copy of the old one.
+ */
+const startOfDayAsSent = (day: string, zone: string): string =>
+  String(hostAdDayBoundaryIso(day, "start", zone));
 
 describe("#4238 T5 a start day the builder accepts begins before the last bookable moment", () => {
   const CASES: [string, string, string][] = [
@@ -226,7 +237,7 @@ describe("#4238 T5 a start day the builder accepts begins before the last bookab
     const latestStart = limit!.lastDay;
     if (hostAdScheduleError(latestStart, "", limit) === null) {
       // The builder sends this start; the server refuses start >= last bookable.
-      expect(Date.parse(startOfLocalDay(latestStart))).toBeLessThan(Date.parse(last));
+      expect(Date.parse(startOfDayAsSent(latestStart, zone))).toBeLessThan(Date.parse(last));
     }
   });
 });

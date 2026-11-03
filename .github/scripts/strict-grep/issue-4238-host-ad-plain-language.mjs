@@ -340,12 +340,19 @@ function main() {
     if (tools !== null) report("ari", scanAriAdMessages(words, tools));
   }
 
-  // 5. The plan hash is never shown, but is still sent to Mingla.
+  // 5. The plan hash is never shown, but is still sent to Mingla; the schedule
+  // is sent in the page's zone.
   const create = read("src/screens/hostAds/HostAdCreateScreen.tsx");
   const service = read("src/services/hostAdPlanService.ts");
   if (create !== null) {
     if (create.includes("{prepared.planHash}")) fail("create.tsx renders {prepared.planHash} on screen");
     if (!create.includes("planHash: prepared.planHash")) fail("create.tsx no longer sends planHash: prepared.planHash");
+    // #4238 r6: the start and end are sent in the page's own zone, like the
+    // date fields, never as the viewer's own midnight.
+    if (!create.includes("...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page?.timezone)")) {
+      fail("create.tsx no longer sends the schedule through hostAdScheduleIsos (the page's zone)");
+    }
+    if (/new Date\(`\$\{value\}T/.test(create)) fail("create.tsx builds a schedule boundary in the viewer's zone again");
   }
   if (service !== null) {
     if (!service.includes("plan_hash: aggregate.version.plan_hash")) fail("hostAdPlanService no longer reads plan_hash: aggregate.version.plan_hash");
