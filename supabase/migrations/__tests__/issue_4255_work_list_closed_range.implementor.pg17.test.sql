@@ -1,6 +1,7 @@
 -- Issue #4255 (Wave 2) -- implementor happy path for
 -- 20280323004255_issue_4255_work_list_closed_range.sql, on the fully replayed
 -- PG17 schema:
+-- MINGLA-INVARIANT: I-4255-WORK-DONE-IN-WINDOW | issue #4255 | Work's Done lists count only cards closed inside the window; ops_work_list without the new keys answers as before.
 --   R-RANGE   closed_since / closed_until pick the done cards closed inside a
 --             window (since inclusive, until exclusive), whatever done_days
 --             says; a card closed 40 days ago is listed for a 45-day window

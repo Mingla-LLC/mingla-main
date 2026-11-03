@@ -20,7 +20,6 @@
 -- Backwards compatible: CREATE OR REPLACE keeps the owner and the grants
 -- (authenticated and service_role execute; anon does not). Static SQL only.
 -- Do not auto-apply. Release through the governed migration lane.
--- MINGLA-INVARIANT: I-4255-WORK-DONE-IN-WINDOW | issue #4255 | Work's Done lists count only cards closed inside the window; ops_work_list without the new keys answers as before.
 
 CREATE OR REPLACE FUNCTION public.ops_work_list(p_query jsonb DEFAULT '{}'::jsonb) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
