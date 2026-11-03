@@ -147,6 +147,21 @@ export interface TicketQuote {
   totalCents: number;
   installmentChargeSchedule?: InstallmentChargeSchedule;
   planTotalBuyerCents?: number;
+  /** issue #3281 — the extras the server priced; absent before extras shipped. */
+  extras?: TicketQuoteExtra[];
+  extrasTotalCents?: number;
+}
+
+/** issue #3281 — one priced extra on a quote, as issue_3281_price_extras returns it. */
+export interface TicketQuoteExtra {
+  addOnId: string;
+  ticketTypeId: string;
+  addOnName: string;
+  ticketName: string;
+  dayScope: string[] | null;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
 }
 
 export type CheckoutReviewDetail =

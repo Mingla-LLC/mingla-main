@@ -62,11 +62,18 @@ export const TicketQuoteController: React.FC<TicketQuoteControllerProps> = ({
       return;
     }
     if (query.isError) {
-      const code = (query.error as { code?: unknown } | null)?.code;
+      const failure = query.error as { code?: unknown; detail?: unknown } | null;
+      const code = failure?.code;
+      // issue #3281 — a refused quote names its reason in the detail (an extra
+      // sold out, say); the cart step reads it from there.
       cart.setQuoteState(
         null,
         "error",
-        typeof code === "string" ? code : null,
+        code === "checkout_quote_failed" && typeof failure?.detail === "string"
+          ? failure.detail
+          : typeof code === "string"
+            ? code
+            : null,
       );
     }
   }, [

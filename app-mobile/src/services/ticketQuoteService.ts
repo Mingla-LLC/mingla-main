@@ -5,7 +5,8 @@ import {
 } from "@mingla/offering-rendering/discountQuote";
 
 import { supabase } from "./supabase";
-import { extractFunctionError } from "../utils/edgeFunctionError";
+import { extrasRefusalIn } from "@mingla/offering-rendering/ticketExtrasCart";
+import { extractFunctionErrorFields } from "../utils/edgeFunctionError";
 
 export interface TicketQuoteInput {
   eventId: string;
@@ -20,6 +21,8 @@ export interface TicketQuoteInput {
     quantity: number;
     paymentPlanChoice: "full" | "installments";
     byDate?: Record<string, number>;
+    /** issue #3281 — extras on this ticket; the server prices them. */
+    addOns?: Array<{ addOnId: string; quantity: number }>;
   }[];
   eventDateId?: string | null;
   eventDateIds?: readonly string[] | null;
@@ -71,7 +74,12 @@ export const quoteTicketCheckout = async (
   );
 
   if (error) {
-    throw new Error(await extractFunctionError(error, "quote_failed"));
+    const { token, detail } = await extractFunctionErrorFields(
+      error,
+      "quote_failed",
+    );
+    // issue #3281 — an extras refusal rides the quote's detail; surface it.
+    throw new Error(extrasRefusalIn(detail) ?? token);
   }
   if (!data || data.kind !== "quote") throw new Error("quote_failed");
   const schedule = decodeInstallmentChargeSchedule(

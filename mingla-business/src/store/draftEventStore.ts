@@ -126,6 +126,12 @@ export interface TicketStub {
    * then leaves the server's extras untouched; `[]` means none.
    */
   extras?: TicketExtraStub[];
+  /**
+   * issue #3281 — public reads only: the reader's raw `extras`, left unparsed so
+   * the public page carries no parser. The cart step reads it with
+   * `parsePublicTicketExtras`.
+   */
+  buyerExtras?: unknown;
   /** issue #3281 — public reads only: this ticket's dates, by `event_dates.id`. */
   validOccurrenceIds?: string[] | null;
   /** issue #3281 — public reads only: listed dates this ticket has sold out. */
