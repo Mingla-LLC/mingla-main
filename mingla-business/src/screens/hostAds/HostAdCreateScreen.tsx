@@ -55,6 +55,10 @@ import { HostAdPagePicker } from "../../components/marketing/ads/HostAdPagePicke
 import { HostAdPlacesEditor } from "../../components/marketing/ads/HostAdPlacesEditor";
 import { HostAdInterestsEditor } from "../../components/marketing/ads/HostAdInterestsEditor";
 import {
+  HostAdReachMeter,
+  type HostAdReachMeterRow,
+} from "../../components/marketing/ads/HostAdReachMeter";
+import {
   applyInterestLookup,
   applyPlaceLookup,
   type HostAdApp,
@@ -351,6 +355,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [checking, setChecking] = useState<ReadonlySet<string>>(new Set());
   const inFlightRef = useRef(new Set<string>());
   const [interests, setInterests] = useState<HostAdTargetingInterest[]>([]);
+  // #4238 P1: leave out people who already bought (on by default).
+  const [excludePastBuyers, setExcludePastBuyers] = useState(true);
+  const [reachRows, setReachRows] = useState<HostAdReachMeterRow[]>([]);
+  const [reachLoading, setReachLoading] = useState(false);
   // #4238 wave 2: the brand's own audiences (keys only; the server resolves).
   const [audienceKeys, setAudienceKeys] = useState<string[]>([]);
   const [targetingSearchBusy] = useState(false);
@@ -581,6 +589,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
       const targeting = hostTargetingSelectionsFromAggregate(aggregate);
       setCities(targeting.cities);
       setExcludedPlaces(targeting.excluded);
+      setExcludePastBuyers(
+        Array.isArray(
+          recordValue(canonical.audience_selection)?.exclude_keys,
+        ),
+      );
       setInterests(targeting.interests);
       setRadiusKm(String(targeting.radiusKm ?? HOST_AD_DEFAULT_RADIUS_KM));
       setLanguages(
@@ -826,6 +839,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
           );
         }
         if (typeof state.radius_km === "string") setRadiusKm(state.radius_km);
+        if (typeof state.exclude_past_buyers === "boolean") {
+          setExcludePastBuyers(state.exclude_past_buyers);
+        }
         if (Array.isArray(state.interests)) {
           setInterests(
             (state.interests as HostAdTargetingInterest[]).filter(
@@ -1056,6 +1072,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       gender,
       cities,
       excluded_places: excludedPlaces,
+      exclude_past_buyers: excludePastBuyers,
       languages,
       radius_km: radiusKm,
       interests,
@@ -1084,6 +1101,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       creative?.id,
       dailyAmount,
       endDate,
+      excludePastBuyers,
       excludedPlaces,
       gender,
       languages,
@@ -1362,6 +1380,77 @@ export default function HostAdCreateRoute(): React.ReactElement {
     })();
   }, [brandId, languageSignature]);
 
+  // #4238 P1: reach per app, read 1.5 s after the audience settles, only
+  // for apps staff switched on.
+  const reachEnabled = setup?.reach_enabled ?? {};
+  const reachApps = activeApps.filter((app) => reachEnabled[app] === true);
+  const reachSignature = JSON.stringify([
+    reachApps,
+    countries,
+    cities.map((place) => [hostAdPlaceKey(place), place.radiusKm, place.refs]),
+    excludedPlaces.map((place) => [hostAdPlaceKey(place), place.refs]),
+    interests.map((interest) => [interest.name, interest.refs]),
+    ageMin,
+    ageMax,
+    gender,
+    languages,
+    languageIds,
+  ]);
+  useEffect(() => {
+    if (!brandId || activeStepId !== "audience" || countries.length === 0) {
+      return undefined;
+    }
+    if (reachApps.length === 0) {
+      setReachRows(
+        activeApps.map((app) => ({
+          platform: app,
+          state: "certification_required",
+          lower: null,
+          upper: null,
+          meter: null,
+        })),
+      );
+      return undefined;
+    }
+    let live = true;
+    const timer = setTimeout(() => {
+      setReachLoading(true);
+      void loadHostAdPlanService()
+        .then(({ estimateHostAdReach }) =>
+          estimateHostAdReach({
+            brandId,
+            connections,
+            countries,
+            cities,
+            radiusKm: radiusKmNumber,
+            interests,
+            ageMin: Number(ageMin),
+            ageMax: Number(ageMax),
+            gender,
+            excludedPlaces,
+            languages,
+            languageIds,
+          }),
+        )
+        .then((rows) => {
+          if (live) setReachRows(rows);
+        })
+        .catch(() => {
+          // No number is fine: the ad can still run. Each app says so.
+          if (live) setReachRows([]);
+        })
+        .finally(() => {
+          if (live) setReachLoading(false);
+        });
+    }, 1500);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+    // reachSignature captures every input by value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStepId, brandId, reachSignature]);
+
   const prefixedChecking = (list: string): ReadonlySet<string> =>
     new Set(
       [...checking]
@@ -1443,6 +1532,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         excludedPlaces,
         languages,
         languageIds,
+        excludePastBuyers,
         ageMin: Number(ageMin),
         ageMax: Number(ageMax),
         gender,
@@ -2012,6 +2102,35 @@ export default function HostAdCreateRoute(): React.ReactElement {
               );
             })}
           </View>
+          <Pressable
+            style={[styles.acceptRow, excludePastBuyers && styles.choiceSelected]}
+            onPress={() => {
+              setExcludePastBuyers((value) => !value);
+              setPrepared(null);
+            }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: excludePastBuyers }}
+            accessibilityLabel="Leave out people who already bought"
+            testID="host-ad-exclude-buyers"
+          >
+            <View
+              style={[styles.checkbox, excludePastBuyers && styles.checkboxChecked]}
+            />
+            <View style={styles.choiceText}>
+              <Text style={styles.choiceTitle}>
+                Leave out people who already bought
+              </Text>
+              <Text style={styles.choiceSubtitle}>
+                Your past guests won&apos;t be shown this ad on Facebook &amp;
+                Instagram, TikTok and Snapchat.
+              </Text>
+            </View>
+          </Pressable>
+          <HostAdReachMeter
+            rows={reachRows}
+            enabled={reachEnabled}
+            loading={reachLoading}
+          />
           <View style={styles.fieldRow}>
             <View style={styles.fieldHalf}>
               <Text style={styles.label}>Minimum age</Text>

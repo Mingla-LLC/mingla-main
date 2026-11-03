@@ -12,7 +12,12 @@ import type {
   TargetingVerdict,
 } from "./adTargetingCompiler.ts";
 import { metaGraph, resolveMetaClient } from "./meta.ts";
-import { resolveTikTokClient, tiktokApi } from "./tiktok.ts";
+import {
+  pickTikTokLocationIdsForCountries,
+  resolveTikTokClient,
+  tiktokApi,
+  tiktokFetchRegions,
+} from "./tiktok.ts";
 import {
   buildSnapchatGeoTargeting,
   resolveSnapchatClient,
@@ -252,7 +257,14 @@ export function buildSnapAudienceSizeBody(input: EstimateInput) {
   // #3697: same documented shape as the ad-squad create body — country-only
   // geos plus targeting.locations circles
   // (https://developers.snap.com/api/marketing-api/Ads-API/targeting).
-  const { geos, locations } = buildSnapchatGeoTargeting(countries, circles);
+  const excluded = Array.isArray(compiled.exclude_circles)
+    ? compiled.exclude_circles as SnapchatCircleGeo[]
+    : [];
+  const { geos, locations } = buildSnapchatGeoTargeting(
+    countries,
+    circles,
+    excluded,
+  );
   const demographic: Record<string, unknown> = {};
   if (typeof compiled.age_min === "number") {
     demographic.min_age = String(compiled.age_min);
@@ -318,7 +330,35 @@ export function buildRedditAudienceEstimateBody(input: EstimateInput) {
   };
 }
 
-export function buildTikTokAudienceEstimateBody(input: EstimateInput) {
+/**
+ * #4238: Meta unions every geo_locations list, so a spec with countries AND
+ * cities/regions/pins estimates the whole country. The create path drops the
+ * countries when anything smaller is set (buildMetaGeoLocations); the reach
+ * estimate must ask about the same people.
+ */
+export function metaReachTargetingSpec(
+  compiled: Record<string, unknown>,
+): Record<string, unknown> {
+  const geo = asRecord(compiled.geo_locations);
+  if (!geo) return compiled;
+  const smaller = ["cities", "regions", "custom_locations"].some((key) =>
+    Array.isArray(geo[key]) && (geo[key] as unknown[]).length > 0
+  );
+  if (!smaller) return compiled;
+  const { countries: _countries, ...rest } = geo;
+  return { ...compiled, geo_locations: rest };
+}
+
+/** ISO codes are not TikTok location ids (they are numeric). */
+export function tiktokLocationIdsAreIso(compiled: Record<string, unknown>): boolean {
+  const ids = Array.isArray(compiled.location_ids) ? compiled.location_ids : [];
+  return ids.some((id) => /^[A-Za-z]{2}$/.test(String(id)));
+}
+
+export function buildTikTokAudienceEstimateBody(
+  input: EstimateInput,
+  countryLocationIds: string[] | null = null,
+) {
   return {
     advertiser_id: input.connection.external_account_id,
     placement_type: "AUTOMATIC",
@@ -326,6 +366,9 @@ export function buildTikTokAudienceEstimateBody(input: EstimateInput) {
     optimization_goal: "CLICK",
     auto_targeting_enabled: false,
     ...input.compiledTargeting,
+    // #4238: a country-only plan carries ISO codes; TikTok needs its own
+    // numeric location ids (read-only tool/region lookup).
+    ...(countryLocationIds ? { location_ids: countryLocationIds } : {}),
   };
 }
 
@@ -334,17 +377,27 @@ const defaultTransports: ProviderEstimateTransports = {
     const client = resolveMetaClient(input.connection);
     const accountId = input.connection.external_account_id.replace(/^act_/, "");
     return await metaGraph(client, "GET", `act_${accountId}/reachestimate`, {
-      targeting_spec: input.compiledTargeting,
+      targeting_spec: metaReachTargetingSpec(input.compiledTargeting),
       optimize_for: "IMPRESSIONS",
     });
   },
   tiktok: async (input) => {
     const client = resolveTikTokClient(input.connection);
+    let countryIds: string[] | null = null;
+    if (tiktokLocationIdsAreIso(input.compiledTargeting)) {
+      const regions = await tiktokFetchRegions(client);
+      const picked = pickTikTokLocationIdsForCountries(
+        regions,
+        (input.compiledTargeting.location_ids as unknown[]).map(String),
+      );
+      if (!picked.ok) throw new Error("tiktok_country_unavailable");
+      countryIds = picked.locationIds;
+    }
     return await tiktokApi(
       client,
       "POST",
       "ad/audience_size/estimate/",
-      buildTikTokAudienceEstimateBody(input),
+      buildTikTokAudienceEstimateBody(input, countryIds),
     );
   },
   snapchat: async (input) => {

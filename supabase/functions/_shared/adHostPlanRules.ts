@@ -48,3 +48,36 @@ export function countriesAppCannotRunIn(
     )
   );
 }
+
+/**
+ * #4238: the reach meter the Host sees next to each app's number. One
+ * person can be on several apps, so each app is read on its own.
+ */
+export function reachMeter(
+  lower: number | null,
+  upper: number | null,
+): "too_narrow" | "good" | "broad" | null {
+  if (lower === null || upper === null) return null;
+  const mid = (lower + upper) / 2;
+  if (mid < 60_000) return "too_narrow";
+  if (mid > 6_000_000) return "broad";
+  return "good";
+}
+
+/** A stable key for the reach cache (same audience → same answer for 10 min). */
+export function reachCacheKey(input: unknown): string {
+  const seen = new WeakSet<object>();
+  const sorted = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object") return value;
+    if (seen.has(value as object)) return null;
+    seen.add(value as object);
+    if (Array.isArray(value)) return value.map(sorted);
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>).sort().map((key) => [
+        key,
+        sorted((value as Record<string, unknown>)[key]),
+      ]),
+    );
+  };
+  return JSON.stringify(sorted(input));
+}

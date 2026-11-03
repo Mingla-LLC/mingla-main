@@ -61,7 +61,7 @@ Deno.test("Snapchat left-out places ride an EXCLUDE location group", () => {
     latitude: 6.5,
     longitude: 3.4,
     radius: 20,
-    unit: "KILOMETERS",
+    unit: "kilometer",
   };
   const geo = buildSnapchatGeoTargeting(["NG"], [circle], [{
     ...circle,

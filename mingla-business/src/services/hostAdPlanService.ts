@@ -566,6 +566,8 @@ export type PrepareHostAdPlanInput = {
   optimization: HostAdOptimization;
   /** #4238 wave 2: the brand's own audience keys (0-3). */
   audienceKeys?: string[];
+  /** #4238 P1: leave out people who already bought (the brand's past guests). */
+  excludePastBuyers?: boolean;
 };
 
 export type PreparedHostAdPlan = {
@@ -630,38 +632,30 @@ export type HostTargetingRefs = {
   advantageAudience?: never;
 };
 
-export async function prepareHostAdPlan(
-  input: PrepareHostAdPlanInput,
-): Promise<PreparedHostAdPlan> {
-  if (
-    input.connections.length === 0 ||
-    new Set(input.connections.map((connection) => connection.platform)).size !==
-      input.connections.length
-  ) {
-    throw new HostAdPlanError(
-      "validation_error",
-      HOST_AD_OWNED_ERROR_COPY.noApps,
-    );
-  }
-  const destinationKey = [
-    input.page.page_type,
-    input.page.brand_slug,
-    input.page.page_type === "brand" ? null : input.page.entity_slug,
-  ]
-    .filter(Boolean)
-    .join(":");
-  let planId = input.existingPlanId ?? null;
-  if (!planId) {
-    const opened = await invoke<{ plan: { id: string } }>("ad-plan", {
-      action: "open",
-      client_kind: "host",
-      owner_kind: "host",
-      brand_id: input.brandId,
-      destination_family: "public_mingla_page",
-      destination_key: destinationKey,
-    });
-    planId = opened.plan.id;
-  }
+/**
+ * #4238: the audience and per-app ids a Host plan (and a reach read) sends.
+ * One owner, so the reach number is for exactly the plan that is checked.
+ */
+export function buildHostAudience(
+  input: Pick<
+    PrepareHostAdPlanInput,
+    | "countries"
+    | "cities"
+    | "radiusKm"
+    | "interests"
+    | "ageMin"
+    | "ageMax"
+    | "gender"
+    | "excludedPlaces"
+    | "languages"
+    | "languageIds"
+    | "connections"
+  >,
+): {
+  audienceIntent: Record<string, unknown>;
+  refsByPlatform: Record<string, HostTargetingRefs>;
+  excludedPlaces: HostAdTargetingCity[];
+} {
   const placeIntent = (city: HostAdTargetingCity) => ({
     name: city.name,
     countryCode: city.countryCode,
@@ -719,6 +713,71 @@ export async function prepareHostAdPlan(
       return [connection.platform, refs];
     }),
   );
+  return { audienceIntent, refsByPlatform, excludedPlaces };
+}
+
+/** #4238 P1: reach per app while building (staff-switched apps only). */
+export type HostAdReachRow = {
+  platform: HostAdPlatform;
+  state: string;
+  lower: number | null;
+  upper: number | null;
+  meter: "too_narrow" | "good" | "broad" | null;
+};
+
+export async function estimateHostAdReach(
+  input: Parameters<typeof buildHostAudience>[0] & { brandId: string },
+): Promise<HostAdReachRow[]> {
+  const { audienceIntent, refsByPlatform } = buildHostAudience(input);
+  const result = await invoke<{ estimates: HostAdReachRow[] }>("ad-plan", {
+    action: "host_estimate",
+    brand_id: input.brandId,
+    platforms: input.connections.map((connection) => connection.platform),
+    audience_intent: audienceIntent,
+    refs_by_platform: refsByPlatform,
+  });
+  return result.estimates ?? [];
+}
+
+/** #4238: the brand's past guests list, the people "already bought". */
+export function hostAdPastBuyersKey(brandId: string): string {
+  return `brand:${brandId.toLowerCase()}:guests`;
+}
+
+export async function prepareHostAdPlan(
+  input: PrepareHostAdPlanInput,
+): Promise<PreparedHostAdPlan> {
+  if (
+    input.connections.length === 0 ||
+    new Set(input.connections.map((connection) => connection.platform)).size !==
+      input.connections.length
+  ) {
+    throw new HostAdPlanError(
+      "validation_error",
+      HOST_AD_OWNED_ERROR_COPY.noApps,
+    );
+  }
+  const destinationKey = [
+    input.page.page_type,
+    input.page.brand_slug,
+    input.page.page_type === "brand" ? null : input.page.entity_slug,
+  ]
+    .filter(Boolean)
+    .join(":");
+  let planId = input.existingPlanId ?? null;
+  if (!planId) {
+    const opened = await invoke<{ plan: { id: string } }>("ad-plan", {
+      action: "open",
+      client_kind: "host",
+      owner_kind: "host",
+      brand_id: input.brandId,
+      destination_family: "public_mingla_page",
+      destination_key: destinationKey,
+    });
+    planId = opened.plan.id;
+  }
+  const { audienceIntent, refsByPlatform, excludedPlaces } =
+    buildHostAudience(input);
   const copy = {
     primary: input.primaryText,
     headline: input.headline,
@@ -766,7 +825,12 @@ export async function prepareHostAdPlan(
       confirmation_phrase: "LAUNCH",
       // #4238 wave 2: the server checks these are this brand's own.
       audience_selection: {
-        include_keys: [...new Set(input.audienceKeys ?? [])].slice(0, 3),
+        include_keys: [...new Set(input.audienceKeys ?? [])]
+          .filter((key) => key !== hostAdPastBuyersKey(input.brandId))
+          .slice(0, 3),
+        ...(input.excludePastBuyers
+          ? { exclude_keys: [hostAdPastBuyersKey(input.brandId)] }
+          : {}),
       },
       optimization_by_platform: hostOptimizationByPlatform(
         input.optimization,
