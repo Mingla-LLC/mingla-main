@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-AD-NO-FABRICATED-COUNTRY | issue #4238 | The Host ads builder never defaults a country it did not read from the brand or the saved draft (T-C1, T-C2, T-C4).
+// MINGLA-INVARIANT: I-4238-HOST-AD-NO-FABRICATED-COUNTRY | issue #4238 | The Host ads builder never defaults a country it did not read from the brand or the Host's saved ad (T-C1, T-C2, T-C4).
 /**
  * #4238 — Host ads builder: readable page labels, named countries, one honest
  * unavailable state, truthful copy, and a server-checked ticket-sales goal.
