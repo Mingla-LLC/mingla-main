@@ -32,14 +32,12 @@ import {
   hostAdReachLine,
   hostAdStatusLabel,
   hostAdTargetingNote,
-  hostAdVerdictLabel,
   platformNames,
   hostAdAudienceName,
 } from "../../components/marketing/ads/hostAdCopy";
 import {
   goBackToAds,
   hostAdDayOf,
-  hostAdMatchSubtitle,
   hostAdScheduleError,
   hostAdScheduleIsos,
   hostAdScheduleLimit,
@@ -54,6 +52,27 @@ import { cachedHostAdSetup } from "../../components/marketing/ads/hostAdSetupCac
 import { HostAdCountryPicker } from "../../components/marketing/ads/HostAdCountryPicker";
 import { HostAdAudiencePicker } from "../../components/marketing/ads/HostAdAudiencePicker";
 import { HostAdPagePicker } from "../../components/marketing/ads/HostAdPagePicker";
+import { HostAdPlacesEditor } from "../../components/marketing/ads/HostAdPlacesEditor";
+import { HostAdInterestsEditor } from "../../components/marketing/ads/HostAdInterestsEditor";
+import {
+  applyInterestLookup,
+  applyPlaceLookup,
+  type HostAdApp,
+  HOST_AD_DEFAULT_RADIUS_KM,
+  HOST_AD_EXCLUDE_APPS,
+  hostAdAppAvailability,
+  hostAdAppReviewStatus,
+  hostAdInterestKey,
+  hostAdLookupKind,
+  hostAdLookupQuery,
+  hostAdPlaceAppStatus,
+  hostAdPlaceFromSaved,
+  hostAdPlaceKey,
+  hostAdPlaceNeedsLookup,
+  type HostAdPlace,
+  type HostAdPlaceKind,
+  HOST_AD_LANGUAGE_NAMES,
+} from "../../components/marketing/ads/hostAdTargeting";
 import {
   countryName,
   initialHostAdCountries,
@@ -93,7 +112,6 @@ import type {
   HostAdSetup,
   HostAdTargetingCity,
   HostAdTargetingInterest,
-  HostAdTargetingSearchResult,
   PreparedHostAdPlan,
 } from "../../services/hostAdPlanService";
 import { loadHostAdPlanService } from "./hostAdKitService";
@@ -104,8 +122,6 @@ import { adVideoFitSummaryFor } from "../../utils/adVideoFit";
 // #4238: platforms are named the way Hosts know them.
 const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
 const platformList = platformNames;
-
-const CITY_REF_PLATFORMS = ["meta", "tiktok", "google"];
 
 
 const EMPTY_AD_VIDEO_PATCH: CoverPatch = {
@@ -168,29 +184,10 @@ function firstParam(value: string | string[] | undefined): string | null {
   return null;
 }
 
-function normalizedTargetName(value: string): string {
-  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-}
-
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
-}
-
-function targetingResultName(result: HostAdTargetingSearchResult): string {
-  return String(
-    result.meta.city ?? result.meta.name ?? result.name ?? "",
-  ).trim();
-}
-
-function targetingResultCountry(
-  result: HostAdTargetingSearchResult,
-  fallback: string,
-): string {
-  return String(result.meta.country_code ?? result.meta.countryCode ?? fallback)
-    .trim()
-    .toUpperCase();
 }
 
 function parseMoney(value: string): number {
@@ -224,11 +221,6 @@ function aggregateHasProviderObjectEvidence(
         Object.keys(externalIds).length > 0)
     );
   });
-}
-
-/** "Matched on all platforms", or which platforms have no match. */
-function matchSubtitle(missing: readonly string[], selectedCount: number): string {
-  return hostAdMatchSubtitle(platformList(missing), missing.length, selectedCount);
 }
 
 /** "Ticket sales: Meta, Snapchat · Page visits: Google". */
@@ -350,19 +342,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [ageMax, setAgeMax] = useState("45");
   const [gender, setGender] = useState<"all" | "men" | "women">("all");
   const [cities, setCities] = useState<HostAdTargetingCity[]>([]);
-  const [radiusKm, setRadiusKm] = useState("15");
-  const [cityQuery, setCityQuery] = useState("");
-  const [cityResults, setCityResults] = useState<HostAdTargetingSearchResult[]>(
-    [],
-  );
+  // #4238: places saved before per-place distances use this shared one.
+  const [radiusKm, setRadiusKm] = useState(String(HOST_AD_DEFAULT_RADIUS_KM));
+  const [excludedPlaces, setExcludedPlaces] = useState<HostAdTargetingCity[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [languageIds, setLanguageIds] = useState<Record<string, string>>({});
+  // "<place or interest key>|<app>" while that app's lookup runs.
+  const [checking, setChecking] = useState<ReadonlySet<string>>(new Set());
+  const inFlightRef = useRef(new Set<string>());
   const [interests, setInterests] = useState<HostAdTargetingInterest[]>([]);
   // #4238 wave 2: the brand's own audiences (keys only; the server resolves).
   const [audienceKeys, setAudienceKeys] = useState<string[]>([]);
-  const [interestQuery, setInterestQuery] = useState("");
-  const [interestResults, setInterestResults] = useState<
-    HostAdTargetingSearchResult[]
-  >([]);
-  const [targetingSearchBusy, setTargetingSearchBusy] = useState(false);
+  const [targetingSearchBusy] = useState(false);
   const [dailyAmount, setDailyAmount] = useState("30");
   const [capAmount, setCapAmount] = useState("210");
   const [startDate, setStartDate] = useState("");
@@ -589,8 +580,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
         await loadHostAdPlanService();
       const targeting = hostTargetingSelectionsFromAggregate(aggregate);
       setCities(targeting.cities);
+      setExcludedPlaces(targeting.excluded);
       setInterests(targeting.interests);
-      setRadiusKm(String(targeting.radiusKm ?? 15));
+      setRadiusKm(String(targeting.radiusKm ?? HOST_AD_DEFAULT_RADIUS_KM));
+      setLanguages(
+        Array.isArray(audience?.languages)
+          ? audience.languages.filter(
+              (code): code is string => typeof code === "string",
+            )
+          : [],
+      );
       setDailyAmount(
         String(
           aggregate.provider_allocations.reduce(
@@ -805,11 +804,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
           setGender(state.gender as "all" | "men" | "women");
         }
         if (Array.isArray(state.cities)) {
-          setCities(state.cities as HostAdTargetingCity[]);
+          setCities(
+            state.cities
+              .map(hostAdPlaceFromSaved)
+              .filter((place): place is HostAdPlace => place !== null),
+          );
+        }
+        if (Array.isArray(state.excluded_places)) {
+          setExcludedPlaces(
+            state.excluded_places
+              .map(hostAdPlaceFromSaved)
+              .filter((place): place is HostAdPlace => place !== null),
+          );
+        }
+        if (Array.isArray(state.languages)) {
+          setLanguages(
+            state.languages.filter(
+              (code): code is string =>
+                typeof code === "string" && /^[a-z]{2}$/.test(code),
+            ),
+          );
         }
         if (typeof state.radius_km === "string") setRadiusKm(state.radius_km);
         if (Array.isArray(state.interests)) {
-          setInterests(state.interests as HostAdTargetingInterest[]);
+          setInterests(
+            (state.interests as HostAdTargetingInterest[]).filter(
+              (interest) =>
+                interest !== null &&
+                typeof interest === "object" &&
+                typeof interest.name === "string",
+            ),
+          );
         }
         if (Array.isArray(state.audience_keys)) {
           setAudienceKeys(
@@ -892,6 +917,27 @@ export default function HostAdCreateRoute(): React.ReactElement {
     setup,
   ]);
 
+  // #4238 P0: an app that runs in none of the chosen countries is turned off
+  // (it stays greyed out with its reason in the list).
+  const availabilityKey = (setup?.availability ?? [])
+    .map((row) => `${row.platform}:${row.country_code}`)
+    .join(",");
+  useEffect(() => {
+    if (!setup) return;
+    setConnections((current) => {
+      const kept = current.filter(
+        (connection) =>
+          hostAdAppAvailability(
+            connection.platform,
+            countries,
+            setup.availability ?? [],
+          ).works,
+      );
+      return kept.length === current.length ? current : kept;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availabilityKey, countries.join(","), setup]);
+
   // #4238: "Ticket sales" applies only on a page that sells tickets, on the
   // selected platforms whose sales signal is ready.
   const pageSellsTickets = hostAdPageSellsTickets(page);
@@ -933,16 +979,29 @@ export default function HostAdCreateRoute(): React.ReactElement {
       hostAdScheduleLimit(page, (iso) => hostAdPageDate(iso, page?.timezone)),
     [page],
   );
+  const activeApps = useMemo(
+    () => connections.map((connection) => connection.platform as HostAdApp),
+    [connections],
+  );
+  // #4238: each app's own distance limits (Meta needs 17 km around a city).
+  const radiusProblem = cities
+    .flatMap((place) =>
+      activeApps.map((app) => ({
+        app,
+        status: hostAdPlaceAppStatus(place, app, {
+          radiusKm: place.radiusKm ?? radiusKmNumber,
+          availability: setup?.availability ?? [],
+        }),
+      })),
+    )
+    .find((row) => row.status.state === "radius");
   const audienceError =
     connections.length === 0
       ? "Choose at least one app to show your ad on."
       : countries.length === 0
         ? "Choose at least one country."
-        : cities.length > 0 &&
-            (!Number.isFinite(radiusKmNumber) ||
-              radiusKmNumber < 1 ||
-              radiusKmNumber > 80)
-          ? "Use a city radius from 1 to 80 kilometers."
+        : radiusProblem
+          ? `${PLATFORM_LABELS[radiusProblem.app] ?? radiusProblem.app}: ${radiusProblem.status.text}`
           : !Number.isInteger(Number(ageMin)) ||
               !Number.isInteger(Number(ageMax)) ||
               Number(ageMin) < 13 ||
@@ -996,6 +1055,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
       age_max: ageMax,
       gender,
       cities,
+      excluded_places: excludedPlaces,
+      languages,
       radius_km: radiusKm,
       interests,
       audience_keys: audienceKeys,
@@ -1023,7 +1084,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
       creative?.id,
       dailyAmount,
       endDate,
+      excludedPlaces,
       gender,
+      languages,
       headline,
       interests,
       name,
@@ -1126,321 +1189,222 @@ export default function HostAdCreateRoute(): React.ReactElement {
     await persistDraft(draftSnapshot, next.id);
   };
 
-  const searchPlatform = (
-    kind: "city" | "interest",
-  ): HostAdConnection["platform"] | null => {
-    const supported =
-      kind === "city"
-        ? ["meta", "tiktok", "google", "snapchat"]
-        : ["meta", "tiktok", "google", "snapchat", "reddit"];
-    // #4238: prefer a platform the Host selected, else any ready platform,
-    // so a search never fails just because nothing is ticked yet.
-    const pick = (pool: readonly HostAdConnection[]) =>
-      supported.find((platform) =>
-        pool.some((connection) => connection.platform === platform),
-      );
-    return (pick(connections) ?? pick(setup?.connections ?? []) ?? null) as
-      | HostAdConnection["platform"]
-      | null;
+  // #4238 media-buyer: every app is looked up on its own
+  // (I-4238-PER-APP-MATCH). Errors are kept as "Couldn't check", never as
+  // "not found" (I-4238-ERROR-IS-NOT-MISSING).
+  const firstSearchApp = (
+    kind: "city" | "region" | "interest",
+  ): HostAdApp | null => {
+    const order: HostAdApp[] =
+      kind === "interest"
+        ? ["meta", "tiktok", "google", "snapchat", "reddit"]
+        : ["meta", "tiktok", "google", "snapchat"];
+    const pool = [
+      ...activeApps,
+      ...(setup?.connections ?? []).map((item) => item.platform as HostAdApp),
+    ];
+    return order.find((app) => pool.includes(app)) ?? null;
   };
 
-  const handleCitySearch = async () => {
-    if (!brandId || cityQuery.trim().length < 2) return;
-    const platform = searchPlatform("city");
-    const country = countries[0];
-    if (!country) {
-      setError("Choose a country first.");
-      return;
-    }
-    if (!platform) {
-      setError(HOST_AD_UNAVAILABLE_TITLE);
-      return;
-    }
-    setTargetingSearchBusy(true);
-    setError(null);
-    try {
-      const { searchHostAdTargeting } = await loadHostAdPlanService();
-      const result = await searchHostAdTargeting({
-        brandId,
-        platform,
-        kind: "city",
-        query: cityQuery.trim(),
-        country,
-      });
-      setCityResults(result.results);
-      if (result.results.length === 0) {
-        setNotice(
-          result.warning ??
-            "No verified city match was found. Keep country targeting or try another spelling.",
-        );
-      }
-    } catch (cause) {
-      setError(hostAdErrorMessage(cause, "City search failed."));
-    } finally {
-      setTargetingSearchBusy(false);
-    }
+  const markChecking = (key: string, on: boolean): void => {
+    if (on) inFlightRef.current.add(key);
+    else inFlightRef.current.delete(key);
+    setChecking(new Set(inFlightRef.current));
   };
 
-  const addCityResult = async (result: HostAdTargetingSearchResult) => {
-    if (!brandId) return;
-    const countryCode = targetingResultCountry(result, countries[0] ?? "");
-    const name = targetingResultName(result);
-    if (!name || !/^[A-Z]{2}$/.test(countryCode)) return;
-    setTargetingSearchBusy(true);
-    setError(null);
-    try {
-      const { searchHostAdTargeting } = await loadHostAdPlanService();
-      const refs: HostAdTargetingCity["refs"] = {};
-      const seed = searchPlatform("city");
-      if (seed && ["meta", "tiktok", "google"].includes(seed)) {
-        refs[seed] = String(result.id);
-      }
-      await Promise.all(
-        connections.map(async (connection) => {
-          if (
-            connection.platform === seed ||
-            !["meta", "tiktok", "google"].includes(connection.platform)
-          ) {
-            return;
-          }
-          const found = await searchHostAdTargeting({
-            brandId,
-            platform: connection.platform,
-            kind: "city",
-            query: name,
-            country: countryCode,
-          });
-          const exact = found.results.find(
-            (candidate) =>
-              normalizedTargetName(targetingResultName(candidate)) ===
-              normalizedTargetName(name),
-          );
-          if (exact) refs[connection.platform] = String(exact.id);
-        }),
-      );
-      setCities((current) =>
-        current.some(
-          (city) =>
-            normalizedTargetName(city.name) === normalizedTargetName(name) &&
-            city.countryCode === countryCode,
-        )
-          ? current
-          : [...current, { name, countryCode, refs }],
-      );
-      setPrepared(null);
-      setCityQuery("");
-      setCityResults([]);
-    } catch (cause) {
-      setError(
-        hostAdErrorMessage(cause, "City resolution failed."),
-      );
-    } finally {
-      setTargetingSearchBusy(false);
-    }
-  };
-
-  const handleInterestSearch = async () => {
-    if (!brandId || interestQuery.trim().length < 2) return;
-    const platform = searchPlatform("interest");
-    if (!platform) {
-      setError(HOST_AD_UNAVAILABLE_TITLE);
-      return;
-    }
-    setTargetingSearchBusy(true);
-    setError(null);
-    try {
-      const { searchHostAdTargeting } = await loadHostAdPlanService();
-      const result = await searchHostAdTargeting({
-        brandId,
-        platform,
-        kind: "interest",
-        query: interestQuery.trim(),
-      });
-      setInterestResults(result.results);
-      if (result.results.length === 0) {
-        setNotice(
-          result.warning ??
-            "We couldn't find that interest. Try a more general word.",
-        );
-      }
-    } catch (cause) {
-      setError(
-        hostAdErrorMessage(cause, "Interest search failed."),
-      );
-    } finally {
-      setTargetingSearchBusy(false);
-    }
-  };
-
-  const addInterestResult = async (result: HostAdTargetingSearchResult) => {
-    if (!brandId) return;
-    const name = result.name.trim();
-    if (!name) return;
-    setTargetingSearchBusy(true);
-    setError(null);
-    try {
-      const { searchHostAdTargeting } = await loadHostAdPlanService();
-      const refs: HostAdTargetingInterest["refs"] = {};
-      const seed = searchPlatform("interest");
-      if (seed) refs[seed] = seed === "reddit" ? name : String(result.id);
-      await Promise.all(
-        connections.map(async (connection) => {
-          if (connection.platform === seed) return;
-          if (connection.platform === "reddit") {
-            refs.reddit = name;
-            return;
-          }
-          const found = await searchHostAdTargeting({
-            brandId,
-            platform: connection.platform,
-            kind: "interest",
-            query: name,
-          });
-          const exact = found.results.find(
-            (candidate) =>
-              normalizedTargetName(candidate.name) ===
-              normalizedTargetName(name),
-          );
-          if (exact) refs[connection.platform] = String(exact.id);
-        }),
-      );
-      setInterests((current) =>
-        current.some(
-          (interest) =>
-            normalizedTargetName(interest.name) === normalizedTargetName(name),
-        )
-          ? current
-          : [...current, { name, refs }],
-      );
-      setPrepared(null);
-      setInterestQuery("");
-      setInterestResults([]);
-    } catch (cause) {
-      setError(
-        hostAdErrorMessage(cause, "Interest resolution failed."),
-      );
-    } finally {
-      setTargetingSearchBusy(false);
-    }
-  };
-
-  // #4238: when a platform is turned on after cities or interests were added,
-  // look those names up on that platform too, so its targeting is not lost.
-  const connectionKey = connections
-    .map((connection) => connection.id)
-    .sort()
-    .join("|");
-  const reresolveBusyRef = useRef(false);
-  const citiesRef = useRef(cities);
-  citiesRef.current = cities;
-  const interestsRef = useRef(interests);
-  interestsRef.current = interests;
-  useEffect(() => {
-    if (!brandId || reresolveBusyRef.current) return;
-    const missingCity = connections.filter(
-      (connection) =>
-        CITY_REF_PLATFORMS.includes(connection.platform) &&
-        citiesRef.current.some((city) => !city.refs[connection.platform]),
-    );
-    const missingInterest = connections.filter((connection) =>
-      interestsRef.current.some(
-        (interest) => !interest.refs[connection.platform],
-      ),
-    );
-    if (missingCity.length === 0 && missingInterest.length === 0) return;
-    reresolveBusyRef.current = true;
-    void (async () => {
+  const lookupPlaceOnApp = useCallback(
+    async (
+      list: "include" | "exclude",
+      place: HostAdPlace,
+      app: HostAdApp,
+    ): Promise<void> => {
+      if (!brandId) return;
+      const key = hostAdPlaceKey(place);
+      const flight = `${list}:${key}|${app}`;
+      if (inFlightRef.current.has(flight)) return;
+      markChecking(flight, true);
       try {
-        const { searchHostAdTargeting } = await loadHostAdPlanService();
-        const cityRefs = new Map<string, HostAdTargetingCity["refs"]>();
-        for (const connection of missingCity) {
-          for (const city of citiesRef.current) {
-            if (city.refs[connection.platform]) continue;
-            const found = await searchHostAdTargeting({
-              brandId,
-              platform: connection.platform,
-              kind: "city",
-              query: city.name,
-              country: city.countryCode,
-            });
-            const exact = found.results.find(
-              (candidate) =>
-                normalizedTargetName(targetingResultName(candidate)) ===
-                normalizedTargetName(city.name),
-            );
-            if (exact) {
-              const key = `${city.countryCode}:${normalizedTargetName(city.name)}`;
-              cityRefs.set(key, {
-                ...(cityRefs.get(key) ?? {}),
-                [connection.platform]: String(exact.id),
-              });
-            }
-          }
-        }
-        const interestRefs = new Map<string, HostAdTargetingInterest["refs"]>();
-        for (const connection of missingInterest) {
-          for (const interest of interestsRef.current) {
-            if (interest.refs[connection.platform]) continue;
-            const key = normalizedTargetName(interest.name);
-            if (connection.platform === "reddit") {
-              interestRefs.set(key, {
-                ...(interestRefs.get(key) ?? {}),
-                reddit: interest.name,
-              });
-              continue;
-            }
-            const found = await searchHostAdTargeting({
-              brandId,
-              platform: connection.platform,
-              kind: "interest",
-              query: interest.name,
-            });
-            const exact = found.results.find(
-              (candidate) =>
-                normalizedTargetName(candidate.name) === key,
-            );
-            if (exact) {
-              interestRefs.set(key, {
-                ...(interestRefs.get(key) ?? {}),
-                [connection.platform]: String(exact.id),
-              });
-            }
-          }
-        }
-        if (cityRefs.size > 0) {
-          setCities((current) =>
-            current.map((city) => {
-              const extra = cityRefs.get(
-                `${city.countryCode}:${normalizedTargetName(city.name)}`,
-              );
-              return extra ? { ...city, refs: { ...city.refs, ...extra } } : city;
-            }),
+        const { lookupHostAdTargeting } = await loadHostAdPlanService();
+        const response = await lookupHostAdTargeting({
+          brandId,
+          platform: app,
+          kind: hostAdLookupKind(place),
+          query: hostAdLookupQuery(place),
+          country: place.countryCode,
+        });
+        const update = (current: HostAdTargetingCity[]) =>
+          current.map((item) =>
+            hostAdPlaceKey(item) === key
+              ? applyPlaceLookup(item, app, response)
+              : item,
           );
-        }
-        if (interestRefs.size > 0) {
-          setInterests((current) =>
-            current.map((interest) => {
-              const extra = interestRefs.get(normalizedTargetName(interest.name));
-              return extra
-                ? { ...interest, refs: { ...interest.refs, ...extra } }
-                : interest;
-            }),
-          );
-        }
-      } catch (cause) {
-        setNotice(
-          hostAdErrorMessage(
-            cause,
-            "We couldn't check your places and interests on every app. Try again in a minute.",
+        if (list === "include") setCities(update);
+        else setExcludedPlaces(update);
+      } finally {
+        markChecking(flight, false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brandId],
+  );
+
+  const lookupInterestOnApp = useCallback(
+    async (interest: HostAdTargetingInterest, app: HostAdApp): Promise<void> => {
+      if (!brandId || app === "reddit") return;
+      const key = hostAdInterestKey(interest.name);
+      const flight = `interest:${key}|${app}`;
+      if (inFlightRef.current.has(flight)) return;
+      markChecking(flight, true);
+      try {
+        const { lookupHostAdTargeting } = await loadHostAdPlanService();
+        const response = await lookupHostAdTargeting({
+          brandId,
+          platform: app,
+          kind: "interest",
+          query: interest.name,
+        });
+        setInterests((current) =>
+          current.map((item) =>
+            hostAdInterestKey(item.name) === key
+              ? applyInterestLookup(item, app, response)
+              : item,
           ),
         );
       } finally {
-        reresolveBusyRef.current = false;
+        markChecking(flight, false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brandId],
+  );
+
+  // Look up every place and interest an app has no answer for yet: new
+  // places, and every place again when the Host turns an app on.
+  const unresolvedSignature = [
+    ...cities.flatMap((place) =>
+      activeApps
+        .filter(
+          (app) =>
+            hostAdPlaceNeedsLookup(place, app) &&
+            !place.refs[app] &&
+            !place.offers?.[app] &&
+            !place.errors?.[app] &&
+            !place.missing?.[app],
+        )
+        .map((app) => `include|${hostAdPlaceKey(place)}|${app}`),
+    ),
+    ...excludedPlaces.flatMap((place) =>
+      activeApps
+        .filter(
+          (app) =>
+            app === "meta" &&
+            !place.refs[app] &&
+            !place.errors?.[app] &&
+            !place.missing?.[app],
+        )
+        .map((app) => `exclude|${hostAdPlaceKey(place)}|${app}`),
+    ),
+    ...interests.flatMap((interest) =>
+      activeApps
+        .filter(
+          (app) =>
+            app !== "reddit" &&
+            !interest.refs[app] &&
+            !interest.errors?.[app] &&
+            !interest.missing?.[app],
+        )
+        .map((app) => `interest|${hostAdInterestKey(interest.name)}|${app}`),
+    ),
+  ].join(",");
+  const citiesRef = useRef(cities);
+  citiesRef.current = cities;
+  const excludedRef = useRef(excludedPlaces);
+  excludedRef.current = excludedPlaces;
+  const interestsRef = useRef(interests);
+  interestsRef.current = interests;
+  useEffect(() => {
+    if (!brandId || unresolvedSignature === "") return;
+    for (const item of unresolvedSignature.split(",")) {
+      const [list, key, app] = item.split("|") as [string, string, HostAdApp];
+      if (list === "interest") {
+        const interest = interestsRef.current.find(
+          (row) => hostAdInterestKey(row.name) === key,
+        );
+        if (interest) void lookupInterestOnApp(interest, app);
+        continue;
+      }
+      const source = list === "include" ? citiesRef.current : excludedRef.current;
+      const place = source.find((row) => hostAdPlaceKey(row) === key);
+      if (place) {
+        void lookupPlaceOnApp(list as "include" | "exclude", place, app);
+      }
+    }
+  }, [brandId, lookupInterestOnApp, lookupPlaceOnApp, unresolvedSignature]);
+
+  // Meta targets languages by its own locale keys.
+  const languageSignature = activeApps.includes("meta")
+    ? languages.filter((code) => !languageIds[code]).join(",")
+    : "";
+  useEffect(() => {
+    if (!brandId || languageSignature === "") return;
+    void (async () => {
+      const { lookupHostAdTargeting } = await loadHostAdPlanService();
+      for (const code of languageSignature.split(",")) {
+        const response = await lookupHostAdTargeting({
+          brandId,
+          platform: "meta",
+          kind: "language",
+          query: HOST_AD_LANGUAGE_NAMES[code] ?? code,
+        });
+        const id = response?.match?.best?.id;
+        if (id) setLanguageIds((current) => ({ ...current, [code]: String(id) }));
       }
     })();
-    // connectionKey captures the selected platforms by value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brandId, connectionKey]);
+  }, [brandId, languageSignature]);
+
+  const prefixedChecking = (list: string): ReadonlySet<string> =>
+    new Set(
+      [...checking]
+        .filter((item) => item.startsWith(`${list}:`))
+        .map((item) => item.slice(list.length + 1)),
+    );
+
+  const searchPlaces = async (
+    query: string,
+    country: string,
+    kind: HostAdPlaceKind,
+  ) => {
+    const app = firstSearchApp(kind === "region" ? "region" : "city");
+    if (!brandId || !app) return [];
+    const { searchHostAdTargeting } = await loadHostAdPlanService();
+    const result = await searchHostAdTargeting({
+      brandId,
+      platform: app,
+      kind: kind === "region" ? "region" : "city",
+      query,
+      country,
+    });
+    if (result.unavailable) throw new Error("search_unavailable");
+    // A city the first app only knows as a state still shows, as typed.
+    if (result.results.length === 0 && (result.wider ?? []).length > 0) {
+      return [{ id: `typed:${query}`, name: query, meta: { country_code: country } }];
+    }
+    return result.results;
+  };
+
+  const searchInterests = async (query: string, app: HostAdApp | null) => {
+    const platform = app ?? firstSearchApp("interest");
+    if (!brandId || !platform) return [];
+    const { searchHostAdTargeting } = await loadHostAdPlanService();
+    const result = await searchHostAdTargeting({
+      brandId,
+      platform,
+      kind: "interest",
+      query,
+    });
+    if (result.unavailable) throw new Error("search_unavailable");
+    return result.results.map((row) => ({ id: String(row.id), name: row.name }));
+  };
 
   const handlePrepare = async (forceAcceptance = false) => {
     if (!permissions.canPlan) {
@@ -1476,6 +1440,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
         cities,
         radiusKm: cities.length > 0 ? radiusKmNumber : null,
         interests,
+        excludedPlaces,
+        languages,
+        languageIds,
         ageMin: Number(ageMin),
         ageMax: Number(ageMax),
         gender,
@@ -1842,28 +1809,38 @@ export default function HostAdCreateRoute(): React.ReactElement {
           <GlassCard variant="base" contentStyle={styles.cardContent}>
           <Text style={styles.step}>2 · Who should see it?</Text>
           <Text style={styles.sectionTitle}>Who should see it?</Text>
-          {setup.connections.map((item) => (
-              <ChoiceCard
-                key={item.id}
-                selected={connections.some(
-                  (connection) => connection.id === item.id,
-                )}
-                title={PLATFORM_LABELS[item.platform] ?? item.platform}
-                subtitle="Ready"
-                onPress={() => {
-                  setConnections((current) =>
-                    current.some((connection) => connection.id === item.id)
-                      ? current.filter(
-                          (connection) => connection.id !== item.id,
-                        )
-                      : [...current, item],
-                  );
-                  setPrepared(null);
-                }}
-                testID={`host-ad-platform-${item.platform}`}
-                multiple
-              />
-            ))}
+          {setup.connections.map((item) => {
+              // #4238 P0: "works here" — greyed out with the reason.
+              const where = hostAdAppAvailability(
+                item.platform,
+                countries,
+                setup.availability ?? [],
+              );
+              return (
+                <ChoiceCard
+                  key={item.id}
+                  selected={
+                    where.works &&
+                    connections.some((connection) => connection.id === item.id)
+                  }
+                  title={PLATFORM_LABELS[item.platform] ?? item.platform}
+                  subtitle={where.works ? "Ready" : where.reason ?? undefined}
+                  disabled={!where.works}
+                  onPress={() => {
+                    setConnections((current) =>
+                      current.some((connection) => connection.id === item.id)
+                        ? current.filter(
+                            (connection) => connection.id !== item.id,
+                          )
+                        : [...current, item],
+                    );
+                    setPrepared(null);
+                  }}
+                  testID={`host-ad-platform-${item.platform}`}
+                  multiple
+                />
+              );
+            })}
           <HostAdAudiencePicker
             audiences={setup.audiences ?? []}
             unavailable={setup.audiences_error === "unavailable"}
@@ -1882,171 +1859,159 @@ export default function HostAdCreateRoute(): React.ReactElement {
               setPrepared(null);
             }}
           />
-          <Text style={styles.label}>Cities (optional)</Text>
+          <Text style={styles.label}>Places (optional)</Text>
           <Text style={styles.helper}>
-            Add towns or cities to focus your ad. You&apos;ll see any platform
-            that has to show it wider before you pay.
+            Add towns or cities to focus your ad. Each app finds the place in
+            its own way, and you&apos;ll see its answer before you pay.
           </Text>
-          <View style={styles.searchRow}>
-            <View style={styles.searchInput}>
-              <Input
-                value={cityQuery}
-                onChangeText={setCityQuery}
-                placeholder={
-                  countries[0]
-                    ? `Search cities in ${countryName(countries[0])}`
-                    : "Choose a country first"
-                }
-                accessibilityLabel="Search target city"
-              />
-            </View>
-            <Pressable
-              style={styles.searchButton}
-              onPress={() => void handleCitySearch()}
-              disabled={targetingSearchBusy || cityQuery.trim().length < 2}
-              accessibilityRole="button"
-              accessibilityLabel="Search cities"
-              testID="host-ad-city-search"
-            >
-              {targetingSearchBusy ? (
-                <ActivityIndicator size="small" color={textTokens.primary} />
-              ) : (
-                <Text style={styles.searchButtonLabel}>Search</Text>
-              )}
-            </Pressable>
-          </View>
-          {cityResults.map((result) => (
-            <Pressable
-              key={`city-result-${result.id}`}
-              style={styles.searchResult}
-              onPress={() => void addCityResult(result)}
-              accessibilityRole="button"
-              accessibilityLabel={`Target ${hostAdPlaceName(result.name)}`}
-            >
-              <Text style={styles.choiceTitle}>{hostAdPlaceName(result.name)}</Text>
-              <Text style={styles.resume}>Add</Text>
-            </Pressable>
-          ))}
-          {cities.map((city) => (
-            <View
-              key={`${city.countryCode}:${city.name}`}
-              style={styles.targetingChoice}
-            >
-              <View style={styles.choiceText}>
-                <Text style={styles.choiceTitle}>
-                  {city.name}, {countryName(city.countryCode)}
-                </Text>
-                <Text style={styles.choiceSubtitle}>
-                  {matchSubtitle(
-                    connections
-                      .filter(
-                        (connection) =>
-                          CITY_REF_PLATFORMS.includes(connection.platform) &&
-                          !city.refs[connection.platform],
-                      )
-                      .map((connection) => connection.platform),
-                    connections.length,
-                  )}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => {
-                  setCities((current) =>
-                    current.filter((item) => item !== city),
-                  );
-                  setPrepared(null);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${city.name}`}
-              >
-                <Text style={styles.remove}>Remove</Text>
-              </Pressable>
-            </View>
-          ))}
-          {cities.length > 0 ? (
-            <>
-              <Text style={styles.label}>Radius (kilometers)</Text>
-              <Input
-                value={radiusKm}
-                onChangeText={(value) => {
-                  setRadiusKm(value);
-                  setPrepared(null);
-                }}
-                variant="number"
-                accessibilityLabel="City radius in kilometers"
-              />
-            </>
-          ) : null}
+          <HostAdPlacesEditor
+            places={cities}
+            apps={activeApps}
+            countries={countries}
+            availability={setup.availability ?? []}
+            checking={prefixedChecking("include")}
+            busy={busy}
+            onSearch={searchPlaces}
+            onAdd={(place) => {
+              setCities((current) =>
+                current.some((item) => hostAdPlaceKey(item) === hostAdPlaceKey(place))
+                  ? current
+                  : [...current, place],
+              );
+              setPrepared(null);
+            }}
+            onChange={(key, place) => {
+              setCities((current) =>
+                current.map((item) => (hostAdPlaceKey(item) === key ? place : item)),
+              );
+              setPrepared(null);
+            }}
+            onRemove={(key) => {
+              setCities((current) =>
+                current.filter((item) => hostAdPlaceKey(item) !== key),
+              );
+              setPrepared(null);
+            }}
+            onRetry={(key, app) => {
+              const place = cities.find((item) => hostAdPlaceKey(item) === key);
+              if (place) void lookupPlaceOnApp("include", place, app);
+            }}
+          />
+          <Text style={styles.label}>Leave out places (optional)</Text>
+          <Text style={styles.helper}>
+            Skip areas that never buy. Only Facebook &amp; Instagram and
+            Snapchat can leave places out; the other apps say so below.
+          </Text>
+          <HostAdPlacesEditor
+            mode="exclude"
+            testIDPrefix="host-ad-excluded"
+            places={excludedPlaces}
+            apps={activeApps}
+            countries={countries}
+            availability={setup.availability ?? []}
+            checking={prefixedChecking("exclude")}
+            busy={busy}
+            onSearch={searchPlaces}
+            onAdd={(place) => {
+              setExcludedPlaces((current) =>
+                current.some((item) => hostAdPlaceKey(item) === hostAdPlaceKey(place))
+                  ? current
+                  : [...current, place],
+              );
+              setPrepared(null);
+            }}
+            onChange={(key, place) => {
+              setExcludedPlaces((current) =>
+                current.map((item) => (hostAdPlaceKey(item) === key ? place : item)),
+              );
+              setPrepared(null);
+            }}
+            onRemove={(key) => {
+              setExcludedPlaces((current) =>
+                current.filter((item) => hostAdPlaceKey(item) !== key),
+              );
+              setPrepared(null);
+            }}
+            onRetry={(key, app) => {
+              const place = excludedPlaces.find(
+                (item) => hostAdPlaceKey(item) === key,
+              );
+              if (place && HOST_AD_EXCLUDE_APPS.includes(app)) {
+                void lookupPlaceOnApp("exclude", place, app);
+              }
+            }}
+          />
           <Text style={styles.label}>Interests (optional)</Text>
           <Text style={styles.helper}>
-            Add interests that fit your crowd. If a platform doesn&apos;t have a
-            match, we&apos;ll tell you before you pay.
+            Add interests that fit your crowd. Each app has its own list, so
+            you&apos;ll see each app&apos;s own name for it.
           </Text>
-          <View style={styles.searchRow}>
-            <View style={styles.searchInput}>
-              <Input
-                value={interestQuery}
-                onChangeText={setInterestQuery}
-                placeholder="Live music, nightlife…"
-                accessibilityLabel="Search target interest"
-              />
-            </View>
-            <Pressable
-              style={styles.searchButton}
-              onPress={() => void handleInterestSearch()}
-              disabled={targetingSearchBusy || interestQuery.trim().length < 2}
-              accessibilityRole="button"
-              accessibilityLabel="Search interests"
-              testID="host-ad-interest-search"
-            >
-              {targetingSearchBusy ? (
-                <ActivityIndicator size="small" color={textTokens.primary} />
-              ) : (
-                <Text style={styles.searchButtonLabel}>Search</Text>
-              )}
-            </Pressable>
+          <HostAdInterestsEditor
+            interests={interests}
+            apps={activeApps}
+            checking={prefixedChecking("interest")}
+            busy={busy}
+            onSearch={searchInterests}
+            onAdd={(name) => {
+              setInterests((current) =>
+                current.some(
+                  (item) => hostAdInterestKey(item.name) === hostAdInterestKey(name),
+                )
+                  ? current
+                  : [...current, { name, refs: {} }],
+              );
+              setPrepared(null);
+            }}
+            onChange={(key, interest) => {
+              setInterests((current) =>
+                current.map((item) =>
+                  hostAdInterestKey(item.name) === key ? interest : item,
+                ),
+              );
+              setPrepared(null);
+            }}
+            onRemove={(key) => {
+              setInterests((current) =>
+                current.filter((item) => hostAdInterestKey(item.name) !== key),
+              );
+              setPrepared(null);
+            }}
+            onRetry={(key, app) => {
+              const interest = interests.find(
+                (item) => hostAdInterestKey(item.name) === key,
+              );
+              if (interest) void lookupInterestOnApp(interest, app);
+            }}
+          />
+          <Text style={styles.label}>Languages (optional)</Text>
+          <Text style={styles.helper}>
+            Leave this empty to reach people in every language.
+          </Text>
+          <View style={styles.chipRow}>
+            {Object.entries(HOST_AD_LANGUAGE_NAMES).map(([code, label]) => {
+              const on = languages.includes(code);
+              return (
+                <Pressable
+                  key={code}
+                  style={[styles.chip, on && styles.chipSelected]}
+                  onPress={() => {
+                    setLanguages((current) =>
+                      on
+                        ? current.filter((item) => item !== code)
+                        : [...current, code],
+                    );
+                    setPrepared(null);
+                  }}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  accessibilityLabel={`Language: ${label}`}
+                  testID={`host-ad-language-${code}`}
+                >
+                  <Text style={styles.chipLabel}>{label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
-          {interestResults.map((result) => (
-            <Pressable
-              key={`interest-result-${result.id}`}
-              style={styles.searchResult}
-              onPress={() => void addInterestResult(result)}
-              accessibilityRole="button"
-              accessibilityLabel={`Target interest ${result.name}`}
-            >
-              <Text style={styles.choiceTitle}>{result.name}</Text>
-              <Text style={styles.resume}>Add</Text>
-            </Pressable>
-          ))}
-          {interests.map((interest) => (
-            <View key={interest.name} style={styles.targetingChoice}>
-              <View style={styles.choiceText}>
-                <Text style={styles.choiceTitle}>{interest.name}</Text>
-                <Text style={styles.choiceSubtitle}>
-                  {matchSubtitle(
-                    connections
-                      .filter(
-                        (connection) => !interest.refs[connection.platform],
-                      )
-                      .map((connection) => connection.platform),
-                    connections.length,
-                  )}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => {
-                  setInterests((current) =>
-                    current.filter((item) => item !== interest),
-                  );
-                  setPrepared(null);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${interest.name}`}
-              >
-                <Text style={styles.remove}>Remove</Text>
-              </Pressable>
-            </View>
-          ))}
           <View style={styles.fieldRow}>
             <View style={styles.fieldHalf}>
               <Text style={styles.label}>Minimum age</Text>
@@ -2485,9 +2450,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
               ) : null}
               {prepared.targeting.map((row) => (
                 <View key={row.platform} style={styles.targetingRow}>
-                  <Text style={styles.choiceTitle}>
+                  <Text
+                    style={styles.choiceTitle}
+                    testID={`host-ad-review-status-${row.platform}`}
+                  >
                     {PLATFORM_LABELS[row.platform] ?? row.platform} ·{" "}
-                    {hostAdVerdictLabel(row.verdict)}
+                    {/* #4238 P0: Ready, Needs a choice, Couldn't check, Can't run yet. */}
+                    {hostAdAppReviewStatus({
+                      app: row.platform as HostAdApp,
+                      verdict: row.verdict,
+                      places: cities,
+                      interests,
+                    })}
                   </Text>
                   {[
                     ...new Set(

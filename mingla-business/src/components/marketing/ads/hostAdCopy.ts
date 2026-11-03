@@ -336,6 +336,15 @@ export function hostAdVerdictLabel(verdict: string): string {
  * that names the app and says what to do. Unknown notes fall back to a safe
  * sentence for the verdict instead of showing raw technical text.
  */
+/** #4238: compiler lines that are already plain sentences for a Host. */
+const HOST_AD_PLAIN_NOTE =
+  /^(Facebook & Instagram|TikTok|Snapchat|Google|Reddit) (needs at least|allows at most|uses the wider area|can't leave out places|can't use a pin|can't pick languages|uses a circle|shows your ad to people in every language)|^We couldn't find the address for your pin\.$/;
+
+/** "region:NG:lagos state" / "pin:NG:x" → "NG:lagos state" for the place list. */
+function stripPlaceKinds(raw: string): string {
+  return raw.replace(/\b(region|pin):(?=[A-Za-z]{2}:)/g, "");
+}
+
 export function hostAdTargetingNote(
   platform: string,
   verdict: string,
@@ -343,9 +352,22 @@ export function hostAdTargetingNote(
   countries: readonly string[] = [],
 ): string {
   const app = platformName(platform);
+  // #4238 media-buyer: lines the compiler already writes in plain words.
+  if (HOST_AD_PLAIN_NOTE.test(line)) {
+    return /needs at least \d/.test(line)
+      ? `${line} Move the distance up, or turn ${app} off.`
+      : line;
+  }
+  if (/^Resolve .+ language keys/.test(line)) {
+    return `${app} couldn't check your languages. Try again, or clear them.`;
+  }
+  const leftOut = /left-out places: (.+?)\.?$/.exec(line)?.[1];
+  if (leftOut) {
+    return `${app} couldn't find ${hostAdPlaceList(stripPlaceKinds(leftOut))} to leave out. Remove it, or turn ${app} off.`;
+  }
   const missing = /for: (.+?)\.?$/.exec(line)?.[1];
   if (/^Resolve .+ for: /.test(line) && missing) {
-    return `${app} couldn't find ${hostAdPlaceList(missing)}. Remove it, or turn ${app} off.`;
+    return `${app} couldn't find ${hostAdPlaceList(stripPlaceKinds(missing))}. Remove it, or turn ${app} off.`;
   }
   if (/radius targeting needs at least one verified/i.test(line)) {
     return `${app} needs a city before it can use a distance. Add a city or turn ${app} off.`;

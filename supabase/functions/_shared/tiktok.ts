@@ -1474,15 +1474,22 @@ function tikTokCityDescriptionRank(tag: TikTokLocationTag): number {
  */
 export function pickTikTokCityMatches(
   tags: readonly TikTokLocationTag[],
-  opts: { country?: string; q?: string; limit?: number } = {},
+  opts: {
+    country?: string;
+    q?: string;
+    limit?: number;
+    /** #4238: PROVINCE for the wider-area fallback; default city-like. */
+    geoTypes?: readonly string[];
+  } = {},
 ): TikTokLocationTag[] {
+  const geoTypes = opts.geoTypes ?? TIKTOK_CITY_GEO_TYPES;
   const country = (opts.country ?? "").trim().toUpperCase();
   const q = (opts.q ?? "").trim().toLowerCase();
   const limit = opts.limit ?? 15;
   const matches = tags.filter((t) => {
     // A DISABLED / unavailable tag must never be offered as targetable.
     if (t.status !== null && t.status !== "ENABLED") return false;
-    if (!TIKTOK_CITY_GEO_TYPES.includes(t.geoType)) return false;
+    if (!geoTypes.includes(t.geoType)) return false;
     if (country && t.regionCode !== country) return false;
     return true;
   });
@@ -1521,16 +1528,19 @@ export async function tiktokSearchCityLocations(
     promotionType?: string;
     placements?: readonly string[];
     limit?: number;
+    /** #4238: ["PROVINCE"] looks up the wider area a Host can accept. */
+    geoTypes?: readonly string[];
   },
 ): Promise<TikTokLocationTag[]> {
   const objective = opts.objective ?? "TRAFFIC";
+  const geoTypes = opts.geoTypes ?? TIKTOK_CITY_GEO_TYPES;
   const params: Record<string, unknown> = {
     advertiser_id: client.advertiserId,
     objective_type: objective,
     placements: opts.placements ?? TIKTOK_DEFAULT_PLACEMENTS,
     search_type: "FUZZY_SEARCH",
     keywords: [opts.q],
-    geo_types: TIKTOK_CITY_GEO_TYPES,
+    geo_types: geoTypes,
     ...(opts.country
       ? { region_codes: [opts.country.trim().toUpperCase()] }
       : {}),
@@ -1549,6 +1559,7 @@ export async function tiktokSearchCityLocations(
     country: opts.country,
     q: opts.q,
     limit: opts.limit,
+    geoTypes,
   });
 }
 
@@ -1929,6 +1940,8 @@ export interface TikTokAdGroupSpec {
   ageGroups?: string[];
   /** ISSUE-989 — resolved numeric interest_category_ids (tool/interest_category). */
   interestCategoryIds?: string[];
+  /** #4238: ISO 639-1 codes for the ad group `languages` field. */
+  languages?: string[];
   /** #3697: provider ids resolved only from ad_audiences. */
   audienceIds?: string[];
   /** #3697: event-buyer audience ids that must be excluded. */
@@ -2090,6 +2103,10 @@ export function buildTikTokAdGroupBody(
   // omitted entirely when none are picked so broad targeting is unchanged.
   if (spec.interestCategoryIds && spec.interestCategoryIds.length > 0) {
     body.interest_category_ids = spec.interestCategoryIds;
+  }
+  // #4238: ad group `languages` (ISO 639-1); omitted = every language.
+  if (spec.languages && spec.languages.length > 0) {
+    body.languages = [...spec.languages];
   }
   const audienceIds = [
     ...new Set(
@@ -2845,6 +2862,8 @@ export interface TikTokAdGroupTargetingInput {
   location_ids?: string[];
   /** ISSUE-989 — numeric interest_category_ids from tool/interest_category. */
   interest_category_ids?: string[];
+  /** #4238: ISO 639-1 language codes. */
+  languages?: string[];
   audience_ids?: string[];
   excluded_audience_ids?: string[];
   age_groups?: string[];
@@ -2892,6 +2911,7 @@ function adGroupSpecFromInterfaceInput(
     bidPriceCents: t.bid_price_cents,
     locationIds: t.location_ids ?? [],
     interestCategoryIds: t.interest_category_ids,
+    languages: t.languages,
     audienceIds: t.audience_ids,
     excludedAudienceIds: t.excluded_audience_ids,
     ageGroups,

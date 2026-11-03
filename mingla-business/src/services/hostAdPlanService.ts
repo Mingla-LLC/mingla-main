@@ -18,6 +18,15 @@ import {
   hostAdVideoFailedMessage,
   hostAdVideoPendingMessage,
 } from "../components/marketing/ads/hostAdCopy";
+import {
+  type HostAdAvailabilityRow,
+  type HostAdInterestPick,
+  type HostAdPlace,
+  hostAdPlaceForSave,
+  hostAdRefsForApp,
+  hostAdSelectionsFromCanonical,
+  placeKind,
+} from "../components/marketing/ads/hostAdTargeting";
 
 const PREPARED_VIDEO_PLATFORMS = new Set([
   "meta",
@@ -88,16 +97,11 @@ export type HostAdConnection = {
   sales: { ready: boolean; reason: string };
 };
 
-export type HostAdTargetingCity = {
-  name: string;
-  countryCode: string;
-  refs: Partial<Record<HostAdPlatform, string>>;
-};
+/** #4238 media-buyer: a place (city, region or pin) matched on each app. */
+export type HostAdTargetingCity = HostAdPlace;
 
-export type HostAdTargetingInterest = {
-  name: string;
-  refs: Partial<Record<HostAdPlatform, string>>;
-};
+/** #4238 media-buyer: an interest matched on each app separately. */
+export type HostAdTargetingInterest = HostAdInterestPick;
 
 export type HostAdTargetingSearchResult = {
   id: string;
@@ -224,6 +228,10 @@ export type HostAdSetup = {
   audiences: HostAdAudience[];
   /** "unavailable" when the audiences could not be loaded. */
   audiences_error?: "unavailable";
+  /** #4238: apps staff marked as not running in a country, with the reason. */
+  availability?: HostAdAvailabilityRow[];
+  /** #4238: apps that give a reach number (staff switch). */
+  reach_enabled?: Partial<Record<HostAdPlatform, boolean>>;
 };
 
 export type TargetingSnapshot = {
@@ -270,74 +278,27 @@ export type HostAdPlanAggregate = {
   campaigns: Record<string, unknown>[];
 };
 
+/**
+ * #4238 P0 (F-10): the Host's picks, read back by key from the plan itself
+ * (`canonical_plan.targeting_selection`). Never by the compiled array index:
+ * one app's missing match used to shift the next ids onto the wrong place.
+ */
 export function hostTargetingSelectionsFromAggregate(
   aggregate: HostAdPlanAggregate,
 ): {
   cities: HostAdTargetingCity[];
+  excluded: HostAdTargetingCity[];
   interests: HostAdTargetingInterest[];
   radiusKm: number | null;
 } {
-  const audience = aggregate.version.canonical_plan.audience_intent as
+  const canonical = aggregate.version.canonical_plan;
+  const audience = canonical.audience_intent as
     Record<string, unknown> | undefined;
-  const cityRows = recordList(audience?.cities);
-  const interestRows = recordList(audience?.interests);
-  const cities = cityRows.map((city, index) => {
-    const refs: Partial<Record<HostAdPlatform, string>> = {};
-    for (const snapshot of aggregate.targeting_snapshots) {
-      const compiled = snapshot.compiled_targeting;
-      if (snapshot.platform === "meta") {
-        const geo = recordValue(compiled.geo_locations);
-        const row = recordList(geo?.cities)[index];
-        if (row?.key) refs.meta = String(row.key);
-      } else if (
-        ["tiktok", "google"].includes(snapshot.platform) &&
-        Array.isArray(compiled.location_ids) &&
-        compiled.location_ids[index]
-      ) {
-        refs[snapshot.platform] = String(compiled.location_ids[index]);
-      }
-    }
-    return {
-      name: String(city.name ?? ""),
-      countryCode: String(city.countryCode ?? "").toUpperCase(),
-      refs,
-    };
-  });
-  const interests = interestRows.map((interest, index) => {
-    const refs: Partial<Record<HostAdPlatform, string>> = {};
-    for (const snapshot of aggregate.targeting_snapshots) {
-      const compiled = snapshot.compiled_targeting;
-      if (snapshot.platform === "meta") {
-        const flexible = recordList(compiled.flexible_spec)[0];
-        const row = recordList(flexible?.interests)[index];
-        if (row?.id) refs.meta = String(row.id);
-      } else if (
-        snapshot.platform === "tiktok" &&
-        Array.isArray(compiled.interest_category_ids) &&
-        compiled.interest_category_ids[index]
-      ) {
-        refs.tiktok = String(compiled.interest_category_ids[index]);
-      } else if (
-        snapshot.platform === "snapchat" &&
-        Array.isArray(compiled.interest_category_ids) &&
-        compiled.interest_category_ids[index]
-      ) {
-        refs.snapchat = String(compiled.interest_category_ids[index]);
-      } else if (
-        snapshot.platform === "google" &&
-        Array.isArray(compiled.audience_ids) &&
-        compiled.audience_ids[index]
-      ) {
-        refs.google = String(compiled.audience_ids[index]);
-      } else if (snapshot.platform === "reddit") {
-        refs.reddit = String(interest.name ?? "");
-      }
-    }
-    return { name: String(interest.name ?? ""), refs };
-  });
+  const picks = hostAdSelectionsFromCanonical(canonical);
   return {
-    cities: cities.filter((city) => city.name && city.countryCode),
-    interests: interests.filter((interest) => interest.name),
+    cities: picks.places,
+    excluded: picks.excluded,
+    interests: picks.interests,
     radiusKm: typeof audience?.radiusKm === "number" ? audience.radiusKm : null,
   };
 }
@@ -409,18 +370,49 @@ export async function loadHostAdSetup(brandId: string): Promise<HostAdSetup> {
 export async function searchHostAdTargeting(input: {
   brandId: string;
   platform: HostAdPlatform;
-  kind: "city" | "interest";
+  kind: "city" | "interest" | "region" | "pin" | "language";
   query: string;
   country?: string | null;
-}): Promise<{ results: HostAdTargetingSearchResult[]; warning?: string }> {
+}): Promise<HostAdTargetingSearch> {
+  // #4238: `match: true` asks the server's one per-app matcher
+  // (I-4238-PER-APP-MATCH); `unavailable` marks an app error.
   return invoke("admin-ad-targeting-search", {
     brand_id: input.brandId,
     owner_kind: "host",
     platform: input.platform,
     kind: input.kind,
     q: input.query,
+    match: true,
     ...(input.country ? { country: input.country } : {}),
   });
+}
+
+export type HostAdTargetingSearch = {
+  results: HostAdTargetingSearchResult[];
+  warning?: string;
+  /** #4238: the app errored; never read this as "not found". */
+  unavailable?: boolean;
+  /** #4238: the app's results one level up (TikTok PROVINCE). */
+  wider?: HostAdTargetingSearchResult[];
+  match?: {
+    state?: "match" | "wider" | "none";
+    best?: HostAdTargetingSearchResult;
+    wider?: HostAdTargetingSearchResult;
+  };
+};
+
+/**
+ * #4238: one app's lookup for the builder. A thrown error (network, edge)
+ * reads as "Couldn't check", exactly like a provider error.
+ */
+export async function lookupHostAdTargeting(
+  input: Parameters<typeof searchHostAdTargeting>[0],
+): Promise<HostAdTargetingSearch | null> {
+  try {
+    return await searchHostAdTargeting(input);
+  } catch {
+    return null;
+  }
 }
 
 export async function getHostAdPlan(
@@ -551,8 +543,15 @@ export type PrepareHostAdPlanInput = {
   headline: string;
   countries: string[];
   cities: HostAdTargetingCity[];
+  /** The shared distance for places saved before per-place distances. */
   radiusKm: number | null;
   interests: HostAdTargetingInterest[];
+  /** #4238: places to leave out. */
+  excludedPlaces?: HostAdTargetingCity[];
+  /** #4238: ISO 639-1 codes; empty = every language. */
+  languages?: string[];
+  /** #4238: Meta's own locale key per language code. */
+  languageIds?: Record<string, string>;
   ageMin: number;
   ageMax: number;
   gender: "all" | "men" | "women";
@@ -595,14 +594,6 @@ function splitCents(total: number, count: number): number[] {
   );
 }
 
-function targetingName(value: string): string {
-  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-}
-
-function targetingCityKey(city: { name: string; countryCode: string }): string {
-  return `${city.countryCode.trim().toUpperCase()}:${targetingName(city.name)}`;
-}
-
 /**
  * #4238: the per-platform goal frozen into the plan hash. "sales" only where
  * the page sells tickets, the platform has a sales path and its signal is
@@ -633,6 +624,7 @@ export function hostOptimizationByPlatform(
 export type HostTargetingRefs = {
   locationIds?: Record<string, string>;
   interestIds?: Record<string, string>;
+  languageIds?: Record<string, string>;
   includeAudienceIds?: never;
   excludeAudienceIds?: never;
   advantageAudience?: never;
@@ -670,17 +662,27 @@ export async function prepareHostAdPlan(
     });
     planId = opened.plan.id;
   }
+  const placeIntent = (city: HostAdTargetingCity) => ({
+    name: city.name,
+    countryCode: city.countryCode,
+    ...(placeKind(city) !== "city" ? { kind: placeKind(city) } : {}),
+    ...(typeof city.radiusKm === "number" && placeKind(city) !== "region"
+      ? { radiusKm: city.radiusKm }
+      : {}),
+  });
+  const excludedPlaces = input.excludedPlaces ?? [];
+  const languages = [...new Set(input.languages ?? [])];
+  const everyPlaceHasRadius = input.cities.every(
+    (city) => typeof city.radiusKm === "number" || placeKind(city) === "region",
+  );
   const audienceIntent = {
     countries: input.countries,
     ...(input.cities.length > 0
-      ? {
-          cities: input.cities.map((city) => ({
-            name: city.name,
-            countryCode: city.countryCode,
-          })),
-        }
+      ? { cities: input.cities.map(placeIntent) }
       : {}),
-    ...(input.cities.length > 0 && input.radiusKm !== null
+    ...(input.cities.length > 0 &&
+    input.radiusKm !== null &&
+    !everyPlaceHasRadius
       ? { radiusKm: input.radiusKm }
       : {}),
     ageMin: input.ageMin,
@@ -693,25 +695,27 @@ export async function prepareHostAdPlan(
           })),
         }
       : {}),
+    ...(excludedPlaces.length > 0
+      ? {
+          excludedPlaces: excludedPlaces.map((city) => ({
+            name: city.name,
+            countryCode: city.countryCode,
+            ...(placeKind(city) === "region" ? { kind: "region" } : {}),
+          })),
+        }
+      : {}),
+    ...(languages.length > 0 ? { languages } : {}),
   };
+  // #4238: ids by key (hostAdPlaceKey), so no app's id lands on another place.
   const refsByPlatform = Object.fromEntries(
     input.connections.map((connection) => {
-      const locationIds = Object.fromEntries(
-        input.cities.flatMap((city) => {
-          const id = city.refs[connection.platform];
-          return id ? [[targetingCityKey(city), id]] : [];
-        }),
+      const refs: HostTargetingRefs = hostAdRefsForApp(
+        connection.platform,
+        input.cities,
+        input.interests,
+        excludedPlaces,
+        input.languageIds ?? {},
       );
-      const interestIds = Object.fromEntries(
-        input.interests.flatMap((interest) => {
-          const id = interest.refs[connection.platform];
-          return id ? [[targetingName(interest.name), id]] : [];
-        }),
-      );
-      const refs: HostTargetingRefs = {
-        ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
-        ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
-      };
       return [connection.platform, refs];
     }),
   );
@@ -740,6 +744,16 @@ export async function prepareHostAdPlan(
         ...(input.endsAt ? { ends_at: input.endsAt } : {}),
       },
       audience_intent: audienceIntent,
+      // #4238 P0 (F-10): the Host's picks per app, read back by key.
+      targeting_selection: {
+        places: input.cities.map(hostAdPlaceForSave),
+        excluded: excludedPlaces.map(hostAdPlaceForSave),
+        interests: input.interests.map((interest) => ({
+          name: interest.name,
+          refs: interest.refs,
+          ...(interest.labels ? { labels: interest.labels } : {}),
+        })),
+      },
       copy,
       creative_library_id: input.creative.id,
       creative_url: null,

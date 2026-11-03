@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4238_ads_media_buyer.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4238-ads-media-buyer",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

@@ -1353,6 +1353,8 @@ export function buildSnapchatCircleLocations(
 export function buildSnapchatGeoTargeting(
   countries: readonly string[],
   circles: readonly SnapchatCircleGeo[] | null | undefined,
+  /** #4238: left-out places, sent as an EXCLUDE location group. */
+  excludedCircles: readonly SnapchatCircleGeo[] | null | undefined = null,
 ): {
   geos: { country_code: string }[];
   locations?: Record<string, unknown>[];
@@ -1368,10 +1370,19 @@ export function buildSnapchatGeoTargeting(
     if (code && !codes.includes(code)) codes.push(code);
   }
   const geos = codes.map((country_code) => ({ country_code }));
-  if (valid.length === 0) return { geos };
+  const excluded = snapchatValidCircles(excludedCircles);
+  const exclude = excluded.length > 0
+    ? [{ circles: excluded.map((v) => v.circle), operation: "EXCLUDE" }]
+    : [];
+  if (valid.length === 0) {
+    return exclude.length > 0 ? { geos, locations: exclude } : { geos };
+  }
   return {
     geos,
-    locations: [{ circles: valid.map((v) => v.circle), operation: "INCLUDE" }],
+    locations: [
+      { circles: valid.map((v) => v.circle), operation: "INCLUDE" },
+      ...exclude,
+    ],
   };
 }
 
@@ -1384,6 +1395,8 @@ export interface SnapchatAdSquadSpec {
   demographics?: Record<string, unknown>[];
   /** ISSUE-992 (3a): geocoded city circles → targeting.locations (#3697). */
   circles?: SnapchatCircleGeo[];
+  /** #4238: left-out places → an EXCLUDE location group. */
+  excludedCircles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids → targeting.interests. */
   interestCategoryIds?: string[];
   /** #3697: provider ids resolved only from ad_audiences. */
@@ -1478,6 +1491,7 @@ export function buildSnapchatAdSquadBody(
   const { geos, locations } = buildSnapchatGeoTargeting(
     spec.countries,
     spec.circles,
+    spec.excludedCircles,
   );
 
   const targeting: Record<string, unknown> = {
@@ -2438,6 +2452,8 @@ export interface SnapchatAdSquadTargetingInput {
   demographics?: Record<string, unknown>[];
   /** ISSUE-992 (3a): geocoded city circles (index.ts geocodes at create time). */
   circles?: SnapchatCircleGeo[];
+  /** #4238: left-out places as frozen circles. */
+  excluded_circles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids. */
   interests?: string[];
   segment_include_ids?: string[];
@@ -2566,6 +2582,7 @@ export const snapchatAdapter: ChannelAdapter = {
       // ISSUE-992 (3a): circles are geocoded server-side in the create fn; SCLS
       // interest ids ride through to targeting.interests.
       circles: t.circles,
+      excludedCircles: t.excluded_circles,
       interestCategoryIds: t.interests,
       segmentIncludeIds: t.segment_include_ids,
       segmentExcludeIds: t.segment_exclude_ids,

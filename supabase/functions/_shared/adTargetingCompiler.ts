@@ -18,6 +18,8 @@ export type TargetingVerdict =
 export type AudienceCity = {
   name: string;
   countryCode: string;
+  /** #4238: a city (default), a whole region/state, or a dropped pin. */
+  kind?: "city" | "region" | "pin";
   latitude?: number;
   longitude?: number;
   radiusKm?: number;
@@ -33,7 +35,58 @@ export type AdAudienceIntent = {
   ageMax?: number;
   gender?: "all" | "men" | "women";
   interests?: AudienceInterest[];
+  /** #4238: places to leave out (cities or regions). */
+  excludedPlaces?: AudienceCity[];
+  /** #4238: ISO 639-1 language codes; absent means every language. */
+  languages?: string[];
 };
+
+/**
+ * #4238: each app's real distance limits, in km. Out-of-range is a plain
+ * check, never a silent clamp at create. null = the app does not use a
+ * distance (the plan is marked wider instead).
+ */
+export const AD_RADIUS_LIMITS_KM: Record<
+  Platform,
+  { city: [number, number]; pin: [number, number] } | null
+> = {
+  meta: { city: [17, 80], pin: [1, 80] },
+  snapchat: { city: [0.1, 100], pin: [0.1, 100] },
+  google: { city: [1, 80], pin: [1, 80] },
+  tiktok: null,
+  reddit: null,
+};
+
+const APP_NAMES: Record<Platform, string> = {
+  meta: "Facebook & Instagram",
+  tiktok: "TikTok",
+  snapchat: "Snapchat",
+  google: "Google",
+  reddit: "Reddit",
+};
+
+function placeKind(city: AudienceCity): "city" | "region" | "pin" {
+  return city.kind === "region" || city.kind === "pin" ? city.kind : "city";
+}
+
+function radiusIssue(
+  platform: Platform,
+  city: AudienceCity,
+  radiusKm: number | undefined,
+): string | null {
+  const limits = AD_RADIUS_LIMITS_KM[platform];
+  const kind = placeKind(city);
+  if (!limits || radiusKm == null || kind === "region") return null;
+  const [min, max] = kind === "pin" ? limits.pin : limits.city;
+  const around = kind === "pin" ? "a pin" : "a city";
+  if (radiusKm < min) {
+    return `${APP_NAMES[platform]} needs at least ${min} km around ${around}.`;
+  }
+  if (radiusKm > max) {
+    return `${APP_NAMES[platform]} allows at most ${max} km around ${around}.`;
+  }
+  return null;
+}
 
 export type ProviderTargetingRefs = {
   /** `${CC}:${normalized city name}` -> provider-native location id/key. */
@@ -45,6 +98,8 @@ export type ProviderTargetingRefs = {
   >;
   /** normalized interest name -> provider-native id/category. */
   interestIds?: Record<string, string>;
+  /** #4238: ISO language code -> provider-native language/locale id. */
+  languageIds?: Record<string, string>;
   /**
    * Provider audience ids resolved server-side: #3697 pixel audiences from
    * public.ad_audiences, and #4238 customer lists / lookalikes from the plan's
@@ -93,7 +148,10 @@ function normName(value: string): string {
 }
 
 function cityKey(city: AudienceCity): string {
-  return `${city.countryCode.trim().toUpperCase()}:${normName(city.name)}`;
+  const base = `${city.countryCode.trim().toUpperCase()}:${normName(city.name)}`;
+  // #4238: a region or pin gets its own key so it never shares a city's id.
+  const kind = placeKind(city);
+  return kind === "city" ? base : `${kind}:${base}`;
 }
 
 function intentValidationIssues(input: AdAudienceIntent): string[] {
@@ -152,7 +210,38 @@ function intentValidationIssues(input: AdAudienceIntent): string[] {
       ) {
         issues.push("Every city radius must be a positive distance.");
       }
+      if (
+        city.kind !== undefined &&
+        !["city", "region", "pin"].includes(String(city.kind))
+      ) {
+        issues.push("Every place must be a city, a region or a pin.");
+      }
     }
+  }
+  const excluded = raw.excludedPlaces;
+  if (excluded !== undefined && !Array.isArray(excluded)) {
+    issues.push("Left-out places must be a list.");
+  } else if (
+    Array.isArray(excluded) &&
+    excluded.some((value) =>
+      value === null || typeof value !== "object" ||
+      typeof (value as Record<string, unknown>).name !== "string" ||
+      !/^[A-Za-z]{2}$/.test(
+        String((value as Record<string, unknown>).countryCode ?? "").trim(),
+      )
+    )
+  ) {
+    issues.push("Every left-out place needs a name and a country.");
+  }
+  const languages = raw.languages;
+  if (
+    languages !== undefined &&
+    (!Array.isArray(languages) ||
+      languages.some((value) =>
+        typeof value !== "string" || !/^[a-z]{2}$/.test(value)
+      ))
+  ) {
+    issues.push("Languages must be two-letter codes.");
   }
 
   if (
@@ -218,9 +307,17 @@ function cleanIntent(input: AdAudienceIntent): AdAudienceIntent {
   const interests = (input.interests ?? []).map((interest) => ({
     name: interest.name.trim(),
   })).filter((interest) => interest.name);
+  const excludedPlaces = (input.excludedPlaces ?? []).map((city) => ({
+    ...city,
+    name: city.name.trim(),
+    countryCode: city.countryCode.trim().toUpperCase(),
+  })).filter((city) => city.name && /^[A-Z]{2}$/.test(city.countryCode));
+  const languages = [...new Set(input.languages ?? [])];
   return {
     countries,
     ...(cities.length ? { cities } : {}),
+    ...(excludedPlaces.length ? { excludedPlaces } : {}),
+    ...(languages.length ? { languages } : {}),
     ...(Number.isFinite(input.radiusKm) ? { radiusKm: input.radiusKm } : {}),
     ...(Number.isInteger(input.ageMin) ? { ageMin: input.ageMin } : {}),
     ...(Number.isInteger(input.ageMax) ? { ageMax: input.ageMax } : {}),
@@ -337,26 +434,104 @@ export function compileProviderTargeting(
   const interests = intent.interests ?? [];
   const includeAudienceIds = cleanAudienceIds(refs.includeAudienceIds);
   const excludeAudienceIds = cleanAudienceIds(refs.excludeAudienceIds);
+  const excludedPlaces = intent.excludedPlaces ?? [];
+  const languages = intent.languages ?? [];
+  // #4238: each place keeps its own distance; the shared one is the fallback.
+  const radiusOf = (city: AudienceCity): number | undefined =>
+    city.radiusKm ?? intent.radiusKm;
+  const anyRadius = intent.radiusKm != null ||
+    cities.some((city) => city.radiusKm != null);
+  for (const city of cities) {
+    const issue = radiusIssue(platform, city, radiusOf(city));
+    if (issue) checksRequired.push(issue);
+  }
 
   if (platform === "meta") {
     compiled.geo_locations = { countries: intent.countries };
-    if (cities.length) {
-      const locations = compiledLocations(cities, refs);
+    const metaCities = cities.filter((city) => placeKind(city) === "city");
+    const metaRegions = cities.filter((city) => placeKind(city) === "region");
+    const metaPins = cities.filter((city) => placeKind(city) === "pin");
+    if (metaRegions.length) {
+      const regions = compiledLocations(metaRegions, refs);
+      if (regions.missing.length) {
+        checksRequired.push(
+          `Resolve Meta region keys for: ${regions.missing.join(", ")}.`,
+        );
+      } else {
+        (compiled.geo_locations as Record<string, unknown>).regions = regions
+          .ids.map((key) => ({ key }));
+      }
+    }
+    if (metaPins.length) {
+      const points = metaPins.map((city) => coordinatesForCity(city, refs));
+      if (points.some((point) => point === null)) {
+        checksRequired.push("We couldn't find the address for your pin.");
+      } else {
+        (compiled.geo_locations as Record<string, unknown>).custom_locations =
+          metaPins.map((city, index) => ({
+            latitude: points[index]!.latitude,
+            longitude: points[index]!.longitude,
+            radius: radiusOf(city) ?? 17,
+            distance_unit: "kilometer",
+          }));
+      }
+    }
+    if (excludedPlaces.length) {
+      const exCities = compiledLocations(
+        excludedPlaces.filter((city) => placeKind(city) === "city"),
+        refs,
+      );
+      const exRegions = compiledLocations(
+        excludedPlaces.filter((city) => placeKind(city) === "region"),
+        refs,
+      );
+      const missing = [...exCities.missing, ...exRegions.missing];
+      if (missing.length) {
+        checksRequired.push(
+          `Resolve Meta keys for left-out places: ${missing.join(", ")}.`,
+        );
+      } else {
+        compiled.excluded_geo_locations = {
+          ...(exCities.ids.length
+            ? { cities: exCities.ids.map((key) => ({ key })) }
+            : {}),
+          ...(exRegions.ids.length
+            ? { regions: exRegions.ids.map((key) => ({ key })) }
+            : {}),
+        };
+      }
+    }
+    if (languages.length) {
+      const locales = languages.map((code) =>
+        refs.languageIds?.[code]?.trim() ?? ""
+      );
+      if (locales.some((id) => !/^\d+$/.test(id))) {
+        checksRequired.push(
+          `Resolve Meta language keys for: ${languages.join(", ")}.`,
+        );
+      } else compiled.locales = locales.map(Number);
+    }
+    if (metaCities.length) {
+      const cityRefsByKey = metaCities.map((city) => ({
+        city,
+        id: refs.locationIds?.[cityKey(city)]?.trim(),
+      }));
+      const locations = compiledLocations(metaCities, refs);
       if (locations.missing.length) {
         checksRequired.push(
           `Resolve Meta city keys for: ${locations.missing.join(", ")}.`,
         );
       } else {
-        (compiled.geo_locations as Record<string, unknown>).cities = locations
-          .ids.map((key) => ({
-            key,
-            ...(intent.radiusKm != null
-              ? {
-                radius: intent.radiusKm,
-                distance_unit: "kilometer",
-              }
-              : {}),
-          }));
+        (compiled.geo_locations as Record<string, unknown>).cities =
+          cityRefsByKey.map(({ city, id }) => {
+            const radius = radiusOf(city);
+            return {
+              key: id as string,
+              ...(radius != null
+                ? { radius, distance_unit: "kilometer" }
+                : {}),
+            };
+          });
       }
     }
     if (intent.radiusKm != null && !cities.length) {
@@ -403,11 +578,23 @@ export function compileProviderTargeting(
       );
     }
     compiled.location_ids = cities.length ? locations.ids : intent.countries;
-    if (intent.radiusKm != null) {
+    if (
+      intent.radiusKm != null ||
+      cities.some((city) => city.radiusKm != null && placeKind(city) !== "region")
+    ) {
       wideningSummary.push(
         "TikTok cannot preserve the requested free-form radius; the resolved location boundary is wider.",
       );
     }
+    if (cities.some((city) => placeKind(city) === "pin")) {
+      wideningSummary.push("TikTok uses the wider area around your pin.");
+    }
+    if (excludedPlaces.length) {
+      wideningSummary.push(
+        "TikTok can't leave out places, so it may show your ad there too.",
+      );
+    }
+    if (languages.length) compiled.languages = languages;
     const age = bucketedAge(intent.ageMin, intent.ageMax, TIKTOK_AGE_BUCKETS);
     if (age.ids.length) compiled.age_groups = age.ids;
     if (age.broader) {
@@ -454,9 +641,37 @@ export function compileProviderTargeting(
           unit: "kilometer",
         }));
       }
+      if (cities.some((city) => placeKind(city) === "region")) {
+        wideningSummary.push(
+          "Snapchat uses a circle around the middle of each region you picked.",
+        );
+      }
     } else if (intent.radiusKm != null) {
       checksRequired.push(
         "Snapchat radius targeting needs at least one verified center.",
+      );
+    }
+    if (excludedPlaces.length) {
+      const points = excludedPlaces.map((city) => coordinatesForCity(city, refs));
+      if (points.some((point) => point === null)) {
+        checksRequired.push(
+          `Resolve Snapchat coordinates for left-out places: ${
+            excludedPlaces.map(cityKey).join(", ")
+          }.`,
+        );
+      } else {
+        compiled.exclude_circles = excludedPlaces.map((city, index) => ({
+          country_code: city.countryCode,
+          latitude: points[index]!.latitude,
+          longitude: points[index]!.longitude,
+          radius: city.radiusKm ?? (placeKind(city) === "region" ? 50 : 10),
+          unit: "kilometer",
+        }));
+      }
+    }
+    if (languages.length) {
+      wideningSummary.push(
+        "Snapchat can't pick languages here, so it shows your ad to people in every language.",
       );
     }
     if (intent.ageMin != null) compiled.age_min = intent.ageMin;
@@ -479,20 +694,45 @@ export function compileProviderTargeting(
       compiled.segment_exclude_ids = excludeAudienceIds;
     }
   } else if (platform === "google") {
-    const locations = compiledLocations(cities, refs);
-    if (cities.length && locations.missing.length) {
+    const googlePins = cities.filter((city) => placeKind(city) === "pin");
+    const googlePlaces = cities.filter((city) => placeKind(city) !== "pin");
+    const locations = compiledLocations(googlePlaces, refs);
+    if (googlePins.length) {
+      wideningSummary.push(
+        "Google can't use a pin here, so it shows your ad across the countries you picked.",
+      );
+    }
+    if (excludedPlaces.length) {
+      wideningSummary.push(
+        "Google can't leave out places here, so it may show your ad there too.",
+      );
+    }
+    if (languages.length) {
+      wideningSummary.push(
+        "Google shows your ad to people in every language.",
+      );
+    }
+    if (googlePlaces.length && locations.missing.length) {
       checksRequired.push(
         `Resolve Google geo target constants for: ${
           locations.missing.join(", ")
         }.`,
       );
     }
-    compiled.location_ids = cities.length ? locations.ids : intent.countries;
-    if (intent.radiusKm != null && campaignKind === "native_app") {
+    compiled.location_ids = googlePlaces.length
+      ? locations.ids
+      : intent.countries;
+    if (googlePlaces.length) {
+      // #4238: Google's own level for each place (City / Region).
+      compiled.location_kinds = googlePlaces.map((city) =>
+        placeKind(city) === "region" ? "Region" : "City"
+      );
+    }
+    if (anyRadius && campaignKind === "native_app") {
       wideningSummary.push(
         "Google App campaigns preserve the selected location but not the free-form radius as a hard proximity filter.",
       );
-    } else if (intent.radiusKm != null) {
+    } else if (anyRadius) {
       wideningSummary.push(
         "Google Search preserves the selected city but the current create path does not apply the free-form radius as a hard proximity filter.",
       );
@@ -544,7 +784,7 @@ export function compileProviderTargeting(
         "Reddit cannot preserve city targeting; the selected countries are broader.",
       );
     }
-    if (intent.radiusKm != null) {
+    if (anyRadius) {
       wideningSummary.push(
         "Reddit cannot preserve radius targeting; the selected countries are broader.",
       );
@@ -558,6 +798,12 @@ export function compileProviderTargeting(
     if (interests.length) {
       compiled.interests = interests.map((item) => item.name);
     }
+    if (excludedPlaces.length) {
+      wideningSummary.push(
+        "Reddit can't leave out places, so it may show your ad there too.",
+      );
+    }
+    if (languages.length) compiled.languages = languages;
     // #4238: Reddit customer-list audiences.
     if (includeAudienceIds.length) {
       compiled.custom_audience_ids = includeAudienceIds;
@@ -622,6 +868,16 @@ export function providerExecutionTargeting(
     return {
       countries,
       ...(Array.isArray(geo.cities) ? { cities: geo.cities } : {}),
+      // #4238: regions, pins, left-out places and languages (only when set,
+      // so earlier frozen plans execute byte-identically).
+      ...(Array.isArray(geo.regions) ? { regions: geo.regions } : {}),
+      ...(Array.isArray(geo.custom_locations)
+        ? { custom_locations: geo.custom_locations }
+        : {}),
+      ...(asRecord(compiled.excluded_geo_locations)
+        ? { excluded_geo_locations: compiled.excluded_geo_locations }
+        : {}),
+      ...(Array.isArray(compiled.locales) ? { locales: compiled.locales } : {}),
       ...(typeof compiled.age_min === "number"
         ? { age_min: compiled.age_min }
         : {}),
@@ -664,6 +920,9 @@ export function providerExecutionTargeting(
       ...(Array.isArray(compiled.excluded_audience_ids)
         ? { excluded_audience_ids: compiled.excluded_audience_ids }
         : {}),
+      ...(Array.isArray(compiled.languages)
+        ? { languages: compiled.languages }
+        : {}),
     };
   }
 
@@ -686,6 +945,9 @@ export function providerExecutionTargeting(
       ...(Array.isArray(compiled.geo_circles)
         ? { resolved_circles: compiled.geo_circles }
         : {}),
+      ...(Array.isArray(compiled.exclude_circles)
+        ? { excluded_circles: compiled.exclude_circles }
+        : {}),
       ...(Array.isArray(compiled.interest_category_ids)
         ? { interests: compiled.interest_category_ids }
         : {}),
@@ -702,13 +964,20 @@ export function providerExecutionTargeting(
     const ids = Array.isArray(compiled.location_ids)
       ? compiled.location_ids.map(String)
       : [];
-    const resolvedLocations = cities.map((city, index) => ({
-      criterion_id: ids[index],
-      name: String(city.name ?? ""),
-      canonical_name: String(city.name ?? ""),
-      country_code: String(city.countryCode ?? "").toUpperCase(),
-      target_type: "City",
-    })).filter((city) => city.criterion_id && city.name && city.country_code);
+    // #4238: pins have no Google id, so ids line up with the other places.
+    const kinds = Array.isArray(compiled.location_kinds)
+      ? compiled.location_kinds.map(String)
+      : [];
+    const resolvedLocations = cities.filter((city) => city.kind !== "pin")
+      .map((city, index) => ({
+        criterion_id: ids[index],
+        name: String(city.name ?? ""),
+        canonical_name: String(city.name ?? ""),
+        country_code: String(city.countryCode ?? "").toUpperCase(),
+        target_type: kinds[index] ?? "City",
+      })).filter((city) =>
+        city.criterion_id && city.name && city.country_code
+      );
     return {
       countries,
       ...(resolvedLocations.length > 0
@@ -737,8 +1006,25 @@ export function providerExecutionTargeting(
   return {
     countries,
     ...(gender ? { genders: gender } : {}),
-    ...(Array.isArray(compiled.interests) && compiled.interests.length > 0
-      ? { passthrough: { reddit: { interests: compiled.interests } } }
+    ...((Array.isArray(compiled.interests) && compiled.interests.length > 0) ||
+        Array.isArray(compiled.languages)
+      ? {
+        passthrough: {
+          reddit: {
+            ...(Array.isArray(compiled.interests) &&
+                compiled.interests.length > 0
+              ? { interests: compiled.interests }
+              : {}),
+            ...(Array.isArray(compiled.languages)
+              ? {
+                languages: compiled.languages.map((code) =>
+                  String(code).toUpperCase()
+                ),
+              }
+              : {}),
+          },
+        },
+      }
       : {}),
     ...(Array.isArray(compiled.custom_audience_ids)
       ? { custom_audience_ids: compiled.custom_audience_ids }

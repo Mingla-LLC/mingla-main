@@ -47,6 +47,8 @@ const ROOT = path.resolve(__dirname, "../../../../..");
 const read = (relative: string): string =>
   fs.readFileSync(path.join(ROOT, relative), "utf8");
 const createRoute = read("src/screens/hostAds/HostAdCreateScreen.tsx");
+// #4238 media-buyer: place rows and search results moved to the places editor.
+const placesEditor = read("src/components/marketing/ads/HostAdPlacesEditor.tsx");
 
 const available = [
   { id: "meta-1", platform: "meta" },
@@ -249,8 +251,8 @@ describe("#4238 retest 2: last plain-language fixes", () => {
   });
 
   it("city chips show the full country name", () => {
-    expect(createRoute).toContain("{city.name}, {countryName(city.countryCode)}");
-    expect(createRoute).not.toContain("{city.name}, {city.countryCode}");
+    expect(placesEditor).toContain("{place.name}, {countryName(place.countryCode)}");
+    expect(placesEditor).not.toContain("{place.name}, {place.countryCode}");
   });
 
   it("platform checkboxes expose aria-checked", () => {
@@ -343,7 +345,7 @@ describe("#4238 retest 3: Ari card money and result labels, city rows, ready sta
   it("city search rows spell out the country", () => {
     expect(hostAdPlaceName("Lagos, Lagos State, NG")).toBe("Lagos, Lagos State, Nigeria");
     expect(hostAdPlaceName("Accra")).toBe("Accra");
-    expect(createRoute).toContain("{hostAdPlaceName(result.name)}");
+    expect(placesEditor).toContain("{hostAdPlaceName(result.name)}");
   });
 
   it("an approved ad waiting for LAUNCH reads Ready to start, not Draft", () => {

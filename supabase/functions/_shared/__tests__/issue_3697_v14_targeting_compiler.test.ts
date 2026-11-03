@@ -17,7 +17,8 @@ const exactIntent = {
     latitude: 6.5244,
     longitude: 3.3792,
   }],
-  radiusKm: 15,
+  // #4238: Meta needs at least 17 km around a city (was 15 before the floor).
+  radiusKm: 17,
   ageMin: 25,
   ageMax: 34,
   gender: "women" as const,
@@ -65,7 +66,7 @@ Deno.test("v1.4 targeting compiler freezes an explicit result for all five provi
       country_code: "NG",
       latitude: 6.5244,
       longitude: 3.3792,
-      radius: 15,
+      radius: 17,
       unit: "kilometer",
     }],
   );

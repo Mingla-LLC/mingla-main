@@ -193,7 +193,7 @@ describe("#4238 T12 HostAdAudiencePicker", () => {
     const service = fs.readFileSync(path.join(__dirname, "../../../../services/hostAdPlanService.ts"), "utf8");
     expect(service).toContain("audience_selection: {");
     expect(service).toMatch(/includeAudienceIds\?: never;/);
-    expect(service).toMatch(/const refs: HostTargetingRefs = \{/);
+    expect(service).toMatch(/const refs: HostTargetingRefs = hostAdRefsForApp\(/);
     const create = fs.readFileSync(path.join(__dirname, "../../../../../src/screens/hostAds/HostAdCreateScreen.tsx"), "utf8");
     expect(create).toContain("audience_keys: audienceKeys");
     expect(create).toContain("<HostAdAudiencePicker");

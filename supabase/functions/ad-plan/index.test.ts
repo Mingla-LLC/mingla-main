@@ -15,7 +15,8 @@ Deno.test("ad-plan derives both Host and Admin currency on the server", () => {
 });
 
 Deno.test("ad-plan freezes provider targeting and never creates provider objects", () => {
-  assertStringIncludes(source, "compileTargetingPlan");
+  // #4238: compiled per app (each app keeps only the countries it runs in).
+  assertStringIncludes(source, "compileProviderTargeting(");
   assertStringIncludes(source, 'action === "freeze_targeting"');
   assertStringIncludes(source, 'from("ad_plan_targeting_snapshots")');
   assert(!source.includes("getAdapter("));

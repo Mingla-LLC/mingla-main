@@ -15,9 +15,14 @@ import { isPlatform } from "../_shared/adChannel.ts";
 import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import {
   type AdAudienceIntent,
-  compileTargetingPlan,
+  compileProviderTargeting,
   type ProviderTargetingRefs,
 } from "../_shared/adTargetingCompiler.ts";
+import {
+  appUnavailableInEveryCountry,
+  type CountryAvailabilityRow,
+  countriesAppCannotRunIn,
+} from "../_shared/adHostPlanRules.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import { buildAdMeasurementManifest } from "../_shared/adMeasurement.ts";
 import {
@@ -169,7 +174,49 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
   const country = typeof city.countryCode === "string"
     ? city.countryCode.trim().toUpperCase()
     : "";
-  return name && /^[A-Z]{2}$/.test(country) ? `${country}:${name}` : null;
+  if (!name || !/^[A-Z]{2}$/.test(country)) return null;
+  // #4238: the same key adTargetingCompiler uses (regions are prefixed).
+  return city.kind === "region" || city.kind === "pin"
+    ? `${city.kind}:${country}:${name}`
+    : `${country}:${name}`;
+}
+
+/** #4238: staff-marked app/country pairs (missing = works). */
+async function loadCountryAvailability(
+  db: Db,
+): Promise<{ rows: CountryAvailabilityRow[]; error: unknown }> {
+  const { data, error } = await db.from("ad_platform_country_availability")
+    .select("platform,country_code,status,reason");
+  return { rows: (data ?? []) as CountryAvailabilityRow[], error };
+}
+
+/**
+ * #4238: one app's audience without the countries it can't run in (and their
+ * places). The other apps keep the Host's full audience.
+ */
+export function intentForPlatform(
+  intent: AdAudienceIntent,
+  platform: string,
+  rows: readonly CountryAvailabilityRow[],
+): AdAudienceIntent {
+  const blocked = new Set(
+    countriesAppCannotRunIn(platform, intent.countries ?? [], rows),
+  );
+  if (blocked.size === 0) return intent;
+  const keep = (city: { countryCode?: string }) =>
+    !blocked.has(String(city.countryCode ?? "").trim().toUpperCase());
+  return {
+    ...intent,
+    countries: (intent.countries ?? []).filter((code) =>
+      !blocked.has(code.trim().toUpperCase())
+    ),
+    ...(Array.isArray(intent.cities)
+      ? { cities: intent.cities.filter(keep) }
+      : {}),
+    ...(Array.isArray(intent.excludedPlaces)
+      ? { excludedPlaces: intent.excludedPlaces.filter(keep) }
+      : {}),
+  };
 }
 
 /**
@@ -248,16 +295,29 @@ async function withServerTargetingCoordinates(
   refs: Partial<Record<Platform, ProviderTargetingRefs>>,
   platforms: Platform[],
 ): Promise<Partial<Record<Platform, ProviderTargetingRefs>>> {
-  if (!platforms.includes("snapchat") || !Array.isArray(intent.cities)) {
+  const places = [
+    ...(Array.isArray(intent.cities) ? intent.cities : []),
+    ...(Array.isArray(intent.excludedPlaces) ? intent.excludedPlaces : []),
+  ];
+  const pinPlatforms = platforms.filter((platform) =>
+    platform === "snapchat" || platform === "meta"
+  );
+  const hasPin = places.some((raw) => asRecord(raw)?.kind === "pin");
+  if (
+    places.length === 0 ||
+    (!platforms.includes("snapchat") && !(hasPin && pinPlatforms.length > 0))
+  ) {
     return refs;
   }
   const coordinates: Record<
     string,
     { latitude: number; longitude: number } | null
   > = {};
-  await Promise.all(intent.cities.map(async (rawCity) => {
+  await Promise.all(places.map(async (rawCity) => {
     const city = asRecord(rawCity);
     if (!city) return;
+    // #4238: Meta needs a point only for pins; Snapchat for every place.
+    if (!platforms.includes("snapchat") && city.kind !== "pin") return;
     const key = targetingCityKey(city);
     if (!key) return;
     const resolved = await forwardGeocodeText(
@@ -270,13 +330,14 @@ async function withServerTargetingCoordinates(
       }
       : null;
   }));
-  return {
-    ...refs,
-    snapchat: {
-      ...(refs.snapchat ?? {}),
+  const out = { ...refs };
+  for (const platform of pinPlatforms) {
+    out[platform] = {
+      ...(refs[platform] ?? {}),
       locationCoordinates: coordinates,
-    },
-  };
+    };
+  }
+  return out;
 }
 
 function positiveMinor(value: unknown): number | null {
@@ -1163,7 +1224,7 @@ export async function handleAdPlan(
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const [pages, connections, creatives, authority, plans, brand] =
+    const [pages, connections, creatives, authority, plans, brand, availability] =
       await Promise.all(
         [
           collectAdvertisablePages((page) =>
@@ -1196,10 +1257,16 @@ export async function handleAdPlan(
             .order("updated_at", { ascending: false }).limit(50),
           db.from("brands").select("country_code").eq("id", brandId)
             .maybeSingle(),
+          loadCountryAvailability(db),
         ] as const,
       );
     const firstError = pages.error ?? connections.error ?? creatives.error ??
       plans.error ?? brand.error;
+    // #4238: "works here" is advisory on setup; a read failure leaves every
+    // app working (the server re-checks at create_version).
+    if (availability.error) {
+      console.error("[ad-plan] host_setup availability unavailable");
+    }
     if (firstError) return databaseFailure(firstError);
     if (!authority.ok) {
       return json({
@@ -1246,6 +1313,19 @@ export async function handleAdPlan(
       brand_country_code: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null,
       pages: pages.data,
       connections: hostConnections,
+      // #4238: apps marked not available in a country, with the reason.
+      availability: availability.rows.filter((row) =>
+        row.status === "not_available"
+      ),
+      // #4238: whether each app gives a reach number (staff switch).
+      reach_enabled: Object.fromEntries(
+        connectionRows.map((row) => [
+          row.platform,
+          row.platform !== "google" &&
+          (row.extra as Record<string, unknown> | null | undefined)
+              ?.audience_estimate_certified === true,
+        ]),
+      ),
       // #3040 AD-04 — each video's fit on the brand's connected platforms,
       // judged by the same channel matrix as every ads gate.
       creatives: withHostCreativeFit(
@@ -2142,6 +2222,29 @@ export async function handleAdPlan(
         }, 422);
       }
       canonical.optimization_by_platform = optimization.map;
+      // #4238 P0: an app that runs in none of the chosen countries is refused
+      // before any money is set aside (the builder greys it out first).
+      const intent = asRecord(canonicalInput.audience_intent);
+      const countries = Array.isArray(intent?.countries)
+        ? intent!.countries.map((value) => String(value))
+        : [];
+      const availability = await loadCountryAvailability(db);
+      if (availability.error) {
+        return databaseFailure(
+          availability.error as { message?: string; code?: string },
+        );
+      }
+      const unavailable = appUnavailableInEveryCountry(
+        platforms,
+        countries,
+        availability.rows,
+      );
+      if (unavailable) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `app_not_available_in_country:${unavailable}`,
+        }, 422);
+      }
     }
     const paidSocialPlatforms = platforms.filter((platform) =>
       platform === "meta" || platform === "snapchat" || platform === "tiktok"
@@ -2271,15 +2374,27 @@ export async function handleAdPlan(
         };
       }
     }
-    const compiled = compileTargetingPlan({
-      platforms,
-      intent,
-      refsByPlatform: resolvedRefs,
-      campaignKind: plan.destination_family === "explorer_app" ||
-          plan.destination_family === "host_app"
-        ? "native_app"
-        : "web",
-    });
+    // #4238: each app compiles only the countries it runs in.
+    const availability = plan.owner_kind === "host"
+      ? await loadCountryAvailability(db)
+      : { rows: [], error: null };
+    if (availability.error) {
+      return databaseFailure(
+        availability.error as { message?: string; code?: string },
+      );
+    }
+    const campaignKind = plan.destination_family === "explorer_app" ||
+        plan.destination_family === "host_app"
+      ? "native_app"
+      : "web";
+    const compiled = [...new Set(platforms)].map((platform) =>
+      compileProviderTargeting(
+        platform,
+        intentForPlatform(intent, platform, availability.rows),
+        resolvedRefs[platform] ?? {},
+        campaignKind,
+      )
+    );
     // A selected audience that is not ready on a platform blocks that
     // platform with a plain reason, through the existing blocked-state path.
     for (const row of compiled) {

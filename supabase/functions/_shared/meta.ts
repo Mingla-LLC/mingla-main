@@ -438,11 +438,85 @@ export function normalizeMetaCities(
 export function buildMetaGeoLocations(
   countries: unknown,
   cities: readonly { key: string; radius: number; distance_unit: string }[],
+  extra: { regions?: unknown; custom_locations?: unknown } = {},
 ): Record<string, unknown> {
-  if (Array.isArray(cities) && cities.length > 0) {
-    return { cities: [...cities] };
+  // #4238: regions and dropped pins are sub-country places too, so they also
+  // replace the country (Meta unions every geo_locations list).
+  const regions = normalizeMetaRegions(extra.regions);
+  const pins = normalizeMetaCustomLocations(extra.custom_locations);
+  if (
+    (Array.isArray(cities) && cities.length > 0) || regions.length > 0 ||
+    pins.length > 0
+  ) {
+    return {
+      ...(cities.length > 0 ? { cities: [...cities] } : {}),
+      ...(regions.length > 0 ? { regions } : {}),
+      ...(pins.length > 0 ? { custom_locations: pins } : {}),
+    };
   }
   return { countries };
+}
+
+/** #4238: geo_locations.regions [{key}] — numeric-ish keys only, never invented. */
+export function normalizeMetaRegions(value: unknown): { key: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    const key = raw && typeof raw === "object"
+      ? String((raw as Record<string, unknown>).key ?? "").trim()
+      : "";
+    return key ? [{ key }] : [];
+  });
+}
+
+/**
+ * #4238: geo_locations.custom_locations — a point with a distance in km
+ * (Meta allows 1-80 km around a point). Out-of-range or broken points are
+ * dropped, never moved; the compiler already refused them in plain words.
+ */
+export function normalizeMetaCustomLocations(
+  value: unknown,
+): {
+  latitude: number;
+  longitude: number;
+  radius: number;
+  distance_unit: "kilometer";
+}[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    const row = raw && typeof raw === "object"
+      ? raw as Record<string, unknown>
+      : {};
+    const latitude = Number(row.latitude);
+    const longitude = Number(row.longitude);
+    const radius = Number(row.radius);
+    if (
+      !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+      !Number.isFinite(radius) || radius < 1 || radius > 80
+    ) return [];
+    return [{ latitude, longitude, radius, distance_unit: "kilometer" as const }];
+  });
+}
+
+/** #4238: excluded_geo_locations {cities:[{key}], regions:[{key}]} or null. */
+export function normalizeMetaExcludedGeo(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const cities = normalizeMetaRegions(row.cities);
+  const regions = normalizeMetaRegions(row.regions);
+  if (cities.length === 0 && regions.length === 0) return null;
+  return {
+    ...(cities.length ? { cities } : {}),
+    ...(regions.length ? { regions } : {}),
+  };
+}
+
+/** #4238: Meta locale keys (integers from the adlocale search). */
+export function normalizeMetaLocales(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0);
 }
 
 /**
