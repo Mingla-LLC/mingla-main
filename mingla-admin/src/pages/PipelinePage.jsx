@@ -556,51 +556,6 @@ function PipelinePage({ pipeline, onTabChange }) {
     </Button>
   );
 
-  const firstPanel = ready && state.card === NEW_CARD && !holding ? (
-            <Drawer open onClose={closeCard} title={`New ${singular}`}>
-              {/* Room at the end of the form, so a message shown over it on a
-                  phone never hides its last fields (components/ui/Toast.jsx). */}
-              <div style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
-                <AddRecordForm
-                  pipeline={pipeline}
-                  def={def}
-                  config={config}
-                  records={pipe.records}
-                  defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
-                  disabled={!online}
-                  canAddRegion={!!config?.me?.can_add_region}
-                  onRefreshRegions={cfg.retry}
-                  onCreate={handleCreate}
-                  onOpenExisting={(id) => openCard(id, { replace: true })}
-                  onCancel={closeCard}
-                />
-              </div>
-            </Drawer>
-          ) : ready && openId ? (
-            <RecordDrawer
-              key={openId}
-              pipeline={pipeline}
-              def={def}
-              config={config}
-              recordId={openId}
-              listRecord={openRecordInList}
-              pipe={drawerPipe}
-              online={online}
-              canDelete={canDelete}
-              focusField={focus?.id === openId ? focus.field : null}
-              activityTick={activityTick}
-              suspended={!!reasonFor}
-              holding={holding}
-              guardRef={guardRef}
-              onDirtyChange={handleDirtyChange}
-              onClose={closeCard}
-              onRequestMove={requestMove}
-              onDelete={handleDelete}
-              onOpenCard={(id) => openCard(id, { replace: true })}
-              onRefreshRegions={cfg.retry}
-            />
-  ) : null;
-
   const resetButton = isAdmin && staleOnScreen.length > 0 ? (
     <Button variant="secondary" size="sm" icon={CalendarClock} className="min-h-11" disabled={!ready || !online} onClick={() => { setResetError(""); setResetOpen(true); }}>
       Reset {staleOnScreen.length.toLocaleString()} due {staleOnScreen.length === 1 ? "date" : "dates"}
@@ -710,15 +665,60 @@ function PipelinePage({ pipeline, onTabChange }) {
           the card panel or the add form in "card", and the Lost/Passed
           question in "dialog", which is always above an open card. */}
       <PipelineOverlays
-        card={(firstPanel || stack.side) ? (
+        card={
           <PanelLinksContext.Provider value={stack.links}>
             <PanelStack
               stack={stack}
-              first={firstPanel}
+              first={
+                ready && state.card === NEW_CARD && !holding ? (
+                  <Drawer open onClose={closeCard} title={`New ${singular}`}>
+                    {/* Room at the end of the form, so a message shown over it on a
+                        phone never hides its last fields (components/ui/Toast.jsx). */}
+                    <div style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
+                      <AddRecordForm
+                        pipeline={pipeline}
+                        def={def}
+                        config={config}
+                        records={pipe.records}
+                        defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
+                        disabled={!online}
+                        canAddRegion={!!config?.me?.can_add_region}
+                        onRefreshRegions={cfg.retry}
+                        onCreate={handleCreate}
+                        onOpenExisting={(id) => openCard(id, { replace: true })}
+                        onCancel={closeCard}
+                      />
+                    </div>
+                  </Drawer>
+                ) : ready && openId ? (
+                  <RecordDrawer
+                    key={openId}
+                    pipeline={pipeline}
+                    def={def}
+                    config={config}
+                    recordId={openId}
+                    listRecord={openRecordInList}
+                    pipe={drawerPipe}
+                    online={online}
+                    canDelete={canDelete}
+                    focusField={focus?.id === openId ? focus.field : null}
+                    activityTick={activityTick}
+                    suspended={!!reasonFor}
+                    holding={holding}
+                    guardRef={guardRef}
+                    onDirtyChange={handleDirtyChange}
+                    onClose={closeCard}
+                    onRequestMove={requestMove}
+                    onDelete={handleDelete}
+                    onOpenCard={(id) => openCard(id, { replace: true })}
+                    onRefreshRegions={cfg.retry}
+                  />
+                ) : null
+              }
               second={stack.side ? <SidePanel side={stack.side} onClose={stack.closeSide} onChanged={() => pipe.refetch({ quiet: true })} /> : null}
             />
           </PanelLinksContext.Provider>
-        ) : null}
+        }
         dialog={
           reasonFor ? (
             <ReasonPrompt

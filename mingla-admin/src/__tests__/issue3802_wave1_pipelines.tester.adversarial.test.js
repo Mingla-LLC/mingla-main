@@ -30,11 +30,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   MOVE_BLOCK_COPY,
-  byRegionTable,
   errorCopy,
   errorWords,
   findDuplicates,
-  groupByStage,
   moveBlocker,
   nameKey,
   nextStage,
@@ -43,6 +41,7 @@ import {
   stageNeedsSignedAgreement,
 } from "../lib/crmModel.js";
 import { NEW_CARD, buildCrmSearch, parseCrmSearch } from "../lib/crmUrl.js";
+import { boardColumns } from "../lib/outreachView.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -224,13 +223,14 @@ describe("#3802 A-3: built-in property names are just unknown values", () => {
   it("never select a colour, a column or a count", () => {
     for (const name of BUILT_INS) {
       assert.equal(stageBadgeVariant(name), "default");
-      const groups = groupByStage(HOSTS, [{ id: "1", stage: name }, { id: "2", stage: "prospect" }]);
-      assert.deepEqual(Object.keys(groups), HOSTS.stages.map((s) => s.id));
-      assert.equal(groups.prospect.length, 1);
-      const table = byRegionTable(HOSTS, [{ id: "1", stage: name, region_id: null }], []);
-      assert.equal(table.length, 1);
-      for (const id of Object.keys(table[0].counts)) assert.equal(table[0].counts[id], 0, `${name} was counted under ${id}`);
-      assert.equal(table[0].total, 1);
+      // #4255: the board's columns (By region is gone, D8). A built-in name is
+      // never a stage: the card goes to Other, every stage column stays, and
+      // no stage counts it.
+      const columns = boardColumns(HOSTS, [{ id: "1", stage: name }, { id: "2", stage: "prospect" }], "2026-10-12", { warn: () => {} });
+      assert.deepEqual(columns.map((c) => c.id), ["stale", ...HOSTS.stages.map((s) => s.id), "other"]);
+      assert.equal(columns.find((c) => c.id === "prospect").cards.length, 1);
+      assert.deepEqual(columns.find((c) => c.id === "other").cards.map((c) => c.id), ["1"], `${name} was counted under a stage`);
+      assert.equal(columns.reduce((n, c) => n + c.cards.length, 0), 2);
       assert.equal(nextStage(HOSTS, { stage: name }), null);
       assert.notEqual(moveBlocker(HOSTS, { stage: "prospect" }, name), null);
     }
@@ -330,7 +330,7 @@ describe("#3802 A-5: addresses under seeded random hostile input", () => {
       assert.doesNotThrow(() => {
         state = parseCrmSearch(search);
       }, search);
-      assert.ok(["board", "list", "region"].includes(state.view), search);
+      assert.equal(Object.hasOwn(state, "view"), false, "#4255: the board is the only view");
       assert.equal(typeof state.mine, "boolean");
       assert.ok(state.q.length <= 80, search);
       assert.match(state.icp, /^$|^[a-z][a-z0-9_]{0,39}$/, search);
@@ -368,7 +368,7 @@ describe("#3802 A-5: addresses under seeded random hostile input", () => {
     assert.equal(parseCrmSearch("card=new%20").card, "");
     assert.equal(parseCrmSearch("mine=true").mine, false);
     assert.equal(parseCrmSearch("mine=1&mine=0").mine, true);
-    assert.equal(parseCrmSearch("view=list&view=board").view, "list");
+    assert.equal(buildCrmSearch(parseCrmSearch("view=list&view=board")), "", "#4255: an old view value is ignored");
   });
 });
 
@@ -504,8 +504,10 @@ describe("#3802 A-8: what the new screens keep and leave behind", () => {
   it("dragging is wired only where there is a pointer and the board is usable", () => {
     const board = read("components/crm/PipelineBoard.jsx");
     const card = read("components/crm/RecordCard.jsx");
-    assert.match(board, /onDragOver=\{\s*canDrag && !disabled/);
-    assert.match(board, /onDrop=\{canDrag && !disabled \? /);
+    // #4255: a column is a drop target only when it is a stage (Stale is not).
+    assert.match(board, /const droppable = !!stageId && canDrag && !disabled;/);
+    assert.match(board, /onDragOver=\{\s*droppable/);
+    assert.match(board, /onDrop=\{droppable \? /);
     assert.match(board, /if \(record && record\.stage !== stageId\) onMove\(record, stageId\);/);
     assert.match(card, /const draggable = canDrag && !disabled && !pending;/);
     assert.match(PAGE, /matchMedia\?\.\("\(hover: hover\) and \(pointer: fine\)"\)/);
@@ -844,7 +846,7 @@ describe("#3802 B-6: what the retest attacked at runtime, pinned", () => {
   });
 
   it("a column that refuses the card is never a drop target, and the board stops scrolling when the drag ends", () => {
-    const over = BOARD_NOW.slice(BOARD_NOW.indexOf("if (refusal(stage.id)) {"), BOARD_NOW.indexOf('e.dataTransfer.dropEffect = "move";'));
+    const over = BOARD_NOW.slice(BOARD_NOW.indexOf("if (refusal(stageId)) {"), BOARD_NOW.indexOf('e.dataTransfer.dropEffect = "move";'));
     assert.match(over, /e\.dataTransfer\.dropEffect = "none";\s*return;/);
     assert.ok(over.indexOf("return;") < over.indexOf("e.preventDefault();"));
     assert.match(BOARD_NOW, /const endDrag = \(\) => \{\s*stopScrolling\(\);/);

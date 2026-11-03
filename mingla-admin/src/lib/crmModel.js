@@ -228,26 +228,6 @@ export function hasActiveFilters({ q, icp, region, mine, owner, due } = {}) {
   return !!(String(q || "").trim() || icp || region || mine || owner || due);
 }
 
-/** { stageId: [records] } with every stage of the pipeline present. */
-export function groupByStage(def, records) {
-  const out = {};
-  for (const s of def?.stages || []) out[s.id] = [];
-  for (const r of Array.isArray(records) ? records : []) {
-    if (Object.hasOwn(out, r.stage)) out[r.stage].push(r);
-  }
-  return out;
-}
-
-/** List order: overdue first, then by date, no date last, then by name. */
-export function sortForList(records) {
-  return [...(Array.isArray(records) ? records : [])].sort((a, b) => {
-    const da = a.due_on || "9999-99-99";
-    const db = b.due_on || "9999-99-99";
-    if (da !== db) return da < db ? -1 : 1;
-    return String(a.name || "").localeCompare(String(b.name || ""));
-  });
-}
-
 /**
  * Records that look like the name being typed. Same rule as the server's
  * crm_duplicate_check: exact = same key; similar = both keys have 3 or more

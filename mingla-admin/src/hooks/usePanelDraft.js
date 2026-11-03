@@ -9,6 +9,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { clearPanelDraft, getPanelDraft, panelDraftsVersion, setPanelDraft, subscribePanelDrafts } from "../lib/panelDrafts";
 
+/** The saved value again (an empty list counts as the empty saved list). */
+function sameAsSaved(value, fallback) {
+  if (value === fallback) return true;
+  return Array.isArray(value) && Array.isArray(fallback) && JSON.stringify(value) === JSON.stringify(fallback);
+}
+
 export function usePanelDraft(key, fallback = "") {
   useSyncExternalStore(subscribePanelDrafts, panelDraftsVersion, panelDraftsVersion);
   const kept = key ? getPanelDraft(key) : undefined;
@@ -16,7 +22,7 @@ export function usePanelDraft(key, fallback = "") {
     (next) => {
       if (!key) return;
       const value = typeof next === "function" ? next(getPanelDraft(key) ?? fallback) : next;
-      if (value === fallback) clearPanelDraft(key);
+      if (sameAsSaved(value, fallback)) clearPanelDraft(key);
       else setPanelDraft(key, value);
     },
     [key, fallback]

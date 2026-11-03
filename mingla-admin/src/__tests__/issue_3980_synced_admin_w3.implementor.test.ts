@@ -28,10 +28,10 @@ import {
   mentionTokenFor,
   mentionedEmails,
   parseReviewSearch,
-  parseWorkTab,
   stateLine,
   stateName,
 } from "../lib/opsModel.js";
+import { parseWorkView } from "../lib/workViews.js";
 import {
   LAST_OWNER_WORDS,
   addPerson,
@@ -81,9 +81,11 @@ Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar toge
   const page = read("pages/AgentLogPage.jsx");
   assertMatch(page, /export const AGENT_LOG_REDIRECT = "#\/work-board\?tab=activity";/);
   assertMatch(page, /window\.location\.replace\(/);
-  assertEquals(parseWorkTab("tab=activity").tab, "activity");
-  assertEquals(parseWorkTab("tab=attention&att=stuck"), { tab: "attention", att: "stuck" });
-  assertEquals(parseWorkTab("tab=nope&att=nope"), { tab: "board", att: null });
+  // #4255 (D9): Activity sits at the foot of Today and Needs attention is a
+  // Show choice, so the old tab addresses still open the right place.
+  assertEquals(parseWorkView("tab=activity").view, "today");
+  assertEquals(parseWorkView("tab=attention&att=stuck").show, "attention");
+  assertEquals(parseWorkView("tab=nope&att=nope").view, "board");
   assertEquals(parseReviewSearch("tab=told").tab, "told");
 });
 
@@ -234,11 +236,13 @@ Deno.test("#3980 W3 R7: Work's columns, its card badges, and the tabs never stac
   assertEquals(cardReasons(cards[2], now), ["No update for 11d"]);
   const page = code("pages/WorkBoardPage.jsx");
   assertMatch(page, /title="Work"/);
-  // #4130: Needs you is retired into Work, so the description says where waiting cards went.
-  assertMatch(page, /description="Every piece of team work is a card\. Cards that wait on a person sit in the first column, with their drafts and approvals inside\."/);
-  // One of the three, never two at once (#4130: the board itself has four views).
-  assertMatch(page, /\{tab\.tab === "attention" \? \(\s*<NeedsAttention [\s\S]*?\) : tab\.tab === "activity" \? \(\s*<AgentActivity \/>\s*\) : view\.view === "today" \? \(/);
-  assertEquals((page.match(/<NeedsAttention /g) || []).length, 1);
+  // #4255: one filter for every tab, and linked items open beside the card.
+  assertMatch(page, /description="Every piece of team work is a card\. Filter once and every tab follows; open a card and anything linked to it opens beside it\."/);
+  // One tab at a time: the board, or the shared period layout (D9: Needs
+  // attention is a Show choice and Activity sits at the foot of Today).
+  assertMatch(page, /\{onBoard \? \(/);
+  assertMatch(page, /<PeriodView win=\{win\} read=\{period\} cards=\{periodCards\}/);
+  assertEquals((page.match(/<NeedsAttention |<AgentActivity /g) || []).length, 0);
   assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
   const columns = code("components/ops/WorkColumns.jsx");
   assertMatch(columns, /gridAutoFlow: "column", gridAutoColumns: "minmax\(220px, 1fr\)"/);
@@ -253,12 +257,10 @@ Deno.test("#3980 W3 R7: Needs attention counts exactly what it lists, and fixes 
   assertEquals(attentionCounts(data), { noowner: 2, overdue: 1, missing: 0, stuck: 0, nonext: 1, engineering: 0 });
   assertEquals(attentionCounts(null), { noowner: 0, overdue: 0, missing: 0, stuck: 0, nonext: 0, engineering: 0 });
   assertEquals(attentionPrompt("No owner"), "Fix every item under Needs attention in Mingla Work: No owner. Ask me before assigning owners.");
-  const panel = code("components/ops/NeedsAttention.jsx");
-  assertMatch(panel, /attentionCounts\(data\)/);
-  assertMatch(panel, />Assign to me</);
-  assertMatch(panel, />Fill in</);
-  assertMatch(panel, /Ask my agent to fix these/);
-  assertMatch(panel, /On the live board today:/);
+  // #4255 (D9): the Needs attention tab is a Show choice on Work now, and its
+  // panel is gone; "Assign to me" stays on the card itself.
+  assertMatch(code("lib/workViews.js"), /\{ value: "attention", label: "Needs attention" \}/);
+  assertMatch(code("components/ops/WorkDetail.jsx"), />Assign to me</);
 });
 
 Deno.test("#3980 W3 R1: the host board's next-event filters and reason badges", () => {
@@ -273,13 +275,14 @@ Deno.test("#3980 W3 R1: the host board's next-event filters and reason badges", 
   assertEquals(hostMissing({ icp: "", region_id: null, contact: "", identifiers: [] }), ["type", "region", "contact"]);
   assertEquals(hostMissing({ icp: "event_organizer", region_id: "r", contact: "", identifiers: [{ kind: "email" }] }), []);
   assertEquals(hostReasons({ owners: [], stage: "contacted" }, ["region"]), ["No owner", "Missing region"]);
-  // The filters live in the address.
-  assertEquals(parseCrmSearch("filter=nonext").filter, "nonext");
-  assertEquals(parseCrmSearch("filter=other").filter, "");
-  assertEquals(buildCrmSearch({ filter: "soon" }), "filter=soon");
+  // The filters live in the address. #4255: they are Due choices now; an old
+  // filter= link still opens them.
+  assertEquals(parseCrmSearch("filter=nonext").due, "nonext");
+  assertEquals(parseCrmSearch("filter=other").due, "");
+  assertEquals(buildCrmSearch({ due: "soon" }), "due=soon");
   assertEquals(buildCrmSearch({ card: "11111111-1111-4111-8111-111111111111", fill: true }), "card=11111111-1111-4111-8111-111111111111&fill=1");
   const page = code("pages/PipelinePage.jsx");
-  assertMatch(page, /aria-pressed=\{state\.filter === f\.value\}/);
+  assertMatch(page, /hostPassesFilter\(hostNext\.byId\[r\.id\], hostDue\)/);
   assertMatch(page, /<HostNextContext\.Provider value=\{isHostBoard \? hostNext\.byId : null\}>/);
   assertMatch(code("components/crm/RecordCard.jsx"), /<NextEventLine record=\{record\} \/>/);
 });
@@ -295,14 +298,14 @@ Deno.test("#3980 W3 R6: the Calendar opens on the month with today marked, dots 
   assertMatch(page, /min-h-16/);
   assertMatch(page, /\{undated === 1 \? "post" : "posts"\} with no date/);
   assertMatch(page, /\{ value: "calendar", label: "Month" \}/);
-  assertMatch(page, /\{ value: "board", label: "Posts board" \}/);
+  assertMatch(page, /\{ value: "board", label: "Board" \}/);
   assertNotMatch(page, /Plan this launch|SectionCard title="Unscheduled"/);
   assertNotMatch(code("components/ops/EventPanel.jsx"), /Plan this launch|<LaunchPlanner/);
 });
 
 Deno.test("#3980 W3: the new screens use tokens only", () => {
   for (const file of [
-    "components/people/PeopleField.jsx", "components/people/MentionBox.jsx", "components/ops/WorkColumns.jsx", "components/ops/NeedsAttention.jsx",
+    "components/people/PeopleField.jsx", "components/people/MentionBox.jsx", "components/ops/WorkColumns.jsx", "components/ui/PanelStack.jsx",
     "components/ops/AgentActivity.jsx", "components/ops/JustHappened.jsx", "components/ops/StateDot.jsx", "components/ops/EventSteps.jsx",
     "components/ops/WordingQueue.jsx", "components/crm/NextEventLine.jsx", "pages/WorkBoardPage.jsx", "pages/ContentCalendarPage.jsx",
   ]) {

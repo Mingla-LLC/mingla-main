@@ -591,7 +591,7 @@ export function ContentCalendarPage() {
         <a href="#/outreach?tab=hosts&due=nonext" className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{nonext ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">hosts with no next event</span></a>
       </div>}
       <div data-calendar-filters="" className="flex min-w-0 flex-wrap items-center gap-2">
-        <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} />
+        <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} fullWidth className="sm:!w-fit" />
         <label className="relative block min-w-0 flex-1 basis-[220px] sm:max-w-sm"><span className="sr-only">Search events and posts</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-text-tertiary)]" aria-hidden="true" /><input className={`${CONTROL_CLASS} min-h-11 pl-9`} value={route.q} onChange={(event) => setParam("q", event.target.value, true)} placeholder="Search events and posts" /></label>
         <FilterSelect name="show" label="Show" value={route.show} options={SHOW_OPTIONS} onChange={(v) => setParam("show", v, true)} />
         {testHidden > 0 && (

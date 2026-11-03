@@ -8,17 +8,18 @@
 //   W4A-2  Notifications: new-ticket alerts are listed; Work card changes are
 //          one grouped row; a resolved ticket's alert is not new; settings sit
 //          behind the gear
-//   W4A-3  Hosts and creators: the list is the default; the due chips follow
-//          the server's rules (stale leaves out Lost and Passed); the funnel's
-//          conversion and weakest step; the board holds only Replied onward;
-//          phone numbers are hidden from card text; bulk reset goes through
-//          the audited server function
+//   W4A-3  Hosts and creators: the Due filter follows the server's rules
+//          (stale leaves out Lost and Passed); the funnel's conversion and
+//          weakest step; phone numbers are hidden from card text; bulk reset
+//          goes through the audited server function. #4255 rewrote the view
+//          parts: the board is the only view, with every stage and a Stale
+//          column (issue_4255_admin_simplify.implementor.test.js pins it)
 //   W4A-4  Inbound leads: "no new lead" warning; a lead already in Hosts or
 //          without a business name cannot be added; a tool lead's email goes
 //          on the card as a contact detail; Competitor Ops left the page
 //   W4A-5  Calendar: event times in the event's own time zone; test brands
-//          hidden unless asked; Event runway and Content tabs, posts on the
-//          Content tab by default
+//          hidden unless asked (#4255: the runway list and its tabs are gone;
+//          Month and Board remain)
 //   W4A-6  Server: every new function refuses anon and checks its gate; app
 //          runs are never inbound leads
 //
@@ -33,7 +34,7 @@ import { INBOUND_QUIET_DAYS, healthProblems, needsYouToday, queueHealthItem, wee
 import { SUPPORT_ALERT_TYPES } from "../lib/emailAlerts.js";
 import { alertIsNew, inAppRoute, inboxRows, markScope, tabCounts } from "../lib/notificationsInbox.js";
 import {
-  DUE_CHIPS, filterByDueChip, forDisplay, funnelSteps, inDueChip, lateStageDef, lateStageRange, maskPhones, staleIds,
+  DUE_OPTIONS, filterByDueChip, forDisplay, funnelSteps, inDueChip, maskPhones, staleIds,
 } from "../lib/outreachView.js";
 import { EMPTY_CRM_STATE, buildCrmSearch, parseCrmSearch } from "../lib/crmUrl.js";
 import { leadView, quietWarning, toolLeadHostFields } from "../lib/inboundLeads.js";
@@ -191,10 +192,10 @@ describe("#4130 W4A-3: Hosts and creators", () => {
     { id: "r", stage: "replied", due_on: null, region_id: "r" },
   ];
 
-  it("the list is the default view; the board and the due chip have their own address", () => {
-    assert.equal(EMPTY_CRM_STATE.view, "list");
+  it("#4255: the board is the only view; the due filter has its own address", () => {
+    assert.equal(Object.hasOwn(EMPTY_CRM_STATE, "view"), false);
     assert.equal(buildCrmSearch({ view: "list" }), "");
-    assert.equal(buildCrmSearch({ view: "board", due: "stale" }), "view=board&due=stale");
+    assert.equal(buildCrmSearch({ view: "board", due: "stale" }), "due=stale");
     assert.equal(parseCrmSearch("due=stale").due, "stale");
     assert.equal(parseCrmSearch("due=__proto__").due, "");
   });
@@ -209,7 +210,7 @@ describe("#4130 W4A-3: Hosts and creators", () => {
     assert.equal(filterByDueChip(cards, "", today).length, cards.length);
     assert.deepEqual(staleIds(cards, today), ["s"]);
     assert.equal(inDueChip(null, "stale", today), false);
-    assert.deepEqual(DUE_CHIPS.hosts.map((c) => c.label), ["Due today", "This week", "Stale", "Replied, waiting on us"]);
+    assert.deepEqual(DUE_OPTIONS.hosts.map((c) => c.label), ["Any", "Due today", "This week", "Stale", "Replied, waiting on us", "No next event", "Go live soon", "No due date"]);
   });
 
   it("the funnel shows each step's conversion and marks the weakest", () => {
@@ -221,11 +222,6 @@ describe("#4130 W4A-3: Hosts and creators", () => {
     assert.equal(replied.weakest, true);
     assert.equal(steps.filter((s) => s.weakest).length, 1);
     assert.equal(steps[0].conversion, null);
-  });
-
-  it("the board holds Replied onward, without Lost", () => {
-    assert.deepEqual(lateStageDef(HOSTS_DEF).stages.map((s) => s.id), ["replied", "meeting", "onboarded", "live"]);
-    assert.equal(lateStageRange(HOSTS_DEF), "Replied → Live");
   });
 
   it("phone numbers are hidden from card text; dates and prices are not", () => {
@@ -240,17 +236,17 @@ describe("#4130 W4A-3: Hosts and creators", () => {
     assert.equal(card.next_action, "Text 0803 555 0101", "the card itself is untouched (the drawer edits the real text)");
   });
 
-  it("the page draws masked rows, the late-stage board, and resets through the audited server function", () => {
+  it("the page draws masked cards on the one board, and resets through the audited server function", () => {
     const page = stripComments(read("pages/PipelinePage.jsx"));
-    assert.match(page, /const listRecords = useMemo\(\(\) => dueShown\.map\(forDisplay\), \[dueShown\]\);/);
-    assert.match(page, /<PipelineList\s+def=\{def\}\s+records=\{listRecords\}/);
-    assert.match(page, /<PipelineBoard\s+def=\{boardDef\}\s+records=\{boardRecords\}/);
+    assert.match(page, /boardColumns\(def, dueShown\.map\(forDisplay\), today\)/);
+    assert.match(page, /<PipelineBoard\s+def=\{def\}\s+columns=\{columns\}/);
+    assert.ok(!/PipelineList|PipelineByRegion|lateStage/.test(page));
     assert.match(page, /resetStaleDue\(pipeline, staleOnScreen\.map\(\(r\) => r\.id\), newDue, today\)/);
     assert.match(page, /<ResetDueModal/);
     assert.match(read("services/dashboardService.js"), /rpc\("outreach_reset_stale_due"/);
     const hub = read("pages/HostsAndCreatorsHub.jsx");
     assert.match(hub, /canOpenOwnPage\(access, tab\.hosts\)/, "each tab only to whoever could open its old page");
-    assert.match(hub, /getOutreachSummary\(localToday\(\)\)/);
+    assert.ok(!/getOutreachSummary/.test(hub), "#4255: the tabs carry no totals; the board's counts are the only ones");
   });
 });
 
@@ -308,13 +304,11 @@ describe("#4130 W4A-5: Calendar", () => {
     assert.deepEqual([...testAnchorIds(rows)], ["b"]);
   });
 
-  it("Event runway and Content tabs; posts show by default on Content", () => {
+  it("#4255: Month and Board only; the runway is read for the month in both views", () => {
     const page = stripComments(read("pages/ContentCalendarPage.jsx"));
-    assert.match(page, /\{ id: "events", label: "Event runway" \}/);
-    assert.match(page, /\{ id: "posts", label: "Content" \}/);
-    assert.match(page, /return show === "posts" \? "board" : "list";/);
+    assert.ok(!/Event runway|RunwayTable|\{localWhen\(r\)\}/.test(page));
     assert.match(page, /getCalendarRunway\(runwayFrom, runwayTo, todayIso\(\)\)/);
-    assert.match(page, /\{localWhen\(r\)\}/);
+    assert.match(page, /const runwayFrom = localDateKey\(days\[0\]\);/);
   });
 });
 

@@ -13,7 +13,6 @@ import {
   agentName,
   agentPromptFor,
   buildWorkSearch,
-  groupCards,
   logChip,
   opsErrorWords,
   parseLogSearch,
@@ -22,6 +21,7 @@ import {
   runwayLabel,
   sprintLabel,
 } from "../lib/opsModel.js";
+import { periodRows } from "../lib/workViews.js";
 
 const SRC = new URL("../", import.meta.url);
 const read = (relative: string) => Deno.readTextFileSync(new URL(relative, SRC));
@@ -118,11 +118,11 @@ Deno.test("#3980 names, prompts, sprints and the board's address", () => {
   assertEquals(sprintLabel("2026-10-19"), "Sprint 19 to 25 Oct");
   assertEquals(sprintLabel("2026-10-26"), "Sprint 26 Oct to 1 Nov");
   const id = "0f0e0d0c-0b0a-4908-8706-050403020100";
+  // #4255: the dead group param is gone (WorkGroups was never drawn).
   const parsed = parseWorkSearch(`card=${id}&group=person&who=mine&week=2026-10-21&add=1`);
-  assertEquals(parsed, { card: id, cardInvalid: false, group: "person", who: "mine", week: "2026-10-19", add: true });
-  assertEquals(buildWorkSearch(parsed), `card=${id}&group=person&who=mine&week=2026-10-19&add=1`);
+  assertEquals(parsed, { card: id, cardInvalid: false, who: "mine", week: "2026-10-19", add: true });
+  assertEquals(buildWorkSearch(parsed), `card=${id}&who=mine&week=2026-10-19&add=1`);
   assertEquals(parseWorkSearch("card=nope&group=nope&who=nope").cardInvalid, true);
-  assertEquals(parseWorkSearch("group=nope").group, "status");
   assertEquals(parseLogSearch("who=mine").who, "mine");
   assertEquals(parseLogSearch("who=x").who, "all");
   assertEquals(parseReviewSearch("tab=spend").tab, "spend");
@@ -154,9 +154,11 @@ Deno.test("#3980 log chips and board groups", () => {
     { id: "a", status: "todo", owners: [{ email: "x", name: "Xi" }], anchor: null },
     { id: "b", status: "person", owners: [{ email: "x", name: "Xi" }, { email: "y", name: "Yo" }], anchor: { kind: "event", id: "e", title: "Night", start_on: "2026-11-02" } },
   ];
-  assertEquals(groupCards(cards, "status").map((g: { title: string; cards: unknown[] }) => `${g.title}:${g.cards.length}`), ["To do:1", "Doing:0", "Needs a person:1", "Done this week:0"]);
-  assertEquals(groupCards(cards, "person").map((g: { title: string; cards: unknown[] }) => `${g.title}:${g.cards.length}`), ["Xi:2", "Yo:1"]);
-  assertEquals(groupCards(cards, "event").map((g: { title: string }) => g.title), ["Night · 2 Nov", "No event"]);
+  // #4255: the grouped board is gone; by person is the period views' rows (a
+  // card with two owners is under both; a To do card is in no list).
+  const win = { view: "today", from: new Date(0), to: new Date(8.64e15), dueBy: "2999-12-31" };
+  const { rows } = periodRows(cards, win, []);
+  assertEquals(rows.map((r: { name: string; waiting: unknown[] }) => `${r.name}:${r.waiting.length}`), ["Xi:1", "Yo:1"]);
 });
 
 Deno.test("#3980 the new screens: two columns, Undo, offline words, tokens only, no overlays", () => {

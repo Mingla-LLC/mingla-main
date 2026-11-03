@@ -59,17 +59,14 @@ Deno.test("#3980 W3 rework 2 STEPS: no steps open yet is said plainly, never 'al
   assertEquals(expectedSavedWords({ auto_steps: true, steps: { added: 1, closed: 0, redated: 0, open: 1 } }), "Saved. It’s on the Calendar and its steps are in Work.");
 });
 
-Deno.test("#3980 W3 rework 2 GROUP: grouped by Person or Event, each card shows its status", () => {
+// #4255: the grouped views were dead code (nothing drew WorkGroups since
+// #4130) and are deleted; the column board says each status by its column.
+Deno.test("#3980 W3 rework 2 GROUP: the status words stay; the dead grouped view is gone", () => {
   // #4130: Needs you is retired; the first column and the status say "Waiting on a person".
   assertEquals(["person", "todo", "doing", "done", "x"].map(workStatusLabel), ["Waiting on a person", "To do", "In progress", "Done", ""]);
   const cols = code("components/ops/WorkColumns.jsx");
-  assertMatch(cols, /export function WorkColumnCard\(\{ card, selected, onSelect, showStatus = false, draftsReady = 0 \}\)/);
-  assertMatch(cols, /showStatus && workStatusLabel\(card\.status\) && <span data-card-status=\{card\.status\}/);
-  const groups = cols.slice(cols.indexOf("export function WorkGroups"));
-  assertMatch(groups, /<WorkColumnCard card=\{card\} selected=\{card\.id === selectedId\} onSelect=\{onSelect\} showStatus \/>/);
-  // The status columns already say the status, so the column board does not repeat it.
-  const columns = cols.slice(cols.indexOf("export function WorkColumns"), cols.indexOf("export function WorkGroups"));
-  assertNotMatch(columns, /showStatus/);
+  assertMatch(cols, /export function WorkColumnCard\(\{ card, selected, onSelect, draftsReady = 0 \}\)/);
+  assertNotMatch(cols, /WorkGroups|showStatus|groupCards/);
 });
 
 Deno.test("#3980 W3 rework 2 DEAD: CalendarLayers.jsx is gone and nothing imports it", () => {

@@ -173,7 +173,7 @@ export function WorkBoardPage() {
   ) : null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Work"
         description="Every piece of team work is a card. Filter once and every tab follows; open a card and anything linked to it opens beside it."

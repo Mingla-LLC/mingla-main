@@ -36,7 +36,6 @@ import { AREA, PAGE_ACCESS_UNION, PAGE_AREA_OVERRIDES, areaForPage, canOpenPage,
 import {
   MOVE_BLOCK_COPY,
   NO_REGION,
-  byRegionTable,
   displayName,
   displayOwners,
   dueState,
@@ -44,13 +43,11 @@ import {
   errorWords,
   filterRecords,
   findDuplicates,
-  groupByStage,
   moveBlocker,
   nameKey,
   nextStage,
   parseServerError,
   regionSlug,
-  sortForList,
   stageBadgeVariant,
   stageNeedsSignedAgreement,
 } from "../lib/crmModel.js";
@@ -63,6 +60,7 @@ import {
   parseCrmHash,
   parseCrmSearch,
 } from "../lib/crmUrl.js";
+import { boardColumns } from "../lib/outreachView.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -281,23 +279,24 @@ describe("#3802 P-5: addresses", () => {
   it("defaults are left out", () => {
     assert.equal(buildCrmHash("hosts", EMPTY_CRM_STATE), "#/hosts");
     assert.equal(buildCrmHash("creators", {}), "#/creators");
-    // #4130: the list is the default view now; the board has its own address.
+    // #4255: the board is the only view (D8); an old view value is ignored.
     assert.equal(buildCrmHash("hosts", { view: "list", mine: false, q: "" }), "#/hosts");
-    assert.equal(buildCrmHash("hosts", { view: "board" }), "#/hosts?view=board");
+    assert.equal(buildCrmHash("hosts", { view: "board" }), "#/hosts");
   });
   it("the spec's two examples", () => {
     assert.equal(buildCrmHash("hosts", { region: "lagos", icp: "event_organizer" }), "#/hosts?icp=event_organizer&region=lagos");
     assert.deepEqual(parseCrmHash("#/hosts?region=lagos&icp=event_organizer"), { ...EMPTY_CRM_STATE, region: "lagos", icp: "event_organizer" });
-    assert.deepEqual(parseCrmHash(`#/creators?view=list&mine=1&card=${CARD}`), { ...EMPTY_CRM_STATE, view: "list", mine: true, card: CARD });
+    assert.deepEqual(parseCrmHash(`#/creators?view=list&mine=1&card=${CARD}`), { ...EMPTY_CRM_STATE, mine: true, card: CARD });
   });
   it("every combination round-trips", () => {
     const states = [
-      { view: "list" },
-      { view: "region", q: "palm court" },
+      { owner: "none" },
+      { q: "palm court", due: "stale" },
       { q: "100% fun & more?", icp: "restaurant_bar" },
       { region: "new-york", mine: true },
       { card: "new" },
-      { view: "list", q: "a", icp: "ugc_one_off", region: "none", mine: true, card: CARD },
+      { q: "a", icp: "ugc_one_off", region: "none", mine: true, card: CARD },
+      { owner: "maya@test.local", due: "nonext", side: `card:${CARD}` },
     ];
     for (const s of states) {
       const full = { ...EMPTY_CRM_STATE, ...s };
@@ -334,7 +333,7 @@ describe("#3802 P-5: addresses", () => {
   });
   it("an ICP or region that names nothing real is dropped once the lists are known", () => {
     const lists = { icpIds: ["restaurant_bar"], regionSlugs: ["lagos", "none"] };
-    assert.deepEqual(cleanCrmState({ icp: "ambassador", region: "atlantis", view: "list", q: "a" }, lists), { ...EMPTY_CRM_STATE, view: "list", q: "a" });
+    assert.deepEqual(cleanCrmState({ icp: "ambassador", region: "atlantis", q: "a" }, lists), { ...EMPTY_CRM_STATE, q: "a" });
     assert.deepEqual(cleanCrmState({ icp: "restaurant_bar", region: "lagos" }, lists), { ...EMPTY_CRM_STATE, icp: "restaurant_bar", region: "lagos" });
   });
   it("the page id is the first path segment only", () => {
@@ -501,10 +500,14 @@ describe("#3802 P-8: source contracts", () => {
     for (const f of walk(path.join(SRC, "components", "crm"))) {
       assert.ok(!/lib\/supabase/.test(fs.readFileSync(f, "utf8")), path.relative(SRC, f));
     }
+    // #4255: crmUrl reads the side-panel value from lib/panelStack.js, itself a
+    // pure module; nothing else may be imported.
     for (const rel of ["lib/crmModel.js", "lib/crmUrl.js"]) {
       const src = read(rel);
-      assert.ok(!/^import\s/m.test(src), `${rel} must stay a pure module with no imports`);
+      const imports = src.match(/^import\s.*$/gm) || [];
+      assert.ok(imports.every((line) => /from "\.\/panelStack\.js";$/.test(line)), `${rel} must stay a pure module (only lib/panelStack.js)`);
     }
+    assert.ok(!/^import\s/m.test(read("lib/panelStack.js")), "lib/panelStack.js has no imports");
   });
   it("a write never goes out while offline, and every failure is turned into a token", () => {
     assert.ok(/navigator\.onLine === false\)\s*\{\s*throw new CrmError\(\{ token: "network"/.test(SERVICE));
@@ -714,24 +717,12 @@ describe("#3802 P-12: duplicates, counts, owners, order", () => {
     const many = Array.from({ length: 9 }, (_, i) => rec({ id: `m${i}`, name: `Sunset Bar ${i}` }));
     assert.equal(findDuplicates(many, "Sunset Bar").similar.length, 5);
   });
-  it("by region: only regions with a record, then No region, with stage counts", () => {
-    const rows = byRegionTable(HOSTS, RECORDS, REGIONS);
-    assert.deepEqual(rows.map((r) => `${r.name}:${r.total}:${r.slug}`), ["Lagos:2:lagos", "New York:1:new-york", "No region:1:none"]);
-    assert.equal(rows[0].counts.prospect, 1);
-    assert.equal(rows[0].counts.replied, 1);
-    assert.equal(rows[1].counts.live, 1);
-    assert.equal(rows[2].counts.lost, 1);
-    assert.deepEqual(byRegionTable(HOSTS, [], REGIONS), []);
-  });
-  it("a record whose region left the list is still counted", () => {
-    const rows = byRegionTable(HOSTS, [rec({ id: "9", region_id: "r-gone" })], REGIONS);
-    assert.deepEqual(rows.map((r) => `${r.name}:${r.total}`), ["No region:1"]);
-  });
-  it("group by stage keeps every column, even an empty one", () => {
-    const g = groupByStage(HOSTS, RECORDS);
-    assert.deepEqual(Object.keys(g), HOSTS.stages.map((s) => s.id));
-    assert.deepEqual(g.prospect.map((r) => r.id), ["1"]);
-    assert.deepEqual(g.meeting, []);
+  // #4255: By region is gone (D8); the board keeps every stage column.
+  it("the board keeps every stage column, even an empty one, after Stale", () => {
+    const columns = boardColumns(HOSTS, RECORDS, "2000-01-01");
+    assert.deepEqual(columns.map((c) => c.id), ["stale", ...HOSTS.stages.map((s) => s.id)]);
+    assert.deepEqual(columns.find((c) => c.id === "prospect").cards.map((r) => r.id), ["1"]);
+    assert.deepEqual(columns.find((c) => c.id === "meeting").cards, []);
   });
   it("owners read as names, Unassigned when nobody, and a clash shows the address", () => {
     assert.equal(displayOwners(RECORDS[1], TEAM), "Maya, Tunde");
@@ -747,8 +738,10 @@ describe("#3802 P-12: duplicates, counts, owners, order", () => {
     assert.equal(displayName(""), "");
     assert.equal(displayName(null), "");
   });
-  it("the list is ordered by due date, no date last, then by name", () => {
-    assert.deepEqual(sortForList(RECORDS).map((r) => r.id), ["1", "2", "4", "3"]);
+  it("a column is ordered by due date, oldest first, no date last, then by name", () => {
+    const one = RECORDS.map((r) => ({ ...r, stage: "prospect" }));
+    const column = boardColumns(HOSTS, one, "2000-01-01").find((c) => c.id === "prospect");
+    assert.deepEqual(column.cards.map((r) => r.id), ["1", "2", "4", "3"]);
   });
   it("stage badges use the agreed colours", () => {
     for (const s of ["live", "onboarded", "booked", "posted"]) assert.equal(stageBadgeVariant(s), "success");

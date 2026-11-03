@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { SearchInput } from "../ui/SearchInput";
 import { FilterSelect } from "../ui/FilterSelect";
-import { MISSING_CITY, MISSING_CITY_LABEL } from "./fields";
+import { MISSING_CITY, MISSING_CITY_LABEL, Select } from "./fields";
 import { MissingCityLayer } from "./MissingCityLayer";
 import { NO_REGION, ownerLabel, regionSlug } from "../../lib/crmModel";
 import { OWNER_NONE } from "../../lib/crmUrl";
@@ -29,15 +29,17 @@ export function PipelineToolbar({
 }) {
   const [cityMissing, setCityMissing] = useState(false);
   const regionRef = useRef(null);
+  const regionId = useId();
   const closeCityMissing = () => {
     setCityMissing(false);
-    regionRef.current?.querySelector?.("select")?.focus();
+    regionRef.current?.focus();
   };
   const icpOptions = [{ value: "", label: "Any" }, ...(def?.icps || []).map((i) => ({ value: i.id, label: i.label }))];
-  const regionOptions = [
-    { value: "", label: "Any" },
-    ...(regions || []).map((r) => ({ value: regionSlug(r.name), label: r.is_live ? r.name : `${r.name} (not live yet)` })),
-  ];
+  const regionOptions = (regions || []).map((r) => ({
+    value: regionSlug(r.name),
+    label: r.is_live ? r.name : `${r.name} (not live yet)`,
+  }));
+  regionOptions.unshift({ value: "", label: "Any" });
   if (hasNoRegion || state.region === NO_REGION) regionOptions.push({ value: NO_REGION, label: "No region yet" });
   regionOptions.push({ value: MISSING_CITY, label: MISSING_CITY_LABEL });
   const mates = (Array.isArray(team) ? team : []).filter((p) => p?.email && p.email !== me);
@@ -75,20 +77,23 @@ export function PipelineToolbar({
       />
       <FilterSelect name="due" label="Due" value={state.due} disabled={disabled} options={DUE_OPTIONS[pipeline] || DUE_OPTIONS.hosts} onChange={(v) => onChange({ due: v }, { replace: true })} />
       <FilterSelect name="icp" label="Type" value={state.icp} disabled={disabled} options={icpOptions} onChange={(v) => onChange({ icp: v }, { replace: true })} />
-      <span ref={regionRef} className="contents">
-        <FilterSelect
-          name="region"
-          label="Region"
+      <label htmlFor={regionId} className="inline-flex min-w-0 items-center gap-2 text-[12.5px] font-semibold text-[var(--color-text-secondary)]">
+        <span className="whitespace-nowrap">Region</span>
+        <Select
+          id={regionId}
+          ref={regionRef}
+          data-filter="region"
+          className="!w-auto min-h-11 max-w-[220px] text-[13px]"
           value={state.region}
           disabled={disabled}
           options={regionOptions}
-          onChange={(v) => {
+          onChange={(e) => {
             // "City missing?" is a question, not a filter: the filter stays.
-            if (v === MISSING_CITY) setCityMissing(true);
-            else onChange({ region: v }, { replace: true });
+            if (e.target.value === MISSING_CITY) setCityMissing(true);
+            else onChange({ region: e.target.value }, { replace: true });
           }}
         />
-      </span>
+      </label>
       {cityMissing && (
         <MissingCityLayer canAddRegion={canAddRegion} onClose={closeCityMissing} onRefresh={onRefreshRegions} />
       )}
