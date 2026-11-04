@@ -11,7 +11,7 @@
  *     supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.happy.test.ts
  */
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { realClient, withStubPostgrest } from "./_issue3682StubPostgrest.ts";
 import {
   AUTO_FOLLOW_FAILURE_TAG,
   AUTO_FOLLOW_RPC_DEADLINE_MS,
@@ -33,52 +33,6 @@ const paystackSrc = Deno.readTextFileSync(
 const migrationSrc = Deno.readTextFileSync(
   "supabase/migrations/20270805003682_issue_3682_auto_follow_on_purchase.sql",
 );
-
-type Seen = { method: string; path: string; body: unknown };
-
-async function withStubPostgrest(
-  status: number,
-  responseBody: unknown,
-  run: (url: string, seen: Seen[]) => Promise<void>,
-): Promise<void> {
-  const seen: Seen[] = [];
-  const ac = new AbortController();
-  let resolveListen: (port: number) => void = () => {};
-  const listening = new Promise<number>((r) => (resolveListen = r));
-  const server = Deno.serve(
-    {
-      hostname: "127.0.0.1",
-      port: 0,
-      signal: ac.signal,
-      onListen: ({ port }) => resolveListen(port),
-    },
-    async (req) => {
-      const text = await req.text();
-      seen.push({
-        method: req.method,
-        path: new URL(req.url).pathname,
-        body: text.length > 0 ? JSON.parse(text) : null,
-      });
-      return new Response(JSON.stringify(responseBody), {
-        status,
-        headers: { "content-type": "application/json" },
-      });
-    },
-  );
-  const port = await listening;
-  try {
-    await run(`http://127.0.0.1:${port}`, seen);
-  } finally {
-    ac.abort();
-    await server.finished;
-  }
-}
-
-function realClient(url: string) {
-  return createClient(url, "service-role-test-key", {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
 
 Deno.test("#3682 happy: helper no-ops without userId or brandId (real client)", async () => {
   await withStubPostgrest(200, {}, async (url, seen) => {
