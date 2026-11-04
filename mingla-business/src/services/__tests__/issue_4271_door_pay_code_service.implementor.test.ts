@@ -164,6 +164,9 @@ describe("#4271 door pay code service", () => {
         returnContract: "host_v1",
         surface: "web",
         buyer,
+        // The server's door arm requires purchaseTermsAccepted (or
+        // buyer.termsAccepted) and keeps only guest fields.
+        purchaseTermsAccepted: true,
         lines: [],
       },
     });

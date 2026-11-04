@@ -68,7 +68,18 @@ export interface TapToPayTerminalClient {
 export interface TapToPayServer {
   createIntent(input: CreateDoorTapIntentInput): Promise<DoorTapIntent>;
   completeIntent(input: { paymentIntentId: string; clientRequestId: string }): Promise<DoorTapCompleteResult>;
+  /** door-tap-intent cancel: the unpaid PaymentIntent can never be charged later. */
+  cancelIntent(input: { paymentIntentId: string; clientRequestId: string }): Promise<void>;
 }
+
+/**
+ * What switching to a pay code found:
+ *  - "switch": no money moved (the intent was cancelled, never made, or the
+ *    cancel call failed and was reported); show the pay code.
+ *  - "already_paid": Stripe says this tap already succeeded. Do NOT show a pay
+ *    code (that would charge the guest twice); the flow records the sale.
+ */
+export type PayCodeSwitchOutcome = "switch" | "already_paid";
 
 // ---- States ---------------------------------------------------------
 
@@ -205,6 +216,8 @@ export interface TapToPaySaleFlowInput {
   terminal: TapToPayTerminalClient;
   server: TapToPayServer;
   onState: (state: TapSaleState) => void;
+  /** Non-fatal reporter (reportNonFatal in the app). */
+  report?: (scope: string, error: unknown, extra?: Record<string, unknown>) => void;
 }
 
 export class TapToPaySaleFlow {
@@ -302,6 +315,46 @@ export class TapToPaySaleFlow {
   async cancel(): Promise<void> {
     if (this.state.kind !== "ready") return;
     await this.input.terminal.cancelCollectPaymentMethod();
+  }
+
+  /**
+   * "Show a pay code instead". Stops waiting for a tap, then cancels the open
+   * PaymentIntent on the server (door-tap-intent cancel) before the caller
+   * makes a pay code, so the abandoned tap can never be charged too. A failed
+   * cancel never blocks the pay code; it is reported. A PaymentIntent Stripe
+   * reports as succeeded is recorded instead of replaced.
+   */
+  async abandonForPayCode(): Promise<PayCodeSwitchOutcome> {
+    if (this.succeededPaymentIntentId !== null) {
+      await this.retrySave();
+      return "already_paid";
+    }
+    if (this.state.kind === "ready") {
+      try {
+        await this.input.terminal.cancelCollectPaymentMethod();
+      } catch (error) {
+        this.input.report?.("door-tap.cancel-collect", error);
+      }
+    }
+    const intent = this.intent;
+    if (intent === null) return "switch";
+    try {
+      await this.input.server.cancelIntent({
+        paymentIntentId: intent.paymentIntentId,
+        clientRequestId: this.input.clientRequestId,
+      });
+    } catch (error) {
+      if (error instanceof DoorTapError && error.code === "payment_succeeded") {
+        this.succeededPaymentIntentId = intent.paymentIntentId;
+        await this.retrySave();
+        return "already_paid";
+      }
+      this.input.report?.("door-tap.cancel-intent", error, {
+        payment_intent_id: intent.paymentIntentId,
+        code: error instanceof DoorTapError ? error.code : null,
+      });
+    }
+    return "switch";
   }
 
   private emitTerminalFailure(error: TerminalErrorLike, fallbackMessage: string): void {

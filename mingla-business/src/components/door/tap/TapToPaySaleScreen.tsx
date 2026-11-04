@@ -25,7 +25,9 @@ import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
 import { doorSaleKeys } from "../../../hooks/useEventDoorSales";
 import { useTapToPayAvailability } from "../../../hooks/useTapToPayAvailability";
 import { postHogService } from "../../../services/postHogService";
+import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import {
+  cancelDoorTapIntent,
   completeDoorTapIntent,
   createDoorPayCodeForLines,
   createDoorTapIntent,
@@ -127,8 +129,13 @@ export const TapToPaySaleScreen = ({
       draft,
       clientRequestId: clientRequestIdRef.current,
       terminal: terminal.client,
-      server: { createIntent: createDoorTapIntent, completeIntent: completeDoorTapIntent },
+      server: {
+        createIntent: createDoorTapIntent,
+        completeIntent: completeDoorTapIntent,
+        cancelIntent: cancelDoorTapIntent,
+      },
       onState: setState,
+      report: reportNonFatal,
     });
     flowRef.current = flow;
     void flow.start();
@@ -157,7 +164,11 @@ export const TapToPaySaleScreen = ({
     setPayCodeBusy(true);
     setPayCodeError(null);
     try {
-      await flowRef.current?.cancel();
+      // Cancel the open PaymentIntent first so the abandoned tap can never be
+      // charged as well. If Stripe says it already succeeded, the flow records
+      // that sale instead and no pay code is made.
+      const outcome = (await flowRef.current?.abandonForPayCode()) ?? "switch";
+      if (outcome === "already_paid") return;
       const created = await createDoorPayCodeForLines({
         eventId,
         eventDateId: draft.eventDateId,

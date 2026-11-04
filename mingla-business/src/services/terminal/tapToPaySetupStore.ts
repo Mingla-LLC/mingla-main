@@ -1,10 +1,11 @@
 /**
  * #4271 — remembers, on this phone only, that Tap to Pay setup finished
- * (device check passed and Apple's "How to Tap" education was shown).
+ * (device check passed, the reader connected at the brand's Terminal Location,
+ * which is where Apple shows its Tap to Pay terms, and Apple's "How to Tap"
+ * education was shown).
  *
- * This is a per-device client preference, not server state. Apple's Tap to Pay
- * terms are accepted per Stripe account on the first reader connection, which the
- * sale screen handles; this flag only decides whether the door sheet says
+ * This is a per-device client preference, not server state. Apple's terms are
+ * accepted per Stripe account during setup (tapToPaySetup.ts); this flag only decides whether the door sheet says
  * "Set up once on this phone" or "Take a card or phone on this iPhone".
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";

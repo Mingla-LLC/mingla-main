@@ -3,14 +3,14 @@
  *
  * Steps behind "Set up Tap to Pay":
  *   1. Stripe Terminal starts (connection token for this event's brand).
- *   2. Stripe's device check (supportsReadersOfType tapToPay). A failure shows
- *      "This phone can't take taps".
- *   3. iPhone: Apple's "How to Tap" education (ProximityReaderDiscovery, iOS 18+;
- *      earlier iOS versions rely on this screen's own explanation).
- *   4. The phone remembers setup is done, and the sale continues if one was
- *      waiting (the draft travels in the URL).
- * Apple's Tap to Pay terms appear on the first reader connection, which the sale
- * screen makes at the brand's Terminal Location.
+ *   2. runTapToPaySetup (services/terminal/tapToPaySetup.ts): Stripe's device
+ *      check, the brand's Terminal Location (door-tap-intent `location`), the
+ *      reader connection there (Apple's Tap to Pay terms appear HERE, during
+ *      setup, not at the first sale), then on iPhone Apple's "How to Tap"
+ *      education (ProximityReaderDiscovery, iOS 18+).
+ *   3. The phone remembers setup is done, and the sale continues if one was
+ *      waiting (the draft travels in the URL). The reader stays connected
+ *      into the sale (one Terminal session for the tap route group).
  */
 import React, { useCallback, useMemo, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -26,12 +26,14 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
+import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
 import { useTapToPayAvailability } from "../../../hooks/useTapToPayAvailability";
-import { createDoorPayCodeForLines } from "../../../services/terminal/doorTapEdge";
+import { createDoorPayCodeForLines, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPaySetupComplete } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
+import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
@@ -79,6 +81,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   const terminal = useTapToPayTerminal();
   const [busy, setBusy] = useState<boolean>(false);
   const [deviceRejected, setDeviceRejected] = useState<boolean>(false);
+  const [brandNotAvailable, setBrandNotAvailable] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
 
@@ -122,21 +125,28 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
     if (terminal.client === null) return;
     setBusy(true);
     setError(null);
+    const client = terminal.client;
     try {
-      const support = await terminal.client.checkDeviceSupport();
-      if (!support.supported) {
+      const result = await runTapToPaySetup({
+        os: Platform.OS,
+        checkDeviceSupport: () => client.checkDeviceSupport(),
+        fetchLocation: () => fetchDoorTapLocation(eventId),
+        ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId),
+        showHowToTap: showHowToTapEducation,
+        markComplete: markTapToPaySetupComplete,
+      });
+      if (result.kind === "device_rejected") {
         setDeviceRejected(true);
         return;
       }
-      if (Platform.OS === "ios") {
-        try {
-          await showHowToTapEducation();
-        } catch {
-          setError("Couldn't show Apple's How to Tap guide. Try again.");
-          return;
-        }
+      if (result.kind === "not_available") {
+        setBrandNotAvailable(true);
+        return;
       }
-      await markTapToPaySetupComplete();
+      if (result.kind === "failed") {
+        setError(result.message);
+        return;
+      }
       if (draft !== null) {
         // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
         router.replace(
@@ -145,7 +155,8 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
       } else {
         goToDoor();
       }
-    } catch {
+    } catch (setupError) {
+      reportNonFatal("door-tap.setup", setupError);
       setError("Setup didn't finish. Check your connection and try again.");
     } finally {
       setBusy(false);
@@ -171,7 +182,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   let body: React.ReactElement;
   if (deviceBlocked) {
     body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;
-  } else if (!availability.available) {
+  } else if (!availability.available || brandNotAvailable) {
     body = (
       <TapStatusView
         tone="bad"

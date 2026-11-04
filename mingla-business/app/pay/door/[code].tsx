@@ -269,6 +269,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [endStatus, setEndStatus] = useState<DoorPayCodeView["status"] | null>(null);
+  const [codeInvalid, setCodeInvalid] = useState<boolean>(false);
   const phone = usePhoneEntry({ startCountries: [phoneStartCountryForCurrency(view.currency)] });
 
   const nameValid = name.trim().length >= NAME_MIN_CHARS;
@@ -318,7 +319,13 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
       setSubmitError("Couldn't open the payment page. You haven't been charged. Try again.");
     } catch (error) {
       if (error instanceof DoorPayCodeError && error.code === "door_code_unavailable") {
-        setEndStatus(error.codeStatus ?? "expired");
+        // 409 {status}: paid / expired / cancelled / failed, or "not_found"
+        // (not a code status) when the code no longer matches this event.
+        if (error.codeStatus !== null) setEndStatus(error.codeStatus);
+        else setCodeInvalid(true);
+      } else if (error instanceof DoorPayCodeError && error.code === "purchase_terms_required") {
+        setTermsAccepted(false);
+        setSubmitError("Please agree to the terms to continue.");
       } else if (error instanceof DoorPayCodeError && error.status === null) {
         setSubmitError("We couldn't reach the payment page. Check your connection and try again. You haven't been charged.");
       } else {
@@ -329,6 +336,14 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
     }
   }, [code, email, formValid, name, phone.countryIso, phone.e164, termsAccepted, view.eventId]);
 
+  if (codeInvalid) {
+    return (
+      <StateCard
+        title="This code isn't valid"
+        body="Check the code with the door, or ask them to show a new one. You haven't been charged."
+      />
+    );
+  }
   if (endStatus !== null && endStatus !== "open" && endStatus !== "opened") {
     return <StateCard {...doorPayGuestEndCopy(endStatus)} />;
   }

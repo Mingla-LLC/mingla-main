@@ -318,6 +318,9 @@ export const createDoorCodeCheckout = async (input: {
       returnContract: "host_v1",
       surface: "web",
       buyer: input.buyer,
+      // The server's door arm keeps only guest fields and requires this flag
+      // (or buyer.termsAccepted); refuses with 400 purchase_terms_required.
+      purchaseTermsAccepted: input.buyer.termsAccepted === true,
       lines: [],
     },
   });

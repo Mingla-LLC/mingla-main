@@ -1,10 +1,13 @@
 /**
  * #4271 — client for the Tap to Pay edge functions.
  *
- *  terminal-connection-token  {eventId}                       → {secret}
+ *  terminal-connection-token  {eventId}                       → {secret, locationId}
+ *  door-tap-intent  location  {eventId}                       → {locationId}
  *  door-tap-intent  create    {eventId, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso}
  *                             → {paymentIntentId, clientSecret, totalCents, currency, stripeAccountId, locationId}
  *  door-tap-intent  complete  {paymentIntentId, clientRequestId} → biz_door_tap_record result
+ *  door-tap-intent  cancel    {paymentIntentId, clientRequestId} → {status:"cancelled"}
+ *                             (409 payment_succeeded when the guest already paid)
  *  door-pay-code    create    {eventId, eventDateId, lines}    → {codeId, ...}
  *
  * The server prices every sale, checks the door-payment permission and only
@@ -18,7 +21,12 @@ export type DoorTapErrorCode =
   | "door_access_denied"
   | "tap_not_available"
   | "payment_not_succeeded"
+  | "payment_succeeded"
   | "offline_pin_required"
+  | "buyer_phone_invalid"
+  | "not_found"
+  | "invalid_request"
+  | "server_error"
   | "door_ticket_capacity_exceeded"
   | "ticket_not_valid_on_chosen_days"
   | "stripe_account_not_ready"
@@ -31,7 +39,12 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<DoorTapErrorCode>([
   "door_access_denied",
   "tap_not_available",
   "payment_not_succeeded",
+  "payment_succeeded",
   "offline_pin_required",
+  "buyer_phone_invalid",
+  "not_found",
+  "invalid_request",
+  "server_error",
   "door_ticket_capacity_exceeded",
   "ticket_not_valid_on_chosen_days",
   "stripe_account_not_ready",
@@ -92,10 +105,12 @@ const readErrorPayload = async (error: unknown): Promise<{ code: string; detail:
       const text = await (context as unknown as Response).text();
       const payload: unknown = text.length > 0 ? JSON.parse(text) : null;
       if (isRecord(payload) && typeof payload.error === "string") {
-        return {
-          code: payload.error,
-          detail: typeof payload.detail === "string" ? payload.detail : null,
-        };
+        // The server explains a refusal in `reason` (tap_not_available:
+        // address_missing), `message` (buyer_phone_invalid) or `detail`.
+        const explained = [payload.reason, payload.message, payload.detail].find(
+          (value): value is string => typeof value === "string" && value.length > 0,
+        );
+        return { code: payload.error, detail: explained ?? null };
       }
     } catch {
       // A non-JSON error body is reported as "unknown" below with the message.
@@ -141,6 +156,31 @@ const requireInt = (data: Record<string, unknown>, key: string): number => {
     throw new DoorTapError("invalid_response", `missing ${key}`);
   }
   return value;
+};
+
+/** Setup: the brand's Terminal Location for this event, so the reader connects before the first sale. */
+export const fetchDoorTapLocation = async (eventId: string): Promise<string> => {
+  const data = await invoke("door-tap-intent", { action: "location", eventId });
+  return requireString(data, "locationId");
+};
+
+/**
+ * "Show a pay code instead": cancel the unpaid PaymentIntent so it can never be
+ * charged later. Throws DoorTapError("payment_succeeded") when the guest
+ * already paid (the sale must be recorded, not replaced).
+ */
+export const cancelDoorTapIntent = async (input: {
+  paymentIntentId: string;
+  clientRequestId: string;
+}): Promise<void> => {
+  const data = await invoke("door-tap-intent", {
+    action: "cancel",
+    paymentIntentId: input.paymentIntentId,
+    clientRequestId: input.clientRequestId,
+  });
+  if (data.status !== "cancelled") {
+    throw new DoorTapError("invalid_response", "cancel did not report cancelled");
+  }
 };
 
 /** Connection token for the brand's connected Stripe account (scoped to the event). */

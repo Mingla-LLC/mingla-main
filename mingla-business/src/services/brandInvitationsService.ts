@@ -398,9 +398,14 @@ export async function listBrandTeamMemberDirectory(
     p_brand_id: brandId,
   });
   if (error) {
+    // The rpc refuses non-members with 42501 brand_access_denied.
+    const forbidden =
+      error.code === "42501" ||
+      (error.message?.includes("brand_access_denied") ?? false) ||
+      (error.message?.includes("forbidden") ?? false);
     throw new BrandInvitationServiceError(
-      error.message?.includes("forbidden") ? "forbidden" : "server",
-      error.message?.includes("forbidden") ? 403 : 500,
+      forbidden ? "forbidden" : "server",
+      forbidden ? 403 : 500,
       "Couldn't load team names.",
     );
   }

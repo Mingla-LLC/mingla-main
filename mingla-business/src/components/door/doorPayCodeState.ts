@@ -125,3 +125,23 @@ export const openedAgoLabel = (openedAt: string | null, nowMs: number): string =
   if (seconds < 60) return `${seconds}s ago`;
   return `${Math.floor(seconds / 60)}m ago`;
 };
+
+/**
+ * H6 — what the host sees when door-pay-code text_link refuses: 429
+ * text_link_limit_reached (3 texts per code), 400 buyer_phone_invalid, 409
+ * door_code_unavailable, else a retry line. Reads DoorPayCodeError's
+ * {code, status} structurally so this file stays free of the service import.
+ */
+export const doorPayTextLinkErrorMessage = (error: unknown): string => {
+  const e = typeof error === "object" && error !== null ? (error as { code?: unknown; status?: unknown }) : {};
+  if (e.code === "text_link_limit_reached" || e.status === 429) {
+    return "This code has been texted 3 times already. Ask them to scan it, or show a new code.";
+  }
+  if (e.code === "buyer_phone_invalid") {
+    return "That number doesn't look right. Check it and try again.";
+  }
+  if (e.code === "door_code_unavailable") {
+    return "This code can't be paid any more. Show a new code.";
+  }
+  return "Couldn't send the link. Check your connection and try again.";
+};

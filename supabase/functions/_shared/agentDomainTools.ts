@@ -7109,7 +7109,7 @@ const manageEventGroupChat = writeTool(
 
 const manageEventDoorSale = writeTool(
   "manage_event_door_sale",
-  "List or record durable in-person door-sale orders (cash/card_reader/nfc/manual). Before create, ask for the buyer's mobile for their receipt; it is optional. 'list' is a read; 'create' records and checks in the selected tickets atomically.",
+  "List or record durable in-person door-sale orders (cash/card_reader/manual). Before create, ask for the buyer's mobile for their receipt; it is optional. 'list' is a read; 'create' records and checks in the selected tickets atomically.",
   {
     brand_id: UUID,
     event_id: UUID,
@@ -7117,7 +7117,7 @@ const manageEventDoorSale = writeTool(
     action: { type: "string", enum: ["list", "create"] },
     payment_method: {
       type: "string",
-      enum: ["cash", "card_reader", "nfc", "manual"],
+      enum: ["cash", "card_reader", "manual"],
     },
     lines: {
       type: "array",
@@ -7162,12 +7162,13 @@ const manageEventDoorSale = writeTool(
     if (args.action === "create") {
       const method = args.payment_method;
       if (
-        method !== "cash" && method !== "card_reader" && method !== "nfc" &&
-        method !== "manual"
+        method !== "cash" && method !== "card_reader" && method !== "manual"
       ) {
+        // #4271 — "nfc" is gone (biz_door_sale_record refuses it); card money
+        // at the door is a pay code or Tap to Pay in the Business app.
         throw new ToolError(
           "INVALID_ARGS",
-          "payment_method must be cash, card_reader, nfc, or manual",
+          "payment_method must be cash, card_reader, or manual",
         );
       }
       if (!Array.isArray(args.lines) || args.lines.length < 1) {

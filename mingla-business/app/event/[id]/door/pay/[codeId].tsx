@@ -33,6 +33,7 @@ import { doorSellAnotherHref } from "../../../../../src/components/door/doorTapD
 import { formatDoorPayCode, makeDoorPayUrl, isDoorPayCode } from "../../../../../src/components/door/doorPayUrl";
 import {
   doorPayHostEndCopy,
+  doorPayTextLinkErrorMessage,
   effectiveDoorPayStatus,
   formatDoorPayCountdown,
   openedAgoLabel,
@@ -345,6 +346,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
 
 // ---- H6: text the link instead ------------------------------------------
 
+
 interface TextLinkSheetProps {
   visible: boolean;
   codeId: string | null;
@@ -380,8 +382,8 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
       });
       const digits = phone.e164.replace(/\D/g, "");
       setSentLast4(result.last4.length > 0 ? result.last4 : digits.slice(-4));
-    } catch {
-      setError("Couldn't send the link. Check the number and try again.");
+    } catch (sendError) {
+      setError(doorPayTextLinkErrorMessage(sendError));
     }
   }, [phone.countryIso, phone.e164, sendLink]);
 

@@ -106,7 +106,7 @@ const makeHarness = (overrides: {
     draft: DRAFT,
     clientRequestId: "req-1",
     terminal,
-    server: { createIntent, completeIntent },
+    server: { createIntent, completeIntent, cancelIntent: jest.fn(async () => {}) },
     onState: (state) => states.push(state),
   });
   return { flow, calls, states, terminal, createIntent, completeIntent };
