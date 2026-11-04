@@ -1,20 +1,20 @@
 /**
- * #4265 — `__DEV__`-only timing for the share sheet. Marker: `[4265-DIAG]`.
+ * #4265 — `__DEV__`-only timing for the share sheet. Marker: `[share-sheet-perf]`.
  *
  * Same shape as `utils/tabSwitchPerf.ts` ([1638-DIAG]): every entry point returns
  * at once in release builds, and each window prints ONE line after it settles so
- * the logging never sits on the hot path. Strip with `grep -rn 4265-DIAG`.
+ * the logging never sits on the hot path. Kept on purpose like tabSwitchPerf ([1638-DIAG]); compiled out of release builds.
  *
  * Read on a device:
- *   iOS:     Metro terminal / Xcode console, filter `4265-DIAG`
- *   Android: adb logcat -s ReactNativeJS:V | grep 4265-DIAG
+ *   iOS:     Metro terminal / Xcode console, filter `share-sheet-perf`
+ *   Android: adb logcat -s ReactNativeJS:V | grep share-sheet-perf
  *
  * Lines:
- *   [4265-DIAG] open  firstFrameMs=… settledMs=… recipientsMs=… (cache|network|none) maxJsGapMs=… (first 1 s)
- *   [4265-DIAG] scroll durationMs=… frames=… maxJsGapMs=… slowFrames=…
+ *   [share-sheet-perf] open  firstFrameMs=… settledMs=… recipientsMs=… (cache|network|none) maxJsGapMs=… (first 1 s)
+ *   [share-sheet-perf] scroll durationMs=… frames=… maxJsGapMs=… slowFrames=…
  */
 
-const MARKER = '[4265-DIAG]';
+const MARKER = '[share-sheet-perf]';
 const OPEN_WINDOW_MS = 1000;
 const FRAME_BUDGET_MS = 16.7;
 

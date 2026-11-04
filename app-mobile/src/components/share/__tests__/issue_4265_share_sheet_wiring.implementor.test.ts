@@ -15,7 +15,7 @@
 //   * the open path awaits nothing; prepare results wait for the open animation;
 //     NetInfo and AppState are only watched while the sheet is open;
 //   * avatars and the poster use expo-image with a memory+disk cache;
-//   * dev timing uses the [4265-DIAG] marker behind __DEV__.
+//   * dev timing uses the [share-sheet-perf] marker behind __DEV__.
 //
 // FAILS-ON-REVERT: restoring `visibleRecipients.map(`, `scrollMode="scroll"`,
 // `useNetInfo()`, RN `Image`, `useState<ContentShareRecipient[]>` for the list,
@@ -93,9 +93,9 @@ Deno.test("expo-image with a memory+disk cache for avatars and the poster", () =
   }
 });
 
-Deno.test("dev timing is behind __DEV__ with the [4265-DIAG] marker", async () => {
+Deno.test("dev timing is behind __DEV__ with the [share-sheet-perf] marker", async () => {
   const perf = stripComments(await read("src/components/share/shareSheetPerf.ts"));
-  assert(/const MARKER = '\[4265-DIAG\]'/.test(perf), "marker");
+  assert(/const MARKER = '\[share-sheet-perf\]'/.test(perf), "marker");
   const exported = perf.match(/export function \w+\([^)]*\)[^{]*\{\s*if \(!__DEV__\) return;/g) ?? [];
   assert(exported.length === (perf.match(/export function /g) ?? []).length, "every entry point is a no-op in release");
   assert(/beginShareSheetOpen\(\);/.test(provider) && /markShareRecipientsRendered\(/.test(provider) && /onScrollBeginDrag: beginShareSheetScroll/.test(provider), "open, recipients and scroll are measured");
