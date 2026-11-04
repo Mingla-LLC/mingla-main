@@ -136,7 +136,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4255: register the admin access and Work closed-range migrations the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
-export const BOOTSTRAP_SHA256 = "9fe5a048fe875b28444bc8218720675ea2cd0687dacd7a34c074f106834d057f";
+// #3281: register the Discover card price and bookable experiences migration and its proof the same way.
+export const BOOTSTRAP_SHA256 = "481562160529edfa0bf8d568f519d2a862c59292bd28aa165eea85b82e943293";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
