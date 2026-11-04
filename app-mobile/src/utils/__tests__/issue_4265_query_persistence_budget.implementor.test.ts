@@ -10,15 +10,19 @@
 // ~50 KB). The old guard removed it on every launch (> 1.5 MB), so no cold start
 // ever restored a cache.
 //
+// The budget is UTF-8 bytes (Android's AsyncStorage limit), not characters.
+//
 // FAILS-ON-REVERT: make serializePersistedClientWithinBudget keep every query (or
-// write JSON.stringify(client)) → B-1/B-2 fail; restore the wipe-all guard in
+// write JSON.stringify(client)) → B-1/B-2 fail; measure `.length` (characters)
+// instead of utf8ByteLength → B-8/B-9 fail; restore the wipe-all guard in
 // app/_layout.tsx → B-6 fails; persist deck-cards again → B-7 fails.
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
-  PERSISTED_CACHE_BUDGET_CHARS,
+  PERSISTED_CACHE_BUDGET_BYTES,
   prunePersistedCacheString,
   serializePersistedClientWithinBudget,
   serializePersistedQuery,
+  utf8ByteLength,
 } from "../queryPersistenceBudget.ts";
 import { shouldDehydrateMinglaQuery } from "../queryPersistence.ts";
 
@@ -59,7 +63,7 @@ function simulatorLikeClient() {
 Deno.test("#4265 B-1 an oversized cache keeps every small query and drops only the largest", () => {
   const client = simulatorLikeClient();
   const result = serializePersistedClientWithinBudget(client);
-  assert(result.serialized.length <= PERSISTED_CACHE_BUDGET_CHARS, `wrote ${result.serialized.length} chars`);
+  assert(utf8ByteLength(result.serialized) <= PERSISTED_CACHE_BUDGET_BYTES, `wrote ${utf8ByteLength(result.serialized)} bytes`);
   assertEquals(result.dropped.map((entry) => JSON.parse(entry.queryHash)[0]), ["deck-cards"]);
   const kept = JSON.parse(result.serialized).clientState.queries.map((q) => q.queryKey[0]);
   assertEquals(kept, ["savedCards", "userPreferences", "friends", "purchases", "discover-last-city"]);
@@ -96,7 +100,7 @@ Deno.test("#4265 B-5 the startup read trims an old oversized blob and reports a 
   assert(raw.length > 1_500_000, "fixture must be past the old wipe-all threshold");
   const result = prunePersistedCacheString(raw);
   assertEquals(result.kind, "ok");
-  assert(result.rewrite !== null && result.rewrite.length <= PERSISTED_CACHE_BUDGET_CHARS);
+  assert(result.rewrite !== null && utf8ByteLength(result.rewrite) <= PERSISTED_CACHE_BUDGET_BYTES);
   assertEquals(result.client.clientState.queries.length, 5);
   const small = JSON.stringify({ ...simulatorLikeClient(), clientState: { mutations: [], queries: [] } });
   const untouched = prunePersistedCacheString(small);
@@ -123,4 +127,39 @@ Deno.test("#4265 B-7 the Home deck is never persisted in the query cache (its sn
   assertEquals(shouldDehydrateMinglaQuery(idle(["discover-last-city", user], { city: {}, source: "device" }), user), true);
   assertEquals(shouldDehydrateMinglaQuery(idle(["discover-last-city", user], { city: {}, source: "device" }), "a1b2c3d4-0000-4000-8000-000000000000"), false);
   assertEquals(shouldDehydrateMinglaQuery(idle(["savedCards", "list", user], []), user), true);
+});
+
+Deno.test("#4265 B-8 utf8ByteLength matches a real UTF-8 encoder for ASCII, accents, CJK and emoji", () => {
+  const encoder = new TextEncoder();
+  for (const sample of ["", "plain", "Café Brûlée", "東京の夜", "Jazz 🎷 night 🌃", "mixé 東 🎷 x"]) {
+    assertEquals(utf8ByteLength(sample), encoder.encode(sample).byteLength, sample);
+  }
+  assertEquals(utf8ByteLength("\ud83c"), 3, "a lone surrogate costs what an encoder writes for U+FFFD");
+  assertEquals(utf8ByteLength("é"), 2, "one character, two bytes");
+});
+
+Deno.test("#4265 B-9 a non-ASCII cache is held to the byte budget, not the character count", () => {
+  const user = "c727d491-4884-4e72-b467-d6c124b9a8b9";
+  // ~450k characters but ~1.35 MB of UTF-8 (东 is 3 bytes).
+  const client = {
+    timestamp: 1, buster: "",
+    clientState: {
+      mutations: [],
+      queries: [
+        query(["savedCards", "list", user], [{ id: "s", title: "东".repeat(450_000) }]),
+        query(["userPreferences", user], { discover_city_name: "São Paulo" }),
+      ],
+    },
+  };
+  const result = serializePersistedClientWithinBudget(client);
+  assert(result.serialized.length < PERSISTED_CACHE_BUDGET_BYTES, "fixture: under budget if characters were counted");
+  assertEquals(result.dropped.map((entry) => JSON.parse(entry.queryHash)[0]), ["savedCards"],
+    "the 1.35 MB (UTF-8) list is dropped even though it is only 450k characters");
+  assert(result.dropped[0].bytes > PERSISTED_CACHE_BUDGET_BYTES);
+  assert(utf8ByteLength(result.serialized) <= PERSISTED_CACHE_BUDGET_BYTES);
+  // The startup read trims the same blob by bytes too.
+  const raw = JSON.stringify(client);
+  assert(raw.length < PERSISTED_CACHE_BUDGET_BYTES);
+  const pruned = prunePersistedCacheString(raw);
+  assertEquals(pruned.kind === "ok" && pruned.client.clientState.queries.map((q) => q.queryKey[0]), ["userPreferences"]);
 });

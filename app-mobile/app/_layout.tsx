@@ -130,7 +130,7 @@ function RootLayout() {
   // ORCH-1125: hoisted from app/index.tsx's App(). Gate: make the React Query
   // persisted cache safe BEFORE the provider mounts. PersistQueryClientProvider
   // crashes on mount if the cache exceeds Android's 2MB CursorWindow. The
-  // persister now writes at most PERSISTED_CACHE_BUDGET_CHARS (#4265), and this
+  // persister now writes at most PERSISTED_CACHE_BUDGET_BYTES (#4265), and this
   // gate trims an older oversized blob instead of deleting it. Preserving it
   // enables instant startup with cached prefs/location. This effect MUST resolve
   // (cacheReady=true) before the provider below mounts — load-bearing for Android.
