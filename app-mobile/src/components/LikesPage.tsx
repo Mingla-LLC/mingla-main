@@ -371,7 +371,7 @@ function LikesPage({
             onRemoveFromCalendar={onRemoveFromCalendar || (() => {})}
             onShareCard={onShareCard || (() => {})}
             onAddToCalendar={onAddToCalendar || (() => {})}
-            onShowQRCode={onShowQRCode || (() => {})}
+            onPlanFromSaves={() => handleTabChange("saved")}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             selectedEntryId={deepLinkEntryId}
