@@ -426,7 +426,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "update_work",
     title: "Update a card",
     description:
-      "Change a card your person owns, mark one plan step with step, or add a note (notes need a request_key and work on cards your person owns or watches). Every change is checked like an add. After each step, read the record back and mark the step done only if the change is really there. To hand a step to a person, set status person with the reason send, spend, publish or other, and stop. To move a card that needs a person back to todo or doing, say why in reason; your person and the watchers are told. github: issue or pull request links like #3980. " +
+      "Change a card your person owns, mark one plan step with step, or add a note (notes need a request_key and work on cards your person owns or watches). Every change is checked like an add. After each step, read the record back and mark the step done only if the change is really there. To hand a step to a person, set status person with the reason send, spend, publish or other, and stop: the card stays in To do with that Send, Spend or Publish tag, and only your person does that step and closes it. A status change keeps the tag. To take the tag off (person_reason null), say why in reason; your person and the watchers are told. github: issue or pull request links like #3980. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: ID,
@@ -476,7 +476,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
             type: "string",
             maxLength: 10,
             enum: ["todo", "doing", "person"],
-            hint: "Use todo, doing or person",
+            hint: "Use todo or doing; person means To do with a Send, Spend or Publish tag",
           },
           person_reason: PERSON_REASON,
           github: GITHUB,
@@ -485,7 +485,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
             minLength: 1,
             maxLength: 500,
             hint:
-              "Say why the card no longer needs a person, up to 500 characters",
+              "Say why the card no longer needs its Send, Spend or Publish tag, up to 500 characters",
           },
         },
         required: [],
@@ -529,7 +529,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "close_work",
     title: "Close a card with proof",
     description:
-      "Close a card your person owns, only with proof that names what you read back: a draft, a record, a public event, a content card or another card, each by its id, which Mingla checks. A line of text alone is shown as your word. You never close a card that needs a person, a go-live gate card or a blocked card. Closing releases the card's claims and tells its owners and watchers. " +
+      "Close a card your person owns, only with proof that names what you read back: a draft, a record, a public event, a content card or another card, each by its id, which Mingla checks. A line of text alone is shown as your word. You never close a card with a Send, Spend or Publish tag (a person does that step and closes it), a go-live gate card or a blocked card. Closing releases the card's claims and tells its owners and watchers. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: ID,
@@ -552,7 +552,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "push_back",
     title: "Push a card back",
     description:
-      "Push back a card your person owns: declined when it should not be done, or already_done with proof when it was done before. Say why in one or two sentences; owners and watchers see it, and anyone can reopen the card. Pushing back releases the card's claims. " +
+      "Push back a card your person owns: declined when it should not be done, or already_done with proof when it was done before. Say why in one or two sentences; owners and watchers see it, and anyone can reopen the card. A card with a Send, Spend or Publish tag is never yours to push back. Pushing back releases the card's claims. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: ID,
@@ -586,7 +586,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "list_work",
     title: "List work cards",
     description:
-      "List cards on the Work board, open first by due date, with their owners, plan, claim and revision. Filter by status, owner, event_id, record_id, a search q, or week (the Monday of a sprint). " +
+      "List cards on the Work board: To do and In progress earliest due first, then Done latest due first, with their owners, plan, claim, revision and any Send, Spend or Publish tag. Filter by status, owner, event_id, record_id, a search q, or week (the Monday of a sprint). " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       status: {
@@ -595,7 +595,8 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
           type: "string",
           maxLength: 10,
           enum: ["todo", "doing", "person", "done"],
-          hint: "Use todo, doing, person or done",
+          hint:
+            "Use todo, doing or done; person lists open cards with a Send, Spend or Publish tag",
         },
         minItems: 1,
         maxItems: 4,
