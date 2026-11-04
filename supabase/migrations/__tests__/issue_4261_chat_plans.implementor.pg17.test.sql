@@ -51,6 +51,11 @@
 -- the migration is idempotent; everything after it rolls back.
 
 \ir ../20280326014261_issue_4261_chat_plans.sql
+-- Wave D-back (#4261) replaces plan_lock with a five-argument function and
+-- widens the where shape; re-applying the A2 file above re-creates the old
+-- four-argument plan_lock beside it, so the D-back file is re-applied too to
+-- leave exactly the merged schema under test.
+\ir ../20280329004261_issue_4261_plan_places_and_link_previews.sql
 
 BEGIN;
 
@@ -188,7 +193,7 @@ BEGIN
     'public.plan_create(uuid,uuid,text,text,jsonb,text,text,timestamptz,timestamptz[],boolean,text)',
     'public.plan_add_option(uuid,timestamptz)', 'public.plan_set_vote(uuid,boolean)',
     'public.plan_set_rsvp(uuid,text)', 'public.plan_set_reaction(uuid,text)',
-    'public.plan_lock(uuid,uuid,timestamptz,integer)', 'public.plan_update(uuid,text,text)',
+    'public.plan_lock(uuid,uuid,timestamptz,integer,uuid)', 'public.plan_update(uuid,text,text)',
     'public.plan_cancel(uuid)', 'public.chat_plans_for_conversation(uuid)',
     'public.search_plan_places(text,double precision,double precision,integer)'] LOOP
     IF has_function_privilege('anon', v_p, 'EXECUTE') OR NOT has_function_privilege('authenticated', v_p, 'EXECUTE') THEN
@@ -717,7 +722,8 @@ BEGIN
     RAISE EXCEPTION 'P-09: flags for a member who did not create the plan (got %)', r;
   END IF;
   SELECT x INTO r FROM jsonb_array_elements(v_list -> 'plans') x WHERE x ->> 'id' = pg_temp.t4261p_val('plan_c');
-  IF r -> 'link' <> jsonb_build_object('url', 'https://www.Example.com/events/42?ref=chat', 'domain', 'example.com') THEN
+  -- D-back (#4261) adds the preview fields (title, imageUrl, siteName, fetchedAt).
+  IF NOT (r -> 'link' @> jsonb_build_object('url', 'https://www.Example.com/events/42?ref=chat', 'domain', 'example.com')) THEN
     RAISE EXCEPTION 'P-09: link shape (got %)', r -> 'link';
   END IF;
 END $p09$;
