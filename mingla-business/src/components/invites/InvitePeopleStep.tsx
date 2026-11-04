@@ -28,6 +28,7 @@ import {
   type WizardInviteSelection,
   type WizardOfferingType,
 } from "../../services/offeringInvitePlanService";
+import type { BrandCircleReachSummary } from "../../services/brandCircleReachSummaryService";
 import type { ManualGroupSummary } from "../../types/marketing";
 import type { BrandPersonSummary } from "../../types/people";
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -86,6 +87,36 @@ const accessFailureFor = (error: unknown): InviteAccessFailure | null => {
   }
   return null;
 };
+
+/** Copy shared with the Blast audience picker for the same server state. */
+export const FRIENDS_OF_FOLLOWERS_UNAVAILABLE =
+  "Not available until people can control extended brand reach in Mingla.";
+
+export interface CircleRowAvailability {
+  available: boolean;
+  detail: string;
+}
+
+/**
+ * #3682 — Friends of followers is selectable only when the server says the
+ * extended audience is live (the same get_brand_circle_reach availability the
+ * Blast picker reads; the plan RPC refuses it on the same three switches).
+ * While that is unknown the row stays disabled instead of failing on tap.
+ */
+export function friendsOfFollowersRowAvailability(input: {
+  pending: boolean;
+  error: boolean;
+  summary: BrandCircleReachSummary | null | undefined;
+}): CircleRowAvailability {
+  if (input.pending) return { available: false, detail: "Checking current reach…" };
+  if (input.error || !input.summary) {
+    return { available: false, detail: "Current reach is unavailable." };
+  }
+  if (input.summary.availability.extended.reason === "controls_not_live") {
+    return { available: false, detail: FRIENDS_OF_FOLLOWERS_UNAVAILABLE };
+  }
+  return { available: true, detail: "Friends of followers who are already in Your Book" };
+}
 
 export function InvitePeopleStep({
   eventId,
@@ -404,6 +435,11 @@ export function InvitePeopleStep({
         groupsPending={model.groups.isPending}
         groupsError={model.groups.isError}
         onRetryGroups={() => void model.groups.refetch()}
+        friendsOfFollowers={friendsOfFollowersRowAvailability({
+          pending: model.circle.isPending,
+          error: model.circle.isError,
+          summary: model.circle.data,
+        })}
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
         disabled={isSaving || plan.state === "locked" || ambiguous}
         onSelectEveryone={() => void persistSelection(
@@ -504,6 +540,8 @@ export function InviteSourcePicker(props: {
   groupsPending?: boolean;
   groupsError?: boolean;
   onRetryGroups?: () => void;
+  /** Omitted only by legacy callers; treated as unavailable (never a dead tap). */
+  friendsOfFollowers?: CircleRowAvailability;
   selectedCount: number;
   disabled: boolean;
   onSelectEveryone: () => void;
@@ -517,6 +555,8 @@ export function InviteSourcePicker(props: {
     : props.bookCount !== null && props.selectedCount >= props.bookCount
       ? true
       : "mixed";
+  const friendsRow = props.friendsOfFollowers ??
+    { available: false, detail: FRIENDS_OF_FOLLOWERS_UNAVAILABLE };
   return (
     <View style={styles.sourceCard}>
       <SourceRow title="Everyone in Your Book" detail={props.bookCount === null ? "Checking count…" : `${props.bookCount} active people`}
@@ -525,8 +565,10 @@ export function InviteSourcePicker(props: {
       <View style={styles.divider} />
       <SourceRow title="Followers" detail="Followers who are already in Your Book"
         action="Select" disabled={props.disabled} onPress={props.onSelectFollowers} />
-      <SourceRow title="Friends of followers" detail="Friends of followers who are already in Your Book"
-        action="Select" disabled={props.disabled} onPress={props.onSelectFriendsOfFollowers} />
+      <SourceRow title="Friends of followers"
+        detail={friendsRow.detail}
+        action="Select" disabled={props.disabled || !friendsRow.available}
+        onPress={props.onSelectFriendsOfFollowers} />
       <View style={styles.divider} />
       <Text style={styles.sourceTitle}>Saved groups</Text>
       {props.groupsPending ? <Text style={styles.muted}>Loading saved groups…</Text> :

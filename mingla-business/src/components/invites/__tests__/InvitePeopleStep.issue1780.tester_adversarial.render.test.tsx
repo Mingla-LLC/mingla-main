@@ -143,6 +143,8 @@ const model = (overrides: Record<string, unknown> = {}) => ({
     error: null,
     refetch: jest.fn(async () => undefined),
   },
+  // #3682: circle availability the Friends of followers row reads.
+  circle: { data: undefined, isPending: false, isError: true },
   replace: { isPending: false, mutateAsync: jest.fn(async () => plan) },
   clear: { isPending: false, mutateAsync: jest.fn(async () => plan) },
   refreshAuthoritative: jest.fn(async () => ({ plan, quote })),

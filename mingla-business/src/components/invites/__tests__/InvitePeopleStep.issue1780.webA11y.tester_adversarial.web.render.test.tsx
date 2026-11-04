@@ -129,6 +129,8 @@ const model = {
     error: null,
     refetch: jest.fn(),
   },
+  // #3682: circle availability the Friends of followers row reads.
+  circle: { data: undefined, isPending: false, isError: true },
   replace: { isPending: false, mutateAsync: jest.fn() },
   clear: { isPending: false, mutateAsync: jest.fn() },
   refreshAuthoritative: jest.fn(),

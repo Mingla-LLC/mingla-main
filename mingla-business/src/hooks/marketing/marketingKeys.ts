@@ -91,6 +91,10 @@ export const marketingKeys = {
       ["business", "offeringInvitePlan", "people", brandId, search?.trim() ?? ""] as const,
     manualGroups: (brandId: string): readonly unknown[] =>
       ["business", "offeringInvitePlan", "manualGroups", brandId] as const,
+    // #3682 — the same circle availability the Blast picker reads, so the
+    // invite step greys out Friends of followers on the same server truth.
+    circleAvailability: (brandId: string): readonly unknown[] =>
+      ["business", "offeringInvitePlan", "circleAvailability", brandId] as const,
   },
   templates: {
     all: ["marketing", "templates"] as const,
