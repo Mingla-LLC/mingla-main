@@ -32,6 +32,9 @@ const ERRORS: Record<string, string> = {
   host_ad_live_edit_caps_exceed_budget:
     "We couldn't split that total across the apps. Nothing was changed; try a slightly higher total.",
   host_ad_live_edit_end_in_past: "Pick an end date in the future.",
+  // #4238 r10 P2-A: the answer was lost and Mingla couldn't check the record.
+  host_ad_live_edit_unconfirmed:
+    "Your change may have gone through. Check this ad again in a minute; Mingla's team has been told.",
   ad_credit_insufficient:
     "There isn't enough Ads credit for that. Add credit, or pick a lower total.",
   // #4238 r8 P2-2: TikTok's own minimum is checked before Mingla asks, so a

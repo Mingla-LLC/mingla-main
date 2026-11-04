@@ -109,6 +109,11 @@ describe("#4238 r9 — the Host's words after a live edit", () => {
     expect(text).not.toMatch(/third/i);
     expect(text).toContain("TikTok didn't take that change");
   });
+  it("an unconfirmed save says it may have gone through, never nothing was changed", () => {
+    const text = hostAdLiveEditError("host_ad_live_edit_unconfirmed");
+    expect(text).toContain("may have gone through");
+    expect(text).not.toMatch(/nothing was changed/i);
+  });
   it("another device's edit in flight is said plainly", () => {
     expect(hostAdLiveEditError("host_ad_live_edit_in_progress")).toContain("already being changed");
   });
@@ -154,6 +159,9 @@ describe("#4238 r10 — round 9 P3s", () => {
     expect(hostAdLookupQuery({ ...pin, name: "Nigeria" })).toBe("Nigeria");
     expect(hostAdPlaceDisplayName(pin)).toBe("Eko Atlantic, Victoria Island, Lagos, Nigeria");
     expect(hostAdPlaceDisplayName({ name: "Lagos", countryCode: "NG", kind: "city" })).toBe("Lagos, Nigeria");
+    // r10: a pin that is only the country is named once.
+    expect(hostAdPlaceDisplayName({ ...pin, name: "Nigeria" })).toBe("Nigeria");
+    expect(hostAdPlaceDisplayName({ ...pin, name: "NG" })).toBe("Nigeria");
   });
   it("one app keeps its daily amount; several keep theirs", () => {
     expect(hostAdLiveEditDoneNote({ daily_not_pushed: ["google"], end_not_pushed: [] }))

@@ -284,8 +284,10 @@ export type HostLiveEditProblem = {
    * undo_failed: an undo after a failure did not work. not_reverted: another
    * edit was recorded first, so this push was kept. lapsed_claim: an earlier
    * request claimed the edit and never finished (it may have pushed).
+   * unconfirmed: the record's answer was lost and the saved edit could not
+   * be read back, so nothing was undone.
    */
-  kind: "undo_failed" | "not_reverted" | "lapsed_claim";
+  kind: "undo_failed" | "not_reverted" | "lapsed_claim" | "unconfirmed";
   platforms: Platform[];
   detail: string;
 };
@@ -489,16 +491,25 @@ export async function runHostLiveEdit(
         "host_ad_live_edit_caps_exceed_budget",
         "ad_credit_insufficient",
       ].find((code) => message.includes(code));
-      return await failure(
-        error.code === "PT409" ? 409 : known ? 422 : 409,
-        known ?? "host_ad_live_edit_not_recorded",
-      );
+      if (known) return await failure(error.code === "PT409" ? 409 : 422, known);
+      // #4238 r10 P2-A: an unknown error may come AFTER the edit committed
+      // (the answer was lost). Check before undoing anything.
+      return await recoverOrRevert(409, `record error: ${message.slice(0, 200)}`);
     }
+    return succeeded(data);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[host-live-edit] interrupted", { detail: detail.slice(0, 300) });
+    return await recoverOrRevert(502, `interrupted: ${detail.slice(0, 200)}`);
+  }
+
+  function succeeded(edit: unknown, extra: Record<string, unknown> = {}): HostLiveEditResult {
     return {
       status: 200,
       body: {
         ok: true,
-        edit: data,
+        edit,
+        ...extra,
         daily_not_pushed: input.plan.dailyNotPushed,
         end_not_pushed: input.plan.newEndsAt === null
           ? []
@@ -506,11 +517,37 @@ export async function runHostLiveEdit(
             .filter((platform) => platform !== "meta"),
       },
     };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.error("[host-live-edit] interrupted", { detail: detail.slice(0, 300) });
-    return await failure(502, "host_ad_live_edit_not_recorded", {
-      detail: detail.slice(0, 300),
-    });
+  }
+
+  /**
+   * #4238 r10 P2-A: before undoing after an unknown record error or a throw,
+   * read the edit by its key. Saved: keep the pushes, it is a success. Not
+   * there: undo as before. The read itself failed: never undo (the app may
+   * match the record), tell staff, and tell the Host it may have gone through.
+   */
+  async function recoverOrRevert(status: number, why: string): Promise<HostLiveEditResult> {
+    let saved: unknown = null;
+    let unknown = false;
+    try {
+      const { data, error } = await db.from("host_ad_live_edits").select("*")
+        .eq("idempotency_key", input.idempotencyKey).maybeSingle();
+      if (error) unknown = true;
+      else saved = data ?? null;
+    } catch {
+      unknown = true;
+    }
+    if (saved) return succeeded(saved, { recovered: true });
+    if (unknown) {
+      const platforms = [...new Set(pushed.map((item) => item.platform))];
+      await report({
+        kind: "unconfirmed",
+        platforms: platforms.length > 0
+          ? platforms
+          : [...new Set(input.plan.lines.map((line) => line.platform))],
+        detail: `${why}; the saved edit could not be checked, so nothing was undone`,
+      });
+      return { status: 502, body: { error: "host_ad_live_edit_unconfirmed" } };
+    }
+    return await failure(status, "host_ad_live_edit_not_recorded");
   }
 }

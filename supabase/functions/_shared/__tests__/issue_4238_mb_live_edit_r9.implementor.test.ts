@@ -352,3 +352,86 @@ Deno.test("R8 a claim left by a crashed request is reported to staff", async () 
   assert(claim > 0 && lapsed > claim && report > lapsed, "the handler reports a lapsed claim right after claiming");
   assert(source.includes("recordLiveEditProblem(db, {"), "through the same record + alert path as a failed undo");
 });
+
+// r10 P2-A: a record whose answer is lost is checked by its key before undoing.
+function lostAnswerDb(lookup: "saved" | "absent" | "fails", how: "error" | "throw") {
+  return {
+    from: (table: string) => {
+      const q: Record<string, unknown> = {};
+      const chain = () => q;
+      q.select = chain;
+      q.eq = chain;
+      q.order = chain;
+      q.maybeSingle = () => {
+        if (table === "ad_connections") return Promise.resolve({ data: { connected: true, status: "connected" }, error: null });
+        if (table === "host_ad_live_edits") {
+          if (lookup === "fails") return Promise.resolve({ data: null, error: { message: "timeout" } });
+          return Promise.resolve({ data: lookup === "saved" ? { id: "edit-saved" } : null, error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      };
+      (q as { then?: unknown }).then = (resolve: (v: unknown) => void) => resolve({ data: [] });
+      return q;
+    },
+    rpc: () =>
+      how === "throw"
+        ? Promise.reject(new Error("fetch failed"))
+        : Promise.resolve({ data: null, error: { code: "XX000", message: "upstream connection reset" } }),
+  };
+}
+const lostAnswer = (lookup: "saved" | "absent" | "fails", how: "error" | "throw", budgets: Budgets, problems: HostLiveEditProblem[]) =>
+  runHostLiveEdit({
+    db: lostAnswerDb(lookup, how),
+    getAdapter: () => adapter(budgets, false),
+    onProblem: (problem) => {
+      problems.push(problem);
+      return Promise.resolve();
+    },
+  }, {
+    plan: metaPlan,
+    versionId: "v",
+    planHash: "h".repeat(64),
+    campaigns: metaRow,
+    actorId: "a",
+    idempotencyKey: "host_live_p_r10-lost-answer",
+    previousEndsAt: END,
+  });
+
+Deno.test("R9 a saved edit whose answer was lost keeps its push and is a success", async () => {
+  for (const how of ["error", "throw"] as const) {
+    const budgets: Budgets = new Map([["meta-c", 500]]);
+    const problems: HostLiveEditProblem[] = [];
+    const result = await lostAnswer("saved", how, budgets, problems);
+    assertEquals(result.status, 200, `${how}: ${JSON.stringify(result.body)}`);
+    assertEquals((result.body.edit as Record<string, unknown>).id, "edit-saved");
+    assertEquals(result.body.recovered, true);
+    assertEquals(budgets.get("meta-c"), 700, `${how}: the push matches the saved edit`);
+    assertEquals(problems, []);
+  }
+});
+
+Deno.test("R10 an edit that is not saved is undone; one that can't be checked is kept and staff told", async () => {
+  for (const how of ["error", "throw"] as const) {
+    const absent: Budgets = new Map([["meta-c", 500]]);
+    const none: HostLiveEditProblem[] = [];
+    const undone = await lostAnswer("absent", how, absent, none);
+    assertEquals(undone.body.error, "host_ad_live_edit_not_recorded", how);
+    assertEquals(absent.get("meta-c"), 500, `${how}: not saved, so undone`);
+    assertEquals(none, []);
+
+    const unknown: Budgets = new Map([["meta-c", 500]]);
+    const problems: HostLiveEditProblem[] = [];
+    const kept = await lostAnswer("fails", how, unknown, problems);
+    assertEquals(kept.status, 502);
+    assertEquals(kept.body.error, "host_ad_live_edit_unconfirmed", how);
+    assertEquals(unknown.get("meta-c"), 700, `${how}: never undone when the record can't be read`);
+    assertEquals(problems.map((p) => [p.kind, p.platforms]), [["unconfirmed", ["meta"]]]);
+  }
+});
+
+Deno.test("R11 the lapsed-claim alert names only apps Mingla pushes to", async () => {
+  const source = await Deno.readTextFile(new URL("../../host-ad-campaign/index.ts", import.meta.url));
+  const block = source.slice(source.indexOf("claim?.lapsed_claim"), source.indexOf("if (claim?.replay === true)"));
+  assert(block.includes(".filter((platform) => HOST_LIVE_DAILY_PUSH.has(platform))"));
+  assert(block.includes("if (platforms.length > 0)"));
+});

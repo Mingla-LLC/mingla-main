@@ -86,7 +86,7 @@ export type HostLiveEditProblemAlertInput = {
   planId: string;
   brandId: string;
   actorId: string | null;
-  kind: "undo_failed" | "not_reverted" | "lapsed_claim";
+  kind: "undo_failed" | "not_reverted" | "lapsed_claim" | "unconfirmed";
   platforms: string[];
   detail: string;
   idempotencyKey: string;
@@ -110,6 +110,8 @@ export async function notifyHostLiveEditProblem(
     }
     const what = input.kind === "undo_failed"
       ? "A live budget change failed and Mingla could NOT undo it."
+      : input.kind === "unconfirmed"
+      ? "A live budget change was pushed but Mingla could not confirm it was recorded; nothing was undone."
       : input.kind === "lapsed_claim"
       ? "An earlier live budget change stopped part-way (no record after 10 minutes); it may have changed an app's daily budget."
       : "A live budget change was pushed but another edit was recorded first.";

@@ -170,10 +170,16 @@ export function hostAdLookupQuery(
 export function hostAdPlaceDisplayName(
   place: Pick<HostAdPlace, "name" | "countryCode" | "kind">,
 ): string {
+  const country = countryName(place.countryCode);
   const base = placeKind(place) === "pin"
     ? hostAdPinParts(place).join(", ")
     : place.name.trim();
-  return `${base}, ${countryName(place.countryCode)}`;
+  // r10: a pin that is only the country reads "Nigeria", never "Nigeria, Nigeria".
+  const code = place.countryCode.trim().toUpperCase();
+  if (base.toUpperCase() === country.toUpperCase() || base.toUpperCase() === code) {
+    return country;
+  }
+  return `${base}, ${country}`;
 }
 
 /** Which apps need an id from their own list for this place. */

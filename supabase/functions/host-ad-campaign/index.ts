@@ -47,6 +47,7 @@ import {
 import type { Platform } from "../_shared/adChannelCore.ts";
 import {
   type HostLiveCampaign,
+  HOST_LIVE_DAILY_PUSH,
   type HostLiveEditProblem,
   planHostLiveEdit,
   runHostLiveEdit,
@@ -1529,19 +1530,24 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
     const { data: lapsedRows } = await db.from("ad_campaigns")
       .select("id,platform,status").eq("plan_version_id", String(plan.current_version_id));
     const rows = (lapsedRows ?? []) as Record<string, unknown>[];
-    await recordLiveEditProblem(db, {
-      planId,
-      versionId: String(plan.current_version_id),
-      brandId,
-      actorId,
-      editKey: String(lapsed.idempotency_key ?? editKey),
-      rows,
-      problem: {
-        kind: "lapsed_claim",
-        platforms: [...new Set(rows.map((row) => row.platform as Platform))],
-        detail: `claim ${String(lapsed.idempotency_key ?? "?")} from ${String(lapsed.claimed_at ?? "?")} never recorded`,
-      },
-    });
+    // r10: only apps Mingla pushes to can be on an unrecorded amount.
+    const platforms = [...new Set(rows.map((row) => row.platform as Platform))]
+      .filter((platform) => HOST_LIVE_DAILY_PUSH.has(platform));
+    if (platforms.length > 0) {
+      await recordLiveEditProblem(db, {
+        planId,
+        versionId: String(plan.current_version_id),
+        brandId,
+        actorId,
+        editKey: String(lapsed.idempotency_key ?? editKey),
+        rows,
+        problem: {
+          kind: "lapsed_claim",
+          platforms,
+          detail: `claim ${String(lapsed.idempotency_key ?? "?")} from ${String(lapsed.claimed_at ?? "?")} never recorded`,
+        },
+      });
+    }
   }
   if (claim?.replay === true) {
     return json({
