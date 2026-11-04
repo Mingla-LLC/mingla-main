@@ -19,9 +19,11 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 import {
   dismissedCardsStorageKey,
   isRestoredDeckSnapshot,
+  DECK_SNAPSHOT_RESTORE_GATE_MS,
   persistFirstDeckPageController,
   prefetchDeckPageController,
-  restoreDeckSnapshotController,
+  restoreDeckSnapshotOnce,
+  settleWithin,
   useDeckCards,
 } from "../hooks/useDeckCards";
 import { deckService } from "../services/deckService";
@@ -267,16 +269,21 @@ export const RecommendationsProvider: React.FC<
   // #4265: cold start — seed the last deck the user saw (same user, same
   // ~110 m location bucket, < 24 h old, minus every swiped/dismissed card)
   // into the cache under its production key. Solo only; reads AsyncStorage
-  // only, never the network. The fresh deck then loads behind it.
+  // only, never the network. Once per launch (shared across provider mounts).
+  // The solo deck query waits for it — at most DECK_SNAPSHOT_RESTORE_GATE_MS —
+  // so the snapshot is in the cache before the first fetch; if the gate times
+  // out, fetchDeckKeepingSnapshot still merges the fresh deck behind it.
+  const [deckSnapshotGateSettled, setDeckSnapshotGateSettled] = useState(false);
   useEffect(() => {
     if (currentMode !== "solo" || !user?.id) return;
     if (deckSnapshotRestoreStartedRef.current) return;
     deckSnapshotRestoreStartedRef.current = true;
     const startedAt = Date.now();
-    void restoreDeckSnapshotController(
+    const { promise, first } = restoreDeckSnapshotOnce(
       { userId: user.id, mode: "solo", refreshKey, now: startedAt },
       { queryClient, storage: AsyncStorage },
-    ).then((restored) => {
+    );
+    void promise.then((restored) => {
       if (restored.queryKey) {
         // The snapshot's key pinned this FX snapshot; restoring the pin keeps
         // the live key identical so the cache hit holds once params resolve.
@@ -286,7 +293,7 @@ export const RecommendationsProvider: React.FC<
         }
         setLastDeckKey(restored.queryKey);
       }
-      if (__DEV__) {
+      if (__DEV__ && first) {
         console.log('[Deck] Cold-start snapshot', {
           restoredCards: restored.cardCount,
           skipped: restored.skipped,
@@ -299,7 +306,16 @@ export const RecommendationsProvider: React.FC<
         error instanceof Error ? error.message : String(error),
       );
     });
+    void settleWithin(promise, DECK_SNAPSHOT_RESTORE_GATE_MS).then((outcome) => {
+      if (__DEV__ && outcome === 'timeout') {
+        console.warn('[Deck] Cold-start snapshot restore slower than the gate; deck fetch released');
+      }
+      setDeckSnapshotGateSettled(true);
+    });
   }, [currentMode, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Closed only while a solo, signed-in restore is pending (≤ 300 ms).
+  const deckSnapshotGateOpen =
+    currentMode !== "solo" || !user?.id || deckSnapshotGateSettled;
 
   // ── ORCH-0490 Phase 2.3: Logout / user-swap registry clear ──────────
   // Constitutional #6: logout must clear all private state. The registry
@@ -744,7 +760,8 @@ export const RecommendationsProvider: React.FC<
       activeDeckParams !== null &&
       isDeckParamsStable &&
       !isWaitingForSessionResolution &&
-      batchSeedReady,
+      batchSeedReady &&
+      deckSnapshotGateOpen,
     excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
     displayCurrency: explicitViewerCurrency,
@@ -774,7 +791,8 @@ export const RecommendationsProvider: React.FC<
       !!userLocation &&
       stableDeckParams !== null &&
       isDeckParamsStable &&
-      batchSeedReady,
+      batchSeedReady &&
+      deckSnapshotGateOpen, // #4265: the local snapshot restore goes first (≤ 300 ms)
     excludeCardIds: [],
     lastKnownQueryKey: isSoloMode ? lastDeckKey : null,
     displayCurrency: explicitViewerCurrency,

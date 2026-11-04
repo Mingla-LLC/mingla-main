@@ -15,13 +15,19 @@
 //   * cards the user swiped or dismissed are never seeded, and never come back
 //     when the fresh deck is merged in behind the snapshot;
 //   * the fresh merge keeps every on-screen card in place (superset), so the
-//     card under the thumb does not move; an empty fresh deck is honest.
+//     card under the thumb does not move; an empty fresh deck is honest;
+//   * RACE (sim, combined build): the deck fetch started before the ~100-190 ms
+//     storage read finished, and the restore bailed ("fetch-in-flight") on every
+//     launch. Now the snapshot is seeded even with a fetch in flight, and that
+//     fetch's partial + final arrivals merge BEHIND it; the deck query also
+//     waits (≤ 300 ms) for the restore, which runs once per launch.
 // Plus the wiring that makes it run in the app.
 //
-// FAILS-ON-REVERT: removing the restoreDeckSnapshotController call or the
-// serving-side exclusion from RecommendationsContext, the restored-snapshot
-// staleTime / merge in useDeckCards, or the swiped-card filter in
-// deckSnapshot.ts fails this suite.
+// FAILS-ON-REVERT: removing the restore call, the restore gate or the
+// serving-side exclusion from RecommendationsContext; the restored-snapshot
+// staleTime or fetchDeckKeepingSnapshot in useDeckCards; reading the cache
+// only at fetch start (the old `prior` capture); the in-flight skip; the
+// once-per-launch share; or the swiped-card filter in deckSnapshot.ts.
 
 import {
   buildDeckSnapshotRecord,
@@ -31,8 +37,13 @@ import {
   dismissedCardsStorageKey,
   isRestoredDeckSnapshot,
   LAST_RESOLVED_LOCATION_KEY,
+  DECK_SNAPSHOT_RESTORE_GATE_MS,
+  fetchDeckKeepingSnapshot,
   mergeFreshDeckBehindSnapshot,
+  resetDeckSnapshotRestoreForTests,
   restoreDeckSnapshotController,
+  restoreDeckSnapshotOnce,
+  settleWithin,
 } from "../deckSnapshot.ts";
 
 function assert(condition: unknown, message: string): void {
@@ -81,9 +92,11 @@ function fakeCache(fetchingKeys: unknown[][] = []) {
     isFetching: ({ queryKey }) => (fetching.has(keyHash(queryKey)) ? 1 : 0),
     getQueryData: (key) => data.get(keyHash(key)),
     setQueryData: (key, value, options) => {
-      data.set(keyHash(key), value);
-      updatedAt.set(keyHash(key), options.updatedAt);
-      return value;
+      const next = typeof value === "function" ? value(data.get(keyHash(key))) : value;
+      if (next === undefined) return undefined;
+      data.set(keyHash(key), next);
+      updatedAt.set(keyHash(key), options?.updatedAt ?? NOW);
+      return next;
     },
   };
 }
@@ -218,20 +231,88 @@ Deno.test("snapshot is not shown for another user, a stale deck, a moved locatio
   }
 });
 
-Deno.test("a fetch already running for the key is not raced by the snapshot", async () => {
-  const cache = fakeCache([KEY]);
-  const result = await restoreDeckSnapshotController(
+function partialShape(prev, cards) {
+  return { ...(prev ?? deck([])), cards, total: cards.length };
+}
+
+Deno.test("RACE: fetch already in flight when the restore lands → snapshot shown, fresh merged behind", async () => {
+  const swipeKeys = deckSwipeStateStorageKeys("solo", 3);
+  const cache = fakeCache();
+  let deliverPartial;
+  let finishFetch;
+  const fetchStarted = new Promise((started) => {
+    // The deck fetch starts FIRST (cache empty), exactly as on the simulator.
+    void fetchDeckKeepingSnapshot(cache, KEY, (onPartial) => {
+      deliverPartial = onPartial;
+      started(undefined);
+      return new Promise((resolve) => { finishFetch = resolve; });
+    }, partialShape).then((result) => { cache.result = result; });
+  });
+  await fetchStarted;
+  assertEquals(cache.getQueryData(KEY), undefined, "fetch is in flight with an empty cache");
+
+  // The local restore resolves while that fetch is still running.
+  const restored = await restoreDeckSnapshotController(
     { userId: USER, mode: "solo", refreshKey: 3, now: NOW },
     {
       queryClient: cache,
       storage: fakeStorage({
-        [DECK_LAST_SNAPSHOT_KEY]: savedSnapshot(["a"]),
+        [DECK_LAST_SNAPSHOT_KEY]: savedSnapshot(["a", "b", "c", "d"]),
         [LAST_RESOLVED_LOCATION_KEY]: RALEIGH,
+        [swipeKeys.removedCards]: JSON.stringify(["a"]),
       }),
     },
   );
-  assertEquals(result.skipped, "fetch-in-flight");
-  assertEquals(cache.data.size, 0, "nothing seeded under an in-flight fetch");
+  assertEquals(restored.skipped, null, "an in-flight fetch must not stop the snapshot");
+  assertEquals(cache.getQueryData(KEY).cards.map((c) => c.id), ["b", "c", "d"],
+    "the snapshot is on screen while the fetch is still running");
+
+  // A partial (singles) arrives: behind the snapshot, swiped card still out.
+  deliverPartial([card("a"), card("e")]);
+  const afterPartial = cache.getQueryData(KEY);
+  assertEquals(afterPartial.cards.map((c) => c.id), ["b", "c", "d", "e"], "partial merges behind, without swiped a");
+  assert(isRestoredDeckSnapshot(afterPartial), "partial keeps the snapshot marker + exclusions for the final merge");
+
+  // The final interleaved deck arrives.
+  finishFetch(deck(["e", "a", "f", "c", "b"]));
+  await new Promise((r) => setTimeout(r, 0));
+  assertEquals(cache.result.cards.map((c) => c.id), ["b", "c", "d", "e", "f"],
+    "final deck merges behind the on-screen cards; the top card (b) never moves; swiped a never returns");
+  assert(!isRestoredDeckSnapshot(cache.result), "the merged result is a fetched deck");
+});
+
+Deno.test("no snapshot → the fetch result is returned exactly as fetched", async () => {
+  const cache = fakeCache();
+  const fresh = deck(["x", "y"]);
+  const result = await fetchDeckKeepingSnapshot(cache, KEY, async () => fresh, partialShape);
+  assertEquals(result, fresh);
+});
+
+Deno.test("the restore runs once per launch and every caller shares its result", async () => {
+  resetDeckSnapshotRestoreForTests();
+  const storage = fakeStorage({
+    [DECK_LAST_SNAPSHOT_KEY]: savedSnapshot(["a", "b"]),
+    [LAST_RESOLVED_LOCATION_KEY]: RALEIGH,
+  });
+  const cache = fakeCache();
+  const input = { userId: USER, mode: "solo", refreshKey: 3, now: NOW };
+  const one = restoreDeckSnapshotOnce(input, { queryClient: cache, storage });
+  const two = restoreDeckSnapshotOnce(input, { queryClient: cache, storage });
+  assert(one.first && !two.first, "second mount must reuse the first restore");
+  assert(one.promise === two.promise, "both mounts get the same result");
+  assertEquals((await two.promise).queryKey, KEY);
+  assertEquals(storage.reads.filter((k) => k === DECK_LAST_SNAPSHOT_KEY).length, 1, "snapshot read once per launch");
+  const other = restoreDeckSnapshotOnce({ ...input, refreshKey: 4 }, { queryClient: cache, storage });
+  assert(other.first, "a new preference generation restores again");
+  await other.promise;
+  resetDeckSnapshotRestoreForTests();
+});
+
+Deno.test("the restore gate releases the deck when the read settles, or after 300 ms at most", async () => {
+  assertEquals(DECK_SNAPSHOT_RESTORE_GATE_MS, 300);
+  assertEquals(await settleWithin(Promise.resolve(1), 50), "settled");
+  assertEquals(await settleWithin(Promise.reject(new Error("x")), 50), "settled", "a failed read still opens the gate");
+  assertEquals(await settleWithin(new Promise(() => {}), 20), "timeout", "a hung read cannot block the deck");
 });
 
 Deno.test("a deck already in the cache is never overwritten by the snapshot", async () => {
@@ -261,7 +342,16 @@ const swipeSource = await Deno.readTextFile(
 );
 
 Deno.test("the app restores the snapshot on cold start and keys the deck on it", () => {
-  assert(contextSource.includes("restoreDeckSnapshotController("), "RecommendationsContext must restore the cold-start snapshot");
+  assert(contextSource.includes("restoreDeckSnapshotOnce("), "RecommendationsContext must restore the cold-start snapshot once per launch");
+  assert(
+    contextSource.includes("settleWithin(promise, DECK_SNAPSHOT_RESTORE_GATE_MS)"),
+    "the deck must wait (bounded) for the local restore",
+  );
+  const soloHook = contextSource.slice(contextSource.indexOf("const flagSoloDeck = useDeckCards({"));
+  assert(
+    soloHook.slice(0, soloHook.indexOf("excludeCardIds")).includes("deckSnapshotGateOpen"),
+    "the solo deck query must not fetch before the restore gate opens",
+  );
   assert(/setLastDeckKey\(restored\.queryKey\)/.test(contextSource), "restored key must drive lastKnownQueryKey");
   assert(/setPinnedFxSnapshotId\(restored\.fxSnapshotId\)/.test(contextSource), "restored FX pin keeps the live key identical");
   assert(
@@ -283,10 +373,10 @@ Deno.test("useDeckCards loads a fresh deck behind a restored snapshot and merges
     "restored snapshot must be stale so the fresh deck loads behind it",
   );
   assert(
-    hookSource.includes("return restored ? mergeFreshDeckBehindSnapshot(restored, fresh) : fresh;"),
-    "fresh deck must merge behind the restored snapshot",
+    hookSource.includes("return fetchDeckKeepingSnapshot<Recommendation, DeckResponse>("),
+    "the deck fetch must go through the keep-my-place snapshot merge",
   );
-  assert(hookSource.includes("!restoredExcluded.has(card.id)"), "partial deliveries must skip swiped cards too");
+  assert(!hookSource.includes("const prior = queryClient.getQueryData"), "the cache must not be read only at fetch start");
   assert(hookSource.includes("JSON.stringify(record)"), "first page must write the snapshot record");
 });
 
