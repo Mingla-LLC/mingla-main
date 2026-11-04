@@ -139,3 +139,12 @@ export const brandEnquiryKeys = {
     [...brandEnquiryKeys.all, 'thread', userId, enquiryId] as const,
   brandIdentity: (ref: string) => [...brandEnquiryKeys.all, 'brandIdentity', ref] as const,
 };
+
+// #4265 — the share sheet's "Send in Mingla" people and chats, per signed-in
+// user. Persisted so the sheet reopens with the last list at once; the user id
+// in the key means logout / account switch removes it (authCleanup →
+// shouldRemoveForAuthChange) and the persister never writes it for anyone else.
+export const contentShareRecipientKeys = {
+  all: ['contentShareRecipients'] as const,
+  list: (userId: string) => [...contentShareRecipientKeys.all, 'list', userId] as const,
+};

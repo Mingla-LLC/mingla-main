@@ -20,6 +20,8 @@ const USER_ID_POSITIONS: Record<string, number[]> = {
   userLevel: [1],
   "beta-feedback": [2],
   "session-creation-gate": [1],
+  // #4265 — share-sheet recipients: contentShareRecipientKeys.list(userId).
+  contentShareRecipients: [2],
 };
 
 type QueryLike = {
@@ -83,6 +85,11 @@ export function shouldDehydrateMinglaQuery(query: QueryLike, currentUserId?: str
   if (Array.isArray(queryKey)) {
     const firstKey = String(queryKey[0] ?? "");
     if (NEVER_PERSIST_ROOT_KEYS.has(firstKey)) return false;
+    // #4265 — people and chats are private: never persist a copy that is not
+    // tied to a signed-in user id (it could not be removed on account switch).
+    if (firstKey === "contentShareRecipients" && getUserIdFromQueryKey(queryKey) === null) {
+      return false;
+    }
 
     if (firstKey === "deck-cards") {
       const data = query.state.data as { cards?: unknown[] } | undefined;

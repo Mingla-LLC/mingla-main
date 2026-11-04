@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/share/__tests__/issue_4265_share_sheet_wiring.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4265-share-sheet-wiring-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
