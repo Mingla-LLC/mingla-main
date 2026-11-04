@@ -3819,6 +3819,9 @@ function ariPlaceKey(place: AriPlace): string {
     : base;
 }
 
+/** #4238: a wider area Ari used for one place on one app. */
+type AriWiderPick = { name: string; wholeCountry: boolean };
+
 /**
  * #4238 I-4238-PER-APP-MATCH: Ari asks each app on its own (the server's
  * one matcher, `match: true`), the same as the Host builder and Admin. A
@@ -3837,7 +3840,13 @@ export async function resolveAriTargetingRefs(
 ): Promise<{
   refs: Record<string, unknown>;
   notes: string[];
+  /**
+   * #4238: per app, the places whose id is a wider area Ari used, keyed by
+   * place key, so the saved picks read back as accepted wider areas.
+   */
+  wider: Record<string, Record<string, AriWiderPick>>;
 }> {
+  const widerByPlatform: Record<string, Record<string, AriWiderPick>> = {};
   const refsByPlatform: Record<string, {
     locationIds?: Record<string, string>;
     interestIds?: Record<string, string>;
@@ -3856,7 +3865,7 @@ export async function resolveAriTargetingRefs(
         match?: {
           state?: string;
           best?: { id?: unknown; name?: unknown };
-          wider?: { id?: unknown; name?: unknown };
+          wider?: { id?: unknown; name?: unknown; meta?: unknown };
         };
       };
     } catch {
@@ -3899,11 +3908,28 @@ export async function resolveAriTargetingRefs(
         return;
       }
       locationIds[ariPlaceKey(place)] = id;
-      if (response.match?.state === "wider" && place.kind !== "pin") {
+      if (response.match?.state !== "wider") return;
+      const widerMeta = response.match.wider?.meta;
+      // #4238 live check: TikTok has nothing below the country in Nigeria,
+      // so the wider area can be the whole country.
+      const wholeCountry = widerMeta !== null &&
+        typeof widerMeta === "object" &&
+        String((widerMeta as Record<string, unknown>).level ?? "")
+            .toUpperCase() === "COUNTRY";
+      const widerName = wholeCountry
+        ? `all of ${adCountryName(place.countryCode)}`
+        : String(best?.name ?? "a wider area");
+      (widerByPlatform[platform] ??= {})[ariPlaceKey(place)] = {
+        name: widerName,
+        wholeCountry,
+      };
+      if (wholeCountry) {
         notes.push(
-          `${app} only knows ${
-            String(best?.name ?? "a wider area")
-          }, not ${place.name}, so it uses that wider area.`,
+          `${app} has no smaller area for ${place.name}, so it shows your ad across ${widerName} (wider area).`,
+        );
+      } else if (place.kind !== "pin") {
+        notes.push(
+          `${app} only knows ${widerName}, not ${place.name}, so it uses that wider area.`,
         );
       }
     };
@@ -3943,7 +3969,7 @@ export async function resolveAriTargetingRefs(
       ...(Object.keys(languageIds).length > 0 ? { languageIds } : {}),
     };
   }));
-  return { refs: refsByPlatform, notes };
+  return { refs: refsByPlatform, notes, wider: widerByPlatform };
 }
 
 const HOST_AD_PLATFORM_NAMES: Record<string, string> = {
@@ -4523,16 +4549,43 @@ const proposeAdPlan = writeTool(
       },
       // #4238: the picks per app, read back by key (same as the builder).
       targeting_selection: {
-        places: cities.map((place) => ({
-          ...place,
-          refs: Object.fromEntries(platforms.flatMap((platform) => {
-            const refs = targetingRefs[platform] as
-              | { locationIds?: Record<string, string> }
-              | undefined;
-            const id = refs?.locationIds?.[ariPlaceKey(place)];
-            return id ? [[platform, id]] : [];
-          })),
-        })),
+        places: cities.map((place) => {
+          // #4238: a wider area Ari used reads back in the builder as
+          // accepted ("All of Nigeria (wider area)"), never as the city.
+          const wider = platforms.flatMap((platform) => {
+            const row = targeting.wider[platform]?.[ariPlaceKey(place)];
+            return row ? [[platform, row] as const] : [];
+          });
+          return {
+            ...place,
+            refs: Object.fromEntries(platforms.flatMap((platform) => {
+              const refs = targetingRefs[platform] as
+                | { locationIds?: Record<string, string> }
+                | undefined;
+              const id = refs?.locationIds?.[ariPlaceKey(place)];
+              return id ? [[platform, id]] : [];
+            })),
+            ...(wider.length > 0
+              ? {
+                labels: Object.fromEntries(
+                  wider.map(([platform, row]) => [platform, row.name]),
+                ),
+                accepted: Object.fromEntries(
+                  wider.map(([platform]) => [platform, true]),
+                ),
+              }
+              : {}),
+            ...(wider.some(([, row]) => row.wholeCountry)
+              ? {
+                wholeCountry: Object.fromEntries(
+                  wider.filter(([, row]) => row.wholeCountry).map((
+                    [platform],
+                  ) => [platform, true]),
+                ),
+              }
+              : {}),
+          };
+        }),
         excluded: excludedPlaces.map((place) => ({ ...place, refs: {} })),
         interests: interests.map((name) => ({ name, refs: {} })),
       },

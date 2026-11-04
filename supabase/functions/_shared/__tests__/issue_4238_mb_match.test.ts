@@ -115,7 +115,13 @@ Deno.test("A2 the search edge marks every provider error unavailable, Host and a
   // Both the Host branch and the admin branch return the flag.
   assertEquals(failOpen.split("unavailable: true,\n").length - 1, 1);
   assertStringIncludes(failOpen, "return { results: [], warning, unavailable: true };");
-  // The TikTok city lookup falls back to PROVINCE for the wider area.
-  assertStringIncludes(src, 'geoTypes: ["PROVINCE"]');
+  // The TikTok city lookup falls back to PROVINCE for the wider area (in the
+  // shared place lookup the edge fn calls).
+  assertStringIncludes(src, "tiktokResolvePlace(client, { kind, q, country })");
+  const tiktok = await Deno.readTextFile(new URL("../tiktok.ts", import.meta.url));
+  assertStringIncludes(
+    tiktok.slice(tiktok.indexOf("export async function tiktokResolvePlace(")),
+    'geoTypes: ["PROVINCE"]',
+  );
   assert(src.includes("match: searchMatch(k, q, out)"));
 });
