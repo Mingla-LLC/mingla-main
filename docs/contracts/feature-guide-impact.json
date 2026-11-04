@@ -307,7 +307,34 @@
     {
       "capability_key": "social-follow-brands",
       "paths": [
-        "app-mobile/app/index.tsx"
+        "app-mobile/app/index.tsx",
+        "app-mobile/src/components/NotificationsSheet.tsx",
+        "app-mobile/src/components/notifications/brandReachNotification.ts",
+        "app-mobile/src/components/profile/BrandFollowOverflowSheet.tsx",
+        "app-mobile/src/components/profile/BrandFriendsReachFootRow.tsx",
+        "app-mobile/src/components/profile/BrandsYouFollowManageSheet.tsx",
+        "app-mobile/src/components/profile/friendsReachCopy.ts",
+        "app-mobile/src/hooks/brandFollowKeys.ts",
+        "app-mobile/src/hooks/useFriendsReach.ts",
+        "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx",
+        "app-mobile/src/services/deepLinkService.ts",
+        "app-mobile/src/services/friendsReachModel.ts",
+        "app-mobile/src/services/friendsReachService.ts",
+        "mingla-business/src/services/brandCircleReachService.ts",
+        "mingla-business/src/types/brandCircleReach.ts",
+        "supabase/functions/_shared/autoFollowBrand.ts",
+        "supabase/functions/_shared/brandReachMessages.ts",
+        "supabase/functions/_shared/notifyTemplates.ts",
+        "supabase/functions/_shared/notifyV2.ts",
+        "supabase/functions/_shared/reservationPaystackFinalize.ts",
+        "supabase/functions/public-submit-rsvp/index.ts",
+        "supabase/functions/venue-reservation-confirm/index.ts",
+        "supabase/functions/venue-reservation-create/index.ts",
+        "supabase/migrations/20280401003682_issue_3682_auto_follow_generic_claims.sql",
+        "supabase/migrations/20280401013682_issue_3682_quiet_auto_follow_backfill.sql",
+        "supabase/migrations/20280401023682_issue_3682_friends_of_followers_audience_names.sql",
+        "supabase/migrations/20280401053682_issue_3682_friends_reach_controls.sql",
+        "supabase/migrations/20280401063682_issue_3682_friends_reach_send_time_switch.sql"
       ]
     },
     {
@@ -586,7 +613,9 @@
       "capability_key": "events-guest-list",
       "paths": [
         "mingla-business/app/event/[id]/guests/index.tsx",
+        "mingla-business/jest.issue873.render.cjs",
         "mingla-business/src/components/guests/GuestDaySelector.tsx",
+        "mingla-business/src/components/guests/GuestRosterExperience.tsx",
         "mingla-business/src/utils/guestCsvDayOrder.ts",
         "mingla-business/src/utils/guestCsvExport.ts"
       ]
@@ -700,7 +729,20 @@
         "supabase/functions/_shared/marketingEmailRender.ts",
         "supabase/functions/marketing-send/index.ts",
         "supabase/functions/_shared/email/footerLine.ts",
-        "supabase/functions/_shared/marketingReceiveReason.ts"
+        "supabase/functions/_shared/marketingReceiveReason.ts",
+        "mingla-business/src/components/marketing/CampaignChannelSelector.tsx",
+        "mingla-business/src/components/marketing/ChannelTabs.tsx",
+        "mingla-business/src/components/marketing/ComposerReviewSheet.tsx",
+        "mingla-business/src/components/marketing/ComposerSentConfirmation.tsx",
+        "mingla-business/src/components/marketing/PushComposeCard.tsx",
+        "mingla-business/src/hooks/marketing/marketingKeys.ts",
+        "mingla-business/src/services/marketing/campaignChannelGroupService.ts",
+        "mingla-business/src/services/marketing/campaignPayloadContract.ts",
+        "mingla-business/src/services/marketing/campaignSendCopy.ts",
+        "mingla-business/src/services/marketing/marketingCampaignService.ts",
+        "mingla-business/src/types/marketing.ts",
+        "supabase/functions/marketing-send/pushCampaign.ts",
+        "supabase/migrations/20280401043682_issue_3682_push_campaigns.sql"
       ]
     },
     {
@@ -895,6 +937,20 @@
         "mingla-marketing/components/blog/blocks/video-embed.tsx",
         "packages/blog-document/src/index.ts",
         "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+      ]
+    },
+    {
+      "capability_key": "events-invite-people",
+      "paths": [
+        "mingla-business/jest.issue1780.render.cjs",
+        "mingla-business/src/components/guests/AccountInviteSummaryCard.tsx",
+        "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx",
+        "mingla-business/src/components/trip/TripCreatorWizard.tsx",
+        "mingla-business/src/hooks/useOfferingAccountInvites.ts",
+        "mingla-business/src/hooks/useOfferingInvitePlan.ts",
+        "mingla-business/src/services/offeringAccountInvitesService.ts",
+        "mingla-business/src/services/offeringInvitePlanService.ts",
+        "supabase/migrations/20280401033682_issue_3682_account_invite_recipients.sql"
       ]
     }
   ]
