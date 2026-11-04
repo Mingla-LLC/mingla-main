@@ -322,7 +322,10 @@ Deno.test("#4265 pull to refresh refreshes every calendar source", async () => {
   const tab = stripComments(await read("src/components/activity/CalendarTab.tsx"));
   const start = tab.indexOf("const handleRefresh");
   const body = tab.slice(start, tab.indexOf("}, [", start));
-  for (const source of ['"calendarEntries"', "businessOrdersQuery.refetch", "reservationsQuery.refetch", "staysQuery.refetch", "goingRsvpsQuery.refetch"]) {
+  for (const [name, query] of [["refetchOrders", "businessOrdersQuery"], ["refetchReservations", "reservationsQuery"], ["refetchStays", "staysQuery"], ["refetchRsvps", "goingRsvpsQuery"]]) {
+    assert(new RegExp(`const \\{ refetch: ${name} \\} = ${query};`).test(tab), `${name} is ${query}.refetch`);
+  }
+  for (const source of ['"calendarEntries"', "refetchOrders()", "refetchReservations()", "refetchStays()", "refetchRsvps()"]) {
     assert(body.includes(source), `refresh is missing ${source}`);
   }
 });

@@ -41,7 +41,7 @@ export interface AgendaTicketInput {
   paymentStatus: string;
   ticketCount: number;
   ticketCountValid: number;
-  tickets: ReadonlyArray<{ id: string; status: string }>;
+  tickets: readonly { id: string; status: string }[];
   venue: { locationText: string | null };
 }
 
@@ -62,12 +62,12 @@ export interface AgendaStayInput {
   state: string;
   venueName: string;
   brandName: string;
-  lines: ReadonlyArray<{
+  lines: readonly {
     roomCheckIn: string | null;
     roomCheckOut: string | null;
     placeStartsAt: string | null;
     placeEndsAt: string | null;
-  }>;
+  }[];
 }
 
 export interface AgendaRsvpInput {
@@ -317,7 +317,7 @@ export function buildUnifiedRows<S extends AgendaSources>(
     const end = computeEntryEffectiveEnd(entry);
     const effectiveEndMs = end === null ? Number.NaN : end.getTime();
     const exp = (entry.experience ?? {}) as Record<string, unknown>;
-    const stops = Array.isArray(exp.stops) ? (exp.stops as Array<Record<string, unknown>>) : [];
+    const stops = Array.isArray(exp.stops) ? (exp.stops as Record<string, unknown>[]) : [];
     const firstStop = stops[0];
     const place = stops.length > 0
       ? nonEmpty(firstStop?.placeName) ?? nonEmpty(firstStop?.title)

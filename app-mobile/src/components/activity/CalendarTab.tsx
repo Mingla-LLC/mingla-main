@@ -93,6 +93,8 @@ import {
   buildMonthGrid,
   buildUnifiedRows,
   buildWeekGrid,
+  DAY_STRIP_LENGTH,
+  dateOfDayKey,
   dayKeyOf,
   groupByDay,
   matchesTypeFilter,
@@ -232,6 +234,10 @@ const CalendarTab = ({
   // ISSUE-1390 — Stay reservations join the same consumer itinerary.
   const staysQuery = useMyStayReservations(user?.id ?? null);
   const goingRsvpsQuery = useMyGoingRsvps(user?.id);
+  const { refetch: refetchOrders } = businessOrdersQuery;
+  const { refetch: refetchReservations } = reservationsQuery;
+  const { refetch: refetchStays } = staysQuery;
+  const { refetch: refetchRsvps } = goingRsvpsQuery;
   const myReservations = useMemo(() => reservationsQuery.data ?? [], [reservationsQuery.data]);
 
   // Realtime freshness. Each hook subscribes in an effect keyed on
@@ -252,10 +258,10 @@ const CalendarTab = ({
         queryClient.invalidateQueries({
           queryKey: ["calendarEntries", user?.id],
         }),
-        businessOrdersQuery.refetch(),
-        reservationsQuery.refetch(),
-        staysQuery.refetch(),
-        goingRsvpsQuery.refetch(),
+        refetchOrders(),
+        refetchReservations(),
+        refetchStays(),
+        refetchRsvps(),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -263,10 +269,10 @@ const CalendarTab = ({
   }, [
     queryClient,
     user?.id,
-    businessOrdersQuery.refetch,
-    reservationsQuery.refetch,
-    staysQuery.refetch,
-    goingRsvpsQuery.refetch,
+    refetchOrders,
+    refetchReservations,
+    refetchStays,
+    refetchRsvps,
   ]);
 
   // #1221 — cancel one of MY reservations and render only durable refund truth.
@@ -373,8 +379,10 @@ const CalendarTab = ({
     ],
   );
 
-  const today = useMemo(() => startOfDay(new Date()), [allRows]);
-  const todayKey = dayKeyOf(today);
+  // A string per render is stable across renders of the same day, so the
+  // memoised strip and grids rebuild only when the date actually changes.
+  const todayKey = dayKeyOf(new Date());
+  const today = useMemo(() => dateOfDayKey(todayKey), [todayKey]);
   const [weekAnchor, setWeekAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -404,10 +412,19 @@ const CalendarTab = ({
       (row) => row.kind === "calendar" && row.entry.id === selectedEntryId,
     );
     if (match?.dayKey) {
-      setView("list");
-      setSelectedDayKey(match.dayKey);
+      // Select that day in every view (List narrows, Week and Month jump to
+      // it) without overwriting the person's saved view choice.
+      const day = dateOfDayKey(match.dayKey);
+      // List can only narrow to a day its strip shows (so it can be cleared).
+      const todayStart = startOfDay(new Date());
+      if (day >= todayStart && day < addDays(todayStart, DAY_STRIP_LENGTH)) {
+        setSelectedDayKey(match.dayKey);
+      }
+      setMonthDayKey(match.dayKey);
+      setMonth({ year: day.getFullYear(), monthIndex: day.getMonth() });
+      setWeekAnchor(day);
     }
-  }, [selectedEntryId, allRows, setView]);
+  }, [selectedEntryId, allRows]);
 
   // ── Formatting (the viewer's locale and timezone) ───────────────────────
   const formats = useMemo(
