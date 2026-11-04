@@ -139,7 +139,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
-export const BOOTSTRAP_SHA256 = "4764ffd91acb6483996463bc57e0a2a9632644b7b05370fdd81eefbc42e63fec";
+// #4271: re-sealed after the door pay migration and proof entered the preserved
+// inventories and the migration joined the pre-#1931 replay skip list by exact filename.
+export const BOOTSTRAP_SHA256 = "186eb388db549e1f42dc7c626090a721e895f33fb8f2da298133889c6d0c5ccb";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

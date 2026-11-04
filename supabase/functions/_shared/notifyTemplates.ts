@@ -725,6 +725,22 @@ export function renderCategoryMessage(
       };
     }
 
+    // Issue #4271 — the host texted the guest the door pay link. SMS only.
+    case "buyer_door_pay_link": {
+      const link = str(payload.pay_url, "");
+      return {
+        push: {
+          title: `Pay for ${eventTitle}`,
+          body: "Your pay link is ready.",
+        },
+        email: {
+          subject: `Pay for ${eventTitle}`,
+          body: link ? `Pay here: ${link}` : "Your pay link is ready.",
+        },
+        sms: renderBuyerSms("S19", { title: eventTitle, link }),
+      };
+    }
+
     case "buyer_door_receipt": {
       const link = str(
         payload.message_link_display ?? payload.message_link_url,

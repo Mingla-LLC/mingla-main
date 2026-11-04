@@ -146,6 +146,15 @@ import {
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
+// Issue #4271 — door pay code: the guest pays a host-made code on their phone.
+import {
+  type DoorPayCheckoutContext,
+  doorPayStripeUrls,
+  isDoorCheckoutRequest,
+  linkDoorPaySession,
+  resolveDoorPayCheckout,
+} from "./doorPayCheckout.ts";
+import { doorPayReturnUrl } from "../_shared/doorPay.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -745,6 +754,21 @@ export const createTicketCheckoutCreateHandler = (
       body = await req.json();
     } catch {
       return jsonResponse({ error: "invalid_json" }, 400);
+    }
+
+    // Issue #4271 — a door pay code replaces the basket with the code's lines
+    // (the server priced them when the host made the code) and forces web.
+    let doorPay: DoorPayCheckoutContext | null = null;
+    if (isDoorCheckoutRequest(body)) {
+      const resolvedDoor = await resolveDoorPayCheckout(
+        deps.serviceClient(),
+        body,
+      );
+      if (!resolvedDoor.ok) {
+        return jsonResponse(resolvedDoor.body, resolvedDoor.status);
+      }
+      doorPay = resolvedDoor.door;
+      body = resolvedDoor.body;
     }
 
     // Issue #3827 — the bearer token is optional for every existing checkout,
@@ -2316,6 +2340,21 @@ export const createTicketCheckoutCreateHandler = (
     let session = sessionResult as Record<string, unknown>;
     await recordUnknownDiscountAttempt(session);
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
+    // Issue #4271 — one code pays once: a paid, cancelled or expired code
+    // refuses the session under the code's row lock.
+    if (doorPay !== null) {
+      const linked = await linkDoorPaySession(
+        supabase,
+        doorPay,
+        checkoutSessionId,
+      );
+      if (!linked.ok) {
+        return jsonResponse(
+          { error: "door_code_unavailable", status: linked.status },
+          409,
+        );
+      }
+    }
     let checkoutV2Fingerprint: string | null = null;
     let checkoutListSubtotalCents = Number(
       session.listSubtotalCents ?? session.totalCents ?? 0,
@@ -3737,6 +3776,11 @@ export const createTicketCheckoutCreateHandler = (
           encodeURIComponent(checkoutSessionId)
         }&bst=${encodeURIComponent(buyerStatusToken)}`;
 
+      // Issue #4271 — a door code returns to its own pay page.
+      const providerCallbackUrl = doorPay !== null
+        ? doorPayReturnUrl(PRODUCTION_BUSINESS_WEB_ORIGIN, doorPay.code)
+        : callbackUrl;
+
       // Channels: NG = card|bank|ussd|bank_transfer — NEVER mobile_money
       // (Ghana-only). https://paystack.com/docs/payments/payment-channels/
       const psChannels = paystackChannelsForCountry("NG");
@@ -3788,7 +3832,7 @@ export const createTicketCheckoutCreateHandler = (
           amountSubunits: psBuyerTotalCents,
           currency: "NGN",
           reference: psReference,
-          callbackUrl,
+          callbackUrl: providerCallbackUrl,
           channels: psChannels,
           metadata: {
             mingla_checkout_session_id: checkoutSessionId,
@@ -3869,7 +3913,7 @@ export const createTicketCheckoutCreateHandler = (
         checkoutSessionId,
         buyerStatusToken,
         authorizationUrl: psInit.authorization_url,
-        returnUrl: callbackUrl,
+        returnUrl: providerCallbackUrl,
         reference: psInit.reference,
         // buyer_total is the inclusive all-in NGN total (kobo).
         totalCents: psBuyerTotalCents,
@@ -4151,6 +4195,13 @@ export const createTicketCheckoutCreateHandler = (
           `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=success`;
         cancelUrl =
           `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=cancel`;
+      }
+      // Issue #4271 — a door code returns the guest to its own pay page, which
+      // polls door-pay-code until the webhook finalizes the order.
+      if (doorPay !== null) {
+        const doorBase = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+          PRODUCTION_BUSINESS_WEB_ORIGIN;
+        ({ successUrl, cancelUrl } = doorPayStripeUrls(doorBase, doorPay));
       }
       const eventName =
         typeof session.eventName === "string" && session.eventName.length > 0

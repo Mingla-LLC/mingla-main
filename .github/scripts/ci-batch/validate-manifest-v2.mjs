@@ -352,7 +352,9 @@ export function phase3dContractDigest(manifest) {
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "6c9f6495ce850bece827b49c3051a7b8b8546ebf0140d877ff2c5df271568b88";
+// #4271: the door pay migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion (#2492).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "d885194ff59817cc0ec1fb6b865dcdbfede0e6a02e997fe21e6223f34dfe6eff";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
