@@ -30,6 +30,8 @@ interface SavedScheduleSheetProps {
   onPick: (at: Date) => void;
   onPickAnother: () => void;
   onClose: () => void;
+  /** Fires once the native modal is fully gone — safe to present the next one. */
+  onDismissed?: () => void;
 }
 
 export function formatQuickSlotDay(
@@ -59,6 +61,7 @@ export default function SavedScheduleSheet({
   onPick,
   onPickAnother,
   onClose,
+  onDismissed,
 }: SavedScheduleSheetProps): React.ReactElement {
   const { t } = useTranslation(["activity"]);
   const subtitle =
@@ -70,6 +73,7 @@ export default function SavedScheduleSheet({
     <BaseBottomSheet
       visible={visible}
       onClose={onClose}
+      onNativeDismiss={onDismissed}
       theme="dark"
       snapPoints={SNAP_POINTS}
       wrapInRNModal

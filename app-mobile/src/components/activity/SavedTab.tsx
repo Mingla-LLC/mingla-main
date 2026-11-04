@@ -1090,7 +1090,8 @@ const SavedTab = ({
   const isMountedRef = useRef(true);
   const latestCommitRemoveRef = useRef(commitRemoveSaved);
   latestCommitRemoveRef.current = commitRemoveSaved;
-  const pendingRemovalsRef = useRef(
+  // Created once (lazy), not re-allocated on every render.
+  const [pendingRemovals] = useState(() =>
     createPendingRemovalController<SavedCard>({
       delayMs: SAVED_UNDO_WINDOW_MS,
       onCommit: (_id, card) => {
@@ -1098,6 +1099,7 @@ const SavedTab = ({
       },
     })
   );
+  const pendingRemovalsRef = useRef(pendingRemovals);
 
   // Leaving Likes inside the Undo window still honours the heart tap.
   useEffect(() => {
@@ -1350,10 +1352,20 @@ const SavedTab = ({
     handleProposeDateTime(at, "custom");
   };
 
+  // A second modal must wait until the first is fully dismissed, or iOS drops
+  // the presentation. The next step is parked here and run on native dismiss.
+  const afterScheduleSheetRef = useRef<(() => void) | null>(null);
+  const afterMenuRef = useRef<(() => void) | null>(null);
+  const runParked = (ref: React.MutableRefObject<(() => void) | null>) => {
+    const next = ref.current;
+    ref.current = null;
+    next?.();
+  };
+
   const handlePickAnotherTime = () => {
     scheduleSheetHandoffRef.current = true;
+    afterScheduleSheetRef.current = () => setShowProposeDateTimeModal(true);
     setShowScheduleSheet(false);
-    setShowProposeDateTimeModal(true);
   };
 
   const handleCloseScheduleSheet = () => {
@@ -1383,8 +1395,8 @@ const SavedTab = ({
 
   const runMenuAction = (fn: (card: SavedCard) => void) => {
     const card = menuCard;
+    if (card) afterMenuRef.current = () => fn(card);
     setMenuCard(null);
-    if (card) fn(card);
   };
 
   // ─── Issue #4265: "N saved" on the Likes title row ─────────────────────────
@@ -1553,6 +1565,7 @@ const SavedTab = ({
         onPick={handleQuickSlotPick}
         onPickAnother={handlePickAnotherTime}
         onClose={handleCloseScheduleSheet}
+        onDismissed={() => runParked(afterScheduleSheetRef)}
       />
 
       {/* Propose Date & Time Modal — the sheet's "Pick another date and time" */}
@@ -1584,6 +1597,7 @@ const SavedTab = ({
         }
         onRemove={() => runMenuAction((card) => handleRemoveSaved(card))}
         onClose={() => setMenuCard(null)}
+        onDismissed={() => runParked(afterMenuRef)}
       />
 
       {/*

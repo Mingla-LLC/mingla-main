@@ -26,6 +26,8 @@ interface SavedCardActionMenuProps {
   onSchedule: () => void;
   onRemove: () => void;
   onClose: () => void;
+  /** Fires once the native modal is fully gone — safe to present the next one. */
+  onDismissed?: () => void;
 }
 
 export default function SavedCardActionMenu({
@@ -36,6 +38,7 @@ export default function SavedCardActionMenu({
   onSchedule,
   onRemove,
   onClose,
+  onDismissed,
 }: SavedCardActionMenuProps): React.ReactElement {
   const { t } = useTranslation(["activity", "common"]);
   const rows: Array<{ key: string; icon: IconName; label: string; onPress: () => void; danger?: boolean }> = [
@@ -50,6 +53,7 @@ export default function SavedCardActionMenu({
     <BaseBottomSheet
       visible={visible}
       onClose={onClose}
+      onNativeDismiss={onDismissed}
       theme="dark"
       snapPoints={SNAP_POINTS}
       wrapInRNModal
