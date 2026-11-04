@@ -47,6 +47,8 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "./issue4111EnquiryNotifications.ts";
+// #3682 wave 3 — the brand invite email's button and manage note.
+import { brandReachEmailCta } from "./brandReachMessages.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -607,7 +609,8 @@ export async function dispatchV2(
   // Admin page for the item, derived from the validated link only.
   const emailCta = input.email_cta ??
     issue3988EmailCta(input.category_key, input.deep_link, input.payload) ??
-    issue4111EmailCta(input.category_key, input.payload);
+    issue4111EmailCta(input.category_key, input.payload) ??
+    brandReachEmailCta(input.category_key, input.payload);
   for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
     // #3988 — push for a Host reply or a new product signal is decided per
