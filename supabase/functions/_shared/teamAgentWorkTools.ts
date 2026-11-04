@@ -818,6 +818,16 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_brand_host_record: {
     excluded: "the agent reads a host card with get_record",
   },
+  // #4270 W3: the brand plan on the host card is for people.
+  ops_brand_plan: {
+    excluded: "the plan is for people on the host card",
+  },
+  ops_brand_plan_add: {
+    excluded: "a person adds to a brand's plan; the agent adds cards with add_work",
+  },
+  ops_brand_plan_set_link: {
+    excluded: "a person changes a plan link",
+  },
   ops_launch_kit_preview: { tools: ["plan_work"] },
   ops_gate_override: {
     excluded:
