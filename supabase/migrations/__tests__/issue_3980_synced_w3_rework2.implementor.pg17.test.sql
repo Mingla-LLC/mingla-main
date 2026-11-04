@@ -403,7 +403,7 @@ begin
     'person_reason', 'other',
     'links', jsonb_build_array(jsonb_build_object('kind', 'roadmap_card', 'id', v_other))), 'task', null);
   v_card := (v_res->>'id')::uuid;
-  perform pg_temp.w3b_check('DEV1', 'the approval card waits for a person', (select status from public.ops_work_cards where id = v_card), 'person');
+  perform pg_temp.w3b_check('DEV1', 'the approval card waits for a person', (select status || ':' || person_reason from public.ops_work_cards where id = v_card), 'todo:other'); -- #4270: tagged in To do
   v := pg_temp.w3b_person('owner', 'select public.ops_review_list(null)::text');
   perform pg_temp.w3b_check('DEV1', 'the owner''s wording tab shows the draft Bridge D recorded, not a linked card',
     (select c->'roadmap'->>'public_title' from jsonb_array_elements(pg_temp.w3b_j(v)->'wording') c where c->>'id' = v_card::text), 'W3B drafted words');

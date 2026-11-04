@@ -58,8 +58,9 @@ Deno.test("#3980 W2 the selected event lives in the address", () => {
 });
 
 Deno.test("#3980 W2 launch kit chips say what is true", () => {
-  assertEquals(kitStateChip({ state: "card", card: { status: "doing" } }), { label: "Doing", tone: "brand" });
-  assertEquals(kitStateChip({ state: "card", card: { status: "person" } }), { label: "Needs a person", tone: "warning" });
+  // #4270: In progress, and a tagged To do card is the warning tone.
+  assertEquals(kitStateChip({ state: "card", card: { status: "doing" } }), { label: "In progress", tone: "brand" });
+  assertEquals(kitStateChip({ state: "card", card: { status: "todo", person_reason: "send" } }), { label: "To do", tone: "warning" });
   assertEquals(kitStateChip({ state: "card", card: { status: "todo", blocked: true } }), { label: "Blocked", tone: "error" });
   assertEquals(kitStateChip({ state: "done", card: { status: "done" } }), { label: "Done", tone: "success" });
   assertEquals(kitStateChip({ state: "done" }), { label: "Done", tone: "success" });

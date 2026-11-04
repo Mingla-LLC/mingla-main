@@ -21,8 +21,9 @@
 --                the connector's calendar tools answer
 --   W2-RECONCILE housekeeping links an expected event to the host's public
 --                event within 3 days and moves its cards; not 4 days away
---   W2-BACK      an agent moving a card that needs a person back to To do
---                must say why; the reason is logged and watchers are told
+--   W2-BACK      an agent taking the Send, Spend or Publish tag off a card
+--                (#4270; it was moving it out of Needs a person) must say
+--                why; the reason is logged and watchers are told
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -492,26 +493,26 @@ begin
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 approve the poster boost","instructions":"Approve a small poster boost for the night.","done_means":"Spend approved by a person.","owners":["ada.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s","person_reason":"spend"}]'::jsonb, 'w3980-w2-add-02')::text$q$, v_today + 3));
   perform pg_temp.t3980_keep('cp', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
   v_rev := pg_temp.t3980_get(v, 'results', '0', 'card', 'revision')::bigint;
-  perform pg_temp.t3980_check('W2-BACK', 'the card needs a person', pg_temp.t3980_get(v, 'results', '0', 'card', 'status'), 'person');
+  perform pg_temp.t3980_check('W2-BACK', 'the card needs a person', pg_temp.t3980_get(v, 'results', '0', 'card', 'status') || '/' || pg_temp.t3980_get(v, 'results', '0', 'card', 'tag'), 'todo/spend');
 
-  v := pg_temp.t3980_work('A', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"todo"}}', pg_temp.t3980_id('cp'), v_rev));
-  perform pg_temp.t3980_check('W2-BACK', 'an agent moving it back to To do without a reason is refused',
+  v := pg_temp.t3980_work('A', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"person_reason":null}}', pg_temp.t3980_id('cp'), v_rev));
+  perform pg_temp.t3980_check('W2-BACK', 'an agent taking the tag off without a reason is refused',
     pg_temp.t3980_get(v, 'error', 'token'), 'reason_required');
-  v := pg_temp.t3980_work('A', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"todo","reason":"   "}}', pg_temp.t3980_id('cp'), v_rev));
+  v := pg_temp.t3980_work('A', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"person_reason":null,"reason":"   "}}', pg_temp.t3980_id('cp'), v_rev));
   perform pg_temp.t3980_check('W2-BACK', 'a blank reason is no reason', pg_temp.t3980_get(v, 'error', 'token'), 'reason_required');
   perform pg_temp.t3980_check('W2-BACK', 'and the card still needs a person',
-    (select status from public.ops_work_cards where id = pg_temp.t3980_id('cp')::uuid), 'person');
+    (select status || '/' || person_reason from public.ops_work_cards where id = pg_temp.t3980_id('cp')::uuid), 'todo/spend');
 
-  v := pg_temp.t3980_work('A', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"todo","reason":"The host paid for the boost themselves."}}', pg_temp.t3980_id('cp'), v_rev));
-  perform pg_temp.t3980_check('W2-BACK', 'with a reason it moves back to To do',
-    pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'status'), 'true/todo');
+  v := pg_temp.t3980_work('A', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"person_reason":null,"reason":"The host paid for the boost themselves."}}', pg_temp.t3980_id('cp'), v_rev));
+  perform pg_temp.t3980_check('W2-BACK', 'with a reason the tag comes off and it stays in To do',
+    pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || coalesce(pg_temp.t3980_get(v, 'result', 'card', 'tag'), '-'), 'true/todo/-');
   perform pg_temp.t3980_like('W2-BACK', 'the reason is in the agent log',
     (select summary from public.ops_agent_log where card_id = pg_temp.t3980_id('cp')::uuid and action = 'updated' and via = 'claude' order by id desc limit 1),
     'Card % no longer needs a person: The host paid for the boost themselves.');
   perform pg_temp.t3980_check('W2-BACK', 'the watcher is told, with the reason',
     (select count(*) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
       where m.source_kind = 'work_card' and p.who = 'admin' and m.deep_link like '%' || pg_temp.t3980_id('cp')
-        and m.body_excerpt like '%moved W3980 approve the poster boost back to To do from Needs a person: The host paid for the boost themselves.')::text, '1');
+        and m.body_excerpt like '%took the Spend tag off W3980 approve the poster boost: The host paid for the boost themselves.')::text, '1');
   perform pg_temp.t3980_check('W2-BACK', 'the history keeps the reason',
     (select body from public.ops_work_events where card_id = pg_temp.t3980_id('cp')::uuid and action = 'status' order by at desc limit 1),
     'The host paid for the boost themselves.');
