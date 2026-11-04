@@ -60,6 +60,8 @@ export interface StopAlternative {
   priceTiers: string[];
   priceMin: number;
   priceMax: number;
+  /** #4265: the place has no known max ("$100+"); priceMax then equals priceMin. */
+  priceOpenEnded?: boolean;
   openingHours: Record<string, unknown>;
   website: string | null;
   lat: number;
@@ -113,6 +115,7 @@ export function buildReplacementStop(
     priceTier: alternative.priceTier as CuratedStop['priceTier'],
     priceMin: alternative.priceMin,
     priceMax: alternative.priceMax,
+    priceOpenEnded: alternative.priceOpenEnded === true ? true : undefined,
     openingHours: alternative.openingHours as Record<string, string>,
     // ORCH-0677.QA-1: honest unknown (Constitution #9). StopAlternative
     // doesn't carry openingHours.openNow, so we cannot derive truthfully

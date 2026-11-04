@@ -103,7 +103,7 @@ check(
   "T-7b the cache startup guard runs in _layout.tsx and resolves cacheReady",
   /primePersistedQueryCache\(\)[\s\S]{0,80}?setCacheReady\(true\)/.test(layoutCode) &&
     /REACT_QUERY_OFFLINE_CACHE/.test(read("src/config/queryClient.ts")) &&
-    /PERSISTED_CACHE_BUDGET_CHARS = 1_000_000/.test(read("src/utils/queryPersistenceBudget.ts")),
+    /PERSISTED_CACHE_BUDGET_BYTES = 1_000_000/.test(read("src/utils/queryPersistenceBudget.ts")),
   "The cache startup guard (trim to budget, remove unreadable) + setCacheReady(true) must run at root before the provider mounts.",
 );
 check(

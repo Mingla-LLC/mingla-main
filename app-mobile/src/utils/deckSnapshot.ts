@@ -91,20 +91,57 @@ export function isRestoredDeckSnapshot<R extends DeckResponseLike>(
 }
 
 /**
- * Merge a freshly fetched deck behind a restored snapshot: snapshot cards keep
- * their positions, new cards are appended, anything the user already swiped or
- * dismissed is dropped. The result is a superset of what is on screen, so
- * SwipeableCards keeps the user's place. An empty fresh deck is the server's
- * honest verdict (pool empty / all closed) and is returned as-is.
+ * The deck card currently on top of the swipe stack. SwipeableCards writes it
+ * whenever the top card changes so the final fresh-deck merge knows which
+ * snapshot card is under the thumb. Client-only UI state (Constitution 5); a
+ * stale value is harmless because the merge only honours an id that is part of
+ * the restored snapshot.
+ */
+let onScreenDeckTopCardId: string | null = null;
+
+export function noteDeckTopCardId(cardId: string | null): void {
+  onScreenDeckTopCardId = cardId;
+}
+
+export function readDeckTopCardId(): string | null {
+  return onScreenDeckTopCardId;
+}
+
+/**
+ * Merge the FINAL freshly fetched deck behind a restored snapshot.
+ *
+ * Snapshot cards the fresh deck no longer contains are dropped — the server no
+ * longer serves them (closed, removed, filtered) — except the card currently on
+ * top, which never moves: it stays (alone, of the missing ones) so the card
+ * under the thumb does not jump. Snapshot cards the fresh deck still has keep
+ * their positions, new cards are appended, and anything the user already
+ * swiped or dismissed is dropped. Partial deliveries never come through here
+ * (fetchDeckKeepingSnapshot merges them without pruning). An empty fresh deck
+ * is the server's honest verdict (pool empty / all closed) and is returned
+ * as-is.
+ *
+ * @param topCardId the card on top of the stack now; defaults to the one
+ *   SwipeableCards last noted, else the snapshot's first card.
  */
 export function mergeFreshDeckBehindSnapshot<R extends DeckResponseLike>(
   restored: RestoredDeck<R>,
   fresh: R,
+  topCardId: string | null = readDeckTopCardId(),
 ): R {
   if (fresh.cards.length === 0) return fresh;
   const excluded = new Set(restored.restoredExcludedCardIds);
+  const freshIds = new Set<string>();
+  for (const card of fresh.cards) freshIds.add(card.id);
+  const snapshotIds = new Set(restored.cards.map((card) => card.id));
+  const top =
+    topCardId !== null && snapshotIds.has(topCardId)
+      ? topCardId
+      : (restored.cards[0]?.id ?? null);
+  const keptSnapshot = restored.cards.filter(
+    (card) => card.id === top || freshIds.has(card.id),
+  );
   const cards = mergeCardsByIdPreservingOrder(
-    restored.cards,
+    keptSnapshot,
     fresh.cards.filter((card) => !excluded.has(card.id)),
   );
   return { ...fresh, cards, total: cards.length };

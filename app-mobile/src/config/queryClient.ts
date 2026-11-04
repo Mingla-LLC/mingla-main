@@ -216,7 +216,7 @@ export const queryClient = new QueryClient({
   },
 });
 
-// #4265 — the persisted cache stays under PERSISTED_CACHE_BUDGET_CHARS one query
+// #4265 — the persisted cache stays under PERSISTED_CACHE_BUDGET_BYTES (UTF-8) one query
 // at a time (largest dropped first) instead of growing until the startup guard
 // deleted all of it. See queryPersistenceBudget.ts.
 const PERSISTED_CACHE_KEY = 'REACT_QUERY_OFFLINE_CACHE';
@@ -224,7 +224,7 @@ const PERSISTED_CACHE_KEY = 'REACT_QUERY_OFFLINE_CACHE';
 function serializeWithinBudget(client: PersistedClient): string {
   const result = serializePersistedClientWithinBudget(client);
   if (result.dropped.length > 0) {
-    const dropped = result.dropped.map((entry) => `${entry.queryHash} (${entry.chars})`).join(', ');
+    const dropped = result.dropped.map((entry) => `${entry.queryHash} (${entry.bytes} B)`).join(', ');
     if (__DEV__) logger.query(`persist: over budget, not saving ${dropped}`);
     breadcrumbs.add('query', 'Persisted cache over budget; largest queries not saved', { dropped });
   }
@@ -263,7 +263,7 @@ async function readPersistedCacheOnce(): Promise<PersistedClient | undefined> {
     return undefined;
   }
   if (result.rewrite !== null) {
-    const dropped = result.dropped.map((entry) => `${entry.queryHash} (${entry.chars})`).join(', ');
+    const dropped = result.dropped.map((entry) => `${entry.queryHash} (${entry.bytes} B)`).join(', ');
     console.warn(`[queryCache] persisted cache was ${raw.length} chars; kept the rest, dropped ${dropped}`);
     await AsyncStorage.setItem(PERSISTED_CACHE_KEY, result.rewrite).catch((writeError) => {
       console.warn('[queryCache] could not write the trimmed persisted cache', writeError);

@@ -93,6 +93,36 @@ Deno.test("#4265 ticketed + ended detection never guesses", () => {
   assert(!isSavedEventEnded(null, now));
 });
 
+Deno.test("#4265 a recurring or multi-date saved experience is not ended while a later date is ahead", () => {
+  const now = new Date("2026-11-03T12:00:00Z").getTime();
+  // First (master) date passed, the next date is still ahead → still on sale.
+  assert(!isSavedEventEnded({
+    masterDateUtc: "2026-10-01T18:00:00Z",
+    masterEndAtUtc: "2026-10-01T21:00:00Z",
+    nextStartAtUtc: "2026-11-10T18:00:00Z",
+    nextEndAtUtc: "2026-11-10T21:00:00Z",
+  }, now));
+  // Only the occurrence list knows the later date.
+  assert(!isSavedEventEnded({
+    masterDateUtc: "2026-10-01T18:00:00Z",
+    upcomingOccurrences: [
+      { startAt: "2026-10-01T18:00:00Z", endAt: "2026-10-01T21:00:00Z" },
+      { startAt: "2026-11-20T18:00:00Z", endAt: "2026-11-20T21:00:00Z" },
+    ],
+  }, now));
+  // Every date passed → ended.
+  assert(isSavedEventEnded({
+    masterDateUtc: "2026-10-01T18:00:00Z",
+    nextStartAtUtc: "2026-10-15T18:00:00Z",
+    nextEndAtUtc: "2026-10-15T21:00:00Z",
+    upcomingOccurrences: [{ startAt: "2026-10-20T18:00:00Z", endAt: "2026-10-20T21:00:00Z" }],
+  }, now));
+  // A recurring rule can always add a date → never ended from a snapshot.
+  assert(!isSavedEventEnded({ masterDateUtc: "2026-10-01T18:00:00Z", isRecurring: true }, now));
+  // No dates anywhere → not ended.
+  assert(!isSavedEventEnded({ nextStartAtUtc: null, upcomingOccurrences: [] }, now));
+});
+
 Deno.test("#4265 the grid card maps each action to its own label, a11y text and gate", async () => {
   const card = stripComments(await read("src/components/activity/SavedGridCard.tsx"));
   for (const key of ["tickets", "inCalendar", "findSimilar", "schedule", "a11yTickets", "a11yInCalendar", "a11yFindSimilar", "a11ySchedule", "a11yShare", "a11yRemove", "a11yOpen"]) {
@@ -168,7 +198,7 @@ Deno.test("#4265 heart remove waits out the Undo window; Undo restores", () => {
   assertEquals(committed, ["b"], "after the window the delete is committed once");
 
   removals.schedule("c", { title: "Pottery" });
-  removals.flushAll();
+  assertEquals(removals.flushAll(), ["c"], "flushAll names what it committed so its Undo toast can be taken down");
   assertEquals(committed, ["b", "c"], "leaving Likes still honours a pending heart tap");
   clock.advance(10_000);
   assertEquals(committed, ["b", "c"], "flushed removals do not commit twice");
@@ -180,11 +210,15 @@ Deno.test("#4265 the tab hides, toasts Undo, and restores through the controller
   assert(/pendingRemovalsRef\.current\.schedule\(card\.id, card\)/.test(tab));
   assert(/label: t\('common:undo'\)/.test(tab), "the toast carries Undo");
   assert(/if \(pendingRemovalsRef\.current\.undo\(card\.id\)\) \{[\s\S]*?unhideCard\(card\.id\);/.test(tab), "Undo puts it back");
-  assert(/pending\.flushAll\(\);/.test(tab), "unmount commits pending removals");
+  assert(/for \(const cardId of pending\.flushAll\(\)\) \{[\s\S]*?toastManager\.remove\(toastId\)/.test(tab),
+    "unmount commits pending removals AND takes their Undo toasts down (no dead Undo after leaving Likes)");
+  assert(/const toastId = toastManager\.show\(/.test(tab) && /undoToastIdsRef\.current\.set\(card\.id, toastId\)/.test(tab),
+    "each Undo toast is tracked by card id");
   assert(/await savedCardsService\.removeCard\(/.test(tab), "the commit is the same service call as the old bin");
   assert(/unhideCard\(card\.id\);\s*toastManager\.error\(t\('activity:savedTab\.couldntRemove'\)/.test(tab), "a failed delete restores and says so");
   const toast = stripComments(await read("src/components/ui/Toast.tsx"));
-  assert(/show\(message: string, type: ToastType = "info", duration\?: number, action\?: ToastAction\)/.test(toast));
+  assert(/show\(message: string, type: ToastType = "info", duration\?: number, action\?: ToastAction\): string \{/.test(toast), "show returns the toast id");
+  assert(/return id;\s*\}/.test(toast));
 });
 
 // ── 4. Quick-slot computation from opening hours ───────────────────────────
@@ -275,7 +309,11 @@ Deno.test("#4265 unknown hours → Schedule opens the full picker, never dead de
 
 Deno.test("#4265 a slot pick runs the existing scheduling path", async () => {
   const tab = stripComments(await read("src/components/activity/SavedTab.tsx"));
-  assert(/handleProposeDateTime\(at, "custom"\);/.test(tab), "slot pick → existing hours check → proceedWithScheduling");
+  assert(/afterScheduleSheetRef\.current = \(\) => handleProposeDateTime\(at, "custom"\);\s*setShowScheduleSheet\(false\);/.test(tab),
+    "slot pick → existing hours check → proceedWithScheduling, parked until the sheet is gone (the curated alert is not dropped on iOS)");
+  const pick = tab.slice(tab.indexOf("const handleQuickSlotPick"), tab.indexOf("const handlePickAnotherTime"));
+  assert(!/^\s*handleProposeDateTime\(/m.test(pick), "the slot pick must not run the check (and its alert) while the sheet is closing");
+  assert(/onDismissed=\{\(\) => runParked\(afterScheduleSheetRef\)\}/.test(tab), "the parked step runs on native dismiss");
   assert(/checkSingleCardSchedulingAvailability\(cardToSchedule, at, locale\)/.test(tab), "tiles use the same validator as the pick");
   assert(/checkAllStopsOpen\(stops, at\)\.allOpen/.test(tab), "plans validate every stop");
   assert(/setShowProposeDateTimeModal\(true\);/.test(tab), "Pick another date and time opens the full picker");

@@ -63,7 +63,7 @@ Deno.test("the deck plate and the card conversion use the shared rule", () => {
   assert(facts.includes("openEnded: card.totalPriceOpenEnded"), "the brand total reads the card's open-ended flag");
 });
 
-// Server fix (generate-curated-experiences/curatedPrice.ts): an open-ended stop
+// Server fix (_shared/curatedPrice.ts): an open-ended stop
 // now arrives as max = min with priceOpenEnded, and the plan total with
 // totalPriceOpenEnded. Without reading the flag those would print "$100–$100".
 Deno.test("the server's explicit open-ended flag prints 'from' even when max equals min", () => {

@@ -49,19 +49,52 @@ function parseIsoMs(value: unknown): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function dateWindowEndMs(start: unknown, end: unknown): number | null {
+  const endMs = parseIsoMs(end);
+  if (endMs !== null) return endMs;
+  const startMs = parseIsoMs(start);
+  return startMs === null ? null : startMs + SAVED_EVENT_ASSUMED_LENGTH_MS;
+}
+
 /**
- * True only when the saved event's date is provably in the past. A card with no
- * date at all is never called "ended" (Constitution #9: missing is hidden, not
- * guessed).
+ * True only when EVERY date the saved card knows about is provably in the past.
+ *
+ * The card's master date is its FIRST date, so a recurring or multi-date
+ * experience whose first date passed is still on sale: the decision uses the
+ * latest of the master date, the server's next date (`nextStartAtUtc`, which the
+ * chat list and Discover cards prefer) and every upcoming occurrence. A
+ * recurring experience can always grow another date, so it is never called
+ * ended from a saved snapshot. A card with no date at all is never "ended"
+ * (Constitution #9: missing is hidden, not guessed).
  */
 export function isSavedEventEnded(card: unknown, nowMs: number): boolean {
   if (!card || typeof card !== "object") return false;
-  const times = card as { masterDateUtc?: unknown; masterEndAtUtc?: unknown };
-  const end = parseIsoMs(times.masterEndAtUtc);
-  if (end !== null) return end < nowMs;
-  const start = parseIsoMs(times.masterDateUtc);
-  if (start === null) return false;
-  return start + SAVED_EVENT_ASSUMED_LENGTH_MS < nowMs;
+  const c = card as {
+    masterDateUtc?: unknown;
+    masterEndAtUtc?: unknown;
+    nextStartAtUtc?: unknown;
+    nextEndAtUtc?: unknown;
+    upcomingOccurrences?: unknown;
+    isRecurring?: unknown;
+  };
+  if (c.isRecurring === true) return false;
+  const windows: Array<number | null> = [
+    dateWindowEndMs(c.masterDateUtc, c.masterEndAtUtc),
+    dateWindowEndMs(c.nextStartAtUtc, c.nextEndAtUtc),
+  ];
+  if (Array.isArray(c.upcomingOccurrences)) {
+    for (const occ of c.upcomingOccurrences) {
+      if (occ && typeof occ === "object") {
+        const o = occ as { startAt?: unknown; endAt?: unknown };
+        windows.push(dateWindowEndMs(o.startAt, o.endAt));
+      }
+    }
+  }
+  let latest: number | null = null;
+  for (const w of windows) {
+    if (w !== null && (latest === null || w > latest)) latest = w;
+  }
+  return latest !== null && latest < nowMs;
 }
 
 interface SavedTicketShape {
@@ -193,8 +226,12 @@ export interface PendingRemovalController<T> {
   schedule: (id: string, payload: T) => void;
   /** Cancel a pending removal. Returns true when something was undone. */
   undo: (id: string) => boolean;
-  /** Commit every pending removal immediately (screen is going away). */
-  flushAll: () => void;
+  /**
+   * Commit every pending removal immediately (screen is going away). Returns
+   * the ids it committed so the caller can take down their Undo toasts — an
+   * Undo left on screen after the commit would be a dead button.
+   */
+  flushAll: () => string[];
   isPending: (id: string) => boolean;
   pendingIds: () => string[];
 }
@@ -231,10 +268,13 @@ export function createPendingRemovalController<T>(options: {
       return true;
     },
     flushAll() {
+      const flushed: string[] = [];
       for (const [id, entry] of [...pending.entries()]) {
         clearTimer(entry.handle);
         commit(id);
+        flushed.push(id);
       }
+      return flushed;
     },
     isPending: (id) => pending.has(id),
     pendingIds: () => [...pending.keys()],

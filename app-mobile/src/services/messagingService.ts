@@ -108,6 +108,8 @@ export interface LegacyCardPayload {
   totalPriceMin?: number;
   /** Intent total price range — max. */
   totalPriceMax?: number;
+  /** #4265: the total has no known max ("$100+") — render "from", never a ceiling. */
+  totalPriceOpenEnded?: true;
   /** Intent total estimated duration (all stops + travel). */
   estimatedDurationMinutes?: number;
 }
@@ -380,6 +382,7 @@ export function trimCardPayload(card: any): LegacyCardPayload {
     if (typeof card.tagline === 'string' && card.tagline.length > 0) trimmed.tagline = card.tagline;
     if (typeof card.totalPriceMin === 'number') trimmed.totalPriceMin = card.totalPriceMin;
     if (typeof card.totalPriceMax === 'number') trimmed.totalPriceMax = card.totalPriceMax;
+    if (card.totalPriceOpenEnded === true) trimmed.totalPriceOpenEnded = true;
     if (typeof card.estimatedDurationMinutes === 'number') trimmed.estimatedDurationMinutes = card.estimatedDurationMinutes;
     if (Array.isArray(card.stops) && card.stops.length > 0) {
       trimmed.stops = card.stops.map((s: any, idx: number): TrimmedCuratedStop => ({

@@ -121,3 +121,18 @@ Deno.test("#4265 A-9 the picked city reaches the cached row and the offline mirr
   assert(screen.includes("queryClient.setQueryData<UserPreferences|null>(userPreferencesKeys.detail(user.id),(previous)=>(previous?{...previous,...patch}:previous))"));
   assert(screen.includes("offlineService.cacheUserPreferences({...base,...patch})"));
 });
+
+Deno.test("#4265 A-10 tapping the nearest city saves it like a picker pick", () => {
+  const screen = dense(read("app-mobile/src/components/DiscoverScreen.tsx"));
+  assert(screen.includes("onNearest={onNearestCity}"), "the empty state's Nearest city runs the saving handler");
+  const start = screen.indexOf("constonNearestCity=useCallback(");
+  assert(start !== -1, "onNearestCity exists");
+  const body = screen.slice(start, screen.indexOf("consttoggleCityWatch=", start));
+  assert(body.includes("PreferencesService.updateUserPreferences(user.id,{discover_city_name:next.name,discover_city_state_code:next.stateCode,discover_city_country_code:next.countryCode,discover_city_lat:next.lat,discover_city_lng:next.lng,})"),
+    "the nearest city is written to the preferences row, the same fields the picker writes");
+  assert(body.includes("if(swapTokenRef.current!==token)return;onCityPicked(next);"),
+    "once saved it is mirrored into the cached row and remembered (unless another pick won meanwhile)");
+  assert(body.includes(".catch((error:unknown)=>{console.warn("), "a failed save is logged, not swallowed");
+  const picker = dense(read("app-mobile/src/components/discover/CityPickerSheet.tsx"));
+  assert(picker.includes("awaitPreferencesService.updateUserPreferences(userId,{discover_city_name:details.city,"), "same service as the picker");
+});

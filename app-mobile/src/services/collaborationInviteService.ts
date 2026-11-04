@@ -11,6 +11,7 @@
  */
 import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
+import { refreshChatListAfterConversationChange } from './chatListRefresh';
 // ORCH-0446: seedCollabPrefsFromSolo deleted. Seeding is now inline via RPC.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -322,6 +323,9 @@ export async function acceptCollaborationInvite(
   }
 
   // Prefs written to JSONB in Step 3 (ORCH-0446)
+
+  // #4265: joining the session joins its group chat — refresh the Chats list.
+  refreshChatListAfterConversationChange();
 
   return {
     success: true,

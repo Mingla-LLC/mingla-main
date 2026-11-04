@@ -14,10 +14,44 @@
 // until the data changes), so a write after an unrelated query changes costs only
 // the changed query.
 //
+// The budget is in UTF-8 BYTES, not characters: Android's AsyncStorage
+// (SQLite, 2 MB CursorWindow) limits bytes, and a non-ASCII character (an
+// accented venue name, CJK, emoji) costs 2–4 bytes. Sizes are counted with
+// utf8ByteLength — a loop over the string's code units, no encoded copy.
+//
 // Pure module: no React Native imports, so the Deno unit lane can run it.
 
-/** Target size of the persisted blob, in UTF-16 characters (what AsyncStorage measures). */
-export const PERSISTED_CACHE_BUDGET_CHARS = 1_000_000;
+/** Target size of the persisted blob, in UTF-8 bytes (what Android's AsyncStorage stores). */
+export const PERSISTED_CACHE_BUDGET_BYTES = 1_000_000;
+
+/**
+ * UTF-8 byte length of a string without encoding it (no TextEncoder copy of a
+ * ~1 MB blob on the JS thread). A surrogate pair is one 4-byte code point; a
+ * lone surrogate counts 3 bytes, what an encoder writes for its U+FFFD
+ * replacement.
+ */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x80) {
+      bytes += 1;
+    } else if (code < 0x800) {
+      bytes += 2;
+    } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < value.length) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
 
 export interface PersistedQueryLike {
   queryKey: unknown;
@@ -36,7 +70,8 @@ export interface PersistedClientLike {
 
 export interface DroppedQuery {
   queryHash: string;
-  chars: number;
+  /** UTF-8 bytes this query would have cost. */
+  bytes: number;
 }
 
 export interface BudgetedSerialization<TQuery extends PersistedQueryLike = PersistedQueryLike> {
@@ -81,32 +116,35 @@ export function serializePersistedQuery(query: PersistedQueryLike): string {
 
 /**
  * Serialise a persisted client, keeping as many queries as fit in `budget`
- * characters. Small queries are kept before large ones, so one oversized query
+ * UTF-8 bytes. Small queries are kept before large ones, so one oversized query
  * (a big deck or saved list) is dropped on its own instead of costing the whole
  * cache. Kept queries stay in their original order.
  */
 export function serializePersistedClientWithinBudget<TQuery extends PersistedQueryLike>(
   client: Omit<PersistedClientLike, "clientState"> & { clientState: { mutations: unknown[]; queries: TQuery[] } },
-  budget: number = PERSISTED_CACHE_BUDGET_CHARS,
+  budget: number = PERSISTED_CACHE_BUDGET_BYTES,
 ): BudgetedSerialization<TQuery> {
   const queries = client.clientState.queries ?? [];
   const mutationsJson = JSON.stringify(client.clientState.mutations ?? []);
   const shell = (queriesJson: string): string =>
     `{"timestamp":${JSON.stringify(client.timestamp)},"buster":${JSON.stringify(client.buster ?? "")},"clientState":{"mutations":${mutationsJson},"queries":[${queriesJson}]}}`;
 
-  const entries = queries.map((query) => ({ query, json: serializePersistedQuery(query) }));
-  const bySize = entries.map((_, index) => index).sort((a, b) => entries[a].json.length - entries[b].json.length);
+  const entries = queries.map((query) => {
+    const json = serializePersistedQuery(query);
+    return { query, json, bytes: utf8ByteLength(json) };
+  });
+  const bySize = entries.map((_, index) => index).sort((a, b) => entries[a].bytes - entries[b].bytes);
 
   const keep = new Set<number>();
   const dropped: DroppedQuery[] = [];
-  let used = shell("").length;
+  let used = utf8ByteLength(shell(""));
   for (const index of bySize) {
-    const cost = entries[index].json.length + (keep.size > 0 ? 1 : 0);
+    const cost = entries[index].bytes + (keep.size > 0 ? 1 : 0);
     if (used + cost <= budget) {
       keep.add(index);
       used += cost;
     } else {
-      dropped.push({ queryHash: entries[index].query.queryHash ?? JSON.stringify(entries[index].query.queryKey), chars: entries[index].json.length });
+      dropped.push({ queryHash: entries[index].query.queryHash ?? JSON.stringify(entries[index].query.queryKey), bytes: entries[index].bytes });
     }
   }
 
@@ -125,7 +163,7 @@ export function serializePersistedClientWithinBudget<TQuery extends PersistedQue
  */
 export function prunePersistedCacheString<TClient extends PersistedClientLike = PersistedClientLike>(
   raw: string,
-  budget: number = PERSISTED_CACHE_BUDGET_CHARS,
+  budget: number = PERSISTED_CACHE_BUDGET_BYTES,
 ):
   | { kind: "ok"; client: TClient; rewrite: string | null; dropped: DroppedQuery[] }
   | { kind: "corrupt"; error: unknown } {
@@ -138,7 +176,7 @@ export function prunePersistedCacheString<TClient extends PersistedClientLike = 
   if (!parsed || typeof parsed !== "object" || !parsed.clientState || !Array.isArray(parsed.clientState.queries)) {
     return { kind: "corrupt", error: new Error("persisted_cache_shape_invalid") };
   }
-  if (raw.length <= budget) return { kind: "ok", client: parsed, rewrite: null, dropped: [] };
+  if (utf8ByteLength(raw) <= budget) return { kind: "ok", client: parsed, rewrite: null, dropped: [] };
   const trimmed = serializePersistedClientWithinBudget(parsed, budget);
   return {
     kind: "ok",

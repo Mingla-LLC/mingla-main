@@ -32,6 +32,7 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { geocodingService } from "../services/geocodingService";
 import { mixpanelService } from "../services/mixpanelService";
 import { offlineService } from "../services/offlineService";
+import { PreferencesService } from "../services/preferencesService";
 import { captureConsumerOfferingEngagement } from "../services/offeringEngagementService";
 import { savedCardsService } from "../services/savedCardsService";
 import { discoverCityWatchService } from "../services/discoverCityWatchService";
@@ -537,6 +538,33 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       console.warn("[Discover] could not mirror the picked city", error);
     });
   }, [queryClient, rememberCity, user?.id]);
+  // #4265: "Nearest city" is a real choice, like a picker pick. It shows at
+  // once, then is saved to the preferences row exactly as the picker saves it
+  // (and mirrored by onCityPicked), so a later preferences read never swaps
+  // the screen back to the GPS city. A pick or swap made meanwhile wins.
+  const nearestCity = facets.data?.nearestCity ?? null;
+  const onNearestCity = useCallback(() => {
+    if (!nearestCity) return;
+    const next: DiscoverCity = { name: nearestCity.label, stateCode: null, countryCode: null, lat: nearestCity.lat, lng: nearestCity.lng };
+    swapTokenRef.current += 1;
+    citySourceRef.current = "transient";
+    setCity(next);
+    if (!user?.id) return;
+    const token = swapTokenRef.current;
+    void PreferencesService.updateUserPreferences(user.id, {
+      discover_city_name: next.name,
+      discover_city_state_code: next.stateCode,
+      discover_city_country_code: next.countryCode,
+      discover_city_lat: next.lat,
+      discover_city_lng: next.lng,
+    }).then(() => {
+      if (swapTokenRef.current !== token) return;
+      onCityPicked(next);
+    }).catch((error: unknown) => {
+      // The city stays on screen for this visit; it is just not remembered.
+      console.warn("[Discover] could not save the nearest city", error);
+    });
+  }, [nearestCity, onCityPicked, user?.id]);
   const toggleCityWatch = useCallback(async () => {
     try {
       if (cityWatch.subscribed) {
@@ -556,7 +584,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={refresh} tintColor="#eb7825" title={isPullRefreshing ? t("loading.refreshing", "Refreshing events…") : undefined} titleColor="rgba(255,255,255,.72)" colors={["#eb7825"]} progressBackgroundColor="#1b1e24" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         {loadState.showSkeleton ? <DiscoverGridSkeleton /> : null}
         {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
-        {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={() => { if (!facets.data?.nearestCity) return; swapTokenRef.current += 1; citySourceRef.current = "transient"; setCity({ name: facets.data.nearestCity.label, stateCode: null, countryCode: null, lat: facets.data.nearestCity.lat, lng: facets.data.nearestCity.lng }); }} /> : null}
+        {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={onNearestCity} /> : null}
         {filteredEmpty ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
         {items.length > 0 ? <>
           <View style={styles.grid} onLayout={(event) => { gridTopRef.current = event.nativeEvent.layout.y; evaluateViewability(); }}>

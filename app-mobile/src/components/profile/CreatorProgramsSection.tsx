@@ -5,7 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import { creatorProgramService } from '../../services/creatorProgramService';
 import { creatorGigsService } from '../../services/creatorGigsService';
 import { localProgramService } from '../../services/localProgramService';
-import { PROFILE_REVISIT_STALE_MS } from './profileFreshness';
+// Creator status, gigs, earnings and Local programs change server-side (admin
+// approvals, payouts) — the short window, not the five-minute revisit one.
+import { PROFILE_SERVER_DRIVEN_STALE_MS } from './profileFreshness';
 import { ProfileRowsSkeleton } from './ProfileSectionSkeleton';
 import { creatorOwnsNextStep, formatMoney, hostsSeeYouAs, localRowCopy, nicheLabel } from '../../utils/programFormat';
 import { Icon } from '../ui/Icon';
@@ -31,12 +33,12 @@ function initials(name: string): string {
  */
 export function CreatorProgramsSection({ userId, onOpenCreator, onOpenLocal, onOpenEarnings }: Props): React.ReactElement {
   const [earnOpen, setEarnOpen] = useState(false);
-  const status = useQuery({ queryKey: ['creator-programs', 'status', userId], queryFn: () => creatorProgramService.status(), enabled: Boolean(userId), staleTime: PROFILE_REVISIT_STALE_MS, retry: 1 });
+  const status = useQuery({ queryKey: ['creator-programs', 'status', userId], queryFn: () => creatorProgramService.status(), enabled: Boolean(userId), staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
   const isCreator = Boolean(status.data?.profile);
-  const profile = useQuery({ queryKey: ['creator-programs', 'own-profile', userId], queryFn: () => creatorProgramService.ownProfile(), enabled: isCreator && !status.data?.display_name, staleTime: PROFILE_REVISIT_STALE_MS, retry: 1 });
-  const home = useQuery({ queryKey: ['creator-programs', 'home', userId], queryFn: () => creatorGigsService.home(), enabled: isCreator, staleTime: PROFILE_REVISIT_STALE_MS, retry: 1 });
-  const earnings = useQuery({ queryKey: ['creator-programs', 'earnings', userId], queryFn: () => creatorGigsService.earningsSummary(), enabled: isCreator, staleTime: PROFILE_REVISIT_STALE_MS, retry: 0 });
-  const landing = useQuery({ queryKey: ['creator-programs', 'local-landing', userId], queryFn: () => localProgramService.landing(), enabled: Boolean(userId), staleTime: PROFILE_REVISIT_STALE_MS, retry: 1 });
+  const profile = useQuery({ queryKey: ['creator-programs', 'own-profile', userId], queryFn: () => creatorProgramService.ownProfile(), enabled: isCreator && !status.data?.display_name, staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
+  const home = useQuery({ queryKey: ['creator-programs', 'home', userId], queryFn: () => creatorGigsService.home(), enabled: isCreator, staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
+  const earnings = useQuery({ queryKey: ['creator-programs', 'earnings', userId], queryFn: () => creatorGigsService.earningsSummary(), enabled: isCreator, staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 0 });
+  const landing = useQuery({ queryKey: ['creator-programs', 'local-landing', userId], queryFn: () => localProgramService.landing(), enabled: Boolean(userId), staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
 
   const local = landing.data;
   const localCopy = localRowCopy(local);

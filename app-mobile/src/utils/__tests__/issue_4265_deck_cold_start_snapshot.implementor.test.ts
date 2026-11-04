@@ -40,6 +40,7 @@ import {
   DECK_SNAPSHOT_RESTORE_GATE_MS,
   fetchDeckKeepingSnapshot,
   mergeFreshDeckBehindSnapshot,
+  noteDeckTopCardId,
   resetDeckSnapshotRestoreForTests,
   restoreDeckSnapshotController,
   restoreDeckSnapshotOnce,
@@ -177,20 +178,30 @@ Deno.test("swiped and dismissed cards are never seeded and never return from the
 
   const fresh = deck(["a", "e", "b", "c", "f"]);
   const merged = mergeFreshDeckBehindSnapshot(seeded, fresh);
-  assertEquals(merged.cards.map((x) => x.id), ["b", "d", "e", "f"],
-    "fresh deck merges BEHIND the on-screen cards and drops swiped/dismissed ones");
+  assertEquals(merged.cards.map((x) => x.id), ["b", "e", "f"],
+    "fresh deck merges BEHIND the top card, drops swiped/dismissed ones and the snapshot card (d) the server no longer serves");
   assert(!isRestoredDeckSnapshot(merged), "merged result is a fetched deck, not a snapshot");
-  assertEquals(merged.total, 4, "total follows the merged cards");
+  assertEquals(merged.total, 3, "total follows the merged cards");
 });
 
-Deno.test("fresh merge is a superset of what is on screen, so the top card stays put", () => {
+Deno.test("final merge keeps only snapshot cards the fresh deck still has, and never moves the top card", () => {
+  noteDeckTopCardId(null);
   const restored = { ...deck(["x", "y", "z"]), restoredFromSnapshot: true, restoredExcludedCardIds: [] };
+  // Top card x is gone from the fresh deck: it alone of the missing cards stays, on top.
   const merged = mergeFreshDeckBehindSnapshot(restored, deck(["q", "z", "r"]));
-  const onScreen = new Set(restored.cards.map((c) => c.id));
-  for (const id of onScreen) {
-    assert(merged.cards.some((c) => c.id === id), `on-screen card ${id} must survive the fresh merge`);
-  }
-  assertEquals(merged.cards.slice(0, 3).map((c) => c.id), ["x", "y", "z"], "on-screen order unchanged");
+  assertEquals(merged.cards.map((c) => c.id), ["x", "z", "q", "r"],
+    "x (top) stays first; y (not served any more) is pruned; z keeps its place ahead of new cards");
+  // The user already swiped x; y is on top now and missing from fresh → y kept, x pruned.
+  const afterSwipe = mergeFreshDeckBehindSnapshot(restored, deck(["q", "z", "r"]), "y");
+  assertEquals(afterSwipe.cards.map((c) => c.id), ["y", "z", "q", "r"],
+    "the card under the thumb (y) is kept; the passed card the server dropped (x) is gone");
+  // The top card SwipeableCards noted is honoured by default.
+  noteDeckTopCardId("z");
+  assertEquals(mergeFreshDeckBehindSnapshot(restored, deck(["q", "r"])).cards.map((c) => c.id), ["z", "q", "r"]);
+  // A stale noted id that is not in the snapshot falls back to the snapshot's first card.
+  noteDeckTopCardId("not-in-snapshot");
+  assertEquals(mergeFreshDeckBehindSnapshot(restored, deck(["q"])).cards.map((c) => c.id), ["x", "q"]);
+  noteDeckTopCardId(null);
   const empty = mergeFreshDeckBehindSnapshot(restored, deck([]));
   assertEquals(empty.cards, [], "an empty fresh deck is the server's honest verdict, not hidden behind stale cards");
 });
@@ -276,8 +287,8 @@ Deno.test("RACE: fetch already in flight when the restore lands → snapshot sho
   // The final interleaved deck arrives.
   finishFetch(deck(["e", "a", "f", "c", "b"]));
   await new Promise((r) => setTimeout(r, 0));
-  assertEquals(cache.result.cards.map((c) => c.id), ["b", "c", "d", "e", "f"],
-    "final deck merges behind the on-screen cards; the top card (b) never moves; swiped a never returns");
+  assertEquals(cache.result.cards.map((c) => c.id), ["b", "c", "e", "f"],
+    "final deck merges behind the on-screen cards; the top card (b) never moves; swiped a never returns; d (no longer served) is pruned only now, at the final deck");
   assert(!isRestoredDeckSnapshot(cache.result), "the merged result is a fetched deck");
 });
 
