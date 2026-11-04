@@ -742,7 +742,9 @@
         "mingla-business/src/services/marketing/marketingCampaignService.ts",
         "mingla-business/src/types/marketing.ts",
         "supabase/functions/marketing-send/pushCampaign.ts",
-        "supabase/migrations/20280401043682_issue_3682_push_campaigns.sql"
+        "supabase/migrations/20280401043682_issue_3682_push_campaigns.sql",
+        "mingla-business/src/services/marketing/marketingBookSendService.ts",
+        "mingla-business/src/hooks/marketing/useBookBlastPreview.ts"
       ]
     },
     {
