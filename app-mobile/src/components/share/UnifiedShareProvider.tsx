@@ -822,7 +822,6 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     maxToRenderPerBatch: 10,
     updateCellsBatchingPeriod: 32,
     windowSize: 7,
-    removeClippedSubviews: Platform.OS === 'android',
     ListHeaderComponent: listHeader,
     ListEmptyComponent: listEmpty,
     ListFooterComponent: listFooter,
