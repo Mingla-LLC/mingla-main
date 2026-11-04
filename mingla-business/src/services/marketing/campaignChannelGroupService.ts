@@ -14,13 +14,15 @@ import type {
   SealedMarketingAudienceKind,
 } from "../../types/marketing";
 import {
-  confirmMarketingBook,
   createDraft,
   deleteDraft,
   MarketingBookSendError,
-  previewMarketingBook,
   updateDraft,
 } from "./marketingCampaignService";
+import {
+  confirmMarketingBook,
+  previewMarketingBook,
+} from "./marketingBookSendService";
 import { partialSendLine } from "./campaignSendCopy";
 
 export type CampaignChannel = "email" | "sms" | "push";

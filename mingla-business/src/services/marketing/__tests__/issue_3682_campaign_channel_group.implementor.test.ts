@@ -12,11 +12,13 @@ jest.mock("../marketingCampaignService", () => ({
   createDraft: (...a: unknown[]) => createDraft(...a),
   updateDraft: (...a: unknown[]) => updateDraft(...a),
   deleteDraft: (...a: unknown[]) => deleteDraft(...a),
-  previewMarketingBook: (...a: unknown[]) => previewMarketingBook(...a),
-  confirmMarketingBook: (...a: unknown[]) => confirmMarketingBook(...a),
   MarketingBookSendError: class MarketingBookSendError extends Error {
     constructor(public readonly code: string) { super(code); }
   },
+}));
+jest.mock("../marketingBookSendService", () => ({
+  previewMarketingBook: (...a: unknown[]) => previewMarketingBook(...a),
+  confirmMarketingBook: (...a: unknown[]) => confirmMarketingBook(...a),
 }));
 
 import {

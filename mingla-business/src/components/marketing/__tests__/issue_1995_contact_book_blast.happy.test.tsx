@@ -49,11 +49,13 @@ jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 
 import { supabase } from "../../../services/supabase";
 import {
-  confirmMarketingBook,
   MarketingBookSendError,
-  previewMarketingBook,
   sendNow,
 } from "../../../services/marketing/marketingCampaignService";
+import {
+  confirmMarketingBook,
+  previewMarketingBook,
+} from "../../../services/marketing/marketingBookSendService";
 import {
   getBookBlastDisabledReason,
   isBookBlastFeatureReady,

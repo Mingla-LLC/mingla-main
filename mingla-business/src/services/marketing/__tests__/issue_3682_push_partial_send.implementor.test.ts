@@ -16,10 +16,8 @@ jest.mock("../../supabase", () => ({
 }));
 
 import { supabase } from "../../supabase";
-import {
-  confirmMarketingBook,
-  MarketingBookSendError,
-} from "../marketingCampaignService";
+import { MarketingBookSendError } from "../marketingCampaignService";
+import { confirmMarketingBook } from "../marketingBookSendService";
 import {
   campaignPreviewInput,
   extendedPushReady,
