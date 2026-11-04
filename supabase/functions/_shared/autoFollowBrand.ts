@@ -21,10 +21,19 @@ const ORDER_REQUIRED: ReadonlySet<AutoFollowSource> = new Set([
   "booking",
 ]);
 
-function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+/** Stable log tag so a broken auto-follow is visible in edge logs. */
+export const AUTO_FOLLOW_FAILURE_TAG = "[autoFollowBrand][ISSUE-3682-AUTO-FOLLOW-FAILED]";
+
+/**
+ * Race `work` against a deadline. `work` is typed PromiseLike on purpose:
+ * supabase-js query/RPC builders are thenables only (no `.finally`), and the
+ * HTTP request is sent from `then()`. Converting with Promise.resolve() first
+ * calls `then()` (sending the request) and gives us a real Promise.
+ */
+function withDeadline<T>(work: PromiseLike<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
-    work.finally(() => {
+    Promise.resolve(work).finally(() => {
       if (timer !== undefined) clearTimeout(timer);
     }),
     new Promise<never>((_resolve, reject) => {
@@ -38,7 +47,7 @@ function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
 
 export async function autoFollowBrandBestEffort(
   // deno-lint-ignore no-explicit-any
-  supabase: { rpc: (...args: any[]) => Promise<{ data: unknown; error: { message: string } | null }> },
+  supabase: { rpc: (...args: any[]) => PromiseLike<{ data: unknown; error: { message: string } | null }> },
   input: {
     userId: string | null | undefined;
     brandId: string | null | undefined;
@@ -81,8 +90,9 @@ export async function autoFollowBrandBestEffort(
       deadlineMs,
     );
     if (error) {
-      console.warn(
-        "[autoFollowBrand] non-fatal",
+      console.error(
+        AUTO_FOLLOW_FAILURE_TAG,
+        "rpc_error",
         error.message,
         userId,
         brandId,
@@ -90,8 +100,9 @@ export async function autoFollowBrandBestEffort(
       );
     }
   } catch (err) {
-    console.warn(
-      "[autoFollowBrand] threw (non-fatal)",
+    console.error(
+      AUTO_FOLLOW_FAILURE_TAG,
+      "threw",
       err instanceof Error ? err.message : String(err),
       userId,
       brandId,

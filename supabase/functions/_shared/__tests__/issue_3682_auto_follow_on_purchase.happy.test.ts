@@ -1,11 +1,19 @@
 /**
- * #3682 Wave 2 slice 1 — auto-follow after signed-in purchase / free RSVP.
+ * #3682 — auto-follow after signed-in purchase / RSVP / booking.
  *
- *   deno test --allow-read --allow-env \
+ * The helper is driven with a REAL supabase-js client against a local stub
+ * PostgREST server. The previous version mocked `rpc` with a real Promise,
+ * which has `.finally`; the real supabase-js builder is PromiseLike only, so
+ * the old `work.finally(...)` threw before the request was ever sent and
+ * every production auto-follow silently failed (2026-10-08 .. 2026-11-03).
+ *
+ *   deno test --allow-read --allow-env --allow-net --no-check \
  *     supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.happy.test.ts
  */
 import { assert, assertEquals } from "jsr:@std/assert@1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  AUTO_FOLLOW_FAILURE_TAG,
   AUTO_FOLLOW_RPC_DEADLINE_MS,
   autoFollowBrandBestEffort,
 } from "../autoFollowBrand.ts";
@@ -26,82 +34,128 @@ const migrationSrc = Deno.readTextFileSync(
   "supabase/migrations/20270805003682_issue_3682_auto_follow_on_purchase.sql",
 );
 
-Deno.test("#3682 happy: helper no-ops without userId or brandId", async () => {
-  const calls: unknown[] = [];
-  const supabase = {
-    rpc: (...args: unknown[]) => {
-      calls.push(args);
-      return Promise.resolve({ data: null, error: null });
-    },
-  };
-  await autoFollowBrandBestEffort(supabase, {
-    userId: null,
-    brandId: "brand-1",
-    source: "purchase",
-  });
-  await autoFollowBrandBestEffort(supabase, {
-    userId: "user-1",
-    brandId: "",
-    source: "purchase",
-  });
-  assertEquals(calls.length, 0);
-});
+type Seen = { method: string; path: string; body: unknown };
 
-Deno.test("#3682 happy: helper RPCs biz_auto_follow_brand with purchase + orderId", async () => {
-  const seen: { fn?: string; args?: Record<string, unknown> } = {};
-  const supabase = {
-    rpc: (fn: string, args: Record<string, unknown>) => {
-      seen.fn = fn;
-      seen.args = args;
-      return Promise.resolve({
-        data: { followed: true, created: true },
-        error: null,
+async function withStubPostgrest(
+  status: number,
+  responseBody: unknown,
+  run: (url: string, seen: Seen[]) => Promise<void>,
+): Promise<void> {
+  const seen: Seen[] = [];
+  const ac = new AbortController();
+  let resolveListen: (port: number) => void = () => {};
+  const listening = new Promise<number>((r) => (resolveListen = r));
+  const server = Deno.serve(
+    {
+      hostname: "127.0.0.1",
+      port: 0,
+      signal: ac.signal,
+      onListen: ({ port }) => resolveListen(port),
+    },
+    async (req) => {
+      const text = await req.text();
+      seen.push({
+        method: req.method,
+        path: new URL(req.url).pathname,
+        body: text.length > 0 ? JSON.parse(text) : null,
+      });
+      return new Response(JSON.stringify(responseBody), {
+        status,
+        headers: { "content-type": "application/json" },
       });
     },
-  };
-  await autoFollowBrandBestEffort(supabase, {
-    userId: "user-1",
-    brandId: "brand-1",
-    source: "purchase",
-    orderId: "order-1",
-  });
-  assertEquals(seen.fn, "biz_auto_follow_brand");
-  assertEquals(seen.args?.p_user_id, "user-1");
-  assertEquals(seen.args?.p_brand_id, "brand-1");
-  assertEquals(seen.args?.p_source, "purchase");
-  assertEquals(seen.args?.p_order_id, "order-1");
-});
+  );
+  const port = await listening;
+  try {
+    await run(`http://127.0.0.1:${port}`, seen);
+  } finally {
+    ac.abort();
+    await server.finished;
+  }
+}
 
-Deno.test("#3682 happy: helper swallows RPC errors (fail-open)", async () => {
-  const supabase = {
-    rpc: () =>
-      Promise.resolve({ data: null, error: { message: "auto_follow_boom" } }),
-  };
-  await autoFollowBrandBestEffort(supabase, {
-    userId: "user-1",
-    brandId: "brand-1",
-    orderId: "order-1",
+function realClient(url: string) {
+  return createClient(url, "service-role-test-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-});
+}
 
-Deno.test("#3682 happy: helper swallows rejected RPC (fail-open)", async () => {
-  const supabase = {
-    rpc: () => Promise.reject(new Error("rpc_network_down")),
-  };
-  await autoFollowBrandBestEffort(supabase, {
-    userId: "user-1",
-    brandId: "brand-1",
-    orderId: "order-1",
+Deno.test("#3682 happy: helper no-ops without userId or brandId (real client)", async () => {
+  await withStubPostgrest(200, {}, async (url, seen) => {
+    const supabase = realClient(url);
+    await autoFollowBrandBestEffort(supabase, {
+      userId: null,
+      brandId: "brand-1",
+      source: "purchase",
+      orderId: "order-1",
+    });
+    await autoFollowBrandBestEffort(supabase, {
+      userId: "user-1",
+      brandId: "",
+      source: "purchase",
+      orderId: "order-1",
+    });
+    assertEquals(seen.length, 0);
   });
 });
 
-Deno.test("#3682 happy: pending RPC hits deadline and returns (no hang)", async () => {
-  const supabase = {
-    rpc: () =>
-      new Promise<{ data: unknown; error: null }>(() => {
-        /* never settles */
-      }),
+Deno.test("#3682 happy: REAL supabase-js builder POSTs /rest/v1/rpc/biz_auto_follow_brand", async () => {
+  await withStubPostgrest(
+    200,
+    { followed: true, created: true },
+    async (url, seen) => {
+      const supabase = realClient(url);
+      await autoFollowBrandBestEffort(supabase, {
+        userId: "user-1",
+        brandId: "brand-1",
+        source: "purchase",
+        orderId: "order-1",
+      });
+      assertEquals(seen.length, 1, "the RPC request must actually be sent");
+      assertEquals(seen[0].method, "POST");
+      assertEquals(seen[0].path, "/rest/v1/rpc/biz_auto_follow_brand");
+      assertEquals(seen[0].body, {
+        p_user_id: "user-1",
+        p_brand_id: "brand-1",
+        p_source: "purchase",
+        p_order_id: "order-1",
+      });
+    },
+  );
+});
+
+Deno.test("#3682 happy: RPC error is fail-open and logged at error level with the stable tag", async () => {
+  const errors: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
   };
+  try {
+    await withStubPostgrest(
+      500,
+      { message: "auto_follow_boom", code: "XX000" },
+      async (url, seen) => {
+        await autoFollowBrandBestEffort(realClient(url), {
+          userId: "user-1",
+          brandId: "brand-1",
+          orderId: "order-1",
+        });
+        assertEquals(seen.length, 1);
+      },
+    );
+  } finally {
+    console.error = original;
+  }
+  assert(
+    errors.some((a) => a[0] === AUTO_FOLLOW_FAILURE_TAG),
+    "failure must be logged with console.error + stable tag",
+  );
+});
+
+Deno.test("#3682 happy: thenable-only RPC that never settles hits deadline (no hang)", async () => {
+  // Mirrors supabase-js: `then` only, no `finally`.
+  const pending = { then: (_ok: unknown, _err: unknown) => undefined };
+  const supabase = { rpc: () => pending as never };
   const started = Date.now();
   await autoFollowBrandBestEffort(supabase, {
     userId: "user-1",
