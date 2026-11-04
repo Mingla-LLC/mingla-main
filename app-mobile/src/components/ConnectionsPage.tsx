@@ -371,7 +371,7 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
 }
 
 function buildGroupEventPublicUrl(
-  meta: Pick<GroupEventMeta, 'brandSlug' | 'slug'> | null | undefined,
+  meta: (Pick<GroupEventMeta, 'brandSlug' | 'slug'> & Partial<GroupEventMeta>) | null | undefined,
   linkedEntityType: 'direct' | 'session' | 'trip' | 'event' | null | undefined,
 ): string | null {
   if (!meta?.brandSlug || !meta.slug) return null;

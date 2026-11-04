@@ -35,32 +35,39 @@ export const CHAT_LIST_TIMEOUT_MS = 10_000;
 // and returns just their conversation ids.
 
 /** Select for the unread read: the empty embed exists only for the anti-join. */
-export const UNREAD_MESSAGES_SELECT = "conversation_id, message_reads()";
+// Typed `string` on purpose: supabase-js parses literal select strings at the
+// type level and does not understand an empty embed (tsc recursion limit).
+export const UNREAD_MESSAGES_SELECT: string = "conversation_id, message_reads()";
 
-/** The filter calls the unread read needs (a supabase-js filter builder satisfies it). */
-export interface UnreadFilterable<Q> {
-  or(filters: string): Q;
-  is(column: string, value: null): Q;
-  eq(column: string, value: string): Q;
-}
+/**
+ * The three filter calls the unread read needs, passed in by the caller so
+ * this module stays free of supabase-js (its filter-builder generics are too
+ * deep to match against a structural interface).
+ */
+export type UnreadFilterOps<Q> = {
+  or(query: Q, filters: string): Q;
+  isNull(query: Q, column: string): Q;
+  eq(query: Q, column: string, value: string): Q;
+};
 
 /** Applies the unread rule to a `messages` read selected with UNREAD_MESSAGES_SELECT. */
-export function applyUnreadFilters<Q extends UnreadFilterable<Q>>(query: Q, userId: string): Q {
-  return query
-    .or(`sender_id.neq.${userId},sender_id.is.null`)
-    .is("deleted_at", null)
-    .eq("message_reads.user_id", userId)
-    .is("message_reads", null);
+export function applyUnreadFilters<Q>(query: Q, userId: string, ops: UnreadFilterOps<Q>): Q {
+  let next = ops.or(query, `sender_id.neq.${userId},sender_id.is.null`);
+  next = ops.isNull(next, "deleted_at");
+  // Embedded filter: narrows message_reads to MY reads (never the messages)…
+  next = ops.eq(next, "message_reads.user_id", userId);
+  // …then keeps only messages with none of them (anti-join).
+  return ops.isNull(next, "message_reads");
 }
 
 /** Counts unread rows per conversation. */
-export function countUnreadRows(
-  rows: ReadonlyArray<{ conversation_id: string | null }> | null | undefined,
-): Map<string, number> {
+export function countUnreadRows(rows: unknown): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const row of rows ?? []) {
-    if (!row.conversation_id) continue;
-    counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1);
+  if (!Array.isArray(rows)) return counts;
+  for (const row of rows) {
+    const conversationId = row && typeof row === "object" ? (row as { conversation_id?: unknown }).conversation_id : null;
+    if (typeof conversationId !== "string" || conversationId.length === 0) continue;
+    counts.set(conversationId, (counts.get(conversationId) ?? 0) + 1);
   }
   return counts;
 }

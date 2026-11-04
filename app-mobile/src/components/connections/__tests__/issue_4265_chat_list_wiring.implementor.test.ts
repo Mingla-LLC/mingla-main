@@ -71,7 +71,9 @@ Deno.test("#4265 getConversations: no second profiles read for the list, unread 
   const service = strip(read("services/messagingService.ts"));
   const start = service.indexOf("async getConversations(");
   const list = service.slice(start, service.indexOf("async getMessages(", start));
-  assert(/applyUnreadFilters\(\s*supabase\.from\('messages'\)\.select\(UNREAD_MESSAGES_SELECT\),\s*userId,\s*\)/.test(list), "unread read is the anti-join");
+  assert(/applyUnreadFilters\(\s*supabase\.from\('messages'\)\.select\(UNREAD_MESSAGES_SELECT\),\s*userId,/.test(list) &&
+    /isNull: \(query, column\) => query\.is\(column, null\),/.test(list) &&
+    /eq: \(query, column, value\) => query\.eq\(column, value\),/.test(list), "unread read is the anti-join");
   assert(!/select\('id, conversation_id, message_reads\(user_id\)'\)/.test(list), "the download-every-read embed is gone");
   assert(/const unreadByConv = countUnreadRows\(unreadResult\.data\);/.test(list), "counted per conversation");
   assert(/if \(senderIds\.size > 0 && !options\.deferSenderProfiles\) \{/.test(list), "the list can skip the sender read");

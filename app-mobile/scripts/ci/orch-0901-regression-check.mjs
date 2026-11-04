@@ -153,7 +153,8 @@ check(
   body !== null &&
     /applyUnreadFilters\(/.test(body) &&
     unreadFiltersBody !== null &&
-    /\.or\(\s*`sender_id\.neq\.\$\{userId\}\s*,\s*sender_id\.is\.null`\s*\)/.test(unreadFiltersBody),
+    /ops\.or\(\s*query\s*,\s*`sender_id\.neq\.\$\{userId\}\s*,\s*sender_id\.is\.null`\s*\)/.test(unreadFiltersBody) &&
+    /or:\s*\(query,\s*filters\)\s*=>\s*query\.or\(filters\)/.test(body),
   "The legacy `.neq('sender_id', userId)` filter silently dropped NULL-sender rows because" +
     " NULL != 'value' evaluates to NULL (falsy) in SQL. Today no production NULL-sender messages exist," +
     " but ORCH-0898 [Consumer collab session → Friends-tab group chat] explicitly plans round-start system" +

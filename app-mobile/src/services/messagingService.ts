@@ -901,6 +901,11 @@ export class MessagingService {
       const unreadPromise = applyUnreadFilters(
         supabase.from('messages').select(UNREAD_MESSAGES_SELECT),
         userId,
+        {
+          or: (query, filters) => query.or(filters),
+          isNull: (query, column) => query.is(column, null),
+          eq: (query, column, value) => query.eq(column, value),
+        },
       );
 
       const [accessResult, conversationsResult, unreadResult] = await Promise.all([

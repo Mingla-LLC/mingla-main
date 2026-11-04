@@ -14,8 +14,8 @@
 //   * the cache entry is per user: persisted for that user, removed on
 //     logout / account switch.
 //
-// FAILS-ON-REVERT: drop `.eq("message_reads.user_id", userId)` (or the
-// `message_reads=is.null` anti-join) from applyUnreadFilters and the unread
+// FAILS-ON-REVERT: drop the `ops.eq(next, "message_reads.user_id", userId)`
+// embed filter (or the `message_reads` is-null anti-join) from applyUnreadFilters and the unread
 // equivalence test fails; move `deps.fetchPendingInvites(userId)` after the
 // conversations await and the parallel test fails; make chatListViewState
 // show the skeleton while fetching with data (`loading: query.isFetching`) and
@@ -84,6 +84,12 @@ function legacyUnreadCounts(messages: FixtureMessage[], userId: string): Map<str
   return unreadByConv;
 }
 
+const FAKE_OPS = {
+  or: (q, filters: string) => q.or(filters),
+  isNull: (q, column: string) => q.is(column, null),
+  eq: (q, column: string, value: string) => q.eq(column, value),
+};
+
 /** A PostgREST-semantics stand-in for the filters applyUnreadFilters sends. */
 function fakeMessagesQuery(messages: FixtureMessage[]) {
   const calls: Array<[string, ...unknown[]]> = [];
@@ -121,16 +127,16 @@ function fakeMessagesQuery(messages: FixtureMessage[]) {
 Deno.test("#4265 unread counts are the same numbers as the old algorithm, from unread rows only", () => {
   for (const viewer of [ME, AMY, CAL]) {
     const query = fakeMessagesQuery(MESSAGES);
-    const rows = applyUnreadFilters(query, viewer).run();
+    const rows = applyUnreadFilters(query, viewer, FAKE_OPS).run();
     const legacy = legacyUnreadCounts(MESSAGES, viewer);
     eq([...countUnreadRows(rows)].sort(), [...legacy].sort(), `same per-chat unread for ${viewer}`);
     const legacyTotal = [...legacy.values()].reduce((sum, n) => sum + n, 0);
     eq(rows.length, legacyTotal, "only unread rows come back (nothing to count away)");
   }
-  eq([...countUnreadRows(applyUnreadFilters(fakeMessagesQuery(MESSAGES), ME).run())].sort(),
+  eq([...countUnreadRows(applyUnreadFilters(fakeMessagesQuery(MESSAGES), ME, FAKE_OPS).run())].sort(),
     [["c1", 2], ["c2", 1], ["c4", 2]], "fixture numbers for me");
   assert(UNREAD_MESSAGES_SELECT === "conversation_id, message_reads()", "the read returns only conversation ids");
-  eq([...countUnreadRows([{ conversation_id: null }, { conversation_id: "x" }])], [["x", 1]], "null ids are skipped");
+  eq([...countUnreadRows([{ conversation_id: null }, { conversation_id: "x" }, "junk"])], [["x", 1]], "null ids and junk rows are skipped");
   eq([...countUnreadRows(null)], [], "no rows, no counts");
 });
 

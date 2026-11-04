@@ -330,8 +330,8 @@ check(
     // and then required to be empty, and the counts must come from that read.
     const load = read("app-mobile/src/components/connections/chatListLoad.ts") ?? "";
     const filters = (load.match(/export\s+function\s+applyUnreadFilters[\s\S]*?\n\}/) ?? [""])[0];
-    return /\.eq\(\s*["']message_reads\.user_id["']\s*,\s*userId\s*\)/.test(filters) &&
-      /\.is\(\s*["']message_reads["']\s*,\s*null\s*\)/.test(filters) &&
+    return /ops\.eq\(\s*next\s*,\s*["']message_reads\.user_id["']\s*,\s*userId\s*\)/.test(filters) &&
+      /ops\.isNull\(\s*next\s*,\s*["']message_reads["']\s*\)/.test(filters) &&
       /unreadByConv\s*=\s*countUnreadRows\(\s*unreadResult\.data\s*\)/.test(code);
   })(),
   "Happy-path checks the `.or(sender_id.neq.<X>,sender_id.is.null)` Postgrest predicate exists. This adversarial" +
@@ -391,7 +391,8 @@ check(
     if (/const\s+unreadPromise\s*=\s*applyUnreadFilters\(/.test(code)) {
       const load = read("app-mobile/src/components/connections/chatListLoad.ts") ?? "";
       const filters = (load.match(/export\s+function\s+applyUnreadFilters[\s\S]*?\n\}/) ?? [""])[0];
-      return /\.\s*is\(\s*['"`]deleted_at['"`]\s*,\s*null\s*\)/.test(filters);
+      return /ops\.isNull\(\s*next\s*,\s*['"`]deleted_at['"`]\s*\)/.test(filters) &&
+        /isNull:\s*\(query,\s*column\)\s*=>\s*query\.is\(column,\s*null\)/.test(code);
     }
     const unreadBlock = code.match(/const\s+unreadPromise\s*=\s*supabase[\s\S]*?(?:;|\n\n)/);
     if (!unreadBlock) return false;
