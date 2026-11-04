@@ -60,6 +60,7 @@ Deno.test("classifyLink matrix", async () => {
     "tel:",
     "not a link",
     "https://localhost",
+    "store.app:443/menu",
   ]) {
     assertEquals(classifyLink(bad), { kind: "invalid" }, `invalid: ${bad}`);
   }
