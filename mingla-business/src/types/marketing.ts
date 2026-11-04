@@ -16,7 +16,7 @@
 // Channels
 // ---------------------------------------------------------------------------
 
-export type MarketingChannel = "email" | "sms" | "rcs";
+export type MarketingChannel = "email" | "sms" | "rcs" | "push";
 
 // ---------------------------------------------------------------------------
 // Audience query_definition — discriminated union (I-PROPOSED-BP)
@@ -184,7 +184,23 @@ export interface ChannelPayloadSms {
   media_urls?: string[];
 }
 
-export type CampaignChannelPayload = ChannelPayloadEmail | ChannelPayloadSms;
+/**
+ * #3682 wave 2 — push campaign payload. Free and unlimited; reaches Mingla
+ * accounts only (followers, friends of followers, Book people with an
+ * account). `body` is the short line under the brand name (max 120 chars in
+ * the composer; the database allows 240).
+ */
+export interface ChannelPayloadPush {
+  kind: "push";
+  body: string;
+  /** Optional offering in this brand that the push opens. */
+  event_id?: string;
+}
+
+export type CampaignChannelPayload =
+  | ChannelPayloadEmail
+  | ChannelPayloadSms
+  | ChannelPayloadPush;
 
 // ---------------------------------------------------------------------------
 // Row types — match table shapes
@@ -216,6 +232,8 @@ export interface MarketingCampaignRow {
   name: string;
   channel: MarketingChannel;
   channel_payload: CampaignChannelPayload;
+  /** #3682 — rows sharing it are one campaign sent on several channels. */
+  campaign_group_id?: string | null;
   status: CampaignStatus;
   scheduled_for: string | null;
   sent_at: string | null;

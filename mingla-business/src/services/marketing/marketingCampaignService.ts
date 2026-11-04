@@ -41,6 +41,8 @@ export interface DraftInput {
   /** Optional template_id (ORCH-0863) — populates marketing_campaigns.template_id
    *  on first save when the composer was opened via `?template={id}`. */
   template_id?: string;
+  /** #3682 — join an existing campaign as another channel of it. */
+  campaign_group_id?: string;
 }
 
 export interface ScheduleInput {
@@ -177,6 +179,10 @@ export async function createDraft(
   };
   if (input.template_id !== undefined) {
     insertPayload.template_id = input.template_id;
+  }
+  if (input.campaign_group_id !== undefined) {
+    assertUuid(input.campaign_group_id, "createDraft.campaign_group_id");
+    insertPayload.campaign_group_id = input.campaign_group_id;
   }
   const { data, error } = await supabase
     .from("marketing_campaigns")
@@ -419,10 +425,16 @@ export async function getOrCreateMarketingBookAudience(input: {
   return data as { audienceId: string; activeBookTotal: number };
 }
 export async function previewMarketingBook(
-  input: string | { campaignId: string; audienceKind: SealedMarketingAudienceKind },
+  input: string | {
+    campaignId: string;
+    audienceKind: SealedMarketingAudienceKind;
+    /** #3682 wave 2 — a push campaign previews through the push lane. */
+    channel?: "email" | "sms" | "push";
+  },
 ): Promise<MarketingBookQuote> {
   const audienceKind = typeof input === "string" ? "all_brand_people" : input.audienceKind;
-  const action = audienceKind === "manual_group"
+  const isPush = typeof input !== "string" && input.channel === "push";
+  const action = isPush ? "preview_push_v1" : audienceKind === "manual_group"
     ? "preview_people_v2"
     : audienceKind === "brand_followers" || audienceKind === "brand_circle_extended"
       ? "preview_circle_v1"
@@ -439,6 +451,8 @@ export async function confirmMarketingBook(input: {
   quote: MarketingBookQuote;
   scheduled_for: string | null;
   audience_kind?: SealedMarketingAudienceKind;
+  /** #3682 wave 2 — a push campaign confirms through the push lane. */
+  channel?: "email" | "sms" | "push";
 }): Promise<{
   mode: "sent" | "deferred" | "scheduled" | "in_progress";
   delivered: number;
@@ -447,7 +461,9 @@ export async function confirmMarketingBook(input: {
 }> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
-      action: input.audience_kind === "manual_group"
+      action: input.channel === "push"
+        ? "confirm_push_v1"
+        : input.audience_kind === "manual_group"
         ? "confirm_people_v2"
         : input.audience_kind === "brand_followers" || input.audience_kind === "brand_circle_extended"
           ? "confirm_circle_v1"

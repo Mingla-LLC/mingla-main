@@ -18,9 +18,9 @@ export interface WizardInvitePlan {
    */
   selectedCount: number;
   /** Your Book people only — always brandPersonIds.length. */
-  bookSelectedCount: number;
+  bookSelectedCount?: number;
   /** Followers who are not in Your Book, invited by their Mingla account. */
-  accountRecipientCount: number;
+  accountRecipientCount?: number;
   brandPersonIds: string[];
   selectionHash: string;
   state: WizardInvitePlanState;
