@@ -456,7 +456,7 @@ begin
          'record_id', '39940000-0000-4000-c100-000000000002', 'title', 'RT Detty December menu', 'event_type', 'promo_moment',
          'expected_on', pg_temp.trt_today() + 50, 'repeats', 'none'));
   -- #4270 W2 (D16): an agent can no longer add a promised event or promo moment.
-  perform pg_temp.trt_like('P2-2', 'the agent cannot add a promo moment (D16)', v, '%gone: Promised dates can no longer be added%');
+  perform pg_temp.trt_like('P2-2', 'the agent cannot add a promo moment (D16)', v, '%"token": "gone"%Promised dates can no longer be added%');
   perform pg_temp.trt_check('P2-2', 'and nothing was added',
     (select count(*)::text from public.ops_expected_events where record_id = '39940000-0000-4000-c100-000000000002'), '0');
 end;
