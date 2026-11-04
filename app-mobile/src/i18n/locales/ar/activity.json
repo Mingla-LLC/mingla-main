@@ -95,7 +95,6 @@
     "menuRemove": "إزالة من الإعجابات",
     "sheetTitle": "متى ستذهب؟",
     "sheetSubtitleOpen": "{{title}} · مفتوح في هذه الأوقات",
-    "sheetSubtitleDefault": "{{title}} · اختر وقتاً",
     "sheetNoTimes": "لا توجد أوقات مفتوحة خلال الأسبوعين القادمين. اختر تاريخاً ووقتاً آخرين أدناه.",
     "sheetPickAnother": "اختر تاريخاً ووقتاً آخرين",
     "slotToday": "اليوم",

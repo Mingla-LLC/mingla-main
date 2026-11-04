@@ -25,6 +25,7 @@ import {
   isSavedEventEnded,
   quickSlotDayLabel,
   resolveSavedPrimaryAction,
+  resolveScheduleEntry,
 } from "../savedGridModel.ts";
 import { extractWeekdayText, isPlaceOpenAt } from "../../../utils/openingHoursUtils.ts";
 import { COACH_STEPS } from "../../../constants/coachMarkSteps.ts";
@@ -206,8 +207,7 @@ Deno.test("#4265 quick slots = the next four open times, one per day, closed day
   assertEquals(now.getDay(), 1);
   const weekdayText = extractWeekdayText({ weekdayDescriptions: WEEK });
   assert(weekdayText && weekdayText.length === 7);
-  const { slots, source } = computeQuickSlots({ now, hasHours: true, isOpenAt: openAt(weekdayText) });
-  assertEquals(source, "hours");
+  const { slots } = computeQuickSlots({ now, isOpenAt: openAt(weekdayText) });
   assertEquals(slots.length, 4);
   assertEquals(slots.map((s) => s.dayOffset), [1, 3, 4, 5], "Mon, Wed and Sun are closed and skipped");
   assertEquals(slots.map((s) => s.at.getDay()), [2, 4, 5, 6]);
@@ -223,35 +223,54 @@ Deno.test("#4265 quick slots respect the lead time and fall back to unusual hour
   // Tuesday 19:15 — 7:30 PM is inside the 30-minute lead, so tonight is 8:30 PM.
   const tuesdayEvening = new Date(2026, 10, 3, 19, 15, 0, 0);
   const week = extractWeekdayText({ weekdayDescriptions: WEEK })!;
-  const tonight = computeQuickSlots({ now: tuesdayEvening, hasHours: true, isOpenAt: openAt(week) }).slots[0];
+  const tonight = computeQuickSlots({ now: tuesdayEvening, isOpenAt: openAt(week) }).slots[0];
   assertEquals(tonight.dayOffset, 0);
   assertEquals(hhmm(tonight.at), "20:30");
   assertEquals(quickSlotDayLabel(tonight), "tonight");
 
   // A 6–8 AM bakery has none of the preferred times: first open half hour.
   const bakery = ["Monday: 6:00 AM – 8:00 AM", "Tuesday: 6:00 AM – 8:00 AM", "Wednesday: 6:00 AM – 8:00 AM", "Thursday: 6:00 AM – 8:00 AM", "Friday: 6:00 AM – 8:00 AM", "Saturday: Closed", "Sunday: Closed"];
-  const early = computeQuickSlots({ now: new Date(2026, 10, 2, 10, 0), hasHours: true, isOpenAt: openAt(bakery) });
+  const early = computeQuickSlots({ now: new Date(2026, 10, 2, 10, 0), isOpenAt: openAt(bakery) });
   assertEquals(early.slots.map((s) => hhmm(s.at)), ["6:00", "6:00", "6:00", "6:00"]);
   assertEquals(early.slots.map((s) => s.at.getDay()), [2, 3, 4, 5]);
 
   // Hours that never open in the horizon → no tiles (the sheet says so).
-  const alwaysClosed = computeQuickSlots({ now: new Date(2026, 10, 2, 10, 0), hasHours: true, isOpenAt: () => false });
+  const alwaysClosed = computeQuickSlots({ now: new Date(2026, 10, 2, 10, 0), isOpenAt: () => false });
   assertEquals(alwaysClosed.slots.length, 0);
   // Unknown answers are never offered as a confirmed open time.
-  const unknown = computeQuickSlots({ now: new Date(2026, 10, 2, 10, 0), hasHours: true, isOpenAt: () => null });
+  const unknown = computeQuickSlots({ now: new Date(2026, 10, 2, 10, 0), isOpenAt: () => null });
   assertEquals(unknown.slots.length, 0);
 });
 
-Deno.test("#4265 unknown hours → tonight 7:30, tomorrow 7:30, Sat 12, Sun 11", () => {
-  const monday = new Date(2026, 10, 2, 10, 0, 0, 0);
-  const { slots, source } = computeQuickSlots({ now: monday, hasHours: false, isOpenAt: () => null });
-  assertEquals(source, "default");
-  assertEquals(slots.map((s) => [s.at.getDay(), hhmm(s.at)]), [[1, "19:30"], [2, "19:30"], [6, "12:00"], [0, "11:00"]]);
-  // After 7 PM tonight is gone; the list tops up instead of offering the past.
-  const late = computeQuickSlots({ now: new Date(2026, 10, 2, 21, 0), hasHours: false, isOpenAt: () => null }).slots;
-  assertEquals(late.length, 4);
-  assert(late.every((s) => s.at.getTime() > new Date(2026, 10, 2, 21, 0).getTime()));
-  assertEquals(late[0].dayOffset, 1);
+Deno.test("#4265 unknown hours → Schedule opens the full picker, never dead default tiles", async () => {
+  // Pure rule: the quick sheet needs hours for the place, or for EVERY stop.
+  assertEquals(resolveScheduleEntry([true]), "quickSheet");
+  assertEquals(resolveScheduleEntry([false]), "fullPicker");
+  assertEquals(resolveScheduleEntry([true, true, true]), "quickSheet", "plan with hours on every stop");
+  assertEquals(resolveScheduleEntry([true, false, true]), "fullPicker", "one stop without hours fails the check for any time");
+  assertEquals(resolveScheduleEntry([]), "fullPicker");
+
+  // The model no longer invents tonight 7:30 / Sat 12 slots for unknown hours.
+  const model = stripComments(await read("src/components/activity/savedGridModel.ts"));
+  assert(!/computeDefaultQuickSlots|hasHours|source:/.test(model), "default-slot fallback is back");
+
+  // SavedTab routes both Schedule paths (place + Mingla+-gated plan) through the rule.
+  const tab = stripComments(await read("src/components/activity/SavedTab.tsx"));
+  assert(/resolveScheduleEntry\(scheduleHoursKnown\(card\)\) === "quickSheet"/.test(tab));
+  assert(/setShowScheduleSheet\(true\);\s*\} else \{\s*setShowProposeDateTimeModal\(true\);/.test(tab), "unknown hours opens the full picker");
+  assert(/stops as CuratedStop\[\]\)\.map\(\(stop\) => hasKnownHours\(stop\.openingHours\)\)/.test(tab), "plans check every stop");
+  const curated = tab.slice(tab.indexOf("const handleScheduleCurated"), tab.indexOf("const getCurrentScheduledDate"));
+  assert(curated.indexOf("canAccess('curated_cards')") > -1, "plans keep the Mingla+ gate");
+  assert(curated.indexOf("canAccess('curated_cards')") < curated.indexOf("openScheduleEntry(card)"), "gate runs before any sheet or picker");
+  const single = tab.slice(tab.indexOf("const handleSchedule = "), tab.indexOf("const checkAllStopsOpen"));
+  assert(/openScheduleEntry\(card\);/.test(single));
+  assert(!/setShowScheduleSheet\(true\)/.test(single + curated), "no path opens the quick sheet unconditionally");
+
+  // The sheet keeps only the open-times subtitle and the "no open times" + picker path.
+  const sheet = stripComments(await read("src/components/activity/SavedScheduleSheet.tsx"));
+  assert(!/sheetSubtitleDefault/.test(sheet));
+  assert(/activity:savedTab\.sheetNoTimes/.test(sheet));
+  assert(/onPickAnother\(\)/.test(sheet));
 });
 
 Deno.test("#4265 a slot pick runs the existing scheduling path", async () => {
@@ -296,9 +315,9 @@ Deno.test("#4265 coach step 3 copy is i18n-keyed and carries the Likes preview",
 
 // ── i18n: every new Likes string in all 29 locales ─────────────────────────
 
-const NEW_SAVED_KEYS = ["kindEvent", "kindPlace", "tickets", "inCalendar", "findSimilar", "eventEnded", "closedNow", "removedToast", "addedToCalendar", "a11yOpen", "a11yShare", "a11yRemove", "a11ySchedule", "a11yTickets", "a11yInCalendar", "a11yFindSimilar", "a11yMoreHint", "menuShare", "menuRemove", "sheetTitle", "sheetSubtitleOpen", "sheetSubtitleDefault", "sheetNoTimes", "sheetPickAnother", "slotToday", "slotTonight", "slotTomorrow", "a11ySlot", "emptyBody", "emptyCta"] as const;
+const NEW_SAVED_KEYS = ["kindEvent", "kindPlace", "tickets", "inCalendar", "findSimilar", "eventEnded", "closedNow", "removedToast", "addedToCalendar", "a11yOpen", "a11yShare", "a11yRemove", "a11ySchedule", "a11yTickets", "a11yInCalendar", "a11yFindSimilar", "a11yMoreHint", "menuShare", "menuRemove", "sheetTitle", "sheetSubtitleOpen", "sheetNoTimes", "sheetPickAnother", "slotToday", "slotTonight", "slotTomorrow", "a11ySlot", "emptyBody", "emptyCta"] as const;
 const PLURAL_STEMS = ["countSaved", "kindPlan"] as const;
-const RETIRED = ["buyNow", "scheduled", "schedulePlan", "soloDiscovery", "recentlySaved", "placeClosed", "emptySubtitle", "scheduledToast", "stops", "avg"] as const;
+const RETIRED = ["buyNow", "scheduled", "schedulePlan", "soloDiscovery", "recentlySaved", "placeClosed", "emptySubtitle", "scheduledToast", "stops", "avg", "sheetSubtitleDefault"] as const;
 const placeholders = (v: string) => [...v.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join("|");
 
 Deno.test("#4265 the new Likes strings are complete in all 29 locales", async () => {

@@ -87,7 +87,6 @@
     "menuRemove": "Beğenilerden kaldır",
     "sheetTitle": "Ne zaman gidiyorsun?",
     "sheetSubtitleOpen": "{{title}} · bu saatlerde açık",
-    "sheetSubtitleDefault": "{{title}} · bir saat seç",
     "sheetNoTimes": "Önümüzdeki iki haftada açık saat yok. Aşağıdan başka bir tarih ve saat seç.",
     "sheetPickAnother": "Başka bir tarih ve saat seç",
     "slotToday": "Bugün",

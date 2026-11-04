@@ -85,7 +85,6 @@
     "menuRemove": "ลบออกจากถูกใจ",
     "sheetTitle": "คุณจะไปเมื่อไหร่?",
     "sheetSubtitleOpen": "{{title}} · เปิดในเวลาเหล่านี้",
-    "sheetSubtitleDefault": "{{title}} · เลือกเวลา",
     "sheetNoTimes": "ไม่มีเวลาเปิดในสองสัปดาห์ข้างหน้า เลือกวันและเวลาอื่นด้านล่าง",
     "sheetPickAnother": "เลือกวันและเวลาอื่น",
     "slotToday": "วันนี้",

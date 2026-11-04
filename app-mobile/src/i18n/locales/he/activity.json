@@ -89,7 +89,6 @@
     "menuRemove": "הסר מהלייקים",
     "sheetTitle": "מתי אתה הולך?",
     "sheetSubtitleOpen": "{{title}} · פתוח בשעות האלה",
-    "sheetSubtitleDefault": "{{title}} · בחר שעה",
     "sheetNoTimes": "אין שעות פתיחה בשבועיים הקרובים. בחר תאריך ושעה אחרים למטה.",
     "sheetPickAnother": "בחר תאריך ושעה אחרים",
     "slotToday": "היום",

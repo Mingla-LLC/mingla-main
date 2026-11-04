@@ -87,7 +87,6 @@
     "menuRemove": "Aus Likes entfernen",
     "sheetTitle": "Wann gehst du hin?",
     "sheetSubtitleOpen": "{{title}} · zu diesen Zeiten geöffnet",
-    "sheetSubtitleDefault": "{{title}} · wähle eine Zeit",
     "sheetNoTimes": "In den nächsten zwei Wochen keine Öffnungszeiten. Wähle unten ein anderes Datum und eine andere Uhrzeit.",
     "sheetPickAnother": "Anderes Datum und andere Uhrzeit wählen",
     "slotToday": "Heute",

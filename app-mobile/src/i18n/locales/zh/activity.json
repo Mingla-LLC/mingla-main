@@ -85,7 +85,6 @@
     "menuRemove": "从喜欢中移除",
     "sheetTitle": "你打算什么时候去？",
     "sheetSubtitleOpen": "{{title}} · 以下时间营业",
-    "sheetSubtitleDefault": "{{title}} · 选择时间",
     "sheetNoTimes": "未来两周没有营业时间。请在下方选择其他日期和时间。",
     "sheetPickAnother": "选择其他日期和时间",
     "slotToday": "今天",

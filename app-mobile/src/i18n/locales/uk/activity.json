@@ -91,7 +91,6 @@
     "menuRemove": "Видалити з «Вподобань»",
     "sheetTitle": "Коли ви підете?",
     "sheetSubtitleOpen": "{{title}} · відчинено в цей час",
-    "sheetSubtitleDefault": "{{title}} · оберіть час",
     "sheetNoTimes": "У найближчі два тижні немає годин роботи. Оберіть іншу дату й час нижче.",
     "sheetPickAnother": "Обрати іншу дату й час",
     "slotToday": "Сьогодні",

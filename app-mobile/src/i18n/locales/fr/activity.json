@@ -89,7 +89,6 @@
     "menuRemove": "Retirer des Favoris",
     "sheetTitle": "Quand y vas-tu ?",
     "sheetSubtitleOpen": "{{title}} · ouvert à ces horaires",
-    "sheetSubtitleDefault": "{{title}} · choisis une heure",
     "sheetNoTimes": "Aucun horaire d’ouverture dans les deux prochaines semaines. Choisis une autre date et heure ci-dessous.",
     "sheetPickAnother": "Choisir une autre date et heure",
     "slotToday": "Aujourd’hui",

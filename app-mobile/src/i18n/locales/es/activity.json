@@ -89,7 +89,6 @@
     "menuRemove": "Quitar de Favoritos",
     "sheetTitle": "\u00bfCu\u00e1ndo vas a ir?",
     "sheetSubtitleOpen": "{{title}} \u00b7 abierto a estas horas",
-    "sheetSubtitleDefault": "{{title}} \u00b7 elige una hora",
     "sheetNoTimes": "No hay horarios abiertos en las pr\u00f3ximas dos semanas. Elige otra fecha y hora abajo.",
     "sheetPickAnother": "Elegir otra fecha y hora",
     "slotToday": "Hoy",

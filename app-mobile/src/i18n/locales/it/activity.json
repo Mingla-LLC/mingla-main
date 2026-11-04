@@ -89,7 +89,6 @@
     "menuRemove": "Rimuovi da Mi piace",
     "sheetTitle": "Quando ci vai?",
     "sheetSubtitleOpen": "{{title}} · aperto in questi orari",
-    "sheetSubtitleDefault": "{{title}} · scegli un orario",
     "sheetNoTimes": "Nessun orario di apertura nelle prossime due settimane. Scegli un'altra data e ora qui sotto.",
     "sheetPickAnother": "Scegli un'altra data e ora",
     "slotToday": "Oggi",

@@ -87,7 +87,6 @@
     "menuRemove": "Verwijderen uit Likes",
     "sheetTitle": "Wanneer ga je?",
     "sheetSubtitleOpen": "{{title}} · open op deze tijden",
-    "sheetSubtitleDefault": "{{title}} · kies een tijd",
     "sheetNoTimes": "Geen openingstijden in de komende twee weken. Kies hieronder een andere datum en tijd.",
     "sheetPickAnother": "Andere datum en tijd kiezen",
     "slotToday": "Vandaag",

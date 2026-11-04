@@ -87,7 +87,6 @@
     "menuRemove": "Ta bort från Gillar",
     "sheetTitle": "När ska du gå?",
     "sheetSubtitleOpen": "{{title}} · öppet dessa tider",
-    "sheetSubtitleDefault": "{{title}} · välj en tid",
     "sheetNoTimes": "Inga öppettider de kommande två veckorna. Välj ett annat datum och en annan tid nedan.",
     "sheetPickAnother": "Välj ett annat datum och en annan tid",
     "slotToday": "I dag",

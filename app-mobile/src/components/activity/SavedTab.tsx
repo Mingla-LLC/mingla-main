@@ -83,11 +83,26 @@ import {
   isSavedCardTicketed,
   isSavedEventEnded,
   resolveSavedPrimaryAction,
+  resolveScheduleEntry,
   type QuickSlotResult,
   type SavedPrimaryAction,
 } from "./savedGridModel";
 
-const EMPTY_QUICK_SLOTS: QuickSlotResult = { slots: [], source: "hours" };
+const EMPTY_QUICK_SLOTS: QuickSlotResult = { slots: [] };
+
+const hasKnownHours = (openingHours: unknown): boolean =>
+  (extractWeekdayText(openingHours as Parameters<typeof extractWeekdayText>[0])?.length ?? 0) > 0;
+
+/**
+ * Issue #4265: one entry per place the scheduling check will validate — every
+ * stop of a curated plan, or the card itself.
+ */
+function scheduleHoursKnown(card: SavedCard): boolean[] {
+  if (isCuratedPlan(card)) {
+    return ((card as any).stops as CuratedStop[]).map((stop) => hasKnownHours(stop.openingHours));
+  }
+  return [hasKnownHours(card.openingHours)];
+}
 
 /** A curated multi-stop AI plan (brand-authored events also carry stops). */
 function isCuratedPlan(card: SavedCard): boolean {
@@ -595,6 +610,15 @@ const SavedTab = ({
     return suggestions;
   };
 
+  const openScheduleEntry = (card: SavedCard) => {
+    setCardToSchedule(card);
+    if (resolveScheduleEntry(scheduleHoursKnown(card)) === "quickSheet") {
+      setShowScheduleSheet(true);
+    } else {
+      setShowProposeDateTimeModal(true);
+    }
+  };
+
   const handleSchedule = (card: SavedCard) => {
     if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) {
       return;
@@ -608,10 +632,10 @@ const SavedTab = ({
       setModalTarget(null);
     }
 
-    // Issue #4265: open the quick "When are you going?" sheet first; the full
-    // propose date/time modal is its "Pick another date and time" row.
-    setCardToSchedule(card);
-    setShowScheduleSheet(true);
+    // Issue #4265: open the quick "When are you going?" sheet when the hours
+    // are known; with unknown hours no quick time could pass the check, so the
+    // full propose date/time modal opens directly.
+    openScheduleEntry(card);
   };
 
   // ---- Opening Hours Validation for Curated Plans ----
@@ -647,9 +671,9 @@ const SavedTab = ({
       setModalTarget(null);
     }
 
-    // Issue #4265: quick sheet first (slots validated against every stop).
-    setCardToSchedule(card);
-    setShowScheduleSheet(true);
+    // Issue #4265: quick sheet when every stop has hours (slots validated
+    // against every stop); otherwise the full picker directly.
+    openScheduleEntry(card);
   };
 
   // Get current scheduled date for a card if it exists
@@ -1322,15 +1346,11 @@ const SavedTab = ({
       const stops = (cardToSchedule as any).stops as CuratedStop[];
       return computeQuickSlots({
         now,
-        hasHours: stops.some(
-          (stop) => (extractWeekdayText(stop.openingHours)?.length ?? 0) > 0,
-        ),
         isOpenAt: (at) => checkAllStopsOpen(stops, at).allOpen,
       });
     }
     return computeQuickSlots({
       now,
-      hasHours: (extractWeekdayText(cardToSchedule.openingHours)?.length ?? 0) > 0,
       isOpenAt: (at) => {
         const availability = checkSingleCardSchedulingAvailability(cardToSchedule, at, locale);
         if (availability.status === "open") return true;

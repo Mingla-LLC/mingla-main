@@ -85,7 +85,6 @@
     "menuRemove": "좋아요에서 삭제",
     "sheetTitle": "언제 가시나요?",
     "sheetSubtitleOpen": "{{title}} · 이 시간에 영업해요",
-    "sheetSubtitleDefault": "{{title}} · 시간을 골라 주세요",
     "sheetNoTimes": "앞으로 2주 동안 영업 시간이 없어요. 아래에서 다른 날짜와 시간을 골라 주세요.",
     "sheetPickAnother": "다른 날짜와 시간 고르기",
     "slotToday": "오늘",

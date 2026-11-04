@@ -89,7 +89,6 @@
     "menuRemove": "Elimină din Aprecieri",
     "sheetTitle": "Când mergi?",
     "sheetSubtitleOpen": "{{title}} · deschis la aceste ore",
-    "sheetSubtitleDefault": "{{title}} · alege o oră",
     "sheetNoTimes": "Niciun program de deschidere în următoarele două săptămâni. Alege mai jos altă dată și oră.",
     "sheetPickAnother": "Alege altă dată și oră",
     "slotToday": "Azi",

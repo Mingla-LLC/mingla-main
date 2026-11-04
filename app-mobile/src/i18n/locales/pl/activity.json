@@ -91,7 +91,6 @@
     "menuRemove": "Usuń z Polubień",
     "sheetTitle": "Kiedy idziesz?",
     "sheetSubtitleOpen": "{{title}} · otwarte w tych godzinach",
-    "sheetSubtitleDefault": "{{title}} · wybierz godzinę",
     "sheetNoTimes": "Brak godzin otwarcia w ciągu najbliższych dwóch tygodni. Wybierz inną datę i godzinę poniżej.",
     "sheetPickAnother": "Wybierz inną datę i godzinę",
     "slotToday": "Dziś",

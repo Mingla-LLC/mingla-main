@@ -87,7 +87,6 @@
     "menuRemove": "পছন্দ থেকে সরান",
     "sheetTitle": "আপনি কখন যাচ্ছেন?",
     "sheetSubtitleOpen": "{{title}} · এই সময়গুলোতে খোলা",
-    "sheetSubtitleDefault": "{{title}} · একটি সময় বেছে নিন",
     "sheetNoTimes": "আগামী দুই সপ্তাহে কোনো খোলা সময় নেই। নিচে অন্য তারিখ ও সময় বেছে নিন।",
     "sheetPickAnother": "অন্য তারিখ ও সময় বেছে নিন",
     "slotToday": "আজ",

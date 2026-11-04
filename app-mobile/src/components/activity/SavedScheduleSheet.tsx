@@ -64,10 +64,7 @@ export default function SavedScheduleSheet({
   onDismissed,
 }: SavedScheduleSheetProps): React.ReactElement {
   const { t } = useTranslation(["activity"]);
-  const subtitle =
-    result.source === "default"
-      ? t("activity:savedTab.sheetSubtitleDefault", { title })
-      : t("activity:savedTab.sheetSubtitleOpen", { title });
+  const subtitle = t("activity:savedTab.sheetSubtitleOpen", { title });
 
   return (
     <BaseBottomSheet

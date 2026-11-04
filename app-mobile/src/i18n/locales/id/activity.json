@@ -85,7 +85,6 @@
     "menuRemove": "Hapus dari Suka",
     "sheetTitle": "Kapan kamu pergi?",
     "sheetSubtitleOpen": "{{title}} · buka pada waktu ini",
-    "sheetSubtitleDefault": "{{title}} · pilih waktu",
     "sheetNoTimes": "Tidak ada jam buka dalam dua minggu ke depan. Pilih tanggal dan waktu lain di bawah.",
     "sheetPickAnother": "Pilih tanggal dan waktu lain",
     "slotToday": "Hari ini",

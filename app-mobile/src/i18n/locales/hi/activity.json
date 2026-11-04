@@ -87,7 +87,6 @@
     "menuRemove": "पसंद से हटाएँ",
     "sheetTitle": "आप कब जा रहे हैं?",
     "sheetSubtitleOpen": "{{title}} · इन समयों पर खुला",
-    "sheetSubtitleDefault": "{{title}} · समय चुनें",
     "sheetNoTimes": "अगले दो हफ्तों में कोई खुला समय नहीं है। नीचे कोई दूसरी तारीख और समय चुनें।",
     "sheetPickAnother": "दूसरी तारीख और समय चुनें",
     "slotToday": "आज",

@@ -75,6 +75,23 @@ export function isSavedCardTicketed(card: SavedTicketShape | null | undefined, i
 
 // ── Quick schedule slots ───────────────────────────────────────────────────
 
+export type ScheduleEntry = "quickSheet" | "fullPicker";
+
+/**
+ * Where a Schedule tap goes. The quick sheet only offers times the existing
+ * scheduling check can confirm open, which needs real opening hours — for a
+ * single place, and for EVERY stop of a plan (one stop without hours makes the
+ * check reject any time). When hours are unknown the tap opens the full
+ * date/time picker directly instead of showing tiles that would all be refused.
+ *
+ * @param stopHoursKnown one entry per place (a single card passes one), true
+ *   when that place publishes parseable opening hours.
+ */
+export function resolveScheduleEntry(stopHoursKnown: ReadonlyArray<boolean>): ScheduleEntry {
+  if (stopHoursKnown.length === 0) return "fullPicker";
+  return stopHoursKnown.every(Boolean) ? "quickSheet" : "fullPicker";
+}
+
 export interface QuickSlot {
   /** Device-local start time the user is picking. */
   at: Date;
@@ -83,15 +100,12 @@ export interface QuickSlot {
 }
 
 export interface QuickSlotResult {
+  /** Times the existing check confirms open; empty = none in the horizon. */
   slots: QuickSlot[];
-  /** "hours": computed from real opening hours. "default": hours unknown. */
-  source: "hours" | "default";
 }
 
 export interface ComputeQuickSlotsInput {
   now: Date;
-  /** Whether the card (or every stop of a plan) publishes opening hours. */
-  hasHours: boolean;
   /** true = open at that moment, false = closed, null = cannot tell. */
   isOpenAt: (at: Date) => boolean | null;
   count?: number;
@@ -127,19 +141,14 @@ function atMinutes(base: Date, dayOffset: number, minutes: number): Date {
 
 /**
  * The next `count` times the place is open — at most one per day, so the four
- * tiles are four different days. Closed (or unparseable) days are skipped.
- * When the card has no hours at all, the four default evening/weekend slots are
- * returned instead; the caller still runs them through the existing
- * scheduling check, so an unverifiable time is never booked silently.
+ * tiles are four different days. Closed (or unparseable) days are skipped, and
+ * a time is offered only when `isOpenAt` answers true. Callers reach this only
+ * for cards whose hours are known (see resolveScheduleEntry).
  */
 export function computeQuickSlots(input: ComputeQuickSlotsInput): QuickSlotResult {
   const count = input.count ?? 4;
   const horizonDays = input.horizonDays ?? 14;
   const earliest = input.now.getTime() + (input.leadMinutes ?? 30) * 60_000;
-
-  if (!input.hasHours) {
-    return { slots: computeDefaultQuickSlots(input.now, count, earliest), source: "default" };
-  }
 
   const slots: QuickSlot[] = [];
   for (let dayOffset = 0; dayOffset < horizonDays && slots.length < count; dayOffset += 1) {
@@ -165,35 +174,7 @@ export function computeQuickSlots(input: ComputeQuickSlotsInput): QuickSlotResul
     }
     if (picked) slots.push({ at: picked, dayOffset });
   }
-  return { slots, source: "hours" };
-}
-
-/** Tonight 7:30 PM, tomorrow 7:30 PM, next Saturday 12 PM, next Sunday 11 AM. */
-export function computeDefaultQuickSlots(now: Date, count: number, earliestMs: number): QuickSlot[] {
-  const offsetToWeekday = (weekday: number): number => {
-    const diff = (weekday - now.getDay() + 7) % 7;
-    return diff === 0 ? 7 : diff;
-  };
-  const wanted: Array<[number, number]> = [
-    [0, 19 * 60 + 30],
-    [1, 19 * 60 + 30],
-    [offsetToWeekday(6), 12 * 60],
-    [offsetToWeekday(0), 11 * 60],
-    // Top-ups for when tonight has already gone.
-    [2, 19 * 60 + 30],
-    [3, 19 * 60 + 30],
-  ];
-  const seen = new Set<number>();
-  const slots: QuickSlot[] = [];
-  for (const [dayOffset, minutes] of wanted) {
-    const at = atMinutes(now, dayOffset, minutes);
-    const ms = at.getTime();
-    if (ms < earliestMs || seen.has(ms)) continue;
-    seen.add(ms);
-    slots.push({ at, dayOffset });
-    if (slots.length >= count) break;
-  }
-  return slots.sort((a, b) => a.at.getTime() - b.at.getTime());
+  return { slots };
 }
 
 export type QuickSlotDayLabel = "today" | "tonight" | "tomorrow" | "weekday";

@@ -85,7 +85,6 @@
     "menuRemove": "いいねから削除",
     "sheetTitle": "いつ行きますか？",
     "sheetSubtitleOpen": "{{title}} · 営業中の時間",
-    "sheetSubtitleDefault": "{{title}} · 時間を選択",
     "sheetNoTimes": "今後2週間に営業時間がありません。下から別の日時を選んでください。",
     "sheetPickAnother": "別の日時を選ぶ",
     "slotToday": "今日",

@@ -85,7 +85,6 @@
     "menuRemove": "Xóa khỏi Yêu thích",
     "sheetTitle": "Khi nào bạn đi?",
     "sheetSubtitleOpen": "{{title}} · mở cửa vào những giờ này",
-    "sheetSubtitleDefault": "{{title}} · chọn giờ",
     "sheetNoTimes": "Không có giờ mở cửa trong hai tuần tới. Chọn ngày giờ khác bên dưới.",
     "sheetPickAnother": "Chọn ngày giờ khác",
     "slotToday": "Hôm nay",
