@@ -4179,6 +4179,13 @@ export const createTicketCheckoutCreateHandler = (
         successUrl =
           `${baseUrl}/${surfacePath}/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}&csi=${checkoutSessionId}&bst=${buyerStatusToken}`;
         cancelUrl = `${baseUrl}/${surfacePath}/${eventId}/payment`;
+        // Issue #4271 — a door code (always surface web) returns the guest to
+        // its own pay page, which polls door-pay-code until the webhook
+        // finalizes the order. Same validated origin as every web checkout
+        // (ISSUE-927: one canonical BUSINESS_WEB_ORIGIN read).
+        if (doorPay !== null) {
+          ({ successUrl, cancelUrl } = doorPayStripeUrls(baseUrl, doorPay));
+        }
       } else {
         // ORCH-0839-B: mobile-hosted Checkout returns to the native app via a
         // custom-scheme deep link. expo-web-browser.openAuthSessionAsync
@@ -4195,13 +4202,6 @@ export const createTicketCheckoutCreateHandler = (
           `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=success`;
         cancelUrl =
           `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=cancel`;
-      }
-      // Issue #4271 — a door code returns the guest to its own pay page, which
-      // polls door-pay-code until the webhook finalizes the order.
-      if (doorPay !== null) {
-        const doorBase = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
-          PRODUCTION_BUSINESS_WEB_ORIGIN;
-        ({ successUrl, cancelUrl } = doorPayStripeUrls(doorBase, doorPay));
       }
       const eventName =
         typeof session.eventName === "string" && session.eventName.length > 0

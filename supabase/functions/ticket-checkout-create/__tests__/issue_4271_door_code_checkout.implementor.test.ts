@@ -133,7 +133,10 @@ Deno.test("#4271 ticket-checkout-create wires the door arm in order", async () =
   const sessionIdAt = src.indexOf('const checkoutSessionId = String(session.checkoutSessionId ?? "");');
   const linkAt = src.indexOf("await linkDoorPaySession(");
   assert(sessionIdAt > 0 && linkAt > sessionIdAt, "the session must be linked once it exists");
-  assert(src.includes("({ successUrl, cancelUrl } = doorPayStripeUrls(doorBase, doorPay));"));
+  // The door return URLs use the web branch's validated BUSINESS_WEB_ORIGIN
+  // (ISSUE-927: exactly one canonical read in this file).
+  assert(src.includes("({ successUrl, cancelUrl } = doorPayStripeUrls(baseUrl, doorPay));"));
+  assertEquals(src.split('Deno.env.get("BUSINESS_WEB_ORIGIN")').length - 1, 1);
   assert(src.includes("callbackUrl: providerCallbackUrl,"));
   assert(src.includes("returnUrl: providerCallbackUrl,"));
 });
