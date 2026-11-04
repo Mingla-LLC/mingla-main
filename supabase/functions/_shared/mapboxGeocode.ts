@@ -64,26 +64,50 @@ interface ForwardRawResponse {
   }>;
 }
 
+/** #4238 r8 P2-4: a lookup that failed is not the same as "no such place". */
+export type ForwardGeocodeLookup =
+  | { status: "found"; lat: number; lng: number }
+  | { status: "not_found" }
+  | { status: "failed" };
+
 /**
  * Forward-geocode a free-text place (e.g. "Brooklyn, NY") to {lat,lng}.
  * Best-effort: returns null on empty text, missing token, network/HTTP error,
  * or no usable feature — the caller degrades gracefully (never fabricates a
  * location, Constitution #3). Caches the text→coords result (incl. null).
+ * Callers that must tell a failed lookup from "no such place" use
+ * forwardGeocodeLookup.
  */
 export async function forwardGeocodeText(
   text: string | null | undefined,
 ): Promise<{ lat: number; lng: number } | null> {
+  const result = await forwardGeocodeLookup(text);
+  return result.status === "found" ? { lat: result.lat, lng: result.lng } : null;
+}
+
+/**
+ * The same lookup, saying why there is no point: "not_found" only when
+ * Mapbox answered with no usable feature (cached); "failed" for a missing
+ * token, a network error, a non-OK answer or an unreadable body (not cached).
+ */
+export async function forwardGeocodeLookup(
+  text: string | null | undefined,
+): Promise<ForwardGeocodeLookup> {
   const trimmed = typeof text === "string" ? text.trim() : "";
-  if (trimmed.length === 0) return null;
+  if (trimmed.length === 0) return { status: "not_found" };
 
   const cacheKey = trimmed.toLowerCase();
   const cached = cacheGet(cacheKey);
-  if (cached.hit) return cached.coords;
+  if (cached.hit) {
+    return cached.coords
+      ? { status: "found", lat: cached.coords.lat, lng: cached.coords.lng }
+      : { status: "not_found" };
+  }
 
   const token = Deno.env.get("MAPBOX_ACCESS_TOKEN") ?? "";
   if (!token) {
     console.error("[mapboxGeocode] MAPBOX_ACCESS_TOKEN not configured");
-    return null; // do NOT cache a token-missing miss
+    return { status: "failed" }; // do NOT cache a token-missing miss
   }
 
   const url =
@@ -102,19 +126,19 @@ export async function forwardGeocodeText(
   } catch (e) {
     void recordApiCall("mapbox", false, Date.now() - _t0); // ORCH-1201 Layer-C (network error)
     console.warn("[mapboxGeocode] forward fetch error:", e);
-    return null; // transient — do not cache
+    return { status: "failed" }; // transient — do not cache
   }
 
   if (!upstream.ok) {
     console.warn("[mapboxGeocode] forward non-OK:", upstream.status);
-    return null;
+    return { status: "failed" };
   }
 
   let data: ForwardRawResponse;
   try {
     data = (await upstream.json()) as ForwardRawResponse;
   } catch {
-    return null;
+    return { status: "failed" };
   }
 
   const coords = data.features?.[0]?.geometry?.coordinates; // [lng, lat]
@@ -124,12 +148,12 @@ export async function forwardGeocodeText(
     typeof coords[1] !== "number"
   ) {
     cacheSet(cacheKey, null); // a real "no result" — cache the negative
-    return null;
+    return { status: "not_found" };
   }
 
   const result = { lat: coords[1], lng: coords[0] }; // GeoJSON is [lng, lat]
   cacheSet(cacheKey, result);
-  return result;
+  return { status: "found", ...result };
 }
 
 /** Test-only: clear the module cache between unit tests. */

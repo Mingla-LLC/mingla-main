@@ -618,6 +618,67 @@ export async function suggestGeoTargetConstants(
   });
 }
 
+/**
+ * #4238 — every ENABLED constant Google suggests inside the requested
+ * country, in Google's own order (the per-app matcher picks one). Unlike
+ * pickGeoSuggestion it does not demand an exact name: Google naming the place
+ * "Lagos" or "Lagos State" is still Google's own answer. Pure.
+ */
+export function pickGeoSuggestions(
+  payload: unknown,
+  target: { countryCode: string },
+): ResolvedGeoTarget[] {
+  const suggestions = Array.isArray(
+      (payload as Record<string, unknown> | null)?.geoTargetConstantSuggestions,
+    )
+    ? (payload as Record<string, unknown>).geoTargetConstantSuggestions as Record<
+      string,
+      unknown
+    >[]
+    : [];
+  const out: ResolvedGeoTarget[] = [];
+  for (const suggestion of suggestions) {
+    const constant = (suggestion.geoTargetConstant ?? {}) as Record<string, unknown>;
+    const id = typeof constant.id === "string"
+      ? constant.id
+      : typeof constant.id === "number"
+      ? String(constant.id)
+      : "";
+    const countryCode = typeof constant.countryCode === "string" ? constant.countryCode : "";
+    const name = typeof constant.name === "string" ? constant.name : "";
+    const canonicalName = typeof constant.canonicalName === "string"
+      ? constant.canonicalName
+      : "";
+    if (constant.status !== "ENABLED" || !id || !name || !canonicalName) continue;
+    if (countryCode.toUpperCase() !== target.countryCode.toUpperCase()) continue;
+    if (out.some((row) => row.criterionId === id)) continue;
+    out.push({
+      criterionId: id,
+      resourceName: typeof constant.resourceName === "string"
+        ? constant.resourceName
+        : `geoTargetConstants/${id}`,
+      name,
+      canonicalName,
+      countryCode: countryCode.toUpperCase(),
+      targetType: typeof constant.targetType === "string" ? constant.targetType : null,
+    });
+  }
+  return out;
+}
+
+/** #4238 — read-only suggest call returning every in-country candidate. */
+export async function suggestGeoTargetCandidates(
+  client: GoogleClient,
+  input: { name: string; countryCode: string; locale?: string },
+): Promise<ResolvedGeoTarget[]> {
+  const { payload } = await googleAdsRequest(client, "geoTargetConstants:suggest", {
+    locale: input.locale ?? "en",
+    countryCode: input.countryCode.toUpperCase(),
+    locationNames: { names: [input.name.trim()] },
+  });
+  return pickGeoSuggestions(payload, { countryCode: input.countryCode });
+}
+
 // ── The PROVEN G-P3 mutate body (the adapter's create contract) ───────────────
 
 /** G-14 (PROOF G-P3): REQUIRED on EVERY v24 campaign create, unconditionally. */

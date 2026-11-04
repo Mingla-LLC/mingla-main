@@ -124,7 +124,13 @@ describe("#4238 countries (T-C1..C4)", () => {
     expect(createRoute).not.toContain("countriesText");
     expect(createRoute).toContain("<HostAdCountryPicker");
     expect(createRoute).toContain("Choose at least one country.");
-    expect(createRoute).toContain("Choose a country first.");
+    // #4238 media-buyer: the places editor asks for a country before search.
+    expect(
+      fs.readFileSync(
+        path.join(ROOT, "src/components/marketing/ads/HostAdPlacesEditor.tsx"),
+        "utf8",
+      ),
+    ).toContain("Choose a country first");
   });
 
   it("T-C3 the phone picker still searches dial codes; the country picker does not", () => {
@@ -341,7 +347,8 @@ describe("#4238 ticket-sales goal (T-F3, T-F4, SC-14)", () => {
   });
 
   it("SC-3 search works before any platform is ticked", () => {
-    expect(createRoute).toContain("pick(connections) ?? pick(setup?.connections ?? [])");
+    // #4238 media-buyer: ticked apps first, then any ready app.
+    expect(createRoute).toContain("...(setup?.connections ?? []).map((item) => item.platform as HostAdApp)");
     // #4238 D2: one start rule for fresh, restored and not-found drafts.
     expect(createRoute).toContain("initialHostAdConnections(setup.connections, null)");
   });

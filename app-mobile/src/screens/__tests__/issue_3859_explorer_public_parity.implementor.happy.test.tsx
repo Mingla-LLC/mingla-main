@@ -160,6 +160,15 @@ jest.mock("../../components/profile/BrandFollowOverflowSheet", () => ({
 jest.mock("../../components/profile/BrandsYouFollowManageSheet", () => ({
   BrandsYouFollowManageSheet: () => null,
 }));
+// #3682 wave 3: the Friends-of-followers foot row reads its state through
+// the Supabase client, whose module scope loads expo-constants. Off here.
+jest.mock("../../hooks/useFriendsReach", () => ({
+  useFriendsReach: () => ({ controlsLive: false, state: null }),
+}));
+jest.mock("../../components/profile/BrandFriendsReachFootRow", () => ({
+  BrandFriendsReachFootRow: () => null,
+  shouldShowBrandFriendsReachRow: () => false,
+}));
 
 import ConsumerBrandProfileScreen from "../ConsumerBrandProfileScreen";
 import {

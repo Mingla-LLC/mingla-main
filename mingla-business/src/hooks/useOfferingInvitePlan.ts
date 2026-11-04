@@ -72,6 +72,19 @@ export function useOfferingInvitePlan(input: {
     queryFn: () => listWizardInviteManualGroups(input.brandId),
     staleTime: 15_000,
   });
+  const circle = useQuery({
+    queryKey: marketingKeys.offeringInvites.circleAvailability(input.brandId),
+    enabled: isAuthReady && input.enabled && input.brandId.length > 0,
+    // #3682: lazy like the Blast composer, so the circle reader stays out of
+    // the wizard's startup bundle.
+    queryFn: async () => {
+      const { getBrandCircleReachSummary } = await import(
+        "../services/brandCircleReachSummaryService"
+      );
+      return getBrandCircleReachSummary(input.brandId);
+    },
+    staleTime: 30_000,
+  });
   const quote = useQuery({
     queryKey: marketingKeys.offeringInvites.quote(eventId ?? "pending", plan.data?.selectionRevision ?? 0),
     enabled: isAuthReady && input.enabled && eventId !== null && plan.data !== undefined,
@@ -130,7 +143,7 @@ export function useOfferingInvitePlan(input: {
       releaseForegroundOwner?.();
     };
   }, [eventId, input.enabled, isAuthReady, refreshAuthoritative]);
-  return { plan, people, groups, quote, replace, clear, refreshAuthoritative };
+  return { plan, people, groups, circle, quote, replace, clear, refreshAuthoritative };
 }
 
 /** Hydrates the persisted plan anywhere the wizard needs review/publish truth. */

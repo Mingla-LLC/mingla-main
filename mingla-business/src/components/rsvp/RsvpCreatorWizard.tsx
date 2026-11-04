@@ -154,7 +154,7 @@ const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Where", subtitle: "Venue or online link" },
   { title: "Cover", subtitle: "Pick a cover style" },
   { title: "RSVP", subtitle: "Capacity, plus-ones, approvals" },
-  { title: "Invite people", subtitle: "Choose people from Your Book" },
+  { title: "Invite people", subtitle: "Your Book, followers and groups" },
   { title: "Preview", subtitle: "How it looks to guests" },
 ];
 
@@ -1455,7 +1455,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
               </Text>
               <Text style={styles.stepSub}>
                 {currentStep === 5
-                  ? "Choose people from Your Book. Nothing sends until this RSVP is published."
+                  ? "Choose who to invite. Nothing sends until this RSVP is published."
                   : STEP_DEFS[currentStep].subtitle}
               </Text>
         <View style={styles.stepBodyWrap} onLayout={handleStepBodyLayout}>

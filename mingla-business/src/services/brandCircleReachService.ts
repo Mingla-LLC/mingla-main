@@ -16,10 +16,17 @@ function parseAvailability(v:unknown):BrandCircleAvailability{
   if((v.state==="ready")!==(v.reason===null)||v.state==="ready"&&(v.refreshedAt===null||v.expiresAt===null))throw malformed();
   return v as unknown as BrandCircleAvailability;
 }
+/** #3682/#3774 display wording for the extended ring ("Friends of followers"). */
+export const FRIEND_OF_FOLLOWER_REASON_LABEL="Friend of a follower." as const;
+// The server still sends the pre-#3774 wire label; installed Host binaries
+// validate it exactly, so the server keeps it until they have updated. This
+// client accepts either and always shows the new wording.
+const EXTENDED_WIRE_LABELS=new Set<unknown>(["In your extended circle.",FRIEND_OF_FOLLOWER_REASON_LABEL]);
 function parseMember(v:unknown):BrandCircleMember{
   if(!record(v)||!exact(v,["memberId","ring","displayName","avatarUrl","reasonCode","reasonLabel"])||typeof v.memberId!=="string"||typeof v.displayName!=="string"||v.displayName.length===0||v.displayName.length>120||!nullableString(v.avatarUrl)||(v.ring!=="follower"&&v.ring!=="extended"))throw malformed();
-  if((v.ring==="follower"&&(v.reasonCode!=="follows_brand"||v.reasonLabel!=="Follows your brand."))||(v.ring==="extended"&&(v.reasonCode!=="extended_circle"||v.reasonLabel!=="In your extended circle.")))throw malformed();
-  return v as unknown as BrandCircleMember;
+  if((v.ring==="follower"&&(v.reasonCode!=="follows_brand"||v.reasonLabel!=="Follows your brand."))||(v.ring==="extended"&&(v.reasonCode!=="extended_circle"||!EXTENDED_WIRE_LABELS.has(v.reasonLabel))))throw malformed();
+  const member=v as unknown as BrandCircleMember;
+  return member.ring==="extended"?{...member,reasonLabel:FRIEND_OF_FOLLOWER_REASON_LABEL}:member;
 }
 function parseCursor(v:unknown):BrandCircleCursor|null{
   if(v===null)return null;if(!record(v)||!exact(v,["snapshotVersion","ringOrder","sortName","memberId"])||!nonnegative(v.snapshotVersion)||(v.ringOrder!==2&&v.ringOrder!==3)||typeof v.sortName!=="string"||typeof v.memberId!=="string")throw malformed();return v as unknown as BrandCircleCursor;

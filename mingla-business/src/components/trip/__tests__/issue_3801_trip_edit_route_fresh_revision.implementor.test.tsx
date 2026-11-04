@@ -218,13 +218,26 @@ function loadRoute(): React.ComponentType {
 
 let queryClient: QueryClient;
 const mounted: Renderer[] = [];
-const settle = async (ms = 40): Promise<void> => {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-  });
+/**
+ * Waits, inside act, until `done()` holds and no query or mutation is in
+ * flight, or until a generous ceiling passes. A fixed sleep raced the fake
+ * services' real timers under full-suite load (the first mount also pays the
+ * route transpile) and read `sessions` as []. The ceiling only bounds a
+ * genuine failure: on timeout the caller's assertions report the real state.
+ */
+const settleUntil = async (done: () => boolean, ceilingMs = 2_000): Promise<void> => {
+  const deadline = Date.now() + ceilingMs;
+  for (;;) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    const idle = queryClient.isFetching() === 0 && queryClient.isMutating() === 0;
+    if ((idle && done()) || Date.now() > deadline) return;
+  }
 };
 const openEditor = async (): Promise<Renderer> => {
   const Route = loadRoute();
+  const sessionsBefore = sessions.length;
   let tree!: Renderer;
   await act(async () => {
     tree = TestRenderer.create(
@@ -234,7 +247,8 @@ const openEditor = async (): Promise<Renderer> => {
     );
   });
   mounted.push(tree);
-  await settle();
+  // The route mounts one editing session once its trip read has settled.
+  await settleUntil(() => sessions.length > sessionsBefore);
   return tree;
 };
 const closeEditor = async (tree: Renderer): Promise<void> => {
@@ -301,7 +315,8 @@ describe("issue #3801 — reopening a draft trip seeds the editor from the serve
     await act(async () => {
       await (saveIntake as NonNullable<typeof saveIntake>)(cursor);
     });
-    await settle();
+    // Let the invalidation's refetch (if any) land before reading the cache.
+    await settleUntil(() => true);
     expect(cursor.current).toBe(REV_AFTER_INTAKE);
     // The intake save marks the cached trip detail stale, so it is read again.
     const cached = queryClient.getQueryData<{ updatedAt: string }>(tripKeys.detail(EVENT_ID));

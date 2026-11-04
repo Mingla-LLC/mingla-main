@@ -50,6 +50,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { partialSendLine } from "../../services/marketing/campaignSendCopy";
 
 export interface ComposerSentConfirmationProps {
   visible: boolean;
@@ -58,6 +59,10 @@ export interface ComposerSentConfirmationProps {
   deferredRecipientCount?: number;
   /** Book recipients who became ineligible after the sealed confirmation. */
   skippedRecipientCount?: number;
+  /** #3682 — send-now recipients the provider accepted. */
+  deliveredRecipientCount?: number;
+  /** #3682 — send-now recipients the provider turned down (partial send). */
+  failedRecipientCount?: number;
   /** Closes the overlay only — leaves the operator on the composer route. */
   onDismiss: () => void;
   /** Closes the overlay AND navigates to the campaigns list. */
@@ -69,6 +74,8 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
   isSendNow,
   deferredRecipientCount = 0,
   skippedRecipientCount = 0,
+  deliveredRecipientCount = 0,
+  failedRecipientCount = 0,
   onDismiss,
   onViewInCampaigns,
 }) => {
@@ -176,14 +183,18 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
         </View>
         <Animated.View style={copyAnimatedStyle}>
           <Text style={styles.title}>
-            {isSendNow && deferredRecipientCount > 0
+            {isSendNow && failedRecipientCount > 0
+              ? "Partly sent."
+              : isSendNow && deferredRecipientCount > 0
               ? "Sending started."
               : isSendNow
                 ? "On the way."
                 : "Scheduled."}
           </Text>
           <Text style={styles.body}>
-            {isSendNow && deferredRecipientCount > 0
+            {isSendNow && failedRecipientCount > 0
+              ? partialSendLine(deliveredRecipientCount, failedRecipientCount)
+              : isSendNow && deferredRecipientCount > 0
               ? `${deferredRecipientCount} ${
                   deferredRecipientCount === 1 ? "recipient is" : "recipients are"
                 } held for allowed local messaging hours. Mingla will send automatically when their window opens.`

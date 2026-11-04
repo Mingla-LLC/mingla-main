@@ -92,6 +92,7 @@ import {
 // the confirmation email can re-derive the same token and link to the manage
 // page. Only the hash is stored; a missing key falls back to a random token.
 import { issueWebGuestManageToken } from "../_shared/venueReservationManageToken.ts";
+import { autoFollowReservationBestEffort } from "../_shared/autoFollowBrand.ts";
 
 type ReserveSurface = "native" | "web";
 
@@ -1520,6 +1521,8 @@ async function completeFreeReservation(
     unknown
   >;
   const reservationId = String(row.id ?? "");
+  // #3682 — signed-in booker follows the brand (bounded, fail-open).
+  await autoFollowReservationBestEffort(supabase, row);
   if (input.persistCredential && reservationId) {
     const { error: freeSessionError } = await supabase.from(
       "reservation_checkout_sessions",

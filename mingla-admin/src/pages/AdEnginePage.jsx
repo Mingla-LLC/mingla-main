@@ -19,6 +19,7 @@ import { useToast } from "../context/ToastContext";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { invokeWithRefresh } from "../lib/supabase";
 import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
+import { AdAvailabilityPanel } from "../components/ad-engine/AdAvailabilityPanel";
 import { AppDownloadReadinessPanel } from "../components/app-readiness/AppDownloadReadinessPanel";
 import { AdAudiencesPanel } from "../components/ad-engine/AdAudiencesPanel";
 import { CreativeDropZone } from "../components/ad-engine/CreativeDropZone";
@@ -1203,6 +1204,7 @@ export function AdEnginePage() {
       {shownTab === "connections" && (
         <>
           <AdConnectionsPanel />
+          <AdAvailabilityPanel />
 
           {appDownloadReadinessEnabled ? (
             <AppDownloadReadinessPanel />

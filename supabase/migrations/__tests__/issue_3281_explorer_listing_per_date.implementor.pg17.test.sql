@@ -576,7 +576,7 @@ BEGIN
     format('(d) discover_v2_event_base asked the rule on %s of 20 dates (day choice calls) before picking the first',
       pg_temp.t3281p_count('day_choice_calls')));
   -- The base only walks to the card date: it does not price per date (since
-  -- 20280330004265 discover_v2_items prices the cards it shows).
+  -- 20280402004265 discover_v2_items prices the cards it shows).
   PERFORM pg_temp.t3281p_reset_counts();
   PERFORM count(*) FROM public.discover_v2_event_base(ARRAY['#3281P Early 2'], now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
   PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 1 AND 2,

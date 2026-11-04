@@ -6,6 +6,10 @@ import React from "react";
 const TestRenderer = require("react-test-renderer");
 const { act } = TestRenderer;
 
+// #3682 wave 2 — the Followers row reads the real follower count.
+jest.mock("../../../hooks/useBrandFollowerCount", () => ({
+  useBrandFollowerCount: () => ({ data: 4, isError: false }),
+}));
 jest.mock("../../../hooks/useOfferingInvitePlan", () => ({
   useOfferingInvitePlan: jest.fn(),
 }));

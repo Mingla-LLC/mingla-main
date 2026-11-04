@@ -79,6 +79,7 @@ import {
   type CreateCampaignInput,
   type EntityLevel,
   TIKTOK_CTA_MAP,
+  tiktokCallToActionCode,
 } from "./adChannelCore.ts";
 
 // ── Env config (NAMES per SPEC §7 — values live in Function Secrets) ──────────
@@ -1474,15 +1475,22 @@ function tikTokCityDescriptionRank(tag: TikTokLocationTag): number {
  */
 export function pickTikTokCityMatches(
   tags: readonly TikTokLocationTag[],
-  opts: { country?: string; q?: string; limit?: number } = {},
+  opts: {
+    country?: string;
+    q?: string;
+    limit?: number;
+    /** #4238: PROVINCE for the wider-area fallback; default city-like. */
+    geoTypes?: readonly string[];
+  } = {},
 ): TikTokLocationTag[] {
+  const geoTypes = opts.geoTypes ?? TIKTOK_CITY_GEO_TYPES;
   const country = (opts.country ?? "").trim().toUpperCase();
   const q = (opts.q ?? "").trim().toLowerCase();
   const limit = opts.limit ?? 15;
   const matches = tags.filter((t) => {
     // A DISABLED / unavailable tag must never be offered as targetable.
     if (t.status !== null && t.status !== "ENABLED") return false;
-    if (!TIKTOK_CITY_GEO_TYPES.includes(t.geoType)) return false;
+    if (!geoTypes.includes(t.geoType)) return false;
     if (country && t.regionCode !== country) return false;
     return true;
   });
@@ -1521,16 +1529,19 @@ export async function tiktokSearchCityLocations(
     promotionType?: string;
     placements?: readonly string[];
     limit?: number;
+    /** #4238: ["PROVINCE"] looks up the wider area a Host can accept. */
+    geoTypes?: readonly string[];
   },
 ): Promise<TikTokLocationTag[]> {
   const objective = opts.objective ?? "TRAFFIC";
+  const geoTypes = opts.geoTypes ?? TIKTOK_CITY_GEO_TYPES;
   const params: Record<string, unknown> = {
     advertiser_id: client.advertiserId,
     objective_type: objective,
     placements: opts.placements ?? TIKTOK_DEFAULT_PLACEMENTS,
     search_type: "FUZZY_SEARCH",
     keywords: [opts.q],
-    geo_types: TIKTOK_CITY_GEO_TYPES,
+    geo_types: geoTypes,
     ...(opts.country
       ? { region_codes: [opts.country.trim().toUpperCase()] }
       : {}),
@@ -1549,6 +1560,7 @@ export async function tiktokSearchCityLocations(
     country: opts.country,
     q: opts.q,
     limit: opts.limit,
+    geoTypes,
   });
 }
 
@@ -1929,6 +1941,8 @@ export interface TikTokAdGroupSpec {
   ageGroups?: string[];
   /** ISSUE-989 — resolved numeric interest_category_ids (tool/interest_category). */
   interestCategoryIds?: string[];
+  /** #4238: ISO 639-1 codes for the ad group `languages` field. */
+  languages?: string[];
   /** #3697: provider ids resolved only from ad_audiences. */
   audienceIds?: string[];
   /** #3697: event-buyer audience ids that must be excluded. */
@@ -2091,6 +2105,10 @@ export function buildTikTokAdGroupBody(
   if (spec.interestCategoryIds && spec.interestCategoryIds.length > 0) {
     body.interest_category_ids = spec.interestCategoryIds;
   }
+  // #4238: ad group `languages` (ISO 639-1); omitted = every language.
+  if (spec.languages && spec.languages.length > 0) {
+    body.languages = [...spec.languages];
+  }
   const audienceIds = [
     ...new Set(
       (spec.audienceIds ?? []).map((id) => String(id).trim()).filter(Boolean),
@@ -2252,11 +2270,28 @@ export interface TikTokAdSpec {
   /** Spark Pull: an existing organic post owned by linked @usemingla TT_USER. */
   tiktokItemId?: string;
   adText: string;
-  /** TikTok CTAs are bare display strings (TIKTOK_CTA_MAP) — default "Learn more". */
+  /**
+   * TikTok's CallToAction code (TIKTOK_CTA_MAP) — default LEARN_MORE. A
+   * display label from an older builder is mapped to its code.
+   */
   callToAction?: string;
   /** A1.0-5: the canonical dest_url — NEVER the OneLink. */
   landingPageUrl: string;
   utmParams?: TikTokUtmParam[];
+}
+
+/** #4238 r8 P2-5: always an enum code in the body; an unknown value is refused. */
+function tiktokCtaForBody(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") return TIKTOK_CTA_MAP.default;
+  const code = tiktokCallToActionCode(value);
+  if (!code) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "call_to_action_invalid",
+      message: `TikTok has no button "${value.slice(0, 40)}".`,
+    });
+  }
+  return code;
 }
 
 export function buildTikTokAdBody(
@@ -2295,7 +2330,7 @@ export function buildTikTokAdBody(
       identity_type: spec.identityType,
       identity_id: spec.identityId,
       tiktok_item_id: tiktokItemId,
-      call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
+      call_to_action: tiktokCtaForBody(spec.callToAction),
       landing_page_url: spec.landingPageUrl,
       operation_status: "DISABLE",
     };
@@ -2359,7 +2394,7 @@ export function buildTikTokAdBody(
     // (SUSPECTED/DOC wire shape — pinned by the PAUSED acceptance probe downstream).
     ...(adFormat === "SINGLE_VIDEO" ? { video_id: videoId } : {}),
     ad_text: spec.adText,
-    call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
+    call_to_action: tiktokCtaForBody(spec.callToAction),
     // A1.0-5 (PROOF D-P1): the ad-visible destination is the canonical public
     // page — NEVER the OneLink; attribution rides in utm_params.
     landing_page_url: spec.landingPageUrl,
@@ -2845,6 +2880,8 @@ export interface TikTokAdGroupTargetingInput {
   location_ids?: string[];
   /** ISSUE-989 — numeric interest_category_ids from tool/interest_category. */
   interest_category_ids?: string[];
+  /** #4238: ISO 639-1 language codes. */
+  languages?: string[];
   audience_ids?: string[];
   excluded_audience_ids?: string[];
   age_groups?: string[];
@@ -2892,6 +2929,7 @@ function adGroupSpecFromInterfaceInput(
     bidPriceCents: t.bid_price_cents,
     locationIds: t.location_ids ?? [],
     interestCategoryIds: t.interest_category_ids,
+    languages: t.languages,
     audienceIds: t.audience_ids,
     excludedAudienceIds: t.excluded_audience_ids,
     ageGroups,

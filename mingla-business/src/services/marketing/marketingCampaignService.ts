@@ -20,7 +20,6 @@ import type {
   CampaignStatus,
   MarketingCampaignRow,
   MarketingBookQuote,
-  SealedMarketingAudienceKind,
 } from "../../types/marketing";
 
 const UUID_RE =
@@ -41,6 +40,8 @@ export interface DraftInput {
   /** Optional template_id (ORCH-0863) — populates marketing_campaigns.template_id
    *  on first save when the composer was opened via `?template={id}`. */
   template_id?: string;
+  /** #3682 — join an existing campaign as another channel of it. */
+  campaign_group_id?: string;
 }
 
 export interface ScheduleInput {
@@ -177,6 +178,10 @@ export async function createDraft(
   };
   if (input.template_id !== undefined) {
     insertPayload.template_id = input.template_id;
+  }
+  if (input.campaign_group_id !== undefined) {
+    assertUuid(input.campaign_group_id, "createDraft.campaign_group_id");
+    insertPayload.campaign_group_id = input.campaign_group_id;
   }
   const { data, error } = await supabase
     .from("marketing_campaigns")
@@ -390,23 +395,6 @@ export class MarketingBookSendError extends Error {
     this.name = "MarketingBookSendError";
   }
 }
-async function parseMarketingBookError(
-  error: unknown,
-): Promise<MarketingBookSendError> {
-  const context = (error as { context?: { json?: () => Promise<unknown> } })
-    .context;
-  const payload =
-    context?.json === undefined
-      ? null
-      : ((await context.json().catch(() => null)) as {
-          error?: string;
-          preview?: MarketingBookQuote;
-        } | null);
-  return new MarketingBookSendError(
-    payload?.error ?? "BOOK_BLAST_FAILED",
-    payload?.preview ?? null,
-  );
-}
 export async function getOrCreateMarketingBookAudience(input: {
   actor_id: string;
   brand_id: string;
@@ -417,110 +405,6 @@ export async function getOrCreateMarketingBookAudience(input: {
   );
   if (error) throw error;
   return data as { audienceId: string; activeBookTotal: number };
-}
-export async function previewMarketingBook(
-  input: string | { campaignId: string; audienceKind: SealedMarketingAudienceKind },
-): Promise<MarketingBookQuote> {
-  const audienceKind = typeof input === "string" ? "all_brand_people" : input.audienceKind;
-  const action = audienceKind === "manual_group"
-    ? "preview_people_v2"
-    : audienceKind === "brand_followers" || audienceKind === "brand_circle_extended"
-      ? "preview_circle_v1"
-      : "preview_book_v1";
-  const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: { action, campaign_id: typeof input === "string" ? input : input.campaignId },
-  });
-  if (error) throw await parseMarketingBookError(error);
-  return data as MarketingBookQuote;
-}
-export async function confirmMarketingBook(input: {
-  campaign_id: string;
-  client_request_id: string;
-  quote: MarketingBookQuote;
-  scheduled_for: string | null;
-  audience_kind?: SealedMarketingAudienceKind;
-}): Promise<{
-  mode: "sent" | "deferred" | "scheduled" | "in_progress";
-  delivered: number;
-  deferred: number;
-  skippedAfterConfirm: number;
-}> {
-  const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: {
-      action: input.audience_kind === "manual_group"
-        ? "confirm_people_v2"
-        : input.audience_kind === "brand_followers" || input.audience_kind === "brand_circle_extended"
-          ? "confirm_circle_v1"
-          : "confirm_book_v1",
-      campaign_id: input.campaign_id,
-      client_request_id: input.client_request_id,
-      quoteHash: input.quote.quoteHash,
-      quotedAt: input.quote.quotedAt,
-      expectedCostMinor: input.quote.estimatedCostMinor,
-      currency: input.quote.currency,
-      scheduledFor: input.scheduled_for,
-    },
-  });
-  if (error) {
-    throw await parseMarketingBookError(error);
-  }
-  const resultState = (data as { resultState?: string } | null)?.resultState;
-  if (resultState === "scheduled") {
-    return {
-      mode: "scheduled",
-      delivered: 0,
-      deferred: 0,
-      skippedAfterConfirm: 0,
-    };
-  }
-  if (resultState === "in_progress") {
-    return {
-      mode: "in_progress",
-      delivered: 0,
-      deferred: 0,
-      skippedAfterConfirm: 0,
-    };
-  }
-  const dispatch = (
-    data as {
-      dispatch?: {
-        processed?: number;
-        succeeded?: number;
-        failed?: number;
-        delivered?: number;
-        deferred?: number;
-        recipient_failed?: number;
-        skipped_after_confirm?: number;
-        preview_skipped?: number;
-        errors?: unknown[];
-      };
-    } | null
-  )?.dispatch;
-  if (
-    dispatch?.processed !== 1 ||
-    dispatch.succeeded !== 1 ||
-    dispatch.failed !== 0 ||
-    dispatch.preview_skipped !== 0 ||
-    dispatch.recipient_failed !== 0 ||
-    !Number.isInteger(dispatch.skipped_after_confirm) ||
-    (dispatch.skipped_after_confirm ?? -1) < 0 ||
-    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) +
-        (dispatch.skipped_after_confirm ?? -1) !==
-      input.quote.reachableCount ||
-    !Array.isArray(dispatch.errors) ||
-    dispatch.errors.length !== 0
-  ) {
-    throw new MarketingBookSendError("BOOK_BLAST_DISPATCH_FAILED", null);
-  }
-  const delivered = dispatch.delivered ?? 0;
-  const deferred = dispatch.deferred ?? 0;
-  const skippedAfterConfirm = dispatch.skipped_after_confirm ?? 0;
-  return {
-    mode: deferred > 0 ? "deferred" : "sent",
-    delivered,
-    deferred,
-    skippedAfterConfirm,
-  };
 }
 
 /**

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/marketing-send/issue_3682_push_campaign.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3682-marketing-send-push-campaign",
+  "profile": "deno-2-unit"
+}

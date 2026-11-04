@@ -908,11 +908,11 @@ BEGIN
   WHERE actual_fingerprint <> expected_fingerprint;
 
   -- [TEST-MOD-APPROVED #3643] The shared terminal-schema replay exposes every
-  -- current business index: count=80 / hash=8e7ec4e5428dd976a5d9a976d4821e59.
-  -- #3281 added event_dates_event_occurrence_key_unique.
-  -- [TEST-MOD-APPROVED #3281] #4263 added idx_event_dates_event_id_start_at
-  -- (event_id, start_at, id): count=81 / hash=37e9eade3735be4ac9a0763e4c4013e8,
-  -- the values main's CI batch printed on a304f8b26.
+  -- current business index: count=81 / hash=37e9eade3735be4ac9a0763e4c4013e8.
+  -- #3281 added event_dates_event_occurrence_key_unique (count 79 -> 80) and
+  -- idx_event_dates_event_id_start_at in 20280327003281 (count 80 -> 81).
+  -- #4238's 20280328004238/20280329004238 add no index on these relations and
+  -- leave the seven fingerprinted functions unchanged.
   IF v_index_count <> 81
     OR v_index_fingerprint <> '37e9eade3735be4ac9a0763e4c4013e8'
     OR v_function_mismatch IS NOT NULL

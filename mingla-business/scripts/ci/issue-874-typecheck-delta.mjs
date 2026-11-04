@@ -547,6 +547,13 @@ function runSelfTest() {
         instances(relocationRedIntoTarget.relocated) === 1 &&
         relocationRedIntoTarget.targetDiagnostics.length === 1,
     },
+    {
+      name: "COMPILER-HEAP: tsc gets an explicit heap and keeps other NODE_OPTIONS",
+      passes:
+        compilerEnv({ NODE_OPTIONS: "--enable-source-maps --max-old-space-size=1024" })
+          .NODE_OPTIONS === "--enable-source-maps --max-old-space-size=6144" &&
+        compilerEnv({}).NODE_OPTIONS === "--max-old-space-size=6144",
+    },
   ];
 
   const failed = cases.filter((testCase) => !testCase.passes);
@@ -570,12 +577,27 @@ function argumentValue(argv, name) {
   return argv[index + 1];
 }
 
+// #3682: the full mingla-business graph needs ~3.7 GB of heap, right at Node's
+// default ceiling, so tsc aborted (exit 134) on a +30 MB graph. Base and current
+// get the same explicit heap so the delta stays like-for-like.
+const COMPILER_HEAP_MB = 6144;
+
+export function compilerEnv(baseEnv) {
+  const existing = (baseEnv.NODE_OPTIONS ?? "")
+    .split(/\s+/)
+    .filter((flag) => flag.length > 0 && !flag.startsWith("--max-old-space-size"));
+  return {
+    ...baseEnv,
+    NODE_OPTIONS: [...existing, `--max-old-space-size=${COMPILER_HEAP_MB}`].join(" "),
+  };
+}
+
 function runCompiler(runBusinessRoot) {
   const result = spawnSync("npx", ["tsc", "--noEmit", "--pretty", "false"], {
     cwd: runBusinessRoot,
     encoding: "utf8",
     maxBuffer: 50 * 1024 * 1024,
-    env: process.env,
+    env: compilerEnv(process.env),
   });
   if (result.error !== undefined) throw result.error;
   return {

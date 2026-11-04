@@ -63,6 +63,8 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "ad_currency_policy",
   "ad_provider_allocation",
   "ad_destination",
+  // #4238: "Covers all 5 dates until Sat 6 Dec" (display only).
+  "ad_dates",
   "ad_result",
   "ad_audience",
   "ad_targeting",
