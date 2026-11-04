@@ -68,7 +68,7 @@ import {
   filterTikTokInterestCategories,
   resolveTikTokClient,
   tiktokFetchInterestCategories,
-  tiktokSearchCityLocations,
+  tiktokResolvePlace,
 } from "../_shared/tiktok.ts";
 import {
   resolveGoogleClient,
@@ -117,10 +117,14 @@ export interface TargetingSearchResult {
 const KINDS = ["city", "interest", "region", "pin", "language"] as const;
 type Kind = (typeof KINDS)[number];
 
-/** One app's lookup: its results, plus results one level up (TikTok PROVINCE). */
+/**
+ * One app's lookup: its results, plus results one level up (TikTok PROVINCE)
+ * and, when both are empty, the app's whole country (TikTok, #4238).
+ */
 type ResolveOut = {
   results: TargetingSearchResult[];
   wider?: TargetingSearchResult[];
+  country?: TargetingSearchResult;
   warning?: string;
 };
 
@@ -246,66 +250,15 @@ async function resolveTikTok(
   if (kind === "language") return { results: languageResults(q) };
   if (!conn) throw new AdNotConnectedError("tiktok", "tiktok_not_connected");
   const client = resolveTikTokClient(conn);
-  if (kind === "region") {
-    const provinces = await tiktokSearchCityLocations(client, {
-      q,
-      country: country ?? undefined,
-      geoTypes: ["PROVINCE"],
-    });
+  if (kind === "city" || kind === "region") {
+    // ISSUE-1289 + #4238: tiktokResolvePlace looks the place up at its own
+    // level (city via FUZZY_SEARCH city/district/DMA geo_ids), then one level
+    // up (PROVINCE), then the whole country. The matcher offers the wider
+    // area for the Host to accept; it is never used silently.
+    const out = await tiktokResolvePlace(client, { kind, q, country });
     return {
-      results: provinces.map((r) => ({
-        id: r.geoId,
-        name: r.name,
-        meta: {
-          location_id: r.geoId,
-          region_code: r.regionCode,
-          geo_type: r.geoType,
-          level: "PROVINCE",
-        },
-      })),
-    };
-  }
-  if (kind === "city") {
-    // ISSUE-1289: resolve via tool/targeting/search FUZZY_SEARCH (city/district/
-    // DMA geo_ids), NOT the tool/region level==="CITY" filter — that filter could
-    // not see US municipalities (they are DISTRICT-level) so "New York" returned
-    // zero matches and the create path silently fell back to country. geo_id ==
-    // adgroup location_id; an empty result (e.g. GB — no sub-country geo) is an
-    // HONEST country fallback, surfaced below, never a silent widen.
-    const cities = await tiktokSearchCityLocations(client, {
-      q,
-      country: country ?? undefined,
-    });
-    const results = cities.map((r) => ({
-      id: r.geoId,
-      name: r.name,
-      meta: {
-        location_id: r.geoId,
-        region_code: r.regionCode,
-        geo_type: r.geoType,
-        description: r.description,
-      },
-    }));
-    // #4238 P0: TikTok often knows a Nigerian city only as its state. Look
-    // one level up so the Host can accept "Lagos State" (wider area) instead
-    // of being told TikTok can't find Lagos.
-    const wider = results.length > 0 ? [] : (await tiktokSearchCityLocations(
-      client,
-      { q, country: country ?? undefined, geoTypes: ["PROVINCE"] },
-    )).map((r) => ({
-      id: r.geoId,
-      name: r.name,
-      meta: {
-        location_id: r.geoId,
-        region_code: r.regionCode,
-        geo_type: r.geoType,
-        level: "PROVINCE",
-      },
-    }));
-    return {
-      results,
-      ...(wider.length > 0 ? { wider } : {}),
-      ...(results.length === 0
+      ...out,
+      ...(kind === "city" && out.results.length === 0
         ? {
           warning: `TikTok has no city-level match for "${q}"${
             country ? ` in ${country}` : ""

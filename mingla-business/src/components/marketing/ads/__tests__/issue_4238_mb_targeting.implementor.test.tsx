@@ -84,7 +84,9 @@ describe("#4238 wave A — each app is matched on its own", () => {
     expect(hostAdPlaceAppStatus(accepted, "tiktok", NONE).text).toBe("Lagos State (wider area)");
     expect(
       hostAdAppReviewStatus({ app: "tiktok", verdict: "exact", places: [accepted], interests: [] }),
-    ).toBe("Ready");
+    // #4238 live check: an accepted wider area reads "Ready (wider area)"
+    // on Check my ad, as this test's title always said.
+    ).toBe("Ready (wider area)");
   });
 
   it("SC-A2 an app error reads Couldn't check, never not found", () => {
