@@ -1167,6 +1167,7 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
         "OFFERING_INVITE_TOKEN_PEPPER",
         "ONESIGNAL_APP_ID",
         "ONESIGNAL_BUSINESS_APP_ID",
@@ -1268,6 +1269,10 @@
       "required_top_level": [
         "BUSINESS_WEB_ORIGIN",
         "OFFERING_INVITE_TOKEN_PEPPER",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
         "RESEND_API_KEY",
         "TERMII_API_KEY",
         "TERMII_SENDER_ID",
@@ -1419,6 +1424,7 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
         "OFFERING_INVITE_TOKEN_PEPPER",
         "ONESIGNAL_APP_ID",
         "ONESIGNAL_BUSINESS_APP_ID",
