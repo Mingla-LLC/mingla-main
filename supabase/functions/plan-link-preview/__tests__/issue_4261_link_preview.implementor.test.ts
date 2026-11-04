@@ -63,7 +63,7 @@ function image(type = "image/jpeg", length?: number): Response {
   return new Response(null, { status: 200, headers });
 }
 
-const PAGE = `<!doctype html><html><head>
+const PAGE = `<html><head>
   <title>Fallback &amp; title</title>
   <meta property="og:title" content="Afro Jazz Night &#8211; Tickets">
   <meta name="twitter:title" content="Twitter title">
