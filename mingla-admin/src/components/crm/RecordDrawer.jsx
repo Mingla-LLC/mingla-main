@@ -15,6 +15,10 @@ import { MinglaLinkField } from "./MinglaLinkField";
 import { LogForm } from "./LogForm";
 import { RecentTouchNotice } from "./RecentTouchNotice";
 import { OnMinglaSection } from "./OnMinglaSection";
+import { useHostOnMingla } from "../../hooks/useHostOnMingla";
+import { HostToDoSection } from "./HostToDoSection";
+import { HostTeamSection } from "./HostTeamSection";
+import { hostMissing } from "../../lib/opsModel";
 import { ActivityLog } from "./ActivityLog";
 import {
   MOVE_BLOCK_COPY,
@@ -22,7 +26,6 @@ import {
   clockTime,
   channelsUsed,
   contactRuleView,
-  displayName,
   editsToSend,
   errorWords,
   fieldLabel,
@@ -60,6 +63,23 @@ function restoreLeftUnsent(recordId) {
   const unsent = {};
   for (const key of Object.keys(kept)) unsent[key] = { value: kept[key], message: LEFT_BEHIND_WORDS };
   return { drafts: { ...kept }, unsent };
+}
+
+/**
+ * #4270 W2: on a host card, everything after Status sits in one folded
+ * "Details" row; a creator card shows it open, as before.
+ */
+function DetailsFold({ isHosts, detailsRef, fid, children }) {
+  if (!isHosts) return <>{children}</>;
+  return (
+    <details ref={detailsRef} data-host-section="details" className="group min-w-0 border-t border-[var(--gray-200)] pt-3">
+      <summary id={fid("details")} className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]">
+        <span className="min-w-0 break-words">Details · contact rule, imports, log and activity</span>
+        <span aria-hidden="true" className="text-[var(--color-text-tertiary)] group-open:rotate-90">›</span>
+      </summary>
+      <div className="mt-3 flex min-w-0 flex-col gap-5">{children}</div>
+    </details>
+  );
 }
 
 /**
@@ -162,6 +182,10 @@ export function RecordDrawer({
   );
   const draftCount = useRecordDraftCount(record?.id || null);
   const locked = !online;
+  // #4270 W2: the host card's one server read, shared by To do, On Mingla and
+  // Brand and team. Details folds the rest; a deep link to a field opens it.
+  const hostRead = useHostOnMingla(pipeline === "hosts" ? record?.id || null : null, record?.brand_id || "");
+  const detailsRef = useRef(null);
 
   // The latest values, for code that runs later (a close, an unmount).
   const live = useRef({ drafts, unsent, record, discarded: false });
@@ -171,7 +195,13 @@ export function RecordDrawer({
 
   useEffect(() => {
     if (!focusField || !record) return undefined;
-    const t = setTimeout(() => document.getElementById(`${uid}-${focusField}`)?.focus(), 60);
+    // #4270 W2: a field folded under Details opens it first.
+    const t = setTimeout(() => {
+      const target = document.getElementById(`${uid}-${focusField}`);
+      const fold = target?.closest?.("details");
+      if (fold && !fold.open) fold.open = true;
+      target?.focus();
+    }, 60);
     return () => clearTimeout(t);
   }, [focusField, record?.id, uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -566,6 +596,15 @@ export function RecordDrawer({
     );
   }
 
+  // #4270 W2: a deep link to a host field opens Details before focusing it.
+  const fillIn = (what) => {
+    const target = document.getElementById(fid(what === "type" ? "icp" : what === "region" ? "region_id" : "contact"));
+    const fold = target?.closest?.("details") || detailsRef.current;
+    if (fold && !fold.open) fold.open = true;
+    target?.scrollIntoView?.({ block: "center" });
+    target?.focus?.();
+  };
+
   // ── The card ─────────────────────────────────────────────────────────────
   const pending = pipe.pendingIds.has(record.id);
   const next = nextStage(def, record);
@@ -741,21 +780,16 @@ export function RecordDrawer({
           </SideLink>
         )}
         {isHosts && (
-          <OnMinglaSection
-            key={`on-mingla-${record.id}`}
-            record={record}
-            online={online && !locked}
-            me={config.me?.email || ""}
-            ownerNames={(record.owners || []).map((email) => (config.team || []).find((p) => p.email === email)?.display_name || displayName(email))}
-            onAssignMe={() => { const mine = String(config.me?.email || "").toLowerCase(); if (mine) save("owners", [...new Set([...(record.owners || []), mine])].sort()); }}
-            onFillIn={(what) => {
-              const target = document.getElementById(fid(what === "type" ? "icp" : what === "region" ? "region_id" : "contact"));
-              target?.scrollIntoView?.({ block: "center" });
-              target?.focus?.();
-            }}
-          />
+          <>
+            {/* #4270 W2: To do first, then (Wave 3) the plan, On Mingla, Brand and team, Status, Details. */}
+            <HostToDoSection key={`host-todo-${record.id}`} record={record} read={hostRead} online={online && !locked} onAdded={() => hostRead.retry()} />
+            <div className="border-t border-[var(--gray-200)] pt-3">
+              <OnMinglaSection key={`on-mingla-${record.id}`} record={record} read={hostRead} online={online && !locked} />
+            </div>
+            <HostTeamSection record={record} read={hostRead} />
+          </>
         )}
-        {next && (
+        {!isHosts && next && (
           <div>
             <Button
               size="sm"
@@ -769,30 +803,102 @@ export function RecordDrawer({
           </div>
         )}
 
+        {isHosts && (
+          <section aria-labelledby={fid("status")} data-host-section="status" className="flex min-w-0 flex-col gap-3 border-t border-[var(--gray-200)] pt-3">
+            <h3 id={fid("status")} className="text-[14px] font-semibold text-[var(--color-text-primary)]">Status</h3>
+            {(!(record.owners || []).length || hostMissing(record).length > 0) && (
+              <div data-needs-attention="" className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
+                <b className="text-[var(--color-error-700)]">Needs attention</b>
+                {!(record.owners || []).length && (
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span className="text-[var(--color-text-primary)]">No owner</span>
+                    {config.me?.email && <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => { const mine = String(config.me?.email || "").toLowerCase(); if (mine) save("owners", [...new Set([...(record.owners || []), mine])].sort()); }}>Assign to me</Button>}
+                  </div>
+                )}
+                {hostMissing(record).length > 0 && (
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0 break-words text-[var(--color-text-primary)]">Missing {hostMissing(record).join(", ")}</span>
+                    <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => fillIn(hostMissing(record)[0])}>Fill in</Button>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field
+                label="Stage"
+                htmlFor={fid("stage")}
+                full
+                helper={
+                  record.stage_reason ? (
+                    <>
+                      <span className="block text-[var(--color-text-secondary)]">Reason: {record.stage_reason}</span>
+                      {stageHelp}
+                    </>
+                  ) : (
+                    stageHelp
+                  )
+                }
+              >
+                <Select
+                  id={fid("stage")}
+                  value={record.stage}
+                  disabled={locked || pending}
+                  options={stageOptions}
+                  onChange={(e) => onRequestMove(record, e.target.value)}
+                />
+              </Field>
+              <Field label="Next action" htmlFor={fid("next_action")} error={fieldError("next_action")}>
+                <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
+              </Field>
+              <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
+                <input
+                  type="date"
+                  id={fid("due_on")}
+                  value={val("due_on")}
+                  disabled={locked}
+                  onChange={(e) => save("due_on", e.target.value)}
+                  className={CONTROL_CLASS}
+                />
+              </Field>
+            </div>
+            {next && (
+              <div>
+                <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} onClick={() => onRequestMove(record, next.id)}>
+                  Move to {next.label}
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
+        {/* #4270 W2: hosts fold contact, ICP, region, channels, contact rule,
+            imports, the log form and activity under one Details row. */}
+        <DetailsFold isHosts={isHosts} detailsRef={detailsRef} fid={fid}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field
-            label="Stage"
-            htmlFor={fid("stage")}
-            full
-            helper={
-              record.stage_reason ? (
-                <>
-                  <span className="block text-[var(--color-text-secondary)]">Reason: {record.stage_reason}</span>
-                  {stageHelp}
-                </>
-              ) : (
-                stageHelp
-              )
-            }
-          >
-            <Select
-              id={fid("stage")}
-              value={record.stage}
-              disabled={locked || pending}
-              options={stageOptions}
-              onChange={(e) => onRequestMove(record, e.target.value)}
-            />
-          </Field>
+          {!isHosts && (
+            <Field
+              label="Stage"
+              htmlFor={fid("stage")}
+              full
+              helper={
+                record.stage_reason ? (
+                  <>
+                    <span className="block text-[var(--color-text-secondary)]">Reason: {record.stage_reason}</span>
+                    {stageHelp}
+                  </>
+                ) : (
+                  stageHelp
+                )
+              }
+            >
+              <Select
+                id={fid("stage")}
+                value={record.stage}
+                disabled={locked || pending}
+                options={stageOptions}
+                onChange={(e) => onRequestMove(record, e.target.value)}
+              />
+            </Field>
+          )}
           <Field label="ICP" htmlFor={fid("icp")} error={fieldError("icp")}>
             <Select {...selectProps("icp")} placeholder="None yet" options={opt(def.icps)} />
           </Field>
@@ -865,20 +971,23 @@ export function RecordDrawer({
               </div>
             ) : <p className="text-xs text-[var(--color-text-tertiary)]">No contact logged yet.</p>}
           </div>
-          <Field label="Next action" htmlFor={fid("next_action")} error={fieldError("next_action")}>
-            <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
-          </Field>
-          <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
-            <input
-              type="date"
-              id={fid("due_on")}
-              value={val("due_on")}
-              disabled={locked}
-              onChange={(e) => save("due_on", e.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </Field>
-
+          {!isHosts && (
+            <>
+              <Field label="Next action" htmlFor={fid("next_action")} error={fieldError("next_action")}>
+                <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
+              </Field>
+              <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
+                <input
+                  type="date"
+                  id={fid("due_on")}
+                  value={val("due_on")}
+                  disabled={locked}
+                  onChange={(e) => save("due_on", e.target.value)}
+                  className={CONTROL_CLASS}
+                />
+              </Field>
+            </>
+          )}
           {isHosts ? (
             <MinglaLinkField
               record={record}
@@ -997,6 +1106,7 @@ export function RecordDrawer({
             </Button>
           </div>
         )}
+        </DetailsFold>
         {footerExtra}
       </div>
     </Drawer>

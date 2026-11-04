@@ -764,6 +764,48 @@ export function parseEventParam(value) {
 }
 
 export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP", promo_moment: "Promo moment" };
+
+/**
+ * #4270 W2 (D10): what a row under On Mingla is, in words: Event,
+ * Experience, Trip or RSVP from the brand's listing, or Promised for a date a
+ * host promised before promised dates stopped being added (D9).
+ */
+export const EVENT_KIND_WORDS = Object.freeze({ event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP", promised: "Promised" });
+
+export function eventKind(row) {
+  const k = String(row?.kind || row?.event_type || "event");
+  return Object.hasOwn(EVENT_KIND_WORDS, k) ? k : "event";
+}
+
+/** #4270 W2: the brand team's roles, in words (brand_team_members.role). */
+export const BRAND_ROLE_WORDS = Object.freeze({
+  brand_owner: "Owner", brand_admin: "Admin", event_manager: "Events", finance_manager: "Finance",
+  marketing_manager: "Marketing", scanner: "Scanner", venue_staff: "Venue staff",
+});
+
+/**
+ * #4270 W2 (D4): what is wrong with a host card's "Add work item" before it
+ * is sent, field by field, in the form's words. The server checks it again.
+ */
+export function quickAddProblems({ title = "", owners = [], due = "", filesUrl = "" } = {}, today = todayIso()) {
+  const out = [];
+  const t = String(title || "").trim();
+  if (t.length < 3 || t.length > 160) out.push({ field: "title", message: "Say what the work is in 3 to 160 characters." });
+  if (!Array.isArray(owners) || owners.length === 0) out.push({ field: "owners", message: "Pick at least one assignee" });
+  if (!DATE_RE.test(String(due || ""))) out.push({ field: "due_on", message: "Pick a due date." });
+  else if (String(due) < today) out.push({ field: "due_on", message: "The due date can’t be in the past." });
+  const files = filesUrlProblem(filesUrl);
+  if (files) out.push({ field: "files_url", message: files });
+  return out;
+}
+
+/** #4270 W2: the item ops_work_add gets from a host card's "Add work item". */
+export function quickAddItem({ title, owners, watchers = [], due, filesUrl = "", hostSees = false, recordId }) {
+  const item = { quick: true, title: String(title || "").trim(), owners, watchers, due_on: due,
+    links: [{ kind: "host", id: recordId }], on_brand_plan: !!hostSees };
+  if (String(filesUrl || "").trim()) item.files_url = String(filesUrl).trim();
+  return item;
+}
 export const KIT_WHO = { host_owner: "Host owner", marketing: "Sales and marketing" };
 
 /** The state chip of one launch kit row: its words and colour. */
@@ -1136,8 +1178,10 @@ export function attentionCounts(data) {
 export function hostUpcomingRows(events, openExpected, today) {
   const rows = [];
   for (const e of Array.isArray(events) ? events : []) {
-    if (!e?.start_on || (today && e.start_on < today)) continue;
-    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false });
+    // #4270 W2 (C-3): a trip or experience on right now stays listed.
+    if (!e?.start_on || (today && e.start_on < today && !e.live)) continue;
+    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false,
+      eventKind: eventKind(e), live: !!e.live });
   }
   for (const x of Array.isArray(openExpected) ? openExpected : []) {
     if (!x) continue;
@@ -1146,12 +1190,12 @@ export function hostUpcomingRows(events, openExpected, today) {
     if (occ) {
       occ.forEach((o, i) => rows.push({
         key: `x-${x.id}-${o.on}`, kind: "expected", id: x.id, title: `${x.title}, ${dayLabel(o.on)}`, on: o.on,
-        state: o.state || x.state, repeats: true, moment: !!x.promo_moment, row: i === 0 ? x : null,
+        state: o.state || x.state, repeats: true, moment: !!x.promo_moment, row: i === 0 ? x : null, eventKind: "promised",
       }));
       continue;
     }
     rows.push({ key: `x-${x.id}`, kind: "expected", id: x.id, title: x.title, on: x.next_on || x.expected_on, state: x.state,
-      repeats, moment: !!x.promo_moment, row: x });
+      repeats, moment: !!x.promo_moment, row: x, eventKind: "promised" });
   }
   return rows.sort((a, b) => String(a.on).localeCompare(String(b.on)) || String(a.title).localeCompare(String(b.title)));
 }

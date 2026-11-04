@@ -229,7 +229,8 @@ Deno.test("#3980 W3 R7: Work's columns, its card badges, and the tabs never stac
     { id: "5", status: "done", closed_at: "2026-10-12T10:00:00Z", owners: [] },
   ];
   assertEquals(columnCards(cards, "todo", today).map((c) => c.id), ["2", "1"], "late first, then by due date");
-  assertEquals(columnCards(cards, "done", today).map((c) => c.id), ["4"], "done this week only");
+  // #4270 rework (P3-3): the server sends only this week's done cards; the board does not cut them again.
+  assertEquals(columnCards(cards, "done", today).map((c) => c.id), ["4", "5"], "Done is what the server sent, latest closed first");
   const now = Date.parse("2026-10-21T12:00:00Z");
   assertEquals(cardReasons(cards[0], now), ["No owner"], "#4270 (D1): a tagged card with no owner shows No owner");
   assertEquals(cardReasons(cards[1], now), ["No owner", "Overdue 3d"]);

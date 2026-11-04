@@ -41,7 +41,8 @@ Deno.test("#3980 W3 rework 2 DEV1: the wording card is listed only on What hosts
 
 Deno.test("#3980 W3 rework 2 DEV2: the roadmap words only for the owner and admins; the design's shorter line for everyone else", () => {
   const page = code("pages/DraftsPage.jsx");
-  assertMatch(page, /\{canTell\s*\? <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it\." meta=\{headerMeta\} \/>\s*: <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish\." meta=\{headerMeta\} \/>\}/);
+  // #4270 rework (P3-4): "needs your OK", never "needs a person".
+  assertMatch(page, /\{canTell\s*\? <PageHeader title="Needs you" description="Only what needs your OK: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it\." meta=\{headerMeta\} \/>\s*: <PageHeader title="Needs you" description="Only what needs your OK: messages to send, money to spend, events to publish\." meta=\{headerMeta\} \/>\}/);
 });
 
 Deno.test("#3980 W3 rework 2 TABS: the Needs you tabs wrap inside their bar instead of clipping", () => {

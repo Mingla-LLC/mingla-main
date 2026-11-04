@@ -86,6 +86,8 @@ export const fetchHostOnMingla = (recordId, today) =>
   call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null }));
 export const setExpectedEvent = (item, requestKey) =>
   call(() => supabase.rpc("ops_expected_event_set", { p_item: item, p_request_key: requestKey }));
+// #4270 W2: the host card for a brand, for the Brand group header's host avatar.
+export const fetchBrandHostRecord = (brandId) => call(() => supabase.rpc("ops_brand_host_record", { p_brand_id: brandId }));
 
 // Wave 3 — the launch kit, the giveaway and ads rule, the Team dashboard and
 // turning next steps into cards (owner only).

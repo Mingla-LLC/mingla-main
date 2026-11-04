@@ -179,7 +179,9 @@ describe("S-1 the side panels", () => {
       ["components/drafts/DraftCard.jsx", "kind: draft.record.pipeline"],
       ["components/ops/WorkDetail.jsx", "side={linkSide(l)}"],
       ["components/crm/RecordDrawer.jsx", 'kind: "drafts"'],
-      ["components/crm/OnMinglaSection.jsx", 'kind: "card"'],
+      // #4270 W2: the host card's cards moved from On Mingla to To do.
+      ["components/crm/HostToDoSection.jsx", 'kind: "card"'],
+      ["components/crm/OnMinglaSection.jsx", "kind: u.kind"],
     ]) {
       assert.ok(code(file).includes("<SideLink") && code(file).includes(side), `${file} opens ${side} in panel two`);
     }

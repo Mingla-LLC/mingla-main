@@ -21,9 +21,54 @@ import {
 } from "../../services/communityService";
 import { listProductSignals } from "../../services/supportProductWorkflowService";
 import { timeAgo } from "../../lib/formatters";
+import { fetchBrandHostRecord } from "../../services/opsService";
+import { useHashQuery } from "../../hooks/useHashQuery";
+import { canOpenPage } from "../../lib/access";
+import { brandGroupSearch, brandGroupView } from "../../lib/panelStack";
+import { PanelSlotContext } from "../ui/PanelStack";
+import { SidePanel } from "../panels/SidePanel";
+
+const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+
+// #4270 W2: the host card docked in a Brand group (one panel, no Back trail;
+// a phone or tablet shows its own Back to the chat above it).
+const HOST_SLOT = { slot: 1, register: () => {}, back: null };
+
+function initials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : String(name || "?").slice(0, 2)).toUpperCase();
+}
+
+/** The host avatar in a Brand group's header: opens that brand's host card. */
+export function HostAvatarButton({ host, photoUrl, open, onOpen }) {
+  if (!host || host.status === "none") return null;
+  if (host.status === "loading") return <span data-host-avatar="loading" aria-hidden="true" className="inline-block h-9 w-9 animate-pulse rounded-full bg-[var(--gray-100)]" />;
+  if (host.status === "error") {
+    return <button type="button" onClick={host.retry} className={`min-h-11 rounded-lg px-2 text-[12px] font-semibold text-[var(--color-error-700)] hover:bg-[var(--color-error-50)] ${FOCUS}`}>Couldn’t find the host card · Try again</button>;
+  }
+  return (
+    <button
+      type="button"
+      data-host-avatar={host.recordId}
+      aria-label={`Open host card for ${host.name}`}
+      aria-expanded={open}
+      onClick={onOpen}
+      className={`inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-[var(--gray-200)] bg-[var(--color-background-primary)] py-1 pl-1 pr-3 text-[12px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}
+    >
+      {photoUrl
+        ? <img src={photoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+        : <span aria-hidden="true" className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--color-brand-100)] text-[11px] font-bold text-[var(--color-brand-700)]">{initials(host.name)}</span>}
+      <span className="hidden min-w-0 truncate sm:inline">{host.name}</span>
+    </button>
+  );
+}
 
 export function BrandGroupsPanel() {
-  const { session } = useAuth();
+  const { session, access } = useAuth();
+  // #4270 W2: the host avatar shows only to staff who can open Hosts.
+  const canHosts = canOpenPage(access, "hosts");
+  const [search, setSearch] = useHashQuery("community");
+  const view = useMemo(() => brandGroupView(search), [search]);
   const { addToast } = useToast();
   const myUserId = session?.user?.id ?? null;
   const mounted = useRef(true);
@@ -43,6 +88,8 @@ export function BrandGroupsPanel() {
   const [uploads, setUploads] = useState([]);
   const [filePreview, setFilePreview] = useState(null);
   const [query, setQuery] = useState("");
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [host, setHost] = useState({ brandId: "", status: "none" });
 
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => () => {
@@ -57,6 +104,7 @@ export function BrandGroupsPanel() {
       setSelectedId((current) => current && rows.some((row) => row.conversation_id === current)
         ? current
         : rows[0]?.conversation_id ?? null);
+      setLoadedOnce(true);
       setError("");
     } catch (cause) {
       if (mounted.current) setError(cause?.message || "Couldn't load Brand groups");
@@ -108,7 +156,46 @@ export function BrandGroupsPanel() {
     return () => { void supabase.removeChannel(channel); };
   }, [loadGroups, loadThread, selectedId]);
 
+  // #4270 W2: the address names the open thread (and, from a host card, the
+  // brand); Back walks list -> thread -> host card.
+  useEffect(() => {
+    if (!loadedOnce) return;
+    if (view.group && groups.some((g) => g.conversation_id === view.group)) {
+      setSelectedId(view.group);
+    } else if (view.brand) {
+      const match = groups.find((g) => g.brand_id === view.brand);
+      if (match) setSearch(brandGroupSearch(search, { group: match.conversation_id, brand: null }), { replace: true });
+    }
+  }, [loadedOnce, view.group, view.brand, groups]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openGroup = (conversationId) => {
+    setSelectedId(conversationId);
+    setSearch(brandGroupSearch(search, { group: conversationId, brand: null, host: null }));
+  };
+  const backToList = () => setSearch(brandGroupSearch(search, { group: null, brand: null, host: null }));
+  const openHost = (recordId) => setSearch(brandGroupSearch(search, { group: selectedId, host: recordId }));
+  const closeHost = () => setSearch(brandGroupSearch(search, { host: null }), { replace: true });
+
   const selectedGroup = groups.find((group) => group.conversation_id === selectedId) ?? null;
+  const selectedBrandId = selectedGroup?.brand_id || "";
+  const loadHost = useCallback(async (brandId) => {
+    if (!brandId) { setHost({ brandId: "", status: "none" }); return; }
+    setHost({ brandId, status: "loading" });
+    try {
+      const row = await fetchBrandHostRecord(brandId);
+      if (!mounted.current) return;
+      setHost(row?.record_id ? { brandId, status: "ready", recordId: row.record_id, name: row.name || "Host" } : { brandId, status: "none" });
+    } catch (cause) {
+      if (mounted.current) setHost({ brandId, status: "error", message: cause?.message || "" });
+    }
+  }, []);
+  useEffect(() => {
+    if (!canHosts) return;
+    void loadHost(selectedBrandId);
+  }, [canHosts, selectedBrandId, loadHost]);
+  const hostButton = canHosts && host.brandId === selectedBrandId ? { ...host, retry: () => void loadHost(selectedBrandId) } : null;
+  const hostOpen = !!view.host && canHosts;
+  // Phones and tablets (<1024px): one pane at a time.
+  const pane = hostOpen ? "host" : view.group ? "thread" : "list";
   const selectedMessages = useMemo(
     () => messages.filter((message) => selectedMessageIds.includes(message.id)),
     [messages, selectedMessageIds],
@@ -224,7 +311,15 @@ export function BrandGroupsPanel() {
   if (error) return <SectionCard title="Brand groups"><div className="space-y-3 text-sm text-[var(--color-text-secondary)]"><p>{error}</p><Button variant="secondary" onClick={() => void loadGroups()}>Retry</Button></div></SectionCard>;
 
   return (
-    <div className="grid min-h-[620px] gap-4 xl:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]">
+    <div
+      data-brand-groups=""
+      data-pane={pane}
+      data-host-open={hostOpen ? "true" : "false"}
+      className={`grid min-h-[620px] min-w-0 gap-4 ${hostOpen
+        ? "lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_minmax(0,420px)]"
+        : "lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]"}`}
+    >
+      <div data-pane-list="" className={`min-w-0 ${pane === "list" ? "" : "hidden"} ${hostOpen ? "lg:hidden xl:block" : "lg:block"}`}>
       <SectionCard title="Official Brand groups" subtitle={`${groups.length} active`} noPadding>
         <div className="border-b border-[var(--gray-200)] p-3"><label className="sr-only" htmlFor="brand-group-search">Search Brand groups</label><input id="brand-group-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Brand groups" className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm" /></div>
         <div className="max-h-[700px] overflow-y-auto divide-y divide-[var(--gray-200)]">
@@ -232,7 +327,8 @@ export function BrandGroupsPanel() {
             <button
               key={group.conversation_id}
               type="button"
-              onClick={() => setSelectedId(group.conversation_id)}
+              aria-current={selectedId === group.conversation_id ? "true" : undefined}
+              onClick={() => openGroup(group.conversation_id)}
               className={`w-full min-h-16 px-4 py-3 text-left transition-colors ${selectedId === group.conversation_id ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--gray-50)]"}`}
             >
               <div className="flex items-center justify-between gap-3">
@@ -244,11 +340,16 @@ export function BrandGroupsPanel() {
           ))}
         </div>
       </SectionCard>
+      </div>
 
+      <div data-pane-thread="" className={`min-w-0 ${pane === "thread" ? "" : "hidden"} lg:block`}>
+      <button type="button" onClick={backToList} className={`mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] lg:hidden ${FOCUS}`}>
+        <span aria-hidden="true">‹</span> Back to Brand groups
+      </button>
       <SectionCard
         title={selectedGroup?.brand_name || "Choose a Brand group"}
         subtitle={selectedGroup ? `${teammateLabel(selectedGroup.member_count)} · Support has access` : ""}
-        action={selectedGroup ? <div className="flex max-w-72 flex-col items-end gap-1"><Button variant="secondary" size="sm" onClick={() => void toggleMute()}>{selectedGroup.muted ? "Muted" : "Mute"}</Button><span className="text-right text-[11px] leading-4 text-[var(--color-text-tertiary)]">Mingla staff get a push for every brand group message unless muted.</span></div> : null}
+        action={selectedGroup ? <div className="flex max-w-72 flex-col items-end gap-1"><div className="flex flex-wrap items-center justify-end gap-2"><HostAvatarButton host={hostButton} photoUrl={selectedGroup.brand_photo_url} open={hostOpen} onOpen={() => hostButton?.recordId && openHost(hostButton.recordId)} /><Button variant="secondary" size="sm" onClick={() => void toggleMute()}>{selectedGroup.muted ? "Muted" : "Mute"}</Button></div><span className="text-right text-[11px] leading-4 text-[var(--color-text-tertiary)]">Mingla staff get a push for every brand group message unless muted.</span></div> : null}
         noPadding
       >
         {!selectedGroup ? <div className="flex min-h-64 items-center justify-center p-6 text-sm text-[var(--color-text-secondary)]">Select a Brand group to read and reply.</div> : (
@@ -308,6 +409,22 @@ export function BrandGroupsPanel() {
           </div>
         )}
       </SectionCard>
+      </div>
+
+      {/* #4270 W2: the host card. Desktop (1280px and up): beside the chat.
+          1024 to 1279px: over the list. Below 1024px: on its own, with Back. */}
+      {hostOpen && (
+        <div data-pane-host="" className="flex min-w-0 flex-col lg:order-first xl:order-none">
+          <button type="button" onClick={closeHost} className={`mb-2 inline-flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] lg:hidden ${FOCUS}`}>
+            <span aria-hidden="true">‹</span> Back to the chat
+          </button>
+          <div className="h-[calc(100dvh-160px)] min-h-[560px] min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] lg:h-[720px]">
+            <PanelSlotContext.Provider value={HOST_SLOT}>
+              <SidePanel side={{ kind: "host", id: view.host }} onClose={closeHost} />
+            </PanelSlotContext.Provider>
+          </div>
+        </div>
+      )}
 
       <ProductSignalModal
         source={signalSource}

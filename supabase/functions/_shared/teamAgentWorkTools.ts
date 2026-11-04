@@ -692,9 +692,9 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
   },
   {
     name: "set_expected_event",
-    title: "Set an expected event",
+    title: "Change a promised event",
     description:
-      "Record the next event a host has promised on their host card: title, type and date, or update or cancel one you set before, or link it to the real event once it is on Mingla. It shows dashed on the Calendar with its go-live deadline. repeats: none, week or month; send id with repeats to make a saved event repeat in place, without cancelling it. A venue's promo moment uses event_type promo_moment. The same request_key repeats safely. " +
+      "Change, cancel or link a promised event already saved on a host card: send its id. New promised events can no longer be added: hosts create their events, experiences and trips in the Host app, and those show on the host card by themselves. You can change the title, type, date, city or note, set repeats (none, week or month) in place, cancel it with a reason, or link it to the real event once it is on Mingla. It shows dashed on the Calendar with its go-live deadline. The same request_key repeats safely. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       record_id: ID,
@@ -746,7 +746,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
       },
       event_id: ID,
       request_key: REQUEST_KEY,
-    }, ["record_id", "request_key"]),
+    }, ["record_id", "id", "request_key"]),
     annotations: WRITE,
     reaches: ["ops_expected_event_set"],
     writes: true,
@@ -814,6 +814,10 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
       "the agent reads a host's events with list_calendar and the host card with get_record",
   },
   ops_expected_event_set: { tools: ["set_expected_event"] },
+  // #4270 W2: the Brand group header's host avatar.
+  ops_brand_host_record: {
+    excluded: "the agent reads a host card with get_record",
+  },
   ops_launch_kit_preview: { tools: ["plan_work"] },
   ops_gate_override: {
     excluded:
