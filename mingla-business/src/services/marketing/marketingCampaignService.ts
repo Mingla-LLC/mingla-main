@@ -453,12 +453,7 @@ export async function confirmMarketingBook(input: {
   audience_kind?: SealedMarketingAudienceKind;
   /** #3682 wave 2 — a push campaign confirms through the push lane. */
   channel?: "email" | "sms" | "push";
-}): Promise<{
-  mode: "sent" | "deferred" | "scheduled" | "in_progress";
-  delivered: number;
-  deferred: number;
-  skippedAfterConfirm: number;
-}> {
+}): Promise<ConfirmMarketingBookResult> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
       action: input.channel === "push"
@@ -486,6 +481,7 @@ export async function confirmMarketingBook(input: {
       mode: "scheduled",
       delivered: 0,
       deferred: 0,
+      failed: 0,
       skippedAfterConfirm: 0,
     };
   }
@@ -494,6 +490,7 @@ export async function confirmMarketingBook(input: {
       mode: "in_progress",
       delivered: 0,
       deferred: 0,
+      failed: 0,
       skippedAfterConfirm: 0,
     };
   }
@@ -512,15 +509,21 @@ export async function confirmMarketingBook(input: {
       };
     } | null
   )?.dispatch;
+  // #3682 wave 3 — some recipients can fail at the provider while others are
+  // delivered. That is a partial send, reported as such (sent N, failed M),
+  // never a blanket dispatch error. Nothing delivered or held is still a
+  // failure, and the counts must add up to the sealed reach exactly.
+  const recipientFailed = dispatch?.recipient_failed ?? -1;
   if (
     dispatch?.processed !== 1 ||
     dispatch.succeeded !== 1 ||
     dispatch.failed !== 0 ||
     dispatch.preview_skipped !== 0 ||
-    dispatch.recipient_failed !== 0 ||
+    !Number.isInteger(recipientFailed) ||
+    recipientFailed < 0 ||
     !Number.isInteger(dispatch.skipped_after_confirm) ||
     (dispatch.skipped_after_confirm ?? -1) < 0 ||
-    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) +
+    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) + recipientFailed +
         (dispatch.skipped_after_confirm ?? -1) !==
       input.quote.reachableCount ||
     !Array.isArray(dispatch.errors) ||
@@ -528,15 +531,29 @@ export async function confirmMarketingBook(input: {
   ) {
     throw new MarketingBookSendError("BOOK_BLAST_DISPATCH_FAILED", null);
   }
+  if (recipientFailed > 0 && (dispatch.delivered ?? 0) + (dispatch.deferred ?? 0) === 0) {
+    // Confirmed, but the provider took none of them.
+    throw new MarketingBookSendError("BOOK_BLAST_ALL_RECIPIENTS_FAILED", null);
+  }
   const delivered = dispatch.delivered ?? 0;
   const deferred = dispatch.deferred ?? 0;
   const skippedAfterConfirm = dispatch.skipped_after_confirm ?? 0;
   return {
-    mode: deferred > 0 ? "deferred" : "sent",
+    mode: recipientFailed > 0 ? "partial" : deferred > 0 ? "deferred" : "sent",
     delivered,
     deferred,
+    failed: recipientFailed,
     skippedAfterConfirm,
   };
+}
+
+export interface ConfirmMarketingBookResult {
+  mode: "sent" | "deferred" | "scheduled" | "in_progress" | "partial";
+  delivered: number;
+  deferred: number;
+  /** #3682 — recipients the provider turned down in a send-now. */
+  failed: number;
+  skippedAfterConfirm: number;
 }
 
 /**

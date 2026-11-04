@@ -185,6 +185,8 @@ import {
 import {
   confirmSiblingChannels,
   discardSiblingDrafts,
+  campaignPreviewInput,
+  extendedPushReady,
   prepareSiblingChannel,
   type CampaignChannel,
   type SiblingChannelState,
@@ -341,7 +343,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     followerSmsFlag = useFeatureFlag("brand_circle_followers_sms_v1"),
     extendedEmailFlag = useFeatureFlag("brand_circle_extended_email_v1"),
     extendedSmsFlag = useFeatureFlag("brand_circle_extended_sms_v1"),
-    extendedPushFlag = useFeatureFlag("brand_circle_extended_v1");
+    extendedRosterFlag = useFeatureFlag("brand_circle_extended_v1"),
+    extendedControlsIosFlag = useFeatureFlag("brand_circle_extended_controls_ios_v1"),
+    extendedControlsAndroidFlag = useFeatureFlag("brand_circle_extended_controls_android_v1");
+  // #3682 wave 3 — push to Friends of followers needs the same three switches
+  // the server checks (roster + both guest-control builds).
+  const extendedPushFlag = {
+    data: extendedPushReady(
+      extendedRosterFlag.data,
+      extendedControlsIosFlag.data,
+      extendedControlsAndroidFlag.data,
+    ),
+  };
   const bookBlastEnabled = isBookBlastFeatureReady(importFlag, bookFlag);
   const currentBrandRole = useCurrentBrandRole(brandId);
 
@@ -602,6 +615,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [bookDeferredConfirmationCount, setBookDeferredConfirmationCount] =
     useState(0);
   const [bookSkippedConfirmationCount, setBookSkippedConfirmationCount] =
+    useState(0);
+  // #3682 wave 3 — partial send-now: delivered N, failed M.
+  const [bookDeliveredConfirmationCount, setBookDeliveredConfirmationCount] =
+    useState(0);
+  const [bookFailedConfirmationCount, setBookFailedConfirmationCount] =
     useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   useEffect(() => {
@@ -1163,9 +1181,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               setSiblingsPending(false);
               setSiblings([]);
               const failures = sent.filter((row) => !row.ok);
+              const partial = sent.filter((row) => row.ok && row.message !== null);
+              const notes: string[] = [];
               if (failures.length > 0) {
-                setErrorBanner(`Sent by ${CHANNEL_LABEL[channel]}. Not sent: ${failures.map((row) =>
+                notes.push(`Not sent: ${failures.map((row) =>
                   row.message ?? CHANNEL_LABEL[row.channel]).join(" ")} It is saved in Campaigns to retry.`);
+              }
+              // #3682 wave 3 — a channel where some people failed says so.
+              for (const row of partial) notes.push(row.message as string);
+              if (notes.length > 0) {
+                setErrorBanner(`Sent by ${CHANNEL_LABEL[channel]}. ${notes.join(" ")}`);
               }
             }
             setShowReview(false);
@@ -1178,9 +1203,23 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             setIsSendNowConfirmation(result.mode !== "scheduled");
             setBookDeferredConfirmationCount(result.deferred);
             setBookSkippedConfirmationCount(result.skippedAfterConfirm);
+            setBookDeliveredConfirmationCount(result.delivered);
+            setBookFailedConfirmationCount(result.failed);
             setShowSentConfirmation(true);
           },
           onError: (error) => {
+            // #3682 wave 3 — confirmed, but the provider reached nobody: say
+            // exactly that instead of asking for a retry that cannot help.
+            if (
+              error instanceof MarketingBookSendError &&
+              error.code === "BOOK_BLAST_ALL_RECIPIENTS_FAILED"
+            ) {
+              setShowReview(false);
+              setErrorBanner(
+                `The provider couldn't reach anyone by ${CHANNEL_LABEL[channel]}. Nothing was delivered; the campaign is marked Failed in Campaigns.`,
+              );
+              return;
+            }
             if (
               error instanceof MarketingBookSendError &&
               error.refreshedPreview !== null
@@ -1772,7 +1811,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setBookQuote(null);
           setShowReview(true);
           try {
-            const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: sealedAudienceKind ?? "all_brand_people", channel });
+            const quote = await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel));
             void prepareSiblings(id);
             setBookQuote(quote);
             setBookStaleWarning(false);
@@ -2058,7 +2097,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       setBookQuote(null);
                       setShowReview(true);
                       try {
-                        const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: sealedAudienceKind ?? "all_brand_people", channel });
+                        const quote = await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel));
             void prepareSiblings(id);
                         setBookQuote(quote);
                         setBookStaleWarning(false);
@@ -2221,7 +2260,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             isBookAudience && campaignId !== null
               ? () => {
                   setBookPreviewError(null);
-                  bookPreviewMutation.mutate({ campaignId, audienceKind: sealedAudienceKind ?? "all_brand_people" }, {
+                  bookPreviewMutation.mutate(campaignPreviewInput(campaignId, sealedAudienceKind, channel), {
                     onSuccess: (quote) => {
                       setBookQuote(quote);
                       setBookNow(Date.now());
@@ -2259,7 +2298,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 setBookQuote(null);
                 setShowReview(true);
                 try {
-                  const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: sealedAudienceKind ?? "all_brand_people" });
+                  // #3682 wave 3 — a scheduled push (or multi-channel)
+                  // campaign previews through its own lane, siblings too.
+                  const quote = await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel));
+                  void prepareSiblings(id);
                   setBookQuote(quote);
                   setBookStaleWarning(false);
                   setBookRequestId(
@@ -2344,6 +2386,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           isSendNow={isSendNowConfirmation}
           deferredRecipientCount={bookDeferredConfirmationCount}
           skippedRecipientCount={bookSkippedConfirmationCount}
+          deliveredRecipientCount={bookDeliveredConfirmationCount}
+          failedRecipientCount={bookFailedConfirmationCount}
           onDismiss={() => {
             setShowSentConfirmation(false);
             sanctionedExitRef.current = true;

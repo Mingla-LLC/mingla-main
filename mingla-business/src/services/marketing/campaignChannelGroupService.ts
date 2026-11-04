@@ -21,6 +21,7 @@ import {
   previewMarketingBook,
   updateDraft,
 } from "./marketingCampaignService";
+import { partialSendLine } from "./campaignSendCopy";
 
 export type CampaignChannel = "email" | "sms" | "push";
 
@@ -56,6 +57,9 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
   const label = channel === "push" ? "Push" : channel === "sms" ? "SMS" : "Email";
   if (code.includes("ZERO_RECIPIENTS")) return `${label}: no one in this audience can receive it.`;
   if (code.includes("MONTHLY_CAP")) return `${label}: this would go over your monthly limit.`;
+  if (code.includes("ALL_RECIPIENTS_FAILED")) {
+    return `${label}: the provider couldn't reach anyone. It is marked Failed in Campaigns.`;
+  }
   if (code.includes("AUDIENCE_NOT_FOUND")) {
     return channel === "push"
       ? "Push reaches Mingla accounts only: pick Your Book, Followers, Friends of followers or a saved group."
@@ -65,6 +69,30 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
   if (code.includes("FORBIDDEN")) return `You can't send ${label.toLowerCase()} for this brand.`;
   return `${label} preview is unavailable. Refresh before sending.`;
 }
+
+/**
+ * #3682 wave 3 — every preview of a campaign (first open, schedule, retry)
+ * goes through the lane of the channel being sent, so a push-only campaign
+ * never previews as email.
+ */
+export function campaignPreviewInput(
+  campaignId: string,
+  audienceKind: SealedMarketingAudienceKind | null,
+  channel: CampaignChannel,
+): { campaignId: string; audienceKind: SealedMarketingAudienceKind; channel: CampaignChannel } {
+  return { campaignId, audienceKind: audienceKind ?? "all_brand_people", channel };
+}
+
+/** Push to Friends of followers needs the same three switches the server checks. */
+export function extendedPushReady(
+  roster: boolean | undefined,
+  controlsIos: boolean | undefined,
+  controlsAndroid: boolean | undefined,
+): boolean {
+  return roster === true && controlsIos === true && controlsAndroid === true;
+}
+
+export { partialSendLine } from "./campaignSendCopy";
 
 /** Create or refresh one sibling draft, then take its sealed server preview. */
 export async function prepareSiblingChannel(
@@ -111,6 +139,7 @@ export interface SiblingSendResult {
   channel: CampaignChannel;
   ok: boolean;
   delivered: number;
+  failed: number;
   message: string | null;
 }
 
@@ -123,7 +152,7 @@ export async function confirmSiblingChannels(input: {
   const results: SiblingSendResult[] = [];
   for (const sibling of input.siblings) {
     if (sibling.quote === null) {
-      results.push({ channel: sibling.channel, ok: false, delivered: 0, message: sibling.error });
+      results.push({ channel: sibling.channel, ok: false, delivered: 0, failed: 0, message: sibling.error });
       continue;
     }
     try {
@@ -135,12 +164,20 @@ export async function confirmSiblingChannels(input: {
         audience_kind: input.audienceKind,
         channel: sibling.channel,
       });
-      results.push({ channel: sibling.channel, ok: true, delivered: sent.delivered, message: null });
+      const label = sibling.channel === "push" ? "Push" : sibling.channel === "sms" ? "SMS" : "Email";
+      results.push({
+        channel: sibling.channel,
+        ok: true,
+        delivered: sent.delivered,
+        failed: sent.failed,
+        message: sent.failed > 0 ? `${label}: ${partialSendLine(sent.delivered, sent.failed)}` : null,
+      });
     } catch (error) {
       results.push({
         channel: sibling.channel,
         ok: false,
         delivered: 0,
+        failed: 0,
         message: siblingErrorMessage(sibling.channel, error),
       });
     }
