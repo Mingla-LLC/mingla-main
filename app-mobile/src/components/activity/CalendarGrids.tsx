@@ -254,16 +254,17 @@ const styles = StyleSheet.create({
   },
   weekRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 10,
-    paddingVertical: 6,
+    minHeight: 52,
+    marginBottom: 6,
   },
   pastDim: {
     opacity: 0.45,
   },
   weekDay: {
-    width: 56,
-    minHeight: 48,
+    width: 44,
+    minHeight: 44,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -279,7 +280,7 @@ const styles = StyleSheet.create({
   },
   weekDow: {
     color: C.dayLabelIdle,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
   },
   todayText: {
@@ -288,7 +289,7 @@ const styles = StyleSheet.create({
   },
   weekNum: {
     color: L.textPrimary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
   },
   weekChips: {
@@ -296,14 +297,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: "row",
     flexWrap: "wrap",
+    alignItems: "center",
     gap: 6,
-    paddingTop: 2,
   },
   weekEmpty: {
     color: L.textSecondary,
     fontSize: 15,
     opacity: 0.5,
-    paddingTop: 12,
   },
   weekChip: {
     minHeight: 44,

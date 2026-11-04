@@ -318,6 +318,37 @@ Deno.test("#4265 CalendarTab is a virtualised list with no search bar", async ()
   assert(/memo\(CalendarAgendaRowImpl\)/.test(stripComments(await read("src/components/activity/CalendarAgendaRow.tsx"))), "rows are memoised");
 });
 
+Deno.test("#4265 Week and Month live in the one scroll body, with chips above the grid and nav clearance", async () => {
+  const tab = stripComments(await read("src/components/activity/CalendarTab.tsx"));
+  const grids = stripComments(await read("src/components/activity/CalendarGrids.tsx"));
+  // ONE vertical scroller for every view: the SectionList, whose header holds the grids.
+  assertEquals((tab.match(/<SectionList\b/g) ?? []).length, 1, "exactly one list");
+  assert(!/<(ScrollView|FlatList)\b/.test(tab), "no second vertical scroller in CalendarTab");
+  assert(!/<(ScrollView|FlatList|SectionList)\b/.test(grids), "the grids never scroll on their own");
+  assert(/ListHeaderComponent=\{header\}/.test(tab), "the header (controls + grids) is the list header");
+  const header = tab.slice(tab.indexOf("const header = ("), tab.indexOf("return (", tab.indexOf("const header = (")));
+  assert(header.includes("<CalendarWeekView") && header.includes("<CalendarMonthView"), "Week and Month render inside the list header");
+  // Chips sit above the strip / grid in every view.
+  const chips = header.indexOf("<CalendarTypeChips");
+  assert(chips > header.indexOf("<CalendarViewToggle"), "chips follow the view toggle");
+  for (const grid of ["<CalendarDayStrip", "<CalendarWeekView", "<CalendarMonthView"]) {
+    assert(chips < header.indexOf(grid), `chips sit above ${grid}`);
+  }
+  // Past plans close every view (Week and Month no longer return an empty list).
+  assert(!/if \(view === "week"\) return \[\]/.test(tab), "Week keeps its Past plans");
+  const sections = tab.slice(tab.indexOf("const sections = useMemo"), tab.indexOf("const hasUpcomingInView"));
+  assert(/if \(pastRows\.length > 0\)/.test(sections) && !/view === "list"[^\n]*pastRows/.test(sections), "Past plans are appended for every view");
+  // Nav clearance reaches that one list.
+  assert(/const mainScrollContent = useMemo\([\s\S]*?paddingBottom:\s*bottomNavTotalHeight\s*\+\s*24/.test(tab));
+  assert(/contentContainerStyle=\{mainScrollContent\}/.test(tab));
+  // removeClippedSubviews toggled under Fabric crashed the app (unmountChildComponentView).
+  assert(!/removeClippedSubviews/.test(tab), "no removeClippedSubviews on the Calendar list");
+  // Compact week rows: 44x44 badge, 52pt rows, 6pt gaps.
+  assert(/weekRow:\s*\{[^}]*minHeight: 52,[^}]*marginBottom: 6,/.test(grids), "52pt week rows with 6pt gaps");
+  assert(/weekDay:\s*\{[^}]*width: 44,[^}]*minHeight: 44,/.test(grids), "44x44 day badge");
+  assert(/weekDayToday:\s*\{[^}]*borderColor: L\.accent/.test(grids), "today keeps the orange ring");
+});
+
 Deno.test("#4265 pull to refresh refreshes every calendar source", async () => {
   const tab = stripComments(await read("src/components/activity/CalendarTab.tsx"));
   const start = tab.indexOf("const handleRefresh");

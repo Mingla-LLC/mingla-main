@@ -456,31 +456,34 @@ const CalendarTab = ({
   );
 
   // ── Sections per view ───────────────────────────────────────────────────
+  // Every view is ONE scroll body: the header (controls + grid + empty state)
+  // is the SectionList header, and the day's plans and "Past plans" follow in
+  // the same list, so nothing sits behind the floating nav.
   const sections = useMemo<AgendaSection[]>(() => {
-    if (view === "week") return [];
+    const out: AgendaSection[] = [];
     if (view === "month") {
       const data = sortUpcoming(typedRows.filter((row) => row.dayKey === monthDayKey));
-      return data.length === 0
-        ? []
-        : [{ key: monthDayKey, kind: "day", label: groupByDay(data, todayKey)[0].label, dayKey: monthDayKey, data }];
+      if (data.length > 0) {
+        out.push({ key: monthDayKey, kind: "day", label: groupByDay(data, todayKey)[0].label, dayKey: monthDayKey, data });
+      }
+    } else if (view === "list") {
+      const visible = selectedDayKey === null
+        ? upcomingRows
+        : upcomingRows.filter((row) => row.dayKey === selectedDayKey);
+      for (const group of groupByDay(visible, todayKey)) {
+        out.push({ key: group.key, kind: "day", label: group.label, dayKey: group.dayKey, data: group.data });
+      }
     }
-    const visible = selectedDayKey === null
-      ? upcomingRows
-      : upcomingRows.filter((row) => row.dayKey === selectedDayKey);
-    const out: AgendaSection[] = groupByDay(visible, todayKey).map((group) => ({
-      key: group.key,
-      kind: "day" as const,
-      label: group.label,
-      dayKey: group.dayKey,
-      data: group.data,
-    }));
+    // Week shows its plans as chips in the grid; Past plans close every view.
     if (pastRows.length > 0) {
       out.push({ key: "past", kind: "past", total: pastRows.length, data: showPast ? pastRows : [] });
     }
     return out;
   }, [view, typedRows, monthDayKey, todayKey, selectedDayKey, upcomingRows, pastRows, showPast]);
 
-  const hasUpcomingInView = sections.some((s) => s.kind === "day" && s.data.length > 0);
+  const hasUpcomingInView = view === "week"
+    ? upcomingRows.length > 0
+    : sections.some((s) => s.kind === "day" && s.data.length > 0);
 
   const strip = useMemo(
     () => buildDayStrip(today, upcomingDayTags, selectedDayKey),
@@ -1197,6 +1200,8 @@ const CalendarTab = ({
   const header = (
     <View style={styles.header}>
       <CalendarViewToggle view={view} onChange={setView} />
+      {/* Chips sit in the same place in every view, above the strip / grid. */}
+      <CalendarTypeChips value={typeFilter} onChange={setTypeFilter} />
       {view === "list"
         ? <CalendarDayStrip days={strip} locale={locale} onPick={onPickStripDay} />
         : view === "week"
@@ -1222,13 +1227,12 @@ const CalendarTab = ({
             onPick={onPickMonthDay}
           />
         )}
-      <CalendarTypeChips value={typeFilter} onChange={setTypeFilter} />
       {showSkeleton
         ? <CalendarAgendaSkeleton reduceMotion={reduceMotion} accessibilityLabel={t("activity:calendarTab.loadingCalendar")} />
-        : view !== "week" && !hasUpcomingInView
+        : !hasUpcomingInView
         ? (
           <CalendarEmptyCard
-            daySelected={view === "month" || selectedDayKey !== null}
+            daySelected={view === "month" || (view === "list" && selectedDayKey !== null)}
             onPlanFromSaves={onPlanFromSaves}
           />
         )
@@ -1251,7 +1255,6 @@ const CalendarTab = ({
           initialNumToRender={10}
           maxToRenderPerBatch={10}
           windowSize={7}
-          removeClippedSubviews
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
