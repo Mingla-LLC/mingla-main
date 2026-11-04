@@ -575,12 +575,11 @@ BEGIN
   PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('day_choice_calls') BETWEEN 1 AND 2,
     format('(d) discover_v2_event_base asked the rule on %s of 20 dates (day choice calls) before picking the first',
       pg_temp.t3281p_count('day_choice_calls')));
-  -- Since 20280330004265 the card is also priced over the tiers buyable on its
-  -- night, which runs the per-night counter once per capped tier (4) on that
-  -- one night: the walk (1-2) plus 4, never once per date of the event.
+  -- The base only walks to the card date: it does not price per date (since
+  -- 20280330004265 discover_v2_items prices the cards it shows).
   PERFORM pg_temp.t3281p_reset_counts();
   PERFORM count(*) FROM public.discover_v2_event_base(ARRAY['#3281P Early 2'], now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 1 + 4 AND 2 + 4,
+  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 1 AND 2,
     format('(d) discover_v2_event_base ran the per-night counter %s times on a 20-date event whose first night is open',
       pg_temp.t3281p_count('taken_calls')));
   -- discover_v2_items reads the base, then walks its own window: one date each.
@@ -591,10 +590,19 @@ BEGIN
       pg_temp.t3281p_count('day_choice_calls')));
   PERFORM pg_temp.t3281p_reset_counts();
   PERFORM public.discover_v2_items('events', ARRAY['#3281P Early 2'], 40, 62, 1, 'UTC', '{}'::jsonb, 0, 50);
-  -- Base (walk + 4 tiers priced) and the items window (walk + 4 tiers priced).
-  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 2 + 8 AND 4 + 8,
+  -- The base walk and the items window walk (one date each), and the card
+  -- priced once over its 4 capped tiers on the night it shows.
+  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 2 + 4 AND 4 + 4,
     format('(d) discover_v2_items ran the per-night counter %s times for a 20-date event whose first night is open',
       pg_temp.t3281p_count('taken_calls')));
+  -- With a price filter the card is priced once before the page, and the page
+  -- reuses that price: the same bound.
+  PERFORM pg_temp.t3281p_reset_counts();
+  v_calls := jsonb_array_length(public.discover_v2_items('events', ARRAY['#3281P Early 2'], 40, 62, 1, 'UTC',
+    '{"price":["free_ticket"]}'::jsonb, 0, 50)->'items');
+  PERFORM pg_temp.t3281p_assert(v_calls = 1 AND pg_temp.t3281p_count('taken_calls') BETWEEN 2 + 4 AND 4 + 4,
+    format('(d) discover_v2_items with a price filter listed %s card(s) and ran the per-night counter %s times',
+      v_calls, pg_temp.t3281p_count('taken_calls')));
   -- The order the walk reads is served by an index on (event_id, start_at, id).
   PERFORM pg_temp.t3281p_assert(
     pg_get_indexdef(to_regclass('public.idx_event_dates_event_id_start_at'))

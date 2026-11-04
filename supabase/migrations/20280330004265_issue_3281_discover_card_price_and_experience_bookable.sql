@@ -2,29 +2,31 @@
 -- card's date, and an experience is listed only when it can be booked.
 --
 -- Before this migration:
---   * discover_v2_event_base priced the card (price_min_cents, price_max_cents,
---     display_price_cents via discover_v2_from_price_minor) over every visible
---     tier of the event, so a closed sale, a sold-out tier or a tier for another
---     date still set the "from" price, and a closed free tier made the card
---     "free" (price_min_cents = 0 drives isFree and the price filter).
---     discover_v2_items also took the sale price from
---     issue_3872_event_display_prices(event), which has the same gap.
---   * The experience branch of discover_v2_items listed an experience when any
---     online tier had lifetime places left: it ignored sale end, the date's or
---     start time's capacity (capacity_scope), holds, cancelled dates and the
---     booking notice; the card date was the first future date whatever its
---     state, and the free flag, fee gate and price used every online tier.
+--   * discover_v2_items priced an event card over every visible tier of the
+--     event (discover_v2_event_base's price_min_cents / display_price_cents,
+--     and the sale from issue_3872_event_display_prices(event)), so a closed
+--     sale, a sold-out tier or a tier for another date still set the "from"
+--     price, and a closed free tier made the card "free" (price_min_cents = 0
+--     drives isFree and the price filter).
+--   * The experience branch of discover_v2_items, discover_v2_city_context and
+--     discover_v2_nearest_city counted an experience when any online tier had
+--     lifetime places left: they ignored sale end, the date's or start time's
+--     capacity (capacity_scope), holds, cancelled dates and the booking notice;
+--     the card date was the first future date whatever its state, and the
+--     free flag, fee gate and price used every online tier.
 --
 -- Now:
 --   issue_3281_experience_date_bookable_ticket_types(event, date)
 --       the tiers of an experience a guest can book on that date: listed
 --       online, not hidden or disabled, sale not closed, date upcoming and not
 --       cancelled, valid on the date, a start time left after the booking
---       notice, and places left by the event's capacity_scope: per_start asks
---       issue_3281_ticket_type_slot_taken per start time (stops at the first
---       open one), per_day (and day-limited tiers) issue_3313_ticket_type_
---       occurrence_taken once per tier, total compares sold_count. The same
---       counters checkout (issue_3872 create-session) refuses on.
+--       notice, and places left by the event's capacity_scope. per_start
+--       counts each start time's places with one grouped read of the tier's
+--       paid orders and live holds (the predicate of
+--       issue_3281_ticket_type_slot_taken, which checkout refuses on), not one
+--       counter call per start time; per_day (and day-limited tiers) ask
+--       issue_3313_ticket_type_occurrence_taken once per tier; total compares
+--       sold_count.
 --   issue_3281_discover_card_prices(event, date, experience, with_sale)
 --       the card's price over the tiers buyable on that date: events use
 --       issue_3281_date_buyable_ticket_types (the #3281 listing rule's tier
@@ -36,18 +38,28 @@
 -- Both are plain SQL set functions the planner inlines (STABLE, not SECURITY
 -- DEFINER, no SET, not STRICT); EXECUTE for postgres and service_role only.
 --
--- Readers (bodies are the 20280327003281 definitions except as listed):
---   discover_v2_event_base: the card-date LATERAL also returns the date id and
---     the three price keys come from the card price on that date. Same keys,
---     same order; pg_discover_business_events (V1) reads them unchanged.
---   discover_v2_items('events'): price, sale, free flag and price filter come
---     from the card price on the date the card shows (its window may pick a
---     later date than the base did).
---   discover_v2_items('experiences'): the card date is the first upcoming,
---     uncancelled date in the window with a bookable tier; price, sale, free
---     flag, fee gate and price filter use that date's bookable tiers.
--- discover_v2_from_price_minor and issue_3872_event_display_prices are not
--- changed: trips and the public event page still read them.
+-- Each card is priced once, on the date it shows:
+--   discover_v2_event_base is NOT changed. Its price keys stay the cheap
+--     per-event ones (every visible tier) that pg_discover_business_events (V1)
+--     returns; discover_v2_items no longer reads them and discover_v2_city_context
+--     reads only the event id, so pricing there would cost per-date counters on
+--     every event in the city for no reader.
+--   discover_v2_items('events'): the card date walk is unchanged. Without a
+--     price filter the page is cut first and only its cards are priced; with a
+--     price filter every card is priced once (the filter and total need it)
+--     and the page reuses that price.
+--   discover_v2_items('experiences'): the cheap checks (brand, state, intents,
+--     goodFor, place) run first in their own set; the date walk lists the
+--     experience on its first date in the window with a bookable tier; that
+--     date is priced once (the fee gate and price filter need it before the
+--     page); stop count and first place are read for the page only. The walk
+--     is bounded by the feed window (120 days by default).
+--   discover_v2_city_context and discover_v2_nearest_city count an experience
+--     only when it has a date in the default 120-day window with a bookable
+--     tier, the rule the feed lists it by.
+-- Return shapes unchanged. discover_v2_from_price_minor and
+-- issue_3872_event_display_prices are not changed: trips, V1 and the public
+-- event page still read them.
 
 BEGIN;
 
@@ -87,15 +99,54 @@ AS $fn$
        OR tt.quantity_total IS NULL
        OR CASE
          WHEN COALESCE(e.capacity_scope, 'total') = 'per_start' THEN
-           (tt.valid_occurrence_keys IS NULL
+           tt.quantity_total > 0
+           AND (tt.valid_occurrence_keys IS NULL
              OR public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id) < tt.quantity_total)
-           AND EXISTS (
-             SELECT 1 FROM generate_series(grid.first_k, grid.slot_count - 1) k
-              WHERE public.issue_3281_ticket_type_slot_taken(
-                      tt.id, d.id,
-                      d.start_at + make_interval(mins => grid.spacing * k),
-                      d.start_at + make_interval(mins => grid.spacing * (k + 1)),
-                      NULL) < tt.quantity_total)
+           -- Some start time left has a place: fewer full start times than
+           -- start times left. A start time is full when the paid orders and
+           -- live holds whose booked time overlaps it reach the tier's places,
+           -- exactly as issue_3281_ticket_type_slot_taken counts them; the
+           -- tier's bookings are read once for the date, not once per start.
+           AND (
+             SELECT count(*)
+               FROM (
+                 SELECT slot.k
+                   FROM generate_series(grid.first_k, grid.slot_count - 1) AS slot(k)
+                   JOIN (
+                     SELECT o.booked_start_at AS held_from,
+                            COALESCE(o.booked_end_at, o.booked_start_at + interval '30 minutes') AS held_to,
+                            oli.quantity AS held
+                       FROM public.order_line_items oli
+                       JOIN public.orders o ON o.id = oli.order_id
+                      WHERE oli.ticket_type_id = tt.id
+                        AND o.payment_status IN ('paid', 'partially_paid', 'partial_refund')
+                        AND o.booked_start_at IS NOT NULL
+                        AND (o.event_date_id IS NULL OR o.event_date_id = d.id)
+                        AND o.booked_start_at < d.start_at + make_interval(mins => grid.spacing * grid.slot_count)
+                        AND COALESCE(o.booked_end_at, o.booked_start_at + interval '30 minutes')
+                            > d.start_at + make_interval(mins => grid.spacing * grid.first_k)
+                     UNION ALL
+                     SELECT s.booked_start_at,
+                            COALESCE(s.booked_end_at, s.booked_start_at + interval '30 minutes'),
+                            i.quantity
+                       FROM public.ticket_checkout_session_items i
+                       JOIN public.ticket_checkout_sessions s ON s.id = i.checkout_session_id
+                      WHERE i.ticket_type_id = tt.id
+                        AND s.expires_at > now()
+                        AND s.status IN ('pending_free', 'requires_payment', 'processing_payment', 'awaiting_web_redirect')
+                        AND s.order_id IS NULL
+                        AND s.revoked_at IS NULL
+                        AND s.booked_start_at IS NOT NULL
+                        AND s.booked_start_at < d.start_at + make_interval(mins => grid.spacing * grid.slot_count)
+                        AND COALESCE(s.booked_end_at, s.booked_start_at + interval '30 minutes')
+                            > d.start_at + make_interval(mins => grid.spacing * grid.first_k)
+                   ) booking
+                     ON booking.held_from < d.start_at + make_interval(mins => grid.spacing * (slot.k + 1))
+                    AND booking.held_to > d.start_at + make_interval(mins => grid.spacing * slot.k)
+                  GROUP BY slot.k
+                 HAVING sum(booking.held) >= tt.quantity_total
+               ) full_start
+           ) < grid.slot_count - grid.first_k
          WHEN COALESCE(e.capacity_scope, 'total') = 'per_day' OR tt.valid_occurrence_keys IS NOT NULL
          THEN public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id) < tt.quantity_total
          ELSE COALESCE(tt.sold_count, 0) < tt.quantity_total
@@ -104,7 +155,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION public.issue_3281_experience_date_bookable_ticket_types(uuid, uuid) IS
-  'issue #3281 — the tiers of an experience a guest can book on this date: listed online, not hidden or disabled, sale not closed, date upcoming and not cancelled, valid on the date, a start time left after the booking notice, and places left by capacity_scope (per start time, per day, or in total). Inlinable SQL.';
+  'issue #3281 — the tiers of an experience a guest can book on this date: listed online, not hidden or disabled, sale not closed, date upcoming and not cancelled, valid on the date, a start time left after the booking notice, and places left by capacity_scope (per start time from one grouped read of orders and holds with the issue_3281_ticket_type_slot_taken predicate, per day, or in total). Inlinable SQL.';
 
 CREATE OR REPLACE FUNCTION public.issue_3281_discover_card_prices(
   p_event_id uuid, p_event_date_id uuid, p_experience boolean, p_with_sale boolean
@@ -156,12 +207,14 @@ AS $fn$
       ) sale ON true
      WHERE tt.price_cents IS NOT NULL
   ), fees AS MATERIALIZED (
+    -- The fee inputs are read only when the card has a paid tier to price.
     SELECT COALESCE(e.pass_mingla_fee, b.default_pass_mingla_fee) AS pass_mingla_fee,
            COALESCE(e.pass_service_fee, b.default_pass_service_fee) AS pass_service_fee,
            (SELECT r.effective_take_rate_bps FROM public.resolve_effective_take_rate_bps(b.id) r) AS take_rate_bps
       FROM public.events e
       JOIN public.brands b ON b.id = e.brand_id
      WHERE e.id = p_event_id
+       AND EXISTS (SELECT 1 FROM card WHERE card.price_cents > 0)
   ), priced AS (
     SELECT card.id,
            public.compute_all_in_cents(card.price_cents, f.pass_mingla_fee, f.pass_service_fee, f.take_rate_bps) AS list_all_in,
@@ -200,86 +253,6 @@ REVOKE ALL ON FUNCTION public.issue_3281_discover_card_prices(uuid, uuid, boolea
 GRANT EXECUTE ON FUNCTION public.issue_3281_experience_date_bookable_ticket_types(uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_3281_discover_card_prices(uuid, uuid, boolean, boolean) TO service_role;
 
-CREATE OR REPLACE FUNCTION public.discover_v2_event_base(p_cities text[], p_lower_bound timestamp with time zone, p_upper_start timestamp with time zone DEFAULT NULL::timestamp with time zone, p_party_types text[] DEFAULT NULL::text[], p_vibe_tags text[] DEFAULT NULL::text[], p_music_genres text[] DEFAULT NULL::text[], p_center_lng double precision DEFAULT NULL::double precision, p_center_lat double precision DEFAULT NULL::double precision, p_radius_km double precision DEFAULT NULL::double precision)
- RETURNS SETOF jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-  SELECT jsonb_build_object(
-    'id',e.id,'brand_id',e.brand_id,'title',e.title,'description',e.description,'slug',e.slug,
-    'location_text',CASE WHEN public.issue_2489_address_withheld(e.theme) THEN NULL ELSE e.location_text END,
-    'location_geo',CASE WHEN public.issue_2489_address_withheld(e.theme) THEN NULL ELSE to_jsonb(e.location_geo) END,
-    'online_url',e.online_url,'is_online',e.is_online,'cover_media_url',e.cover_media_url,
-    'cover_media_type',e.cover_media_type,'theme',public.issue_2489_public_theme(e.theme),
-    'timezone',e.timezone,'currency',e.currency,'city',e.city,'party_types',to_jsonb(e.party_types),
-    'vibe_tags',to_jsonb(e.vibe_tags),'music_genres',to_jsonb(e.music_genres),'event_type',e.event_type,
-    'brand_slug',b.slug,'brand_name',b.name,'brand_profile_photo_url',b.profile_photo_url,
-    'master_start_at',ed.start_at,'master_end_at',ed.end_at,'master_timezone',ed.timezone,
-    -- Window-selected occurrence is the card timestamp authority (#3281 PR7).
-    -- Do NOT run the full schedule helper here: this base feeds eligibility,
-    -- facets, and counts before pagination (same page-only rule as admin_list).
-    'next_start_at',ed.start_at,
-    'next_end_at',ed.end_at,
-    'upcoming_count',NULL,
-    'schedule_line',NULL,
-    -- #3281: priced over the tiers a guest can buy on the card's date.
-    'price_min_cents',card_price.price_min_cents,
-    'price_max_cents',card_price.price_max_cents,
-    'display_price_cents',card_price.display_price_cents,
-    'pricing_currency',b.pricing_currency
-  )
-  FROM public.events e
-  JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
-  JOIN public.event_dates master_ed ON master_ed.event_id=e.id
-    AND master_ed.is_master IS TRUE
-  JOIN LATERAL (
-    SELECT walk.id,walk.start_at,walk.end_at,walk.timezone
-    FROM (
-    -- #3281: the dates in card order first (OFFSET 0 keeps the listing rule
-    -- out of this scan), so LIMIT 1 below stops at the first buyable date
-    -- instead of asking the rule on every date and sorting after.
-    SELECT occurrence.id,occurrence.start_at,occurrence.end_at,occurrence.timezone
-    FROM public.event_dates occurrence
-    WHERE occurrence.event_id=e.id AND occurrence.end_at>=p_lower_bound
-      AND (p_upper_start IS NULL OR occurrence.start_at<=p_upper_start)
-    ORDER BY occurrence.start_at,occurrence.id OFFSET 0
-    ) walk
-    -- #3281: a ticketed event is listed only on a date a guest can buy.
-    -- Inside the LATERAL, so a sold-out or closed date moves the card to the
-    -- next buyable one instead of hiding the whole series.
-    WHERE EXISTS (SELECT 1
-      FROM public.issue_3281_explorer_date_listable_rows(e.id, walk.id))
-    ORDER BY walk.start_at,walk.id LIMIT 1
-  ) ed ON true
-  CROSS JOIN LATERAL public.issue_3281_discover_card_prices(e.id, ed.id, false, false) card_price
-  WHERE e.deleted_at IS NULL
-    AND public.issue_4174_explorer_brand_visible(e.brand_id)
-    AND e.visibility='public'
-    AND (e.event_type='event' OR (e.event_type='rsvp' AND e.rsvp_discoverable=true))
-    AND e.status=ANY(ARRAY['scheduled','live'])
-    AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
-    AND (
-      e.city=ANY(p_cities)
-      OR (p_center_lng IS NOT NULL AND p_center_lat IS NOT NULL AND p_radius_km IS NOT NULL
-        AND e.location_geo IS NOT NULL AND public.ST_DWithin(
-          public.ST_SetSRID(e.location_geo::public.geometry,4326)::public.geography,
-          public.ST_SetSRID(public.ST_MakePoint(p_center_lng,p_center_lat),4326)::public.geography,
-          p_radius_km*1000))
-      OR (e.is_online IS TRUE AND lower(btrim(COALESCE(e.theme->'business_event'->>'format',''),
-        E' \t\n\r\f\v'||chr(160)))='online')
-    )
-    AND (p_party_types IS NULL OR cardinality(p_party_types)=0 OR e.party_types && p_party_types)
-    AND (p_vibe_tags IS NULL OR cardinality(p_vibe_tags)=0 OR e.vibe_tags && p_vibe_tags)
-    AND (p_music_genres IS NULL OR cardinality(p_music_genres)=0 OR e.music_genres && p_music_genres)
-    AND NOT (
-      EXISTS (SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id
-        AND tt.deleted_at IS NULL AND tt.is_hidden IS NOT TRUE AND tt.is_disabled IS NOT TRUE
-        AND tt.available_online IS TRUE AND tt.price_cents>0)
-      AND NOT public.pg_brand_can_collect(e.brand_id)
-    )
-$function$;
-
 CREATE OR REPLACE FUNCTION public.discover_v2_items(p_kind text, p_city_names text[], p_lat double precision, p_lng double precision, p_radius_km double precision, p_tz text, p_filters jsonb, p_offset integer, p_limit integer)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -289,6 +262,8 @@ AS $function$
 DECLARE
   v_rows jsonb:='[]'::jsonb; v_total bigint:=0; v_window tstzrange;
   v_meta jsonb:='{}'::jsonb; v_guests integer:=COALESCE((p_filters->>'guests')::integer,2);
+  -- discover_v2_price_matches' own test for "a price filter is set".
+  v_price_filter boolean:=COALESCE(jsonb_array_length(COALESCE(p_filters->'price','[]'::jsonb)),0)>0;
 BEGIN
   IF p_kind NOT IN ('events','experiences','trips','stays') THEN
     RAISE EXCEPTION 'invalid_kind' USING ERRCODE='22023';
@@ -303,11 +278,8 @@ BEGIN
         ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_filters->'vibeTags','[]'::jsonb))),
         ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_filters->'musicGenres','[]'::jsonb))),
         p_lng,p_lat,public.discover_v2_radius_km('events')) AS event_base(row)
-    ), eligible AS MATERIALIZED (
-      SELECT b.row,occ.start_at,occ.end_at,occ.timezone,
-        price.display_price_cents list_minor,price.price_min_cents price_min,
-        price.display_sale_price_cents sale_minor,price.display_sale_ends_at sale_ends_at,
-        count(*) over() total_count
+    ), dated AS MATERIALIZED (
+      SELECT b.row,(b.row->>'id')::uuid event_id,occ.id date_id,occ.start_at,occ.end_at,occ.timezone
       FROM base b
       JOIN LATERAL (
         SELECT walk.id,walk.start_at,walk.end_at,walk.timezone FROM (
@@ -323,14 +295,44 @@ BEGIN
             FROM public.issue_3281_explorer_date_listable_rows((b.row->>'id')::uuid, walk.id))
         ORDER BY walk.start_at,walk.id LIMIT 1
       ) occ ON true
-      -- #3281: priced over the tiers a guest can buy on the date this card shows.
-      CROSS JOIN LATERAL public.issue_3281_discover_card_prices((b.row->>'id')::uuid, occ.id, false, true) price
-      WHERE public.discover_v2_price_matches('events',b.row->>'event_type',
-        COALESCE(b.row->>'pricing_currency',b.row->>'currency'),
-        price.display_price_cents,
-        COALESCE(price.price_min_cents=0,false),p_filters)
-      ORDER BY occ.start_at,(b.row->>'id')::uuid
+    ), filtered AS (
+      -- #3281: with a price filter every card is priced once, on the date it
+      -- shows, because the filter and the total need it.
+      SELECT d.row,d.event_id,d.date_id,d.start_at,d.end_at,d.timezone,true priced,
+        price.display_price_cents list_minor,price.price_min_cents price_min,
+        price.display_sale_price_cents sale_minor,price.display_sale_ends_at sale_ends_at
+      FROM dated d
+      CROSS JOIN LATERAL public.issue_3281_discover_card_prices(d.event_id, d.date_id, false, true) price
+      WHERE v_price_filter
+        AND public.discover_v2_price_matches('events',d.row->>'event_type',
+          COALESCE(d.row->>'pricing_currency',d.row->>'currency'),
+          price.display_price_cents,
+          COALESCE(price.price_min_cents=0,false),p_filters)
+      UNION ALL
+      -- Without one, every dated card counts and only the page is priced.
+      SELECT d.row,d.event_id,d.date_id,d.start_at,d.end_at,d.timezone,false,
+        NULL::integer,NULL::integer,NULL::integer,NULL::timestamptz
+      FROM dated d
+      WHERE NOT v_price_filter
+    ), page AS MATERIALIZED (
+      SELECT f.*,count(*) over() total_count FROM filtered f
+      ORDER BY f.start_at,f.event_id
       OFFSET greatest(p_offset,0) LIMIT least(greatest(p_limit,1),50)
+    ), eligible AS (
+      -- A card priced for the filter keeps that price.
+      SELECT p.row,p.start_at,p.end_at,p.timezone,p.total_count,
+        p.list_minor,p.price_min,p.sale_minor,p.sale_ends_at
+      FROM page p
+      WHERE p.priced
+      UNION ALL
+      -- #3281: the rest of the page is priced over the tiers a guest can buy
+      -- on the date the card shows.
+      SELECT p.row,p.start_at,p.end_at,p.timezone,p.total_count,
+        price.display_price_cents,price.price_min_cents,
+        price.display_sale_price_cents,price.display_sale_ends_at
+      FROM page p
+      CROSS JOIN LATERAL public.issue_3281_discover_card_prices(p.event_id, p.date_id, false, true) price
+      WHERE NOT p.priced
     )
     SELECT COALESCE(max(total_count),0),COALESCE(jsonb_agg(jsonb_build_object(
       'source','mingla','kind',CASE WHEN row->>'event_type'='rsvp' THEN 'rsvp' ELSE 'event' END,'id',row->>'id',
@@ -347,39 +349,17 @@ BEGIN
 
   ELSIF p_kind='experiences' THEN
     v_window:=public.discover_v2_window(COALESCE(NULLIF(p_filters->>'when',''),'tm_horizon_120'),p_tz,now());
-    WITH eligible_all AS MATERIALIZED (
+    WITH pool AS MATERIALIZED (
+      -- #3281: the cheap checks first, so the date walk and the price run only
+      -- for experiences that pass them.
       SELECT e.id,e.slug,e.brand_id,e.title,e.cover_media_url,e.cover_media_type,e.timezone,e.currency,
-        b.slug brand_slug,b.name brand_name,b.profile_photo_url,
-        occ.start_at,occ.end_at,occ.timezone occurrence_timezone,
-        price.display_price_cents price_minor,
-        price.display_sale_price_cents sale_minor,price.display_sale_ends_at sale_ends_at,
-        price.has_free,
-        (SELECT count(*) FROM public.experience_stops cs WHERE cs.event_id=e.id) stop_count,
-        (SELECT cs.place_name FROM public.experience_stops cs WHERE cs.event_id=e.id ORDER BY cs.stop_order LIMIT 1) first_place
+        b.slug brand_slug,b.name brand_name,b.profile_photo_url
       FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
-      JOIN LATERAL (
-        SELECT walk.id,walk.start_at,walk.end_at,walk.timezone FROM (
-        -- #3281: the window's dates in card order first (OFFSET 0 keeps the
-        -- booking check out of this scan); LIMIT 1 stops at the first bookable one.
-        SELECT ed.id,ed.start_at,ed.end_at,ed.timezone FROM public.event_dates ed
-        WHERE ed.event_id=e.id AND ed.end_at>now() AND ed.cancelled_at IS NULL
-          AND ed.start_at>=lower(v_window) AND ed.start_at<upper(v_window)
-        ORDER BY ed.start_at,ed.id OFFSET 0
-        ) walk
-        -- #3281: an experience is listed on a date a guest can book: a start time
-        -- left, a tier on sale online with places on that date or start time.
-        WHERE EXISTS (SELECT 1
-            FROM public.issue_3281_experience_date_bookable_ticket_types(e.id, walk.id))
-        ORDER BY walk.start_at,walk.id LIMIT 1
-      ) occ ON true
-      -- #3281: price, sale, free flag and fee gate read that date's bookable tiers.
-      CROSS JOIN LATERAL public.issue_3281_discover_card_prices(e.id, occ.id, true, true) price
       WHERE public.issue_4174_explorer_brand_visible(e.brand_id)
         AND e.event_type='experience' AND e.visibility='public' AND e.status='scheduled'
         AND e.published_at IS NOT NULL AND e.deleted_at IS NULL
         AND cardinality(e.experience_intents)>0
         AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
-        AND (price.display_price_cents IS NULL OR public.pg_brand_can_collect(e.brand_id))
         AND (COALESCE(jsonb_array_length(COALESCE(p_filters->'goodFor','[]'::jsonb)),0)=0
           OR e.experience_intents && ARRAY(SELECT jsonb_array_elements_text(p_filters->'goodFor')))
         AND (
@@ -389,11 +369,43 @@ BEGIN
               <= public.discover_v2_radius_km('experiences'))
           OR (SELECT s.city FROM public.experience_stops s WHERE s.event_id=e.id ORDER BY s.stop_order,s.id LIMIT 1)=ANY(p_city_names)
         )
-        AND public.discover_v2_price_matches('experiences','experience',e.currency,
+    ), eligible_all AS MATERIALIZED (
+      SELECT x.*,
+        occ.start_at,occ.end_at,occ.timezone occurrence_timezone,
+        price.display_price_cents price_minor,
+        price.display_sale_price_cents sale_minor,price.display_sale_ends_at sale_ends_at,
+        price.has_free
+      FROM pool x
+      JOIN LATERAL (
+        SELECT walk.id,walk.start_at,walk.end_at,walk.timezone FROM (
+        -- #3281: the window's dates in card order first (OFFSET 0 keeps the
+        -- booking check out of this scan); LIMIT 1 stops at the first bookable one.
+        SELECT ed.id,ed.start_at,ed.end_at,ed.timezone FROM public.event_dates ed
+        WHERE ed.event_id=x.id AND ed.end_at>now() AND ed.cancelled_at IS NULL
+          AND ed.start_at>=lower(v_window) AND ed.start_at<upper(v_window)
+        ORDER BY ed.start_at,ed.id OFFSET 0
+        ) walk
+        -- #3281: an experience is listed on a date a guest can book: a start time
+        -- left, a tier on sale online with places on that date or start time.
+        WHERE EXISTS (SELECT 1
+            FROM public.issue_3281_experience_date_bookable_ticket_types(x.id, walk.id))
+        ORDER BY walk.start_at,walk.id LIMIT 1
+      ) occ ON true
+      -- #3281: price, sale, free flag and fee gate read that date's bookable
+      -- tiers, once per experience (the gate and price filter need it).
+      CROSS JOIN LATERAL public.issue_3281_discover_card_prices(x.id, occ.id, true, true) price
+      WHERE (price.display_price_cents IS NULL OR public.pg_brand_can_collect(x.brand_id))
+        AND public.discover_v2_price_matches('experiences','experience',x.currency,
           price.display_price_cents,price.has_free,p_filters)
-    ), eligible AS (
+    ), page AS MATERIALIZED (
       SELECT *,count(*) over() total_count FROM eligible_all
       ORDER BY start_at,id OFFSET greatest(p_offset,0) LIMIT least(greatest(p_limit,1),50)
+    ), eligible AS (
+      -- Stop count and first place for the page only.
+      SELECT page.*,
+        (SELECT count(*) FROM public.experience_stops cs WHERE cs.event_id=page.id) stop_count,
+        (SELECT cs.place_name FROM public.experience_stops cs WHERE cs.event_id=page.id ORDER BY cs.stop_order LIMIT 1) first_place
+      FROM page
     )
     SELECT COALESCE(max(total_count),0),COALESCE(jsonb_agg(jsonb_build_object(
       'source','mingla','kind','experience','id',id,'brand',jsonb_build_object('id',brand_id,'slug',brand_slug,'name',brand_name,'photoUrl',profile_photo_url),
@@ -512,30 +524,222 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.discover_v2_city_context(p_city_names text[], p_lat double precision, p_lng double precision, p_radius_km double precision, p_device_tz text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  WITH raw_candidates AS (
+    SELECT 'event'::text kind,e.id item_id,e.timezone,e.currency,
+      CASE WHEN e.location_geo IS NULL THEN NULL ELSE public.ST_Distance(
+        public.ST_SetSRID(e.location_geo::public.geometry,4326)::public.geography,
+        public.ST_SetSRID(public.ST_MakePoint(p_lng,p_lat),4326)::public.geography)/1000.0 END distance_km
+    FROM public.discover_v2_event_base(
+      p_city_names,now(),now()+interval '120 days',NULL,NULL,NULL,
+      p_lng,p_lat,public.discover_v2_radius_km('events')) AS event_base(row)
+    JOIN public.events e ON e.id=(event_base.row->>'id')::uuid
+
+    UNION ALL
+
+    SELECT 'experience',e.id,e.timezone,e.currency,
+      (SELECT min(6371.0*2.0*asin(sqrt(power(sin(radians(s.lat-p_lat)/2.0),2)+
+        cos(radians(p_lat))*cos(radians(s.lat))*power(sin(radians(s.lng-p_lng)/2.0),2))))
+       FROM public.experience_stops s WHERE s.event_id=e.id AND s.lat IS NOT NULL AND s.lng IS NOT NULL)
+    FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
+    WHERE public.issue_4174_explorer_brand_visible(e.brand_id)
+      AND e.event_type='experience' AND e.visibility='public' AND e.status='scheduled'
+      AND e.published_at IS NOT NULL AND e.deleted_at IS NULL AND cardinality(e.experience_intents)>0
+      AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
+      -- #3281: only an experience Discover lists: a date in the default
+      -- 120-day window, not cancelled, with a tier bookable on it (the
+      -- discover_v2_items rule).
+      AND EXISTS(SELECT 1 FROM public.event_dates ed WHERE ed.event_id=e.id
+        AND ed.end_at>now() AND ed.cancelled_at IS NULL
+        AND ed.start_at>=now() AND ed.start_at<now()+interval '120 days'
+        AND EXISTS(SELECT 1 FROM public.issue_3281_experience_date_bookable_ticket_types(e.id, ed.id)))
+      AND (NOT EXISTS(SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id AND tt.available_online IS TRUE
+            AND tt.deleted_at IS NULL AND tt.is_hidden IS NOT TRUE AND tt.is_disabled IS NOT TRUE AND tt.price_cents>0)
+        OR public.pg_brand_can_collect(e.brand_id))
+      AND (EXISTS(SELECT 1 FROM public.experience_stops s WHERE s.event_id=e.id AND s.lat IS NOT NULL AND s.lng IS NOT NULL
+            AND 6371.0*2.0*asin(sqrt(power(sin(radians(s.lat-p_lat)/2.0),2)+
+              cos(radians(p_lat))*cos(radians(s.lat))*power(sin(radians(s.lng-p_lng)/2.0),2)))
+              <=public.discover_v2_radius_km('experiences'))
+        OR (SELECT s.city FROM public.experience_stops s WHERE s.event_id=e.id ORDER BY s.stop_order,s.id LIMIT 1)=ANY(p_city_names))
+
+    UNION ALL
+
+    SELECT 'trip',e.id,e.timezone,e.currency,
+      CASE WHEN e.location_geo IS NULL THEN NULL ELSE public.ST_Distance(
+        public.ST_SetSRID(e.location_geo::public.geometry,4326)::public.geography,
+        public.ST_SetSRID(public.ST_MakePoint(p_lng,p_lat),4326)::public.geography)/1000.0 END
+    FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
+    WHERE public.issue_4174_explorer_brand_visible(e.brand_id)
+      AND e.event_type='trip' AND e.visibility='public' AND e.status IN ('scheduled','live') AND e.deleted_at IS NULL
+      AND COALESCE(e.bookings_closed,false)=false AND (e.booking_deadline IS NULL OR e.booking_deadline>=now())
+      AND EXISTS(SELECT 1 FROM public.event_dates ed WHERE ed.event_id=e.id AND ed.is_master IS TRUE AND ed.end_at>=now())
+      AND EXISTS(SELECT 1 FROM public.trip_pricing_tiers tpt JOIN public.ticket_types tt ON tt.id=tpt.ticket_type_id
+        WHERE tpt.event_id=e.id AND tt.deleted_at IS NULL AND COALESCE(tt.is_hidden,false)=false)
+      AND (e.destination_city=ANY(p_city_names) OR e.departure_city=ANY(p_city_names)
+        OR (e.location_geo IS NOT NULL AND public.ST_DWithin(
+          public.ST_SetSRID(e.location_geo::public.geometry,4326)::public.geography,
+          public.ST_SetSRID(public.ST_MakePoint(p_lng,p_lat),4326)::public.geography,
+          public.discover_v2_radius_km('trips')*1000)))
+
+    UNION ALL
+
+    SELECT 'stay',venue.id,settings.timezone,venue.default_currency,
+      CASE WHEN venue.lat IS NULL OR venue.lng IS NULL THEN NULL ELSE
+        6371.0*2.0*asin(sqrt(power(sin(radians(venue.lat-p_lat)/2.0),2)+
+          cos(radians(p_lat))*cos(radians(venue.lat))*power(sin(radians(venue.lng-p_lng)/2.0),2))) END
+    FROM public.venue_public_view venue
+    JOIN public.stay_settings settings ON settings.venue_id=venue.id AND settings.brand_id=venue.brand_id
+      AND settings.booking_state='active'
+    JOIN public.stay_offerings offering ON offering.venue_id=venue.id AND offering.brand_id=venue.brand_id
+      AND offering.kind='room' AND offering.status='live'
+    WHERE public.issue_4174_explorer_brand_visible(venue.brand_id)
+      AND venue.venue_category='stay'
+      AND COALESCE((SELECT is_enabled FROM public.feature_flags WHERE flag_key='STAY_PUBLIC_PAGES'),false)
+      AND (venue.city=ANY(p_city_names) OR (venue.lat IS NOT NULL AND venue.lng IS NOT NULL
+        AND 6371.0*2.0*asin(sqrt(power(sin(radians(venue.lat-p_lat)/2.0),2)+
+          cos(radians(p_lat))*cos(radians(venue.lat))*power(sin(radians(venue.lng-p_lng)/2.0),2)))
+          <=public.discover_v2_radius_km('stays')))
+      AND public.discover_v2_stay_room_available(offering.id,NULL,NULL,1)
+  ), candidates AS (
+    SELECT kind,item_id,timezone,currency,min(distance_km) distance_km
+    FROM raw_candidates GROUP BY kind,item_id,timezone,currency
+  ), timezone_choice AS (
+    SELECT timezone,count(*) item_count,min(distance_km) nearest_km
+    FROM candidates WHERE NULLIF(timezone,'') IS NOT NULL GROUP BY timezone
+    ORDER BY item_count DESC,nearest_km ASC NULLS LAST,timezone LIMIT 1
+  ), currency_choice AS (
+    SELECT currency,count(*) item_count,min(distance_km) nearest_km
+    FROM candidates WHERE NULLIF(currency,'') IS NOT NULL GROUP BY currency
+    ORDER BY item_count DESC,nearest_km ASC NULLS LAST,currency LIMIT 1
+  )
+  SELECT jsonb_build_object(
+    'tz',COALESCE((SELECT timezone FROM timezone_choice),NULLIF(p_device_tz,''),'UTC'),
+    'tzSource',CASE WHEN EXISTS(SELECT 1 FROM timezone_choice) THEN 'supply'
+      WHEN NULLIF(p_device_tz,'') IS NOT NULL THEN 'device' ELSE 'utc' END,
+    'majorityCurrency',(SELECT currency FROM currency_choice))
+$function$;
+
+CREATE OR REPLACE FUNCTION public.discover_v2_nearest_city(p_lat double precision, p_lng double precision)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  WITH eligible AS (
+    SELECT concat_ws(', ',e.city,b.country_code) label,(e.location_geo)[1]::float8 lat,(e.location_geo)[0]::float8 lng,e.id::text item_id
+    FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
+    WHERE e.deleted_at IS NULL
+      AND public.issue_4174_explorer_brand_visible(e.brand_id) AND e.visibility='public' AND e.status IN ('scheduled','live')
+      AND e.city IS NOT NULL AND e.location_geo IS NOT NULL
+      AND EXISTS(SELECT 1 FROM public.event_dates ed WHERE ed.event_id=e.id AND ed.is_master IS TRUE AND ed.end_at>=now())
+      AND (e.event_type='event' OR (e.event_type='rsvp' AND e.rsvp_discoverable=true))
+      AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
+      AND (NOT EXISTS(SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id AND tt.available_online IS TRUE
+        AND tt.deleted_at IS NULL AND tt.is_hidden IS NOT TRUE AND tt.is_disabled IS NOT TRUE AND tt.price_cents>0)
+        OR public.pg_brand_can_collect(e.brand_id))
+      -- #3281: never point a guest at a city whose only events cannot be bought.
+      AND EXISTS(SELECT 1 FROM public.event_dates listable WHERE listable.event_id=e.id
+        AND listable.end_at>=now() AND EXISTS (SELECT 1
+          FROM public.issue_3281_explorer_date_listable_rows(e.id, listable.id)))
+    UNION ALL
+    SELECT concat_ws(', ',e.city,b.country_code),(e.location_geo)[1]::float8,(e.location_geo)[0]::float8,e.id::text
+    FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
+    WHERE public.issue_4174_explorer_brand_visible(e.brand_id)
+      AND e.event_type='trip' AND e.visibility='public' AND e.status IN ('scheduled','live') AND e.deleted_at IS NULL
+      AND e.city IS NOT NULL AND e.location_geo IS NOT NULL
+      AND COALESCE(e.bookings_closed,false)=false AND (e.booking_deadline IS NULL OR e.booking_deadline>=now())
+      AND EXISTS(SELECT 1 FROM public.event_dates ed WHERE ed.event_id=e.id AND ed.is_master IS TRUE AND ed.end_at>=now())
+      AND EXISTS(SELECT 1 FROM public.trip_pricing_tiers tpt JOIN public.ticket_types tt ON tt.id=tpt.ticket_type_id
+        WHERE tpt.event_id=e.id AND tt.deleted_at IS NULL AND COALESCE(tt.is_hidden,false)=false)
+    UNION ALL
+    SELECT concat_ws(', ',s.city,s.country_code),s.lat,s.lng,e.id::text FROM public.events e
+      JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
+      JOIN public.experience_stops s ON s.event_id=e.id
+    WHERE public.issue_4174_explorer_brand_visible(e.brand_id)
+      AND e.event_type='experience' AND e.visibility='public' AND e.status='scheduled'
+      AND e.published_at IS NOT NULL AND e.deleted_at IS NULL AND cardinality(e.experience_intents)>0
+      AND s.city IS NOT NULL AND s.lat IS NOT NULL AND s.lng IS NOT NULL
+      AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
+      AND (NOT EXISTS(SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id AND tt.available_online IS TRUE
+            AND tt.deleted_at IS NULL AND tt.is_hidden IS NOT TRUE AND tt.is_disabled IS NOT TRUE AND tt.price_cents>0)
+        OR public.pg_brand_can_collect(e.brand_id))
+      -- #3281: only an experience Discover lists: a date in the default
+      -- 120-day window, not cancelled, with a tier bookable on it (the
+      -- discover_v2_items rule).
+      AND EXISTS(SELECT 1 FROM public.event_dates ed WHERE ed.event_id=e.id
+        AND ed.end_at>now() AND ed.cancelled_at IS NULL
+        AND ed.start_at>=now() AND ed.start_at<now()+interval '120 days'
+        AND EXISTS(SELECT 1 FROM public.issue_3281_experience_date_bookable_ticket_types(e.id, ed.id)))
+    UNION ALL
+    SELECT concat_ws(', ',v.city,v.country_code),v.lat,v.lng,v.id::text FROM public.venue_public_view v
+      JOIN public.stay_settings ss ON ss.venue_id=v.id AND ss.booking_state='active'
+      JOIN public.stay_offerings so ON so.venue_id=v.id AND so.brand_id=v.brand_id AND so.status='live' AND so.kind='room'
+      JOIN public.stay_price_versions spv ON spv.offering_id=so.id AND spv.brand_id=v.brand_id
+        AND spv.venue_id=v.id AND spv.effective_to IS NULL AND spv.pricing_unit='room_night'
+      JOIN public.stay_policy_versions policy ON policy.offering_id=so.id AND policy.brand_id=v.brand_id
+        AND policy.venue_id=v.id AND policy.effective_to IS NULL
+      JOIN public.stay_offering_media media ON media.offering_id=so.id AND media.brand_id=v.brand_id
+        AND media.venue_id=v.id AND media.is_cover AND media.status='ready'
+    WHERE public.issue_4174_explorer_brand_visible(v.brand_id)
+      AND v.venue_category='stay' AND v.city IS NOT NULL AND v.lat IS NOT NULL AND v.lng IS NOT NULL
+      AND COALESCE((SELECT is_enabled FROM public.feature_flags WHERE flag_key='STAY_PUBLIC_PAGES'),false)
+      AND EXISTS(SELECT 1 FROM public.stay_room_nights night
+        WHERE night.offering_id=so.id AND night.local_date>=(now() AT TIME ZONE ss.timezone)::date
+          AND NOT night.stop_sell AND night.sellable_quantity>0)
+  ), measured AS (
+    SELECT label,lat,lng,item_id,
+      6371.0*2.0*asin(sqrt(power(sin(radians(lat-p_lat)/2.0),2)+
+        cos(radians(p_lat))*cos(radians(lat))*power(sin(radians(lng-p_lng)/2.0),2))) distance_km
+    FROM eligible WHERE label IS NOT NULL
+  ), cities AS (
+    SELECT label,(array_agg(lat ORDER BY distance_km))[1] lat,(array_agg(lng ORDER BY distance_km))[1] lng,
+      count(DISTINCT item_id) total,min(distance_km) distance_km
+    FROM measured WHERE distance_km<=500 GROUP BY label
+  ) SELECT jsonb_build_object('label',label,'lat',lat,'lng',lng,'total',total)
+    FROM cities ORDER BY distance_km,label LIMIT 1
+$function$;
+
 -- CREATE OR REPLACE keeps owner and grants; restate the readers' grants so a
 -- replay from baseline lands on the same ACL (postgres + service_role only).
-REVOKE ALL ON FUNCTION public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8) TO service_role;
+REVOKE ALL ON FUNCTION public.discover_v2_city_context(text[],float8,float8,float8,text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.discover_v2_nearest_city(float8,float8) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.discover_v2_city_context(text[],float8,float8,float8,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.discover_v2_nearest_city(float8,float8) TO service_role;
 
 DO $verify$
 DECLARE
+  v_reader regprocedure;
   v_rule regprocedure;
   v_def text;
 BEGIN
-  v_def := pg_get_functiondef('public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8)'::regprocedure);
-  IF position('issue_3281_discover_card_prices(' IN v_def) = 0
-     OR position('discover_v2_from_price_minor' IN v_def) > 0
-     OR position('issue_3281_explorer_date_listable_rows(' IN v_def) = 0 THEN
-    RAISE EXCEPTION 'issue_3281_discover_card_price: discover_v2_event_base does not price the card on its date';
-  END IF;
   v_def := pg_get_functiondef('public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)'::regprocedure);
   IF position('issue_3281_discover_card_prices(' IN v_def) = 0
      OR position('issue_3281_experience_date_bookable_ticket_types(' IN v_def) = 0
      OR position('issue_3281_explorer_date_listable_rows(' IN v_def) = 0 THEN
     RAISE EXCEPTION 'issue_3281_discover_card_price: discover_v2_items does not price cards on their date or book experiences by date';
   END IF;
+  -- The shared base stays the cheap per-event reader: no per-date pricing.
+  v_def := pg_get_functiondef('public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8)'::regprocedure);
+  IF position('issue_3281_discover_card_prices(' IN v_def) > 0 THEN
+    RAISE EXCEPTION 'issue_3281_discover_card_price: discover_v2_event_base must not price per date';
+  END IF;
+  FOREACH v_reader IN ARRAY ARRAY[
+    'public.discover_v2_city_context(text[],float8,float8,float8,text)'::regprocedure,
+    'public.discover_v2_nearest_city(float8,float8)'::regprocedure]
+  LOOP
+    v_def := pg_get_functiondef(v_reader);
+    IF position('issue_3281_experience_date_bookable_ticket_types(' IN v_def) = 0
+       OR position('public.tickets sold' IN v_def) > 0 THEN
+      RAISE EXCEPTION 'issue_3281_discover_card_price: % does not count experiences by the bookable rule', v_reader;
+    END IF;
+  END LOOP;
   -- The planner inlines a set-returning SQL function only when all of these hold.
   FOREACH v_rule IN ARRAY ARRAY[
     'public.issue_3281_experience_date_bookable_ticket_types(uuid,uuid)'::regprocedure,
