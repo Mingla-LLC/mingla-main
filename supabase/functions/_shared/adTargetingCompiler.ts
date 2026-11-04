@@ -604,7 +604,12 @@ export function compileProviderTargeting(
         `Resolve TikTok location IDs for: ${locations.missing.join(", ")}.`,
       );
     }
-    compiled.location_ids = cities.length ? locations.ids : intent.countries;
+    // #4238 live check: two places can share one TikTok id (Lagos and Abuja
+    // both accepted as all of Nigeria). TikTok refuses a repeated location
+    // id, so each id is sent once.
+    compiled.location_ids = cities.length
+      ? [...new Set(locations.ids)]
+      : intent.countries;
     if (
       intent.radiusKm != null ||
       cities.some((city) => city.radiusKm != null && placeKind(city) !== "region")

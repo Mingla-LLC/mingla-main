@@ -324,8 +324,20 @@ Deno.test("tiktokSearchCityLocations issues a FUZZY_SEARCH POST and resolves the
 // ── Source wiring — the edge fn resolves via the new endpoint, warns honestly ──
 Deno.test("admin-ad-targeting-search resolves TikTok cities via tiktokSearchCityLocations", async () => {
   const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  // #4238: the edge fn hands TikTok places to the shared tiktokResolvePlace,
+  // which owns the tool/targeting/search city call.
+  const shared = await Deno.readTextFile(
+    new URL("../../_shared/tiktok.ts", import.meta.url),
+  );
   assert(
-    src.includes("tiktokSearchCityLocations(client"),
+    src.includes("tiktokResolvePlace(client"),
+    "the TikTok city branch must resolve via the shared place lookup",
+  );
+  const resolver = shared.slice(
+    shared.indexOf("export async function tiktokResolvePlace("),
+  );
+  assert(
+    resolver.includes("tiktokSearchCityLocations(client"),
     "the TikTok city branch must resolve via tool/targeting/search",
   );
   assert(

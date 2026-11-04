@@ -1564,6 +1564,112 @@ export async function tiktokSearchCityLocations(
   });
 }
 
+/** One TikTok place answer in the targeting search's result shape. */
+export interface TikTokPlaceCandidate {
+  id: string;
+  name: string;
+  meta: Record<string, unknown>;
+}
+
+function tikTokTagCandidate(
+  tag: TikTokLocationTag,
+  level?: string,
+): TikTokPlaceCandidate {
+  return {
+    id: tag.geoId,
+    name: tag.name,
+    meta: {
+      location_id: tag.geoId,
+      region_code: tag.regionCode,
+      geo_type: tag.geoType,
+      ...(level ? { level } : { description: tag.description }),
+    },
+  };
+}
+
+/**
+ * #4238 live check (2026-11-04): the whole country as one TikTok place, by
+ * the same tool/region read and picker a whole-country campaign uses
+ * (resolveTikTokGeo), so the id is the one TikTok would get with no city at
+ * all. Null when TikTok does not offer the country (GB today): the Host is
+ * then told TikTok has no such place, never offered a country TikTok can't
+ * run in.
+ */
+export async function tiktokCountryPlace(
+  client: TikTokClient,
+  country: string,
+  objective = "TRAFFIC",
+): Promise<TikTokPlaceCandidate | null> {
+  const code = country.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return null;
+  const regions = await tiktokFetchRegions(client, { objective });
+  const picked = pickTikTokLocationIdsForCountries(regions, [code], {
+    objective,
+  });
+  if (!picked.ok) return null;
+  const id = picked.resolved[code];
+  const region = regions.find((row) => row.locationId === id);
+  return {
+    id,
+    name: region?.name ?? code,
+    meta: {
+      location_id: id,
+      region_code: code,
+      country_code: code,
+      geo_type: "COUNTRY",
+      level: "COUNTRY",
+    },
+  };
+}
+
+/**
+ * #4238: one TikTok place lookup for the targeting search. A city looks one
+ * level up (PROVINCE) when TikTok has no city; a city, region or pin with
+ * nothing at either level gets the whole country as its wider area (the
+ * matcher only uses it then). A provider error throws, so the caller marks
+ * the lookup unavailable, never "found nothing".
+ */
+export async function tiktokResolvePlace(
+  client: TikTokClient,
+  opts: { kind: "city" | "region"; q: string; country: string | null },
+): Promise<{
+  results: TikTokPlaceCandidate[];
+  wider?: TikTokPlaceCandidate[];
+  country?: TikTokPlaceCandidate;
+}> {
+  const country = opts.country ?? undefined;
+  if (opts.kind === "region") {
+    const provinces = await tiktokSearchCityLocations(client, {
+      q: opts.q,
+      country,
+      geoTypes: ["PROVINCE"],
+    });
+    const results = provinces.map((tag) => tikTokTagCandidate(tag, "PROVINCE"));
+    if (results.length > 0 || !country) return { results };
+    const whole = await tiktokCountryPlace(client, country);
+    return { results, ...(whole ? { country: whole } : {}) };
+  }
+  // ISSUE-1289: city/district/DMA via tool/targeting/search FUZZY_SEARCH.
+  const cities = await tiktokSearchCityLocations(client, {
+    q: opts.q,
+    country,
+  });
+  const results = cities.map((tag) => tikTokTagCandidate(tag));
+  if (results.length > 0) return { results };
+  // #4238 P0: TikTok often knows a Nigerian city only as its state. Look one
+  // level up so the Host can accept "Lagos State" (wider area).
+  const wider = (await tiktokSearchCityLocations(client, {
+    q: opts.q,
+    country,
+    geoTypes: ["PROVINCE"],
+  })).map((tag) => tikTokTagCandidate(tag, "PROVINCE"));
+  if (wider.length > 0 || !country) {
+    return { results, ...(wider.length > 0 ? { wider } : {}) };
+  }
+  const whole = await tiktokCountryPlace(client, country);
+  return { results, ...(whole ? { country: whole } : {}) };
+}
+
 export interface TikTokInterestCategory {
   id: string;
   name: string;
