@@ -214,9 +214,9 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     const json = renderer.toJSON();
     const text = treeText(json).replace(/\s+/g, " ").trim();
     expect(countExactText(json, "Invite people")).toBe(1);
-    // [TEST-MOD-APPROVED #3682] subtitle names Followers / Friends of followers.
+    // #3682 closeout: followers outside the Book are invitable, so the copy says "who", not "from Your Book".
     expect(text).toContain(
-      "Choose people from Your Book, followers, or friends of followers. Nothing sends until this trip is published.",
+      "Choose who to invite. Nothing sends until this trip is published.",
     );
     expect(text).toContain("Nothing sends yet");
   });
@@ -226,9 +226,9 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     const json = renderer.toJSON();
     const text = treeText(json);
     expect(countExactText(json, "Invite people")).toBe(0);
-    // [TEST-MOD-APPROVED #3682] subtitle names Followers / Friends of followers.
+    // #3682 closeout: followers outside the Book are invitable, so the copy says "who", not "from Your Book".
     expect(text).not.toContain(
-      "Choose people from Your Book, followers, or friends of followers. Nothing sends until this event is published.",
+      "Choose who to invite. Nothing sends until this event is published.",
     );
     expect(text).toContain("Nothing sends yet");
     expect(text).toContain("Saved groups");

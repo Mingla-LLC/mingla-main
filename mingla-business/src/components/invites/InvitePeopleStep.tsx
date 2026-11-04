@@ -433,7 +433,7 @@ export function InvitePeopleStep({
       {showHeader ? <>
         <Text accessibilityRole="header" style={styles.title}>Invite people</Text>
         <Text style={styles.subtitle}>
-          Choose people from Your Book, followers, or friends of followers. Nothing sends until this{" "}
+          Choose who to invite. Nothing sends until this{" "}
           {OFFERING_LABEL[eventType]} is published.
         </Text>
       </> : null}
