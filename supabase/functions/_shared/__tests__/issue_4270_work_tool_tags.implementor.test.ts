@@ -24,6 +24,13 @@ Deno.test("#4270 update_work: status person still accepted, described as a tag t
     changes: { status: "person", person_reason: "send" },
   });
   assertEquals(ok.ok, true);
+  // Taking the tag off is person_reason null with a reason; null reaches the server.
+  const off = checkArguments(tool, {
+    id: "00000000-0000-4000-8000-000000000001",
+    expected_revision: 4,
+    changes: { person_reason: null, reason: "The host sent it herself." },
+  });
+  assertEquals(off.ok, true);
 });
 
 Deno.test("#4270 close_work and push_back: never on a tagged card", () => {
