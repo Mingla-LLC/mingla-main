@@ -3819,6 +3819,9 @@ function ariPlaceKey(place: AriPlace): string {
     : base;
 }
 
+/** #4238: a wider area Ari used for one place on one app. */
+type AriWiderPick = { name: string; wholeCountry: boolean };
+
 /**
  * #4238 I-4238-PER-APP-MATCH: Ari asks each app on its own (the server's
  * one matcher, `match: true`), the same as the Host builder and Admin. A
@@ -3841,12 +3844,9 @@ export async function resolveAriTargetingRefs(
    * #4238: per app, the places whose id is a wider area Ari used, keyed by
    * place key, so the saved picks read back as accepted wider areas.
    */
-  wider: Record<string, Record<string, { name: string; wholeCountry: boolean }>>;
+  wider: Record<string, Record<string, AriWiderPick>>;
 }> {
-  const widerByPlatform: Record<
-    string,
-    Record<string, { name: string; wholeCountry: boolean }>
-  > = {};
+  const widerByPlatform: Record<string, Record<string, AriWiderPick>> = {};
   const refsByPlatform: Record<string, {
     locationIds?: Record<string, string>;
     interestIds?: Record<string, string>;
