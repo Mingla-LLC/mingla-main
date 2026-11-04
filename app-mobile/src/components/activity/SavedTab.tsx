@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from "react";
 import {
   Text,
   View,
@@ -50,13 +50,31 @@ import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
-import { extractWeekdayText } from "../../utils/openingHoursUtils";
+import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
 import { checkAllCuratedStopsOpen, type CuratedStopsAvailabilityResult } from "../../utils/curatedStopsAvailability";
 import {
   buildSingleCardNotSafeMessage,
   checkSingleCardSchedulingAvailability,
 } from "../../utils/singleCardAvailability";
-import { CardFilterBar, WhenFilter } from './CardFilterBar';
+import { SavedSearchHeader } from "./SavedSearchHeader";
+import SavedFiltersSheet from "./SavedFiltersSheet";
+import {
+  DEFAULT_SAVED_FILTERS,
+  activeSheetFilterCount,
+  applySavedFilters,
+  buildSavedFilterIndex,
+  clearSheetFilters,
+  savedCategoryOptions,
+  toggleIn,
+  type SavedBudget,
+  type SavedFilterDeps,
+  type SavedFilterState,
+  type SavedQuickType,
+  type SavedSort,
+} from "./savedFiltersModel";
+import { getCategorySlug, getReadableCategoryName } from "../../utils/categoryUtils";
+import { priceTierFromAmount } from "../../constants/priceTiers";
+import { getRates } from "../../services/currencyService";
 import {
   ENTRANCE_START_SCALE,
   getEntranceStaggerDelayMs,
@@ -89,6 +107,26 @@ import {
 } from "./savedGridModel";
 
 const EMPTY_QUICK_SLOTS: QuickSlotResult = { slots: [] };
+
+/**
+ * Issue #4265: what the Saved filter index needs from the app. Built once at
+ * module scope — the index is rebuilt only when the saved cards (or the
+ * language) change, never per keystroke.
+ */
+const SAVED_FILTER_DEPS: SavedFilterDeps = {
+  categoryLabel: getReadableCategoryName,
+  priceTierFromUsd: priceTierFromAmount,
+  toUsd: (amount, currency) => {
+    const code = currency.toUpperCase();
+    if (code === "USD") return amount;
+    // No known rate → no budget bucket (never a guessed 1:1 rate).
+    const rate = getRates()[code];
+    return typeof rate === "number" && rate > 0 ? amount / rate : null;
+  },
+  isBrandExperience: isBrandExperiencePayload,
+  categorySlug: getCategorySlug,
+  weekdayText: extractWeekdayText,
+};
 
 const hasKnownHours = (openingHours: unknown): boolean =>
   (extractWeekdayText(openingHours as Parameters<typeof extractWeekdayText>[0])?.length ?? 0) > 0;
@@ -238,10 +276,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
-  stateButtonQuiet: {
-    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? L.card.quietFillOpaque : L.card.quietFill,
+  // Issue #4265: "No likes match that" (SearchFilter.dc.html).
+  noMatchPanel: {
+    paddingTop: 70,
+    paddingHorizontal: 32,
+    alignItems: "center",
+    gap: 10,
+  },
+  noMatchTitle: {
+    color: L.textPrimary,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  noMatchBody: {
+    color: L.textBody,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  noMatchButton: {
+    marginTop: 6,
+    minHeight: 44,
+    paddingHorizontal: 20,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: L.card.quietBorder,
+    borderColor: L.filters.noMatchBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noMatchButtonText: {
+    color: L.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
 
@@ -297,7 +365,7 @@ const SavedTab = ({
   onExplore,
   onSavedCountChange,
 }: SavedTabProps) => {
-  const { t } = useTranslation(['activity', 'common']);
+  const { t, i18n } = useTranslation(['activity', 'common']);
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   // savedCards and calendarEntries now come via props from the parent chain.
   // No more useAppState() call — eliminates duplicate auth/realtime/query instances.
@@ -325,10 +393,9 @@ const SavedTab = ({
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [cardToSchedule, setCardToSchedule] = useState<SavedCard | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedWhen, setSelectedWhen] = useState<WhenFilter>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedTier, setSelectedTier] = useState<string>('all');
+  // Issue #4265: the ONE owner of Saved search + filter state.
+  const [filters, setFilters] = useState<SavedFilterState>(DEFAULT_SAVED_FILTERS);
+  const [showFiltersSheet, setShowFiltersSheet] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
@@ -399,96 +466,87 @@ const SavedTab = ({
     return ids;
   }, [calendarEntries]);
 
-  // Apply search and filter controls
-  const filteredCards = useMemo(() => {
-    const normalize = (value: string | undefined | null) =>
-      (value || "").toLowerCase();
+  // ─── Issue #4265: search + filters ─────────────────────────────────────────
 
-    const matchesSearch = (card: SavedCard) => {
-      if (!searchQuery.trim()) return true;
-      const q = normalize(searchQuery);
-      const title = normalize(card.title);
-      const category = normalize(card.category || "");
-      const sessionName = normalize(card.sessionName || "");
-      return (
-        title.includes(q) ||
-        category.includes(q) ||
-        sessionName.includes(q)
-      );
-    };
+  /**
+   * The search/filter index: every raw card is read ONCE here (lowercase
+   * haystack, kind, category, budget, distance, rating, hours). Keyed on the
+   * saved cards and the language only — typing never rebuilds it.
+   */
+  const filterIndex = useMemo(
+    () => buildSavedFilterIndex(savedCards, SAVED_FILTER_DEPS),
+    // i18n.language: the haystack carries the translated category name.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [savedCards, i18n.language],
+  );
+  const categoryOptions = useMemo(
+    () => savedCategoryOptions(filterIndex, getReadableCategoryName),
+    [filterIndex],
+  );
 
-    const getDateAdded = (card: SavedCard): Date | null => {
-      if (!card.dateAdded) return null;
-      try {
-        return new Date(card.dateAdded);
-      } catch {
-        return null;
-      }
-    };
+  // The field shows every keystroke; the grid filters on the deferred value,
+  // so a fast typist is never blocked behind a grid re-render.
+  const deferredQuery = useDeferredValue(filters.query);
 
-    const matchesWhen = (card: SavedCard) => {
-      if (selectedWhen === "all") return true;
-      const dateAdded = getDateAdded(card);
-      if (!dateAdded) return false;
-      const now = new Date();
+  const filteredCards = useMemo(
+    () =>
+      applySavedFilters(
+        filterIndex,
+        { ...filters, query: deferredQuery },
+        {
+          now: new Date(),
+          excludeIds: hiddenCardIds,
+          isOpenAt: isPlaceOpenAt,
+          isEventEnded: isSavedEventEnded,
+        },
+      ),
+    // filters.query is deliberately absent: the deferred copy drives the grid.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      filterIndex,
+      hiddenCardIds,
+      deferredQuery,
+      filters.type,
+      filters.openNow,
+      filters.sort,
+      filters.categories,
+      filters.budgets,
+    ],
+  );
 
-      const isSameDay =
-        dateAdded.getFullYear() === now.getFullYear() &&
-        dateAdded.getMonth() === now.getMonth() &&
-        dateAdded.getDate() === now.getDate();
+  const activeFilterCount = activeSheetFilterCount(filters);
 
-      if (selectedWhen === "today") return isSameDay;
-
-      if (selectedWhen === "this_week") {
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setHours(0, 0, 0, 0);
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 7);
-        return dateAdded >= startOfWeek && dateAdded < endOfWeek;
-      }
-
-      if (selectedWhen === "this_month") {
-        return (
-          dateAdded.getFullYear() === now.getFullYear() &&
-          dateAdded.getMonth() === now.getMonth()
-        );
-      }
-
-      if (selectedWhen === "upcoming") {
-        return dateAdded >= now;
-      }
-
-      return true;
-    };
-
-    const matchesCategory = (card: SavedCard) => {
-      if (selectedCategory === 'all') return true;
-      return card.category === selectedCategory;
-    };
-
-    const matchesTier = (card: SavedCard) => {
-      if (selectedTier === 'all') return true;
-      if ((card as any).cardType !== 'curated') return false;
-      return (card as any).priceTier === selectedTier;
-    };
-
-    const applyAllFilters = (card: SavedCard) =>
-      !hiddenCardIds.has(card.id) &&
-      matchesSearch(card) &&
-      matchesWhen(card) &&
-      matchesCategory(card) &&
-      matchesTier(card);
-
-    return savedCards.filter(applyAllFilters);
-  }, [
-    savedCards,
-    hiddenCardIds,
-    searchQuery,
-    selectedWhen,
-    selectedCategory,
-    selectedTier,
-  ]);
+  const handleQueryChange = useCallback(
+    (query: string) => setFilters((prev) => ({ ...prev, query })),
+    [],
+  );
+  const handleTypeChange = useCallback(
+    (type: SavedQuickType) => setFilters((prev) => ({ ...prev, type })),
+    [],
+  );
+  const handleToggleOpenNow = useCallback(
+    () => setFilters((prev) => ({ ...prev, openNow: !prev.openNow })),
+    [],
+  );
+  const handleOpenFilters = useCallback(() => setShowFiltersSheet(true), []);
+  const handleCloseFilters = useCallback(() => setShowFiltersSheet(false), []);
+  const handleSortChange = useCallback(
+    (sort: SavedSort) => setFilters((prev) => ({ ...prev, sort })),
+    [],
+  );
+  const handleToggleCategory = useCallback(
+    (slug: string) => setFilters((prev) => ({ ...prev, categories: toggleIn(prev.categories, slug) })),
+    [],
+  );
+  const handleToggleBudget = useCallback(
+    (budget: SavedBudget) => setFilters((prev) => ({ ...prev, budgets: toggleIn(prev.budgets, budget) })),
+    [],
+  );
+  const handleClearSheetFilters = useCallback(
+    () => setFilters((prev) => clearSheetFilters(prev)),
+    [],
+  );
+  const handleClearAll = useCallback(() => setFilters(DEFAULT_SAVED_FILTERS), []);
 
   /**
    * Issue #1636 — bounded, once-per-card entrance.
@@ -1480,30 +1538,24 @@ const SavedTab = ({
       );
     }
 
-    // Filters active but no matches — different from truly empty
-    if (savedCards.length > 0) {
+    // Search / filters on but nothing matches — different from truly empty.
+    if (visibleSavedCount > 0) {
       return (
-        <View style={styles.statePanel}>
-          <View style={styles.stateIconCircle}>
-            <Icon name="filter-outline" size={30} color={L.accent} />
-          </View>
-          <Text style={styles.stateTitle} accessibilityRole="header">
-            {t('activity:savedTab.noMatchesTitle')}
+        <View style={styles.noMatchPanel}>
+          <Text style={styles.noMatchTitle} accessibilityRole="header">
+            {t('activity:savedFilters.noMatchTitle')}
           </Text>
-          <Text style={styles.stateBody}>{t('activity:savedTab.noMatchesSubtitle')}</Text>
+          <Text style={styles.noMatchBody}>{t('activity:savedFilters.noMatchBody')}</Text>
           <TouchableOpacity
-            style={[styles.stateButton, styles.stateButtonQuiet]}
+            style={styles.noMatchButton}
             onPress={() => {
               HapticFeedback.light();
-              setSearchQuery('');
-              setSelectedWhen('all');
-              setSelectedCategory('all');
-              setSelectedTier('all');
+              handleClearAll();
             }}
             activeOpacity={0.8}
             accessibilityRole="button"
           >
-            <Text style={styles.stateButtonText}>{t('activity:savedTab.clearFilters')}</Text>
+            <Text style={styles.noMatchButtonText}>{t('activity:savedFilters.clearAll')}</Text>
           </TouchableOpacity>
         </View>
       );
@@ -1553,25 +1605,29 @@ const SavedTab = ({
           },
         ]}
       >
-        <CardFilterBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          selectedWhen={selectedWhen}
-          onWhenChange={setSelectedWhen}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-          selectedTier={selectedTier}
-          onTierChange={setSelectedTier}
+        <SavedSearchHeader
+          query={filters.query}
+          onQueryChange={handleQueryChange}
+          type={filters.type}
+          onTypeChange={handleTypeChange}
+          openNow={filters.openNow}
+          onToggleOpenNow={handleToggleOpenNow}
+          activeCount={activeFilterCount}
+          onOpenFilters={handleOpenFilters}
         />
       </Animated.View>
     ),
     [
       searchBarOpacity,
       searchBarSlide,
-      searchQuery,
-      selectedWhen,
-      selectedCategory,
-      selectedTier,
+      filters.query,
+      filters.type,
+      filters.openNow,
+      activeFilterCount,
+      handleQueryChange,
+      handleTypeChange,
+      handleToggleOpenNow,
+      handleOpenFilters,
     ],
   );
 
@@ -1580,7 +1636,7 @@ const SavedTab = ({
   const listEmpty = useMemo(
     () => renderEmptyComponent(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [effectiveIsLoading, isError, onRetry, onExplore, savedCards.length, cardWidth, reduceMotion, t],
+    [effectiveIsLoading, isError, onRetry, onExplore, visibleSavedCount, cardWidth, reduceMotion, t, handleClearAll],
   );
 
   // The keyboard spacer that used to be the ScrollView's last child.
@@ -1617,6 +1673,23 @@ const SavedTab = ({
             (cardToSchedule as any).stops.length > 0
           )
         }
+      />
+
+      {/* Issue #4265: Filters sheet — edits apply live; the footer shows the real count */}
+      <SavedFiltersSheet
+        visible={showFiltersSheet}
+        onClose={handleCloseFilters}
+        sort={filters.sort}
+        categories={filters.categories}
+        budgets={filters.budgets}
+        openNow={filters.openNow}
+        categoryOptions={categoryOptions}
+        resultCount={filteredCards.length}
+        onSortChange={handleSortChange}
+        onToggleCategory={handleToggleCategory}
+        onToggleBudget={handleToggleBudget}
+        onToggleOpenNow={handleToggleOpenNow}
+        onClear={handleClearSheetFilters}
       />
 
       {/* Issue #4265: long-press menu */}

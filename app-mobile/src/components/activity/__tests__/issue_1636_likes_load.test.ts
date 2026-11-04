@@ -388,7 +388,8 @@ describe("C. Saved list virtualisation contract", () => {
 
   test("C-3 filter bar, empty state, refresh and keyboard behaviour all survive", () => {
     assert.match(saved, /ListHeaderComponent=\{listHeader\}/, "filter bar is the list header");
-    assert.match(saved, /<CardFilterBar/, "filter bar still rendered");
+    // Issue #4265: the dark search header replaced the light CardFilterBar.
+    assert.match(saved, /<SavedSearchHeader/, "search header still rendered");
     assert.match(saved, /ListEmptyComponent=\{listEmpty\}/, "empty state preserved");
     assert.match(saved, /const listEmpty = useMemo\(\s*\(\) => renderEmptyComponent\(\)/);
     assert.match(saved, /refreshControl=\{<RefreshControl/, "pull-to-refresh preserved");
@@ -402,7 +403,7 @@ describe("C. Saved list virtualisation contract", () => {
     for (const key of [
       "savedTab.loadingSaved",
       "savedTab.errorTitle",
-      "savedTab.noMatchesTitle",
+      "savedFilters.noMatchTitle",
       "savedTab.emptyTitle",
     ]) {
       assert.ok(saved.includes(key), `empty-state branch ${key} was dropped`);

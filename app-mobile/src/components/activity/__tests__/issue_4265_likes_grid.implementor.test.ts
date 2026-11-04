@@ -206,7 +206,8 @@ Deno.test("#4265 heart remove waits out the Undo window; Undo restores", () => {
 
 Deno.test("#4265 the tab hides, toasts Undo, and restores through the controller", async () => {
   const tab = stripComments(await read("src/components/activity/SavedTab.tsx"));
-  assert(/!hiddenCardIds\.has\(card\.id\) &&/.test(tab), "a hearted card leaves the grid at once");
+  // Saved filters (#4265) apply the Undo-pending exclusion inside the one filter pass.
+  assert(/excludeIds: hiddenCardIds,/.test(tab), "a hearted card leaves the grid at once");
   assert(/pendingRemovalsRef\.current\.schedule\(card\.id, card\)/.test(tab));
   assert(/label: t\('common:undo'\)/.test(tab), "the toast carries Undo");
   assert(/if \(pendingRemovalsRef\.current\.undo\(card\.id\)\) \{[\s\S]*?unhideCard\(card\.id\);/.test(tab), "Undo puts it back");
