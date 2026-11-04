@@ -1,5 +1,5 @@
 -- #3281 the Explorer listing rule gives the same answer as before, fast.
--- MINGLA-INVARIANT: I-3281-EXPLORER-LISTING-RULE-INLINED | issue #3281 | The Explorer listing rule lives once, in the inlinable SQL set functions issue_3281_buyable_ticket_dates and issue_3281_explorer_listable_dates (LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET, not STRICT); discover_v2_event_base, discover_v2_items and discover_v2_nearest_city read them, the planner inlines them, issue_3313_event_day_choice runs at most once per event and issue_3313_ticket_type_occurrence_taken only for capped tiers counted per date. Answers equal the 20280320003281 helpers.
+-- MINGLA-INVARIANT: I-3281-EXPLORER-LISTING-RULE-INLINED | issue #3281 | The per-event sets issue_3281_buyable_ticket_dates and issue_3281_explorer_listable_dates stay inlinable SQL (LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET, not STRICT) and answer as the 20280320003281 helpers did; since 20280327003281 they answer from the per-date rule functions the readers ask (I-3281-EXPLORER-LISTING-PER-DATE), issue_3313_event_day_choice runs at most once per date asked about and issue_3313_ticket_type_occurrence_taken only for capped tiers counted per date.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -295,19 +295,21 @@ BEGIN
       AND has_function_privilege('service_role','public.issue_3281_explorer_listable_dates(uuid)','EXECUTE'),
     '(b) only service_role (and the owner) may execute the rule');
 
-  -- (b) issue_3313_event_day_choice runs at most once for an event, not once per
+  -- (b) issue_3313_event_day_choice runs at most once per date, not once per
   -- tier per date: the pool event has three capped tiers on four dates.
+  -- (20280327003281 asks the rule per date, so the bound is the four dates,
+  -- no longer one per event.)
   PERFORM pg_temp.t3281f_reset_counts();
   PERFORM pg_temp.t3281f_base_start('#3281F City 7',v_pool);
   v_calls := pg_temp.t3281f_count('day_choice_calls');
-  PERFORM pg_temp.t3281f_assert(v_calls BETWEEN 0 AND 1,
-    format('(b) the Discover base asked issue_3313_event_day_choice %s times for one event', v_calls));
+  PERFORM pg_temp.t3281f_assert(v_calls BETWEEN 0 AND 4,
+    format('(b) the Discover base asked issue_3313_event_day_choice %s times for one event on four dates', v_calls));
   PERFORM pg_temp.t3281f_assert(pg_temp.t3281f_count('taken_calls') = 0,
     '(b) a shared-pool event never runs the per-night counter');
   PERFORM pg_temp.t3281f_reset_counts();
   PERFORM count(*) FROM public.issue_3281_explorer_listable_dates(v_pool);
-  PERFORM pg_temp.t3281f_assert(pg_temp.t3281f_count('day_choice_calls') <= 1,
-    format('(b) the listing rule asked issue_3313_event_day_choice %s times for one event',
+  PERFORM pg_temp.t3281f_assert(pg_temp.t3281f_count('day_choice_calls') <= 4,
+    format('(b) the listing rule asked issue_3313_event_day_choice %s times for one event on four dates',
       pg_temp.t3281f_count('day_choice_calls')));
   -- An event with no capped tier never needs the answer.
   PERFORM pg_temp.t3281f_reset_counts();
