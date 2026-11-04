@@ -112,6 +112,10 @@ export function fakeStripe(overrides: {
           calls.push({ method: "paymentIntents.create", params, options });
           return Promise.resolve({ id: "pi_door1", client_secret: "pi_door1_secret_x" });
         },
+        cancel: (id: string, params: unknown, options: unknown) => {
+          calls.push({ method: "paymentIntents.cancel", params: { id, params }, options });
+          return Promise.resolve({ id, status: "canceled" });
+        },
         retrieve: (id: string, params: unknown, options: unknown) => {
           calls.push({ method: "paymentIntents.retrieve", params: { id, params }, options });
           return Promise.resolve(

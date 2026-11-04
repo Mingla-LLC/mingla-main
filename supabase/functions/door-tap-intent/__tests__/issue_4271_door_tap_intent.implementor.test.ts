@@ -214,6 +214,38 @@ Deno.test("#4271 tap complete records a succeeded payment", async () => {
   assertEquals(retrieve.options, { stripeAccount: "acct_door1" });
 });
 
+Deno.test("#4271 tap location creates the brand's Location before the first sale", async () => {
+  const db = makeDb();
+  const stripe = fakeStripe();
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
+  })(post({ action: "location", eventId: EVENT }));
+  assertEquals(await res.json(), { locationId: "tml_door1" });
+  assertEquals(db.opsOn("brand_terminal_locations", "upsert").length, 1);
+});
+
+Deno.test("#4271 tap cancel cancels an unpaid PaymentIntent and refuses a paid one", async () => {
+  const unpaid = makeDb({ intentRow: { ...INTENT_ROW, status: "created", order_id: null } });
+  const stripe = fakeStripe({ retrievePi: (id) => ({ id, status: "requires_payment_method" }) });
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => unpaid, userIdFromAuthHeader: auth, stripe: () => stripe.client,
+  })(post({ action: "cancel", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals(await res.json(), { status: "cancelled" });
+  const cancel = stripe.calls.find((c) => c.method === "paymentIntents.cancel")!;
+  assertEquals(cancel.options, {
+    stripeAccount: "acct_door1", idempotencyKey: `door_tap_cancel:${REQ}`,
+  });
+
+  const paidStripe = fakeStripe({ retrievePi: (id) => ({ id, status: "succeeded" }) });
+  const paid = await createDoorTapIntentHandler({
+    serviceClient: () => makeDb({ intentRow: { ...INTENT_ROW, status: "created", order_id: null } }),
+    userIdFromAuthHeader: auth, stripe: () => paidStripe.client,
+  })(post({ action: "cancel", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals(paid.status, 409);
+  assertEquals((await paid.json()).error, "payment_succeeded");
+  assert(!paidStripe.calls.some((c) => c.method === "paymentIntents.cancel"));
+});
+
 Deno.test("#4271 connection token is made on the connected account at a stored Location", async () => {
   const db = makeDb({ storedLocation: "tml_saved" });
   const stripe = fakeStripe();

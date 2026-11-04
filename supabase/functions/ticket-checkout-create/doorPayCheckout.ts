@@ -74,6 +74,22 @@ export async function resolveDoorPayCheckout(
   if (status !== "open" && status !== "opened") {
     return { ok: false, status: 409, body: { error: "door_code_unavailable", status } };
   }
+  // A browser that names an event must name this code's event.
+  if (
+    body.eventId !== undefined && body.eventId !== null &&
+    body.eventId !== row.event_id
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      body: { error: "door_code_unavailable", status: "not_found" },
+    };
+  }
+  // Purchase terms: the guest ticks the same consent box as online checkout.
+  const buyer = (body.buyer ?? {}) as Record<string, unknown>;
+  if (body.purchaseTermsAccepted !== true && buyer.termsAccepted !== true) {
+    return { ok: false, status: 400, body: { error: "purchase_terms_required" } };
+  }
   const rebuilt: Record<string, unknown> = {};
   for (const key of GUEST_FIELDS) {
     if (body[key] !== undefined) rebuilt[key] = body[key];
@@ -88,6 +104,7 @@ export async function resolveDoorPayCheckout(
       quantity: line.quantity,
     }),
   );
+  rebuilt.purchaseTermsAccepted = true;
   rebuilt.surface = "web";
   rebuilt.mode = "create";
   rebuilt.doorCode = row.code;

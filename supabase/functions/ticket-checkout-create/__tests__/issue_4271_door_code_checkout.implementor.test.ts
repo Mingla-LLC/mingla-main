@@ -44,7 +44,7 @@ const OPEN_ROW = {
 Deno.test("#4271 a door code rebuilds the checkout from the code alone", async () => {
   const result = await resolveDoorPayCheckout(dbWith(OPEN_ROW), {
     doorCode: "abcd2345",
-    eventId: "someone-elses-event",
+    eventId: EVENT,
     lines: [{ ticketTypeId: "cheap-tier", quantity: 9 }],
     surface: "native",
     discountCode: "FREE100",
@@ -80,6 +80,31 @@ Deno.test("#4271 a paid, cancelled or expired code refuses a checkout", async ()
     if (result.ok) return;
     assertEquals(result.status, 409);
     assertEquals(result.body, { error: "door_code_unavailable", status });
+  }
+});
+
+Deno.test("#4271 a door checkout names this code's event and needs the terms box", async () => {
+  const buyer = { name: "G", email: "g@example.test", phone: "+12025550101" };
+  const wrongEvent = await resolveDoorPayCheckout(dbWith(OPEN_ROW), {
+    doorCode: "ABCD2345", eventId: "42710000-0000-4000-8000-0000000000ff",
+    buyer, purchaseTermsAccepted: true,
+  }, NOW);
+  assert(!wrongEvent.ok);
+  if (!wrongEvent.ok) {
+    assertEquals(wrongEvent.status, 409);
+    assertEquals(wrongEvent.body, { error: "door_code_unavailable", status: "not_found" });
+  }
+  const noTerms = await resolveDoorPayCheckout(dbWith(OPEN_ROW), { doorCode: "ABCD2345", buyer }, NOW);
+  assert(!noTerms.ok);
+  if (!noTerms.ok) assertEquals(noTerms.body, { error: "purchase_terms_required" });
+  // The guest page sends the box inside buyer and no eventId.
+  const guestPage = await resolveDoorPayCheckout(dbWith(OPEN_ROW), {
+    doorCode: "ABCD2345", buyer: { ...buyer, termsAccepted: true },
+  }, NOW);
+  assert(guestPage.ok);
+  if (guestPage.ok) {
+    assertEquals(guestPage.body.eventId, EVENT);
+    assertEquals(guestPage.body.purchaseTermsAccepted, true);
   }
 });
 

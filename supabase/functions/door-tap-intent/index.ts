@@ -209,6 +209,104 @@ async function handleCreate(
   });
 }
 
+/**
+ * Setup step: connect the phone's reader before the first sale. Creates or
+ * reuses the brand's Terminal Location for its country.
+ */
+async function handleLocation(
+  body: Body,
+  actorId: string,
+  deps: DoorTapIntentDeps,
+): Promise<Response> {
+  const eventId = body.eventId;
+  if (!isUuid(eventId)) return jsonResponse({ error: "invalid_request" }, 400);
+  const supabase = deps.serviceClient();
+  if (!(await canTakeDoorPayment(supabase, eventId, actorId))) {
+    return jsonResponse({ error: "door_access_denied" }, 400);
+  }
+  const tap = await loadTapContext(supabase, eventId);
+  if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+  const pricing = await loadDoorPricing(supabase, eventId);
+  if (pricing === null || pricing.stripeAccountId === null) {
+    return jsonResponse({ error: "stripe_account_not_ready" }, 400);
+  }
+  const address = terminalAddressFor({
+    venueTaxAddress: pricing.venueTaxAddress,
+    brandAddress: tap.brandAddress,
+    brandCity: tap.brandCity,
+    country: tap.country,
+  });
+  if (address === null) {
+    return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
+  }
+  const locationId = await ensureTerminalLocation(supabase, deps.stripe(), {
+    brandId: tap.brandId,
+    brandName: tap.brandName,
+    stripeAccountId: pricing.stripeAccountId,
+    country: tap.country,
+    address,
+  });
+  return jsonResponse({ locationId });
+}
+
+/**
+ * The host switched to a pay code instead: cancel the unpaid PaymentIntent on
+ * the connected account. Idempotent; a succeeded payment is never cancelled.
+ *   https://docs.stripe.com/api/payment_intents/cancel
+ */
+async function handleCancel(
+  body: Body,
+  actorId: string,
+  deps: DoorTapIntentDeps,
+): Promise<Response> {
+  const paymentIntentId = body.paymentIntentId;
+  if (
+    typeof paymentIntentId !== "string" || !/^pi_[A-Za-z0-9]+$/.test(paymentIntentId) ||
+    !isUuid(body.clientRequestId)
+  ) {
+    return jsonResponse({ error: "invalid_request" }, 400);
+  }
+  const supabase = deps.serviceClient();
+  const { data: intent, error } = await supabase
+    .from("door_tap_intents")
+    .select("id, event_id, client_request_id, stripe_account_id, status, order_id")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+  if (error) return jsonResponse({ error: "server_error" }, 500);
+  if (!intent || intent.client_request_id !== body.clientRequestId) {
+    return jsonResponse({ error: "not_found" }, 404);
+  }
+  if (!(await canTakeDoorPayment(supabase, intent.event_id, actorId))) {
+    return jsonResponse({ error: "door_access_denied" }, 400);
+  }
+  if (intent.order_id || intent.status === "recorded") {
+    return jsonResponse({ error: "payment_succeeded" }, 409);
+  }
+  const stripe = deps.stripe();
+  // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+  // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+  const pi = await stripe.paymentIntents.retrieve(
+    paymentIntentId,
+    {},
+    { stripeAccount: intent.stripe_account_id },
+  );
+  if (pi?.status === "succeeded") {
+    return jsonResponse({ error: "payment_succeeded" }, 409);
+  }
+  if (pi?.status !== "canceled") {
+    // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+    await stripe.paymentIntents.cancel(paymentIntentId, {}, {
+      stripeAccount: intent.stripe_account_id,
+      idempotencyKey: `door_tap_cancel:${body.clientRequestId}`,
+    });
+  }
+  await supabase.from("door_tap_intents")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("id", intent.id)
+    .is("order_id", null);
+  return jsonResponse({ status: "cancelled" });
+}
+
 /** The card brand and last four of a succeeded card_present charge. */
 export function cardPresentDetails(
   // deno-lint-ignore no-explicit-any
@@ -316,6 +414,10 @@ export const createDoorTapIntentHandler = (
         return await handleCreate(body, actorId, deps);
       case "complete":
         return await handleComplete(body, actorId, deps);
+      case "location":
+        return await handleLocation(body, actorId, deps);
+      case "cancel":
+        return await handleCancel(body, actorId, deps);
       default:
         return jsonResponse({ error: "invalid_request" }, 400);
     }

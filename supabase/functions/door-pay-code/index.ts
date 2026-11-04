@@ -195,6 +195,8 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
   // No buyer data of any kind leaves this public read.
   return jsonResponse({
     status,
+    eventId: row.event_id,
+    eventDateId: row.event_date_id ?? null,
     eventName: event?.title ?? "",
     eventStartsAt: startsAt,
     venueLabel: venue,

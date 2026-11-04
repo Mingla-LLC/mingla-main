@@ -177,6 +177,8 @@ Deno.test("#4271 view is public, opens the code and carries no buyer data", asyn
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.status, "opened");
+  assertEquals(body.eventId, EVENT);
+  assertEquals(body.eventDateId, null);
   assertEquals(body.eventName, "Door night");
   assertEquals(body.venueLabel, "The Hall");
   assertEquals(body.brandName, "Brand");
