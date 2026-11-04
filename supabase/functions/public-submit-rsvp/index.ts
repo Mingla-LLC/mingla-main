@@ -25,6 +25,10 @@ import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { deriveRsvpRecoveryToken, sha256Hex } from "../_shared/rsvpPass.ts";
 import { mintClaimLink } from "../_shared/claimLink.ts";
+import {
+  autoFollowBrandBestEffort,
+  rsvpStatusAutoFollows,
+} from "../_shared/autoFollowBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -466,6 +470,41 @@ serve(async (req: Request): Promise<Response> => {
   const claim = passEligible && typeof result.rsvpId === "string"
     ? await mintClaimLink(admin, "rsvp", result.rsvpId)
     : null;
+
+  // #3682 — a signed-in guest who RSVPs follows the brand. Claimed by
+  // (rsvp, rsvpId) so a replay never re-follows someone who unfollowed.
+  // Bounded (1.5 s) and fail-open: the RSVP is already committed.
+  if (
+    userId !== null && typeof result.rsvpId === "string" &&
+    rsvpStatusAutoFollows(result.status ?? rsvpStatus)
+  ) {
+    try {
+      const { data: followEvent, error: followEventErr } = await admin
+        .from("events")
+        .select("brand_id")
+        .eq("id", eventId)
+        .maybeSingle();
+      if (followEventErr !== null) {
+        console.error(
+          "[public-submit-rsvp] auto-follow brand lookup failed (non-fatal)",
+          followEventErr.message,
+        );
+      } else {
+        await autoFollowBrandBestEffort(admin, {
+          userId,
+          brandId: (followEvent?.brand_id as string | null | undefined) ?? null,
+          source: "rsvp",
+          sourceKind: "rsvp",
+          sourceId: result.rsvpId,
+        });
+      }
+    } catch (err) {
+      console.error(
+        "[public-submit-rsvp] auto-follow failed (non-fatal)",
+        String(err),
+      );
+    }
+  }
 
   if (typeof result.rsvpId === "string") {
     // Drain the acknowledgement rows as well as pass rows. Delivery remains

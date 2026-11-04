@@ -181,7 +181,8 @@ Deno.test("create-campaign consumes cities + interests for Meta and TikTok", asy
   // tester P1: the Meta geo assembly MUST use buildMetaGeoLocations (city drops
   // country) — never the old `{ countries, cities: metaCities }` union.
   assert(
-    src.includes("geo_locations: buildMetaGeoLocations(countries, metaCities)"),
+    // #4238: regions and pins ride a third argument (they replace the country too).
+    src.includes("geo_locations: buildMetaGeoLocations(countries, metaCities"),
     "Meta geo_locations must drop countries when a city is chosen (no union)",
   );
   assert(

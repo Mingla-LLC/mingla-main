@@ -48,6 +48,7 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { mintClaimLink } from "../_shared/claimLink.ts";
+import { autoFollowReservationBestEffort } from "../_shared/autoFollowBrand.ts";
 
 async function reservationClaim(
   client: ReturnType<typeof serviceClient>,
@@ -418,6 +419,10 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     );
     return jsonResponse({ error: "reservation_create_failed" }, 409);
   }
+
+  // #3682 — signed-in booker follows the brand. Bounded (1.5 s), fail-open,
+  // claimed by reservation id so a confirm/webhook replay is a no-op.
+  await autoFollowReservationBestEffort(supabase, reservationRow);
 
   // ISSUE-865 WP-B — ad-conversion CAPI send for a confirmed venue reservation.
   // FIRE-AND-FORGET (NOT awaited) so the guest's confirmation is never delayed

@@ -48,6 +48,9 @@ import type {
   NotificationChannel,
 } from "./notificationPrefsMatrix";
 import { BrandsYouFollowManageSheet } from "./BrandsYouFollowManageSheet";
+// #3682 wave 3 (#1782) — Friends of followers opt-in (default off).
+import { useFriendsReach } from "../../hooks/useFriendsReach";
+import { FRIENDS_REACH_LABEL, friendsReachHint } from "./friendsReachCopy";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -106,6 +109,17 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   };
   const insets = useSafeAreaInsets();
   const profile = useAppStore((s) => s.profile);
+  const authUserId = useAppStore((s) => s.user?.id ?? null);
+  // Shown only when the server says this build's controls switch is live, so
+  // the store build can carry it dark.
+  const friendsReach = useFriendsReach(authUserId, visible);
+  const friendsReachOn = friendsReach.state?.extendedEnabled === true;
+  const handleToggleFriendsReach = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void friendsReach.setEnabled(!friendsReachOn).catch(() => {
+      Alert.alert(t('common:error'), t('settings:error_update'));
+    });
+  }, [friendsReach, friendsReachOn, t]);
 
   // Field states
   const [birthday, setBirthday] = useState<string | null>(profile?.birthday || null);
@@ -849,6 +863,26 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
+
+              {friendsReach.controlsLive ? (
+                <>
+                  <View style={styles.rowDivider} />
+                  <View
+                    style={[styles.row, styles.rowMultiline]}
+                    testID="settings-friends-reach-row"
+                  >
+                    <View style={styles.rowLabelWrap}>
+                      <Text style={styles.rowLabel}>{FRIENDS_REACH_LABEL}</Text>
+                      <Text style={styles.rowHint}>{friendsReachHint(friendsReachOn)}</Text>
+                    </View>
+                    {friendsReach.isSaving ? (
+                      <ActivityIndicator size="small" color="#eb7825" />
+                    ) : (
+                      <Toggle value={friendsReachOn} onToggle={handleToggleFriendsReach} />
+                    )}
+                  </View>
+                </>
+              ) : null}
 
               <View style={styles.rowDivider} />
 

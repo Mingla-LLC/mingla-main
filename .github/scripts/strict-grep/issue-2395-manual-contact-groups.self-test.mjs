@@ -19,7 +19,7 @@ const tracked = [
   "supabase/functions/marketing-send/index.ts",
   "supabase/functions/marketing-send/issue_2395_manual_contact_groups.happy.test.ts",
   "mingla-business/src/services/marketing/manualGroupService.ts",
-  "mingla-business/src/services/marketing/marketingCampaignService.ts",
+  "mingla-business/src/services/marketing/marketingBookSendService.ts",
   "mingla-business/src/hooks/marketing/useManualGroups.ts",
   "mingla-business/src/services/marketing/__tests__/issue_2395_manual_group_service.happy.test.ts",
   "mingla-business/src/components/people/ManualGroupFlow.tsx",

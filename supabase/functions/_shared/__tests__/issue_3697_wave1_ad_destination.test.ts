@@ -90,7 +90,8 @@ Deno.test("A4-5: resolveAdDestination maps trip → /t/ and experience → /exp/
       slug: "desert-run",
       status: "scheduled",
       event_type: "trip",
-      master_start_at: future,
+      next_start_at: future,
+      upcoming_count: 1,
     }]),
     { page_type: "trip", brand_slug: "acme", entity_slug: "desert-run" },
   );
@@ -104,7 +105,8 @@ Deno.test("A4-5: resolveAdDestination maps trip → /t/ and experience → /exp/
       slug: "pottery",
       status: "scheduled",
       event_type: "experience",
-      master_start_at: future,
+      next_start_at: future,
+      upcoming_count: 1,
     }]),
     {
       page_type: "experience",
@@ -115,8 +117,9 @@ Deno.test("A4-5: resolveAdDestination maps trip → /t/ and experience → /exp/
   assertEquals(exp.canonical_url, "https://host.usemingla.com/exp/acme/pottery");
 });
 
-Deno.test("A4-4: past master_start_at is rejected server-side", async () => {
-  const past = new Date(Date.now() - 3600000).toISOString();
+// #4238: A4-4 restated. A series ends when no bookable date is left, never
+// when its first (master) date passes.
+Deno.test("A4-4 (#4238): no bookable date left is rejected server-side", async () => {
   await assertRejects(
     () =>
       resolveAdDestination(
@@ -127,7 +130,8 @@ Deno.test("A4-4: past master_start_at is rejected server-side", async () => {
           slug: "yesterday",
           status: "scheduled",
           event_type: "event",
-          master_start_at: past,
+          next_start_at: null,
+          upcoming_count: 0,
         }]),
         { page_type: "event", brand_slug: "acme", entity_slug: "yesterday" },
       ),

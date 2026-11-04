@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3682_account_invite_recipients.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3682-account-invite-recipients-pg-happy",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

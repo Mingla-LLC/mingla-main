@@ -726,9 +726,62 @@ export async function searchTargeting({
   q,
   country,
   lane = "consumer",
+  match = false,
 }) {
   return invokeWithRefresh("admin-ad-targeting-search", {
-    body: { platform, kind, q, lane, ...(country ? { country } : {}) },
+    body: {
+      platform,
+      kind,
+      q,
+      lane,
+      ...(country ? { country } : {}),
+      // #4238: the server's one per-app matcher (same as Host and Ari).
+      ...(match ? { match: true } : {}),
+    },
+  });
+}
+
+/**
+ * #4238 I-4238-PER-APP-MATCH: one app's own answer from a `match: true`
+ * search — its best match, else its wider area (flagged), else nothing.
+ * An app error is "unchecked", never "not found".
+ */
+export function pickTargetingMatch(data) {
+  if (!data || data.unavailable === true) return { state: "unchecked" };
+  const match = data.match ?? {};
+  if (match.state === "match" && match.best?.id) {
+    return { state: "match", id: String(match.best.id), name: String(match.best.name ?? ""), meta: match.best.meta ?? {} };
+  }
+  if (match.state === "wider" && match.wider?.id) {
+    return { state: "wider", id: String(match.wider.id), name: String(match.wider.name ?? ""), meta: match.wider.meta ?? {} };
+  }
+  return { state: "none" };
+}
+
+/** #4238: staff mark whether an ad app runs in a country. */
+export async function setAdPlatformCountry({ platform, country, status, reason }) {
+  return supabase.rpc("admin_set_ad_platform_country", {
+    p_platform: platform,
+    p_country_code: country,
+    p_status: status,
+    p_reason: reason ?? null,
+  });
+}
+
+/** #4238: the staff table of apps marked as not running in a country. */
+export async function listAdPlatformCountries() {
+  return supabase
+    .from("ad_platform_country_availability")
+    .select("platform,country_code,status,reason,updated_at")
+    .order("platform")
+    .order("country_code");
+}
+
+/** #4238: switch Host reach estimates on or off for one app. */
+export async function setAdReachEstimates({ platform, enabled }) {
+  return supabase.rpc("admin_set_ad_reach_estimates", {
+    p_platform: platform,
+    p_enabled: enabled,
   });
 }
 

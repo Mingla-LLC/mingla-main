@@ -205,16 +205,28 @@
         "mingla-business/app/(tabs)/marketing/ads/create.tsx",
         "mingla-business/app/(tabs)/marketing/ads/index.tsx",
         "mingla-business/src/components/marketing/ads/HostAdAudiencePicker.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdBudgetPanel.tsx",
         "mingla-business/src/components/marketing/ads/HostAdCountryPicker.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdCreativeExtras.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdInterestsEditor.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdLiveEditCard.tsx",
         "mingla-business/src/components/marketing/ads/HostAdPagePicker.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdPlacesEditor.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdReachMeter.tsx",
+        "mingla-business/src/components/marketing/ads/hostAdAlerts.ts",
+        "mingla-business/src/components/marketing/ads/hostAdBudget.ts",
         "mingla-business/src/components/marketing/ads/hostAdBuilderRules.ts",
+        "mingla-business/src/components/marketing/ads/hostAdBuilderStyles.ts",
         "mingla-business/src/components/marketing/ads/hostAdCopy.ts",
         "mingla-business/src/components/marketing/ads/hostAdCountries.ts",
+        "mingla-business/src/components/marketing/ads/hostAdCreativeRules.ts",
         "mingla-business/src/components/marketing/ads/hostAdGoal.ts",
         "mingla-business/src/components/marketing/ads/hostAdMoney.ts",
         "mingla-business/src/components/marketing/ads/hostAdPageLabels.ts",
+        "mingla-business/src/components/marketing/ads/hostAdPreviewStyles.ts",
         "mingla-business/src/components/marketing/ads/hostAdSetupCache.ts",
         "mingla-business/src/components/marketing/ads/hostAdSetupCopy.ts",
+        "mingla-business/src/components/marketing/ads/hostAdTargeting.ts",
         "mingla-business/src/components/marketing/ads/results/AdFunnelRow.tsx",
         "mingla-business/src/components/marketing/ads/results/AdListSummaryCard.tsx",
         "mingla-business/src/components/marketing/ads/results/AdPlatformSplit.tsx",
@@ -245,14 +257,27 @@
         "supabase/functions/_shared/adCreativePreparationPlan.ts",
         "supabase/functions/_shared/adDatabaseErrorDetail.ts",
         "supabase/functions/_shared/adDestination.ts",
+        "supabase/functions/_shared/adHostCreative.ts",
         "supabase/functions/_shared/adHostGoal.ts",
+        "supabase/functions/_shared/adHostLiveEdit.ts",
+        "supabase/functions/_shared/adHostPlanRules.ts",
         "supabase/functions/_shared/adListAudienceRules.ts",
         "supabase/functions/_shared/adMoneyFormat.ts",
         "supabase/functions/_shared/adSalesReadiness.ts",
+        "supabase/functions/_shared/adScheduleBound.ts",
+        "supabase/functions/_shared/adTargetingMatch.ts",
         "supabase/functions/_shared/hostAdCampaignList.ts",
         "supabase/functions/ad-plan/index.ts",
         "supabase/functions/admin-ad-targeting-search/index.ts",
-        "supabase/functions/host-ad-campaign/index.ts"
+        "supabase/functions/host-ad-campaign/index.ts",
+        "supabase/migrations/20280328004238_issue_4238_ads_all_dates.sql",
+        "supabase/migrations/20280329004238_issue_4238_ads_media_buyer.sql",
+        "supabase/functions/_shared/adHostEstimateRate.ts",
+        "supabase/functions/_shared/adProviderEstimate.ts",
+        "supabase/functions/_shared/mapboxGeocode.ts",
+        "supabase/functions/_shared/google.ts",
+        "supabase/functions/_shared/reddit.ts",
+        "supabase/functions/_shared/snapchat.ts"
       ]
     },
     {
@@ -282,7 +307,34 @@
     {
       "capability_key": "social-follow-brands",
       "paths": [
-        "app-mobile/app/index.tsx"
+        "app-mobile/app/index.tsx",
+        "app-mobile/src/components/NotificationsSheet.tsx",
+        "app-mobile/src/components/notifications/brandReachNotification.ts",
+        "app-mobile/src/components/profile/BrandFollowOverflowSheet.tsx",
+        "app-mobile/src/components/profile/BrandFriendsReachFootRow.tsx",
+        "app-mobile/src/components/profile/BrandsYouFollowManageSheet.tsx",
+        "app-mobile/src/components/profile/friendsReachCopy.ts",
+        "app-mobile/src/hooks/brandFollowKeys.ts",
+        "app-mobile/src/hooks/useFriendsReach.ts",
+        "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx",
+        "app-mobile/src/services/deepLinkService.ts",
+        "app-mobile/src/services/friendsReachModel.ts",
+        "app-mobile/src/services/friendsReachService.ts",
+        "mingla-business/src/services/brandCircleReachService.ts",
+        "mingla-business/src/types/brandCircleReach.ts",
+        "supabase/functions/_shared/autoFollowBrand.ts",
+        "supabase/functions/_shared/brandReachMessages.ts",
+        "supabase/functions/_shared/notifyTemplates.ts",
+        "supabase/functions/_shared/notifyV2.ts",
+        "supabase/functions/_shared/reservationPaystackFinalize.ts",
+        "supabase/functions/public-submit-rsvp/index.ts",
+        "supabase/functions/venue-reservation-confirm/index.ts",
+        "supabase/functions/venue-reservation-create/index.ts",
+        "supabase/migrations/20280401003682_issue_3682_auto_follow_generic_claims.sql",
+        "supabase/migrations/20280401013682_issue_3682_quiet_auto_follow_backfill.sql",
+        "supabase/migrations/20280401023682_issue_3682_friends_of_followers_audience_names.sql",
+        "supabase/migrations/20280401053682_issue_3682_friends_reach_controls.sql",
+        "supabase/migrations/20280401063682_issue_3682_friends_reach_send_time_switch.sql"
       ]
     },
     {
@@ -561,7 +613,9 @@
       "capability_key": "events-guest-list",
       "paths": [
         "mingla-business/app/event/[id]/guests/index.tsx",
+        "mingla-business/jest.issue873.render.cjs",
         "mingla-business/src/components/guests/GuestDaySelector.tsx",
+        "mingla-business/src/components/guests/GuestRosterExperience.tsx",
         "mingla-business/src/utils/guestCsvDayOrder.ts",
         "mingla-business/src/utils/guestCsvExport.ts"
       ]
@@ -675,7 +729,22 @@
         "supabase/functions/_shared/marketingEmailRender.ts",
         "supabase/functions/marketing-send/index.ts",
         "supabase/functions/_shared/email/footerLine.ts",
-        "supabase/functions/_shared/marketingReceiveReason.ts"
+        "supabase/functions/_shared/marketingReceiveReason.ts",
+        "mingla-business/src/components/marketing/CampaignChannelSelector.tsx",
+        "mingla-business/src/components/marketing/ChannelTabs.tsx",
+        "mingla-business/src/components/marketing/ComposerReviewSheet.tsx",
+        "mingla-business/src/components/marketing/ComposerSentConfirmation.tsx",
+        "mingla-business/src/components/marketing/PushComposeCard.tsx",
+        "mingla-business/src/hooks/marketing/marketingKeys.ts",
+        "mingla-business/src/services/marketing/campaignChannelGroupService.ts",
+        "mingla-business/src/services/marketing/campaignPayloadContract.ts",
+        "mingla-business/src/services/marketing/campaignSendCopy.ts",
+        "mingla-business/src/services/marketing/marketingCampaignService.ts",
+        "mingla-business/src/types/marketing.ts",
+        "supabase/functions/marketing-send/pushCampaign.ts",
+        "supabase/migrations/20280401043682_issue_3682_push_campaigns.sql",
+        "mingla-business/src/services/marketing/marketingBookSendService.ts",
+        "mingla-business/src/hooks/marketing/useBookBlastPreview.ts"
       ]
     },
     {
@@ -738,7 +807,19 @@
         "supabase/functions/admin-ad-audiences/index.ts",
         "supabase/functions/admin-ad-create-campaign/index.ts",
         "supabase/functions/admin-ad-creative-prepare/index.ts",
-        "supabase/migrations/20280318004238_issue_4238_ad_list_audiences.sql"
+        "supabase/migrations/20280318004238_issue_4238_ad_list_audiences.sql",
+        "mingla-admin/src/components/ad-engine/AdAvailabilityPanel.jsx",
+        "mingla-admin/src/components/campaign-builder/StepBudget.jsx",
+        "mingla-admin/src/components/campaign-builder/StepDestination.jsx",
+        "mingla-admin/src/lib/adBuilder/adAvailability.js",
+        "mingla-admin/src/lib/adBuilder/scheduleBound.js",
+        "mingla-admin/src/pages/AdEnginePage.jsx",
+        "mingla-admin/src/pages/CampaignBuilderPage.jsx",
+        "mingla-admin/src/services/adDestinationsService.js",
+        "supabase/functions/_shared/adLaunchAttemptOpsAlert.ts",
+        "supabase/functions/_shared/google.ts",
+        "supabase/functions/_shared/reddit.ts",
+        "supabase/functions/_shared/snapchat.ts"
       ]
     },
     {
@@ -858,6 +939,20 @@
         "mingla-marketing/components/blog/blocks/video-embed.tsx",
         "packages/blog-document/src/index.ts",
         "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+      ]
+    },
+    {
+      "capability_key": "events-invite-people",
+      "paths": [
+        "mingla-business/jest.issue1780.render.cjs",
+        "mingla-business/src/components/guests/AccountInviteSummaryCard.tsx",
+        "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx",
+        "mingla-business/src/components/trip/TripCreatorWizard.tsx",
+        "mingla-business/src/hooks/useOfferingAccountInvites.ts",
+        "mingla-business/src/hooks/useOfferingInvitePlan.ts",
+        "mingla-business/src/services/offeringAccountInvitesService.ts",
+        "mingla-business/src/services/offeringInvitePlanService.ts",
+        "supabase/migrations/20280401033682_issue_3682_account_invite_recipients.sql"
       ]
     }
   ]

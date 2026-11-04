@@ -29,9 +29,12 @@ describe("issue #3697 Host provider targeting parity", () => {
     expect(service).toContain("input.interests.map");
     expect(service).toContain("refs_by_platform: refsByPlatform");
     expect(create).toContain("Add towns or cities to focus your ad.");
-    expect(create).toContain("we&apos;ll tell you before you pay");
-    expect(create).toContain("handleCitySearch");
-    expect(create).toContain("handleInterestSearch");
+    // #4238 media-buyer: each app is looked up on its own and its answer is
+    // shown before paying (places editor + interests editor).
+    expect(create).toContain("you&apos;ll see its answer before you pay");
+    expect(create).toContain("searchPlaces");
+    expect(create).toContain("searchInterests");
+    expect(create).toContain("lookupPlaceOnApp");
   });
 
   it("validates and executes from each frozen compiled snapshot", () => {

@@ -62,3 +62,208 @@ export function goBackToAds(router: HostAdBackRouter): void {
   if (router.canGoBack()) router.back();
   else router.replace(HOST_ADS_LIST_HREF as never);
 }
+
+/**
+ * #4238 I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT: an ad on a dated page runs
+ * until the last moment anyone can book it, never later. The server refuses a
+ * later end (ad-plan create_version); these rules default and cap it first.
+ */
+export type HostAdScheduleLimit = {
+  /**
+   * The last day people can book, "YYYY-MM-DD", in the page's own time zone
+   * (the viewer's calendar only when the zone is unknown). It is the date
+   * field's last selectable day AND the day the sentence names, so the Host
+   * is never told "until Mon 7 Dec" by a field that stops at 6 Dec (#4238 P2).
+   */
+  lastDay: string;
+  /** The exact last bookable moment. */
+  lastIso: string;
+  /** That same day in words, for the sentence ("Sat 6 Dec"). */
+  label: string;
+  /**
+   * The zone the date fields are read in: the page's own IANA zone, or null
+   * (the viewer's calendar) when it is unknown. Start and end days are sent
+   * as that zone's midnight / end of day, so the fields, the sentence and the
+   * server all name the same moments (#4238 r6).
+   */
+  timezone: string | null;
+};
+
+function localDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** "YYYY-MM-DD" of an instant in an IANA zone, or null for an unknown zone. */
+function dayInZone(date: Date, timezone: string | null | undefined): string | null {
+  if (!timezone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const part = (type: string): string | undefined =>
+      parts.find((item) => item.type === type)?.value;
+    const year = part("year");
+    const month = part("month");
+    const day = part("day");
+    return year && month && day ? `${year}-${month}-${day}` : null;
+  } catch {
+    return null;
+  }
+}
+
+function validZone(timezone: string | null | undefined): string | null {
+  if (!timezone) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return timezone;
+  } catch {
+    return null;
+  }
+}
+
+/** Minutes the zone is ahead of UTC at an instant. */
+function zoneOffsetMinutes(utcMillis: number, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(utcMillis));
+  const get = (type: string): number =>
+    Number(parts.find((item) => item.type === type)?.value);
+  const asUtc = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return Math.round((asUtc - utcMillis) / 60000);
+}
+
+/**
+ * #4238 r6: a "YYYY-MM-DD" day's first or last moment, as an ISO instant, in
+ * the page's own zone (the viewer's calendar when the zone is unknown). The
+ * builder sends start and end through this, so a New York Host on a Lagos
+ * series starting 7 Dec starts at Lagos midnight, never New York's.
+ */
+export function hostAdDayBoundaryIso(
+  day: string,
+  boundary: "start" | "end",
+  timezone?: string | null,
+): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return null;
+  const zone = validZone(timezone);
+  const [hh, mm, ss, ms] = boundary === "start" ? [0, 0, 0, 0] : [23, 59, 59, 999];
+  if (!zone) {
+    const local = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), hh, mm, ss, ms);
+    return Number.isNaN(local.getTime()) ? null : local.toISOString();
+  }
+  const wall = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), hh, mm, ss, ms);
+  if (!Number.isFinite(wall)) return null;
+  // Two passes settle DST edges.
+  let instant = wall - zoneOffsetMinutes(wall, zone) * 60000;
+  instant = wall - zoneOffsetMinutes(instant, zone) * 60000;
+  return new Date(instant).toISOString();
+}
+
+/** #4238 r6: the "YYYY-MM-DD" day of an instant in the page's zone (viewer's when unknown), or "". */
+export function hostAdDayOf(iso: string | null | undefined, timezone?: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return dayInZone(date, validZone(timezone)) ?? localDay(date);
+}
+
+export function hostAdScheduleLimit(
+  page: { last_bookable_at?: string | null; timezone?: string | null } | null | undefined,
+  label: (iso: string) => string | null,
+): HostAdScheduleLimit | null {
+  const iso = page?.last_bookable_at;
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const timezone = validZone(page?.timezone);
+  const lastDay = dayInZone(date, timezone) ?? localDay(date);
+  return {
+    lastDay,
+    lastIso: date.toISOString(),
+    label: label(iso) ?? lastDay,
+    timezone,
+  };
+}
+
+/** The plain sentence for a start or end past the last bookable day, or null. */
+export function hostAdScheduleError(
+  startDate: string,
+  endDate: string,
+  limit: HostAdScheduleLimit | null,
+): string | null {
+  if (!limit) return null;
+  // A start is refused when its day is past the last day, or when that day's
+  // first moment (in the page's zone, as it is sent) is not before the last
+  // bookable moment — the server refuses start >= last bookable.
+  const startIso =
+    startDate === "" ? null : hostAdDayBoundaryIso(startDate, "start", limit.timezone);
+  if (
+    startDate !== "" &&
+    (startDate > limit.lastDay ||
+      (startIso !== null && Date.parse(startIso) >= Date.parse(limit.lastIso)))
+  ) {
+    return `Your ad has to start by ${limit.label}, the last day people can book.`;
+  }
+  if (endDate !== "" && endDate > limit.lastDay) {
+    return `Your ad can run until ${limit.label}, the last day people can book. Pick an earlier end date.`;
+  }
+  return null;
+}
+
+/**
+ * The end the plan sends: the chosen day's end, but never past the last
+ * bookable moment; the last bookable moment when no end is chosen, or when
+ * the chosen day IS the last day people can book (it runs to the end of
+ * booking, whatever the viewer's own time zone).
+ */
+export function hostAdScheduleEndIso(
+  endIso: string | null,
+  limit: HostAdScheduleLimit | null,
+  endDay?: string,
+): string | null {
+  if (!limit) return endIso;
+  if (!endIso || (endDay !== undefined && endDay === limit.lastDay)) {
+    return limit.lastIso;
+  }
+  return Date.parse(endIso) > Date.parse(limit.lastIso) ? limit.lastIso : endIso;
+}
+
+/**
+ * #4238 r6: the start and end the builder sends, both in the page's own zone
+ * (the viewer's calendar when no page zone is known): the start day's first
+ * moment, and the end day's last moment capped at the last bookable moment.
+ * The fields, the sentence and the server then name the same moments.
+ */
+export function hostAdScheduleIsos(
+  startDate: string,
+  endDate: string,
+  limit: HostAdScheduleLimit | null,
+  timezone?: string | null,
+): { startsAt: string | null; endsAt: string | null } {
+  const zone = limit?.timezone ?? validZone(timezone);
+  return {
+    startsAt: hostAdDayBoundaryIso(startDate, "start", zone),
+    endsAt: hostAdScheduleEndIso(
+      hostAdDayBoundaryIso(endDate, "end", zone),
+      limit,
+      endDate,
+    ),
+  };
+}

@@ -138,9 +138,12 @@ BEGIN
   FROM index_rows;
 
   -- [TEST-MOD-APPROVED #3643] The shared terminal-schema replay exposes every
-  -- current business index: count=80 / hash=8e7ec4e5428dd976a5d9a976d4821e59.
-  IF v_index_count <> 80
-    OR v_index_fingerprint <> '8e7ec4e5428dd976a5d9a976d4821e59'
+  -- current business index: count=81 / hash=37e9eade3735be4ac9a0763e4c4013e8.
+  -- #3281 added event_dates_event_occurrence_key_unique (79 -> 80) and
+  -- idx_event_dates_event_id_start_at in 20280327003281 (80 -> 81). #4238's
+  -- 20280328004238/20280329004238 add no index on these relations.
+  IF v_index_count <> 81
+    OR v_index_fingerprint <> '37e9eade3735be4ac9a0763e4c4013e8'
   THEN
     RAISE EXCEPTION
       'T-2 FAIL: complete business-index inventory drift count=% hash=%',
@@ -148,7 +151,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 80 / 8e7ec4e5428dd976a5d9a976d4821e59';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 81 / 37e9eade3735be4ac9a0763e4c4013e8';
 END;
 $test$;
 
@@ -192,10 +195,11 @@ BEGIN
   INTO v_projected_count, v_projected_fingerprint
   FROM projected_rows;
 
-  -- [TEST-MOD-APPROVED #3643] Terminal inventory is 80; excluding #871 → 79.
+  -- [TEST-MOD-APPROVED #3643] Terminal inventory is 81 (#3281's
+  -- idx_event_dates_event_id_start_at is the 81st); excluding #871 → 80.
   -- Fingerprint is recomputed each run against the live projected set so a second
   -- post-#1406 index still fails the count check below.
-  IF v_projected_count <> 79
+  IF v_projected_count <> 80
   THEN
     RAISE EXCEPTION
       'T-3 FAIL: projected #1406 inventory drift count=% hash=%',
@@ -203,7 +207,7 @@ BEGIN
       v_projected_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 79 rows (hash %)', v_projected_fingerprint;
+  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 80 rows (hash %)', v_projected_fingerprint;
 END;
 $test$;
 

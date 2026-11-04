@@ -4,6 +4,11 @@
  * Each page shows its cover (or a type tile), its type, date and city, so an
  * event, a trip, a venue and the brand page are easy to tell apart. No raw URL
  * is shown. Type filter chips appear once the brand has two or more types.
+ *
+ * #4238: a series shows its next date and how many more ("Sun 8 Nov · +4 more
+ * dates"), in the page's own time zone. A page that can't be promoted is shown
+ * greyed out with a plain reason and can't be chosen
+ * (I-4238-AD-PICKER-SAYS-WHY).
  */
 
 import React, { useMemo, useState } from "react";
@@ -18,9 +23,10 @@ import {
 import type { HostAdPage } from "../../../services/hostAdPlanService";
 import {
   type HostAdPageFilter,
-  hostAdPageDate,
   hostAdPageDetails,
+  hostAdPageSchedule,
   hostAdPageTypeLabel,
+  hostAdPageUnavailableReason,
   isImageCoverUrl,
   pageTypeFilters,
 } from "./hostAdPageLabels";
@@ -30,6 +36,9 @@ const SELECTED = "#FF7A18";
 export const HOST_AD_PAGE_PICKER_EMPTY =
   "You don't have a public page to promote yet. Publish an event, experience, trip or venue first.";
 
+export const HOST_AD_PAGE_PICKER_NONE_PROMOTABLE =
+  "None of your pages can be promoted right now. Each one says why.";
+
 export interface HostAdPagePickerProps {
   pages: readonly HostAdPage[];
   selected: HostAdPage | null;
@@ -38,11 +47,12 @@ export interface HostAdPagePickerProps {
 
 /** The screen-reader sentence for one page row. */
 export function hostAdPageAccessibilityLabel(page: HostAdPage): string {
-  const date = hostAdPageDate(page.starts_at);
+  const date = hostAdPageSchedule(page);
   const city = page.city?.trim() ? page.city.trim() : null;
+  const reason = hostAdPageUnavailableReason(page);
   return `${page.title}, ${hostAdPageTypeLabel(page.page_type)}${
     date ? `, ${date}` : ""
-  }${city ? `, ${city}` : ""}`;
+  }${city ? `, ${city}` : ""}${reason ? `, can't be promoted: ${reason}` : ""}`;
 }
 
 export function HostAdPagePicker({
@@ -69,8 +79,17 @@ export function HostAdPagePicker({
     );
   }
 
+  const nonePromotable = pages.every(
+    (page) => hostAdPageUnavailableReason(page) !== null,
+  );
+
   return (
     <View style={styles.root}>
+      {nonePromotable ? (
+        <Text style={styles.empty} testID="host-ad-page-none-promotable">
+          {HOST_AD_PAGE_PICKER_NONE_PROMOTABLE}
+        </Text>
+      ) : null}
       {filters.length > 2 ? (
         <View
           style={styles.filterRow}
@@ -97,34 +116,44 @@ export function HostAdPagePicker({
         </View>
       ) : null}
       {visible.map((page) => {
+        const reason = hostAdPageUnavailableReason(page);
+        const unavailable = reason !== null;
         const isSelected =
-          selected?.page_type === page.page_type && selected?.id === page.id;
+          !unavailable &&
+          selected?.page_type === page.page_type &&
+          selected?.id === page.id;
         const typeLabel = hostAdPageTypeLabel(page.page_type);
+        const details = hostAdPageDetails(page);
         return (
           <Pressable
             key={`${page.page_type}:${page.id}`}
             style={[styles.row, isSelected && styles.rowSelected]}
-            onPress={() => onSelect(page)}
+            onPress={unavailable ? undefined : () => onSelect(page)}
+            disabled={unavailable}
             accessibilityRole="radio"
-            accessibilityState={{ selected: isSelected }}
+            accessibilityState={{ selected: isSelected, disabled: unavailable }}
             accessibilityLabel={hostAdPageAccessibilityLabel(page)}
             testID={`host-ad-page-${page.id}`}
           >
             {isImageCoverUrl(page.cover_url) ? (
               <Image
                 source={{ uri: page.cover_url as string }}
-                style={styles.cover}
+                style={[styles.cover, unavailable && styles.dimmed]}
                 accessibilityIgnoresInvertColors
               />
             ) : (
-              <View style={[styles.cover, styles.tile]}>
+              <View
+                style={[styles.cover, styles.tile, unavailable && styles.dimmed]}
+              >
                 <Text style={styles.tileLetter}>
                   {typeLabel.slice(0, 1)}
                 </Text>
               </View>
             )}
             <View style={styles.text}>
-              <View style={styles.titleRow}>
+              {/* #4238: only the page's own details dim; the reason the Host
+                  needs to read stays at full strength (>= 4.5:1). */}
+              <View style={[styles.titleRow, unavailable && styles.dimmed]}>
                 <Text style={styles.title} numberOfLines={2}>
                   {page.title}
                 </Text>
@@ -132,13 +161,29 @@ export function HostAdPagePicker({
                   <Text style={styles.badgeLabel}>{typeLabel}</Text>
                 </View>
               </View>
-              {hostAdPageDetails(page) ? (
-                <Text style={styles.meta} numberOfLines={1}>
-                  {hostAdPageDetails(page)}
+              {details ? (
+                <Text
+                  style={[styles.meta, unavailable && styles.dimmed]}
+                  numberOfLines={1}
+                >
+                  {details}
+                </Text>
+              ) : null}
+              {reason ? (
+                <Text
+                  style={styles.reason}
+                  numberOfLines={2}
+                  testID={`host-ad-page-reason-${page.id}`}
+                >
+                  {reason}
                 </Text>
               ) : null}
             </View>
-            <View style={[styles.radio, isSelected && styles.radioSelected]} />
+            {unavailable ? null : (
+              <View
+                style={[styles.radio, isSelected && styles.radioSelected]}
+              />
+            )}
           </Pressable>
         );
       })}
@@ -182,6 +227,7 @@ const styles = StyleSheet.create({
     borderColor: SELECTED,
     backgroundColor: "rgba(255,122,24,.11)",
   },
+  dimmed: { opacity: 0.5 },
   cover: {
     width: 56,
     height: 56,
@@ -220,6 +266,9 @@ const styles = StyleSheet.create({
   },
   badgeLabel: { ...typography.caption, color: textTokens.secondary },
   meta: { ...typography.caption, color: textTokens.secondary },
+  // #4238: the greyed-out row's reason, full strength: text.primary over the
+  // dark canvas measures well above 4.5:1 (secondary at 0.5 opacity was 3.42).
+  reason: { ...typography.caption, color: textTokens.primary },
   radio: {
     width: 18,
     height: 18,

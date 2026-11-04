@@ -1,0 +1,175 @@
+/**
+ * #4238 media-buyer — styles the new Host ad builder parts share. Same
+ * tokens and shapes as HostAdCreateScreen so the new rows read as one screen.
+ */
+import { StyleSheet } from "react-native";
+
+import {
+  glass,
+  semantic,
+  spacing,
+  text as textTokens,
+  typography,
+} from "../../../constants/designSystem";
+
+export const HOST_AD_ACCENT = "#FF7A18";
+
+export const hostAdStyles = StyleSheet.create({
+  block: { gap: spacing.sm },
+  label: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
+  },
+  helper: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    lineHeight: 18,
+  },
+  title: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
+  subtitle: { ...typography.caption, color: textTokens.secondary },
+  faint: { ...typography.caption, color: textTokens.tertiary },
+  warn: { ...typography.caption, color: semantic.warning },
+  ok: { ...typography.caption, color: semantic.success },
+  error: { ...typography.caption, color: semantic.errorText },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  chip: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  chipSelected: {
+    borderColor: HOST_AD_ACCENT,
+    backgroundColor: "rgba(255,122,24,.11)",
+  },
+  chipDisabled: { opacity: 0.45 },
+  chipLabel: { ...typography.caption, color: textTokens.primary },
+  acceptChip: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: HOST_AD_ACCENT,
+    backgroundColor: "rgba(255,122,24,.11)",
+  },
+  acceptChipLabel: {
+    ...typography.caption,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  linkButton: { minHeight: 32, justifyContent: "center" },
+  linkLabel: { ...typography.caption, color: HOST_AD_ACCENT, fontWeight: "700" },
+  removeLabel: { ...typography.caption, color: semantic.errorText },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  searchInput: { flex: 1 },
+  searchButton: {
+    minWidth: 78,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  searchButtonLabel: {
+    ...typography.caption,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  result: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  card: {
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  cardHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  appRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  appBadge: {
+    minWidth: 28,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: glass.tint.chrome.idle,
+    alignItems: "center",
+  },
+  appBadgeLabel: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    fontWeight: "700",
+  },
+  appText: { flex: 1, gap: spacing.xs },
+  stepper: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  stepperButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  stepperLabel: { ...typography.h3, color: textTokens.primary },
+  stepperValue: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    minWidth: 64,
+    textAlign: "center",
+  },
+  meterTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: glass.tint.chrome.idle,
+    overflow: "hidden",
+  },
+  meterFill: { height: 8, borderRadius: 4, backgroundColor: HOST_AD_ACCENT },
+  toggleRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: textTokens.tertiary,
+  },
+  checkboxChecked: { backgroundColor: HOST_AD_ACCENT, borderColor: HOST_AD_ACCENT },
+});
+
+export const HOST_AD_APP_BADGES: Record<string, string> = {
+  meta: "FB",
+  tiktok: "TT",
+  snapchat: "SC",
+  google: "G",
+  reddit: "R",
+};

@@ -180,7 +180,7 @@ const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Tickets", subtitle: "Types, prices, capacity" },
   // issue #3284 — the refund policy is now the first Settings block.
   { title: "Settings", subtitle: "Refunds, visibility, approvals" },
-  { title: "Invite people", subtitle: "Choose people from Your Book" },
+  { title: "Invite people", subtitle: "Your Book, followers and groups" },
   { title: "Preview", subtitle: "How it looks to guests" },
 ];
 
@@ -1468,7 +1468,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
               </Text>
               <Text style={styles.stepSub}>
                 {currentStep === 6
-                  ? "Choose people from Your Book. Nothing sends until this event is published."
+                  ? "Choose who to invite. Nothing sends until this event is published."
                   : STEP_DEFS[currentStep].subtitle}
               </Text>
         <View style={styles.stepBodyWrap} onLayout={handleStepBodyLayout}>

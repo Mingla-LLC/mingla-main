@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_mb_live_edit_r9.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-mb-06b-live-edit-r9",
+  "profile": "deno-2-unit"
+}

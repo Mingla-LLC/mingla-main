@@ -351,7 +351,10 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
 // #4261: register the friend-share, plan, place-vote, referral and repin migrations.
 // #4261: register the friend-request decline fix migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "aa7d623c158c428e8308367d2bf5ad1a3754966375a9904312b762238e100821";
+// #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
+// #3682: register the tester send-time switch migration and adversarial proofs the same way.
+// #3682: the roster suite runs the closeout subject and empty-roster proofs.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9977a9c963148babfa44acca5b5d047ffa34ecb42e8ee9a66d2ce274abe990cf";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

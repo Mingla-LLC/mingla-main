@@ -138,7 +138,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
 // #4261: register the friend-share, plan, place-vote, referral and repin migrations.
 // #4261: register the friend-request decline fix migration and its proof the same way.
-export const BOOTSTRAP_SHA256 = "1b59a3bde78ee1d6a05886ef3e62a689b175448e0deb6a6e6a1cd66aa0971671";
+// #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
+// #3682: register the tester send-time switch migration and adversarial proofs the same way.
+// #3682: the roster suite runs the closeout subject and empty-roster proofs.
+export const BOOTSTRAP_SHA256 = "50a5aba8d4c5a3d6be13365cc7f885e6f0ae2f0f99aa89e27211d48e4a2bd76e";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

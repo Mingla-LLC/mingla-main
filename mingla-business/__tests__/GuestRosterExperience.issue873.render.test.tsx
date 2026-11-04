@@ -58,6 +58,12 @@ const resetMockQuery = (): void => {
 };
 resetMockQuery();
 
+// #3682 — the account-invite card reads an auth-scoped RPC (folds isAuthReady
+// from AuthContext, which pulls native Expo modules). The roster is what this
+// suite proves; the card is covered by AccountInviteSummaryCard.issue3682.
+jest.mock("../src/hooks/useOfferingAccountInvites", () => ({
+  useOfferingAccountInvites: () => ({ data: undefined }),
+}));
 jest.mock("../src/hooks/useGuestRoster", () => ({
   useGuestRoster: () => mockQuery,
 }));
