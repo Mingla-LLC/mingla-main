@@ -226,8 +226,12 @@ export interface PendingRemovalController<T> {
   schedule: (id: string, payload: T) => void;
   /** Cancel a pending removal. Returns true when something was undone. */
   undo: (id: string) => boolean;
-  /** Commit every pending removal immediately (screen is going away). */
-  flushAll: () => void;
+  /**
+   * Commit every pending removal immediately (screen is going away). Returns
+   * the ids it committed so the caller can take down their Undo toasts — an
+   * Undo left on screen after the commit would be a dead button.
+   */
+  flushAll: () => string[];
   isPending: (id: string) => boolean;
   pendingIds: () => string[];
 }
@@ -264,10 +268,13 @@ export function createPendingRemovalController<T>(options: {
       return true;
     },
     flushAll() {
+      const flushed: string[] = [];
       for (const [id, entry] of [...pending.entries()]) {
         clearTimer(entry.handle);
         commit(id);
+        flushed.push(id);
       }
+      return flushed;
     },
     isPending: (id) => pending.has(id),
     pendingIds: () => [...pending.keys()],

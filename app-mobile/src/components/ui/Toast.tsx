@@ -173,7 +173,8 @@ class ToastManager {
   private toasts: ToastManagerState["toasts"] = [];
   private sequence = 0;
 
-  show(message: string, type: ToastType = "info", duration?: number, action?: ToastAction) {
+  /** Returns the toast id so a caller can take it down early with `remove`. */
+  show(message: string, type: ToastType = "info", duration?: number, action?: ToastAction): string {
     // Two toasts in the same millisecond (two quick heart taps) must not share an id.
     const id = `${Date.now().toString()}-${(this.sequence += 1)}`;
     const toast = { id, message, type, duration, action };
@@ -184,6 +185,7 @@ class ToastManager {
     setTimeout(() => {
       this.remove(id);
     }, duration || 3000);
+    return id;
   }
 
   remove(id: string) {

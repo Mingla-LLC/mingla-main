@@ -198,7 +198,7 @@ Deno.test("#4265 heart remove waits out the Undo window; Undo restores", () => {
   assertEquals(committed, ["b"], "after the window the delete is committed once");
 
   removals.schedule("c", { title: "Pottery" });
-  removals.flushAll();
+  assertEquals(removals.flushAll(), ["c"], "flushAll names what it committed so its Undo toast can be taken down");
   assertEquals(committed, ["b", "c"], "leaving Likes still honours a pending heart tap");
   clock.advance(10_000);
   assertEquals(committed, ["b", "c"], "flushed removals do not commit twice");
@@ -210,11 +210,15 @@ Deno.test("#4265 the tab hides, toasts Undo, and restores through the controller
   assert(/pendingRemovalsRef\.current\.schedule\(card\.id, card\)/.test(tab));
   assert(/label: t\('common:undo'\)/.test(tab), "the toast carries Undo");
   assert(/if \(pendingRemovalsRef\.current\.undo\(card\.id\)\) \{[\s\S]*?unhideCard\(card\.id\);/.test(tab), "Undo puts it back");
-  assert(/pending\.flushAll\(\);/.test(tab), "unmount commits pending removals");
+  assert(/for \(const cardId of pending\.flushAll\(\)\) \{[\s\S]*?toastManager\.remove\(toastId\)/.test(tab),
+    "unmount commits pending removals AND takes their Undo toasts down (no dead Undo after leaving Likes)");
+  assert(/const toastId = toastManager\.show\(/.test(tab) && /undoToastIdsRef\.current\.set\(card\.id, toastId\)/.test(tab),
+    "each Undo toast is tracked by card id");
   assert(/await savedCardsService\.removeCard\(/.test(tab), "the commit is the same service call as the old bin");
   assert(/unhideCard\(card\.id\);\s*toastManager\.error\(t\('activity:savedTab\.couldntRemove'\)/.test(tab), "a failed delete restores and says so");
   const toast = stripComments(await read("src/components/ui/Toast.tsx"));
-  assert(/show\(message: string, type: ToastType = "info", duration\?: number, action\?: ToastAction\)/.test(toast));
+  assert(/show\(message: string, type: ToastType = "info", duration\?: number, action\?: ToastAction\): string \{/.test(toast), "show returns the toast id");
+  assert(/return id;\s*\}/.test(toast));
 });
 
 // ── 4. Quick-slot computation from opening hours ───────────────────────────

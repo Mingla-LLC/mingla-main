@@ -1124,14 +1124,23 @@ const SavedTab = ({
     })
   );
   const pendingRemovalsRef = useRef(pendingRemovals);
+  // The app-wide Undo toast for each pending removal, by card id.
+  const undoToastIdsRef = useRef(new Map<string, string>());
 
-  // Leaving Likes inside the Undo window still honours the heart tap.
+  // Leaving Likes inside the Undo window still honours the heart tap, and
+  // takes its Undo toast down with it: the toast outlives the tab, and an Undo
+  // pressed after the delete was committed would do nothing.
   useEffect(() => {
     isMountedRef.current = true;
     const pending = pendingRemovalsRef.current;
+    const undoToastIds = undoToastIdsRef.current;
     return () => {
       isMountedRef.current = false;
-      pending.flushAll();
+      for (const cardId of pending.flushAll()) {
+        const toastId = undoToastIds.get(cardId);
+        if (toastId) toastManager.remove(toastId);
+        undoToastIds.delete(cardId);
+      }
     };
   }, []);
 
@@ -1155,7 +1164,9 @@ const SavedTab = ({
     if (!user?.id) return;
     setHiddenCardIds((prev) => new Set(prev).add(card.id));
     pendingRemovalsRef.current.schedule(card.id, card);
-    toastManager.show(
+    const previousToastId = undoToastIdsRef.current.get(card.id);
+    if (previousToastId) toastManager.remove(previousToastId);
+    const toastId = toastManager.show(
       t('activity:savedTab.removedToast'),
       "info",
       SAVED_UNDO_WINDOW_MS,
@@ -1163,6 +1174,7 @@ const SavedTab = ({
         label: t('common:undo'),
         accessibilityLabel: t('common:undo'),
         onPress: () => {
+          undoToastIdsRef.current.delete(card.id);
           if (pendingRemovalsRef.current.undo(card.id)) {
             HapticFeedback.light();
             unhideCard(card.id);
@@ -1170,6 +1182,7 @@ const SavedTab = ({
         },
       },
     );
+    undoToastIdsRef.current.set(card.id, toastId);
   };
 
   /** Issue #4265: the one main button on each grid card. */
