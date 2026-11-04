@@ -32,9 +32,15 @@ const mockNativeModules: Record<string, unknown> = {};
 const mockTurboGet = jest.fn((_name: string): unknown => null);
 const mockSdkFactory = jest.fn(() => ({ marker: "terminal-sdk" }));
 
+// Getters: the hook imports react-native at module scope, so this factory runs
+// while the mock* consts above are still in their temporal dead zone.
 jest.mock("react-native", () => ({
-  Platform: mockPlatform,
-  NativeModules: mockNativeModules,
+  get Platform() {
+    return mockPlatform;
+  },
+  get NativeModules() {
+    return mockNativeModules;
+  },
   TurboModuleRegistry: { get: (name: string) => mockTurboGet(name) },
 }));
 jest.mock("@stripe/stripe-terminal-react-native", () => mockSdkFactory(), { virtual: false });
