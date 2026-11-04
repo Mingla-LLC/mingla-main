@@ -17,8 +17,6 @@ import { toastManager } from "../ui/Toast";
 import { chatTokens } from "../../constants/chatTokens";
 import { createClientMessageId } from "../../utils/mergeMessages";
 import { useCreatePlan } from "../../hooks/useChatPlans";
-import { usePlanPlaceSearch } from "../../hooks/usePlanPlaceSearch";
-import { retrieveMapbox } from "../../services/planPlaceSearchService";
 import {
   blankPlanForm,
   canPostPlan,
@@ -26,19 +24,19 @@ import {
   isFutureSlot,
   linkDomainOf,
   normalisedLinkUrl,
+  planCreateInput,
+  placeLinkInvalid,
   PLAN_FORM_MAX_TIMES,
   PLAN_NOTE_MAX,
   PLAN_TITLE_MAX,
   quickDays,
   slotToDate,
   suggestRandomSlot,
-  type PlaceResultRow,
   type PlanFormDraft,
-  type PlanFormPlace,
   type PlanFormSlot,
 } from "./planModel";
 import { PlanDateTimeFields } from "./PlanTimePickerSheet";
-import type { PlanCreateInput, PlanPlaceInput, PlanWhereKind } from "../../types/chatPlans";
+import { PlanPlacePicker } from "./PlanPlacePicker";
 
 const SNAP_POINTS = ["92%"];
 
@@ -48,54 +46,6 @@ interface PlanFormSheetProps {
   conversationId: string;
   senderId: string | null | undefined;
   chatName: string;
-}
-
-function buildCreateInput(form: PlanFormDraft, conversationId: string, clientId: string): PlanCreateInput {
-  let whereKind: PlanWhereKind = "none";
-  let place: PlanPlaceInput | null = null;
-  let linkUrl: string | null = null;
-  if (form.where === "place" && form.place) {
-    if (form.place.source === "pool" && form.place.poolId) {
-      whereKind = "place";
-      place = { poolId: form.place.poolId };
-    } else if (form.place.source === "mapbox" && form.place.mapboxId) {
-      whereKind = "place";
-      place = {
-        mapboxId: form.place.mapboxId,
-        name: form.place.name,
-        ...(form.place.area ? { address: form.place.area } : {}),
-        ...(typeof form.place.lat === "number" ? { lat: form.place.lat } : {}),
-        ...(typeof form.place.lng === "number" ? { lng: form.place.lng } : {}),
-      };
-    } else {
-      whereKind = "address";
-      place = { name: form.place.name };
-    }
-  } else if (form.where === "link" && linkDomainOf(form.link)) {
-    whereKind = "link";
-    linkUrl = normalisedLinkUrl(form.link);
-  }
-  const setAt = form.when === "set" ? slotToDate({ date: form.date, time: form.time }) : null;
-  const options = form.when === "poll"
-    ? form.options
-        .filter((slot) => slot.date !== "")
-        .map((slot) => slotToDate(slot))
-        .filter((value): value is Date => value !== null)
-        .map((value) => value.toISOString())
-    : [];
-  return {
-    conversationId,
-    clientId,
-    title: form.title.trim(),
-    whereKind,
-    place,
-    linkUrl,
-    whenMode: form.when,
-    scheduledAt: setAt ? setAt.toISOString() : null,
-    options: Array.from(new Set(options)),
-    openTimes: form.when === "poll" ? form.openTimes : false,
-    note: form.note.trim() ? form.note.trim() : null,
-  };
 }
 
 function Segmented<T extends string>({
@@ -138,9 +88,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
   const [clientId, setClientId] = useState<string>(() => createClientMessageId());
   const [sessionToken, setSessionToken] = useState<string>(() => createClientMessageId());
   const [query, setQuery] = useState("");
-  const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
   const createPlan = useCreatePlan(conversationId, senderId);
-  const search = usePlanPlaceSearch(query, sessionToken, visible && form.where === "place" && form.place === null);
 
   // A fresh form, client id and Mapbox session every time the sheet opens.
   useEffect(() => {
@@ -149,7 +97,6 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
     setClientId(createClientMessageId());
     setSessionToken(createClientMessageId());
     setQuery("");
-    setRetrievingKey(null);
   }, [visible]);
 
   const patch = (next: Partial<PlanFormDraft>) => setForm((current) => ({ ...current, ...next }));
@@ -159,39 +106,6 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
   const weekday = (date: string) => {
     const at = slotToDate({ date, time: "12:00" });
     return at ? new Intl.DateTimeFormat(i18n.language, { weekday: "short" }).format(at) : date;
-  };
-
-  const pickResult = async (row: PlaceResultRow) => {
-    if (row.kind === "pool") {
-      patch({ place: { source: "pool", name: row.name, area: row.area, poolId: row.poolId, lat: row.lat, lng: row.lng } });
-      setQuery("");
-      return;
-    }
-    if (row.kind === "typed") {
-      patch({ place: { source: "typed", name: row.name.slice(0, 120), area: null } });
-      setQuery("");
-      return;
-    }
-    if (retrievingKey) return;
-    setRetrievingKey(row.key);
-    try {
-      const details = await retrieveMapbox(row.mapboxId, sessionToken, row.name);
-      const picked: PlanFormPlace = {
-        source: "mapbox",
-        name: details.name,
-        area: details.address ?? row.area,
-        mapboxId: details.mapboxId,
-        lat: details.lat,
-        lng: details.lng,
-      };
-      patch({ place: picked });
-      setQuery("");
-    } catch (error) {
-      console.warn("[PlanFormSheet] Mapbox retrieve failed", error);
-      toastManager.error(t("chat:plan_place_load_failed"));
-    } finally {
-      setRetrievingKey(null);
-    }
   };
 
   const setOption = (index: number, slot: PlanFormSlot) =>
@@ -206,6 +120,10 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
 
   const post = () => {
     if (posting) return;
+    if (form.where === "place" && placeLinkInvalid(form.placeLink)) {
+      toastManager.info(t("chat:plan_place_link_invalid"));
+      return;
+    }
     if (!canPost) {
       toastManager.info(form.when === "poll" ? t("chat:plan_invalid_vote") : t("chat:plan_invalid_set"));
       return;
@@ -216,7 +134,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
       toastManager.info(t("chat:plan_past_time"));
       return;
     }
-    const input = buildCreateInput(form, conversationId, clientId);
+    const input = planCreateInput(form, conversationId, clientId);
     const previewTitle = input.title || form.place?.name || linkDomainOf(form.link) || t("chat:plan_form_title");
     createPlan.mutate(
       { input, previewTitle },
@@ -312,74 +230,18 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
             { value: "none", label: t("chat:plan_where_skip") },
           ]}
         />
-        {form.where === "place" && form.place ? (
-          <View style={styles.picked} testID="plan-form-picked">
-            <Icon name="location" size={18} color={chatTokens.accent} />
-            <View style={styles.rowText}>
-              <Text style={styles.rowName} numberOfLines={1}>{form.place.name}</Text>
-              {form.place.area ? <Text style={styles.rowArea} numberOfLines={1}>{form.place.area}</Text> : null}
-            </View>
-            <TouchableOpacity
-              onPress={() => patch({ place: null })}
-              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={t("chat:plan_change")}
-              testID="plan-form-change-place"
-            >
-              <Text style={styles.change}>{t("chat:plan_change")}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        {form.where === "place" && !form.place ? (
-          <View style={styles.searchBlock}>
-            <View style={styles.searchField}>
-              <Icon name="search" size={16} color={chatTokens.textMuted} />
-              <BottomSheetTextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder={t("chat:plan_search_placeholder")}
-                placeholderTextColor={chatTokens.textMuted}
-                style={styles.searchInput}
-                autoCorrect={false}
-                accessibilityLabel={t("chat:plan_search_placeholder")}
-                testID="plan-form-search"
-              />
-              {search.isSearching ? <ActivityIndicator size="small" color={chatTokens.textSoft} /> : null}
-            </View>
-            <Text style={styles.subLabel}>
-              {query.trim().length < 2 ? t("chat:plan_search_empty_label") : t("chat:plan_search_results")}
-            </Text>
-            {search.rows.map((row) => (
-              <TouchableOpacity
-                key={row.key}
-                style={styles.resultRow}
-                onPress={() => void pickResult(row)}
-                disabled={retrievingKey !== null}
-                accessibilityRole="button"
-                accessibilityLabel={row.kind === "typed" ? t("chat:plan_search_use_typed", { query: row.name }) : [row.name, row.area].filter(Boolean).join(", ")}
-                testID={`plan-place-${row.kind}`}
-              >
-                <View style={styles.rowText}>
-                  <Text style={styles.rowName} numberOfLines={1}>
-                    {row.kind === "typed" ? t("chat:plan_search_use_typed", { query: row.name }) : row.name}
-                  </Text>
-                  <Text style={styles.rowArea} numberOfLines={1}>
-                    {row.kind === "typed" ? t("chat:plan_search_use_typed_sub") : row.area ?? ""}
-                  </Text>
-                </View>
-                {retrievingKey === row.key ? <ActivityIndicator size="small" color={chatTokens.textSoft} /> : null}
-                {row.onMingla ? (
-                  <View style={styles.onMingla}>
-                    <Text style={styles.onMinglaText}>{t("chat:plan_search_on_mingla")}</Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            ))}
-            {search.partialFailure ? (
-              <Text style={styles.subLabel}>{t("chat:plan_search_partial_failure")}</Text>
-            ) : null}
-            {search.hasQuery ? <Text style={styles.attribution}>{t("chat:plan_search_attribution")}</Text> : null}
-          </View>
+        {form.where === "place" ? (
+          <PlanPlacePicker
+            query={query}
+            onQuery={setQuery}
+            picked={form.place}
+            onPick={(place) => patch({ place, placeLink: "" })}
+            onClear={() => patch({ place: null, placeLink: "" })}
+            placeLink={form.placeLink}
+            onPlaceLink={(placeLink) => patch({ placeLink })}
+            sessionToken={sessionToken}
+            visible={visible}
+          />
         ) : null}
         {form.where === "link" ? (
           <View style={styles.searchBlock}>

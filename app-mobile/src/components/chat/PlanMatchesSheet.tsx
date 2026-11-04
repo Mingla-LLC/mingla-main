@@ -48,8 +48,24 @@ import {
   usePlanActions,
 } from "./PlanCardBubble";
 import { PlanTimePickerSheet } from "./PlanTimePickerSheet";
-import { canLockWithoutVote, lockableLeader, needsMyVote, orderMatches, planPhoto, viewerReaction } from "./planModel";
-import type { ChatPlan, ChatPlansPayload } from "../../types/chatPlans";
+import { PlanLinkRow } from "./PlanLinkRow";
+import { PlanPlaceOptions, PlanSuggestPlaceButton } from "./PlanPlaceOptions";
+import { PlanPlaceSuggestSheet } from "./PlanPlaceSuggestSheet";
+import { InAppBrowserProvider, useOpenInMingla } from "../InAppBrowserProvider";
+import { mapsWebUrl } from "../../utils/inAppLink";
+import {
+  canLockWithoutVote,
+  lockableLeader,
+  matchIndexForOffset,
+  needsMyVote,
+  orderMatches,
+  placeExpansionPayload,
+  placeLinkTarget,
+  placePollActive,
+  planPhoto,
+  viewerReaction,
+} from "./planModel";
+import type { ChatPlan, ChatPlanPlaceOption, ChatPlansPayload } from "../../types/chatPlans";
 
 const SNAP_POINTS = ["62%", "88%"];
 const CARD_WIDTH = 292;
@@ -80,6 +96,8 @@ function MatchCard({
   onSeeInChat,
   onDetails,
   onLockPickTime,
+  onOpenPoolPlace,
+  onSuggestPlace,
 }: {
   plan: ChatPlan;
   payload: ChatPlansPayload;
@@ -89,8 +107,12 @@ function MatchCard({
   onSeeInChat: (plan: ChatPlan) => void;
   onDetails: (plan: ChatPlan) => void;
   onLockPickTime: (plan: ChatPlan) => void;
+  /** A Mingla place opens its card (the sheet hands off to ExpandedCardModal). */
+  onOpenPoolPlace: (payload: Record<string, unknown>) => void;
+  onSuggestPlace: (plan: ChatPlan) => void;
 }): React.ReactElement {
   const { t } = useTranslation(["chat"]);
+  const browser = useOpenInMingla();
   const viewerId = payload.viewerId;
   const actions = usePlanActions(conversationId, viewerId);
   const nudge = useCommentNudge();
@@ -99,7 +121,11 @@ function MatchCard({
   const todo = needsMyVote(plan, viewerId);
   const photo = planPhoto(plan);
   const mine = viewerReaction(plan, viewerId);
-  const likedBy = plan.reactions.up.map((id) => (id === viewerId ? t("chat:you") : nameOf(id)));
+  // Amendment 1 B-5: the viewer reads "You", first.
+  const likedBy = [
+    ...(plan.reactions.up.includes(viewerId) ? [t("chat:plan_voter_you")] : []),
+    ...plan.reactions.up.filter((id) => id !== viewerId).map((id) => nameOf(id)),
+  ];
   const leader = lockableLeader(plan);
   const lockWithoutVote = canLockWithoutVote(plan);
   const locking = actions.lockingPlanId === plan.id;
@@ -107,6 +133,23 @@ function MatchCard({
     ? [plan.place.name, plan.place.address].filter(Boolean).join(" · ")
     : plan.link?.domain ?? (deck && typeof plan.cardData?.address === "string" ? plan.cardData.address : null);
   const byName = plan.createdBy === viewerId ? t("chat:you") : plan.createdByName || nameOf(plan.createdBy);
+  const placeVoteShown = !deck && (placePollActive(plan) || (plan.places.length >= 1 && plan.whereKind === "none"));
+  const isPlacePlan = !deck && (plan.whereKind === "place" || plan.whereKind === "address");
+  const offMinglaPlace = isPlacePlan && !plan.place?.poolId;
+  const canSuggest = !deck && plan.status === "deciding" && plan.canAddPlace;
+  const ownOffMinglaPlace = offMinglaPlace ? plan.place : null;
+
+  /** Opens a place inside Mingla: a Mingla place its card, any other its own link or the map. */
+  const openPlace = (place: Pick<ChatPlanPlaceOption, "poolId" | "name" | "address" | "lat" | "lng" | "photoUrl" | "link">) => {
+    const target = placeLinkTarget(place, mapsWebUrl);
+    if (!target) return;
+    if (target.kind === "mingla") {
+      const card = placeExpansionPayload(place, plan.title);
+      if (card) onOpenPoolPlace(card);
+      return;
+    }
+    browser.open(target.url, target.kind === "link" ? target.label : place.name ?? undefined);
+  };
 
   const lock = () => {
     if (leader) actions.lockOption(plan, leader.id);
@@ -133,7 +176,42 @@ function MatchCard({
         </View>
         <View style={styles.body}>
           <Text style={styles.title} numberOfLines={2}>{plan.title}</Text>
-          <Text style={styles.placeLine} numberOfLines={1}>{placeLine || t("chat:matches_no_place")}</Text>
+          {placeVoteShown ? null : ownOffMinglaPlace ? (
+            // Amendment 1: a place not on Mingla is a link row (its own link, or "Open in Maps").
+            <PlanLinkRow
+              compact
+              link={plan.link}
+              mapsSubtitle={[ownOffMinglaPlace.name, ownOffMinglaPlace.address].filter(Boolean).join(" · ")}
+              onPress={() => openPlace({ ...ownOffMinglaPlace, link: plan.link })}
+            />
+          ) : !deck && plan.whereKind === "link" && plan.link ? (
+            <PlanLinkRow
+              compact
+              link={plan.link}
+              onPress={() => browser.open(plan.link?.url ?? "", plan.link?.title ?? plan.link?.domain)}
+            />
+          ) : (
+            <Text style={styles.placeLine} numberOfLines={1}>{placeLine || t("chat:matches_no_place")}</Text>
+          )}
+          {deck ? <Text style={styles.deckFixed}>{t("chat:matches_deck_place_fixed")}</Text> : null}
+          {placeVoteShown ? (
+            <PlanPlaceOptions
+              plan={plan}
+              viewerId={viewerId}
+              memberCount={payload.memberCount}
+              nameOf={nameOf}
+              heading={t("chat:matches_where_heading")}
+              compact
+              onVote={(optionId) => {
+                actions.placeVote(plan, optionId);
+                nudge.poke();
+              }}
+              onOpen={openPlace}
+              onSuggest={canSuggest ? () => onSuggestPlace(plan) : undefined}
+            />
+          ) : canSuggest ? (
+            <PlanSuggestPlaceButton onPress={() => onSuggestPlace(plan)} />
+          ) : null}
 
           <View style={styles.likeRow}>
             <Text style={styles.likedBy} numberOfLines={1}>
@@ -288,6 +366,7 @@ export function PlanMatchesSheet({
   const [order, setOrder] = useState<string[]>([]);
   const [lockPickFor, setLockPickFor] = useState<ChatPlan | null>(null);
   const [deckLockFor, setDeckLockFor] = useState<ChatPlan | null>(null);
+  const [suggestFor, setSuggestFor] = useState<ChatPlan | null>(null);
   const { modalTarget, openFromSheet, onSheetDismissed, close: closeDetails } = useSheetCard<ExpansionTarget>();
   const lockActions = usePlanActions(conversationId, payload?.viewerId);
   const viewerId = payload?.viewerId ?? "";
@@ -314,9 +393,19 @@ export function PlanMatchesSheet({
   const sideInset = Math.max(16, (width - CARD_WIDTH) / 2);
   const current = Math.min(index, Math.max(0, cards.length - 1));
 
-  const onScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = Math.round(event.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
-    setIndex(Math.max(0, Math.min(cards.length - 1, next)));
+  // Amendment 1 B-2: the counter and dots follow every scroll frame (a slow
+  // release on a snapping list may never deliver a momentum-end event on iOS);
+  // drag end and momentum end finalise it.
+  const trackIndex = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const next = matchIndexForOffset(event.nativeEvent.contentOffset.x, CARD_WIDTH + CARD_GAP, cards.length);
+    setIndex((currentIndex) => (currentIndex === next ? currentIndex : next));
+  };
+
+  const openPoolPlace = (card: Record<string, unknown>) => {
+    const target = expansionTargetFromSavedPayload(card);
+    if (!target) return;
+    openFromSheet(target);
+    onClose();
   };
 
   const openDetails = (plan: ChatPlan) => {
@@ -359,6 +448,7 @@ export function PlanMatchesSheet({
         header={header}
         accessibilityLabel={t("chat:matches_title")}
       >
+        <InAppBrowserProvider>
         <View style={[styles.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) }]} testID="plan-matches-sheet">
           {isLoading && !payload ? (
             <ActivityIndicator style={styles.loading} color={chatTokens.accent} />
@@ -379,7 +469,10 @@ export function PlanMatchesSheet({
                 decelerationRate="fast"
                 contentContainerStyle={[styles.row, { paddingHorizontal: sideInset }]}
                 ItemSeparatorComponent={() => <View style={styles.gap} />}
-                onMomentumScrollEnd={onScrollEnd}
+                onScroll={trackIndex}
+                scrollEventThrottle={16}
+                onScrollEndDrag={trackIndex}
+                onMomentumScrollEnd={trackIndex}
                 getItemLayout={(_data, i) => ({ length: CARD_WIDTH + CARD_GAP, offset: (CARD_WIDTH + CARD_GAP) * i, index: i })}
                 renderItem={({ item }) =>
                   payload ? (
@@ -392,6 +485,8 @@ export function PlanMatchesSheet({
                       onSeeInChat={onSeeInChat}
                       onDetails={openDetails}
                       onLockPickTime={(plan) => (plan.source === "deck" ? setDeckLockFor(plan) : setLockPickFor(plan))}
+                      onOpenPoolPlace={openPoolPlace}
+                      onSuggestPlace={setSuggestFor}
                     />
                   ) : null
                 }
@@ -420,6 +515,15 @@ export function PlanMatchesSheet({
             </>
           )}
         </View>
+        </InAppBrowserProvider>
+        <PlanPlaceSuggestSheet
+          visible={suggestFor !== null}
+          onClose={() => setSuggestFor(null)}
+          conversationId={conversationId}
+          plan={suggestFor}
+          viewerId={payload?.viewerId ?? null}
+          nested
+        />
         <PlanTimePickerSheet
           visible={lockPickFor !== null}
           onClose={() => setLockPickFor(null)}
@@ -509,6 +613,7 @@ const styles = StyleSheet.create({
   body: { padding: 14, gap: 10 },
   title: { color: chatTokens.textPrimary, fontSize: 17, fontWeight: "700" },
   placeLine: { color: chatTokens.textSecondary, fontSize: 13 },
+  deckFixed: { color: chatTokens.textSoft, fontSize: 12 },
   likeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   likedBy: { flex: 1, color: chatTokens.textSoft, fontSize: 12 },
   thumb: {

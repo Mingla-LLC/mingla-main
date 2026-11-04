@@ -21,17 +21,23 @@ import {
   useAddPlanTime,
   useChatPlans,
   useLockPlan,
+  useSetPlanPlaceVote,
   useSetPlanReaction,
   useSetPlanRsvp,
   useSetPlanVote,
 } from "../../hooks/useChatPlans";
+import { requestLinkPreview } from "../../services/chatPlansService";
 import {
   canLockWithoutVote,
   formatPlanTime,
   isFutureSlot,
+  isHttpsImage,
+  leadingPlace,
   lockableLeader,
+  lockLabelParts,
+  needsLinkPreviewRetry,
+  optionVotersLine,
   rsvpSummary,
-  shortPlanTime,
   slotToDate,
   toggledChoice,
   viewerReaction,
@@ -39,7 +45,9 @@ import {
   type PlanFormSlot,
 } from "./planModel";
 import { PlanDateTimeFields } from "./PlanTimePickerSheet";
-import type { ChatPlan, PlanReaction, PlanRsvp } from "../../types/chatPlans";
+import { PlanLinkRow } from "./PlanLinkRow";
+import { PlanPlaceOptions, PlanSuggestPlaceButton } from "./PlanPlaceOptions";
+import type { ChatPlan, ChatPlanPlaceOption, PlanReaction, PlanRsvp } from "../../types/chatPlans";
 
 const HIT_SLOP_44 = { top: 6, bottom: 6, left: 6, right: 6 };
 const NUDGE_MS = 6000;
@@ -50,6 +58,7 @@ const NUDGE_MS = 6000;
 
 export interface PlanActions {
   vote: (plan: ChatPlan, optionId: string) => void;
+  placeVote: (plan: ChatPlan, optionId: string) => void;
   rsvp: (plan: ChatPlan, status: PlanRsvp) => void;
   react: (plan: ChatPlan, kind: PlanReaction) => void;
   addTime: (plan: ChatPlan, startsAt: string, onDone: () => void) => void;
@@ -61,6 +70,7 @@ export interface PlanActions {
 
 export function usePlanActions(conversationId: string, viewerId: string | null | undefined): PlanActions {
   const voteMutation = useSetPlanVote(conversationId);
+  const placeVoteMutation = useSetPlanPlaceVote(conversationId);
   const rsvpMutation = useSetPlanRsvp(conversationId);
   const reactionMutation = useSetPlanReaction(conversationId);
   const addTimeMutation = useAddPlanTime(conversationId);
@@ -73,6 +83,14 @@ export function usePlanActions(conversationId: string, viewerId: string | null |
     HapticFeedback.light();
     voteMutation.mutate({ optionId, on: !option.voterIds.includes(viewerId), viewerId });
   }, [viewerId, voteMutation]);
+
+  const placeVote = useCallback((plan: ChatPlan, optionId: string) => {
+    if (!viewerId) return;
+    const option = plan.places.find((candidate) => candidate.id === optionId);
+    if (!option) return;
+    HapticFeedback.light();
+    placeVoteMutation.mutate({ optionId, on: !option.voterIds.includes(viewerId), viewerId });
+  }, [placeVoteMutation, viewerId]);
 
   const rsvp = useCallback((plan: ChatPlan, status: PlanRsvp) => {
     if (!viewerId) return;
@@ -105,6 +123,7 @@ export function usePlanActions(conversationId: string, viewerId: string | null |
 
   return {
     vote,
+    placeVote,
     rsvp,
     react,
     addTime,
@@ -162,15 +181,15 @@ export function PlanPollBlock({
       {plan.options.map((option) => {
         const mine = option.voterIds.includes(viewerId);
         const share = Math.min(1, option.voterIds.length / size);
-        const voters = option.voterIds.map((id) => (id === viewerId ? t("chat:you") : nameOf(id))).join(", ");
-        const addedBy = option.addedBy
-          ? t("chat:plan_option_added_by", {
-              name: option.addedBy === viewerId ? t("chat:you") : nameOf(option.addedBy),
-            })
-          : null;
-        const votersText = voters
-          ? [addedBy, voters].filter(Boolean).join(" · ")
-          : t("chat:plan_option_no_votes");
+        // Amendment 1 B-5: "Added by" only for someone other than the creator; "You" first.
+        const votersText = optionVotersLine(
+          option,
+          plan,
+          viewerId,
+          nameOf,
+          (key, params) => t(`chat:${key}`, params),
+          "time",
+        );
         const label = formatPlanTime(option.startsAt, i18n.language);
         return (
           <TouchableOpacity
@@ -336,8 +355,12 @@ interface PlanCardBubbleProps {
   nameOf: (userId: string | null) => string;
   onReply: (plan: ChatPlan) => void;
   onOpenComments: (plan: ChatPlan) => void;
+  /** The plan's own place: a Mingla place opens its card; any other its own link or the map, in Mingla. */
   onOpenPlace: (plan: ChatPlan) => void;
-  onOpenLink: (url: string) => void;
+  /** A place on the place vote (same rule as `onOpenPlace`). */
+  onOpenPlaceOption: (plan: ChatPlan, option: ChatPlanPlaceOption) => void;
+  onOpenLink: (url: string, title?: string) => void;
+  onSuggestPlace: (plan: ChatPlan) => void;
   onRequestLockTime: (plan: ChatPlan) => void;
   onLongPress: (plan: ChatPlan) => void;
   highlighted?: boolean;
@@ -353,7 +376,9 @@ function PlanCardBubbleImpl({
   onReply,
   onOpenComments,
   onOpenPlace,
+  onOpenPlaceOption,
   onOpenLink,
+  onSuggestPlace,
   onRequestLockTime,
   onLongPress,
   highlighted = false,
@@ -367,6 +392,13 @@ function PlanCardBubbleImpl({
   const nudge = useCommentNudge();
   const [addingTime, setAddingTime] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
+
+  // Amendment 1 (5.9): a link the server never previewed is asked for once per app session.
+  useEffect(() => {
+    if (!plan || previewRetried.has(plan.id) || !needsLinkPreviewRetry(plan, Date.now())) return;
+    previewRetried.add(plan.id);
+    requestLinkPreview(plan.id);
+  }, [plan]);
 
   const header = (
     <View style={styles.header}>
@@ -423,7 +455,25 @@ function PlanCardBubbleImpl({
     summary.maybe ? t("chat:plan_summary_maybe", { count: summary.maybe }) : null,
     summary.cant ? t("chat:plan_summary_cant", { count: summary.cant }) : null,
   ].filter(Boolean);
-  const photo = !photoFailed ? resolvePlacePhotoThumbSource(plan.place?.photoUrl) : null;
+  const placeVoteShown = plan.places.length >= 2 || (plan.places.length >= 1 && plan.whereKind === "none");
+  const leadPlace = placeVoteShown ? leadingPlace(plan.places) : null;
+  const isPlacePlan = plan.whereKind === "place" || plan.whereKind === "address";
+  const poolPlace = isPlacePlan && !!plan.place?.poolId;
+  // Cover: a pool photo through the thumb resolver; a link preview image shown directly (never /render/image/).
+  const coverUri = (() => {
+    if (photoFailed) return null;
+    if (leadPlace) {
+      if (leadPlace.poolId) return resolvePlacePhotoThumbSource(leadPlace.photoUrl)?.uri ?? null;
+      return isHttpsImage(leadPlace.link?.imageUrl) ? leadPlace.link?.imageUrl ?? null : null;
+    }
+    if (plan.place?.photoUrl) return resolvePlacePhotoThumbSource(plan.place.photoUrl)?.uri ?? null;
+    return isHttpsImage(plan.link?.imageUrl) ? plan.link?.imageUrl ?? null : null;
+  })();
+  const lockParts = lockLabelParts(plan, i18n.language);
+  const lockLabel = lockParts.place
+    ? t("chat:plan_lock_in_with_place", { time: lockParts.time, place: lockParts.place })
+    : t("chat:plan_lock_in", { time: lockParts.time });
+  const canSuggest = !cancelled && plan.status === "deciding" && plan.canAddPlace;
   const pickedByVote = scheduled && plan.whenMode === "poll";
   const creatorName = plan.createdBy === viewerId ? t("chat:you") : plan.createdByName || nameOf(plan.createdBy);
   const pollHint = plan.options.length === 0
@@ -443,7 +493,13 @@ function PlanCardBubbleImpl({
         style={[styles.card, highlighted && styles.cardHighlighted]}
         accessibilityHint={t("chat:plan_edit")}
       >
-        {plan.whereKind === "place" || plan.whereKind === "address" ? (
+        {placeVoteShown ? (
+          coverUri ? (
+            <View style={styles.cover}>
+              <Image source={{ uri: coverUri }} style={styles.heroImage} resizeMode="cover" onError={() => setPhotoFailed(true)} />
+            </View>
+          ) : null
+        ) : poolPlace ? (
           <TouchableOpacity
             style={styles.hero}
             onPress={() => onOpenPlace(plan)}
@@ -452,9 +508,9 @@ function PlanCardBubbleImpl({
             accessibilityLabel={[plan.place?.name, plan.place?.address].filter(Boolean).join(", ")}
             testID="plan-card-place"
           >
-            {photo ? (
+            {coverUri ? (
               <Image
-                source={{ uri: photo.uri }}
+                source={{ uri: coverUri }}
                 style={styles.heroImage}
                 resizeMode="cover"
                 onError={() => setPhotoFailed(true)}
@@ -470,30 +526,79 @@ function PlanCardBubbleImpl({
               </View>
             </View>
           </TouchableOpacity>
+        ) : isPlacePlan ? (
+          // Not on Mingla: an optional cover, the place line (no tap), then its own link or "Open in Maps".
+          <>
+            {coverUri ? (
+              <View style={styles.cover}>
+                <Image source={{ uri: coverUri }} style={styles.heroImage} resizeMode="cover" onError={() => setPhotoFailed(true)} />
+              </View>
+            ) : null}
+            <View style={styles.placeLine} testID="plan-card-place-line">
+              <View style={styles.pin}>
+                <Icon name="location" size={16} color={chatTokens.textPrimary} />
+              </View>
+              <View style={styles.heroText}>
+                <Text style={styles.heroName} numberOfLines={1}>{plan.place?.name}</Text>
+                {plan.place?.address ? <Text style={styles.heroArea} numberOfLines={1}>{plan.place.address}</Text> : null}
+              </View>
+            </View>
+            <View style={styles.linkRowWrap}>
+              <PlanLinkRow
+                link={plan.link}
+                mapsSubtitle={plan.place?.address || plan.place?.name}
+                onPress={() => onOpenPlace(plan)}
+              />
+            </View>
+          </>
         ) : null}
-        {plan.whereKind === "link" && plan.link ? (
-          <TouchableOpacity
-            style={styles.linkBlock}
-            onPress={() => onOpenLink(plan.link?.url ?? "")}
-            activeOpacity={0.85}
-            accessibilityRole="link"
-            accessibilityLabel={plan.link.url}
-            testID="plan-card-link"
-          >
-            <View style={styles.linkIcon}>
-              <Icon name="link" size={20} color={chatTokens.tagChat} />
-            </View>
-            <View style={styles.heroText}>
-              <Text style={styles.linkDomain} numberOfLines={1}>{plan.link.domain}</Text>
-              <Text style={styles.linkUrl} numberOfLines={1}>{plan.link.url}</Text>
-            </View>
-          </TouchableOpacity>
+        {!placeVoteShown && plan.whereKind === "link" && plan.link ? (
+          <>
+            {coverUri ? (
+              <View style={styles.cover}>
+                <Image source={{ uri: coverUri }} style={styles.heroImage} resizeMode="cover" onError={() => setPhotoFailed(true)} />
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={styles.linkBlock}
+              onPress={() => onOpenLink(plan.link?.url ?? "", plan.link?.title ?? plan.link?.domain)}
+              activeOpacity={0.85}
+              accessibilityRole="link"
+              accessibilityLabel={t("chat:plan_open_link_a11y", { domain: plan.link.domain })}
+              testID="plan-card-link"
+            >
+              <View style={styles.linkIcon}>
+                <Icon name="link" size={20} color={chatTokens.tagChat} />
+              </View>
+              <View style={styles.heroText}>
+                <Text style={styles.linkDomain} numberOfLines={1}>{plan.link.siteName?.trim() || plan.link.domain}</Text>
+                <Text style={styles.linkUrl} numberOfLines={2}>{plan.link.title?.trim() || plan.link.url}</Text>
+              </View>
+            </TouchableOpacity>
+          </>
         ) : null}
 
         <View style={styles.body}>
           <Text style={styles.title} numberOfLines={3}>{plan.title}</Text>
 
           {cancelled ? <Text style={styles.cancelledText}>{t("chat:plan_cancelled")}</Text> : null}
+
+          {!cancelled && placeVoteShown && plan.status === "deciding" ? (
+            <PlanPlaceOptions
+              plan={plan}
+              viewerId={viewerId}
+              memberCount={payload?.memberCount ?? 1}
+              nameOf={nameOf}
+              heading={t("chat:plan_voting_place_heading")}
+              onVote={(optionId) => {
+                actions.placeVote(plan, optionId);
+                nudge.poke();
+              }}
+              onOpen={(option) => onOpenPlaceOption(plan, option)}
+              onSuggest={canSuggest ? () => onSuggestPlace(plan) : undefined}
+            />
+          ) : null}
+          {canSuggest && !placeVoteShown ? <PlanSuggestPlaceButton onPress={() => onSuggestPlace(plan)} /> : null}
 
           {!cancelled && scheduled && plan.scheduledAt ? (
             <View style={styles.whenRow}>
@@ -550,14 +655,14 @@ function PlanCardBubbleImpl({
               onPress={() => actions.lockOption(plan, leader.id)}
               disabled={locking}
               accessibilityRole="button"
-              accessibilityLabel={t("chat:plan_lock_in", { time: shortPlanTime(leader.startsAt, i18n.language) })}
+              accessibilityLabel={lockLabel}
               accessibilityState={{ busy: locking }}
               testID="plan-card-lock"
             >
               {locking ? (
                 <ActivityIndicator size="small" color={chatTokens.tagDeck} />
               ) : (
-                <Text style={styles.lockText}>{t("chat:plan_lock_in", { time: shortPlanTime(leader.startsAt, i18n.language) })}</Text>
+                <Text style={styles.lockText} numberOfLines={1}>{lockLabel}</Text>
               )}
             </TouchableOpacity>
           ) : null}
@@ -628,6 +733,9 @@ function PlanCardBubbleImpl({
   );
 }
 
+/** Plans whose link preview this app session already asked for (module memory, never persisted). */
+const previewRetried = new Set<string>();
+
 export const PlanCardBubble = React.memo(PlanCardBubbleImpl);
 
 const styles = StyleSheet.create({
@@ -651,6 +759,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: chatTokens.surface, borderWidth: 1, borderColor: chatTokens.hairline, borderRadius: 18, overflow: "hidden" },
   cardHighlighted: { borderColor: chatTokens.accent },
   hero: { height: 92, backgroundColor: chatTokens.surfaceRaised, justifyContent: "flex-end" },
+  cover: { height: 92, backgroundColor: chatTokens.surfaceRaised },
+  placeLine: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 12 },
+  linkRowWrap: { paddingHorizontal: 12, paddingTop: 10 },
   heroImage: { ...StyleSheet.absoluteFillObject, opacity: 0.55 },
   heroRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
   pin: { width: 30, height: 30, borderRadius: 15, backgroundColor: chatTokens.accent, alignItems: "center", justifyContent: "center" },

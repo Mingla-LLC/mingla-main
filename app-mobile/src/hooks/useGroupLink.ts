@@ -10,7 +10,7 @@ import { useCallback, useState } from "react";
 import { Share } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import i18n from "../i18n";
-import { friendShareKeys, groupLinkKeys } from "./queryKeys";
+import { chatKeys, friendShareKeys, groupLinkKeys } from "./queryKeys";
 import {
   addGroupMembers,
   decideGroupJoinRequest,
@@ -121,6 +121,10 @@ export function useDecideJoinRequest(conversationId: string, groupName: string) 
       }
       return result;
     },
+    onSuccess: (_result, { approve }) => {
+      // Amendment 1 B-4: the header count follows the live member list.
+      if (approve) void queryClient.invalidateQueries({ queryKey: chatKeys.participants(conversationId) });
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: groupLinkKeys.joinRequests(conversationId) });
     },
@@ -142,6 +146,8 @@ export function useAddGroupMembers(conversationId: string) {
         toastManager.warning(i18n.t("chat:group_add_skipped", { count: result.skipped.length }));
       }
       void queryClient.invalidateQueries({ queryKey: groupLinkKeys.link(conversationId) });
+      // Amendment 1 B-4: the header count follows the live member list.
+      void queryClient.invalidateQueries({ queryKey: chatKeys.participants(conversationId) });
     },
     onError: (error) => {
       console.warn("[useAddGroupMembers] failed:", error.message);

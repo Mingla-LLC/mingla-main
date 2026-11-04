@@ -189,7 +189,7 @@ Deno.test("the quote is built from the viewer's own picks only", () => {
   assertEquals(planQuoteNote(ada, "en-US", "UTC", t), "You voted Fri 8:00 PM and Sun 4:00 PM, you said maybe", "Ada's own note differs");
   assertEquals(planQuoteNote({ votedStartsAt: [], rsvp: null }, "en-US", "UTC", t), "Voting on a time", "nothing picked");
   assertEquals(planQuoteNote({ votedStartsAt: [], rsvp: "cant" }, "en-US", "UTC", t), "You can't make it", "capitalised");
-  assertEquals(parsePlanQuote({ title: "X", votedStartsAt: ["a", 3], rsvp: "nope" }), { title: "X", votedStartsAt: ["a"], rsvp: null }, "defensive parse");
+  assertEquals(parsePlanQuote({ title: "X", votedStartsAt: ["a", 3], rsvp: "nope" }), { title: "X", votedStartsAt: ["a"], rsvp: null, votedPlaces: [] }, "defensive parse (amendment 1 adds votedPlaces)");
   assertEquals(parsePlanQuote(null), null, "no snapshot");
 });
 

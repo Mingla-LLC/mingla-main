@@ -4,10 +4,13 @@
  * `code` is the RPC's `error.message`); nothing returns a fallback.
  */
 import { supabase } from './supabase';
+import { normalizeChatPlansPayload } from '../components/chat/planModel';
 import type {
   ChatPlanRpcErrorCode,
   ChatPlansPayload,
   PlanAddOptionResult,
+  PlanAddPlaceInput,
+  PlanAddPlaceResult,
   PlanCreateInput,
   PlanCreateResult,
   PlanIdResult,
@@ -29,6 +32,8 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<ChatPlanRpcErrorCode>([
   'conflict_plan_not_deciding',
   'conflict_rate_limited',
   'conflict_too_many_times',
+  'conflict_too_many_places',
+  'conflict_plan_cancelled',
   'conflict_group_full',
   'conflict_already_decided',
   'conflict_friend_accept',
@@ -58,8 +63,9 @@ async function call<T>(name: string, params: Record<string, unknown>): Promise<T
   return data as T;
 }
 
-export function fetchChatPlans(conversationId: string): Promise<ChatPlansPayload> {
-  return call<ChatPlansPayload>('chat_plans_for_conversation', { p_conversation_id: conversationId });
+export async function fetchChatPlans(conversationId: string): Promise<ChatPlansPayload> {
+  const payload = await call<ChatPlansPayload>('chat_plans_for_conversation', { p_conversation_id: conversationId });
+  return normalizeChatPlansPayload(payload);
 }
 
 export function createPlan(input: PlanCreateInput): Promise<PlanCreateResult> {
@@ -94,26 +100,74 @@ export function setPlanReaction(planId: string, kind: PlanReaction | null): Prom
   return call<PlanSetReactionResult>('plan_set_reaction', { p_plan_id: planId, p_kind: kind });
 }
 
-export function lockPlan(input: {
+/** Amendment 1 (5.3): suggest a place; a double tap returns `existed`. */
+export function addPlanPlace(input: PlanAddPlaceInput): Promise<PlanAddPlaceResult> {
+  return call<PlanAddPlaceResult>('plan_add_place', {
+    p_plan_id: input.planId,
+    p_where_kind: input.whereKind,
+    p_place: input.place,
+    p_link_url: input.linkUrl,
+  });
+}
+
+/** Amendment 1 (5.4): a place vote on or off (never a chat line). */
+export function setPlanPlaceVote(optionId: string, on: boolean): Promise<PlanSetVoteResult> {
+  return call<PlanSetVoteResult>('plan_set_place_vote', { p_option_id: optionId, p_on: on });
+}
+
+function rpcResult<T>(name: string, data: unknown, error: { message: string } | null): T {
+  if (error) throw new ChatPlanError(parseChatPlanErrorCode(error.message), error.message);
+  if (data === null || data === undefined) throw new ChatPlanError('unknown', `${name} returned nothing`);
+  return data as T;
+}
+
+/**
+ * Locks a plan. Literal `supabase.rpc('plan_lock', ...)` (gate #2305 reads the
+ * advancer's call sites). `p_place_option_id` is the shown leading place
+ * (amendment 1, 5.5); deck plans send null.
+ */
+export async function lockPlan(input: {
   planId: string;
   optionId?: string | null;
   scheduledAt?: string | null;
   durationMinutes?: number;
+  placeOptionId?: string | null;
 }): Promise<PlanLockResult> {
-  return call<PlanLockResult>('plan_lock', {
+  const { data, error } = await supabase.rpc('plan_lock', {
     p_plan_id: input.planId,
     p_option_id: input.optionId ?? null,
     p_scheduled_at: input.scheduledAt ?? null,
     p_duration_minutes: input.durationMinutes ?? 120,
+    p_place_option_id: input.placeOptionId ?? null,
   });
+  return rpcResult<PlanLockResult>('plan_lock', data, error);
 }
 
 export function updatePlan(planId: string, title: string, note: string | null): Promise<PlanIdResult> {
   return call<PlanIdResult>('plan_update', { p_plan_id: planId, p_title: title, p_note: note });
 }
 
-export function cancelPlan(planId: string): Promise<PlanIdResult> {
-  return call<PlanIdResult>('plan_cancel', { p_plan_id: planId });
+/** Literal `supabase.rpc('plan_cancel', ...)` for gate #2305 (same error mapping as `call`). */
+export async function cancelPlan(planId: string): Promise<PlanIdResult> {
+  const { data, error } = await supabase.rpc('plan_cancel', { p_plan_id: planId });
+  return rpcResult<PlanIdResult>('plan_cancel', data, error);
+}
+
+/**
+ * Amendment 1 (5.9): ask the server to read the plan's link previews. The phone
+ * never sends a URL (the server picks the plan's stale links). Background
+ * enrichment nobody asked for: a failure is logged, never thrown or toasted;
+ * the card keeps showing the domain.
+ */
+export function requestLinkPreview(planId: string): void {
+  supabase.functions
+    .invoke('plan-link-preview', { body: { planId } })
+    .then(({ error }) => {
+      if (error) console.warn('[chatPlansService] link preview failed:', error.message);
+    })
+    .catch((error: unknown) => {
+      console.warn('[chatPlansService] link preview failed:', error);
+    });
 }
 
 /** One comment on a plan: an ordinary chat message that carries `plan_id`. */
