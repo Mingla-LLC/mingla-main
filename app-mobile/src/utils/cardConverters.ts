@@ -7,6 +7,7 @@
  */
 import type { Recommendation } from '../types/recommendation';
 import { getCategoryIcon } from './categoryUtils';
+import { curatedTotalPriceRange } from './curatedPriceRange';
 
 /**
  * Normalize a datetime string to ISO format ("Z" suffix).
@@ -73,11 +74,11 @@ export function curatedToRecommendation(card: any): Recommendation {
     lat: firstStop?.lat,
     lng: firstStop?.lng,
     description: card.tagline ?? '',
-    budget: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
+    budget: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax),
     rating: avgRating,
     image: firstImage,
     images: allImages.length > 0 ? allImages : [firstImage || ''],
-    priceRange: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
+    priceRange: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax),
     // ORCH-0659/0660: honest null when first-stop distance/travel-time is missing
     distance: firstStop && typeof firstStop.distanceFromUserKm === 'number'
       ? `${firstStop.distanceFromUserKm.toFixed(1)} km`
