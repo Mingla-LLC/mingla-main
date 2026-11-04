@@ -466,6 +466,7 @@
   "plan_suggest_place_title": "Suggest a place",
   "plan_suggest_place_cta": "Add",
   "plan_suggest_place_helper": "Everyone taps every place that works. {{name}} locks in the winner.",
+  "plan_suggest_place_helper_you": "Everyone taps every place that works. You lock in the winner.",
   "plan_place_option_added_by": "Suggested by {{name}}",
   "plan_place_exists_toast": "That place is already on the vote. Your vote was added.",
   "plan_too_many_places": "This vote already has 6 places.",

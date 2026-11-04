@@ -9,12 +9,10 @@
 --   S-04  your own link -> own_link.
 --   S-05  already friends -> already_friends, no friend request.
 --   S-06  a blocked pair -> unavailable; the block row is intact; zero writes.
---   S-07  a new claimant gets a referral credit for the link owner; an
---         account created 30 days ago gets none; joinedCount counts both.
---         (Whether it then turns `credited` is decided by the existing
---         credit_referral_on_friend_accepted trigger, which this issue does not
---         change; see the Wave A report, discovery on its `credit IS NOT NULL`
---         test. Either state is accepted here.)
+--   S-07  a new claimant gets a referral credit for the link owner, credited
+--         by the accept (credit_referral_on_friend_accepted, fixed in
+--         20280331034261); an account created 30 days ago gets none;
+--         joinedCount counts both.
 --   S-08  reset -> the old token is invalid_token.
 --   G-01  the group link is readable by members only.
 --   G-02  join with approval -> one pending request + a join_request line that
@@ -334,8 +332,8 @@ DECLARE
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.referral_credits
        WHERE referrer_id = pg_temp.t4261a_id('seth') AND referred_id = pg_temp.t4261a_id('lola')
-         AND status IN ('pending', 'credited')) THEN
-    RAISE EXCEPTION 'S-07: the new claimant must create a referral credit for the link owner';
+         AND status = 'credited' AND credited_at IS NOT NULL AND friend_request_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'S-07: the new claimant must create a referral credit for the link owner, credited by the accept';
   END IF;
   PERFORM pg_temp.t4261a_as('old');
   SET LOCAL ROLE authenticated;

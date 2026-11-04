@@ -139,7 +139,7 @@ export function PlanPlaceSuggestSheet({
           visible={visible}
           testIDPrefix="plan-suggest"
         />
-        <Text style={styles.helper}>{t("chat:plan_suggest_place_helper", { name: lockerName })}</Text>
+        <Text style={styles.helper}>{t(plan && (plan.canLock || plan.createdBy === viewerId) ? "chat:plan_suggest_place_helper_you" : "chat:plan_suggest_place_helper", { name: lockerName })}</Text>
       </View>
     </BaseBottomSheet>
   );
