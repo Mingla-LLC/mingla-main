@@ -438,11 +438,85 @@ export function normalizeMetaCities(
 export function buildMetaGeoLocations(
   countries: unknown,
   cities: readonly { key: string; radius: number; distance_unit: string }[],
+  extra: { regions?: unknown; custom_locations?: unknown } = {},
 ): Record<string, unknown> {
-  if (Array.isArray(cities) && cities.length > 0) {
-    return { cities: [...cities] };
+  // #4238: regions and dropped pins are sub-country places too, so they also
+  // replace the country (Meta unions every geo_locations list).
+  const regions = normalizeMetaRegions(extra.regions);
+  const pins = normalizeMetaCustomLocations(extra.custom_locations);
+  if (
+    (Array.isArray(cities) && cities.length > 0) || regions.length > 0 ||
+    pins.length > 0
+  ) {
+    return {
+      ...(cities.length > 0 ? { cities: [...cities] } : {}),
+      ...(regions.length > 0 ? { regions } : {}),
+      ...(pins.length > 0 ? { custom_locations: pins } : {}),
+    };
   }
   return { countries };
+}
+
+/** #4238: geo_locations.regions [{key}] — numeric-ish keys only, never invented. */
+export function normalizeMetaRegions(value: unknown): { key: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    const key = raw && typeof raw === "object"
+      ? String((raw as Record<string, unknown>).key ?? "").trim()
+      : "";
+    return key ? [{ key }] : [];
+  });
+}
+
+/**
+ * #4238: geo_locations.custom_locations — a point with a distance in km
+ * (Meta allows 1-80 km around a point). Out-of-range or broken points are
+ * dropped, never moved; the compiler already refused them in plain words.
+ */
+export function normalizeMetaCustomLocations(
+  value: unknown,
+): {
+  latitude: number;
+  longitude: number;
+  radius: number;
+  distance_unit: "kilometer";
+}[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    const row = raw && typeof raw === "object"
+      ? raw as Record<string, unknown>
+      : {};
+    const latitude = Number(row.latitude);
+    const longitude = Number(row.longitude);
+    const radius = Number(row.radius);
+    if (
+      !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+      !Number.isFinite(radius) || radius < 1 || radius > 80
+    ) return [];
+    return [{ latitude, longitude, radius, distance_unit: "kilometer" as const }];
+  });
+}
+
+/** #4238: excluded_geo_locations {cities:[{key}], regions:[{key}]} or null. */
+export function normalizeMetaExcludedGeo(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const cities = normalizeMetaRegions(row.cities);
+  const regions = normalizeMetaRegions(row.regions);
+  if (cities.length === 0 && regions.length === 0) return null;
+  return {
+    ...(cities.length ? { cities } : {}),
+    ...(regions.length ? { regions } : {}),
+  };
+}
+
+/** #4238: Meta locale keys (integers from the adlocale search). */
+export function normalizeMetaLocales(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0);
 }
 
 /**
@@ -546,6 +620,14 @@ export function applySpecialAdCategoryRestrictions(
 // ── Pure request-body builders (unit-testable; the exact wire shapes) ─────────
 
 /** A4.g url_tags UTM template — without it PostHog/GA are blind to paid traffic. */
+/**
+ * #4238: a Host ad's url_tags — standard utm_source/medium/campaign, plus the
+ * Mingla click ids that match sales to the ad (mc_id and friends).
+ */
+export function metaHostUrlTags(utmQuery: string): string {
+  return `${utmQuery}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&campaign_id={{campaign.id}}`;
+}
+
 export const META_URL_TAGS =
   "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&campaign_id={{campaign.id}}";
 
@@ -784,7 +866,7 @@ export function buildMetaCreativeBody(
     object_story_spec: objectStorySpec,
     ...(assetFeedSpec ? { asset_feed_spec: assetFeedSpec } : {}),
     // A4.g url_tags UTM template.
-    url_tags: META_URL_TAGS,
+    url_tags: input.urlTags ?? META_URL_TAGS,
   };
   // ISSUE-939: mirror the IG identity at the adcreatives top level (per the
   // validate-only proof). Only present when configured — see igIdentity above.
@@ -1219,6 +1301,20 @@ export const metaAdapter: ChannelAdapter = {
     await metaGraph(client, "POST", externalId, {
       daily_budget: centsToPlatformBudget("meta", cents),
     });
+  },
+
+  // #4238: Host live edit — the ad set's end_time (ISO 8601). Unverified
+  // against a live write; the request is Graph's standard field update.
+  setEndTime: async (conn, level, externalId, endIso) => {
+    if (level !== "ad_set") {
+      throw new AdApiError({
+        platform: "meta",
+        code: "unsupported_level",
+        message: "Meta end times live on the ad set.",
+      });
+    }
+    const client = resolveMetaClient(conn);
+    await metaGraph(client, "POST", externalId, { end_time: endIso });
   },
 
   getBudget: async (conn, _level, externalId) => {

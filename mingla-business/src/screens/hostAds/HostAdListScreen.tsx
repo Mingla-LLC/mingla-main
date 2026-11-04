@@ -61,6 +61,10 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { hostAdScrollBottomPadding } from "../../components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../utils/currency";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
+import {
+  hostAdLearningAlert,
+  hostAdPausedReason,
+} from "../../components/marketing/ads/hostAdAlerts";
 
 function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
@@ -544,6 +548,23 @@ export default function MarketingAdsRoute(): React.ReactElement {
                     {item.reason ? (
                       <Text style={styles.planReason}>
                         {hostAdReviewReason(item.reason)}
+                      </Text>
+                    ) : null}
+                    {item.lifecycle === "paused" &&
+                    hostAdPausedReason(item.pauseReason) ? (
+                      <Text style={styles.planReason} testID={`ads-paused-reason-${item.id}`}>
+                        {hostAdPausedReason(item.pauseReason)}
+                      </Text>
+                    ) : null}
+                    {item.kind === "campaign" &&
+                    hostAdLearningAlert({
+                      name: item.name,
+                      live: item.lifecycle === "live",
+                      startedAt: item.startedAt ?? null,
+                      nowIso: new Date().toISOString(),
+                    }) ? (
+                      <Text style={styles.campaignMeta} testID={`ads-learning-${item.id}`}>
+                        Still learning: leave it running for about a week before changing it.
                       </Text>
                     ) : null}
                     <Text style={styles.nextAction}>{item.nextAction} →</Text>

@@ -2,7 +2,7 @@
  * #3682 closeout — auto-follow on standalone RSVPs and venue bookings.
  * Drives the helpers with a REAL supabase-js client against a stub PostgREST
  * server and asserts the RPC body carries the generic (source_kind, source_id)
- * claim key added by 20280327003682.
+ * claim key added by 20280401003682.
  *
  *   deno test --allow-read --allow-env --allow-net --no-check \
  *     supabase/functions/_shared/__tests__/issue_3682_auto_follow_rsvp_booking.happy.test.ts
@@ -23,7 +23,7 @@ const paystackFinalizeSrc = read(
   "supabase/functions/_shared/reservationPaystackFinalize.ts",
 );
 const migrationSrc = read(
-  "supabase/migrations/20280327003682_issue_3682_auto_follow_generic_claims.sql",
+  "supabase/migrations/20280401003682_issue_3682_auto_follow_generic_claims.sql",
 );
 
 Deno.test("#3682 rsvp: signed-in RSVP sends (rsvp, rsvpId) claim key", async () => {

@@ -16,7 +16,7 @@ export type AutoFollowSource =
 export const AUTO_FOLLOW_RPC_DEADLINE_MS = 1500;
 
 /**
- * Generic claim key (#3682 closeout, migration 20280327003682): the row that
+ * Generic claim key (#3682 closeout, migration 20280401003682): the row that
  * caused the follow. 'order' is implied by orderId.
  */
 export type AutoFollowSourceKind = "order" | "rsvp" | "reservation";
@@ -115,7 +115,7 @@ export async function autoFollowBrandBestEffort(
         p_source: source,
         p_order_id: orderId,
         // Only sent for the generic key, so order calls keep the exact
-        // pre-20280327003682 argument shape.
+        // pre-20280401003682 argument shape.
         ...(sourceKind !== null
           ? { p_source_kind: sourceKind, p_source_id: sourceId }
           : {}),

@@ -157,7 +157,9 @@ Deno.test("#3697 provider writes replace caller targeting with the frozen snapsh
   assertStringIncludes(create, "parseFrozenGoogleLocations");
   assertStringIncludes(create, "targetingS.resolved_circles");
   assertStringIncludes(plan, "withServerTargetingCoordinates");
-  assertStringIncludes(plan, "forwardGeocodeText");
+  // #4238 r9: the same server geocoder, now through the lookup that tells a
+  // failed call from "no such place" (forwardGeocodeText wraps it).
+  assertStringIncludes(plan, "forwardGeocodeLookup");
 });
 
 Deno.test("#3697 targeting search authorizes Host planning without exposing consumer lane", async () => {

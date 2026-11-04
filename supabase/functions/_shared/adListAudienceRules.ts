@@ -187,7 +187,11 @@ export function hostAudiencePlatformStates(input: {
     });
 }
 
-export type AudienceSelection = { include_keys: string[] };
+export type AudienceSelection = {
+  include_keys: string[];
+  /** #4238: leave out people who already bought (the brand's past guests). */
+  exclude_keys?: string[];
+};
 
 const KEY_RE =
   /^(mingla:[a-z_]+:[a-z0-9_:-]+|brand:[0-9a-f-]{36}:[a-z_]+(:[A-Z]{2})?)$/;
@@ -210,8 +214,32 @@ export function validateAudienceSelection(input: {
   if (typeof input.raw !== "object" || Array.isArray(input.raw)) {
     return { ok: false, detail: "audience_selection_invalid" };
   }
+  const rawExclude = (input.raw as Record<string, unknown>).exclude_keys;
+  let excludeKeys: string[] | null = null;
+  if (rawExclude !== undefined) {
+    if (
+      !Array.isArray(rawExclude) || rawExclude.length > 1 ||
+      rawExclude.some((key) => typeof key !== "string" || !KEY_RE.test(key))
+    ) {
+      return { ok: false, detail: "audience_selection_invalid" };
+    }
+    // #4238: a Host may leave out only its own past guests.
+    if (
+      input.ownerKind === "host" &&
+      rawExclude.some((key) =>
+        key !== `brand:${String(input.planBrandId ?? "").toLowerCase()}:guests`
+      )
+    ) {
+      return { ok: false, detail: "audience_not_owned" };
+    }
+    excludeKeys = rawExclude.length > 0 ? [...rawExclude as string[]] : null;
+  }
+  const withExclude = (selection: AudienceSelection): AudienceSelection =>
+    excludeKeys ? { ...selection, exclude_keys: excludeKeys } : selection;
   const keys = (input.raw as Record<string, unknown>).include_keys;
-  if (keys === undefined) return { ok: true, selection: { include_keys: [] } };
+  if (keys === undefined) {
+    return { ok: true, selection: withExclude({ include_keys: [] }) };
+  }
   if (
     !Array.isArray(keys) || keys.length > 3 ||
     keys.some((key) => typeof key !== "string" || !KEY_RE.test(key)) ||
@@ -227,7 +255,13 @@ export function validateAudienceSelection(input: {
       }
     }
   }
-  return { ok: true, selection: { include_keys: [...keys as string[]] } };
+  if (excludeKeys && (keys as string[]).some((key) => excludeKeys!.includes(key))) {
+    return { ok: false, detail: "audience_include_exclude_overlap" };
+  }
+  return {
+    ok: true,
+    selection: withExclude({ include_keys: [...keys as string[]] }),
+  };
 }
 
 export type ListAudienceDefinitionRow = {

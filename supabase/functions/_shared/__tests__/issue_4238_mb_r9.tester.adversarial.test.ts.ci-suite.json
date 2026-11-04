@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_mb_r9.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-mb-06d-r9-tester",
+  "profile": "deno-2-unit"
+}

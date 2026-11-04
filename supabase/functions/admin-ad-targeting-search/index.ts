@@ -73,8 +73,13 @@ import {
 import {
   resolveGoogleClient,
   searchGoogleUserInterests,
+  suggestGeoTargetCandidates,
   suggestGeoTargetConstants,
 } from "../_shared/google.ts";
+import {
+  HOST_AD_LANGUAGES,
+  searchMatch,
+} from "../_shared/adTargetingMatch.ts";
 import {
   resolveSnapchatClient,
   snapchatFetchInterests,
@@ -105,9 +110,33 @@ export interface TargetingSearchResult {
   meta: Record<string, unknown>;
 }
 
-/** The kinds the wizard can search for. */
-const KINDS = ["city", "interest"] as const;
+/**
+ * The kinds the wizard can search for. #4238 adds region (state/province),
+ * pin (an address the server turns into a point) and language.
+ */
+const KINDS = ["city", "interest", "region", "pin", "language"] as const;
 type Kind = (typeof KINDS)[number];
+
+/** One app's lookup: its results, plus results one level up (TikTok PROVINCE). */
+type ResolveOut = {
+  results: TargetingSearchResult[];
+  wider?: TargetingSearchResult[];
+  warning?: string;
+};
+
+function languageResults(q: string): TargetingSearchResult[] {
+  const query = q.trim().toLowerCase();
+  return HOST_AD_LANGUAGES
+    .filter((row) =>
+      row.code === query || row.name.toLowerCase().startsWith(query)
+    )
+    .map((row) => ({
+      id: row.code,
+      name: row.name,
+      meta: { code: row.code, google_language_id: row.google },
+    }));
+}
+
 
 /**
  * Pure fail-open surface for a provider error — never leaks a token (the
@@ -116,9 +145,17 @@ type Kind = (typeof KINDS)[number];
 function failOpen(
   err: unknown,
   hostCaller = false,
-): { results: []; warning: string } {
+): { results: []; warning: string; unavailable: true } {
+  // #4238 I-4238-ERROR-IS-NOT-MISSING: an app error is flagged so no caller
+  // records it as "not found". The empty list keeps the old fail-open shape.
   // #4238 D6: a Host never sees provider text (it can name secrets or IDs).
-  if (hostCaller) return { results: [], warning: hostSafeSearchWarning(err) };
+  if (hostCaller) {
+    return {
+      results: [],
+      warning: hostSafeSearchWarning(err),
+      unavailable: true,
+    };
+  }
   const warning = err instanceof AdApiError
     ? err.message
     : err instanceof AdNotConnectedError
@@ -126,7 +163,7 @@ function failOpen(
     : err instanceof Error
     ? err.message
     : "Search is unavailable right now.";
-  return { results: [], warning };
+  return { results: [], warning, unavailable: true };
 }
 
 async function resolveMeta(
@@ -134,13 +171,29 @@ async function resolveMeta(
   kind: Kind,
   q: string,
   country: string | null,
-): Promise<{ results: TargetingSearchResult[]; warning?: string }> {
+): Promise<ResolveOut> {
   const client = resolveMetaClient(conn ?? undefined);
-  if (kind === "city") {
+  if (kind === "language") {
+    // #4238: Meta targets languages by its own locale keys (read-only search).
+    const payload = await metaSearch(client, { type: "adlocale", q, limit: "10" });
+    const data = Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: Record<string, unknown>[] }).data
+      : [];
+    return {
+      results: data.flatMap((row) => {
+        const key = typeof row.key === "number" || typeof row.key === "string"
+          ? String(row.key)
+          : "";
+        const name = typeof row.name === "string" ? row.name : "";
+        return key && name ? [{ id: key, name, meta: { locale_key: key } }] : [];
+      }),
+    };
+  }
+  if (kind === "city" || kind === "region") {
     // country_code disambiguation is MANDATORY (the London/Canada hazard).
     const payload = await metaSearch(client, {
       type: "adgeolocation",
-      location_types: ["city"],
+      location_types: [kind === "region" ? "region" : "city"],
       q,
       limit: "15",
       ...(country ? { country_code: country } : {}),
@@ -157,6 +210,7 @@ async function resolveMeta(
         country_code: r.country_code,
         supports_region: r.supports_region,
         type: r.type,
+        level: kind === "region" ? "REGION" : String(r.type ?? "city").toUpperCase(),
       },
     }));
     return {
@@ -188,9 +242,29 @@ async function resolveTikTok(
   kind: Kind,
   q: string,
   country: string | null,
-): Promise<{ results: TargetingSearchResult[]; warning?: string }> {
+): Promise<ResolveOut> {
+  if (kind === "language") return { results: languageResults(q) };
   if (!conn) throw new AdNotConnectedError("tiktok", "tiktok_not_connected");
   const client = resolveTikTokClient(conn);
+  if (kind === "region") {
+    const provinces = await tiktokSearchCityLocations(client, {
+      q,
+      country: country ?? undefined,
+      geoTypes: ["PROVINCE"],
+    });
+    return {
+      results: provinces.map((r) => ({
+        id: r.geoId,
+        name: r.name,
+        meta: {
+          location_id: r.geoId,
+          region_code: r.regionCode,
+          geo_type: r.geoType,
+          level: "PROVINCE",
+        },
+      })),
+    };
+  }
   if (kind === "city") {
     // ISSUE-1289: resolve via tool/targeting/search FUZZY_SEARCH (city/district/
     // DMA geo_ids), NOT the tool/region level==="CITY" filter — that filter could
@@ -212,8 +286,25 @@ async function resolveTikTok(
         description: r.description,
       },
     }));
+    // #4238 P0: TikTok often knows a Nigerian city only as its state. Look
+    // one level up so the Host can accept "Lagos State" (wider area) instead
+    // of being told TikTok can't find Lagos.
+    const wider = results.length > 0 ? [] : (await tiktokSearchCityLocations(
+      client,
+      { q, country: country ?? undefined, geoTypes: ["PROVINCE"] },
+    )).map((r) => ({
+      id: r.geoId,
+      name: r.name,
+      meta: {
+        location_id: r.geoId,
+        region_code: r.regionCode,
+        geo_type: r.geoType,
+        level: "PROVINCE",
+      },
+    }));
     return {
       results,
+      ...(wider.length > 0 ? { wider } : {}),
       ...(results.length === 0
         ? {
           warning: `TikTok has no city-level match for "${q}"${
@@ -238,7 +329,9 @@ async function resolveGoogle(
   kind: Kind,
   q: string,
   country: string | null,
-): Promise<{ results: TargetingSearchResult[]; warning?: string }> {
+  wantMatch = false,
+): Promise<ResolveOut> {
+  if (kind === "language") return { results: languageResults(q) };
   if (kind === "interest") {
     // ISSUE-992 (3b): real affinity / in-market audiences via user_interest
     // search (replaces the old deferred stub). Account/policy-gated (G-4) — a
@@ -262,6 +355,26 @@ async function resolveGoogle(
   }
   if (!conn) throw new AdNotConnectedError("google", "google_not_connected");
   const client = await resolveGoogleClient(conn);
+  if (wantMatch || kind === "region") {
+    // #4238: Google's own candidates in this country; the matcher picks.
+    const candidates = await suggestGeoTargetCandidates(client, {
+      name: q,
+      countryCode: country,
+    });
+    const toResult = (row: typeof candidates[number]) => ({
+      id: row.criterionId,
+      name: row.canonicalName,
+      meta: {
+        criterion_id: row.criterionId,
+        name: row.name,
+        canonical_name: row.canonicalName,
+        country_code: row.countryCode,
+        target_type: row.targetType,
+        level: String(row.targetType ?? "").toUpperCase(),
+      },
+    });
+    return { results: candidates.map(toResult) };
+  }
   // Exact-name confirmation (the create path re-resolves by name+country_code).
   const resolved = await suggestGeoTargetConstants(client, {
     name: q,
@@ -292,7 +405,8 @@ async function resolveSnapchat(
   conn: AdConnectionRow | null,
   kind: Kind,
   q: string,
-): Promise<{ results: TargetingSearchResult[]; warning?: string }> {
+): Promise<ResolveOut> {
+  if (kind === "language") return { results: languageResults(q) };
   if (kind === "interest") {
     // ISSUE-992 (3a): real SCLS interest-segment resolution (replaces the old
     // deferred fail-open stub).
@@ -316,15 +430,23 @@ async function resolveSnapchat(
   const name = q.trim();
   if (!name) return { results: [] };
   return {
-    results: [{ id: name, name, meta: { circle_passthrough: true } }],
+    results: [{
+      id: name,
+      name,
+      meta: {
+        circle_passthrough: true,
+        level: kind === "region" ? "REGION" : "CITY",
+      },
+    }],
   };
 }
 
 function resolveReddit(
   kind: Kind,
   q: string,
-): { results: TargetingSearchResult[]; warning?: string } {
-  if (kind === "city") {
+): ResolveOut {
+  if (kind === "language") return { results: languageResults(q) };
+  if (kind === "city" || kind === "region") {
     return {
       results: [],
       warning:
@@ -426,7 +548,8 @@ serve(async (req: Request): Promise<Response> => {
   ) {
     return json({
       error: "validation_error",
-      detail: "kind_invalid — expected 'city' | 'interest'",
+      detail:
+        "kind_invalid — expected 'city' | 'interest' | 'region' | 'pin' | 'language'",
     }, 400);
   }
   if (!q) return json({ error: "validation_error", detail: "q_required" }, 400);
@@ -447,14 +570,28 @@ serve(async (req: Request): Promise<Response> => {
     conn = (data ?? null) as AdConnectionRow | null;
   }
 
+  const wantMatch = body.match === true;
   try {
-    let out: { results: TargetingSearchResult[]; warning?: string };
-    if (p === "meta") out = await resolveMeta(conn, k, q, country);
+    let out: ResolveOut;
+    if (k === "pin") {
+      // #4238: a pin is an address. Like Snapchat cities, the point is found
+      // on the server when the plan is checked (ad-plan), so coordinates
+      // never reach the browser (ISSUE-992). Every app shares the pin; TikTok
+      // and Reddit use the wider area.
+      out = {
+        results: [{
+          id: `pin:${q.toLowerCase()}`,
+          name: q,
+          meta: { pin_passthrough: true, level: "PIN", country_code: country },
+        }],
+      };
+    } else if (p === "meta") out = await resolveMeta(conn, k, q, country);
     else if (p === "tiktok") out = await resolveTikTok(conn, k, q, country);
-    else if (p === "google") out = await resolveGoogle(conn, k, q, country);
-    else if (p === "reddit") out = resolveReddit(k, q);
+    else if (p === "google") {
+      out = await resolveGoogle(conn, k, q, country, wantMatch);
+    } else if (p === "reddit") out = resolveReddit(k, q);
     else out = await resolveSnapchat(conn, k, q); // ISSUE-992 (3a): city passthrough + SCLS interests
-    return json(out);
+    return json(wantMatch ? { ...out, match: searchMatch(k, q, out) } : out);
   } catch (err) {
     // FAIL-OPEN: never block the wizard on a provider error.
     return json(failOpen(err, hostCaller));

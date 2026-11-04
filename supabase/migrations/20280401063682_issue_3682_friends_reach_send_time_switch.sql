@@ -29,7 +29,7 @@ AS $fn$
 $fn$;
 REVOKE ALL ON FUNCTION private.issue_3682_extended_reach_live() FROM PUBLIC, anon, authenticated;
 
--- Push: the 20280327043682 body + the switch check for 'extended'.
+-- Push: the 20280401043682 body + the switch check for 'extended'.
 CREATE OR REPLACE FUNCTION public.issue_3682_campaign_push_reason(
   p_brand_id uuid, p_user_id uuid, p_reason text
 ) RETURNS text
@@ -74,7 +74,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.issue_3682_campaign_push_reason(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3682_campaign_push_reason(uuid, uuid, text) TO service_role;
 
--- Account invites: the 20280327033682 body + the switch check for ring 'extended'.
+-- Account invites: the 20280401033682 body + the switch check for ring 'extended'.
 CREATE OR REPLACE FUNCTION private.issue_3682_account_invite_channel_reason(
   p_brand_id uuid, p_user_id uuid, p_ring text, p_channel text
 ) RETURNS text
