@@ -205,8 +205,7 @@ export type DeckSnapshotSkipReason =
   | 'expired'
   | 'no-location'
   | 'location-moved'
-  | 'all-swiped'
-  | 'fetch-in-flight';
+  | 'all-swiped';
 
 export interface DeckSnapshotRestoreResult {
   queryKey: readonly unknown[] | null;
@@ -229,8 +228,6 @@ export interface DeckSnapshotCache {
     data: unknown,
     options: { updatedAt: number },
   ): unknown;
-  /** QueryClient.isFetching — a fetch already running for the key wins. */
-  isFetching(filters: { queryKey: readonly unknown[]; exact: boolean }): number;
 }
 
 /**
@@ -293,11 +290,10 @@ export async function restoreDeckSnapshotController(
   const cards = record.response.cards.filter((card) => !excluded.has(card.id));
   if (cards.length === 0) return skip('all-swiped');
 
-  // A fetch already running for this key will land a real deck in a moment;
-  // seeding now would be replaced without the keep-my-place merge.
-  if (dependencies.queryClient.isFetching({ queryKey: record.queryKey, exact: true }) > 0) {
-    return skip('fetch-in-flight');
-  }
+  // A fetch already running for this key does NOT stop the seed: the
+  // snapshot shows now, and fetchDeckKeepingSnapshot re-reads the cache when
+  // that fetch lands and merges the fresh deck BEHIND the snapshot (#4265 —
+  // the in-flight skip made the restore lose the race on every launch).
   // A deck already in the cache under this key (e.g. restored by the React
   // Query persister) wins — never overwrite live data with the snapshot.
   const existing = dependencies.queryClient.getQueryData(record.queryKey) as
@@ -322,4 +318,97 @@ export async function restoreDeckSnapshotController(
     excludedCardIds: excludedIds,
     skipped: null,
   };
+}
+
+/** The cache methods the deck fetch needs (structural; QueryClient satisfies it). */
+export interface DeckFetchCache<R extends DeckResponseLike> {
+  getQueryData(queryKey: readonly unknown[]): R | undefined;
+  setQueryData(
+    queryKey: readonly unknown[],
+    updater: (prev: R | undefined) => R | undefined,
+  ): unknown;
+}
+
+/**
+ * #4265 — one deck fetch that never yanks a cold-start snapshot, whenever the
+ * snapshot lands. The cache is read at each arrival (partial and final), NOT
+ * once at the start, so a snapshot seeded while the fetch is already in flight
+ * still wins:
+ *   * a partial delivery merges behind whatever is on screen, keeps a
+ *     snapshot's marker + exclusions, and drops swiped/dismissed cards;
+ *   * the final result is merged behind a snapshot if one is in the cache now,
+ *     otherwise returned as fetched.
+ * `emptyPartial(prev, cards)` builds the non-snapshot partial shape (the hook's
+ * existing ORCH-0490 Phase 2.2 progressive-delivery shape).
+ */
+export async function fetchDeckKeepingSnapshot<C extends DeckCardLike, R extends DeckResponseLike<C>>(
+  cache: DeckFetchCache<R>,
+  queryKey: readonly unknown[],
+  fetchDeck: (onPartial: (cards: C[]) => number) => Promise<R>,
+  partialShape: (prev: R | undefined, mergedCards: C[]) => R,
+): Promise<R> {
+  const fresh = await fetchDeck((partialCards) => {
+    let added = 0;
+    cache.setQueryData(queryKey, (prev) => {
+      const restored = isRestoredDeckSnapshot(prev) ? prev : null;
+      const excluded = new Set(restored?.restoredExcludedCardIds ?? []);
+      const cards = restored
+        ? partialCards.filter((card) => !excluded.has(card.id))
+        : partialCards;
+      if (cards.length === 0) return prev;
+      const merged = mergeCardsByIdPreservingOrder(prev?.cards ?? [], cards);
+      added = merged.length - (prev?.cards?.length ?? 0);
+      if (restored) {
+        return { ...restored, cards: merged, total: merged.length };
+      }
+      return partialShape(prev, merged);
+    });
+    return added;
+  });
+  const latest = cache.getQueryData(queryKey);
+  return isRestoredDeckSnapshot(latest) ? mergeFreshDeckBehindSnapshot(latest, fresh) : fresh;
+}
+
+// ── Once per launch ─────────────────────────────────────────────────────────
+// Every solo RecommendationsProvider mount asked for the restore (two calls per
+// launch were logged). One storage read per (user, refreshKey) per JS runtime;
+// later callers share the same promise and result.
+let restoreOnce: { key: string; promise: Promise<DeckSnapshotRestoreResult> } | null = null;
+
+export function restoreDeckSnapshotOnce(
+  input: Parameters<typeof restoreDeckSnapshotController>[0],
+  dependencies: Parameters<typeof restoreDeckSnapshotController>[1],
+): { promise: Promise<DeckSnapshotRestoreResult>; first: boolean } {
+  const key = `${input.userId}:${String(input.refreshKey ?? 0)}`;
+  if (restoreOnce && restoreOnce.key === key) {
+    return { promise: restoreOnce.promise, first: false };
+  }
+  const promise = restoreDeckSnapshotController(input, dependencies);
+  restoreOnce = { key, promise };
+  return { promise, first: true };
+}
+
+/** Test seam — forget the once-per-launch restore. */
+export function resetDeckSnapshotRestoreForTests(): void {
+  restoreOnce = null;
+}
+
+/** The deck waits at most this long for the local restore before fetching. */
+export const DECK_SNAPSHOT_RESTORE_GATE_MS = 300;
+
+/** Resolves when `promise` settles or after `ms`, whichever is first. Never rejects. */
+export function settleWithin(promise: Promise<unknown>, ms: number): Promise<'settled' | 'timeout'> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), ms);
+    promise.then(
+      () => {
+        clearTimeout(timer);
+        resolve('settled');
+      },
+      () => {
+        clearTimeout(timer);
+        resolve('settled');
+      },
+    );
+  });
 }

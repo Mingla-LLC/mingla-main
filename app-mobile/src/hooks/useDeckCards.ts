@@ -18,15 +18,14 @@ import {
   type DeckParams,
   type DeckResponse,
   type DeckServerPath,
-  mergeCardsByIdPreservingOrder,
 } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import { normalizeDateTime } from '../utils/cardConverters';
 import {
   buildDeckSnapshotRecord,
   DECK_LAST_SNAPSHOT_KEY,
+  fetchDeckKeepingSnapshot,
   isRestoredDeckSnapshot,
-  mergeFreshDeckBehindSnapshot,
 } from '../utils/deckSnapshot';
 
 // Stable empty arrays to prevent new references on every render
@@ -139,6 +138,9 @@ export {
   isRestoredDeckSnapshot,
   mergeFreshDeckBehindSnapshot,
   restoreDeckSnapshotController,
+  restoreDeckSnapshotOnce,
+  DECK_SNAPSHOT_RESTORE_GATE_MS,
+  settleWithin,
 } from '../utils/deckSnapshot';
 
 export interface SoloDeckQueryPlanInput {
@@ -382,57 +384,53 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
 
   const query = useQuery<DeckResponse>({
     queryKey,
-    queryFn: async () => {
+    queryFn: () => {
       // Use the same queryKey for onPartialReady progressive cache merges
       const qk = queryKey;
-      // #4265: when the cache holds a cold-start snapshot, the fresh deck is
-      // merged BEHIND it (and without already-swiped cards) so the card on
-      // screen never jumps. Captured once, before any partial arrival.
-      const prior = queryClient.getQueryData<DeckResponse>(qk);
-      const restored = isRestoredDeckSnapshot(prior) ? prior : null;
-      const restoredExcluded = new Set(restored?.restoredExcludedCardIds ?? []);
-
-      const fresh = await deckService.fetchDeck(
-        {
-          ...restParams,
-          location: location!,
-          limit: 10000, // Phase 5: return all matching cards, no artificial cap
-        },
-        // ORCH-0490 Phase 2.2: onPartialReady fires up to TWICE per fetchDeck
-        // — once when singles settles (if ok, non-empty), once when curated
-        // settles. Order is race-determined. Each arrival MERGES into the
-        // cache via mergeCardsByIdPreservingOrder (not replace) so existing
-        // card positions are preserved through the second arrival.
-        // The final fetchDeck promise resolution produces the authoritative
-        // interleaved return value — React Query writes that on success,
-        // overwriting the merged intermediate state. (Phase 2.3 will add an
-        // expansion signal so the SwipeableCards first-5-IDs wipe doesn't
-        // fire on this intermediate→final transition.)
-        (partialCards, meta) => {
-          const cards = restored
-            ? partialCards.filter((card) => !restoredExcluded.has(card.id))
-            : partialCards;
-          if (cards.length === 0) return;
-          queryClient.setQueryData<DeckResponse>(qk, (prev) => ({
-            cards: mergeCardsByIdPreservingOrder(prev?.cards ?? [], cards),
-            deckMode: prev?.deckMode ?? 'mixed',
-            activePills: prev?.activePills ?? [],
-            total: (prev?.cards?.length ?? 0) + cards.length,
-            hasMore: prev?.hasMore ?? true,
-            fxSnapshotId: prev?.fxSnapshotId ?? null,
-            // ORCH-0474 + ORCH-0486: serverPath from prev is preserved — the
-            // final fetchDeck return replaces this with the authoritative
-            // discriminant. During partial delivery we default to 'pipeline'
-            // since partial success implies the pipeline responded with data.
-            serverPath: prev?.serverPath ?? 'pipeline',
-            collabDeadEndPayload: prev?.collabDeadEndPayload,
-          }));
-          if (__DEV__) {
-            console.log(`[useDeckCards] partial delivery: +${cards.length} cards from ${meta.source}`);
-          }
-        },
+      // #4265: fetchDeckKeepingSnapshot reads the cache at each arrival, so a
+      // cold-start snapshot seeded even while this fetch is in flight stays on
+      // screen: partials and the final deck merge BEHIND it without the cards
+      // the user already swiped/dismissed, and the card on screen never jumps.
+      return fetchDeckKeepingSnapshot<Recommendation, DeckResponse>(
+        queryClient,
+        qk,
+        (onPartial) => deckService.fetchDeck(
+          {
+            ...restParams,
+            location: location!,
+            limit: 10000, // Phase 5: return all matching cards, no artificial cap
+          },
+          // ORCH-0490 Phase 2.2: onPartialReady fires up to TWICE per fetchDeck
+          // — once when singles settles (if ok, non-empty), once when curated
+          // settles. Order is race-determined. Each arrival MERGES into the
+          // cache via mergeCardsByIdPreservingOrder (not replace) so existing
+          // card positions are preserved through the second arrival.
+          // The final fetchDeck promise resolution produces the authoritative
+          // interleaved return value — React Query writes that on success,
+          // overwriting the merged intermediate state.
+          (cards, meta) => {
+            if (cards.length === 0) return;
+            const added = onPartial(cards);
+            if (__DEV__) {
+              console.log(`[useDeckCards] partial delivery: +${added} cards from ${meta.source}`);
+            }
+          },
+        ),
+        (prev, mergedCards) => ({
+          cards: mergedCards,
+          deckMode: prev?.deckMode ?? 'mixed',
+          activePills: prev?.activePills ?? [],
+          total: mergedCards.length,
+          hasMore: prev?.hasMore ?? true,
+          fxSnapshotId: prev?.fxSnapshotId ?? null,
+          // ORCH-0474 + ORCH-0486: serverPath from prev is preserved — the
+          // final fetchDeck return replaces this with the authoritative
+          // discriminant. During partial delivery we default to 'pipeline'
+          // since partial success implies the pipeline responded with data.
+          serverPath: prev?.serverPath ?? 'pipeline',
+          collabDeadEndPayload: prev?.collabDeadEndPayload,
+        }),
       );
-      return restored ? mergeFreshDeckBehindSnapshot(restored, fresh) : fresh;
     },
     // staleTime: Infinity is SAFE ONLY because empty deck-cards responses are
     // blocked from AsyncStorage persistence in app/index.tsx:shouldDehydrateQuery
