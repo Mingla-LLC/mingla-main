@@ -1,6 +1,6 @@
 -- #3281 the Explorer listing rule is asked one date at a time: same answers, and
 -- the work grows with tiers x dates, never with tiers x dates x dates.
--- MINGLA-INVARIANT: I-3281-EXPLORER-LISTING-PER-DATE | issue #3281 | The tier rule lives once, in the inlinable SQL function issue_3281_date_buyable_ticket_types(event, date); the listing rule once, in issue_3281_explorer_date_listable_rows(event, date) (LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET, not STRICT, EXECUTE postgres + service_role). discover_v2_event_base, discover_v2_items and discover_v2_nearest_city ask it per date with EXISTS; per asked date issue_3313_event_day_choice runs at most once and issue_3313_ticket_type_occurrence_taken at most once per tier; answers equal the 20280320003281 helpers. The card-date walk in discover_v2_event_base and discover_v2_items reads dates in (start_at, id) order before asking the rule (OFFSET 0 subquery), so LIMIT 1 stops at the first buyable date; idx_event_dates_event_id_start_at (event_id, start_at, id) exists.
+-- MINGLA-INVARIANT: I-3281-EXPLORER-LISTING-PER-DATE | issue #3281 | The tier rule lives once in issue_3281_date_buyable_ticket_types(event, date) and the listing rule in issue_3281_explorer_date_listable_rows(event, date), both inlinable SQL with EXECUTE for postgres and service_role only. The three discover_v2 readers ask it per date with EXISTS, answers equal the 20280320003281 helpers, and the card date walks idx_event_dates_event_id_start_at in start order so LIMIT 1 stops at the first buyable date.
 \set ON_ERROR_STOP on
 BEGIN;
 
