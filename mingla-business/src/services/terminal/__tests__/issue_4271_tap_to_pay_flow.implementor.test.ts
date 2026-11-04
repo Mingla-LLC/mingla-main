@@ -13,8 +13,6 @@
  */
 import { describe, expect, jest, test } from "@jest/globals";
 
-jest.mock("../../supabase", () => ({ supabase: { functions: { invoke: jest.fn() } } }));
-
 import {
   TapToPaySaleFlow,
   cardLabelFor,
@@ -27,6 +25,8 @@ import {
 } from "../tapToPayFlow";
 import { DoorTapError, type DoorTapIntent } from "../doorTapEdge";
 import { encodeTapToPayDraft, parseTapToPayDraft, type TapToPayDraft } from "../tapToPayDraft";
+
+jest.mock("../../supabase", () => ({ supabase: { functions: { invoke: jest.fn() } } }));
 
 const DRAFT: TapToPayDraft = {
   lines: [{ ticketTypeId: "tt_general", quantity: 2 }],
@@ -55,8 +55,8 @@ const PI_SUCCEEDED = {
 type Calls = string[];
 
 const makeHarness = (overrides: {
-  collect?: Array<TerminalCallResult>;
-  confirm?: Array<TerminalCallResult>;
+  collect?: TerminalCallResult[];
+  confirm?: TerminalCallResult[];
   createIntent?: TapToPayServer["createIntent"];
   completeIntent?: TapToPayServer["completeIntent"];
   connectError?: boolean;

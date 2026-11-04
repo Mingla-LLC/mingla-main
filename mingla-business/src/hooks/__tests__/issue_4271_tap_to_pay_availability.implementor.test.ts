@@ -13,6 +13,17 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  resolveTapToPayAvailability,
+  currentTapToPayDevice,
+  type TapToPayBrandFacts,
+  type TapToPayDeviceFacts,
+} from "../useTapToPayAvailability";
+import {
+  loadTerminalSdk,
+  resetTerminalSdkCacheForTests,
+} from "../../services/terminal/terminalSdk";
+
 const mockPlatform: { OS: string; Version: string | number; isPad?: boolean } = {
   OS: "ios",
   Version: "18.1",
@@ -31,17 +42,6 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
   default: { getItem: jest.fn(async () => null), setItem: jest.fn(async () => undefined) },
 }));
-
-import {
-  resolveTapToPayAvailability,
-  currentTapToPayDevice,
-  type TapToPayBrandFacts,
-  type TapToPayDeviceFacts,
-} from "../useTapToPayAvailability";
-import {
-  loadTerminalSdk,
-  resetTerminalSdkCacheForTests,
-} from "../../services/terminal/terminalSdk";
 
 const IPHONE: TapToPayDeviceFacts = { os: "ios", version: "18.1", isPad: false, nativeModulePresent: true };
 const ANDROID: TapToPayDeviceFacts = { os: "android", version: 34, isPad: false, nativeModulePresent: true };
