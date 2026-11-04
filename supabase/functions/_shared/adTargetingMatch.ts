@@ -107,6 +107,7 @@ function rankByName<T extends MatchCandidate>(query: string, rows: T[]): T[] {
  * - a candidate at the requested level → `match` (best-named first, else the
  *   provider's own first result);
  * - none, but a wider candidate → `wider` (the Host must accept it);
+ * - neither, but the app's whole country (`country`) → `wider` = the country;
  * - nothing → `none`.
  */
 export function matchPlace(
@@ -114,6 +115,7 @@ export function matchPlace(
   kind: PlaceKind,
   candidates: readonly MatchCandidate[],
   widerCandidates: readonly MatchCandidate[] = [],
+  country: MatchCandidate | null = null,
 ): PlaceMatch {
   const atLevel = candidates.filter((row) => candidateAtKind(row, kind));
   if (atLevel.length > 0) {
@@ -132,7 +134,22 @@ export function matchPlace(
   if (wider.length > 0) {
     return { state: "wider", wider: rankByName(query, wider)[0] };
   }
+  // #4238 live check (2026-11-04): TikTok has no place below the country in
+  // Nigeria or Kenya. When an app has nothing at the asked level and nothing
+  // one level up, the whole country is the wider area the Host can accept,
+  // so the place stays on every other app. Only an answered lookup gets here:
+  // an app error is `unavailable` before the matcher runs.
+  if (country && country.id) {
+    return { state: "wider", wider: country };
+  }
   return { state: "none" };
+}
+
+/** True when a wider answer is the whole country (TikTok's own country id). */
+export function isWholeCountryCandidate(
+  candidate: MatchCandidate | null | undefined,
+): boolean {
+  return !!candidate && candidateLevel(candidate) === "COUNTRY";
 }
 
 /**
@@ -156,7 +173,12 @@ export function matchInterest(
 export function searchMatch(
   kind: string,
   q: string,
-  out: { results: MatchCandidate[]; wider?: MatchCandidate[] },
+  out: {
+    results: MatchCandidate[];
+    wider?: MatchCandidate[];
+    /** The app's whole-country area, used only when nothing smaller exists. */
+    country?: MatchCandidate;
+  },
 ): PlaceMatch | InterestMatch {
   if (kind === "interest" || kind === "language") {
     return matchInterest(q, out.results);
@@ -171,6 +193,7 @@ export function searchMatch(
     kind === "region" ? "region" : "city",
     out.results,
     out.wider ?? [],
+    out.country ?? null,
   );
 }
 

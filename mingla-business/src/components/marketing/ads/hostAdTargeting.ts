@@ -15,8 +15,12 @@ export type HostAdApp = "meta" | "tiktok" | "snapchat" | "google" | "reddit";
 
 export type HostAdPlaceKind = "city" | "region" | "pin";
 
-/** One app's wider-area offer the Host can accept ("Use Lagos State on TikTok"). */
-export type HostAdWiderOffer = { id: string; name: string };
+/**
+ * One app's wider-area offer the Host can accept ("Use Lagos State on
+ * TikTok"). `wholeCountry` marks the place's whole country (TikTok has no
+ * smaller area in Nigeria): "Use all of Nigeria on TikTok".
+ */
+export type HostAdWiderOffer = { id: string; name: string; wholeCountry?: true };
 
 export type HostAdPlace = {
   name: string;
@@ -37,6 +41,8 @@ export type HostAdPlace = {
   missing?: Partial<Record<HostAdApp, true>>;
   /** Apps whose accepted id is a wider area. */
   accepted?: Partial<Record<HostAdApp, true>>;
+  /** Apps whose accepted wider area is the place's whole country. */
+  wholeCountry?: Partial<Record<HostAdApp, true>>;
 };
 
 export type HostAdInterestPick = {
@@ -206,9 +212,44 @@ export type HostAdSearchResponse = {
   match?: {
     state?: string;
     best?: { id: string; name: string };
-    wider?: { id: string; name: string };
+    wider?: { id: string; name: string; meta?: Record<string, unknown> };
   };
 };
+
+/**
+ * "Lagos,Lagos,Nigeria" (Google's own name) → "Lagos, Lagos, Nigeria".
+ * Display only: the id each app gets is never touched.
+ */
+export function hostAdAppPlaceLabel(name: string): string {
+  return name
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** True when a search's wider answer is the place's whole country. */
+function isWholeCountryAnswer(wider: { meta?: Record<string, unknown> } | undefined): boolean {
+  return String(wider?.meta?.level ?? "").trim().toUpperCase() === "COUNTRY";
+}
+
+/**
+ * The name shown for a wider area: "all of Nigeria" for the whole country,
+ * else the app's own name ("Lagos State").
+ */
+export function hostAdWiderAreaName(
+  place: Pick<HostAdPlace, "countryCode">,
+  area: { name: string; wholeCountry?: boolean },
+): string {
+  return area.wholeCountry
+    ? `all of ${countryName(place.countryCode)}`
+    : hostAdAppPlaceLabel(area.name);
+}
+
+/** "all of Nigeria" → "All of Nigeria" at the start of a line. */
+function sentenceStart(value: string): string {
+  return value.charAt(0).toLocaleUpperCase("en-US") + value.slice(1);
+}
 
 /**
  * Applies one app's search answer to a place. An error is recorded as an
@@ -228,6 +269,7 @@ export function applyPlaceLookup(
     errors: { ...(place.errors ?? {}) },
     missing: { ...(place.missing ?? {}) },
     accepted: { ...(place.accepted ?? {}) },
+    wholeCountry: { ...(place.wholeCountry ?? {}) },
   };
   delete next.refs[app];
   delete next.labels![app];
@@ -235,6 +277,7 @@ export function applyPlaceLookup(
   delete next.errors![app];
   delete next.missing![app];
   delete next.accepted![app];
+  delete next.wholeCountry![app];
   if (response === null || response.unavailable === true) {
     next.errors![app] = true;
     return next;
@@ -247,14 +290,17 @@ export function applyPlaceLookup(
     return next;
   }
   if (match?.state === "wider" && match.wider?.id) {
+    const wholeCountry = isWholeCountryAnswer(match.wider);
     if (placeKind(place) === "pin") {
       next.refs[app] = String(match.wider.id);
       next.labels![app] = match.wider.name;
       next.accepted![app] = true;
+      if (wholeCountry) next.wholeCountry![app] = true;
     } else {
       next.offers![app] = {
         id: String(match.wider.id),
         name: match.wider.name,
+        ...(wholeCountry ? { wholeCountry: true as const } : {}),
       };
     }
     return next;
@@ -263,19 +309,36 @@ export function applyPlaceLookup(
   return next;
 }
 
-/** The Host taps "Use Lagos State on TikTok (wider area)". */
+/**
+ * The Host taps "Use Lagos State on TikTok (wider area)" or "Use all of
+ * Nigeria on TikTok (wider area)": that app targets the wider area; the
+ * place stays as it is on every other app.
+ */
 export function acceptWiderOffer(place: HostAdPlace, app: HostAdApp): HostAdPlace {
   const offer = place.offers?.[app];
   if (!offer) return place;
   const offers = { ...(place.offers ?? {}) };
   delete offers[app];
-  return {
+  const wholeCountry = { ...(place.wholeCountry ?? {}) };
+  if (offer.wholeCountry) wholeCountry[app] = true;
+  else delete wholeCountry[app];
+  return withWholeCountry({
     ...place,
     refs: { ...place.refs, [app]: offer.id },
     labels: { ...(place.labels ?? {}), [app]: offer.name },
     accepted: { ...(place.accepted ?? {}), [app]: true },
     offers,
-  };
+  }, wholeCountry);
+}
+
+function withWholeCountry(
+  place: HostAdPlace,
+  wholeCountry: Partial<Record<HostAdApp, true>>,
+): HostAdPlace {
+  const next: HostAdPlace = { ...place };
+  if (Object.keys(wholeCountry).length > 0) next.wholeCountry = wholeCountry;
+  else delete next.wholeCountry;
+  return next;
 }
 
 /** "Undo": the wider area goes back to being an offer. */
@@ -286,17 +349,23 @@ export function undoWiderOffer(place: HostAdPlace, app: HostAdApp): HostAdPlace 
   const refs = { ...place.refs };
   const labels = { ...(place.labels ?? {}) };
   const accepted = { ...(place.accepted ?? {}) };
-  const offer = { id: refs[app] as string, name: labels[app] ?? place.name };
+  const wholeCountry = { ...(place.wholeCountry ?? {}) };
+  const offer: HostAdWiderOffer = {
+    id: refs[app] as string,
+    name: labels[app] ?? place.name,
+    ...(wholeCountry[app] ? { wholeCountry: true as const } : {}),
+  };
   delete refs[app];
   delete labels[app];
   delete accepted[app];
-  return {
+  delete wholeCountry[app];
+  return withWholeCountry({
     ...place,
     refs,
     labels,
     accepted,
     offers: { ...(place.offers ?? {}), [app]: offer },
-  };
+  }, wholeCountry);
 }
 
 export function applyInterestLookup(
@@ -441,7 +510,13 @@ export function hostAdPlaceAppStatus(
       return place.refs.tiktok
         ? {
           state: "wider",
-          text: `Uses ${place.labels?.tiktok ?? "the area around it"} (wider area).`,
+          text: `Uses ${
+            place.wholeCountry?.tiktok
+              ? hostAdWiderAreaName(place, { name: "", wholeCountry: true })
+              : place.labels?.tiktok
+              ? hostAdAppPlaceLabel(place.labels.tiktok)
+              : "the area around it"
+          } (wider area).`,
         }
         : place.missing?.tiktok
         ? {
@@ -466,17 +541,25 @@ export function hostAdPlaceAppStatus(
   }
   const offer = place.offers?.[app];
   if (offer) {
+    // The chip names the area: "Use all of Nigeria on TikTok (wider area)".
+    const shown = { ...offer, name: hostAdWiderAreaName(place, offer) };
     return {
       state: "offer",
-      text: `${name} only knows ${offer.name}, not ${place.name}.`,
-      offer,
+      text: offer.wholeCountry
+        ? `${name} has no smaller area for ${place.name}.`
+        : `${name} only knows ${shown.name}, not ${place.name}.`,
+      offer: shown,
     };
   }
   const id = place.refs[app];
   if (id) {
-    const label = place.labels?.[app] ?? place.name;
+    const label = hostAdAppPlaceLabel(place.labels?.[app] ?? place.name);
     if (place.accepted?.[app]) {
-      return { state: "accepted", text: `${label} (wider area)` };
+      const area = hostAdWiderAreaName(place, {
+        name: label,
+        wholeCountry: place.wholeCountry?.[app] === true,
+      });
+      return { state: "accepted", text: `${sentenceStart(area)} (wider area)` };
     }
     if (app === "tiktok" && kind === "city") {
       return { state: "ok", text: `${label} (whole city, no distance)` };
@@ -545,7 +628,33 @@ export function hostAdAppReviewStatus(input: {
   if (input.verdict === "unavailable") return "Can't run yet";
   if (input.verdict === "check_required") return "Needs a choice";
   if (input.verdict === "broader") return "Ready (wider area)";
+  // #4238 live check: an accepted wider area is said plainly, even when the
+  // app's own check has nothing else to widen.
+  if (input.places.some((place) => place.accepted?.[app] && place.refs[app])) {
+    return "Ready (wider area)";
+  }
   return "Ready";
+}
+
+/**
+ * #4238 live check: the Check my ad lines for one app's accepted wider
+ * areas ("Lagos: all of Nigeria (wider area)").
+ */
+export function hostAdAcceptedWiderLines(
+  app: HostAdApp,
+  places: readonly HostAdPlace[],
+): string[] {
+  return places.flatMap((place) => {
+    if (!place.accepted?.[app] || !place.refs[app]) return [];
+    const area = hostAdWiderAreaName(place, {
+      name: place.labels?.[app] ?? place.name,
+      wholeCountry: place.wholeCountry?.[app] === true,
+    });
+    const where = placeKind(place) === "pin"
+      ? hostAdPinParts(place).join(", ")
+      : place.name;
+    return [`${where}: ${area} (wider area)`];
+  });
 }
 
 /**
@@ -614,7 +723,11 @@ export function hostAdPlaceFromSaved(value: unknown): HostAdPlace | null {
     Object.entries(record(row.offers)).flatMap(([app, offer]) => {
       const o = record(offer);
       return typeof o.id === "string" && typeof o.name === "string"
-        ? [[app, { id: o.id, name: o.name }]]
+        ? [[app, {
+          id: o.id,
+          name: o.name,
+          ...(o.wholeCountry === true ? { wholeCountry: true as const } : {}),
+        }]]
         : [];
     }),
   ) as Partial<Record<HostAdApp, HostAdWiderOffer>>;
@@ -633,6 +746,9 @@ export function hostAdPlaceFromSaved(value: unknown): HostAdPlace | null {
     errors: flags(row.errors),
     missing: flags(row.missing),
     accepted: flags(row.accepted),
+    ...(Object.keys(flags(row.wholeCountry)).length > 0
+      ? { wholeCountry: flags(row.wholeCountry) }
+      : {}),
   };
 }
 
@@ -701,6 +817,9 @@ export function hostAdPlaceForSave(place: HostAdPlace): HostAdPlace {
       : {}),
     ...(place.accepted && Object.keys(place.accepted).length > 0
       ? { accepted: place.accepted }
+      : {}),
+    ...(place.wholeCountry && Object.keys(place.wholeCountry).length > 0
+      ? { wholeCountry: place.wholeCountry }
       : {}),
   };
 }
