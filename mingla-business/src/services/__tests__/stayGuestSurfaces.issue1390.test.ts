@@ -131,13 +131,14 @@ describe("Issue #1390 Stay guest surface contracts", () => {
     const calendar = read(
       "app-mobile/src/components/activity/CalendarTab.tsx",
     );
-    const calendarRow = read(
-      "app-mobile/src/components/activity/StayCalendarRow.tsx",
+    // #4265: stays are one kind of row in the Calendar agenda model; the
+    // agenda opens the same Stay reservation route.
+    const agendaModel = read(
+      "app-mobile/src/components/activity/calendarAgendaModel.ts",
     );
     expect(calendar).toContain("useMyStayReservations");
-    expect(calendar).toContain('kind: "stay"');
-    expect(calendar).toContain("<StayCalendarRow");
-    expect(calendarRow).toContain("`/stay/${group.groupId}`");
+    expect(agendaModel).toContain('kind: "stay"');
+    expect(calendar).toContain("`/stay/${row.group.groupId}`");
   });
 
   test("Stay analytics contain no guest contact fields", () => {

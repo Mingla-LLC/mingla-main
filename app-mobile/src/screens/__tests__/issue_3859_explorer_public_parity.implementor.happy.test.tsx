@@ -409,7 +409,8 @@ describe("issue #3859 — Explorer native public-page parity", () => {
   });
 
   test("calendar tickets route into Explorer Purchases instead of opening Host web", () => {
-    const calendarRow = read("src/components/activity/BusinessEventCalendarRow.tsx");
+    // #4265: the agenda's ticket route lives in CalendarTab.
+    const calendarRow = read("src/components/activity/CalendarTab.tsx");
     const calendarService = read("src/services/calendarService.ts");
 
     expect(calendarService).toContain('eventSlug: event?.slug ?? ""');
@@ -417,7 +418,7 @@ describe("issue #3859 — Explorer native public-page parity", () => {
     // [TEST-MOD-APPROVED #4063] The destination is unchanged, but the path
     // segment is now encoded before the optional ticket query is appended.
     expect(calendarRow).toContain(
-      "`/purchases/order/${encodeURIComponent(entry.orderId)}${suffix}`",
+      "`/purchases/order/${encodeURIComponent(row.row.orderId)}${suffix}`",
     );
     expect(calendarRow).not.toContain("TicketPdfSheet");
     expect(calendarRow).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");

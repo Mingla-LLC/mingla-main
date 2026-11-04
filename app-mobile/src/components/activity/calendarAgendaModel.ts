@@ -53,6 +53,7 @@ export interface AgendaReservationInput {
   brand_name: string | null;
   brand_address?: string | null;
   brand_cover_url?: string | null;
+  brand_cover_type?: string | null;
   brand_photo_url?: string | null;
 }
 
@@ -383,7 +384,11 @@ export function buildUnifiedRows<S extends AgendaSources>(
       title: nonEmpty(reservation.brand_name) ?? "",
       place: nonEmpty(reservation.brand_address),
       imageUrl: nonEmpty(reservation.brand_cover_url) ?? nonEmpty(reservation.brand_photo_url),
-      mediaType: null,
+      // META-ORCH-1148 2.2g: a venue cover may be a video; the profile photo never is.
+      mediaType: nonEmpty(reservation.brand_cover_url) !== null &&
+          (reservation.brand_cover_type === "video" || reservation.brand_cover_type === "gif")
+        ? reservation.brand_cover_type
+        : null,
       hasTicket: false,
       statusNote: reservation.status === "requested"
         ? "requested"

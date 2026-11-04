@@ -306,11 +306,16 @@ Deno.test("#4265 CalendarTab is a virtualised list with no search bar", async ()
   assert(/<SectionList\b/.test(tab), "List view renders through SectionList");
   assert(!/<ScrollView\b/.test(tab), "no ScrollView + map");
   assert(!/CardFilterBar/.test(tab), "the Calendar has no search/filter bar");
-  assert(/buildUnifiedRows\(/.test(tab), "rows come from the pure model");
-  assert(!/StyleSheet\.create\(/.test(tab.slice(tab.indexOf("const CalendarTab"), tab.indexOf("export default CalendarTab"))), "styles live at module scope");
+  assert(/buildUnifiedRows(<\w+>)?\(/.test(tab), "rows come from the pure model");
+  const moduleStyles = tab.indexOf("\nconst styles = StyleSheet.create(");
+  assert(moduleStyles > tab.indexOf("const CalendarTab = ("), "styles live at module scope");
+  assert(!/StyleSheet\.create\(/.test(tab.slice(tab.indexOf("const CalendarTab = ("), moduleStyles)), "no StyleSheet.create inside the component");
   assert(!/index \* 60/.test(tab), "no per-row staggered entrance loop");
   assert(!/"tickets", "active"/.test(tab), "the dead accordion default is gone");
-  assert(/mainScrollContent:\s*\{[\s\S]*?paddingBottom:\s*bottomNavTotalHeight\s*\+\s*24/.test(tab), "ORCH-1189 clearance");
+  assert(/const mainScrollContent = useMemo\([\s\S]*?paddingBottom:\s*bottomNavTotalHeight\s*\+\s*24/.test(tab), "ORCH-1189 clearance");
+  assert(/contentContainerStyle=\{mainScrollContent\}/.test(tab), "the clearance reaches the list");
+  assert(/keyExtractor=\{\(item\) => item\.key\}/.test(tab), "rows key by entity identity");
+  assert(/memo\(CalendarAgendaRowImpl\)/.test(stripComments(await read("src/components/activity/CalendarAgendaRow.tsx"))), "rows are memoised");
 });
 
 Deno.test("#4265 pull to refresh refreshes every calendar source", async () => {

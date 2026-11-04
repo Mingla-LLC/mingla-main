@@ -59,7 +59,7 @@
       "capability_key": "checkout-tickets",
       "paths": [
         "app-mobile/app/purchases/[kind]/[id].tsx",
-        "app-mobile/src/components/activity/BusinessEventCalendarRow.tsx",
+        "app-mobile/src/components/activity/CalendarAgendaRow.tsx",
         "app-mobile/src/components/profile/PurchasesCard.tsx",
         "app-mobile/src/components/purchases/PurchaseCard.tsx",
         "app-mobile/src/components/wallet/EarnBySharingCard.tsx",
