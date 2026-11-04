@@ -338,7 +338,9 @@ begin
   perform pg_temp.tw_check('X-SHOW', 'no other function in public names on_brand_plan',
     (select coalesce(string_agg(p.proname, ',' order by p.proname), '') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.prosrc ilike '%on_brand_plan%'
-        and p.proname not in ('ops_validate_card','ops_work_add','ops_work_update','ops_card_json','ops_card_lite','ops_field_words','ops_work_undo')), '');
+        and p.proname not in ('ops_validate_card','ops_work_add','ops_work_update','ops_card_json','ops_card_lite','ops_field_words','ops_work_undo')
+        -- Wave 3: the brand plan reads and writes (people and the brand's own team; never an agent)
+        and p.proname not like 'brand\_plan\_%' and p.proname not like 'ops\_brand\_plan%'), '');
   perform pg_temp.tw_check('X-SHOW', 'authenticated and anon cannot insert or update ops_work_cards',
     (has_table_privilege('authenticated', 'public.ops_work_cards', 'UPDATE') or has_table_privilege('authenticated', 'public.ops_work_cards', 'INSERT')
      or has_table_privilege('anon', 'public.ops_work_cards', 'UPDATE') or has_column_privilege('authenticated', 'public.ops_work_cards', 'on_brand_plan', 'UPDATE'))::text, 'false');
