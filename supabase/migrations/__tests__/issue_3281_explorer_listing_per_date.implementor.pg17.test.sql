@@ -1,6 +1,6 @@
 -- #3281 the Explorer listing rule is asked one date at a time: same answers, and
 -- the work grows with tiers x dates, never with tiers x dates x dates.
--- MINGLA-INVARIANT: I-3281-EXPLORER-LISTING-PER-DATE | issue #3281 | The tier rule lives once, in the inlinable SQL function issue_3281_date_buyable_ticket_types(event, date); the listing rule once, in issue_3281_explorer_date_listable_rows(event, date) (LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET, not STRICT, EXECUTE postgres + service_role). discover_v2_event_base, discover_v2_items and discover_v2_nearest_city ask it per date with EXISTS; per asked date issue_3313_event_day_choice runs at most once and issue_3313_ticket_type_occurrence_taken at most once per tier; answers equal the 20280320003281 helpers.
+-- MINGLA-INVARIANT: I-3281-EXPLORER-LISTING-PER-DATE | issue #3281 | The tier rule lives once, in the inlinable SQL function issue_3281_date_buyable_ticket_types(event, date); the listing rule once, in issue_3281_explorer_date_listable_rows(event, date) (LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET, not STRICT, EXECUTE postgres + service_role). discover_v2_event_base, discover_v2_items and discover_v2_nearest_city ask it per date with EXISTS; per asked date issue_3313_event_day_choice runs at most once and issue_3313_ticket_type_occurrence_taken at most once per tier; answers equal the 20280320003281 helpers. The card-date walk in discover_v2_event_base and discover_v2_items reads dates in (start_at, id) order before asking the rule (OFFSET 0 subquery), so LIMIT 1 stops at the first buyable date; idx_event_dates_event_id_start_at (event_id, start_at, id) exists.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -543,6 +543,59 @@ BEGIN
   PERFORM public.discover_v2_nearest_city(40, -60);
   RAISE NOTICE '#3281 discover_v2_nearest_city: per-night counter %, day choice %',
     pg_temp.t3281p_count('taken_calls'), pg_temp.t3281p_count('day_choice_calls');
+
+  -- ---------------------------------------------------------------------------
+  -- (d) The card date stops at the first buyable date. Two 20-date events whose
+  -- first date is buyable: a shared pool (capped tiers without a day list, so
+  -- every date asked runs the day choice exactly once) and a per-night event
+  -- (every date asked runs the per-night counter for its first tier). Asking
+  -- the rule on every date and sorting after would cost 20 calls each.
+  FOR v_i IN 1..2 LOOP
+    v_event := ('32819400-0000-4000-8700-' || lpad(v_i::text, 12, '0'))::uuid;
+    INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,currency,
+        city,location_geo,published_at,is_recurring,is_multi_date,created_at,updated_at)
+      VALUES(v_event,v_brand,v_owner,'Explorer early '||v_i,'explorer-perdate-early-'||v_i,
+        'event','scheduled','public','UTC','USD','#3281P Early '||v_i,point(60 + v_i, 40),now(),
+        v_i = 2,false,now(),now());
+    INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master,occurrence_key)
+      SELECT v_event, v_dec + make_interval(days => (g - 1) * 3), v_dec + make_interval(days => (g - 1) * 3, hours => 4),
+             'UTC', g = 1, 'e'||g
+        FROM generate_series(1, 20) g;
+    INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total,is_unlimited,
+        min_purchase_qty,max_purchase_qty,available_online,available_in_person,display_order,sold_count)
+      SELECT v_event,'Tier '||t,0,'USD',true,CASE WHEN v_i = 1 THEN 30 ELSE 2 END,false,1,2,true,false,t,0
+        FROM generate_series(1, CASE WHEN v_i = 1 THEN 3 ELSE 4 END) t;
+  END LOOP;
+  PERFORM pg_temp.t3281p_assert(
+      pg_temp.t3281p_base_start('#3281P Early 1', '32819400-0000-4000-8700-000000000001') = v_dec
+      AND pg_temp.t3281p_item_start('#3281P Early 2', '32819400-0000-4000-8700-000000000002') = v_dec,
+    '(d) a 20-date event whose first date is buyable shows its first date');
+  PERFORM pg_temp.t3281p_reset_counts();
+  PERFORM count(*) FROM public.discover_v2_event_base(ARRAY['#3281P Early 1'], now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('day_choice_calls') BETWEEN 1 AND 2,
+    format('(d) discover_v2_event_base asked the rule on %s of 20 dates (day choice calls) before picking the first',
+      pg_temp.t3281p_count('day_choice_calls')));
+  PERFORM pg_temp.t3281p_reset_counts();
+  PERFORM count(*) FROM public.discover_v2_event_base(ARRAY['#3281P Early 2'], now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 1 AND 2,
+    format('(d) discover_v2_event_base ran the per-night counter %s times on a 20-date event whose first night is open',
+      pg_temp.t3281p_count('taken_calls')));
+  -- discover_v2_items reads the base, then walks its own window: one date each.
+  PERFORM pg_temp.t3281p_reset_counts();
+  PERFORM public.discover_v2_items('events', ARRAY['#3281P Early 1'], 40, 61, 1, 'UTC', '{}'::jsonb, 0, 50);
+  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('day_choice_calls') BETWEEN 2 AND 4,
+    format('(d) discover_v2_items asked the rule on %s dates for a 20-date event whose first date is buyable',
+      pg_temp.t3281p_count('day_choice_calls')));
+  PERFORM pg_temp.t3281p_reset_counts();
+  PERFORM public.discover_v2_items('events', ARRAY['#3281P Early 2'], 40, 62, 1, 'UTC', '{}'::jsonb, 0, 50);
+  PERFORM pg_temp.t3281p_assert(pg_temp.t3281p_count('taken_calls') BETWEEN 2 AND 4,
+    format('(d) discover_v2_items ran the per-night counter %s times for a 20-date event whose first night is open',
+      pg_temp.t3281p_count('taken_calls')));
+  -- The order the walk reads is served by an index on (event_id, start_at, id).
+  PERFORM pg_temp.t3281p_assert(
+    pg_get_indexdef(to_regclass('public.idx_event_dates_event_id_start_at'))
+      LIKE 'CREATE INDEX idx_event_dates_event_id_start_at ON public.event_dates USING btree (event_id, start_at, id)',
+    '(d) idx_event_dates_event_id_start_at (event_id, start_at, id) exists');
 
   -- An event with no capped tier never runs either plpgsql owner.
   PERFORM pg_temp.t3281p_reset_counts();

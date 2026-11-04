@@ -36,7 +36,12 @@
 -- issue_3281_ticket_buyable_on_date and issue_3281_explorer_date_listable keep
 -- their signatures, owner and grants, and answer from the per-date functions.
 -- The reader bodies are the live definitions from 20280324003281, byte for
--- byte, except the one #3281 conjunct in each. EXECUTE on the rule functions:
+-- byte, except the #3281 listing check in each. In discover_v2_event_base and
+-- discover_v2_items the card-date LATERAL also reads the dates in card order
+-- first and asks the rule after (an OFFSET 0 subquery), so LIMIT 1 stops at
+-- the first buyable date: before, the rule ran on every date of the event and
+-- the results were then sorted. Same date chosen; an index on
+-- event_dates (event_id, start_at, id) serves that order. EXECUTE on the rule functions:
 -- postgres (owner) and service_role only. The readers are SECURITY DEFINER
 -- owned by postgres, so the inlined rule reads as postgres, as before.
 
@@ -207,6 +212,11 @@ GRANT EXECUTE ON FUNCTION public.issue_3281_explorer_listable_dates(uuid) TO ser
 GRANT EXECUTE ON FUNCTION public.issue_3281_ticket_buyable_on_date(uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_3281_explorer_date_listable(uuid, uuid) TO service_role;
 
+-- The card-date walk reads an event's dates in (start_at, id) order; this
+-- index serves that order directly as the table grows.
+CREATE INDEX IF NOT EXISTS idx_event_dates_event_id_start_at
+  ON public.event_dates (event_id, start_at, id);
+
 CREATE OR REPLACE FUNCTION public.discover_v2_event_base(p_cities text[], p_lower_bound timestamp with time zone, p_upper_start timestamp with time zone DEFAULT NULL::timestamp with time zone, p_party_types text[] DEFAULT NULL::text[], p_vibe_tags text[] DEFAULT NULL::text[], p_music_genres text[] DEFAULT NULL::text[], p_center_lng double precision DEFAULT NULL::double precision, p_center_lat double precision DEFAULT NULL::double precision, p_radius_km double precision DEFAULT NULL::double precision)
  RETURNS SETOF jsonb
  LANGUAGE sql
@@ -244,16 +254,23 @@ AS $function$
   JOIN public.event_dates master_ed ON master_ed.event_id=e.id
     AND master_ed.is_master IS TRUE
   JOIN LATERAL (
-    SELECT occurrence.start_at,occurrence.end_at,occurrence.timezone
+    SELECT walk.start_at,walk.end_at,walk.timezone
+    FROM (
+    -- #3281: the dates in card order first (OFFSET 0 keeps the listing rule
+    -- out of this scan), so LIMIT 1 below stops at the first buyable date
+    -- instead of asking the rule on every date and sorting after.
+    SELECT occurrence.id,occurrence.start_at,occurrence.end_at,occurrence.timezone
     FROM public.event_dates occurrence
     WHERE occurrence.event_id=e.id AND occurrence.end_at>=p_lower_bound
       AND (p_upper_start IS NULL OR occurrence.start_at<=p_upper_start)
-      -- #3281: a ticketed event is listed only on a date a guest can buy.
-      -- Inside the LATERAL, so a sold-out or closed date moves the card to the
-      -- next buyable one instead of hiding the whole series.
-      AND EXISTS (SELECT 1
-        FROM public.issue_3281_explorer_date_listable_rows(e.id, occurrence.id))
-    ORDER BY occurrence.start_at,occurrence.id LIMIT 1
+    ORDER BY occurrence.start_at,occurrence.id OFFSET 0
+    ) walk
+    -- #3281: a ticketed event is listed only on a date a guest can buy.
+    -- Inside the LATERAL, so a sold-out or closed date moves the card to the
+    -- next buyable one instead of hiding the whole series.
+    WHERE EXISTS (SELECT 1
+      FROM public.issue_3281_explorer_date_listable_rows(e.id, walk.id))
+    ORDER BY walk.start_at,walk.id LIMIT 1
   ) ed ON true
   WHERE e.deleted_at IS NULL
     AND public.issue_4174_explorer_brand_visible(e.brand_id)
@@ -311,13 +328,18 @@ BEGIN
         count(*) over() total_count
       FROM base b
       JOIN LATERAL (
-        SELECT ed.start_at,ed.end_at,ed.timezone FROM public.event_dates ed
+        SELECT walk.start_at,walk.end_at,walk.timezone FROM (
+        -- #3281: the window's dates in card order first (OFFSET 0 keeps the
+        -- listing rule out of this scan); LIMIT 1 stops at the first buyable one.
+        SELECT ed.id,ed.start_at,ed.end_at,ed.timezone FROM public.event_dates ed
         WHERE ed.event_id=(b.row->>'id')::uuid AND ed.end_at>=now()
           AND ed.start_at>=lower(v_window) AND ed.start_at<upper(v_window)
+        ORDER BY ed.start_at,ed.id OFFSET 0
+        ) walk
           -- #3281: the card's date is a date a guest can buy (same rule as the base).
-          AND EXISTS (SELECT 1
-            FROM public.issue_3281_explorer_date_listable_rows((b.row->>'id')::uuid, ed.id))
-        ORDER BY ed.start_at,ed.id LIMIT 1
+        WHERE EXISTS (SELECT 1
+            FROM public.issue_3281_explorer_date_listable_rows((b.row->>'id')::uuid, walk.id))
+        ORDER BY walk.start_at,walk.id LIMIT 1
       ) occ ON true
       CROSS JOIN LATERAL public.issue_3872_event_display_prices((b.row->>'id')::uuid) display
       WHERE public.discover_v2_price_matches('events',b.row->>'event_type',
@@ -625,6 +647,13 @@ BEGIN
       RAISE EXCEPTION 'issue_3281_explorer_listing_per_date: % is not inlinable', v_rule;
     END IF;
   END LOOP;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_indexes
+     WHERE schemaname = 'public' AND tablename = 'event_dates'
+       AND indexname = 'idx_event_dates_event_id_start_at'
+       AND indexdef LIKE '%(event_id, start_at, id)') THEN
+    RAISE EXCEPTION 'issue_3281_explorer_listing_per_date: idx_event_dates_event_id_start_at missing';
+  END IF;
 END;
 $verify$;
 
