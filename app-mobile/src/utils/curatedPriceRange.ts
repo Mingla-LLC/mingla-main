@@ -3,9 +3,11 @@
  * the Deno unit lane.
  *
  * The place pool stores an open-ended price ("$100+") as `price_max = null`.
- * `generate-curated-experiences` now builds such a stop as max = min and flags
- * it `priceOpenEnded` (plan total: `totalPriceOpenEnded`) — see its
- * curatedPrice.ts. Cards built before that fix (still persisted on devices)
+ * `generate-curated-experiences` and the replace-stop alternatives now build
+ * such a stop as max = min and flag it `priceOpenEnded` (plan total:
+ * `totalPriceOpenEnded`) — see supabase/functions/_shared/curatedPrice.ts.
+ * Shared plans carry both flags (contentShare allowlists). Cards built before
+ * that fix (still persisted on devices)
  * carry max 0 under a real min, which printed "$100.00–$0.00". Either signal —
  * the explicit flag, or a max BELOW the min — makes a span open-ended: its min
  * counts toward both ends and the total reads as "from" ("$100+"), never a

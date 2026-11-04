@@ -68,7 +68,7 @@ import {
 // filter — solo users could be served a plan whose stop was closed on arrival.
 // Now solo inherits the SAME gate collab already gets via discover-cards.
 import { filterCuratedByStopHours, resolveCuratedHoursPolicy } from '../_shared/curatedStopHours.ts';
-import { buildStopPrice, sumStopPrices } from './curatedPrice.ts';
+import { buildStopPrice, sumStopPrices } from '../_shared/curatedPrice.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator

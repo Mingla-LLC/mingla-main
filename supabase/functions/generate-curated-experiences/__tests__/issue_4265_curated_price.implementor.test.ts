@@ -8,7 +8,7 @@
 // Run: deno test --allow-read --no-check supabase/functions/generate-curated-experiences/__tests__/issue_4265_curated_price.implementor.test.ts
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { buildStopPrice, sumStopPrices } from '../curatedPrice.ts';
+import { buildStopPrice, sumStopPrices } from '../../_shared/curatedPrice.ts';
 
 const stripComments = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
