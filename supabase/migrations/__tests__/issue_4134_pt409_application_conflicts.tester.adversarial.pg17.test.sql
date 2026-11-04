@@ -385,7 +385,10 @@ $fn$;
 -- added to this list the same way. #4270 W1
 -- (20280403004270_issue_4270_w1_work_board_three_columns.sql) re-defines
 -- ops_work_add and ops_work_update (the Send, Spend or Publish tag), so they
--- are put back and restored the same way.
+-- are put back and restored the same way. #4270 W3
+-- (20280403024270_issue_4270_w3_brand_plan.sql) re-defines
+-- content_calendar_update (a post's brand, collaborator and plan link), so it
+-- is put back and restored the same way.
 -------------------------------------------------------------------------------
 CREATE TEMP TABLE t4134_superseded AS
 SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS def_md5
@@ -393,7 +396,8 @@ SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS 
  WHERE p.oid IN ('private.enqueue_wizard_invites_on_publish_v1(uuid,bigint,boolean)'::regprocedure,
                  'public.biz_replace_offering_invite_plan_v1(uuid,jsonb,bigint,uuid)'::regprocedure,
                  'public.ops_work_add(jsonb,text)'::regprocedure,
-                 'public.ops_work_update(uuid,jsonb,bigint,text)'::regprocedure);
+                 'public.ops_work_update(uuid,jsonb,bigint,text)'::regprocedure,
+                 'public.content_calendar_update(uuid,jsonb,bigint,text)'::regprocedure);
 
 BEGIN;
 SET LOCAL search_path TO pg_catalog, pg_temp;
@@ -1055,6 +1059,127 @@ EXCEPTION WHEN unique_violation THEN
   RAISE EXCEPTION 'invalid_card: An open card already has this title. Update that card instead.' USING ERRCODE = '22023';
 END;
 
+$function$
+;
+CREATE OR REPLACE FUNCTION public.content_calendar_update(p_id uuid, p_changes jsonb, p_expected_revision bigint, p_request_key text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v record; v_item public.content_calendar_items; v_after jsonb; v_replay jsonb; v_out jsonb;
+  v_args jsonb; v_audit uuid; v_action text := 'content.updated'; v_value text; v_channels text[];
+  v_fields text[]; v_before_publish timestamptz;
+BEGIN
+  SELECT * INTO v FROM public.content_calendar_ctx();
+  v_args := jsonb_build_object('id', p_id, 'changes', p_changes, 'expected_revision', p_expected_revision);
+  v_replay := public.content_calendar_request_begin(v.actor_email, p_request_key, 'update', v_args);
+  IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
+  IF p_changes IS NULL OR jsonb_typeof(p_changes) <> 'object' OR p_changes = '{}'::jsonb
+     OR EXISTS (SELECT 1 FROM jsonb_object_keys(p_changes) k WHERE k NOT IN
+       ('title','publish_at','channels','copy','notes','drive_url','live_url','format','audience','city_id')) THEN
+    RAISE EXCEPTION 'invalid_changes: Send at least one supported field.' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_item FROM public.content_calendar_items i WHERE i.id=p_id AND i.deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That content card is no longer here.' USING ERRCODE='P0002'; END IF;
+  PERFORM public.ops_claim_assert('content', v_item.id, v.actor_email, v.via);
+  IF p_expected_revision IS NULL OR v_item.revision <> p_expected_revision THEN
+    RAISE EXCEPTION 'stale_write: This card changed since you opened it. Reload it, then apply your change again.' USING ERRCODE='PT409';
+  END IF;
+  v_before_publish := v_item.publish_at;
+  SELECT array_agg(k ORDER BY k) INTO v_fields FROM jsonb_object_keys(p_changes) k;
+  IF p_changes ? 'title' THEN
+    IF jsonb_typeof(p_changes->'title') <> 'string' OR char_length(btrim(p_changes->>'title')) NOT BETWEEN 1 AND 160 THEN
+      RAISE EXCEPTION 'invalid_title: Title must be 1 to 160 characters.' USING ERRCODE='22023'; END IF;
+    IF EXISTS (SELECT 1 FROM public.content_calendar_items i WHERE i.id<>p_id AND i.deleted_at IS NULL
+                 AND i.title_key=public.crm_name_key(p_changes->>'title')) THEN
+      RAISE EXCEPTION 'duplicate_title: That title is already on the content calendar. Open the existing card instead.' USING ERRCODE='23505';
+    END IF;
+    v_item.title := btrim(p_changes->>'title');
+  END IF;
+  IF p_changes ? 'publish_at' THEN
+    IF jsonb_typeof(p_changes->'publish_at') = 'null' THEN v_item.publish_at := NULL;
+    ELSIF jsonb_typeof(p_changes->'publish_at') <> 'string' THEN RAISE EXCEPTION 'invalid_publish_at: Use a date-time or null.' USING ERRCODE='22023';
+    ELSE v_item.publish_at := (p_changes->>'publish_at')::timestamptz; END IF;
+  END IF;
+  IF p_changes ? 'channels' THEN
+    IF jsonb_typeof(p_changes->'channels') <> 'array' OR jsonb_array_length(p_changes->'channels') > 9
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_changes->'channels') e
+                   WHERE jsonb_typeof(e) <> 'string' OR e#>>'{}' NOT IN ('instagram','tiktok','facebook','x','threads','youtube','linkedin','website','email')) THEN
+      RAISE EXCEPTION 'invalid_channels: Choose only supported channels.' USING ERRCODE='22023'; END IF;
+    SELECT COALESCE(array_agg(DISTINCT e ORDER BY e), ARRAY[]::text[]) INTO v_channels
+      FROM jsonb_array_elements_text(p_changes->'channels') e;
+    v_item.channels := v_channels;
+  END IF;
+  IF p_changes ? 'copy' THEN
+    IF v_item.stage NOT IN ('idea','writing') THEN
+      RAISE EXCEPTION 'copy_locked: Copy is read-only after Writing. Move the card back to Writing to revise it.' USING ERRCODE='22023';
+    END IF;
+    IF jsonb_typeof(p_changes->'copy') NOT IN ('string','null') OR char_length(COALESCE(p_changes->>'copy','')) > 20000 THEN
+      RAISE EXCEPTION 'invalid_copy: Copy must be at most 20,000 characters.' USING ERRCODE='22023'; END IF;
+    v_item.copy_text := NULLIF(p_changes->>'copy','');
+  END IF;
+  IF p_changes ? 'notes' THEN
+    IF jsonb_typeof(p_changes->'notes') NOT IN ('string','null') OR char_length(COALESCE(p_changes->>'notes','')) > 20000 THEN
+      RAISE EXCEPTION 'invalid_notes: Notes must be at most 20,000 characters.' USING ERRCODE='22023'; END IF;
+    v_item.notes := NULLIF(p_changes->>'notes','');
+  END IF;
+  FOREACH v_value IN ARRAY ARRAY['drive_url','live_url'] LOOP
+    IF p_changes ? v_value THEN
+      IF jsonb_typeof(p_changes->v_value) NOT IN ('string','null') OR char_length(COALESCE(p_changes->>v_value,'')) > 2000
+         OR (NULLIF(p_changes->>v_value,'') IS NOT NULL AND (p_changes->>v_value) !~ '^https?://') THEN
+        RAISE EXCEPTION 'invalid_url: Links must start with http:// or https:// and be at most 2,000 characters.' USING ERRCODE='22023'; END IF;
+      IF v_value='drive_url' THEN v_item.drive_url := NULLIF(p_changes->>v_value,'');
+      ELSE v_item.live_url := NULLIF(p_changes->>v_value,''); END IF;
+    END IF;
+  END LOOP;
+  IF p_changes ? 'format' THEN
+    IF jsonb_typeof(p_changes->'format') NOT IN ('string','null') OR (NULLIF(p_changes->>'format','') IS NOT NULL
+       AND p_changes->>'format' NOT IN ('graphic','carousel','short_video','long_video','story','talking_head','motion_graphics','photo_ugc','blog','email','landing_page')) THEN
+      RAISE EXCEPTION 'invalid_format: Choose a supported format.' USING ERRCODE='22023'; END IF;
+    v_item.format := NULLIF(p_changes->>'format','');
+  END IF;
+  IF p_changes ? 'audience' THEN
+    IF jsonb_typeof(p_changes->'audience') NOT IN ('string','null') OR (NULLIF(p_changes->>'audience','') IS NOT NULL
+       AND p_changes->>'audience' NOT IN ('explorer','business','education_investor')) THEN
+      RAISE EXCEPTION 'invalid_audience: Choose a supported audience.' USING ERRCODE='22023'; END IF;
+    v_item.audience := NULLIF(p_changes->>'audience','');
+  END IF;
+  IF p_changes ? 'city_id' THEN
+    IF jsonb_typeof(p_changes->'city_id')='null' OR NULLIF(p_changes->>'city_id','') IS NULL THEN v_item.city_id := NULL;
+    ELSIF jsonb_typeof(p_changes->'city_id') <> 'string' OR NOT EXISTS (SELECT 1 FROM public.seeding_cities c WHERE c.id=(p_changes->>'city_id')::uuid) THEN
+      RAISE EXCEPTION 'invalid_city: Choose a listed city.' USING ERRCODE='22023';
+    ELSE v_item.city_id := (p_changes->>'city_id')::uuid; END IF;
+  END IF;
+  IF v_item.stage NOT IN ('idea','writing') AND
+     (NULLIF(btrim(COALESCE(v_item.copy_text,'')),'') IS NULL OR v_item.copy_approved_at IS NULL OR v_item.copy_approved_by IS NULL) THEN
+    RAISE EXCEPTION 'copy_approval_required: Design and later stages require approved copy.' USING ERRCODE='22023';
+  END IF;
+  IF v_item.stage IN ('scheduled','published') AND
+     (v_item.design_approved_at IS NULL OR v_item.design_approved_by IS NULL OR v_item.publish_at IS NULL OR cardinality(v_item.channels)=0) THEN
+    RAISE EXCEPTION 'schedule_required: Scheduled and Published require approved design, a publish date and at least one channel.' USING ERRCODE='22023';
+  END IF;
+  IF v_item.stage='published' AND v_item.live_url IS NULL AND NOT v_item.published_without_link THEN
+    RAISE EXCEPTION 'live_link_required: Add the live link, or explicitly publish without one.' USING ERRCODE='22023';
+  END IF;
+  UPDATE public.content_calendar_items SET title=v_item.title, publish_at=v_item.publish_at, channels=v_item.channels,
+    copy_text=v_item.copy_text, notes=v_item.notes, drive_url=v_item.drive_url, live_url=v_item.live_url,
+    format=v_item.format, audience=v_item.audience, city_id=v_item.city_id, revision=revision+1,
+    updated_by=v.actor_email, updated_at=now() WHERE id=p_id RETURNING * INTO v_item;
+  v_after := public.content_calendar_item_json(v_item);
+  IF v_fields = ARRAY['publish_at']::text[] THEN v_action := 'content.rescheduled'; END IF;
+  v_audit := public.content_calendar_audit_write(p_id, v.actor_email, v.via, v_action,
+    jsonb_build_object('changed_fields',to_jsonb(v_fields),'from_revision',p_expected_revision,'to_revision',v_item.revision) ||
+    CASE WHEN v_action='content.rescheduled' THEN jsonb_build_object('previous_publish_at',v_before_publish) ELSE '{}'::jsonb END);
+  v_out := jsonb_build_object('item', v_after, 'audit_id', v_audit);
+  PERFORM public.content_calendar_request_finish(v.actor_email, p_request_key, 'update', v_out);
+  RETURN v_out;
+EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'duplicate_title: That title is already on the content calendar. Open the existing card instead.' USING ERRCODE='23505';
+WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_text_representation THEN
+  RAISE EXCEPTION 'invalid_changes: A date or identifier has the wrong shape.' USING ERRCODE='22023';
+END;
 $function$
 ;
 COMMIT;

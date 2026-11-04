@@ -47,7 +47,10 @@ BEGIN;
 -- 1. A post's brand, collaborator and plan link.
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.content_calendar_items ADD COLUMN brand_id uuid REFERENCES public.brands(id) ON DELETE SET NULL;
-ALTER TABLE public.content_calendar_items ADD COLUMN collaborator_record_id uuid REFERENCES public.crm_records(id) ON DELETE SET NULL;
+-- No foreign key to crm_records: pipeline tables stay closed (#3802). The
+-- Calendar's save checks the id is a live Creators record, and every read
+-- skips a deleted one.
+ALTER TABLE public.content_calendar_items ADD COLUMN collaborator_record_id uuid;
 ALTER TABLE public.content_calendar_items ADD COLUMN plan_link_url text;
 ALTER TABLE public.content_calendar_items ADD COLUMN brand_plan_author_id uuid;
 ALTER TABLE public.content_calendar_items ADD COLUMN brand_plan_source text;
