@@ -137,7 +137,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
-export const BOOTSTRAP_SHA256 = "f5fff0dca9d0b675a623577b9a1b1e9a2fd4d21a12d9e72463e0bb3acd4550cf";
+export const BOOTSTRAP_SHA256 = "3de93595861a3d6115cc7e5640a05a36deb8f981bb5e0b5d332a0fe47697ac2a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

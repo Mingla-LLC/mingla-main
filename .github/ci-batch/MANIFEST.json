@@ -29560,6 +29560,7 @@
         "mingla-business/jest.issue873.render.cjs",
         "mingla-business/src/components/guests/AccountInviteSummaryCard.tsx",
         "mingla-business/src/components/guests/__tests__/AccountInviteSummaryCard.issue3682.render.test.tsx",
+        "mingla-business/src/components/guests/__tests__/AccountInviteSummaryCard.issue3682.tester_adversarial.render.test.tsx",
         "mingla-business/src/components/marketing/__tests__/issue_3682_push_campaign.render.test.tsx",
         "mingla-business/src/hooks/useOfferingAccountInvites.ts",
         "supabase/functions/offering-invite-dispatch/issue_1770_dispatch.happy.test.ts"
@@ -52740,5 +52741,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "ffebee8f12a665dc25fd0568d4f1e35d394084f277a7fa05430c728ba777a8c1"
+  "phase3eContractSha256": "c591b595d02b4d6dfff2343ad7daae5768d9f22eca8bc8979da9db85d98abd79"
 }

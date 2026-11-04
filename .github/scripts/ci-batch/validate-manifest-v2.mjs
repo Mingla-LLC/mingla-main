@@ -350,7 +350,7 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ffebee8f12a665dc25fd0568d4f1e35d394084f277a7fa05430c728ba777a8c1";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c591b595d02b4d6dfff2343ad7daae5768d9f22eca8bc8979da9db85d98abd79";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
