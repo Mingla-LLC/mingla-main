@@ -857,13 +857,21 @@ async function sha256Hex(value: string): Promise<string> {
  * free; email stays inside the monthly cap the SQL quote already applied. The
  * quote hash changes whenever the account counts do, so a stale confirmation
  * cannot match.
+ *
+ * #3682 closeout — the wizard's `reachableCount` is PEOPLE, not deliveries: a
+ * guest reachable by push and email counts once. It always equals
+ * `canReceiveCount`; the per-channel split stays in `perChannelReachable`.
  */
 export async function mergeWizardAccountQuote(
   quote: Record<string, unknown>,
   account: WizardAccountQuote | null,
 ): Promise<Record<string, unknown>> {
   if (account === null || account.accountRecipientCount <= 0) {
-    return { ...quote, accountRecipientCount: 0 };
+    return {
+      ...quote,
+      reachableCount: Number(quote.canReceiveCount),
+      accountRecipientCount: 0,
+    };
   }
   const channels = quote.perChannelReachable as {
     email: number;
@@ -883,8 +891,7 @@ export async function mergeWizardAccountQuote(
     selectedCount,
     eligibleCount: Number(quote.eligibleCount ?? 0) +
       account.accountRecipientCount,
-    reachableCount: Number(quote.reachableCount) + account.push +
-      account.email,
+    reachableCount: canReceiveCount,
     canReceiveCount,
     skippedCount: Math.max(0, selectedCount - canReceiveCount),
     perChannelReachable: {

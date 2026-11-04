@@ -183,6 +183,38 @@ Deno.test("#3682 wizard estimate folds account recipients in and changes the quo
   }
 });
 
+Deno.test("#3682 closeout: the wizard counts people who can receive, not deliveries", async () => {
+  // One Book guest reachable by email AND push (two deliveries), one skipped.
+  const book = {
+    quoteHash: "c".repeat(64),
+    selectedCount: 2,
+    eligibleCount: 2,
+    reachableCount: 2,
+    canReceiveCount: 1,
+    skippedCount: 1,
+    perChannelReachable: { email: 1, sms: 0, push: 1 },
+  };
+  const bookOnly = await mergeWizardAccountQuote(book, null);
+  if (bookOnly.reachableCount !== 1 || bookOnly.canReceiveCount !== 1) {
+    throw new Error(`Book-only reach counted deliveries: ${JSON.stringify(bookOnly)}`);
+  }
+  // Three account followers: one by push and email, one by push only, one by neither.
+  const merged = await mergeWizardAccountQuote(book, {
+    accountRecipientCount: 3,
+    canReceiveCount: 2,
+    push: 2,
+    email: 1,
+  });
+  const channels = merged.perChannelReachable as Record<string, number>;
+  if (merged.reachableCount !== 3 || merged.canReceiveCount !== 3) {
+    throw new Error(`merged reach counted deliveries: ${JSON.stringify(merged)}`);
+  }
+  // The per-channel split still counts each channel on its own.
+  if (channels.email !== 2 || channels.push !== 3 || channels.sms !== 0) {
+    throw new Error(`per-channel counts changed: ${JSON.stringify(channels)}`);
+  }
+});
+
 Deno.test("#3682 account invites name the brand and the true reason", () => {
   const follower = renderBrandReachMessage("brand_offering_invite", {
     brand_name: "Harmattan Club",
