@@ -278,7 +278,7 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
   // it still filters the board on the server, and only while the board is on
   // screen. Today, This week and This month read their window (loadPeriod).
   it("the owner filters on the server; the views read the new functions through the one service", () => {
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, enabled: onBoard \}\)/);
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard \}\)/);
     assert.match(code("hooks/useOpsWork.js"), /\.\.\.\(owner \? \{ owner \} : \{\}\)/);
     const service = read("services/opsService.js");
     assert.match(service, /supabase\.rpc\("ops_events_since", \{ p_since: since, p_owner: owner \|\| null \}\)/);

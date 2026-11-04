@@ -102,37 +102,27 @@ describe("XA-1 the column order", () => {
   });
 });
 
-describe("XA-2 Done is this week, from Monday", () => {
+// #4270 rework (P3-3, P3-5): which done cards are "this week" is the
+// server's call (closed since Monday 00:00 in the viewer's time zone, the
+// pg17 X-WINDOW and R-WEEK checks); the client never re-cuts Done with a
+// second clock. A card still marked person is To do with its tag.
+describe("XA-2 Done is the server's week; a retired person card is To do", () => {
   const done = (title, closed_at) => ({ title, number: title.length, status: "done", due_on: "2026-11-01", closed_at });
   const cards = [
     done("sunday-late", "2026-11-01T23:59:59+00:00"),
     done("monday-start", "2026-11-02T00:00:00+00:00"),
-    done("wednesday", "2026-11-04T12:00:00+00:00"),
-    done("last-week", "2026-10-28T12:00:00+00:00"),
     { title: "open", number: 1, status: "todo", due_on: "2026-11-01" },
   ];
-  it("on a Wednesday: Monday 00:00 is in, Sunday 23:59 and last week are out, open cards never", () => {
-    const got = columnCards(cards, "done", "2026-11-04").map((c) => c.title).sort();
-    assert.deepEqual(got, ["monday-start", "wednesday"]);
+  it("Done lists every done card it is given, and never an open one", () => {
+    assert.deepEqual(columnCards(cards, "done").map((c) => c.title).sort(), ["monday-start", "sunday-late"]);
   });
-  it("on the Monday itself the week starts that day", () => {
-    const got = columnCards(cards, "done", "2026-11-02").map((c) => c.title).sort();
-    assert.deepEqual(got, ["monday-start", "wednesday"]);
-  });
-  it("on a Sunday the week still began the Monday before", () => {
-    const got = columnCards(cards, "done", "2026-11-08").map((c) => c.title).sort();
-    assert.deepEqual(got, ["monday-start", "wednesday"]);
-    // Sunday 1 Nov: that week began Monday 26 Oct, so the 28 Oct card is in.
-    const got2 = columnCards(cards, "done", "2026-11-01").map((c) => c.title);
-    assert.ok(got2.includes("last-week") && got2.includes("sunday-late"));
-  });
-  it("To do never holds a done card or a card in the retired status", () => {
+  it("To do never holds a done card; a card in the retired status is To do", () => {
     const list = [
       { title: "done", number: 1, status: "done", due_on: "2026-11-01", closed_at: "2026-11-04T01:00:00+00:00" },
       { title: "retired", number: 2, status: "person", person_reason: "send", due_on: "2026-11-01" },
       { title: "todo", number: 3, status: "todo", due_on: "2026-11-01" },
     ];
-    assert.equal(titles(columnCards(list, "todo", "2026-11-04")), "todo");
+    assert.equal(titles(columnCards(list, "todo")), "retired|todo");
   });
 });
 

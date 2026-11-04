@@ -383,14 +383,14 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /const cards = useMemo\(\(\) => workFilter\(allCards, filters\)/);
     assert.match(page, /const periodCards = useMemo\(\(\) => workFilter\(period\.data\?\.cards \|\| \[\], filters\)/);
-    assert.match(page, /<WorkColumns cards=\{cards\}/);
+    assert.match(page, /<WorkColumns cards=\{cards\}/); // #4270 rework: plus each column's server count
     assert.match(page, /<PeriodView win=\{win\} read=\{period\} cards=\{periodCards\}/);
     // One filter bar above the tabs; one row of tabs.
     assert.ok(page.indexOf('data-work-filters=""') < page.indexOf("<Tabs tabs={WORK_VIEWS"));
     assert.equal((page.match(/<Tabs /g) || []).length, 1);
     assert.ok(!/NeedsAttention|AttentionChips|PersonChips|parseWorkTab|WorkToday|WorkWeek|WorkMonth/.test(page));
     // The board reads only while it is on screen; the period tabs read their window.
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, enabled: onBoard \}\)/);
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard \}\)/); // #4270 rework: per column
     assert.match(page, /enabled: !onBoard,/);
     assert.ok(!fs.existsSync(path.join(SRC, "components/ops/NeedsAttention.jsx")));
     assert.ok(!/WorkGroups/.test(code("components/ops/WorkColumns.jsx")));

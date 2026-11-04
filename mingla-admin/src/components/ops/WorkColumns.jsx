@@ -73,14 +73,21 @@ export function DraftItem({ draft, selected, onOpen }) {
   );
 }
 
-export function WorkColumns({ cards = [], selectedId, onSelect, today, drafts = [], draftsByCard = null, selectedDraftId = null, onOpenDraft, allDraftsHref = null }) {
+export function WorkColumns({ cards = [], columnInfo = null, selectedId, onSelect, drafts = [], draftsByCard = null, selectedDraftId = null, onOpenDraft, allDraftsHref = null }) {
   // Phones: one column at a time. The choice is the viewer's, for this visit.
   const [active, setActive] = useState("todo");
   const columns = WORK_COLUMNS.map((col) => {
-    const list = columnCards(cards, col.key, today);
+    const list = columnCards(cards, col.key);
     // Loose message drafts (no open card carries them) sit at the top of To do.
     const extra = col.key === "todo" && onOpenDraft ? drafts : [];
-    return { ...col, list, extra, count: list.length };
+    // #4270 rework (P2-1): the server pages each column on its own and says
+    // how many each one has; tabs and headers show that true count, and a
+    // cut column says so. With Show or Linked to on (filtered here), the
+    // count is what is listed.
+    const info = columnInfo?.[col.key];
+    const total = Number.isFinite(Number(info?.total)) ? Number(info.total) : list.length;
+    const cut = !!info?.truncated;
+    return { ...col, list, extra, count: total, cut, shown: Number(info?.shown) || list.length };
   });
   return (
     <div data-work-columns="" className="min-w-0 rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-2">
@@ -119,6 +126,11 @@ export function WorkColumns({ cards = [], selectedId, onSelect, today, drafts = 
                 </span>
               </h2>
               <p data-sort-note="" className="px-1 text-[11px] text-[var(--color-text-tertiary)]">{col.note}</p>
+              {col.cut && (
+                <p data-column-cut={col.key} role="status" className="rounded-lg bg-[var(--color-info-50)] px-2 py-1.5 text-[12px] text-[var(--color-info-700)]">
+                  Showing the first {col.shown} of {col.count}. Filter by owner or search to see the rest.
+                </p>
+              )}
               {empty
                 ? <p className="px-1.5 pb-1 text-[12.5px] text-[var(--color-text-tertiary)]">Nothing here.</p>
                 : <ul className="flex min-w-0 flex-col gap-1.5">

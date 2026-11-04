@@ -277,8 +277,10 @@ export function periodBucket(card, win) {
   const due = card.due_on ? String(card.due_on).slice(0, 10) : null;
   if (due && win.dueBy && due > win.dueBy) return null;
   if (card.blocked) return "blocked";
-  if (card.status === "doing") return "doing";
+  // #4270 rework (P3-1): a tagged card waits for your OK wherever it sits,
+  // so it is listed once, under Needs your OK, even when In progress.
   if (isTagged(card)) return "waiting";
+  if (card.status === "doing") return "doing";
   return null;
 }
 
@@ -407,7 +409,9 @@ export function percentDeltaWords(now, before, what) {
 /**
  * One row per person: cards closed since yesterday 09:00 (from the server's
  * per-person counts), what they have in progress, and what is blocked or
- * waiting on a person. `cards` are the open cards on the board.
+ * waiting for your OK (a Send, Spend or Publish tag). `cards` are the open
+ * cards on the board. Each card is listed once: a tagged or blocked card is
+ * under "Blocked or waiting", never also under "Today" (#4270 rework P3-1).
  */
 export function standupRows(people, cards, closedByPerson) {
   const closed = new Map((Array.isArray(closedByPerson) ? closedByPerson : []).map((p) => [String(p.email || "").toLowerCase(), Number(p.closed) || 0]));
@@ -419,7 +423,7 @@ export function standupRows(people, cards, closedByPerson) {
       email,
       name: p.name || email,
       done: closed.get(email) || 0,
-      doing: mine.filter((c) => c.status === "doing" && !c.blocked),
+      doing: mine.filter((c) => c.status === "doing" && !c.blocked && !isTagged(c)),
       blocked: mine.filter((c) => isTagged(c) || c.blocked),
     };
   });

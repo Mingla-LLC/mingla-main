@@ -129,8 +129,10 @@ export function needsYouToday(sources = {}) {
     const late = Number(work.data.overdue) || 0;
     items.push({
       id: "work-due", area: "work", areaLabel: AREA_LABEL.work, tone: late > 0 ? "bad" : "warn",
-      title: `${plural(n, "Work card", "Work cards")} due today for you`,
-      detail: `${late} overdue`,
+      // #4270 rework (P3-6): nothing due today but some late reads as late,
+      // never "0 Work cards due today".
+      title: n > 0 ? `${plural(n, "Work card", "Work cards")} due today for you` : `${plural(late, "overdue Work card", "overdue Work cards")} for you`,
+      detail: n > 0 ? `${late} overdue` : "Nothing is due today.",
       href: "#/work-board",
     });
   }

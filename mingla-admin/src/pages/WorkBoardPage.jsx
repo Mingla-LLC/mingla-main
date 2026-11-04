@@ -80,7 +80,8 @@ export function WorkBoardPage() {
   const ownerFilter = view.owner || (new URLSearchParams(search).get("who") === "mine" ? people.me : null);
   const who = view.show === "watch" ? "watching" : "all";
   const onBoard = view.view === "board";
-  const list = useOpsWork({ who, week: query.week, owner: ownerFilter, q: view.q, limit: BOARD_LIMIT, enabled: onBoard });
+  // #4270 rework (P2-1): up to BOARD_LIMIT cards in each column, with each column's true count.
+  const list = useOpsWork({ who, week: query.week, owner: ownerFilter, q: view.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard });
   // Phones: the filters fold behind one Filters button.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const win = useMemo(() => (onBoard ? null : periodWindow(view.view)), [onBoard, view.view]);
@@ -242,9 +243,6 @@ export function WorkBoardPage() {
                 catch (error) { addToast({ variant: "error", title: "Goal not saved", description: opsErrorWords(error) }); }
               }}
             />
-            {list.data?.truncated && !list.loading && !list.error && (
-              <AlertCard variant="info" title={`Showing the first ${BOARD_LIMIT} cards`}>Filter by owner or search to see the rest.</AlertCard>
-            )}
             {list.stale && <AlertCard variant="warning" title="The board may be out of date" action={<Button variant="secondary" className="min-h-11" onClick={() => list.refetch()}>Try again</Button>} />}
             {showDrafts && myDrafts.error && !myDrafts.data && <LoadError title="Couldn’t load your message drafts" message={draftErrorWords(myDrafts.error)} onRetry={() => myDrafts.refetch()} />}
             {list.loading ? (
@@ -255,6 +253,7 @@ export function WorkBoardPage() {
               <SectionCard><p className="text-[13px] text-[var(--color-text-secondary)]">No cards yet. Add one, or set a host’s next event on their card: its steps appear here by themselves.</p></SectionCard>
             ) : (
               <WorkColumns cards={cards}
+                columnInfo={view.show || view.linked ? null : list.data?.columns || null}
                 selectedId={query.card}
                 onSelect={(card) => openCard(card.id)}
                 drafts={looseDrafts}

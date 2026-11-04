@@ -4,6 +4,7 @@
 // can word.
 import { supabase } from "../lib/supabase";
 import { parseServerError } from "../lib/crmModel";
+import { readPersonAsTodo } from "../lib/opsModel";
 
 export class OpsError extends Error {
   constructor({ token, message, detail, fixes }) {
@@ -40,7 +41,9 @@ async function call(run) {
     const parsed = parseServerError(result.error);
     throw new OpsError({ ...parsed, fixes: fixesFrom(parsed.detail) });
   }
-  return result.data;
+  // #4270 rework (P3-5): any card the server still marks with the retired
+  // status person is read as To do with its tag, so the board never hides it.
+  return readPersonAsTodo(result.data);
 }
 
 export const fetchOpsConfig = (today) => call(() => supabase.rpc("ops_config", { p_today: today || null }));

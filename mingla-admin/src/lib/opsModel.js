@@ -484,7 +484,7 @@ const LOG_ACTIONS = {
   updated: "updated",
   blocked: "marked blocked",
   unblocked: "unblocked",
-  needs_person: "asked for a person",
+  needs_person: "tagged a card for your OK",
   closed: "closed",
   pushed_back: "pushed back",
   reopened: "reopened",
@@ -1025,12 +1025,35 @@ export function sortColumn(cards, key) {
   });
 }
 
-export function columnCards(cards, key, today = todayIso()) {
-  const monday = mondayOf(today);
-  return sortColumn((Array.isArray(cards) ? cards : []).filter((c) => {
-    if (key === "done") return c.status === "done" && (!c.closed_at || String(c.closed_at).slice(0, 10) >= monday);
-    return c.status === key;
-  }), key);
+/**
+ * One column's cards, in order. #4270 rework (P3-3): Done is what the server
+ * sent, closed since Monday 00:00 of the sprint in your time zone; the
+ * board never re-cuts it with a second clock. (P3-5) A card still marked
+ * with the retired status person is To do with its tag.
+ */
+export function columnCards(cards, key) {
+  return sortColumn((Array.isArray(cards) ? cards : []).filter((c) => boardStatus(c) === key), key);
+}
+
+/** #4270 rework (P3-5): the column a card sits in; the retired person status is To do. */
+export function boardStatus(card) {
+  return card?.status === "person" ? "todo" : card?.status;
+}
+
+/**
+ * #4270 rework (P3-5): a card or list from the server, with the retired
+ * status person read as To do (its tag stays in person_reason), so cards
+ * never drop off the board whichever ships first, the migration or this.
+ */
+export function readPersonAsTodo(data) {
+  if (!data || typeof data !== "object") return data;
+  const fix = (c) => (c && typeof c === "object" && c.status === "person"
+    ? { ...c, status: "todo", tag: c.tag || c.person_reason || "other", person_reason: c.person_reason || c.tag || "other" }
+    : c);
+  let out = data;
+  if (Array.isArray(data.cards) && data.cards.some((c) => c?.status === "person")) out = { ...out, cards: data.cards.map(fix) };
+  if (data.card?.status === "person") out = { ...out, card: fix(data.card) };
+  return out;
 }
 
 /** Red reason badges on a work card: No owner, Overdue <n>d, No update for <n>d. */

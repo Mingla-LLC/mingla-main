@@ -80,15 +80,16 @@ describe("B-2 the order (D3)", () => {
     ];
     assert.deepEqual(sortColumn(list, "done").map((c) => c.id), ["3", "2", "1"]);
   });
-  it("columnCards filters then sorts; Done keeps this week only", () => {
-    const today = "2026-11-04";
+  // #4270 rework (P3-3): the server decides which done cards are this week
+  // (closed since Monday 00:00 in your time zone); the board only sorts them.
+  it("columnCards filters by column then sorts; Done is what the server sent", () => {
     const cards = [
       card("1", "todo", "2026-11-09"), card("2", "todo", "2026-11-02"),
       card("3", "done", "2026-11-03", { closed_at: "2026-11-03T08:00:00Z" }),
-      card("4", "done", "2026-10-20", { closed_at: "2026-10-21T08:00:00Z" }),
+      card("4", "done", "2026-10-20", { closed_at: "2026-11-02T08:00:00Z" }),
     ];
-    assert.deepEqual(columnCards(cards, "todo", today).map((c) => c.id), ["2", "1"]);
-    assert.deepEqual(columnCards(cards, "done", today).map((c) => c.id), ["3"]);
+    assert.deepEqual(columnCards(cards, "todo").map((c) => c.id), ["2", "1"]);
+    assert.deepEqual(columnCards(cards, "done").map((c) => c.id), ["3", "4"]);
   });
 });
 
@@ -253,12 +254,12 @@ describe("B-7 Due today for you", () => {
 });
 
 describe("B-8 the board page", () => {
-  it("asks for 300 cards and says when there are more; phone filters behind one button", () => {
+  // #4270 rework (P2-1): 300 cards per column, and the cut line is per column (WorkColumns).
+  it("asks for 300 cards per column; phone filters behind one button", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /const BOARD_LIMIT = 300;/);
-    assert.match(page, /limit: BOARD_LIMIT, enabled: onBoard/);
-    assert.match(page, /list\.data\?\.truncated && !list\.loading && !list\.error/);
-    assert.match(page, /Filter by owner or search to see the rest\./);
+    assert.match(page, /limit: BOARD_LIMIT, perStatus: true, enabled: onBoard/);
+    assert.match(code("components/ops/WorkColumns.jsx"), /Filter by owner or search to see the rest\./);
     assert.match(page, /aria-expanded=\{filtersOpen\} aria-controls="work-filter-panel" data-filters-button=""/);
     assert.match(page, /\{filtersOpen \? "flex" : "hidden"\} w-full min-w-0 flex-col gap-2 sm:flex/);
     assert.match(page, /grid grid-cols-1 gap-2 md:grid-cols-3" aria-busy="true"/);
