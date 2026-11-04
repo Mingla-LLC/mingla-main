@@ -50,7 +50,7 @@ export interface ComposerReviewSheetProps {
    * (MMS)" caption. Undefined / "email" ⇒ the existing SUBJECT section renders
    * verbatim.
    */
-  channelKind?: "email" | "sms";
+  channelKind?: "email" | "sms" | "push";
   messagePreview?: string;
   hasMedia?: boolean;
   estimatedCostLabel?: string;
@@ -71,6 +71,21 @@ export interface ComposerReviewSheetProps {
    * becomes "Send anyway" until acknowledged; "Not now" dismisses via onBack.
    */
   weekBlastWarning?: boolean;
+  /**
+   * #3682 wave 2 — the other channels this campaign goes out on together
+   * (sibling sends confirmed right after the lead). Each row shows its own
+   * reach, cost and allowance; push is free.
+   */
+  additionalChannels?: ReadonlyArray<ReviewChannelRow>;
+}
+
+export interface ReviewChannelRow {
+  key: string;
+  label: string;
+  reachLabel: string;
+  costLabel: string;
+  allowanceLabel?: string;
+  error?: string | null;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -104,6 +119,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   staleDetail,
   allowanceLabel,
   weekBlastWarning,
+  additionalChannels,
 }) => {
   const showWeekWarning = weekBlastWarning === true;
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
@@ -222,7 +238,34 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             </Pressable>
           ) : null}
         </View>
-        {channelKind === "sms" ? (
+        {additionalChannels !== undefined && additionalChannels.length > 0 ? (
+          <View style={styles.section} testID="composer-review-additional-channels">
+            <Text style={styles.label}>ALSO SENDING BY</Text>
+            {additionalChannels.map((row) => (
+              <View key={row.key} style={styles.channelRow}>
+                <Text style={styles.value}>{row.label}</Text>
+                <Text style={styles.metaText}>{`${row.reachLabel} · ${row.costLabel}`}</Text>
+                {row.allowanceLabel !== undefined ? (
+                  <Text style={styles.metaText}>{row.allowanceLabel}</Text>
+                ) : null}
+                {row.error ? <Text style={styles.errorText}>{row.error}</Text> : null}
+              </View>
+            ))}
+            <Text style={styles.metaText}>
+              One campaign: it counts once toward your weekly blasts.
+            </Text>
+          </View>
+        ) : null}
+        {channelKind === "push" ? (
+          <View style={styles.section}>
+            <Text style={styles.label}>PUSH MESSAGE</Text>
+            <Text style={styles.value} numberOfLines={4}>
+              {messagePreview !== undefined && messagePreview.length > 0
+                ? messagePreview
+                : "(no message)"}
+            </Text>
+          </View>
+        ) : channelKind === "sms" ? (
           // ORCH-1281 — SMS has no subject line; show the actual message (wire
           // body incl. STOP footer) + an MMS-photo caption when attached.
           <View style={styles.section}>
@@ -336,6 +379,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
+  channelRow: { gap: 2, paddingTop: spacing.xs },
   scrollContent: {
     padding: spacing.md,
     gap: spacing.md,

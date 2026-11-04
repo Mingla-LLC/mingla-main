@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3682_follow_closeout_account_invites.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3682-follow-closeout-account-invites-pg-tester",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

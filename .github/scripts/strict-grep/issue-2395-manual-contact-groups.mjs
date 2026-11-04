@@ -18,7 +18,8 @@ const files = {
   detail: "mingla-business/src/components/people/ManualGroupDetail.tsx",
   picker: "mingla-business/src/components/marketing/AudiencePickerSheet.tsx",
   compose: "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",
-  campaignService: "mingla-business/src/services/marketing/marketingCampaignService.ts",
+  // #3682: the quote-then-confirm send path moved out of marketingCampaignService.
+  campaignService: "mingla-business/src/services/marketing/marketingBookSendService.ts",
   hook: "mingla-business/src/hooks/marketing/useManualGroups.ts",
   people: "mingla-business/src/components/people/PeoplePage.tsx",
   audienceCard: "mingla-business/src/components/marketing/AudienceCard.tsx",

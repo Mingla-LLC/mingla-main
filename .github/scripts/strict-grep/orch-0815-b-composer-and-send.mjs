@@ -75,6 +75,7 @@ const NEW_MB_FILES = [
   "mingla-business/src/hooks/marketing/useResolveAudience.ts",
   "mingla-business/src/hooks/marketing/useComposerDraft.ts",
   "mingla-business/src/services/marketing/marketingCampaignService.ts",
+  "mingla-business/src/services/marketing/marketingBookSendService.ts",
   "mingla-business/src/services/marketing/marketingTemplateService.ts",
   "mingla-business/src/services/marketing/marketingRenderingService.ts",
   "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",

@@ -297,6 +297,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useOfferingInvitePlan.ts",
   // #3682 Wave 2.3 — brand_follows is auth.uid()-scoped; folds isAuthReady.
   "useBrandFollow.ts",
+  // #3682 wave 2 — the offering's account invites are an auth.uid()/brand-scoped RPC.
+  "useOfferingAccountInvites.ts",
   // #3660 — biz_my_host_account_deletion_blockers answers for auth.uid() only
   // and raises without one; the blockers query folds isAuthReady into enabled.
   "useAccountDeletion.ts",

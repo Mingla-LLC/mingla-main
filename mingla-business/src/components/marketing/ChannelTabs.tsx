@@ -1,6 +1,8 @@
 /**
- * ChannelTabs — 2-segment tab row (Email · SMS) inside the composer
- * Step 2 "What" card.
+ * ChannelTabs — 3-segment tab row (Email · SMS · Push) inside the composer
+ * Step 2 "What" card. The active tab is the message being written; the
+ * "Also send by" chips (CampaignChannelSelector) add the other channels to
+ * the same campaign (#3682 wave 2).
  *
  * Both channels are live. The dead "RCS" tab was removed in ORCH-1283 (it
  * did nothing and no RCS infrastructure ever shipped). This enforces
@@ -23,7 +25,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-export type MarketingChannelKind = "email" | "sms";
+export type MarketingChannelKind = "email" | "sms" | "push";
 
 export interface ChannelTabsProps {
   active: MarketingChannelKind;
@@ -44,6 +46,8 @@ const TABS: ReadonlyArray<TabSpec> = [
   // so composing/scheduling an SMS blast is live UI but no Twilio HTTP fires
   // until the operator flips the switch.
   { kind: "sms", label: "SMS", enabled: true, caption: "" },
+  // #3682 wave 2 — free Mingla push to followers and Book people with an account.
+  { kind: "push", label: "Push", enabled: true, caption: "" },
 ];
 
 export const ChannelTabs: React.FC<ChannelTabsProps> = ({ active, onChange }) => {

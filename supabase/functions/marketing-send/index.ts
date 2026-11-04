@@ -79,6 +79,15 @@ import {
   resolveOfferingInviteTokenPepper,
 } from "../_shared/offeringInviteToken.ts";
 
+import {
+  buildPushQuote,
+  parsePushQuotedAt,
+  type PushCandidatesEnvelope,
+  type PushDispatch,
+  publicPushQuote,
+  sendPushCampaign,
+} from "./pushCampaign.ts";
+
 const BATCH_LIMIT = 10;
 const RESEND_MAX_RETRIES = 3;
 const RESEND_BACKOFF_MS = [1000, 3000, 9000];
@@ -397,7 +406,9 @@ interface CampaignRow {
   audience_id: string;
   channel: string;
   channel_payload: {
-    kind: "email" | "sms";
+    kind: "email" | "sms" | "push";
+    /** #3682 — optional offering the push opens (same brand). */
+    event_id?: string;
     subject?: string;
     body_html?: string;
     body_text?: string;
@@ -486,7 +497,10 @@ export async function handleMarketingSendRequest(
   const isConfirmPeopleAction = body.action === "confirm_book_v1" ||
     body.action === "confirm_people_v2" ||
     body.action === "confirm_circle_v1";
-  const isBookAction = isPreviewPeopleAction || isConfirmPeopleAction;
+  const isPushAction = body.action === "preview_push_v1" ||
+    body.action === "confirm_push_v1";
+  const isBookAction = isPreviewPeopleAction || isConfirmPeopleAction ||
+    isPushAction;
 
   // Direct invocation path requires a campaign_id AND a user JWT we can
   // verify ownership against. Cron path has neither.
@@ -503,6 +517,20 @@ export async function handleMarketingSendRequest(
   }
 
   const supabase = serviceClient();
+  if (isPushAction) {
+    if (typeof body.campaign_id !== "string" || isServiceRole) {
+      return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
+    }
+    const { data: actor } = await userClient(req).auth.getUser();
+    if (actor.user === null) {
+      return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
+    }
+    return await handlePushCampaignAction(
+      supabase,
+      actor.user.id,
+      body as PushActionBody,
+    );
+  }
   if (isBookAction) {
     if (typeof body.campaign_id !== "string" || isServiceRole) {
       return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
@@ -733,6 +761,106 @@ export async function handleMarketingSendRequest(
       { live: LIVE, resendApiKey: RESEND_API_KEY },
     ),
   );
+}
+
+interface PushActionBody {
+  action: "preview_push_v1" | "confirm_push_v1";
+  campaign_id: string;
+  client_request_id?: string;
+  quoteHash?: string;
+  quotedAt?: string;
+  scheduledFor?: string | null;
+}
+
+/**
+ * #3682 wave 2 — preview / confirm a push campaign. Same sealed contract as
+ * the Book lane: preview returns counts (never recipients) plus the brand's
+ * allowance; confirm rebuilds the quote server side and the SQL owner refuses
+ * any drift. A null schedule sends now through the shared claim path.
+ */
+export async function handlePushCampaignAction(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  actorId: string,
+  body: PushActionBody,
+  dispatch?: PushDispatch,
+): Promise<Response> {
+  const candidates = await supabase.rpc(
+    "biz_marketing_push_quote_candidates_v1",
+    { p_actor_id: actorId, p_campaign_id: body.campaign_id },
+  );
+  if (candidates.error) {
+    return bookRpcErrorResponse(candidates.error.message);
+  }
+  const envelope = candidates.data as PushCandidatesEnvelope;
+  const confirming = body.action === "confirm_push_v1";
+  const quotedAt = confirming ? parsePushQuotedAt(body.quotedAt) : new Date();
+  const fresh = await buildPushQuote(body.campaign_id, envelope, new Date());
+  const withAllowance = async (quote: Record<string, unknown>) =>
+    await attachBookAllowance(supabase, actorId, envelope, quote);
+  if (quotedAt === null) {
+    const refreshed = await withAllowance(publicPushQuote(fresh));
+    return jsonResponse({
+      error: "BOOK_BLAST_PREVIEW_STALE",
+      ...(refreshed.ok ? { preview: refreshed.quote } : {}),
+    }, 409);
+  }
+  const quote = await buildPushQuote(body.campaign_id, envelope, quotedAt);
+  if (!confirming) {
+    const preview = await withAllowance(publicPushQuote(quote));
+    if (!preview.ok) return jsonResponse({ error: preview.error }, 503);
+    return jsonResponse(preview.quote);
+  }
+  if (
+    typeof body.client_request_id !== "string" ||
+    body.quoteHash !== quote.quoteHash
+  ) {
+    const refreshed = await withAllowance(publicPushQuote(fresh));
+    return jsonResponse({
+      error: "BOOK_BLAST_PREVIEW_STALE",
+      ...(refreshed.ok ? { preview: refreshed.quote } : {}),
+    }, 409);
+  }
+  if (quote.reachableCount === 0) {
+    return jsonResponse({ error: "BOOK_BLAST_ZERO_RECIPIENTS" }, 409);
+  }
+  const confirmed = await supabase.rpc("biz_confirm_marketing_push_send_v1", {
+    p_actor_id: actorId,
+    p_campaign_id: body.campaign_id,
+    p_client_request_id: body.client_request_id,
+    p_quote_snapshot: quote,
+    p_scheduled_for: body.scheduledFor ?? null,
+  });
+  if (confirmed.error) return bookRpcErrorResponse(confirmed.error.message);
+  const result = confirmed.data as Record<string, unknown>;
+  if (result.replay === true || body.scheduledFor != null) {
+    return jsonResponse({
+      ...result,
+      resultState: body.scheduledFor != null ? "scheduled" : "in_progress",
+    });
+  }
+  const claimed = await claimCampaigns(supabase, body.campaign_id);
+  const dispatchSummary = await processClaimedCampaigns(
+    supabase,
+    claimed,
+    { live: true, resendApiKey: "" },
+    dispatch === undefined
+      ? dispatchByKind
+      : (db, campaign, options) =>
+        campaign.channel_payload.kind === "push"
+          ? sendPushCampaign(db, campaign, dispatch)
+          : dispatchByKind(db, campaign, options),
+  );
+  dispatchSummary.skipped_after_confirm = Math.max(
+    0,
+    quote.reachableCount -
+      (dispatchSummary.delivered + dispatchSummary.recipient_failed),
+  );
+  return jsonResponse({
+    ...result,
+    resultState: "complete",
+    dispatch: dispatchSummary,
+  });
 }
 
 function bookRpcErrorResponse(message: string): Response {
@@ -1150,6 +1278,9 @@ async function dispatchByKind(
   switch (kind) {
     case "email":
       return await sendEmail(supabase, campaign, options);
+    case "push":
+      // #3682 wave 2 — push lane through the shared notify pipeline.
+      return await sendPushCampaign(supabase, campaign);
     case "sms":
       // META-ORCH-1161 Sub-B — real SMS dispatch via the Sub-A smsAdapter.
       // The per-market kill-switch (SMS_LIVE_ENABLED_US/_NG, default false)

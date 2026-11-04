@@ -18,6 +18,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { captureWizardInvite } from "../../features/invites/wizardInviteAnalytics";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useOfferingInvitePlan, useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import {
   createWizardInviteRequestId,
@@ -28,6 +29,7 @@ import {
   type WizardInviteSelection,
   type WizardOfferingType,
 } from "../../services/offeringInvitePlanService";
+import type { BrandCircleReachSummary } from "../../services/brandCircleReachSummaryService";
 import type { ManualGroupSummary } from "../../types/marketing";
 import type { BrandPersonSummary } from "../../types/people";
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -87,6 +89,46 @@ const accessFailureFor = (error: unknown): InviteAccessFailure | null => {
   return null;
 };
 
+/**
+ * #3682 wave 2 — every follower can be invited, in Your Book or not. Contact
+ * details stay hidden: followers outside Your Book are reached through Mingla.
+ */
+export function followersRowDetail(followerCount: number | null | undefined): string {
+  if (followerCount === null || followerCount === undefined) return "Checking count…";
+  if (followerCount === 0) return "No followers yet";
+  return `All ${followerCount} ${followerCount === 1 ? "follower" : "followers"}`;
+}
+
+/** Copy shared with the Blast audience picker for the same server state. */
+export const FRIENDS_OF_FOLLOWERS_UNAVAILABLE =
+  "Not available until people can control extended brand reach in Mingla.";
+
+export interface CircleRowAvailability {
+  available: boolean;
+  detail: string;
+}
+
+/**
+ * #3682 — Friends of followers is selectable only when the server says the
+ * extended audience is live (the same get_brand_circle_reach availability the
+ * Blast picker reads; the plan RPC refuses it on the same three switches).
+ * While that is unknown the row stays disabled instead of failing on tap.
+ */
+export function friendsOfFollowersRowAvailability(input: {
+  pending: boolean;
+  error: boolean;
+  summary: BrandCircleReachSummary | null | undefined;
+}): CircleRowAvailability {
+  if (input.pending) return { available: false, detail: "Checking current reach…" };
+  if (input.error || !input.summary) {
+    return { available: false, detail: "Current reach is unavailable." };
+  }
+  if (input.summary.availability.extended.reason === "controls_not_live") {
+    return { available: false, detail: FRIENDS_OF_FOLLOWERS_UNAVAILABLE };
+  }
+  return { available: true, detail: "Friends of your followers who chose to hear from brands" };
+}
+
 export function InvitePeopleStep({
   eventId,
   brandId,
@@ -108,6 +150,7 @@ export function InvitePeopleStep({
   const pendingReceipt = useRef<PendingReceipt | null>(null);
   const observedQuote = useRef<string | null>(null);
   const model = useOfferingInvitePlan({ eventId, brandId, search, enabled });
+  const followerCount = useBrandFollowerCount(enabled && brandId.length > 0 ? brandId : null);
   const plan = model.plan.data ?? null;
   const quote = model.quote.data ?? null;
   const persistedIds = useMemo(
@@ -390,7 +433,7 @@ export function InvitePeopleStep({
       {showHeader ? <>
         <Text accessibilityRole="header" style={styles.title}>Invite people</Text>
         <Text style={styles.subtitle}>
-          Choose people from Your Book, followers, or friends of followers. Nothing sends until this{" "}
+          Choose who to invite. Nothing sends until this{" "}
           {OFFERING_LABEL[eventType]} is published.
         </Text>
       </> : null}
@@ -404,7 +447,14 @@ export function InvitePeopleStep({
         groupsPending={model.groups.isPending}
         groupsError={model.groups.isError}
         onRetryGroups={() => void model.groups.refetch()}
+        friendsOfFollowers={friendsOfFollowersRowAvailability({
+          pending: model.circle.isPending,
+          error: model.circle.isError,
+          summary: model.circle.data,
+        })}
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
+        bookSelectedCount={isDirty ? visibleIds.length : plan.bookSelectedCount}
+        followersDetail={followersRowDetail(followerCount.isError ? undefined : followerCount.data)}
         disabled={isSaving || plan.state === "locked" || ambiguous}
         onSelectEveryone={() => void persistSelection(
           {
@@ -462,6 +512,7 @@ export function InvitePeopleStep({
       />
       <InviteSelectionSummary
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
+        accountCount={isDirty ? 0 : plan.accountRecipientCount}
         people={people.filter((person) => visibleSelected.has(person.personId))}
         saving={isSaving}
         dirty={isDirty || dirtyDescription !== null}
@@ -504,7 +555,12 @@ export function InviteSourcePicker(props: {
   groupsPending?: boolean;
   groupsError?: boolean;
   onRetryGroups?: () => void;
+  /** Omitted only by legacy callers; treated as unavailable (never a dead tap). */
+  friendsOfFollowers?: CircleRowAvailability;
   selectedCount: number;
+  /** Your Book people in the selection (the Select all checkbox state). */
+  bookSelectedCount?: number;
+  followersDetail?: string;
   disabled: boolean;
   onSelectEveryone: () => void;
   onSelectFollowers: () => void;
@@ -512,21 +568,26 @@ export function InviteSourcePicker(props: {
   onSelectGroup: (groupId: string, groupName: string) => void;
   onChoosePeople: () => void;
 }) {
-  const selectAllChecked: boolean | "mixed" = props.selectedCount === 0
+  const bookSelected = props.bookSelectedCount ?? props.selectedCount;
+  const selectAllChecked: boolean | "mixed" = bookSelected === 0
     ? false
-    : props.bookCount !== null && props.selectedCount >= props.bookCount
+    : props.bookCount !== null && bookSelected >= props.bookCount
       ? true
       : "mixed";
+  const friendsRow = props.friendsOfFollowers ??
+    { available: false, detail: FRIENDS_OF_FOLLOWERS_UNAVAILABLE };
   return (
     <View style={styles.sourceCard}>
       <SourceRow title="Everyone in Your Book" detail={props.bookCount === null ? "Checking count…" : `${props.bookCount} active people`}
         action="Select all" disabled={props.disabled} onPress={props.onSelectEveryone}
         accessibilityRole="checkbox" accessibilityChecked={selectAllChecked} />
       <View style={styles.divider} />
-      <SourceRow title="Followers" detail="Followers who are already in Your Book"
+      <SourceRow title="Followers" detail={props.followersDetail ?? followersRowDetail(null)}
         action="Select" disabled={props.disabled} onPress={props.onSelectFollowers} />
-      <SourceRow title="Friends of followers" detail="Friends of followers who are already in Your Book"
-        action="Select" disabled={props.disabled} onPress={props.onSelectFriendsOfFollowers} />
+      <SourceRow title="Friends of followers"
+        detail={friendsRow.detail}
+        action="Select" disabled={props.disabled || !friendsRow.available}
+        onPress={props.onSelectFriendsOfFollowers} />
       <View style={styles.divider} />
       <Text style={styles.sourceTitle}>Saved groups</Text>
       {props.groupsPending ? <Text style={styles.muted}>Loading saved groups…</Text> :
@@ -632,6 +693,8 @@ function PersonRow(props: { person: BrandPersonSummary; selected: boolean; disab
 
 export function InviteSelectionSummary(props: {
   selectedCount: number;
+  /** Followers outside Your Book, reached through their Mingla account. */
+  accountCount?: number;
   people: BrandPersonSummary[];
   saving: boolean;
   dirty: boolean;
@@ -641,6 +704,9 @@ export function InviteSelectionSummary(props: {
     {props.selectedCount === 0 ? "No one selected" : `${props.selectedCount} selected`}</Text>
     <View style={styles.avatarStack}>{props.people.slice(0, 5).map((person) => <View key={person.personId} style={styles.smallAvatar}>
       <Text style={styles.smallAvatarText}>{person.displayName.slice(0, 1).toUpperCase()}</Text></View>)}</View>
+    {(props.accountCount ?? 0) > 0 ? <Text style={styles.muted}>
+      {`Includes ${props.accountCount} ${props.accountCount === 1 ? "follower" : "followers"} reached through Mingla. Their contact details stay private.`}
+    </Text> : null}
     {props.dirty ? <Text style={styles.dirty}>Unsaved</Text> : null}</View>
     {props.selectedCount > 0 ? <Button label={props.saving ? "Saving…" : "Clear all"} size="sm" variant="ghost"
       disabled={props.saving} onPress={props.onClear} /> : null}</View>;

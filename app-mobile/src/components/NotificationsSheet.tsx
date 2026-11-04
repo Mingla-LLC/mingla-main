@@ -30,6 +30,11 @@ import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon, type IconName } from './ui/Icon';
 import { colors, glass, radius, spacing } from '../constants/designSystem';
 import type { ServerNotification } from '../hooks/useNotifications';
+import {
+  brandReachRowCopy,
+  isBrandReachType,
+  type BrandReachReason,
+} from './notifications/brandReachNotification';
 
 const SHEET_SNAP_POINTS = ['88%'];
 const EMPTY_PENDING_SET = new Set<string>();
@@ -100,6 +105,16 @@ const NOTIFICATION_ICONS: Record<string, IconConfig> = {
   trial_ending: { name: 'time-outline', color: '#F59E0B' },
   referral_credited: { name: 'gift', color: '#10B981' },
   weekly_digest: { name: 'bar-chart-outline', color: '#eb7825' },
+  // #3682 wave 3 — a brand's invite and a brand's campaign push.
+  brand_offering_invite: { name: 'ticket-outline', color: '#eb7825' },
+  brand_campaign_push: { name: 'storefront', color: '#eb7825' },
+};
+
+// #3682 wave 3 — the icon beside each true receive reason.
+const BRAND_REACH_REASON_ICONS: Record<BrandReachReason, IconName> = {
+  follower: 'heart-outline',
+  extended: 'people-outline',
+  book: 'list-outline',
 };
 
 function getIconConfig(type: string): IconConfig {
@@ -416,7 +431,9 @@ export default function NotificationsSheet({
   const handleCardPress = useCallback(
     (notification: ServerNotification) => {
       const isActionable = !!ACTIONABLE_TYPES[notification.type];
-      if (isActionable) {
+      // #3682 wave 3 (#1781) — a brand invite row navigates and stays in the
+      // list as read; it is never deleted on tap.
+      if (isActionable || isBrandReachType(notification.type)) {
         if (!notification.is_read) {
           onMarkAsRead(notification.id);
         }
@@ -491,6 +508,10 @@ export default function NotificationsSheet({
       const hasError = actionErrors.has(item.id);
       const categoryPill = getCategoryPillConfig(item.type);
       const timeAgo = formatTimeAgo(item.created_at, t);
+      const brandReach = isBrandReachType(item.type)
+        ? brandReachRowCopy(item.body ?? '', item.data || {})
+        : null;
+      const displayBody = brandReach ? brandReach.body : item.body;
 
       return (
         <TouchableOpacity
@@ -502,7 +523,7 @@ export default function NotificationsSheet({
           activeOpacity={0.85}
           disabled={isPending}
           accessibilityRole="button"
-          accessibilityLabel={`${item.title}. ${item.body}. ${item.is_read ? 'Read' : 'Unread'}. ${timeAgo} ago`}
+          accessibilityLabel={`${item.title}. ${displayBody}.${brandReach?.reason ? ` ${brandReach.reason}` : ''} ${item.is_read ? 'Read' : 'Unread'}. ${timeAgo} ago`}
         >
           {renderAvatar(item)}
 
@@ -515,11 +536,24 @@ export default function NotificationsSheet({
             </View>
 
             {/* ORCH-0975 addendum: v1 renders body only; location-chain waits for structured data. */}
-            {!!item.body && (
+            {!!displayBody && (
               <Text style={styles.notificationBody} numberOfLines={2}>
-                {item.body}
+                {displayBody}
               </Text>
             )}
+
+            {brandReach?.reason && brandReach.reasonCode ? (
+              <View style={styles.reasonRow} testID={`notification-reason-${item.id}`}>
+                <Icon
+                  name={BRAND_REACH_REASON_ICONS[brandReach.reasonCode]}
+                  size={12}
+                  color="#6b7280"
+                />
+                <Text style={styles.reasonText} numberOfLines={1}>
+                  {brandReach.reason}
+                </Text>
+              </View>
+            ) : null}
 
             <View
               style={[styles.categoryPill, { backgroundColor: categoryPill.bg }]}
@@ -1063,6 +1097,18 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: colors.gray[600],
     lineHeight: 19,
+  },
+  reasonRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reasonText: {
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.gray[500],
   },
   categoryPill: {
     marginTop: 10,

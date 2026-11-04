@@ -81,6 +81,15 @@ export function campaignPayloadIssues(payload: unknown): string[] {
       }
       break;
     }
+    case "push": {
+      // #3682 wave 2 — a push needs a short non-empty line.
+      if (!nonEmptyString(payload.body)) {
+        issues.push("Push campaigns need a short message in `body`.");
+      } else if (String(payload.body).length > 240) {
+        issues.push("Push messages must be 240 characters or fewer.");
+      }
+      break;
+    }
     default:
       issues.push(`unsupported channel kind: ${kind}`);
   }
