@@ -135,10 +135,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4256: register the no-auto-promo-cards migration the same way.
 // #4255: register the admin access and Work closed-range migrations the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
+// #3281: register the per-date Explorer listing rule migration and its proof the same way.
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
-export const BOOTSTRAP_SHA256 = "5805a56416b0333d1547d25bbb17d75dc6bec145d099c84afdadafabbb851b6d";
+export const BOOTSTRAP_SHA256 = "b1e02ffc441522cd7279441fd0b896df1eab197ce7943a1228aa715ba3fea3c2";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -320,7 +320,8 @@
         "supabase/functions/discover-merged-events/_types.ts",
         "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql",
         "supabase/migrations/20280320003281_issue_3281_explorer_hides_unbuyable_events.sql",
-        "supabase/migrations/20280324003281_issue_3281_explorer_listing_fast.sql"
+        "supabase/migrations/20280324003281_issue_3281_explorer_listing_fast.sql",
+        "supabase/migrations/20280327003281_issue_3281_explorer_listing_per_date.sql"
       ]
     },
     {
