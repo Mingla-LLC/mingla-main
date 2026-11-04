@@ -13,12 +13,15 @@
 // re-sent ~20 requests. The two waterfalls on the follow list (follows → brands
 // → prefs, then → follower counts) also ran one round trip after another.
 //
+// Level and Creator programs change server-side with no client invalidation, so
+// they keep the 60 s PROFILE_SERVER_DRIVEN_STALE_MS window (P-7).
+//
 // FAILS-ON-REVERT: set PROFILE_REVISIT_STALE_MS back to 60_000 → P-1 fails; put
 // `useFriends()` back in ProfilePage or a 30/60 s window back on any Profile
 // section → P-2/P-3 fail; mount the closed sheets again → P-4 fails; await the
 // brand details and prefs one after the other → P-5 fails.
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { PROFILE_REVISIT_STALE_MS } from "../profileFreshness.ts";
+import { PROFILE_REVISIT_STALE_MS, PROFILE_SERVER_DRIVEN_STALE_MS } from "../profileFreshness.ts";
 
 const root = new URL("../../../../", import.meta.url);
 const read = (rel: string): string => Deno.readTextFileSync(new URL(rel, root));
@@ -41,7 +44,8 @@ Deno.test("#4265 P-2 Profile reads only the friends list, with the revisit windo
   const page = code(read("src/components/ProfilePage.tsx"));
   assert(!/\buseFriends\(\)/.test(page), "useFriends() also mounts friend requests and blocked users");
   assert(page.includes("useFriendsList(user?.id, { staleTime: PROFILE_REVISIT_STALE_MS })"));
-  assert(dense(page).includes("queryKey:userLevelKeys.level(user?.id??''),queryFn:()=>fetchUserLevel(user!.id),enabled:!!user?.id,staleTime:PROFILE_REVISIT_STALE_MS,"));
+  assert(dense(page).includes("queryKey:userLevelKeys.level(user?.id??''),queryFn:()=>fetchUserLevel(user!.id),enabled:!!user?.id,staleTime:PROFILE_SERVER_DRIVEN_STALE_MS,"),
+    "the level changes server-side, so it keeps the short window");
   const hook = dense(read("src/hooks/useFriendsQuery.ts"));
   assert(hook.includes("staleTime:options?.staleTime??FRIENDS_STALE_TIME,"), "other callers keep the 30 s friends window");
 });
@@ -54,7 +58,9 @@ Deno.test("#4265 P-3 every Profile section query uses the revisit window", () =>
   assert(purchases.includes("conststaleTime=options?.staleTime??60_000;"), "the Purchases screen keeps 60 s");
 
   const creator = code(read("src/components/profile/CreatorProgramsSection.tsx"));
-  assertEquals((creator.match(/staleTime: PROFILE_REVISIT_STALE_MS/g) ?? []).length, 5);
+  // Creator programs change server-side (approvals, payouts): short window, never five minutes.
+  assertEquals((creator.match(/staleTime: PROFILE_SERVER_DRIVEN_STALE_MS/g) ?? []).length, 5);
+  assert(!creator.includes("PROFILE_REVISIT_STALE_MS"), "creator sections must not use the five-minute window");
   assert(!/staleTime: (30|60)_000/.test(creator));
 
   const brands = code(read("src/components/profile/BrandsYouFollowSection.tsx"));
@@ -96,4 +102,12 @@ Deno.test("#4265 P-6 sections hold their space while their first load runs", () 
   assert(code(read("src/components/ProfilePage.tsx")).includes("loading={interestsLoading}"));
   const creator = dense(read("src/components/profile/CreatorProgramsSection.tsx"));
   assert(creator.includes("{statusPending?<ProfileRowsSkeleton/>:isCreator?<>"));
+});
+
+Deno.test("#4265 P-7 server-driven sections (level, creator programs) refresh within a minute", () => {
+  assertEquals(PROFILE_SERVER_DRIVEN_STALE_MS, 60_000);
+  assertEquals(refetchesOnMount(90_000, PROFILE_SERVER_DRIVEN_STALE_MS), true,
+    "a level-up or creator approval shows on the next Profile visit after a minute");
+  const freshness = code(read("src/components/profile/profileFreshness.ts"));
+  assert(freshness.includes("PROFILE_SERVER_DRIVEN_STALE_MS = 60_000"));
 });

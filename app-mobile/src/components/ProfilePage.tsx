@@ -30,7 +30,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFriendsList } from "../hooks/useFriendsQuery";
-import { PROFILE_REVISIT_STALE_MS } from "./profile/profileFreshness";
+import { PROFILE_REVISIT_STALE_MS, PROFILE_SERVER_DRIVEN_STALE_MS } from "./profile/profileFreshness";
 import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
@@ -138,7 +138,8 @@ function ProfilePage({
     queryKey: userLevelKeys.level(user?.id ?? ''),
     queryFn: () => fetchUserLevel(user!.id),
     enabled: !!user?.id,
-    staleTime: PROFILE_REVISIT_STALE_MS,
+    // Level / XP change server-side; nothing on the client invalidates this key.
+    staleTime: PROFILE_SERVER_DRIVEN_STALE_MS,
   });
   const userLevel = levelData?.level ?? 1;
   const userXp = levelData?.xp_score ?? 0;
