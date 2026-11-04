@@ -350,7 +350,8 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
 // #4261: register the friend-share, plan, place-vote, referral and repin migrations.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b2a91a3fd61044d762993249df64ebbd7d144031cd78274f7a927cd715436315";
+// #4261: register the friend-request decline fix migration and its proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "aa7d623c158c428e8308367d2bf5ad1a3754966375a9904312b762238e100821";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

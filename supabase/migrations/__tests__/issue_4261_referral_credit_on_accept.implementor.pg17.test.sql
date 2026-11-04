@@ -13,8 +13,7 @@
 --   R-05  an already `credited` row is not counted twice, and re-accepting a
 --         re-opened request does not add a second month.
 --   R-06  pending -> declined credits nothing: the credit stays pending or
---         expired, never credited (the stale friend_links
---         decline trigger is switched off for that one update; see R-06).
+--         expired, never credited.
 --   R-07  the function pins search_path and stays SECURITY DEFINER; the
 --         trigger is still attached.
 --
@@ -205,13 +204,9 @@ BEGIN
   END IF;
 END $r05$;
 
--- trg_cascade_fr_decline_to_links (baseline) still updates public.friend_links,
--- which 20260312300003 dropped, so any pending -> declined UPDATE aborts on
--- this chain (reported on #4261 as a discovery; not changed here). Switch that
--- one trigger off for this transaction so R-06 measures the referral trigger
--- alone (the ROLLBACK restores it).
-ALTER TABLE public.friend_requests DISABLE TRIGGER trg_cascade_fr_decline_to_links;
-
+-- The stale friend_links decline trigger is dropped by
+-- 20280331054261_issue_4261_friend_request_decline_fix.sql, so R-06 runs the
+-- decline with every remaining friend_requests trigger live.
 DO $r06$
 BEGIN
   UPDATE public.friend_requests SET status = 'declined'

@@ -137,7 +137,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
 // #4261: register the friend-share, plan, place-vote, referral and repin migrations.
-export const BOOTSTRAP_SHA256 = "745cdd0ee941ac04df406a57a693abc22c4bc7931efd30a345c81beb6fad5f9a";
+// #4261: register the friend-request decline fix migration and its proof the same way.
+export const BOOTSTRAP_SHA256 = "1b59a3bde78ee1d6a05886ef3e62a689b175448e0deb6a6e6a1cd66aa0971671";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

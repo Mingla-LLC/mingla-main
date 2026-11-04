@@ -17749,6 +17749,7 @@
         "supabase/migrations/20280331024261_issue_4261_plan_places_and_link_previews.sql",
         "supabase/migrations/20280331034261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280331044261_issue_4261_pending_venue_repin.sql",
+        "supabase/migrations/20280331054261_issue_4261_friend_request_decline_fix.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19438,6 +19439,7 @@
         "supabase/migrations/20280331024261_issue_4261_plan_places_and_link_previews.sql",
         "supabase/migrations/20280331034261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280331044261_issue_4261_pending_venue_repin.sql",
+        "supabase/migrations/20280331054261_issue_4261_friend_request_decline_fix.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20608,6 +20610,8 @@
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_chat_plans.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4261_chat_plans.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4261_friend_request_decline.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4261_friend_request_decline.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_friend_share_and_group_links.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4261_friend_share_and_group_links.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_plan_places_and_link_previews.implementor.pg17.test.sql",
@@ -24283,6 +24287,7 @@
         "supabase/migrations/20280331024261_issue_4261_plan_places_and_link_previews.sql",
         "supabase/migrations/20280331034261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280331044261_issue_4261_pending_venue_repin.sql",
+        "supabase/migrations/20280331054261_issue_4261_friend_request_decline_fix.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25453,6 +25458,8 @@
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_chat_plans.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4261_chat_plans.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4261_friend_request_decline.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4261_friend_request_decline.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_friend_share_and_group_links.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4261_friend_share_and_group_links.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_plan_places_and_link_previews.implementor.pg17.test.sql",
@@ -52720,5 +52727,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "b2a91a3fd61044d762993249df64ebbd7d144031cd78274f7a927cd715436315"
+  "phase3eContractSha256": "aa7d623c158c428e8308367d2bf5ad1a3754966375a9904312b762238e100821"
 }
