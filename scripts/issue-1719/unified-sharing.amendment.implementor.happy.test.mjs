@@ -72,8 +72,12 @@ test('A-H2 list, Connections and send consume one complete eligibility owner', (
   assert.match(migration, /guard_content_share_delivery_target[\s\S]*content_share_recipient_candidates\(NEW\.sender_id,false,false\)/);
   assert.match(read('app-mobile/src/services/messagingService.ts'), /rpc\('list_connection_conversation_access'\)/);
   assert.doesNotMatch(connections, /fetchAttendableEventIdsForUser|attendingEventIds|\.from\(['"]orders['"]\)/);
-  assert.match(connections, /fetchGroupEventMetaByIds\(Array\.from\(groupEventIds\)\)/);
-  assert.match(connections, /const eventMeta = eventId \? eventMetaMap\.get\(eventId\) : null/);
+  // #4265: the Chats list loader (connections/chatListLoad.ts) runs the event
+  // meta read ConnectionsPage injects (chatListDeps.fetchEventMeta).
+  const chatListLoad = read('app-mobile/src/components/connections/chatListLoad.ts');
+  assert.match(connections, /fetchEventMeta: fetchGroupEventMetaByIds,/);
+  assert.match(chatListLoad, /deps\.fetchEventMeta\(Array\.from\(groupEventIds\)\)/);
+  assert.match(chatListLoad, /const eventMeta = eventId \? eventMetaMap\.get\(eventId\) : null/);
 });
 
 test('A-H3 hidden reopens only for another human, never archive, and only while canonically eligible', () => {

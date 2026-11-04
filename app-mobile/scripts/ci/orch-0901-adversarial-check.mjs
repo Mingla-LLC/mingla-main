@@ -97,7 +97,8 @@ const svcSrc = read("app-mobile/src/services/messagingService.ts");
 // Extract getConversations body (same brace-counting approach as happy-path script).
 const extractGetConversationsBody = (src) => {
   if (!src) return null;
-  const sigRe = /async\s+getConversations\s*\(\s*userId:\s*string\s*\)\s*:\s*Promise<\{\s*conversations:\s*Conversation\[\]\s*;\s*error:\s*string\s*\|\s*null\s*\}>\s*\{/;
+  // Issue #4265: an optional second `options` parameter (deferSenderProfiles) is allowed.
+  const sigRe = /async\s+getConversations\s*\(\s*userId:\s*string\s*(?:,[\s\S]*?)?\)\s*:\s*Promise<\{\s*conversations:\s*Conversation\[\]\s*;\s*error:\s*string\s*\|\s*null\s*\}>\s*\{/;
   const m = src.match(sigRe);
   if (!m) return null;
   const start = m.index + m[0].length - 1;
@@ -245,8 +246,9 @@ check(
     // Verify: `const conversationsPromise = supabase.from(...)` — NOT `const ... = await supabase.from(...)`
     const q1NotAwaited = /const\s+conversationsPromise\s*=\s*supabase\s*\.\s*from\(/.test(code) &&
                          !/const\s+conversationsPromise\s*=\s*await\s+supabase/.test(code);
-    const q2NotAwaited = /const\s+unreadPromise\s*=\s*supabase\s*\.\s*from\(/.test(code) &&
-                         !/const\s+unreadPromise\s*=\s*await\s+supabase/.test(code);
+    // Issue #4265: Q2 is built by applyUnreadFilters(supabase.from(...)) — still not awaited.
+    const q2NotAwaited = /const\s+unreadPromise\s*=\s*(?:applyUnreadFilters\(\s*)?supabase\s*\.\s*from\(/.test(code) &&
+                         !/const\s+unreadPromise\s*=\s*await\b/.test(code);
     const promiseAllPresent =
       /Promise\.all\s*\(\s*\[\s*accessPromise\s*,\s*conversationsPromise\s*,\s*unreadPromise\s*,?\s*\]\s*\)/.test(code);
     return accessNotAwaited && q1NotAwaited && q2NotAwaited && promiseAllPresent;
@@ -322,9 +324,15 @@ check(
   body !== null && (() => {
     const code = stripComments(body);
     // Pattern: const isReadByMe = reads.some((r) => r.user_id === userId); if (!isReadByMe) { unreadByConv.set(...) }
-    return /const\s+isReadByMe\s*=\s*reads\.some\([\s\S]*?\)\s*;[\s\S]*?if\s*\(\s*!\s*isReadByMe\s*\)\s*\{[\s\S]*?unreadByConv\.set\(/.test(
-      code,
-    );
+    // Issue #4265: "read by me" is now decided by the server (anti-join on my
+    // message_reads rows) in chatListLoad.applyUnreadFilters, and only unread
+    // rows are counted. Revert-guard: the embed must be filtered to MY reads
+    // and then required to be empty, and the counts must come from that read.
+    const load = read("app-mobile/src/components/connections/chatListLoad.ts") ?? "";
+    const filters = (load.match(/export\s+function\s+applyUnreadFilters[\s\S]*?\n\}/) ?? [""])[0];
+    return /\.eq\(\s*["']message_reads\.user_id["']\s*,\s*userId\s*\)/.test(filters) &&
+      /\.is\(\s*["']message_reads["']\s*,\s*null\s*\)/.test(filters) &&
+      /unreadByConv\s*=\s*countUnreadRows\(\s*unreadResult\.data\s*\)/.test(code);
   })(),
   "Happy-path checks the `.or(sender_id.neq.<X>,sender_id.is.null)` Postgrest predicate exists. This adversarial" +
     " attacks the LOGIC LAYER ABOVE the predicate: the TypeScript code that builds unreadByConv must explicitly" +
@@ -378,7 +386,13 @@ check(
     " count toward unread",
   body !== null && (() => {
     const code = stripComments(body);
-    // Find the unreadPromise block and verify deleted_at filter
+    // Find the unreadPromise block and verify deleted_at filter. Issue #4265:
+    // the filters live in chatListLoad.applyUnreadFilters, which Q2 calls.
+    if (/const\s+unreadPromise\s*=\s*applyUnreadFilters\(/.test(code)) {
+      const load = read("app-mobile/src/components/connections/chatListLoad.ts") ?? "";
+      const filters = (load.match(/export\s+function\s+applyUnreadFilters[\s\S]*?\n\}/) ?? [""])[0];
+      return /\.\s*is\(\s*['"`]deleted_at['"`]\s*,\s*null\s*\)/.test(filters);
+    }
     const unreadBlock = code.match(/const\s+unreadPromise\s*=\s*supabase[\s\S]*?(?:;|\n\n)/);
     if (!unreadBlock) return false;
     return /\.\s*is\(\s*['"`]deleted_at['"`]\s*,\s*null\s*\)/.test(unreadBlock[0]);

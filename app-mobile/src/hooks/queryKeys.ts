@@ -36,6 +36,14 @@ export const chatKeys = {
     [...chatKeys.all, 'participants', conversationId ?? 'none'] as const,
 };
 
+// #4265 — the Chats tab conversation list (useChatList), per signed-in user.
+// Persisted; the user id in the key means logout / account switch removes it.
+// Anything that adds, joins or changes a chat refreshes it via `all`.
+export const chatListKeys = {
+  all: ['chatList'] as const,
+  list: (userId: string) => [...chatListKeys.all, 'list', userId] as const,
+};
+
 // Issue #4114 Wave 5: the live collab inside a 1:1 chat (by conversation id).
 export const dmCollabKeys = {
   all: ['dmCollab'] as const,
