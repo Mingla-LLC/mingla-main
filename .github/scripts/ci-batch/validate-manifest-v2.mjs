@@ -354,7 +354,8 @@ export function phase3dContractDigest(manifest) {
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9977a9c963148babfa44acca5b5d047ffa34ecb42e8ee9a66d2ce274abe990cf";
+// #4261: renumber the #4261 migrations after #3682 (20280402004261-20280402054261).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5ee4829f4b8638f84403a1636d87ab9f090cfbd5e0ea3956a55e1d10a0adf517";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

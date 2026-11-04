@@ -43,19 +43,19 @@
 -- MINGLA-INVARIANT: I-4261-PLAN-QUOTE-SERVER-OWNED | issue #4261 | messages.plan_id and plan_quote are set by the server trigger from the sender's own plan state; client values are discarded.
 --
 -- FAILS-ON-REVERT (replay the chain without
--- 20280331014261_issue_4261_chat_plans.sql): the \ir below is the migration
+-- 20280402014261_issue_4261_chat_plans.sql): the \ir below is the migration
 -- itself; without it P-01 fails on its first call (plan_create does not
 -- exist) and P-07 finds no deck plan for a new saved card.
 --
 -- Run after the full migration chain on PostgreSQL 17. The re-apply proves
 -- the migration is idempotent; everything after it rolls back.
 
-\ir ../20280331014261_issue_4261_chat_plans.sql
+\ir ../20280402014261_issue_4261_chat_plans.sql
 -- Wave D-back (#4261) replaces plan_lock with a five-argument function and
 -- widens the where shape; re-applying the A2 file above re-creates the old
 -- four-argument plan_lock beside it, so the D-back file is re-applied too to
 -- leave exactly the merged schema under test.
-\ir ../20280331024261_issue_4261_plan_places_and_link_previews.sql
+\ir ../20280402024261_issue_4261_plan_places_and_link_previews.sql
 
 BEGIN;
 

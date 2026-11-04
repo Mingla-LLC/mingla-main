@@ -29,7 +29,7 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280331044261_issue_4261_pending_venue_repin.sql";
+  "supabase/migrations/20280402044261_issue_4261_pending_venue_repin.sql";
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -440,7 +440,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280331044261_issue_4261_pending_venue_repin.sql";
+  const currentPinName = "20280402044261_issue_4261_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),

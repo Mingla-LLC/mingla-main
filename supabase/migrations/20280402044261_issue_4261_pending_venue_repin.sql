@@ -1,7 +1,7 @@
 -- #4261 — advance #2099's pending-venue dependency seal over group-chat plans.
 --
--- chat_plans.place_pool_id (20280331014261) and
--- chat_plan_place_options.place_pool_id (20280331024261) deliberately add
+-- chat_plans.place_pool_id (20280402014261) and
+-- chat_plan_place_options.place_pool_id (20280402024261) deliberately add
 -- place_pool lanes. They remain disallowed dependencies for a pending-venue
 -- identity correction (a plan pointing at a pending venue's pool row blocks
 -- that venue's correction: fail-closed); this migration only advances the
