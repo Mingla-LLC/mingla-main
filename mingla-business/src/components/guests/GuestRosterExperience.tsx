@@ -21,6 +21,7 @@ import {
 } from "../../constants/designSystem";
 import { AccountInviteSummaryCard } from "./AccountInviteSummaryCard";
 import { useGuestRoster } from "../../hooks/useGuestRoster";
+import { useOfferingAccountInvites } from "../../hooks/useOfferingAccountInvites";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type {
   GuestRosterFilter,
@@ -308,6 +309,11 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   const query = useGuestRoster({ eventId, enabled: true, filter, search: debouncedSearch, sort });
   const data = query.data;
   const summary = data?.summary;
+  // #3682 closeout — followers invited by account are listed in the card above
+  // the roster (same cached query the card reads). When they exist, the empty
+  // roster must not claim nobody was invited.
+  const accountInvitedCount = useOfferingAccountInvites(eventId).data?.counts.invited ?? 0;
+  const filtering = search.trim().length > 0 || filter !== "all";
 
   useEffect(() => {
     if (data === undefined) return;
@@ -483,10 +489,14 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
         ) : data === undefined || data.rows.length === 0 ? (
           <View style={styles.stateCard}>
             <EmptyState
-              illustration={search.trim().length > 0 || filter !== "all" ? "search" : "ticket"}
-              title={search.trim().length > 0 || filter !== "all" ? "No matching guests" : "No guests yet"}
-              description={search.trim().length > 0 || filter !== "all" ? "Try a different search or filter." : "Invited people, RSVPs, and ticket buyers will appear here as real evidence arrives."}
-              cta={search.trim().length > 0 || filter !== "all" ? { label: "Clear filters", onPress: () => { setSearch(""); setFilter("all"); }, variant: "secondary" } : undefined}
+              illustration={filtering ? "search" : "ticket"}
+              title={filtering ? "No matching guests" : accountInvitedCount > 0 ? "No other guests yet" : "No guests yet"}
+              description={filtering
+                ? "Try a different search or filter."
+                : accountInvitedCount > 0
+                  ? "Followers invited through Mingla are listed above. RSVPs and ticket buyers will appear here as they arrive."
+                  : "Invited people, RSVPs, and ticket buyers will appear here as real evidence arrives."}
+              cta={filtering ? { label: "Clear filters", onPress: () => { setSearch(""); setFilter("all"); }, variant: "secondary" } : undefined}
             />
           </View>
         ) : (

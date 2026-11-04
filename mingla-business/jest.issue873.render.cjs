@@ -8,7 +8,11 @@ module.exports = {
   transform: {
     "^.+\\.(js|jsx|ts|tsx)$": ["babel-jest", { configFile: path.join(businessRoot, "jest.orch1118.babel.cjs") }],
   },
-  testMatch: ["**/__tests__/GuestRosterExperience.issue873.render.test.tsx"],
+  testMatch: [
+    "**/__tests__/GuestRosterExperience.issue873.render.test.tsx",
+    // #3682 closeout: the empty roster stays true when followers were invited by account.
+    "**/__tests__/GuestRosterExperience.issue3682.render.test.tsx",
+  ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@testing-library|test-renderer|react-clone-referenced-element|expo|@expo|react-native-safe-area-context|react-native-reanimated|react-native-svg)",
   ],
