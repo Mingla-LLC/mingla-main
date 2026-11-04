@@ -156,6 +156,10 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     stay_refund_state: ["stay_group_id", "venue_id", "refund_record_id"],
     stay_reconciliation_attention: ["stay_group_id", "venue_id"],
     stay_reservation_reminder: ["stay_group_id", "venue_id"],
+    // #3682 wave 2 — Explorer routes these to the brand / offering page from
+    // the public slugs; the receive reason is not personal data.
+    brand_offering_invite: ["brand_slug", "event_slug", "reason"],
+    brand_campaign_push: ["brand_slug", "event_slug", "reason", "campaign_id"],
   };
 
 // #3392 — the email body and button for a send that carries `email_cta`.

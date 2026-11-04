@@ -1,5 +1,9 @@
 // META-ORCH-1161 Sub-A — per-category message templates (single source of truth).
 import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
+import {
+  isBrandReachCategory,
+  renderBrandReachMessage,
+} from "./brandReachMessages.ts";
 //
 // Copy is VERBATIM from
 // Mingla_Artifacts/design/ORCH-1161/COPY_META-ORCH-1161_CONSENT_AND_MESSAGE_TEMPLATES.md.
@@ -223,6 +227,10 @@ export function renderCategoryMessage(
   }
   if (categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY) {
     return renderIssue4111SubscribeSms(payload);
+  }
+  // #3682 wave 2 — account invites and campaign push name the brand and why.
+  if (isBrandReachCategory(categoryKey)) {
+    return renderBrandReachMessage(categoryKey, payload);
   }
   const brand = str(payload.brand_name ?? payload.brand, "Mingla");
   const party = str(payload.party_size ?? payload.party, "");

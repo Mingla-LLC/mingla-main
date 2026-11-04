@@ -1,7 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { dispatchV2, type MinimalClient } from "../_shared/notifyV2.ts";
+import {
+  dispatchV2,
+  type DispatchV2Input,
+  type DispatchV2Result,
+  type MinimalClient,
+} from "../_shared/notifyV2.ts";
 import {
   buildOfferingExecutionSnapshot,
   hashOfferingSelection,
@@ -67,6 +72,8 @@ interface WizardOutboxJob {
   eventType: "event" | "rsvp" | "experience" | "trip";
   actorId: string;
   brandPersonIds: string[];
+  /** #3682 wave 2 — followers (not in Your Book) invited by account. */
+  accountRecipientCount?: number;
   selectionHash: string;
   selectionRevision: number;
   leaseToken: string;
@@ -366,10 +373,141 @@ async function dispatchCommittedWizardGroup(
   return false;
 }
 
+type AccountInviteDispatch = (
+  client: MinimalClient,
+  input: DispatchV2Input,
+) => Promise<DispatchV2Result>;
+
+interface AccountInviteWork {
+  deliveryId: string;
+  userId: string;
+  ring: "follower" | "extended";
+  channel: "push" | "email";
+  email: string | null;
+}
+
+interface AccountInviteContext {
+  brandName: string | null;
+  brandSlug: string | null;
+  eventTitle: string | null;
+  eventSlug: string | null;
+}
+
+function publicOfferingOrigin(): string {
+  return (Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+    Deno.env.get("MINGLA_PUBLIC_APP_ORIGIN") ?? "https://mingla.app")
+    .replace(/\/+$/, "");
+}
+
+/**
+ * #3682 wave 2 — the public link an account invite opens. Explorer routes the
+ * same `/e/{brand}/{event}` (or `/b/{brand}`) path to its own screen.
+ */
+export function accountInviteLink(
+  context: AccountInviteContext,
+  origin = publicOfferingOrigin(),
+): string | null {
+  const slug = /^[a-z0-9][a-z0-9-]{0,119}$/i;
+  const brand = context.brandSlug ?? "";
+  const event = context.eventSlug ?? "";
+  if (!slug.test(brand)) return null;
+  return slug.test(event)
+    ? `${origin}/e/${encodeURIComponent(brand)}/${encodeURIComponent(event)}`
+    : `${origin}/b/${encodeURIComponent(brand)}`;
+}
+
+/**
+ * Decide-and-send for account-only invite recipients. The SQL builder makes
+ * every send-time decision (unfollow, mute, channel prefs, Book dedupe, email
+ * cap) and returns only queued work; each item is reported back so a retry
+ * never sends it twice. Email addresses exist only inside this function.
+ */
+export async function runWizardAccountInvites(
+  service: WizardServiceClient,
+  job: WizardOutboxJob,
+  dispatch: AccountInviteDispatch = dispatchV2,
+): Promise<{ sent: number; skipped: number; failed: number }> {
+  const { data, error } = await service.rpc(
+    "issue_3682_build_wizard_account_invites_v1",
+    {
+      p_outbox_job_id: job.outboxJobId,
+      p_sealed_selection_id: job.sealedSelectionId,
+      p_lease_token: job.leaseToken,
+    },
+  );
+  if (error) throw new Error("account_invite_build_failed");
+  const built = data as { context: AccountInviteContext; work: AccountInviteWork[] };
+  const link = accountInviteLink(built.context ?? {} as AccountInviteContext);
+  const totals = { sent: 0, skipped: 0, failed: 0 };
+  for (const item of built.work ?? []) {
+    let state: "sent" | "skipped" | "failed" = "failed";
+    let reason = "provider_failed";
+    if (item.channel === "email" && !item.email) {
+      state = "skipped";
+      reason = "channel_unavailable";
+    } else {
+      try {
+        const result = await dispatch(service as unknown as MinimalClient, {
+          user_id: item.userId,
+          contact: item.channel === "email" ? item.email : null,
+          category_key: "brand_offering_invite",
+          payload: {
+            brand_name: built.context?.brandName ?? "Mingla",
+            event_title: built.context?.eventTitle ?? "",
+            reason: item.ring,
+            brand_slug: built.context?.brandSlug ?? null,
+            event_slug: built.context?.eventSlug ?? null,
+            ...(link ? { event_url: link } : {}),
+          },
+          deep_link: link,
+          idempotency_key:
+            `wizard-account-invite:${job.outboxJobId}:${item.userId}`,
+          requested_channel: item.channel,
+        });
+        const delivery = result.deliveries?.find((row) =>
+          row.channel === item.channel
+        );
+        if (
+          result.success && delivery &&
+          ["sent", "delivered"].includes(delivery.status)
+        ) {
+          state = "sent";
+          reason = "delivered";
+        } else if (
+          result.success && delivery &&
+          ["suppressed", "skipped"].includes(delivery.status)
+        ) {
+          state = "skipped";
+          reason = delivery.status === "suppressed"
+            ? "can_send_denied"
+            : "channel_unavailable";
+        }
+      } catch {
+        state = "failed";
+        reason = "provider_failed";
+      }
+    }
+    const { error: recordError } = await service.rpc(
+      "issue_3682_record_wizard_account_invite_v1",
+      {
+        p_outbox_job_id: job.outboxJobId,
+        p_lease_token: job.leaseToken,
+        p_delivery_id: item.deliveryId,
+        p_state: state,
+        p_reason: reason,
+      },
+    );
+    if (recordError) throw new Error("account_invite_record_failed");
+    totals[state] += 1;
+  }
+  return totals;
+}
+
 export async function handleWizardWorker(
   service: WizardServiceClient,
   url: string,
   serviceKey: string,
+  accountDispatch: AccountInviteDispatch = dispatchV2,
 ): Promise<Response> {
   // Both drains read only durable rows committed by earlier transactions.
   // This prevents rolled-back publisher work from appearing as an enqueue.
@@ -401,6 +539,48 @@ export async function handleWizardWorker(
         selection_revision: job.selectionRevision,
         attempt_count: job.attemptCount,
       });
+      // #3682 wave 2 — account-only recipients first (idempotent per item),
+      // then the unchanged sealed Book lane.
+      if ((job.accountRecipientCount ?? 0) > 0) {
+        providerIo = true;
+        const account = await runWizardAccountInvites(
+          service,
+          job,
+          accountDispatch,
+        );
+        observeWizardInvite("wizard_invite_account_lane_done", {
+          offering_kind: job.eventType,
+          selection_revision: job.selectionRevision,
+          sent: account.sent,
+          skipped: account.skipped,
+          failed: account.failed,
+        });
+        if (job.brandPersonIds.length === 0) {
+          const { error: accountCompletionError } = await service.rpc(
+            "issue_3682_complete_wizard_account_outbox_v1",
+            {
+              p_outbox_job_id: job.outboxJobId,
+              p_sealed_selection_id: job.sealedSelectionId,
+              p_lease_token: job.leaseToken,
+            },
+          );
+          if (accountCompletionError) {
+            throw new Error("account_invite_completion_failed");
+          }
+          observeWizardInvite("wizard_invite_outbox_succeeded", {
+            offering_kind: job.eventType,
+            selection_revision: job.selectionRevision,
+            job_state: "succeeded",
+            attempt_count: job.attemptCount,
+          });
+          outcomes.push({
+            outboxJobId: job.outboxJobId,
+            status: "succeeded",
+            providerIo,
+          });
+          continue;
+        }
+      }
       let channels = policy.channels;
       const selection = {
         kind: "resolved_brand_people_v1" as const,
@@ -634,6 +814,88 @@ export async function handleWizardWorker(
   });
 }
 
+export interface WizardAccountQuote {
+  accountRecipientCount: number;
+  canReceiveCount: number;
+  push: number;
+  email: number;
+}
+
+async function quoteWizardAccountRecipients(
+  service: WizardServiceClient,
+  actorId: string,
+  eventId: string,
+  selectionRevision: number,
+  planned: number,
+): Promise<WizardAccountQuote | null> {
+  if (!Number.isSafeInteger(planned) || planned <= 0) return null;
+  const { data, error } = await service.rpc(
+    "issue_3682_quote_wizard_account_invites_v1",
+    {
+      p_actor_id: actorId,
+      p_event_id: eventId,
+      p_selection_revision: selectionRevision,
+    },
+  );
+  if (error || data === null || typeof data !== "object") {
+    throw new Error("quote_failed");
+  }
+  return data as WizardAccountQuote;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * #3682 wave 2 — fold account-only recipients into the wizard estimate. Push is
+ * free; email stays inside the monthly cap the SQL quote already applied. The
+ * quote hash changes whenever the account counts do, so a stale confirmation
+ * cannot match.
+ */
+export async function mergeWizardAccountQuote(
+  quote: Record<string, unknown>,
+  account: WizardAccountQuote | null,
+): Promise<Record<string, unknown>> {
+  if (account === null || account.accountRecipientCount <= 0) {
+    return { ...quote, accountRecipientCount: 0 };
+  }
+  const channels = quote.perChannelReachable as {
+    email: number;
+    sms: number;
+    push: number;
+  };
+  const selectedCount = Number(quote.selectedCount) +
+    account.accountRecipientCount;
+  const canReceiveCount = Number(quote.canReceiveCount) +
+    account.canReceiveCount;
+  return {
+    ...quote,
+    quoteHash: await sha256Hex(
+      `${quote.quoteHash}|account:${account.accountRecipientCount}:` +
+        `${account.canReceiveCount}:${account.push}:${account.email}`,
+    ),
+    selectedCount,
+    eligibleCount: Number(quote.eligibleCount ?? 0) +
+      account.accountRecipientCount,
+    reachableCount: Number(quote.reachableCount) + account.push +
+      account.email,
+    canReceiveCount,
+    skippedCount: Math.max(0, selectedCount - canReceiveCount),
+    perChannelReachable: {
+      email: channels.email + account.email,
+      sms: channels.sms,
+      push: channels.push + account.push,
+    },
+    accountRecipientCount: account.accountRecipientCount,
+  };
+}
+
 async function handleWizardPreview(
   user: WizardServiceClient,
   service: WizardServiceClient,
@@ -713,18 +975,27 @@ async function handleWizardPreview(
       string,
       number
     >;
-    return json({
-      ...preview,
-      perChannelReachable: {
-        email: Number(perChannelReachable.email ?? 0),
-        sms: Number(perChannelReachable.sms ?? 0),
-        push: Number(perChannelReachable.push ?? 0),
-      },
-      selectionRevision: body.selectionRevision,
-      selectionHash,
-      currency,
-      providerIo: false,
-    });
+    const account = await quoteWizardAccountRecipients(
+      service,
+      actorId,
+      body.eventId,
+      body.selectionRevision,
+      Number(plan.accountRecipientCount ?? 0),
+    );
+    return json(
+      await mergeWizardAccountQuote({
+        ...preview,
+        perChannelReachable: {
+          email: Number(perChannelReachable.email ?? 0),
+          sms: Number(perChannelReachable.sms ?? 0),
+          push: Number(perChannelReachable.push ?? 0),
+        },
+        selectionRevision: body.selectionRevision,
+        selectionHash,
+        currency,
+        providerIo: false,
+      }, account),
+    );
   } catch (error) {
     const message = error instanceof Error
       ? error.message
