@@ -82,7 +82,7 @@ import type { UserPreferences } from "../types/preferences";
 import { savedCardsService } from "../services/savedCardsService";
 import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import { deckSwipeStateStorageKeys } from "../utils/deckSnapshot";
+import { deckSwipeStateStorageKeys, noteDeckTopCardId } from "../utils/deckSnapshot";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { openExpandedCardContentShare } from "../services/contentShareController";
 // #1669 [expanded-card-one-producer]: the deck's producer, which delegates to
@@ -1838,6 +1838,13 @@ export default function SwipeableCards({
     () => getDeckHeroDecodeTarget(heroLayout.width, heroLayout.height, PixelRatio.get()),
     [heroLayout.height, heroLayout.width],
   );
+
+  // #4265: tell the cold-start snapshot merge which card is under the thumb,
+  // so the final fresh deck never prunes or moves it.
+  const currentRecId = currentRec?.id ?? null;
+  useEffect(() => {
+    noteDeckTopCardId(currentRecId);
+  }, [currentRecId]);
 
   // Track card viewed when the current card changes
   const lastViewedCardIdRef = useRef<string | null>(null);
