@@ -11,6 +11,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { useOfferingAccountInvites } from "../../hooks/useOfferingAccountInvites";
+import { Button } from "../ui/Button";
 import type {
   OfferingAccountInviteRecipient,
   OfferingAccountInvites,
@@ -61,12 +62,53 @@ export function AccountInviteSummaryView({ data }: { data: OfferingAccountInvite
   );
 }
 
+/**
+ * #3682 — a failed read is never silent (Constitution rule 3): the host may
+ * have invited followers through Mingla, so "nothing shown" would read as
+ * "nobody was invited". Show the failure and a retry instead.
+ */
+export function AccountInviteSummaryError({
+  onRetry,
+  retrying,
+}: {
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  return (
+    <View style={styles.card} accessibilityRole="alert" testID="account-invite-summary-error">
+      <Text style={styles.title}>Followers invited through Mingla</Text>
+      <Text style={styles.body}>We couldn't load who was invited through Mingla.</Text>
+      <Text style={styles.note}>Nothing has changed. Check your connection and try again.</Text>
+      <View style={styles.retry}>
+        <Button
+          label={retrying ? "Trying again…" : "Try again"}
+          size="sm"
+          variant="secondary"
+          disabled={retrying}
+          onPress={onRetry}
+          accessibilityLabel="Try loading followers invited through Mingla again"
+        />
+      </View>
+    </View>
+  );
+}
+
 export function AccountInviteSummaryCard({ eventId }: { eventId: string }) {
   const query = useOfferingAccountInvites(eventId);
-  // Optional supplement to the roster: when it cannot load, the roster above
-  // still carries the full guest truth, so this card simply stays out.
-  if (!query.data) return null;
-  return <AccountInviteSummaryView data={query.data} />;
+  // Data already on screen stays visible if a background refetch fails.
+  if (query.data) return <AccountInviteSummaryView data={query.data} />;
+  if (query.isError) {
+    return (
+      <AccountInviteSummaryError
+        retrying={query.isFetching}
+        onRetry={() => {
+          void query.refetch();
+        }}
+      />
+    );
+  }
+  // Loading (or waiting for auth): the roster above is the primary surface.
+  return null;
 }
 
 const styles = StyleSheet.create({
@@ -88,5 +130,6 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
   flex: { flex: 1 },
+  retry: { alignSelf: "flex-start", paddingTop: spacing.xs },
   name: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
 });

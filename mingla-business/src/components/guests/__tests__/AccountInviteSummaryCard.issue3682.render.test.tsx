@@ -10,6 +10,11 @@ jest.mock("../../../services/supabase", () => ({ supabase: { rpc: jest.fn() } })
 jest.mock("../../../hooks/useOfferingAccountInvites", () => ({
   useOfferingAccountInvites: jest.fn(),
 }));
+// The card's error state retries through the shared Button (reanimated).
+jest.mock("../../ui/Button", () => {
+  const ReactModule = jest.requireActual("react");
+  return { Button: (props: Record<string, unknown>) => ReactModule.createElement("button", props) };
+});
 
 import { AccountInviteSummaryView, accountInviteStatusLine } from "../AccountInviteSummaryCard";
 import { parseOfferingAccountInvites } from "../../../services/offeringAccountInvitesService";
