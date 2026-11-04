@@ -11,7 +11,7 @@
 --   S-06  a blocked pair -> unavailable; the block row is intact; zero writes.
 --   S-07  a new claimant gets a referral credit for the link owner, credited
 --         by the accept (credit_referral_on_friend_accepted, fixed in
---         20280402034261); an account created 30 days ago gets none;
+--         20280403064261); an account created 30 days ago gets none;
 --         joinedCount counts both.
 --   S-08  reset -> the old token is invalid_token.
 --   G-01  the group link is readable by members only.
@@ -39,7 +39,7 @@
 -- MINGLA-INVARIANT: I-4261-SHARE-LINK-NEVER-UNBLOCKS | issue #4261 | Claiming a share or group link never connects, admits or unblocks a blocked pair.
 --
 -- FAILS-ON-REVERT (replay the chain without
--- 20280402004261_issue_4261_friend_share_and_group_links.sql): the \ir below
+-- 20280403034261_issue_4261_friend_share_and_group_links.sql): the \ir below
 -- is the migration itself; without it S-01 fails on its first call
 -- (get_or_create_friend_share_link does not exist), and G-03 fails on the
 -- missing history_visible_from column.
@@ -47,7 +47,7 @@
 -- Run after the full migration chain on PostgreSQL 17. The re-apply proves
 -- the migration is idempotent; everything after it rolls back.
 
-\ir ../20280402004261_issue_4261_friend_share_and_group_links.sql
+\ir ../20280403034261_issue_4261_friend_share_and_group_links.sql
 
 BEGIN;
 

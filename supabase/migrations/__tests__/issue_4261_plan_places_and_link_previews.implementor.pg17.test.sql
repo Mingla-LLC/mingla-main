@@ -43,15 +43,15 @@
 -- MINGLA-INVARIANT: I-4261-LINK-PREVIEW-SERVER-ONLY | issue #4261 | Link preview rows are written only by the service-role store function, only for URLs that exist on a plan or place option, and image URLs are https.
 --
 -- FAILS-ON-REVERT (replay the chain without
--- 20280402024261_issue_4261_plan_places_and_link_previews.sql): the \ir below
+-- 20280403054261_issue_4261_plan_places_and_link_previews.sql): the \ir below
 -- is the migration itself; without it LP-03 fails on its first table
 -- (chat_plan_place_options does not exist) and PL-01 on plan_add_place.
 --
 -- Run after the full migration chain on PostgreSQL 17. The two re-applies
 -- prove the migration is idempotent; everything after them rolls back.
 
-\ir ../20280402024261_issue_4261_plan_places_and_link_previews.sql
-\ir ../20280402024261_issue_4261_plan_places_and_link_previews.sql
+\ir ../20280403054261_issue_4261_plan_places_and_link_previews.sql
+\ir ../20280403054261_issue_4261_plan_places_and_link_previews.sql
 
 BEGIN;
 

@@ -20,15 +20,15 @@
 -- MINGLA-INVARIANT: I-4261-REFERRAL-CREDIT-ON-ACCEPT | issue #4261 | When a friend request between a referrer and the person they referred turns accepted, their pending referral credit becomes credited exactly once and the referrer gains one bonus month.
 --
 -- FAILS-ON-REVERT (replay the chain without
--- 20280402034261_issue_4261_referral_credit_on_accept.sql): the \ir below is
+-- 20280403064261_issue_4261_referral_credit_on_accept.sql): the \ir below is
 -- the migration itself; without it R-01 fails (the credit stays pending) and
 -- R-04 aborts on column "invitee_id" of relation "collaboration_invites".
 --
 -- Run after the full migration chain on PostgreSQL 17. The re-apply proves
 -- the migration is idempotent; everything after it rolls back.
 
-\ir ../20280402034261_issue_4261_referral_credit_on_accept.sql
-\ir ../20280402034261_issue_4261_referral_credit_on_accept.sql
+\ir ../20280403064261_issue_4261_referral_credit_on_accept.sql
+\ir ../20280403064261_issue_4261_referral_credit_on_accept.sql
 
 BEGIN;
 
@@ -205,7 +205,7 @@ BEGIN
 END $r05$;
 
 -- The stale friend_links decline trigger is dropped by
--- 20280402054261_issue_4261_friend_request_decline_fix.sql, so R-06 runs the
+-- 20280403084261_issue_4261_friend_request_decline_fix.sql, so R-06 runs the
 -- decline with every remaining friend_requests trigger live.
 DO $r06$
 BEGIN

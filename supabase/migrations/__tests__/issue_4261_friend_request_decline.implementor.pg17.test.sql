@@ -24,15 +24,15 @@
 -- MINGLA-INVARIANT: I-4261-FRIEND-REQUEST-DECLINE | issue #4261 | The receiver of a pending friend request can decline it, and no live function or trigger in public references the dropped friend_links table.
 --
 -- FAILS-ON-REVERT (replay the chain without
--- 20280402054261_issue_4261_friend_request_decline_fix.sql and delete the two
+-- 20280403084261_issue_4261_friend_request_decline_fix.sql and delete the two
 -- \ir lines below): F-01 fails with 42P01 relation "public.friend_links" does
 -- not exist, raised by trg_cascade_fr_decline_to_links.
 --
 -- Run after the full migration chain on PostgreSQL 17. The re-apply proves
 -- the migration is idempotent; everything after it rolls back.
 
-\ir ../20280402054261_issue_4261_friend_request_decline_fix.sql
-\ir ../20280402054261_issue_4261_friend_request_decline_fix.sql
+\ir ../20280403084261_issue_4261_friend_request_decline_fix.sql
+\ir ../20280403084261_issue_4261_friend_request_decline_fix.sql
 
 BEGIN;
 
