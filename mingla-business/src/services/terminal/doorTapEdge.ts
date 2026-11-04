@@ -1,0 +1,212 @@
+/**
+ * #4271 — client for the Tap to Pay edge functions.
+ *
+ *  terminal-connection-token  {eventId}                       → {secret}
+ *  door-tap-intent  create    {eventId, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso}
+ *                             → {paymentIntentId, clientSecret, totalCents, currency, stripeAccountId, locationId}
+ *  door-tap-intent  complete  {paymentIntentId, clientRequestId} → biz_door_tap_record result
+ *  door-pay-code    create    {eventId, eventDateId, lines}    → {codeId, ...}
+ *
+ * The server prices every sale, checks the door-payment permission and only
+ * records an order once Stripe says the PaymentIntent succeeded. Every call
+ * throws a DoorTapError on failure (never returns a silent fallback).
+ */
+import { supabase } from "../supabase";
+import type { TapToPayDraftLine } from "./tapToPayDraft";
+
+export type DoorTapErrorCode =
+  | "door_access_denied"
+  | "tap_not_available"
+  | "payment_not_succeeded"
+  | "offline_pin_required"
+  | "door_ticket_capacity_exceeded"
+  | "ticket_not_valid_on_chosen_days"
+  | "stripe_account_not_ready"
+  | "invalid_lines"
+  | "network_error"
+  | "invalid_response"
+  | "unknown";
+
+const KNOWN_CODES: ReadonlySet<string> = new Set<DoorTapErrorCode>([
+  "door_access_denied",
+  "tap_not_available",
+  "payment_not_succeeded",
+  "offline_pin_required",
+  "door_ticket_capacity_exceeded",
+  "ticket_not_valid_on_chosen_days",
+  "stripe_account_not_ready",
+  "invalid_lines",
+  "network_error",
+  "invalid_response",
+  "unknown",
+]);
+
+export class DoorTapError extends Error {
+  readonly code: DoorTapErrorCode;
+  readonly detail: string | null;
+
+  constructor(code: DoorTapErrorCode, detail: string | null = null) {
+    super(detail ?? code);
+    this.name = "DoorTapError";
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+export interface DoorTapIntent {
+  paymentIntentId: string;
+  clientSecret: string;
+  totalCents: number;
+  currency: string;
+  stripeAccountId: string;
+  locationId: string;
+}
+
+export interface DoorTapCompleteResult {
+  orderId: string;
+  ticketIds: string[];
+  receiptQueued: boolean;
+  replayed: boolean;
+}
+
+export interface DoorPayCodeCreated {
+  codeId: string;
+}
+
+export interface CreateDoorTapIntentInput {
+  eventId: string;
+  eventDateId: string | null;
+  lines: TapToPayDraftLine[];
+  clientRequestId: string;
+  buyerPhone: string | null;
+  phoneCountryIso: string | null;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readErrorPayload = async (error: unknown): Promise<{ code: string; detail: string | null }> => {
+  const context = isRecord(error) ? (error.context as unknown) : undefined;
+  if (isRecord(context) && typeof (context as { text?: unknown }).text === "function") {
+    try {
+      const text = await (context as unknown as Response).text();
+      const payload: unknown = text.length > 0 ? JSON.parse(text) : null;
+      if (isRecord(payload) && typeof payload.error === "string") {
+        return {
+          code: payload.error,
+          detail: typeof payload.detail === "string" ? payload.detail : null,
+        };
+      }
+    } catch {
+      // A non-JSON error body is reported as "unknown" below with the message.
+    }
+  }
+  return {
+    code: "unknown",
+    detail: error instanceof Error ? error.message : null,
+  };
+};
+
+const invoke = async (fn: string, body: Record<string, unknown>): Promise<Record<string, unknown>> => {
+  let response: { data: unknown; error: unknown };
+  try {
+    response = await supabase.functions.invoke(fn, { body });
+  } catch (error) {
+    throw new DoorTapError("network_error", error instanceof Error ? error.message : String(error));
+  }
+  if (response.error) {
+    const { code, detail } = await readErrorPayload(response.error);
+    throw new DoorTapError(
+      KNOWN_CODES.has(code) ? (code as DoorTapErrorCode) : "unknown",
+      detail ?? code,
+    );
+  }
+  if (!isRecord(response.data)) {
+    throw new DoorTapError("invalid_response", `${fn} returned no body`);
+  }
+  return response.data;
+};
+
+const requireString = (data: Record<string, unknown>, key: string): string => {
+  const value = data[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new DoorTapError("invalid_response", `missing ${key}`);
+  }
+  return value;
+};
+
+const requireInt = (data: Record<string, unknown>, key: string): number => {
+  const value = data[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new DoorTapError("invalid_response", `missing ${key}`);
+  }
+  return value;
+};
+
+/** Connection token for the brand's connected Stripe account (scoped to the event). */
+export const fetchTerminalConnectionToken = async (eventId: string): Promise<string> => {
+  const data = await invoke("terminal-connection-token", { eventId });
+  return requireString(data, "secret");
+};
+
+export const createDoorTapIntent = async (
+  input: CreateDoorTapIntentInput,
+): Promise<DoorTapIntent> => {
+  const data = await invoke("door-tap-intent", {
+    action: "create",
+    eventId: input.eventId,
+    eventDateId: input.eventDateId,
+    lines: input.lines,
+    clientRequestId: input.clientRequestId,
+    buyerPhone: input.buyerPhone,
+    phoneCountryIso: input.phoneCountryIso,
+  });
+  return {
+    paymentIntentId: requireString(data, "paymentIntentId"),
+    clientSecret: requireString(data, "clientSecret"),
+    totalCents: requireInt(data, "totalCents"),
+    currency: requireString(data, "currency"),
+    stripeAccountId: requireString(data, "stripeAccountId"),
+    locationId: requireString(data, "locationId"),
+  };
+};
+
+export const completeDoorTapIntent = async (input: {
+  paymentIntentId: string;
+  clientRequestId: string;
+}): Promise<DoorTapCompleteResult> => {
+  const data = await invoke("door-tap-intent", {
+    action: "complete",
+    paymentIntentId: input.paymentIntentId,
+    clientRequestId: input.clientRequestId,
+  });
+  // Same result shape as biz_door_sale_record (snake or camel case accepted).
+  const orderId = data.orderId ?? data.order_id;
+  if (typeof orderId !== "string" || orderId.length === 0) {
+    throw new DoorTapError("invalid_response", "missing orderId");
+  }
+  const ticketIdsRaw = data.ticketIds ?? data.ticket_ids;
+  return {
+    orderId,
+    ticketIds: Array.isArray(ticketIdsRaw)
+      ? ticketIdsRaw.filter((id): id is string => typeof id === "string")
+      : [],
+    receiptQueued: (data.receiptQueued ?? data.receipt_queued) === true,
+    replayed: data.replayed === true,
+  };
+};
+
+/** "Show a pay code instead": same lines, new door pay code. */
+export const createDoorPayCodeForLines = async (input: {
+  eventId: string;
+  eventDateId: string | null;
+  lines: TapToPayDraftLine[];
+}): Promise<DoorPayCodeCreated> => {
+  const data = await invoke("door-pay-code", {
+    action: "create",
+    eventId: input.eventId,
+    eventDateId: input.eventDateId,
+    lines: input.lines,
+  });
+  return { codeId: requireString(data, "codeId") };
+};

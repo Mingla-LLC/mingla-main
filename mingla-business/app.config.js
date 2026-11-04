@@ -119,11 +119,64 @@ const iosUrlScheme = iosClientId
   ? `com.googleusercontent.apps.${iosClientId}`
   : "com.googleusercontent.apps.placeholder";
 
-// [TRANSITIONAL] Apple Tap to Pay entitlement
-// (`com.apple.developer.proximity-reader.payment.acceptance`) omitted from
-// `ios.entitlements` in app.json until Apple approves the application.
-// Re-add once approved. Used by Cycle 13 (Door Mode card-present payments).
-// Not needed for Cycles 0a–12.
+// #4271 — Tap to Pay on iPhone entitlement gate.
+//
+// Apple's `com.apple.developer.proximity-reader.payment.acceptance` entitlement
+// must be GRANTED to the team (development first, then distribution) before a
+// build that declares it can be signed. Declaring it before Apple grants it
+// makes every EAS iOS build fail at provisioning. So the entitlement is added
+// ONLY when the build environment sets MINGLA_TAP_TO_PAY_ENTITLEMENT=1 (set it on
+// the EAS profile once Apple has granted the matching entitlement). Without it
+// the binary still ships the Stripe Terminal SDK, and Tap to Pay on iPhone stays
+// hidden at runtime because reader discovery fails without the entitlement
+// (useTapToPayAvailability → "not on this phone"). app.json never declares it;
+// orch1248NfcRemovalGuard.test.ts pins both halves of this rule.
+const TAP_TO_PAY_ENTITLEMENT = "com.apple.developer.proximity-reader.payment.acceptance";
+
+/**
+ * @param {Record<string, unknown> | undefined} ios
+ * @param {NodeJS.ProcessEnv} env
+ */
+const withTapToPayEntitlementGate = (ios, env) => {
+  if (env.MINGLA_TAP_TO_PAY_ENTITLEMENT !== "1") return ios;
+  const base = ios ?? {};
+  const entitlements =
+    base.entitlements !== null && typeof base.entitlements === "object"
+      ? base.entitlements
+      : {};
+  return {
+    ...base,
+    entitlements: { ...entitlements, [TAP_TO_PAY_ENTITLEMENT]: true },
+  };
+};
+
+// #4271 — Stripe Terminal (Tap to Pay on iPhone and Android) config plugin.
+// - appDelegate + tapToPayCheck: required for Tap to Pay on Android (the SDK
+//   runs a second Application instance in a dedicated process; the guard skips
+//   our app init there).
+// - bluetoothBackgroundMode stays off: Mingla does not support Bluetooth card
+//   readers. The Bluetooth purpose strings are still required because the SDK
+//   links CoreBluetooth.
+// - The plugin OVERWRITES NSLocationWhenInUseUsageDescription, so it is given the
+//   same purpose string app.json declares (ORCH-1253 gate) plus the payment use.
+// - The Android NFC permission is NOT declared by Mingla: it arrives only via the
+//   Stripe Terminal Tap to Pay library's merged manifest (orch1248 guard).
+const STRIPE_TERMINAL_PLUGIN = [
+  "@stripe/stripe-terminal-react-native",
+  {
+    bluetoothBackgroundMode: false,
+    locationWhenInUsePermission:
+      "Mingla Host uses your location to confirm where door card payments are taken, to help measure the performance of our marketing and improve our services.",
+    bluetoothPeripheralPermission:
+      "Mingla Host uses Bluetooth to connect to supported card readers.",
+    bluetoothAlwaysUsagePermission:
+      "Mingla Host uses Bluetooth to connect to supported card readers.",
+    localNetworkUsagePermission:
+      "Mingla Host uses your local network to connect to supported card readers.",
+    appDelegate: true,
+    tapToPayCheck: true,
+  },
+];
 
 // #2107 B1 — the critical-update counter. A committed integer in
 // update-critical-index.json, emitted into `extra.criticalIndex` so EVERY store
@@ -204,8 +257,10 @@ module.exports = ({ config }) => {
     // at business.mingla.com/connect-onboarding. Per
     // SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md §3.3 A6.
     scheme: "mingla-business",
+    ios: withTapToPayEntitlementGate(config.ios, process.env),
     plugins: [
       ...basePlugins,
+      STRIPE_TERMINAL_PLUGIN,
       [
         "@react-native-google-signin/google-signin",
         {
