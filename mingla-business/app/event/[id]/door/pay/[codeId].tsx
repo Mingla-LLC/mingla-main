@@ -15,7 +15,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -328,12 +328,21 @@ export default function DoorPayCodeRoute(): React.ReactElement {
   return (
     <View style={[styles.host, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {chrome}
-      {body}
-      {actionError !== null ? (
-        <Text style={styles.error} accessibilityRole="alert">
-          {actionError}
-        </Text>
-      ) : null}
+      {/* Scrolls on short phones and landscape so the code and every action
+          stay reachable (#2211); flexGrow keeps the states centred otherwise. */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {body}
+        {actionError !== null ? (
+          <Text style={styles.error} accessibilityRole="alert">
+            {actionError}
+          </Text>
+        ) : null}
+      </ScrollView>
       <TextLinkSheet
         visible={textOpen}
         codeId={codeId}
@@ -427,6 +436,8 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
 
 const styles = StyleSheet.create({
   host: { flex: 1, backgroundColor: canvas.discover },
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
