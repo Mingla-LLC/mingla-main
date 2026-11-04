@@ -1,4 +1,8 @@
 import type { CheckoutPaymentMethod } from "../components/checkout/CartContext";
+import {
+  isCardDoorPaymentMethod,
+  type DoorPaymentMethod,
+} from "../types/doorSales";
 import { currencyCodeOrNull, normalizeCurrency } from "./currency";
 import {
   assertOrderCurrencyForMoney,
@@ -6,7 +10,7 @@ import {
 } from "./orderCurrencyContract";
 
 export type MoneySource = "order" | "door_sale" | "refund" | "legacy_brand";
-export type MoneyDoorPaymentMethod = "cash" | "card_reader" | "nfc" | "manual";
+export type MoneyDoorPaymentMethod = DoorPaymentMethod;
 
 type MoneyRefund = {
   amount?: number;
@@ -43,6 +47,8 @@ type MoneyDoorSaleRecord = {
   currency: string;
   paymentMethod: MoneyDoorPaymentMethod;
   refunds: MoneyRefund[];
+  /** issue #4271 — Mingla's fee on a card door sale (major units). */
+  minglaFeeAmount?: number | null;
 };
 
 export interface CurrencyMismatch {
@@ -89,6 +95,12 @@ export interface EventMoneySummary {
    * ORCH-0796.
    */
   expectedPayoutMajor: number | null;
+  /**
+   * issue #4271 — Mingla's fee on card door sales (Buyer's phone, Tap to pay)
+   * in expected-currency major units. Cash and manual carry no fee. Card
+   * money is paid out with online sales.
+   */
+  doorCardMinglaFee: number;
   revenueByMethod: Partial<Record<CheckoutPaymentMethod | MoneyDoorPaymentMethod, number>>;
   byCurrency: CurrencyBreakdown[];
   mismatches: CurrencyMismatch[];
@@ -190,6 +202,7 @@ export const summarizeEventMoney = (args: {
   let hasAnyOnlinePayment = false;
   let hasAnyDoorPayment = false;
   let hasUnknownApplicationFeeRefund = false;
+  let doorCardMinglaFee = 0;
 
   const addRevenue = (
     method: CheckoutPaymentMethod | MoneyDoorPaymentMethod,
@@ -297,6 +310,9 @@ export const summarizeEventMoney = (args: {
     if (live > 0) {
       addRevenue(sale.paymentMethod, live);
       hasAnyDoorPayment = true;
+      if (isCardDoorPaymentMethod(sale.paymentMethod)) {
+        doorCardMinglaFee += Math.max(0, sale.minglaFeeAmount ?? 0);
+      }
     }
   }
 
@@ -308,7 +324,10 @@ export const summarizeEventMoney = (args: {
   const minglaFeeOnlineMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(minglaFeeOnlineCents / 100) : null;
   const expectedPayoutMajor =
     (hasAnyOnlinePayment || hasAnyDoorPayment) && !hasUnknownApplicationFeeRefund
-      ? round2((onlineNetCents / 100) + (hasAnyDoorPayment ? doorRevenue : 0))
+      ? round2(
+          (onlineNetCents / 100) +
+            (hasAnyDoorPayment ? doorRevenue - doorCardMinglaFee : 0),
+        )
       : null;
 
   return {
@@ -323,6 +342,7 @@ export const summarizeEventMoney = (args: {
     stripeFeeOnlineMajor: minglaFeeOnlineMajor,
     minglaFeeOnlineMajor,
     expectedPayoutMajor,
+    doorCardMinglaFee: round2(doorCardMinglaFee),
     revenueByMethod,
     byCurrency: Array.from(byCurrency.values()).sort((a, b) =>
       a.currency.localeCompare(b.currency),

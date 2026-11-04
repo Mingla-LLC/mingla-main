@@ -22,6 +22,7 @@ import { currencyCodeOrNull } from "./currency";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import { isCompOrder } from "./compOrders";
+import { PAYMENT_METHOD_LABELS } from "./paymentMethodLabels";
 import type {
   DoorPaymentMethod,
   DoorSaleRecord,
@@ -89,13 +90,11 @@ const doorQuantity = (lines: DoorSaleRecord["lines"]): number =>
 const doorPaymentLabel = (method: DoorPaymentMethod): string => {
   switch (method) {
     case "cash":
-      return "Cash";
-    case "card_reader":
-      return "Card reader";
-    case "nfc":
-      return "NFC tap";
     case "manual":
-      return "Manual";
+    case "card_reader":
+    case "pay_code":
+    case "tap_to_pay":
+      return PAYMENT_METHOD_LABELS[method];
     default: {
       const _exhaust: never = method;
       return _exhaust;
@@ -180,7 +179,7 @@ export const serializeGuestsToCsv = (
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
-  // cash/card_reader/nfc/manual; comps: blank).
+  // cash/manual/buyer's phone/tap to pay; comps: blank).
   // Cycle 13 — added "Gross", "Refunded", "Net" columns at positions 12-14
   // for accountant-friendly per-row refund attribution (DEC-095 D-13-8).
   const headers = [

@@ -885,7 +885,12 @@ export default function GuestDetailRoute(): React.ReactElement {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Payment method</Text>
-                <Text style={styles.summaryValue}>{order.paymentMethod}</Text>
+                <Text style={styles.summaryValue}>
+                  {order.paymentMethod === "pay_code" ||
+                  order.paymentMethod === "tap_to_pay"
+                    ? PAYMENT_METHOD_LABELS[order.paymentMethod]
+                    : order.paymentMethod}
+                </Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Purchased</Text>

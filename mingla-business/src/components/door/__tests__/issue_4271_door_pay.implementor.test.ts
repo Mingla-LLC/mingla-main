@@ -1,0 +1,360 @@
+/**
+ * #4271 — hosts take card payments at the door (pay code, Tap to Pay).
+ * Implementor happy-path regression suite for the door payment model, the
+ * pay-link QR guard, the pay code screen states and the money rules.
+ */
+import fs from "node:fs";
+import path from "node:path";
+
+jest.mock("../../../constants/publicUrls", () => ({
+  BUSINESS_PUBLIC_ORIGIN: "https://host.usemingla.com",
+}));
+
+import {
+  buildDoorPaymentOptions,
+  doorMethodCollectsBuyerDetails,
+  doorSaleButtonLabel,
+} from "../doorPaymentOptions";
+import {
+  assertDoorPayUrl,
+  isDoorPayUrl,
+  makeDoorPayUrl,
+  type DoorPayUrl,
+} from "../doorPayUrl";
+import {
+  doorPayGuestEndCopy,
+  doorPayHostEndCopy,
+  effectiveDoorPayStatus,
+  formatDoorPayCountdown,
+} from "../doorPayCodeState";
+import { decodeDoorTapDraft, doorTapNewSaleHref } from "../doorTapDraft";
+import {
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHOD_PILLS,
+} from "../../../utils/paymentMethodLabels";
+import { summarizeEventMoney } from "../../../utils/moneySummary";
+import { computeReconciliation } from "../../../utils/reconciliation";
+import { paymentMethodFromRow } from "../../../services/eventOrdersService";
+import type { DoorSaleRecord } from "../../../types/doorSales";
+import type { OrderRecord } from "../../../store/orderStore";
+
+const BUSINESS = path.resolve(__dirname, "../../../..");
+const read = (relative: string): string =>
+  fs.readFileSync(path.join(BUSINESS, relative), "utf8");
+
+const NO_TAP = { available: false, needsSetup: false };
+
+describe("#4271 door sale payment list", () => {
+  test("pay code first, then cash, manual and a disabled card reader; no NFC", () => {
+    const options = buildDoorPaymentOptions({ eventCurrency: "GBP", tapToPay: NO_TAP, platform: "ios" });
+    expect(options.map((o) => o.id)).toEqual(["pay_code", "cash", "manual", "card_reader"]);
+    expect(options[0]).toMatchObject({
+      label: "Buyer pays on their phone",
+      sub: "Show a code. They scan it with their camera and pay by card, Apple Pay or Google Pay.",
+      disabled: false,
+    });
+    expect(options.find((o) => o.id === "cash")?.sub).toBe("You collect cash at the door.");
+    expect(options.find((o) => o.id === "manual")?.sub).toBe("Paid another way, like a bank transfer.");
+    expect(options.find((o) => o.id === "card_reader")).toMatchObject({
+      label: "Card reader",
+      sub: "Card machines are coming later.",
+      disabled: true,
+    });
+    expect(options.some((o) => (o.id as string) === "nfc")).toBe(false);
+  });
+
+  test("Nigeria names Paystack's ways to pay", () => {
+    const [payCode] = buildDoorPaymentOptions({ eventCurrency: "NGN", tapToPay: NO_TAP, platform: "android" });
+    expect(payCode.sub).toBe(
+      "Show a code. They scan it with their camera and pay by card, bank transfer or USSD.",
+    );
+  });
+
+  test("Tap to pay appears only when available, second, with setup copy when needed", () => {
+    const ready = buildDoorPaymentOptions({
+      eventCurrency: "USD",
+      tapToPay: { available: true, needsSetup: false },
+      platform: "ios",
+    });
+    expect(ready.map((o) => o.id)).toEqual(["pay_code", "tap_to_pay", "cash", "manual", "card_reader"]);
+    expect(ready[1].sub).toBe("Take a card or phone on this iPhone.");
+    const android = buildDoorPaymentOptions({
+      eventCurrency: "GBP",
+      tapToPay: { available: true, needsSetup: false },
+      platform: "android",
+    });
+    expect(android[1].sub).toBe("Take a card or phone on this phone.");
+    const setup = buildDoorPaymentOptions({
+      eventCurrency: "GBP",
+      tapToPay: { available: true, needsSetup: true },
+      platform: "ios",
+    });
+    expect(setup[1].sub).toBe("Set up once on this phone. About 2 minutes.");
+  });
+
+  test("the button says what happens next; a pay code hides buyer details", () => {
+    expect(doorSaleButtonLabel("pay_code", "£30.00")).toBe("Show pay code");
+    expect(doorSaleButtonLabel("tap_to_pay", "£30.00")).toBe("Take £30.00");
+    expect(doorSaleButtonLabel("cash", "£30.00")).toBe("Complete sale");
+    expect(doorSaleButtonLabel("manual", "£30.00")).toBe("Complete sale");
+    expect(doorMethodCollectsBuyerDetails("pay_code")).toBe(false);
+    expect(doorMethodCollectsBuyerDetails("cash")).toBe(true);
+  });
+
+  test("labels and pills follow the contract", () => {
+    expect(PAYMENT_METHOD_LABELS).toEqual({
+      cash: "Cash",
+      manual: "Manual",
+      card_reader: "Card reader",
+      pay_code: "Buyer's phone",
+      tap_to_pay: "Tap to pay",
+    });
+    expect(PAYMENT_METHOD_PILLS).toEqual({
+      cash: "CASH",
+      manual: "MANUAL",
+      card_reader: "CARD",
+      pay_code: "PHONE",
+      tap_to_pay: "TAP",
+    });
+  });
+
+  test("the sheet uses the model and every placeholder string is gone", () => {
+    const sheet = read("src/components/door/DoorSaleNewSheet.tsx");
+    expect(sheet).toContain("buildDoorPaymentOptions(");
+    expect(sheet).toContain("useTapToPayAvailability(");
+    expect(sheet).toContain("doorTapNewSaleHref(");
+    expect(sheet).toContain("/door/pay/${created.codeId}");
+    expect(sheet).not.toContain("[TRANSITIONAL]");
+    for (const relative of [
+      "src/components/door/DoorSaleNewSheet.tsx",
+      "app/event/[id]/door/index.tsx",
+      "app/event/[id]/door/[saleId].tsx",
+      "app/event/[id]/reconciliation.tsx",
+      "src/components/scanners/InviteScannerSheet.tsx",
+      "src/components/scanners/ScannerHome.tsx",
+    ]) {
+      const source = read(relative);
+      expect(source).not.toMatch(/TESTING MODE/);
+      expect(source).not.toMatch(/Coming when backend ships/);
+      expect(source).not.toMatch(/NFC tap/);
+      expect(source.includes("not available yet") && !relative.endsWith("reconciliation.tsx")).toBe(false);
+    }
+    expect(read("app/event/[id]/reconciliation.tsx")).not.toMatch(/\(door\)"[\s\S]{0,120}Not available yet/);
+    expect(read("src/components/scanners/InviteScannerSheet.tsx")).toContain(
+      "Cash, manual, pay codes and Tap to Pay. Card money goes to your bank with online sales.",
+    );
+    expect(read("src/components/scanners/ScannerHome.tsx")).toContain("useCanTakeDoorPayment(");
+  });
+});
+
+describe("#4271 pay-link QR guard", () => {
+  test("makeDoorPayUrl builds only a /pay/door/ link from a valid code", () => {
+    expect(makeDoorPayUrl("K7Q2M9XA")).toBe("https://host.usemingla.com/pay/door/K7Q2M9XA");
+    expect(() => makeDoorPayUrl("k7q2m9xa")).toThrow();
+    expect(() => makeDoorPayUrl("K7Q2M9X0")).toThrow(); // 0 is not in the alphabet
+    expect(() => makeDoorPayUrl("ticket:abc")).toThrow();
+  });
+
+  test("a ticket value or any other string cannot pass the runtime guard", () => {
+    for (const value of [
+      "MINGLA-TICKET:2f4c1d",
+      "https://host.usemingla.com/o/order-1",
+      "https://host.usemingla.com/pay/door/K7Q2M9XA?x=1",
+      "https://evil.example/pay/door/K7Q2M9XA",
+      "https://host.usemingla.com/pay/door/",
+      42,
+    ]) {
+      expect(isDoorPayUrl(value)).toBe(false);
+      expect(() => assertDoorPayUrl(value)).toThrow();
+    }
+    expect(assertDoorPayUrl(makeDoorPayUrl("ABCDEFGH"))).toBe(
+      "https://host.usemingla.com/pay/door/ABCDEFGH",
+    );
+  });
+
+  test("the QR prop is typed so a plain string does not compile", () => {
+    const accept = (url: DoorPayUrl): DoorPayUrl => url;
+    // @ts-expect-error — a plain string is not a DoorPayUrl
+    accept("MINGLA-TICKET:2f4c1d");
+    expect(accept(makeDoorPayUrl("ABCDEFGH"))).toContain("/pay/door/");
+  });
+
+  test("DoorPayQr asserts at runtime and is the only door file with a QR encoder", () => {
+    const qr = read("src/components/door/DoorPayQr.tsx");
+    expect(qr).toContain("url: DoorPayUrl");
+    expect(qr).toContain("assertDoorPayUrl(url)");
+    const doorDir = path.join(BUSINESS, "src/components/door");
+    const encoders = fs
+      .readdirSync(doorDir)
+      .filter((f) => /\.tsx?$/.test(f))
+      .filter((f) => fs.readFileSync(path.join(doorDir, f), "utf8").includes("react-native-qrcode-svg"));
+    expect(encoders).toEqual(["DoorPayQr.tsx"]);
+    const route = read("app/event/[id]/door/pay/[codeId].tsx");
+    expect(route).toContain("makeDoorPayUrl(row.code)");
+    expect(route).not.toContain("react-native-qrcode-svg");
+  });
+});
+
+describe("#4271 pay code states", () => {
+  const expiresAt = "2026-11-04T20:10:00.000Z";
+  const before = Date.parse("2026-11-04T20:00:18.000Z");
+  const after = Date.parse("2026-11-04T20:10:01.000Z");
+
+  test("an open or opened code past its expiry reads as expired", () => {
+    expect(effectiveDoorPayStatus("open", expiresAt, before)).toBe("open");
+    expect(effectiveDoorPayStatus("opened", expiresAt, after)).toBe("expired");
+    expect(effectiveDoorPayStatus("paid", expiresAt, after)).toBe("paid");
+    expect(formatDoorPayCountdown(expiresAt, before)).toBe("9:42");
+    expect(formatDoorPayCountdown(expiresAt, after)).toBe("0:00");
+  });
+
+  test("every end state says nothing was charged and offers one-tap recovery", () => {
+    expect(doorPayHostEndCopy("expired")).toMatchObject({
+      title: "This code expired",
+      body: "Nothing was charged. Show a new code to try again.",
+      primary: { label: "Show a new code", action: "new_code" },
+      secondary: { label: "Take cash instead", action: "cash_instead" },
+    });
+    expect(doorPayHostEndCopy("failed").body).toBe("Their bank declined it. Nothing was charged.");
+    expect(doorPayHostEndCopy("cancelled").primary.label).toBe("Back to door sales");
+    expect(doorPayGuestEndCopy("expired").body).toBe("You weren't charged. Ask the door to show a new one.");
+    expect(doorPayGuestEndCopy("paid").title).toBe("This code is already paid");
+    expect(doorPayGuestEndCopy("cancelled").title).toBe("The door cancelled this sale");
+  });
+
+  test("the guest page talks about the ticket, not the app, before payment", () => {
+    const page = read("app/pay/door/[code].tsx");
+    const prePurchase = page.slice(0, page.indexOf("// ---- B4: paid"));
+    for (const phrase of ["Mingla app", "Open in Mingla", "Get the app", "Explorer"]) {
+      expect(prePurchase.replace(/\/\*[\s\S]*?\*\//g, "")).not.toContain(phrase);
+    }
+    expect(page).toContain("createDoorCodeCheckout(");
+    expect(page).toContain("Get Mingla Explorer");
+    expect(page).not.toContain("DoorPayQr");
+  });
+
+  test("tap hand-off carries the basket to the tap route", () => {
+    const href = doorTapNewSaleHref("event-1", {
+      lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+      eventDateId: null,
+      buyerPhone: "+447700900123",
+    });
+    expect(href.startsWith("/event/event-1/door/tap/new?draft=")).toBe(true);
+    const raw = decodeURIComponent(href.split("draft=")[1]);
+    expect(decodeDoorTapDraft(raw)).toEqual({
+      lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+      eventDateId: null,
+      buyerPhone: "+447700900123",
+    });
+  });
+});
+
+const doorSale = (overrides: Partial<DoorSaleRecord>): DoorSaleRecord => ({
+  id: "sale-1",
+  eventId: "event-1",
+  brandId: "brand-1",
+  recordedBy: "host-1",
+  buyerName: "",
+  buyerEmail: "",
+  buyerPhone: "",
+  paymentMethod: "cash",
+  lines: [],
+  totalGbpAtSale: 20,
+  totalAtSale: 20,
+  currency: "GBP",
+  notes: "",
+  recordedAt: "2026-11-04T20:00:00.000Z",
+  status: "completed",
+  refundedAmountGbp: 0,
+  refundedAmount: 0,
+  refunds: [],
+  minglaFeeAmount: null,
+  ...overrides,
+});
+
+const order = (overrides: Partial<OrderRecord>): OrderRecord =>
+  ({
+    id: "order-1",
+    eventId: "event-1",
+    brandId: "brand-1",
+    buyer: { name: "Ada", email: "ada@example.com", phone: "", marketingOptIn: false },
+    ticketDays: [],
+    lines: [],
+    totalGbpAtPurchase: 31.35,
+    totalAtPurchase: 31.35,
+    totalCents: 3135,
+    currency: "GBP",
+    paymentMethod: "pay_code",
+    paidAt: "2026-11-04T20:00:00.000Z",
+    status: "paid",
+    refundedAmountGbp: 0,
+    refundedAmount: 0,
+    refundedAmountCents: 0,
+    stripeApplicationFeeAmountCents: 141,
+    refunds: [],
+    cancelledAt: null,
+    source: "online_checkout",
+    lastSeenEventUpdatedAt: "2026-11-04T20:00:00.000Z",
+    ...overrides,
+  }) as unknown as OrderRecord;
+
+describe("#4271 card money at the door", () => {
+  test("the door hub shows Mingla's fee on card door sales and nets it out", () => {
+    const summary = summarizeEventMoney({
+      expectedCurrency: "GBP",
+      orders: [],
+      doorSales: [
+        doorSale({ id: "cash-1", paymentMethod: "cash", totalAtSale: 40, totalGbpAtSale: 40 }),
+        doorSale({
+          id: "code-1",
+          paymentMethod: "pay_code",
+          totalAtSale: 31.35,
+          totalGbpAtSale: 31.35,
+          minglaFeeAmount: 1.41,
+        }),
+      ],
+    });
+    expect(summary.revenueByMethod.pay_code).toBe(31.35);
+    expect(summary.revenueByMethod.cash).toBe(40);
+    expect(summary.doorCardMinglaFee).toBe(1.41);
+    expect(summary.expectedPayoutMajor).toBe(69.94);
+  });
+
+  test("an order paid by pay code or tap keeps its door method", () => {
+    expect(paymentMethodFromRow("online_card", "pay_code")).toBe("pay_code");
+    expect(paymentMethodFromRow("apple_pay", "tap_to_pay")).toBe("tap_to_pay");
+    expect(paymentMethodFromRow("apple_pay", null)).toBe("apple_pay");
+    expect(paymentMethodFromRow("cash", "cash")).toBe("cash");
+  });
+
+  test("reconciliation counts each door sale once, with card fees like online card", () => {
+    const summary = computeReconciliation({
+      eventId: "event-1",
+      status: "live",
+      eventName: "Afrobeats Night",
+      currency: "GBP",
+      orderEntries: [
+        order({ id: "code-1" }),
+        order({
+          id: "cash-1",
+          source: "door_sale",
+          paymentMethod: "cash",
+          totalAtPurchase: 40,
+          totalGbpAtPurchase: 40,
+          totalCents: 4000,
+          stripeApplicationFeeAmountCents: null,
+        }),
+      ],
+      doorEntries: [
+        doorSale({ id: "cash-1", paymentMethod: "cash", totalAtSale: 40, totalGbpAtSale: 40 }),
+        doorSale({ id: "code-1", paymentMethod: "pay_code", totalAtSale: 31.35, totalGbpAtSale: 31.35, minglaFeeAmount: 1.41 }),
+      ],
+      scanEntries: [],
+    });
+    expect(summary.revenueByMethod.cash).toBe(40);
+    expect(summary.revenueByMethod.pay_code).toBe(31.35);
+    expect(summary.grossRevenue).toBe(71.35);
+    expect(summary.stripeFeeOnlineMajor).toBe(1.41);
+    expect(Object.keys(summary.revenueByMethod)).not.toContain("nfc");
+  });
+});

@@ -297,16 +297,16 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
           {/* Accept door payments toggle */}
           <View style={styles.toggleRow}>
             <View style={styles.toggleCol}>
-              <Text style={styles.toggleLabel}>Accept payments at the door</Text>
+              <Text style={styles.toggleLabel}>Take payments at the door</Text>
               <Text style={styles.toggleSubline}>
-                Cash and manual payments. Card reader and NFC tap-to-pay are not available yet.
+                Cash, manual, pay codes and Tap to Pay. Card money goes to your bank with online sales.
               </Text>
             </View>
             <Pressable
               onPress={() => !submitting && setCanAcceptPayments((v) => !v)}
               accessibilityRole="switch"
               accessibilityState={{ checked: canAcceptPayments }}
-              accessibilityLabel="Accept payments at the door"
+              accessibilityLabel="Take payments at the door"
               disabled={submitting}
               style={[
                 styles.toggleTrack,

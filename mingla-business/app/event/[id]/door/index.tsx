@@ -2,8 +2,8 @@
  * /event/[id]/door — J-D2 Door Sales list view + J-D5 inline reconciliation (Cycle 12).
  *
  * Operator-side ledger of in-person door sales for the event. Top of
- * route renders the reconciliation summary card (J-D5: cash / card / nfc
- * / manual / refunded / NET, plus a "By scanner" expandable breakdown
+ * route renders the reconciliation summary card (J-D5: cash / buyer's phone /
+ * tap to pay / manual / Mingla fee / refunded / NET, plus a "By scanner" breakdown
  * and an Export CSV button). Below that, sales list newest-first with
  * row-level avatars, payment-method pill, status pill, and tap-to-detail
  * routing to /event/{id}/door/{saleId}.
@@ -11,7 +11,9 @@
  * I-21: operator-side route. Uses useAuth.
  * I-29: door sales are read from server orders through React Query.
  *
- * TESTING MODE banner reused from DoorSaleNewSheet pattern (Const #7).
+ * issue #4271 — card money at the door (Buyer's phone, Tap to pay) shows a
+ * Mingla fee line and is paid out with online sales; "Sell at door" opens the
+ * sale sheet, also reopened with the last tickets by the pay code screen.
  *
  * Per Cycle 12 SPEC §4.12 / §5/J-D2 + J-D5.
  */
@@ -47,7 +49,12 @@ import {
   currencyCodeOrNull,
 } from "../../../../src/utils/currency";
 import { summarizeEventMoney } from "../../../../src/utils/moneySummary";
-import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
+import {
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHOD_PILLS,
+} from "../../../../src/utils/paymentMethodLabels";
+import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
+import { Button } from "../../../../src/components/ui/Button";
 
 import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -122,13 +129,12 @@ const doorPaymentPill = (
   }
   switch (method) {
     case "cash":
-      return { variant: "info", label: "CASH" };
     case "card_reader":
-      return { variant: "info", label: "CARD" };
-    case "nfc":
-      return { variant: "info", label: "NFC" };
+    case "pay_code":
+    case "tap_to_pay":
+      return { variant: "info", label: PAYMENT_METHOD_PILLS[method] };
     case "manual":
-      return { variant: "draft", label: "MANUAL" };
+      return { variant: "draft", label: PAYMENT_METHOD_PILLS[method] };
     default: {
       const _exhaust: never = method;
       return _exhaust;
@@ -141,7 +147,12 @@ const doorPaymentPill = (
 export default function EventDoorSalesListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    sell?: string | string[];
+    lines?: string | string[];
+    method?: string | string[];
+  }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
@@ -188,9 +199,10 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const totalsByMethod = useMemo<Record<DoorPaymentMethod, number>>(
     () => ({
       cash: doorMoneySummary.revenueByMethod.cash ?? 0,
-      card_reader: doorMoneySummary.revenueByMethod.card_reader ?? 0,
-      nfc: doorMoneySummary.revenueByMethod.nfc ?? 0,
       manual: doorMoneySummary.revenueByMethod.manual ?? 0,
+      card_reader: doorMoneySummary.revenueByMethod.card_reader ?? 0,
+      pay_code: doorMoneySummary.revenueByMethod.pay_code ?? 0,
+      tap_to_pay: doorMoneySummary.revenueByMethod.tap_to_pay ?? 0,
     }),
     [doorMoneySummary.revenueByMethod],
   );
@@ -210,10 +222,13 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       const scannerKey = s.recordedBy;
       const existing =
         map[scannerKey] ??
-        ({ cash: 0, card_reader: 0, nfc: 0, manual: 0 } as Record<
-          DoorPaymentMethod,
-          number
-        >);
+        ({
+          cash: 0,
+          manual: 0,
+          card_reader: 0,
+          pay_code: 0,
+          tap_to_pay: 0,
+        } as Record<DoorPaymentMethod, number>);
       existing[s.paymentMethod] += live;
       map[scannerKey] = existing;
     }
@@ -221,10 +236,31 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   }, [doorMoneySummary.expectedCurrency, eventSales]);
 
   const refundedTotal = doorMoneySummary.doorRefunded;
-  const netTotal = doorMoneySummary.doorRevenue;
+  const cardFeeTotal = doorMoneySummary.doorCardMinglaFee;
+  const cardRevenueTotal = totalsByMethod.pay_code + totalsByMethod.tap_to_pay;
+  const netTotal = doorMoneySummary.doorRevenue - cardFeeTotal;
+  const hasCardSales = eventSales.some((sale) => isCardDoorPaymentMethod(sale.paymentMethod));
 
   // ---- UI state ----
   const [newSheetOpen, setNewSheetOpen] = useState<boolean>(false);
+  // issue #4271 — "Sell another" / "Take cash instead" from the pay code
+  // screen reopen the sheet here with the last tickets kept.
+  const sellParam = Array.isArray(params.sell) ? params.sell[0] : params.sell;
+  const linesParam = Array.isArray(params.lines) ? params.lines[0] : params.lines;
+  const methodParam = Array.isArray(params.method) ? params.method[0] : params.method;
+  const [sheetSeed, setSheetSeed] = useState<{
+    lines: { ticketTypeId: string; quantity: number }[];
+    method: DoorPaymentMethod | undefined;
+  } | null>(null);
+  useEffect(() => {
+    if (sellParam !== "1") return;
+    setSheetSeed({
+      lines: parseSeedLines(linesParam),
+      method: methodParam === "cash" || methodParam === "pay_code" ? methodParam : undefined,
+    });
+    setNewSheetOpen(true);
+    router.setParams({ sell: undefined, lines: undefined, method: undefined } as never);
+  }, [linesParam, methodParam, router, sellParam]);
   const [byScannerExpanded, setByScannerExpanded] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -252,6 +288,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   );
 
   const handleNewSale = useCallback((): void => {
+    setSheetSeed(null);
     setNewSheetOpen(true);
   }, []);
 
@@ -427,15 +464,6 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           </Pressable>
         ) : null}
 
-        {/* TESTING MODE banner — same copy as DoorSaleNewSheet (Const #7). */}
-        <View style={styles.banner}>
-          <Text style={styles.bannerTitle}>TESTING MODE</Text>
-          <Text style={styles.bannerBody}>
-            Only Cash and Manual payments work today. Card reader and NFC
-            tap-to-pay are not available yet.
-          </Text>
-        </View>
-
         {/* J-D5 reconciliation summary card */}
         <View style={styles.reconCard}>
           <Text style={styles.reconHeading}>Reconciliation</Text>
@@ -456,27 +484,36 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
             </Text>
           </View>
           <View style={styles.reconRow}>
-            <View style={styles.reconLabelCol}>
-              <Text style={styles.reconLabel}>Card reader</Text>
-              <Text style={styles.reconLabelHint}>
-                ({fmtDoor(totalsByMethod.card_reader)} — not available yet)
+            <Text style={styles.reconLabel}>{PAYMENT_METHOD_LABELS.pay_code}</Text>
+            <Text style={styles.reconValue}>
+              {fmtDoor(totalsByMethod.pay_code)}
+            </Text>
+          </View>
+          {doorDisplayCurrency !== "NGN" || totalsByMethod.tap_to_pay > 0 ? (
+            <View style={styles.reconRow}>
+              <Text style={styles.reconLabel}>{PAYMENT_METHOD_LABELS.tap_to_pay}</Text>
+              <Text style={styles.reconValue}>
+                {fmtDoor(totalsByMethod.tap_to_pay)}
               </Text>
             </View>
-          </View>
-          <View style={styles.reconRow}>
-            <View style={styles.reconLabelCol}>
-              <Text style={styles.reconLabel}>NFC tap</Text>
-              <Text style={styles.reconLabelHint}>
-                ({fmtDoor(totalsByMethod.nfc)} — not available yet)
-              </Text>
-            </View>
-          </View>
+          ) : null}
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Manual</Text>
             <Text style={styles.reconValue}>
               {fmtDoor(totalsByMethod.manual)}
             </Text>
           </View>
+
+          {cardRevenueTotal > 0 || cardFeeTotal > 0 ? (
+            <View style={styles.reconRow}>
+              <Text style={styles.reconLabel}>Mingla fee (card)</Text>
+              <Text style={styles.reconValueWarn}>
+                {doorDisplayCurrency === null
+                  ? "—"
+                  : `−${formatCurrency(cardFeeTotal, doorDisplayCurrency)}`}
+              </Text>
+            </View>
+          ) : null}
 
           <View style={styles.reconDivider} />
           <View style={styles.reconRow}>
@@ -493,6 +530,11 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
               {fmtDoor(netTotal)}
             </Text>
           </View>
+          {hasCardSales ? (
+            <Text style={styles.reconLabelHint}>
+              Card money is paid out with your online sales.
+            </Text>
+          ) : null}
 
           {/* By-scanner expandable */}
           {scannerKeys.length > 0 ? (
@@ -515,8 +557,9 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           {byScannerExpanded
             ? scannerKeys.map((scannerKey) => {
                 const totals = totalsByScanner[scannerKey];
+                const scannerCard = totals.pay_code + totals.tap_to_pay;
                 const scannerTotal =
-                  totals.cash + totals.card_reader + totals.nfc + totals.manual;
+                  totals.cash + totals.manual + totals.card_reader + scannerCard;
                 const scannerLabel =
                   scannerKey === operatorAccountId
                     ? "You (operator)"
@@ -527,7 +570,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
                     <View style={styles.scannerSubRow}>
                       <Text style={styles.scannerSubLabel}>
                         Cash {fmtDoor(totals.cash)} · Manual{" "}
-                        {fmtDoor(totals.manual)}
+                        {fmtDoor(totals.manual)} · Card {fmtDoor(scannerCard)}
                       </Text>
                       <Text style={styles.scannerTotal}>
                         {fmtDoor(scannerTotal)}
@@ -562,9 +605,9 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
             <EmptyState
               illustration="ticket"
               title="No door sales yet"
-              description="Tap + to record one."
+              description="Tap Sell at door to take your first one."
               cta={{
-                label: "Record sale",
+                label: "Sell at door",
                 onPress: handleNewSale,
                 variant: "primary",
               }}
@@ -590,8 +633,26 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           event={event}
           onClose={() => setNewSheetOpen(false)}
           onSuccess={handleNewSaleSuccess}
+          initialLines={sheetSeed?.lines}
+          initialMethod={sheetSeed?.method}
         />
       ) : null}
+
+      {/* issue #4271 — the primary way to start a sale. */}
+      <View
+        style={[styles.sellBar, { paddingBottom: insets.bottom + spacing.sm }]}
+        pointerEvents="box-none"
+      >
+        <Button
+          label="Sell at door"
+          onPress={handleNewSale}
+          variant="primary"
+          size="lg"
+          fullWidth
+          accessibilityLabel="Sell at door"
+          testID="door-sell-at-door"
+        />
+      </View>
 
       {/* Toast */}
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -605,6 +666,28 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     </View>
   );
 }
+
+/** issue #4271 — `?lines=` carries `[{ticketTypeId, quantity}]` as JSON. */
+const parseSeedLines = (
+  raw: string | undefined,
+): { ticketTypeId: string; quantity: number }[] => {
+  if (raw === undefined || raw.length === 0) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((line: unknown) => {
+      if (typeof line !== "object" || line === null) return [];
+      const l = line as Record<string, unknown>;
+      return typeof l.ticketTypeId === "string" &&
+        typeof l.quantity === "number" &&
+        l.quantity > 0
+        ? [{ ticketTypeId: l.ticketTypeId, quantity: Math.floor(l.quantity) }]
+        : [];
+    });
+  } catch {
+    return [];
+  }
+};
 
 // ---- DoorSaleRowCard (composed inline) ----------------------------
 
@@ -666,6 +749,15 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
   },
+  sellBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    backgroundColor: canvas.discover,
+  },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -717,27 +809,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: textTokens.primary,
-  },
-
-  // Banner -----------------------------------------------------------
-  banner: {
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.30)",
-  },
-  bannerTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    color: accent.warm,
-    marginBottom: 4,
-  },
-  bannerBody: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: textTokens.secondary,
   },
 
   // Reconciliation card ----------------------------------------------

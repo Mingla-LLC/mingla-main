@@ -1,9 +1,10 @@
-import type {
-  DoorPaymentMethod,
-  DoorRefundRecord,
-  DoorSaleLine,
-  DoorSaleRecord,
-  DoorSaleStatus,
+import {
+  isCardDoorPaymentMethod,
+  type DoorPaymentMethod,
+  type DoorRefundRecord,
+  type DoorSaleLine,
+  type DoorSaleRecord,
+  type DoorSaleStatus,
 } from "../types/doorSales";
 import { supabase } from "./supabase";
 
@@ -69,6 +70,7 @@ interface DoorSaleRow {
   buyer_email: string | null;
   buyer_phone_e164: string | null;
   door_payment_method: DoorPaymentMethod;
+  stripe_application_fee_amount_cents?: number | null;
   buyer_total_cents: number | null;
   total_cents: number;
   currency: string | null;
@@ -148,6 +150,13 @@ const mapDoorSale = (row: DoorSaleRow): DoorSaleRecord => {
     refundedAmountGbp: refunded,
     refundedAmount: refunded,
     refunds,
+    // issue #4271 — card door money carries Mingla's fee; cash/manual do not.
+    minglaFeeAmount: isCardDoorPaymentMethod(row.door_payment_method)
+      ? row.stripe_application_fee_amount_cents === null ||
+        row.stripe_application_fee_amount_cents === undefined
+        ? null
+        : centsToMajor(row.stripe_application_fee_amount_cents)
+      : null,
   };
 };
 
@@ -203,14 +212,16 @@ export async function fetchEventDoorSales(eventId: string): Promise<DoorSaleReco
     .from("orders")
     .select(`
       id,event_id,buyer_name,buyer_email,buyer_phone_e164,door_payment_method,
-      buyer_total_cents,total_cents,currency,created_by_scanner_id,created_at,
+      buyer_total_cents,total_cents,stripe_application_fee_amount_cents,currency,created_by_scanner_id,created_at,
       payment_status,refunded_amount_cents,metadata,
       events!inner(brand_id),
       order_line_items(id,ticket_type_id,quantity,unit_price_cents,total_cents,list_unit_price_cents,ticket_types(name,is_free)),
       refunds(id,amount_cents,reason,created_at,status)
     `)
     .eq("event_id", eventId)
-    .eq("source", "door_sale")
+    // issue #4271 — every sale taken at the door: cash/manual door orders and
+    // card money at the door (Buyer's phone, Tap to pay) on the online rail.
+    .not("door_payment_method", "is", null)
     .order("created_at", { ascending: false });
   if (error !== null) throw new DoorSaleError(error.code ?? "door_sales_load_failed", error.message);
   return ((data ?? []) as unknown as DoorSaleRow[]).map(mapDoorSale);
