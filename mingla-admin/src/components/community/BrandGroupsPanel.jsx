@@ -25,6 +25,7 @@ import { fetchBrandHostRecord } from "../../services/opsService";
 import { useHashQuery } from "../../hooks/useHashQuery";
 import { canOpenPage } from "../../lib/access";
 import { brandGroupSearch, brandGroupView, hostCloseStep } from "../../lib/panelStack";
+import { isPlanLine } from "../../lib/brandPlan";
 import { PanelSlotContext } from "../ui/PanelStack";
 import { SidePanel } from "../panels/SidePanel";
 
@@ -372,6 +373,10 @@ export function BrandGroupsPanel() {
               {threadLoading && messages.length === 0 ? <div className="flex min-h-48 items-center justify-center"><Spinner /></div> : null}
               {!threadLoading && messages.length === 0 ? <p className="rounded-xl border border-[var(--gray-200)] p-5 text-sm text-[var(--color-text-secondary)]">This is the official Brand group. Start the first conversation here.</p> : null}
               {messages.map((message) => {
+                // #4270 W3: a plan line is a quiet centred line (no bubble, no reply).
+                if (isPlanLine(message)) {
+                  return <p key={message.id} data-system-line="" className="mx-auto max-w-[85%] text-center text-[12.5px] text-[var(--color-text-tertiary)] break-words">{message.content}</p>;
+                }
                 const mine = message.sender_id === myUserId;
                 const selected = selectedMessageIds.includes(message.id);
                 return (

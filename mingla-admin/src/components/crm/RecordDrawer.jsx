@@ -18,6 +18,7 @@ import { OnMinglaSection } from "./OnMinglaSection";
 import { useHostOnMingla } from "../../hooks/useHostOnMingla";
 import { HostToDoSection } from "./HostToDoSection";
 import { HostTeamSection } from "./HostTeamSection";
+import { HostPlanSection } from "./HostPlanSection";
 import { hostMissing } from "../../lib/opsModel";
 import { ActivityLog } from "./ActivityLog";
 import {
@@ -781,8 +782,9 @@ export function RecordDrawer({
         )}
         {isHosts && (
           <>
-            {/* #4270 W2: To do first, then (Wave 3) the plan, On Mingla, Brand and team, Status, Details. */}
+            {/* #4270: To do first, then the plan (W3), On Mingla, Brand and team, Status, Details. */}
             <HostToDoSection key={`host-todo-${record.id}`} record={record} read={hostRead} online={online && !locked} onAdded={() => hostRead.retry()} />
+            <HostPlanSection key={`host-plan-${record.id}`} record={record} online={online && !locked} onChanged={() => hostRead.retry()} />
             <div className="border-t border-[var(--gray-200)] pt-3">
               <OnMinglaSection key={`on-mingla-${record.id}`} record={record} read={hostRead} online={online && !locked} />
             </div>

@@ -240,7 +240,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         {closed && <OpsChip tone={statusTone(card)}>{closeKindLabel(card.close_kind)}</OpsChip>}
         {tagged && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
         {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
-        <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · {card.auto ? "Made from the timeline" : `Added by ${agentName(card.created_by_name, card.created_via)}`}</span>
+        <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · {card.auto ? "Made from the timeline" : card.brand_plan_source === "host_app" ? "Added by the host in the Host app" : `Added by ${agentName(card.created_by_name, card.created_via)}`}</span>
+        {/* #4270 W3: where a plan card came from, and whether its host sees it. */}
+        {card.brand_plan_source === "host_app" && <span data-from-host-app="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">From Host app</span>}
+        {card.on_brand_plan && <span data-on-host-plan="" className="rounded-full bg-[var(--color-success-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-success-700)]">On host plan</span>}
         {saveState && <span role="status" className="ml-auto text-[12px] text-[var(--color-text-tertiary)]">{saveState}</span>}
         {/* #4255: typed but not saved yet; kept while panels change beside it. */}
         <DraftKeptNote className="w-full" kept={Object.values(drafts).some((d) => d.kept)} onDiscard={() => Object.values(drafts).forEach((d) => d.clear())} />

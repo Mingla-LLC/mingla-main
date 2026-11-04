@@ -88,6 +88,13 @@ export const setExpectedEvent = (item, requestKey) =>
   call(() => supabase.rpc("ops_expected_event_set", { p_item: item, p_request_key: requestKey }));
 // #4270 W2: the host card for a brand, for the Brand group header's host avatar.
 export const fetchBrandHostRecord = (brandId) => call(() => supabase.rpc("ops_brand_host_record", { p_brand_id: brandId }));
+// #4270 W3: the brand plan on a host card, adding to it, and its links.
+export const fetchBrandPlan = (recordId, from, to, today) =>
+  call(() => supabase.rpc("ops_brand_plan", { p_record_id: recordId, p_from: from, p_to: to, p_today: today || null }));
+export const addBrandPlanItem = (recordId, item, requestKey) =>
+  call(() => supabase.rpc("ops_brand_plan_add", { p_record_id: recordId, p_item: item, p_request_key: requestKey }));
+export const setBrandPlanLink = (kind, id, link, revision) =>
+  call(() => supabase.rpc("ops_brand_plan_set_link", { p_kind: kind, p_id: id, p_link: link || null, p_expected_revision: revision }));
 
 // Wave 3 — the launch kit, the giveaway and ads rule, the Team dashboard and
 // turning next steps into cards (owner only).

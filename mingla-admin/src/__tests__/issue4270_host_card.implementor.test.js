@@ -67,17 +67,19 @@ export function avatar(props) { return renderToStaticMarkup(<HostAvatarButton on
 
 describe("C-1 the host card's order", () => {
   const drawer = code("components/crm/RecordDrawer.jsx");
-  it("To do, On Mingla, Brand and team, Status, then Details", () => {
+  it("To do, Plan, On Mingla, Brand and team, Status, then Details", () => {
     const at = (needle) => { const i = drawer.indexOf(needle); assert.ok(i > 0, `missing ${needle}`); return i; };
     const order = [
       at("<HostToDoSection"),
+      at("<HostPlanSection"),
       at("<OnMinglaSection"),
       at("<HostTeamSection"),
       at('data-host-section="status"'),
       at("<DetailsFold isHosts={isHosts}"),
     ];
     assert.deepEqual(order, [...order].sort((a, b) => a - b));
-    assert.doesNotMatch(drawer, /data-host-section="plan"/, "the plan block arrives with Wave 3");
+    // Wave 3: the Plan block shows (HostPlanSection, data-host-section="plan").
+    assert.match(code("components/crm/HostPlanSection.jsx"), /data-host-section="plan"/);
   });
   it("Status holds stage, next action, due, Move to and Needs attention; Details folds the rest", () => {
     const status = drawer.slice(drawer.indexOf('data-host-section="status"'), drawer.indexOf("<DetailsFold isHosts={isHosts}"));
