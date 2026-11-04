@@ -3879,7 +3879,9 @@ export async function resolveAriTargetingRefs(
       const response = await ask({
         platform,
         kind: place.kind === "region" ? "region" : "city",
-        q: place.kind === "pin" ? parts[parts.length - 1] ?? place.name : place.name,
+        q: place.kind === "pin"
+          ? parts[parts.length - 1] ?? place.name
+          : place.name,
         country: place.countryCode,
       });
       if (response.unavailable) {
@@ -3899,7 +3901,9 @@ export async function resolveAriTargetingRefs(
       locationIds[ariPlaceKey(place)] = id;
       if (response.match?.state === "wider" && place.kind !== "pin") {
         notes.push(
-          `${app} only knows ${String(best?.name ?? "a wider area")}, not ${place.name}, so it uses that wider area.`,
+          `${app} only knows ${
+            String(best?.name ?? "a wider area")
+          }, not ${place.name}, so it uses that wider area.`,
         );
       }
     };
@@ -3918,7 +3922,9 @@ export async function resolveAriTargetingRefs(
           notes.push(`Couldn't check ${app} for ${interest}. Try again.`);
           return;
         }
-        const best = response.match?.state === "match" ? response.match.best : null;
+        const best = response.match?.state === "match"
+          ? response.match.best
+          : null;
         const id = typeof best?.id === "string" ? best.id.trim() : "";
         if (id) interestIds[normalizedAdTargetName(interest)] = id;
         else notes.push(`${app} has nothing like ${interest}.`);
@@ -4417,20 +4423,25 @@ const proposeAdPlan = writeTool(
     // #4238 P1: each app's minimum first, then the rest evenly; caps follow
     // the daily shares (the server refuses an app under its minimum).
     const setupMinimums = (setup as { minimums?: unknown }).minimums;
-    const goalsForSplit = Object.fromEntries(platforms.map((platform, index) => [
-      platform,
-      args.optimize_for === "sales" &&
+    const goalsForSplit = Object.fromEntries(
+      platforms.map((platform, index) => [
+        platform,
+        args.optimize_for === "sales" &&
           connections[index]?.sales?.ready === true &&
           (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
-        ? "sales"
-        : "visits",
-    ]));
+          ? "sales"
+          : "visits",
+      ]),
+    );
     const dailyShares = splitDailyWithMinimums(
       daily,
       platforms,
       minimumsFromSetup(setupMinimums, goalsForSplit),
     );
-    const capShares = splitProportional(cap, dailyShares.map((v) => Math.max(1, v)));
+    const capShares = splitProportional(
+      cap,
+      dailyShares.map((v) => Math.max(1, v)),
+    );
     const destination = {
       page_type: String(args.dest_page_type),
       brand_slug: String(args.dest_brand_slug),
@@ -4486,6 +4497,8 @@ const proposeAdPlan = writeTool(
           : "visits",
       ]),
     );
+    const pastGuestsKey = `brand:${String(args.brand_id).toLowerCase()}:guests`;
+    const pastGuestsExclusion = { exclude_keys: [pastGuestsKey] };
     const canonicalPlan = {
       name: String(args.name),
       destination,
@@ -4513,8 +4526,10 @@ const proposeAdPlan = writeTool(
         places: cities.map((place) => ({
           ...place,
           refs: Object.fromEntries(platforms.flatMap((platform) => {
-            const id = (targetingRefs[platform] as { locationIds?: Record<string, string> } | undefined)
-              ?.locationIds?.[ariPlaceKey(place)];
+            const refs = targetingRefs[platform] as
+              | { locationIds?: Record<string, string> }
+              | undefined;
+            const id = refs?.locationIds?.[ariPlaceKey(place)];
             return id ? [[platform, id]] : [];
           })),
         })),
@@ -4543,9 +4558,7 @@ const proposeAdPlan = writeTool(
           ? [...new Set(args.audience_keys.map((key) => String(key)))]
           : [],
         // #4238: leave out the brand's past guests (on unless Ari was told not to).
-        ...(args.exclude_past_buyers === false
-          ? {}
-          : { exclude_keys: [`brand:${String(args.brand_id).toLowerCase()}:guests`] }),
+        ...(args.exclude_past_buyers === false ? {} : pastGuestsExclusion),
       },
       media_rights: {
         rights_confirmed: true,
@@ -4611,7 +4624,9 @@ const proposeAdPlan = writeTool(
       },
       targeting_snapshots: frozen.targeting_snapshots ?? [],
       // #4238: each app's own answer, in plain words.
-      ...(targeting.notes.length > 0 ? { note: targeting.notes.join(" ") } : {}),
+      ...(targeting.notes.length > 0
+        ? { note: targeting.notes.join(" ") }
+        : {}),
       ready_for_funding: !blocked,
       next_step: blocked
         ? "Some apps can't reach exactly who you picked. Change the places or interests, or accept the wider audience, and I'll check the ad again."
@@ -8915,7 +8930,9 @@ export async function preflightMoneyProposal(
         dailyShares.map((value) => Math.max(1, value)),
       );
       return platforms.map((platform, index) =>
-        `${adPlatformName(platform)}: ${formatAdMoney(shares[index], brandCurrency)}`
+        `${adPlatformName(platform)}: ${
+          formatAdMoney(shares[index], brandCurrency)
+        }`
       );
     };
     const countries = Array.isArray(args.countries)
@@ -8938,7 +8955,9 @@ export async function preflightMoneyProposal(
           : typeof args.radius_km === "number"
           ? args.radius_km
           : 17;
-        return row.kind === "pin" ? `pin at ${name}, ${km} km` : `${name}, ${km} km`;
+        return row.kind === "pin"
+          ? `pin at ${name}, ${km} km`
+          : `${name}, ${km} km`;
       }).filter(Boolean)
       : [];
     const leftOut = Array.isArray(args.excluded_places)
@@ -8956,7 +8975,9 @@ export async function preflightMoneyProposal(
       es: "Spanish",
     };
     const languageNames = Array.isArray(args.languages)
-      ? args.languages.map((code) => languageWords[String(code)] ?? "").filter(Boolean)
+      ? args.languages.map((code) => languageWords[String(code)] ?? "").filter(
+        Boolean,
+      )
       : [];
     const interests = Array.isArray(args.interests)
       ? args.interests.map(String).filter(Boolean)
@@ -9004,10 +9025,11 @@ export async function preflightMoneyProposal(
         learn: "Learn more",
       } as Record<string, string>)[String(args.call_to_action ?? "")] ??
         "Picked for the page (Get tickets for events)",
-      ad_tracking: `utm_source per app · utm_medium=paid_social · utm_campaign=${
-        String(args.name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "").slice(0, 60) || "mingla-ad"
-      }`,
+      ad_tracking:
+        `utm_source per app · utm_medium=paid_social · utm_campaign=${
+          String(args.name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "").slice(0, 60) || "mingla-ad"
+        }`,
       ad_destination: destination || "Public Mingla page",
       ...(adDates ? { ad_dates: adDates } : {}),
       ad_audience: audience || "Choose who should see this ad",
