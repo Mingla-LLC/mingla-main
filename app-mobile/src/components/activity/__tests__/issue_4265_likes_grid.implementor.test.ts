@@ -93,6 +93,36 @@ Deno.test("#4265 ticketed + ended detection never guesses", () => {
   assert(!isSavedEventEnded(null, now));
 });
 
+Deno.test("#4265 a recurring or multi-date saved experience is not ended while a later date is ahead", () => {
+  const now = new Date("2026-11-03T12:00:00Z").getTime();
+  // First (master) date passed, the next date is still ahead → still on sale.
+  assert(!isSavedEventEnded({
+    masterDateUtc: "2026-10-01T18:00:00Z",
+    masterEndAtUtc: "2026-10-01T21:00:00Z",
+    nextStartAtUtc: "2026-11-10T18:00:00Z",
+    nextEndAtUtc: "2026-11-10T21:00:00Z",
+  }, now));
+  // Only the occurrence list knows the later date.
+  assert(!isSavedEventEnded({
+    masterDateUtc: "2026-10-01T18:00:00Z",
+    upcomingOccurrences: [
+      { startAt: "2026-10-01T18:00:00Z", endAt: "2026-10-01T21:00:00Z" },
+      { startAt: "2026-11-20T18:00:00Z", endAt: "2026-11-20T21:00:00Z" },
+    ],
+  }, now));
+  // Every date passed → ended.
+  assert(isSavedEventEnded({
+    masterDateUtc: "2026-10-01T18:00:00Z",
+    nextStartAtUtc: "2026-10-15T18:00:00Z",
+    nextEndAtUtc: "2026-10-15T21:00:00Z",
+    upcomingOccurrences: [{ startAt: "2026-10-20T18:00:00Z", endAt: "2026-10-20T21:00:00Z" }],
+  }, now));
+  // A recurring rule can always add a date → never ended from a snapshot.
+  assert(!isSavedEventEnded({ masterDateUtc: "2026-10-01T18:00:00Z", isRecurring: true }, now));
+  // No dates anywhere → not ended.
+  assert(!isSavedEventEnded({ nextStartAtUtc: null, upcomingOccurrences: [] }, now));
+});
+
 Deno.test("#4265 the grid card maps each action to its own label, a11y text and gate", async () => {
   const card = stripComments(await read("src/components/activity/SavedGridCard.tsx"));
   for (const key of ["tickets", "inCalendar", "findSimilar", "schedule", "a11yTickets", "a11yInCalendar", "a11yFindSimilar", "a11ySchedule", "a11yShare", "a11yRemove", "a11yOpen"]) {
