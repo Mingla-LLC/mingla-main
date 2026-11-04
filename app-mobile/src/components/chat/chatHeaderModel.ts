@@ -295,3 +295,68 @@ export function headerAvatarStack<T extends { id: string }>(
   const removedSelf = others.length < participants.length ? 1 : 0;
   return { participants: others, participantCount: Math.max(others.length, total - removedSelf) };
 }
+
+/** One member of the header / Group info lists (the chat-open snapshot's shape). */
+export interface GroupMemberLike {
+  id: string;
+  name?: string;
+  username?: string;
+  avatar_url?: string;
+  is_online?: boolean;
+}
+
+/** A row of the live participants query (everyone except me). */
+export interface LiveParticipantLike {
+  userId: string;
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+}
+
+/**
+ * Issue #4261 amendment 1 (B-4): who is in this chat now. The live
+ * participants query is the one owner; until it has loaded, the snapshot taken
+ * when the chat opened. Live rows are mapped to the snapshot's member shape
+ * (keeping a member's online flag from the snapshot) and I am added from the
+ * snapshot (the live query leaves me out on purpose).
+ */
+export function liveGroupMembers<T extends GroupMemberLike>(
+  snapshot: readonly T[],
+  live: readonly LiveParticipantLike[] | undefined,
+  currentUserId: string | null | undefined,
+): GroupMemberLike[] {
+  if (live === undefined) return [...snapshot];
+  const byId = new Map(snapshot.map((member) => [member.id, member]));
+  const me = currentUserId ? byId.get(currentUserId) ?? { id: currentUserId } : null;
+  const others = live
+    .filter((row) => row.userId !== currentUserId)
+    .map((row) => {
+      const before = byId.get(row.userId);
+      return {
+        id: row.userId,
+        name: row.displayName,
+        username: row.username ?? undefined,
+        avatar_url: row.avatarUrl ?? undefined,
+        ...(before?.is_online !== undefined ? { is_online: before.is_online } : {}),
+      };
+    });
+  return me ? [me, ...others] : others;
+}
+
+/**
+ * The ids of the open chat's "joined" / "added" group rows. When this key
+ * changes, someone came in, so the live member list is refetched.
+ */
+export function groupJoinEventKey(
+  messages: readonly { id: string; isSystem?: boolean; cardPayload?: unknown }[],
+): string {
+  const ids: string[] = [];
+  for (const message of messages) {
+    if (!message.isSystem) continue;
+    const payload = message.cardPayload as { kind?: unknown; event?: unknown } | undefined;
+    if (payload?.kind === "group_event" && (payload.event === "joined_by_link" || payload.event === "members_added")) {
+      ids.push(message.id);
+    }
+  }
+  return ids.sort().join(",");
+}

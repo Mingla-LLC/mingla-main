@@ -15,6 +15,8 @@ export type ChatPlanConflictCode =
   | "conflict_plan_not_deciding"
   | "conflict_rate_limited"
   | "conflict_too_many_times"
+  | "conflict_too_many_places"
+  | "conflict_plan_cancelled"
   | "conflict_group_full"
   | "conflict_already_decided"
   | "conflict_friend_accept";
@@ -57,6 +59,29 @@ export interface ChatPlanPlace {
 export interface ChatPlanLink {
   url: string;
   domain: string;
+  /** Amendment 1 (5.7): the server-fetched page preview; null until it lands or when it failed. */
+  title: string | null;
+  imageUrl: string | null;
+  siteName: string | null;
+  /** When the server last tried the preview (any outcome); null when never tried. */
+  fetchedAt: string | null;
+}
+
+/** Amendment 1 (5.7): one place on a plan's place vote. */
+export interface ChatPlanPlaceOption {
+  id: string;
+  kind: "place" | "address" | "link";
+  poolId: string | null;
+  mapboxId: string | null;
+  name: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  photoUrl: string | null;
+  link: ChatPlanLink | null;
+  addedBy: string | null;
+  isOriginal: boolean;
+  voterIds: string[];
 }
 
 export interface ChatPlanOption {
@@ -111,6 +136,9 @@ export interface ChatPlan {
   canEdit: boolean;
   canCancel: boolean;
   canAddTime: boolean;
+  /** Amendment 1: the place vote, ordered original first then oldest; [] when nobody suggested a place. */
+  places: ChatPlanPlaceOption[];
+  canAddPlace: boolean;
 }
 
 /** `chat_plans_for_conversation(p_conversation_id)` */
@@ -126,6 +154,8 @@ export interface PlanQuoteSnapshot {
   title: string;
   votedStartsAt: string[];
   rsvp: PlanRsvp | null;
+  /** Amendment 1 (5.6): the sender's voted places, in option order. */
+  votedPlaces?: string[];
 }
 
 /** `p_place` argument of `plan_create`. Pool rows: only `poolId` is trusted. */
@@ -156,6 +186,19 @@ export interface PlanCreateResult {
   planId: string;
   messageId: string;
   created: boolean;
+}
+
+/** Amendment 1 (5.3): `plan_add_place`. A suggestion is a place; it may carry its own link. */
+export interface PlanAddPlaceInput {
+  planId: string;
+  whereKind: "place" | "address";
+  place: PlanPlaceInput;
+  linkUrl: string | null;
+}
+
+export interface PlanAddPlaceResult {
+  optionId: string;
+  existed: boolean;
 }
 
 export interface PlanAddOptionResult {
@@ -201,7 +244,7 @@ export interface PlanMessagePayload {
   planId: string;
 }
 
-export type PlanEventKind = "time_added" | "locked" | "cancelled";
+export type PlanEventKind = "time_added" | "place_added" | "locked" | "cancelled";
 
 /** `card_payload` of a plan system row (`chat_plan_post_event`). */
 export interface PlanEventPayload {
@@ -211,6 +254,10 @@ export interface PlanEventPayload {
   actorId: string;
   startsAt?: string;
   scheduledAt?: string;
+  /** `place_added` and a vote-decided `locked` (amendment 1, 5.3 / 5.5). */
+  placeName?: string;
+  optionId?: string;
+  placeVoted?: boolean;
 }
 
 // ---------------------------------------------------------------------------

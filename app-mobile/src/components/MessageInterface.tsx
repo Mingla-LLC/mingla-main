@@ -8,7 +8,6 @@ import {
   FlatList,
   Alert,
   Platform,
-  Linking,
   Dimensions,
   ActivityIndicator,
   useWindowDimensions,
@@ -17,7 +16,6 @@ import {
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -56,12 +54,14 @@ import {
 import { PlanMatchesSheet } from "./chat/PlanMatchesSheet";
 import { PlansSheet } from "./chat/PlansSheet";
 import { useQueryClient } from "@tanstack/react-query";
-import { planKeys } from "../hooks/queryKeys";
+import { chatKeys, planKeys } from "../hooks/queryKeys";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
 import {
   buildCollabHeaderStrip,
+  groupJoinEventKey,
   headerAvatarStack,
+  liveGroupMembers,
   matchKey,
   memberFirstNames,
   planSavedCardIdFromPayload,
@@ -82,7 +82,8 @@ import { ChatActionList } from "./chat/ChatActionList";
 import { GroupInfoSheet } from "./chat/GroupInfoSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import { ChatAttachSheet } from "./chat/ChatAttachSheet";
-import InAppBrowserModal from "./InAppBrowserModal";
+import { InAppBrowserProvider, useOpenInMingla } from "./InAppBrowserProvider";
+import { mapsWebUrl } from "../utils/inAppLink";
 import { copyAddressText } from "../utils/copyAddressText";
 import { withSelfMentionCandidate } from "../utils/messageTextTokens";
 import { ChatVideoPlayerModal } from "./chat/ChatVideoPlayerModal";
@@ -169,7 +170,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptorV1 } from '@mingla/sharing';
 import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
-import type { ChatPlan, GroupEventPayload, PlanEventPayload, PlanQuoteSnapshot } from "../types/chatPlans";
+import type { ChatPlan, ChatPlanPlaceOption, GroupEventPayload, PlanEventPayload, PlanQuoteSnapshot } from "../types/chatPlans";
 import { PlanCardBubble } from "./chat/PlanCardBubble";
 import { PlanFormSheet } from "./chat/PlanFormSheet";
 import { PlanCommentsSheet } from "./chat/PlanCommentsSheet";
@@ -177,7 +178,18 @@ import { PlanTimePickerSheet } from "./chat/PlanTimePickerSheet";
 import { PlanActionsMenu, PlanEditSheet } from "./chat/PlanEditSheet";
 import { GroupJoinRequestCard } from "./chat/GroupJoinRequestCard";
 import { useCancelPlan, useChatPlans, useChatPlansRealtime, useLockPlan, useUpdatePlan } from "../hooks/useChatPlans";
-import { chatPlanKindOf, formatPlanTime, planHeaderInputs, planQuoteNote, viewerQuoteSnapshot } from "./chat/planModel";
+import {
+  chatPlanKindOf,
+  formatPlanTime,
+  placeExpansionPayload,
+  placeLinkTarget,
+  planHeaderInputs,
+  planPlaceTarget,
+  planQuoteFallbackKey,
+  planQuoteNote,
+  viewerQuoteSnapshot,
+} from "./chat/planModel";
+import { PlanPlaceSuggestSheet } from "./chat/PlanPlaceSuggestSheet";
 import { toastManager } from "./ui/Toast";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -500,7 +512,20 @@ interface MessageInterfaceProps {
   onDmCollabChanged?: () => void;
 }
 
-export default function MessageInterface({
+/**
+ * Issue #4261 amendment 1 (6.4): every link in the chat (message links, plan
+ * links, place links, maps, documents) opens through the one in-app browser
+ * provider this wrapper mounts.
+ */
+export default function MessageInterface(props: MessageInterfaceProps): React.ReactElement {
+  return (
+    <InAppBrowserProvider>
+      <MessageInterfaceInner {...props} />
+    </InAppBrowserProvider>
+  );
+}
+
+function MessageInterfaceInner({
   friend,
   onBack,
   onSendMessage,
@@ -616,8 +641,17 @@ export default function MessageInterface({
   // sheet follows the live session even before it is active.
   const prefsSessionId: string | null = collabSessionId ?? (isDirectChat ? dmCollabSession?.id ?? null : null);
   const headerTitle = cleanName(friend.name);
-  const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
-  const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
+  // Issue #4261 amendment 1 (B-4): one owner for who is in the chat now, the
+  // live participants query; the chat-open snapshot only until it loads.
+  const participantsQuery = useConversationParticipants(conversationId, currentUserId);
+  const liveParticipants = isGroupChat ? participantsQuery.data : undefined;
+  const headerParticipants = useMemo(
+    () => liveGroupMembers(friend.participants ?? [], liveParticipants, currentUserId),
+    [currentUserId, friend.participants, liveParticipants],
+  );
+  const headerParticipantCount = liveParticipants !== undefined
+    ? headerParticipants.length
+    : friend.participantCount ?? headerParticipants.length;
   // Issue #4114 QA (P3): the avatar stack shows the other members, never you.
   const headerStack = useMemo(
     () => headerAvatarStack(headerParticipants, headerParticipantCount, currentUserId),
@@ -705,8 +739,8 @@ export default function MessageInterface({
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [viewOncePhotoUrl, setViewOncePhotoUrl] = useState<string | null>(null);
   const [activeViewOnceMessage, setActiveViewOnceMessage] = useState<Message | null>(null);
-  // Issue #4114 QA run 2: a link tapped in a text bubble opens here.
-  const [linkBrowserUrl, setLinkBrowserUrl] = useState<string | null>(null);
+  // Issue #4261 amendment 1: links open in Mingla's in-app browser (the wrapper's provider).
+  const browser = useOpenInMingla();
   const [viewOnceVideoUrl, setViewOnceVideoUrl] = useState<string | null>(null);
   const [openedViewOnce, setOpenedViewOnce] = useState<Record<string, true>>({});
   const openingViewOnceRef = useRef<string | null>(null);
@@ -744,7 +778,6 @@ export default function MessageInterface({
   const [isSavingSharedCard, setIsSavingSharedCard] = useState(false);
   const [sharedCardIsSaved, setSharedCardIsSaved] = useState(false);
   const savedCardsQuery = useSavedCards(currentUserId ?? undefined);
-  const participantsQuery = useConversationParticipants(conversationId, currentUserId);
   const chatCardTagSource = useChatCardTagSource({
     conversationType: isGroupChat ? "group" : "direct",
     sessionId: friend.sessionId ?? null,
@@ -803,6 +836,12 @@ export default function MessageInterface({
     isCollabSessionGroupChat,
   ]);
   const queryClient = useQueryClient();
+  // Amendment 1 (B-4): a "joined" / "added" group row arriving refetches who is in the chat.
+  const groupJoinKey = useMemo(() => (isGroupChat ? groupJoinEventKey(messages) : ""), [isGroupChat, messages]);
+  useEffect(() => {
+    if (!conversationId || !groupJoinKey) return;
+    void queryClient.invalidateQueries({ queryKey: chatKeys.participants(conversationId) });
+  }, [conversationId, groupJoinKey, queryClient]);
   // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
   // Issue #4261: it also refreshes the plan list (a deck match is a plan).
   const handleMatchPromoted = useCallback(() => {
@@ -1507,21 +1546,8 @@ export default function MessageInterface({
         Alert.alert(t('social:error'), t('chat:errorDocumentUrl'));
         return;
       }
-      try {
-        await WebBrowser.openBrowserAsync(url, {
-          showTitle: true,
-          toolbarColor: "#eb7825",
-          enableBarCollapsing: false,
-        });
-      } catch (error) {
-        console.warn("In-app browser failed for a document, trying the system:", error);
-        const canOpen = await Linking.canOpenURL(url);
-        if (canOpen) {
-          await Linking.openURL(url);
-        } else {
-          Alert.alert(t('social:error'), t('chat:errorOpenDocument'));
-        }
-      }
+      // Amendment 1: the in-app overlay (no fallback that leaves Mingla; the provider toasts on failure).
+      browser.openDocument(url);
     } catch (error) {
       console.error("Error opening document:", error);
       Alert.alert(t('social:error'), t('chat:errorOpenDocumentGeneric'));
@@ -1634,9 +1660,9 @@ export default function MessageInterface({
     ),
     [currentUserId, currentUserName, participantsQuery.data],
   );
-  const handleLinkPress = useCallback((url: string) => {
-    setLinkBrowserUrl(url);
-  }, []);
+  const handleLinkPress = useCallback((url: string, title?: string) => {
+    browser.open(url, title);
+  }, [browser]);
   const handleLinkLongPress = useCallback((url: string) => {
     HapticFeedback.light();
     copyAddressText(url)
@@ -2460,8 +2486,15 @@ export default function MessageInterface({
       if (payload.event === 'time_added' && payload.startsAt) {
         return t('chat:plan_event_time_added', { name, time: formatPlanTime(payload.startsAt, i18n.language), title });
       }
+      if (payload.event === 'place_added' && payload.placeName) {
+        return t('chat:plan_event_place_added', { name, place: payload.placeName, title });
+      }
       if (payload.event === 'locked' && payload.scheduledAt) {
-        return t('chat:plan_event_locked', { name, time: formatPlanTime(payload.scheduledAt, i18n.language), title });
+        const time = formatPlanTime(payload.scheduledAt, i18n.language);
+        if (payload.placeVoted && payload.placeName) {
+          return t('chat:plan_event_locked_at_place', { name, time, place: payload.placeName, title });
+        }
+        return t('chat:plan_event_locked', { name, time, title });
       }
       if (payload.event === 'cancelled') return t('chat:plan_event_cancelled', { name, title });
       return fallback;
@@ -2486,7 +2519,13 @@ export default function MessageInterface({
   const startPlanReply = useCallback((plan: ChatPlan) => {
     const viaPlanId = !(plan.source === 'chat' && plan.messageId && plan.messageVisible);
     const note = planViewerId
-      ? planQuoteNote(viewerQuoteSnapshot(plan, planViewerId), i18n.language, undefined, (key, params) => t(`chat:${key}`, params))
+      ? planQuoteNote(
+          viewerQuoteSnapshot(plan, planViewerId),
+          i18n.language,
+          undefined,
+          (key, params) => t(`chat:${key}`, params),
+          t(`chat:${planQuoteFallbackKey(plan)}`),
+        )
       : '';
     setReplyingTo({
       messageId: viaPlanId ? '' : (plan.messageId as string),
@@ -2511,37 +2550,43 @@ export default function MessageInterface({
     return true;
   }, []);
 
+  /** A Mingla place opens its expanded card; returns false when it cannot. */
+  const openPoolPlaceCard = useCallback((card: Record<string, unknown> | null): boolean => {
+    if (!card) return false;
+    const target = expansionTargetFromSavedPayload(card);
+    if (target?.kind !== 'nightOut') return false;
+    setExpandedCardFromChat(target.data);
+    setShowExpandedCardFromChat(true);
+    return true;
+  }, []);
+
+  /**
+   * Amendment 1: a plan's place. A Mingla place opens its card; a place not on
+   * Mingla opens its own link, else the map, inside Mingla (never the maps app).
+   */
   const openPlanPlace = useCallback((plan: ChatPlan) => {
     const place = plan.place;
     if (!place) return;
-    if (place.poolId) {
-      const target = expansionTargetFromSavedPayload({
-        id: place.poolId,
-        placePoolId: place.poolId,
-        title: place.name ?? plan.title,
-        address: place.address ?? undefined,
-        image: place.photoUrl ?? undefined,
-        lat: place.lat ?? undefined,
-        lng: place.lng ?? undefined,
-        location: place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : undefined,
-      });
-      if (target?.kind === 'nightOut') {
-        setExpandedCardFromChat(target.data);
-        setShowExpandedCardFromChat(true);
-        return;
-      }
+    if (place.poolId && openPoolPlaceCard(placeExpansionPayload(place, plan.title))) return;
+    const target = planPlaceTarget({ ...plan, place: { ...place, poolId: null } }, mapsWebUrl);
+    if (!target || target.kind === 'mingla') {
+      toastManager.error(t('common:link_open_failed'));
+      return;
     }
-    const label = place.name ?? place.address ?? plan.title;
-    const hasCoords = place.lat != null && place.lng != null;
-    const query = encodeURIComponent(hasCoords ? label : place.address ?? label);
-    const url = Platform.OS === 'ios'
-      ? hasCoords ? `maps:?q=${query}&ll=${place.lat},${place.lng}` : `maps:?q=${query}`
-      : hasCoords ? `geo:${place.lat},${place.lng}?q=${place.lat},${place.lng}(${query})` : `geo:0,0?q=${query}`;
-    Linking.openURL(url).catch((error: unknown) => {
-      console.warn('[MessageInterface] could not open maps', error);
-      toastManager.error(t('chat:plan_action_failed'));
-    });
-  }, [t]);
+    browser.open(target.url, target.kind === 'link' ? target.label : place.name ?? undefined);
+  }, [browser, openPoolPlaceCard, t]);
+
+  /** A place on a plan's place vote (same rule as the plan's own place). */
+  const openPlanPlaceOption = useCallback((plan: ChatPlan, option: ChatPlanPlaceOption) => {
+    if (option.poolId && openPoolPlaceCard(placeExpansionPayload(option, plan.title))) return;
+    const target = placeLinkTarget({ ...option, poolId: null }, mapsWebUrl);
+    if (!target || target.kind === 'mingla') {
+      toastManager.error(t('common:link_open_failed'));
+      return;
+    }
+    browser.open(target.url, target.kind === 'link' ? target.label : option.name ?? undefined);
+  }, [browser, openPoolPlaceCard, t]);
+  const [planSuggestFor, setPlanSuggestFor] = useState<ChatPlan | null>(null);
 
   const planLockMutation = useLockPlan(planConversationId ?? '', planViewerId);
   const planUpdateMutation = useUpdatePlan(planConversationId ?? '');
@@ -2810,7 +2855,9 @@ export default function MessageInterface({
             onReply={startPlanReply}
             onOpenComments={setPlanCommentsFor}
             onOpenPlace={openPlanPlace}
+            onOpenPlaceOption={openPlanPlaceOption}
             onOpenLink={handleLinkPress}
+            onSuggestPlace={setPlanSuggestFor}
             onRequestLockTime={setPlanLockTimeFor}
             onLongPress={setPlanMenuFor}
             highlighted={highlightPlanId === cardPlanId}
@@ -3413,15 +3460,16 @@ export default function MessageInterface({
         onBlock={canBlockActiveViewOnceSender ? blockActiveViewOnceSender : undefined}
         viewOnce
       />
-      <InAppBrowserModal
-        visible={linkBrowserUrl !== null}
-        url={linkBrowserUrl ?? ''}
-        title={linkBrowserUrl ?? ''}
-        onClose={() => setLinkBrowserUrl(null)}
-      />
       {/* Issue #4261: the plan form, a plan's long-press menu, its edit dialog and "Lock it in" with no time vote. */}
       {planConversationId ? (
         <>
+          <PlanPlaceSuggestSheet
+            visible={planSuggestFor !== null}
+            onClose={() => setPlanSuggestFor(null)}
+            conversationId={planConversationId}
+            plan={planSuggestFor}
+            viewerId={planViewerId}
+          />
           <PlanCommentsSheet
             plan={planCommentsFor}
             onClose={() => setPlanCommentsFor(null)}

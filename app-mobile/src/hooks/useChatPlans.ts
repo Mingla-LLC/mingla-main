@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { planKeys, groupLinkKeys } from './queryKeys';
 import {
   addPlanOption,
+  addPlanPlace,
   cancelPlan,
   ChatPlanError,
   createPlan,
@@ -23,6 +24,8 @@ import {
   lockPlan,
   notifyDeckPlanLocked,
   notifyPlanMessage,
+  requestLinkPreview,
+  setPlanPlaceVote,
   setPlanReaction,
   setPlanRsvp,
   setPlanVote,
@@ -32,9 +35,11 @@ import {
 import { realtimeService } from '../services/realtimeService';
 import { toastManager } from '../components/ui/Toast';
 import {
+  applyPlaceVotePatch,
   applyReactionPatch,
   applyRsvpPatch,
   applyVotePatch,
+  lockPlaceOptionId,
   planErrorKey,
   type PlanAction,
 } from '../components/chat/planModel';
@@ -42,6 +47,8 @@ import type {
   ChatPlan,
   ChatPlansPayload,
   PlanAddOptionResult,
+  PlanAddPlaceInput,
+  PlanAddPlaceResult,
   PlanCreateInput,
   PlanCreateResult,
   PlanLockResult,
@@ -136,7 +143,9 @@ export function useCreatePlan(conversationId: string, senderId: string | null | 
   const toastError = usePlanErrorToast();
   return useMutation<PlanCreateResult, unknown, { input: PlanCreateInput; previewTitle: string }>({
     mutationFn: ({ input }) => createPlan(input),
-    onSuccess: (result, { previewTitle }) => {
+    onSuccess: (result, { input, previewTitle }) => {
+      // Amendment 1 (5.9): the server reads the link's preview; never blocks posting.
+      if (result.created && input.linkUrl) requestLinkPreview(result.planId);
       if (result.created && senderId) {
         notifyPlanMessage({
           senderId,
@@ -161,6 +170,41 @@ export function useAddPlanTime(conversationId: string) {
       if (result.existed) toastManager.info(t('chat:plan_time_exists_toast'));
     },
     onError: (error, { plan }) => toastError(error, 'addTime', plan),
+    onSettled: () => settle(queryClient, conversationId),
+  });
+}
+
+/** Amendment 1: suggest a place (not optimistic; the Add button spins). */
+export function useAddPlanPlace(conversationId: string) {
+  const queryClient = useQueryClient();
+  const toastError = usePlanErrorToast();
+  const { t } = useTranslation(['chat']);
+  return useMutation<PlanAddPlaceResult, unknown, { plan: ChatPlan; input: PlanAddPlaceInput }>({
+    mutationFn: ({ input }) => addPlanPlace(input),
+    onSuccess: (result, { plan, input }) => {
+      if (result.existed) {
+        toastManager.info(t('chat:plan_place_exists_toast'));
+        return;
+      }
+      if (input.linkUrl) requestLinkPreview(plan.id);
+    },
+    onError: (error, { plan }) => toastError(error, 'addPlace', plan),
+    onSettled: () => settle(queryClient, conversationId),
+  });
+}
+
+/** Amendment 1: a place vote, optimistic with rollback. */
+export function useSetPlanPlaceVote(conversationId: string) {
+  const queryClient = useQueryClient();
+  const toastError = usePlanErrorToast();
+  return useMutation<unknown, unknown, { optionId: string; on: boolean; viewerId: string }, OptimisticContext>({
+    mutationFn: ({ optionId, on }) => setPlanPlaceVote(optionId, on),
+    onMutate: ({ optionId, on, viewerId }) =>
+      patchCache(queryClient, conversationId, (payload) => applyPlaceVotePatch(payload, optionId, viewerId, on)),
+    onError: (error, _vars, context) => {
+      rollback(queryClient, conversationId, context);
+      toastError(error, 'placeVote');
+    },
     onSettled: () => settle(queryClient, conversationId),
   });
 }
@@ -215,7 +259,13 @@ export function useLockPlan(conversationId: string, viewerId: string | null | un
   const toastError = usePlanErrorToast();
   return useMutation<PlanLockResult, unknown, { plan: ChatPlan; optionId?: string; scheduledAt?: string }>({
     mutationFn: ({ plan, optionId, scheduledAt }) =>
-      lockPlan({ planId: plan.id, optionId: optionId ?? null, scheduledAt: scheduledAt ?? null }),
+      lockPlan({
+        planId: plan.id,
+        optionId: optionId ?? null,
+        scheduledAt: scheduledAt ?? null,
+        // Amendment 1 (5.5): the leading place the card shows wins with the time.
+        placeOptionId: lockPlaceOptionId(plan),
+      }),
     onSuccess: (result, { plan }) => {
       if (viewerId) void queryClient.invalidateQueries({ queryKey: ['calendarEntries', viewerId] });
       if (plan.sessionId) {

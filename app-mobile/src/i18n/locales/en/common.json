@@ -190,5 +190,6 @@
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Something went wrong",
   "error_boundary_message": "We encountered an unexpected error. Please try again.",
-  "keep": "Keep"
+  "keep": "Keep",
+  "link_open_failed": "Couldn't open that link."
 }
