@@ -23,6 +23,8 @@ module.exports = {
     // #3682 wave 2 push composer proof: same preset, run by CI through this
     // config (#1486 — a config no workflow runs guards nothing).
     "**/__tests__/issue_3682_push_campaign.render.test.tsx",
+    // #3682 closeout: the composer carries the subject once (email + push).
+    "**/__tests__/issue_3682_subject_once.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",
