@@ -49,11 +49,13 @@ jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 
 import { supabase } from "../../../services/supabase";
 import {
-  confirmMarketingBook,
   MarketingBookSendError,
-  previewMarketingBook,
   sendNow,
 } from "../../../services/marketing/marketingCampaignService";
+import {
+  confirmMarketingBook,
+  previewMarketingBook,
+} from "../../../services/marketing/marketingBookSendService";
 import {
   getBookBlastDisabledReason,
   isBookBlastFeatureReady,
@@ -331,6 +333,8 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
     mode: "sent",
     delivered: 1,
     deferred: 0,
+    // #3682 wave 3 — the result now carries provider failures (0 here).
+    failed: 0,
     skippedAfterConfirm: 0,
   });
 
@@ -426,6 +430,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
     mode: "deferred",
     delivered: 0,
     deferred: 1,
+    failed: 0,
     skippedAfterConfirm: 0,
   });
 
@@ -444,6 +449,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
     mode: "scheduled",
     delivered: 0,
     deferred: 0,
+    failed: 0,
     skippedAfterConfirm: 0,
   });
 
@@ -462,6 +468,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
     mode: "in_progress",
     delivered: 0,
     deferred: 0,
+    failed: 0,
     skippedAfterConfirm: 0,
   });
 
@@ -493,6 +500,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
     mode: "sent",
     delivered: 0,
     deferred: 0,
+    failed: 0,
     skippedAfterConfirm: 1,
   });
 });

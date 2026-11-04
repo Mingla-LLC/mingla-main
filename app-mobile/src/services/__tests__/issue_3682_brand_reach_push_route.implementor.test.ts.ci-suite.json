@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_3682_brand_reach_push_route.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3682-brand-reach-push-route",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

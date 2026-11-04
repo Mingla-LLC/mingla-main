@@ -182,6 +182,15 @@ jest.mock("../../components/profile/BrandFollowOverflowSheet", () => ({
 jest.mock("../../components/profile/BrandsYouFollowManageSheet", () => ({
   BrandsYouFollowManageSheet: () => null,
 }));
+// #3682 wave 3: the Friends-of-followers foot row reads its state through
+// the Supabase client, whose module scope loads expo-constants. Off here.
+jest.mock("../../hooks/useFriendsReach", () => ({
+  useFriendsReach: () => ({ controlsLive: false, state: null }),
+}));
+jest.mock("../../components/profile/BrandFriendsReachFootRow", () => ({
+  BrandFriendsReachFootRow: () => null,
+  shouldShowBrandFriendsReachRow: () => false,
+}));
 
 // The two real route files a brand link resolves to.
 import BrandShortRoute from "../../../app/b/[slug]";

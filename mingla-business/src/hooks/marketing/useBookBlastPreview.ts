@@ -2,7 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   confirmMarketingBook,
   previewMarketingBook,
-} from "../../services/marketing/marketingCampaignService";
+} from "../../services/marketing/marketingBookSendService";
 import type { MarketingBookQuote } from "../../types/marketing";
 
 interface FeatureResolution {

@@ -13,4 +13,7 @@ export const brandFollowKeys = {
       [...brandIds].sort().join(","),
     ] as const,
   followerCountsAll: ["consumerBrand", "followerCounts"] as const,
+  // #3682 wave 3 — Friends of followers opt-in + brands the guest stopped.
+  friendsReach: (userId: string) =>
+    ["consumerBrand", "friendsReach", userId] as const,
 };

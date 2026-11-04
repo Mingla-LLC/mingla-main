@@ -56,11 +56,13 @@ describe("ORCH-1281 — SmsPreviewPane channel-branch", () => {
   });
 
   it("passes channel-aware review props (MESSAGE row) to ComposerReviewSheet", () => {
-    expect(COMPOSE).toMatch(/channelKind=\{channel === "sms" \? "sms" : "email"\}/);
+    // [TEST-MOD-APPROVED #3682] wave 2 — the review takes the lead channel
+    // (email | sms | push); SMS still previews the wire body.
+    expect(COMPOSE).toMatch(/channelKind=\{channel\}/);
     // [TEST-MOD-APPROVED #3682] Review sheet previews Follow+STOP wire body,
     // same owner as SmsPreviewPane / Book quote / dispatch.
     expect(COMPOSE).toMatch(
-      /messagePreview=\{bodyWithFooter\(\s*smsBlastBodyWithFollow\(smsBody/,
+      /messagePreview=\{channel === "push"[\s\S]{0,80}bodyWithFooter\(\s*smsBlastBodyWithFollow\(smsBody/,
     );
   });
 

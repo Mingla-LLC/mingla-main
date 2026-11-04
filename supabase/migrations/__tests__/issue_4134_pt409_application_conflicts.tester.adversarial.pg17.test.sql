@@ -375,6 +375,261 @@ LANGUAGE sql STABLE AS $fn$
 $fn$;
 
 -------------------------------------------------------------------------------
+-- Targets a later migration has superseded. On the full chain, #3682
+-- (20280401033682_issue_3682_account_invite_recipients.sql) re-defines two of
+-- the 77 targets, so a replay of this file correctly refuses them as "moved
+-- on" (that refusal is T4-8). T3 and T4 prove the replay contract against the
+-- definitions this file generates, so the two are put back here, verbatim from
+-- section B of the migration, and the later definitions are restored and
+-- md5-checked once T4 is done. A target superseded by a further migration is
+-- added to this list the same way.
+-------------------------------------------------------------------------------
+CREATE TEMP TABLE t4134_superseded AS
+SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS def_md5
+  FROM pg_catalog.pg_proc AS p
+ WHERE p.oid IN ('private.enqueue_wizard_invites_on_publish_v1(uuid,bigint,boolean)'::regprocedure,
+                 'public.biz_replace_offering_invite_plan_v1(uuid,jsonb,bigint,uuid)'::regprocedure);
+
+BEGIN;
+SET LOCAL search_path TO pg_catalog, pg_temp;
+CREATE OR REPLACE FUNCTION private.enqueue_wizard_invites_on_publish_v1(p_event_id uuid, p_expected_revision bigint, p_confirmed boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog'
+AS $function$
+DECLARE v_plan private.brand_offering_invite_plans%ROWTYPE;
+  v_selection_id uuid; v_outbox_id uuid; v_outbox_state text;
+  v_selected_count integer; v_ids uuid[];
+BEGIN
+  SELECT * INTO v_plan FROM private.brand_offering_invite_plans
+    WHERE event_id=p_event_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('inviteDelivery',jsonb_build_object(
+      'planned',false,'selectedCount',0,'status','not_requested'));
+  END IF;
+  SELECT COALESCE(array_agg(m.brand_person_id ORDER BY m.brand_person_id),'{}'::uuid[])
+    INTO v_ids
+  FROM private.brand_offering_invite_plan_members m
+  WHERE m.plan_id=v_plan.id;
+  v_selected_count:=cardinality(v_ids);
+  IF v_plan.state='locked' THEN
+    SELECT o.id,o.state INTO v_outbox_id,v_outbox_state
+    FROM private.brand_offering_invite_selections s
+    LEFT JOIN private.brand_offering_invite_outbox o ON o.plan_id=v_plan.id
+      AND o.selection_revision=s.selection_revision
+    WHERE s.event_id=p_event_id AND s.selection_revision=v_plan.published_selection_revision;
+    RETURN jsonb_build_object('inviteDelivery',jsonb_build_object(
+      'planned',v_selected_count>0,
+      'selectedCount',v_selected_count,
+      'selectionRevision',v_plan.published_selection_revision,
+      'outboxJobId',v_outbox_id,'status',COALESCE(v_outbox_state,'empty')));
+  END IF;
+  IF v_selected_count=0 THEN
+    UPDATE private.brand_offering_invite_plans SET
+      state='locked',published_selection_revision=selection_revision,locked_at=now(),updated_at=now()
+    WHERE event_id=p_event_id;
+    RETURN jsonb_build_object('inviteDelivery',jsonb_build_object(
+      'planned',false,'selectedCount',0,'selectionRevision',v_plan.selection_revision,'status','empty'));
+  END IF;
+  IF NOT COALESCE(p_confirmed,false) OR p_expected_revision IS NULL
+     OR p_expected_revision<>v_plan.selection_revision THEN
+    RAISE EXCEPTION 'wizard_invite_publish_confirmation_required' USING ERRCODE='PT409';
+  END IF;
+  IF EXISTS(SELECT 1 FROM unnest(v_ids) pid
+    LEFT JOIN public.brand_people bp ON bp.id=pid AND bp.brand_id=v_plan.brand_id AND bp.record_status='active'
+    WHERE bp.id IS NULL) THEN
+    RAISE EXCEPTION 'wizard_invite_selection_stale' USING ERRCODE='PT409';
+  END IF;
+  INSERT INTO private.brand_offering_invite_selections(
+    event_id,brand_id,event_type,selection_revision,brand_person_ids,selection_hash,actor_id)
+  VALUES(p_event_id,v_plan.brand_id,v_plan.event_type,v_plan.selection_revision,
+    v_ids,v_plan.selection_hash,v_plan.updated_by)
+  ON CONFLICT(event_id,selection_revision) DO UPDATE SET event_id=EXCLUDED.event_id
+  RETURNING id INTO v_selection_id;
+  INSERT INTO private.brand_offering_invite_outbox(
+    plan_id,brand_id,event_id,event_type,selection_revision,operation_key,sealed_selection_id)
+  VALUES(v_plan.id,v_plan.brand_id,p_event_id,v_plan.event_type,v_plan.selection_revision,
+    'wizard:v1:'||v_plan.event_type||':'||p_event_id::text||':'||v_plan.selection_revision::text,
+    v_selection_id)
+  ON CONFLICT(event_id,selection_revision) DO UPDATE
+    SET operation_key=EXCLUDED.operation_key
+  RETURNING id,state INTO v_outbox_id,v_outbox_state;
+  INSERT INTO private.brand_offering_invite_observability_events(
+    event_name,outbox_job_id,offering_kind,selection_revision,selected_count,job_state)
+  VALUES('wizard_invite_outbox_enqueued',v_outbox_id,v_plan.event_type,
+    v_plan.selection_revision,v_selected_count,v_outbox_state)
+  ON CONFLICT(outbox_job_id) DO NOTHING;
+  UPDATE private.brand_offering_invite_plans SET
+    state='locked',published_selection_revision=selection_revision,locked_at=now(),updated_at=now()
+  WHERE event_id=p_event_id;
+  RETURN jsonb_build_object('inviteDelivery',jsonb_build_object(
+    'planned',true,'selectedCount',v_selected_count,
+    'selectionRevision',v_plan.selection_revision,'outboxJobId',v_outbox_id,'status',v_outbox_state));
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.biz_replace_offering_invite_plan_v1(p_event_id uuid, p_selection jsonb, p_expected_revision bigint, p_client_request_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid(); v_scope record; v_plan private.brand_offering_invite_plans%ROWTYPE;
+  v_plan_id uuid;
+  v_ids uuid[] := '{}'; v_explicit uuid[] := '{}'; v_excluded uuid[] := '{}';
+  v_groups uuid[] := '{}'; v_everyone boolean; v_followers boolean; v_friends boolean;
+  v_request_hash text; v_legacy_hash text;
+  v_prior private.brand_offering_invite_mutation_receipts%ROWTYPE; v_result jsonb;
+  v_rings text[] := '{}'; v_keys text[]; v_flags boolean;
+  v_raw_selection jsonb; v_legacy_shape boolean := false;
+BEGIN
+  SELECT * INTO v_scope FROM private.issue_1780_event_scope(p_event_id, v_actor);
+  IF p_client_request_id IS NULL OR p_expected_revision IS NULL OR p_expected_revision < 0
+     OR jsonb_typeof(p_selection) <> 'object' THEN
+    RAISE EXCEPTION 'wizard_invite_selection_invalid' USING ERRCODE = '22023';
+  END IF;
+  v_raw_selection := p_selection;
+  v_keys := ARRAY(SELECT jsonb_object_keys(p_selection) ORDER BY 1);
+  IF v_keys = ARRAY[
+       'excludedPersonIds', 'includeEveryone', 'manualGroupIds', 'personIds'
+     ]::text[] THEN
+    v_legacy_shape := true;
+    p_selection := p_selection || jsonb_build_object(
+      'includeFollowers', false,
+      'includeFriendsOfFollowers', false);
+  ELSIF v_keys <> ARRAY[
+       'excludedPersonIds',
+       'includeEveryone',
+       'includeFollowers',
+       'includeFriendsOfFollowers',
+       'manualGroupIds',
+       'personIds'
+     ]::text[] THEN
+    RAISE EXCEPTION 'wizard_invite_selection_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF jsonb_typeof(p_selection -> 'manualGroupIds') <> 'array'
+     OR jsonb_typeof(p_selection -> 'personIds') <> 'array'
+     OR jsonb_typeof(p_selection -> 'excludedPersonIds') <> 'array'
+     OR jsonb_typeof(p_selection -> 'includeEveryone') <> 'boolean'
+     OR jsonb_typeof(p_selection -> 'includeFollowers') <> 'boolean'
+     OR jsonb_typeof(p_selection -> 'includeFriendsOfFollowers') <> 'boolean' THEN
+    RAISE EXCEPTION 'wizard_invite_selection_invalid' USING ERRCODE = '22023';
+  END IF;
+  BEGIN
+    SELECT COALESCE(array_agg(DISTINCT x::uuid ORDER BY x::uuid), '{}') INTO v_explicit
+      FROM jsonb_array_elements_text(p_selection -> 'personIds') x;
+    SELECT COALESCE(array_agg(DISTINCT x::uuid ORDER BY x::uuid), '{}') INTO v_groups
+      FROM jsonb_array_elements_text(p_selection -> 'manualGroupIds') x;
+    SELECT COALESCE(array_agg(DISTINCT x::uuid ORDER BY x::uuid), '{}') INTO v_excluded
+      FROM jsonb_array_elements_text(p_selection -> 'excludedPersonIds') x;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'wizard_invite_selection_invalid' USING ERRCODE = '22023';
+  END;
+  v_everyone := (p_selection ->> 'includeEveryone')::boolean;
+  v_followers := (p_selection ->> 'includeFollowers')::boolean;
+  v_friends := (p_selection ->> 'includeFriendsOfFollowers')::boolean;
+  IF v_followers THEN
+    v_rings := array_append(v_rings, 'follower');
+  END IF;
+  IF v_friends THEN
+    v_rings := array_append(v_rings, 'extended');
+  END IF;
+  v_request_hash := encode(extensions.digest(convert_to(
+    jsonb_build_object('expectedRevision', p_expected_revision, 'selection', p_selection)::text, 'UTF8'), 'sha256'), 'hex');
+  IF v_legacy_shape THEN
+    v_legacy_hash := encode(extensions.digest(convert_to(
+      jsonb_build_object('expectedRevision', p_expected_revision, 'selection', v_raw_selection)::text, 'UTF8'), 'sha256'), 'hex');
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_event_id::text, 1780));
+  SELECT * INTO v_prior FROM private.brand_offering_invite_mutation_receipts
+    WHERE event_id = p_event_id AND client_request_id = p_client_request_id;
+  IF FOUND THEN
+    IF v_prior.actor_id = v_actor AND (
+         v_prior.request_hash = v_request_hash
+         OR (v_legacy_shape AND v_prior.request_hash = v_legacy_hash)
+       ) THEN
+      RETURN v_prior.response_json || jsonb_build_object('replayed', true);
+    END IF;
+    RAISE EXCEPTION 'wizard_invite_idempotency_conflict' USING ERRCODE = '23505';
+  END IF;
+  IF v_scope.event_deleted OR v_scope.event_status <> 'draft' OR v_scope.event_visibility <> 'draft' THEN
+    RAISE EXCEPTION 'wizard_invite_offering_not_draft' USING ERRCODE = '55000';
+  END IF;
+  IF NOT COALESCE((SELECT is_enabled FROM public.feature_flags
+      WHERE flag_key = 'business_wizard_invite_selection_v1'), false) THEN
+    RAISE EXCEPTION 'wizard_invite_feature_disabled' USING ERRCODE = '55000';
+  END IF;
+  IF v_followers THEN
+    SELECT count(*) = 1 AND bool_and(is_enabled) INTO v_flags
+      FROM public.feature_flags WHERE flag_key = 'brand_circle_followers_v1';
+    IF NOT COALESCE(v_flags, false) THEN
+      RAISE EXCEPTION 'wizard_invite_circle_unavailable' USING ERRCODE = '55000';
+    END IF;
+  END IF;
+  IF v_friends THEN
+    SELECT count(*) = 3 AND bool_and(is_enabled) INTO v_flags
+      FROM public.feature_flags
+     WHERE flag_key IN (
+       'brand_circle_extended_v1',
+       'brand_circle_extended_controls_ios_v1',
+       'brand_circle_extended_controls_android_v1');
+    IF NOT COALESCE(v_flags, false) THEN
+      RAISE EXCEPTION 'wizard_invite_circle_unavailable' USING ERRCODE = '55000';
+    END IF;
+  END IF;
+  IF EXISTS(SELECT 1 FROM unnest(v_groups) gid LEFT JOIN public.marketing_audiences a
+      ON a.id = gid AND a.brand_id = v_scope.brand_id AND a.deleted_at IS NULL
+      AND NOT a.is_system_generated AND a.query_definition = '{"kind":"manual_group"}'::jsonb
+      WHERE a.id IS NULL)
+     OR EXISTS(SELECT 1 FROM unnest(v_explicit || v_excluded) pid LEFT JOIN public.brand_people bp
+      ON bp.id = pid AND bp.brand_id = v_scope.brand_id AND bp.record_status = 'active' WHERE bp.id IS NULL) THEN
+    RAISE EXCEPTION 'wizard_invite_selection_stale' USING ERRCODE = 'PT409';
+  END IF;
+  SELECT COALESCE(array_agg(id ORDER BY id), '{}') INTO v_ids FROM (
+    SELECT bp.id FROM public.brand_people bp
+      WHERE v_everyone AND bp.brand_id = v_scope.brand_id AND bp.record_status = 'active'
+    UNION
+    SELECT bp.id FROM unnest(v_explicit) requested(id)
+      JOIN public.brand_people bp ON bp.id = requested.id AND bp.brand_id = v_scope.brand_id AND bp.record_status = 'active'
+    UNION
+    SELECT bp.id FROM public.marketing_manual_group_memberships gm
+      JOIN public.brand_people bp ON bp.id = gm.brand_person_id AND bp.brand_id = gm.brand_id AND bp.record_status = 'active'
+      WHERE gm.audience_id = ANY (v_groups) AND gm.brand_id = v_scope.brand_id AND gm.state = 'active'
+    UNION
+    SELECT person_id FROM private.issue_3682_circle_invite_person_ids(v_scope.brand_id, v_rings) person_id
+  ) selected WHERE NOT (id = ANY (v_excluded));
+  IF cardinality(v_ids) > 500 THEN RAISE EXCEPTION 'wizard_invite_selection_too_large' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO v_plan FROM private.brand_offering_invite_plans WHERE event_id = p_event_id FOR UPDATE;
+  IF FOUND AND v_plan.state = 'locked' THEN RAISE EXCEPTION 'wizard_invite_plan_locked' USING ERRCODE = '55000'; END IF;
+  IF COALESCE(v_plan.selection_revision, 0) <> p_expected_revision THEN
+    RAISE EXCEPTION 'wizard_invite_revision_conflict' USING ERRCODE = 'PT409',
+      DETAIL = jsonb_build_object('currentRevision', COALESCE(v_plan.selection_revision, 0))::text;
+  END IF;
+  INSERT INTO private.brand_offering_invite_plans(
+    event_id, brand_id, event_type, selection_revision, selection_hash, created_by, updated_by)
+  VALUES (p_event_id, v_scope.brand_id, v_scope.event_type, p_expected_revision + 1,
+    private.issue_1780_selection_hash(v_ids), v_actor, v_actor)
+  ON CONFLICT (event_id) DO UPDATE SET
+    selection_revision = EXCLUDED.selection_revision,
+    selection_hash = EXCLUDED.selection_hash, updated_by = EXCLUDED.updated_by, updated_at = now()
+  RETURNING id INTO v_plan_id;
+  DELETE FROM private.brand_offering_invite_plan_members
+  WHERE plan_id = v_plan_id;
+  INSERT INTO private.brand_offering_invite_plan_members(
+    plan_id, brand_person_id, added_by)
+  SELECT v_plan_id, id, v_actor FROM unnest(v_ids) selected(id);
+  v_result := private.issue_1780_plan_response(p_event_id) || jsonb_build_object('replayed', false);
+  INSERT INTO private.brand_offering_invite_mutation_receipts(event_id, client_request_id, actor_id, request_hash, response_json)
+    VALUES (p_event_id, p_client_request_id, v_actor, v_request_hash, v_result);
+  RETURN v_result;
+END;
+$function$
+;
+COMMIT;
+
+-------------------------------------------------------------------------------
 -- T3: applying the migration again changes nothing. CREATE OR REPLACE writes
 -- each target's pg_proc row again, so "nothing" means: every function keeps
 -- its oid, definition, owner, grants and comment, and the only rows written
@@ -629,6 +884,25 @@ DROP EVENT TRIGGER issue_4134_tester_break_target;
 DROP SCHEMA issue_4134_tester CASCADE;
 DROP TABLE t4134_procs;
 DROP TABLE t4134_saved;
+
+-- Restore the definitions the later migration left, exactly.
+DO $t4_restore_superseded$
+DECLARE
+  r record;
+  v_bad text;
+BEGIN
+  FOR r IN SELECT def FROM t4134_superseded LOOP
+    EXECUTE r.def;
+  END LOOP;
+  SELECT string_agg(s.oid::regprocedure::text, ', ') INTO v_bad
+    FROM t4134_superseded AS s
+   WHERE md5(pg_temp.t4134_def(s.oid)) IS DISTINCT FROM s.def_md5;
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'ISSUE-4134-T restore FAIL: the later definition did not come back exactly: %', v_bad;
+  END IF;
+END
+$t4_restore_superseded$;
+DROP TABLE t4134_superseded;
 
 DO $t4_after$
 DECLARE v_bad text;

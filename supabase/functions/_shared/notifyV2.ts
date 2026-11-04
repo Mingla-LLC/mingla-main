@@ -47,6 +47,8 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "./issue4111EnquiryNotifications.ts";
+// #3682 wave 3 — the brand invite email's button and manage note.
+import { brandReachEmailCta } from "./brandReachMessages.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -156,6 +158,10 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     stay_refund_state: ["stay_group_id", "venue_id", "refund_record_id"],
     stay_reconciliation_attention: ["stay_group_id", "venue_id"],
     stay_reservation_reminder: ["stay_group_id", "venue_id"],
+    // #3682 wave 2 — Explorer routes these to the brand / offering page from
+    // the public slugs; the receive reason is not personal data.
+    brand_offering_invite: ["brand_slug", "event_slug", "reason"],
+    brand_campaign_push: ["brand_slug", "event_slug", "reason", "campaign_id"],
   };
 
 // #3392 — the email body and button for a send that carries `email_cta`.
@@ -603,7 +609,8 @@ export async function dispatchV2(
   // Admin page for the item, derived from the validated link only.
   const emailCta = input.email_cta ??
     issue3988EmailCta(input.category_key, input.deep_link, input.payload) ??
-    issue4111EmailCta(input.category_key, input.payload);
+    issue4111EmailCta(input.category_key, input.payload) ??
+    brandReachEmailCta(input.category_key, input.payload);
   for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
     // #3988 — push for a Host reply or a new product signal is decided per
