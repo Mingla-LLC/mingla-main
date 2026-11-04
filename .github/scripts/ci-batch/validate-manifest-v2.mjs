@@ -354,7 +354,8 @@ export function phase3dContractDigest(manifest) {
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #4271: the door pay migration and its proof join the preserved inventories, and the
 // migration joins the pre-#1931 replay's exact-file exclusion (#2492).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "d885194ff59817cc0ec1fb6b865dcdbfede0e6a02e997fe21e6223f34dfe6eff";
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "cae9677a7932897016dbe206a2928fc7f8aa19ef535225e8ce0288fd4ac812f3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

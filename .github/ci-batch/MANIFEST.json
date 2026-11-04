@@ -20646,6 +20646,8 @@
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_door_pay.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_door_pay.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -25518,6 +25520,8 @@
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_door_pay.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_door_pay.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -52790,5 +52794,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "d885194ff59817cc0ec1fb6b865dcdbfede0e6a02e997fe21e6223f34dfe6eff"
+  "phase3eContractSha256": "cae9677a7932897016dbe206a2928fc7f8aa19ef535225e8ce0288fd4ac812f3"
 }

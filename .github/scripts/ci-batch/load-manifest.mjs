@@ -141,7 +141,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #4271: re-sealed after the door pay migration and proof entered the preserved
 // inventories and the migration joined the pre-#1931 replay skip list by exact filename.
-export const BOOTSTRAP_SHA256 = "186eb388db549e1f42dc7c626090a721e895f33fb8f2da298133889c6d0c5ccb";
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+export const BOOTSTRAP_SHA256 = "f9f4c89f36137b5fddfa7ed934f485704d93cce76885b4d0fd92b808273874bc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
