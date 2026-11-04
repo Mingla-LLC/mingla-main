@@ -26,6 +26,10 @@
 import { supabase } from "./supabase";
 import type { BrandRole } from "../utils/brandRole";
 import {
+  parseBrandTeamDirectory,
+  type BrandTeamDirectoryEntry,
+} from "../utils/brandTeamMemberIdentity";
+import {
   BrandInvitationServiceError,
   parseFunctionsError,
   type BrandInvitationRow,
@@ -105,6 +109,9 @@ export const brandTeamMemberKeys = {
   all: ["brand-team-members"] as const,
   list: (brandId: string): readonly ["brand-team-members", "list", string] =>
     ["brand-team-members", "list", brandId] as const,
+  /** issue #4271 — accepted members' names and emails (biz_brand_team_members). */
+  directory: (brandId: string): readonly ["brand-team-members", "directory", string] =>
+    ["brand-team-members", "directory", brandId] as const,
 };
 
 // ---------- Mutations ----------
@@ -378,6 +385,26 @@ export async function listBrandTeamMembers(
 ): Promise<BrandTeamMemberRow[]> {
   const venueAccess = await import("./brandVenueAccessService");
   return venueAccess.listBrandTeamMembersWithVenueGrants(brandId);
+}
+
+/**
+ * issue #4271 — accepted members' display names and emails, from wherever the
+ * server keeps them (SECURITY DEFINER rpc; any accepted member may call it).
+ */
+export async function listBrandTeamMemberDirectory(
+  brandId: string,
+): Promise<BrandTeamDirectoryEntry[]> {
+  const { data, error } = await supabase.rpc("biz_brand_team_members", {
+    p_brand_id: brandId,
+  });
+  if (error) {
+    throw new BrandInvitationServiceError(
+      error.message?.includes("forbidden") ? "forbidden" : "server",
+      error.message?.includes("forbidden") ? 403 : 500,
+      "Couldn't load team names.",
+    );
+  }
+  return parseBrandTeamDirectory(data);
 }
 
 export async function updateBrandTeamMemberVenueGrants(

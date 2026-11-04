@@ -94,13 +94,13 @@ const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   apple_pay: "Apple Pay",
   google_pay: "Google Pay",
   free: "Free",
-  // Cycle 12 door methods — defensive fallbacks. I-29 means door payments
-  // never reach the online order detail surface; these labels exist only
-  // for type-exhaustiveness on the Record.
+  // Door methods. issue #4271 — card money taken at the door (Buyer's phone,
+  // Tap to pay) IS an online order and is refunded to the card from here.
   cash: "Cash",
-  card_reader: "Card reader",
-  nfc: "NFC tap",
   manual: "Manual",
+  card_reader: "Card reader",
+  pay_code: "Buyer's phone (door)",
+  tap_to_pay: "Tap to pay (door)",
 };
 
 const hashStringToHue = (s: string): number => {

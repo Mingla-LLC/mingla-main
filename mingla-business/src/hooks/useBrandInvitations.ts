@@ -29,6 +29,7 @@ import {
   listBrandInvitations,
   listMyPendingInvites,
   listBrandTeamMembers,
+  listBrandTeamMemberDirectory,
   BrandInvitationServiceError,
   removeBrandTeamMember,
   revokeBrandInvitation,
@@ -43,6 +44,7 @@ import { brandRoleKeys } from "./useCurrentBrandRole";
 import { brandKeys } from "./useBrands";
 import { businessNotificationKeys } from "./useBusinessNotifications";
 import { useAuth } from "../context/AuthContext";
+import type { BrandTeamDirectoryEntry } from "../utils/brandTeamMemberIdentity";
 
 // 30s — fresh enough that revoke/accept flips show up quickly; long enough
 // that re-renders don't refetch.
@@ -72,6 +74,24 @@ export const useBrandTeamMembers = (
     enabled: isAuthReady && brandId !== null,
     staleTime: STALE_TIME_MS,
     queryFn: () => listBrandTeamMembers(brandId as string),
+  });
+};
+
+/**
+ * issue #4271 — accepted members' names and emails, so the team screen never
+ * shows a raw user id. Same factory as the member list.
+ */
+export const useBrandTeamMemberDirectory = (
+  brandId: string | null,
+): UseQueryResult<BrandTeamDirectoryEntry[]> => {
+  const { isAuthReady } = useAuth();
+  return useQuery<BrandTeamDirectoryEntry[]>({
+    queryKey: brandId !== null
+      ? brandTeamMemberKeys.directory(brandId)
+      : ["brand-team-members-directory-disabled"],
+    enabled: isAuthReady && brandId !== null,
+    staleTime: STALE_TIME_MS,
+    queryFn: () => listBrandTeamMemberDirectory(brandId as string),
   });
 };
 

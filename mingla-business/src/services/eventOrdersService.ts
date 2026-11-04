@@ -61,6 +61,8 @@ export interface OrderRow {
   buyer_total_cents?: number | null;
   currency: string | null;
   payment_method: string;
+  /** issue #4271 — set on every door sale, including card money at the door. */
+  door_payment_method?: string | null;
   payment_status: string;
   confirmed_at: string | null;
   booked_start_at?: string | null;
@@ -155,10 +157,16 @@ const mapRefundRow = (row: RefundRow): RefundRecord => {
   };
 };
 
-const paymentMethodFromRow = (method: string): OrderRecord["paymentMethod"] => {
+export const paymentMethodFromRow = (
+  method: string,
+  doorMethod?: string | null,
+): OrderRecord["paymentMethod"] => {
+  // issue #4271 — card money taken at the door is an online-rail order; its
+  // door method (Buyer's phone / Tap to pay) is what the host recognises.
+  if (doorMethod === "pay_code" || doorMethod === "tap_to_pay") return doorMethod;
   if (method === "online_card") return "card";
   if (method === "apple_pay" || method === "google_pay" || method === "free") return method;
-  if (method === "nfc" || method === "card_reader" || method === "cash" || method === "manual") {
+  if (method === "card_reader" || method === "cash" || method === "manual") {
     return method;
   }
   return "card";
@@ -206,6 +214,7 @@ export const fetchEventOrders = async (
       buyer_total_cents,
       currency,
       payment_method,
+      door_payment_method,
       payment_status,
       confirmed_at,
       booked_start_at,
@@ -412,7 +421,7 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
         order.total_cents === 0 &&
         order.order_line_items.every((line) => line.total_cents === 0)
           ? "free"
-          : paymentMethodFromRow(order.payment_method),
+          : paymentMethodFromRow(order.payment_method, order.door_payment_method),
       paidAt: order.confirmed_at ?? order.created_at,
       status: statusFromPayment(order.payment_status),
       refundedAmountGbp: refundedAmountMajor,

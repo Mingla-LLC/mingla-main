@@ -18,7 +18,9 @@
  * D-13-10 (ORCH-0796 reframed): expectedPayoutMajor derived from real per-order Stripe
  * application-fee columns (orders.stripe_application_fee_amount_cents +
  * orders.refunded_amount_cents + refunds.application_fee_refunded_cents). Door revenue
- * contributes 1.0 (cash; card_reader/NFC fee schedules ship when Terminal SDK lands).
+ * contributes 1.0 for cash/manual. issue #4271: card door money (pay_code, tap_to_pay)
+ * is an online-rail order, so it is read from the orders stream with its real
+ * application fee and never double-counted from the door stream.
  * Returns null when no payments exist so UI renders "—" instead of £0.00.
  *
  * D1/D2/D3 discrepancy detection: ADVISORY-only per D-13-4. D4 (unscanned) is informational,
@@ -30,7 +32,7 @@
  */
 
 import { guestListTicketCount, isCompOrder } from "./compOrders";
-import type { DoorSaleRecord } from "../types/doorSales";
+import { isCardDoorPaymentMethod, type DoorSaleRecord } from "../types/doorSales";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
 import { expandDoorTickets } from "./expandDoorTickets";
@@ -51,9 +53,10 @@ export type PaymentMethodKey =
   | "google_pay"
   | "free"
   | "cash"
+  | "manual"
   | "card_reader"
-  | "nfc"
-  | "manual";
+  | "pay_code"
+  | "tap_to_pay";
 
 export type DiscrepancyKind =
   | "auto_check_in_mismatch"
@@ -139,9 +142,10 @@ const ZERO_REVENUE_BY_METHOD: Record<PaymentMethodKey, number> = {
   google_pay: 0,
   free: 0,
   cash: 0,
-  card_reader: 0,
-  nfc: 0,
   manual: 0,
+  card_reader: 0,
+  pay_code: 0,
+  tap_to_pay: 0,
 };
 
 /**
@@ -228,7 +232,15 @@ export const computeReconciliation = (
   // ---- Tickets (online live, excludes cancelled — refunded-partial keeps live qty - refundedQty) ----
   const eventOrders = orderEntries.filter((o) => o.eventId === eventId);
   // issue #3827 — online "sold", revenue and fees are sales only.
-  const eventSales = eventOrders.filter((o) => !isCompOrder(o));
+  // issue #4271 — each sale is counted from exactly one stream. Cash/manual
+  // door orders (source door_sale) come from the door stream; card door money
+  // (pay_code, tap_to_pay) comes from the orders stream, which carries the real
+  // application fee and the online refund path.
+  const eventSales = eventOrders.filter(
+    (o) =>
+      !isCompOrder(o) &&
+      !(o.source === "door_sale" && !isCardDoorPaymentMethod(o.paymentMethod)),
+  );
   const liveOrders = eventSales.filter(
     (o) => o.status === "paid" || o.status === "refunded_partial",
   );
@@ -240,7 +252,9 @@ export const computeReconciliation = (
   }
 
   // ---- Tickets (door live — no status filter; refunded sales still contribute live tickets per OBS-1) ----
-  const eventDoorSales = doorEntries.filter((s) => s.eventId === eventId);
+  const eventDoorSales = doorEntries.filter(
+    (s) => s.eventId === eventId && !isCardDoorPaymentMethod(s.paymentMethod),
+  );
   let doorLiveTickets = 0;
   for (const sale of eventDoorSales) {
     for (const line of sale.lines) {

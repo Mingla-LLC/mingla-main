@@ -593,16 +593,19 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
         label="Cash (door)"
         value={fmt(summary.revenueByMethod.cash)}
       />
+      {/* issue #4271 — card money at the door rides the online rail, so its
+          fee is counted like online card. Tap to pay never appears in a market
+          where it can't work (Nigeria) unless it somehow holds money. */}
       <SectionRow
-        label="Card reader (door)"
-        value={fmt(summary.revenueByMethod.card_reader)}
-        hint="Not available yet"
+        label="Buyer's phone (door)"
+        value={fmt(summary.revenueByMethod.pay_code)}
       />
-      <SectionRow
-        label="NFC tap (door)"
-        value={fmt(summary.revenueByMethod.nfc)}
-        hint="Not available yet"
-      />
+      {currency !== "NGN" || summary.revenueByMethod.tap_to_pay > 0 ? (
+        <SectionRow
+          label="Tap to pay (door)"
+          value={fmt(summary.revenueByMethod.tap_to_pay)}
+        />
+      ) : null}
       <SectionRow
         label="Manual (door)"
         value={fmt(summary.revenueByMethod.manual)}
