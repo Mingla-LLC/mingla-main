@@ -29,6 +29,13 @@ import {
 import { toastManager } from "../ui/Toast";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { BrandFollowOverflowSheet } from "./BrandFollowOverflowSheet";
+import { useFriendsReach } from "../../hooks/useFriendsReach";
+import {
+  STOPPED_SECTION_CAPTION,
+  STOPPED_SECTION_TITLE,
+  allowedAgainToast,
+  stoppedCaption,
+} from "./friendsReachCopy";
 
 type Filter = "all" | "muted" | "emails_stopped";
 
@@ -53,6 +60,18 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
     queryFn: () => brandFollowsService.listFollows(userId as string),
     enabled: visible && !!userId,
   });
+
+  // #3682 wave 3 (#1782) — brands the guest stopped, so they can undo it.
+  const friendsReach = useFriendsReach(userId, visible);
+  const stoppedBrands = friendsReach.state?.stoppedBrands ?? [];
+  const allowAgain = async (brandId: string, brandName: string) => {
+    try {
+      await friendsReach.setBrandStopped(brandId, false);
+      toastManager.show(allowedAgainToast(brandName), "success");
+    } catch {
+      toastManager.show("Couldn't save that. Try again.", "error");
+    }
+  };
 
   const rows = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const followerCountsQuery = useBrandFollowerCounts(
@@ -356,6 +375,46 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
                 );
               })
             : null}
+
+          {stoppedBrands.length > 0 ? (
+            <View style={styles.stoppedSection} testID="brands-manage-stopped">
+              <Text style={styles.cardName} accessibilityRole="header">
+                {STOPPED_SECTION_TITLE}
+              </Text>
+              <Text style={styles.cardCaption}>{STOPPED_SECTION_CAPTION}</Text>
+              {stoppedBrands.map((brand) => (
+                <View
+                  key={brand.brandId}
+                  style={[styles.card, styles.cardHeader]}
+                  testID={`brands-manage-stopped-${brand.brandId}`}
+                >
+                  <View style={styles.logo}>
+                    <Text style={styles.monogram}>
+                      {(brand.brandName[0] ?? "?").toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.cardName} numberOfLines={1}>
+                      {brand.brandName}
+                    </Text>
+                    <Text style={styles.cardCaption} numberOfLines={1}>
+                      {stoppedCaption(brand.exitedAt)}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => void allowAgain(brand.brandId, brand.brandName)}
+                    disabled={friendsReach.isSaving}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Allow ${brand.brandName} to invite you through friends again`}
+                    testID={`brands-manage-allow-${brand.brandId}`}
+                  >
+                    <Text style={styles.unmute}>Allow again</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
       </BaseBottomSheet>
 
@@ -469,6 +528,7 @@ const styles = StyleSheet.create({
   monogram: { color: "#c2560f", fontWeight: "700", fontSize: 15 },
   cardName: { fontSize: 16, lineHeight: 22, fontWeight: "600", color: "#111827" },
   cardCaption: { fontSize: 12, lineHeight: 16, color: "#6b7280", marginTop: 2 },
+  stoppedSection: { marginTop: 20, gap: 8 },
   unmute: { fontSize: 14, lineHeight: 20, fontWeight: "600", color: "#c2560f" },
   more: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   channels: { flexDirection: "row", gap: 8 },
