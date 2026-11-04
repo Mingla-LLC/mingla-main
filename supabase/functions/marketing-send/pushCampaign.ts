@@ -4,11 +4,14 @@
 // secrets, same notification ledger); no new provider. Push is free: the quote
 // is `not_metered` with no cost and no currency. Recipients are Mingla user
 // ids that never leave the server: the public quote carries counts only.
-import {
-  dispatchV2,
-  type DispatchV2Input,
-  type DispatchV2Result,
-  type MinimalClient,
+// Types only at module scope: notifyV2 pulls the email adapter, whose sender
+// identities read the environment when they load. marketing-send's suites
+// import index.ts without env access, so the dispatcher is loaded on first
+// send instead (the same pattern as _shared/googleConversionUpload.ts).
+import type {
+  DispatchV2Input,
+  DispatchV2Result,
+  MinimalClient,
 } from "../_shared/notifyV2.ts";
 import { BRAND_CAMPAIGN_PUSH_CATEGORY } from "../_shared/brandReachMessages.ts";
 
@@ -169,10 +172,12 @@ export async function sendPushCampaign(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   campaign: { id: string; brand_id: string },
-  dispatch: PushDispatch = dispatchV2,
+  dispatchOverride?: PushDispatch,
 ): Promise<
   { delivered: number; deferred: number; failed: number; preview_skipped: number }
 > {
+  const dispatch: PushDispatch = dispatchOverride ??
+    (await import("../_shared/notifyV2.ts")).dispatchV2;
   const { data, error } = await supabase.rpc(
     "biz_marketing_push_send_worklist_v1",
     { p_campaign_id: campaign.id },
