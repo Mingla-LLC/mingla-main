@@ -28,6 +28,8 @@ import {
   dedupeUnifiedRows,
   DEFAULT_CALENDAR_VIEW,
   groupByDay,
+  isTypeFilterActive,
+  upcomingCountsByType,
   matchesTypeFilter,
   parseCalendarView,
   rowsInWeek,
@@ -161,7 +163,23 @@ Deno.test("#4265 rows bucket on the effective END, not the start", () => {
   assertEquals(byKey["calendar:inprog"].tag, "plan");
 });
 
-Deno.test("#4265 type chips narrow by tag", () => {
+Deno.test("#4265 filter menu counts upcoming plans per type; the button lights up only for a type", () => {
+  const rows = [
+    { tag: "ticket", isPast: false },
+    { tag: "ticket", isPast: false },
+    { tag: "ticket", isPast: true },
+    { tag: "reservation", isPast: false },
+    { tag: "plan", isPast: false },
+    { tag: "plan", isPast: true },
+    { tag: "stay", isPast: true },
+  ];
+  assertEquals(upcomingCountsByType(rows), { all: 4, tickets: 2, reservations: 1, plans: 1, stays: 0 });
+  assertEquals(upcomingCountsByType([]), { all: 0, tickets: 0, reservations: 0, plans: 0, stays: 0 });
+  assertEquals(isTypeFilterActive("all"), false);
+  for (const f of ["tickets", "reservations", "plans", "stays"]) assertEquals(isTypeFilterActive(f), true, f);
+});
+
+Deno.test("#4265 type filters narrow by tag", () => {
   assert(matchesTypeFilter("ticket", "all"));
   assert(matchesTypeFilter("ticket", "tickets"));
   assert(!matchesTypeFilter("plan", "tickets"));
@@ -354,12 +372,8 @@ Deno.test("#4265 Week and Month live in the one scroll body, with chips above th
   assert(!/CalendarWeekView|weekRow|weekChip/.test(tab + grids), "no vertical day bars");
   const sections0 = tab.slice(tab.indexOf("const sections = useMemo"), tab.indexOf("const hasUpcomingInView"));
   assert(/rowsInWeek\(typedRows, week\)/.test(sections0) && /groupByDay\(visible, todayKey\)/.test(sections0), "Week lists its rows with the List grouping");
-  // Chips sit above the strip / grid in every view.
-  const chips = header.indexOf("<CalendarTypeChips");
-  assert(chips > header.indexOf("<CalendarViewToggle"), "chips follow the view toggle");
-  for (const grid of ["<CalendarDayStrip", "<CalendarWeekHeader", "<CalendarMonthView"]) {
-    assert(chips < header.indexOf(grid), `chips sit above ${grid}`);
-  }
+  // The view switch and filter moved to the Likes header line: the body starts with the strip / grid.
+  assert(!/CalendarTypeChips|CalendarViewToggle/.test(tab), "no chip row and no text toggle in the Calendar body");
   // Past plans close every view (Week and Month no longer return an empty list).
   assert(!/if \(view === "week"\) return \[\]/.test(tab), "Week keeps its Past plans");
   const sections = tab.slice(tab.indexOf("const sections = useMemo"), tab.indexOf("const hasUpcomingInView"));
@@ -373,6 +387,32 @@ Deno.test("#4265 Week and Month live in the one scroll body, with chips above th
   assert(/: view === "week"\s*\? "week"/.test(header), "Nothing booked this week");
   const strip = stripComments(await read("src/components/activity/CalendarControls.tsx"));
   assert(/day\.isPast && !day\.isSelected && styles\.tilePast/.test(strip), "past days dim in the strip");
+});
+
+Deno.test("#4265 Likes header line: view icons + filter menu sit beside Saved | Calendar, on Calendar only", async () => {
+  const likes = stripComments(await read("src/components/LikesPage.tsx"));
+  const controls = stripComments(await read("src/components/activity/CalendarHeaderControls.tsx"));
+  const band = likes.slice(likes.indexOf("styles.switcherBand"), likes.indexOf("{/* Content") >= 0 ? likes.indexOf("{/* Content") : likes.indexOf("styles.content"));
+  assert(/activeTab === "calendar" \? \(\s*<View style=\{styles\.calendarControls\}>\s*<CalendarViewIcons[\s\S]*?<CalendarFilterMenu/.test(band), "the icons + filter render in the switcher band, only on Calendar");
+  assert(/switcherBand:\s*\{[^}]*flexDirection: 'row'[^}]*justifyContent: 'space-between'/.test(likes), "one line: switcher left, controls right");
+  assert(/useCalendarViewPref\(userId\)/.test(likes), "LikesPage keeps the persisted view pref");
+  assert(/view=\{calendarView\}[\s\S]*typeFilter=\{calendarTypeFilter\}[\s\S]*onTypeCountsChange=\{setCalendarTypeCounts\}/.test(likes), "CalendarTab gets the choice and reports counts");
+  // View icons: three 32pt icon buttons with view labels and selected state.
+  assert(/const ICON_BUTTON = 32;/.test(controls));
+  assert(/CALENDAR_VIEWS\.map/.test(controls) && /accessibilityLabel=\{t\(VIEW_A11Y_KEY\[id\]\)\}/.test(controls) && /accessibilityState=\{\{ selected: on \}\}/.test(controls));
+  // Filter: icon button, white when a type is on, labelled with the current choice, expanded state.
+  assert(/style=\{\[styles\.filterButton, active && styles\.iconButtonOn\]\}/.test(controls), "highlighted when a type filter is on");
+  assert(/const active = isTypeFilterActive\(value\)/.test(controls));
+  assert(/filterButtonA11y", \{ current \}/.test(controls) && /expanded: anchor !== null/.test(controls));
+  // Menu: every type, its tag dot, its upcoming count and a check on the selected one.
+  assert(/<Modal\b/.test(controls) && /AGENDA_TYPE_FILTERS\.map/.test(controls));
+  assert(/C\.tag\[TYPE_FILTER_TAG\[id\]\]\.dot/.test(controls), "tag colour dots");
+  assert(/\{counts\[id\]\}/.test(controls), "upcoming count per row");
+  assert(/\{on \? <Icon name="checkmark"/.test(controls), "checkmark on the selected row");
+  assert(/accessibilityRole="menuitem"/.test(controls) && /selected: on, checked: on/.test(controls));
+  assert(/onPress=\{\(\) => pick\(id\)\}/.test(controls) && /onRequestClose=\{close\}/.test(controls), "pick applies and closes; back closes");
+  assert(/setAccessibilityFocus/.test(controls), "focus returns to the button");
+  assert(/if \(reduceMotion\) \{\s*progress\.setValue\(1\)/.test(controls), "no open animation under reduce motion");
 });
 
 Deno.test("#4265 pull to refresh refreshes every calendar source", async () => {
@@ -397,8 +437,8 @@ Deno.test("#4265 Calendar copy is translated in all 29 locales", async () => {
   const LOCALES = ["ar", "bin", "bn", "de", "el", "en", "es", "fr", "ha", "he", "hi", "id", "ig", "it", "ja", "ko", "ms", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "yo", "zh"];
   const placeholders = (v: string): string => [...v.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join("|");
   const en = JSON.parse(await read("src/i18n/locales/en/activity.json")).calendarTab;
-  const REQUIRED = ["viewToggleLabel", "viewList", "viewWeek", "viewMonth", "today", "tomorrow", "dateToBeSet", "typeFilterLabel", "typeAll", "typeTickets", "typeReservations", "typePlans", "typeStays", "tagTicket", "tagReservation", "tagPlan", "tagStay", "ticketButton", "ticketA11y", "moreA11y", "dayA11y", "dayTodayA11y", "weekPrev", "weekNext", "monthPrev", "monthNext", "noPlans", "pastPlans", "again", "againA11y", "emptyTitleYet", "emptyTitleDay", "emptyTitleWeek", "emptyBody", "planFromSaves", "actionsTitle", "actionShare", "actionAddToPhone", "actionRemove", "actionOpen", "actionCancelReservation", "statusFinalizing", "statusAwaitingApproval", "statusRequested", "statusCancelled", "partyOf", "morePlaces", "loadingCalendar", "reschedule"];
-  const RETIRED = ["active", "archives", "soloDiscovery", "purchaseDetails", "emptyActiveTitle", "emptyArchiveTitle", "aboutExperience", "visitWebsite"];
+  const REQUIRED = ["viewToggleLabel", "viewListA11y", "viewWeekA11y", "viewMonthA11y", "filterAllPlans", "filterMenuTitle", "filterButtonA11y", "today", "tomorrow", "dateToBeSet", "typeTickets", "typeReservations", "typePlans", "typeStays", "tagTicket", "tagReservation", "tagPlan", "tagStay", "ticketButton", "ticketA11y", "moreA11y", "dayA11y", "dayTodayA11y", "weekPrev", "weekNext", "monthPrev", "monthNext", "noPlans", "pastPlans", "again", "againA11y", "emptyTitleYet", "emptyTitleDay", "emptyTitleWeek", "emptyBody", "planFromSaves", "actionsTitle", "actionShare", "actionAddToPhone", "actionRemove", "actionOpen", "actionCancelReservation", "statusFinalizing", "statusAwaitingApproval", "statusRequested", "statusCancelled", "partyOf", "morePlaces", "loadingCalendar", "reschedule"];
+  const RETIRED = ["viewList", "viewWeek", "viewMonth", "typeFilterLabel", "typeAll", "active", "archives", "soloDiscovery", "purchaseDetails", "emptyActiveTitle", "emptyArchiveTitle", "aboutExperience", "visitWebsite"];
   for (const locale of LOCALES) {
     const cal = JSON.parse(await read(`src/i18n/locales/${locale}/activity.json`)).calendarTab;
     let localized = 0;

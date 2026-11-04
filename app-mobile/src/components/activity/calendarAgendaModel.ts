@@ -453,6 +453,34 @@ export function buildUnifiedRows<S extends AgendaSources>(
 
 // ── Filtering, sorting, grouping ────────────────────────────────────────────
 
+/** The tag behind each type filter (the dropdown's colour dots). */
+export const TYPE_FILTER_TAG: Record<Exclude<AgendaTypeFilter, "all">, AgendaTag> = {
+  tickets: "ticket",
+  reservations: "reservation",
+  plans: "plan",
+  stays: "stay",
+};
+
+export type AgendaTypeCounts = Record<AgendaTypeFilter, number>;
+
+/** Upcoming plans per type filter (the dropdown's right-hand counts). */
+export function upcomingCountsByType(rows: readonly { tag: AgendaTag; isPast: boolean }[]): AgendaTypeCounts {
+  const counts: AgendaTypeCounts = { all: 0, tickets: 0, reservations: 0, plans: 0, stays: 0 };
+  for (const row of rows) {
+    if (row.isPast) continue;
+    counts.all += 1;
+    for (const filter of AGENDA_TYPE_FILTERS) {
+      if (filter !== "all" && matchesTypeFilter(row.tag, filter)) counts[filter] += 1;
+    }
+  }
+  return counts;
+}
+
+/** A type filter is "on" (the button highlights) for anything but All plans. */
+export function isTypeFilterActive(filter: AgendaTypeFilter): boolean {
+  return filter !== "all";
+}
+
 export function matchesTypeFilter(tag: AgendaTag, filter: AgendaTypeFilter): boolean {
   switch (filter) {
     case "all":

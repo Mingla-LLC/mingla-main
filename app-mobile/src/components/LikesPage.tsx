@@ -7,6 +7,11 @@
  * rounded quiet capsule holding two 32pt pills; the selected one is white with
  * dark text. The white pill glides 150 ms between the two (instant under
  * reduce motion).
+ *
+ * On the Calendar tab the same line also carries the Calendar's controls on
+ * the right — List · Week · Month icons and the plan-type filter menu — so the
+ * calendar starts right under the header. LikesPage owns that choice (the
+ * view is persisted per user); CalendarTab owns the data.
  */
 import React, { useState, useEffect, useRef } from "react";
 import {
@@ -35,6 +40,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
+import { CalendarFilterMenu, CalendarViewIcons } from "./activity/CalendarHeaderControls";
+import { useCalendarViewPref } from "./activity/useCalendarViewPref";
+import type { AgendaTypeCounts, AgendaTypeFilter } from "./activity/calendarAgendaModel";
 import { mixpanelService } from "../services/mixpanelService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useAppLayout } from "../hooks/useAppLayout";
@@ -131,6 +139,17 @@ function LikesPage({
   const likesActiveTabSnapshot = useAppStore.getState().likesActiveTab;
   const setLikesActiveTabRegistry = useAppStore((s) => s.setLikesActiveTab);
   const [activeTab, setActiveTab] = useState<LikesTab>(likesActiveTabSnapshot);
+  // Issue #4265 — Calendar view + plan-type filter, chosen on the header line.
+  const userId = useAppStore((s) => s.user?.id);
+  const { view: calendarView, setView: setCalendarView } = useCalendarViewPref(userId);
+  const [calendarTypeFilter, setCalendarTypeFilter] = useState<AgendaTypeFilter>("all");
+  const [calendarTypeCounts, setCalendarTypeCounts] = useState<AgendaTypeCounts>({
+    all: 0,
+    tickets: 0,
+    reservations: 0,
+    plans: 0,
+    stays: 0,
+  });
   useEffect(() => {
     setLikesActiveTabRegistry(activeTab);
   }, [activeTab, setLikesActiveTabRegistry]);
@@ -317,7 +336,9 @@ function LikesPage({
                       active ? styles.switcherLabelActive : styles.switcherLabelInactive,
                     ]}
                     numberOfLines={1}
-                    maxFontSizeMultiplier={1.3}
+                    // The Calendar line also holds its controls: cap the
+                    // switcher's growth there so it all fits at 375pt.
+                    maxFontSizeMultiplier={activeTab === "calendar" ? 1.1 : 1.3}
                   >
                     {tab.label}
                   </Text>
@@ -325,6 +346,16 @@ function LikesPage({
               );
             })}
           </View>
+          {activeTab === "calendar" ? (
+            <View style={styles.calendarControls}>
+              <CalendarViewIcons view={calendarView} onChange={setCalendarView} />
+              <CalendarFilterMenu
+                value={calendarTypeFilter}
+                counts={calendarTypeCounts}
+                onChange={setCalendarTypeFilter}
+              />
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -376,6 +407,9 @@ function LikesPage({
             accountPreferences={accountPreferences}
             selectedEntryId={deepLinkEntryId}
             bottomNavTotalHeight={bottomNavTotalHeight}
+            view={calendarView}
+            typeFilter={calendarTypeFilter}
+            onTypeCountsChange={setCalendarTypeCounts}
           />
         )}
       </View>
@@ -443,9 +477,21 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: glass.discover.title.horizontalPadding,
     paddingTop: 8,
+    // Issue #4265: switcher left, Calendar controls right, one line.
+    flexDirection: 'row',
     alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  calendarControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+    marginTop: 1,
   },
   switcher: {
+    flexShrink: 1,
     flexDirection: 'row',
     gap: S.gap,
     padding: S.padding,

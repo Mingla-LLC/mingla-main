@@ -106,18 +106,20 @@ import {
   tagsByDay,
   rowsInWeek,
   toggleSelectedDay,
+  upcomingCountsByType,
   weekRange,
   weekStartForLocale,
   type AgendaDayLabel,
+  type AgendaTypeCounts,
   type AgendaTypeFilter,
+  type CalendarView,
 } from "./calendarAgendaModel";
 import type { CalendarAgendaSources, CalendarEntry } from "./calendarAgendaTypes";
 import { CalendarAgendaRow, CalendarPastRow, type CalendarRow } from "./CalendarAgendaRow";
-import { CalendarDayStrip, CalendarTypeChips, CalendarViewToggle } from "./CalendarControls";
+import { CalendarDayStrip } from "./CalendarControls";
 import { CalendarMonthView, CalendarWeekHeader } from "./CalendarGrids";
 import { CalendarAgendaSkeleton, CalendarEmptyCard, CalendarPastToggle } from "./CalendarAgendaStates";
 import CalendarPlanActionSheet, { type CalendarPlanAction } from "./CalendarPlanActionSheet";
-import { useCalendarViewPref } from "./useCalendarViewPref";
 
 const L = glass.likes;
 const LIST_FADE_MS = 200;
@@ -159,6 +161,15 @@ interface CalendarTabProps {
    * frame still paints full-bleed to the physical screen bottom (no black bar).
    */
   bottomNavTotalHeight?: number;
+  /**
+   * #4265 — the List · Week · Month view and the plan-type filter are chosen
+   * on the Likes header line (LikesPage owns those controls and the persisted
+   * view pref); this tab renders them.
+   */
+  view: CalendarView;
+  typeFilter: AgendaTypeFilter;
+  /** Upcoming plans per type, for the header filter menu's counts. */
+  onTypeCountsChange?: (counts: AgendaTypeCounts) => void;
 }
 
 const CalendarTab = ({
@@ -172,6 +183,9 @@ const CalendarTab = ({
   accountPreferences,
   selectedEntryId,
   bottomNavTotalHeight = 0,
+  view,
+  typeFilter,
+  onTypeCountsChange,
 }: CalendarTabProps) => {
   const { t } = useTranslation(["activity", "common"]);
   const router = useRouter();
@@ -209,7 +223,6 @@ const CalendarTab = ({
   const [attentionBanks, setAttentionBanks] = useState<SourceRefundBank[]>([]);
   const [attentionBanksLoading, setAttentionBanksLoading] = useState(false);
   // #4265 — agenda state.
-  const [typeFilter, setTypeFilter] = useState<AgendaTypeFilter>("all");
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   // Week view's own day selection (its strip shows a different seven days).
   const [weekDayKey, setWeekDayKey] = useState<string | null>(null);
@@ -218,7 +231,6 @@ const CalendarTab = ({
   const afterActionSheetRef = useRef<(() => void) | null>(null);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
-  const { view, setView } = useCalendarViewPref(user?.id);
   const loadAttentionBanks = useCallback(async () => {
     if (!attentionRefundId) return;
     setAttentionBanksLoading(true);
@@ -393,6 +405,12 @@ const CalendarTab = ({
     return { year: now.getFullYear(), monthIndex: now.getMonth() };
   });
   const [monthDayKey, setMonthDayKey] = useState<string>(() => dayKeyOf(new Date()));
+
+  // The header filter menu shows how many upcoming plans each type has.
+  const typeCounts = useMemo(() => upcomingCountsByType(allRows), [allRows]);
+  useEffect(() => {
+    onTypeCountsChange?.(typeCounts);
+  }, [onTypeCountsChange, typeCounts]);
 
   const typedRows = useMemo(
     () => allRows.filter((row) => matchesTypeFilter(row.tag, typeFilter)),
@@ -1216,9 +1234,6 @@ const CalendarTab = ({
 
   const header = (
     <View style={styles.header}>
-      <CalendarViewToggle view={view} onChange={setView} />
-      {/* Chips sit in the same place in every view, above the strip / grid. */}
-      <CalendarTypeChips value={typeFilter} onChange={setTypeFilter} />
       {view === "list"
         ? <CalendarDayStrip days={strip} locale={locale} onPick={onPickStripDay} />
         : view === "week"

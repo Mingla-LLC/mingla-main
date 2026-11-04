@@ -1,72 +1,20 @@
 /**
- * Issue #4265 — the Calendar header controls (approved design:
- * Calendar.dc.html): the List · Week · Month toggle, the seven-day strip and
- * the type chips. The day strip serves List (next 7 days) and Week (the
- * locale week). Today is always marked (orange border + "Today"); the
+ * Issue #4265 — the Calendar's seven-day strip (approved design:
+ * Calendar.dc.html). It serves List (next 7 days) and Week (the locale week).
+ * The view switch and the type filter live on the Likes header line
+ * (CalendarHeaderControls). Today is always marked (orange border + "Today"); the
  * selected day is filled orange.
  */
 import React, { memo } from "react";
-import { Pressable, ScrollView as HorizontalScroll, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../../constants/designSystem";
-import {
-  AGENDA_TYPE_FILTERS,
-  CALENDAR_VIEWS,
-  dayVisual,
-  type AgendaTypeFilter,
-  type CalendarView,
-  type StripDay,
-} from "./calendarAgendaModel";
+import { dayVisual, type StripDay } from "./calendarAgendaModel";
 
 const L = glass.likes;
 const C = L.calendar;
 const OPAQUE = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
-
-const VIEW_KEY: Record<CalendarView, string> = {
-  list: "activity:calendarTab.viewList",
-  week: "activity:calendarTab.viewWeek",
-  month: "activity:calendarTab.viewMonth",
-};
-
-const TYPE_KEY: Record<AgendaTypeFilter, string> = {
-  all: "activity:calendarTab.typeAll",
-  tickets: "activity:calendarTab.typeTickets",
-  reservations: "activity:calendarTab.typeReservations",
-  plans: "activity:calendarTab.typePlans",
-  stays: "activity:calendarTab.typeStays",
-};
-
-// ── View toggle ─────────────────────────────────────────────────────────────
-
-export const CalendarViewToggle = memo(function CalendarViewToggle({
-  view,
-  onChange,
-}: {
-  view: CalendarView;
-  onChange: (view: CalendarView) => void;
-}): React.ReactElement {
-  const { t } = useTranslation(["activity"]);
-  return (
-    <View style={styles.toggleTrack} accessibilityRole="tablist" accessibilityLabel={t("activity:calendarTab.viewToggleLabel")}>
-      {CALENDAR_VIEWS.map((id) => {
-        const on = id === view;
-        return (
-          <Pressable
-            key={id}
-            onPress={() => onChange(id)}
-            style={[styles.togglePill, on && styles.togglePillOn]}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            hitSlop={{ top: 6, bottom: 6 }}
-          >
-            <Text style={[styles.toggleText, on && styles.toggleTextOn]}>{t(VIEW_KEY[id])}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-});
 
 // ── Day tile (strip and week rows share the today/selected treatment) ──────
 
@@ -132,71 +80,7 @@ export const CalendarDayStrip = memo(function CalendarDayStrip({
   );
 });
 
-// ── Type chips ──────────────────────────────────────────────────────────────
-
-export const CalendarTypeChips = memo(function CalendarTypeChips({
-  value,
-  onChange,
-}: {
-  value: AgendaTypeFilter;
-  onChange: (value: AgendaTypeFilter) => void;
-}): React.ReactElement {
-  const { t } = useTranslation(["activity"]);
-  return (
-    <HorizontalScroll
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chips}
-      style={styles.chipsScroll}
-      accessibilityLabel={t("activity:calendarTab.typeFilterLabel")}
-    >
-      {AGENDA_TYPE_FILTERS.map((id) => {
-        const on = id === value;
-        return (
-          <Pressable
-            key={id}
-            onPress={() => onChange(id)}
-            style={[styles.chip, on ? styles.chipOn : styles.chipIdle]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: on }}
-            hitSlop={{ top: 5, bottom: 5 }}
-          >
-            <Text style={[styles.chipText, on && styles.chipTextOn]}>{t(TYPE_KEY[id])}</Text>
-          </Pressable>
-        );
-      })}
-    </HorizontalScroll>
-  );
-});
-
 const styles = StyleSheet.create({
-  toggleTrack: {
-    flexDirection: "row",
-    alignSelf: "flex-start",
-    gap: 6,
-    padding: C.togglePadding,
-    borderRadius: 999,
-    backgroundColor: OPAQUE ? C.toggleTrackOpaque : C.toggleTrack,
-  },
-  togglePill: {
-    minHeight: C.toggleHeight,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  togglePillOn: {
-    backgroundColor: C.toggleSelectedBg,
-  },
-  toggleText: {
-    color: C.toggleIdleText,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  toggleTextOn: {
-    color: C.toggleSelectedText,
-    fontWeight: "600",
-  },
   strip: {
     flexDirection: "row",
     gap: 6,
@@ -257,36 +141,5 @@ const styles = StyleSheet.create({
   },
   dotNone: {
     backgroundColor: "transparent",
-  },
-  chipsScroll: {
-    marginHorizontal: -L.grid.sidePadding,
-    flexGrow: 0,
-  },
-  chips: {
-    gap: 8,
-    paddingHorizontal: L.grid.sidePadding,
-  },
-  chip: {
-    minHeight: C.chipHeight,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    justifyContent: "center",
-  },
-  chipIdle: {
-    backgroundColor: OPAQUE ? C.chipIdleFillOpaque : C.chipIdleFill,
-    borderColor: C.chipBorder,
-  },
-  chipOn: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ffffff",
-  },
-  chipText: {
-    color: L.textPrimary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  chipTextOn: {
-    color: C.toggleSelectedText,
   },
 });
