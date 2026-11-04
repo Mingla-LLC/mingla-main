@@ -267,7 +267,7 @@ const STEP_SUBTITLES: Record<StepIndex, string> = {
   4: "Pricing and payment plan",
   5: "Refund tiers and when bookings close",
   6: "What to ask travelers before they pay",
-  7: "Choose people from Your Book",
+  7: "Your Book, followers and groups",
   8: "Preview and publish",
 };
 
@@ -2282,7 +2282,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   const stepIdx = visibleStepNumber - 1;
   const stepTitle = STEP_TITLES[step];
   const stepSubtitle = step === 7
-    ? "Choose people from Your Book. Nothing sends until this trip is published."
+    ? "Choose who to invite. Nothing sends until this trip is published."
     : STEP_SUBTITLES[step];
 
   // Autosave state copy for subtitle row.

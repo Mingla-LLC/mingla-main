@@ -376,6 +376,20 @@ export function typeFallbackDestination(
       : { kind: 'page', page: 'connections' };
   }
 
+  // #3682 wave 2 — a brand invite or a campaign push opens that offering's
+  // page, else the brand page (public slugs only; Home if neither is usable).
+  if (type === 'brand_offering_invite' || type === 'brand_campaign_push') {
+    const slug = /^[a-z0-9][a-z0-9-]{0,119}$/i;
+    const brandSlug = str('brand_slug');
+    const eventSlug = str('event_slug');
+    if (brandSlug && slug.test(brandSlug)) {
+      return eventSlug && slug.test(eventSlug)
+        ? { kind: 'route', path: `/e/${brandSlug}/${eventSlug}` }
+        : { kind: 'route', path: `/b/${brandSlug}` };
+    }
+    return { kind: 'page', page: 'home' };
+  }
+
   // Board / group messages → the conversation thread (Connections opens it).
   if (type.startsWith('board_message_')) {
     const conversationId = str('conversationId') ?? str('relatedId') ?? str('related_id');

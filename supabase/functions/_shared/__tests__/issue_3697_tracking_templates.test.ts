@@ -55,8 +55,10 @@ Deno.test("#3697 TikTok link template carries UTMs plus campaign, ad-group and a
   for (
     const entry of [
       '{ key: "utm_source", value: "tiktok" }',
-      '{ key: "utm_medium", value: "paid" }',
-      '{ key: "utm_campaign", value: "__CAMPAIGN_ID__" }',
+      // #4238: Host ads carry the standard medium and the ad's name as the
+      // campaign tag; Mingla's own id still rides in mc_id below.
+      '{ key: "utm_medium", value: hostUtmQuery ? "paid_social" : "paid" }',
+      'value: hostUtmQuery ? hostAdUtmSlug(name) : "__CAMPAIGN_ID__",',
       '{ key: "utm_content", value: "__CID__" }',
       '{ key: "mc_id", value: "__CAMPAIGN_ID__" }',
       '{ key: "campaign_id", value: "__CAMPAIGN_ID__" }',

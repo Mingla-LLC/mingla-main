@@ -2086,6 +2086,8 @@ export interface RedditAdBuildInput {
   clickUrl: string;
   /** utm_campaign value (ad_campaigns.id once persisted; request id pre-persist). */
   utmCampaign?: string | null;
+  /** #4238: Host ads carry the standard utm_medium (paid_social). */
+  utmMedium?: string | null;
   extraQueryParameters?: { name: string; value: string }[] | null;
 }
 
@@ -2127,7 +2129,7 @@ export function buildRedditAdBody(input: RedditAdBuildInput): Record<string, unk
   }
   const queryParameters: { name: string; value: string }[] = [
     { name: "utm_source", value: "reddit" },
-    { name: "utm_medium", value: "paid" },
+    { name: "utm_medium", value: input.utmMedium ?? "paid" },
     ...(input.utmCampaign ? [{ name: "utm_campaign", value: input.utmCampaign }] : []),
     // {{AD_ID}} is a documented Reddit macro [SPEC §3.5].
     { name: "utm_content", value: "{{AD_ID}}" },
@@ -2708,6 +2710,7 @@ export async function redditCreateFullChain(
       profileId: extras.profileId,
       clickUrl: input.ad.clickUrl,
       utmCampaign: input.ad.utmCampaign,
+      utmMedium: input.ad.utmMedium,
       extraQueryParameters: input.ad.extraQueryParameters,
     });
     const payload = await redditRequest(client, "POST", `/ad_accounts/${accountId}/ads`, body);

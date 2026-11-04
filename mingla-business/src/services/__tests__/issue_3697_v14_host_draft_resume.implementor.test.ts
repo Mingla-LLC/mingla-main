@@ -26,8 +26,8 @@ describe("issue #3697 Host server draft resume", () => {
     expect(route).toMatch(
       /getHostAdDraft\(draftIdRef\.current(?:\s+as\s+string)?\)/,
     );
-    expect(route).toContain("setCities(state.cities");
-    expect(route).toContain("setInterests(state.interests");
+    expect(route).toMatch(/setCities\(\s*state\.cities/);
+    expect(route).toMatch(/setInterests\(\s*\(?state\.interests/);
     expect(route).toContain("setExistingPlanId(draft.plan_id)");
   });
 

@@ -32,9 +32,10 @@ describe("ORCH-1283 — no RCS tab", () => {
     expect(TABS).not.toMatch(/kind:\s*["']rcs["']/);
   });
 
-  it("MarketingChannelKind is narrowed to 'email' | 'sms'", () => {
+  // [TEST-MOD-APPROVED #3682] wave 2 adds Push as a live third channel; RCS stays gone.
+  it("MarketingChannelKind is 'email' | 'sms' | 'push' (no rcs)", () => {
     expect(TABS).toMatch(
-      /export type MarketingChannelKind\s*=\s*"email"\s*\|\s*"sms"\s*;/,
+      /export type MarketingChannelKind\s*=\s*"email"\s*\|\s*"sms"\s*\|\s*"push"\s*;/,
     );
     expect(TABS).not.toMatch(/MarketingChannelKind[^;]*"rcs"/);
   });

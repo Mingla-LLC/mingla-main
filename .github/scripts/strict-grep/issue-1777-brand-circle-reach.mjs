@@ -29,7 +29,7 @@ export function audit(base){const failures=[];const read=(key)=>{const target=pa
   for(const needle of ["staleTime:0","gcTime:0","refetchOnMount:\"always\"","refetchOnWindowFocus:\"always\"","refetchOnReconnect:\"always\"","rows=current?"])if(!hook.includes(needle))failures.push(`fail-closed hook setting missing ${needle}`);
   if(!keys.includes('"circle", ring')||!hookTest.includes("offline and permission failure expose no cached rows"))failures.push("brand/ring cache ownership or lifecycle proof is missing");
   if(!page.includes('<CircleReachBlock ring="follower"')||!page.includes('<CircleReachBlock ring="extended"')||!page.includes("circleOpen!==null"))failures.push("People Circle composition/modal isolation is missing");
-  for(const copy of ["Follows your brand.","In your extended circle.","Checking current reach…","Reach is temporarily unavailable.","You’re offline. Connect to check current reach."])if(!(types+block+sheet).includes(copy))failures.push(`exact Circle copy missing ${copy}`);
+  for(const copy of ["Follows your brand.","Friend of a follower.","Checking current reach…","Reach is temporarily unavailable.","You’re offline. Connect to check current reach."])if(!(types+block+sheet).includes(copy))failures.push(`exact Circle copy missing ${copy}`);
   if(/Pressable|Touchable|Export|Search|New campaign/.test(block+sheet))failures.push("Circle rows expose a forbidden action");
   if(!sheet.includes("accessibilityViewIsModal")||!sheet.includes('label="Load more"')||!sheetTest.includes("rows are static"))failures.push("full-list sheet/a11y regression proof is missing");
 

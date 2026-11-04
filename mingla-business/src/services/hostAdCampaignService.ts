@@ -76,6 +76,10 @@ export type HostAdListSummary = {
 };
 
 export type HostAdCampaignDetail = {
+  /** #4238 wave D: the plan behind this ad (live edits, duplicate). */
+  plan_id?: string | null;
+  /** #4238 wave D: when the budget or end date last changed. */
+  last_live_edit_at?: string | null;
   /** #4238 wave 2: results over time ([] on older servers). */
   daily?: HostAdDailyPoint[];
   by_platform_spend?: HostAdPlatformSpend[];

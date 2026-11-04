@@ -306,25 +306,32 @@ describe("issue #1780 — wizard invite plan implementation", () => {
 
     expect(event).toContain("showHeader={false}");
     expect(event).toContain(
-      "Choose people from Your Book. Nothing sends until this event is published.",
+      "Choose who to invite. Nothing sends until this event is published.",
     );
-    expect(event).toContain('{ title: "Invite people", subtitle: "Choose people from Your Book" }');
+    expect(event).toContain('{ title: "Invite people", subtitle: "Your Book, followers and groups" }');
     expect(event).toContain('accessibilityRole={currentStep === 6 ? "header" : undefined}');
 
     expect(rsvp).toContain("showHeader={false}");
     expect(rsvp).toContain(
-      "Choose people from Your Book. Nothing sends until this RSVP is published.",
+      "Choose who to invite. Nothing sends until this RSVP is published.",
     );
-    expect(rsvp).toContain('{ title: "Invite people", subtitle: "Choose people from Your Book" }');
+    expect(rsvp).toContain('{ title: "Invite people", subtitle: "Your Book, followers and groups" }');
     expect(rsvp).toContain('accessibilityRole={currentStep === 5 ? "header" : undefined}');
 
     expect(trip).toContain("showHeader={isWideDesktop}");
     expect(trip).toContain(
-      "Choose people from Your Book. Nothing sends until this trip is published.",
+      "Choose who to invite. Nothing sends until this trip is published.",
     );
-    expect(trip).toContain('7: "Choose people from Your Book"');
+    expect(trip).toContain('7: "Your Book, followers and groups"');
     expect(trip).toContain('accessibilityRole={step === 7 ? "header" : undefined}');
 
     expect(experience).not.toMatch(/<InvitePeopleStep[\s\S]*?showHeader=/);
+
+    // #3682 closeout: followers outside Your Book are invitable, so no wizard
+    // or the shared picker may still say people come "from Your Book".
+    for (const source of [event, rsvp, trip, experience, picker]) {
+      expect(source).not.toContain("Choose people from Your Book");
+    }
+    expect(picker).toContain("Choose who to invite. Nothing sends until this{\" \"}");
   });
 });

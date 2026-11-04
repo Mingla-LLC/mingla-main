@@ -135,9 +135,8 @@ Deno.test("D6 #4238 targeting search maps every Host failure to the safe warning
     search.indexOf("function failOpen("),
     search.indexOf("async function resolveMeta("),
   );
-  const hostBranch = failOpen.indexOf(
-    "if (hostCaller) return { results: [], warning: hostSafeSearchWarning(err) };",
-  );
+  // #4238 media-buyer: the Host branch also flags the app as unavailable.
+  const hostBranch = failOpen.indexOf("warning: hostSafeSearchWarning(err),");
   const providerText = failOpen.indexOf("? err.message");
   assert(hostBranch > 0 && providerText > hostBranch);
 });
