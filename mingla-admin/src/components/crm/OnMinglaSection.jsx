@@ -24,6 +24,7 @@ import {
   dayLong,
   expectedCancelledWords,
   expectedSavedWords,
+  hostPastRows,
   hostUpcomingRows,
   opsErrorWords,
   requestKey,
@@ -58,7 +59,7 @@ export function OnMinglaSection({ record, read, online }) {
   const expected = Array.isArray(data?.expected) ? data.expected : [];
   const open = expected.filter((x) => x.status === "open");
   const recent = expected.filter((x) => x.status === "fulfilled");
-  const past = Array.isArray(data?.past) ? data.past : [];
+  const past = hostPastRows(data?.past, data?.events);
   const series = open.find((x) => x.repeats && x.repeats !== "none");
   const upcoming = hostUpcomingRows(events, open, today);
   const cancel = async (x) => {
@@ -125,7 +126,7 @@ export function OnMinglaSection({ record, read, online }) {
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
                         {u.live && <span data-live-now="" className="rounded-full bg-[var(--color-success-50)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--color-success-700)]">Live now</span>}
-                        <StatePill state={u.state} />
+                        {u.state && <StatePill state={u.state} />}
                       </span>
                     </SideLink>
                     {u.row && (cancelling === u.id ? (

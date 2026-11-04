@@ -319,13 +319,14 @@ begin
   perform pg_temp.tw_check('X-SHOW', 'the person cannot undo the agent''s change either; the card stays hidden',
     (v_t like 'ERR:22023:undo_expired%')::text || '/' || pg_temp.tw_flag(pg_temp.tw_id('XS')), 'true/false');
 
-  -- a person's own undo leaves the flag alone, both ways.
+  -- a person's own undo puts the flag back too, both ways (W2 rework P3-5:
+  -- Undo never reports success while leaving the flag as it was).
   v_t := pg_temp.tw_person('ops', format($q$select public.ops_work_update(%L, '{"on_brand_plan":true,"title":"W4270 Shown and renamed"}'::jsonb, %s, 'w4270-show-0008')::text$q$,
     pg_temp.tw_id('XS'), pg_temp.tw_rev(pg_temp.tw_id('XS'))));
   select e.id into v_ev from public.ops_work_events e where e.card_id = pg_temp.tw_id('XS') order by e.at desc, e.id desc limit 1;
   v_t := pg_temp.tw_person('ops', format($q$select public.ops_work_undo(%L)::text$q$, v_ev));
-  perform pg_temp.tw_check('X-SHOW', 'undo puts the title back and leaves Host can see this on',
-    (select title || '/' || on_brand_plan::text from public.ops_work_cards where id = pg_temp.tw_id('XS')), 'W4270 Shown by a person/true');
+  perform pg_temp.tw_check('X-SHOW', 'undo puts the title back and switches Host can see this back off',
+    (select title || '/' || on_brand_plan::text from public.ops_work_cards where id = pg_temp.tw_id('XS')), 'W4270 Shown by a person/false');
   v_t := pg_temp.tw_person('ops', format($q$select public.ops_work_update(%L, '{"on_brand_plan":false,"title":"W4270 Hidden and renamed"}'::jsonb, %s, 'w4270-show-0009')::text$q$,
     pg_temp.tw_id('XS'), pg_temp.tw_rev(pg_temp.tw_id('XS'))));
   select e.id into v_ev from public.ops_work_events e where e.card_id = pg_temp.tw_id('XS') order by e.at desc, e.id desc limit 1;
@@ -337,7 +338,7 @@ begin
   perform pg_temp.tw_check('X-SHOW', 'no other function in public names on_brand_plan',
     (select coalesce(string_agg(p.proname, ',' order by p.proname), '') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.prosrc ilike '%on_brand_plan%'
-        and p.proname not in ('ops_validate_card','ops_work_add','ops_work_update','ops_card_json','ops_card_lite','ops_field_words')), '');
+        and p.proname not in ('ops_validate_card','ops_work_add','ops_work_update','ops_card_json','ops_card_lite','ops_field_words','ops_work_undo')), '');
   perform pg_temp.tw_check('X-SHOW', 'authenticated and anon cannot insert or update ops_work_cards',
     (has_table_privilege('authenticated', 'public.ops_work_cards', 'UPDATE') or has_table_privilege('authenticated', 'public.ops_work_cards', 'INSERT')
      or has_table_privilege('anon', 'public.ops_work_cards', 'UPDATE') or has_column_privilege('authenticated', 'public.ops_work_cards', 'on_brand_plan', 'UPDATE'))::text, 'false');

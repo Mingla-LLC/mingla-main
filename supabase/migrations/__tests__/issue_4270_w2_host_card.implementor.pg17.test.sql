@@ -25,6 +25,14 @@
 --   H-RECORD  ops_brand_host_record: the oldest host record of the brand, the
 --             others by id; none -> record_id null; a non-Hosts user -> 42501
 --
+--   R-LIVE    (rework P1-1) a trip on right now is Live now only, not Past
+--   R-WEEK    (rework P3-1) done this week from Monday 00:00 in the viewer's
+--             zone, over the same cards as To do
+--   R-NAME    (rework P3-4) an owner address starting with _ . + - is never
+--             returned; it reads "A teammate"
+--   R-UNDO    (rework P3-5) Undo puts Host can see this back, both ways
+--   R-COPY    (rework P3-3) a closed promised date points to the Host app
+--
 -- FAILS-ON-REVERT: put back the 3980 ops_expected_event_set -> H-GONE fails
 -- (a person and an agent add a promised event); put back the W1 ops_work_add
 -- -> H-AGENT and H-ADD fail; put back the 3980 ops_host_on_mingla -> H-KIND,
@@ -343,12 +351,86 @@ begin
 end;
 $record$;
 
+-- ---------------------------------------------------------------------------
+-- Rework (tester W2): R-LIVE, R-WEEK, R-NAME, R-UNDO, R-COPY
+-- ---------------------------------------------------------------------------
+do $rework$
+declare v jsonb; v_t text; v_today date := (now() AT TIME ZONE 'UTC')::date; v_mon date; v_d1 uuid; v_d2 uuid; v_d3 uuid;
+        v_ev uuid := pg_temp.th_id('ev'); v_rev bigint; v_event uuid; v_base integer;
+begin
+  -- R-LIVE (P1-1): a trip on right now is Live now only, and not a past event.
+  v := pg_temp.th_j(pg_temp.th_person('growth', $q$select public.ops_host_on_mingla('42700000-0000-4000-c0f0-000000000001')::text$q$));
+  perform pg_temp.th_check('R-LIVE', 'the trip on right now says Live now, never Happened',
+    (select (e #>> '{state,k}') || '/' || (e #>> '{state,name}') from jsonb_array_elements(v->'events') e where e->>'title' = 'H4270 Long Trip'), 'live/Live now');
+  perform pg_temp.th_check('R-LIVE', 'and it is not under Past events',
+    (select count(*) from jsonb_array_elements(v->'past') p where p->>'title' = 'H4270 Long Trip')::text, '0');
+  perform pg_temp.th_check('R-LIVE', 'an event still to come keeps its plain state',
+    (select (e #>> '{state,k}') <> 'live' and (e #>> '{state,k}') <> 'done' from jsonb_array_elements(v->'events') e where e->>'title' = 'H4270 Supper Club')::text, 'true');
+
+  -- R-WEEK (P3-1): done this week starts at Monday 00:00 in the viewer's zone,
+  -- over the same cards as To do (an event-anchored card counts too).
+  v_mon := public.ops_monday(v_today);
+  update public.ops_work_cards set closed_at = (v_mon - 3)::timestamp AT TIME ZONE 'UTC' where id = pg_temp.th_id('K3');
+  v_d1 := pg_temp.th_card('D1', 'H4270 Done after the LA Monday', 'done', 'gia.h4270@test.local', 0, '42700000-0000-4000-c0f0-000000000001');
+  v_d2 := pg_temp.th_card('D2', 'H4270 Done between the two Mondays', 'done', 'gia.h4270@test.local', 0, '42700000-0000-4000-c0f0-000000000002');
+  v_d3 := pg_temp.th_card('D3', 'H4270 Done launch step of the brand', 'done', 'gia.h4270@test.local', 0, '42700000-0000-4000-c0f0-000000000001');
+  update public.ops_work_cards set closed_at = (v_mon::timestamp AT TIME ZONE 'America/Los_Angeles') + interval '1 minute' where id = v_d1;
+  update public.ops_work_cards set closed_at = (v_mon::timestamp AT TIME ZONE 'America/Los_Angeles') - interval '1 minute' where id = v_d2;
+  delete from public.ops_work_links where card_id = v_d3;
+  update public.ops_work_cards set anchor_kind = 'event', anchor_id = v_ev,
+         closed_at = (v_mon::timestamp AT TIME ZONE 'America/Los_Angeles') + interval '2 minutes' where id = v_d3;
+  v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_host_on_mingla('42700000-0000-4000-c0f0-000000000001', %L, 'America/Los_Angeles')::text$q$, v_today)));
+  perform pg_temp.th_check('R-WEEK', 'in Los Angeles: closed after its Monday 00:00 (host-linked and event-anchored)', v->>'done_count', '2');
+  perform pg_temp.th_check('R-WEEK', 'the read says when the week started',
+    ((v->>'done_since')::timestamptz = (v_mon::timestamp AT TIME ZONE 'America/Los_Angeles'))::text, 'true');
+  v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_host_on_mingla('42700000-0000-4000-c0f0-000000000001', %L, 'UTC')::text$q$, v_today)));
+  perform pg_temp.th_check('R-WEEK', 'in UTC the card closed between the two Mondays counts too; last week''s does not', v->>'done_count', '3');
+  v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_host_on_mingla('42700000-0000-4000-c0f0-000000000001', %L, 'Not/AZone')::text$q$, v_today)));
+  perform pg_temp.th_check('R-WEEK', 'an unknown zone counts as UTC', v->>'done_count', '3');
+
+  -- R-NAME (P3-4): an owner whose address starts with _ is "A teammate", never the address.
+  insert into public.crm_record_owners (record_id, owner_email, added_by) values
+    ('42700000-0000-4000-c0f0-000000000001', '_ops.w4270@test.local', 'h-fixture'),
+    ('42700000-0000-4000-c0f0-000000000001', '+plus.w4270@test.local', 'h-fixture');
+  v := pg_temp.th_j(pg_temp.th_person('growth', $q$select public.ops_host_on_mingla('42700000-0000-4000-c0f0-000000000001')::text$q$));
+  perform pg_temp.th_check('R-NAME', 'the host read names them A teammate and carries no address',
+    (select string_agg(o->>'name', ',' order by o->>'name') from jsonb_array_elements(v #> '{team,owners}') o where o->>'name' = 'A teammate') || ' ' || (v::text ~ 'w4270@')::text,
+    'A teammate,A teammate false');
+  v := pg_temp.th_j(pg_temp.th_person('growth', $q$select public.ops_brand_host_record('42700000-0000-4000-b0f0-000000000001')::text$q$));
+  perform pg_temp.th_check('R-NAME', 'the Brand group host record has no address either', (v::text ~ '@')::text, 'false');
+  perform pg_temp.th_check('R-NAME', 'ops_name never returns an address (_ . + -)',
+    public.ops_name('_a@x.test') || '|' || public.ops_name('.b@x.test') || '|' || public.ops_name('+c@x.test') || '|' || public.ops_name('-d@x.test') || '|' || public.ops_name(null),
+    'A teammate|A teammate|A teammate|A teammate|A teammate');
+  perform pg_temp.th_check('R-NAME', 'an ordinary address keeps its email-made name', public.ops_name('tunde.a@x.test'), 'Tunde');
+
+  -- R-UNDO (P3-5): a person's Undo puts Host can see this back, both ways.
+  v_rev := pg_temp.th_rev('K1');
+  v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_work_update(%L, '{"on_brand_plan":true}'::jsonb, %s)::text$q$, pg_temp.th_id('K1'), v_rev)));
+  v_event := (v->>'event_id')::uuid;
+  perform pg_temp.th_check('R-UNDO', 'switching it on gives an undo', (v_event is not null)::text || '/' || (v #>> '{card,on_brand_plan}'), 'true/true');
+  v_t := pg_temp.th_as('growth', format($q$select public.ops_work_undo(%L)::text$q$, v_event));
+  perform pg_temp.th_check('R-UNDO', 'Undo switches it off again',
+    coalesce(pg_temp.th_j(v_t) #>> '{card,on_brand_plan}', v_t) || '/' || (select on_brand_plan::text from public.ops_work_cards where id = pg_temp.th_id('K1')), 'false/false');
+  update public.ops_work_cards set on_brand_plan = true where id = pg_temp.th_id('K1');
+  v_rev := pg_temp.th_rev('K1');
+  v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_work_update(%L, '{"on_brand_plan":false}'::jsonb, %s)::text$q$, pg_temp.th_id('K1'), v_rev)));
+  v_t := pg_temp.th_as('growth', format($q$select public.ops_work_undo(%L)::text$q$, (v->>'event_id')::uuid));
+  perform pg_temp.th_check('R-UNDO', 'Undo of switching it off switches it on again',
+    (select on_brand_plan::text from public.ops_work_cards where id = pg_temp.th_id('K1')), 'true');
+
+  -- R-COPY (P3-3): a closed promised date points to the Host app.
+  v_t := pg_temp.th_person('growth', $q$select public.ops_expected_event_set('{"record_id":"42700000-0000-4000-c0f0-000000000001","id":"42700000-0000-4000-d0f0-000000000001","repeats":"none"}'::jsonb, 'h4270-exp-0005')::text$q$);
+  perform pg_temp.th_check('R-COPY', 'a cancelled promised date says new events are made in the Host app',
+    v_t, 'ERR:22023:expected_closed: This expected event was cancelled. New events are made in the Host app.');
+end;
+$rework$;
+
 select count(*) as th_total, count(*) filter (where not ok) as th_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as th_failures
   from th_results \gset
 rollback;
 
-select (:th_total < 26 or :th_failed > 0) as th_bad \gset
+select (:th_total < 40 or :th_failed > 0) as th_bad \gset
 \if :th_bad
   \echo 'ISSUE-4270 W2 FAILED:' :th_failed 'of' :th_total
   \echo :th_failures

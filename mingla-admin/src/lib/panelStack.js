@@ -143,6 +143,17 @@ export function brandGroupView(search) {
   return { group: params.get("group") || "", brand: params.get("brand") || "", host: side?.kind === "host" ? side.id : "" };
 }
 
+/**
+ * Issue #4270 W2 rework (P3-2): how "Back to the chat" closes the host card.
+ * When this page opened it (a history entry was pushed), it goes back, so the
+ * browser's Back then walks thread -> list; a host card that arrived in the
+ * address (a pasted link, a reload) gets a new entry without it, never a
+ * replace, so Back never repeats the thread.
+ */
+export function hostCloseStep(openedHere) {
+  return openedHere ? "back" : "push";
+}
+
 export function brandGroupSearch(search, patch) {
   const params = new URLSearchParams(typeof search === "string" ? search : "");
   params.set("tab", "brand-groups");

@@ -44,6 +44,7 @@ import {
   sprintLabel,
   todayIso,
   workingWords,
+  showsHostSees,
 } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
 import { PeopleField } from "../people/PeopleField";
@@ -467,6 +468,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
 
       {/* (5) Links and files */}
       <FilesLink card={card} disabled={locked || closed || !!busy} onSave={(url, words) => update({ files_url: url }, words)} />
+      {showsHostSees(card) && (
+        <HostSeesToggle card={card} disabled={locked || !!busy} onChange={(on) => update({ on_brand_plan: on }, on ? "The host can see this on their plan" : "The host no longer sees this")} />
+      )}
       <Section title="Linked records" action={!linking && <button type="button" aria-label="Link a record" disabled={locked || closed} onClick={() => setLinking(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
         {(card.links || []).length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">Nothing linked.</p> : (
           <ul className="flex min-w-0 flex-wrap gap-1.5">
@@ -560,6 +564,25 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         )}
       </div>
     </div>
+  );
+}
+
+// #4270 W2 rework (P3-5): "Host can see this" on a card that is on a host
+// card. A person switches it on or off here; Undo puts it back. An agent
+// can never switch it on (the server refuses, D15).
+function HostSeesToggle({ card, disabled, onChange }) {
+  const id = `host-sees-${card.id}`;
+  return (
+    <Section title="Host plan">
+      <label htmlFor={id} className="flex min-h-11 min-w-0 cursor-pointer items-start gap-2 text-[13px] text-[var(--color-text-primary)]">
+        <input id={id} type="checkbox" data-host-sees-toggle="" checked={!!card.on_brand_plan} disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-brand-700)]" />
+        <span className="min-w-0 break-words">
+          <span className="block font-semibold">Host can see this</span>
+          <span className="block text-[12px] text-[var(--color-text-tertiary)]">On: the host sees its title, due date, status and Files link on their plan.</span>
+        </span>
+      </label>
+    </Section>
   );
 }
 

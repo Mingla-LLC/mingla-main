@@ -24,6 +24,11 @@
 --      still change, repeat, cancel or link to its event.
 --   6. New ops_brand_host_record(brand_id): the host card for a brand, for the
 --      Brand group header (staff with Hosts access only).
+--   Rework (tester W2): a trip or experience on right now is Live now only
+--      and never a past event; "done this week" starts on Monday 00:00 in the
+--      viewer's zone (ops_host_on_mingla takes p_tz; dropped and re-made with
+--      the same grants); a closed promised date points to the Host app;
+--      ops_name never returns an email; Undo puts Host can see this back.
 --
 -- Static SQL only (no EXECUTE of built strings); write conflicts keep PT409.
 -- CREATE OR REPLACE keeps every owner and grant. Do not auto-apply. Release
@@ -48,6 +53,19 @@ COMMENT ON COLUMN public.ops_work_cards.brand_plan_source IS
   'Issue #4270. Where a plan item came from: host_card (staff, Add work item) or host_app (a host).';
 COMMENT ON COLUMN public.ops_work_cards.brand_plan_author_id IS
   'Issue #4270. The host user who added this card from the Host app (Wave 3). Only with brand_plan_source host_app.';
+
+-- ---------------------------------------------------------------------------
+-- 1b. Rework (P3-4): a teammate's name is never their email. The email-made
+--     name of an address that starts with _ . + or - is the address itself
+--     (crm_display_name); ops_name, which every host-card and Work read uses,
+--     says "A teammate" instead. crm_display_name itself is unchanged.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.ops_name(p_email text) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE WHEN n IS NULL OR btrim(n) = '' OR position('@' IN n) > 0 THEN 'A teammate' ELSE n END
+    FROM (SELECT public.crm_display_name(p_email) AS n) s
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 2-5. Readers and writers (bodies copied from their latest definitions;
@@ -848,9 +866,9 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That expected event is no longer on this host card.' USING ERRCODE = 'P0002'; END IF;
     PERFORM public.ops_claim_assert('expected', x.id, v.actor_email, v.via);
     IF x.status = 'fulfilled' THEN
-      RAISE EXCEPTION 'expected_closed: This expected event is already on Mingla. Add a new one for the next event.' USING ERRCODE = '22023';
+      RAISE EXCEPTION 'expected_closed: This expected event is already on Mingla. New events are made in the Host app.' USING ERRCODE = '22023';
     ELSIF x.status = 'cancelled' THEN
-      RAISE EXCEPTION 'expected_closed: This expected event was cancelled. Add a new one.' USING ERRCODE = '22023';
+      RAISE EXCEPTION 'expected_closed: This expected event was cancelled. New events are made in the Host app.' USING ERRCODE = '22023';
     END IF;
   END IF;
 
@@ -1023,13 +1041,21 @@ EXCEPTION WHEN unique_violation THEN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.ops_host_on_mingla(p_record_id uuid, p_today date DEFAULT NULL) RETURNS jsonb
+-- Rework (P3-1): the read takes the viewer's time zone, so "done this week"
+-- starts at 00:00 on Monday there, the same week as the Work board.
+DROP FUNCTION public.ops_host_on_mingla(uuid, date);
+CREATE FUNCTION public.ops_host_on_mingla(p_record_id uuid, p_today date DEFAULT NULL, p_tz text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v record; v_today date := public.ops_today(p_today); r public.crm_records; v_brand jsonb;
   v_records uuid[]; -- #4270 W2: every host record of this brand
+  v_tz text := 'UTC'; v_week_start timestamptz;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
+  -- An unknown or missing zone counts as UTC (like ops_work_list).
+  IF p_tz IS NOT NULL AND char_length(p_tz) <= 64
+     AND EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names z WHERE z.name = p_tz) THEN v_tz := p_tz; END IF;
+  v_week_start := (public.ops_monday(v_today)::timestamp AT TIME ZONE v_tz);
   SELECT * INTO r FROM public.crm_records c WHERE c.id = p_record_id AND c.deleted_at IS NULL AND c.pipeline = 'hosts';
   IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That host card is no longer here.' USING ERRCODE = 'P0002'; END IF;
   -- #4270 W2: the brand once, with its photo and slug for the header.
@@ -1052,7 +1078,11 @@ BEGIN
                          'status', s.a->'status', 'is_public', s.a->'is_public', 'start_at', s.a->'start_at',
                          'start_on', s.a->'start_on', 'timezone', s.a->'timezone', 'runway', s.a->'runway',
                          'ends_at', s.ends_at, 'live', s.live,
-                         'state', public.ops_plain_state(s.a, v_today))
+                         -- Rework (P1-1): a trip or experience on right now is
+                         -- Live now, never also Happened.
+                         'state', CASE WHEN s.live THEN jsonb_build_object('k', 'live', 'name', 'Live now',
+                                                         'say', 'It is on now, until ' || public.ops_day_long((s.ends_at AT TIME ZONE 'UTC')::date) || '.')
+                                       ELSE public.ops_plain_state(s.a, v_today) END)
                        ORDER BY s.a->>'start_at', s.a->>'title')
         FROM (SELECT y.a, d.ends_at, (d.starts_at <= now() AND d.ends_at > now()) AS live FROM public.events e
                 CROSS JOIN LATERAL (SELECT public.ops_anchor('event', e.id, v_today) AS a) y
@@ -1069,6 +1099,11 @@ BEGIN
                 JOIN LATERAL (SELECT public.ops_event_first_start(e.id) AS st) s ON true
                WHERE e.brand_id = r.brand_id AND e.deleted_at IS NULL AND public.ops_event_in_scope(e.id)
                  AND s.st IS NOT NULL AND (s.st AT TIME ZONE 'UTC')::date < v_today
+                 -- Rework (P1-1): what is on right now is not a past event.
+                 AND NOT EXISTS (SELECT 1 FROM public.event_dates ed
+                                  WHERE ed.event_id = e.id AND COALESCE(ed.status, 'scheduled') <> 'cancelled'
+                                  GROUP BY ed.event_id
+                                 HAVING min(ed.start_at) <= now() AND max(COALESCE(ed.end_at, ed.start_at)) > now())
                ORDER BY s.st DESC LIMIT 5) p), '[]'::jsonb) END,
     'expected', COALESCE((SELECT jsonb_agg(public.ops_expected_json(x, v_today) ORDER BY (x.status <> 'open'), x.expected_on)
                             FROM public.ops_expected_events x
@@ -1104,20 +1139,80 @@ BEGIN
                               OR (c.anchor_kind = 'expected' AND c.anchor_id IN (SELECT z.id FROM public.ops_expected_events z WHERE z.record_id = ANY (v_records)))
                               OR (c.anchor_kind = 'event' AND r.brand_id IS NOT NULL
                                   AND c.anchor_id IN (SELECT e.id FROM public.events e WHERE e.brand_id = r.brand_id)))), '[]'::jsonb),
+    -- Rework (P3-1): done since Monday 00:00 in the viewer's zone, over the
+    -- same cards as To do.
     'done_count', (SELECT count(*) FROM public.ops_work_cards c
-                    WHERE c.archived_at IS NULL AND c.status = 'done' AND c.closed_at > now() - interval '7 days'
-                      AND EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = c.id AND l.kind = 'host' AND l.target_id = ANY (v_records))),
+                    WHERE c.archived_at IS NULL AND c.status = 'done' AND c.closed_at >= v_week_start
+                      AND (EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = c.id AND l.kind = 'host' AND l.target_id = ANY (v_records))
+                           OR (c.anchor_kind = 'expected' AND c.anchor_id IN (SELECT z.id FROM public.ops_expected_events z WHERE z.record_id = ANY (v_records)))
+                           OR (c.anchor_kind = 'event' AND r.brand_id IS NOT NULL
+                               AND c.anchor_id IN (SELECT e.id FROM public.events e WHERE e.brand_id = r.brand_id)))),
+    'done_since', v_week_start,
     -- #4270 W2: Brand and team. Mingla owners by name; the brand's accepted
     -- team by display name and role (never their email).
     'team', jsonb_build_object(
       'owners', COALESCE((SELECT jsonb_agg(jsonb_build_object('name', public.ops_name(o.owner_email)) ORDER BY o.added_at, o.owner_email)
                             FROM public.crm_record_owners o WHERE o.record_id = r.id), '[]'::jsonb),
       'brand_members', CASE WHEN r.brand_id IS NULL THEN '[]'::jsonb ELSE COALESCE((
-        SELECT jsonb_agg(jsonb_build_object('name', COALESCE(NULLIF(btrim(p.display_name), ''), NULLIF(btrim(concat_ws(' ', p.first_name, p.last_name)), ''), 'A teammate'),
+        SELECT jsonb_agg(jsonb_build_object('name', COALESCE(CASE WHEN position('@' IN COALESCE(p.display_name, '')) = 0 THEN NULLIF(btrim(p.display_name), '') END,
+                                                                 CASE WHEN position('@' IN concat_ws(' ', p.first_name, p.last_name)) = 0 THEN NULLIF(btrim(concat_ws(' ', p.first_name, p.last_name)), '') END,
+                                                                 'A teammate'),
                                             'role', m.role) ORDER BY array_position(ARRAY['brand_owner','brand_admin','event_manager','finance_manager','marketing_manager','scanner','venue_staff'], m.role), m.accepted_at)
           FROM public.brand_team_members m LEFT JOIN public.profiles p ON p.id = m.user_id
          WHERE m.brand_id = r.brand_id AND m.accepted_at IS NOT NULL AND m.removed_at IS NULL), '[]'::jsonb) END),
     'changes', public.ops_recent_changes('host', r.id, 72)->'items');
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ops_host_on_mingla(uuid, date, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ops_host_on_mingla(uuid, date, text) TO authenticated, service_role;
+COMMENT ON FUNCTION public.ops_host_on_mingla(uuid, date, text) IS
+  'Issue #3980 / #4270. The host card read: the brand, its events, experiences and trips with their kind and Live now, past events, promised dates, To do across the brand''s host records, done since Monday in the viewer''s zone, and the brand team by name.';
+
+-- Rework (P3-5): from 20280403004270; only the on_brand_plan line is new.
+CREATE OR REPLACE FUNCTION public.ops_work_undo(p_event_id uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; e public.ops_work_events; c public.ops_work_cards; r public.ops_work_cards; n public.ops_work_cards; v_now_snap jsonb;
+        v_today date := public.ops_today(NULL);
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  IF v.via IS NOT NULL THEN RAISE EXCEPTION 'people_only: Only a person can undo a change.' USING ERRCODE = '42501'; END IF;
+  SELECT * INTO e FROM public.ops_work_events x WHERE x.id = p_event_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'undo_expired: That change can no longer be undone.' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO c FROM public.ops_work_cards w WHERE w.id = e.card_id AND w.archived_at IS NULL FOR UPDATE;
+  IF NOT FOUND OR e.actor_email <> v.actor_email OR e.via IS NOT NULL OR e.undone_at IS NOT NULL
+     OR e.at <= clock_timestamp() - interval '60 seconds' OR c.revision IS DISTINCT FROM e.to_revision OR e.before IS NULL
+     OR e.action NOT IN ('updated','started','status','closed','pushed_back','reopened','people','links','plan','blocked','unblocked') THEN
+    RAISE EXCEPTION 'undo_expired: That change can no longer be undone.' USING ERRCODE = '22023';
+  END IF;
+  v_now_snap := public.ops_card_snapshot(c.id);
+  r := jsonb_populate_record(c, e.before->'fields');
+  BEGIN
+    UPDATE public.ops_work_cards SET title = r.title, instructions = r.instructions, done_means = r.done_means,
+      -- #4270: a snapshot from before the move reads person as To do (the move also bumped every revision).
+      status = CASE WHEN r.status = 'person' THEN 'todo' ELSE r.status END, files_url = r.files_url,
+      -- #4270 W2 rework (P3-5): Undo puts back Host can see this. Undo is a
+      -- person's (an agent never undoes), so D15 still holds.
+      on_brand_plan = r.on_brand_plan,
+      blocked = r.blocked, blocked_kind = r.blocked_kind, blocked_reason = r.blocked_reason, person_reason = r.person_reason,
+      anchor_kind = r.anchor_kind, anchor_id = r.anchor_id, due_on = r.due_on, due_source = r.due_source, sprint_id = r.sprint_id,
+      plan = r.plan, result = r.result, proof = r.proof, close_kind = r.close_kind, close_reason = r.close_reason,
+      closed_at = r.closed_at, closed_by = r.closed_by, closed_via = r.closed_via, started_at = r.started_at,
+      working_by = r.working_by, working_via = r.working_via, override_reason = r.override_reason, override_by = r.override_by,
+      override_at = r.override_at, revision = revision + 1, updated_by = v.actor_email, updated_via = NULL, updated_at = now()
+     WHERE id = c.id RETURNING * INTO n;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'undo_expired: That change can no longer be undone: another open card now has this title.' USING ERRCODE = '22023';
+  END;
+  DELETE FROM public.ops_work_people p WHERE p.card_id = c.id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by, added_via, added_at)
+  SELECT c.id, x->>'email', x->>'role', x->>'added_by', x->>'added_via', (x->>'added_at')::timestamptz FROM jsonb_array_elements(e.before->'people') x;
+  DELETE FROM public.ops_work_links l WHERE l.card_id = c.id;
+  INSERT INTO public.ops_work_links (card_id, kind, target_id, label, added_by, added_via, added_at)
+  SELECT c.id, x->>'kind', (x->>'id')::uuid, x->>'label', x->>'added_by', x->>'added_via', (x->>'added_at')::timestamptz FROM jsonb_array_elements(e.before->'links') x;
+  UPDATE public.ops_work_events SET undone_at = clock_timestamp(), undone_by = v.actor_email WHERE id = e.id;
+  PERFORM public.ops_card_event(c.id, v.actor_email, NULL, 'undone', NULL, v_now_snap, public.ops_card_snapshot(c.id), c.revision, n.revision);
+  RETURN jsonb_build_object('card', public.ops_card_json(n, v_today));
 END;
 $$;
 
@@ -1166,21 +1261,29 @@ BEGIN
      OR pg_catalog.pg_get_functiondef('public.ops_work_update(uuid,jsonb,bigint,text)'::regprocedure) NOT LIKE '%people_only: A person decides what hosts see.%' THEN
     RAISE EXCEPTION 'issue 4270 wave 2 self-check: an agent could switch on Host can see this';
   END IF;
+  -- Rework: Undo puts back Host can see this; a name is never an email;
+  -- a live item is Live now and not a past event.
+  IF pg_catalog.pg_get_functiondef('public.ops_work_undo(uuid)'::regprocedure) NOT LIKE '%on_brand_plan = r.on_brand_plan%'
+     OR public.ops_name('_x.w4270@example.test') <> 'A teammate'
+     OR pg_catalog.pg_get_functiondef('public.ops_host_on_mingla(uuid,date,text)'::regprocedure) NOT LIKE '%''k'', ''live''%' THEN
+    RAISE EXCEPTION 'issue 4270 wave 2 self-check: the rework is not in place';
+  END IF;
   FOR r IN SELECT p.oid, p.oid::regprocedure::text AS sig FROM pg_catalog.pg_proc p
             WHERE p.oid IN ('public.ops_validate_card(jsonb,text,text,date)'::regprocedure,
                             'public.ops_work_add(jsonb,text)'::regprocedure,
                             'public.ops_work_update(uuid,jsonb,bigint,text)'::regprocedure,
                             'public.ops_card_json(public.ops_work_cards,date)'::regprocedure,
                             'public.ops_card_lite(public.ops_work_cards)'::regprocedure,
-                            'public.ops_host_on_mingla(uuid,date)'::regprocedure,
+                            'public.ops_host_on_mingla(uuid,date,text)'::regprocedure,
                             'public.ops_expected_event_set(jsonb,text)'::regprocedure,
-                            'public.ops_brand_host_record(uuid)'::regprocedure) LOOP
+                            'public.ops_brand_host_record(uuid)'::regprocedure,
+                            'public.ops_work_undo(uuid)'::regprocedure) LOOP
     IF has_function_privilege('anon', r.oid, 'EXECUTE') THEN
       RAISE EXCEPTION 'issue 4270 wave 2 self-check: anon can run %', r.sig;
     END IF;
   END LOOP;
   IF NOT has_function_privilege('authenticated', 'public.ops_brand_host_record(uuid)', 'EXECUTE')
-     OR NOT has_function_privilege('authenticated', 'public.ops_host_on_mingla(uuid,date)', 'EXECUTE') THEN
+     OR NOT has_function_privilege('authenticated', 'public.ops_host_on_mingla(uuid,date,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'issue 4270 wave 2 self-check: the host card lost its grants';
   END IF;
 END;

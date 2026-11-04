@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
+import { browserTimeZone } from "./useOpsWork";
 
 /**
  * The host card's one server read (ops_host_on_mingla), shared by To do, On
@@ -16,7 +17,7 @@ export function useHostOnMingla(recordId, brandId = "") {
     if (!recordId) return;
     const mine = ++seq.current;
     try {
-      const data = await ops.fetchHostOnMingla(recordId, todayIso());
+      const data = await ops.fetchHostOnMingla(recordId, todayIso(), browserTimeZone());
       if (mine === seq.current) setState({ loading: false, data, error: null });
     } catch (error) {
       if (mine === seq.current) setState((prev) => ({ loading: false, data: prev.data, error }));

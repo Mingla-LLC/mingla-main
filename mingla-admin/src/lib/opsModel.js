@@ -41,6 +41,15 @@ export function statusChoice(card, next) {
 }
 
 /** #4270: an open card that carries a Send, Spend or Publish tag (only a person does that step). */
+/**
+ * Issue #4270 W2 rework (P3-5): the work card shows "Host can see this" when
+ * the card is on a host card (linked to a host) or the host already sees it.
+ */
+export function showsHostSees(card) {
+  if (!card || typeof card !== "object") return false;
+  return !!card.on_brand_plan || (Array.isArray(card.links) && card.links.some((l) => l && l.kind === "host"));
+}
+
 export function isTagged(card) {
   return !!card && card.status !== "done" && !card.archived && !!(card.tag || card.person_reason);
 }
@@ -1180,7 +1189,9 @@ export function hostUpcomingRows(events, openExpected, today) {
   for (const e of Array.isArray(events) ? events : []) {
     // #4270 W2 (C-3): a trip or experience on right now stays listed.
     if (!e?.start_on || (today && e.start_on < today && !e.live)) continue;
-    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false,
+    // Rework (P1-1): a row on right now says Live now and nothing else (its
+    // start is in the past, so a plain state would say Happened).
+    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.live ? null : e.state, repeats: false, moment: false,
       eventKind: eventKind(e), live: !!e.live });
   }
   for (const x of Array.isArray(openExpected) ? openExpected : []) {
@@ -1198,6 +1209,15 @@ export function hostUpcomingRows(events, openExpected, today) {
       repeats, moment: !!x.promo_moment, row: x, eventKind: "promised" });
   }
   return rows.sort((a, b) => String(a.on).localeCompare(String(b.on)) || String(a.title).localeCompare(String(b.title)));
+}
+
+/**
+ * Issue #4270 W2 rework (P1-1): past events without anything that is on
+ * right now (a live trip or experience is listed once, as Live now).
+ */
+export function hostPastRows(past, events) {
+  const live = new Set((Array.isArray(events) ? events : []).filter((e) => e && e.live).map((e) => e.id));
+  return (Array.isArray(past) ? past : []).filter((p) => p && !live.has(p.id));
 }
 
 /**

@@ -24,7 +24,7 @@ import { timeAgo } from "../../lib/formatters";
 import { fetchBrandHostRecord } from "../../services/opsService";
 import { useHashQuery } from "../../hooks/useHashQuery";
 import { canOpenPage } from "../../lib/access";
-import { brandGroupSearch, brandGroupView } from "../../lib/panelStack";
+import { brandGroupSearch, brandGroupView, hostCloseStep } from "../../lib/panelStack";
 import { PanelSlotContext } from "../ui/PanelStack";
 import { SidePanel } from "../panels/SidePanel";
 
@@ -172,8 +172,22 @@ export function BrandGroupsPanel() {
     setSearch(brandGroupSearch(search, { group: conversationId, brand: null, host: null }));
   };
   const backToList = () => setSearch(brandGroupSearch(search, { group: null, brand: null, host: null }));
-  const openHost = (recordId) => setSearch(brandGroupSearch(search, { group: selectedId, host: recordId }));
-  const closeHost = () => setSearch(brandGroupSearch(search, { host: null }), { replace: true });
+  // #4270 W2 rework (P3-2): closing the host card goes back when this page
+  // opened it, so the browser's Back is never a dead press.
+  const hostOpenedHere = useRef(false);
+  useEffect(() => { if (!view.host) hostOpenedHere.current = false; }, [view.host]);
+  const openHost = (recordId) => {
+    hostOpenedHere.current = true;
+    setSearch(brandGroupSearch(search, { group: selectedId, host: recordId }));
+  };
+  const closeHost = () => {
+    if (hostCloseStep(hostOpenedHere.current) === "back") {
+      hostOpenedHere.current = false;
+      window.history.back();
+      return;
+    }
+    setSearch(brandGroupSearch(search, { host: null }));
+  };
 
   const selectedGroup = groups.find((group) => group.conversation_id === selectedId) ?? null;
   const selectedBrandId = selectedGroup?.brand_id || "";

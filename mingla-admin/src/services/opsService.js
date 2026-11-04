@@ -82,8 +82,8 @@ export const fetchRunwayReport = (from, to, today) =>
   call(() => supabase.rpc("ops_runway_report", { p_from: from || null, p_to: to || null, p_today: today || null }));
 export const fetchAnchorDetail = (kind, id, today) =>
   call(() => supabase.rpc("ops_anchor_detail", { p_kind: kind, p_id: id, p_today: today || null }));
-export const fetchHostOnMingla = (recordId, today) =>
-  call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null }));
+export const fetchHostOnMingla = (recordId, today, tz) =>
+  call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null, p_tz: tz || null }));
 export const setExpectedEvent = (item, requestKey) =>
   call(() => supabase.rpc("ops_expected_event_set", { p_item: item, p_request_key: requestKey }));
 // #4270 W2: the host card for a brand, for the Brand group header's host avatar.
