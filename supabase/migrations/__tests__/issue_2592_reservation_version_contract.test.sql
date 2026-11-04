@@ -51,44 +51,40 @@ ALTER TABLE public.issue_2592_conname_decoy
 ALTER TABLE public.reservations
   DROP CONSTRAINT IF EXISTS reservations_version_positive;
 
--- Re-applying #1975 also puts back its two functions as that file wrote them,
--- including the historical SQLSTATE 40001 raise that #4134 later turned into
--- PT409. Save the chain-head definitions first and restore them, md5-checked,
--- right after the re-apply, so (b) and (c) run against what production runs.
---
--- Do NOT re-apply 20271231204134 here instead. That file refuses any target
--- a later migration has redefined (#3682's 20280401033682 redefines two of
--- them), so re-applying it after the full chain aborts the whole suite; and
--- if it did run it would roll those later definitions back.
-CREATE TEMP TABLE issue_2592_chain_head AS
-SELECT p.oid, pg_get_functiondef(p.oid) AS def, md5(pg_get_functiondef(p.oid)) AS def_md5
-  FROM pg_catalog.pg_proc AS p
- WHERE p.oid IN ('public.tg_reservations_bump_version()'::regprocedure,
-                 'public.issue_1975_reservation_transition(uuid,text,bigint,uuid,text)'::regprocedure);
+-- Re-applying #1975 rewinds its two functions to their historical bodies (the
+-- 40001 raise). Save the chain-head bodies first and restore exactly those
+-- afterwards. Re-running a later migration instead (this used to re-apply
+-- #4134) breaks as soon as any newer migration redefines something that file
+-- verifies, which #4268 did (#4264).
+CREATE TEMP TABLE issue_2592_chain_head ON COMMIT PRESERVE ROWS AS
+SELECT p.oid::regprocedure::text AS signature, pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p
+ WHERE p.oid IN ('public.tg_reservations_bump_version()'::regprocedure)
+    OR (p.pronamespace = 'public'::regnamespace
+        AND p.proname = 'issue_1975_reservation_transition');
+
+DO $save$
+BEGIN
+  IF (SELECT count(*) FROM issue_2592_chain_head) < 2 THEN
+    RAISE EXCEPTION 'ISSUE-2592 ARRANGE FAIL: expected both #1975 functions at the chain head, saved %',
+      (SELECT string_agg(signature, ', ') FROM issue_2592_chain_head);
+  END IF;
+END
+$save$;
 
 -- Re-apply the REAL migration. It is idempotent by construction
 -- (ADD COLUMN IF NOT EXISTS / CREATE OR REPLACE / DROP TRIGGER IF EXISTS).
 \ir ../20270512001975_issue_1975_ari_stays_reservations.sql
 
-DO $restore_chain_head$
+DO $restore$
 DECLARE
-  r     record;
-  v_bad text;
+  v_row record;
 BEGIN
-  IF (SELECT count(*) FROM issue_2592_chain_head) <> 2 THEN
-    RAISE EXCEPTION 'issue_2592_arrange_broken_chain_head_snapshot_incomplete';
-  END IF;
-  FOR r IN SELECT def FROM issue_2592_chain_head LOOP
-    EXECUTE r.def;
+  FOR v_row IN SELECT signature, definition FROM issue_2592_chain_head LOOP
+    EXECUTE v_row.definition;
   END LOOP;
-  SELECT string_agg(s.oid::regprocedure::text, ', ') INTO v_bad
-    FROM issue_2592_chain_head AS s
-   WHERE md5(pg_get_functiondef(s.oid)) IS DISTINCT FROM s.def_md5;
-  IF v_bad IS NOT NULL THEN
-    RAISE EXCEPTION 'issue_2592_arrange_broken_chain_head_not_restored: %', v_bad;
-  END IF;
 END
-$restore_chain_head$;
+$restore$;
 DROP TABLE issue_2592_chain_head;
 
 BEGIN;

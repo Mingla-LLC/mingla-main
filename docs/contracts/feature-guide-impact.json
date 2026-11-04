@@ -954,6 +954,13 @@
         "mingla-business/src/services/offeringInvitePlanService.ts",
         "supabase/migrations/20280401033682_issue_3682_account_invite_recipients.sql"
       ]
+    },
+    {
+      "capability_key": "web-download",
+      "paths": [
+        "mingla-marketing/app/host/get/route.ts",
+        "mingla-marketing/lib/links-src.ts"
+      ]
     }
   ]
 }

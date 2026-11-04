@@ -58,7 +58,7 @@ export const LINKS_SRC_FALLBACK = 'direct'
 export const LINKS_PID_PREFIX = 'bio_'
 
 /**
- * The `pid` for owned non-bio site surfaces (nav / hero / /host/download).
+ * The `pid` for owned non-bio site surfaces (nav / hero / /host/download / /host/get).
  * Deliberately NOT `bio_*`: these are not bio traffic. Not a reserved SRN either, so
  * it cannot corrupt paid reporting (SPEC OQ-4).
  */
@@ -73,6 +73,8 @@ export type SiteCampaign =
   | 'business_nav'
   | 'business_hero'
   | 'business_download'
+  // #4264 — the /host/get one-tap redirect (the Host launch post's button).
+  | 'business_get'
 
 /**
  * #4137 — campaigns for the free growth tools' "create it on Mingla" CTAs. The
