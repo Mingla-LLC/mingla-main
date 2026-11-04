@@ -103,33 +103,6 @@ export function useUnifiedShare(): UnifiedShareContextValue {
   return value;
 }
 
-function createPresentationDeferred(): PresentationDeferred {
-  let resolvePromise: (() => void) | null = null;
-  let rejectPromise: ((error: Error) => void) | null = null;
-  const deferred: PresentationDeferred = {
-    promise: new Promise<void>((resolve, reject) => {
-      resolvePromise = resolve;
-      rejectPromise = reject;
-    }),
-    resolve: () => {
-      if (deferred.settled) return;
-      deferred.settled = true;
-      resolvePromise?.();
-    },
-    reject: (error) => {
-      if (deferred.settled) return;
-      deferred.settled = true;
-      rejectPromise?.(error);
-    },
-    settled: false,
-  };
-  // #1880: cancellation may win before the expanded caller attaches its real
-  // waiter. Observe rejection internally without replacing the Promise exposed
-  // to that waiter; later awaiters still receive the original rejection.
-  void deferred.promise.then(undefined, () => undefined);
-  return deferred;
-}
-
 type ShareStyles = ReturnType<typeof createStyles>;
 
 /** #4265: how long to wait for the open animation's settle callback before applying results anyway. */
@@ -170,6 +143,33 @@ const RecipientPlaceholders = memo(function RecipientPlaceholders({ styles }: { 
     </View>)}
   </View>;
 });
+
+function createPresentationDeferred(): PresentationDeferred {
+  let resolvePromise: (() => void) | null = null;
+  let rejectPromise: ((error: Error) => void) | null = null;
+  const deferred: PresentationDeferred = {
+    promise: new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    }),
+    resolve: () => {
+      if (deferred.settled) return;
+      deferred.settled = true;
+      resolvePromise?.();
+    },
+    reject: (error) => {
+      if (deferred.settled) return;
+      deferred.settled = true;
+      rejectPromise?.(error);
+    },
+    settled: false,
+  };
+  // #1880: cancellation may win before the expanded caller attaches its real
+  // waiter. Observe rejection internally without replacing the Promise exposed
+  // to that waiter; later awaiters still receive the original rejection.
+  void deferred.promise.then(undefined, () => undefined);
+  return deferred;
+}
 
 export function UnifiedShareProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const dark = useColorScheme() === 'dark';

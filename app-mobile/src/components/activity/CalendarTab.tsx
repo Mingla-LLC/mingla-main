@@ -12,6 +12,10 @@
  *
  * List renders through a virtualised SectionList. There is no search box: the
  * day strip and the type chips do the narrowing.
+ *
+ * #2468 — this tab builds no maps URL. The old free-text `handleOpenMaps` stays
+ * deleted; a plan that needs directions opens through `utils/openMapsTarget`
+ * (RsvpPassSheet), the one maps-link owner.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

@@ -121,7 +121,11 @@ test("#3988 defaults to device city while manual search stays global", () => {
 
   assert.match(screen, /const location = useUserLocation\(user\?\.id, "solo"\)/);
   assert.match(screen, /geocodingService\.reverseGeocode\(lat, lng\)/);
-  assert.match(screen, /if \(city \|\| typeof location\.data\?\.lat/);
+  // [TEST-MOD-APPROVED #4265] the device city is now also re-resolved when a
+  // remembered GPS city is far from the device; a city the person picked by
+  // hand (source !== "device") is still never overwritten.
+  assert.match(screen, /if \(typeof location\.data\?\.lat !== "number"/);
+  assert.match(screen, /if \(current && !deviceResolveRequested\) \{[\s\S]{0,200}if \(citySourceRef\.current !== "device" \|\| !preferencesReadFor\) return;[\s\S]{0,120}if \(deviceCityStillValid\(current, lat, lng\)\) return;/);
   assert.match(picker, /searchMode="places"/);
   assert.match(picker, /suggestLimit=\{8\}/);
   assert.doesNotMatch(picker, /proximity=\{/);

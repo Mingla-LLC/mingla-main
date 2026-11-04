@@ -29,10 +29,42 @@
     {
       "capability_key": "account-explorer-onboarding",
       "paths": [
+        "app-mobile/src/components/CoachLikesPreview.tsx",
         "app-mobile/src/components/OnboardingFlow.tsx",
+        "app-mobile/src/components/SpotlightOverlay.tsx",
         "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
+        "app-mobile/src/constants/coachMarkSteps.ts",
         "app-mobile/src/hooks/onboardingSequenceLogic.ts",
-        "app-mobile/src/hooks/useOnboardingStateMachine.ts"
+        "app-mobile/src/hooks/useOnboardingStateMachine.ts",
+        "app-mobile/src/i18n/locales/ar/modals.json",
+        "app-mobile/src/i18n/locales/bin/modals.json",
+        "app-mobile/src/i18n/locales/bn/modals.json",
+        "app-mobile/src/i18n/locales/de/modals.json",
+        "app-mobile/src/i18n/locales/el/modals.json",
+        "app-mobile/src/i18n/locales/en/modals.json",
+        "app-mobile/src/i18n/locales/es/modals.json",
+        "app-mobile/src/i18n/locales/fr/modals.json",
+        "app-mobile/src/i18n/locales/ha/modals.json",
+        "app-mobile/src/i18n/locales/he/modals.json",
+        "app-mobile/src/i18n/locales/hi/modals.json",
+        "app-mobile/src/i18n/locales/id/modals.json",
+        "app-mobile/src/i18n/locales/ig/modals.json",
+        "app-mobile/src/i18n/locales/it/modals.json",
+        "app-mobile/src/i18n/locales/ja/modals.json",
+        "app-mobile/src/i18n/locales/ko/modals.json",
+        "app-mobile/src/i18n/locales/ms/modals.json",
+        "app-mobile/src/i18n/locales/nl/modals.json",
+        "app-mobile/src/i18n/locales/pl/modals.json",
+        "app-mobile/src/i18n/locales/pt/modals.json",
+        "app-mobile/src/i18n/locales/ro/modals.json",
+        "app-mobile/src/i18n/locales/ru/modals.json",
+        "app-mobile/src/i18n/locales/sv/modals.json",
+        "app-mobile/src/i18n/locales/th/modals.json",
+        "app-mobile/src/i18n/locales/tr/modals.json",
+        "app-mobile/src/i18n/locales/uk/modals.json",
+        "app-mobile/src/i18n/locales/vi/modals.json",
+        "app-mobile/src/i18n/locales/yo/modals.json",
+        "app-mobile/src/i18n/locales/zh/modals.json"
       ]
     },
     {
@@ -158,6 +190,7 @@
         "app-mobile/src/components/creator/contract/ContractSections.tsx",
         "app-mobile/src/components/expandedCard/LocalReviewsSection.tsx",
         "app-mobile/src/components/local/localWords.ts",
+        "app-mobile/src/components/profile/CreatorProgramsSection.tsx",
         "app-mobile/src/components/programs/CreatorMediaPlayerModal.tsx",
         "app-mobile/src/services/creatorGigsService.ts",
         "app-mobile/src/services/creatorProgramService.ts",
@@ -284,15 +317,23 @@
       "capability_key": "social-chat",
       "paths": [
         "app-mobile/src/components/ConnectionsPage.tsx",
+        "app-mobile/src/components/EventGuestListSheet.tsx",
         "app-mobile/src/components/MessageInterface.tsx",
         "app-mobile/src/components/chat/ChatAttachSheet.tsx",
         "app-mobile/src/components/chat/GroupInfoSheet.tsx",
         "app-mobile/src/components/connections/ChatListItem.tsx",
+        "app-mobile/src/components/connections/chatListLoad.ts",
         "app-mobile/src/components/connections/chatListModel.ts",
         "app-mobile/src/components/discover/BusinessEventCard.tsx",
         "app-mobile/src/hooks/useBrandBySlug.ts",
+        "app-mobile/src/hooks/useChatList.ts",
         "app-mobile/src/hooks/useMessages.ts",
+        "app-mobile/src/hooks/useSessionCreationGate.ts",
+        "app-mobile/src/hooks/useSessionDiscussion.ts",
+        "app-mobile/src/hooks/useSessionManagement.ts",
         "app-mobile/src/i18n/locales/en/chat.json",
+        "app-mobile/src/services/chatListRefresh.ts",
+        "app-mobile/src/services/collaborationInviteService.ts",
         "app-mobile/src/services/connectionsService.ts",
         "app-mobile/src/services/messagingService.ts",
         "app-mobile/src/services/publicEventSeedService.ts",
@@ -315,6 +356,7 @@
         "app-mobile/src/components/profile/BrandsYouFollowManageSheet.tsx",
         "app-mobile/src/components/profile/friendsReachCopy.ts",
         "app-mobile/src/hooks/brandFollowKeys.ts",
+        "app-mobile/src/hooks/useBrandFollowerCount.ts",
         "app-mobile/src/hooks/useFriendsReach.ts",
         "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx",
         "app-mobile/src/services/deepLinkService.ts",
@@ -340,7 +382,8 @@
     {
       "capability_key": "social-friends",
       "paths": [
-        "app-mobile/src/components/ConnectionsPage.tsx"
+        "app-mobile/src/components/ConnectionsPage.tsx",
+        "app-mobile/src/hooks/useFriendsQuery.ts"
       ]
     },
     {
@@ -363,6 +406,11 @@
       "capability_key": "discover-events",
       "paths": [
         "app-mobile/src/components/discover/discoverLoadState.ts",
+        "app-mobile/src/hooks/discoverQueryKeys.ts",
+        "app-mobile/src/hooks/useDiscoverCityWatch.ts",
+        "app-mobile/src/hooks/useDiscoverFacets.ts",
+        "app-mobile/src/hooks/useDiscoverFeed.ts",
+        "app-mobile/src/utils/discoverEventsCache.ts",
         "mingla-business/jest.config.cjs",
         "mingla-business/server/socialPreview.js",
         "mingla-business/tsconfig.json",
@@ -961,6 +1009,117 @@
       "paths": [
         "mingla-marketing/app/host/get/route.ts",
         "mingla-marketing/lib/links-src.ts"
+      ]
+    },
+    {
+      "capability_key": "discover-swipe-deck",
+      "paths": [
+        "app-mobile/app/_layout.tsx",
+        "app-mobile/src/components/SwipeableCards.tsx",
+        "app-mobile/src/config/queryClient.ts",
+        "app-mobile/src/hooks/useDeckCards.ts",
+        "app-mobile/src/hooks/useUserLocation.ts",
+        "app-mobile/src/services/deckService.ts",
+        "app-mobile/src/utils/deckSnapshot.ts",
+        "app-mobile/src/utils/queryPersistence.ts",
+        "app-mobile/src/utils/queryPersistenceBudget.ts"
+      ]
+    },
+    {
+      "capability_key": "discover-save-and-schedule",
+      "paths": [
+        "app-mobile/src/components/LikesPage.tsx",
+        "app-mobile/src/components/activity/BusinessEventCalendarRow.tsx",
+        "app-mobile/src/components/activity/CalendarAgendaStates.tsx",
+        "app-mobile/src/components/activity/CalendarControls.tsx",
+        "app-mobile/src/components/activity/CalendarGrids.tsx",
+        "app-mobile/src/components/activity/CalendarHeaderControls.tsx",
+        "app-mobile/src/components/activity/CalendarPlanActionSheet.tsx",
+        "app-mobile/src/components/activity/CalendarTab.tsx",
+        "app-mobile/src/components/activity/CardFilterBar.tsx",
+        "app-mobile/src/components/activity/ReservationCalendarRow.tsx",
+        "app-mobile/src/components/activity/RsvpCalendarRow.tsx",
+        "app-mobile/src/components/activity/SavedCardActionMenu.tsx",
+        "app-mobile/src/components/activity/SavedFiltersSheet.tsx",
+        "app-mobile/src/components/activity/SavedGridCard.tsx",
+        "app-mobile/src/components/activity/SavedGridSkeleton.tsx",
+        "app-mobile/src/components/activity/SavedScheduleSheet.tsx",
+        "app-mobile/src/components/activity/SavedSearchHeader.tsx",
+        "app-mobile/src/components/activity/SavedTab.tsx",
+        "app-mobile/src/components/activity/StayCalendarRow.tsx",
+        "app-mobile/src/components/activity/calendarAgendaModel.ts",
+        "app-mobile/src/components/activity/calendarAgendaTypes.ts",
+        "app-mobile/src/components/activity/savedFiltersModel.ts",
+        "app-mobile/src/components/activity/savedGridModel.ts",
+        "app-mobile/src/components/activity/useCalendarViewPref.ts",
+        "app-mobile/src/components/ui/Icon.tsx",
+        "app-mobile/src/components/ui/Toast.tsx",
+        "app-mobile/src/components/ui/ToastContainer.tsx",
+        "app-mobile/src/constants/designSystem.ts",
+        "app-mobile/src/i18n/locales/ar/activity.json",
+        "app-mobile/src/i18n/locales/bin/activity.json",
+        "app-mobile/src/i18n/locales/bn/activity.json",
+        "app-mobile/src/i18n/locales/de/activity.json",
+        "app-mobile/src/i18n/locales/el/activity.json",
+        "app-mobile/src/i18n/locales/en/activity.json",
+        "app-mobile/src/i18n/locales/es/activity.json",
+        "app-mobile/src/i18n/locales/fr/activity.json",
+        "app-mobile/src/i18n/locales/ha/activity.json",
+        "app-mobile/src/i18n/locales/he/activity.json",
+        "app-mobile/src/i18n/locales/hi/activity.json",
+        "app-mobile/src/i18n/locales/id/activity.json",
+        "app-mobile/src/i18n/locales/ig/activity.json",
+        "app-mobile/src/i18n/locales/it/activity.json",
+        "app-mobile/src/i18n/locales/ja/activity.json",
+        "app-mobile/src/i18n/locales/ko/activity.json",
+        "app-mobile/src/i18n/locales/ms/activity.json",
+        "app-mobile/src/i18n/locales/nl/activity.json",
+        "app-mobile/src/i18n/locales/pl/activity.json",
+        "app-mobile/src/i18n/locales/pt/activity.json",
+        "app-mobile/src/i18n/locales/ro/activity.json",
+        "app-mobile/src/i18n/locales/ru/activity.json",
+        "app-mobile/src/i18n/locales/sv/activity.json",
+        "app-mobile/src/i18n/locales/th/activity.json",
+        "app-mobile/src/i18n/locales/tr/activity.json",
+        "app-mobile/src/i18n/locales/uk/activity.json",
+        "app-mobile/src/i18n/locales/vi/activity.json",
+        "app-mobile/src/i18n/locales/yo/activity.json",
+        "app-mobile/src/i18n/locales/zh/activity.json",
+        "app-mobile/src/services/deviceCalendarService.ts"
+      ]
+    },
+    {
+      "capability_key": "account-settings",
+      "paths": [
+        "app-mobile/src/components/ProfilePage.tsx",
+        "app-mobile/src/components/profile/ProfileInterestsSection.tsx",
+        "app-mobile/src/components/profile/ProfileSectionSkeleton.tsx",
+        "app-mobile/src/components/profile/profileFreshness.ts",
+        "app-mobile/src/hooks/useUserPreferences.ts"
+      ]
+    },
+    {
+      "capability_key": "discover-curated-plans",
+      "paths": [
+        "app-mobile/src/components/expandedCard/expandedCardFacts.ts",
+        "app-mobile/src/contexts/RecommendationsContext.tsx",
+        "app-mobile/src/types/curatedExperience.ts",
+        "app-mobile/src/utils/cardConverters.ts",
+        "app-mobile/src/utils/curatedPriceRange.ts",
+        "app-mobile/src/utils/mutateCuratedCard.ts",
+        "supabase/functions/_shared/curatedPrice.ts",
+        "supabase/functions/_shared/stopAlternatives.ts",
+        "supabase/functions/generate-curated-experiences/index.ts"
+      ]
+    },
+    {
+      "capability_key": "social-share",
+      "paths": [
+        "app-mobile/src/components/share/UnifiedShareProvider.tsx",
+        "app-mobile/src/components/share/shareRecipientsModel.ts",
+        "app-mobile/src/components/share/shareSheetPerf.ts",
+        "app-mobile/src/components/ui/BaseBottomSheet.tsx",
+        "app-mobile/src/services/contentShareDeliveryService.ts"
       ]
     }
   ]
