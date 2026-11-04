@@ -29,6 +29,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -368,22 +370,22 @@ do $expected$
 declare v text; v_today date := pg_temp.t3980_id('today')::date; v_item text;
 begin
   v_item := format('{"record_id":"%s","title":"W3980 Supper Club","event_type":"event","expected_on":"%s","city":"Lagos"}', pg_temp.t3980_id('host'), v_today + 45);
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text', v_item, 'w3980-exp-0001'));
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text', v_item, 'w3980-exp-0001'));
   perform pg_temp.t3980_check('W2-EXPECTED', 'a teammate adds the host''s expected event',
     pg_temp.t3980_get(v, 'status') || '/' || pg_temp.t3980_get(v, 'expected', 'runway', 'band') || '/' || pg_temp.t3980_get(v, 'expected', 'runway', 'go_live_by'),
     'created/not_live/' || (v_today + 17)::text);
   perform pg_temp.t3980_keep('x1', pg_temp.t3980_get(v, 'expected', 'id'));
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text', v_item, 'w3980-exp-0001'));
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text', v_item, 'w3980-exp-0001'));
   perform pg_temp.t3980_check('W2-EXPECTED', 'the same request again changes nothing', pg_temp.t3980_get(v, 'replayed'), 'true');
-  v := pg_temp.t3980_person('growth2', format('select public.ops_expected_event_set(%L::jsonb, %L)::text', v_item, 'w3980-exp-0002'));
+  v := pg_temp.t3980_person('growth2', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text', v_item, 'w3980-exp-0002'));
   perform pg_temp.t3980_like('W2-EXPECTED', 'a second open one with the same title and date is refused, naming the first',
     v, 'ERR:22023:duplicate_expected: An open expected event already matches: "W3980 Supper Club"%' || pg_temp.t3980_id('x1') || '%');
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, NULL)::text', v_item));
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, NULL)::text', v_item));
   perform pg_temp.t3980_like('W2-EXPECTED', 'a request key is required', v, 'ERR:22023:request_key_required:%');
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"W3980 Creator Night","event_type":"event","expected_on":"%s"}', pg_temp.t3980_id('creator'), v_today + 20), 'w3980-exp-0003'));
   perform pg_temp.t3980_like('W2-EXPECTED', 'expected events are for hosts only', v, 'ERR:22023:not_a_host: Expected events are for hosts.%');
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"x","event_type":"gala","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today - 1), 'w3980-exp-0004'));
   perform pg_temp.t3980_like('W2-EXPECTED', 'every problem comes back at once, in plain words', v,
     -- [TEST-MOD-APPROVED #3980] Wave 3 adds the promo_moment type (R5); the type words list it.
@@ -409,18 +411,21 @@ begin
   v := pg_temp.t3980_person('growth', format('select public.ops_host_on_mingla(%L, %L)::text', pg_temp.t3980_id('creator'), v_today));
   perform pg_temp.t3980_like('W2-EXPECTED', 'a creator card has no On Mingla section', v, 'ERR:P0002:not_found:%');
 
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","id":"%s","status":"cancelled"}', pg_temp.t3980_id('host'), pg_temp.t3980_id('x1')), 'w3980-exp-0005'));
   perform pg_temp.t3980_like('W2-EXPECTED', 'cancelling needs a reason', v, 'ERR:22023:invalid_expected: Say why it was cancelled%');
 
   -- through the connector
   v := pg_temp.t3980_work('A', 'set_expected_event', format('{"record_id":"%s","title":"W3980 Agent Brunch","event_type":"experience","expected_on":"%s","request_key":"w3980-agent-exp-01"}',
     pg_temp.t3980_id('host'), v_today + 60));
-  perform pg_temp.t3980_check('W2-EXPECTED', 'an agent sets an expected event through the connector',
-    pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'result', 'status'), 'true/created');
-  perform pg_temp.t3980_check('W2-EXPECTED', 'and the agent log says so',
-    (select l.via || '/' || l.outcome from public.ops_agent_log l where l.action = 'expected_set' and l.target_id = (pg_temp.t3980_get(v, 'result', 'expected', 'id'))::uuid), 'claude/ok');
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  -- #4270 W2 (D16): an agent can no longer add a promised event.
+  perform pg_temp.t3980_check('W2-EXPECTED', 'an agent cannot add an expected event through the connector (D16)',
+    pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'error', 'token'), 'false/gone');
+  -- One saved the way it was before #4270, for the cancel below.
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
+    format('{"record_id":"%s","title":"W3980 Agent Brunch","event_type":"experience","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today + 60), 'w3980-agent-exp-02'));
+  v := jsonb_build_object('result', pg_temp.t3980_j(v))::text;
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","id":"%s","status":"cancelled","cancel_reason":"The host moved it to spring."}', pg_temp.t3980_id('host'), pg_temp.t3980_get(v, 'result', 'expected', 'id')), 'w3980-exp-0006'));
   perform pg_temp.t3980_check('W2-EXPECTED', 'a person cancels it with a reason', pg_temp.t3980_get(v, 'status') || '/' || pg_temp.t3980_get(v, 'expected', 'status'), 'cancelled/cancelled');
 
@@ -445,10 +450,10 @@ $expected$;
 do $reconcile$
 declare v text; v_today date := pg_temp.t3980_id('today')::date; v_ev text; v_far text; v_out jsonb;
 begin
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"W3980 Harvest Party","event_type":"event","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today + 50), 'w3980-exp-0010'));
   perform pg_temp.t3980_keep('x2', pg_temp.t3980_get(v, 'expected', 'id'));
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"W3980 Far Party","event_type":"event","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today + 70), 'w3980-exp-0011'));
   perform pg_temp.t3980_keep('x3', pg_temp.t3980_get(v, 'expected', 'id'));
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 harvest brief","instructions":"Write the content brief for the harvest party.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"anchor":{"kind":"expected","id":"%s"},"kit_step":-26}]'::jsonb, 'w3980-w2-add-01')::text$q$, pg_temp.t3980_id('x2')));

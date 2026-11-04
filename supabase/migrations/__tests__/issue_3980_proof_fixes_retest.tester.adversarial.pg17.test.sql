@@ -28,6 +28,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -453,9 +455,10 @@ begin
   v := pg_temp.trt_gw('ops_agent_call', 'ada.claude', 'set_expected_event', jsonb_build_object('request_key', 'rt-moment-0001',
          'record_id', '39940000-0000-4000-c100-000000000002', 'title', 'RT Detty December menu', 'event_type', 'promo_moment',
          'expected_on', pg_temp.trt_today() + 50, 'repeats', 'none'));
-  perform pg_temp.trt_check('P2-2', 'the agent saves a promo moment',
-    (select event_type || '/' || created_by from public.ops_expected_events where record_id = '39940000-0000-4000-c100-000000000002'),
-    'promo_moment/ada.rt3980@test.local');
+  -- #4270 W2 (D16): an agent can no longer add a promised event or promo moment.
+  perform pg_temp.trt_like('P2-2', 'the agent cannot add a promo moment (D16)', v, '%gone: Promised dates can no longer be added%');
+  perform pg_temp.trt_check('P2-2', 'and nothing was added',
+    (select count(*)::text from public.ops_expected_events where record_id = '39940000-0000-4000-c100-000000000002'), '0');
 end;
 $p22$;
 

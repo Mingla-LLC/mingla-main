@@ -27,6 +27,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -288,11 +290,11 @@ begin
   select id into v_golive from public.ops_work_cards where auto_key = 'golive:expected:39910000-0000-4000-d100-000000000001' and status <> 'done';
   perform pg_temp.w3b_check('N3', 'a one-off promised date has its go-live card',
     pg_temp.w3b_open('39910000-0000-4000-d100-000000000001'), '1:golive');
-  v := pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000001', 'id', '39910000-0000-4000-d100-000000000001', 'repeats', 'week'), 'w3b-n3-week-0001'));
   perform pg_temp.w3b_check('N3', 'weekly: the go-live card closes and one rolling card takes over',
     pg_temp.w3b_j(v)->>'status' || '/' || pg_temp.w3b_open('39910000-0000-4000-d100-000000000001'), 'updated/1:series');
-  v := pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000001', 'id', '39910000-0000-4000-d100-000000000001', 'repeats', 'none'), 'w3b-n3-none-0001'));
   perform pg_temp.w3b_check('N3', 'back to "Does not repeat": exactly one open go-live card',
     pg_temp.w3b_j(v)->>'status' || '/' || pg_temp.w3b_open('39910000-0000-4000-d100-000000000001'), 'updated/1:golive');
@@ -311,9 +313,9 @@ begin
    where auto_key = 'golive:expected:39910000-0000-4000-d100-000000000002';
   perform pg_temp.w3b_check('N3', 'the earlier round''s card was closed by a person',
     pg_temp.w3b_open('39910000-0000-4000-d100-000000000002'), '0:');
-  v := pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000002', 'id', '39910000-0000-4000-d100-000000000002', 'repeats', 'week'), 'w3b-n3-week-0002'));
-  v := pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000002', 'id', '39910000-0000-4000-d100-000000000002', 'repeats', 'none'), 'w3b-n3-none-0002'));
   perform pg_temp.w3b_check('N3', 'a done card from an earlier round does not block: one open go-live card',
     pg_temp.w3b_open('39910000-0000-4000-d100-000000000002'), '1:golive');
@@ -331,7 +333,7 @@ $n3$;
 do $n4$
 declare v text; x record;
 begin
-  v := pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000004', 'id', '39910000-0000-4000-d100-000000000004', 'repeats', 'none'), 'w3b-n4-none-0001'));
   select * into x from public.ops_expected_events where id = '39910000-0000-4000-d100-000000000004';
   perform pg_temp.w3b_check('N4', 'a started weekly series switched to "Does not repeat" with no date keeps its next coming date',
@@ -345,14 +347,14 @@ $n4$;
 do $steps$
 declare v text;
 begin
-  v := pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000005', 'title', 'W3B Far Weekly', 'event_type', 'event',
                             'expected_on', (pg_temp.w3b_today() + 120)::text, 'repeats', 'week'), 'w3b-steps-far-0001'));
   perform pg_temp.w3b_check('STEPS', 'a far-off weekly series: the save says no step is open yet',
     pg_temp.w3b_j(v)->>'status' || '/' || coalesce(pg_temp.w3b_j(v)->'steps'->>'added', '?') || '/' || coalesce(pg_temp.w3b_j(v)->'steps'->>'open', 'missing'),
     'created/0/0');
   perform pg_temp.w3b_check('STEPS', 'a near one-off: the save counts its open go-live card',
-    pg_temp.w3b_j(pg_temp.w3b_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+    pg_temp.w3b_j(pg_temp.w3b_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39910000-0000-4000-c300-000000000005', 'title', 'W3B Near Night', 'event_type', 'event',
                             'expected_on', (pg_temp.w3b_today() + 40)::text), 'w3b-steps-near-0001')))->'steps'->>'open', '1');
 end;

@@ -34,6 +34,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -238,7 +240,7 @@ begin
   perform pg_temp.w3t_check('T-OFF', 'a brand made after an earlier switch-on is not linked or carded while brand cards are off',
     (select count(*) from public.crm_records where brand_id = '39870000-0000-4000-b400-000000000099')::text
       || '/' || coalesce(v_res->>'brand_autolink', 'null'), '0/null');
-  v := pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000004', 'title', 'W3T Off Promise', 'event_type', 'event',
                        'expected_on', v_today + 60), 'w3t-off-promise-1'));
   perform pg_temp.w3t_check('T-OFF', 'a person saving a promise while off makes no step', (pg_temp.w3t_j(v)->>'status') || '/' || coalesce(pg_temp.w3t_j(v)->>'steps', 'null') || '/' || pg_temp.w3t_auto_count(), 'created/null/0');
@@ -398,7 +400,7 @@ begin
   perform pg_temp.w3t_check('T-REPEAT', 'the count is kept between 1 and 12',
     jsonb_array_length(public.ops_expected_occurrences(x, '2027-01-01', 0))::text || '/' || jsonb_array_length(public.ops_expected_occurrences(x, '2027-01-01', 500))::text, '1/12');
   -- The host stops the series: its rolling card closes.
-  perform pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  perform pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000002', 'id', '39870000-0000-4000-d100-000000000001', 'status', 'cancelled',
                        'cancel_reason', 'The supper club stopped'), 'w3t-series-stop-1'));
   perform pg_temp.w3t_check('T-REPEAT', 'cancelling the series closes its one rolling card',
@@ -412,7 +414,7 @@ $repeat$;
 do $promo$
 declare v_today date := pg_temp.w3t_id('today')::date; v text; j jsonb; v_id text; v_late text;
 begin
-  v := pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000003', 'title', 'W3T December Menu', 'event_type', 'promo_moment',
                        'expected_on', v_today + 40), 'w3t-promo-1'));
   v_id := pg_temp.w3t_j(v)->'expected'->>'id';
@@ -425,7 +427,7 @@ begin
   j := pg_temp.w3t_j(pg_temp.w3t_person('growth', format('select public.ops_calendar(%L, %L, %L)::text', v_today, v_today + 60, v_today)));
   perform pg_temp.w3t_check('T-PROMO', 'the Calendar shows it with the same state as an event',
     (select (e->>'promo_moment') || '/' || (e->'state'->>'k') from jsonb_array_elements(j->'expected') e where e->>'id' = v_id), 'true/notlive');
-  v := pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000003', 'title', 'W3T Late Brunch', 'event_type', 'promo_moment',
                        'expected_on', v_today + 15), 'w3t-promo-2'));
   v_late := pg_temp.w3t_j(v)->'expected'->>'id';
