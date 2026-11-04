@@ -351,7 +351,11 @@ test('TA7 loading, covered, coverless, and error are exclusive; retry clears onl
   // portrait. Attack the new retry owner: it may restart link preparation but
   // must not clear recipients, note, selection, or any content persistence.
   const modal = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  const retry = /const loadShare = useCallback\(\(nextInput[\s\S]*?\n  \}, \[\]\);/.exec(modal)?.[0] || '';
+  // [TEST-MOD-APPROVED #4265] loadShare now depends on `runAfterOpen` (results
+  // wait for the open animation), so the slice ends at its own dependency list
+  // instead of overrunning into the next hook. The properties are unchanged.
+  const retry = /const loadShare = useCallback\(\(nextInput[\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(modal)?.[0] || '';
+  assert.ok(retry.length > 0 && retry.length < 2000, 'loadShare slice not found or overran');
   // [TEST-MOD-APPROVED #2589] SHAPE pins only — the boolean `prepError` became a
   // typed reason, so `setPrepError(false)` is now `setPrepFailure(null)` and the
   // render guard is `prepFailure !== null`. Pinned before:

@@ -12,12 +12,12 @@
  *   `masterDateUtc` fallback), NOT a start-only `masterDateUtc < now`
  *   predicate.
  *
- *   Forbidden patterns in `CalendarTab.tsx`:
+ *   Forbidden patterns in `calendarAgendaModel.ts` (the Calendar partition, #4265):
  *     - `Date.parse(order.masterDateUtc) < now` (direct start-only)
  *     - `const ts = order.masterDateUtc ? ... : NaN` immediately
  *       followed by `ts < now` (the verbatim pre-0853 predicate)
  *
- *   Required tokens in `CalendarTab.tsx`:
+ *   Required tokens in `calendarAgendaModel.ts`:
  *     - `masterDateEndUtc` — partition must read the new field
  *     - `effectiveEndTs` — SPEC §3.5.1 canonical variable name
  *
@@ -53,12 +53,14 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const APP_MOBILE = path.join(REPO_ROOT, "app-mobile");
 
+// #4265: the Calendar's past/upcoming partition moved out of CalendarTab.tsx
+// into the pure agenda model, so that is the file this gate pins.
 const CALENDAR_TAB = path.join(
   APP_MOBILE,
   "src",
   "components",
   "activity",
-  "CalendarTab.tsx",
+  "calendarAgendaModel.ts",
 );
 const CALENDAR_SERVICE = path.join(
   APP_MOBILE,
@@ -151,7 +153,7 @@ if (FORBIDDEN_TAB[1].test(tabStripped)) {
   failures += 1;
 }
 
-// Required-presence checks on CalendarTab.tsx.
+// Required-presence checks on the Calendar partition (calendarAgendaModel.ts).
 for (const req of REQUIRED_TAB) {
   if (!req.re.test(tabSrc)) {
     console.error(

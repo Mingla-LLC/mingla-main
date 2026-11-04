@@ -5,6 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { creatorProgramService } from '../../services/creatorProgramService';
 import { creatorGigsService } from '../../services/creatorGigsService';
 import { localProgramService } from '../../services/localProgramService';
+// Creator status, gigs, earnings and Local programs change server-side (admin
+// approvals, payouts) — the short window, not the five-minute revisit one.
+import { PROFILE_SERVER_DRIVEN_STALE_MS } from './profileFreshness';
+import { ProfileRowsSkeleton } from './ProfileSectionSkeleton';
 import { creatorOwnsNextStep, formatMoney, hostsSeeYouAs, localRowCopy, nicheLabel } from '../../utils/programFormat';
 import { Icon } from '../ui/Icon';
 import { glass } from '../../constants/designSystem';
@@ -29,12 +33,12 @@ function initials(name: string): string {
  */
 export function CreatorProgramsSection({ userId, onOpenCreator, onOpenLocal, onOpenEarnings }: Props): React.ReactElement {
   const [earnOpen, setEarnOpen] = useState(false);
-  const status = useQuery({ queryKey: ['creator-programs', 'status', userId], queryFn: () => creatorProgramService.status(), enabled: Boolean(userId), staleTime: 60_000, retry: 1 });
+  const status = useQuery({ queryKey: ['creator-programs', 'status', userId], queryFn: () => creatorProgramService.status(), enabled: Boolean(userId), staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
   const isCreator = Boolean(status.data?.profile);
-  const profile = useQuery({ queryKey: ['creator-programs', 'own-profile', userId], queryFn: () => creatorProgramService.ownProfile(), enabled: isCreator && !status.data?.display_name, staleTime: 60_000, retry: 1 });
-  const home = useQuery({ queryKey: ['creator-programs', 'home', userId], queryFn: () => creatorGigsService.home(), enabled: isCreator, staleTime: 60_000, retry: 1 });
-  const earnings = useQuery({ queryKey: ['creator-programs', 'earnings', userId], queryFn: () => creatorGigsService.earningsSummary(), enabled: isCreator, staleTime: 60_000, retry: 0 });
-  const landing = useQuery({ queryKey: ['creator-programs', 'local-landing', userId], queryFn: () => localProgramService.landing(), enabled: Boolean(userId), staleTime: 60_000, retry: 1 });
+  const profile = useQuery({ queryKey: ['creator-programs', 'own-profile', userId], queryFn: () => creatorProgramService.ownProfile(), enabled: isCreator && !status.data?.display_name, staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
+  const home = useQuery({ queryKey: ['creator-programs', 'home', userId], queryFn: () => creatorGigsService.home(), enabled: isCreator, staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
+  const earnings = useQuery({ queryKey: ['creator-programs', 'earnings', userId], queryFn: () => creatorGigsService.earningsSummary(), enabled: isCreator, staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 0 });
+  const landing = useQuery({ queryKey: ['creator-programs', 'local-landing', userId], queryFn: () => localProgramService.landing(), enabled: Boolean(userId), staleTime: PROFILE_SERVER_DRIVEN_STALE_MS, retry: 1 });
 
   const local = landing.data;
   const localCopy = localRowCopy(local);
@@ -51,9 +55,13 @@ export function CreatorProgramsSection({ userId, onOpenCreator, onOpenLocal, onO
     summary && summary.on_the_way_minor > 0 ? `${formatMoney(summary.on_the_way_minor, summary.currency)} on the way` : null,
   ].filter(Boolean).join(' · ') || (verified ? 'Find gigs and manage your work' : 'Finish setup to start getting gigs');
 
+  // #4265: until the creator status answers, hold the row's space instead of
+  // showing "Earn with Mingla" and then swapping in the creator block.
+  const statusPending = Boolean(userId) && status.data === undefined && !status.isError;
+
   return <View>
     <Text style={styles.title}>Creator programs</Text>
-    {isCreator ? <>
+    {statusPending ? <ProfileRowsSkeleton /> : isCreator ? <>
       <Pressable accessibilityRole="button" accessibilityLabel={`You're a Mingla Creator. ${seenAs}`} onPress={onOpenCreator} style={({ pressed }) => [styles.me, pressed && styles.pressed]}>
         <View style={styles.avatar}><Text style={styles.avatarText}>{initials(name)}</Text></View>
         <View style={styles.flex}>

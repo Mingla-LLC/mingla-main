@@ -22,6 +22,7 @@ import { categories as allCategories } from '../../constants/categories';
 import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
 import { useTranslation } from 'react-i18next';
 import { glass } from '../../constants/designSystem';
+import { ProfileChipsSkeleton } from './ProfileSectionSkeleton';
 
 interface ProfileInterestsSectionProps {
   intents: string[];
@@ -30,6 +31,8 @@ interface ProfileInterestsSectionProps {
   onEditPress?: () => void;
   /** Overrides default header title. */
   sectionTitle?: string;
+  /** #4265: the first load has not answered yet — hold the chips' space. */
+  loading?: boolean;
 }
 
 const STAGGER_DELAY = 30;
@@ -44,6 +47,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
   isOwnProfile,
   onEditPress,
   sectionTitle,
+  loading = false,
 }) => {
   const { t } = useTranslation(['profile', 'common']);
   const hasInterests = intents.length > 0 || categories.length > 0;
@@ -136,7 +140,9 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
         )}
       </View>
 
-      {!hasInterests && isOwnProfile ? (
+      {loading && !hasInterests ? (
+        <ProfileChipsSkeleton />
+      ) : !hasInterests && isOwnProfile ? (
         <TrackedTouchableOpacity
           logComponent="ProfileInterestsSection"
           onPress={onEditPress}

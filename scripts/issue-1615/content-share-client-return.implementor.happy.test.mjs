@@ -43,7 +43,10 @@ test('C3 consumer preview renders only the canonical prepared message lifecycle'
   // modal and its S4 preview. The app-wide share sheet now opens first, then
   // loads its compact summary and independently prepares external sharing.
   const source = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  assert.match(source, /setVisible\(true\)[\s\S]*loadShare\(nextInput, token\)[\s\S]*loadRecipients\(token\)/);
+  // [TEST-MOD-APPROVED #4265] recipients now load through one React Query
+  // (`loadRecipients()` refetches it), so the call no longer threads a token;
+  // the order — open first, then the share, then the list — is unchanged.
+  assert.match(source, /setVisible\(true\)[\s\S]*loadShare\(nextInput, token\)[\s\S]*loadRecipients\(\)/);
   assert.match(source, /prepared\?\.media\?\.posterUrl/);
   assert.doesNotMatch(source, /generatePersonalizedMessage|personalizedMessage|star rating|Let me know if you're interested/);
   // [TEST-MOD-APPROVED #1615] Physical Samsung reason: the response-classified

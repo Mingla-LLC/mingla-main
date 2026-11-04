@@ -18,10 +18,15 @@ import {
   type DeckParams,
   type DeckResponse,
   type DeckServerPath,
-  mergeCardsByIdPreservingOrder,
 } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import { normalizeDateTime } from '../utils/cardConverters';
+import {
+  buildDeckSnapshotRecord,
+  DECK_LAST_SNAPSHOT_KEY,
+  fetchDeckKeepingSnapshot,
+  isRestoredDeckSnapshot,
+} from '../utils/deckSnapshot';
 
 // Stable empty arrays to prevent new references on every render
 const EMPTY_CARDS: Recommendation[] = [];
@@ -125,8 +130,18 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
   return ['deck-cards', ...tail] as const;
 }
 
-export const DECK_LAST_KEY = '@mingla/lastDeckQueryKey';
-export const DECK_LAST_LOCATION_KEY = '@mingla/lastDeckLocation';
+// #4265: cold-start snapshot rules live in a pure module (Deno-testable).
+export {
+  DECK_LAST_SNAPSHOT_KEY,
+  deckSwipeStateStorageKeys,
+  dismissedCardsStorageKey,
+  isRestoredDeckSnapshot,
+  mergeFreshDeckBehindSnapshot,
+  restoreDeckSnapshotController,
+  restoreDeckSnapshotOnce,
+  DECK_SNAPSHOT_RESTORE_GATE_MS,
+  settleWithin,
+} from '../utils/deckSnapshot';
 
 export interface SoloDeckQueryPlanInput {
   mode?: 'solo';
@@ -220,27 +235,27 @@ interface DeckStorage {
 }
 
 export async function persistFirstDeckPageController(
-  input: SoloDeckQueryPlanInput & { response: DeckResponse },
+  input: SoloDeckQueryPlanInput & { response: DeckResponse; userId: string | null; now: number },
   dependencies: {
     queryClient: QueryClient;
     storage: DeckStorage;
   },
 ): Promise<readonly unknown[]> {
   const plan = buildSoloDeckQueryPlan(input);
+  // A restored snapshot is not a fresh first page — re-saving it would keep an
+  // old deck alive forever. Wait for the fetched deck.
+  if (isRestoredDeckSnapshot(input.response)) return plan.queryKey;
   dependencies.queryClient.setQueryData(plan.queryKey, input.response);
-  await Promise.all([
-    dependencies.storage.setItem(
-      DECK_LAST_KEY,
-      JSON.stringify(plan.queryKey),
-    ),
-    dependencies.storage.setItem(
-      DECK_LAST_LOCATION_KEY,
-      JSON.stringify({
-        lat: Math.round(input.location.lat * 1000) / 1000,
-        lng: Math.round(input.location.lng * 1000) / 1000,
-      }),
-    ),
-  ]);
+  if (!input.userId || input.response.cards.length === 0) return plan.queryKey;
+  const record = buildDeckSnapshotRecord({
+    userId: input.userId,
+    now: input.now,
+    queryKey: plan.queryKey,
+    location: input.location,
+    fxSnapshotId: input.fxSnapshotId ?? null,
+    response: input.response,
+  });
+  await dependencies.storage.setItem(DECK_LAST_SNAPSHOT_KEY, JSON.stringify(record));
   return plan.queryKey;
 }
 
@@ -372,43 +387,49 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     queryFn: () => {
       // Use the same queryKey for onPartialReady progressive cache merges
       const qk = queryKey;
-
-      return deckService.fetchDeck(
-        {
-          ...restParams,
-          location: location!,
-          limit: 10000, // Phase 5: return all matching cards, no artificial cap
-        },
-        // ORCH-0490 Phase 2.2: onPartialReady fires up to TWICE per fetchDeck
-        // — once when singles settles (if ok, non-empty), once when curated
-        // settles. Order is race-determined. Each arrival MERGES into the
-        // cache via mergeCardsByIdPreservingOrder (not replace) so existing
-        // card positions are preserved through the second arrival.
-        // The final fetchDeck promise resolution produces the authoritative
-        // interleaved return value — React Query writes that on success,
-        // overwriting the merged intermediate state. (Phase 2.3 will add an
-        // expansion signal so the SwipeableCards first-5-IDs wipe doesn't
-        // fire on this intermediate→final transition.)
-        (cards, meta) => {
-          if (cards.length === 0) return;
-          queryClient.setQueryData<DeckResponse>(qk, (prev) => ({
-            cards: mergeCardsByIdPreservingOrder(prev?.cards ?? [], cards),
-            deckMode: prev?.deckMode ?? 'mixed',
-            activePills: prev?.activePills ?? [],
-            total: (prev?.cards?.length ?? 0) + cards.length,
-            hasMore: prev?.hasMore ?? true,
-            fxSnapshotId: prev?.fxSnapshotId ?? null,
-            // ORCH-0474 + ORCH-0486: serverPath from prev is preserved — the
-            // final fetchDeck return replaces this with the authoritative
-            // discriminant. During partial delivery we default to 'pipeline'
-            // since partial success implies the pipeline responded with data.
-            serverPath: prev?.serverPath ?? 'pipeline',
-            collabDeadEndPayload: prev?.collabDeadEndPayload,
-          }));
-          if (__DEV__) {
-            console.log(`[useDeckCards] partial delivery: +${cards.length} cards from ${meta.source}`);
-          }
-        },
+      // #4265: fetchDeckKeepingSnapshot reads the cache at each arrival, so a
+      // cold-start snapshot seeded even while this fetch is in flight stays on
+      // screen: partials and the final deck merge BEHIND it without the cards
+      // the user already swiped/dismissed, and the card on screen never jumps.
+      return fetchDeckKeepingSnapshot<Recommendation, DeckResponse>(
+        queryClient,
+        qk,
+        (onPartial) => deckService.fetchDeck(
+          {
+            ...restParams,
+            location: location!,
+            limit: 10000, // Phase 5: return all matching cards, no artificial cap
+          },
+          // ORCH-0490 Phase 2.2: onPartialReady fires up to TWICE per fetchDeck
+          // — once when singles settles (if ok, non-empty), once when curated
+          // settles. Order is race-determined. Each arrival MERGES into the
+          // cache via mergeCardsByIdPreservingOrder (not replace) so existing
+          // card positions are preserved through the second arrival.
+          // The final fetchDeck promise resolution produces the authoritative
+          // interleaved return value — React Query writes that on success,
+          // overwriting the merged intermediate state.
+          (cards, meta) => {
+            if (cards.length === 0) return;
+            const added = onPartial(cards);
+            if (__DEV__) {
+              console.log(`[useDeckCards] partial delivery: +${added} cards from ${meta.source}`);
+            }
+          },
+        ),
+        (prev, mergedCards) => ({
+          cards: mergedCards,
+          deckMode: prev?.deckMode ?? 'mixed',
+          activePills: prev?.activePills ?? [],
+          total: mergedCards.length,
+          hasMore: prev?.hasMore ?? true,
+          fxSnapshotId: prev?.fxSnapshotId ?? null,
+          // ORCH-0474 + ORCH-0486: serverPath from prev is preserved — the
+          // final fetchDeck return replaces this with the authoritative
+          // discriminant. During partial delivery we default to 'pipeline'
+          // since partial success implies the pipeline responded with data.
+          serverPath: prev?.serverPath ?? 'pipeline',
+          collabDeadEndPayload: prev?.collabDeadEndPayload,
+        }),
       );
     },
     // staleTime: Infinity is SAFE ONLY because empty deck-cards responses are
@@ -420,7 +441,10 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     // produces permanent warm-session poisoning.
     // Deck only refreshes on explicit preference change (query key changes).
     // Never auto-refetch — deck is an active swipe session, not a feed.
-    staleTime: Infinity,
+    // #4265: a cold-start snapshot (restoreDeckSnapshotController) is shown
+    // instantly but is stale, so a fresh deck loads behind it once the live
+    // params match its key; the merged result is Infinity-fresh again.
+    staleTime: (q) => (isRestoredDeckSnapshot(q.state.data) ? 0 : Infinity),
     gcTime: 24 * 60 * 60 * 1000,   // 24 hours — matches AsyncStorage maxAge so persisted data stays usable
     enabled: isEnabled,
     retry: 1,

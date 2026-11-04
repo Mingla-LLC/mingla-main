@@ -6,6 +6,7 @@ import type { MediaViewRow } from '../utils/chatMedia';
 import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
 import type { ChatLiveChange } from '../utils/chatLiveModel';
 import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
+import { UNREAD_MESSAGES_SELECT, applyUnreadFilters, countUnreadRows } from '../components/connections/chatListLoad';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -107,6 +108,8 @@ export interface LegacyCardPayload {
   totalPriceMin?: number;
   /** Intent total price range — max. */
   totalPriceMax?: number;
+  /** #4265: the total has no known max ("$100+") — render "from", never a ceiling. */
+  totalPriceOpenEnded?: true;
   /** Intent total estimated duration (all stops + travel). */
   estimatedDurationMinutes?: number;
 }
@@ -379,6 +382,7 @@ export function trimCardPayload(card: any): LegacyCardPayload {
     if (typeof card.tagline === 'string' && card.tagline.length > 0) trimmed.tagline = card.tagline;
     if (typeof card.totalPriceMin === 'number') trimmed.totalPriceMin = card.totalPriceMin;
     if (typeof card.totalPriceMax === 'number') trimmed.totalPriceMax = card.totalPriceMax;
+    if (card.totalPriceOpenEnded === true) trimmed.totalPriceOpenEnded = true;
     if (typeof card.estimatedDurationMinutes === 'number') trimmed.estimatedDurationMinutes = card.estimatedDurationMinutes;
     if (Array.isArray(card.stops) && card.stops.length > 0) {
       trimmed.stops = card.stops.map((s: any, idx: number): TrimmedCuratedStop => ({
@@ -837,9 +841,24 @@ export class MessagingService {
   }
 
   /**
+   * Issue #4265: warms the sender-name cache from a profiles read the caller
+   * already made (the Chats list's single profiles read).
+   */
+  rememberSenderProfiles(
+    profiles: ReadonlyArray<{ id: string; display_name?: string | null; username?: string | null; first_name?: string | null; last_name?: string | null }>,
+  ): void {
+    for (const p of profiles) {
+      this.senderProfileCache.set(p.id, { name: getDisplayName(p, 'Unknown'), cachedAt: Date.now() });
+    }
+  }
+
+  /**
    * Get all conversations for a user
    */
-  async getConversations(userId: string): Promise<{ conversations: Conversation[]; error: string | null }> {
+  async getConversations(
+    userId: string,
+    options: { deferSenderProfiles?: boolean } = {},
+  ): Promise<{ conversations: Conversation[]; error: string | null }> {
     try {
       // ORCH-0901: Two-level RLS-filtered fetch. Do NOT re-introduce per-conversation
       // loops with await supabase.from(...) here — verified by orch-0901-regression-check.mjs
@@ -879,11 +898,18 @@ export class MessagingService {
         .order('created_at', { referencedTable: 'last_message', ascending: false })
         .limit(1, { referencedTable: 'last_message' });
 
-      const unreadPromise = supabase
-        .from('messages')
-        .select('id, conversation_id, message_reads(user_id)')
-        .or(`sender_id.neq.${userId},sender_id.is.null`)
-        .is('deleted_at', null);
+      // Issue #4265: only the messages I have NOT read come back (server-side
+      // anti-join, same unread rule — see chatListLoad.applyUnreadFilters);
+      // this used to download every message anyone else ever sent me.
+      const unreadPromise = applyUnreadFilters(
+        supabase.from('messages').select(UNREAD_MESSAGES_SELECT),
+        userId,
+        {
+          or: (query, filters) => query.or(filters),
+          isNull: (query, column) => query.is(column, null),
+          eq: (query, column, value) => query.eq(column, value),
+        },
+      );
 
       const [accessResult, conversationsResult, unreadResult] = await Promise.all([
         accessPromise,
@@ -924,17 +950,7 @@ export class MessagingService {
         ]),
       );
 
-      const unreadByConv = new Map<string, number>();
-      for (const msg of unreadResult.data || []) {
-        const reads = ((msg as any).message_reads || []) as Array<{ user_id: string }>;
-        const isReadByMe = reads.some((r) => r.user_id === userId);
-        if (!isReadByMe) {
-          unreadByConv.set(
-            msg.conversation_id,
-            (unreadByConv.get(msg.conversation_id) || 0) + 1
-          );
-        }
-      }
+      const unreadByConv = countUnreadRows(unreadResult.data);
 
       const senderIds = new Set<string>();
       for (const conv of conversationsResult.data || []) {
@@ -944,7 +960,10 @@ export class MessagingService {
           : (conv as any).last_message;
         if (raw?.sender_id) senderIds.add(raw.sender_id);
       }
-      if (senderIds.size > 0) {
+      // Issue #4265: the Chats list reads sender profiles in its one profiles
+      // read (participants ∪ senders ∪ inviters) and hands them back through
+      // rememberSenderProfiles, so it skips this extra round trip.
+      if (senderIds.size > 0 && !options.deferSenderProfiles) {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, display_name, username, first_name, last_name')

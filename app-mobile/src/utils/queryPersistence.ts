@@ -20,6 +20,8 @@ const USER_ID_POSITIONS: Record<string, number[]> = {
   userLevel: [1],
   "beta-feedback": [2],
   "session-creation-gate": [1],
+  // #4265 — share-sheet recipients: contentShareRecipientKeys.list(userId).
+  contentShareRecipients: [2],
 };
 
 type QueryLike = {
@@ -83,13 +85,18 @@ export function shouldDehydrateMinglaQuery(query: QueryLike, currentUserId?: str
   if (Array.isArray(queryKey)) {
     const firstKey = String(queryKey[0] ?? "");
     if (NEVER_PERSIST_ROOT_KEYS.has(firstKey)) return false;
-
-    if (firstKey === "deck-cards") {
-      const data = query.state.data as { cards?: unknown[] } | undefined;
-      if (!data || !Array.isArray(data.cards) || data.cards.length === 0) {
-        return false;
-      }
+    // #4265 — people and chats are private: never persist a copy that is not
+    // tied to a signed-in user id (it could not be removed on account switch).
+    if (firstKey === "contentShareRecipients" && getUserIdFromQueryKey(queryKey) === null) {
+      return false;
     }
+
+    // #4265: the Home deck is never written into the React Query cache any more.
+    // It was 1.19 MB of the 1.87 MB blob (125 cards x ~10 KB) and pushed the whole
+    // cache past the startup guard; its cold start is now owned by its own
+    // snapshot (src/utils/deckSnapshot.ts). Excluding it also keeps the
+    // ORCH-0469 rule (an empty deck must never be persisted) trivially true.
+    if (firstKey === "deck-cards") return false;
   }
 
   if (shouldRemoveForAuthChange(queryKey, currentUserId)) return false;

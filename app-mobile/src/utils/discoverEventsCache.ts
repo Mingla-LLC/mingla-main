@@ -469,3 +469,98 @@ export function buildDiscoverSignatureForAnchor(
     musicGenres: filters.musicGenres,
   };
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// #4265 — paint Discover from the city it already knows, then reconcile.
+//
+// Before: every Discover mount (every tap on the tab — inactive tabs unmount)
+// kept the feed disabled until the saved-city preference settled: the local
+// mirror, then an uncached PostgREST read of `preferences`, capped at 1.5 s. A
+// cold first visit with no mirror city waited for that cap; every visit paid the
+// network read.
+//
+// Now: when the screen mounts with a city it remembered for THIS user (from the
+// last visit, persisted with the React Query cache), the feed fires at once on
+// that anchor. Preferences are then read (React Query cache first, network only
+// when stale) and reconciled: a different saved city is prefetched and swapped
+// in only once its cards are ready, so the grid never blanks or slides.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Where the city on screen came from; decides what a preferences read may change. */
+export type DiscoverCitySource = "preferences" | "device" | "transient";
+
+export interface RememberedDiscoverCity {
+  city: ResolvedDiscoverCity;
+  source: DiscoverCitySource;
+}
+
+/**
+ * Whether the feed may fire. A city remembered for this user at mount is good
+ * enough to paint with; otherwise wait for the saved-city preference to settle
+ * (#1637: never paint a GPS anchor and then re-anchor on the saved city).
+ */
+export function discoverAnchorReady(input: {
+  userId: string | null;
+  preferencesSettledFor: string | null;
+  seededAtMount: boolean;
+}): boolean {
+  if (!input.userId) return true;
+  return input.preferencesSettledFor === input.userId || input.seededAtMount;
+}
+
+export type DiscoverCityReconcile =
+  | { kind: "keep" }
+  | { kind: "swap"; city: ResolvedDiscoverCity }
+  | { kind: "resolve-device" };
+
+/**
+ * What a preferences read changes about the city on screen.
+ * - an unreadable/unknown row changes nothing;
+ * - a saved city that matches changes nothing, one that differs is swapped in;
+ * - no saved city keeps a device (GPS) city and re-resolves anything else.
+ */
+export function reconcileDiscoverCity(
+  current: RememberedDiscoverCity | null,
+  preferences: Parameters<typeof discoverCityFromPreferences>[0] | undefined,
+): DiscoverCityReconcile {
+  if (preferences === undefined || preferences === null) return { kind: "keep" };
+  const saved = discoverCityFromPreferences(preferences);
+  if (saved) {
+    return current && sameDiscoverAnchorCity(current.city, saved) ? { kind: "keep" } : { kind: "swap", city: saved };
+  }
+  if (current === null || current.source === "device") return { kind: "keep" };
+  return { kind: "resolve-device" };
+}
+
+/** A remembered GPS city is kept while the device is within this distance of where it was resolved. */
+export const DISCOVER_DEVICE_CITY_KEEP_KM = 5;
+
+export function deviceCityStillValid(city: DiscoverAnchorCity, lat: number, lng: number): boolean {
+  const toRad = (deg: number): number => (deg * Math.PI) / 180;
+  const dLat = toRad(lat - city.lat);
+  const dLng = toRad(lng - city.lng);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(city.lat)) * Math.cos(toRad(lat)) * Math.sin(dLng / 2) ** 2;
+  const km = 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
+  return km <= DISCOVER_DEVICE_CITY_KEEP_KM;
+}
+
+/** Narrow an unknown cached value to a remembered city (the persisted cache can hold an older shape). */
+export function asRememberedDiscoverCity(value: unknown): RememberedDiscoverCity | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as { city?: unknown; source?: unknown };
+  const city = record.city as Partial<ResolvedDiscoverCity> | undefined;
+  if (!city || typeof city.name !== "string" || city.name.trim().length === 0) return null;
+  if (typeof city.lat !== "number" || !Number.isFinite(city.lat)) return null;
+  if (typeof city.lng !== "number" || !Number.isFinite(city.lng)) return null;
+  if (record.source !== "preferences" && record.source !== "device" && record.source !== "transient") return null;
+  return {
+    city: {
+      name: city.name,
+      stateCode: typeof city.stateCode === "string" ? city.stateCode : null,
+      countryCode: typeof city.countryCode === "string" ? city.countryCode : null,
+      lat: city.lat,
+      lng: city.lng,
+    },
+    source: record.source,
+  };
+}

@@ -38,16 +38,21 @@ function body(source: string, signature: RegExp): string {
 
 Deno.test("W6 the Chats list folds guests' event chats per brand (team members excluded)", async () => {
   const page = strip(await read("components/ConnectionsPage.tsx"));
+  // #4265: the reads are injected from ConnectionsPage (chatListDeps); the
+  // waves and the row transform live in connections/chatListLoad.ts.
+  const load = strip(await read("components/connections/chatListLoad.ts"));
+  const hook = strip(await read("hooks/useChatList.ts"));
   assert(/foldBrandChannels\(sortedConversations as ChatListItemConversation\[\], teamBrandIds\)/.test(page), "the list folds");
-  assert(/\.from\('brand_team_members'\)\s*\.select\('brand_id'\)\s*\.eq\('user_id', userId\)\s*\.not\('accepted_at', 'is', null\)\s*\.is\('removed_at', null\)/.test(page),
+  assert(/\.from\(["']brand_team_members["']\)\s*\.select\(["']brand_id["']\)\s*\.eq\(["']user_id["'], userId\)\s*\.not\(["']accepted_at["'], ["']is["'], null\)\s*\.is\(["']removed_at["'], null\)/.test(page),
     "your own accepted, active brand team rows are read");
   assert(/useState<ReadonlySet<string> \| null>\(null\)/.test(page), "the team set starts unknown, so nothing folds until the read succeeds");
-  assert(/if \(teamBrandRows !== null\) \{/.test(page), "a failed read never replaces the known set");
+  assert(/if \(teamRows !== null\) \{/.test(load) && /if \(data\.teamBrandIds === null\) \{[\s\S]*?previous\?\.teamBrandIds \?\? null/.test(hook),
+    "a failed read never replaces the known set");
   // #4111 merge: the browse list is the folded rows plus the enquiry rows.
   assert(/mergeEnquiryConversations\(listConversations, enquiryRows\.conversations, ""\)/.test(page) &&
     /active: browseConversations,/.test(page), "the browse list renders the folded rows");
   assert(!/active: sortedConversations,/.test(page), "the unfolded list is no longer rendered");
-  assert(/eventBrandId: eventMeta\?\.brandId \?\? null/.test(page), "each event chat carries its brand id");
+  assert(/eventBrandId: eventMeta\?\.brandId \?\? null/.test(load), "each event chat carries its brand id");
 });
 
 Deno.test("W6 one query, one realtime channel and per-chat writes for the merged thread", async () => {
