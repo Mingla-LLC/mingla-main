@@ -7,7 +7,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -27,6 +26,9 @@ import { mixpanelService } from '../../src/services/mixpanelService';
 import { logAppsFlyerEvent } from '../../src/services/appsFlyerService';
 import { persistContentShareAttribution } from '../../src/services/contentShareAttribution';
 import { resolveExplorerContentShareDestination } from '../../src/services/publicParityNativeAdapter';
+// #4261: a website action opens in Mingla's in-app browser; a phone number goes
+// to the phone. Both through the one helper.
+import { useOpenInMingla } from '../../src/components/InAppBrowserProvider';
 
 type RouteFailure = 'not_found' | 'gone' | 'temporarily_unavailable';
 
@@ -192,6 +194,7 @@ export const validatedPublicActionUrl = (kind: 'https' | 'phone', value: unknown
 };
 
 function Action({ label, value, kind, share }: { label: string; value: string; kind: 'https' | 'phone'; share: ContentShareRead }) {
+  const { open: openInMingla } = useOpenInMingla();
   const open = (): void => {
     const url = validatedPublicActionUrl(kind, value);
     if (url === null) {
@@ -199,10 +202,8 @@ function Action({ label, value, kind, share }: { label: string; value: string; k
       return;
     }
     capture('share_destination_action', { action: label.toLowerCase(), kind: share.facts.kind, version: share.version, short_code: share.shortCode, recipient_app: 'consumer', recipient_surface: 'native_content_share', outcome: 'pressed' });
-    Linking.openURL(url).catch((error: unknown) => {
-      console.warn('[ContentShareRoute] action failed:', error);
-      capture('share_failure', { failure_type: 'action_open', reason: 'action_open_failed', action: label.toLowerCase(), recipient_app: 'consumer', recipient_surface: 'native_content_share' });
-    });
+    // A link the system cannot open is toasted and logged by the helper.
+    openInMingla(url, label);
   };
   return <TouchableOpacity accessibilityRole="link" accessibilityLabel={label} onPress={open} style={styles.action}><Text style={styles.actionText}>{label}</Text></TouchableOpacity>;
 }

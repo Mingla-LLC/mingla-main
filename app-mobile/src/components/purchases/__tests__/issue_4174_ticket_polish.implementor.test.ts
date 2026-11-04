@@ -25,7 +25,8 @@ Deno.test("#4174 ticket cards render image and video cover thumbnails", () => {
 });
 
 Deno.test("#4174 online access and the native event page are separate actions", () => {
-  assertStringIncludes(detail, "Linking.openURL(order.onlineUrl as string)");
+  // #4261: the online link opens in Mingla's in-app browser.
+  assertStringIncludes(detail, "openInMingla(order.onlineUrl as string, item.title)");
   assertStringIncludes(detail, 't("ticket.openLink")');
   assertStringIncludes(detail, 't("ticket.openEventPage")');
   assertStringIncludes(detail, "explorerOfferingPath(");
