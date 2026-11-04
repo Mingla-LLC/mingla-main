@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4264",
+  "suite": {
+    "id": "issue-4264-host-get-route-tester",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/app/host/get/**",
+      "mingla-marketing/lib/business-app-target.ts",
+      "mingla-marketing/lib/device-platform.ts",
+      "mingla-marketing/lib/links-src.ts",
+      "mingla-marketing/lib/store-links.ts",
+      "mingla-marketing/app/host/download/page.tsx",
+      "mingla-marketing/app/download/page.tsx"
+    ],
+    "steps": [
+      {
+        "name": "Host get-app link holds up against tricky user agents, ignored request parts and exact headers",
+        "cwd": "mingla-marketing",
+        "run": "node --test app/host/get/__tests__/issue-4264-host-get-route.tester.test.mjs",
+        "commandId": "assert:issue-4264-host-get-route-tester:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test app/host/get/__tests__/issue-4264-host-get-route.tester.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4264",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/app/host/get/__tests__/issue-4264-host-get-route.tester.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-03 (tester)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

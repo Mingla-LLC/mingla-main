@@ -64,6 +64,8 @@ const SURFACES = [
   "mingla-marketing/components/marketing/glass-nav.tsx",
   "mingla-marketing/components/sections/organiser-home/hero.tsx",
   "mingla-marketing/app/host/download/page.tsx",
+  // #4264 — the /host/get one-tap redirect emits the same business OneLink.
+  "mingla-marketing/app/host/get/route.ts",
 ];
 
 const stripComments = (src) =>
