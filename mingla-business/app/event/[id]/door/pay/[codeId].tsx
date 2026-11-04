@@ -29,6 +29,7 @@ import {
   text as textTokens,
 } from "../../../../../src/constants/designSystem";
 import { DoorPayQr } from "../../../../../src/components/door/DoorPayQr";
+import { doorSellAnotherHref } from "../../../../../src/components/door/doorTapDraft";
 import { formatDoorPayCode, makeDoorPayUrl, isDoorPayCode } from "../../../../../src/components/door/doorPayUrl";
 import {
   doorPayHostEndCopy,
@@ -125,12 +126,20 @@ export default function DoorPayCodeRoute(): React.ReactElement {
     [eventId, router],
   );
 
-  const seedQuery = useCallback(
-    (method: "pay_code" | "cash"): string =>
-      `?sell=1&method=${method}&lines=${encodeURIComponent(
-        JSON.stringify(row?.lines ?? []),
-      )}`,
-    [row?.lines],
+  // "Sell another" / "Take cash instead": same contract as the Tap to Pay
+  // route — `/door?sellAnother=1&draft=<base64 json>` reopens the sheet.
+  const sellAnother = useCallback(
+    (method: "pay_code" | "cash"): void => {
+      if (eventId === null) return;
+      router.replace(
+        doorSellAnotherHref(
+          eventId,
+          { lines: row?.lines ?? [], eventDateId: row?.eventDateId ?? null },
+          method,
+        ) as never,
+      );
+    },
+    [eventId, router, row?.eventDateId, row?.lines],
   );
 
   const handleNewCode = useCallback(async (): Promise<void> => {
@@ -146,20 +155,20 @@ export default function DoorPayCodeRoute(): React.ReactElement {
     } catch (error) {
       // A dated ticket needs its date again: reopen the sheet with the tickets.
       if (error instanceof DoorPayCodeError && error.code === "ticket_not_valid_on_chosen_days") {
-        goToDoor(seedQuery("pay_code"));
+        sellAnother("pay_code");
         return;
       }
       setActionError("Couldn't make a new code. Nothing was charged. Try again.");
     }
-  }, [createCode, eventId, goToDoor, router, row, seedQuery]);
+  }, [createCode, eventId, router, row, sellAnother]);
 
   const handleAction = useCallback(
     (action: DoorPayHostAction): void => {
       if (action === "new_code") void handleNewCode();
-      else if (action === "cash_instead") goToDoor(seedQuery("cash"));
+      else if (action === "cash_instead") sellAnother("cash");
       else goToDoor("");
     },
-    [goToDoor, handleNewCode, seedQuery],
+    [goToDoor, handleNewCode, sellAnother],
   );
 
   const handleCancel = useCallback(async (): Promise<void> => {
@@ -226,7 +235,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
         <View style={styles.actions}>
           <Button
             label="Sell another"
-            onPress={() => goToDoor(seedQuery("pay_code"))}
+            onPress={() => sellAnother("pay_code")}
             variant="primary"
             size="lg"
             fullWidth

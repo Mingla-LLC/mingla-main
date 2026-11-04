@@ -55,6 +55,7 @@ import {
 } from "../../../../src/utils/paymentMethodLabels";
 import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { Button } from "../../../../src/components/ui/Button";
+import { decodeDoorTapDraft } from "../../../../src/components/door/doorTapDraft";
 
 import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -149,8 +150,8 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{
     id: string | string[];
-    sell?: string | string[];
-    lines?: string | string[];
+    sellAnother?: string | string[];
+    draft?: string | string[];
     method?: string | string[];
   }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -245,8 +246,10 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const [newSheetOpen, setNewSheetOpen] = useState<boolean>(false);
   // issue #4271 — "Sell another" / "Take cash instead" from the pay code
   // screen reopen the sheet here with the last tickets kept.
-  const sellParam = Array.isArray(params.sell) ? params.sell[0] : params.sell;
-  const linesParam = Array.isArray(params.lines) ? params.lines[0] : params.lines;
+  // Both the Tap to Pay "Sell another" and the pay code screen send
+  // `?sellAnother=1&draft=<base64 json {lines, eventDateId, ...}>`.
+  const sellParam = Array.isArray(params.sellAnother) ? params.sellAnother[0] : params.sellAnother;
+  const draftParam = Array.isArray(params.draft) ? params.draft[0] : params.draft;
   const methodParam = Array.isArray(params.method) ? params.method[0] : params.method;
   const [sheetSeed, setSheetSeed] = useState<{
     lines: { ticketTypeId: string; quantity: number }[];
@@ -255,12 +258,12 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   useEffect(() => {
     if (sellParam !== "1") return;
     setSheetSeed({
-      lines: parseSeedLines(linesParam),
+      lines: decodeDoorTapDraft(draftParam)?.lines ?? [],
       method: methodParam === "cash" || methodParam === "pay_code" ? methodParam : undefined,
     });
     setNewSheetOpen(true);
-    router.setParams({ sell: undefined, lines: undefined, method: undefined } as never);
-  }, [linesParam, methodParam, router, sellParam]);
+    router.setParams({ sellAnother: undefined, draft: undefined, method: undefined } as never);
+  }, [draftParam, methodParam, router, sellParam]);
   const [byScannerExpanded, setByScannerExpanded] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -633,6 +636,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           event={event}
           onClose={() => setNewSheetOpen(false)}
           onSuccess={handleNewSaleSuccess}
+          brand={brand}
           initialLines={sheetSeed?.lines}
           initialMethod={sheetSeed?.method}
         />
@@ -666,28 +670,6 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     </View>
   );
 }
-
-/** issue #4271 — `?lines=` carries `[{ticketTypeId, quantity}]` as JSON. */
-const parseSeedLines = (
-  raw: string | undefined,
-): { ticketTypeId: string; quantity: number }[] => {
-  if (raw === undefined || raw.length === 0) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((line: unknown) => {
-      if (typeof line !== "object" || line === null) return [];
-      const l = line as Record<string, unknown>;
-      return typeof l.ticketTypeId === "string" &&
-        typeof l.quantity === "number" &&
-        l.quantity > 0
-        ? [{ ticketTypeId: l.ticketTypeId, quantity: Math.floor(l.quantity) }]
-        : [];
-    });
-  } catch {
-    return [];
-  }
-};
 
 // ---- DoorSaleRowCard (composed inline) ----------------------------
 

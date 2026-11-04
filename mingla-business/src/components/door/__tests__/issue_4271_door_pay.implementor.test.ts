@@ -27,7 +27,7 @@ import {
   effectiveDoorPayStatus,
   formatDoorPayCountdown,
 } from "../doorPayCodeState";
-import { decodeDoorTapDraft, doorTapNewSaleHref } from "../doorTapDraft";
+import { decodeDoorTapDraft, doorSellAnotherHref, doorTapNewSaleHref } from "../doorTapDraft";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHOD_PILLS,
@@ -121,7 +121,6 @@ describe("#4271 door sale payment list", () => {
   test("the sheet uses the model and every placeholder string is gone", () => {
     const sheet = read("src/components/door/DoorSaleNewSheet.tsx");
     expect(sheet).toContain("buildDoorPaymentOptions(");
-    expect(sheet).toContain("useTapToPayAvailability(");
     expect(sheet).toContain("doorTapNewSaleHref(");
     expect(sheet).toContain("/door/pay/${created.codeId}");
     expect(sheet).not.toContain("[TRANSITIONAL]");
@@ -245,7 +244,31 @@ describe("#4271 pay code states", () => {
       lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
       eventDateId: null,
       buyerPhone: "+447700900123",
+      phoneCountryIso: null,
     });
+  });
+
+  test("Sell another reopens the sheet with the same tickets (tap and pay code)", () => {
+    const href = doorSellAnotherHref(
+      "event-1",
+      { lines: [{ ticketTypeId: "tier-1", quantity: 3 }], eventDateId: "date-1" },
+      "cash",
+    );
+    const url = new URL(`https://x${href}`);
+    expect(url.pathname).toBe("/event/event-1/door");
+    expect(url.searchParams.get("sellAnother")).toBe("1");
+    expect(url.searchParams.get("method")).toBe("cash");
+    expect(decodeDoorTapDraft(url.searchParams.get("draft"))?.lines).toEqual([
+      { ticketTypeId: "tier-1", quantity: 3 },
+    ]);
+    const hub = read("app/event/[id]/door/index.tsx");
+    expect(hub).toContain("params.sellAnother");
+    expect(hub).toContain("decodeDoorTapDraft(draftParam)");
+    expect(hub).toContain("initialLines={sheetSeed?.lines}");
+    expect(read("app/event/[id]/door/pay/[codeId].tsx")).toContain("doorSellAnotherHref(");
+    expect(read("src/components/door/DoorSaleNewSheet.tsx")).toContain(
+      "useTapToPayAvailability({ brand, currency: event.currency })",
+    );
   });
 });
 

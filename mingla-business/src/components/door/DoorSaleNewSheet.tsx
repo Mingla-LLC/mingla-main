@@ -53,6 +53,7 @@ import {
 } from "../../constants/designSystem";
 import type { DoorPaymentMethod } from "../../types/doorSales";
 import type { LiveEvent } from "../../store/liveEventStore";
+import type { Brand } from "../../types/brand";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
@@ -155,6 +156,8 @@ export interface DoorSaleNewSheetProps {
   /** issue #4271 — "Sell another" / "Take cash instead" reopen with these. */
   initialLines?: { ticketTypeId: string; quantity: number }[];
   initialMethod?: DoorPaymentMethod;
+  /** The event's brand: Tap to Pay needs a Stripe brand that can charge. */
+  brand: Brand | null;
 }
 
 // ---- Component ------------------------------------------------------
@@ -166,6 +169,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   onSuccess,
   initialLines,
   initialMethod,
+  brand,
 }) => {
   const router = useRouter();
   const [lines, setLines] = useState<DoorCartLine[]>([]);
@@ -181,7 +185,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const recordSale = useRecordDoorSale(event.id);
   const createPayCode = useCreateDoorPayCode(event.id);
   const permission = useCanTakeDoorPayment(visible ? event.id : null);
-  const tapToPay = useTapToPayAvailability(event.id);
+  const tapToPay = useTapToPayAvailability({ brand, currency: event.currency });
 
   // #962 G5 / OQ-2(a) — a door sale freezes its currency onto the record
   // (DoorSaleRecord.currency is NOT NULL). Pre-condition the record path behind
