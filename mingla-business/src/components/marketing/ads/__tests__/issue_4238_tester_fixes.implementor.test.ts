@@ -251,7 +251,9 @@ describe("#4238 retest 2: last plain-language fixes", () => {
   });
 
   it("city chips show the full country name", () => {
-    expect(placesEditor).toContain("{place.name}, {countryName(place.countryCode)}");
+    // r10: the chip goes through hostAdPlaceDisplayName, which writes the
+    // full country name once (issue_4238_mb_round9.implementor.test.ts).
+    expect(placesEditor).toContain("{hostAdPlaceDisplayName(place)}");
     expect(placesEditor).not.toContain("{place.name}, {place.countryCode}");
   });
 
