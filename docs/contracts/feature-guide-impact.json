@@ -310,6 +310,7 @@
     {
       "capability_key": "discover-events",
       "paths": [
+        "app-mobile/src/components/discover/discoverLoadState.ts",
         "mingla-business/jest.config.cjs",
         "mingla-business/server/socialPreview.js",
         "mingla-business/tsconfig.json",
@@ -318,7 +319,9 @@
         "supabase/functions/discover-merged-events/_business-query.ts",
         "supabase/functions/discover-merged-events/_types.ts",
         "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql",
-        "supabase/migrations/20280320003281_issue_3281_explorer_hides_unbuyable_events.sql"
+        "supabase/migrations/20280320003281_issue_3281_explorer_hides_unbuyable_events.sql",
+        "supabase/migrations/20280324003281_issue_3281_explorer_listing_fast.sql",
+        "supabase/migrations/20280327003281_issue_3281_explorer_listing_per_date.sql"
       ]
     },
     {

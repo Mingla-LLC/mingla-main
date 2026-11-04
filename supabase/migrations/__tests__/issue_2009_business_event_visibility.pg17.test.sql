@@ -684,10 +684,12 @@ BEGIN
   SELECT event_id INTO v_trip FROM i2009t.fx WHERE key='admin_trip_probe';
   SELECT v INTO v_admin FROM i2009t.ids WHERE k='owner';
 
-  -- Make `owner` an admin for the duration of this block.
+  -- Make `owner` an admin for the duration of this block. Role 'admin', not
+  -- 'owner': admin_set_offering_visibility gates on is_admin_user(), and since
+  -- #4255 the owner row can never be deleted, so the cleanup below would fail.
   INSERT INTO public.admin_users(email, role, status)
-  VALUES ('owner@i2009t.test', 'owner', 'active')
-  ON CONFLICT (email) DO UPDATE SET status='active', role='owner';
+  VALUES ('owner@i2009t.test', 'admin', 'active')
+  ON CONFLICT (email) DO UPDATE SET status='active', role='admin';
   PERFORM i2009t.act_as(v_admin);
 
   SELECT generation INTO v_gen FROM public.event_discovery_generation;

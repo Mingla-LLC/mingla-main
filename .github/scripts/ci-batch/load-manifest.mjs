@@ -134,7 +134,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4251: register the going-RSVPs cover type migration and its proof the same way.
 // #4256: register the no-auto-promo-cards migration the same way.
 // #4255: register the admin access and Work closed-range migrations the same way.
-export const BOOTSTRAP_SHA256 = "40379b983507946939318eff8a6c3f8c16a797f039d55d082f1301170d4370f3";
+// #3281: register the fast Explorer listing rule migration and its proof the same way.
+// #3281: register the per-date Explorer listing rule migration and its proof the same way.
+export const BOOTSTRAP_SHA256 = "9fe5a048fe875b28444bc8218720675ea2cd0687dacd7a34c074f106834d057f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
