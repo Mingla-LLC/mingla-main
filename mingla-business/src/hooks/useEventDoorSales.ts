@@ -97,8 +97,12 @@ export function useDoorPayCode(codeId: string | null) {
     refetchInterval: 15_000,
   });
 
+  // The realtime filter is the code's UNIQUE `code` column, never the primary
+  // key: Supabase realtime silently drops `id=eq.*` bindings on RLS-gated
+  // tables (I-PROPOSED-ORCH-0931). The code is known once the first read lands.
+  const code = query.data?.code ?? null;
   useEffect(() => {
-    if (codeId === null || codeId.length === 0) return;
+    if (codeId === null || codeId.length === 0 || code === null || code.length === 0) return;
     const channelName = `door-pay-code-${codeId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let cancelled = false;
     const channel = supabase
@@ -109,12 +113,12 @@ export function useDoorPayCode(codeId: string | null) {
           event: "UPDATE",
           schema: "public",
           table: "door_pay_codes",
-          filter: `id=eq.${codeId}`,
+          filter: `code=eq.${code}`,
         },
         (payload) => {
           if (cancelled) return;
           const row = payload.new as Parameters<typeof mapDoorPayCodeRow>[0] | null;
-          if (row === null || typeof row.id !== "string") return;
+          if (row === null || row.id !== codeId) return;
           queryClient.setQueryData<DoorPayCodeRow>(
             doorPayCodeKeys.detail(codeId),
             mapDoorPayCodeRow(row),
@@ -126,7 +130,7 @@ export function useDoorPayCode(codeId: string | null) {
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-  }, [codeId, queryClient]);
+  }, [codeId, code, queryClient]);
 
   return query;
 }

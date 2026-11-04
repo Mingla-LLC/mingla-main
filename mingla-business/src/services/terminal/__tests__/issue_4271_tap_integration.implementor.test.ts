@@ -336,3 +336,15 @@ describe("biz_brand_team_members refusal", () => {
     expect(mockRpc).toHaveBeenCalledWith("biz_brand_team_members", { p_brand_id: "brand-1" });
   });
 });
+
+describe("door_pay_codes realtime binding", () => {
+  test("the host screen listens on the UNIQUE code column, never the primary key", () => {
+    // Supabase realtime silently drops `id=eq.*` bindings on RLS-gated tables
+    // (I-PROPOSED-ORCH-0931): the screen would never turn green on payment.
+    const src = read("src/hooks/useEventDoorSales.ts");
+    const hook = src.slice(src.indexOf("export function useDoorPayCode"));
+    expect(hook).toContain('table: "door_pay_codes"');
+    expect(hook).toContain("filter: `code=eq.${code}`");
+    expect(hook).not.toMatch(/filter:\s*`id=eq\./);
+  });
+});
