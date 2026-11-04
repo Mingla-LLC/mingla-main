@@ -139,8 +139,10 @@ BEGIN
 
   -- [TEST-MOD-APPROVED #3643] The shared terminal-schema replay exposes every
   -- current business index: count=80 / hash=8e7ec4e5428dd976a5d9a976d4821e59.
-  IF v_index_count <> 80
-    OR v_index_fingerprint <> '8e7ec4e5428dd976a5d9a976d4821e59'
+  -- [TEST-MOD-APPROVED #3281] #4263 added idx_event_dates_event_id_start_at:
+  -- count=81 / hash=37e9eade3735be4ac9a0763e4c4013e8 (main's CI on a304f8b26).
+  IF v_index_count <> 81
+    OR v_index_fingerprint <> '37e9eade3735be4ac9a0763e4c4013e8'
   THEN
     RAISE EXCEPTION
       'T-2 FAIL: complete business-index inventory drift count=% hash=%',
@@ -148,7 +150,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 80 / 8e7ec4e5428dd976a5d9a976d4821e59';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 81 / 37e9eade3735be4ac9a0763e4c4013e8';
 END;
 $test$;
 
