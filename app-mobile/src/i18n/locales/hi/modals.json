@@ -129,6 +129,10 @@
       "body": "Filter by day, vibe, music, destination and more. The choices change with each pill."
     },
     "list_two": "{{a}} and {{b}}",
-    "list_three": "{{a}}, {{b}} and {{c}}"
+    "list_three": "{{a}}, {{b}} and {{c}}",
+    "step3": {
+      "title": "आपकी सहेजी चीज़ें यहाँ रहती हैं",
+      "description": "आप जिसे भी दिल देते हैं वह पसंद में आता है। एक टैप में शेयर करें या कैलेंडर में डालें।"
+    }
   }
 }

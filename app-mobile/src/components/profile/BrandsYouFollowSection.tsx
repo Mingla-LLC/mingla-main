@@ -18,7 +18,8 @@ import {
 } from "@mingla/offering-rendering";
 
 import { colors, fontWeights } from "../../constants/designSystem";
-import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
+import { brandFollowerCountsQueryOptions, useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
+import { PROFILE_REVISIT_STALE_MS } from "./profileFreshness";
 import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { brandFollowKeys } from "../../hooks/useBrandFollow";
 import { useAppStore } from "../../store/appStore";
@@ -89,14 +90,24 @@ export const BrandsYouFollowSection: React.FC = () => {
 
   const listQuery = useQuery({
     queryKey: brandFollowKeys.list(userId ?? ""),
-    queryFn: () => brandFollowsService.listFollows(userId as string),
+    // #4265: start the follower counts the moment the followed ids are known,
+    // in parallel with the brand details, instead of after the whole list.
+    queryFn: () =>
+      brandFollowsService.listFollows(userId as string, {
+        onBrandIds: (brandIds) => {
+          void queryClient.prefetchQuery(
+            brandFollowerCountsQueryOptions(brandIds, { staleTime: PROFILE_REVISIT_STALE_MS }),
+          );
+        },
+      }),
     enabled: !!userId,
-    staleTime: 30_000,
+    staleTime: PROFILE_REVISIT_STALE_MS,
   });
 
   const rows = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const followerCountsQuery = useBrandFollowerCounts(
     rows.map((row) => row.brandId),
+    { staleTime: PROFILE_REVISIT_STALE_MS },
   );
   const followerCountLabels = useFollowerCountLabels();
   const top = useMemo(() => rows.slice(0, 3), [rows]);

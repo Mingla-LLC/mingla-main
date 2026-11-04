@@ -3183,6 +3183,12 @@ function AppContent() {
     await handleSignOut();
   }, [handleSignOut]);
 
+  // Issue #4265: Likes "Find something" (empty) / "Find similar" (ended event).
+  const handleNavigateToExploreFromLikes = useCallback(() => {
+    logger.action('Navigate to explore from likes');
+    setCurrentPage("discover");
+  }, [setCurrentPage]);
+
   const handleNavigateToConnectionsFromProfile = useCallback(() => {
     logger.action('Navigate to connections from profile');
     setPendingConnectionsPanel("friends");
@@ -3626,6 +3632,7 @@ function AppContent() {
                                       onShareCard={stableHandleShareCard}
                                       onAddToCalendar={handleAddToCalendarFromLikes}
                                       onShowQRCode={handleShowQRCode}
+                                      onExplore={handleNavigateToExploreFromLikes}
                                     />
                                   );
                                 case 'profile':

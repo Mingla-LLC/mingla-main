@@ -19,6 +19,10 @@
       "body": "Filtre por dia, clima, música, destino e muito mais. As escolhas mudam com cada comprimido."
     },
     "list_two": "{{a}} e {{b}}",
-    "list_three": "{{a}}, {{b}} e {{c}}"
+    "list_three": "{{a}}, {{b}} e {{c}}",
+    "step3": {
+      "title": "Onde ficam seus salvos",
+      "description": "Tudo que você curte com o coração vai para Curtidas. Compartilhe ou ponha na agenda com um toque."
+    }
   }
 }

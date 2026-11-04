@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
+import { refreshChatListAfterConversationChange } from '../services/chatListRefresh';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
 import { createPendingSessionInvite } from '../services/phoneLookupService';
@@ -570,6 +571,8 @@ export const useSessionManagementController = () => {
 
       // Reload sessions
       await loadUserSessions();
+      // #4265: a new session brings its group chat to the Chats list.
+      refreshChatListAfterConversationChange();
 
       return sessionData.id;
 
@@ -822,6 +825,8 @@ export const useSessionManagementController = () => {
 
         // Reload sessions
         await loadUserSessions();
+        // #4265: leaving the session leaves its group chat.
+        refreshChatListAfterConversationChange();
         return;
       }
 
@@ -879,6 +884,8 @@ export const useSessionManagementController = () => {
 
       // Reload sessions
       await loadUserSessions();
+      // #4265: a deleted or left session takes its group chat off the Chats list.
+      refreshChatListAfterConversationChange();
 
     } catch (error) {
       console.error('Error handling session cancellation:', error);

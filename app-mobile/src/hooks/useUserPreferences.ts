@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { PreferencesService } from '../services/preferencesService';
 import type { UserPreferences } from '../types/preferences';
 import { offlineService } from '../services/offlineService';
+import { userPreferencesKeys } from './queryKeys';
 
-const fetchUserPreferences = async (
+export const fetchUserPreferences = async (
   userId: string | undefined,
   signal?: AbortSignal
 ): Promise<UserPreferences | null> => {
@@ -47,7 +48,7 @@ const fetchUserPreferences = async (
 
 export const useUserPreferences = (userId: string | undefined) => {
   return useQuery({
-    queryKey: ['userPreferences', userId],
+    queryKey: userPreferencesKeys.detail(userId ?? ''),
     queryFn: ({ signal }) => fetchUserPreferences(userId, signal),
     enabled: !!userId,
     staleTime: 60_000, // 60s — matches subscription tier window from Pass 5

@@ -130,7 +130,7 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // runtime, deadline, routing, file inventory, exact command capabilities and
 // the digest of the workflow it replaced. A change to any of them is a reviewed
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
-const LOCKED_PHASE3D_CONTRACT_SHA256 = "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3";
+const LOCKED_PHASE3D_CONTRACT_SHA256 = "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf";
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -354,8 +354,9 @@ export function phase3dContractDigest(manifest) {
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
+// #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4261: renumber the #4261 migrations after #3682 (20280402004261-20280402054261).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5ee4829f4b8638f84403a1636d87ab9f090cfbd5e0ea3956a55e1d10a0adf517";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e2b8c6a6cbb3b6fb8ce73a811a8eba786525fa16707e7e99bb8811589a22dcd6";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

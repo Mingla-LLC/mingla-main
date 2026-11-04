@@ -20,8 +20,7 @@ import { DeckService } from "../deckService";
 import {
   buildDeckQueryKey,
   buildSoloDeckQueryPlan,
-  DECK_LAST_KEY,
-  DECK_LAST_LOCATION_KEY,
+  DECK_LAST_SNAPSHOT_KEY,
   persistFirstDeckPageController,
   prefetchDeckPageController,
   resolveDeckQueryKey,
@@ -223,16 +222,24 @@ describe("issue #1384 executable deck service and query cache", () => {
         writes.set(key, value);
       }),
     };
-    const firstPageInput = planInput({ response: response() });
+    // #4265: the key + location bucket now live in one cold-start snapshot
+    // record (its own AsyncStorage key) instead of two loose keys.
+    const firstPageInput = planInput({
+      response: response(),
+      userId: "33333333-3333-4333-8333-333333333333",
+      now: 1_000,
+    });
     const persistedKey = await persistFirstDeckPageController(firstPageInput, {
       queryClient,
       storage,
     });
-    expect(JSON.parse(writes.get(DECK_LAST_KEY))).toEqual(persistedKey);
-    expect(JSON.parse(writes.get(DECK_LAST_LOCATION_KEY))).toEqual({
+    const snapshot = JSON.parse(writes.get(DECK_LAST_SNAPSHOT_KEY));
+    expect(snapshot.queryKey).toEqual(persistedKey);
+    expect(snapshot.location).toEqual({
       lat: 35.78,
       lng: -78.638,
     });
+    expect(snapshot.fxSnapshotId).toBe(firstPageInput.fxSnapshotId ?? null);
     expect(queryClient.getQueryData(persistedKey)).toEqual(response());
 
     const coldKey = resolveDeckQueryKey({

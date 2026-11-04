@@ -53,13 +53,21 @@ test('H2 the 120-grapheme law preserves emoji families, flags, modifiers and com
   assert.equal(clipped.note, exact.normalize('NFC'));
 });
 
+// [TEST-MOD-APPROVED #4265] Written reason: #4265 moved people and chats into
+// React Query (one cache per user, refreshed on open), so loadRecipients no
+// longer takes the open token, and the per-row second line ("Friend · chat
+// starts when sent") is now computed once per fetch in shareRecipientsModel.ts.
+// The behaviour pinned here is unchanged: the sheet opens first, then both
+// loads start, independently.
 test('H3 Consumer opens synchronously and keeps preparation and recipients independent', () => {
   const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const model = read('app-mobile/src/components/share/shareRecipientsModel.ts');
   const open = provider.slice(provider.indexOf('const openContentShare'), provider.indexOf('useEffect(() => { registerContentShareHandler'));
   assert.ok(open.indexOf('setVisible(true)') < open.indexOf('loadShare(nextInput, token)'));
-  assert.ok(open.indexOf('setVisible(true)') < open.indexOf('loadRecipients(token)'));
+  assert.ok(open.indexOf('setVisible(true)') < open.indexOf('loadRecipients()'));
+  assert.ok(open.indexOf('loadRecipients()') > -1);
   assert.match(provider, /Share elsewhere[\s\S]*Send in Mingla/);
-  assert.match(provider, /Friend · chat starts when sent/);
+  assert.match(model, /Friend · chat starts when sent/);
   assert.match(provider, /Couldn't send yet\. Nothing was duplicated\./);
   assert.doesNotMatch(provider, /WhatsApp|Instagram|Twitter|Copy message|s4Url/);
 });
@@ -176,10 +184,14 @@ test('H11 restored operations reconcile exact live targets and zero-target sends
 // prior assertion that the external section never reads offline state is now
 // wrong: native Share must disable while offline, while Copy and in-Mingla work
 // remain independent once the canonical link exists.
+// [TEST-MOD-APPROVED #4265] Written reason: #4265 stops the app-root provider
+// re-rendering on every connectivity change: NetInfo is now subscribed only
+// while the sheet is open (NetInfo.addEventListener inside a visible-gated
+// effect) instead of useNetInfo() at the root. The offline rule is unchanged.
 test('H12 offline mode keeps Copy/internal independent while fail-closing unready native Share', () => {
   const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  assert.match(provider, /useNetInfo\(\)/);
-  assert.match(provider, /isConnected === false \|\| netInfo\.isInternetReachable === false/);
+  assert.match(provider, /if \(!visible\) return undefined;\s*return NetInfo\.addEventListener\(/);
+  assert.match(provider, /isConnected === false \|\| state\.isInternetReachable === false/);
   assert.match(provider, /You're offline\. Reconnect to send in Mingla\./);
   assert.match(provider, /disabled=\{!prepared \|\| selected\.size === 0 \|\| sending \|\| isOffline\}/);
   const external = provider.slice(provider.indexOf('<Text style={styles.sectionTitle}>Share elsewhere'), provider.indexOf('{externalError ?'));

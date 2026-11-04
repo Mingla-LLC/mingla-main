@@ -141,8 +141,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
+// #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4261: renumber the #4261 migrations after #3682 (20280402004261-20280402054261).
-export const BOOTSTRAP_SHA256 = "85664be6755d2ba9c535e0c00ab4918f284df397940779e124439c0aba037d51";
+export const BOOTSTRAP_SHA256 = "edc5cc172ceb32760ba8d32248252af5c1a22b5ca905c0efda08912ce6e8b01f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

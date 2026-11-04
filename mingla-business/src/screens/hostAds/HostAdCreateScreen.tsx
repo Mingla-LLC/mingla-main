@@ -84,6 +84,7 @@ import {
   HOST_AD_DEFAULT_RADIUS_KM,
   HOST_AD_EXCLUDE_APPS,
   hostAdAppAvailability,
+  hostAdAcceptedWiderLines,
   hostAdAppReviewStatus,
   hostAdInterestKey,
   hostAdLookupKind,
@@ -2792,14 +2793,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     })}
                   </Text>
                   {[
-                    ...new Set(
-                      [
+                    ...new Set([
+                      // #4238 live check: each accepted wider area, plainly.
+                      ...hostAdAcceptedWiderLines(row.platform as HostAdApp, cities),
+                      ...[
                         ...(row.widening_summary ?? []),
                         ...(row.checks_required ?? []),
                       ].map((line) =>
                         hostAdTargetingNote(row.platform, row.verdict, line, countries),
                       ),
-                    ),
+                    ]),
                   ].map((line) => (
                     <Text key={line} style={styles.choiceSubtitle}>
                       {line}

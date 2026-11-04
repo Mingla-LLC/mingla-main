@@ -37,7 +37,8 @@ const check = (name, pass, detail) => checks.push({ name, pass, detail });
 const mig = read(
   "supabase/migrations/20261016000001_orch_1163_event_rsvp_guests.sql",
 );
-const calendarTab = read("app-mobile/src/components/activity/CalendarTab.tsx");
+// #4265: the UnifiedRow union lives in the Calendar's pure agenda model.
+const calendarTab = read("app-mobile/src/components/activity/calendarAgendaModel.ts");
 const calendarService = read("app-mobile/src/services/calendarService.ts");
 const passSheet = read("app-mobile/src/components/activity/RsvpPassSheet.tsx");
 
@@ -75,7 +76,7 @@ check(
 check(
   "T6 CalendarTab has a kind: \"rsvp\" UnifiedRow variant",
   /kind:\s*"rsvp"/.test(calendarTab),
-  "CalendarTab.tsx must add a kind: \"rsvp\" UnifiedRow variant",
+  "calendarAgendaModel.ts must carry a kind: \"rsvp\" UnifiedRow variant",
 );
 check(
   "T7 calendarService reads fetch_user_going_rsvps",

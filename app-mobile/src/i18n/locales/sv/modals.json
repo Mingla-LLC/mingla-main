@@ -129,6 +129,10 @@
       "body": "Filtrera efter dag, atmosfär, musik, destination och mer. Valen ändras för varje piller."
     },
     "list_two": "{{a}} och {{b}}",
-    "list_three": "{{a}}, {{b}} och {{c}}"
+    "list_three": "{{a}}, {{b}} och {{c}}",
+    "step3": {
+      "title": "Här bor det du sparar",
+      "description": "Allt du ger ett hjärta hamnar i Gillar. Dela det eller lägg det i kalendern med ett tryck."
+    }
   }
 }

@@ -32,9 +32,8 @@ import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // layout so it wraps <Stack/> and therefore EVERY route — cold or warm.
 // Invariant: I-PROPOSED-RQ-PROVIDER-AT-ROOT-LAYOUT.
 // CI gate: scripts/ci/check-rq-provider-at-root-layout.sh.
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
+import { queryClient, asyncStoragePersister, primePersistedQueryCache } from "../src/config/queryClient";
 import { shouldDehydrateMinglaQuery } from "../src/utils/queryPersistence";
 import { useAppStore } from "../src/store/appStore";
 import AnimatedSplashScreen from "../src/components/AnimatedSplashScreen";
@@ -130,27 +129,23 @@ function RootLayout() {
     throw stripeModeError;
   }
 
-  // ORCH-1125: hoisted from app/index.tsx's App(). Gate: clear oversized React
-  // Query persisted cache BEFORE the provider mounts. PersistQueryClientProvider
-  // crashes on mount if the cache exceeds Android's 2MB CursorWindow. Only clear
-  // if the cache actually exceeds the safety threshold (1.5MB). The
-  // shouldDehydrateQuery filter already excludes heavy queries, so the cache
-  // should stay small. Preserving it enables instant startup with cached
-  // prefs/location. This effect MUST resolve (cacheReady=true) before the
-  // provider below mounts — load-bearing for Android.
+  // ORCH-1125: hoisted from app/index.tsx's App(). Gate: make the React Query
+  // persisted cache safe BEFORE the provider mounts. PersistQueryClientProvider
+  // crashes on mount if the cache exceeds Android's 2MB CursorWindow. The
+  // persister now writes at most PERSISTED_CACHE_BUDGET_BYTES (#4265), and this
+  // gate trims an older oversized blob instead of deleting it. Preserving it
+  // enables instant startup with cached prefs/location. This effect MUST resolve
+  // (cacheReady=true) before the provider below mounts — load-bearing for Android.
   const [cacheReady, setCacheReady] = React.useState(false);
   const [splashDone, setSplashDone] = React.useState(false);
 
+  // #4265: the guard no longer deletes the WHOLE cache when it is oversized (it
+  // did on every launch: 1.87 MB on the test account, so no cold start ever had a
+  // cache). primePersistedQueryCache reads the row once, trims an oversized blob
+  // to the budget by dropping its largest queries, removes an unreadable one, and
+  // hands that same read to the provider's restore so the row is read only once.
   React.useEffect(() => {
-    const MAX_CACHE_BYTES = 1_500_000; // 1.5MB — below Android's 2MB CursorWindow limit
-    AsyncStorage.getItem("REACT_QUERY_OFFLINE_CACHE")
-      .then((cached) => {
-        if (cached && cached.length > MAX_CACHE_BYTES) {
-          return AsyncStorage.removeItem("REACT_QUERY_OFFLINE_CACHE");
-        }
-      })
-      .catch(() => {})
-      .finally(() => setCacheReady(true));
+    void primePersistedQueryCache().finally(() => setCacheReady(true));
   }, []);
 
   return (

@@ -125,6 +125,10 @@ export interface BusinessEventCalendarRow {
   // partition uses this; pre-0853 used `masterDateUtc` (start_at) only and
   // archived in-progress events the moment they STARTED.
   masterDateEndUtc: string | null;
+  // issue #4265 — the occurrence this row covers (#2160 emits ONE row per day
+  // of a multi-day order, so `orderId` alone is NOT a row identity). Null for
+  // a not-day-scoped order (single-date / legacy), which has exactly one row.
+  eventDateId?: string | null;
   timezone: string;
   paymentStatus:
     | "pending"
@@ -631,6 +635,7 @@ export class CalendarService {
             // i-consumer-calendar-uses-end-not-start gate is unaffected: #2160
             // only changes WHICH occurrence's end this is, never that it is one.
             masterDateEndUtc: day.masterDateEndUtc,
+            eventDateId: day.eventDateId ?? null,
             timezone: event?.timezone ?? "UTC",
             paymentStatus: order.payment_status,
             // issue #2347 — THIS DAY's counts. Reading the whole order here made

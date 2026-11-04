@@ -172,7 +172,17 @@ import {
 } from "./connections/PendingCollabChatSheet";
 import { isPendingCollabReadyChange } from "./connections/pendingCollabChatUtils";
 import MessageInterface from "./MessageInterface";
-import { serializeTeamBrandCache, startupTeamBrandIds, teamBrandCacheKey } from "./connections/teamBrandCache";
+import { startupTeamBrandIds, teamBrandCacheKey } from "./connections/teamBrandCache";
+import {
+  archivedConversationIds,
+  chatListViewState,
+  updateChatListConversations,
+  type ChatListLoadDeps,
+  type ChatListProfile,
+  type RawChatConversation,
+} from "./connections/chatListLoad";
+import { useChatList } from "../hooks/useChatList";
+import { chatListKeys } from "../hooks/queryKeys";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
 import type { GatedFeature } from "../hooks/useFeatureGate";
@@ -361,7 +371,7 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
 }
 
 function buildGroupEventPublicUrl(
-  meta: GroupEventMeta | null | undefined,
+  meta: (Pick<GroupEventMeta, 'brandSlug' | 'slug'> & Partial<GroupEventMeta>) | null | undefined,
   linkedEntityType: 'direct' | 'session' | 'trip' | 'event' | null | undefined,
 ): string | null {
   if (!meta?.brandSlug || !meta.slug) return null;
@@ -369,42 +379,82 @@ function buildGroupEventPublicUrl(
   return `${BUSINESS_BUYER_DOMAIN}/${routePrefix}/${meta.brandSlug}/${meta.slug}`;
 }
 
-async function fetchPendingSessionInvitesForUser(userId: string): Promise<PendingSessionInvite[]> {
-  const { data: invites, error } = await supabase
-    .from("collaboration_invites")
-    .select("id, session_id, inviter_id, created_at")
-    .eq("invited_user_id", userId)
-    .eq("status", "pending")
-    .eq("pending_friendship", false)
-    .order("created_at", { ascending: false });
+// Issue #4265: the Chats list reads, injected into connections/chatListLoad
+// (which runs them in parallel waves and builds the rows). The pending-invite
+// read no longer fetches inviter profiles itself: the list's one profiles read
+// covers them.
+const CHAT_PROFILE_COLUMNS = "id, display_name, username, first_name, last_name, avatar_url";
 
-  if (error) throw error;
-  if (!invites || invites.length === 0) return [];
+const chatListDeps: ChatListLoadDeps<BusinessEventCard> = {
+  getConversations: async (userId) => {
+    const result = await messagingService.getConversations(userId, { deferSenderProfiles: true });
+    return { conversations: result.conversations as RawChatConversation[], error: result.error };
+  },
+  fetchPendingInvites: async (userId) => {
+    const { data, error } = await supabase
+      .from("collaboration_invites")
+      .select("id, session_id, inviter_id, created_at")
+      .eq("invited_user_id", userId)
+      .eq("status", "pending")
+      .eq("pending_friendship", false)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  },
+  // Issue #4114 Wave 6: your own active brand team rows (RLS: user_id =
+  // auth.uid()): accepted and not removed, the same rows that let a team
+  // member read the event chat. A failed read keeps the last known set
+  // (or, before any success, folds nothing) and logs.
+  fetchTeamBrandIds: async (userId) => {
+    const { data, error } = await supabase
+      .from("brand_team_members")
+      .select("brand_id")
+      .eq("user_id", userId)
+      .not("accepted_at", "is", null)
+      .is("removed_at", null);
+    if (error) {
+      console.warn("[ConnectionsPage] brand team read failed; keeping the last known teams", error);
+      return null;
+    }
+    return (data ?? []).map((row: { brand_id: string | null }) => row.brand_id).filter((id): id is string => Boolean(id));
+  },
+  fetchSessions: async (sessionIds) => {
+    const { data, error } = await supabase
+      .from("collaboration_sessions")
+      .select(`
+        id,
+        name,
+        created_by,
+        status,
+        session_participants(user_id, has_accepted),
+        collaboration_invites(id, invited_user_id, status, created_at)
+      `)
+      .in("id", sessionIds);
+    if (error) throw error;
+    return data ?? [];
+  },
+  fetchSessionPhoneInvites: async (sessionIds) => {
+    const { data, error } = await supabase
+      .from("pending_session_invites")
+      .select("id, session_id, phone_e164, status, created_at")
+      .in("session_id", sessionIds)
+      .eq("status", "pending");
+    if (error) throw error;
+    return data ?? [];
+  },
+  fetchEventMeta: fetchGroupEventMetaByIds,
+  fetchProfiles: async (userIds) => {
+    const { data, error } = await supabase.from("profiles").select(CHAT_PROFILE_COLUMNS).in("id", userIds);
+    if (error) throw error;
+    return (data ?? []) as ChatListProfile[];
+  },
+  displayName: (profile, fallback) => getDisplayName(profile, fallback),
+  eventPublicUrl: buildGroupEventPublicUrl,
+  rememberSenderProfiles: (profiles) => messagingService.rememberSenderProfiles(profiles),
+  warn: (message, error) => console.warn(message, error),
+};
 
-  const inviterIds = Array.from(
-    new Set(invites.map((invite: any) => invite.inviter_id).filter(Boolean)),
-  );
-  const { data: profiles, error: profilesError } = inviterIds.length > 0
-    ? await supabase
-        .from("profiles")
-        .select("id, display_name, username, first_name, last_name, avatar_url")
-        .in("id", inviterIds)
-    : { data: [] as any[], error: null };
-
-  if (profilesError) throw profilesError;
-  const profilesById = new Map((profiles || []).map((profile: any) => [profile.id, profile]));
-
-  return invites.map((invite: any) => {
-    const profile = profilesById.get(invite.inviter_id);
-    return {
-      sessionId: invite.session_id,
-      inviteId: invite.id,
-      inviterDisplayName: getDisplayName(profile),
-      inviterAvatarUrl: profile?.avatar_url ?? null,
-      createdAt: invite.created_at,
-    };
-  });
-}
+const EMPTY_CONVERSATIONS: Conversation[] = [];
 
 function isPendingInviteConversation(
   conversation: Conversation,
@@ -662,24 +712,47 @@ function ConnectionsPageRefactored({
   }, [fetchMutedUsers]);
 
   // ── Conversations data ───────────────────────────────────
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Issue #4265: ONE owner — the React Query entry chatListKeys.list(userId).
+  // Cached and persisted, so a revisit renders the list at once (no skeleton)
+  // and refreshes in the background after CHAT_LIST_STALE_TIME_MS. Every local
+  // change (archive, delete, mark read, realtime message, optimistic send…)
+  // writes into that entry through `setConversations` below.
+  const chatListQuery = useChatList(user?.id ?? null, chatListDeps);
+  const chatListView = chatListViewState(chatListQuery);
+  const conversations = (chatListView.conversations ?? EMPTY_CONVERSATIONS) as Conversation[];
+  // Stable like a state setter; always writes the signed-in user's entry.
+  const chatListKeyRef = useRef(chatListKeys.list(user?.id ?? 'none'));
+  chatListKeyRef.current = chatListKeys.list(user?.id ?? 'none');
+  const setConversations = useCallback((updater: (current: Conversation[]) => Conversation[]) => {
+    updateChatListConversations<Conversation>(queryClient, chatListKeyRef.current, updater);
+  }, [queryClient]);
   // Issue #4114: brands this user is on the team of. Explorer is the guest
   // app: their event and trip chats are host chats, run in the Host app, and
   // hidden here everywhere; every other brand's event and trip chats fold into
-  // one brand channel row. Starts from the last cached set (so the first frame
-  // is right on every launch after the first); null only while nothing is
-  // known, which hides nothing and folds everything.
-  const [teamBrandIds, setTeamBrandIds] = useState<ReadonlySet<string> | null>(null);
+  // one brand channel row. The loaded list carries the fresh set; before it
+  // has one, the last cached set (so the first frame is right on every launch
+  // after the first); null only while nothing is known, which hides nothing
+  // and folds everything.
+  const [cachedTeamBrandIds, setCachedTeamBrandIds] = useState<ReadonlySet<string> | null>(null);
+  const loadedTeamBrandIds = chatListQuery.data?.teamBrandIds ?? null;
+  const teamBrandIds = useMemo<ReadonlySet<string> | null>(
+    () => (loadedTeamBrandIds ? new Set(loadedTeamBrandIds) : cachedTeamBrandIds),
+    [cachedTeamBrandIds, loadedTeamBrandIds],
+  );
   // Explorer's chats: everything but host chats (list, search, filters, archive, unread).
   const explorerChats = useMemo(
     () => explorerConversations(conversations as ChatListItemConversation[], teamBrandIds) as Conversation[],
     [conversations, teamBrandIds],
   );
-  const [conversationsLoading, setConversationsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // First-ever load only: a cached list never shows the skeleton. A timeout is
+  // expected recovery after the app was in the background, not a failure: the
+  // cached list (or the empty state) stays, no error row.
+  const conversationsLoading = chatListView.loading;
+  const error = chatListView.failed ? t('connections:failed_load') : null;
 
   // ── Archive state (ORCH-0435) ───────────────────────────
-  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  // Issue #4265: read from the list (archive / unarchive patch `archived_at`).
+  const archivedIds = useMemo(() => archivedConversationIds(conversations as ChatListItemConversation[]), [conversations]);
   const [showArchived, setShowArchived] = useState(false);
   const [lifecycleBusyIds, setLifecycleBusyIds] = useState<Set<string>>(new Set());
 
@@ -701,13 +774,15 @@ function ConnectionsPageRefactored({
 
   const handleArchiveChat = useCallback(async (conversationId: string) => {
     if (!await runLifecycle(conversationId, 'archive')) return;
-    setArchivedIds((current) => new Set(current).add(conversationId));
     // Issue #4114: an archived chat gives its pin back (the 3-pin limit counts
     // every pinned row, so a hidden pin would block a visible one).
     const archived = conversations.find((conversation) => conversation.id === conversationId) as ChatListItemConversation | undefined;
+    const archivedAt = new Date().toISOString();
+    setConversations((current) => current.map((conversation) =>
+      conversation.id === conversationId
+        ? ({ ...conversation, archived_at: archivedAt, ...(archived?.pinned_at ? { pinned_at: null } : {}) } as Conversation)
+        : conversation));
     if (archived?.pinned_at) {
-      setConversations((current) => current.map((conversation) =>
-        conversation.id === conversationId ? ({ ...conversation, pinned_at: null } as Conversation) : conversation));
       const result = await messagingService.setConversationListState(conversationId, 'unpin');
       if (result.error) console.warn('[ConnectionsPage] unpin after archive failed', result.error);
     }
@@ -729,8 +804,11 @@ function ConnectionsPageRefactored({
   }, [archivedIds, conversations, handleArchiveChat, teamBrandIds]);
 
   const handleUnarchiveChat = useCallback(async (conversationId: string) => {
-    if (await runLifecycle(conversationId, 'unarchive')) setArchivedIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
-  }, [runLifecycle]);
+    if (await runLifecycle(conversationId, 'unarchive')) {
+      setConversations((current) => current.map((conversation) =>
+        conversation.id === conversationId ? ({ ...conversation, archived_at: null } as Conversation) : conversation));
+    }
+  }, [runLifecycle, setConversations]);
 
   const handleDeleteChat = useCallback((conversationId: string) => {
     const isGroup = conversations.find((conversation) => conversation.id === conversationId)?.type === 'group';
@@ -1232,366 +1310,14 @@ function ConnectionsPageRefactored({
   );
   const pendingCreatorCollabSessionKey = pendingCreatorCollabSessionIds.join("|");
 
-  // ── Shared conversation fetch + transform ─────────────────
-  const fetchConversations = useCallback(async (userId: string) => {
-    try {
-      setError(null);
-
-      // Hard 10-second timeout: belt-and-suspenders safety net. Post-ORCH-0901,
-      // messagingService.getConversations runs at most 2 sequential RLS-filtered Supabase
-      // round-trips (Q1+Q2 in parallel + optional Q3 batch-profile-fetch) — down from the
-      // ~5N+3 sequential queries it used to run — but background-suspended connections
-      // can still hang any single round-trip, and the timeout prevents conversationsLoading
-      // from getting stuck at true forever. See SPEC_ORCH-0901 §3.2.
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => {
-          const err = new Error('getConversations timed out after 10s');
-          err.name = 'TimeoutError';
-          reject(err);
-        }, 10000)
-      );
-
-      const { conversations: rawConversations, error: convError } =
-        await Promise.race([
-          messagingService.getConversations(userId),
-          timeoutPromise,
-        ]);
-
-      if (convError) throw new Error(convError);
-
-      // Batch-fetch all participant profiles and session names. ORCH-0898 group-chat
-      // rows should carry conversations.name, but older/backfilled rows can have it
-      // missing; session_id -> collaboration_sessions.name is the canonical fallback.
-      const allParticipantIds = new Set<string>();
-      const groupSessionIds = new Set<string>();
-      const groupEventIds = new Set<string>();
-      (rawConversations || []).forEach((conv) => {
-        conv.participants.forEach((p) => allParticipantIds.add(p.user_id));
-        const sessionId = (conv as { session_id?: string | null }).session_id;
-        if (conv.type === 'group' && sessionId) {
-          groupSessionIds.add(sessionId);
-        }
-        const eventId = (conv as { event_id?: string | null }).event_id;
-        const linkedEntityType = (conv as { linked_entity_type?: string | null }).linked_entity_type;
-        if (conv.type === 'group' && eventId && (linkedEntityType === 'trip' || linkedEntityType === 'event')) {
-          groupEventIds.add(eventId);
-        }
-      });
-
-      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap, teamBrandRows] = await Promise.all([
-        groupSessionIds.size > 0
-          ? supabase
-              .from("collaboration_sessions")
-              .select(`
-                id,
-                name,
-                created_by,
-                status,
-                session_participants(user_id, has_accepted),
-                collaboration_invites(id, invited_user_id, status, created_at)
-              `)
-              .in("id", Array.from(groupSessionIds))
-          : Promise.resolve({ data: [] as any[], error: null }),
-        groupSessionIds.size > 0
-          ? supabase
-              .from("pending_session_invites")
-              .select("id, session_id, phone_e164, status, created_at")
-              .in("session_id", Array.from(groupSessionIds))
-              .eq("status", "pending")
-          : Promise.resolve({ data: [] as any[], error: null }),
-        fetchGroupEventMetaByIds(Array.from(groupEventIds)).catch((error) => {
-          console.warn('[ConnectionsPage] Failed to batch-resolve group chat event metadata:', error);
-          return new Map<string, GroupEventMeta>();
-        }),
-        // Issue #4114 Wave 6: your own active brand team rows (RLS: user_id =
-        // auth.uid()): accepted and not removed, the same rows that let a team
-        // member read the event chat. A failed read keeps the last known set
-        // (or, before any success, folds nothing) and logs.
-        groupEventIds.size > 0
-          ? Promise.resolve(
-              supabase
-                .from('brand_team_members')
-                .select('brand_id')
-                .eq('user_id', userId)
-                .not('accepted_at', 'is', null)
-                .is('removed_at', null),
-            ).then(({ data, error }) => {
-              if (error) {
-                console.warn('[ConnectionsPage] brand team read failed; keeping the last known teams', error);
-                return null;
-              }
-              return (data ?? []).map((row: { brand_id: string | null }) => row.brand_id).filter((id): id is string => Boolean(id));
-            })
-          : Promise.resolve([] as string[]),
-      ]);
-
-      if (sessionsResult.error) throw sessionsResult.error;
-      if (pendingPhoneInvitesResult.error) throw pendingPhoneInvitesResult.error;
-      if (teamBrandRows !== null) {
-        // The brand's owner is on its team too (owner trigger); account_id is a belt and braces.
-        const owned = Array.from(eventMetaMap.values())
-          .filter((meta) => meta.brandId && meta.brandAccountId === userId)
-          .map((meta) => meta.brandId as string);
-        const teams = new Set([...teamBrandRows, ...owned]);
-        setTeamBrandIds(teams);
-        AsyncStorage.setItem(teamBrandCacheKey(userId), serializeTeamBrandCache(teams))
-          .catch((error) => console.warn('[ConnectionsPage] team brand cache write failed', error));
-      }
-
-      for (const session of sessionsResult.data || []) {
-        for (const participant of (session as any).session_participants || []) {
-          if (participant.user_id) allParticipantIds.add(participant.user_id);
-        }
-        for (const invite of (session as any).collaboration_invites || []) {
-          if (invite.invited_user_id) allParticipantIds.add(invite.invited_user_id);
-        }
-      }
-
-      const profilesResult = allParticipantIds.size > 0
-        ? await supabase
-            .from("profiles")
-            .select("id, display_name, username, first_name, last_name, avatar_url")
-            .in("id", Array.from(allParticipantIds))
-        : { data: [] as any[], error: null };
-
-      if (profilesResult.error) throw profilesResult.error;
-
-      const profilesMap = new Map(
-        (profilesResult.data || []).map((p) => [p.id, p])
-      );
-      const pendingPhoneInvitesBySession = new Map<string, any[]>();
-      for (const invite of pendingPhoneInvitesResult.data || []) {
-        const rows = pendingPhoneInvitesBySession.get(invite.session_id) ?? [];
-        rows.push(invite);
-        pendingPhoneInvitesBySession.set(invite.session_id, rows);
-      }
-      const sessionMetaMap = new Map(
-        (sessionsResult.data || []).map((s) => [
-          s.id,
-          {
-            name: s.name as string | null,
-            created_by: s.created_by as string | null,
-            status: (s as any).status as string | null,
-            participants: ((s as any).session_participants || []) as {
-              user_id: string;
-              has_accepted: boolean | null;
-            }[],
-            invites: ((s as any).collaboration_invites || []) as {
-              id: string;
-              invited_user_id: string;
-              status: string | null;
-              created_at: string | null;
-            }[],
-            phoneInvites: pendingPhoneInvitesBySession.get(s.id) ?? [],
-          },
-        ])
-      );
-
-      // Transform to Conversation type (matching useMessages format for ChatListItem).
-      // ORCH-0898: the transform now passes `type`, `name`, `session_id` through as
-      // optional extra fields. ChatListItem's ChatListItemConversation type intersection
-      // picks them up for the group-vs-direct render branch. The base useMessages
-      // Conversation type stays unchanged (locked for ORCH-0900 scope).
-      const transformed: Conversation[] = (rawConversations || []).map((conv) => {
-        const participants = conv.participants.map((p) => {
-          const profile = profilesMap.get(p.user_id);
-          return {
-            id: p.user_id,
-            username: profile?.username || "unknown",
-            display_name: profile?.display_name,
-            first_name: profile?.first_name,
-            last_name: profile?.last_name,
-            avatar_url: profile?.avatar_url,
-            // Issue #4114: no hard-coded presence. The only presence data is
-            // per-conversation "has this chat open" (conversation_presence),
-            // which is not app-wide online state, so the list shows no dot.
-          };
-        });
-
-        const sessionId = (conv as { session_id?: string | null }).session_id ?? null;
-        const eventId = (conv as { event_id?: string | null }).event_id ?? null;
-        const linkedEntityType = (conv as { linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' }).linked_entity_type;
-        const programKind = (conv as { program_kind?: 'local' | 'creator' | null }).program_kind ?? null;
-        const sessionMeta = sessionId ? sessionMetaMap.get(sessionId) : null;
-        const eventMeta = eventId ? eventMetaMap.get(eventId) : null;
-        const eventPublicUrl = buildGroupEventPublicUrl(eventMeta, linkedEntityType);
-        const eventPublicCard = eventMeta?.publicCard
-          ? {
-              ...eventMeta.publicCard,
-              publicBuyerUrl: eventPublicUrl ?? eventMeta.publicCard.publicBuyerUrl,
-            }
-          : null;
-        const conversationName = eventMeta?.title?.trim()
-          || (conv as { name?: string | null }).name?.trim()
-          || sessionMeta?.name?.trim()
-          || null;
-        const sessionParticipants = sessionMeta?.participants ?? [];
-        const acceptedParticipantIds = new Set(
-          sessionParticipants
-            .filter((participant) => participant.has_accepted === true)
-            .map((participant) => participant.user_id),
-        );
-        const hasAcceptedCollaborator = sessionParticipants.some(
-          (participant) => participant.user_id !== userId && participant.has_accepted === true,
-        );
-        const pendingInvitedIds = new Set(
-          (sessionMeta?.invites ?? [])
-            .filter((invite) => invite.status === "pending")
-            .map((invite) => invite.invited_user_id),
-        );
-        const pendingInviteByUserId = new Map(
-          (sessionMeta?.invites ?? [])
-            .filter((invite) => invite.status === "pending")
-            .map((invite) => [invite.invited_user_id, invite]),
-        );
-        const isPendingCreatorCollab =
-          conv.type === "group" &&
-          linkedEntityType === "session" &&
-          !!sessionId &&
-          sessionMeta?.created_by === userId &&
-          !hasAcceptedCollaborator;
-        const pendingPeople: PendingCollabChatPerson[] = sessionParticipants
-          .filter((participant) => participant.user_id)
-          .map((participant) => {
-            const profile = profilesMap.get(participant.user_id);
-            const isCreator = participant.user_id === sessionMeta?.created_by;
-            return {
-              id: participant.user_id,
-              name: isCreator && participant.user_id === userId
-                ? "You"
-                : getDisplayName(profile, "Mingla friend"),
-              avatarUrl: profile?.avatar_url ?? null,
-              status: isCreator
-                ? "creator"
-                : participant.has_accepted === true
-                  ? "accepted"
-                  : "pending",
-              inviteKind:
-                !isCreator && participant.has_accepted !== true ? "warm" : null,
-              inviteId: pendingInviteByUserId.get(participant.user_id)?.id ?? null,
-            };
-          });
-        for (const inviteeId of pendingInvitedIds) {
-          if (pendingPeople.some((person) => person.id === inviteeId)) continue;
-          const profile = profilesMap.get(inviteeId);
-          pendingPeople.push({
-            id: inviteeId,
-            name: getDisplayName(profile, "Mingla friend"),
-            avatarUrl: profile?.avatar_url ?? null,
-            status: acceptedParticipantIds.has(inviteeId) ? "accepted" : "pending",
-            inviteKind: acceptedParticipantIds.has(inviteeId) ? null : "warm",
-            inviteId: pendingInviteByUserId.get(inviteeId)?.id ?? null,
-          });
-        }
-        for (const invite of sessionMeta?.phoneInvites ?? []) {
-          pendingPeople.push({
-            id: `phone:${invite.id}`,
-            name: invite.phone_e164 || "Phone invite",
-            avatarUrl: null,
-            status: "pending",
-            inviteKind: "cold",
-            inviteId: invite.id,
-            phoneE164: invite.phone_e164 ?? null,
-          });
-        }
-
-        return {
-          id: conv.id,
-          created_by: conv.created_by ?? '',
-          created_at: conv.created_at,
-          participants,
-          last_message: conv.last_message as unknown as ConvMessage | undefined,
-          unread_count: conv.unread_count || 0,
-          messages: [],
-          // ORCH-0898 group-chat extras (consumed by ChatListItem):
-          type: conv.type,
-          name: conversationName,
-          session_id: sessionId,
-          event_id: eventId,
-          linked_entity_type: linkedEntityType ?? undefined,
-          program_kind: programKind,
-          sessionCreatorId: sessionMeta?.created_by ?? null,
-          sessionStatus: sessionMeta?.status ?? null,
-          isPendingCreatorCollab,
-          __pendingCollabChat: isPendingCreatorCollab && sessionId
-            ? {
-                conversationId: conv.id,
-                sessionId,
-                sessionName: conversationName || "Collaboration chat",
-                people: pendingPeople,
-                existingUserIds: Array.from(
-                  new Set([
-                    ...pendingPeople.map((person) => person.id),
-                    userId,
-                  ]),
-                ),
-              }
-            : undefined,
-          is_broadcast_only: Boolean((conv as any).is_broadcast_only),
-          eventBrandName: eventMeta?.brandName ?? null,
-          eventBrandAccountId: eventMeta?.brandAccountId ?? null,
-          // Issue #4114 Wave 6: what the brand channel fold reads.
-          eventBrandId: eventMeta?.brandId ?? null,
-          eventBrandSlug: eventMeta?.brandSlug ?? null,
-          eventBrandLogoUrl: eventMeta?.brandLogoUrl ?? null,
-          // Channel fold orders by next occurrence; publicCard keeps true master*.
-          eventStartAt:
-            eventMeta?.publicCard?.nextStartAtUtc ??
-            eventMeta?.publicCard?.masterDateUtc ??
-            null,
-          eventEndAt:
-            eventMeta?.publicCard?.nextEndAtUtc ??
-            eventMeta?.publicCard?.masterEndAtUtc ??
-            null,
-          eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
-          eventPublicUrl,
-          eventPublicCard,
-          archived_at: (conv as any).archived_at ?? null,
-          pinned_at: (conv as any).pinned_at ?? null,
-          marked_unread_at: (conv as any).marked_unread_at ?? null,
-          // Issue #4114 Wave 5: the 1:1 chat's live collab (from the access RPC).
-          live_session_id: (conv as any).live_session_id ?? null,
-          live_session_status: (conv as any).live_session_status ?? null,
-        };
-      });
-
-      const pendingInvites = await fetchPendingSessionInvitesForUser(userId).catch((inviteError) => {
-        console.warn("[ConnectionsPage] Failed to fetch pending session invites:", inviteError);
-        return [] as PendingSessionInvite[];
-      });
-      const pendingInviteRows = pendingInvites.map((invite) => ({
-        id: `pending-invite-${invite.inviteId}`,
-        created_by: "",
-        created_at: invite.createdAt,
-        participants: [],
-        unread_count: 0,
-        messages: [],
-        type: "group" as const,
-        name: invite.inviterDisplayName,
-        session_id: invite.sessionId,
-        linked_entity_type: "session" as const,
-        __pendingInvite: invite,
-      })) as Conversation[];
-
-      const nextConversations = [...pendingInviteRows, ...transformed];
-
-      setConversations(nextConversations);
-      setArchivedIds(new Set(transformed.filter((conversation) => Boolean((conversation as any).archived_at)).map((conversation) => conversation.id)));
-    } catch (err: any) {
-      if (err.name === 'TimeoutError') {
-        // Graceful degradation — network hung after background. User already sees cached
-        // state (empty or populated). Do NOT set error: the timeout is expected recovery
-        // behavior, not a failure. Setting error here would wipe the cache-hydrated empty
-        // state and replace it with an error screen (regression).
-        console.warn("[ConnectionsPage] fetchConversations timed out — network may be recovering after background");
-      } else {
-        console.error("Error fetching conversations:", err);
-        setError(t('connections:failed_load'));
-      }
-    } finally {
-      setConversationsLoading(false);
-    }
-  }, []);
+  // ── Issue #4265: refresh the one chat list query ──────────
+  // The list itself is the React Query entry chatListKeys.list(userId)
+  // (useChatList above): cached and persisted, so a revisit renders at once and
+  // refreshes quietly. Every "reload the chats" call site refetches that entry;
+  // the reads and the row transform live in connections/chatListLoad.ts.
+  const fetchConversations = useCallback(async (userId: string): Promise<void> => {
+    await queryClient.refetchQueries({ queryKey: chatListKeys.list(userId), exact: true });
+  }, [queryClient]);
 
   // ── Issue #4114: pull-to-refresh reloads chats and friends ──
   // Pull to refresh: chats start first; friends (awaited, issue-1638 C3.7)
@@ -1690,19 +1416,20 @@ function ConnectionsPageRefactored({
     setChatActionsTarget(conversation);
   }, []);
 
-  // ── Fetch conversations on mount ─────────────────────────
+  // ── Startup reads that never block the list (issue #4265) ─────
+  // The list loads through useChatList the moment the page mounts; these two
+  // AsyncStorage reads used to run first and hold it back.
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
+    // Issue #4114: the last known team set, before the first fresh read, so
+    // host chats are hidden (and guests' chats folded) from the first frame.
+    AsyncStorage.getItem(teamBrandCacheKey(user.id))
+      .then((cachedTeams) => {
+        if (!cancelled) setCachedTeamBrandIds((current) => startupTeamBrandIds(current, cachedTeams));
+      })
+      .catch((cacheError) => console.warn('[ConnectionsPage] team brand cache read failed', cacheError));
     void (async () => {
-      // Issue #4114: the last known team set, before the first fresh read, so
-      // host chats are hidden (and guests' chats folded) from the first frame.
-      try {
-        const cachedTeams = await AsyncStorage.getItem(teamBrandCacheKey(user.id));
-        if (!cancelled) setTeamBrandIds((current) => startupTeamBrandIds(current, cachedTeams));
-      } catch (cacheError) {
-        console.warn('[ConnectionsPage] team brand cache read failed', cacheError);
-      }
       const migrationKey = `mingla:archived_chats_server_migrated:${user.id}`;
       const legacyKey = `mingla:archived_chats:${user.id}`;
       try {
@@ -1711,20 +1438,22 @@ function ConnectionsPageRefactored({
         ]);
         if (!migrated && raw) {
           const ids = JSON.parse(raw) as unknown;
-          if (Array.isArray(ids)) {
-            for (const conversationId of ids.filter((id): id is string => typeof id === 'string')) {
-              const result = await messagingService.setConversationLifecycle(conversationId, 'archive');
-              if (result.error) throw new Error(result.error);
-            }
-          }
+          const legacyIds = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+          // One-time move of the old phone-only archive list to the server, all at once.
+          const results = await Promise.all(
+            legacyIds.map((conversationId) => messagingService.setConversationLifecycle(conversationId, 'archive')),
+          );
+          const failed = results.find((result) => result.error);
+          if (failed?.error) throw new Error(failed.error);
           await AsyncStorage.multiSet([[migrationKey, '1'], [legacyKey, '[]']]);
+          // The list may have loaded before the move: read it again so those chats show as archived.
+          if (!cancelled && legacyIds.length > 0) await fetchConversations(user.id);
         } else if (!migrated) {
           await AsyncStorage.setItem(migrationKey, '1');
         }
       } catch (migrationError) {
         console.warn('[ConnectionsPage] archive migration deferred', migrationError instanceof Error ? migrationError.name : 'unknown');
       }
-      if (!cancelled) await fetchConversations(user.id);
     })();
     return () => { cancelled = true; };
   }, [user?.id, fetchConversations]);
@@ -4083,7 +3812,6 @@ function ConnectionsPageRefactored({
   }, [fetchConversations, onDeclinePendingInvite, user?.id]);
 
   const handleRetryLoad = useCallback(() => {
-    setConversationsLoading(true);
     if (user?.id) void fetchConversations(user.id);
     fetchFriends();
     loadFriendRequests();

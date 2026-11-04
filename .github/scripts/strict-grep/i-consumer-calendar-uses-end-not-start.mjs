@@ -17,7 +17,7 @@
  *   Whitelist: `// SPEC ORCH-0850 OK:` comment on the same line exempts it.
  *
  *   Required presence:
- *     - CalendarTab.tsx MUST contain `computeEntryEffectiveEnd` AND
+ *     - calendarAgendaModel.ts (#4265) MUST contain `computeEntryEffectiveEnd` AND
  *       `DEFAULT_CALENDAR_DURATION_MIN`.
  *
  *   Self-test mode (`--self-test`) validates the regex against an inlined
@@ -39,7 +39,10 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const APP_MOBILE = path.join(REPO_ROOT, "app-mobile");
 
+// #4265: the end-based helper now lives in the pure agenda model; CalendarTab
+// stays scanned for the forbidden start-only compares.
 const TARGETS = [
+  path.join(APP_MOBILE, "src", "components", "activity", "calendarAgendaModel.ts"),
   path.join(APP_MOBILE, "src", "components", "activity", "CalendarTab.tsx"),
   path.join(APP_MOBILE, "src", "components", "activity", "SavedTab.tsx"),
   path.join(APP_MOBILE, "src", "hooks", "useCalendarEntries.ts"),
@@ -95,7 +98,7 @@ for (const file of TARGETS) {
   }
 }
 
-// Required-presence checks on CalendarTab.tsx ---------------------------------
+// Required-presence checks on calendarAgendaModel.ts (#4265) -----------------
 const calendarSrc = fs.readFileSync(CALENDAR_TAB, "utf8");
 if (!/\bcomputeEntryEffectiveEnd\b/.test(calendarSrc)) {
   console.error(

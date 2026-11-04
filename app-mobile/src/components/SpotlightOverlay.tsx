@@ -14,6 +14,7 @@ import Svg, { Defs, Rect, Mask } from 'react-native-svg';
 import { useCoachMarkContext, TargetRect } from '../contexts/CoachMarkContext';
 import { useAppLayout } from '../hooks/useAppLayout';
 import { COACH_STEP_COUNT } from '../constants/coachMarkSteps';
+import CoachLikesPreview from './CoachLikesPreview';
 import { useTranslation } from 'react-i18next';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -389,6 +390,9 @@ export default function SpotlightOverlay(): React.ReactElement | null {
           </View>
           <Text style={styles.stepCounter}>{t('modals:spotlight.step_counter', coachProgress)}</Text>
         </View>
+
+        {/* Issue #4265: optional illustration slot (step 3 = mini Likes preview) */}
+        {currentStepConfig.illustration === 'likesPreview' ? <CoachLikesPreview /> : null}
 
         {/* Title */}
         <Text style={styles.title} accessibilityRole="header">

@@ -726,6 +726,23 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
           >
             {children}
           </BottomSheetScrollView>
+        ) : scrollMode === 'flatlist' ? (
+          // #4265: a virtualised list between a pinned header and a pinned
+          // footer (the share sheet's people and chats). Same contract as the
+          // scroll branch: the list is a DIRECT child with flex:1, never wrapped
+          // in a View (a wrapper collapses gorhom's viewport — ORCH-1043). The
+          // consumer passes its own ListHeaderComponent via scrollProps.
+          <BottomSheetFlatList
+            {...(scrollProps as React.ComponentProps<typeof BottomSheetFlatList>)}
+            style={[
+              styles.stickyBody,
+              (scrollProps as Partial<React.ComponentProps<typeof BottomSheetFlatList>>)?.style,
+            ]}
+            contentContainerStyle={withFooterClearance(
+              (scrollProps as Partial<React.ComponentProps<typeof BottomSheetFlatList>>)
+                ?.contentContainerStyle,
+            )}
+          />
         ) : (
           <View style={styles.stickyBody}>{children}</View>
         );

@@ -10,8 +10,10 @@ const ticketRoute = readFileSync(
   resolve(appRoot, "app/purchases/[kind]/[id].tsx"),
   "utf8",
 );
+// #4265: the Calendar's ticket rows are rendered by the agenda; the route to
+// the canonical purchase detail is owned by CalendarTab.
 const calendarRow = readFileSync(
-  resolve(appRoot, "src/components/activity/BusinessEventCalendarRow.tsx"),
+  resolve(appRoot, "src/components/activity/CalendarTab.tsx"),
   "utf8",
 );
 

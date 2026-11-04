@@ -36,6 +36,14 @@ export const chatKeys = {
     [...chatKeys.all, 'participants', conversationId ?? 'none'] as const,
 };
 
+// #4265 — the Chats tab conversation list (useChatList), per signed-in user.
+// Persisted; the user id in the key means logout / account switch removes it.
+// Anything that adds, joins or changes a chat refreshes it via `all`.
+export const chatListKeys = {
+  all: ['chatList'] as const,
+  list: (userId: string) => [...chatListKeys.all, 'list', userId] as const,
+};
+
 // Issue #4114 Wave 5: the live collab inside a 1:1 chat (by conversation id).
 export const dmCollabKeys = {
   all: ['dmCollab'] as const,
@@ -165,4 +173,21 @@ export const groupLinkKeys = {
 export const friendShareKeys = {
   all: ['friendShare'] as const,
   link: (userId: string) => [...friendShareKeys.all, 'link', userId] as const,
+};
+
+// #4265 — the share sheet's "Send in Mingla" people and chats, per signed-in
+// user. Persisted so the sheet reopens with the last list at once; the user id
+// in the key means logout / account switch removes it (authCleanup →
+// shouldRemoveForAuthChange) and the persister never writes it for anyone else.
+export const contentShareRecipientKeys = {
+  all: ['contentShareRecipients'] as const,
+  list: (userId: string) => [...contentShareRecipientKeys.all, 'list', userId] as const,
+};
+
+// #4265 — the signed-in user's `preferences` row. Same key every existing
+// reader already uses (['userPreferences', userId]); named here so new readers
+// go through the factory.
+export const userPreferencesKeys = {
+  all: ['userPreferences'] as const,
+  detail: (userId: string) => [...userPreferencesKeys.all, userId] as const,
 };

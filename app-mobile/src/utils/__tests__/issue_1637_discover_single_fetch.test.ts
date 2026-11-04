@@ -493,6 +493,11 @@ Deno.test("#1637 C-0 the scan is not vacuous", () => {
   assert(service.length > 900, `discoverFeedService.ts read back only ${service.length} chars`);
 });
 
+// #4265 amended C-1/C-8/C-9: a city remembered FOR THIS USER from the last visit
+// now opens the gate at mount (it is a city anchor, never a GPS one, so #1637's
+// coords-then-city double paint cannot happen), and preferences are read through
+// React Query (cache, then mirror, then the row only when stale). The settlement
+// rules themselves are executed in issue_4265_discover_cached_anchor.implementor.test.ts.
 Deno.test("#1637 C-1 the live query anchor stays disabled until saved-city preference settlement", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
@@ -500,8 +505,8 @@ Deno.test("#1637 C-1 the live query anchor stays disabled until saved-city prefe
     "the network anchor must remain null until the saved-city mirror/row settles",
   );
   assert(
-    dense.includes("constpreferencesSettled=!user?.id||preferencesSettledFor===user.id"),
-    "settlement must be scoped to the current user rather than a reusable boolean",
+    dense.includes("constpreferencesSettled=discoverAnchorReady({userId:user?.id??null,preferencesSettledFor,seededAtMount:seed!==null&&seed.userId===user?.id});"),
+    "settlement must be scoped to the current user (and to a seed remembered for that user)",
   );
 });
 
@@ -728,7 +733,7 @@ Deno.test("#1637 T-13 reconciliation re-anchors on a real change and on nothing 
 Deno.test("#1637 C-8 the prefs effect reads the LOCAL MIRROR before the network row", () => {
   const dense = denseCode(read(SCREEN_REL));
   const mirror = dense.indexOf("offlineService.getOfflineUserPreferences()");
-  const row = dense.indexOf("PreferencesService.getUserPreferences(userId)");
+  const row = dense.indexOf("queryClient.fetchQuery({queryKey:userPreferencesKeys.detail(userId)");
   assert(mirror !== -1, "the AsyncStorage mirror must be read — it is what beats the 1.5s cap");
   assert(row !== -1, "vacuity guard: the authoritative row must still be read");
   assert(
@@ -736,19 +741,26 @@ Deno.test("#1637 C-8 the prefs effect reads the LOCAL MIRROR before the network 
     "the mirror must be read FIRST; behind the network row it cannot open the gate in time",
   );
   assert(
-    dense.includes("setCity(mirrored)") && dense.includes("setPreferencesSettledFor(userId)"),
+    dense.includes("if(discoverCityFromPreferences(mirrored)){apply(mirrored);setPreferencesSettledFor(userId);}"),
     "a mirrored city must seed the anchor AND open the gate, without waiting on the network",
   );
 });
 
 Deno.test("#1637 C-9 the authoritative row re-anchors only when it disagrees with the seed", () => {
   const dense = denseCode(read(SCREEN_REL));
+  const reconcile = denseCode(read("../discoverEventsCache.ts"));
   assert(
-    dense.includes("if(preferences&&!sameDiscoverAnchorCity(seeded,authoritative)){setCity(authoritative);"),
-    "an unguarded setCity here re-commits the deck on every launch — it is the second fetch, restored",
+    reconcile.includes("returncurrent&&sameDiscoverAnchorCity(current.city,saved)?{kind:\"keep\"}:{kind:\"swap\",city:saved};"),
+    "an unguarded swap here re-commits the deck on every launch — it is the second fetch, restored",
   );
   assert(
-    dense.includes("offlineService.cacheUserPreferences(preferences)"),
+    dense.includes("if(decision.kind===\"swap\"){swapToCity({...decision.city},\"preferences\");"),
+    "the screen must act only on the reconcile decision",
+  );
+  const prefsHook = denseCode(read("../../hooks/useUserPreferences.ts"));
+  assert(
+    dense.includes("queryFn:({signal})=>fetchUserPreferences(userId,signal)") &&
+      prefsHook.includes("offlineService.cacheUserPreferences(prefs)"),
     "the mirror must be refreshed from the authoritative row, or it goes stale and stops helping",
   );
 });

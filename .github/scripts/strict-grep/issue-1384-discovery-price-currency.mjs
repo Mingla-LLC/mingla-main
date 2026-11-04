@@ -117,7 +117,7 @@ const rules = {
   calendarTab: {
     required: [
       "...canonicalDiscoveryPriceFields(",
-      "if (entry.experience?.cardType !== 'curated') return false",
+      // #4265: the Calendar's tier filter was removed with its search/filter bar.
       "priceTier: isCurated ?",
     ],
   },
