@@ -101,7 +101,7 @@ BEGIN
   END LOOP;
   IF v_moved > 0 THEN
     PERFORM public.ops_log_write(c_actor, 'system', 'updated', 'info', NULL, NULL, NULL,
-      format('Moved %s Needs a person cards to To do with their tag (#4270): %s had an owner, %s got one, %s have no owner.',
+      format('Moved %s cards to To do with their Send, Spend or Publish tag (#4270): %s had an owner, %s got one, %s have no owner.',
         v_moved, v_owned, v_given, v_none),
       jsonb_build_object('moved', v_moved, 'owned', v_owned, 'given_owner', v_given, 'no_owner', v_none, 'issue', 4270));
   END IF;
@@ -303,7 +303,10 @@ BEGIN
   -- Wave 2 / #4270: taking the tag off a card (what leaving Needs a person
   -- was) needs a reason from an agent; the log records it and owners and
   -- watchers are told.
-  v_back := c.person_reason IS NOT NULL AND v_reason IS NULL;
+  -- #4270 rework (P3-2): a tag that is not one of the four words (an empty
+  -- string, say) is refused as a bad tag below, not as a missing reason.
+  v_back := c.person_reason IS NOT NULL AND v_reason IS NULL
+            AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_fixes) f WHERE f->>'field' = 'person_reason');
   IF v_back THEN
     v_back_reason := CASE WHEN jsonb_typeof(p_changes->'reason') = 'string' THEN left(public.ops_one_line(p_changes->>'reason'), 500) END;
     IF public.ops_has_control(v_back_reason) THEN v_back_reason := NULL; END IF;
@@ -509,16 +512,19 @@ BEGIN
   -- and waits for a person; owners and watchers are told.
   IF n.person_reason IS NOT NULL AND c.person_reason IS NULL THEN
     PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), v.actor_email,
-      format('%s: %s needs a person (%s)', v_who, n.title, CASE n.person_reason WHEN 'send' THEN 'send a message' WHEN 'spend' THEN 'spend money' WHEN 'publish' THEN 'publish an event' ELSE 'your OK' END));
+      -- #4270 rework (P3-4): the tag's own words, never "needs a person".
+      format('%s: %s · %s', v_who, n.title, CASE n.person_reason WHEN 'send' THEN 'You send' WHEN 'spend' THEN 'You spend' WHEN 'publish' THEN 'You publish' ELSE 'Needs your OK' END));
     PERFORM public.ops_log_write(v.actor_email, v.via, 'needs_person', 'info', c.id, 'work_card', c.id,
-      format('Card %s is tagged for a person: %s', n.number, n.title), jsonb_build_object('reason', n.person_reason));
+      format('Card %s is tagged %s: %s', n.number, CASE n.person_reason WHEN 'send' THEN 'Send' WHEN 'spend' THEN 'Spend' WHEN 'publish' THEN 'Publish' ELSE 'Needs your OK' END, n.title), jsonb_build_object('reason', n.person_reason));
   ELSIF v_back THEN
-    -- Wave 2: told and logged when a card stops needing a person.
+    -- Wave 2: told and logged when a card's tag comes off.
     PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), v.actor_email,
       format('%s took the %s tag off %s%s', v_who, CASE c.person_reason WHEN 'send' THEN 'Send' WHEN 'spend' THEN 'Spend' WHEN 'publish' THEN 'Publish' ELSE 'Needs your OK' END, n.title,
         COALESCE(': ' || v_back_reason, '')));
     PERFORM public.ops_log_write(v.actor_email, v.via, 'updated', 'info', c.id, 'work_card', c.id,
-      format('Card %s no longer needs a person%s', n.number, COALESCE(': ' || v_back_reason, '.')),
+      format('Card %s no longer has its %s tag%s', n.number,
+        CASE c.person_reason WHEN 'send' THEN 'Send' WHEN 'spend' THEN 'Spend' WHEN 'publish' THEN 'Publish' ELSE 'Needs your OK' END,
+        COALESCE(': ' || v_back_reason, '.')),
       jsonb_build_object('changed', to_jsonb(v_cats), 'from', c.person_reason, 'to', n.status, 'reason', v_back_reason));
   ELSIF v.via IS NOT NULL THEN
     PERFORM public.ops_log_write(v.actor_email, v.via,
@@ -611,7 +617,7 @@ BEGIN
           format('Added Card %s: %s', c.number, c.title), jsonb_build_object('owners', cardinality(v_owners), 'watchers', cardinality(v_watchers)));
         IF c.person_reason IS NOT NULL THEN
           PERFORM public.ops_log_write(v.actor_email, v.via, 'needs_person', 'info', c.id, 'work_card', c.id,
-            format('Card %s is tagged for a person: %s', c.number, c.title), jsonb_build_object('reason', c.person_reason));
+            format('Card %s is tagged %s: %s', c.number, CASE c.person_reason WHEN 'send' THEN 'Send' WHEN 'spend' THEN 'Spend' WHEN 'publish' THEN 'Publish' ELSE 'Needs your OK' END, c.title), jsonb_build_object('reason', c.person_reason));
         END IF;
         v_rows := v_rows || jsonb_build_array(jsonb_build_object('index', v_idx, 'status', 'added', 'card', public.ops_card_json(c, v_today)));
         v_added := v_added + 1;
@@ -696,13 +702,16 @@ DECLARE
   v_today date; v_status text[]; v_who text := 'all'; v_owner text; v_event uuid; v_expected uuid; v_record uuid; v_week date;
   v_q text; v_like text; v_done_days integer := 7; v_limit integer := 200; v_cards jsonb; v_total integer; v_counts jsonb; v_ids uuid[];
   v_closed_since timestamptz; v_closed_until timestamptz; v_offset integer := 0;
+  -- #4270 rework: a page per column, and one meaning of "this week".
+  v_per_status boolean := false; v_tz text := 'UTC'; v_done_default boolean := true; v_week_start timestamptz;
+  v_sts text[]; v_rns integer[]; v_pick uuid[]; v_columns jsonb; v_cut boolean;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   SELECT k INTO v_bad FROM jsonb_object_keys(q) k
    WHERE k NOT IN ('status','who','owner','event_id','expected_id','record_id','week','q','done_days','today','limit',
-                   'closed_since','closed_until','offset') ORDER BY k LIMIT 1;
+                   'closed_since','closed_until','offset','per_status','tz') ORDER BY k LIMIT 1;
   IF v_bad IS NOT NULL THEN
-    RAISE EXCEPTION '%', format('invalid_query: The board cannot filter by "%s". It takes status, who, owner, event_id, expected_id, record_id, week, q, done_days, closed_since, closed_until, today, limit and offset.', left(v_bad, 40)) USING ERRCODE = '22023';
+    RAISE EXCEPTION '%', format('invalid_query: The board cannot filter by "%s". It takes status, who, owner, event_id, expected_id, record_id, week, q, done_days, closed_since, closed_until, today, limit, offset, per_status and tz.', left(v_bad, 40)) USING ERRCODE = '22023';
   END IF;
   BEGIN
     v_today := public.ops_today(CASE WHEN jsonb_typeof(q->'today') = 'string' THEN (q->>'today')::date END);
@@ -730,6 +739,7 @@ BEGIN
       v_like := replace(replace(replace(v_q, E'\\', E'\\\\'), '%', E'\\%'), '_', E'\\_');
     END IF;
     IF q ? 'done_days' AND jsonb_typeof(q->'done_days') <> 'null' THEN
+      v_done_default := false;
       v_done_days := (q->>'done_days')::integer;
       IF v_done_days NOT BETWEEN 0 AND 60 THEN RAISE EXCEPTION 'bad' USING ERRCODE = '22023'; END IF;
     END IF;
@@ -753,9 +763,26 @@ BEGIN
       v_offset := (q->>'offset')::integer;
       IF v_offset NOT BETWEEN 0 AND 100000 THEN RAISE EXCEPTION 'bad' USING ERRCODE = '22023'; END IF;
     END IF;
+    -- #4270 rework (P2-1): per_status puts the limit on each column, so a
+    -- long To do never pushes In progress or Done off the page.
+    IF q ? 'per_status' AND jsonb_typeof(q->'per_status') <> 'null' THEN
+      IF jsonb_typeof(q->'per_status') <> 'boolean' THEN RAISE EXCEPTION 'bad' USING ERRCODE = '22023'; END IF;
+      v_per_status := (q->>'per_status')::boolean;
+      IF v_per_status AND v_offset > 0 THEN RAISE EXCEPTION 'bad' USING ERRCODE = '22023'; END IF;
+    END IF;
+    -- #4270 rework (P3-3): the viewer's time zone. Done "this week" starts
+    -- at 00:00 on the Monday of the sprint (the Monday of today) there. An
+    -- unknown zone counts as UTC, so a browser with a newer zone name still
+    -- loads the board.
+    IF q ? 'tz' AND jsonb_typeof(q->'tz') <> 'null' THEN
+      IF jsonb_typeof(q->'tz') <> 'string' OR char_length(q->>'tz') > 64 THEN RAISE EXCEPTION 'bad' USING ERRCODE = '22023'; END IF;
+      IF EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names z WHERE z.name = q->>'tz') THEN v_tz := q->>'tz'; END IF;
+    END IF;
   EXCEPTION WHEN invalid_parameter_value OR invalid_text_representation OR invalid_datetime_format OR datetime_field_overflow THEN
-    RAISE EXCEPTION 'invalid_query: A filter has the wrong shape. Use status (todo, doing, done; person lists open cards with a Send, Spend or Publish tag), who (all, mine, watching), ids from Mingla, a week date, up to 160 characters of search, done_days 0 to 60, closed_since before closed_until, limit 1 to 300 and offset 0 to 100000.' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'invalid_query: A filter has the wrong shape. Use status (todo, doing, done; person lists open cards with a Send, Spend or Publish tag), who (all, mine, watching), ids from Mingla, a week date, up to 160 characters of search, done_days 0 to 60, closed_since before closed_until, limit 1 to 300, offset 0 to 100000 (not with per_status), per_status true or false and tz as a time zone name.' USING ERRCODE = '22023';
   END;
+  -- Done with no window given: closed since Monday 00:00 of this sprint, in tz.
+  v_week_start := (public.ops_monday(v_today)::timestamp AT TIME ZONE v_tz);
 
   WITH base AS (
     SELECT w.id, w.status, w.due_on, w.number, w.person_reason, w.closed_at FROM public.ops_work_cards w
@@ -777,7 +804,17 @@ BEGIN
                      THEN w.closed_at IS NOT NULL
                           AND (v_closed_since IS NULL OR w.closed_at >= v_closed_since)
                           AND (v_closed_until IS NULL OR w.closed_at < v_closed_until)
-                     ELSE w.closed_at >= now() - make_interval(days => v_done_days) END)))
+                     WHEN v_done_default THEN w.closed_at >= v_week_start
+                     ELSE w.closed_at >= now() - make_interval(days => v_done_days) END))),
+  picked AS (
+    SELECT b.id, b.status, array_position(ARRAY['todo','doing','done'], b.status) AS col,
+           row_number() OVER (PARTITION BY b.status
+                              ORDER BY CASE WHEN b.status <> 'done' THEN b.due_on END ASC,
+                                       CASE WHEN b.status = 'done' THEN b.due_on END DESC,
+                                       CASE WHEN b.status = 'done' THEN b.closed_at END DESC, b.number)::integer AS rn
+      FROM base b
+     WHERE v_status IS NULL OR b.status = ANY (v_status)
+        OR ('person' = ANY (v_status) AND b.status <> 'done' AND b.person_reason IS NOT NULL))
   -- #4270: three columns. Open cards earliest due first (late on top); Done
   -- latest due first. "person" in a filter means open cards with a tag; the
   -- person count stays (= tagged) for one release so older agents still read it.
@@ -787,21 +824,35 @@ BEGIN
                             'person', count(*) FILTER (WHERE b.status <> 'done' AND b.person_reason IS NOT NULL),
                             'due_today', count(*) FILTER (WHERE b.status <> 'done' AND b.due_on = v_today),
                             'overdue', count(*) FILTER (WHERE b.status <> 'done' AND b.due_on < v_today)),
-         count(*) FILTER (WHERE v_status IS NULL OR b.status = ANY (v_status)
-                            OR ('person' = ANY (v_status) AND b.status <> 'done' AND b.person_reason IS NOT NULL)),
-         array_agg(b.id ORDER BY array_position(ARRAY['todo','doing','done'], b.status),
-                                 CASE WHEN b.status <> 'done' THEN b.due_on END ASC,
-                                 CASE WHEN b.status = 'done' THEN b.due_on END DESC,
-                                 CASE WHEN b.status = 'done' THEN b.closed_at END DESC, b.number)
-           FILTER (WHERE v_status IS NULL OR b.status = ANY (v_status)
-                     OR ('person' = ANY (v_status) AND b.status <> 'done' AND b.person_reason IS NOT NULL))
-    INTO v_counts, v_total, v_ids
+         (SELECT count(*) FROM picked),
+         (SELECT array_agg(p.id ORDER BY p.col, p.rn) FROM picked p),
+         (SELECT array_agg(p.status ORDER BY p.col, p.rn) FROM picked p),
+         (SELECT array_agg(p.rn ORDER BY p.col, p.rn) FROM picked p)
+    INTO v_counts, v_total, v_ids, v_sts, v_rns
     FROM base b;
+  -- (picked is the filtered list with each card's place in its own column.)
+  IF v_per_status THEN
+    v_pick := ARRAY(SELECT u.id FROM unnest(COALESCE(v_ids, ARRAY[]::uuid[]), COALESCE(v_rns, ARRAY[]::integer[])) WITH ORDINALITY u(id, rn, ord)
+                     WHERE u.rn <= v_limit ORDER BY u.ord);
+  ELSE
+    v_pick := COALESCE(v_ids[v_offset + 1:v_offset + v_limit], ARRAY[]::uuid[]);
+  END IF;
+  -- Each column: how many cards it has in all, how many came back, and
+  -- whether it is cut. The board's tabs and headers read these.
+  SELECT jsonb_object_agg(k.st, jsonb_build_object('total', COALESCE(t.total, 0), 'shown', COALESCE(t.shown, 0),
+                                                   'truncated', COALESCE(t.shown, 0) < COALESCE(t.total, 0)))
+    INTO v_columns
+    FROM unnest(ARRAY['todo','doing','done']) k(st)
+    LEFT JOIN (SELECT u.st, count(*) AS total, count(*) FILTER (WHERE u.id = ANY (v_pick)) AS shown
+                 FROM unnest(COALESCE(v_ids, ARRAY[]::uuid[]), COALESCE(v_sts, ARRAY[]::text[])) u(id, st) GROUP BY u.st) t ON t.st = k.st;
+  v_cut := CASE WHEN v_per_status THEN EXISTS (SELECT 1 FROM jsonb_each(v_columns) e WHERE (e.value->>'truncated')::boolean)
+                ELSE v_total > v_offset + v_limit END;
   SELECT COALESCE(jsonb_agg(public.ops_card_json(w, v_today) ORDER BY u.ord), '[]'::jsonb) INTO v_cards
-    FROM unnest(COALESCE(v_ids[v_offset + 1:v_offset + v_limit], ARRAY[]::uuid[])) WITH ORDINALITY u(id, ord)
+    FROM unnest(v_pick) WITH ORDINALITY u(id, ord)
     JOIN public.ops_work_cards w ON w.id = u.id;
-  RETURN jsonb_build_object('cards', v_cards, 'total', v_total, 'truncated', v_total > v_offset + v_limit, 'counts', v_counts,
-    'offset', v_offset,
+  RETURN jsonb_build_object('cards', v_cards, 'total', v_total, 'truncated', v_cut, 'counts', v_counts,
+    'columns', v_columns, 'per_status', v_per_status, 'limit', v_limit,
+    'offset', v_offset, 'done_since', CASE WHEN v_done_default AND v_week IS NULL AND v_closed_since IS NULL AND v_closed_until IS NULL THEN v_week_start END,
     'sprint', public.ops_sprint_json(COALESCE(v_week, public.ops_monday(v_today))), 'today', v_today);
 END;
 $$;
@@ -1583,7 +1634,8 @@ BEGIN
           COALESCE(v_args->'proof', '[]'::jsonb), (v_args->>'expected_revision')::bigint);
         v_items := 1; v_summary := '{"pushed_back":1}'::jsonb;
       WHEN 'list_work' THEN
-        v_result := public.ops_work_list((v_args - 'today') || jsonb_build_object('today', v_date));
+        -- #4270 rework: Done means closed since Monday in your person's time zone.
+        v_result := public.ops_work_list((v_args - 'today' - 'tz' - 'per_status') || jsonb_build_object('today', v_date, 'tz', COALESCE(v_auth->>'time_zone', 'UTC')));
         v_summary := jsonb_build_object('cards', jsonb_array_length(v_result->'cards'));
       WHEN 'my_work' THEN
         v_result := jsonb_build_object('today', v_date,
@@ -1700,6 +1752,29 @@ AS $$ SELECT $j${
 }$j$::jsonb $$;
 
 -- ---------------------------------------------------------------------------
+-- 4b. #4270 rework (P3-4): the Feature Guide's Work entries stop saying a
+--     card "needs a person"; they use the tag's words. Only those words
+--     change; claims, status and evidence stay as they are.
+-- ---------------------------------------------------------------------------
+WITH fixed AS (
+  UPDATE public.product_capabilities c
+     SET outcome_summary = replace(replace(replace(replace(c.outcome_summary, 'Waiting on a person', 'Needs your OK'), 'Needs a person', 'Needs your OK'), 'needs a person', 'needs your OK'), 'need a person', 'need your OK'),
+         how_to = replace(replace(replace(replace(c.how_to, 'Waiting on a person', 'Needs your OK'), 'Needs a person', 'Needs your OK'), 'needs a person', 'needs your OK'), 'need a person', 'need your OK'),
+         limitations = replace(replace(replace(replace(c.limitations, 'Waiting on a person', 'Needs your OK'), 'Needs a person', 'Needs your OK'), 'needs a person', 'needs your OK'), 'need a person', 'need your OK'),
+         support_wording = replace(replace(replace(replace(c.support_wording, 'Waiting on a person', 'Needs your OK'), 'Needs a person', 'Needs your OK'), 'needs a person', 'needs your OK'), 'need a person', 'need your OK'),
+         revision = c.revision + 1,
+         updated_at = now()
+   WHERE c.capability_key IN ('staff-work-board', 'staff-drafts')
+     AND (c.outcome_summary ~ '(Waiting on|[Nn]eeds?) a person' OR c.how_to ~ '(Waiting on|[Nn]eeds?) a person' OR c.limitations ~ '(Waiting on|[Nn]eeds?) a person' OR c.support_wording ~ '(Waiting on|[Nn]eeds?) a person')
+  RETURNING c.id, c.capability_key, c.revision
+)
+INSERT INTO public.product_truth_audit(action, capability_id, metadata)
+SELECT 'capability_saved', f.id,
+       jsonb_build_object('source', 'issue_4270_w1_work_board_three_columns', 'issue', 4270,
+                          'change', 'Needs a person wording replaced by Needs your OK', 'revision', f.revision)
+  FROM fixed f;
+
+-- ---------------------------------------------------------------------------
 -- 5. Self-check. The apply stops here if anything above is not as stated.
 -- ---------------------------------------------------------------------------
 DO $check4270w1$
@@ -1744,6 +1819,15 @@ BEGIN
   IF has_function_privilege('authenticated', 'public.ops_4270_move_person_cards()', 'EXECUTE')
      OR has_function_privilege('service_role', 'public.ops_4270_move_person_cards()', 'EXECUTE') THEN
     RAISE EXCEPTION 'issue 4270 wave 1 self-check: the one-time move is callable by clients';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.product_capabilities c
+              WHERE c.capability_key IN ('staff-work-board', 'staff-drafts')
+                AND concat_ws(' ', c.outcome_summary, c.how_to, c.limitations, c.support_wording) ~ '(Waiting on|[Nn]eeds?) a person') THEN
+    RAISE EXCEPTION 'issue 4270 wave 1 self-check: the Feature Guide still says a Work card needs a person';
+  END IF;
+  IF pg_catalog.pg_get_functiondef('public.ops_work_update(uuid,jsonb,bigint,text)'::regprocedure) ~ '[Nn]eeds a person \('
+     OR pg_catalog.pg_get_functiondef('public.ops_work_list(jsonb)'::regprocedure) NOT LIKE '%per_status%' THEN
+    RAISE EXCEPTION 'issue 4270 wave 1 self-check: ops_work_update or ops_work_list is not the #4270 rework';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.ops_work_update(uuid,jsonb,bigint,text)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.ops_work_list(jsonb)', 'EXECUTE') THEN

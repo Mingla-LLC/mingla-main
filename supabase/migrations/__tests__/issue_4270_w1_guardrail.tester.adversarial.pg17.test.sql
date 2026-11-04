@@ -32,7 +32,9 @@
 --              honest, 301 is refused
 --   X-SORT     ties: open cards on the same day by card number (not title);
 --              Done on the same day latest closed first, then card number
---   X-WINDOW   Done is the last 7 days by closed_at; done_days 0 shows none
+--   X-WINDOW   Done is this sprint week (#4270 rework P3-3): closed since
+--              Monday 00:00 in tz (UTC by default; an unknown zone is UTC);
+--              done_days 0 shows none
 --   X-ALIAS    the person status filter, alone and mixed, is case-exact; a
 --              repeated alias is no change
 --
@@ -581,6 +583,7 @@ $cap$;
 -- ---------------------------------------------------------------------------
 set local session_replication_role = replica;
 do $fx_sort$
+declare v_ws timestamptz := public.ops_monday(public.ops_today(NULL))::timestamp AT TIME ZONE 'UTC';
 begin
   -- Same due day, inserted zulu before alpha: card number decides, not title.
   perform pg_temp.tx_card('S1', 'X4270 Tie zulu',    'todo',  null,   'tie.x4270@test.local', 2);
@@ -595,8 +598,9 @@ begin
   perform pg_temp.tx_card('T3', 'X4270 Done same due, closed 1h too', 'done', null, 'tie.x4270@test.local', -1, p_closed => interval '1 hour');
   perform pg_temp.tx_card('T4', 'X4270 Done due today, closed 5h', 'done', null, 'tie.x4270@test.local', 0, p_closed => interval '5 hours');
   -- Window
-  perform pg_temp.tx_card('W1', 'X4270 Window inside',  'done', null, 'win.x4270@test.local', -6, p_closed => interval '6 days 23 hours');
-  perform pg_temp.tx_card('W2', 'X4270 Window outside', 'done', null, 'win.x4270@test.local', -7, p_closed => interval '7 days 1 hour');
+  -- #4270 rework: closed at Monday 00:00 UTC (inside) and one minute before (outside).
+  perform pg_temp.tx_card('W1', 'X4270 Window inside',  'done', null, 'win.x4270@test.local', -6, p_closed => now() - v_ws);
+  perform pg_temp.tx_card('W2', 'X4270 Window outside', 'done', null, 'win.x4270@test.local', -7, p_closed => (now() - v_ws) + interval '1 minute');
   perform pg_temp.tx_card('W3', 'X4270 Window open',    'todo', null, 'win.x4270@test.local', 1);
 end;
 $fx_sort$;
@@ -605,15 +609,29 @@ set local session_replication_role = origin;
 do $sort$
 declare v jsonb;
 begin
-  v := pg_temp.tx_j(pg_temp.tx_person('tie', $q$select public.ops_work_list('{"owner":"tie.x4270@test.local"}'::jsonb)::text$q$));
+  -- done_days 7: the closed-hours-ago fixtures stay in whatever day of the week the suite runs.
+  v := pg_temp.tx_j(pg_temp.tx_person('tie', $q$select public.ops_work_list('{"owner":"tie.x4270@test.local","done_days":7}'::jsonb)::text$q$));
   perform pg_temp.tx_check('X-SORT', 'ties on a due day go by card number; late first; Done latest due, then latest closed, then number',
     (select string_agg(replace(c->>'title', 'X4270 ', ''), '|' order by o) from jsonb_array_elements(v->'cards') with ordinality t(c, o)),
     'Tie late|Tie zulu|Tie alpha|Tie mike|Tie doing b|Tie doing a|Done due today, closed 5h|Done same due, closed 1h|Done same due, closed 1h too|Done same due, closed 3h');
 
   v := pg_temp.tx_j(pg_temp.tx_person('win', $q$select public.ops_work_list('{"owner":"win.x4270@test.local"}'::jsonb)::text$q$));
-  perform pg_temp.tx_check('X-WINDOW', 'Done holds a card closed 6 days 23 hours ago, not one closed 7 days 1 hour ago',
+  perform pg_temp.tx_check('X-WINDOW', 'Done holds a card closed at Monday 00:00, not one closed a minute before',
     (select string_agg(replace(c->>'title', 'X4270 ', ''), '|' order by o) from jsonb_array_elements(v->'cards') with ordinality t(c, o)),
     'Window open|Window inside');
+  perform pg_temp.tx_check('X-WINDOW', 'the strip count of Done is the same week as the column',
+    v #>> '{counts,done}', '1');
+  perform pg_temp.tx_check('X-WINDOW', 'done_since is Monday 00:00 UTC by default',
+    ((v->>'done_since')::timestamptz = (public.ops_monday(public.ops_today(NULL))::timestamp AT TIME ZONE 'UTC'))::text, 'true');
+  v := pg_temp.tx_j(pg_temp.tx_person('win', $q$select public.ops_work_list('{"owner":"win.x4270@test.local","tz":"Pacific/Kiritimati"}'::jsonb)::text$q$));
+  perform pg_temp.tx_check('X-WINDOW', 'with tz the week starts at Monday 00:00 in that zone',
+    ((v->>'done_since')::timestamptz = (public.ops_monday(public.ops_today(NULL))::timestamp AT TIME ZONE 'Pacific/Kiritimati'))::text, 'true');
+  v := pg_temp.tx_j(pg_temp.tx_person('win', $q$select public.ops_work_list('{"owner":"win.x4270@test.local","tz":"Mars/Olympus"}'::jsonb)::text$q$));
+  perform pg_temp.tx_check('X-WINDOW', 'an unknown zone is read as UTC and still loads',
+    ((v->>'done_since')::timestamptz = (public.ops_monday(public.ops_today(NULL))::timestamp AT TIME ZONE 'UTC'))::text, 'true');
+  v := pg_temp.tx_j(pg_temp.tx_person('win', $q$select public.ops_work_list('{"owner":"win.x4270@test.local","done_days":7}'::jsonb)::text$q$));
+  perform pg_temp.tx_check('X-WINDOW', 'done_days still asks for a rolling window and has no done_since',
+    coalesce(v->>'done_since', 'none'), 'none');
   v := pg_temp.tx_j(pg_temp.tx_person('win', $q$select public.ops_work_list('{"owner":"win.x4270@test.local","done_days":0}'::jsonb)::text$q$));
   perform pg_temp.tx_check('X-WINDOW', 'done_days 0 shows no Done card', (v #>> '{counts,done}') || ' ' || jsonb_array_length(v->'cards'), '0 1');
 end;

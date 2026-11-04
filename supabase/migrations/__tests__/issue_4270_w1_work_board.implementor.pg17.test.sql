@@ -252,7 +252,7 @@ begin
       where e.card_id = pg_temp.tw_id('P1') and e.actor_email = 'system@usemingla.com'), 'person>todo');
   perform pg_temp.tw_like('M-MOVE', 'the agent log has one summary',
     (select summary from public.ops_agent_log where actor_email = 'system@usemingla.com' and detail->>'issue' = '4270' order by id desc limit 1),
-    'Moved 6 Needs a person cards to To do with their tag (#4270): 2 had an owner, 2 got one, 2 have no owner.');
+    'Moved 6 cards to To do with their Send, Spend or Publish tag (#4270): 2 had an owner, 2 got one, 2 have no owner.');
   v := pg_temp.tw_person('growth', format('select public.ops_work_undo(%L)::text',
     (select e.id from public.ops_work_events e where e.card_id = pg_temp.tw_id('P1') and e.actor_email = 'gia.w4270@test.local')));
   perform pg_temp.tw_like('M-MOVE', 'an undo of a change made before the move is refused', v, 'ERR:22023:undo_expired:%');

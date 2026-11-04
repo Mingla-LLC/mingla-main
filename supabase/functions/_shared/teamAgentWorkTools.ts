@@ -586,7 +586,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "list_work",
     title: "List work cards",
     description:
-      "List cards on the Work board: To do and In progress earliest due first, then Done latest due first, with their owners, plan, claim, revision and any Send, Spend or Publish tag. Filter by status, owner, event_id, record_id, a search q, or week (the Monday of a sprint). " +
+      "List cards on the Work board: To do and In progress earliest due first, then Done (closed since Monday in your person's time zone) latest due first, with their owners, plan, claim, revision and any Send, Spend or Publish tag. Filter by status, owner, event_id, record_id, a search q, or week (the Monday of a sprint). " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       status: {

@@ -264,9 +264,9 @@ begin
       (select count(*) from public.ops_agent_log where card_id = v_card::uuid and action = 'needs_person')::text, '1');
     perform pg_temp.tz_check('X-HANDOFF', 'the watcher is told about card ' || r || ', the acting person is not',
       (select count(*) from public.team_mentions m join tz_people p on p.id = m.target_user_id
-        where m.source_kind = 'work_card' and p.who = 'admin' and m.body_excerpt like '%needs a person%' and m.body_excerpt like '%' || r || '%')::text
+        where m.source_kind = 'work_card' and p.who = 'admin' and m.body_excerpt like '%Z3980 Hand to a person ' || r || ' · %')::text -- #4270 rework: the tag's words
       || '/' || (select count(*) from public.team_mentions m join tz_people p on p.id = m.target_user_id
-        where m.source_kind = 'work_card' and p.who = 'growth' and m.body_excerpt like '%Z3980 Hand to a person ' || r || '%needs a person%')::text,
+        where m.source_kind = 'work_card' and p.who = 'growth' and m.body_excerpt like '%Z3980 Hand to a person ' || r || ' · %')::text,
       '1/0');
   end loop;
   v := pg_temp.tz_person('admin', 'select public.ops_review_list()::text');

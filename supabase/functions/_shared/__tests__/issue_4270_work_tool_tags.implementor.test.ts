@@ -48,7 +48,7 @@ Deno.test("#4270 list_work: due-date order and person as the tagged filter", () 
   const tool = findWorkTool("list_work")!;
   assertMatch(
     tool.description,
-    /To do and In progress earliest due first, then Done latest due first/,
+    /To do and In progress earliest due first, then Done \(closed since Monday in your person.s time zone\) latest due first/,
   );
   const ok = checkArguments(tool, { status: ["person"] });
   assertEquals(ok.ok, true);

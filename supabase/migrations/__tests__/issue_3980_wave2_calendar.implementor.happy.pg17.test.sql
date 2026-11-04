@@ -508,7 +508,7 @@ begin
     pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || coalesce(pg_temp.t3980_get(v, 'result', 'card', 'tag'), '-'), 'true/todo/-');
   perform pg_temp.t3980_like('W2-BACK', 'the reason is in the agent log',
     (select summary from public.ops_agent_log where card_id = pg_temp.t3980_id('cp')::uuid and action = 'updated' and via = 'claude' order by id desc limit 1),
-    'Card % no longer needs a person: The host paid for the boost themselves.');
+    'Card % no longer has its Spend tag: The host paid for the boost themselves.'); -- #4270 rework: tag words
   perform pg_temp.t3980_check('W2-BACK', 'the watcher is told, with the reason',
     (select count(*) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
       where m.source_kind = 'work_card' and p.who = 'admin' and m.deep_link like '%' || pg_temp.t3980_id('cp')
