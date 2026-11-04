@@ -51,21 +51,9 @@ export type PartialDeliverySource = 'singles' | 'curated';
  * (Phase 2.3). Changing positions on merge would break the expansion-signal
  * invariant the SwipeableCards first-5-IDs check relies on.
  */
-export function mergeCardsByIdPreservingOrder(
-  prev: Recommendation[],
-  incoming: Recommendation[],
-): Recommendation[] {
-  if (prev.length === 0) return incoming;
-  if (incoming.length === 0) return prev;
-  const prevIds = new Set<string>();
-  for (const card of prev) prevIds.add(card.id);
-  const toAppend: Recommendation[] = [];
-  for (const card of incoming) {
-    if (!prevIds.has(card.id)) toAppend.push(card);
-  }
-  if (toAppend.length === 0) return prev;
-  return [...prev, ...toAppend];
-}
+// #4265: implementation moved to the pure deck-snapshot module (shared with
+// the cold-start snapshot merge); re-exported so existing imports keep working.
+export { mergeCardsByIdPreservingOrder } from '../utils/deckSnapshot';
 
 export interface DeckParams {
   /** Required for solo mode; ignored / optional for collab mode (server reads
