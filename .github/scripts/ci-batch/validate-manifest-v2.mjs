@@ -348,7 +348,8 @@ export function phase3dContractDigest(manifest) {
 // #4256: register the no-auto-promo-cards migration the same way.
 // #4255: register the admin access and Work closed-range migrations the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b4edd3b186b361380f027c4275c5a03c477b89907d72b9f48062f2f7aa67bbae";
+// #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "17eb2e45a61cc40bdd1ee4b30962184362cf549c4884e5a461b432743a8036d2";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
