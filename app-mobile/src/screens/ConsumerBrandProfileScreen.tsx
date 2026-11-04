@@ -45,6 +45,12 @@ import { toastManager } from "../components/ui/Toast";
 import { ToastContainer } from "../components/ui/ToastContainer";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { BrandFollowOverflowSheet } from "../components/profile/BrandFollowOverflowSheet";
+// #3682 wave 3 (#1782) — stop / allow invites through friends (non-followers).
+import {
+  BrandFriendsReachFootRow,
+  shouldShowBrandFriendsReachRow,
+} from "../components/profile/BrandFriendsReachFootRow";
+import { useFriendsReach } from "../hooks/useFriendsReach";
 import { BrandsYouFollowManageSheet } from "../components/profile/BrandsYouFollowManageSheet";
 import type { BrandFollowRow } from "../services/brandFollowsService";
 import { resolveExplorerPublicPath } from "../services/publicParityNativeAdapter";
@@ -74,6 +80,10 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const followerCountLabels = useFollowerCountLabels();
   const queryClient = useQueryClient();
   const [followingMenuOpen, setFollowingMenuOpen] = useState(false);
+  const friendsReach = useFriendsReach(
+    user?.id ?? null,
+    !!user?.id && !brandFollow.isFollowing,
+  );
   const [manageChannelsOpen, setManageChannelsOpen] = useState(false);
   const invalidateFollow = useCallback(() => {
     const uid = user?.id;
@@ -283,6 +293,23 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       }
     : null;
 
+  const showFriendsReachRow = shouldShowBrandFriendsReachRow({
+    userId: user?.id ?? null,
+    isFollowing: brandFollow.isFollowing,
+    controlsLive: friendsReach.controlsLive,
+    extendedEnabled: friendsReach.state?.extendedEnabled === true,
+    stopped:
+      friendsReach.state?.stoppedBrands.some((b) => b.brandId === detail.brand.id) === true,
+  });
+  const friendsReachRow = (
+    <BrandFriendsReachFootRow
+      userId={user?.id ?? null}
+      brandId={detail.brand.id}
+      brandName={detail.brand.displayName}
+      isFollowing={brandFollow.isFollowing}
+    />
+  );
+
   const handleFollowingMenu = (): void => {
     setFollowingMenuOpen(true);
   };
@@ -337,15 +364,20 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         contentBottomInset={insets.bottom + 24}
         foot={
           brandMessage.available && footPalette !== null ? (
-            <BrandPageFoot
-              brandName={detail.brand.displayName}
-              palette={footPalette}
-              theme={detail.resolvedTheme}
-              message={{
-                onPress: () => brandMessage.open(),
-                replyMinutes: brandMessage.replyMinutes,
-              }}
-            />
+            <>
+              <BrandPageFoot
+                brandName={detail.brand.displayName}
+                palette={footPalette}
+                theme={detail.resolvedTheme}
+                message={{
+                  onPress: () => brandMessage.open(),
+                  replyMinutes: brandMessage.replyMinutes,
+                }}
+              />
+              {showFriendsReachRow ? friendsReachRow : null}
+            </>
+          ) : showFriendsReachRow ? (
+            friendsReachRow
           ) : null
         }
         callbacks={{

@@ -8,7 +8,7 @@ jest.mock("../../supabase", () => ({
 import {
   confirmMarketingBook,
   previewMarketingBook,
-} from "../marketingCampaignService";
+} from "../marketingBookSendService";
 import { getOrCreateMarketingCircleAudience } from "../marketingCircleAudienceService";
 
 const QUOTE = {

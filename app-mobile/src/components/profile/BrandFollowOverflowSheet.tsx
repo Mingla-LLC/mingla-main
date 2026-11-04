@@ -1,5 +1,7 @@
 /**
  * #3682 Wave 2.6 — brand overflow / Following menu: Mute for…, channels, Unfollow.
+ * #3682 wave 3 (#1782) — "Stop invites through friends" (unfollows and leaves
+ * the brand's circle), shown only once this build's controls switch is live.
  */
 import React, { useState } from "react";
 import {
@@ -21,6 +23,12 @@ import {
   type MuteDuration,
 } from "../../services/brandFollowsService";
 import { toastManager } from "../ui/Toast";
+import { useFriendsReach } from "../../hooks/useFriendsReach";
+import {
+  STOP_THROUGH_FRIENDS_ROW,
+  stopThroughFriendsConfirm,
+  stoppedToast,
+} from "./friendsReachCopy";
 
 type Props = {
   visible: boolean;
@@ -43,6 +51,7 @@ export const BrandFollowOverflowSheet: React.FC<Props> = ({
 }) => {
   const [mutePicker, setMutePicker] = useState(false);
   const queryClient = useQueryClient();
+  const friendsReach = useFriendsReach(userId, visible);
   if (!row) return null;
   const muted = brandFollowIsMuted(row.mutedUntil);
 
@@ -112,6 +121,30 @@ export const BrandFollowOverflowSheet: React.FC<Props> = ({
         },
       ],
     );
+  };
+
+  const confirmStopThroughFriends = () => {
+    const copy = stopThroughFriendsConfirm(row.brandName);
+    Alert.alert(copy.title, copy.body, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: copy.confirm,
+        style: "destructive",
+        onPress: () => {
+          if (!userId) return;
+          void friendsReach
+            .setBrandStopped(row.brandId, true, true)
+            .then(() => {
+              toastManager.show(stoppedToast(row.brandName, true), "success");
+              onUnfollowed();
+              onClose();
+            })
+            .catch(() => {
+              toastManager.show("Couldn't save that. Try again.", "error");
+            });
+        },
+      },
+    ]);
   };
 
   return (
@@ -197,6 +230,19 @@ export const BrandFollowOverflowSheet: React.FC<Props> = ({
                 <Text style={styles.rowLabel}>Notification channels</Text>
                 <Ionicons name="chevron-forward" size={18} color="#6b7280" />
               </Pressable>
+              {friendsReach.controlsLive ? (
+                <Pressable
+                  style={styles.row}
+                  onPress={confirmStopThroughFriends}
+                  disabled={friendsReach.isSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${STOP_THROUGH_FRIENDS_ROW} from ${row.brandName}`}
+                  testID="brand-follow-stop-friends-row"
+                >
+                  <Ionicons name="people-outline" size={22} color="#111827" />
+                  <Text style={styles.rowLabel}>{STOP_THROUGH_FRIENDS_ROW}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 style={styles.row}
                 onPress={confirmUnfollow}

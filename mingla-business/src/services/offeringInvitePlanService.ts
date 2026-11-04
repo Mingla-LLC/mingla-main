@@ -12,7 +12,15 @@ export interface WizardInvitePlan {
   eventId: string;
   eventType: WizardOfferingType;
   selectionRevision: number;
+  /**
+   * Everyone this plan will invite: Your Book people plus account-only
+   * followers (#3682 wave 2). Wizards gate Review/publish on this total.
+   */
   selectedCount: number;
+  /** Your Book people only — always brandPersonIds.length. */
+  bookSelectedCount?: number;
+  /** Followers who are not in Your Book, invited by their Mingla account. */
+  accountRecipientCount?: number;
   brandPersonIds: string[];
   selectionHash: string;
   state: WizardInvitePlanState;
@@ -77,7 +85,21 @@ function parsePlan(value: unknown): WizardInvitePlan {
       !HASH.test(value.selectionHash) || (value.state !== "draft" && value.state !== "locked") ||
       !(value.publishedSelectionRevision === null || Number.isSafeInteger(value.publishedSelectionRevision)) ||
       !(value.updatedAt === null || typeof value.updatedAt === "string")) malformed();
-  return value as unknown as WizardInvitePlan;
+  // #3682 wave 2 — the server keeps selectedCount Book-only for older clients
+  // and reports account-only followers separately; a receipt written before
+  // the field existed has none.
+  const accountRecipientCount = value.accountRecipientCount === undefined
+    ? 0
+    : value.accountRecipientCount;
+  if (!Number.isSafeInteger(accountRecipientCount) || (accountRecipientCount as number) < 0 ||
+      (value.selectedCount as number) + (accountRecipientCount as number) > 500) malformed();
+  const plan = value as unknown as WizardInvitePlan;
+  return {
+    ...plan,
+    bookSelectedCount: plan.selectedCount,
+    accountRecipientCount: accountRecipientCount as number,
+    selectedCount: plan.selectedCount + (accountRecipientCount as number),
+  };
 }
 
 function parseQuote(value: unknown): WizardInviteQuote {

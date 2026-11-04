@@ -37,12 +37,14 @@ describe("issue #3682 Wave 2.8b — wizard invite followers", () => {
   test("Host picker exposes Followers and Friends of followers sources", () => {
     expect(picker).toContain('title="Followers"');
     expect(picker).toContain('title="Friends of followers"');
-    expect(picker).toContain("already in Your Book");
+    expect(picker).not.toContain("already in Your Book");
+    expect(picker).toContain("followersRowDetail");
     expect(picker).toContain("onSelectFollowers");
     expect(picker).toContain("onSelectFriendsOfFollowers");
     expect(picker).toContain("includeFollowers: true");
     expect(picker).toContain("includeFriendsOfFollowers: true");
-    expect(picker).toContain("followers, or friends of followers");
+    // #3682 closeout: the header says "Choose who to invite"; the source rows above name each source.
+    expect(picker).toContain("Choose who to invite. Nothing sends until this");
   });
 
   test("clear RPC sends the widened six-key empty selection", () => {

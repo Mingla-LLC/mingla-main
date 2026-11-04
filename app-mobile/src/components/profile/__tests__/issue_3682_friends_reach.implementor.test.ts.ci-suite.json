@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/profile/__tests__/issue_3682_friends_reach.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3682-friends-reach-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

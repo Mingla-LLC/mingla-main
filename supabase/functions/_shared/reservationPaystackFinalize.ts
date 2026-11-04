@@ -39,6 +39,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
+import { autoFollowReservationBestEffort } from "./autoFollowBrand.ts";
 
 /** The subset of a reservation_checkout_sessions row this helper needs. */
 export interface ReservationFinalizeSession {
@@ -237,6 +238,14 @@ export async function finalizeVerifiedPaystackReservation(
       message: "finalize_returned_no_reservation_id",
     };
   }
+
+  // #3682 — signed-in booker follows the brand. Bounded (1.5 s), fail-open
+  // (the helper never throws), claimed by reservation id so a webhook
+  // redelivery or confirm/webhook race is a no-op.
+  await autoFollowReservationBestEffort(
+    supabase as never,
+    finalRow?.reservation ?? null,
+  );
 
   // 4. FIRE the #865 two-tier ad-conversion on the minted reservation. Fail-open
   //    (this wrapper never throws — a conversion failure NEVER affects the
