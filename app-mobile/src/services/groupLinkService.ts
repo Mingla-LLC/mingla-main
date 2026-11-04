@@ -6,6 +6,7 @@
  * map it to copy. Nothing is fabricated on failure.
  */
 import { supabase } from "./supabase";
+import { refreshChatListAfterConversationChange } from "./chatListRefresh";
 import { getDisplayName } from "../utils/getDisplayName";
 import type {
   AddGroupMembersResult,
@@ -89,6 +90,9 @@ export async function joinGroupByLink(token: string, shareToken: string | null):
   if (status !== "joined" && status !== "invited" && status !== "requested" && status !== "already_member") {
     throw new Error("invalid_response");
   }
+  // #4261: joining (or asking to join) a group changes the Chats list; #4265's
+  // useChatList entry is marked stale through chatListKeys.all.
+  refreshChatListAfterConversationChange();
   return {
     status,
     conversationId: str(row.conversationId),

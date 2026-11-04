@@ -12,7 +12,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { planKeys, groupLinkKeys } from './queryKeys';
+import { chatListKeys, planKeys, groupLinkKeys } from './queryKeys';
 import {
   addPlanOption,
   addPlanPlace,
@@ -138,12 +138,22 @@ function settle(queryClient: QueryClient, conversationId: string): void {
   void queryClient.invalidateQueries({ queryKey: planKeys.conversation(conversationId) });
 }
 
+/**
+ * The plan action posted a chat line (the plan card, "added a time", "locked
+ * in", "cancelled"…), so the Chats list's preview is stale (#4265's
+ * `useChatList` entry stays fresh for minutes). Factory key only.
+ */
+function refreshChatList(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+}
+
 export function useCreatePlan(conversationId: string, senderId: string | null | undefined) {
   const queryClient = useQueryClient();
   const toastError = usePlanErrorToast();
   return useMutation<PlanCreateResult, unknown, { input: PlanCreateInput; previewTitle: string }>({
     mutationFn: ({ input }) => createPlan(input),
     onSuccess: (result, { input, previewTitle }) => {
+      if (result.created) refreshChatList(queryClient);
       // Amendment 1 (5.9): the server reads the link's preview; never blocks posting.
       if (result.created && input.linkUrl) requestLinkPreview(result.planId);
       if (result.created && senderId) {
@@ -167,7 +177,11 @@ export function useAddPlanTime(conversationId: string) {
   return useMutation<PlanAddOptionResult, unknown, { plan: ChatPlan; startsAt: string }>({
     mutationFn: ({ plan, startsAt }) => addPlanOption(plan.id, startsAt),
     onSuccess: (result) => {
-      if (result.existed) toastManager.info(t('chat:plan_time_exists_toast'));
+      if (result.existed) {
+        toastManager.info(t('chat:plan_time_exists_toast'));
+        return;
+      }
+      refreshChatList(queryClient);
     },
     onError: (error, { plan }) => toastError(error, 'addTime', plan),
     onSettled: () => settle(queryClient, conversationId),
@@ -186,6 +200,7 @@ export function useAddPlanPlace(conversationId: string) {
         toastManager.info(t('chat:plan_place_exists_toast'));
         return;
       }
+      refreshChatList(queryClient);
       if (input.linkUrl) requestLinkPreview(plan.id);
     },
     onError: (error, { plan }) => toastError(error, 'addPlace', plan),
@@ -267,6 +282,7 @@ export function useLockPlan(conversationId: string, viewerId: string | null | un
         placeOptionId: lockPlaceOptionId(plan),
       }),
     onSuccess: (result, { plan }) => {
+      refreshChatList(queryClient);
       if (viewerId) void queryClient.invalidateQueries({ queryKey: ['calendarEntries', viewerId] });
       if (plan.sessionId) {
         void queryClient.invalidateQueries({ queryKey: ['scheduledCards', plan.sessionId] });
@@ -289,6 +305,7 @@ export function useUpdatePlan(conversationId: string) {
   const toastError = usePlanErrorToast();
   return useMutation<unknown, unknown, { plan: ChatPlan; title: string; note: string | null }>({
     mutationFn: ({ plan, title, note }) => updatePlan(plan.id, title, note),
+    onSuccess: () => refreshChatList(queryClient),
     onError: (error, { plan }) => toastError(error, 'update', plan),
     onSettled: () => settle(queryClient, conversationId),
   });
@@ -300,6 +317,7 @@ export function useCancelPlan(conversationId: string, viewerId: string | null | 
   return useMutation<unknown, unknown, { plan: ChatPlan }>({
     mutationFn: ({ plan }) => cancelPlan(plan.id),
     onSuccess: () => {
+      refreshChatList(queryClient);
       if (viewerId) void queryClient.invalidateQueries({ queryKey: ['calendarEntries', viewerId] });
     },
     onError: (error, { plan }) => toastError(error, 'cancel', plan),

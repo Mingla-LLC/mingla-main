@@ -10,7 +10,7 @@ import { useCallback, useState } from "react";
 import { Share } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import i18n from "../i18n";
-import { chatKeys, friendShareKeys, groupLinkKeys } from "./queryKeys";
+import { chatKeys, chatListKeys, friendShareKeys, groupLinkKeys } from "./queryKeys";
 import {
   addGroupMembers,
   decideGroupJoinRequest,
@@ -122,6 +122,9 @@ export function useDecideJoinRequest(conversationId: string, groupName: string) 
       return result;
     },
     onSuccess: (_result, { approve }) => {
+      // The decision posts a join line (approve) or drops the pending row: the
+      // Chats list preview follows (#4265 useChatList; factory key only).
+      void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
       // Amendment 1 B-4: the header count follows the live member list.
       if (approve) void queryClient.invalidateQueries({ queryKey: chatKeys.participants(conversationId) });
     },
@@ -148,6 +151,8 @@ export function useAddGroupMembers(conversationId: string) {
       void queryClient.invalidateQueries({ queryKey: groupLinkKeys.link(conversationId) });
       // Amendment 1 B-4: the header count follows the live member list.
       void queryClient.invalidateQueries({ queryKey: chatKeys.participants(conversationId) });
+      // "added X" posts a chat line: the Chats list preview follows.
+      void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
     },
     onError: (error) => {
       console.warn("[useAddGroupMembers] failed:", error.message);

@@ -16,6 +16,7 @@
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, trackedInvoke } from "./supabase";
+import { refreshChatListAfterConversationChange } from "./chatListRefresh";
 import {
   claimRpcForPendingInvite,
   normalizePendingInviteKind,
@@ -153,6 +154,9 @@ export async function claimPendingFriendInvite(): Promise<ClaimFriendInviteResul
       memory = { ...held, kind, inviterId: claim.ownerId };
       emit();
       await persist();
+      // #4261: the new friendship changes who the Chats list shows (#4265's
+      // useChatList entry is marked stale through chatListKeys.all).
+      refreshChatListAfterConversationChange();
       // Tell the link owner once: the server returns alreadyClaimed=false only
       // on the claim that made the friendship.
       const { data: session } = await supabase.auth.getSession();

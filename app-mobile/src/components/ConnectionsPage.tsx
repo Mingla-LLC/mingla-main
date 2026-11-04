@@ -3079,6 +3079,9 @@ function ConnectionsPageRefactored({
           return conv;
         })
       );
+      // Issue #4261: a plan comment also changes the plan's thread; refetch the
+      // Chats list (factory key) so its preview reads the server row.
+      if (current.planId) void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
 
       // Add real ID to broadcast seen set so postgres_changes backup won't dupe
       broadcastSeenIds.current.add(sentMessage.id);
