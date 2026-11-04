@@ -17,13 +17,13 @@ import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import {
-  DECK_LAST_KEY,
-  DECK_LAST_LOCATION_KEY,
+  dismissedCardsStorageKey,
+  isRestoredDeckSnapshot,
   persistFirstDeckPageController,
   prefetchDeckPageController,
+  restoreDeckSnapshotController,
   useDeckCards,
 } from "../hooks/useDeckCards";
-import { cachedLocationSync } from "../hooks/useUserLocation";
 import { deckService } from "../services/deckService";
 import type { CollabDeadEndPayload } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
@@ -240,42 +240,20 @@ export const RecommendationsProvider: React.FC<
   // changes. Previously lived inline beside the sync effect.
   const previousDeckIdsRef = useRef<string>('');
 
-  // ── ORCH-0391: Persisted deck key for instant cold-start render ─────
-  // On cold start, loads the last-used deck query key from AsyncStorage.
-  // Only set if the persisted location matches current GPS hint (within 3dp
-  // rounding = ~110m). Prevents wrong-city cards. See ORCH-0391 precedence report.
+  // ── ORCH-0391 / #4265: Persisted deck key for instant cold-start render ─
+  // Set by the cold-start snapshot restore (below, once the signed-in user is
+  // known) and by the first-success persist. While location is still
+  // resolving, useDeckCards reads the cache under this exact key, so the last
+  // deck renders without waiting for GPS, preferences or the network.
   const [lastDeckKey, setLastDeckKey] = useState<readonly unknown[] | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [keyRaw, locRaw] = await Promise.all([
-          AsyncStorage.getItem(DECK_LAST_KEY),
-          AsyncStorage.getItem(DECK_LAST_LOCATION_KEY),
-        ]);
-        if (!keyRaw || !locRaw) return;
-
-        const persistedLoc = JSON.parse(locRaw) as { lat: number; lng: number };
-
-        // cachedLocationSync is the module-level GPS hint loaded from AsyncStorage
-        // on import. Available before React renders. If not yet populated, skip —
-        // we can't verify location, so fall back to normal loading path.
-        if (!cachedLocationSync) return;
-
-        const currentRoundedLat = Math.round(cachedLocationSync.lat * 1000) / 1000;
-        const currentRoundedLng = Math.round(cachedLocationSync.lng * 1000) / 1000;
-
-        if (persistedLoc.lat === currentRoundedLat && persistedLoc.lng === currentRoundedLng) {
-          // User hasn't moved — safe to show cached deck instantly
-          setLastDeckKey(JSON.parse(keyRaw));
-          if (__DEV__) console.log('[Deck] Cold-start proximity match — using persisted deck key');
-        } else {
-          if (__DEV__) console.log('[Deck] Cold-start location mismatch — skipping persisted key',
-            { persisted: persistedLoc, current: { lat: currentRoundedLat, lng: currentRoundedLng } });
-        }
-      } catch {}
-    })();
-  }, []);
+  const deckSnapshotRestoreStartedRef = useRef(false);
+  // #4265: cards the user swiped or dismissed before this cold start (read
+  // with the snapshot). Kept out of the solo deck for the whole session even
+  // if the fresh deck arrives under a different key and SwipeableCards resets
+  // its own swiped set. Fixed at restore time (never grows mid-session, so it
+  // cannot break the superset check); cleared on preference change.
+  const [coldStartExcludedIds, setColdStartExcludedIds] =
+    useState<ReadonlySet<string> | null>(null);
 
   // Narrow selectors keep unrelated global-store writes out of this large provider.
   const user = useAppStore((state) => state.user);
@@ -285,6 +263,43 @@ export const RecommendationsProvider: React.FC<
     const currency = state.profile?.currency?.trim().toUpperCase();
     return currency && /^[A-Z]{3}$/.test(currency) ? currency : undefined;
   });
+
+  // #4265: cold start — seed the last deck the user saw (same user, same
+  // ~110 m location bucket, < 24 h old, minus every swiped/dismissed card)
+  // into the cache under its production key. Solo only; reads AsyncStorage
+  // only, never the network. The fresh deck then loads behind it.
+  useEffect(() => {
+    if (currentMode !== "solo" || !user?.id) return;
+    if (deckSnapshotRestoreStartedRef.current) return;
+    deckSnapshotRestoreStartedRef.current = true;
+    const startedAt = Date.now();
+    void restoreDeckSnapshotController(
+      { userId: user.id, mode: "solo", refreshKey, now: startedAt },
+      { queryClient, storage: AsyncStorage },
+    ).then((restored) => {
+      if (restored.queryKey) {
+        // The snapshot's key pinned this FX snapshot; restoring the pin keeps
+        // the live key identical so the cache hit holds once params resolve.
+        if (restored.fxSnapshotId) setPinnedFxSnapshotId(restored.fxSnapshotId);
+        if (restored.excludedCardIds.length > 0) {
+          setColdStartExcludedIds(new Set(restored.excludedCardIds));
+        }
+        setLastDeckKey(restored.queryKey);
+      }
+      if (__DEV__) {
+        console.log('[Deck] Cold-start snapshot', {
+          restoredCards: restored.cardCount,
+          skipped: restored.skipped,
+          ms: Date.now() - startedAt,
+        });
+      }
+    }).catch((error: unknown) => {
+      console.warn(
+        '[Deck] Cold-start snapshot restore failed',
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  }, [currentMode, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── ORCH-0490 Phase 2.3: Logout / user-swap registry clear ──────────
   // Constitutional #6: logout must clear all private state. The registry
@@ -337,7 +352,7 @@ export const RecommendationsProvider: React.FC<
   // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
   useEffect(() => {
     if (!user?.id) return;
-    const key = `dismissed_cards_${user.id}_${currentMode}`;
+    const key = dismissedCardsStorageKey(user.id, currentMode);
     AsyncStorage.getItem(key).then(stored => {
       if (stored) {
         try {
@@ -742,7 +757,10 @@ export const RecommendationsProvider: React.FC<
   // want the cache warm for instant toggle-back).
   const flagSoloDeck = useDeckCards({
     mode: 'solo',
-    location: isSoloMode ? userLocation : null,
+    // #4265: until preferences resolve the live key cannot be built, so keep
+    // the key on the persisted cold-start key (lastKnownQueryKey) instead of
+    // an interim location-only key that can never hold data.
+    location: isSoloMode && stableDeckParams !== null ? userLocation : null,
     categories: isSoloMode ? (stableDeckParams?.categories ?? []) : [],
     intents: isSoloMode ? (stableDeckParams?.intents ?? []) : [],
     travelMode: userPrefs?.travel_mode ?? 'walking',
@@ -833,6 +851,9 @@ export const RecommendationsProvider: React.FC<
 
   // ── ORCH-0391: Persist deck key + location on first successful solo load ──
   // Enables instant cold-start render on next app open (if location matches).
+  // #4265: a deck seeded from the cold-start snapshot is not a fresh first
+  // page; persist only once the fetched (merged) deck has arrived.
+  const isActiveDeckRestored = isRestoredDeckSnapshot(activeDeck.response);
   const deckPersistFiredRef = useRef(false);
   useEffect(() => {
     if (
@@ -840,6 +861,8 @@ export const RecommendationsProvider: React.FC<
       activeDeckLocation &&
       activeDeckParams &&
       activeDeck.response &&
+      !isActiveDeckRestored &&
+      !isSoloDeckPlaceholder &&
       isSoloMode &&
       !deckPersistFiredRef.current
     ) {
@@ -862,6 +885,8 @@ export const RecommendationsProvider: React.FC<
         displayCurrency: explicitViewerCurrency,
         fxSnapshotId: activeDeck.fxSnapshotId ?? pinnedFxSnapshotId,
         response: activeDeck.response,
+        userId: user?.id ?? null,
+        now: Date.now(),
       }, {
         queryClient,
         storage: AsyncStorage,
@@ -877,7 +902,7 @@ export const RecommendationsProvider: React.FC<
         );
       });
     }
-  }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode, isActiveDeckRestored, isSoloDeckPlaceholder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ORCH-0446: useSessionDeck DELETED. Collab deck now uses useDeckCards (above)
   // with aggregated params from collabDeckParams. Same code path as solo.
@@ -885,7 +910,15 @@ export const RecommendationsProvider: React.FC<
 
   // ── ORCH-0446: Unified deck output — both modes use useDeckCards ─────
   // No branching needed. Solo and collab use the same hook with different params.
-  const deckCards = soloDeckCards;
+  // #4265: same swiped/dismissed exclusion the cold-start snapshot applied
+  // (Constitution 13) — filtered at serving, the cache key stays the server's.
+  const deckCards = useMemo(
+    () =>
+      isSoloMode && coldStartExcludedIds && coldStartExcludedIds.size > 0
+        ? soloDeckCards.filter((card) => !coldStartExcludedIds.has(card.id))
+        : soloDeckCards,
+    [isSoloMode, coldStartExcludedIds, soloDeckCards],
+  );
   const deckMode = soloDeckMode;
   const activePills = soloActivePills;
   const isDeckLoading = isSoloDeckLoading;
@@ -929,7 +962,7 @@ export const RecommendationsProvider: React.FC<
       // HF-003 fix: persist to AsyncStorage (mode-specific key)
       if (user?.id) {
         AsyncStorage.setItem(
-          `dismissed_cards_${user.id}_${currentMode}`,
+          dismissedCardsStorageKey(user.id, currentMode),
           JSON.stringify(updated)
         ).catch(() => {});
       }
@@ -1000,6 +1033,7 @@ export const RecommendationsProvider: React.FC<
       setBatchSeedReady(false); // Block queries until batchSeed is confirmed 0
       setBatchSeed(0);
       setPinnedFxSnapshotId(undefined);
+      setColdStartExcludedIds(null);
       deckPersistFiredRef.current = false;
       setIsExhausted(false);
       setHasCompletedFetchForCurrentMode(false);
@@ -1010,7 +1044,7 @@ export const RecommendationsProvider: React.FC<
       accumulatedCardsRef.current = [];
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
-        AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
+        AsyncStorage.removeItem(dismissedCardsStorageKey(user.id, currentMode)).catch(() => {});
         // ORCH-0451: Clear persisted exhaustion state on preference change.
         // Without this, a cold-start AsyncStorage read of deck_exhausted_* can
         // re-set isExhausted=true AFTER the refresh handler cleared it, causing
@@ -1392,6 +1426,7 @@ export const RecommendationsProvider: React.FC<
       previousDeckIdsRef.current = '';
       setBatchSeed(0);
       setPinnedFxSnapshotId(undefined);
+      setColdStartExcludedIds(null);
       deckPersistFiredRef.current = false;
       prefetchFiredRef.current = false;
       setIsExhausted(false);

@@ -12,19 +12,10 @@ export interface LocationData {
 
 const LOCATION_CACHE_KEY = '@mingla/lastLocation';
 
-// Module-level cached location — populated asynchronously from AsyncStorage on import.
-// Exported for ORCH-0391 proximity check: RecommendationsContext compares this with the
-// persisted deck location to decide whether to show cached cards on cold start.
-// Do NOT use this for deck query keys or fetch params — it's a hint, not authoritative.
-export let cachedLocationSync: LocationData | null = null;
-AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed.lat && parsed.lng) cachedLocationSync = { lat: parsed.lat, lng: parsed.lng };
-    } catch {}
-  }
-}).catch(() => {});
+// #4265: the module-level `cachedLocationSync` hint (ORCH-0391) is gone — the
+// cold-start deck snapshot (utils/deckSnapshot.ts) reads LOCATION_CACHE_KEY
+// itself, so it never races this module's async load. Keep the key in sync
+// with LAST_RESOLVED_LOCATION_KEY there.
 
 const fetchLocationCore = async (
   userId: string | undefined,

@@ -487,8 +487,10 @@ test('C3.5 SOURCE BINDING: ProfilePage no longer force-invalidates friends on mo
   );
   assert.doesNotMatch(src, /\bfetchFriends\s*\(/, 'ProfilePage must not call fetchFriends');
   // It must still READ the friends data — the count on the profile cannot go dark.
-  assert.match(src, /const \{ friends: realFriends, friendCount \} = useFriends\(\);/);
-  assert.match(src, /const actualConnectionsCount = friendCount;/);
+  // #4265: Profile now subscribes to the friends LIST only (it shows only the count),
+  // through the same useFriendsList query, with Profile's revisit window.
+  assert.match(src, /const \{ data: friendsList \} = useFriendsList\(user\?\.id, \{ staleTime: PROFILE_REVISIT_STALE_MS \}\);/);
+  assert.match(src, /const actualConnectionsCount = friendsList\?\.length \?\? 0;/);
 });
 
 test('C3.6 SOURCE BINDING: ConnectionsPage no longer force-invalidates on mount', () => {

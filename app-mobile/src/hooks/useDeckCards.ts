@@ -22,6 +22,12 @@ import {
 } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import { normalizeDateTime } from '../utils/cardConverters';
+import {
+  buildDeckSnapshotRecord,
+  DECK_LAST_SNAPSHOT_KEY,
+  isRestoredDeckSnapshot,
+  mergeFreshDeckBehindSnapshot,
+} from '../utils/deckSnapshot';
 
 // Stable empty arrays to prevent new references on every render
 const EMPTY_CARDS: Recommendation[] = [];
@@ -125,8 +131,15 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
   return ['deck-cards', ...tail] as const;
 }
 
-export const DECK_LAST_KEY = '@mingla/lastDeckQueryKey';
-export const DECK_LAST_LOCATION_KEY = '@mingla/lastDeckLocation';
+// #4265: cold-start snapshot rules live in a pure module (Deno-testable).
+export {
+  DECK_LAST_SNAPSHOT_KEY,
+  deckSwipeStateStorageKeys,
+  dismissedCardsStorageKey,
+  isRestoredDeckSnapshot,
+  mergeFreshDeckBehindSnapshot,
+  restoreDeckSnapshotController,
+} from '../utils/deckSnapshot';
 
 export interface SoloDeckQueryPlanInput {
   mode?: 'solo';
@@ -220,27 +233,27 @@ interface DeckStorage {
 }
 
 export async function persistFirstDeckPageController(
-  input: SoloDeckQueryPlanInput & { response: DeckResponse },
+  input: SoloDeckQueryPlanInput & { response: DeckResponse; userId: string | null; now: number },
   dependencies: {
     queryClient: QueryClient;
     storage: DeckStorage;
   },
 ): Promise<readonly unknown[]> {
   const plan = buildSoloDeckQueryPlan(input);
+  // A restored snapshot is not a fresh first page — re-saving it would keep an
+  // old deck alive forever. Wait for the fetched deck.
+  if (isRestoredDeckSnapshot(input.response)) return plan.queryKey;
   dependencies.queryClient.setQueryData(plan.queryKey, input.response);
-  await Promise.all([
-    dependencies.storage.setItem(
-      DECK_LAST_KEY,
-      JSON.stringify(plan.queryKey),
-    ),
-    dependencies.storage.setItem(
-      DECK_LAST_LOCATION_KEY,
-      JSON.stringify({
-        lat: Math.round(input.location.lat * 1000) / 1000,
-        lng: Math.round(input.location.lng * 1000) / 1000,
-      }),
-    ),
-  ]);
+  if (!input.userId || input.response.cards.length === 0) return plan.queryKey;
+  const record = buildDeckSnapshotRecord({
+    userId: input.userId,
+    now: input.now,
+    queryKey: plan.queryKey,
+    location: input.location,
+    fxSnapshotId: input.fxSnapshotId ?? null,
+    response: input.response,
+  });
+  await dependencies.storage.setItem(DECK_LAST_SNAPSHOT_KEY, JSON.stringify(record));
   return plan.queryKey;
 }
 
@@ -369,11 +382,17 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
 
   const query = useQuery<DeckResponse>({
     queryKey,
-    queryFn: () => {
+    queryFn: async () => {
       // Use the same queryKey for onPartialReady progressive cache merges
       const qk = queryKey;
+      // #4265: when the cache holds a cold-start snapshot, the fresh deck is
+      // merged BEHIND it (and without already-swiped cards) so the card on
+      // screen never jumps. Captured once, before any partial arrival.
+      const prior = queryClient.getQueryData<DeckResponse>(qk);
+      const restored = isRestoredDeckSnapshot(prior) ? prior : null;
+      const restoredExcluded = new Set(restored?.restoredExcludedCardIds ?? []);
 
-      return deckService.fetchDeck(
+      const fresh = await deckService.fetchDeck(
         {
           ...restParams,
           location: location!,
@@ -389,7 +408,10 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         // overwriting the merged intermediate state. (Phase 2.3 will add an
         // expansion signal so the SwipeableCards first-5-IDs wipe doesn't
         // fire on this intermediate→final transition.)
-        (cards, meta) => {
+        (partialCards, meta) => {
+          const cards = restored
+            ? partialCards.filter((card) => !restoredExcluded.has(card.id))
+            : partialCards;
           if (cards.length === 0) return;
           queryClient.setQueryData<DeckResponse>(qk, (prev) => ({
             cards: mergeCardsByIdPreservingOrder(prev?.cards ?? [], cards),
@@ -410,6 +432,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
           }
         },
       );
+      return restored ? mergeFreshDeckBehindSnapshot(restored, fresh) : fresh;
     },
     // staleTime: Infinity is SAFE ONLY because empty deck-cards responses are
     // blocked from AsyncStorage persistence in app/index.tsx:shouldDehydrateQuery
@@ -420,7 +443,10 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     // produces permanent warm-session poisoning.
     // Deck only refreshes on explicit preference change (query key changes).
     // Never auto-refetch — deck is an active swipe session, not a feed.
-    staleTime: Infinity,
+    // #4265: a cold-start snapshot (restoreDeckSnapshotController) is shown
+    // instantly but is stale, so a fresh deck loads behind it once the live
+    // params match its key; the merged result is Infinity-fresh again.
+    staleTime: (q) => (isRestoredDeckSnapshot(q.state.data) ? 0 : Infinity),
     gcTime: 24 * 60 * 60 * 1000,   // 24 hours — matches AsyncStorage maxAge so persisted data stays usable
     enabled: isEnabled,
     retry: 1,

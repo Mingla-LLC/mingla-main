@@ -129,6 +129,10 @@
       "body": "Nyochaa ụbọchị, vibe, egwu, ebe na ihe ndị ọzọ. Nhọrọ na-agbanwe na pill ọ bụla."
     },
     "list_two": "{{a}} na {{b}}",
-    "list_three": "{{a}}, {{b}} na {{c}}"
+    "list_three": "{{a}}, {{b}} na {{c}}",
+    "step3": {
+      "title": "Ebe ihe ị chekwara na-anọ",
+      "description": "Ihe niile ị nyere obi na-abịa na Ihe m masịrị. Kesaa ya ma ọ bụ tinye ya na kalenda gị n'otu mpịa."
+    }
   }
 }

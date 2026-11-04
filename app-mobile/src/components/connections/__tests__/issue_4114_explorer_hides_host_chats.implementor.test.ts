@@ -122,9 +122,13 @@ Deno.test("#4114 Explorer: the page hides host chats everywhere, uses the cache 
   const select = page.slice(selectStart, page.indexOf("if (isBrandChannelRow(conversation)) {", selectStart));
   assert(select.includes("isHostChatForUser(known, teamBrandIds)") && select.includes("t('connections:host_chat_in_business_app')"),
     "a push or deep link to a host chat shows the Host app toast and never opens it");
-  assert(page.includes("await AsyncStorage.getItem(teamBrandCacheKey(user.id))") &&
-    page.includes("setTeamBrandIds((current) => startupTeamBrandIds(current, cachedTeams))"), "the cached set is used at startup");
-  assert(page.includes("AsyncStorage.setItem(teamBrandCacheKey(userId), serializeTeamBrandCache(teams))"), "each fresh read is cached");
+  // #4265: the startup read no longer blocks the list; the fresh set is
+  // written by the chat list query (hooks/useChatList.ts).
+  const hook = Deno.readTextFileSync(new URL("hooks/useChatList.ts", root));
+  assert(page.includes("AsyncStorage.getItem(teamBrandCacheKey(user.id))") &&
+    page.includes("setCachedTeamBrandIds((current) => startupTeamBrandIds(current, cachedTeams))") &&
+    page.includes("loadedTeamBrandIds ? new Set(loadedTeamBrandIds) : cachedTeamBrandIds"), "the cached set is used at startup");
+  assert(hook.includes("AsyncStorage.setItem(teamBrandCacheKey(userId), serializeTeamBrandCache(new Set(data.teamBrandIds)))"), "each fresh read is cached");
   assert(cleanup.includes("if (key.startsWith(TEAM_BRAND_CACHE_PREFIX)) return true;"), "logout removes the cached set");
   for (const locale of ["en", "fr", "yo", "zh"]) {
     const strings = JSON.parse(Deno.readTextFileSync(new URL(`i18n/locales/${locale}/connections.json`, root)));

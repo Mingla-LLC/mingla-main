@@ -1376,6 +1376,78 @@ export const glass = {
       countUpMs: 600,
     },
   },
+
+  /**
+   * Issue #4265 — Likes saved grid, schedule sheet and coach preview
+   * (approved design: Main.dc.html / SavedCard.dc.html / CoachMark.dc.html).
+   * Every translucent fill has an `*Opaque` twin: on Android
+   * (ANDROID_GLASS_USES_OPAQUE_FALLBACK) a translucent rounded fill paints a
+   * corner ring, so components pick the opaque value there and never put a
+   * shadow under a rounded fill.
+   */
+  likes: {
+    canvas: 'rgba(12, 14, 18, 1)',
+    accent: '#eb7825',
+    accentSoft: 'rgba(235, 120, 37, 0.14)',
+    accentSoftOpaque: '#2b1d14',
+    textPrimary: '#ffffff',
+    textSecondary: 'rgba(255, 255, 255, 0.62)',
+    textBody: 'rgba(255, 255, 255, 0.68)',
+    grid: {
+      sidePadding: 16,
+      columnGap: 12,
+      rowGap: 20,
+      topPadding: 12,
+    },
+    card: {
+      photoAspectRatio: 4 / 5,
+      photoRadius: 16,
+      photoPlaceholder: 'rgba(255, 255, 255, 0.07)',
+      photoPlaceholderOpaque: '#1c1e22',
+      scrimTop: 'rgba(0, 0, 0, 0)',
+      scrimBottom: 'rgba(0, 0, 0, 0.45)',
+      chipBg: 'rgba(12, 14, 18, 0.62)',
+      chipBgOpaque: '#16181d',
+      chipHeight: 22,
+      dateChipHeight: 24,
+      heartCircle: 30,
+      hitTarget: 44,
+      buttonHeight: 40,
+      buttonRadius: 12,
+      quietFill: 'rgba(255, 255, 255, 0.06)',
+      quietFillOpaque: '#1a1c20',
+      quietBorder: 'rgba(255, 255, 255, 0.14)',
+      endedOpacity: 0.6,
+      imageFadeMs: 150,
+    },
+    skeleton: {
+      block: 'rgba(255, 255, 255, 0.08)',
+      blockOpaque: '#1d1f23',
+      blockDim: 'rgba(255, 255, 255, 0.05)',
+      blockDimOpaque: '#17191d',
+      shimmerMs: 1400,
+      shimmerLowOpacity: 0.55,
+    },
+    sheet: {
+      bg: '#1a1c21',
+      tileHeight: 64,
+      tileRadius: 14,
+      tileFill: 'rgba(255, 255, 255, 0.05)',
+      tileFillOpaque: '#212328',
+      tileBorder: 'rgba(255, 255, 255, 0.12)',
+      rowHeight: 48,
+    },
+    coachPreview: {
+      tileRadius: 10,
+      buttonHeight: 22,
+      buttonRadius: 7,
+      squareBorder: 'rgba(20, 20, 19, 0.2)',
+      tileA: '#5b3a2a',
+      tileB: '#2f4352',
+      heartCircle: 20,
+      heartCircleBg: 'rgba(12, 14, 18, 0.6)',
+    },
+  },
 } as const;
 
 // Export commonly used combinations

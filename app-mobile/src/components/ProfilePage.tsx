@@ -29,7 +29,8 @@ import {
 } from "../utils/profileLocationFreshness";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFriends } from "../hooks/useFriends";
+import { useFriendsList } from "../hooks/useFriendsQuery";
+import { PROFILE_REVISIT_STALE_MS } from "./profile/profileFreshness";
 import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
@@ -111,6 +112,7 @@ function ProfilePage({
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
   const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
   const [legalBrowserTitle, setLegalBrowserTitle] = useState('');
+  const user = useAppStore((s) => s.user);
   // Issue #1638: `fetchFriends` is deliberately NOT destructured here any more.
   // It is `queryClient.invalidateQueries(friendsKeys.list(...))` — a forced cache
   // invalidation, not a read — and calling it from a mount effect defeated the 30s
@@ -120,12 +122,15 @@ function ProfilePage({
   // the shell keeps a permanent observer with a 5-minute `refetchInterval`.
   // Action-driven invalidations (accept/decline/remove/block, pull-to-refresh, the
   // Friends error-state retry) are UNCHANGED — see useFriends.ts.
-  const { friends: realFriends, friendCount } = useFriends();
-  const actualConnectionsCount = friendCount;
+  //
+  // #4265: Profile shows only the friend COUNT, so it subscribes to the friends
+  // list alone. `useFriends()` also mounted the requests and blocked-users
+  // queries (two more refetches per visit) that nothing on Profile renders.
+  const { data: friendsList } = useFriendsList(user?.id, { staleTime: PROFILE_REVISIT_STALE_MS });
+  const actualConnectionsCount = friendsList?.length ?? 0;
 
   const [currentLocation, setCurrentLocation] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
 
   // ORCH-0437: Fetch real user level from user_levels table
@@ -133,7 +138,7 @@ function ProfilePage({
     queryKey: userLevelKeys.level(user?.id ?? ''),
     queryFn: () => fetchUserLevel(user!.id),
     enabled: !!user?.id,
-    staleTime: 60_000,
+    staleTime: PROFILE_REVISIT_STALE_MS,
   });
   const userLevel = levelData?.level ?? 1;
   const userXp = levelData?.xp_score ?? 0;
@@ -153,6 +158,15 @@ function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
+  // #4265: the Account and Billing sheets mount on first open, not with the tab.
+  // Closed, they still mounted every visit — Billing's subscription, server-tier
+  // and RevenueCat queries refetched on each Profile tap, and Account Settings
+  // (1,700 lines) rendered for nothing. Once opened they stay mounted so the
+  // close animation and any in-flight work are unaffected.
+  const accountSettingsOpenedRef = useRef(false);
+  const billingSheetOpenedRef = useRef(false);
+  if (showAccountSettings) accountSettingsOpenedRef.current = true;
+  if (showBillingSheet) billingSheetOpenedRef.current = true;
   // Profile coach-mark scroll targets. #4063 inserts Purchases before the
   // existing profile tour while preserving the visual reading order.
   //   step 8  Purchases card
@@ -245,7 +259,7 @@ function ProfilePage({
   const handleFeedbackButtonLayout = useCallback(() => wireScrollStep(12, feedbackButtonRef), [wireScrollStep]);
 
   // Profile interests
-  const { data: interests } = useProfileInterests();
+  const { data: interests, isLoading: interestsLoading } = useProfileInterests();
   const updateInterestsMutation = useUpdateProfileInterests();
 
   // Location — issue #1638.
@@ -569,6 +583,7 @@ function ProfilePage({
                 intents={interests?.intents || []}
                 categories={interests?.categories || []}
                 isOwnProfile
+                loading={interestsLoading}
                 onEditPress={() => setShowInterestsSheet(true)}
               />
             </GlassCard>
@@ -687,18 +702,22 @@ function ProfilePage({
         currentCategories={interests?.categories || []}
         onSave={handleSaveInterests}
       />
-      <AccountSettings
-        user={user}
-        onSignOut={onSignOut}
-        visible={showAccountSettings}
-        onClose={() => setShowAccountSettings(false)}
-        notificationsEnabled={notificationsEnabled}
-        onNotificationsToggle={onNotificationsToggle}
-      />
-      <BillingSheet
-        visible={showBillingSheet}
-        onClose={() => setShowBillingSheet(false)}
-      />
+      {accountSettingsOpenedRef.current ? (
+        <AccountSettings
+          user={user}
+          onSignOut={onSignOut}
+          visible={showAccountSettings}
+          onClose={() => setShowAccountSettings(false)}
+          notificationsEnabled={notificationsEnabled}
+          onNotificationsToggle={onNotificationsToggle}
+        />
+      ) : null}
+      {billingSheetOpenedRef.current ? (
+        <BillingSheet
+          visible={showBillingSheet}
+          onClose={() => setShowBillingSheet(false)}
+        />
+      ) : null}
       <InAppBrowserModal
         visible={legalBrowserVisible}
         url={legalBrowserUrl}

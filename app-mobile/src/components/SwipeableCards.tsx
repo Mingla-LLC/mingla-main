@@ -82,6 +82,7 @@ import type { UserPreferences } from "../types/preferences";
 import { savedCardsService } from "../services/savedCardsService";
 import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { deckSwipeStateStorageKeys } from "../utils/deckSnapshot";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { openExpandedCardContentShare } from "../services/contentShareController";
 // #1669 [expanded-card-one-producer]: the deck's producer, which delegates to
@@ -1165,13 +1166,12 @@ export default function SwipeableCards({
   }, []);
 
   // Storage keys for persisting card state
-  const getStorageKeys = useCallback(() => {
-    const baseKey = `mingla_card_state_${currentMode}_${refreshKey || 0}`;
-    return {
-      index: `${baseKey}_index`,
-      removedCards: `${baseKey}_removed`,
-    };
-  }, [currentMode, refreshKey]);
+  // #4265: shared builder — the cold-start deck snapshot reads the same
+  // swiped-card set to keep already-swiped cards out of the cached deck.
+  const getStorageKeys = useCallback(
+    () => deckSwipeStateStorageKeys(currentMode, refreshKey),
+    [currentMode, refreshKey],
+  );
 
   // Reverse geocode user location for "no matches" display
   useEffect(() => {

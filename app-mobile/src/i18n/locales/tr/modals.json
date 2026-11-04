@@ -129,6 +129,10 @@
       "body": "Güne, ortama, müziğe, varış noktasına ve daha fazlasına göre filtreleyin. Seçenekler her hapla değişir."
     },
     "list_two": "{{a}} ve {{b}}",
-    "list_three": "{{a}}, {{b}} ve {{c}}"
+    "list_three": "{{a}}, {{b}} ve {{c}}",
+    "step3": {
+      "title": "Kaydettiklerin burada",
+      "description": "Kalp verdiğin her şey Beğenilere düşer. Tek dokunuşla paylaş ya da takvimine koy."
+    }
   }
 }

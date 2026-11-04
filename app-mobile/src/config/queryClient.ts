@@ -7,6 +7,8 @@ import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
 import { isQueryCancellationError } from '../utils/queryPersistence';
+import { prunePersistedCacheString, serializePersistedClientWithinBudget } from '../utils/queryPersistenceBudget';
+import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
 
 // Wire React Query's focusManager to React Native's AppState so that
 // refetchOnWindowFocus works on app resume. Queries whose data is older
@@ -214,6 +216,83 @@ export const queryClient = new QueryClient({
   },
 });
 
-export const asyncStoragePersister = createAsyncStoragePersister({
+// #4265 — the persisted cache stays under PERSISTED_CACHE_BUDGET_CHARS one query
+// at a time (largest dropped first) instead of growing until the startup guard
+// deleted all of it. See queryPersistenceBudget.ts.
+const PERSISTED_CACHE_KEY = 'REACT_QUERY_OFFLINE_CACHE';
+
+function serializeWithinBudget(client: PersistedClient): string {
+  const result = serializePersistedClientWithinBudget(client);
+  if (result.dropped.length > 0) {
+    const dropped = result.dropped.map((entry) => `${entry.queryHash} (${entry.chars})`).join(', ');
+    if (__DEV__) logger.query(`persist: over budget, not saving ${dropped}`);
+    breadcrumbs.add('query', 'Persisted cache over budget; largest queries not saved', { dropped });
+  }
+  return result.serialized;
+}
+
+const basePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
+  key: PERSISTED_CACHE_KEY,
+  serialize: serializeWithinBudget,
 });
+
+let primedRestore: Promise<PersistedClient | undefined> | null = null;
+
+async function readPersistedCacheOnce(): Promise<PersistedClient | undefined> {
+  const startedAt = Date.now();
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(PERSISTED_CACHE_KEY);
+  } catch (error) {
+    // An unreadable row (e.g. an old blob past Android's 2 MB CursorWindow) would
+    // crash the provider's own restore, so it is removed rather than retried.
+    console.warn('[queryCache] persisted cache unreadable; removing it', error);
+    await AsyncStorage.removeItem(PERSISTED_CACHE_KEY).catch((removeError) => {
+      console.warn('[queryCache] could not remove unreadable persisted cache', removeError);
+    });
+    return undefined;
+  }
+  if (!raw) return undefined;
+  const result = prunePersistedCacheString<PersistedClient>(raw);
+  if (result.kind === 'corrupt') {
+    console.warn('[queryCache] persisted cache did not parse; removing it', result.error);
+    await AsyncStorage.removeItem(PERSISTED_CACHE_KEY).catch((removeError) => {
+      console.warn('[queryCache] could not remove corrupt persisted cache', removeError);
+    });
+    return undefined;
+  }
+  if (result.rewrite !== null) {
+    const dropped = result.dropped.map((entry) => `${entry.queryHash} (${entry.chars})`).join(', ');
+    console.warn(`[queryCache] persisted cache was ${raw.length} chars; kept the rest, dropped ${dropped}`);
+    await AsyncStorage.setItem(PERSISTED_CACHE_KEY, result.rewrite).catch((writeError) => {
+      console.warn('[queryCache] could not write the trimmed persisted cache', writeError);
+    });
+  }
+  if (__DEV__) {
+    logger.query(`persist: startup read ${raw.length} chars in ${Date.now() - startedAt}ms`);
+  }
+  return result.client;
+}
+
+/**
+ * Read (and if needed trim) the persisted cache once, before the provider mounts.
+ * The provider's restore then reuses this read instead of reading the row again.
+ */
+export function primePersistedQueryCache(): Promise<void> {
+  primedRestore = readPersistedCacheOnce();
+  return primedRestore.then(() => undefined);
+}
+
+export const asyncStoragePersister: Persister = {
+  persistClient: basePersister.persistClient,
+  removeClient: basePersister.removeClient,
+  restoreClient: () => {
+    if (primedRestore) {
+      const primed = primedRestore;
+      primedRestore = null;
+      return primed;
+    }
+    return basePersister.restoreClient();
+  },
+};
