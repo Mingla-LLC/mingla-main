@@ -130,6 +130,7 @@
     "openNow": "Şu an açık",
     "filters": "Filtreler",
     "a11yFiltersOn": "Filtreler, {{n}} açık",
+    "type": "Tür",
     "sortBy": "Sırala",
     "sortRecent": "Son kaydedilenler",
     "sortNearest": "En yakın",

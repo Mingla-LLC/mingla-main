@@ -128,6 +128,7 @@
     "openNow": "지금 영업 중",
     "filters": "필터",
     "a11yFiltersOn": "필터, {{n}}개 켜짐",
+    "type": "유형",
     "sortBy": "정렬",
     "sortRecent": "최근 저장순",
     "sortNearest": "가까운 순",

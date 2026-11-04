@@ -130,6 +130,7 @@
     "openNow": "Öppet nu",
     "filters": "Filter",
     "a11yFiltersOn": "Filter, {{n}} på",
+    "type": "Typ",
     "sortBy": "Sortera efter",
     "sortRecent": "Senast sparade",
     "sortNearest": "Närmast",

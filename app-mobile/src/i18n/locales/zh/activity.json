@@ -128,6 +128,7 @@
     "openNow": "正在营业",
     "filters": "筛选",
     "a11yFiltersOn": "筛选，已开启 {{n}} 项",
+    "type": "类型",
     "sortBy": "排序方式",
     "sortRecent": "最近保存",
     "sortNearest": "距离最近",

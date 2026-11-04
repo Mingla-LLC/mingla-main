@@ -134,6 +134,7 @@
     "openNow": "Otwarte teraz",
     "filters": "Filtry",
     "a11yFiltersOn": "Filtry, włączone: {{n}}",
+    "type": "Typ",
     "sortBy": "Sortuj według",
     "sortRecent": "Ostatnio zapisane",
     "sortNearest": "Najbliżej",

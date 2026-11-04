@@ -128,6 +128,7 @@
     "openNow": "Buka sekarang",
     "filters": "Filter",
     "a11yFiltersOn": "Filter, {{n}} aktif",
+    "type": "Jenis",
     "sortBy": "Urutkan",
     "sortRecent": "Baru disimpan",
     "sortNearest": "Terdekat",

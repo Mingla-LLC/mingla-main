@@ -128,6 +128,7 @@
     "openNow": "Dibuka sekarang",
     "filters": "Penapis",
     "a11yFiltersOn": "Penapis, {{n}} aktif",
+    "type": "Jenis",
     "sortBy": "Isih mengikut",
     "sortRecent": "Baru disimpan",
     "sortNearest": "Terdekat",

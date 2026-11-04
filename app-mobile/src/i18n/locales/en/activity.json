@@ -130,6 +130,7 @@
     "openNow": "Open now",
     "filters": "Filters",
     "a11yFiltersOn": "Filters, {{n}} on",
+    "type": "Type",
     "sortBy": "Sort by",
     "sortRecent": "Recently saved",
     "sortNearest": "Nearest",

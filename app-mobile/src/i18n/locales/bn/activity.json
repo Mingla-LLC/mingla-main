@@ -130,6 +130,7 @@
     "openNow": "এখন খোলা",
     "filters": "ফিল্টার",
     "a11yFiltersOn": "ফিল্টার, {{n}}টি চালু",
+    "type": "ধরন",
     "sortBy": "সাজান",
     "sortRecent": "সম্প্রতি সেভ করা",
     "sortNearest": "সবচেয়ে কাছে",

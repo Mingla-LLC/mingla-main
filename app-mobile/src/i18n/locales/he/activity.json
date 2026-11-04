@@ -132,6 +132,7 @@
     "openNow": "פתוח עכשיו",
     "filters": "מסננים",
     "a11yFiltersOn": "מסננים, {{n}} פעילים",
+    "type": "סוג",
     "sortBy": "מיון לפי",
     "sortRecent": "נשמרו לאחרונה",
     "sortNearest": "הכי קרוב",

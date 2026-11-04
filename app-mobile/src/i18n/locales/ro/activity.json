@@ -132,6 +132,7 @@
     "openNow": "Deschis acum",
     "filters": "Filtre",
     "a11yFiltersOn": "Filtre, {{n}} active",
+    "type": "Tip",
     "sortBy": "Sortează după",
     "sortRecent": "Salvate recent",
     "sortNearest": "Cele mai apropiate",

@@ -138,6 +138,7 @@
     "openNow": "مفتوح الآن",
     "filters": "الفلاتر",
     "a11yFiltersOn": "الفلاتر، {{n}} مفعّلة",
+    "type": "النوع",
     "sortBy": "ترتيب حسب",
     "sortRecent": "المحفوظة مؤخرًا",
     "sortNearest": "الأقرب",

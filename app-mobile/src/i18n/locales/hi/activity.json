@@ -130,6 +130,7 @@
     "openNow": "अभी खुला",
     "filters": "फ़िल्टर",
     "a11yFiltersOn": "फ़िल्टर, {{n}} चालू",
+    "type": "प्रकार",
     "sortBy": "क्रम",
     "sortRecent": "हाल ही में सेव किए",
     "sortNearest": "सबसे नज़दीक",
