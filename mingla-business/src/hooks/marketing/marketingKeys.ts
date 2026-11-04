@@ -95,6 +95,9 @@ export const marketingKeys = {
     // invite step greys out Friends of followers on the same server truth.
     circleAvailability: (brandId: string): readonly unknown[] =>
       ["business", "offeringInvitePlan", "circleAvailability", brandId] as const,
+    // #3682 wave 2 — followers invited through their Mingla account.
+    accountInvites: (eventId: string): readonly unknown[] =>
+      ["business", "offeringInvitePlan", eventId, "accountInvites"] as const,
   },
   templates: {
     all: ["marketing", "templates"] as const,

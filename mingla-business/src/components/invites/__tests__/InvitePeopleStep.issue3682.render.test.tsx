@@ -8,6 +8,10 @@ import React from "react";
 const TestRenderer = require("react-test-renderer");
 const { act } = TestRenderer;
 
+// #3682 wave 2 — the Followers row reads the real follower count.
+jest.mock("../../../hooks/useBrandFollowerCount", () => ({
+  useBrandFollowerCount: () => ({ data: 4, isError: false }),
+}));
 jest.mock("../../../hooks/useOfferingInvitePlan", () => ({
   useOfferingInvitePlan: jest.fn(),
   useOfferingInvitePlanSummary: jest.fn(),
@@ -39,7 +43,9 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
 
 import {
   FRIENDS_OF_FOLLOWERS_UNAVAILABLE,
+  followersRowDetail,
   friendsOfFollowersRowAvailability,
+  InviteSelectionSummary,
   InviteSourcePicker,
   type CircleRowAvailability,
 } from "../InvitePeopleStep";
@@ -74,6 +80,7 @@ function renderPicker(friends: CircleRowAvailability | undefined, onFriends = je
         groups={[]}
         friendsOfFollowers={friends}
         selectedCount={0}
+        followersDetail={followersRowDetail(4)}
         disabled={false}
         onSelectEveryone={jest.fn()}
         onSelectFollowers={jest.fn()}
@@ -121,5 +128,32 @@ describe("#3682 Friends of followers row follows the extended-audience switch", 
     expect(friends.props.disabled).toBe(false);
     act(() => friends.props.onPress());
     expect(onFriends).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#3682 wave 2 — any follower can be invited, not only Your Book", () => {
+  it("the Followers row counts every follower and never says Your Book only", () => {
+    expect(followersRowDetail(4)).toBe("All 4 followers");
+    expect(followersRowDetail(1)).toBe("All 1 follower");
+    expect(followersRowDetail(0)).toBe("No followers yet");
+    expect(followersRowDetail(undefined)).toBe("Checking count…");
+    const { renderer, followers } = renderPicker(undefined);
+    const text = treeText(renderer.toJSON());
+    expect(text).toContain("All 4 followers");
+    expect(text).not.toContain("already in Your Book");
+    expect(followers.props.disabled).toBe(false);
+  });
+
+  it("the selection summary says how many followers are reached privately", () => {
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InviteSelectionSummary selectedCount={5} accountCount={3} people={[]}
+          saving={false} dirty={false} onClear={jest.fn()} />,
+      );
+    });
+    const text = treeText(renderer.toJSON());
+    expect(text).toContain("5 selected");
+    expect(text).toContain("Includes 3 followers reached through Mingla. Their contact details stay private.");
   });
 });

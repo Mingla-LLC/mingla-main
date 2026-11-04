@@ -19,6 +19,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
+import { AccountInviteSummaryCard } from "./AccountInviteSummaryCard";
 import { useGuestRoster } from "../../hooks/useGuestRoster";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type {
@@ -467,6 +468,8 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
             <SummaryCard key={card.key} label={card.label} count={card.count} selected={filter === card.key} onPress={() => setFilter(card.key)} />
           ))}
         </View>
+
+        <AccountInviteSummaryCard eventId={eventId} />
 
         {query.isLoading ? (
           <View style={styles.stateCard} accessibilityRole="progressbar">

@@ -18,6 +18,7 @@ module.exports = {
     "**/__tests__/InvitePeopleStep.issue1780.render.test.tsx",
     "**/__tests__/InvitePeopleStep.issue1780.tester_adversarial.render.test.tsx",
     "**/__tests__/InvitePeopleStep.issue3682.render.test.tsx",
+    "**/__tests__/AccountInviteSummaryCard.issue3682.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",

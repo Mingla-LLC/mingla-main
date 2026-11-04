@@ -7,6 +7,10 @@ const { act } = TestRenderer;
 
 const mockUseOfferingInvitePlan = jest.fn();
 
+// #3682 wave 2 — the Followers row reads the real follower count.
+jest.mock("../../../hooks/useBrandFollowerCount", () => ({
+  useBrandFollowerCount: () => ({ data: 4, isError: false }),
+}));
 jest.mock("../../../hooks/useOfferingInvitePlan", () => ({
   useOfferingInvitePlan: (...args: unknown[]) => mockUseOfferingInvitePlan(...args),
 }));
