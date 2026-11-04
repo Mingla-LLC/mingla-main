@@ -78,6 +78,8 @@ interface LikesPageProps {
    */
   deepLinkParams?: Record<string, string> | null;
   onDeepLinkHandled?: () => void;
+  /** Issue #4265: "Find something" / "Find similar" land on Explore. */
+  onExplore?: () => void;
 }
 
 function LikesPage({
@@ -99,6 +101,7 @@ function LikesPage({
   onNavigationComplete,
   deepLinkParams,
   onDeepLinkHandled,
+  onExplore,
 }: LikesPageProps): React.ReactElement {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
@@ -108,7 +111,10 @@ function LikesPage({
   }
 
   useScreenLogger('likes');
-  const { t } = useTranslation(['saved']);
+  const { t } = useTranslation(['saved', 'activity']);
+  // Issue #4265: "N saved" on the title row, reported by SavedTab net of cards
+  // still inside their Undo window. Hidden on Calendar, loading and error.
+  const [savedCount, setSavedCount] = useState<number | null>(null);
   const insets = useSafeAreaInsets();
   const { bottomNavTotalHeight } = useAppLayout();
   // ORCH-0679 Wave 2.8.1: preserve inner-tab selection across tab unmount/remount.
@@ -277,6 +283,11 @@ function LikesPage({
           <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
             {t('saved:page_title', 'Likes')}
           </Text>
+          {activeTab === "saved" && savedCount !== null && savedCount > 0 ? (
+            <Text style={styles.countText} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+              {t('activity:savedTab.countSaved', { count: savedCount })}
+            </Text>
+          ) : null}
         </View>
 
         {/* Spotlight pill switcher — mirrors GlassBottomNav pattern */}
@@ -358,6 +369,8 @@ function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             bottomNavTotalHeight={bottomNavTotalHeight}
+            onExplore={onExplore}
+            onSavedCountChange={setSavedCount}
           />
         )}
 
@@ -412,9 +425,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: glass.discover.title.horizontalPadding,
-    justifyContent: 'center',
+    // Issue #4265: title left, "N saved" right on the same row.
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  countText: {
+    color: glass.likes.textSecondary,
+    fontSize: 13,
+    flexShrink: 0,
   },
   titleText: {
+    flexShrink: 1,
     color: glass.discover.title.color,
     fontSize: glass.discover.title.fontSize,
     fontWeight: glass.discover.title.fontWeight,

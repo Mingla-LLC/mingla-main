@@ -13,12 +13,24 @@ const { width } = Dimensions.get("window");
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
+/**
+ * Issue #4265 — an optional inline action (Likes uses it for "Undo" after the
+ * heart removes a card). Omitted, every existing toast renders byte-for-byte as
+ * before.
+ */
+export interface ToastAction {
+  label: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+}
+
 interface ToastProps {
   message: string;
   type?: ToastType;
   duration?: number;
   onClose?: () => void;
   visible: boolean;
+  action?: ToastAction;
 }
 
 export const Toast: React.FC<ToastProps> = ({
@@ -27,6 +39,7 @@ export const Toast: React.FC<ToastProps> = ({
   duration = 3000,
   onClose,
   visible,
+  action,
 }) => {
   const slideAnim = useRef(new Animated.Value(-100)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -122,6 +135,20 @@ export const Toast: React.FC<ToastProps> = ({
       <View style={[styles.toast, { backgroundColor: getColor() }]}>
         <Icon name={getIcon()} size={24} color="white" />
         <Text style={styles.message}>{message}</Text>
+        {action ? (
+          <TouchableOpacity
+            onPress={() => {
+              action.onPress();
+              dismiss();
+            }}
+            style={styles.actionButton}
+            accessibilityRole="button"
+            accessibilityLabel={action.accessibilityLabel ?? action.label}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.actionText}>{action.label}</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity onPress={dismiss} style={styles.closeButton}>
           <Icon name="close" size={20} color="white" />
         </TouchableOpacity>
@@ -136,6 +163,7 @@ interface ToastManagerState {
     message: string;
     type: ToastType;
     duration?: number;
+    action?: ToastAction;
   }>;
 }
 
@@ -143,10 +171,12 @@ class ToastManager {
   private listeners: Set<(toasts: ToastManagerState["toasts"]) => void> =
     new Set();
   private toasts: ToastManagerState["toasts"] = [];
+  private sequence = 0;
 
-  show(message: string, type: ToastType = "info", duration?: number) {
-    const id = Date.now().toString();
-    const toast = { id, message, type, duration };
+  show(message: string, type: ToastType = "info", duration?: number, action?: ToastAction) {
+    // Two toasts in the same millisecond (two quick heart taps) must not share an id.
+    const id = `${Date.now().toString()}-${(this.sequence += 1)}`;
+    const toast = { id, message, type, duration, action };
     this.toasts = [...this.toasts, toast];
     this.notifyListeners();
 
@@ -220,5 +250,16 @@ const styles = StyleSheet.create({
   closeButton: {
     marginLeft: 8,
     padding: 4,
+  },
+  actionButton: {
+    marginLeft: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  actionText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

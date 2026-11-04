@@ -129,6 +129,10 @@
       "body": "Tace da rana, vibe, kiɗa, wuri da ƙari. Zaɓuɓɓukan suna canzawa da kowane kwaya."
     },
     "list_two": "{{a}} da {{b}}",
-    "list_three": "{{a}}, {{b}} da {{c}}"
+    "list_three": "{{a}}, {{b}} da {{c}}",
+    "step3": {
+      "title": "Inda abubuwan da ka ajiye suke",
+      "description": "Duk abin da ka sa wa zuciya yana zuwa Abin da nake so. Raba shi ko saka shi a kalandarka da danna ɗaya."
+    }
   }
 }

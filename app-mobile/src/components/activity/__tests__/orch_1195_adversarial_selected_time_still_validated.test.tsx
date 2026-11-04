@@ -86,15 +86,25 @@ ok(
 );
 
 // ── Curated-card Schedule button gate is UNCHANGED (was never the bug) ────────
-// The curated path's button must remain gated by isScheduled + schedulingCardId
-// and must NOT have acquired an open-now (!isPlaceOpen) gate.
-const curatedSchedMatch = src.match(
-  /disabled=\{isScheduled \|\| schedulingCardId === card\.id\}/,
-);
+// Issue #4265: places and plans share ONE grid-card button. Its gate must stay
+// in-flight + already-scheduled only, never an open-now (!isPlaceOpen) gate.
+const card = read(`${APP}/src/components/activity/SavedGridCard.tsx`);
+const gate = card.match(/const primaryDisabled = ([^;]+);/);
 ok(
-  "curated-card Schedule button stays gated by isScheduled || schedulingCardId (unchanged, no open-now gate)",
-  Boolean(curatedSchedMatch),
-  "curated-card button gate changed unexpectedly",
+  "grid-card Schedule button stays gated by inCalendar || isScheduling (no open-now gate)",
+  Boolean(gate) &&
+    /primaryAction === "inCalendar"/.test(gate[1]) &&
+    /isScheduling/.test(gate[1]) &&
+    !/isPlaceOpen|openNow/.test(gate[1]),
+  "grid-card button gate changed unexpectedly",
+);
+
+// ── The quick sheet's slot pick goes through the SAME guarded branch ──────────
+const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+ok(
+  "a quick-sheet slot pick runs handleProposeDateTime (the guarded path), never proceedWithScheduling directly",
+  /const handleQuickSlotPick = \(at: Date\) => \{[\s\S]*?handleProposeDateTime\(at, "custom"\);[\s\S]*?\};/.test(code) &&
+    !/const handleQuickSlotPick = \(at: Date\) => \{[^}]*proceedWithScheduling/.test(code),
 );
 
 console.log(`\n${passed} assertions passed.`);

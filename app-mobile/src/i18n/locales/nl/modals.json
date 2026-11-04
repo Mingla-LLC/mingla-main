@@ -129,6 +129,10 @@
       "body": "Filter op dag, sfeer, muziek, bestemming en meer. De keuzes veranderen bij elke pil."
     },
     "list_two": "{{a}} en {{b}}",
-    "list_three": "{{a}}, {{b}} en {{c}}"
+    "list_three": "{{a}}, {{b}} en {{c}}",
+    "step3": {
+      "title": "Hier staat alles wat je bewaart",
+      "description": "Alles wat je een hartje geeft, komt in Likes. Deel het of zet het met één tik in je agenda."
+    }
   }
 }

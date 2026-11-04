@@ -4,15 +4,12 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   FlatList,
   type ListRenderItemInfo,
-  Modal,
-  Platform,
   Alert,
-  TextInput,
   Animated,
   RefreshControl,
+  useWindowDimensions,
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
@@ -20,16 +17,15 @@ const ANIMATION_DURATION = 250;
 /**
  * Issue #1636 — how much of the Likes list is allowed to be mounted at once.
  *
- * A simple card is ~180pt tall and a curated card ~260pt, so 4-5 fit on an
- * SM-A725F screen. Rendering 8 up front fills the viewport with a row of
- * headroom; a window of 5 viewports keeps roughly 20-25 rows alive, which is
- * what bounds the image fan-out (was: all N, 201 requests / 37 MB at the
- * production ceiling).
+ * Issue #4265: the list is now a two-column grid, so each FlatList "row" is two
+ * ~330pt cards and 2-3 rows fill an SM-A725F screen. Rendering 8 items (4 rows)
+ * up front fills the viewport with headroom; a window of 5 viewports keeps the
+ * mounted set (and its image fan-out) a small constant (was: all N, 201
+ * requests / 37 MB at the production ceiling).
  */
 const ISSUE_1636_INITIAL_RENDER_COUNT = 8;
 const ISSUE_1636_WINDOW_SIZE = 5;
 import { Icon } from "../ui/Icon";
-import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { openExpandedCardContentShare } from "../../services/contentShareController";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
@@ -52,18 +48,15 @@ import { toastManager } from "../ui/Toast";
 import { getUserLocale } from "../../utils/localeUtils";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
-import { formatCurrency } from "../utils/formatters";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
-import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { extractWeekdayText } from "../../utils/openingHoursUtils";
 import { checkAllCuratedStopsOpen, type CuratedStopsAvailabilityResult } from "../../utils/curatedStopsAvailability";
 import {
   buildSingleCardNotSafeMessage,
   checkSingleCardSchedulingAvailability,
 } from "../../utils/singleCardAvailability";
-import { getReadableCategoryName } from "../../utils/categoryUtils";
 import { CardFilterBar, WhenFilter } from './CardFilterBar';
-import { resolvePlacePhotoThumbSource } from "../../utils/placePhotoThumb";
 import {
   ENTRANCE_START_SCALE,
   getEntranceStaggerDelayMs,
@@ -76,16 +69,43 @@ import { useTranslation } from 'react-i18next';
 import {
   type CanonicalDiscoveryPrice,
 } from "../../utils/priceTiers";
+import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../../constants/designSystem";
+import { useA11yPreferences } from "../../hooks/useA11yPreferences";
+import { SavedGridCard } from "./SavedGridCard";
+import SavedScheduleSheet from "./SavedScheduleSheet";
+import SavedCardActionMenu from "./SavedCardActionMenu";
+import SavedGridSkeleton from "./SavedGridSkeleton";
+import {
+  SAVED_GRID_COLUMNS,
+  SAVED_UNDO_WINDOW_MS,
+  computeQuickSlots,
+  createPendingRemovalController,
+  isSavedCardTicketed,
+  isSavedEventEnded,
+  resolveSavedPrimaryAction,
+  type QuickSlotResult,
+  type SavedPrimaryAction,
+} from "./savedGridModel";
 
-function getTravelModeIcon(mode?: string): string {
-  switch (mode) {
-    case 'driving': return 'car';
-    case 'transit': return 'bus-outline';
-    case 'bicycling':
-    case 'biking': return 'bicycle-outline';
-    case 'walking':
-    default: return 'walk-outline';
-  }
+const EMPTY_QUICK_SLOTS: QuickSlotResult = { slots: [], source: "hours" };
+
+/** A curated multi-stop AI plan (brand-authored events also carry stops). */
+function isCuratedPlan(card: SavedCard): boolean {
+  return (
+    Array.isArray((card as any).stops) &&
+    (card as any).stops.length > 0 &&
+    !isBrandExperiencePayload(card)
+  );
+}
+
+/** "Sat 12 PM" / "Sat 7:30 PM" for the booked chip on the photo. */
+function formatScheduledChip(date: Date, locale: string): string {
+  const day = date.toLocaleDateString(locale, { weekday: "short" });
+  const time = date.toLocaleTimeString(locale, {
+    hour: "numeric",
+    ...(date.getMinutes() !== 0 ? { minute: "2-digit" as const } : {}),
+  });
+  return `${day} ${time}`;
 }
 
 interface SavedCard extends Partial<CanonicalDiscoveryPrice> {
@@ -131,1074 +151,83 @@ interface SavedCard extends Partial<CanonicalDiscoveryPrice> {
   lng: number;
 }
 
+
 // ---------------------------------------------------------------------------
-// Issue #1636 — these two StyleSheet blocks used to live INSIDE the component
-// body, so ~660 style objects were re-allocated (and, in a __DEV__ build,
-// individually Object.freeze'd) on every single render of SavedTab, and every
-// card subtree got brand-new style-object identities that defeated any memo
-// boundary below it. They are pure literals — nothing here closes over a prop,
-// theme value or state — so they are hoisted to module scope and allocated
-// once per process. The ONE style that genuinely depends on a prop
-// (mainScrollContent, which carries the ORCH-1189 floating-nav clearance
-// `bottomNavTotalHeight + 24`) stays in the component as `dynamicStyles`.
+// Issue #1636 — styles live at module scope (allocated once per process); the
+// ONE prop-dependent style (mainScrollContent, the ORCH-1189 floating-nav
+// clearance `bottomNavTotalHeight + 24`) stays in the component as
+// `dynamicStyles`.
+//
+// Issue #4265 — the old list-row styles (`styles.experienceCard…`,
+// `curatedSavedStyles`) went with SavedSimpleCardRow / SavedCuratedCardRow;
+// the grid card owns its own styles in SavedGridCard.tsx.
 // ---------------------------------------------------------------------------
+const L = glass.likes;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: L.canvas,
   },
-  // Issue #1636: the virtualised list's own frame. Was an inline `{ flex: 1 }`
-  // on the ScrollView this FlatList replaced.
   list: {
     flex: 1,
   },
-  listContent: {
-    gap: 16,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+  headerWrap: {
+    marginBottom: L.grid.topPadding,
   },
-  cardWrapper: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  // Issue #4265: one grid row = two cards, 16pt page edges, 12pt column gap,
+  // 20pt between rows.
+  gridRow: {
+    columnGap: L.grid.columnGap,
+    paddingHorizontal: L.grid.sidePadding,
+    marginBottom: L.grid.rowGap,
   },
-  experienceCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#f0f0f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 1,
-    overflow: "hidden",
-  },
-  cardContent: {
-    padding: 16,
-  },
-  cardHeader: {
-    flexDirection: "row",
+  statePanel: {
+    paddingTop: 72,
+    paddingHorizontal: 24,
+    alignItems: "center",
     gap: 12,
   },
-  cardImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  stateIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? L.accentSoftOpaque : L.accentSoft,
   },
-  // Issue #1636: was an inline `{ width: "100%", height: "100%" }` object on the
-  // card thumbnail, re-allocated per card per render.
-  cardImageInner: {
-    width: "100%",
-    height: "100%",
-  },
-  cardInfo: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-  },
-  cardTitle: {
-    fontSize: 16,
+  stateTitle: {
+    color: L.textPrimary,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 4,
+    textAlign: "center",
   },
-  cardSubtitle: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-    flexShrink: 1,
-  },
-  cardTitleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  cardTitleTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  cardSubtitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 4,
-    minWidth: 0,
-  },
-  recentlySavedWrap: {
-    alignItems: "flex-end",
-    flexShrink: 0,
-    marginLeft: 8,
-  },
-  recentlySavedText: {
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.55)",
-  },
-  cardMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  cardStats: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-    minWidth: 0,
-  },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  statIcon: {
-    width: 16,
-    height: 16,
-    color: "#eb7825",
-  },
-  statText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-  },
-  priceText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#eb7825",
-    flexShrink: 1,
-  },
-  sourceIndicator: {
-    marginTop: 4,
-  },
-  sourceBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  soloBadge: {
-    backgroundColor: "#dbeafe",
-  },
-  collaborationBadge: {
-    backgroundColor: "#f3e8ff",
-  },
-  soloText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#1e40af",
-  },
-  collaborationText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#7c3aed",
-  },
-  sourceIcon: {
-    width: 12,
-    height: 12,
-  },
-  sourceText: {
-    fontSize: 12,
-  },
-  quickActions: {
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  actionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  scheduleButtonContainer: {
-    flex: 1,
-    gap: 6,
-  },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: "#eb7825",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.7,
-  },
-  primaryButtonText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  shareButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)", // Light gray border
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 0.5,
-    borderColor: "#ef4444", // Red border
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  expandedContent: {
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-  },
-  imageGallery: {
-    position: "relative",
-  },
-  galleryImage: {
-    aspectRatio: 16 / 9,
-    overflow: "hidden",
-  },
-  imageNavigation: {
-    position: "absolute",
-    top: "50%",
-    transform: [{ translateY: -16 }],
-    width: 32,
-    height: 32,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  leftNav: {
-    left: 8,
-  },
-  rightNav: {
-    right: 8,
-  },
-  navIcon: {
-    width: 16,
-    height: 16,
-    color: "white",
-  },
-  imageIndicators: {
-    position: "absolute",
-    bottom: 8,
-    left: "50%",
-    transform: [{ translateX: -50 }],
-    flexDirection: "row",
-    gap: 4,
-  },
-  indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  activeIndicator: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  inactiveIndicator: {
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
-  },
-  detailsSection: {
-    padding: 16,
-    gap: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#FFFFFF",
-    marginBottom: 8,
-  },
-  sectionText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-    lineHeight: 20,
-  },
-  highlightsContainer: {
-    gap: 8,
-  },
-  highlightsList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  highlightTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: "#fef3e2",
-    borderRadius: 8,
-  },
-  highlightText: {
-    fontSize: 12,
-    color: "#ea580c",
-  },
-  locationContainer: {
-    gap: 8,
-  },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  locationIcon: {
-    width: 16,
-    height: 16,
-    color: "#eb7825",
-    marginTop: 2,
-    flexShrink: 0,
-  },
-  locationText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-    flex: 1,
-  },
-  socialStatsContainer: {
-    gap: 8,
-  },
-  socialStatsTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#FFFFFF",
-    marginBottom: 8,
-  },
-  socialStatsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  socialStatItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  socialStatIcon: {
-    width: 16,
-    height: 16,
-  },
-  socialStatText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-  },
-  emptyState: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginVertical: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#f5e6d3",
-    // META-ORCH-1002 Sub-B (C5, dark-canvas): clip the translucent orange fill +
-    // bright border to the radius (kills the corner ring). Glass fill preserved.
-    overflow: "hidden",
-  },
-  emptyStateIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#fef3e2",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  emptyStateTextContainer: {
-    flex: 1,
-  },
-  emptyStateTitle: {
+  stateBody: {
+    color: L.textBody,
     fontSize: 15,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    marginBottom: 2,
-  },
-  emptyStateSubtitle: {
-    fontSize: 13,
-    color: "rgba(255, 255, 255, 0.55)",
-    lineHeight: 18,
-  },
-  clearFiltersButton: {
-    marginTop: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#fff7ed',
-  },
-  clearFiltersText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#eb7825',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 48,
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-    marginTop: 8,
-  },
-  closedMessage: {
-    fontSize: 12,
-    color: "#ef4444",
-    textAlign: "center",
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  warningMessage: {
-    fontSize: 12,
-    color: "#f59e0b",
-    textAlign: "center",
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 20,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.12)",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  modalHeaderButtons: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  modalCancelButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  modalCancelText: {
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.72)",
-  },
-  modalConfirmButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  modalConfirmText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#eb7825",
-  },
-  dateTimePicker: {
-    height: 200,
-  },
-  retryPill: {
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  retryPillText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-});
-
-const curatedSavedStyles = StyleSheet.create({
-  card: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  imageStrip: {
-    flexDirection: 'row',
-    height: 100,
-  },
-  imageContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  stopImage: {
-    width: '100%',
-    height: '100%',
-  },
-  stopBadge: {
-    position: 'absolute',
-    bottom: 6,
-    left: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#F59E0B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stopBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1C1C1E',
-  },
-  content: {
-    padding: 14,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  typeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(245,158,11,0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  typeBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#F59E0B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  stopCountBadge: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  stopCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 4,
     lineHeight: 22,
+    textAlign: "center",
   },
-  tagline: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    fontStyle: 'italic',
-    marginBottom: 10,
+  stateButton: {
+    marginTop: 8,
+    minHeight: 44,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: L.accent,
   },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '500',
-  },
-  statDot: {
-    color: 'rgba(255,255,255,0.3)',
-    marginHorizontal: 6,
-    fontSize: 12,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-    gap: 10,
-  },
-  scheduleButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#F59E0B',
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  scheduleButtonDisabled: {
-    backgroundColor: 'rgba(245,158,11,0.4)',
-  },
-  scheduleButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1C1C1E',
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lockedCardOverflow: {
-    overflow: 'hidden',
-  },
-  lockedBody: {
-    backgroundColor: '#1C1C1E',
-    padding: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  lockedTeaserText: {
-    color: '#fff',
+  stateButtonText: {
+    color: L.textPrimary,
     fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: "600",
   },
-  lockedSubtext: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    textAlign: 'center',
+  stateButtonQuiet: {
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? L.card.quietFillOpaque : L.card.quietFill,
+    borderWidth: 1,
+    borderColor: L.card.quietBorder,
   },
-  lockedUpgradeButton: {
-    backgroundColor: '#f97316',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 4,
-  },
-  lockedUpgradeText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  lockedRemoveButton: {
-    marginTop: 4,
-  },
-  lockedRemoveText: {
-    color: '#6B7280',
-    fontSize: 12,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Issue #1636 — the two Likes row types, extracted to module scope and
-// memoised.
-//
-// They used to be plain functions (`renderCuratedCard` / `renderCard`) declared
-// INSIDE SavedTab's body, so there was no component boundary per row: React
-// could not bail out of an individual card, and every SavedTab render re-ran
-// every card's subtree. Now each row is a real `React.memo` component whose
-// props are either the card itself or a primitive derived from it, so a
-// scheduling / removal / filter change re-renders only the row it actually
-// touched.
-//
-// Every callback arrives already-stable from SavedTab (see `rowHandlers`), and
-// the entrance-scale Animated.Value is owned by SavedTab's ref map, so neither
-// busts the memo.
-// ---------------------------------------------------------------------------
-
-interface SavedCardRowCommonProps {
-  card: SavedCard;
-  /** Entrance-scale value owned by SavedTab's `cardAnimations` ref map. */
-  scale: Animated.Value;
-  isScheduled: boolean;
-  isRemoving: boolean;
-  /**
-   * ORCH-1195 locked down the EXACT gate on the Schedule button: in-flight
-   * (`schedulingCardId === card.id`) and already-scheduled (`isScheduled`), and
-   * explicitly NOT current open-now status. Its regression tests assert that
-   * expression verbatim, so the id is threaded down rather than a pre-derived
-   * `isScheduling` boolean. Slightly weaker memoisation (a scheduling tap
-   * re-renders the ~20 mounted rows instead of 1) in exchange for keeping a
-   * deliberately locked-down contract literally intact. Worth it.
-   */
-  schedulingCardId: string | null;
-  onPress: (card: SavedCard) => void;
-  onShare: (card: SavedCard) => void;
-  onRemove: (card: SavedCard) => void;
-}
-
-interface SavedCuratedCardRowProps extends SavedCardRowCommonProps {
-  /** Resolved from `accountPreferences.currency` once, in the parent. */
-  currencyCode: string;
-  handleScheduleCurated: (card: SavedCard) => void;
-}
-
-interface SavedSimpleCardRowProps extends SavedCardRowCommonProps {
-  onPurchase: (card: SavedCard, purchaseOption: any) => void;
-  handleSchedule: (card: SavedCard) => void;
-}
-
-const SavedCuratedCardRow = React.memo(function SavedCuratedCardRow({
-  card,
-  scale,
-  isScheduled,
-  isRemoving,
-  schedulingCardId,
-  currencyCode,
-  onPress,
-  handleScheduleCurated,
-  onShare,
-  onRemove,
-}: SavedCuratedCardRowProps) {
-  const { t } = useTranslation(['activity', 'common']);
-  const stops = (card as any).stops as CuratedStop[];
-
-  // Curated cards are viewable by all tiers — save-gating is handled at save time
-
-  // Computed display values
-  const avgRating = stops.length > 0
-    ? (stops.reduce((sum, st) => sum + st.rating, 0) / stops.length).toFixed(1)
-    : '–';
-  const totalPriceMin = (card as any).totalPriceMin ?? 0;
-  const totalPriceMax = (card as any).totalPriceMax ?? 0;
-  const totalPrice = totalPriceMin === 0 && totalPriceMax === 0
-    ? 'Free'
-    : `${formatCurrency(totalPriceMin, currencyCode)}–${formatCurrency(totalPriceMax, currencyCode)}`;
-  const totalMin = (card as any).estimatedDurationMinutes ?? 0;
-  const hrs = Math.floor(totalMin / 60);
-  const mins = totalMin % 60;
-  const durationLabel = hrs > 0
-    ? `${hrs}h ${mins > 0 ? `${mins}min` : ''}`
-    : `${mins}min`;
-  const rawType = (card as any).experienceType || 'adventurous';
-  const experienceLabel = t(`common:intent_${rawType.replace(/-/g, '_')}`);
-
-  return (
-    <Animated.View style={[styles.cardWrapper, { transform: [{ scale }] }]}>
-      <View style={curatedSavedStyles.card}>
-        {/* 3-image strip with numbered badges */}
-        <View style={curatedSavedStyles.imageStrip}>
-          {stops.slice(0, 3).map((stop, idx) => {
-            // Issue #1636: each strip cell is roughly a third of the screen
-            // wide by 100pt tall, so the 384px thumb is the right asset and the
-            // 800x1066 original never was.
-            const stopThumb = resolvePlacePhotoThumbSource(stop.imageUrl);
-            return (
-              <View key={`${stop.placeId}_${idx}`} style={curatedSavedStyles.imageContainer}>
-                <ImageWithFallback
-                  source={{ uri: stopThumb?.uri ?? stop.imageUrl }}
-                  fallbackUri={stopThumb?.fallbackUri}
-                  alt={stop.placeName}
-                  style={curatedSavedStyles.stopImage}
-                />
-                <View style={curatedSavedStyles.stopBadge}>
-                  <Text style={curatedSavedStyles.stopBadgeText}>{idx + 1}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Tappable content area */}
-        <TouchableOpacity
-          onPress={() => onPress(card)}
-          activeOpacity={0.7}
-          style={curatedSavedStyles.content}
-        >
-          {/* Experience type + stop count badges */}
-          <View style={curatedSavedStyles.badgeRow}>
-            <View style={curatedSavedStyles.typeBadge}>
-              <Icon name="map-outline" size={12} color="#F59E0B" />
-              <Text style={curatedSavedStyles.typeBadgeText}>{experienceLabel}</Text>
-            </View>
-            <View style={curatedSavedStyles.stopCountBadge}>
-              <Text style={curatedSavedStyles.stopCountText}>{stops.length} Stops</Text>
-            </View>
-          </View>
-
-          {/* Title: experience title, fallback to stop names */}
-          <Text style={curatedSavedStyles.title} numberOfLines={2}>
-            {card.title?.trim() || stops.map(s => s.placeName).join(' → ')}
-          </Text>
-
-          {/* Tagline */}
-          {(card as any).tagline ? (
-            <Text style={curatedSavedStyles.tagline} numberOfLines={1}>
-              {(card as any).tagline}
-            </Text>
-          ) : null}
-
-          {/* Stats row: avg rating, duration, price */}
-          <View style={curatedSavedStyles.statsRow}>
-            <View style={curatedSavedStyles.statItem}>
-              <Icon name="star" size={13} color="white" />
-              <Text style={curatedSavedStyles.statText}>{avgRating} avg</Text>
-            </View>
-            <Text style={curatedSavedStyles.statDot}>·</Text>
-            <View style={curatedSavedStyles.statItem}>
-              <Icon name="time-outline" size={13} color="rgba(255,255,255,0.6)" />
-              <Text style={curatedSavedStyles.statText}>{durationLabel}</Text>
-            </View>
-            <Text style={curatedSavedStyles.statDot}>·</Text>
-            <View style={curatedSavedStyles.statItem}>
-              <Icon name="cash-outline" size={13} color="rgba(255,255,255,0.6)" />
-              <Text style={curatedSavedStyles.statText}>{totalPrice}</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* Action buttons */}
-        <View style={curatedSavedStyles.actions}>
-          <TouchableOpacity
-            onPress={() => handleScheduleCurated(card)}
-            style={[
-              curatedSavedStyles.scheduleButton,
-              (isScheduled || schedulingCardId === card.id) && curatedSavedStyles.scheduleButtonDisabled,
-            ]}
-            disabled={isScheduled || schedulingCardId === card.id}
-          >
-            {schedulingCardId === card.id ? (
-              <ActivityIndicator size="small" color="#1C1C1E" />
-            ) : (
-              <>
-                <Icon name="calendar" size={16} color="#1C1C1E" />
-                <Text style={curatedSavedStyles.scheduleButtonText}>
-                  {isScheduled ? 'Scheduled' : 'Schedule Plan'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onShare(card)}
-            style={curatedSavedStyles.iconButton}
-          >
-            <Icon name="share-social-outline" size={18} color="rgba(255,255,255,0.7)" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onRemove(card)}
-            style={curatedSavedStyles.iconButton}
-            disabled={isRemoving}
-          >
-            {isRemoving ? (
-              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
-            ) : (
-              <Icon name="trash-outline" size={18} color="rgba(255,255,255,0.7)" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Animated.View>
-  );
-});
-
-const SavedSimpleCardRow = React.memo(function SavedSimpleCardRow({
-  card,
-  scale,
-  isScheduled,
-  isRemoving,
-  schedulingCardId,
-  onPress,
-  handleSchedule,
-  onPurchase,
-  onShare,
-  onRemove,
-}: SavedSimpleCardRowProps) {
-  const { t } = useTranslation(['activity', 'common']);
-
-  // Check if place is currently open using live client-side time computation
-  const liveStatus = isPlaceOpenNow(
-    extractWeekdayText(card.openingHours),
-    card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
-  );
-  const isPlaceOpen = liveStatus !== false; // true or null (unknown) → allow scheduling
-
-  // Issue #1636: an 80x80pt box needs ~210px on an SM-A725F and 240px at 3x on
-  // iPhone. The 384px `_thumb.jpg` covers both; the 800x1066 original was 4.7x
-  // the bytes for pixels this box can never show.
-  const thumb = resolvePlacePhotoThumbSource(card.image);
-
-  return (
-    <Animated.View style={[styles.cardWrapper, { transform: [{ scale }] }]}>
-      <View style={styles.experienceCard}>
-        <TouchableOpacity
-          onPress={() => onPress(card)}
-          activeOpacity={0.7}
-          style={styles.cardContent}
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardImage}>
-              <ImageWithFallback
-                source={{ uri: thumb?.uri ?? card.image }}
-                fallbackUri={thumb?.fallbackUri}
-                alt={card.title}
-                style={styles.cardImageInner}
-              />
-            </View>
-
-            <View style={styles.cardInfo}>
-              <View style={styles.cardTitleRow}>
-                <View style={styles.cardTitleTextWrap}>
-                  <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">{card.title}</Text>
-                  {/* Subtitle - use category or a default subtitle */}
-                  <View style={styles.cardSubtitleRow}>
-                    <Icon name="heart" size={16} color="orange" />
-                    <Text style={styles.cardSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                      {(card as any).subtitle || getReadableCategoryName(card.category) || "Experience"}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.recentlySavedWrap}>
-                  <Text style={styles.recentlySavedText} numberOfLines={1}>{t('activity:savedTab.recentlySaved')}</Text>
-                </View>
-              </View>
-
-              {/* Stats row: Rating, Duration, Price, Chevron */}
-              <View style={styles.cardMeta}>
-                <View style={styles.cardStats}>
-                  {card.rating != null && Number(card.rating) > 0 && (
-                    <View style={styles.statItem}>
-                      <Icon name="star" size={14} color="#fbbf24" />
-                      <Text style={styles.statText}>{Number(card.rating).toFixed(1)}</Text>
-                    </View>
-                  )}
-                  {card.travelTime && card.travelTime !== '0 min' && (
-                    <View style={styles.statItem}>
-                      <Icon name={getTravelModeIcon((card as any).travelMode)} size={14} color="#6b7280" />
-                      <Text style={styles.statText}>
-                        {card.travelTime}
-                      </Text>
-                    </View>
-                  )}
-                  {card.priceRange ? (
-                    <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
-                      {card.priceRange}
-                    </Text>
-                  ) : null}
-                </View>
-                <Icon name="chevron-forward" size={16} color="#9ca3af" />
-              </View>
-
-              {/* Source badge */}
-              <View style={styles.sourceIndicator}>
-                <View
-                  style={[
-                    styles.sourceBadge,
-                    card.source === "solo"
-                      ? styles.soloBadge
-                      : styles.collaborationBadge,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sourceText,
-                      card.source === "solo"
-                        ? styles.soloText
-                        : styles.collaborationText,
-                    ]}
-                  >
-                    {card.source === "solo"
-                      ? t('activity:savedTab.soloDiscovery')
-                      : t('activity:savedTab.fromSession', { name: card.sessionName })}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <View style={styles.actionsRow}>
-            {/* Conditional Buy Now/Schedule button */}
-            {card.purchaseOptions && card.purchaseOptions.length > 0 ? (
-              <TouchableOpacity
-                onPress={() =>
-                  onPurchase(card, card.purchaseOptions?.[0])
-                }
-                style={styles.primaryButton}
-              >
-                <Icon name="bag" size={16} color="white" />
-                <Text style={styles.primaryButtonText}>{t('activity:savedTab.buyNow')}</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.scheduleButtonContainer}>
-                <TouchableOpacity
-                  onPress={() => handleSchedule(card)}
-                  style={[
-                    styles.primaryButton,
-                    // ORCH-1195: do NOT disable on current open-now status. The
-                    // scheduler validates the user's SELECTED future datetime via
-                    // checkSingleCardSchedulingAvailability (isPlaceOpenAt) inside
-                    // handleProposeDateTime; disabling on isPlaceOpen would wrongly
-                    // block opening the scheduler for a place that's closed now but
-                    // open at a future time. The "currently closed" label stays.
-                    (schedulingCardId === card.id || isScheduled) &&
-                      styles.primaryButtonDisabled,
-                  ]}
-                  disabled={schedulingCardId === card.id || isScheduled}
-                >
-                  {schedulingCardId === card.id ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <>
-                      <Icon name="calendar" size={16} color="white" />
-                      <Text style={styles.primaryButtonText}>
-                        {isScheduled ? t('activity:savedTab.scheduled') : t('activity:savedTab.schedule')}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                {!isPlaceOpen && (
-                  <Text style={styles.closedMessage}>
-                    {t('activity:savedTab.placeClosed')}
-                  </Text>
-                )}
-              </View>
-            )}
-
-            <TouchableOpacity
-              onPress={() => onShare(card)}
-              style={styles.shareButton}
-            >
-              <Icon name="share-social-outline" size={18} color="#374151" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => onRemove(card)}
-              style={styles.deleteButton}
-              disabled={isRemoving}
-            >
-              {isRemoving ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : (
-                <Icon name="trash-outline" size={18} color="#ef4444" />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Animated.View>
-  );
 });
 
 
@@ -1226,6 +255,13 @@ interface SavedTabProps {
    * frame still paints full-bleed to the physical screen bottom (no black bar).
    */
   bottomNavTotalHeight?: number;
+  /** Issue #4265: "Find something" (empty) and "Find similar" (ended) go to Explore. */
+  onExplore?: () => void;
+  /**
+   * Issue #4265: the "N saved" count on the Likes title row. Reported net of
+   * cards waiting out their Undo window; `null` while loading or errored.
+   */
+  onSavedCountChange?: (count: number | null) => void;
 }
 
 const SavedTab = ({
@@ -1243,6 +279,8 @@ const SavedTab = ({
   boardSavedCards,
   activeBoardSessionId,
   bottomNavTotalHeight = 0,
+  onExplore,
+  onSavedCountChange,
 }: SavedTabProps) => {
   const { t } = useTranslation(['activity', 'common']);
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
@@ -1262,9 +300,13 @@ const SavedTab = ({
   );
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [schedulingCardId, setSchedulingCardId] = useState<string | null>(null);
-  const [removingCardIds, setRemovingCardIds] = useState<Set<string>>(
-    new Set()
+  // Issue #4265: cards the heart has removed. They disappear at once; the
+  // delete is committed when the Undo window closes (or the tab unmounts).
+  const [hiddenCardIds, setHiddenCardIds] = useState<Set<string>>(
+    () => new Set()
   );
+  const [showScheduleSheet, setShowScheduleSheet] = useState(false);
+  const [menuCard, setMenuCard] = useState<SavedCard | null>(null);
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [cardToSchedule, setCardToSchedule] = useState<SavedCard | null>(null);
@@ -1275,6 +317,12 @@ const SavedTab = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+  const { reduceMotion } = useA11yPreferences();
+  const { width: windowWidth } = useWindowDimensions();
+  // Two columns inside 16pt page edges with a 12pt gap between them.
+  const cardWidth = Math.floor(
+    (windowWidth - L.grid.sidePadding * 2 - L.grid.columnGap) / SAVED_GRID_COLUMNS
+  );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -1411,6 +459,7 @@ const SavedTab = ({
     };
 
     const applyAllFilters = (card: SavedCard) =>
+      !hiddenCardIds.has(card.id) &&
       matchesSearch(card) &&
       matchesWhen(card) &&
       matchesCategory(card) &&
@@ -1419,6 +468,7 @@ const SavedTab = ({
     return savedCards.filter(applyAllFilters);
   }, [
     savedCards,
+    hiddenCardIds,
     searchQuery,
     selectedWhen,
     selectedCategory,
@@ -1448,6 +498,11 @@ const SavedTab = ({
       entranceAnimatedIdsRef.current.add(card.id);
 
       const animation = getCardAnimation(card.id);
+      if (reduceMotion) {
+        // Issue #4265: no entrance spring under reduce motion.
+        animation.scale.setValue(1);
+        continue;
+      }
       animation.scale.setValue(ENTRANCE_START_SCALE);
       Animated.spring(animation.scale, {
         toValue: 1,
@@ -1459,7 +514,7 @@ const SavedTab = ({
 
       newCardIndex += 1;
     }
-  }, [filteredCards, getCardAnimation]);
+  }, [filteredCards, getCardAnimation, reduceMotion]);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
@@ -1541,7 +596,6 @@ const SavedTab = ({
   };
 
   const handleSchedule = (card: SavedCard) => {
-    HapticFeedback.success();
     if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) {
       return;
     }
@@ -1554,9 +608,10 @@ const SavedTab = ({
       setModalTarget(null);
     }
 
-    // Show the propose date/time modal
+    // Issue #4265: open the quick "When are you going?" sheet first; the full
+    // propose date/time modal is its "Pick another date and time" row.
     setCardToSchedule(card);
-    setShowProposeDateTimeModal(true);
+    setShowScheduleSheet(true);
   };
 
   // ---- Opening Hours Validation for Curated Plans ----
@@ -1584,7 +639,6 @@ const SavedTab = ({
       return;
     }
 
-    HapticFeedback.success();
     if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) return;
 
     // Close expanded card modal if open (prevents Modal stacking conflicts)
@@ -1593,9 +647,9 @@ const SavedTab = ({
       setModalTarget(null);
     }
 
-    // Open the date/time picker modal
+    // Issue #4265: quick sheet first (slots validated against every stop).
     setCardToSchedule(card);
-    setShowProposeDateTimeModal(true);
+    setShowScheduleSheet(true);
   };
 
   // Get current scheduled date for a card if it exists
@@ -1607,7 +661,8 @@ const SavedTab = ({
     if (entry && entry.date && entry.time) {
       // Combine date and time strings into a Date object
       const dateTimeString = `${entry.date}T${entry.time}`;
-      return new Date(dateTimeString);
+      const parsed = new Date(dateTimeString);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
     return null;
   };
@@ -1809,10 +864,8 @@ const SavedTab = ({
       });
 
       // Show success toast
-      toastManager.success(
-        t('activity:savedTab.scheduledToast', { title: cardToSchedule.title }),
-        3000
-      );
+      HapticFeedback.success();
+      toastManager.success(t('activity:savedTab.addedToCalendar'), 3000);
 
       // Call the original handler if provided (for any additional logic)
     } catch (error: any) {
@@ -1986,11 +1039,25 @@ const SavedTab = ({
     setCardToSchedule(null);
   };
 
-  const handleRemoveSaved = async (card: SavedCard) => {
-    if (!user?.id) return;
-    HapticFeedback.error();
+  const unhideCard = (cardId: string) => {
+    setHiddenCardIds((prev) => {
+      if (!prev.has(cardId)) return prev;
+      const next = new Set(prev);
+      next.delete(cardId);
+      return next;
+    });
+  };
 
-    setRemovingCardIds((prev) => new Set(prev).add(card.id));
+  /**
+   * Issue #4265: the delete itself — the same service call, analytics and
+   * cache invalidation the old bin button ran. Runs when the Undo window
+   * closes. A failure puts the card back and says so (Constitution #3).
+   */
+  const commitRemoveSaved = async (card: SavedCard) => {
+    if (!user?.id) {
+      unhideCard(card.id);
+      return;
+    }
     try {
       await savedCardsService.removeCard(
         user.id,
@@ -2015,14 +1082,100 @@ const SavedTab = ({
       }
     } catch (error) {
       console.error("Error removing saved card:", error);
+      if (isMountedRef.current) unhideCard(card.id);
       toastManager.error(t('activity:savedTab.couldntRemove'), 3000);
-    } finally {
-      setRemovingCardIds((prev) => {
-        const next = new Set(prev);
-        next.delete(card.id);
-        return next;
-      });
     }
+  };
+
+  const isMountedRef = useRef(true);
+  const latestCommitRemoveRef = useRef(commitRemoveSaved);
+  latestCommitRemoveRef.current = commitRemoveSaved;
+  const pendingRemovalsRef = useRef(
+    createPendingRemovalController<SavedCard>({
+      delayMs: SAVED_UNDO_WINDOW_MS,
+      onCommit: (_id, card) => {
+        void latestCommitRemoveRef.current(card);
+      },
+    })
+  );
+
+  // Leaving Likes inside the Undo window still honours the heart tap.
+  useEffect(() => {
+    isMountedRef.current = true;
+    const pending = pendingRemovalsRef.current;
+    return () => {
+      isMountedRef.current = false;
+      pending.flushAll();
+    };
+  }, []);
+
+  // Once a committed removal is gone from the server list, stop tracking it.
+  useEffect(() => {
+    setHiddenCardIds((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(savedCards.map((c) => c.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (present.has(id) || pendingRemovalsRef.current.isPending(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [savedCards]);
+
+  /** Issue #4265: the heart. Hide now, Undo for ~3 s, then delete. */
+  const handleRemoveSaved = (card: SavedCard) => {
+    if (!user?.id) return;
+    setHiddenCardIds((prev) => new Set(prev).add(card.id));
+    pendingRemovalsRef.current.schedule(card.id, card);
+    toastManager.show(
+      t('activity:savedTab.removedToast'),
+      "info",
+      SAVED_UNDO_WINDOW_MS,
+      {
+        label: t('common:undo'),
+        accessibilityLabel: t('common:undo'),
+        onPress: () => {
+          if (pendingRemovalsRef.current.undo(card.id)) {
+            HapticFeedback.light();
+            unhideCard(card.id);
+          }
+        },
+      },
+    );
+  };
+
+  /** Issue #4265: the one main button on each grid card. */
+  const handlePrimaryAction = (card: SavedCard, action: SavedPrimaryAction) => {
+    switch (action) {
+      case "schedule":
+        if (isCuratedPlan(card)) handleScheduleCurated(card);
+        else handleSchedule(card);
+        return;
+      case "tickets":
+        // Reuse the existing purchase path; a brand event with no options
+        // opens its Book path in the expanded card, exactly as tapping it does.
+        if (card.purchaseOptions && card.purchaseOptions.length > 0) {
+          onPurchaseFromSaved(card, card.purchaseOptions[0]);
+        } else {
+          handleCardPress(card);
+        }
+        return;
+      case "inCalendar":
+        return;
+      case "findSimilar":
+        onExplore?.();
+        return;
+      default: {
+        const exhaustive: never = action;
+        return exhaustive;
+      }
+    }
+  };
+
+  const handleLongPressCard = (card: SavedCard) => {
+    setMenuCard(card);
   };
 
   // ─── Issue #1636: virtualised-list plumbing ────────────────────────────────
@@ -2061,115 +1214,219 @@ const SavedTab = ({
    */
   const latestRowHandlersRef = useRef({
     onPress: handleCardPress,
-    onScheduleSimple: handleSchedule,
-    onScheduleCurated: handleScheduleCurated,
-    onPurchase: onPurchaseFromSaved,
+    onPrimary: handlePrimaryAction,
     onShare: onShareCard,
     onRemove: handleRemoveSaved,
+    onLongPress: handleLongPressCard,
   });
   latestRowHandlersRef.current = {
     onPress: handleCardPress,
-    onScheduleSimple: handleSchedule,
-    onScheduleCurated: handleScheduleCurated,
-    onPurchase: onPurchaseFromSaved,
+    onPrimary: handlePrimaryAction,
     onShare: onShareCard,
     onRemove: handleRemoveSaved,
+    onLongPress: handleLongPressCard,
+  };
+
+  // Issue #4265: the grid card reports a card id; resolve it against the cards
+  // this tab rendered. An id that is no longer present (removed mid-tap) is a
+  // no-op rather than a stale action.
+  const cardsByIdRef = useRef<Map<string, SavedCard>>(new Map());
+  cardsByIdRef.current = new Map(savedCards.map((c) => [c.id, c]));
+  const withCard = (cardId: string, fn: (card: SavedCard) => void) => {
+    const card = cardsByIdRef.current.get(cardId);
+    if (card) fn(card);
   };
 
   const rowHandlers = useRef({
-    onPress: (card: SavedCard) => latestRowHandlersRef.current.onPress(card),
-    onScheduleSimple: (card: SavedCard) =>
-      latestRowHandlersRef.current.onScheduleSimple(card),
-    onScheduleCurated: (card: SavedCard) =>
-      latestRowHandlersRef.current.onScheduleCurated(card),
-    onPurchase: (card: SavedCard, purchaseOption: any) =>
-      latestRowHandlersRef.current.onPurchase(card, purchaseOption),
-    onShare: (card: SavedCard) => latestRowHandlersRef.current.onShare(card),
-    onRemove: (card: SavedCard) => latestRowHandlersRef.current.onRemove(card),
+    onPress: (cardId: string) =>
+      withCard(cardId, (card) => latestRowHandlersRef.current.onPress(card)),
+    onPrimary: (cardId: string, action: SavedPrimaryAction) =>
+      withCard(cardId, (card) => latestRowHandlersRef.current.onPrimary(card, action)),
+    onShare: (cardId: string) =>
+      withCard(cardId, (card) => latestRowHandlersRef.current.onShare(card)),
+    onRemove: (cardId: string) =>
+      withCard(cardId, (card) => latestRowHandlersRef.current.onRemove(card)),
+    onLongPress: (cardId: string) =>
+      withCard(cardId, (card) => latestRowHandlersRef.current.onLongPress(card)),
   }).current;
 
   const currencyCode = accountPreferences?.currency || 'USD';
+  const locale = getUserLocale();
 
   const keyExtractor = useCallback((card: SavedCard) => card.id, []);
 
   const renderItem = useCallback(
     ({ item: card }: ListRenderItemInfo<SavedCard>) => {
-      const isCuratedCard =
-        Array.isArray((card as any).stops) && (card as any).stops.length > 0;
+      const isCuratedCard = isCuratedPlan(card);
+      const isBrandExperience = isBrandExperiencePayload(card);
       const isScheduled =
         scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
-      const isRemoving = removingCardIds.has(card.id);
+      const primaryAction = resolveSavedPrimaryAction({
+        isScheduled,
+        isEnded: isBrandExperience && isSavedEventEnded(card, Date.now()),
+        isTicketed: isSavedCardTicketed(card, isBrandExperience),
+      });
+      const scheduledDate = isScheduled ? getCurrentScheduledDate(card.id) : null;
       const { scale } = getCardAnimation(card.id);
 
-      // Curated multi-stop cards get a premium layout
-      if (isCuratedCard) {
-        return (
-          <SavedCuratedCardRow
+      return (
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <SavedGridCard
             card={card}
-            scale={scale}
-            isScheduled={isScheduled}
-            isRemoving={isRemoving}
-            schedulingCardId={schedulingCardId}
+            width={cardWidth}
+            primaryAction={primaryAction}
+            isCurated={isCuratedCard}
+            isBrandExperience={isBrandExperience}
+            scheduledLabel={scheduledDate ? formatScheduledChip(scheduledDate, locale) : null}
+            isScheduling={schedulingCardId === card.id}
             currencyCode={currencyCode}
-            onPress={rowHandlers.onPress}
-            handleScheduleCurated={rowHandlers.onScheduleCurated}
+            reduceMotion={reduceMotion}
+            onOpen={rowHandlers.onPress}
+            onPrimary={rowHandlers.onPrimary}
             onShare={rowHandlers.onShare}
             onRemove={rowHandlers.onRemove}
+            onLongPress={rowHandlers.onLongPress}
           />
-        );
-      }
-
-      return (
-        <SavedSimpleCardRow
-          card={card}
-          scale={scale}
-          isScheduled={isScheduled}
-          isRemoving={isRemoving}
-          schedulingCardId={schedulingCardId}
-          onPress={rowHandlers.onPress}
-          handleSchedule={rowHandlers.onScheduleSimple}
-          onPurchase={rowHandlers.onPurchase}
-          onShare={rowHandlers.onShare}
-          onRemove={rowHandlers.onRemove}
-        />
+        </Animated.View>
       );
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       scheduledCardIdsSet,
       calendarCardIdsSet,
-      removingCardIds,
+      calendarEntries,
       schedulingCardId,
       currencyCode,
+      cardWidth,
+      reduceMotion,
+      locale,
       getCardAnimation,
       rowHandlers,
     ],
   );
 
+  // ─── Issue #4265: quick schedule sheet ─────────────────────────────────────
+
+  /**
+   * The next four times this card is open, computed with the SAME validators
+   * the scheduling path runs on a pick (checkSingleCardSchedulingAvailability /
+   * checkAllCuratedStopsOpen → isPlaceOpenAt). A tile can therefore only offer
+   * a time the existing check would accept.
+   */
+  const quickSlots = useMemo<QuickSlotResult>(() => {
+    if (!showScheduleSheet || !cardToSchedule) return EMPTY_QUICK_SLOTS;
+    const now = new Date();
+    if (isCuratedPlan(cardToSchedule)) {
+      const stops = (cardToSchedule as any).stops as CuratedStop[];
+      return computeQuickSlots({
+        now,
+        hasHours: stops.some(
+          (stop) => (extractWeekdayText(stop.openingHours)?.length ?? 0) > 0,
+        ),
+        isOpenAt: (at) => checkAllStopsOpen(stops, at).allOpen,
+      });
+    }
+    return computeQuickSlots({
+      now,
+      hasHours: (extractWeekdayText(cardToSchedule.openingHours)?.length ?? 0) > 0,
+      isOpenAt: (at) => {
+        const availability = checkSingleCardSchedulingAvailability(cardToSchedule, at, locale);
+        if (availability.status === "open") return true;
+        if (availability.status === "closed") return false;
+        return null;
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showScheduleSheet, cardToSchedule, locale]);
+
+  // BaseBottomSheet reports onClose for a programmatic close too; a close that
+  // hands the card on (to a slot pick or the full picker) must keep it.
+  const scheduleSheetHandoffRef = useRef(false);
+
+  const handleQuickSlotPick = (at: Date) => {
+    scheduleSheetHandoffRef.current = true;
+    setShowScheduleSheet(false);
+    // The EXISTING path: hours check (+ curated confirm) → proceedWithScheduling.
+    handleProposeDateTime(at, "custom");
+  };
+
+  const handlePickAnotherTime = () => {
+    scheduleSheetHandoffRef.current = true;
+    setShowScheduleSheet(false);
+    setShowProposeDateTimeModal(true);
+  };
+
+  const handleCloseScheduleSheet = () => {
+    setShowScheduleSheet(false);
+    if (scheduleSheetHandoffRef.current) {
+      scheduleSheetHandoffRef.current = false;
+      return;
+    }
+    setCardToSchedule(null);
+  };
+
+  // ─── Issue #4265: long-press menu ──────────────────────────────────────────
+
+  const menuPrimaryAction: SavedPrimaryAction | null = menuCard
+    ? resolveSavedPrimaryAction({
+        isScheduled:
+          scheduledCardIdsSet.has(menuCard.id) || calendarCardIdsSet.has(menuCard.id),
+        isEnded:
+          isBrandExperiencePayload(menuCard) && isSavedEventEnded(menuCard, Date.now()),
+        isTicketed: isSavedCardTicketed(menuCard, isBrandExperiencePayload(menuCard)),
+      })
+    : null;
+  const menuCanSchedule =
+    !!menuCard &&
+    !isBrandExperiencePayload(menuCard) &&
+    (menuPrimaryAction === "schedule" || menuPrimaryAction === "tickets");
+
+  const runMenuAction = (fn: (card: SavedCard) => void) => {
+    const card = menuCard;
+    setMenuCard(null);
+    if (card) fn(card);
+  };
+
+  // ─── Issue #4265: "N saved" on the Likes title row ─────────────────────────
+
+  const visibleSavedCount = savedCards.filter((c) => !hiddenCardIds.has(c.id)).length;
+  useEffect(() => {
+    onSavedCountChange?.(effectiveIsLoading || isError ? null : visibleSavedCount);
+  }, [onSavedCountChange, effectiveIsLoading, isError, visibleSavedCount]);
+  useEffect(() => () => onSavedCountChange?.(null), [onSavedCountChange]);
+
   const renderEmptyComponent = () => {
     if (effectiveIsLoading) {
       return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#eb7825" />
-          <Text style={styles.loadingText}>{t('activity:savedTab.loadingSaved')}</Text>
-        </View>
+        <SavedGridSkeleton
+          cardWidth={cardWidth}
+          reduceMotion={reduceMotion}
+          accessibilityLabel={t('activity:savedTab.loadingSaved')}
+        />
       );
     }
 
     if (isError && !effectiveIsLoading) {
       return (
-        <View style={styles.emptyState}>
-          <View style={[styles.emptyStateIconCircle, { backgroundColor: '#fef2f2' }]}>
-            <Icon name="alert-circle-outline" size={22} color="#ef4444" />
+        <View style={styles.statePanel}>
+          <View style={styles.stateIconCircle}>
+            <Icon name="alert-circle-outline" size={30} color={L.accent} />
           </View>
-          <View style={styles.emptyStateTextContainer}>
-            <Text style={styles.emptyStateTitle}>{t('activity:savedTab.errorTitle')}</Text>
-            <Text style={styles.emptyStateSubtitle}>
-              {t('activity:savedTab.errorSubtitle')}
-            </Text>
-          </View>
+          <Text style={styles.stateTitle} accessibilityRole="header">
+            {t('activity:savedTab.errorTitle')}
+          </Text>
+          <Text style={styles.stateBody}>{t('activity:savedTab.errorSubtitle')}</Text>
           {onRetry && (
-            <TouchableOpacity onPress={onRetry} style={styles.retryPill} activeOpacity={0.7}>
-              <Text style={styles.retryPillText}>{t('activity:savedTab.retry')}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                HapticFeedback.light();
+                onRetry();
+              }}
+              style={styles.stateButton}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+            >
+              <Text style={styles.stateButtonText}>{t('activity:savedTab.retry')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -2179,27 +1436,27 @@ const SavedTab = ({
     // Filters active but no matches — different from truly empty
     if (savedCards.length > 0) {
       return (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyStateIconCircle}>
-            <Icon name="filter-outline" size={22} color="#9ca3af" />
+        <View style={styles.statePanel}>
+          <View style={styles.stateIconCircle}>
+            <Icon name="filter-outline" size={30} color={L.accent} />
           </View>
-          <View style={styles.emptyStateTextContainer}>
-            <Text style={styles.emptyStateTitle}>{t('activity:savedTab.noMatchesTitle')}</Text>
-            <Text style={styles.emptyStateSubtitle}>
-              {t('activity:savedTab.noMatchesSubtitle')}
-            </Text>
-          </View>
+          <Text style={styles.stateTitle} accessibilityRole="header">
+            {t('activity:savedTab.noMatchesTitle')}
+          </Text>
+          <Text style={styles.stateBody}>{t('activity:savedTab.noMatchesSubtitle')}</Text>
           <TouchableOpacity
-            style={styles.clearFiltersButton}
+            style={[styles.stateButton, styles.stateButtonQuiet]}
             onPress={() => {
+              HapticFeedback.light();
               setSearchQuery('');
               setSelectedWhen('all');
               setSelectedCategory('all');
               setSelectedTier('all');
             }}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
+            accessibilityRole="button"
           >
-            <Text style={styles.clearFiltersText}>{t('activity:savedTab.clearFilters')}</Text>
+            <Text style={styles.stateButtonText}>{t('activity:savedTab.clearFilters')}</Text>
           </TouchableOpacity>
         </View>
       );
@@ -2207,16 +1464,27 @@ const SavedTab = ({
 
     // Truly empty — no saved cards at all
     return (
-      <View style={styles.emptyState}>
-        <View style={styles.emptyStateIconCircle}>
-          <Icon name="heart-outline" size={22} color="#eb7825" />
+      <View style={styles.statePanel}>
+        <View style={styles.stateIconCircle}>
+          <Icon name="heart-outline" size={32} color={L.accent} strokeWidth={2} />
         </View>
-        <View style={styles.emptyStateTextContainer}>
-          <Text style={styles.emptyStateTitle}>{t('activity:savedTab.emptyTitle')}</Text>
-          <Text style={styles.emptyStateSubtitle}>
-            {t('activity:savedTab.emptySubtitle')}
-          </Text>
-        </View>
+        <Text style={styles.stateTitle} accessibilityRole="header">
+          {t('activity:savedTab.emptyTitle')}
+        </Text>
+        <Text style={styles.stateBody}>{t('activity:savedTab.emptyBody')}</Text>
+        {onExplore ? (
+          <TouchableOpacity
+            onPress={() => {
+              HapticFeedback.light();
+              onExplore();
+            }}
+            style={styles.stateButton}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+          >
+            <Text style={styles.stateButtonText}>{t('activity:savedTab.emptyCta')}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   };
@@ -2230,10 +1498,13 @@ const SavedTab = ({
   const listHeader = useMemo(
     () => (
       <Animated.View
-        style={{
-          opacity: searchBarOpacity,
-          transform: [{ translateY: searchBarSlide }],
-        }}
+        style={[
+          styles.headerWrap,
+          {
+            opacity: searchBarOpacity,
+            transform: [{ translateY: searchBarSlide }],
+          },
+        ]}
       >
         <CardFilterBar
           searchQuery={searchQuery}
@@ -2262,7 +1533,7 @@ const SavedTab = ({
   const listEmpty = useMemo(
     () => renderEmptyComponent(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [effectiveIsLoading, isError, onRetry, savedCards.length, t],
+    [effectiveIsLoading, isError, onRetry, onExplore, savedCards.length, cardWidth, reduceMotion, t],
   );
 
   // The keyboard spacer that used to be the ScrollView's last child.
@@ -2273,8 +1544,18 @@ const SavedTab = ({
 
   return (
     <View style={styles.container}>
-      {/* Date/Time Picker Modal */}
-      {/* Propose Date & Time Modal */}
+      {/* Issue #4265: quick "When are you going?" sheet */}
+      <SavedScheduleSheet
+        visible={showScheduleSheet}
+        title={cardToSchedule?.title ?? ''}
+        result={quickSlots}
+        locale={locale}
+        onPick={handleQuickSlotPick}
+        onPickAnother={handlePickAnotherTime}
+        onClose={handleCloseScheduleSheet}
+      />
+
+      {/* Propose Date & Time Modal — the sheet's "Pick another date and time" */}
       <ProposeDateTimeModal
         visible={showProposeDateTimeModal}
         onClose={handleCloseProposeDateTimeModal}
@@ -2290,12 +1571,30 @@ const SavedTab = ({
         }
       />
 
+      {/* Issue #4265: long-press menu */}
+      <SavedCardActionMenu
+        visible={menuCard !== null}
+        title={menuCard?.title ?? ''}
+        canSchedule={menuCanSchedule}
+        onShare={() => runMenuAction((card) => onShareCard(card))}
+        onSchedule={() =>
+          runMenuAction((card) =>
+            isCuratedPlan(card) ? handleScheduleCurated(card) : handleSchedule(card),
+          )
+        }
+        onRemove={() => runMenuAction((card) => handleRemoveSaved(card))}
+        onClose={() => setMenuCard(null)}
+      />
+
       {/*
         Issue #1636 — this was a plain <ScrollView> with `filteredCards.map(...)`,
         which mounts 100 % of its children regardless of viewport. At the real
         production ceiling (148 saves / 52 curated) that committed every card
         subtree in one synchronous pass and fired 201 image requests totalling
         37 MB before the screen was interactive. FlatList mounts only the window.
+
+        Issue #4265 — the list is a two-column grid (`numColumns`), each row
+        carrying the 16pt edges / 12pt column gap / 20pt row gap of the design.
 
         Everything the ScrollView did is preserved deliberately:
           - the filter bar is the list header (still scrolls with the content,
@@ -2310,6 +1609,8 @@ const SavedTab = ({
         data={filteredCards}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
+        numColumns={SAVED_GRID_COLUMNS}
+        columnWrapperStyle={styles.gridRow}
         style={styles.list}
         contentContainerStyle={dynamicStyles.mainScrollContent}
         ListHeaderComponent={listHeader}
@@ -2319,8 +1620,8 @@ const SavedTab = ({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
-        // Rows are two heterogeneous heights (simple ~180pt, curated ~260pt), so
-        // there is no honest getItemLayout to give. These bounds keep the mounted
+        // Card heights vary with title length and Dynamic Type, so there is
+        // no honest getItemLayout to give. These bounds keep the mounted
         // window small without leaving blank cells on a normal flick.
         initialNumToRender={ISSUE_1636_INITIAL_RENDER_COUNT}
         maxToRenderPerBatch={ISSUE_1636_INITIAL_RENDER_COUNT}

@@ -129,6 +129,10 @@
       "body": "Lọc theo ngày, cảm xúc, âm nhạc, điểm đến, v.v. Các lựa chọn thay đổi theo từng viên thuốc."
     },
     "list_two": "{{a}} và {{b}}",
-    "list_three": "{{a}}, {{b}} và {{c}}"
+    "list_three": "{{a}}, {{b}} và {{c}}",
+    "step3": {
+      "title": "Nơi lưu những gì bạn thích",
+      "description": "Mọi thứ bạn thả tim đều vào Yêu thích. Chia sẻ hoặc đưa vào lịch chỉ với một chạm."
+    }
   }
 }

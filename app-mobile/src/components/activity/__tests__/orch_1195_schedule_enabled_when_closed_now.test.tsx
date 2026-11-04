@@ -41,66 +41,46 @@ function ok(name, cond, detail) {
 const APP = "app-mobile";
 const fullSrc = read(`${APP}/src/components/activity/SavedTab.tsx`);
 const src = stripComments(fullSrc);
+// Issue #4265: the Likes list became a grid; the Schedule button now lives in
+// the shared grid card and its gate is ONE expression for places and plans.
+const cardSrc = stripComments(read(`${APP}/src/components/activity/SavedGridCard.tsx`));
 
-// Isolate the renderCard Schedule TouchableOpacity block: from the scheduling
-// onPress handler down to its closing tag, so assertions target THE button.
-const schedBlockMatch = src.match(
-  /onPress=\{\(\) => handleSchedule\(card\)\}[\s\S]*?<\/TouchableOpacity>/,
-);
+const disabledMatch = cardSrc.match(/const primaryDisabled = ([^;]+);/);
 ok(
-  "renderCard Schedule button block is present",
-  Boolean(schedBlockMatch),
-  "could not locate the handleSchedule TouchableOpacity",
-);
-const schedBlock = schedBlockMatch ? schedBlockMatch[0] : "";
-
-// Extract the `disabled={...}` expression of the Schedule button.
-const disabledMatch = schedBlock.match(/disabled=\{([\s\S]*?)\}/);
-ok(
-  "renderCard Schedule button has a disabled prop",
+  "grid card Schedule/primary button has a single disabled gate",
   Boolean(disabledMatch),
+  "could not locate `const primaryDisabled = …;` in SavedGridCard",
 );
 const disabledExpr = disabledMatch ? disabledMatch[1] : "";
+ok(
+  "the gate is what the button's disabled prop uses",
+  /disabled=\{primaryDisabled\}/.test(cardSrc),
+);
 
 // ── CORE REGRESSION: button must NOT be disabled on current open-now status ──
 ok(
-  "Schedule button disabled prop does NOT gate on current open-now (!isPlaceOpen removed)",
-  !/!isPlaceOpen/.test(disabledExpr),
-  `disabled expr still references open-now: «${disabledExpr.trim()}»`,
+  "Schedule button gate does NOT reference current open-now status",
+  !/isPlaceOpen|openNow|isOpenNow/.test(disabledExpr),
+  `disabled expr references open-now: «${disabledExpr.trim()}»`,
 );
 
 // The button must still be gated by the in-flight + already-scheduled states.
 ok(
-  "Schedule button is still disabled while scheduling is in flight (schedulingCardId === card.id)",
-  /schedulingCardId === card\.id/.test(disabledExpr),
+  "Schedule button is still disabled while scheduling is in flight (isScheduling)",
+  /isScheduling/.test(disabledExpr) &&
+    /isScheduling=\{schedulingCardId === card\.id\}/.test(src),
 );
 ok(
-  "Schedule button is still disabled once the card is already scheduled (isScheduled)",
-  /isScheduled/.test(disabledExpr),
+  "Schedule button is still disabled once the card is already scheduled (inCalendar)",
+  /primaryAction === "inCalendar"/.test(disabledExpr) &&
+    /isScheduled,\s*\n?\s*isEnded/.test(src),
 );
 
-// The disabled-STYLE condition must also drop the open-now term, so the button
-// does not render in the visually-disabled state when closed-now.
-const styleDisabledMatch = schedBlock.match(
-  /styles\.primaryButton,([\s\S]*?)styles\.primaryButtonDisabled/,
-);
+// ── The "currently closed" information MUST be preserved (Seth-confirmed scope) ─
 ok(
-  "renderCard Schedule button has a primaryButtonDisabled style condition",
-  Boolean(styleDisabledMatch),
-);
-const styleDisabledExpr = styleDisabledMatch ? styleDisabledMatch[1] : "";
-ok(
-  "Schedule button disabled STYLE does NOT gate on current open-now (!isPlaceOpen removed)",
-  !/!isPlaceOpen/.test(styleDisabledExpr),
-  `disabled-style expr still references open-now: «${styleDisabledExpr.trim()}»`,
-);
-
-// ── The "currently closed" label MUST be preserved (Seth-confirmed scope) ────
-ok(
-  "the placeClosed / currently-closed label is still rendered when isPlaceOpen is false",
-  /\{!isPlaceOpen && \(/.test(src) &&
-    /savedTab\.placeClosed/.test(src),
-  "the closed-now label must remain even though the button is now enabled",
+  "a closed-right-now place still says so (facts line), while the button stays enabled",
+  /if \(openNow === false\) parts\.unshift\(t\("activity:savedTab\.closedNow"\)\)/.test(cardSrc),
+  "the closed-now label must remain even though the button is enabled",
 );
 
 // ── Selected-datetime validation must still run (closed-future-time rejected) ─

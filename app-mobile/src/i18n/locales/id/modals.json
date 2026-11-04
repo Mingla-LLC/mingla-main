@@ -129,6 +129,10 @@
       "body": "Filter berdasarkan hari, suasana, musik, tujuan, dan lainnya. Pilihannya berubah setiap pil."
     },
     "list_two": "{{a}} dan {{b}}",
-    "list_three": "{{a}}, {{b}} dan {{c}}"
+    "list_three": "{{a}}, {{b}} dan {{c}}",
+    "step3": {
+      "title": "Tempat simpananmu berada",
+      "description": "Semua yang kamu beri hati masuk ke Suka. Bagikan atau masukkan ke kalender dengan sekali ketuk."
+    }
   }
 }
