@@ -1,19 +1,49 @@
 // Issue #3980 — pure words and shapes for the Work board, the Agent log and
 // To review. No React and no Supabase here, so every rule is testable alone.
 
+// #4270: three statuses. "Needs a person" is no longer a status: it is a
+// Send, Spend or Publish tag (person_reason) on a To do or In progress card.
 export const WORK_STATUSES = [
   { value: "todo", label: "To do" },
-  { value: "doing", label: "Doing" },
-  { value: "person", label: "Needs a person" },
+  { value: "doing", label: "In progress" },
   { value: "done", label: "Done" },
 ];
 
-export const PERSON_REASONS = {
-  send: "Sends a message",
-  spend: "Spends money",
-  publish: "Publishes an event",
-  other: "Needs a person",
+/** #4270: the tag's words, on the board and the card. */
+export const TAG_LABELS = {
+  send: "You send",
+  spend: "You spend",
+  publish: "You publish",
+  other: "Needs your OK",
 };
+export const PERSON_REASONS = TAG_LABELS;
+
+/** #4270: a Files link is one https link of up to 2,000 characters, no spaces. */
+export function filesUrlProblem(value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  if (v.length > 2000 || !/^https:\/\/\S+$/.test(v)) return "Links start with https://";
+  return "";
+}
+
+/** The host of a Files link, for its button: "drive.google.com". */
+export function filesHost(value) {
+  try { return new URL(String(value)).host || "files"; } catch { return "files"; }
+}
+
+/** #4270: the Status dropdown's choice, as what it does. */
+export function statusChoice(card, next) {
+  if (!card || !next || next === card.status) return null;
+  if (next === "done") return "close";
+  if (next === "doing") return card.status === "todo" ? "start" : null;
+  if (next === "todo") return card.status === "doing" ? "to_todo" : null;
+  return null;
+}
+
+/** #4270: an open card that carries a Send, Spend or Publish tag (only a person does that step). */
+export function isTagged(card) {
+  return !!card && card.status !== "done" && !card.archived && !!(card.tag || card.person_reason);
+}
 
 /**
  * #3980 W2 rework: why a card needs a person, in words. Bridge D's approval
@@ -22,7 +52,7 @@ export const PERSON_REASONS = {
  */
 export function personReasonLabel(card) {
   if (card?.auto_kind === "roadmap_shipped") return "Approve what hosts are told";
-  return PERSON_REASONS[card?.person_reason] || "Needs a person";
+  return TAG_LABELS[card?.tag || card?.person_reason] || "Needs your OK";
 }
 
 export const PERSON_ACTIONS = {
@@ -137,7 +167,7 @@ export const AGENT_RULES = [
   "After each step, reads the record back and marks the step done only if the change is really there.",
   "Never reports a step done that it could not do; it leaves it to a person with exact instructions.",
   "Closes a card only with proof of what it read back, or pushes it back as not needed or already done, with a reason.",
-  "Never sends, spends money or publishes: it sets the card to Needs a person and stops.",
+  "Never sends, spends money or publishes: it tags the card Send, Spend or Publish, leaves it in To do for a person and stops.",
   "Cannot write to someone Mingla messaged in the last 3 days, unless a person allows one more.",
   "Closing or pushing back releases its claims; it releases any other claim when it stops.",
   "Names its chat, so claims and the log show which chat did what. Two chats on one key never write over each other.",
@@ -744,7 +774,7 @@ export function kitStateChip(row) {
     if (card.status === "done") return { label: "Done", tone: "success" };
     if (card.blocked) return { label: "Blocked", tone: "error" };
     const status = WORK_STATUSES.find((s) => s.value === card.status);
-    return { label: status ? status.label : "Card", tone: card.status === "person" ? "warning" : "brand" };
+    return { label: status ? status.label : "Card", tone: isTagged(card) ? "warning" : "brand" };
   }
   if (state === "done") return { label: "Done", tone: "success" };
   if (state === "not_eligible") return { label: "Not eligible", tone: "error" };
@@ -936,60 +966,78 @@ export const ATTENTION_GROUPS = [
 ];
 
 
-/** The Work board's four columns. "Done this week" holds cards closed since Monday. */
+/**
+ * #4270: the Work board's three columns. "Done" holds cards closed since
+ * Monday. "Waiting on a person" is gone: a card that needs a person sits in
+ * To do (or In progress) with its Send, Spend or Publish tag.
+ */
 export const WORK_COLUMNS = [
-  // #4130: Needs you was retired into Work; its first column says what it holds.
-  { key: "person", label: "Waiting on a person" },
-  { key: "todo", label: "To do" },
-  { key: "doing", label: "In progress" },
-  { key: "done", label: "Done this week" },
+  { key: "todo", label: "To do", note: "Late first, then by due date" },
+  { key: "doing", label: "In progress", note: "Late first, then by due date" },
+  { key: "done", label: "Done", note: "This week, latest due first" },
 ];
 
 /** #3980 W3 rework 2: a card's status in words, for Group by Person or Event. */
 export function workStatusLabel(status) {
-  return { person: "Waiting on a person", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
+  return { todo: "To do", doing: "In progress", done: "Done" }[status] || "";
 }
 
 /**
- * #4130: "Waiting on a person" has one definition everywhere (Dashboard KPI,
- * Work menu count, Work board column, Team dashboard): an open card whose
- * status is "person", whatever the reason. A send card counts whether or not
- * its draft is ready. Drafts listed on their own are not cards.
+ * #4270: your cards due today, and overdue (ops_my_counts due_today_mine and
+ * overdue_mine) as a state: loading, error (a failed read is never 0) or
+ * ready. The Dashboard tile and the Work menu count read it.
  */
-export function isWaitingOnPerson(card) {
-  return !!card && card.status === "person" && !card.archived;
+export function dueTodayState({ enabled = true, data = null, error = null } = {}) {
+  if (!enabled) return { status: "ready", dueToday: 0, overdue: 0 };
+  if (data == null) return error ? { status: "error", dueToday: null, overdue: null } : { status: "loading", dueToday: null, overdue: null };
+  const dueToday = Number(data.due_today_mine);
+  const overdue = Number(data.overdue_mine);
+  return Number.isFinite(dueToday) && Number.isFinite(overdue)
+    ? { status: "ready", dueToday, overdue }
+    : { status: "error", dueToday: null, overdue: null };
 }
 
-/** The Work board column's count: its cards, never the loose drafts beside them. */
-export function waitingColumnCount(cards) {
-  return (Array.isArray(cards) ? cards : []).filter(isWaitingOnPerson).length;
+function dueKey(card) {
+  return card?.due_on ? String(card.due_on).slice(0, 10) : null;
 }
 
 /**
- * The server count of your own waiting cards (ops_my_counts
- * waiting_on_person_mine) as a state: loading, error (a failed read is never
- * 0) or ready.
+ * #4270 (D3): one column's order. To do and In progress: late first (oldest
+ * due first), then today, then later; a card with no date last; ties by card
+ * number. Done: latest due first, then latest closed first.
  */
-export function waitingCardsState({ enabled = true, data = null, error = null } = {}) {
-  if (!enabled) return { status: "ready", cards: 0 };
-  if (data == null) return error ? { status: "error", cards: null } : { status: "loading", cards: null };
-  const n = Number(data.waiting_on_person_mine);
-  return Number.isFinite(n) ? { status: "ready", cards: n } : { status: "error", cards: null };
+export function sortColumn(cards, key) {
+  const list = (Array.isArray(cards) ? cards : []).slice();
+  const num = (c) => Number(c?.number) || 0;
+  if (key === "done") {
+    return list.sort((a, b) => {
+      const da = dueKey(a); const db = dueKey(b);
+      if (da !== db) { if (!da) return 1; if (!db) return -1; return da < db ? 1 : -1; }
+      const ca = String(a?.closed_at || ""); const cb = String(b?.closed_at || "");
+      if (ca !== cb) return ca < cb ? 1 : -1;
+      return num(a) - num(b);
+    });
+  }
+  return list.sort((a, b) => {
+    const da = dueKey(a); const db = dueKey(b);
+    if (da !== db) { if (!da) return 1; if (!db) return -1; return da < db ? -1 : 1; }
+    return num(a) - num(b);
+  });
 }
 
 export function columnCards(cards, key, today = todayIso()) {
   const monday = mondayOf(today);
-  return (Array.isArray(cards) ? cards : []).filter((c) => {
+  return sortColumn((Array.isArray(cards) ? cards : []).filter((c) => {
     if (key === "done") return c.status === "done" && (!c.closed_at || String(c.closed_at).slice(0, 10) >= monday);
     return c.status === key;
-  });
+  }), key);
 }
 
 /** Red reason badges on a work card: No owner, Overdue <n>d, No update for <n>d. */
 export function cardReasons(card, now = Date.now()) {
   const out = [];
   if (!card || card.status === "done") return out;
-  if (card.status !== "person" && !(card.owners || []).length) out.push("No owner");
+  if (!(card.owners || []).length) out.push("No owner");
   if (card.due_on) {
     const days = Math.round((new Date(`${todayIso(new Date(now))}T00:00:00Z`) - new Date(`${String(card.due_on).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
     if (days > 0) out.push(`Overdue ${days}d`);

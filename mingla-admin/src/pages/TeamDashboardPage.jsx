@@ -4,7 +4,7 @@
 //
 // Issue #4130 (Wave 1) — one row of numbers first (hosts contacted, hosts
 // onboarded against the target, events coming up with a runway warning,
-// creators moved to Booked, new beta leads, cards waiting on a person), then
+// creators moved to Booked, new beta leads, cards that need your OK), then
 // how the hosts and creators pipelines moved, the due and overdue list, the
 // targets, and the event runway collapsed at the bottom. The one-time
 // settings (automatic steps, brands without a host card, turning next steps
@@ -195,7 +195,8 @@ export function TeamDashboardPage() {
     pulse: pulse.data,
     targets: data?.targets,
     runway: overview.data?.runway,
-    waiting: waiting.data ? Number(waiting.data?.counts?.person ?? 0) : null,
+    // #4270: open cards with a Send, Spend or Publish tag (status person is the server's alias).
+    waiting: waiting.data ? Number(waiting.data?.counts?.tagged ?? waiting.data?.counts?.person ?? 0) : null,
     config,
     period,
   });

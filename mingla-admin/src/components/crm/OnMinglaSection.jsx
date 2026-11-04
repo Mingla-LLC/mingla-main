@@ -24,6 +24,7 @@ import {
   hostUpcomingRows,
   isRecapWorkCard,
   opsErrorWords,
+  personReasonLabel,
   requestKey,
   todayIso,
 } from "../../lib/opsModel";
@@ -43,7 +44,8 @@ function calendarHref(kind, id, onDate) {
 }
 
 function workWords(card) {
-  if (card.status === "person") return "Needs you";
+  // #4270: a tagged card says what the person does.
+  if (card.status !== "done" && (card.tag || card.person_reason)) return personReasonLabel(card);
   if (card.status === "doing") return "In progress";
   if (card.status === "done") return "Done";
   return "To do";

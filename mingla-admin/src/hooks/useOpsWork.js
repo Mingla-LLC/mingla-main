@@ -68,12 +68,13 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
  * The Work board list, refreshed every 30 seconds while visible. #4130: the
  * person chips filter it on the server by `owner`, and the search box by `q`.
  */
-export function useOpsWork({ who = "all", week = null, owner = null, q = "", enabled = true } = {}) {
+export function useOpsWork({ who = "all", week = null, owner = null, q = "", limit = null, enabled = true } = {}) {
   const { access } = useAuth();
   const search = String(q || "").trim();
-  const query = { who, today: todayIso(), ...(week ? { week } : {}), ...(owner ? { owner } : {}), ...(search ? { q: search } : {}) };
+  // #4270: the board asks for up to 300 cards and says so when there are more.
+  const query = { who, today: todayIso(), ...(week ? { week } : {}), ...(owner ? { owner } : {}), ...(search ? { q: search } : {}), ...(limit ? { limit } : {}) };
   // #4255: only while the board is on screen (the other tabs read their own window).
-  return useOpsPoll(() => ops.listWork(query), { key: `${access?.email || ""}|${who}|${week || ""}|${owner || ""}|${search}`, intervalMs: 30_000, enabled });
+  return useOpsPoll(() => ops.listWork(query), { key: `${access?.email || ""}|${who}|${week || ""}|${owner || ""}|${search}|${limit || ""}`, intervalMs: 30_000, enabled });
 }
 
 /** Wave 3 — the Team dashboard's runway, sprint and host-owner numbers (owner and admins). */

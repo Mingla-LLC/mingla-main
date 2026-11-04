@@ -1,6 +1,6 @@
 // Issue #4130 (Wave 1) — the Work page's four views (Board, Today, This week,
-// This month), the person filter, and the waiting drafts that sit in the
-// Waiting on a person column now that Needs you is gone.
+// This month), the person filter, and the waiting drafts that sit at the top
+// of To do (#4270: Waiting on a person became a Send, Spend or Publish tag).
 //
 // Pure module: no React, no Supabase. The page, the views and a plain node
 // test read it.
@@ -24,6 +24,8 @@ export const WORK_SHOW = Object.freeze([
   Object.freeze({ value: "", label: "All cards" }),
   Object.freeze({ value: "watch", label: "Cards I watch" }),
   Object.freeze({ value: "attention", label: "Needs attention" }),
+  // #4270 (D2): what To review was, as a Show option.
+  Object.freeze({ value: "needs_ok", label: "Needs your OK" }),
   Object.freeze({ value: "overdue", label: "Overdue" }),
   Object.freeze({ value: "blocked", label: "Blocked" }),
 ]);
@@ -73,6 +75,11 @@ function linkKinds(card) {
   return kinds;
 }
 
+/** #4270: an open card with a Send, Spend or Publish tag (only a person does that step). */
+export function isTagged(card) {
+  return !!card && card.status !== "done" && !card.archived && !!(card.tag || card.person_reason);
+}
+
 function isOverdue(card, today) {
   if (!card || card.status === "done" || !card.due_on) return false;
   if (typeof card.overdue === "boolean") return card.overdue;
@@ -80,12 +87,12 @@ function isOverdue(card, today) {
 }
 
 /**
- * Needs attention, on a card: blocked, waiting on a person, overdue, with no
+ * Needs attention, on a card: blocked, tagged for a person, overdue, with no
  * owner, or doing with no update for a week (the card's red reasons).
  */
 export function needsAttention(card, today, reasons = []) {
   if (!card || card.status === "done") return false;
-  return !!card.blocked || card.status === "person" || isOverdue(card, today) || (Array.isArray(reasons) && reasons.length > 0);
+  return !!card.blocked || isTagged(card) || isOverdue(card, today) || (Array.isArray(reasons) && reasons.length > 0);
 }
 
 /**
@@ -93,7 +100,7 @@ export function needsAttention(card, today, reasons = []) {
  * (Show: Cards I watch), `reasonsOf(card)` the card's red reasons (Needs
  * attention), `today` the viewer's YYYY-MM-DD.
  */
-export function workFilter(cards, { owner = null, show = "", linked = "", q = "", me = "", today = "", reasonsOf = null } = {}) {
+export function workFilter(cards, { owner = null, show = "", linked = "", q = "", me = "", today = "", reasonsOf = null, isAdmin = false } = {}) {
   const needle = String(q || "").trim().toLowerCase();
   const mine = String(me || "").toLowerCase();
   const who = String(owner || "").toLowerCase();
@@ -114,6 +121,9 @@ export function workFilter(cards, { owner = null, show = "", linked = "", q = ""
         return (c.watchers || []).some((o) => String(o.email || "").toLowerCase() === mine);
       case "attention":
         return needsAttention(c, today, reasonsOf ? reasonsOf(c) : []);
+      case "needs_ok":
+        // #4270: open tagged cards I own; the owner and admins see every one.
+        return isTagged(c) && (isAdmin || (c.owners || []).some((o) => String(o.email || "").toLowerCase() === mine));
       case "overdue":
         return isOverdue(c, today);
       case "blocked":
@@ -253,7 +263,8 @@ export const PERIOD_BUCKETS = Object.freeze([
   Object.freeze({ key: "done", label: "Done" }),
   Object.freeze({ key: "doing", label: "Doing" }),
   Object.freeze({ key: "blocked", label: "Blocked" }),
-  Object.freeze({ key: "waiting", label: "Waiting on a person" }),
+  // #4270: tagged cards; the key stays "waiting" so saved views and rows keep working.
+  Object.freeze({ key: "waiting", label: "Needs your OK" }),
 ]);
 
 /** Which list of a period a card is in, or null (a To do card, or out of the window). */
@@ -267,15 +278,15 @@ export function periodBucket(card, win) {
   if (due && win.dueBy && due > win.dueBy) return null;
   if (card.blocked) return "blocked";
   if (card.status === "doing") return "doing";
-  if (card.status === "person") return "waiting";
+  if (isTagged(card)) return "waiting";
   return null;
 }
 
 const NO_OWNER = "";
 
 /**
- * Per person, the four lists of a period: Done, Doing, Blocked, Waiting on a
- * person. A card with two owners is listed under both; one with none under
+ * Per person, the four lists of a period: Done, Doing, Blocked, Needs your OK
+ * (open cards with a Send, Spend or Publish tag). A card with two owners is listed under both; one with none under
  * "No owner". `people` (the team, in its order) names the rows; owners not
  * on the team come after them. `totals` count each card once.
  */
@@ -328,7 +339,7 @@ export function periodShown(list, expanded, limit = PERIOD_LIST_LIMIT) {
 
 // ── Words ────────────────────────────────────────────────────────────────
 
-const STATUS_WORDS = { todo: "To do", doing: "In progress", person: "Waiting on a person", done: "Done" };
+const STATUS_WORDS = { todo: "To do", doing: "In progress", done: "Done" };
 
 const ACTION_WORDS = {
   added: "added",
@@ -409,7 +420,7 @@ export function standupRows(people, cards, closedByPerson) {
       name: p.name || email,
       done: closed.get(email) || 0,
       doing: mine.filter((c) => c.status === "doing" && !c.blocked),
-      blocked: mine.filter((c) => c.status === "person" || c.blocked),
+      blocked: mine.filter((c) => isTagged(c) || c.blocked),
     };
   });
 }
@@ -443,14 +454,14 @@ export function cardRecordIds(card) {
 
 /** A card that waits for a person to send a message. */
 export function isSendCard(card) {
-  return !!card && card.status === "person" && card.person_reason === "send" && !card.archived;
+  return isTagged(card) && (card.tag || card.person_reason) === "send";
 }
 
 /**
  * Waiting drafts split between the cards that carry them and the drafts no
  * open send card covers. Covered drafts open from their card; the rest are
- * listed on their own in the Waiting on a person column, so no draft the old
- * Needs you page showed is lost.
+ * listed on their own at the top of To do (#4270), so no draft the old Needs
+ * you page showed is lost.
  */
 export function splitDrafts(drafts, cards) {
   const byCard = new Map();

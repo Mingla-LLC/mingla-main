@@ -13,7 +13,7 @@ import { todayIso } from "../../lib/opsModel";
 export async function loadToday(owner) {
   const now = new Date();
   const [open, standup, feed] = await Promise.all([
-    ops.listWork({ status: ["todo", "doing", "person"], done_days: 0, limit: 300, ...(owner ? { owner } : {}) }),
+    ops.listWork({ status: ["todo", "doing"], done_days: 0, limit: 300, ...(owner ? { owner } : {}) }),
     ops.fetchEventsSince(standupSince(now).toISOString(), owner),
     ops.fetchEventsSince(lastDaySince(now).toISOString(), owner),
   ]);
@@ -70,7 +70,7 @@ async function closedInWindow(base, win, list) {
 export async function loadPeriod(win, { owner = null, who = "all", q = "" } = {}, list = ops.listWork) {
   const base = { who, today: todayIso(), ...(owner ? { owner } : {}), ...(q ? { q } : {}) };
   const [open, done, feed] = await Promise.all([
-    listAllWork({ ...base, status: ["todo", "doing", "person"], done_days: 0 }, list),
+    listAllWork({ ...base, status: ["todo", "doing"], done_days: 0 }, list),
     closedInWindow(base, win, list),
     win.view === "today" ? ops.fetchEventsSince(lastDaySince().toISOString(), owner) : Promise.resolve(null),
   ]);

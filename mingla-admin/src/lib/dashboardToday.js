@@ -82,7 +82,7 @@ export function queueHealthItem(source) {
 
 /**
  * Everything that needs a person today, most urgent first.
- *   sources.work     { cards }                 (useReviewCount)
+ *   sources.work     { dueToday, overdue }     (useReviewCount, #4270)
  *   sources.money    admin_mingla_money_summary (all time)
  *   sources.health   admin_get_api_health services
  *   sources.queue    admin_get_queue_health (only its failure matters here)
@@ -123,12 +123,14 @@ export function needsYouToday(sources = {}) {
   if (q) items.push(q);
 
   if (work?.status === "error") items.push(failed("work", "work", "Work", "work"));
-  else if (work?.status === "ready" && Number(work.data?.cards) > 0) {
-    const n = Number(work.data.cards);
+  else if (work?.status === "ready" && (Number(work.data?.dueToday) > 0 || Number(work.data?.overdue) > 0)) {
+    // #4270: what is due today for you, with the overdue count.
+    const n = Number(work.data.dueToday) || 0;
+    const late = Number(work.data.overdue) || 0;
     items.push({
-      id: "work-waiting", area: "work", areaLabel: AREA_LABEL.work, tone: "warn",
-      title: `${plural(n, "Work card is", "Work cards are")} waiting on you`,
-      detail: "Messages to send, spend or publish to approve.",
+      id: "work-due", area: "work", areaLabel: AREA_LABEL.work, tone: late > 0 ? "bad" : "warn",
+      title: `${plural(n, "Work card", "Work cards")} due today for you`,
+      detail: `${late} overdue`,
       href: "#/work-board",
     });
   }
