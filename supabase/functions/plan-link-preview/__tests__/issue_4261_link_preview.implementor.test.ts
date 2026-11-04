@@ -138,11 +138,11 @@ function streamOf(chunks: () => Uint8Array | null): { response: Response; pulled
 }
 
 Deno.test("limits: the head read stops at 512 KB when no </head> comes", async () => {
-  const chunk = new TextEncoder().encode("a".repeat(64 * 1024));
+  const chunk = new TextEncoder().encode("a".repeat(100_000)); // not a divisor of 512 KB
   const { response, pulled } = streamOf(() => chunk); // never ends
   const text = await readHead(response);
   assertEquals(text.length, HEAD_MAX_BYTES);
-  assertEquals(pulled() <= 9, true);
+  assertEquals(pulled() <= 7, true);
 });
 
 Deno.test("limits: the head read stops at the first </head>", async () => {

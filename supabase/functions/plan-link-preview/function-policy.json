@@ -3,10 +3,15 @@
   "kind": "edge-function-policy",
   "name": "plan-link-preview",
   "verify_jwt": true,
-  "gateway_reason": "Signed-in chat members ask for their plan's link previews; the function reads which links to fetch through chat_plan_link_targets as the caller and writes only through the service-role store.",
+  "gateway_reason": "Signed-in chat members ask for their plan's link previews; the function reads which links to fetch through chat_plan_link_targets as the caller and writes only through the service-role store. The optional names are read only by the shared Ari research module it imports for the SSRF-safe fetch.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": [],
+    "optional_top_level": [
+      "ARI_LOCAL_MODEL_ENABLED",
+      "GEMINI_API_KEY_ARI",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT"
+    ],
     "required_bundle_fields": {},
     "required_top_level": []
   }
