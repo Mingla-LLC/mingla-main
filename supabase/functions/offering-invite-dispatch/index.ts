@@ -74,6 +74,11 @@ interface WizardOutboxJob {
   brandPersonIds: string[];
   /** #3682 wave 2 — followers (not in Your Book) invited by account. */
   accountRecipientCount?: number;
+  /**
+   * #4273 — the methods the host ticked ("How to reach them"), sealed at
+   * publish. null/absent = automatic (every live method), as before.
+   */
+  deliveryChannels?: Channel[] | null;
   selectionHash: string;
   selectionRevision: number;
   leaseToken: string;
@@ -186,6 +191,21 @@ function currentWizardDeliveryPolicy(): {
     smsNg,
     smsUs,
   };
+}
+
+/**
+ * #4273 — the wizard's Book-lane methods: the live delivery policy narrowed to
+ * the methods the host ticked. A plan with no stored methods (null) keeps the
+ * automatic behaviour. May be empty when every ticked method is switched off.
+ */
+export function wizardChannelsFor(
+  policyChannels: Channel[],
+  chosen: unknown,
+): Channel[] {
+  if (chosen === null || chosen === undefined) return [...policyChannels];
+  if (!Array.isArray(chosen)) throw new Error("wizard_invite_methods_invalid");
+  const picked = new Set(chosen);
+  return policyChannels.filter((channel) => picked.has(channel));
 }
 
 function applyWizardSmsMarketFlags(
@@ -581,7 +601,7 @@ export async function handleWizardWorker(
           continue;
         }
       }
-      let channels = policy.channels;
+      let channels = wizardChannelsFor(policy.channels, job.deliveryChannels);
       const selection = {
         kind: "resolved_brand_people_v1" as const,
         source: "guest_roster_actions",
@@ -589,6 +609,38 @@ export async function handleWizardWorker(
         selectionHash: job.selectionHash,
       };
       let group: { groupId: string; campaignIds: string[] };
+      if (
+        channels.length === 0 && !job.executionSealed &&
+        job.committedGroupId === null
+      ) {
+        // #4273 — every method the host ticked is switched off right now, so
+        // the Book lane has nothing it may use. Nothing is sent by a method
+        // the host did not pick.
+        const { error: noMethodsError } = await service.rpc(
+          "issue_4273_complete_wizard_invite_outbox_no_methods_v1",
+          {
+            p_outbox_job_id: job.outboxJobId,
+            p_sealed_selection_id: job.sealedSelectionId,
+            p_lease_token: job.leaseToken,
+          },
+        );
+        if (noMethodsError) throw new Error("no_methods_completion_failed");
+        observeWizardInvite("wizard_invite_outbox_succeeded", {
+          offering_kind: job.eventType,
+          selection_revision: job.selectionRevision,
+          selected_count: job.brandPersonIds.length,
+          can_receive: 0,
+          skipped: job.brandPersonIds.length,
+          job_state: "succeeded",
+          attempt_count: job.attemptCount,
+        });
+        outcomes.push({
+          outboxJobId: job.outboxJobId,
+          status: "succeeded_no_methods",
+          providerIo,
+        });
+        continue;
+      }
       if (
         job.executionSealed && job.sealedQueuedCount === 0 &&
         job.committedGroupId === null
@@ -621,7 +673,7 @@ export async function handleWizardWorker(
         continue;
       }
       if (job.committedGroupId !== null) {
-        channels = job.committedChannels ?? policy.channels;
+        channels = job.committedChannels ?? channels;
         const { data: campaignRows, error: campaignError } = await service.from(
           "marketing_send_group_campaigns",
         ).select("campaign_id").eq("send_group_id", job.committedGroupId);
@@ -903,6 +955,41 @@ export async function mergeWizardAccountQuote(
   };
 }
 
+/**
+ * #4273 — the Book-lane estimate when every method the host ticked is switched
+ * off: nobody in Your Book can receive, nothing costs money. The hash binds the
+ * revision so a publish confirmation cannot match a different selection.
+ */
+export async function noMethodsWizardQuote(input: {
+  selectedCount: number;
+  selectionRevision: number;
+  selectionHash: string;
+  currency: string;
+}): Promise<Record<string, unknown>> {
+  return {
+    mode: "preview",
+    quoteHash: await sha256Hex(
+      `wizard-no-methods|${input.selectionRevision}|${input.selectionHash}`,
+    ),
+    quotedAt: new Date().toISOString(),
+    selectedCount: input.selectedCount,
+    eligibleCount: 0,
+    reachableCount: 0,
+    suppressedCount: 0,
+    canReceiveCount: 0,
+    skippedCount: input.selectedCount,
+    skipReasonCounts: {},
+    perChannelReachable: { email: 0, sms: 0, push: 0 },
+    smsSegments: 0,
+    estimatedCostMinor: 0,
+    currency: input.currency,
+    lastContactAt: null,
+    selectionRevision: input.selectionRevision,
+    selectionHash: input.selectionHash,
+    providerIo: false,
+  };
+}
+
 async function handleWizardPreview(
   user: WizardServiceClient,
   service: WizardServiceClient,
@@ -941,6 +1028,35 @@ async function handleWizardPreview(
     selectionHash,
   };
   try {
+    // #4273 — quote only the methods the host ticked.
+    const channels = wizardChannelsFor(policy.channels, plan.deliveryChannels);
+    const account = await quoteWizardAccountRecipients(
+      service,
+      actorId,
+      body.eventId,
+      body.selectionRevision,
+      Number(plan.accountRecipientCount ?? 0),
+    );
+    if (channels.length === 0) {
+      const eventCurrency = await service.from("events").select("currency")
+        .eq("id", body.eventId).maybeSingle();
+      if (eventCurrency.error) throw new Error("quote_failed");
+      return json(
+        await mergeWizardAccountQuote(
+          await noMethodsWizardQuote({
+            selectedCount: personIds.length,
+            selectionRevision: body.selectionRevision,
+            selectionHash,
+            currency: resolveWizardQuoteCurrency(
+              0,
+              null,
+              eventCurrency.data?.currency,
+            ),
+          }),
+          account,
+        ),
+      );
+    }
     const [{ data: quoteData, error: quoteError }, eventCurrency] =
       await Promise
         .all([
@@ -949,7 +1065,7 @@ async function handleWizardPreview(
             p_event_id: body.eventId,
             p_purpose: "invitation",
             p_selection: selection,
-            p_channels: policy.channels,
+            p_channels: channels,
           }),
           service.from("events").select("currency").eq("id", body.eventId)
             .maybeSingle(),
@@ -966,7 +1082,7 @@ async function handleWizardPreview(
       eventId: body.eventId,
       brandId: quoted.brandId,
       purpose: "invitation",
-      channels: policy.channels,
+      channels,
       selectionHash,
       candidates: quoted.candidates,
       content: {},
@@ -982,13 +1098,6 @@ async function handleWizardPreview(
       string,
       number
     >;
-    const account = await quoteWizardAccountRecipients(
-      service,
-      actorId,
-      body.eventId,
-      body.selectionRevision,
-      Number(plan.accountRecipientCount ?? 0),
-    );
     return json(
       await mergeWizardAccountQuote({
         ...preview,
