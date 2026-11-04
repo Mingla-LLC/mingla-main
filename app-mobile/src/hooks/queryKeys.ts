@@ -156,3 +156,11 @@ export const contentShareRecipientKeys = {
   all: ['contentShareRecipients'] as const,
   list: (userId: string) => [...contentShareRecipientKeys.all, 'list', userId] as const,
 };
+
+// #4265 — the signed-in user's `preferences` row. Same key every existing
+// reader already uses (['userPreferences', userId]); named here so new readers
+// go through the factory.
+export const userPreferencesKeys = {
+  all: ['userPreferences'] as const,
+  detail: (userId: string) => [...userPreferencesKeys.all, userId] as const,
+};
