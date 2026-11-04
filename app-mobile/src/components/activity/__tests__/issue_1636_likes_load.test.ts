@@ -205,34 +205,35 @@ describe("A. place-photo thumbnail helper", () => {
     assert.match(src, /const\s*\{[^}]*fallbackUri[^}]*\}\s*=\s*props/);
   });
 
-  test("A-8 SavedTab routes BOTH of its small image sites through the helper", () => {
-    const saved = readCode("app-mobile/src/components/activity/SavedTab.tsx");
+  test("A-8 the Likes grid card routes its cover through the helper", () => {
+    // Issue #4265: the two list rows (80pt thumb + 3-image curated strip) were
+    // replaced by ONE grid card whose 4:5 cover — place photo, first stop of a
+    // plan, or a brand event cover — goes through the same helper.
+    const card = readCode("app-mobile/src/components/activity/SavedGridCard.tsx");
     assert.match(
-      saved,
+      card,
       /import\s*\{\s*resolvePlacePhotoThumbSource\s*\}\s*from\s*["']\.\.\/\.\.\/utils\/placePhotoThumb["']/,
-      "SavedTab imports the shared helper",
+      "SavedGridCard imports the shared helper",
     );
-    // The 80x80 simple-card thumbnail.
     assert.match(
-      saved,
-      /const thumb = resolvePlacePhotoThumbSource\(card\.image\)/,
-      "simple card resolves a thumb for its 80pt image",
+      card,
+      /const thumb = resolvePlacePhotoThumbSource\(coverUrl\)/,
+      "the grid cover resolves a thumb",
     );
-    // The 3-image curated strip.
-    assert.match(
-      saved,
-      /const stopThumb = resolvePlacePhotoThumbSource\(stop\.imageUrl\)/,
-      "curated strip resolves a thumb per stop image",
-    );
-    // Both must arm the fallback.
-    assert.match(saved, /fallbackUri=\{thumb\?\.fallbackUri\}/);
-    assert.match(saved, /fallbackUri=\{stopThumb\?\.fallbackUri\}/);
+    // A place with no thumb yet must still fall back to its original.
+    assert.match(card, /thumb\?\.fallbackUri/);
+    assert.match(card, /onError=\{handleImageError\}/);
     // And the transformation endpoint must never appear.
-    assert.doesNotMatch(
-      saved,
-      /render\/image\//,
-      "must not use the billed Supabase image-transformation endpoint",
-    );
+    for (const rel of [
+      "app-mobile/src/components/activity/SavedTab.tsx",
+      "app-mobile/src/components/activity/SavedGridCard.tsx",
+    ]) {
+      assert.doesNotMatch(
+        readCode(rel),
+        /render\/image\//,
+        "must not use the billed Supabase image-transformation endpoint",
+      );
+    }
   });
 });
 
@@ -367,14 +368,17 @@ describe("C. Saved list virtualisation contract", () => {
   });
 
   test("C-2 rows are memoised components, not inline render functions", () => {
-    assert.match(saved, /const SavedSimpleCardRow = React\.memo\(/);
-    assert.match(saved, /const SavedCuratedCardRow = React\.memo\(/);
-    // Both heterogeneous card types must still be reachable.
-    assert.match(saved, /<SavedSimpleCardRow/);
-    assert.match(saved, /<SavedCuratedCardRow/);
+    // Issue #4265: one memoised grid card replaced the two list rows.
+    const card = readCode("app-mobile/src/components/activity/SavedGridCard.tsx");
+    assert.match(card, /export const SavedGridCard = React\.memo\(/);
+    assert.match(saved, /<SavedGridCard/);
+    assert.doesNotMatch(saved, /SavedSimpleCardRow|SavedCuratedCardRow/, "old list rows are back");
+    // Curated plans and brand events must still be told apart.
+    assert.match(saved, /isCurated=\{isCuratedCard\}/);
+    assert.match(saved, /isBrandExperience=\{isBrandExperience\}/);
     assert.match(
       saved,
-      /Array\.isArray\(\(card as any\)\.stops\) && \(card as any\)\.stops\.length > 0/,
+      /Array\.isArray\(\(card as any\)\.stops\) &&\s*\(card as any\)\.stops\.length > 0/,
       "curated/simple discrimination must survive",
     );
     // Memoised rows need stable callbacks or the memo is decorative.
@@ -384,7 +388,8 @@ describe("C. Saved list virtualisation contract", () => {
 
   test("C-3 filter bar, empty state, refresh and keyboard behaviour all survive", () => {
     assert.match(saved, /ListHeaderComponent=\{listHeader\}/, "filter bar is the list header");
-    assert.match(saved, /<CardFilterBar/, "filter bar still rendered");
+    // Issue #4265: the dark search header replaced the light CardFilterBar.
+    assert.match(saved, /<SavedSearchHeader/, "search header still rendered");
     assert.match(saved, /ListEmptyComponent=\{listEmpty\}/, "empty state preserved");
     assert.match(saved, /const listEmpty = useMemo\(\s*\(\) => renderEmptyComponent\(\)/);
     assert.match(saved, /refreshControl=\{<RefreshControl/, "pull-to-refresh preserved");
@@ -398,7 +403,7 @@ describe("C. Saved list virtualisation contract", () => {
     for (const key of [
       "savedTab.loadingSaved",
       "savedTab.errorTitle",
-      "savedTab.noMatchesTitle",
+      "savedFilters.noMatchTitle",
       "savedTab.emptyTitle",
     ]) {
       assert.ok(saved.includes(key), `empty-state branch ${key} was dropped`);
@@ -429,11 +434,8 @@ describe("C. Saved list virtualisation contract", () => {
       /^const styles = StyleSheet\.create\(\{/m,
       "styles must be at module scope",
     );
-    assert.match(
-      saved,
-      /^const curatedSavedStyles = StyleSheet\.create\(\{/m,
-      "curatedSavedStyles must be at module scope",
-    );
+    // Issue #4265: curatedSavedStyles went with the curated list row.
+    assert.doesNotMatch(saved, /curatedSavedStyles/);
     assert.doesNotMatch(
       saved,
       /^ {2}const styles = StyleSheet\.create\(\{/m,

@@ -20,3 +20,15 @@ export const discoverKeys = {
   cityWatch: (cityKey: string, userId: string) =>
     [...discoverKeys.all, 'cityWatch', cityKey, userId] as const,
 };
+
+/**
+ * #4265 — the last Discover city shown to a user, so the next mount (including
+ * the first one after a cold start, via the persisted cache) can paint at once.
+ * Its own root so a Discover pull-to-refresh (`discoverKeys.all`) never touches
+ * it. The user id in the key makes the persister drop it for any other account
+ * and logout's `queryClient.clear()` remove it.
+ */
+export const discoverLastCityKeys = {
+  all: ['discover-last-city'] as const,
+  forUser: (userId: string) => [...discoverLastCityKeys.all, userId] as const,
+};

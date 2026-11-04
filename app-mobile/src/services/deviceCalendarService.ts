@@ -2,6 +2,7 @@ import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
 import { tierLabel, tierRangeLabel } from '../constants/priceTiers';
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
+import { curatedTotalPriceRange } from '../utils/curatedPriceRange';
 
 export interface DeviceCalendarEvent {
   title: string;
@@ -243,7 +244,8 @@ export class DeviceCalendarService {
         card.tagline || '',
         '',
         `Total estimated time: ${totalDurationMinutes} minutes`,
-        `Estimated cost: $${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
+        // #4265: same open-ended rule as the cards — never "$100–$0".
+        `Estimated cost: ${curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded)}`,
         '',
         '--- Stops ---',
         stopDetails,

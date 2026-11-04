@@ -92,11 +92,13 @@ Deno.test("W5 invite cards render in the thread from the system rows", async () 
 
 Deno.test("W5 the Chats list learns the live session from the access RPC (no new list query)", async () => {
   const messaging = strip(await read("services/messagingService.ts"));
-  const list = body(messaging, /async getConversations\(userId: string\): Promise<[^\n]*> \{/);
+  // #4265: an optional `options` parameter (deferSenderProfiles) follows userId.
+  const list = body(messaging, /async getConversations\(\s*userId: string,[\s\S]*?\): Promise<[^\n]*> \{/);
   assert(/live_session_id: row\.live_session_id \?\? null/.test(list), "read from list_connection_conversation_access");
   assert((list.match(/supabase\s*\.from\(|supabase\.rpc\(/g) ?? []).length === 4, "still 3 parallel reads + 1 profile batch");
-  const page = strip(await read("components/ConnectionsPage.tsx"));
-  assert(/live_session_status: \(conv as any\)\.live_session_status \?\? null/.test(page), "carried into the list row");
+  // #4265: the list-row transform moved to connections/chatListLoad.ts.
+  const load = strip(await read("components/connections/chatListLoad.ts"));
+  assert(/live_session_status: conv\.live_session_status \?\? null/.test(load), "carried into the list row");
 });
 
 Deno.test("W5 every new chat string exists in all 29 locales (bin/ha/ig/yo in English)", async () => {

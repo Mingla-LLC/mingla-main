@@ -90,7 +90,10 @@ describe.each([
 
   test("B3: the canonical wordmark image contract survives", () => {
     if (name === "ShareModal") {
-      const poster = imageBlocks(source).find((b) =>
+      // [TEST-MOD-APPROVED #4265] the share sheet's cover now renders through
+      // expo-image (`<ExpoImage>`, memory-disk cache) instead of RN `<Image>`;
+      // the poster source and style contract are unchanged.
+      const poster = (source.match(/<ExpoImage\b[\s\S]*?\/>/g) ?? []).find((b) =>
         b.includes("source={{ uri: prepared.media.posterUrl }}"),
       );
       expect(poster).toBeDefined();

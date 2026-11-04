@@ -15,6 +15,8 @@ export interface CuratedStop {
   priceTier: PriceTierSlug;
   priceMin: number;
   priceMax: number;
+  /** #4265: the max is unknown ("$100+"); priceMax then equals priceMin. */
+  priceOpenEnded?: boolean;
   // ORCH-1019 F-7: runtime value is the raw Google Places v1 object passed
   // through verbatim by generate-curated-experiences (index.ts:567) →
   // signalRankFetch. The old Record<string,string> was a type lie that let
@@ -90,6 +92,8 @@ export interface CuratedExperienceCard {
   stops: CuratedStop[];
   totalPriceMin: number;
   totalPriceMax: number;
+  /** #4265: at least one stop's max is unknown; print the total as "from". */
+  totalPriceOpenEnded?: boolean;
   estimatedDurationMinutes: number;
   matchScore: number;
   shoppingList?: string[];  // AI-generated picnic shopping checklist (picnic-dates only)

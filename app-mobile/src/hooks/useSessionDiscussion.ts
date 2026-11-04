@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-q
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { messagingService, DirectMessage } from '../services/messagingService';
+import { invalidateChatListWith } from '../services/chatListRefresh';
 import { useChatPresence } from './useChatPresence';
 
 /**
@@ -79,12 +80,15 @@ export function useSessionDiscussion(
       }
       setConversationError(null);
       setConversationId(conversation.id);
+      // #4265: the session's group chat may have just been created (or this
+      // user just added to it) — the Chats list must show it.
+      void invalidateChatListWith(queryClient);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, queryClient]);
 
   // 1. Fetch messages with infinite scroll (page size 30, matching legacy hook behavior).
   const messagesQuery = useInfiniteQuery({

@@ -129,6 +129,10 @@
       "body": "Yẹ vbe ẹdẹ, ivbe, ason, ehe ne u gha ya vbe emwin ọkhọ. Iyẹ na ghe gha ye ukhọ ne u ya."
     },
     "list_two": "{{a}} vbe {{b}}",
-    "list_three": "{{a}}, {{b}} vbe {{c}}"
+    "list_three": "{{a}}, {{b}} vbe {{c}}",
+    "step3": {
+      "title": "Ehe ne emwin ne u koko ye",
+      "description": "Emwin hia ne u bi ẹkoo ye rrie Emwi ne i hẹnmwẹ. Ghaẹn ẹre ra mu ẹre rrie ikalendẹ ruẹ vbe ọkpa."
+    }
   }
 }

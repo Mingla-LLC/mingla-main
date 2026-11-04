@@ -325,23 +325,23 @@ describe("Issue #1636 T-2 — the retry is armed only where a second request cou
 describe("Issue #1636 T-3 — a 384 px asset is for an 80 pt row and nowhere else", () => {
   const THUMB_HELPERS = /resolvePlacePhotoThumbSource|getPlacePhotoThumbUrl/;
 
-  test("T-3.1 the Likes saved rows are wired to the helper", () => {
-    const savedTab = read("app-mobile/src/components/activity/SavedTab.tsx");
+  test("T-3.1 the Likes saved grid card is wired to the helper", () => {
+    // Issue #4265: the grid card (SavedGridCard.tsx) replaced both list rows.
+    // The approved design asks for the existing 384 px thumb behind the ~180 pt
+    // 4:5 cover — image transformations are barred by the spend-cap hold, so
+    // the stored thumb is the only small asset there is.
+    const card = read("app-mobile/src/components/activity/SavedGridCard.tsx");
     assert.match(
-      savedTab,
+      card,
       /import\s*\{\s*resolvePlacePhotoThumbSource\s*\}\s*from\s*["']\.\.\/\.\.\/utils\/placePhotoThumb["']/,
-      "SavedTab no longer derives thumbs — Likes is back to full-size originals in an 80 pt box",
+      "the grid card no longer derives thumbs — Likes is back to full-size originals",
     );
-    // Both card shapes: the simple row's single image and the curated row's stops.
-    const callSites = savedTab.match(/resolvePlacePhotoThumbSource\(/g) ?? [];
-    assert.ok(
-      callSites.length >= 2,
-      `expected the helper at both the simple-row and curated-stop image sites, found ${callSites.length}`,
-    );
+    const callSites = stripComments(card).match(/resolvePlacePhotoThumbSource\(/g) ?? [];
+    assert.equal(callSites.length, 1, `expected the helper once, at the cover, found ${callSites.length}`);
     assert.match(
-      savedTab,
-      /fallbackUri=\{[^}]*fallbackUri\}/,
-      "SavedTab derives a thumb but never passes the fallback down — an uncovered place renders a hole",
+      card,
+      /thumb\?\.fallbackUri/,
+      "the card derives a thumb but never uses the fallback — an uncovered place renders a hole",
     );
   });
 

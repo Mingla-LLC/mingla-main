@@ -34,7 +34,10 @@ const source = fs.readFileSync(path.join(ROOT, PROVIDER), "utf8");
 function extractOpen() {
   const start = source.indexOf("const openContentShare = useCallback((nextInput: OpenContentShareInput): void => {");
   assert.notEqual(start, -1, "openContentShare is no longer where it was");
-  const end = source.indexOf("}, [loadRecipients, loadShare, visible]);", start);
+  // [TEST-MOD-APPROVED #4265] the tail gained `flushAfterOpen` (results wait for the
+  // open animation) and recipients load through one React Query, so
+  // `loadRecipients()` no longer threads the token. The executed order is unchanged.
+  const end = source.indexOf("}, [flushAfterOpen, loadRecipients, loadShare, visible]);", start);
   assert.notEqual(end, -1, "openContentShare's dependency tail is no longer where it was");
   const body = source
     .slice(start, end)
@@ -42,7 +45,7 @@ function extractOpen() {
     + "}";
   assert.match(body, /setVisible\(true\)/, "the extraction lost the open call");
   assert.match(body, /loadShare\(nextInput, token\)/, "the extraction lost the preparation call");
-  assert.match(body, /loadRecipients\(token\)/, "the extraction lost the recipients call");
+  assert.match(body, /loadRecipients\(\)/, "the extraction lost the recipients call");
   return body;
 }
 
@@ -64,6 +67,15 @@ function runOpen({ resolveLoaders = true } = {}) {
     Platform: { OS: "ios" },
     trackContentShareEvent: record("trackContentShareEvent"),
     console: { info: record("console.info") },
+    // #4265 open-settle plumbing: recorded, and no real timer is armed
+    beginShareSheetOpen: record("beginShareSheetOpen"),
+    openSettledRef: ref(true),
+    afterOpenQueue: ref([]),
+    settleTimer: ref(null),
+    flushAfterOpen: record("flushAfterOpen"),
+    OPEN_SETTLE_FALLBACK_MS: 450,
+    setTimeout: (...args) => { calls.push({ name: "setTimeout", args }); return 1; },
+    clearTimeout: record("clearTimeout"),
     // the three calls under test
     setVisible: record("setVisible"),
     loadShare: resolveLoaders
@@ -76,7 +88,7 @@ function runOpen({ resolveLoaders = true } = {}) {
     "setNativeCycleId", "setInput", "setPrepared", "setPrepFailure", "setRecipients",
     "setRecipientError", "setRecipientsReady", "setSelected", "setNote", "setNoteExpanded",
     "setSearch", "setCopied", "setSending", "setDeliveryState", "setPosterFailed",
-    "setExternalError", "setShowSharer", "setReadiness", "setOutcome",
+    "setExternalError", "setShowSharer", "setReadiness", "setOutcome", "setOpenedAt",
   ]) scope[setter] = record(setter);
 
   const names = Object.keys(scope);
@@ -125,7 +137,7 @@ test("O2 preparation and recipients are independent — one exploding does not s
   // And the two loaders are separate statements, neither passed to the other —
   // so recipients do not consume preparation's result.
   const body = extractOpen();
-  assert.match(body, /loadShare\(nextInput, token\);\s*\n\s*loadRecipients\(token\);/);
+  assert.match(body, /loadShare\(nextInput, token\);\s*\n\s*loadRecipients\(\);/);
   assert.doesNotMatch(body, /await\s+loadShare|loadShare\([^)]*\)\s*\.then/);
 });
 

@@ -129,6 +129,10 @@
       "body": "Filtra por día, ambiente, música, destino y más. Las opciones cambian con cada pastilla."
     },
     "list_two": "{{a}} y {{b}}",
-    "list_three": "{{a}}, {{b}} y {{c}}"
+    "list_three": "{{a}}, {{b}} y {{c}}",
+    "step3": {
+      "title": "Aquí viven tus guardados",
+      "description": "Todo lo que marcas con un corazón llega a Favoritos. Compártelo o ponlo en tu calendario con un toque."
+    }
   }
 }

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/share/__tests__/issue_4265_share_recipients_model.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4265-share-recipients-model-implementor-happy",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

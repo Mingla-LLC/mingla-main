@@ -34,6 +34,9 @@ export interface CoachStep {
    *  cutout. 'center' renders the bubble in the middle of the screen — useful when
    *  the cutout is large (e.g. a full screen section) and the bubble shouldn't hug it. */
   bubblePosition?: 'auto' | 'center';
+  /** Issue #4265: optional small picture above the title. 'likesPreview' =
+   *  the mini two-card Likes preview (step 3 only). */
+  illustration?: 'likesPreview';
 }
 
 export const COACH_STEPS: CoachStep[] = [
@@ -52,10 +55,15 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
+    // Issue #4265: still spotlights the Likes tab button; copy moved to i18n
+    // and the bubble shows the mini saved-card preview from CoachMark.dc.html.
     id: 3,
     tab: 'home',
     title: 'Where your saves live',
-    description: 'Every card you save lands in Likes. Scheduled plans too.',
+    description: 'Everything you heart lands in Likes. Share it or put it in your calendar in one tap.',
+    titleKey: 'modals:coach.step3.title',
+    descriptionKey: 'modals:coach.step3.description',
+    illustration: 'likesPreview',
     buttonLabel: 'Got it',
   },
   {

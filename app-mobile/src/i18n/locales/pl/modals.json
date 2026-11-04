@@ -129,6 +129,10 @@
       "body": "Filtruj według dnia, klimatu, muzyki, miejsca docelowego i nie tylko. Możliwości wyboru zmieniają się w przypadku każdej pigułki."
     },
     "list_two": "{{a}} i {{b}}",
-    "list_three": "{{a}}, {{b}} i {{c}}"
+    "list_three": "{{a}}, {{b}} i {{c}}",
+    "step3": {
+      "title": "Tu trafia to, co zapisujesz",
+      "description": "Wszystko, czemu dasz serce, trafia do Polubień. Udostępnij to lub dodaj do kalendarza jednym dotknięciem."
+    }
   }
 }

@@ -19,6 +19,10 @@
       "body": "Filtern Sie nach Tag, Stimmung, Musik, Ziel und mehr. Die Auswahlmöglichkeiten ändern sich mit jeder Pille."
     },
     "list_two": "{{a}} und {{b}}",
-    "list_three": "{{a}}, {{b}} und {{c}}"
+    "list_three": "{{a}}, {{b}} und {{c}}",
+    "step3": {
+      "title": "Hier landen deine Favoriten",
+      "description": "Alles, was du mit einem Herz markierst, landet in Likes. Teile es oder trag es mit einem Tipp in deinen Kalender ein."
+    }
   }
 }

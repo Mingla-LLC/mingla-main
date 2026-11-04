@@ -129,6 +129,10 @@
       "body": "Asẹmọ nipasẹ ọjọ, gbigbọn, orin, ibi-ajo ati diẹ sii. Awọn aṣayan yi pada pẹlu oogun kọọkan."
     },
     "list_two": "{{a}} ati {{b}}",
-    "list_three": "{{a}}, {{b}} ati {{c}}"
+    "list_three": "{{a}}, {{b}} ati {{c}}",
+    "step3": {
+      "title": "Ibi tí àwọn ohun tí o fipamọ́ ń gbé",
+      "description": "Gbogbo ohun tí o fún ní ọkàn ń lọ sí Àwọn Ìfẹ́ràn. Pín in tàbí fi sínú kàlẹ́ńdà rẹ pẹ̀lú ìtẹ̀ kan."
+    }
   }
 }

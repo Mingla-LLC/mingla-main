@@ -14,7 +14,7 @@ Deno.test("#4174 ticket cards render image and video cover thumbnails", () => {
   const timeline = read("app-mobile/src/utils/purchaseTimeline.ts");
   const purchases = read("app-mobile/src/components/purchases/PurchaseCard.tsx");
   const profile = read("app-mobile/src/components/profile/PurchasesCard.tsx");
-  const calendar = read("app-mobile/src/components/activity/BusinessEventCalendarRow.tsx");
+  const calendar = read("app-mobile/src/components/activity/CalendarAgendaRow.tsx"); // #4265 agenda row
 
   assertStringIncludes(service, "cover_media_url, cover_media_type");
   assertStringIncludes(timeline, "coverMediaType: order.coverMediaType ?? null");

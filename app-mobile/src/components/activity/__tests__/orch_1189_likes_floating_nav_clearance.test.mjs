@@ -104,10 +104,17 @@ function run() {
     /bottomNavTotalHeight\?:\s*number/,
     "T-4 CalendarTab declares the bottomNavTotalHeight prop",
   );
+  // #4265: CalendarTab's styles moved to module scope, so the clearance is a
+  // memoised content style handed to the SectionList.
   assert.match(
     calendar,
-    /mainScrollContent:\s*\{[\s\S]*?paddingBottom:\s*bottomNavTotalHeight\s*\+\s*24/,
+    /const mainScrollContent = useMemo\([\s\S]*?paddingBottom:\s*bottomNavTotalHeight\s*\+\s*24/,
     "T-4 CalendarTab applies bottomNavTotalHeight + 24 to mainScrollContent",
+  );
+  assert.match(
+    calendar,
+    /contentContainerStyle=\{mainScrollContent\}/,
+    "T-4 CalendarTab hands that clearance to its list",
   );
 
   console.log("ORCH-1189 LikesPage floating-nav clearance contract: PASS (T-1..T-4)");

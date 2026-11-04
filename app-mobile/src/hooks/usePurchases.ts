@@ -160,8 +160,13 @@ export function usePurchaseDetail(
 }
 export function usePurchases(
   userId: string | null | undefined,
+  options?: { staleTime?: number },
 ): PurchasesQueryResult {
   const safeUserId = userId ?? "none";
+  // #4265: the Purchases screen keeps 60 s; the Profile card passes a longer
+  // window so a tab revisit does not refetch all four lists (checkout, claim and
+  // calendar flows invalidate purchaseKeys.all whenever a purchase changes).
+  const staleTime = options?.staleTime ?? 60_000;
   const queries = useQueries({
     queries: [
       {
@@ -174,7 +179,7 @@ export function usePurchases(
           return [...orders, ...held];
         },
         enabled: !!userId,
-        staleTime: 60_000,
+        staleTime,
         refetchOnWindowFocus: true,
         refetchOnMount: true,
         retry: false,
@@ -183,7 +188,7 @@ export function usePurchases(
         queryKey: [...purchaseKeys.list(safeUserId), "rsvps"],
         queryFn: () => fetchMyRsvps(userId as string),
         enabled: !!userId,
-        staleTime: 60_000,
+        staleTime,
         refetchOnWindowFocus: true,
         refetchOnMount: true,
         retry: false,
@@ -192,7 +197,7 @@ export function usePurchases(
         queryKey: [...purchaseKeys.list(safeUserId), "reservations"],
         queryFn: () => fetchMyReservations(userId as string),
         enabled: !!userId,
-        staleTime: 60_000,
+        staleTime,
         refetchOnWindowFocus: true,
         refetchOnMount: true,
         retry: false,
@@ -201,7 +206,7 @@ export function usePurchases(
         queryKey: [...purchaseKeys.list(safeUserId), "venueOrders"],
         queryFn: fetchMyVenueOrders,
         enabled: !!userId,
-        staleTime: 60_000,
+        staleTime,
         refetchOnWindowFocus: true,
         refetchOnMount: true,
         retry: false,
