@@ -234,3 +234,121 @@ Deno.test("R5 the success path records and reports nothing", async () => {
   assertEquals(budgets.get("meta-c"), 700);
   assertEquals(problems, []);
 });
+
+import { providerCapCents } from "../adSpendSync.ts";
+import { shouldPauseForCap } from "../adMoney.ts";
+
+Deno.test("R6 lowering Meta + Google succeeds; Google's cap is recorded and Mingla stops it there", async () => {
+  // r9 P1-A: NGN 3,100,000 on Meta + Google, USD 100 a day each (rate
+  // 1,550). Meta spent USD 490, Google USD 10. Lower to NGN 1,000,000.
+  const camp = (platform: Platform, id: string, spend: number): HostLiveCampaign => ({
+    id,
+    platform,
+    host_budget_cents: 155_000_000,
+    host_delivery_budget_cents: 15_500_000,
+    provider_budget_cents: 100_000,
+    provider_delivery_budget_cents: 10_000,
+    current_cap_cents: 100_000,
+    current_daily_cents: 10_000,
+    provider_spend_cents: spend,
+    provider_daily_minimum_cents: platform === "meta" ? 500 : 0,
+  });
+  const planned = planHostLiveEdit({
+    ...base,
+    nowMs: Date.parse("2026-11-04T00:00:00Z"),
+    currentEndsAt: "2026-11-09T00:00:00Z",
+    currentHostBudgetCents: 310_000_000,
+    hostSpendCents: 77_500_000,
+    newHostBudgetCents: 100_000_000,
+    newEndsAt: null,
+    campaigns: [camp("meta", "m", 49_000), camp("google", "g", 1_000)],
+  });
+  if (!planned.ok) throw new Error(planned.error);
+  const google = planned.lines.find((line) => line.platform === "google")!;
+  assertEquals(google.daily_changed, false);
+  assertEquals(planned.dailyNotPushed, ["google"]);
+
+  const budgets: Budgets = new Map([["meta-c", 10_000]]);
+  const touched: string[] = [];
+  let recorded: Array<Record<string, number | string>> = [];
+  const result = await runHostLiveEdit({
+    db: {
+      ...db(null),
+      rpc: (_name: string, args: Record<string, unknown>) => {
+        recorded = args.p_changes as Array<Record<string, number | string>>;
+        return Promise.resolve({ data: { id: "edit" }, error: null });
+      },
+    },
+    getAdapter: (platform) => {
+      touched.push(platform);
+      // Google has no budget readback: calling it at all would fail the edit.
+      return platform === "google" ? ({} as ChannelAdapter) : adapter(budgets, false);
+    },
+  }, {
+    plan: planned,
+    versionId: "v",
+    planHash: "h".repeat(64),
+    campaigns: [
+      { id: "m", platform: "meta", external_campaign_id: "meta-c", connection_id: "k1", provider_delivery_budget_cents: 10_000, provider_budget_cents: 100_000 },
+      { id: "g", platform: "google", external_campaign_id: "g-c", connection_id: "k2", provider_delivery_budget_cents: 10_000, provider_budget_cents: 100_000 },
+    ],
+    actorId: "a",
+    idempotencyKey: "host_live_p_r9-google-lower",
+    previousEndsAt: "2026-11-09T00:00:00Z",
+  });
+  assertEquals(result.status, 200, JSON.stringify(result.body));
+  assertEquals(touched.includes("google"), false, "Google is never asked for a daily push");
+  assertEquals(result.body.daily_not_pushed, ["google"]);
+  const googleRow = recorded.find((row) => row.campaign_id === "g")!;
+  assertEquals(googleRow.new_provider_budget_cents, google.new_provider_budget_cents);
+  assert(Number(googleRow.new_provider_delivery_budget_cents) <= Number(googleRow.new_provider_budget_cents));
+  // Spend sync reads the recorded (amended) cap and pauses Google at it.
+  const cap = providerCapCents({
+    amended_provider_budget_cents: Number(googleRow.new_provider_budget_cents),
+    provider_budget_cents: 100_000,
+  } as Parameters<typeof providerCapCents>[0]);
+  assertEquals(cap, google.new_provider_budget_cents);
+  assertEquals(shouldPauseForCap(cap!, cap), true);
+  assertEquals(shouldPauseForCap(1_000, cap), false);
+});
+
+Deno.test("R7 a record that throws after a push still reverts and names a failed undo", async () => {
+  const throwing = (failUndo: boolean, budgets: Budgets, problems: HostLiveEditProblem[]) =>
+    runHostLiveEdit({
+      db: { ...db(null), rpc: () => Promise.reject(new Error("connection reset by peer")) },
+      getAdapter: () => adapter(budgets, failUndo),
+      onProblem: (problem) => {
+        problems.push(problem);
+        return Promise.resolve();
+      },
+    }, {
+      plan: metaPlan,
+      versionId: "v",
+      planHash: "h".repeat(64),
+      campaigns: metaRow,
+      actorId: "a",
+      idempotencyKey: "host_live_p_r10-throw",
+      previousEndsAt: END,
+    });
+  const ok: Budgets = new Map([["meta-c", 500]]);
+  const none: HostLiveEditProblem[] = [];
+  const undone = await throwing(false, ok, none);
+  assertEquals(undone.status, 502);
+  assertEquals(undone.body.error, "host_ad_live_edit_not_recorded");
+  assertEquals(ok.get("meta-c"), 500, "the push was undone");
+  assertEquals(none, []);
+  const stuck: Budgets = new Map([["meta-c", 500]]);
+  const problems: HostLiveEditProblem[] = [];
+  const failed = await throwing(true, stuck, problems);
+  assertEquals(failed.body.error, "host_ad_live_edit_undo_failed");
+  assertEquals(problems.map((p) => p.kind), ["undo_failed"]);
+});
+
+Deno.test("R8 a claim left by a crashed request is reported to staff", async () => {
+  const source = await Deno.readTextFile(new URL("../../host-ad-campaign/index.ts", import.meta.url));
+  const claim = source.indexOf('"host_ad_live_edit_claim"');
+  const lapsed = source.indexOf("claim?.lapsed_claim");
+  const report = source.indexOf('kind: "lapsed_claim"', lapsed);
+  assert(claim > 0 && lapsed > claim && report > lapsed, "the handler reports a lapsed claim right after claiming");
+  assert(source.includes("recordLiveEditProblem(db, {"), "through the same record + alert path as a failed undo");
+});

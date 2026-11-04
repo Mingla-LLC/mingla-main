@@ -269,6 +269,11 @@ BEGIN
   PERFORM pg_temp.r9_assert((SELECT idempotency_key FROM public.host_ad_live_edit_claims
       WHERE plan_id = (b->>'plan')::uuid) = 'r9-claim-b-0003',
     'R4 a lapsed claim (crashed request) can be taken over');
+  PERFORM pg_temp.r9_assert(v_claim->'lapsed_claim'->>'idempotency_key' = 'r9-claim-b-0002',
+    'R4 taking over a lapsed claim names it, so staff can be told the app may differ');
+  PERFORM pg_temp.r9_assert(NOT (v_claim ? 'lapsed_claim')
+      OR v_claim->'lapsed_claim'->>'idempotency_key' <> 'r9-claim-b-0003',
+    'R4 the new claim is never reported as lapsed');
 
   -- R5: caps above the new total, at the frozen rate, are refused.
   SELECT balance_cents, held_cents INTO v_balance, v_held FROM public.ad_credit_wallets WHERE brand_id = v_brand;

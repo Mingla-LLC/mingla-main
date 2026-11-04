@@ -258,8 +258,10 @@ GRANT SELECT ON public.host_ad_live_edit_claims TO authenticated;
 GRANT ALL ON public.host_ad_live_edit_claims TO service_role;
 
 -- Returns {replay: true, edit} when this key was already recorded (the
--- saved edit), else {replay: false, claimed: true}. PT409 when another edit
--- is in flight or one was recorded in the last 24 hours.
+-- saved edit), else {replay: false, claimed: true}, plus lapsed_claim when it
+-- took over a claim whose request never finished (it may have pushed without
+-- recording: the caller alerts staff). PT409 when another edit is in flight
+-- or one was recorded in the last 24 hours.
 CREATE OR REPLACE FUNCTION public.host_ad_live_edit_claim(
   p_plan_id uuid,
   p_actor_id uuid,
@@ -275,6 +277,7 @@ DECLARE
   v_plan public.ad_plans%ROWTYPE;
   v_existing public.host_ad_live_edits%ROWTYPE;
   v_claim public.host_ad_live_edit_claims%ROWTYPE;
+  v_lapsed jsonb := NULL;
 BEGIN
   IF char_length(v_key) < 8 OR char_length(v_key) > 200 THEN
     RAISE EXCEPTION 'host_ad_live_edit_key_invalid' USING ERRCODE = '22023';
@@ -297,6 +300,12 @@ BEGIN
   IF FOUND AND v_claim.expires_at > now() THEN
     RAISE EXCEPTION 'host_ad_live_edit_in_progress' USING ERRCODE = 'PT409';
   END IF;
+  IF FOUND THEN
+    v_lapsed := jsonb_build_object(
+      'idempotency_key', v_claim.idempotency_key,
+      'claimed_at', v_claim.claimed_at,
+      'actor_id', v_claim.actor_id);
+  END IF;
   IF EXISTS (
     SELECT 1 FROM public.host_ad_live_edits e
     WHERE e.plan_id = v_plan.id AND e.created_at > now() - interval '24 hours'
@@ -311,7 +320,9 @@ BEGIN
       actor_id = EXCLUDED.actor_id,
       claimed_at = EXCLUDED.claimed_at,
       expires_at = EXCLUDED.expires_at;
-  RETURN jsonb_build_object('replay', false, 'claimed', true);
+  RETURN jsonb_build_object('replay', false, 'claimed', true)
+    || CASE WHEN v_lapsed IS NULL THEN '{}'::jsonb
+            ELSE jsonb_build_object('lapsed_claim', v_lapsed) END;
 END;
 $function$;
 

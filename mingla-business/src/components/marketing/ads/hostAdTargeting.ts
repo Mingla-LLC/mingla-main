@@ -139,11 +139,41 @@ export function hostAdPendingLookups(signature: string): HostAdPendingLookup[] {
   });
 }
 
-/** The text an app is asked for: a pin's last part ("…, Lekki" → "Lekki"). */
-export function hostAdLookupQuery(place: Pick<HostAdPlace, "name" | "kind">): string {
-  if (placeKind(place) !== "pin") return place.name.trim();
+/**
+ * #4238 r9 P3: a pin's address parts without a trailing country ("…, Lagos,
+ * Nigeria" or "…, Lagos, NG" in Nigeria → […, "Lagos"]). The country is
+ * already the place's country; as the last part it would be looked up as a
+ * city and shown twice.
+ */
+export function hostAdPinParts(
+  place: Pick<HostAdPlace, "name" | "countryCode">,
+): string[] {
   const parts = place.name.split(",").map((part) => part.trim()).filter(Boolean);
+  const code = place.countryCode.trim().toUpperCase();
+  const names = new Set([code, countryName(code).toUpperCase()]);
+  while (parts.length > 1 && names.has(parts[parts.length - 1].toUpperCase())) {
+    parts.pop();
+  }
+  return parts;
+}
+
+/** The text an app is asked for: a pin's last part ("…, Lekki" → "Lekki"). */
+export function hostAdLookupQuery(
+  place: Pick<HostAdPlace, "name" | "kind"> & { countryCode?: string },
+): string {
+  if (placeKind(place) !== "pin") return place.name.trim();
+  const parts = hostAdPinParts({ name: place.name, countryCode: place.countryCode ?? "" });
   return parts[parts.length - 1] ?? place.name.trim();
+}
+
+/** "Eko Atlantic, Lagos, Nigeria" in Nigeria → "Eko Atlantic, Lagos, Nigeria" (never "…, Nigeria, Nigeria"). */
+export function hostAdPlaceDisplayName(
+  place: Pick<HostAdPlace, "name" | "countryCode" | "kind">,
+): string {
+  const base = placeKind(place) === "pin"
+    ? hostAdPinParts(place).join(", ")
+    : place.name.trim();
+  return `${base}, ${countryName(place.countryCode)}`;
 }
 
 /** Which apps need an id from their own list for this place. */

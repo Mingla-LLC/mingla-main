@@ -70,8 +70,10 @@ export function hostAdLiveEditError(
 export function hostAdLiveEditDoneNote(result: HostAdLiveEditResult): string {
   const notes = ["Your ad is updated."];
   if (result.daily_not_pushed.length > 0) {
+    // #4238 r9 P3: "Google keeps its", "Google and Reddit keep their".
+    const one = result.daily_not_pushed.length === 1;
     notes.push(
-      `${platformNames(result.daily_not_pushed)} keep their daily amount; Mingla stops them at your new total.`,
+      `${platformNames(result.daily_not_pushed)} ${one ? "keeps its" : "keep their"} daily amount; Mingla stops ${one ? "it" : "them"} at your new total.`,
     );
   }
   // #4238 r8 P3: the apps that don't take an end date from Mingla.
@@ -132,6 +134,8 @@ export function HostAdLiveEditCard(props: {
   lastEditAt: string | null;
   nowIso: string;
   busy: boolean;
+  /** The last save's outcome, shown right under Save (never at page bottom). */
+  result?: { kind: "done" | "error"; text: string } | null;
   onSubmit: (input: { newBudgetCents: number | null; newEndsAt: string | null }) => Promise<void>;
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -214,6 +218,16 @@ export function HostAdLiveEditCard(props: {
             testID="host-ad-live-edit-save"
           />
         </View>
+      ) : null}
+      {props.result ? (
+        <Text
+          style={props.result.kind === "error" ? s.error : s.subtitle}
+          accessibilityLiveRegion="polite"
+          accessibilityRole={props.result.kind === "error" ? "alert" : "text"}
+          testID="host-ad-live-edit-result"
+        >
+          {props.result.text}
+        </Text>
       ) : null}
     </View>
   );

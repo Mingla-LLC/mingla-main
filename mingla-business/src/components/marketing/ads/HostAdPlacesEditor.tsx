@@ -21,6 +21,7 @@ import {
   type HostAdPlaceKind,
   hostAdExcludedAppStatus,
   hostAdPlaceAppStatus,
+  hostAdPlaceDisplayName,
   hostAdPlaceKey,
   placeKind,
   undoWiderOffer,
@@ -226,7 +227,7 @@ export function HostAdPlacesEditor(
             <View style={s.cardHead}>
               <View style={s.appText}>
                 <Text style={s.title}>
-                  {place.name}, {countryName(place.countryCode)}
+                  {hostAdPlaceDisplayName(place)}
                 </Text>
                 <Text style={s.faint}>{HOST_AD_PLACE_KIND_LABELS[placeKind(place)]}</Text>
               </View>

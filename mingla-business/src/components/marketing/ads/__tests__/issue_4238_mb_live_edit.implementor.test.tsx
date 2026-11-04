@@ -73,7 +73,7 @@ describe("#4238 wave D — edit budget and end date", () => {
     expect(hostAdLiveEditError("host_ad_live_edit_once_a_day")).toBe("You can change this ad once a day. Try again tomorrow.");
     expect(hostAdLiveEditError("host_ad_live_edit_end_after_last_bookable")).toContain("last day people can book");
     expect(hostAdLiveEditDoneNote({ daily_not_pushed: ["google"], end_not_pushed: [] })).toBe(
-      "Your ad is updated. Google keep their daily amount; Mingla stops them at your new total.",
+      "Your ad is updated. Google keeps its daily amount; Mingla stops it at your new total.",
     );
   });
 });

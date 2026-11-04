@@ -105,7 +105,6 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const [destructiveError, setDestructiveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<HostAdCampaignDetail | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canRead) return;
@@ -128,6 +127,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
   // in flight at once.
   const liveEditAttempt = useRef<HostAdLiveEditAttempt | null>(null);
   const liveEditInFlight = useRef(false);
+  // #4238 r9 P3: the result shows inside the card, next to Save.
+  const [liveEditResult, setLiveEditResult] = useState<
+    { kind: "done" | "error"; text: string } | null
+  >(null);
   const onLiveEdit = useCallback(
     async (input: { newBudgetCents: number | null; newEndsAt: string | null }) => {
       const planId = payload?.plan_id;
@@ -141,8 +144,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
       );
       liveEditAttempt.current = attempt;
       setBusy(true);
-      setError(null);
-      setNotice(null);
+      setLiveEditResult(null);
       try {
         const result = await changeHostAdLive({
           brandId,
@@ -152,19 +154,20 @@ export default function HostAdDetailRoute(): React.ReactElement {
           idempotencyKey: attempt.key,
         });
         liveEditAttempt.current = null;
-        setNotice(hostAdLiveEditDoneNote(result));
+        setLiveEditResult({ kind: "done", text: hostAdLiveEditDoneNote(result) });
         await load();
       } catch (cause) {
         const failure = cause !== null && typeof cause === "object"
           ? (cause as { code?: unknown; detail?: unknown })
           : null;
-        setError(
-          hostAdLiveEditError(
+        setLiveEditResult({
+          kind: "error",
+          text: hostAdLiveEditError(
             failure && "code" in failure ? String(failure.code) : null,
             typeof failure?.detail === "string" ? failure.detail : null,
             payload?.plan_currency ?? null,
           ),
-        );
+        });
       } finally {
         liveEditInFlight.current = false;
         setBusy(false);
@@ -464,9 +467,6 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 .join(" · ")}
             </Text>
           ) : null}
-          {notice ? (
-            <Text style={styles.muted} testID="ads-detail-notice">{notice}</Text>
-          ) : null}
           {(() => {
             const startedAt =
               typeof c.starts_at === "string"
@@ -528,6 +528,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
               lastEditAt={payload.last_live_edit_at ?? null}
               nowIso={new Date().toISOString()}
               busy={busy}
+              result={liveEditResult}
               onSubmit={onLiveEdit}
             />
           ) : null}

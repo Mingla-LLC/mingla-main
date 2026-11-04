@@ -193,7 +193,16 @@ export function planHostLiveEdit(input: {
       if (!dailyNotPushed.includes(row.platform)) dailyNotPushed.push(row.platform);
     }
     newDaily = Math.max(1, Math.min(newDaily, newCap));
-    const dailyChanged = newDaily !== row.current_daily_cents;
+    // #4238 r9 P1-A: only an app Mingla can push to has a "changed" daily
+    // amount. For Google and Reddit the recorded daily is still clamped to the
+    // new cap (the record's daily-not-above-cap rule), but nothing is pushed:
+    // they keep their own daily amount and Mingla's spend sync stops them at
+    // the cap.
+    if (!canPush && newDaily !== row.current_daily_cents &&
+      !dailyNotPushed.includes(row.platform)) {
+      dailyNotPushed.push(row.platform);
+    }
+    const dailyChanged = canPush && newDaily !== row.current_daily_cents;
     // #4238 r8 P2-2: a pushed daily amount never goes under the app's own
     // minimum (the apps refuse it). Named with the minimum in the brand's money.
     const minimum = row.provider_daily_minimum_cents ?? null;
@@ -271,7 +280,12 @@ export type HostLiveEditResult = { status: number; body: Record<string, unknown>
 
 /** An app whose budget may not match Mingla's record (staff must check). */
 export type HostLiveEditProblem = {
-  kind: "undo_failed" | "not_reverted";
+  /**
+   * undo_failed: an undo after a failure did not work. not_reverted: another
+   * edit was recorded first, so this push was kept. lapsed_claim: an earlier
+   * request claimed the edit and never finished (it may have pushed).
+   */
+  kind: "undo_failed" | "not_reverted" | "lapsed_claim";
   platforms: Platform[];
   detail: string;
 };
@@ -361,131 +375,142 @@ export async function runHostLiveEdit(
     }
     return { status, body: { error, ...extra, reverted: undone } };
   };
-  for (const line of input.plan.lines) {
-    const campaign = input.campaigns.find((row) => row.id === line.campaign_id) ?? {};
-    const previousDaily = Number(
-      campaign.amended_provider_delivery_budget_cents ??
-        campaign.provider_delivery_budget_cents,
-    );
-    const needsEnd = line.platform === "meta" && input.plan.newEndsAt !== null;
-    if (!line.daily_changed && !needsEnd) continue;
-    const { data: connection } = await db.from("ad_connections").select("*")
-      .eq("id", campaign.connection_id).maybeSingle();
-    if (!connection?.connected || connection.status !== "connected") {
-      return await failure(424, `${line.platform}_not_connected`);
-    }
-    const adapter = getAdapter(line.platform);
-    try {
-      if (line.daily_changed) {
-        if (typeof adapter.getBudget !== "function") {
-          throw new Error("provider_budget_readback_unavailable");
-        }
-        const confirmed = [];
-        for (const target of await dailyTargets(db, campaign, line, previousDaily)) {
-          await adapter.setBudget(connection, target.level, target.externalId, target.nextCents);
-          pushed.push({
-            platform: line.platform,
-            connection,
-            undo: () => adapter.setBudget(connection, target.level, target.externalId, target.previousCents),
-          });
-          const readback = await adapter.getBudget(connection, target.level, target.externalId);
-          if (readback.cents !== target.nextCents) {
-            throw new Error(`provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`);
-          }
-          confirmed.push({ level: target.level, external_id: target.externalId, daily_budget_cents: readback.cents });
-        }
-        evidence[line.campaign_id] = { confirmed, pushed_at: new Date().toISOString() };
+  // #4238 r9 P3: anything that throws after a push (a lost connection, a
+  // bad row) still reverts, names a failed undo and tells staff; it never
+  // escapes with an app on an amount Mingla did not record.
+  try {
+    for (const line of input.plan.lines) {
+      const campaign = input.campaigns.find((row) => row.id === line.campaign_id) ?? {};
+      const previousDaily = Number(
+        campaign.amended_provider_delivery_budget_cents ??
+          campaign.provider_delivery_budget_cents,
+      );
+      const needsEnd = line.platform === "meta" && input.plan.newEndsAt !== null;
+      if (!line.daily_changed && !needsEnd) continue;
+      const { data: connection } = await db.from("ad_connections").select("*")
+        .eq("id", campaign.connection_id).maybeSingle();
+      if (!connection?.connected || connection.status !== "connected") {
+        return await failure(424, `${line.platform}_not_connected`);
       }
-      if (needsEnd && typeof adapter.setEndTime === "function") {
-        const { data: adSets } = await db.from("ad_sets")
-          .select("external_adset_id").eq("campaign_id", campaign.id);
-        for (const row of (adSets ?? []) as Record<string, unknown>[]) {
-          const externalId = String(row.external_adset_id ?? "");
-          if (!externalId) continue;
-          await adapter.setEndTime(connection, "ad_set", externalId, input.plan.newEndsAt as string);
-          const previous = input.previousEndsAt;
-          if (previous) {
+      const adapter = getAdapter(line.platform);
+      try {
+        if (line.daily_changed) {
+          if (typeof adapter.getBudget !== "function") {
+            throw new Error("provider_budget_readback_unavailable");
+          }
+          const confirmed = [];
+          for (const target of await dailyTargets(db, campaign, line, previousDaily)) {
+            await adapter.setBudget(connection, target.level, target.externalId, target.nextCents);
             pushed.push({
               platform: line.platform,
               connection,
-              undo: () => adapter.setEndTime!(connection, "ad_set", externalId, previous),
+              undo: () => adapter.setBudget(connection, target.level, target.externalId, target.previousCents),
             });
+            const readback = await adapter.getBudget(connection, target.level, target.externalId);
+            if (readback.cents !== target.nextCents) {
+              throw new Error(`provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`);
+            }
+            confirmed.push({ level: target.level, external_id: target.externalId, daily_budget_cents: readback.cents });
           }
+          evidence[line.campaign_id] = { confirmed, pushed_at: new Date().toISOString() };
         }
-        evidence[line.campaign_id] = {
-          ...(evidence[line.campaign_id] ?? {}),
-          end_time: input.plan.newEndsAt,
-        };
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      return await failure(502, `${line.platform}_budget_update_failed`, {
-        detail: detail.slice(0, 300),
-      });
-    }
-  }
-  const budgetChanged = input.plan.lines.some((line) => {
-    const campaign = input.campaigns.find((row) => row.id === line.campaign_id) ?? {};
-    const cap = Number(campaign.amended_provider_budget_cents ?? campaign.provider_budget_cents);
-    return line.daily_changed || cap !== line.new_provider_budget_cents;
-  });
-  const { data, error } = await db.rpc("host_ad_amend_live", {
-    p_plan_version_id: input.versionId,
-    p_plan_hash: input.planHash,
-    p_new_host_budget_cents: input.plan.newHostBudgetCents,
-    p_new_ends_at: input.plan.newEndsAt,
-    p_changes: budgetChanged
-      ? input.plan.lines.map((line) => ({
-        campaign_id: line.campaign_id,
-        new_provider_budget_cents: line.new_provider_budget_cents,
-        new_provider_delivery_budget_cents: line.new_provider_delivery_budget_cents,
-      }))
-      : [],
-    p_actor_id: input.actorId,
-    p_idempotency_key: input.idempotencyKey,
-    p_provider_evidence: evidence,
-  });
-  if (error) {
-    const message = String(error.message ?? "");
-    // Another edit was recorded (or is being recorded) first. Never undo:
-    // that would put the app back on the pre-edit amount.
-    const lost = [
-      "host_ad_live_edit_once_a_day",
-      "host_ad_live_edit_in_progress",
-    ].find((code) => message.includes(code));
-    if (lost) {
-      const platforms = [...new Set(pushed.map((item) => item.platform))];
-      if (platforms.length > 0) {
-        await report({
-          kind: "not_reverted",
-          platforms,
-          detail: `${lost}: pushed but not recorded`,
+        if (needsEnd && typeof adapter.setEndTime === "function") {
+          const { data: adSets } = await db.from("ad_sets")
+            .select("external_adset_id").eq("campaign_id", campaign.id);
+          for (const row of (adSets ?? []) as Record<string, unknown>[]) {
+            const externalId = String(row.external_adset_id ?? "");
+            if (!externalId) continue;
+            await adapter.setEndTime(connection, "ad_set", externalId, input.plan.newEndsAt as string);
+            const previous = input.previousEndsAt;
+            if (previous) {
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setEndTime!(connection, "ad_set", externalId, previous),
+              });
+            }
+          }
+          evidence[line.campaign_id] = {
+            ...(evidence[line.campaign_id] ?? {}),
+            end_time: input.plan.newEndsAt,
+          };
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return await failure(502, `${line.platform}_budget_update_failed`, {
+          detail: detail.slice(0, 300),
         });
       }
-      return { status: 409, body: { error: lost } };
     }
-    const known = [
-      "host_ad_live_edit_end_after_last_bookable",
-      "host_ad_live_edit_below_spend",
-      "host_ad_live_edit_end_in_past",
-      "host_ad_live_edit_caps_exceed_budget",
-      "ad_credit_insufficient",
-    ].find((code) => message.includes(code));
-    return await failure(
-      error.code === "PT409" ? 409 : known ? 422 : 409,
-      known ?? "host_ad_live_edit_not_recorded",
-    );
+    const budgetChanged = input.plan.lines.some((line) => {
+      const campaign = input.campaigns.find((row) => row.id === line.campaign_id) ?? {};
+      const cap = Number(campaign.amended_provider_budget_cents ?? campaign.provider_budget_cents);
+      return line.daily_changed || cap !== line.new_provider_budget_cents;
+    });
+    const { data, error } = await db.rpc("host_ad_amend_live", {
+      p_plan_version_id: input.versionId,
+      p_plan_hash: input.planHash,
+      p_new_host_budget_cents: input.plan.newHostBudgetCents,
+      p_new_ends_at: input.plan.newEndsAt,
+      p_changes: budgetChanged
+        ? input.plan.lines.map((line) => ({
+          campaign_id: line.campaign_id,
+          new_provider_budget_cents: line.new_provider_budget_cents,
+          new_provider_delivery_budget_cents: line.new_provider_delivery_budget_cents,
+        }))
+        : [],
+      p_actor_id: input.actorId,
+      p_idempotency_key: input.idempotencyKey,
+      p_provider_evidence: evidence,
+    });
+    if (error) {
+      const message = String(error.message ?? "");
+      // Another edit was recorded (or is being recorded) first. Never undo:
+      // that would put the app back on the pre-edit amount.
+      const lost = [
+        "host_ad_live_edit_once_a_day",
+        "host_ad_live_edit_in_progress",
+      ].find((code) => message.includes(code));
+      if (lost) {
+        const platforms = [...new Set(pushed.map((item) => item.platform))];
+        if (platforms.length > 0) {
+          await report({
+            kind: "not_reverted",
+            platforms,
+            detail: `${lost}: pushed but not recorded`,
+          });
+        }
+        return { status: 409, body: { error: lost } };
+      }
+      const known = [
+        "host_ad_live_edit_end_after_last_bookable",
+        "host_ad_live_edit_below_spend",
+        "host_ad_live_edit_end_in_past",
+        "host_ad_live_edit_caps_exceed_budget",
+        "ad_credit_insufficient",
+      ].find((code) => message.includes(code));
+      return await failure(
+        error.code === "PT409" ? 409 : known ? 422 : 409,
+        known ?? "host_ad_live_edit_not_recorded",
+      );
+    }
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        edit: data,
+        daily_not_pushed: input.plan.dailyNotPushed,
+        end_not_pushed: input.plan.newEndsAt === null
+          ? []
+          : [...new Set(input.plan.lines.map((line) => line.platform))]
+            .filter((platform) => platform !== "meta"),
+      },
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[host-live-edit] interrupted", { detail: detail.slice(0, 300) });
+    return await failure(502, "host_ad_live_edit_not_recorded", {
+      detail: detail.slice(0, 300),
+    });
   }
-  return {
-    status: 200,
-    body: {
-      ok: true,
-      edit: data,
-      daily_not_pushed: input.plan.dailyNotPushed,
-      end_not_pushed: input.plan.newEndsAt === null
-        ? []
-        : [...new Set(input.plan.lines.map((line) => line.platform))]
-          .filter((platform) => platform !== "meta"),
-    },
-  };
 }

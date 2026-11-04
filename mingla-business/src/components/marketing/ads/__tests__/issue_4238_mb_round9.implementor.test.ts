@@ -20,6 +20,8 @@ jest.mock("../../../../services/supabase", () => ({ supabase: { functions: { inv
 // eslint-disable-next-line import/first
 import {
   hostAdInterestKey,
+  hostAdLookupQuery,
+  hostAdPlaceDisplayName,
   hostAdPendingLookups,
   hostAdPendingLookupSignature,
   hostAdPlaceKey,
@@ -138,5 +140,36 @@ describe("#4238 r9 P3 — the budget short line", () => {
     expect(hostAdBudgetShortMessage(split, money)).toBe(
       "TikTok needs about NGN 15,000 a day. Raise the budget, or turn it off.",
     );
+  });
+});
+
+
+describe("#4238 r10 — round 9 P3s", () => {
+  it("a pin ending in its country asks TikTok for the town, not the country", () => {
+    const pin = { name: "Eko Atlantic, Victoria Island, Lagos, Nigeria", countryCode: "NG", kind: "pin" as const };
+    expect(hostAdLookupQuery(pin)).toBe("Lagos");
+    expect(hostAdLookupQuery({ ...pin, name: "Eko Atlantic, Lagos, NG" })).toBe("Lagos");
+    expect(hostAdLookupQuery({ ...pin, name: "Landmark Beach, Oniru, Lekki" })).toBe("Lekki");
+    // A pin that is only the country keeps it (nothing else to ask for).
+    expect(hostAdLookupQuery({ ...pin, name: "Nigeria" })).toBe("Nigeria");
+    expect(hostAdPlaceDisplayName(pin)).toBe("Eko Atlantic, Victoria Island, Lagos, Nigeria");
+    expect(hostAdPlaceDisplayName({ name: "Lagos", countryCode: "NG", kind: "city" })).toBe("Lagos, Nigeria");
+  });
+  it("one app keeps its daily amount; several keep theirs", () => {
+    expect(hostAdLiveEditDoneNote({ daily_not_pushed: ["google"], end_not_pushed: [] }))
+      .toBe("Your ad is updated. Google keeps its daily amount; Mingla stops it at your new total.");
+    expect(hostAdLiveEditDoneNote({ daily_not_pushed: ["google", "reddit"], end_not_pushed: [] }))
+      .toBe("Your ad is updated. Google and Reddit keep their daily amount; Mingla stops them at your new total.");
+  });
+  it("the live-edit result shows inside the card, not at the bottom of the page", () => {
+    const card = fs.readFileSync(path.join(__dirname, "../HostAdLiveEditCard.tsx"), "utf8");
+    expect(card).toContain('testID="host-ad-live-edit-result"');
+    const screen = fs.readFileSync(
+      path.join(__dirname, "../../../../screens/hostAds/HostAdDetailScreen.tsx"),
+      "utf8",
+    );
+    expect(screen).toContain("result={liveEditResult}");
+    const block = screen.slice(screen.indexOf("const onLiveEdit = useCallback("), screen.indexOf("const onDuplicate"));
+    expect(block).not.toMatch(/setError\(|setNotice\(/);
   });
 });

@@ -1522,6 +1522,27 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
     }
     return json({ error: code ?? "host_ad_live_edit_not_recorded" }, code ? 409 : 503);
   }
+  // #4238 r9 P3: a claim left by a request that crashed after a push but
+  // before the record. The app may be on an amount Mingla never recorded.
+  if (claim?.lapsed_claim && typeof claim.lapsed_claim === "object") {
+    const lapsed = claim.lapsed_claim as Record<string, unknown>;
+    const { data: lapsedRows } = await db.from("ad_campaigns")
+      .select("id,platform,status").eq("plan_version_id", String(plan.current_version_id));
+    const rows = (lapsedRows ?? []) as Record<string, unknown>[];
+    await recordLiveEditProblem(db, {
+      planId,
+      versionId: String(plan.current_version_id),
+      brandId,
+      actorId,
+      editKey: String(lapsed.idempotency_key ?? editKey),
+      rows,
+      problem: {
+        kind: "lapsed_claim",
+        platforms: [...new Set(rows.map((row) => row.platform as Platform))],
+        detail: `claim ${String(lapsed.idempotency_key ?? "?")} from ${String(lapsed.claimed_at ?? "?")} never recorded`,
+      },
+    });
+  }
   if (claim?.replay === true) {
     return json({
       ok: true,
@@ -1650,39 +1671,8 @@ async function planAndRunLiveEdit(
       body: planned.detail ? { error: planned.error, detail: planned.detail } : { error: planned.error },
     };
   }
-  const onProblem = async (problem: HostLiveEditProblem): Promise<void> => {
-    // Recorded on each affected campaign's status trail, then staff alerted.
-    const affected = rows.filter((row) => problem.platforms.includes(row.platform as Platform));
-    if (affected.length > 0) {
-      const { error } = await db.from("ad_status_events").insert(affected.map((row) => ({
-        campaign_id: row.id,
-        platform: row.platform,
-        entity: "campaign",
-        action: "budget_change",
-        actor: actorId,
-        from_status: row.status ?? null,
-        to_status: row.status ?? null,
-        external_ids: { plan_id: planId, plan_version_id: versionId },
-        provider_response: {
-          host_live_edit_problem: problem.kind,
-          detail: problem.detail.slice(0, 500),
-          idempotency_key: editKey,
-        },
-      })));
-      if (error) {
-        console.error("[host-ad-campaign] live edit problem not recorded:", String(error.message ?? "").slice(0, 300));
-      }
-    }
-    await notifyHostLiveEditProblem({
-      planId,
-      brandId,
-      actorId,
-      kind: problem.kind,
-      platforms: problem.platforms,
-      detail: problem.detail,
-      idempotencyKey: editKey,
-    });
-  };
+  const onProblem = (problem: HostLiveEditProblem): Promise<void> =>
+    recordLiveEditProblem(db, { planId, versionId, brandId, actorId, editKey, rows, problem });
   return await runHostLiveEdit({ db, getAdapter, onProblem }, {
     plan: planned,
     versionId,
@@ -1691,5 +1681,60 @@ async function planAndRunLiveEdit(
     actorId,
     idempotencyKey: editKey,
     previousEndsAt: currentEnds,
+  });
+}
+
+/**
+ * #4238 r8 P2-1 / r9 P3: an app may be on an amount Mingla did not record.
+ * Written on each affected campaign's status trail, then staff are emailed.
+ * Never throws.
+ */
+async function recordLiveEditProblem(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  input: {
+    planId: string;
+    versionId: string;
+    brandId: string;
+    actorId: string;
+    editKey: string;
+    rows: Record<string, unknown>[];
+    problem: HostLiveEditProblem;
+  },
+): Promise<void> {
+  const { problem } = input;
+  const affected = input.rows.filter((row) => problem.platforms.includes(row.platform as Platform));
+  if (affected.length > 0) {
+    try {
+      const { error } = await db.from("ad_status_events").insert(affected.map((row) => ({
+        campaign_id: row.id,
+        platform: row.platform,
+        entity: "campaign",
+        action: "budget_change",
+        actor: input.actorId,
+        from_status: row.status ?? null,
+        to_status: row.status ?? null,
+        external_ids: { plan_id: input.planId, plan_version_id: input.versionId },
+        provider_response: {
+          host_live_edit_problem: problem.kind,
+          detail: problem.detail.slice(0, 500),
+          idempotency_key: input.editKey,
+        },
+      })));
+      if (error) {
+        console.error("[host-ad-campaign] live edit problem not recorded:", String(error.message ?? "").slice(0, 300));
+      }
+    } catch (error) {
+      console.error("[host-ad-campaign] live edit problem not recorded:", error instanceof Error ? error.message : String(error));
+    }
+  }
+  await notifyHostLiveEditProblem({
+    planId: input.planId,
+    brandId: input.brandId,
+    actorId: input.actorId,
+    kind: problem.kind,
+    platforms: problem.platforms,
+    detail: problem.detail,
+    idempotencyKey: input.editKey,
   });
 }
