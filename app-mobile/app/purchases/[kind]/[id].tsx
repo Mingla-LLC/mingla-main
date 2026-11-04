@@ -9,7 +9,6 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
-  Linking,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
@@ -41,6 +40,8 @@ import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { toastManager } from "../../../src/components/ui/Toast";
+// #4261: the online event link opens in Mingla's in-app browser.
+import { useOpenInMingla } from "../../../src/components/InAppBrowserProvider";
 import { useBrandFollow } from "../../../src/hooks/useBrandFollow";
 import {
   cancelMyReservation,
@@ -212,6 +213,7 @@ function QuietAction({
 
 export default function PurchaseDetailRoute(): React.ReactElement {
   const { t } = useTranslation("purchases");
+  const { open: openInMingla } = useOpenInMingla();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -717,7 +719,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   <Pressable
                     accessibilityRole="link"
                     onPress={() => {
-                      void Linking.openURL(order.onlineUrl as string);
+                      openInMingla(order.onlineUrl as string, item.title);
                     }}
                     style={({ pressed }) => [
                       styles.venueAction,

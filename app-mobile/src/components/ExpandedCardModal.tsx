@@ -98,6 +98,10 @@ import { openMapsTarget } from "../utils/openMapsTarget";
 import { isVideoUrl } from "../utils/videoUrl";
 import ActionButtons from "./expandedCard/ActionButtons";
 import InAppBrowserModal from "./InAppBrowserModal";
+// #4261: rows inside the sheet (LinkRow, price attribution) open links through
+// this provider, mounted INSIDE the sheet's own RN Modal window.
+import { InAppBrowserProvider } from "./InAppBrowserProvider";
+import { classifyLink } from "../utils/inAppLink";
 // ORCH-0824: business-event branch (renders when props.businessEvent is set and props.card is null).
 import ConsumerExperienceDetailScreen from "../screens/Experience/ConsumerExperienceDetailScreen";
 // ORCH-1138 Leg 2/3 — the deck EVENT card opens ConsumerEventDetailScreen and
@@ -1752,38 +1756,26 @@ export default function ExpandedCardModal({
   /**
    * A stop's own booking / policies page. #1605 rework.
    *
-   * The url is already normalized by the producer, so this cannot be handed a
-   * string the OS will reject for a shape reason. The `canOpenURL` pre-flight
-   * and the toast are the SAME contract `LinkRow` gives the single place's
-   * Website row — six `Linking.openURL` sites on this sheet had zero pre-flights
-   * and one console-only catch between them before this wave (Constitution 3).
+   * #4261: opens in Mingla's in-app browser through this sheet's existing
+   * browser mount (`browserUrl`), so the ORCH-1022 gate (`anyChildModalOpen`)
+   * still lowers the root sheet while the page is up. `classifyLink` is the
+   * one URL check; a link it refuses gets the same toast as before.
    */
   const openStopWebsite = (url: string | null): void => {
     if (url === null || url.trim().length === 0) return;
-    void (async () => {
-      try {
-        const can = await Linking.canOpenURL(url);
-        if (!can) {
-          toastManager.show(
-            t('cards:expanded.link_unavailable', {
-              defaultValue: "Couldn't open {{what}}",
-              what: t('expanded_details:action_buttons.website', { defaultValue: 'Website' }),
-            }),
-            'error',
-          );
-          return;
-        }
-        await Linking.openURL(url);
-      } catch {
-        toastManager.show(
-          t('cards:expanded.link_unavailable', {
-            defaultValue: "Couldn't open {{what}}",
-            what: t('expanded_details:action_buttons.website', { defaultValue: 'Website' }),
-          }),
-          'error',
-        );
-      }
-    })();
+    const link = classifyLink(url);
+    if (link.kind !== 'web' && link.kind !== 'document') {
+      toastManager.show(
+        t('cards:expanded.link_unavailable', {
+          defaultValue: "Couldn't open {{what}}",
+          what: t('expanded_details:action_buttons.website', { defaultValue: 'Website' }),
+        }),
+        'error',
+      );
+      return;
+    }
+    setBrowserUrl(link.url);
+    setBrowserTitle(t('expanded_details:action_buttons.website', { defaultValue: 'Website' }));
   };
 
   /** Replace a stop — the alternatives are fetched around the STOP, not the user. */
@@ -1950,6 +1942,8 @@ export default function ExpandedCardModal({
           ],
         }}
       >
+        {/* #4261: links opened by rows in this sheet present inside its window. */}
+        <InAppBrowserProvider>
             {/*
               THE NIGHT-OUT BRANCH IS NOT PART OF THIS WAVE AND IS UNTOUCHED.
 
@@ -2439,6 +2433,7 @@ export default function ExpandedCardModal({
 
               </>
             )}
+        </InAppBrowserProvider>
       </BaseBottomSheet>
 
       {/* ORCH-1072 → ORCH-1138 Leg 3 — experience opened from the

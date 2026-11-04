@@ -10,7 +10,6 @@ import {
   Alert,
   Animated,
   FlatList,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -22,7 +21,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import * as WebBrowser from "expo-web-browser";
+// #4261: booking pages open in Mingla's in-app browser.
+import { useOpenInMingla } from "../InAppBrowserProvider";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 
 const ANIMATION_DURATION = 250;
@@ -292,6 +292,7 @@ const CalendarTab = ({
   bottomNavTotalHeight = 0,
 }: CalendarTabProps) => {
   const { t } = useTranslation(["activity", "common"]);
+  const { open: openInMingla } = useOpenInMingla();
   const { canAccess } = useFeatureGate();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const keyboardSpacerHeight = keyboardHeight > 0
@@ -2278,12 +2279,11 @@ const CalendarTab = ({
     card: ExpandedCardData,
     bookingOption: any,
   ) => {
-    // Handle purchase if needed
-    // Could open external link or show purchase flow
+    // #4261: the booking page opens in Mingla's in-app browser. No
+    // Linking.openURL fallback (it left Mingla); a link the helper refuses is
+    // toasted there.
     if (bookingOption.url) {
-      WebBrowser.openBrowserAsync(bookingOption.url).catch(() => {
-        Linking.openURL(bookingOption.url);
-      });
+      openInMingla(bookingOption.url);
     }
   };
 
