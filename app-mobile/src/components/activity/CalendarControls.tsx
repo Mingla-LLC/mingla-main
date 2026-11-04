@@ -1,7 +1,8 @@
 /**
  * Issue #4265 — the Calendar header controls (approved design:
  * Calendar.dc.html): the List · Week · Month toggle, the seven-day strip and
- * the type chips. Today is always marked (orange border + "Today"); the
+ * the type chips. The day strip serves List (next 7 days) and Week (the
+ * locale week). Today is always marked (orange border + "Today"); the
  * selected day is filled orange.
  */
 import React, { memo } from "react";
@@ -102,6 +103,7 @@ export const CalendarDayStrip = memo(function CalendarDayStrip({
               styles.tile,
               v.fill === "accent" ? styles.tileAccentFill : styles.tileQuietFill,
               v.border === "accent" ? styles.tileAccentBorder : styles.tileQuietBorder,
+              day.isPast && !day.isSelected && styles.tilePast,
             ]}
             accessibilityRole="button"
             accessibilityState={{ selected: day.isSelected }}
@@ -207,6 +209,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 3,
     paddingHorizontal: 2,
+  },
+  tilePast: {
+    opacity: 0.45,
   },
   tileQuietFill: {
     backgroundColor: OPAQUE ? C.dayTileFillOpaque : C.dayTileFill,

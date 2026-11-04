@@ -571,36 +571,49 @@ export function dayVisual(input: { isToday: boolean; isSelected: boolean }): Day
   };
 }
 
-// ── Day strip (List) ────────────────────────────────────────────────────────
+// ── Day strip (List and Week share it) ──────────────────────────────────────
 
 export interface StripDay {
   dayKey: string;
   date: Date;
   isToday: boolean;
   isSelected: boolean;
+  /** Before today — the tile renders dimmed (still tappable). */
+  isPast: boolean;
   planCount: number;
 }
 
 export const DAY_STRIP_LENGTH = 7;
 
-/** The next seven days starting today. */
-export function buildDayStrip(
+/** Seven consecutive days from `first`. The one builder behind both strips. */
+function buildStrip(
+  first: Date,
   today: Date,
   counts: ReadonlyMap<string, readonly unknown[]>,
   selectedDayKey: string | null,
 ): StripDay[] {
   const todayKey = dayKeyOf(today);
   return Array.from({ length: DAY_STRIP_LENGTH }, (_, i) => {
-    const date = addDays(today, i);
+    const date = addDays(first, i);
     const dayKey = dayKeyOf(date);
     return {
       dayKey,
       date,
       isToday: dayKey === todayKey,
       isSelected: dayKey === selectedDayKey,
+      isPast: dayKey < todayKey,
       planCount: counts.get(dayKey)?.length ?? 0,
     };
   });
+}
+
+/** List: the next seven days starting today. */
+export function buildDayStrip(
+  today: Date,
+  counts: ReadonlyMap<string, readonly unknown[]>,
+  selectedDayKey: string | null,
+): StripDay[] {
+  return buildStrip(today, today, counts, selectedDayKey);
 }
 
 /** Tap a day to narrow to it; tap it again to clear. */
@@ -642,42 +655,36 @@ export function startOfWeek(date: Date, weekStart: WeekStart): Date {
   return addDays(date, -diff);
 }
 
-// ── Week grid ───────────────────────────────────────────────────────────────
+// ── Week (a strip from the week start + that week's rows) ──────────────────
 
-export interface WeekDay<R> {
-  dayKey: string;
-  date: Date;
-  isToday: boolean;
-  isPast: boolean;
-  rows: R[];
+export interface WeekRange {
+  first: Date;
+  last: Date;
+  firstKey: string;
+  lastKey: string;
 }
 
-export function buildWeekGrid<R extends { dayKey: string | null }>(
+/** The locale week containing `anchor`. */
+export function weekRange(anchor: Date, weekStart: WeekStart): WeekRange {
+  const first = startOfWeek(anchor, weekStart);
+  const last = addDays(first, DAY_STRIP_LENGTH - 1);
+  return { first, last, firstKey: dayKeyOf(first), lastKey: dayKeyOf(last) };
+}
+
+/** Week: the same seven-tile strip, starting on the locale's first weekday. */
+export function buildWeekStrip(
   anchor: Date,
   weekStart: WeekStart,
   today: Date,
-  rows: R[],
-): WeekDay<R>[] {
-  const first = startOfWeek(anchor, weekStart);
-  const todayKey = dayKeyOf(today);
-  const byDay = new Map<string, R[]>();
-  for (const row of rows) {
-    if (row.dayKey === null) continue;
-    const list = byDay.get(row.dayKey);
-    if (list) list.push(row);
-    else byDay.set(row.dayKey, [row]);
-  }
-  return Array.from({ length: 7 }, (_, i) => {
-    const date = addDays(first, i);
-    const dayKey = dayKeyOf(date);
-    return {
-      dayKey,
-      date,
-      isToday: dayKey === todayKey,
-      isPast: dayKey < todayKey,
-      rows: byDay.get(dayKey) ?? [],
-    };
-  });
+  counts: ReadonlyMap<string, readonly unknown[]>,
+  selectedDayKey: string | null,
+): StripDay[] {
+  return buildStrip(weekRange(anchor, weekStart).first, today, counts, selectedDayKey);
+}
+
+/** Rows dated inside the week (undated rows belong to no week). */
+export function rowsInWeek<R extends { dayKey: string | null }>(rows: R[], range: WeekRange): R[] {
+  return rows.filter((row) => row.dayKey !== null && row.dayKey >= range.firstKey && row.dayKey <= range.lastKey);
 }
 
 // ── Month grid ──────────────────────────────────────────────────────────────

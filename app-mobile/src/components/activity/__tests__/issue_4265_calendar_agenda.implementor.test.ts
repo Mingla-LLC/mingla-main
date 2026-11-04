@@ -18,7 +18,7 @@ import {
   buildDayStrip,
   buildMonthGrid,
   buildUnifiedRows,
-  buildWeekGrid,
+  buildWeekStrip,
   CALENDAR_VIEWS,
   calendarViewStorageKey,
   dayKeyOf,
@@ -30,6 +30,7 @@ import {
   groupByDay,
   matchesTypeFilter,
   parseCalendarView,
+  rowsInWeek,
   shiftMonth,
   sortPast,
   sortUpcoming,
@@ -37,6 +38,7 @@ import {
   tagsByDay,
   ticketRowKey,
   toggleSelectedDay,
+  weekRange,
   weekStartForLocale,
 } from "../calendarAgendaModel.ts";
 
@@ -233,20 +235,38 @@ Deno.test("#4265 week start follows the locale", () => {
   assertEquals(weekStartForLocale("ja"), 0);
 });
 
-Deno.test("#4265 week grid: seven days from the week start, today and past flags, rows per day", () => {
-  const rows = [{ dayKey: "2026-11-06", key: "x" }, { dayKey: "2026-11-02", key: "y" }, { dayKey: null, key: "u" }];
-  const mon = buildWeekGrid(TODAY, 1, TODAY, rows);
+Deno.test("#4265 week strip: the List day tiles, from the locale week start, with today, past and selection", () => {
+  const counts = tagsByDay([{ dayKey: "2026-11-06", tag: "ticket" }, { dayKey: "2026-11-06", tag: "plan" }, { dayKey: "2026-11-02", tag: "stay" }]);
+  const mon = buildWeekStrip(TODAY, 1, TODAY, counts, "2026-11-06");
   assertEquals(mon.map((d) => d.dayKey), ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08"]);
-  assertEquals(mon[2].isToday, true);
-  assertEquals(mon[0].isPast, true);
-  assertEquals(mon[2].isPast, false, "today is not past");
-  assertEquals(mon[4].rows.map((r) => r.key), ["x"]);
-  assertEquals(mon[0].rows.map((r) => r.key), ["y"]);
-  const sun = buildWeekGrid(TODAY, 0, TODAY, rows);
-  assertEquals(sun[0].dayKey, "2026-11-01");
+  assertEquals(mon.filter((d) => d.isToday).map((d) => d.dayKey), ["2026-11-04"]);
+  assertEquals(mon.filter((d) => d.isPast).map((d) => d.dayKey), ["2026-11-02", "2026-11-03"], "days before today dim; today does not");
+  assertEquals(mon.filter((d) => d.isSelected).map((d) => d.dayKey), ["2026-11-06"]);
+  assertEquals(mon[4].planCount, 2);
+  assertEquals(mon[0].planCount, 1);
+  assertEquals(buildWeekStrip(TODAY, 0, TODAY, counts, null)[0].dayKey, "2026-11-01", "Sunday-first locale");
+  assertEquals(buildWeekStrip(TODAY, 6, TODAY, counts, null)[0].dayKey, "2026-10-31", "Saturday-first locale");
   assertEquals(dayKeyOf(startOfWeek(new Date(2026, 10, 1), 1)), "2026-10-26", "Sunday 1 Nov is the end of a Monday week");
-  // Prev / next week across a year boundary.
-  assertEquals(buildWeekGrid(addDays(new Date(2026, 11, 30), 7), 1, TODAY, [])[0].dayKey, "2027-01-04");
+  // Arrows step whole weeks, across a year boundary.
+  assertEquals(buildWeekStrip(addDays(new Date(2026, 11, 30), 7), 1, TODAY, new Map(), null)[0].dayKey, "2027-01-04");
+  // Same tile shape as the List strip.
+  assertEquals(Object.keys(mon[0]).sort(), Object.keys(buildDayStrip(TODAY, counts, null)[0]).sort());
+  assertEquals(buildDayStrip(TODAY, counts, null).some((d) => d.isPast), false, "the List strip starts today");
+});
+
+Deno.test("#4265 week rows: only plans dated inside the shown week", () => {
+  const rows = [
+    { key: "before", dayKey: "2026-11-01" },
+    { key: "first", dayKey: "2026-11-02" },
+    { key: "mid", dayKey: "2026-11-05" },
+    { key: "last", dayKey: "2026-11-08" },
+    { key: "after", dayKey: "2026-11-09" },
+    { key: "undated", dayKey: null },
+  ];
+  const range = weekRange(TODAY, 1);
+  assertEquals([range.firstKey, range.lastKey], ["2026-11-02", "2026-11-08"]);
+  assertEquals(rowsInWeek(rows, range).map((r) => r.key), ["first", "mid", "last"]);
+  assertEquals(rowsInWeek(rows, weekRange(TODAY, 0)).map((r) => r.key), ["before", "first", "mid"]);
 });
 
 // ── 6. Month grid ───────────────────────────────────────────────────────────
@@ -327,11 +347,17 @@ Deno.test("#4265 Week and Month live in the one scroll body, with chips above th
   assert(!/<(ScrollView|FlatList|SectionList)\b/.test(grids), "the grids never scroll on their own");
   assert(/ListHeaderComponent=\{header\}/.test(tab), "the header (controls + grids) is the list header");
   const header = tab.slice(tab.indexOf("const header = ("), tab.indexOf("return (", tab.indexOf("const header = (")));
-  assert(header.includes("<CalendarWeekView") && header.includes("<CalendarMonthView"), "Week and Month render inside the list header");
+  assert(header.includes("<CalendarWeekHeader") && header.includes("<CalendarMonthView"), "Week and Month render inside the list header");
+  // Week = its title + the SAME day strip as List; its plans are the List rows.
+  assertEquals((header.match(/<CalendarDayStrip\b/g) ?? []).length, 2, "List and Week share the one strip component");
+  assert(/days=\{weekStrip\}/.test(header), "Week feeds the strip its own week");
+  assert(!/CalendarWeekView|weekRow|weekChip/.test(tab + grids), "no vertical day bars");
+  const sections0 = tab.slice(tab.indexOf("const sections = useMemo"), tab.indexOf("const hasUpcomingInView"));
+  assert(/rowsInWeek\(typedRows, week\)/.test(sections0) && /groupByDay\(visible, todayKey\)/.test(sections0), "Week lists its rows with the List grouping");
   // Chips sit above the strip / grid in every view.
   const chips = header.indexOf("<CalendarTypeChips");
   assert(chips > header.indexOf("<CalendarViewToggle"), "chips follow the view toggle");
-  for (const grid of ["<CalendarDayStrip", "<CalendarWeekView", "<CalendarMonthView"]) {
+  for (const grid of ["<CalendarDayStrip", "<CalendarWeekHeader", "<CalendarMonthView"]) {
     assert(chips < header.indexOf(grid), `chips sit above ${grid}`);
   }
   // Past plans close every view (Week and Month no longer return an empty list).
@@ -343,10 +369,10 @@ Deno.test("#4265 Week and Month live in the one scroll body, with chips above th
   assert(/contentContainerStyle=\{mainScrollContent\}/.test(tab));
   // removeClippedSubviews toggled under Fabric crashed the app (unmountChildComponentView).
   assert(!/removeClippedSubviews/.test(tab), "no removeClippedSubviews on the Calendar list");
-  // Compact week rows: 44x44 badge, 52pt rows, 6pt gaps.
-  assert(/weekRow:\s*\{[^}]*minHeight: 52,[^}]*marginBottom: 6,/.test(grids), "52pt week rows with 6pt gaps");
-  assert(/weekDay:\s*\{[^}]*width: 44,[^}]*minHeight: 44,/.test(grids), "44x44 day badge");
-  assert(/weekDayToday:\s*\{[^}]*borderColor: L\.accent/.test(grids), "today keeps the orange ring");
+  // Week's empty state names the week (or the day when one is tapped).
+  assert(/: view === "week"\s*\? "week"/.test(header), "Nothing booked this week");
+  const strip = stripComments(await read("src/components/activity/CalendarControls.tsx"));
+  assert(/day\.isPast && !day\.isSelected && styles\.tilePast/.test(strip), "past days dim in the strip");
 });
 
 Deno.test("#4265 pull to refresh refreshes every calendar source", async () => {
@@ -371,7 +397,7 @@ Deno.test("#4265 Calendar copy is translated in all 29 locales", async () => {
   const LOCALES = ["ar", "bin", "bn", "de", "el", "en", "es", "fr", "ha", "he", "hi", "id", "ig", "it", "ja", "ko", "ms", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "yo", "zh"];
   const placeholders = (v: string): string => [...v.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join("|");
   const en = JSON.parse(await read("src/i18n/locales/en/activity.json")).calendarTab;
-  const REQUIRED = ["viewToggleLabel", "viewList", "viewWeek", "viewMonth", "today", "tomorrow", "dateToBeSet", "typeFilterLabel", "typeAll", "typeTickets", "typeReservations", "typePlans", "typeStays", "tagTicket", "tagReservation", "tagPlan", "tagStay", "ticketButton", "ticketA11y", "moreA11y", "dayA11y", "dayTodayA11y", "weekPrev", "weekNext", "monthPrev", "monthNext", "noPlans", "pastPlans", "again", "againA11y", "emptyTitleYet", "emptyTitleDay", "emptyBody", "planFromSaves", "actionsTitle", "actionShare", "actionAddToPhone", "actionRemove", "actionOpen", "actionCancelReservation", "statusFinalizing", "statusAwaitingApproval", "statusRequested", "statusCancelled", "partyOf", "morePlaces", "loadingCalendar", "reschedule"];
+  const REQUIRED = ["viewToggleLabel", "viewList", "viewWeek", "viewMonth", "today", "tomorrow", "dateToBeSet", "typeFilterLabel", "typeAll", "typeTickets", "typeReservations", "typePlans", "typeStays", "tagTicket", "tagReservation", "tagPlan", "tagStay", "ticketButton", "ticketA11y", "moreA11y", "dayA11y", "dayTodayA11y", "weekPrev", "weekNext", "monthPrev", "monthNext", "noPlans", "pastPlans", "again", "againA11y", "emptyTitleYet", "emptyTitleDay", "emptyTitleWeek", "emptyBody", "planFromSaves", "actionsTitle", "actionShare", "actionAddToPhone", "actionRemove", "actionOpen", "actionCancelReservation", "statusFinalizing", "statusAwaitingApproval", "statusRequested", "statusCancelled", "partyOf", "morePlaces", "loadingCalendar", "reschedule"];
   const RETIRED = ["active", "archives", "soloDiscovery", "purchaseDetails", "emptyActiveTitle", "emptyArchiveTitle", "aboutExperience", "visitWebsite"];
   for (const locale of LOCALES) {
     const cal = JSON.parse(await read(`src/i18n/locales/${locale}/activity.json`)).calendarTab;

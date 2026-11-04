@@ -92,7 +92,7 @@ import {
   buildDayStrip,
   buildMonthGrid,
   buildUnifiedRows,
-  buildWeekGrid,
+  buildWeekStrip,
   DAY_STRIP_LENGTH,
   dateOfDayKey,
   dayKeyOf,
@@ -104,7 +104,9 @@ import {
   startOfDay,
   addDays,
   tagsByDay,
+  rowsInWeek,
   toggleSelectedDay,
+  weekRange,
   weekStartForLocale,
   type AgendaDayLabel,
   type AgendaTypeFilter,
@@ -112,7 +114,7 @@ import {
 import type { CalendarAgendaSources, CalendarEntry } from "./calendarAgendaTypes";
 import { CalendarAgendaRow, CalendarPastRow, type CalendarRow } from "./CalendarAgendaRow";
 import { CalendarDayStrip, CalendarTypeChips, CalendarViewToggle } from "./CalendarControls";
-import { CalendarMonthView, CalendarWeekView } from "./CalendarGrids";
+import { CalendarMonthView, CalendarWeekHeader } from "./CalendarGrids";
 import { CalendarAgendaSkeleton, CalendarEmptyCard, CalendarPastToggle } from "./CalendarAgendaStates";
 import CalendarPlanActionSheet, { type CalendarPlanAction } from "./CalendarPlanActionSheet";
 import { useCalendarViewPref } from "./useCalendarViewPref";
@@ -209,6 +211,8 @@ const CalendarTab = ({
   // #4265 — agenda state.
   const [typeFilter, setTypeFilter] = useState<AgendaTypeFilter>("all");
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  // Week view's own day selection (its strip shows a different seven days).
+  const [weekDayKey, setWeekDayKey] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
   const [actionRow, setActionRow] = useState<CalendarRow | null>(null);
   const afterActionSheetRef = useRef<(() => void) | null>(null);
@@ -423,6 +427,7 @@ const CalendarTab = ({
       setMonthDayKey(match.dayKey);
       setMonth({ year: day.getFullYear(), monthIndex: day.getMonth() });
       setWeekAnchor(day);
+      setWeekDayKey(match.dayKey);
     }
   }, [selectedEntryId, allRows]);
 
@@ -455,6 +460,8 @@ const CalendarTab = ({
     [formats, t],
   );
 
+  const week = useMemo(() => weekRange(weekAnchor, weekStart), [weekAnchor, weekStart]);
+
   // ── Sections per view ───────────────────────────────────────────────────
   // Every view is ONE scroll body: the header (controls + grid + empty state)
   // is the SectionList header, and the day's plans and "Past plans" follow in
@@ -466,32 +473,32 @@ const CalendarTab = ({
       if (data.length > 0) {
         out.push({ key: monthDayKey, kind: "day", label: groupByDay(data, todayKey)[0].label, dayKey: monthDayKey, data });
       }
-    } else if (view === "list") {
-      const visible = selectedDayKey === null
-        ? upcomingRows
-        : upcomingRows.filter((row) => row.dayKey === selectedDayKey);
+    } else {
+      // List: upcoming plans. Week: that week's plans (its past days' plans
+      // render dimmed). Both narrow to the tapped day and group the same way.
+      const pool = view === "week" ? sortUpcoming(rowsInWeek(typedRows, week)) : upcomingRows;
+      const day = view === "week" ? weekDayKey : selectedDayKey;
+      const visible = day === null ? pool : pool.filter((row) => row.dayKey === day);
       for (const group of groupByDay(visible, todayKey)) {
         out.push({ key: group.key, kind: "day", label: group.label, dayKey: group.dayKey, data: group.data });
       }
     }
-    // Week shows its plans as chips in the grid; Past plans close every view.
+    // Past plans close every view.
     if (pastRows.length > 0) {
       out.push({ key: "past", kind: "past", total: pastRows.length, data: showPast ? pastRows : [] });
     }
     return out;
-  }, [view, typedRows, monthDayKey, todayKey, selectedDayKey, upcomingRows, pastRows, showPast]);
+  }, [view, typedRows, week, weekDayKey, monthDayKey, todayKey, selectedDayKey, upcomingRows, pastRows, showPast]);
 
-  const hasUpcomingInView = view === "week"
-    ? upcomingRows.length > 0
-    : sections.some((s) => s.kind === "day" && s.data.length > 0);
+  const hasUpcomingInView = sections.some((s) => s.kind === "day" && s.data.length > 0);
 
   const strip = useMemo(
     () => buildDayStrip(today, upcomingDayTags, selectedDayKey),
     [today, upcomingDayTags, selectedDayKey],
   );
-  const week = useMemo(
-    () => buildWeekGrid(weekAnchor, weekStart, today, sortUpcoming(typedRows)),
-    [weekAnchor, weekStart, today, typedRows],
+  const weekStrip = useMemo(
+    () => buildWeekStrip(weekAnchor, weekStart, today, dayTags, weekDayKey),
+    [weekAnchor, weekStart, today, dayTags, weekDayKey],
   );
   const monthCells = useMemo(
     () => buildMonthGrid(month.year, month.monthIndex, weekStart, today, monthDayKey, dayTags),
@@ -1168,6 +1175,8 @@ const CalendarTab = ({
     ({ item, section }: SectionListRenderItemInfo<CalendarRow, AgendaSection>) =>
       section.kind === "past"
         ? <CalendarPastRow row={item} timeLabel={pastLabel(item)} onOpen={onOpenRow} onAgain={onAgainRow} />
+        : item.isPast
+        ? <CalendarPastRow row={item} timeLabel={timeLabel(item)} onOpen={onOpenRow} onAgain={onAgainRow} />
         : <CalendarAgendaRow row={item} timeLabel={timeLabel(item)} onOpen={onOpenRow} onTicket={onTicketRow} onMore={onMoreRow} />,
     [pastLabel, timeLabel, onOpenRow, onAgainRow, onTicketRow, onMoreRow],
   );
@@ -1191,6 +1200,14 @@ const CalendarTab = ({
     (dayKey: string) => setSelectedDayKey((current) => toggleSelectedDay(current, dayKey)),
     [],
   );
+  const onPickWeekDay = useCallback(
+    (dayKey: string) => setWeekDayKey((current) => toggleSelectedDay(current, dayKey)),
+    [],
+  );
+  const shiftWeek = useCallback((delta: number) => {
+    setWeekAnchor((d) => addDays(d, delta * 7));
+    setWeekDayKey(null);
+  }, []);
   const onPickMonthDay = useCallback((dayKey: string) => setMonthDayKey(dayKey), []);
 
   const showSkeleton = allRows.length === 0 &&
@@ -1206,14 +1223,16 @@ const CalendarTab = ({
         ? <CalendarDayStrip days={strip} locale={locale} onPick={onPickStripDay} />
         : view === "week"
         ? (
-          <CalendarWeekView
-            days={week}
-            locale={locale}
-            timeLabel={timeLabel}
-            onPrev={() => setWeekAnchor((d) => addDays(d, -7))}
-            onNext={() => setWeekAnchor((d) => addDays(d, 7))}
-            onOpenRow={onOpenRow}
-          />
+          <View style={styles.week}>
+            <CalendarWeekHeader
+              first={week.first}
+              last={week.last}
+              locale={locale}
+              onPrev={() => shiftWeek(-1)}
+              onNext={() => shiftWeek(1)}
+            />
+            <CalendarDayStrip days={weekStrip} locale={locale} onPick={onPickWeekDay} />
+          </View>
         )
         : (
           <CalendarMonthView
@@ -1232,7 +1251,11 @@ const CalendarTab = ({
         : !hasUpcomingInView
         ? (
           <CalendarEmptyCard
-            daySelected={view === "month" || (view === "list" && selectedDayKey !== null)}
+            scope={view === "month" || (view === "list" ? selectedDayKey : weekDayKey) !== null
+              ? "day"
+              : view === "week"
+              ? "week"
+              : "all"}
             onPlanFromSaves={onPlanFromSaves}
           />
         )
@@ -1400,6 +1423,9 @@ const styles = StyleSheet.create({
   },
   header: {
     gap: 14,
+  },
+  week: {
+    gap: 6,
   },
   sectionHeader: {
     marginTop: 14,

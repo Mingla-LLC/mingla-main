@@ -15,11 +15,20 @@ const C = L.calendar;
 const OPAQUE = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 const SKELETON_ROWS = [0, 1, 2, 3];
 
+/** What the empty agenda is empty of: everything, the selected day, or the shown week. */
+export type CalendarEmptyScope = "all" | "day" | "week";
+
+const EMPTY_TITLE_KEY: Record<CalendarEmptyScope, string> = {
+  all: "activity:calendarTab.emptyTitleYet",
+  day: "activity:calendarTab.emptyTitleDay",
+  week: "activity:calendarTab.emptyTitleWeek",
+};
+
 export function CalendarEmptyCard({
-  daySelected,
+  scope,
   onPlanFromSaves,
 }: {
-  daySelected: boolean;
+  scope: CalendarEmptyScope;
   /** Absent → the button is hidden (never a dead tap). */
   onPlanFromSaves?: () => void;
 }): React.ReactElement {
@@ -32,7 +41,7 @@ export function CalendarEmptyCard({
         </View>
         <View style={styles.emptyText}>
           <Text style={styles.emptyTitle} accessibilityRole="header">
-            {daySelected ? t("activity:calendarTab.emptyTitleDay") : t("activity:calendarTab.emptyTitleYet")}
+            {t(EMPTY_TITLE_KEY[scope])}
           </Text>
           <Text style={styles.emptyBody}>{t("activity:calendarTab.emptyBody")}</Text>
         </View>

@@ -2,8 +2,8 @@
  * Issue #4265 — the Calendar's Week and Month views (approved design:
  * Calendar.dc.html + the List · Week · Month toggle added after approval).
  *
- * Week: one row per day, the day on the left (today marked the same way as
- * the strip), that day's plans as compact chips; an empty day shows "—".
+ * Week: just its title and arrows here — the days are the List strip and its
+ * plans are the List rows (CalendarTab).
  * Month: a 7-column grid with up to three type-coloured dots (or "+n") per
  * day; today = orange ring, selected = filled orange, outside days dimmed.
  * Past days stay dimmed but tappable.
@@ -13,14 +13,12 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { Icon } from "../ui/Icon";
-import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../../constants/designSystem";
-import { addDays, dayVisual, type MonthCell, type WeekDay, type WeekStart } from "./calendarAgendaModel";
-import type { CalendarRow } from "./CalendarAgendaRow";
+import { glass } from "../../constants/designSystem";
+import { dayVisual, type MonthCell, type WeekStart } from "./calendarAgendaModel";
 import { dayTileA11yLabel } from "./CalendarControls";
 
 const L = glass.likes;
 const C = L.calendar;
-const OPAQUE = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 
 function GridHeader({
   title,
@@ -68,79 +66,28 @@ export function formatWeekRange(locale: string, first: Date, last: Date): string
 
 // ── Week ────────────────────────────────────────────────────────────────────
 
-export const CalendarWeekView = memo(function CalendarWeekView({
-  days,
+export const CalendarWeekHeader = memo(function CalendarWeekHeader({
+  first,
+  last,
   locale,
-  timeLabel,
   onPrev,
   onNext,
-  onOpenRow,
 }: {
-  days: WeekDay<CalendarRow>[];
+  first: Date;
+  last: Date;
   locale: string;
-  timeLabel: (row: CalendarRow) => string;
   onPrev: () => void;
   onNext: () => void;
-  onOpenRow: (row: CalendarRow) => void;
 }): React.ReactElement {
   const { t } = useTranslation(["activity"]);
-  const dow = new Intl.DateTimeFormat(locale, { weekday: "short" });
-  const long = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" });
-  const first = days[0]?.date ?? new Date();
-  const last = days[days.length - 1]?.date ?? addDays(first, 6);
   return (
-    <View>
-      <GridHeader
-        title={formatWeekRange(locale, first, last)}
-        prevLabel={t("activity:calendarTab.weekPrev")}
-        nextLabel={t("activity:calendarTab.weekNext")}
-        onPrev={onPrev}
-        onNext={onNext}
-      />
-      {days.map((day) => {
-        const v = dayVisual({ isToday: day.isToday, isSelected: false });
-        return (
-          <View key={day.dayKey} style={[styles.weekRow, day.isPast && styles.pastDim]}>
-            <View
-              style={[styles.weekDay, v.border === "accent" ? styles.weekDayToday : styles.weekDayQuiet]}
-              accessible
-              accessibilityLabel={dayTileA11yLabel(t, { isToday: day.isToday, longDate: long.format(day.date), planCount: day.rows.length })}
-            >
-              <Text style={[styles.weekDow, v.showTodayLabel && styles.todayText]} numberOfLines={1} adjustsFontSizeToFit>
-                {v.showTodayLabel ? t("activity:calendarTab.today") : dow.format(day.date)}
-              </Text>
-              <Text style={styles.weekNum}>{day.date.getDate()}</Text>
-            </View>
-            <View style={styles.weekChips}>
-              {day.rows.length === 0 ? (
-                <Text style={styles.weekEmpty} accessibilityLabel={t("activity:calendarTab.noPlans")}>
-                  —
-                </Text>
-              ) : (
-                day.rows.map((row) => {
-                  const tone = C.tag[row.tag];
-                  const time = timeLabel(row);
-                  return (
-                    <Pressable
-                      key={row.key}
-                      onPress={() => onOpenRow(row)}
-                      style={[styles.weekChip, { backgroundColor: OPAQUE ? tone.bgOpaque : tone.bg }]}
-                      accessibilityRole="button"
-                      accessibilityLabel={[time, row.title].filter(Boolean).join(", ")}
-                    >
-                      {time ? <Text style={[styles.weekChipTime, { color: tone.fg }]}>{time}</Text> : null}
-                      <Text style={styles.weekChipTitle} numberOfLines={1}>
-                        {row.title}
-                      </Text>
-                    </Pressable>
-                  );
-                })
-              )}
-            </View>
-          </View>
-        );
-      })}
-    </View>
+    <GridHeader
+      title={formatWeekRange(locale, first, last)}
+      prevLabel={t("activity:calendarTab.weekPrev")}
+      nextLabel={t("activity:calendarTab.weekNext")}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
   );
 });
 
@@ -252,74 +199,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  weekRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 52,
-    marginBottom: 6,
-  },
   pastDim: {
     opacity: 0.45,
-  },
-  weekDay: {
-    width: 44,
-    minHeight: 44,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: OPAQUE ? C.dayTileFillOpaque : C.dayTileFill,
-  },
-  weekDayQuiet: {
-    borderWidth: 1,
-    borderColor: C.dayTileBorder,
-  },
-  weekDayToday: {
-    borderWidth: C.todayBorderWidth,
-    borderColor: L.accent,
-  },
-  weekDow: {
-    color: C.dayLabelIdle,
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  todayText: {
-    color: L.accent,
-    fontWeight: "700",
-  },
-  weekNum: {
-    color: L.textPrimary,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  weekChips: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-  },
-  weekEmpty: {
-    color: L.textSecondary,
-    fontSize: 15,
-    opacity: 0.5,
-  },
-  weekChip: {
-    minHeight: 44,
-    maxWidth: "100%",
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    justifyContent: "center",
-  },
-  weekChipTime: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  weekChipTitle: {
-    color: L.textPrimary,
-    fontSize: 13,
-    fontWeight: "600",
   },
   monthRow: {
     flexDirection: "row",
