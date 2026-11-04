@@ -2,6 +2,7 @@
  * /event/[id]/door/tap/setup — #4271 Tap to Pay setup, once per phone (design T1).
  * Optional ?draft=<base64 json> carries a waiting door sale through setup.
  */
+// orch-strict-grep-allow safearea-on-fullscreen-routes — the screen component applies useSafeAreaInsets (paddingTop: insets.top).
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 

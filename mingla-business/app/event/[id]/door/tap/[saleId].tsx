@@ -2,6 +2,7 @@
  * /event/[id]/door/tap/[saleId] — #4271 Tap to Pay door sale (design T2, T3, H4).
  * saleId "new" + ?draft=<base64 json {lines, eventDateId, buyerPhone?}> starts a sale.
  */
+// orch-strict-grep-allow safearea-on-fullscreen-routes — the screen component applies useSafeAreaInsets (paddingTop: insets.top).
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 

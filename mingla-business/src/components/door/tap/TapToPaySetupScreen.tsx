@@ -83,6 +83,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
 
   const goToDoor = useCallback((): void => {
+    // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
     router.replace(`/event/${eventId}/door` as never);
   }, [router, eventId]);
 
@@ -104,6 +105,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         eventDateId: draft.eventDateId,
         lines: draft.lines,
       });
+      // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
     } catch {
       setError("Couldn't make a pay code. Check your connection and try again.");
@@ -136,6 +138,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
       }
       await markTapToPaySetupComplete();
       if (draft !== null) {
+        // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
         router.replace(
           `/event/${eventId}/door/tap/new?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
         );

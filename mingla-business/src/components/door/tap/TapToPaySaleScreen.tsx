@@ -90,6 +90,7 @@ export const TapToPaySaleScreen = ({
   );
 
   const goToDoor = useCallback((): void => {
+    // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
     router.replace(`/event/${eventId}/door` as never);
   }, [router, eventId]);
 
@@ -102,6 +103,7 @@ export const TapToPaySaleScreen = ({
   // Setup comes first, once per phone. The draft travels with it.
   useEffect(() => {
     if (draft !== null && availability.available && availability.needsSetup) {
+      // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(
         `/event/${eventId}/door/tap/setup?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
       );
@@ -161,6 +163,7 @@ export const TapToPaySaleScreen = ({
         eventDateId: draft.eventDateId,
         lines: draft.lines,
       });
+      // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
     } catch {
       setPayCodeError("Couldn't make a pay code. Check your connection and try again.");
@@ -174,6 +177,7 @@ export const TapToPaySaleScreen = ({
       goToDoor();
       return;
     }
+    // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
     router.replace(
       `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
     );

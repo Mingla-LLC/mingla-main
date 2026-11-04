@@ -85,7 +85,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName, children }: BridgeP
         const permission = (await sdk.requestNeededAndroidPermissions({
           accessFineLocation: {
             title: "Location for card payments",
-            message: "Stripe needs to know where card payments are taken. Mingla Host only uses it for payments at the door.",
+            message: "Card payments need to know where they are taken. Mingla Host only uses your location for payments at the door.",
             buttonPositive: "Allow",
           },
         })) as unknown as { error?: unknown };
