@@ -1,6 +1,6 @@
 /**
  * Issue #4265 — the Saved "Filters" bottom sheet (SearchFilter.dc.html):
- * Sort by, Category (from the categories actually saved), Budget, Open now,
+ * Type, Sort by, Category (from the categories actually saved), Budget, Open now,
  * and a pinned "Clear" + "Show N likes" footer.
  *
  * Edits apply live to SavedTab's single SavedFilterState, so the footer count
@@ -15,8 +15,10 @@ import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../../constants/desig
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import {
   SAVED_BUDGETS,
+  SAVED_QUICK_TYPES,
   SAVED_SORTS,
   type SavedBudget,
+  type SavedQuickType,
   type SavedSort,
 } from "./savedFiltersModel";
 
@@ -30,6 +32,13 @@ const BACKGROUND_STYLE = {
   borderTopRightRadius: 24,
 } as const;
 const CHIP_HIT_SLOP = { top: 4, bottom: 4, left: 0, right: 0 } as const;
+
+const TYPE_KEY: Record<SavedQuickType, string> = {
+  all: "activity:savedFilters.chipAll",
+  places: "activity:savedFilters.chipPlaces",
+  events: "activity:savedFilters.chipEvents",
+  plans: "activity:savedFilters.chipPlans",
+};
 
 const SORT_KEY: Record<SavedSort, string> = {
   recent: "activity:savedFilters.sortRecent",
@@ -45,12 +54,15 @@ export function savedBudgetGlyph(budget: Exclude<SavedBudget, "free">): string {
 export interface SavedFiltersSheetProps {
   visible: boolean;
   onClose: () => void;
+  /** All (default) / Places / Events / Plans — single select. */
+  type: SavedQuickType;
   sort: SavedSort;
   categories: readonly string[];
   budgets: readonly SavedBudget[];
   openNow: boolean;
   categoryOptions: ReadonlyArray<{ slug: string; label: string }>;
   resultCount: number;
+  onTypeChange: (type: SavedQuickType) => void;
   onSortChange: (sort: SavedSort) => void;
   onToggleCategory: (slug: string) => void;
   onToggleBudget: (budget: SavedBudget) => void;
@@ -61,12 +73,14 @@ export interface SavedFiltersSheetProps {
 export default function SavedFiltersSheet({
   visible,
   onClose,
+  type,
   sort,
   categories,
   budgets,
   openNow,
   categoryOptions,
   resultCount,
+  onTypeChange,
   onSortChange,
   onToggleCategory,
   onToggleBudget,
@@ -152,6 +166,15 @@ export default function SavedFiltersSheet({
       stickyFooter={footer}
       scrollProps={{ contentContainerStyle: styles.body }}
     >
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel} accessibilityRole="header">
+          {t("activity:savedFilters.type")}
+        </Text>
+        <View style={styles.wrapRow}>
+          {SAVED_QUICK_TYPES.map((id) => pill(id, t(TYPE_KEY[id]), type === id, () => onTypeChange(id)))}
+        </View>
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionLabel} accessibilityRole="header">
           {t("activity:savedFilters.sortBy")}

@@ -238,11 +238,15 @@ Deno.test("#4265 sort: recently saved, nearest, top rated — unknowns last", ()
 Deno.test("#4265 badge count, live 'Show N likes' count and both clears", () => {
   const state = { ...DEFAULT_SAVED_FILTERS, query: "a", type: "places", sort: "rating", categories: ["casual_food"], budgets: ["1", "2"], openNow: true };
   assertEquals(activeSheetFilterCount(DEFAULT_SAVED_FILTERS), 0);
-  assertEquals(activeSheetFilterCount(state), 5, "sort + 1 category + 2 budgets + open now");
+  assertEquals(activeSheetFilterCount(state), 6, "type + sort + 1 category + 2 budgets + open now");
+  // Type lives in the sheet now: any Type other than All lights the badge.
+  assertEquals(DEFAULT_SAVED_FILTERS.type, "all", "All is the default type");
+  assertEquals(activeSheetFilterCount({ ...DEFAULT_SAVED_FILTERS, type: "events" }), 1, "Type ≠ All counts");
+  assertEquals(activeSheetFilterCount({ ...DEFAULT_SAVED_FILTERS, type: "all" }), 0);
   assert(hasAnySavedFilter({ ...DEFAULT_SAVED_FILTERS, query: "x" }));
   assert(!hasAnySavedFilter(DEFAULT_SAVED_FILTERS));
   const cleared = clearSheetFilters(state);
-  assertEquals({ ...cleared }, { ...DEFAULT_SAVED_FILTERS, query: "a", type: "places" }, "sheet Clear keeps search + chip");
+  assertEquals({ ...cleared }, { ...DEFAULT_SAVED_FILTERS, query: "a" }, "sheet Clear resets Type too; keeps search");
   assertEquals(toggleIn(["a"], "b"), ["a", "b"]);
   assertEquals(toggleIn(["a", "b"], "a"), ["b"]);
   // The live count equals the grid's result count, net of Undo-pending cards.
@@ -275,6 +279,15 @@ Deno.test("#4265 Saved uses the dark search header + Filters sheet; the When fil
   assert(/accessibilityRole="switch"/.test(sheet) && /accessibilityState=\{\{ checked: openNow \}\}/.test(sheet));
   assert(/<BaseBottomSheet/.test(sheet) && /stickyFooter=\{footer\}/.test(sheet));
   assert(/savedFilters\.a11yFiltersOn/.test(header), "Filters, N on");
+  // No quick-chip row in the Saved header any more (Seth, #4265): just the
+  // search field + Filters button.
+  assert(!/<ScrollView|horizontal|SAVED_QUICK_TYPES|savedFilters\.chip|savedFilters\.openNow|onTypeChange|onToggleOpenNow/.test(header),
+    "the All / Places / Events / Plans / Open now chip row is back in the header");
+  assert(!/onTypeChange=\{handleTypeChange\}\s*\n\s*openNow=/.test(tab));
+  // Type is the first section of the sheet, single-select over All/Places/Events/Plans.
+  assert(/savedFilters\.type"\)[\s\S]*SAVED_QUICK_TYPES\.map\(\(id\) => pill\(id, t\(TYPE_KEY\[id\]\), type === id, \(\) => onTypeChange\(id\)\)\)[\s\S]*savedFilters\.sortBy/.test(sheet),
+    "Type section sits above Sort by in the sheet");
+  assert(/type=\{filters\.type\}/.test(tab) && /onTypeChange=\{handleTypeChange\}/.test(tab), "sheet is wired to the one filter state");
 
   const tokens = await read("src/constants/designSystem.ts");
   assert(/fieldHeight: 44,\s*fieldRadius: 14,/.test(tokens));

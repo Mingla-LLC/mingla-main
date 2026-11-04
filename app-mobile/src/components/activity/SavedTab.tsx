@@ -1608,10 +1608,6 @@ const SavedTab = ({
         <SavedSearchHeader
           query={filters.query}
           onQueryChange={handleQueryChange}
-          type={filters.type}
-          onTypeChange={handleTypeChange}
-          openNow={filters.openNow}
-          onToggleOpenNow={handleToggleOpenNow}
           activeCount={activeFilterCount}
           onOpenFilters={handleOpenFilters}
         />
@@ -1621,12 +1617,8 @@ const SavedTab = ({
       searchBarOpacity,
       searchBarSlide,
       filters.query,
-      filters.type,
-      filters.openNow,
       activeFilterCount,
       handleQueryChange,
-      handleTypeChange,
-      handleToggleOpenNow,
       handleOpenFilters,
     ],
   );
@@ -1679,12 +1671,14 @@ const SavedTab = ({
       <SavedFiltersSheet
         visible={showFiltersSheet}
         onClose={handleCloseFilters}
+        type={filters.type}
         sort={filters.sort}
         categories={filters.categories}
         budgets={filters.budgets}
         openNow={filters.openNow}
         categoryOptions={categoryOptions}
         resultCount={filteredCards.length}
+        onTypeChange={handleTypeChange}
         onSortChange={handleSortChange}
         onToggleCategory={handleToggleCategory}
         onToggleBudget={handleToggleBudget}

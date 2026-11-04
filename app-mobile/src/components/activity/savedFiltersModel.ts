@@ -324,9 +324,14 @@ export function savedCategoryOptions<T>(
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
-/** The orange badge on the Filters button: sheet filters that are not default. */
+/**
+ * The orange badge on the Filters button: every sheet choice that is not the
+ * default — Type ≠ All, Sort ≠ Recently saved, each category, each budget,
+ * Open now. (Issue #4265: Type moved from a chip row into the sheet.)
+ */
 export function activeSheetFilterCount(state: SavedFilterState): number {
   return (
+    (state.type !== "all" ? 1 : 0) +
     (state.sort !== "recent" ? 1 : 0) +
     state.categories.length +
     state.budgets.length +
@@ -335,12 +340,12 @@ export function activeSheetFilterCount(state: SavedFilterState): number {
 }
 
 export function hasAnySavedFilter(state: SavedFilterState): boolean {
-  return state.query.trim().length > 0 || state.type !== "all" || activeSheetFilterCount(state) > 0;
+  return state.query.trim().length > 0 || activeSheetFilterCount(state) > 0;
 }
 
-/** The sheet's "Clear": sort, category, budget and open now back to default. */
+/** The sheet's "Clear": type, sort, category, budget and open now back to default; search is kept. */
 export function clearSheetFilters(state: SavedFilterState): SavedFilterState {
-  return { ...state, sort: "recent", categories: [], budgets: [], openNow: false };
+  return { ...state, type: "all", sort: "recent", categories: [], budgets: [], openNow: false };
 }
 
 export function toggleIn<V>(list: readonly V[], value: V): V[] {
