@@ -41,6 +41,7 @@
     "againA11y": "Zaplanuj {{title}} ponownie",
     "emptyTitleYet": "Jeszcze nic nie zarezerwowano",
     "emptyTitleDay": "Tego dnia nic nie zarezerwowano",
+    "emptyTitleWeek": "W tym tygodniu nic nie zarezerwowano",
     "emptyBody": "Wybierz coś z zapisanych i ustal godzinę.",
     "planFromSaves": "Zaplanuj z moich zapisanych",
     "actionsTitle": "Działania planu",

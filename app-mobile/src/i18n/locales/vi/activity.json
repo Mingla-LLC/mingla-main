@@ -41,6 +41,7 @@
     "againA11y": "Lên kế hoạch lại cho {{title}}",
     "emptyTitleYet": "Chưa đặt gì cả",
     "emptyTitleDay": "Không có gì được đặt vào ngày đó",
+    "emptyTitleWeek": "Tuần này chưa đặt gì",
     "emptyBody": "Chọn một mục đã lưu và chốt thời gian.",
     "planFromSaves": "Lên kế hoạch từ mục đã lưu",
     "actionsTitle": "Thao tác kế hoạch",

@@ -41,6 +41,7 @@
     "againA11y": "Rencanakan {{title}} lagi",
     "emptyTitleYet": "Belum ada yang dipesan",
     "emptyTitleDay": "Tidak ada pesanan di hari itu",
+    "emptyTitleWeek": "Tidak ada pesanan minggu ini",
     "emptyBody": "Pilih sesuatu dari simpananmu dan tetapkan waktunya.",
     "planFromSaves": "Rencanakan dari simpananku",
     "actionsTitle": "Tindakan rencana",

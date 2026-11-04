@@ -41,6 +41,7 @@
     "againA11y": "Planear {{title}} otra vez",
     "emptyTitleYet": "A\u00fan no hay nada reservado",
     "emptyTitleDay": "Nada reservado ese d\u00eda",
+    "emptyTitleWeek": "Nada reservado esta semana",
     "emptyBody": "Elige algo de tus guardados y fija una hora.",
     "planFromSaves": "Planear desde mis guardados",
     "actionsTitle": "Acciones del plan",

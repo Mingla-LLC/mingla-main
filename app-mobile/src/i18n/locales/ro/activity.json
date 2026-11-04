@@ -41,6 +41,7 @@
     "againA11y": "Planifică din nou {{title}}",
     "emptyTitleYet": "Nimic rezervat încă",
     "emptyTitleDay": "Nimic rezervat în acea zi",
+    "emptyTitleWeek": "Nimic rezervat săptămâna aceasta",
     "emptyBody": "Alege ceva din salvările tale și stabilește o oră.",
     "planFromSaves": "Planifică din salvările mele",
     "actionsTitle": "Acțiuni pentru plan",

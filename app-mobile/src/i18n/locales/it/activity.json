@@ -41,6 +41,7 @@
     "againA11y": "Pianifica di nuovo {{title}}",
     "emptyTitleYet": "Ancora niente di prenotato",
     "emptyTitleDay": "Niente di prenotato quel giorno",
+    "emptyTitleWeek": "Niente di prenotato questa settimana",
     "emptyBody": "Scegli qualcosa dai tuoi salvati e fissa un orario.",
     "planFromSaves": "Pianifica dai miei salvati",
     "actionsTitle": "Azioni del piano",

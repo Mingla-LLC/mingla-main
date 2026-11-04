@@ -41,6 +41,7 @@
     "againA11y": "{{title}}をもう一度計画",
     "emptyTitleYet": "まだ予定はありません",
     "emptyTitleDay": "その日の予定はありません",
+    "emptyTitleWeek": "今週の予定はありません",
     "emptyBody": "保存したものから選んで日時を決めましょう。",
     "planFromSaves": "保存したものから計画",
     "actionsTitle": "プランの操作",

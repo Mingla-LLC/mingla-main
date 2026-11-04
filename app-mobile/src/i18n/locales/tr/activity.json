@@ -41,6 +41,7 @@
     "againA11y": "{{title}} için yeniden plan yap",
     "emptyTitleYet": "Henüz bir şey ayırtılmadı",
     "emptyTitleDay": "O gün ayırtılan bir şey yok",
+    "emptyTitleWeek": "Bu hafta ayırtılan bir şey yok",
     "emptyBody": "Kaydettiklerinden birini seç ve bir saat belirle.",
     "planFromSaves": "Kaydettiklerimden planla",
     "actionsTitle": "Plan işlemleri",

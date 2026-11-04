@@ -41,6 +41,7 @@
     "againA11y": "{{title}} 다시 계획하기",
     "emptyTitleYet": "아직 예약한 게 없어요",
     "emptyTitleDay": "그날은 예약이 없어요",
+    "emptyTitleWeek": "이번 주에는 예약이 없어요",
     "emptyBody": "저장한 것 중에서 골라 시간을 정해 보세요.",
     "planFromSaves": "저장한 것에서 계획하기",
     "actionsTitle": "플랜 작업",

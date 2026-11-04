@@ -41,6 +41,7 @@
     "againA11y": "Planera {{title}} igen",
     "emptyTitleYet": "Inget bokat än",
     "emptyTitleDay": "Inget bokat den dagen",
+    "emptyTitleWeek": "Inget bokat den här veckan",
     "emptyBody": "Välj något från dina sparade och bestäm en tid.",
     "planFromSaves": "Planera från mina sparade",
     "actionsTitle": "Åtgärder för planen",

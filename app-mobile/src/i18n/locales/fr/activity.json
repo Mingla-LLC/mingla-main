@@ -41,6 +41,7 @@
     "againA11y": "Planifier {{title}} à nouveau",
     "emptyTitleYet": "Rien de réservé pour l'instant",
     "emptyTitleDay": "Rien de réservé ce jour-là",
+    "emptyTitleWeek": "Rien de réservé cette semaine",
     "emptyBody": "Choisissez quelque chose dans vos favoris et fixez un horaire.",
     "planFromSaves": "Planifier depuis mes favoris",
     "actionsTitle": "Actions du plan",

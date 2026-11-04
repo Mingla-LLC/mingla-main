@@ -41,6 +41,7 @@
     "againA11y": "خطط لـ {{title}} مرة أخرى",
     "emptyTitleYet": "لم يُحجز شيء بعد",
     "emptyTitleDay": "لا شيء محجوز في ذلك اليوم",
+    "emptyTitleWeek": "لا شيء محجوز هذا الأسبوع",
     "emptyBody": "اختر شيئًا من محفوظاتك وثبّت موعدًا.",
     "planFromSaves": "خطط من محفوظاتي",
     "actionsTitle": "إجراءات الخطة",

@@ -41,6 +41,7 @@
     "againA11y": "{{title}} erneut planen",
     "emptyTitleYet": "Noch nichts gebucht",
     "emptyTitleDay": "An diesem Tag nichts gebucht",
+    "emptyTitleWeek": "Diese Woche nichts gebucht",
     "emptyBody": "Wähle etwas aus deinen Favoriten und leg eine Zeit fest.",
     "planFromSaves": "Aus meinen Favoriten planen",
     "actionsTitle": "Aktionen für den Plan",

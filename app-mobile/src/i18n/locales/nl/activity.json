@@ -41,6 +41,7 @@
     "againA11y": "{{title}} opnieuw plannen",
     "emptyTitleYet": "Nog niets geboekt",
     "emptyTitleDay": "Niets geboekt op die dag",
+    "emptyTitleWeek": "Deze week niets geboekt",
     "emptyBody": "Kies iets uit je bewaarde items en leg een tijd vast.",
     "planFromSaves": "Plannen uit mijn bewaarde items",
     "actionsTitle": "Acties voor plan",

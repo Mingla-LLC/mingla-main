@@ -41,6 +41,7 @@
     "againA11y": "再次计划{{title}}",
     "emptyTitleYet": "还没有预订任何内容",
     "emptyTitleDay": "那天没有预订",
+    "emptyTitleWeek": "本周没有预订",
     "emptyBody": "从收藏中选一个并定下时间。",
     "planFromSaves": "从我的收藏中计划",
     "actionsTitle": "计划操作",

@@ -41,6 +41,7 @@
     "againA11y": "Plan {{title}} again",
     "emptyTitleYet": "Nothing booked yet",
     "emptyTitleDay": "Nothing booked that day",
+    "emptyTitleWeek": "Nothing booked this week",
     "emptyBody": "Pick something from your saves and lock in a time.",
     "planFromSaves": "Plan from my saves",
     "actionsTitle": "Plan actions",
