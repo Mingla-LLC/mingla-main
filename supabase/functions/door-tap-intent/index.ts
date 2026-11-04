@@ -93,6 +93,7 @@ async function handleCreate(
     .eq("client_request_id", clientRequestId)
     .maybeSingle();
   if (existing?.stripe_payment_intent_id) {
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     const pi = await stripe.paymentIntents.retrieve(
       existing.stripe_payment_intent_id,
@@ -258,6 +259,7 @@ async function handleComplete(
     return jsonResponse({ error: "door_access_denied" }, 400);
   }
   const stripe = deps.stripe();
+  // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
   // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
   const pi = await stripe.paymentIntents.retrieve(
     paymentIntentId,
