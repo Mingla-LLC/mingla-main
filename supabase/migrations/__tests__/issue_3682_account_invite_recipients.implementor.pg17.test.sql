@@ -1,7 +1,7 @@
 -- #3682 closeout wave 2 (A) — invite any follower at creation as an
 -- account-only recipient. Runs on the fully applied migration chain.
 --
--- Invariant: I-3682-ACCOUNT-INVITE-NEVER-BOOK | issue #3682 | An account-only invite recipient is never inserted into brand_people and its email/phone is never returned by an authenticated RPC.
+-- MINGLA-INVARIANT: I-3682-ACCOUNT-INVITE-NEVER-BOOK | issue #3682 | An account-only invite recipient is never inserted into brand_people and its email/phone is never returned by an authenticated RPC.
 \set ON_ERROR_STOP on
 BEGIN;
 

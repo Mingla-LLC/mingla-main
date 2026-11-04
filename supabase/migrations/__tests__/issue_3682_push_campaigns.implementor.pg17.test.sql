@@ -1,7 +1,7 @@
 -- #3682 closeout wave 2 (B) — push campaign channel and multi-channel
 -- campaigns. Runs on the fully applied migration chain.
 --
--- Invariant: I-3682-CAMPAIGN-GROUP-COUNTS-ONCE | issue #3682 | A multi-channel campaign (one campaign_group_id) counts as one blast toward the rolling-week warning.
+-- MINGLA-INVARIANT: I-3682-CAMPAIGN-GROUP-COUNTS-ONCE | issue #3682 | A multi-channel campaign (one campaign_group_id) counts as one blast toward the rolling-week warning.
 \set ON_ERROR_STOP on
 BEGIN;
 

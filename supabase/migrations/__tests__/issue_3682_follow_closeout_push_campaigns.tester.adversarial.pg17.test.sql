@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-3682-EXTENDED-SWITCH-AT-SEND | issue #3682 | No push or account invite reaches a friend of a follower while any of the three extended switches is off, including sends confirmed before the switch went off.
 -- #3682 closeout — TESTER adversarial suite (push campaigns, Friends of
 -- followers kill switches, campaign groups, brand isolation).
 -- Different angles from the implementor suite:

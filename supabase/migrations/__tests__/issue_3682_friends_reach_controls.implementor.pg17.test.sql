@@ -2,7 +2,7 @@
 -- brand's circle, and admin weekly blasts counted per campaign group.
 -- Runs on the fully applied migration chain.
 --
--- Invariant: I-3682-FRIENDS-REACH-OPT-IN | issue #3682 | Nobody is reached as a friend of a follower unless they switched it on from a build whose controls switch is live; leaving a brand's circle sticks until the guest follows again or allows it.
+-- MINGLA-INVARIANT: I-3682-FRIENDS-REACH-OPT-IN | issue #3682 | Nobody is reached as a friend of a follower unless they switched it on from a build whose controls switch is live; leaving a brand's circle sticks until the guest follows again or allows it.
 \set ON_ERROR_STOP on
 BEGIN;
 
