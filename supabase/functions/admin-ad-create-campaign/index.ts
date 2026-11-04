@@ -100,8 +100,17 @@ import {
 } from "../_shared/adTikTokSpark.ts";
 import { providerExecutionTargeting } from "../_shared/adTargetingCompiler.ts";
 import {
+  hostAdUtmQuery,
+  hostAdUtmSlug,
+  hostCtaForPlatform,
+  isHostAdCta,
+} from "../_shared/adHostCreative.ts";
+import {
   applySpecialAdCategoryRestrictions,
   buildMetaGeoLocations,
+  metaHostUrlTags,
+  normalizeMetaExcludedGeo,
+  normalizeMetaLocales,
   buildMetaInterestFlexibleSpec,
   metaFetchPixelLastFired,
   type MetaPlacementAsset,
@@ -1090,6 +1099,20 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     Object.assign(body, hostGoal);
+    // #4238 P1: the Host's button comes from the plan, mapped to this app's
+    // own value; a client value is never used for a Host ad.
+    const frozenCta = hostCanonical.call_to_action;
+    const ctaValue = isHostAdCta(frozenCta)
+      ? hostCtaForPlatform(platform as Platform, frozenCta)
+      : null;
+    const creativeBody = objectRecord(body.creative) ?? {};
+    delete creativeBody.call_to_action;
+    delete creativeBody.call_to_action_type;
+    if (ctaValue) {
+      if (platform === "meta") creativeBody.call_to_action_type = ctaValue;
+      else creativeBody.call_to_action = ctaValue;
+    }
+    body.creative = creativeBody;
   }
 
   // ISSUE-1002 [multi-destination fan-out] — REJECTED in Wave 2 (#3707 / A3-11).
@@ -1117,6 +1140,10 @@ serve(async (req: Request): Promise<Response> => {
   if (!name) {
     return json({ error: "validation_error", detail: "name_required" }, 400);
   }
+  // #4238 P1: Host landing links carry standard UTM tags (read-only).
+  const hostUtmQuery = requestedOwnerKind === "host"
+    ? hostAdUtmQuery(platform as Platform, name)
+    : null;
 
   const objective = typeof body.objective === "string"
     ? body.objective
@@ -1892,7 +1919,10 @@ serve(async (req: Request): Promise<Response> => {
       const demandGenInput: GoogleDemandGenVideoInput = {
         name,
         dailyBudgetCents: providerAmountCents,
-        finalUrl: destUrlGV,
+        // #4238: Host landing links carry the standard UTM tags.
+        finalUrl: hostUtmQuery
+          ? `${destUrlGV}${destUrlGV.includes("?") ? "&" : "?"}${hostUtmQuery}`
+          : destUrlGV,
         trackingUrlTemplate: trackingUrlTemplateGV,
         businessName: businessNameGV,
         headlines: headlinesGV,
@@ -2921,6 +2951,42 @@ serve(async (req: Request): Promise<Response> => {
         unit,
       });
     }
+    // #4238: left-out places, as frozen circles (same checks as above).
+    const rawExcludedCirclesS = targetingS.excluded_circles;
+    const excludedCirclesS: SnapchatCircleGeo[] = [];
+    if (
+      rawExcludedCirclesS !== undefined && !Array.isArray(rawExcludedCirclesS)
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "targeting_excluded_circles_invalid",
+      }, 400);
+    }
+    for (
+      const raw of Array.isArray(rawExcludedCirclesS) ? rawExcludedCirclesS : []
+    ) {
+      const circle = objectRecord(raw);
+      const countryCode = typeof circle?.country_code === "string"
+        ? circle.country_code.trim().toUpperCase()
+        : "";
+      const latitude = Number(circle?.latitude);
+      const longitude = Number(circle?.longitude);
+      const radius = Number(circle?.radius);
+      const unit = typeof circle?.unit === "string" ? circle.unit.trim() : "";
+      if (
+        !/^[A-Z]{2}$/.test(countryCode) || !Number.isFinite(latitude) ||
+        latitude < -90 || latitude > 90 || !Number.isFinite(longitude) ||
+        longitude < -180 || longitude > 180 || !Number.isFinite(radius) ||
+        radius <= 0 ||
+        !(SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(unit)
+      ) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_excluded_circles_invalid",
+        }, 400);
+      }
+      excludedCirclesS.push({ country_code: countryCode, latitude, longitude, radius, unit });
+    }
     const circleInputsS: {
       name: string;
       country_code: string;
@@ -3163,9 +3229,15 @@ serve(async (req: Request): Promise<Response> => {
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
     }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
+    // #4238: a Host ad's standard tags; Mingla's click ids stay alongside.
+    const snapLinkS = hostUtmQuery
+      ? `${destUrlS}${
+        destUrlS.includes("?") ? "&" : "?"
+      }${hostUtmQuery}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`
+      : snapTrackedDestUrlS;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
-    const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
+    const webViewUrlCheck = validateSnapchatWebViewUrl(snapLinkS);
     if (!webViewUrlCheck.ok) {
       return json({
         error: webViewUrlCheck.detail,
@@ -3337,6 +3409,9 @@ serve(async (req: Request): Promise<Response> => {
         demographics: demographicsS,
         // ISSUE-992 (3a): geocoded circles → circle geos; SCLS interest ids.
         ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
+        ...(excludedCirclesS.length > 0
+          ? { excluded_circles: excludedCirclesS }
+          : {}),
         ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
         ...(snapSegmentIncludeIdsS.length > 0
           ? { segment_include_ids: snapSegmentIncludeIdsS }
@@ -3353,7 +3428,7 @@ serve(async (req: Request): Promise<Response> => {
     const creativeInputS:
       & CreateCreativeInput
       & SnapchatCreateCreativeExtensions = {
-        destUrl: snapTrackedDestUrlS, // canonical page + documented Snap campaign macro
+        destUrl: snapLinkS, // canonical page + documented Snap campaign macro
         message: headlineS, // interface-required; Snap creatives carry headline, not message
         headline: headlineS,
         callToActionType: ctaS,
@@ -3573,6 +3648,9 @@ serve(async (req: Request): Promise<Response> => {
         // ISSUE-992 (3a): the applied circle geos + SCLS interests (states what
         // actually shipped — geocoded circles only; missed cities dropped).
         ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
+        ...(excludedCirclesS.length > 0
+          ? { excluded_circles: excludedCirclesS }
+          : {}),
         ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
       };
 
@@ -4089,6 +4167,16 @@ serve(async (req: Request): Promise<Response> => {
     const interestCategoryIdsT = normalizeTikTokInterestCategoryIds(
       targetingT.interest_category_ids,
     );
+    // #4238: ISO 639-1 language codes from the frozen plan (absent = all).
+    const languagesT = Array.isArray(targetingT.languages)
+      ? [
+        ...new Set(
+          targetingT.languages.map(String).filter((code) =>
+            /^[a-z]{2}$/.test(code)
+          ),
+        ),
+      ]
+      : [];
 
     const destinationT = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeT = destinationT.page_type ?? "";
@@ -4484,6 +4572,7 @@ serve(async (req: Request): Promise<Response> => {
         ...(interestCategoryIdsT.length > 0
           ? { interest_category_ids: interestCategoryIdsT }
           : {}),
+        ...(languagesT.length > 0 ? { languages: languagesT } : {}),
         ...(Array.isArray(targetingT.audience_ids)
           ? { audience_ids: targetingT.audience_ids }
           : {}),
@@ -4655,8 +4744,11 @@ serve(async (req: Request): Promise<Response> => {
           callToAction: ctaT,
           utmParams: [
             { key: "utm_source", value: "tiktok" },
-            { key: "utm_medium", value: "paid" },
-            { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
+            { key: "utm_medium", value: hostUtmQuery ? "paid_social" : "paid" },
+            {
+              key: "utm_campaign",
+              value: hostUtmQuery ? hostAdUtmSlug(name) : "__CAMPAIGN_ID__",
+            },
             { key: "utm_content", value: "__CID__" },
             { key: "mc_id", value: "__CAMPAIGN_ID__" },
             { key: "campaign_id", value: "__CAMPAIGN_ID__" },
@@ -5391,7 +5483,15 @@ serve(async (req: Request): Promise<Response> => {
         ad: {
           name: `${name} — ad`,
           clickUrl: destUrlR, // canonical page — never the OneLink (D-P1)
-          utmCampaign: campaignRowIdR,
+          // #4238: a Host ad's utm_campaign is the ad's name; Mingla's own
+          // id rides as mc_id so results still match sales to the ad.
+          utmCampaign: hostUtmQuery ? hostAdUtmSlug(name) : campaignRowIdR,
+          ...(hostUtmQuery
+            ? {
+              utmMedium: "paid_social",
+              extraQueryParameters: [{ name: "mc_id", value: campaignRowIdR }],
+            }
+            : {}),
         },
       });
 
@@ -5926,8 +6026,19 @@ serve(async (req: Request): Promise<Response> => {
   const metaInterestSpec = buildMetaInterestFlexibleSpec(
     targetingInput.interests,
   );
+  // #4238: regions, pins, left-out places and languages ride the frozen
+  // execution targeting (absent on earlier plans → byte-identical body).
+  const metaExcludedGeo = normalizeMetaExcludedGeo(
+    targetingInput.excluded_geo_locations,
+  );
+  const metaLocales = normalizeMetaLocales(targetingInput.locales);
   let targeting: Record<string, unknown> = {
-    geo_locations: buildMetaGeoLocations(countries, metaCities),
+    geo_locations: buildMetaGeoLocations(countries, metaCities, {
+      regions: targetingInput.regions,
+      custom_locations: targetingInput.custom_locations,
+    }),
+    ...(metaExcludedGeo ? { excluded_geo_locations: metaExcludedGeo } : {}),
+    ...(metaLocales.length > 0 ? { locales: metaLocales } : {}),
     // Live placement audit: keep every first-party Meta surface, excluding only
     // Audience Network because it delivered low-quality accidental-tap traffic.
     publisher_platforms: ["facebook", "instagram", "threads", "whatsapp"],
@@ -6096,6 +6207,7 @@ serve(async (req: Request): Promise<Response> => {
     callToActionType: typeof creative.call_to_action_type === "string"
       ? creative.call_to_action_type
       : "LEARN_MORE",
+    ...(hostUtmQuery ? { urlTags: metaHostUrlTags(hostUtmQuery) } : {}),
     aiGenerated: creative.ai_generated === true, // GR-61 self_ai_disclosure
     campaignName: name,
     adName: `${name} — ad`,

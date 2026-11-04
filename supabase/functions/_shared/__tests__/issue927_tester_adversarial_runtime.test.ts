@@ -151,7 +151,18 @@ function resetDb(): void {
     },
   };
   db.activeRequest = null;
-  db.eventRow = { id: "ev-1", brand_slug: "velvet-lounge", slug: "friday-live", status: "live" };
+  // #4238: the view row carries the date summary the resolver now reads; an
+  // upcoming date keeps the page advertisable (no date left = destination_ended).
+  db.eventRow = {
+    id: "ev-1",
+    brand_slug: "velvet-lounge",
+    slug: "friday-live",
+    status: "live",
+    event_type: "event",
+    next_start_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    next_end_at: new Date(Date.now() + 7 * 86_400_000 + 3 * 3_600_000).toISOString(),
+    upcoming_count: 1,
+  };
   db.adCreativeRow = null;
   db.refRow = null;
   db.failInsertTable = null;

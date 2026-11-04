@@ -458,6 +458,11 @@ function fieldsFor(
         value: destination,
       });
     }
+    // #4238: one ad covers every date of a series, until the last day people
+    // can book (the server writes this sentence).
+    if (typeof context.ad_dates === "string" && context.ad_dates) {
+      out.push({ label: "Dates", value: context.ad_dates });
+    }
     if (typeof context.ad_result === "string") {
       // The server already writes this in plain words (agentDomainTools
       // adResultWords), so the card shows it as given.
@@ -481,6 +486,13 @@ function fieldsFor(
     }
     if (typeof context.ad_copy === "string") {
       out.push({ label: "Ad text", value: context.ad_copy });
+    }
+    // #4238: the button and the read-only tracking tags on the link.
+    if (typeof context.ad_button === "string") {
+      out.push({ label: "Button", value: context.ad_button });
+    }
+    if (typeof context.ad_tracking === "string") {
+      out.push({ label: "Link tracking", value: context.ad_tracking });
     }
     if (typeof context.ad_media_rights === "string") {
       out.push({ label: "Video rights", value: context.ad_media_rights });

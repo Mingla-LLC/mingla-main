@@ -145,6 +145,15 @@ export interface ResolvedAdDestination {
   availability?: string;
   availability_reason?: string | null;
   result_kind?: string | null;
+  /**
+   * #4238: dated offerings only. The next bookable date, the last moment
+   * anyone can still book, how many dates are left, and the offering's own
+   * time zone. An ad on a series covers every date and ends by last_bookable_at.
+   */
+  next_date?: string | null;
+  last_bookable_at?: string | null;
+  dates_remaining?: number | null;
+  timezone?: string | null;
 }
 
 export class AdDestinationError extends Error {
@@ -398,9 +407,15 @@ function mapResolveFailure(payload: Record<string, unknown>): never {
     ? payload.availability
     : "";
   const message = availability === "ended"
-    ? "That page's start is in the past or it has ended."
+    ? "All of that page's dates have passed."
     : availability === "private"
     ? "That page is private."
+    : availability === "unlisted"
+    ? "Unlisted trips and experiences can't be promoted."
+    : availability === "nothing_on_sale"
+    ? "Nothing is on sale for that page right now."
+    : availability === "bookings_closed"
+    ? "Bookings are closed for that trip."
     : availability === "not_live"
     ? "This Site isn't live at its address yet."
     : "That page is not currently advertisable.";
@@ -494,6 +509,16 @@ export async function resolveAdDestination(
       result_kind: payload.result_kind == null
         ? null
         : String(payload.result_kind),
+      next_date: typeof payload.next_date === "string"
+        ? payload.next_date
+        : null,
+      last_bookable_at: typeof payload.last_bookable_at === "string"
+        ? payload.last_bookable_at
+        : null,
+      dates_remaining: typeof payload.dates_remaining === "number"
+        ? payload.dates_remaining
+        : null,
+      timezone: typeof payload.timezone === "string" ? payload.timezone : null,
     };
   }
 
@@ -514,10 +539,14 @@ async function resolveAdDestinationLegacy(
     descriptor.page_type === "trip" ||
     descriptor.page_type === "experience"
   ) {
+    // #4238: fallback only when the SQL resolver is not deployed or mocked.
+    // It cannot check sales or a trip's booking deadline, and it fails closed
+    // on Unlisted pages (this view lists public pages only). The FIRST date
+    // never ends a series: only "no bookable date left" does.
     const { data, error } = await client
       .from("business_public_events_view")
       .select(
-        "id,brand_slug,slug,status,event_type,master_start_at,rsvp_discoverable",
+        "id,brand_slug,slug,status,event_type,next_start_at,next_end_at,upcoming_count",
       )
       .eq("brand_slug", descriptor.brand_slug)
       .eq("slug", descriptor.entity_slug as string)
@@ -538,22 +567,18 @@ async function resolveAdDestinationLegacy(
         "That page is not currently public and live.",
       );
     }
-    if (
-      descriptor.page_type === "rsvp" &&
-      data.rsvp_discoverable !== true
-    ) {
+    const upcoming = Number(data.upcoming_count);
+    const nextStart = typeof data.next_start_at === "string"
+      ? Date.parse(data.next_start_at)
+      : Number.NaN;
+    const ended = !Number.isFinite(upcoming) || upcoming <= 0 ||
+      (descriptor.page_type === "trip" &&
+        (!Number.isFinite(nextStart) || nextStart <= Date.now()));
+    if (ended) {
       throw new AdDestinationError(
-        "destination_not_public",
+        "destination_ended",
         422,
-        "That page is private.",
-      );
-    }
-    const start = data.master_start_at;
-    if (typeof start === "string" && Date.parse(start) <= Date.now()) {
-      throw new AdDestinationError(
-        "destination_not_public",
-        422,
-        "That page's start is in the past or it has ended.",
+        "All of that page's dates have passed.",
       );
     }
     return {
@@ -567,6 +592,10 @@ async function resolveAdDestinationLegacy(
         descriptor.brand_slug,
         descriptor.entity_slug as string,
       ),
+      next_date: typeof data.next_start_at === "string"
+        ? data.next_start_at
+        : null,
+      dates_remaining: upcoming,
     };
   }
 

@@ -4,7 +4,7 @@
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -47,6 +47,21 @@ import {
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { AdResultsSection } from "../../components/marketing/ads/results/AdResultsSection";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
+import {
+  hostAdLiveEditAttempt,
+  type HostAdLiveEditAttempt,
+  HostAdLiveEditCard,
+  hostAdLiveEditDoneNote,
+  hostAdLiveEditError,
+} from "../../components/marketing/ads/HostAdLiveEditCard";
+import {
+  hostAdLearningAlert,
+  hostAdPacingAlert,
+} from "../../components/marketing/ads/hostAdAlerts";
+import {
+  changeHostAdLive,
+  duplicateHostAdPlan,
+} from "../../services/hostAdPlanService";
 import { hostAdDetailMoneyLine } from "../../services/hostAdLifecycle";
 import {
   hostAdCostPerResultLine,
@@ -57,7 +72,7 @@ import {
   hostAdScrollBottomPadding,
 } from "../../components/marketing/ads/hostAdBuilderRules";
 import { formatCurrency } from "../../utils/currency";
-import { randomId } from "../../utils/randomId";
+import { randomId, randomUuid } from "../../utils/randomId";
 
 function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
@@ -106,6 +121,82 @@ export default function HostAdDetailRoute(): React.ReactElement {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // #4238 wave D: budget and end date, once a day. r8 P1-2: one key per
+  // edit attempt (reused by a second tap or a retry), and never two saves
+  // in flight at once.
+  const liveEditAttempt = useRef<HostAdLiveEditAttempt | null>(null);
+  const liveEditInFlight = useRef(false);
+  // #4238 r9 P3: the result shows inside the card, next to Save.
+  const [liveEditResult, setLiveEditResult] = useState<
+    { kind: "done" | "error"; text: string } | null
+  >(null);
+  const onLiveEdit = useCallback(
+    async (input: { newBudgetCents: number | null; newEndsAt: string | null }) => {
+      const planId = payload?.plan_id;
+      if (brandId === null || !planId || !permissions.canFund) return;
+      if (liveEditInFlight.current) return;
+      liveEditInFlight.current = true;
+      const attempt = hostAdLiveEditAttempt(
+        liveEditAttempt.current,
+        { planId, ...input },
+        randomUuid,
+      );
+      liveEditAttempt.current = attempt;
+      setBusy(true);
+      setLiveEditResult(null);
+      try {
+        const result = await changeHostAdLive({
+          brandId,
+          planId,
+          newBudgetCents: input.newBudgetCents,
+          newEndsAt: input.newEndsAt,
+          idempotencyKey: attempt.key,
+        });
+        liveEditAttempt.current = null;
+        setLiveEditResult({ kind: "done", text: hostAdLiveEditDoneNote(result) });
+        await load();
+      } catch (cause) {
+        const failure = cause !== null && typeof cause === "object"
+          ? (cause as { code?: unknown; detail?: unknown })
+          : null;
+        setLiveEditResult({
+          kind: "error",
+          text: hostAdLiveEditError(
+            failure && "code" in failure ? String(failure.code) : null,
+            typeof failure?.detail === "string" ? failure.detail : null,
+            payload?.plan_currency ?? null,
+          ),
+        });
+      } finally {
+        liveEditInFlight.current = false;
+        setBusy(false);
+      }
+    },
+    [brandId, load, payload?.plan_currency, payload?.plan_id, permissions.canFund],
+  );
+
+  // #4238 wave D: the same setup as a new draft for the next event.
+  const onDuplicate = useCallback(async () => {
+    const planId = payload?.plan_id;
+    if (brandId === null || !planId || !permissions.canPlan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const draftId = await duplicateHostAdPlan({
+        brandId,
+        planId,
+        newDraftId: randomUuid(),
+      });
+      router.push(
+        `/(tabs)/marketing/ads/create?draft_id=${draftId}&step=promote` as never,
+      );
+    } catch {
+      setError("We couldn't copy this ad just now. Try again in a minute.");
+    } finally {
+      setBusy(false);
+    }
+  }, [brandId, payload?.plan_id, permissions.canPlan, router]);
 
   const onPause = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canPause)
@@ -375,6 +466,83 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 })
                 .join(" · ")}
             </Text>
+          ) : null}
+          {(() => {
+            const startedAt =
+              typeof c.starts_at === "string"
+                ? c.starts_at
+                : typeof c.created_at === "string"
+                  ? c.created_at
+                  : null;
+            const nowIso = new Date().toISOString();
+            const learning = hostAdLearningAlert({
+              name,
+              live: isLive,
+              startedAt,
+              nowIso,
+              timezone: payload.time_zone,
+            });
+            const pacing = hostAdPacingAlert({
+              live: isLive,
+              spentCents: spent,
+              dailyCents: payload.plan_campaigns.reduce(
+                (sum, row) => sum + Number(row.daily_budget_cents ?? 0),
+                0,
+              ) || null,
+              capCents: cap > 0 ? cap : null,
+              startedAt,
+              nowIso,
+              timezone: payload.time_zone,
+              currency,
+            });
+            return (
+              <>
+                {learning ? (
+                  <View style={styles.banner} testID="ads-detail-learning">
+                    <Text style={styles.bannerTitle}>{learning.title}</Text>
+                    <Text style={styles.muted}>{learning.body}</Text>
+                  </View>
+                ) : null}
+                {pacing ? (
+                  <View style={styles.banner} testID="ads-detail-pacing">
+                    <Text style={styles.bannerTitle}>{pacing.title}</Text>
+                    <Text style={styles.muted}>{pacing.body}</Text>
+                  </View>
+                ) : null}
+              </>
+            );
+          })()}
+          {!isEnded && currency && payload.plan_id && permissions.canFund ? (
+            <HostAdLiveEditCard
+              currency={currency}
+              currentTotalCents={cap}
+              spentCents={spent}
+              currentEndsAt={
+                payload.plan_campaigns
+                  .map((row) => row.ends_at)
+                  .filter((value): value is string => typeof value === "string")
+                  .sort()
+                  .pop() ?? null
+              }
+              timezone={payload.time_zone}
+              lastEditAt={payload.last_live_edit_at ?? null}
+              nowIso={new Date().toISOString()}
+              busy={busy}
+              result={liveEditResult}
+              onSubmit={onLiveEdit}
+            />
+          ) : null}
+          {payload.plan_id && permissions.canPlan ? (
+            <Pressable
+              style={styles.actionBtn}
+              disabled={busy}
+              onPress={() => void onDuplicate()}
+              accessibilityRole="button"
+              accessibilityLabel="Duplicate this ad"
+              testID="ads-detail-duplicate"
+            >
+              <Text style={styles.actionLabel}>Duplicate</Text>
+            </Pressable>
           ) : null}
           {capUsed !== null ? (
             <Text style={styles.progress}>{capUsed}% of budget used</Text>
@@ -695,6 +863,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  banner: {
+    gap: 4,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,122,24,.10)",
+  },
+  bannerTitle: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
   host: {
     flex: 1,
     backgroundColor: canvas.discover,

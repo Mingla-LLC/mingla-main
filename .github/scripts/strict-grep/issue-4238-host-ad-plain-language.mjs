@@ -47,11 +47,23 @@ const HOST_AD_FILES = [
   "src/screens/hostAds/HostAdListScreen.tsx",
   "src/components/marketing/ads/HostAdPagePicker.tsx",
   "src/components/marketing/ads/HostAdCountryPicker.tsx",
+  "src/components/marketing/ads/hostAdBuilderRules.ts",
   "src/components/marketing/ads/hostAdCopy.ts",
   "src/components/marketing/ads/hostAdCountries.ts",
   "src/components/marketing/ads/hostAdGoal.ts",
   "src/components/marketing/ads/hostAdPageLabels.ts",
   "src/components/marketing/ads/hostAdSetupCopy.ts",
+  // #4238 media-buyer: per-app places, interests, budget, button, preview.
+  "src/components/marketing/ads/HostAdPlacesEditor.tsx",
+  "src/components/marketing/ads/HostAdInterestsEditor.tsx",
+  "src/components/marketing/ads/hostAdTargeting.ts",
+  "src/components/marketing/ads/HostAdReachMeter.tsx",
+  "src/components/marketing/ads/HostAdBudgetPanel.tsx",
+  "src/components/marketing/ads/HostAdCreativeExtras.tsx",
+  "src/components/marketing/ads/hostAdBudget.ts",
+  "src/components/marketing/ads/hostAdCreativeRules.ts",
+  "src/components/marketing/ads/HostAdLiveEditCard.tsx",
+  "src/components/marketing/ads/hostAdAlerts.ts",
   "src/components/marketing/AdCreditLedgerRow.tsx",
   "src/components/marketing/AdCreditQuoteSheet.tsx",
   "src/services/hostAdPlanService.ts",
@@ -60,6 +72,12 @@ const HOST_AD_FILES = [
   "src/services/adCreditService.ts",
   "src/utils/adVideoFit.ts",
   "src/utils/homeAdLifecycle.ts",
+];
+
+// Paths relative to the repo root: shared server helpers whose sentences a
+// Host reads on Ari's ad cards and refusals (#4238 rework).
+const SHARED_HOST_COPY_FILES = [
+  "supabase/functions/_shared/adScheduleBound.ts",
 ];
 
 const SKIP_ATTRIBUTES = new Set([
@@ -252,10 +270,16 @@ function selfTest(words) {
   const okAri = ari.length === 1;
   const clean = scanHostCopy(words, 'const a = <Text testID="lane_hash">Your ad is running.</Text>;', "clean.tsx");
   const okClean = clean.length === 0;
+  // #4238 rework: the builder rules and Ari's shared schedule/refusal helper
+  // write Host-visible sentences; they must stay on the scan list.
+  const okCovered =
+    HOST_AD_FILES.includes("src/components/marketing/ads/hostAdBuilderRules.ts") &&
+    SHARED_HOST_COPY_FILES.includes("supabase/functions/_shared/adScheduleBound.ts");
+  console.log(`self-test: builder rules + Ari schedule helper scanned=${okCovered}`);
   console.log(`self-test: old Host wording flagged=${okHost} (${JSON.stringify(got)})`);
   console.log(`self-test: old Ari message flagged=${okAri}`);
   console.log(`self-test: plain copy + code ids pass=${okClean}`);
-  if (!(okHost && okAri && okClean)) {
+  if (!(okHost && okAri && okClean && okCovered)) {
     console.error(`FAIL [${TAG}] self-test: the scanner no longer catches the old wording.`);
     process.exit(1);
   }
@@ -275,6 +299,17 @@ function main() {
   // 1. Every Host ad screen and helper.
   for (const file of HOST_AD_FILES) {
     const src = read(file);
+    if (src !== null) report(file, scanHostCopy(words, src, file));
+  }
+
+  // 1b. Shared server helpers that write Host-visible sentences.
+  for (const file of SHARED_HOST_COPY_FILES) {
+    let src = null;
+    try {
+      src = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
+    } catch (e) {
+      fail(`cannot read ${file} (${e.code ?? e.message})`);
+    }
     if (src !== null) report(file, scanHostCopy(words, src, file));
   }
 
@@ -316,12 +351,19 @@ function main() {
     if (tools !== null) report("ari", scanAriAdMessages(words, tools));
   }
 
-  // 5. The plan hash is never shown, but is still sent to Mingla.
+  // 5. The plan hash is never shown, but is still sent to Mingla; the schedule
+  // is sent in the page's zone.
   const create = read("src/screens/hostAds/HostAdCreateScreen.tsx");
   const service = read("src/services/hostAdPlanService.ts");
   if (create !== null) {
     if (create.includes("{prepared.planHash}")) fail("create.tsx renders {prepared.planHash} on screen");
     if (!create.includes("planHash: prepared.planHash")) fail("create.tsx no longer sends planHash: prepared.planHash");
+    // #4238 r6: the start and end are sent in the page's own zone, like the
+    // date fields, never as the viewer's own midnight.
+    if (!create.includes("...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page?.timezone)")) {
+      fail("create.tsx no longer sends the schedule through hostAdScheduleIsos (the page's zone)");
+    }
+    if (/new Date\(`\$\{value\}T/.test(create)) fail("create.tsx builds a schedule boundary in the viewer's zone again");
   }
   if (service !== null) {
     if (!service.includes("plan_hash: aggregate.version.plan_hash")) fail("hostAdPlanService no longer reads plan_hash: aggregate.version.plan_hash");
@@ -347,7 +389,7 @@ function main() {
     console.error("Fix: say it the way a Host would (see hostAdCopy.ts), or move the text into a copy helper.");
     process.exit(1);
   }
-  console.log(`OK [${TAG}]: ${HOST_AD_FILES.length} Host ad files, the Ari ad card and Ari ad tools use plain words (${words.length} banned patterns).`);
+  console.log(`OK [${TAG}]: ${HOST_AD_FILES.length + SHARED_HOST_COPY_FILES.length} Host ad files, the Ari ad card and Ari ad tools use plain words (${words.length} banned patterns).`);
 }
 
 main();

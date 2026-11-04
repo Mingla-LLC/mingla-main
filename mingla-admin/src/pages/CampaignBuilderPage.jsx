@@ -70,6 +70,11 @@ import {
   isValidTimeZone,
   zonedLocalToIso,
 } from "../lib/adBuilder/scheduleTimeZone";
+import {
+  adminScheduleBoundError,
+  adminScheduleCodeMessage,
+  adminScheduleLimit,
+} from "../lib/adBuilder/scheduleBound";
 import { complianceExclusions } from "../lib/adBuilder/compliance";
 import {
   validateAudience,
@@ -1015,6 +1020,29 @@ export function CampaignBuilderPage() {
     [allocations],
   );
   const firstDestination = destinations[0] ?? null;
+  // #4238: a dated page (series, trip, RSVP) ends by its last bookable
+  // moment, like the Host builder: default the end to it, cap the inputs,
+  // and say so in plain words instead of the server's schedule codes.
+  const scheduleLimit = useMemo(
+    () => adminScheduleLimit(firstDestination, scheduleZone),
+    [firstDestination, scheduleZone],
+  );
+  const scheduleBoundError = adminScheduleBoundError(budget, scheduleLimit);
+  useEffect(() => {
+    if (!scheduleLimit?.maxLocal || budget.endsAtLocal) return undefined;
+    const timer = window.setTimeout(() => {
+      setBudget((current) =>
+        current.endsAtLocal
+          ? current
+          : {
+              ...current,
+              endsAtLocal: scheduleLimit.maxLocal,
+              endsAt: zonedLocalToIso(scheduleLimit.maxLocal, scheduleZone),
+            },
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [scheduleLimit, scheduleZone, budget.endsAtLocal]);
   const usesTikTokSpark =
     fundedPlatforms.includes("tiktok") &&
     creative.tiktokCreativeSource === "spark";
@@ -1186,6 +1214,7 @@ export function CampaignBuilderPage() {
             ? budget.totalLifetimeCents
             : budget.totalDailyCents;
         if (mode === "lifetime" && !budget.endsAt) return false;
+        if (scheduleBoundError) return false;
         const finiteCap = Number(budget.capCents);
         if (!Number.isSafeInteger(finiteCap) || finiteCap < (amount || 0))
           return false;
@@ -1374,13 +1403,14 @@ export function CampaignBuilderPage() {
     const { data, error } = await adPlanAction(payload);
     if (!error) return data;
     const parsed = await parseEdgeError(error);
+    const detail =
+      parsed?.body?.detail ??
+      parsed?.body?.error ??
+      parsed?.message ??
+      "The immutable plan could not be prepared.";
+    // #4238: the schedule codes for a dated page read as a plain sentence.
     throw new Error(
-      String(
-        parsed?.body?.detail ??
-          parsed?.body?.error ??
-          parsed?.message ??
-          "The immutable plan could not be prepared.",
-      ),
+      adminScheduleCodeMessage(detail, scheduleLimit) ?? String(detail),
     );
   };
 
@@ -1710,6 +1740,16 @@ export function CampaignBuilderPage() {
         variant: "error",
         title: "End date required",
         description: "A total (lifetime) budget needs an end date.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    if (scheduleBoundError) {
+      addToast({
+        variant: "error",
+        title: "Check the end date",
+        description: scheduleBoundError,
       });
       if (validateOnly) setValidatingShapes(false);
       else setSubmitting(false);
@@ -2402,6 +2442,8 @@ export function CampaignBuilderPage() {
               currency={planCurrency.currency}
               currencyBlockedReason={currencyBlockedReason}
               scheduleTimeZone={scheduleZone}
+              scheduleLimit={scheduleLimit}
+              scheduleBoundError={scheduleBoundError}
             />
           )}
           {stepId === "creative" && (

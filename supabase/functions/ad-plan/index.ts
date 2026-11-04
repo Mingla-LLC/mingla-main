@@ -15,9 +15,19 @@ import { isPlatform } from "../_shared/adChannel.ts";
 import { hostSafeDatabaseDetail } from "../_shared/adDatabaseErrorDetail.ts";
 import {
   type AdAudienceIntent,
-  compileTargetingPlan,
+  compileProviderTargeting,
   type ProviderTargetingRefs,
 } from "../_shared/adTargetingCompiler.ts";
+import {
+  appUnavailableInEveryCountry,
+  type CountryAvailabilityRow,
+  countriesAppCannotRunIn,
+  allocationBelowMinimum,
+  providerDailyMinimumCents,
+  reachCacheKey,
+  reachMeter,
+} from "../_shared/adHostPlanRules.ts";
+import { hostCopyTooLong, isHostAdCta } from "../_shared/adHostCreative.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import { buildAdMeasurementManifest } from "../_shared/adMeasurement.ts";
 import {
@@ -25,7 +35,8 @@ import {
   fetchProviderAudienceEstimate,
 } from "../_shared/adProviderEstimate.ts";
 import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
-import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
+import { forwardGeocodeLookup } from "../_shared/mapboxGeocode.ts";
+import { checkHostEstimateRate } from "../_shared/adHostEstimateRate.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
@@ -38,6 +49,7 @@ import {
   validateStageCreativeRows,
 } from "../_shared/adStageCreativeSelection.ts";
 import { tiktokSparkSelection } from "../_shared/adTikTokSpark.ts";
+import { adScheduleBoundError } from "../_shared/adScheduleBound.ts";
 import {
   applyLibraryFilters,
   creativeFitGateFailure,
@@ -155,6 +167,12 @@ type HostAdAction =
   | "end"
   | "review";
 
+/** #4238: best-effort per-instance cache for Host reach reads (the limit is in the database). */
+const HOST_ESTIMATE_CACHE = new Map<
+  string,
+  { at: number; rows: Record<string, unknown>[] }
+>();
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -168,7 +186,93 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
   const country = typeof city.countryCode === "string"
     ? city.countryCode.trim().toUpperCase()
     : "";
-  return name && /^[A-Z]{2}$/.test(country) ? `${country}:${name}` : null;
+  if (!name || !/^[A-Z]{2}$/.test(country)) return null;
+  // #4238: the same key adTargetingCompiler uses (regions are prefixed).
+  return city.kind === "region" || city.kind === "pin"
+    ? `${city.kind}:${country}:${name}`
+    : `${country}:${name}`;
+}
+
+/**
+ * #4238 P1: each connected app's daily minimum converted to the brand's
+ * currency with the active FX rate, rounded up. Visits and sales minimums
+ * are both given; an app whose minimum can't be worked out is left out.
+ */
+async function hostDailyMinimums(
+  db: Db,
+  connections: AdConnectionRow[],
+  hostCurrency: string,
+): Promise<Record<string, unknown>[]> {
+  const { data: snapshot } = await db.from("fx_rate_snapshots")
+    .select("id").eq("status", "active")
+    .order("fetched_at", { ascending: false }).limit(1).maybeSingle();
+  const out: Record<string, unknown>[] = [];
+  for (const connection of connections) {
+    const row: Record<string, unknown> = { platform: connection.platform };
+    for (const goal of ["visits", "sales"] as const) {
+      const provider = providerDailyMinimumCents(
+        connection.platform,
+        connection as unknown as Record<string, unknown>,
+        goal,
+      );
+      if (provider === null) continue;
+      if (connection.currency === hostCurrency) {
+        row[`${goal}_daily_minimum_cents`] = provider;
+        continue;
+      }
+      if (!snapshot?.id) continue;
+      const { data: converted, error } = await db.rpc("fx_convert_minor", {
+        p_amount: provider,
+        p_source: connection.currency,
+        p_target: hostCurrency,
+        p_snapshot: snapshot.id,
+      });
+      if (!error && Number.isSafeInteger(converted)) {
+        // A 2% margin so a small rate move before checking doesn't refuse it.
+        row[`${goal}_daily_minimum_cents`] = Math.ceil(Number(converted) * 1.02);
+      }
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/** #4238: staff-marked app/country pairs (missing = works). */
+async function loadCountryAvailability(
+  db: Db,
+): Promise<{ rows: CountryAvailabilityRow[]; error: unknown }> {
+  const { data, error } = await db.from("ad_platform_country_availability")
+    .select("platform,country_code,status,reason");
+  return { rows: (data ?? []) as CountryAvailabilityRow[], error };
+}
+
+/**
+ * #4238: one app's audience without the countries it can't run in (and their
+ * places). The other apps keep the Host's full audience.
+ */
+export function intentForPlatform(
+  intent: AdAudienceIntent,
+  platform: string,
+  rows: readonly CountryAvailabilityRow[],
+): AdAudienceIntent {
+  const blocked = new Set(
+    countriesAppCannotRunIn(platform, intent.countries ?? [], rows),
+  );
+  if (blocked.size === 0) return intent;
+  const keep = (city: { countryCode?: string }) =>
+    !blocked.has(String(city.countryCode ?? "").trim().toUpperCase());
+  return {
+    ...intent,
+    countries: (intent.countries ?? []).filter((code) =>
+      !blocked.has(code.trim().toUpperCase())
+    ),
+    ...(Array.isArray(intent.cities)
+      ? { cities: intent.cities.filter(keep) }
+      : {}),
+    ...(Array.isArray(intent.excludedPlaces)
+      ? { excludedPlaces: intent.excludedPlaces.filter(keep) }
+      : {}),
+  };
 }
 
 /**
@@ -247,35 +351,53 @@ async function withServerTargetingCoordinates(
   refs: Partial<Record<Platform, ProviderTargetingRefs>>,
   platforms: Platform[],
 ): Promise<Partial<Record<Platform, ProviderTargetingRefs>>> {
-  if (!platforms.includes("snapchat") || !Array.isArray(intent.cities)) {
+  const places = [
+    ...(Array.isArray(intent.cities) ? intent.cities : []),
+    ...(Array.isArray(intent.excludedPlaces) ? intent.excludedPlaces : []),
+  ];
+  const pinPlatforms = platforms.filter((platform) =>
+    platform === "snapchat" || platform === "meta"
+  );
+  const hasPin = places.some((raw) => asRecord(raw)?.kind === "pin");
+  if (
+    places.length === 0 ||
+    (!platforms.includes("snapchat") && !(hasPin && pinPlatforms.length > 0))
+  ) {
     return refs;
   }
   const coordinates: Record<
     string,
     { latitude: number; longitude: number } | null
   > = {};
-  await Promise.all(intent.cities.map(async (rawCity) => {
+  // #4238 r8 P2-4: a failed lookup is "couldn't check", never "not found".
+  const failures: string[] = [];
+  await Promise.all(places.map(async (rawCity) => {
     const city = asRecord(rawCity);
     if (!city) return;
+    // #4238: Meta needs a point only for pins; Snapchat for every place.
+    if (!platforms.includes("snapchat") && city.kind !== "pin") return;
     const key = targetingCityKey(city);
     if (!key) return;
-    const resolved = await forwardGeocodeText(
+    const resolved = await forwardGeocodeLookup(
       `${String(city.name).trim()}, ${String(city.countryCode).trim()}`,
     );
-    coordinates[key] = resolved
+    coordinates[key] = resolved.status === "found"
       ? {
         latitude: resolved.lat,
         longitude: resolved.lng,
       }
       : null;
+    if (resolved.status === "failed") failures.push(key);
   }));
-  return {
-    ...refs,
-    snapchat: {
-      ...(refs.snapchat ?? {}),
+  const out = { ...refs };
+  for (const platform of pinPlatforms) {
+    out[platform] = {
+      ...(refs[platform] ?? {}),
       locationCoordinates: coordinates,
-    },
-  };
+      locationCoordinateFailures: failures,
+    };
+  }
+  return out;
 }
 
 function positiveMinor(value: unknown): number | null {
@@ -504,16 +626,36 @@ export async function resolvePlanAudienceRefs(
   idsByPlatform: Partial<Record<Platform, string[]>>;
   notReady: Partial<Record<Platform, string[]>>;
   keys: string[];
+  /** #4238: provider ids of the people to leave out, per app. */
+  excludeIdsByPlatform: Partial<Record<Platform, string[]>>;
+  /** #4238: apps where the left-out list is not ready (a plain note, not a block). */
+  excludeNotReady: Platform[];
 }> {
   const selection = asRecord(canonicalPlan.audience_selection);
-  const keys = Array.isArray(selection?.include_keys)
+  const includeKeys = Array.isArray(selection?.include_keys)
     ? selection!.include_keys.filter((key): key is string =>
       typeof key === "string"
     )
     : [];
+  const excludeKeys = Array.isArray(selection?.exclude_keys)
+    ? selection!.exclude_keys.filter((key): key is string =>
+      typeof key === "string"
+    )
+    : [];
+  const keys = [...includeKeys, ...excludeKeys];
   const idsByPlatform: Partial<Record<Platform, string[]>> = {};
   const notReady: Partial<Record<Platform, string[]>> = {};
-  if (keys.length === 0) return { idsByPlatform, notReady, keys };
+  const excludeIdsByPlatform: Partial<Record<Platform, string[]>> = {};
+  const excludeNotReady: Platform[] = [];
+  if (keys.length === 0) {
+    return {
+      idsByPlatform,
+      notReady,
+      keys,
+      excludeIdsByPlatform,
+      excludeNotReady,
+    };
+  }
   const { data: defs, error } = await db.from("ad_list_audiences")
     .select("id,audience_key,owner_kind,brand_id,kind,display_name,lookalike_country,status")
     .in("audience_key", keys);
@@ -532,7 +674,24 @@ export async function resolvePlanAudienceRefs(
     : { data: [], error: null };
   if (stateError) throw stateError;
   for (const platform of platforms) {
-    for (const key of keys) {
+    for (const key of excludeKeys) {
+      const def = owned.find((row) => row.audience_key === key);
+      const state = def
+        ? (states ?? []).find((row: Record<string, unknown>) =>
+          row.audience_id === def.id && row.platform === platform
+        )
+        : null;
+      if (
+        def && state?.state === "ready" &&
+        typeof state.provider_audience_id === "string" &&
+        state.provider_audience_id
+      ) {
+        (excludeIdsByPlatform[platform] ??= []).push(state.provider_audience_id);
+      } else if (!excludeNotReady.includes(platform)) {
+        excludeNotReady.push(platform);
+      }
+    }
+    for (const key of includeKeys) {
       const def = owned.find((row) => row.audience_key === key);
       const state = def
         ? (states ?? []).find((row: Record<string, unknown>) =>
@@ -552,7 +711,7 @@ export async function resolvePlanAudienceRefs(
       }
     }
   }
-  return { idsByPlatform, notReady, keys };
+  return { idsByPlatform, notReady, keys, excludeIdsByPlatform, excludeNotReady };
 }
 
 function canonicalizePlan(
@@ -1138,6 +1297,81 @@ export async function handleAdPlan(
     return error ? databaseFailure(error) : json({ ok: true, draft: data });
   }
 
+  if (action === "host_estimate") {
+    // #4238 P1: reach per app while the Host builds the ad. Read-only provider
+    // estimates, only for apps staff switched on; never creates anything.
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
+    const intent = asRecord(body.audience_intent) as AdAudienceIntent | null;
+    const platforms = parsePlatformList(body.platforms);
+    if (!UUID_RE.test(brandId) || !intent || !platforms) {
+      return json({ error: "validation_error", detail: "estimate_invalid" }, 400);
+    }
+    const { data: allowed } = await db.rpc("ad_can_host_action", {
+      p_brand_id: brandId,
+      p_user_id: actor.id,
+      p_action: "plan",
+    });
+    if (allowed !== true) return json({ error: "forbidden" }, 403);
+    const now = Date.now();
+    // #4238 r8 P2-3: per brand and per user, in the database (never only in
+    // this isolate's memory). Fails closed.
+    const rate = await checkHostEstimateRate(db, brandId, actor.id);
+    if (!rate.allowed) {
+      return json({ error: rate.error, detail: rate.detail }, rate.status);
+    }
+    const refs = stripClientAudienceRefs(
+      (asRecord(body.refs_by_platform) ?? {}) as Partial<
+        Record<Platform, ProviderTargetingRefs>
+      >,
+    );
+    const cacheKey = reachCacheKey({ brandId, platforms, intent, refs });
+    const cached = HOST_ESTIMATE_CACHE.get(cacheKey);
+    if (cached && now - cached.at < 600_000) {
+      return json({ ok: true, estimates: cached.rows, cached: true });
+    }
+    const [{ data: connections, error }, availability] = await Promise.all([
+      db.from("ad_connections").select("*").eq("lane", HOST_AD_LANE)
+        .eq("connected", true).in("platform", platforms),
+      loadCountryAvailability(db),
+    ]);
+    if (error) return databaseFailure(error);
+    const withCoords = await withServerTargetingCoordinates(
+      intent,
+      refs,
+      platforms,
+    );
+    const rows = await Promise.all(platforms.map(async (platform) => {
+      const connection = (connections ?? []).find((
+        row: Record<string, unknown>,
+      ) => row.platform === platform) as AdConnectionRow | undefined;
+      if (!connection) {
+        return { platform, state: "not_connected", lower: null, upper: null, meter: null };
+      }
+      const compiled = compileProviderTargeting(
+        platform,
+        intentForPlatform(intent, platform, availability.rows),
+        withCoords[platform] ?? {},
+      );
+      const estimate = await fetchProviderAudienceEstimate({
+        platform,
+        verdict: compiled.verdict,
+        compiledTargeting: compiled.compiledTargeting,
+        connection,
+        // A nominal one-day budget; reach does not depend on it.
+        providerBudgetCents: 2_000,
+      });
+      return {
+        platform,
+        state: estimate.state,
+        lower: estimate.lower_bound,
+        upper: estimate.upper_bound,
+        meter: reachMeter(estimate.lower_bound, estimate.upper_bound),
+      };
+    }));
+    HOST_ESTIMATE_CACHE.set(cacheKey, { at: now, rows });
+    return json({ ok: true, estimates: rows });
+  }
+
   if (action === "host_setup") {
     const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
     if (!UUID_RE.test(brandId)) {
@@ -1162,14 +1396,15 @@ export async function handleAdPlan(
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const [pages, connections, creatives, authority, plans, brand] =
+    const [pages, connections, creatives, authority, plans, brand, availability] =
       await Promise.all(
         [
           collectAdvertisablePages((page) =>
             userDb.rpc("ad_advertisable_pages", {
               p_query: null,
               p_types: null,
-              p_include_unavailable: false,
+              // #4238 R10: the Host sees pages it can't promote, with why.
+              p_include_unavailable: true,
               p_brand_id: brandId,
               p_page: page,
             })
@@ -1194,10 +1429,16 @@ export async function handleAdPlan(
             .order("updated_at", { ascending: false }).limit(50),
           db.from("brands").select("country_code").eq("id", brandId)
             .maybeSingle(),
+          loadCountryAvailability(db),
         ] as const,
       );
     const firstError = pages.error ?? connections.error ?? creatives.error ??
       plans.error ?? brand.error;
+    // #4238: "works here" is advisory on setup; a read failure leaves every
+    // app working (the server re-checks at create_version).
+    if (availability.error) {
+      console.error("[ad-plan] host_setup availability unavailable");
+    }
     if (firstError) return databaseFailure(firstError);
     if (!authority.ok) {
       return json({
@@ -1244,6 +1485,22 @@ export async function handleAdPlan(
       brand_country_code: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null,
       pages: pages.data,
       connections: hostConnections,
+      // #4238: apps marked not available in a country, with the reason.
+      availability: availability.rows.filter((row) =>
+        row.status === "not_available"
+      ),
+      // #4238 P1: each app's daily minimum in the brand's money, so the Host
+      // sees it before any money is set aside (the server re-checks).
+      minimums: await hostDailyMinimums(db, connectionRows, authority.currency),
+      // #4238: whether each app gives a reach number (staff switch).
+      reach_enabled: Object.fromEntries(
+        connectionRows.map((row) => [
+          row.platform,
+          row.platform !== "google" &&
+          (row.extra as Record<string, unknown> | null | undefined)
+              ?.audience_estimate_certified === true,
+        ]),
+      ),
       // #3040 AD-04 — each video's fit on the brand's connected platforms,
       // judged by the same channel matrix as every ads gate.
       creatives: withHostCreativeFit(
@@ -2107,6 +2364,19 @@ export async function handleAdPlan(
             : resolvedDestination?.code ?? "destination_not_ready"),
       }, 422);
     }
+    // #4238 I-4238-AD-ENDS-BY-LAST-BOOKABLE-MOMENT: an ad on a dated offering
+    // ends by the last moment anyone can still book it. A missing or later
+    // end is refused here, before any version exists.
+    const scheduleError = adScheduleBoundError(
+      canonicalInput.schedule,
+      resolvedDestination,
+    );
+    if (scheduleError) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: scheduleError,
+      }, 422);
+    }
     if (certificationMode) {
       resolvedDestination.ready = true;
       resolvedDestination.code = null;
@@ -2127,6 +2397,81 @@ export async function handleAdPlan(
         }, 422);
       }
       canonical.optimization_by_platform = optimization.map;
+      // #4238 P0: an app that runs in none of the chosen countries is refused
+      // before any money is set aside (the builder greys it out first).
+      const intent = asRecord(canonicalInput.audience_intent);
+      const countries = Array.isArray(intent?.countries)
+        ? intent!.countries.map((value) => String(value))
+        : [];
+      const availability = await loadCountryAvailability(db);
+      if (availability.error) {
+        return databaseFailure(
+          availability.error as { message?: string; code?: string },
+        );
+      }
+      const unavailable = appUnavailableInEveryCountry(
+        platforms,
+        countries,
+        availability.rows,
+      );
+      if (unavailable) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `app_not_available_in_country:${unavailable}`,
+        }, 422);
+      }
+      // #4238 P1: the button is one of the four, frozen in the plan hash.
+      if (
+        canonicalInput.call_to_action !== undefined &&
+        !isHostAdCta(canonicalInput.call_to_action)
+      ) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: "call_to_action_invalid",
+        }, 422);
+      }
+      // #4238 I-4238-NO-SILENT-COPY-CUT: words longer than an app allows are
+      // refused here, before money, never cut at create.
+      const tooLong = hostCopyTooLong(
+        platforms,
+        asRecord(canonicalInput.copy) ?? {},
+      );
+      if (tooLong) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `copy_too_long:${tooLong.platform}:${tooLong.field}:${tooLong.max}`,
+        }, 422);
+      }
+      // #4238 I-4238-APP-MINIMUM-BEFORE-HOLD: every app's daily budget clears
+      // its own minimum before any money is set aside.
+      const { data: minimumConnections, error: minimumError } = await db
+        .from("ad_connections").select("id,platform,currency,extra")
+        .in("id", normalized.rows.map((row) => String(row.connection_id)));
+      if (minimumError) return databaseFailure(minimumError);
+      const below = allocationBelowMinimum(normalized.rows.map((row) => {
+        const connection = (minimumConnections ?? []).find((
+          item: Record<string, unknown>,
+        ) => item.id === row.connection_id) ?? {};
+        return {
+          platform: String(row.platform),
+          provider_delivery_budget_cents: Number(
+            row.provider_delivery_budget_cents,
+          ),
+          minimum_cents: providerDailyMinimumCents(
+            String(row.platform),
+            connection,
+            optimization.map[String(row.platform)] === "sales"
+              ? "sales"
+              : "visits",
+          ),
+        };
+      }));
+      if (below) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `budget_below_app_minimum:${below.platform}`,
+        }, 422);
+      }
     }
     const paidSocialPlatforms = platforms.filter((platform) =>
       platform === "meta" || platform === "snapchat" || platform === "tiktok"
@@ -2255,16 +2600,55 @@ export async function handleAdPlan(
           includeAudienceIds: ids,
         };
       }
+      // #4238: leave out people who already bought, where the app has them.
+      const excluded = ["meta", "tiktok", "snapchat"].includes(platform)
+        ? audienceRefs.excludeIdsByPlatform[platform] ?? []
+        : [];
+      if (excluded.length > 0) {
+        resolvedRefs[platform] = {
+          ...(resolvedRefs[platform] ?? {}),
+          excludeAudienceIds: excluded,
+        };
+      }
     }
-    const compiled = compileTargetingPlan({
-      platforms,
-      intent,
-      refsByPlatform: resolvedRefs,
-      campaignKind: plan.destination_family === "explorer_app" ||
-          plan.destination_family === "host_app"
-        ? "native_app"
-        : "web",
-    });
+    // #4238: each app compiles only the countries it runs in.
+    const availability = plan.owner_kind === "host"
+      ? await loadCountryAvailability(db)
+      : { rows: [], error: null };
+    if (availability.error) {
+      return databaseFailure(
+        availability.error as { message?: string; code?: string },
+      );
+    }
+    const campaignKind = plan.destination_family === "explorer_app" ||
+        plan.destination_family === "host_app"
+      ? "native_app"
+      : "web";
+    const compiled = [...new Set(platforms)].map((platform) =>
+      compileProviderTargeting(
+        platform,
+        intentForPlatform(intent, platform, availability.rows),
+        resolvedRefs[platform] ?? {},
+        campaignKind,
+      )
+    );
+    // #4238: an app that can't leave out past buyers says so (wider, never
+    // a block).
+    const wantsExclude = Array.isArray(
+      asRecord(version.canonical_plan.audience_selection)?.exclude_keys,
+    );
+    for (const row of compiled) {
+      if (!wantsExclude) break;
+      if (
+        !["meta", "tiktok", "snapchat"].includes(row.platform) ||
+        audienceRefs.excludeNotReady.includes(row.platform)
+      ) {
+        row.wideningSummary.push(
+          `${APP_NAMES[row.platform] ?? row.platform} can't leave out people who already bought yet, so they may see your ad.`,
+        );
+        if (row.verdict === "exact") row.verdict = "broader";
+      }
+    }
     // A selected audience that is not ready on a platform blocks that
     // platform with a plain reason, through the existing blocked-state path.
     for (const row of compiled) {

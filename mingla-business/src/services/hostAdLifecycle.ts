@@ -43,6 +43,10 @@ export type HostAdListItem = {
   updatedAt: string | null;
   /** #4238: a plainer status than the lifecycle bucket, when there is one. */
   statusLabel?: string;
+  /** #4238 wave D: why a paused ad is paused (server reason code). */
+  pauseReason?: string | null;
+  /** #4238 wave D: when the ad started (for "still learning"). */
+  startedAt?: string | null;
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -204,6 +208,11 @@ function campaignItem(campaign: HostAdCampaign): HostAdListItem {
       ? "An app turned down your video"
       : null,
     updatedAt: campaign.updated_at ?? campaign.created_at,
+    pauseReason:
+      typeof (campaign as { pause_reason?: unknown }).pause_reason === "string"
+        ? ((campaign as { pause_reason?: string }).pause_reason as string)
+        : null,
+    startedAt: campaign.starts_at ?? campaign.created_at,
   };
 }
 
