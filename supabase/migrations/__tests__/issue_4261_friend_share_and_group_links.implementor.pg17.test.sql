@@ -41,7 +41,7 @@
 -- MINGLA-INVARIANT: I-4261-SHARE-LINK-NEVER-UNBLOCKS | issue #4261 | Claiming a share or group link never connects, admits or unblocks a blocked pair.
 --
 -- FAILS-ON-REVERT (replay the chain without
--- 20280326004261_issue_4261_friend_share_and_group_links.sql): the \ir below
+-- 20280331004261_issue_4261_friend_share_and_group_links.sql): the \ir below
 -- is the migration itself; without it S-01 fails on its first call
 -- (get_or_create_friend_share_link does not exist), and G-03 fails on the
 -- missing history_visible_from column.
@@ -49,7 +49,7 @@
 -- Run after the full migration chain on PostgreSQL 17. The re-apply proves
 -- the migration is idempotent; everything after it rolls back.
 
-\ir ../20280326004261_issue_4261_friend_share_and_group_links.sql
+\ir ../20280331004261_issue_4261_friend_share_and_group_links.sql
 
 BEGIN;
 
