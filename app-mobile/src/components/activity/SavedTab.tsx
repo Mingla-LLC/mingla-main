@@ -1378,13 +1378,6 @@ const SavedTab = ({
   // hands the card on (to a slot pick or the full picker) must keep it.
   const scheduleSheetHandoffRef = useRef(false);
 
-  const handleQuickSlotPick = (at: Date) => {
-    scheduleSheetHandoffRef.current = true;
-    setShowScheduleSheet(false);
-    // The EXISTING path: hours check (+ curated confirm) → proceedWithScheduling.
-    handleProposeDateTime(at, "custom");
-  };
-
   // A second modal must wait until the first is fully dismissed, or iOS drops
   // the presentation. The next step is parked here and run on native dismiss.
   const afterScheduleSheetRef = useRef<(() => void) | null>(null);
@@ -1393,6 +1386,15 @@ const SavedTab = ({
     const next = ref.current;
     ref.current = null;
     next?.();
+  };
+
+  const handleQuickSlotPick = (at: Date) => {
+    scheduleSheetHandoffRef.current = true;
+    // The EXISTING path: hours check (+ the curated "Safe to Schedule" alert) →
+    // proceedWithScheduling. Parked until the sheet is fully gone: an alert
+    // presented while the sheet is still closing is dropped on iOS.
+    afterScheduleSheetRef.current = () => handleProposeDateTime(at, "custom");
+    setShowScheduleSheet(false);
   };
 
   const handlePickAnotherTime = () => {

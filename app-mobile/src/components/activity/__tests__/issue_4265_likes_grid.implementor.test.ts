@@ -309,7 +309,11 @@ Deno.test("#4265 unknown hours → Schedule opens the full picker, never dead de
 
 Deno.test("#4265 a slot pick runs the existing scheduling path", async () => {
   const tab = stripComments(await read("src/components/activity/SavedTab.tsx"));
-  assert(/handleProposeDateTime\(at, "custom"\);/.test(tab), "slot pick → existing hours check → proceedWithScheduling");
+  assert(/afterScheduleSheetRef\.current = \(\) => handleProposeDateTime\(at, "custom"\);\s*setShowScheduleSheet\(false\);/.test(tab),
+    "slot pick → existing hours check → proceedWithScheduling, parked until the sheet is gone (the curated alert is not dropped on iOS)");
+  const pick = tab.slice(tab.indexOf("const handleQuickSlotPick"), tab.indexOf("const handlePickAnotherTime"));
+  assert(!/^\s*handleProposeDateTime\(/m.test(pick), "the slot pick must not run the check (and its alert) while the sheet is closing");
+  assert(/onDismissed=\{\(\) => runParked\(afterScheduleSheetRef\)\}/.test(tab), "the parked step runs on native dismiss");
   assert(/checkSingleCardSchedulingAvailability\(cardToSchedule, at, locale\)/.test(tab), "tiles use the same validator as the pick");
   assert(/checkAllStopsOpen\(stops, at\)\.allOpen/.test(tab), "plans validate every stop");
   assert(/setShowProposeDateTimeModal\(true\);/.test(tab), "Pick another date and time opens the full picker");
