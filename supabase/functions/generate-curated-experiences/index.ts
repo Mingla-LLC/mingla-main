@@ -68,6 +68,7 @@ import {
 // filter — solo users could be served a plan whose stop was closed on arrival.
 // Now solo inherits the SAME gate collab already gets via discover-cards.
 import { filterCuratedByStopHours, resolveCuratedHoursPolicy } from '../_shared/curatedStopHours.ts';
+import { buildStopPrice, sumStopPrices } from './curatedPrice.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -816,8 +817,8 @@ function buildCardStop(
     imageUrl: card.image_url || card.images?.[0] || null,
     imageUrls: card.images || (card.image_url ? [card.image_url] : []),
     priceLevelLabel: card.price_tiers?.[0] || card.price_tier || 'chill',
-    priceMin: card.price_min ?? 0,
-    priceMax: card.price_max ?? 0,
+    // #4265: an unknown max ("$100+") is never 0 — see curatedPrice.ts.
+    ...buildStopPrice(card.price_min, card.price_max),
     priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},
@@ -874,8 +875,8 @@ function buildCardFromStops(
   const title = mainStops.map(s => s.placeName).join(' → ');
   const pairingKey = comboLabels.join('|');
 
-  const totalPriceMin = mainStops.reduce((sum, s) => sum + s.priceMin, 0);
-  const totalPriceMax = mainStops.reduce((sum, s) => sum + s.priceMax, 0);
+  // #4265: open-ended when any main stop is; never a max below the min.
+  const priceTotal = sumStopPrices(mainStops);
   const totalDuration = mainStops.reduce((sum, s) => sum + s.estimatedDurationMinutes, 0)
     + mainStops.slice(1).reduce((sum, s) => sum + (s.travelTimeFromPreviousStopMin || 0), 0);
 
@@ -902,8 +903,7 @@ function buildCardFromStops(
     lat: mainStops[0]?.lat ?? null,
     lng: mainStops[0]?.lng ?? null,
     stops,
-    totalPriceMin,
-    totalPriceMax,
+    ...priceTotal,
     estimatedDurationMinutes: totalDuration,
     matchScore: 75 + Math.floor(Math.random() * 20),
     ...(shoppingList ? { shoppingList } : {}),

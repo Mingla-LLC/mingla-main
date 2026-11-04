@@ -2,18 +2,21 @@
  * #4265 — curated plan price totals. Pure (no imports) so the rule runs under
  * the Deno unit lane.
  *
- * A stop price whose max is BELOW its min has no known max: the place pool
- * stores an open-ended price ("$100+") as `price_max = null`, and
- * `generate-curated-experiences` writes that as `priceMax: card.price_max ?? 0`
- * (index.ts:820) and sums it into `totalPriceMax` (index.ts:878). Printed as a
- * range that read "$100.00–$0.00". Such a span is open-ended: its min counts
- * toward both ends and the total reads as "from" ("$100+"), never a made-up
- * ceiling (Constitution 9).
+ * The place pool stores an open-ended price ("$100+") as `price_max = null`.
+ * `generate-curated-experiences` now builds such a stop as max = min and flags
+ * it `priceOpenEnded` (plan total: `totalPriceOpenEnded`) — see its
+ * curatedPrice.ts. Cards built before that fix (still persisted on devices)
+ * carry max 0 under a real min, which printed "$100.00–$0.00". Either signal —
+ * the explicit flag, or a max BELOW the min — makes a span open-ended: its min
+ * counts toward both ends and the total reads as "from" ("$100+"), never a
+ * made-up ceiling (Constitution 9).
  */
 
 export interface PriceSpan {
   min: number;
   max: number;
+  /** The server's explicit open-ended flag (priceOpenEnded / totalPriceOpenEnded). */
+  openEnded?: boolean | null;
 }
 
 export interface PriceTotal {
@@ -35,7 +38,7 @@ export function sumPriceSpans(spans: readonly PriceSpan[]): PriceTotal {
     const lo = finiteAmount(span.min);
     const hi = finiteAmount(span.max);
     min += lo;
-    if (hi < lo) {
+    if (span.openEnded === true || hi < lo) {
       openEnded = true;
       max += lo;
     } else {
@@ -45,13 +48,14 @@ export function sumPriceSpans(spans: readonly PriceSpan[]): PriceTotal {
   return { min, max, openEnded };
 }
 
-/** "$min–$max", or "$min+" when the max is unknown (below the min). */
+/** "$min–$max", or "$min+" when the max is unknown (flagged, or below the min). */
 export function curatedTotalPriceRange(
   totalPriceMin: number | null | undefined,
   totalPriceMax: number | null | undefined,
+  totalPriceOpenEnded?: boolean | null,
 ): string {
   const total = sumPriceSpans([
-    { min: totalPriceMin ?? 0, max: totalPriceMax ?? 0 },
+    { min: totalPriceMin ?? 0, max: totalPriceMax ?? 0, openEnded: totalPriceOpenEnded },
   ]);
   return total.openEnded ? `$${total.min}+` : `$${total.min}–$${total.max}`;
 }

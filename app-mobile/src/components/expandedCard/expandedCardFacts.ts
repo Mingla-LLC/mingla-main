@@ -164,6 +164,7 @@ interface PlanStopLike {
   readonly optional?: boolean;
   readonly priceMin?: number;
   readonly priceMax?: number;
+  readonly priceOpenEnded?: boolean;
   readonly distanceFromUserKm?: number;
 }
 
@@ -300,8 +301,12 @@ function curatedPriceLabel(
   // with no max) — show "from" instead of "$100.00–$0.00". See curatedPriceRange.
   const { min, max, openEnded } = sumPriceSpans(
     options.isBrandExperience === true
-      ? [{ min: finite(card.totalPriceMin), max: finite(card.totalPriceMax) }]
-      : visibleStops.map((stop) => ({ min: finite(stop.priceMin), max: finite(stop.priceMax) })),
+      ? [{ min: finite(card.totalPriceMin), max: finite(card.totalPriceMax), openEnded: card.totalPriceOpenEnded }]
+      : visibleStops.map((stop) => ({
+          min: finite(stop.priceMin),
+          max: finite(stop.priceMax),
+          openEnded: stop.priceOpenEnded,
+        })),
   );
 
   if (min === 0 && max === 0) return trimmed(options.freeLabel);

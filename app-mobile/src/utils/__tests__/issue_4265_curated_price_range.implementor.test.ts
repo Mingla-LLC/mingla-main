@@ -55,5 +55,31 @@ Deno.test("the deck plate and the card conversion use the shared rule", () => {
     !converters.includes("`$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`"),
     "cardConverters must not print the raw min–max template",
   );
-  assert(converters.includes("curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax)"), "cardConverters uses the shared rule");
+  assert(
+    converters.includes("curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded)"),
+    "cardConverters uses the shared rule and the server's open-ended flag",
+  );
+  assert(facts.includes("openEnded: stop.priceOpenEnded"), "the plate reads each stop's open-ended flag");
+  assert(facts.includes("openEnded: card.totalPriceOpenEnded"), "the brand total reads the card's open-ended flag");
+});
+
+// Server fix (generate-curated-experiences/curatedPrice.ts): an open-ended stop
+// now arrives as max = min with priceOpenEnded, and the plan total with
+// totalPriceOpenEnded. Without reading the flag those would print "$100–$100".
+Deno.test("the server's explicit open-ended flag prints 'from' even when max equals min", () => {
+  assertEquals(
+    sumPriceSpans([{ min: 0, max: 0 }, { min: 100, max: 100, openEnded: true }]),
+    { min: 100, max: 100, openEnded: true },
+  );
+  assertEquals(curatedTotalPriceRange(100, 100, true), "$100+");
+  assertEquals(curatedTotalPriceRange(150, 170, true), "$150+");
+  assertEquals(curatedTotalPriceRange(30, 70, false), "$30–$70");
+  assertEquals(curatedTotalPriceRange(30, 70, null), "$30–$70");
+});
+
+Deno.test("replacing a stop recomputes the open-ended total with the shared rule", async () => {
+  const mutate = await Deno.readTextFile(new URL("../mutateCuratedCard.ts", import.meta.url));
+  assert(mutate.includes("sumPriceSpans("), "replaceStopInCard must total stops with sumPriceSpans");
+  assert(mutate.includes("totalPriceOpenEnded: priceTotal.openEnded ? true : undefined"), "a stale open-ended flag must not survive a replace");
+  assert(!mutate.includes("reduce((sum, s) => sum + s.priceMax, 0)"), "raw priceMax sum is back");
 });

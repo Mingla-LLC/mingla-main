@@ -74,11 +74,11 @@ export function curatedToRecommendation(card: any): Recommendation {
     lat: firstStop?.lat,
     lng: firstStop?.lng,
     description: card.tagline ?? '',
-    budget: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax),
+    budget: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded),
     rating: avgRating,
     image: firstImage,
     images: allImages.length > 0 ? allImages : [firstImage || ''],
-    priceRange: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax),
+    priceRange: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded),
     // ORCH-0659/0660: honest null when first-stop distance/travel-time is missing
     distance: firstStop && typeof firstStop.distanceFromUserKm === 'number'
       ? `${firstStop.distanceFromUserKm.toFixed(1)} km`
