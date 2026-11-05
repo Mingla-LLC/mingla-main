@@ -174,7 +174,7 @@ describe("Show a pay code instead cancels the open PaymentIntent first", () => {
     const createAt = body.indexOf("createDoorPayCodeForLines(");
     expect(abandonAt).toBeGreaterThan(-1);
     expect(createAt).toBeGreaterThan(abandonAt);
-    expect(body.slice(0, createAt)).toContain('if (outcome === "already_paid") return;');
+    expect(body.slice(0, createAt)).toContain('if (outcome === "already_paid" || outcome === "blocked") return;');
     expect(src).toContain("cancelIntent: cancelDoorTapIntent");
   });
 });

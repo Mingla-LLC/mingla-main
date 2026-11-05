@@ -27,9 +27,13 @@ export interface TapToPayAwarenessModalProps {
   assets?: TapToPayAwarenessAssets | null;
 }
 
+/** No assets, no hooks: until the toolkit lands this does nothing at all at the root. */
 export const TapToPayAwarenessModal = ({
   assets = TAP_TO_PAY_AWARENESS,
-}: TapToPayAwarenessModalProps): React.ReactElement | null => {
+}: TapToPayAwarenessModalProps): React.ReactElement | null =>
+  assets === null ? null : <AwarenessModal assets={assets} />;
+
+const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.ReactElement | null => {
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id ?? null;
@@ -41,7 +45,7 @@ export const TapToPayAwarenessModal = ({
 
   useEffect(() => {
     setSeen(null);
-    if (userId === null || assets === null) return undefined;
+    if (userId === null) return undefined;
     let alive = true;
     AsyncStorage.getItem(tapAwarenessSeenKey(userId))
       .then((value) => {
@@ -55,7 +59,7 @@ export const TapToPayAwarenessModal = ({
     return () => {
       alive = false;
     };
-  }, [userId, assets]);
+  }, [userId]);
 
   const markSeen = useCallback((): void => {
     setSeen(true);
@@ -66,7 +70,6 @@ export const TapToPayAwarenessModal = ({
   }, [userId]);
 
   if (
-    assets === null ||
     seen !== false ||
     entry === null ||
     brandId === null ||

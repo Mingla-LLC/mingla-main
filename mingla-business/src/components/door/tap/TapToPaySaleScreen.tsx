@@ -214,7 +214,7 @@ export const TapToPaySaleScreen = ({
       // charged as well. If Stripe says it already succeeded, the flow records
       // that sale instead and no pay code is made.
       const outcome = (await flowRef.current?.abandonForPayCode()) ?? "switch";
-      if (outcome === "already_paid") return;
+      if (outcome === "already_paid" || outcome === "blocked") return;
       const created = await createDoorPayCodeForLines({
         eventId,
         eventDateId: draft.eventDateId,

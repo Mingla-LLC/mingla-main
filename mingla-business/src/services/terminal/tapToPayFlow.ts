@@ -83,8 +83,10 @@ export interface TapToPayServer {
  *    cancel call failed and was reported); show the pay code.
  *  - "already_paid": Stripe says this tap already succeeded. Do NOT show a pay
  *    code (that would charge the guest twice); the flow records the sale.
+ *  - "blocked": the result is unknown and the cancel didn't land, so nothing says
+ *    this tap can't still charge. No pay code.
  */
-export type PayCodeSwitchOutcome = "switch" | "already_paid";
+export type PayCodeSwitchOutcome = "switch" | "already_paid" | "blocked";
 
 // ---- States ---------------------------------------------------------
 
@@ -428,6 +430,7 @@ export class TapToPaySaleFlow {
         payment_intent_id: intent.paymentIntentId,
         code: error instanceof DoorTapError ? error.code : null,
       });
+      if (this.state.kind === "unknown_result") return "blocked";
     }
     return "switch";
   }
@@ -492,22 +495,18 @@ export class TapToPaySaleFlow {
       const error = confirmed.error ?? {};
       const after = error.paymentIntent;
       if (after !== undefined) this.paymentIntent = after;
-      // Stripe: with no PaymentIntent back, or a timed-out request, the status
-      // is unknown and the answer is to confirm the same intent again. Nothing
-      // here may say "not charged" or offer a second way to pay.
-      if (
-        error.code === "REQUEST_TIMED_OUT" ||
-        (after === undefined && classifyTerminalError(error) !== "needs_pin")
-      ) {
-        this.emit({ kind: "unknown_result", amount });
-        return;
-      }
       if (after?.status === "succeeded") {
         await this.recordSucceeded(after);
         return;
       }
-      // "Nothing was charged" is only true when Stripe says it needs a new card.
-      if (after?.status !== "requires_payment_method" && classifyTerminalError(error) !== "needs_pin") {
+      // Stripe: with no PaymentIntent back, or a timed-out request, the status is
+      // unknown and the answer is to confirm the same intent again. "Nothing was
+      // charged" is only true when Stripe says it needs a new card, so anything
+      // else may not say that or offer a second way to pay.
+      if (
+        error.code === "REQUEST_TIMED_OUT" ||
+        (after?.status !== "requires_payment_method" && classifyTerminalError(error) !== "needs_pin")
+      ) {
         this.emit({ kind: "unknown_result", amount });
         return;
       }

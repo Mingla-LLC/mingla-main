@@ -305,35 +305,21 @@ class TerminalHostBoundary extends React.Component<{ children: React.ReactNode }
   }
 }
 
-const TerminalHostInner = (): React.ReactElement | null => {
-  const sdk = useMemo(() => loadTerminalSdk(), []);
+/** Mounted only while live, so a store build opens no brand query or realtime channel here. */
+const LiveTerminal = ({ sdk, brandId }: { sdk: TerminalSdk; brandId: string }): React.ReactElement => {
   const session = useTapToPayTerminal();
-  const currentBrandId = useCurrentBrandId();
-  const scope = session.scope;
-  const brandId = scope?.brandId ?? currentBrandId;
-  const { live } = useTapToPayRelease(brandId);
   const brandQuery = useBrand(brandId);
   const merchantDisplayName =
-    scope?.merchantDisplayName ?? brandQuery.data?.displayName ?? "Mingla Host";
-
+    session.scope?.merchantDisplayName ?? brandQuery.data?.displayName ?? "Mingla Host";
   const brandIdRef = useRef(brandId);
   brandIdRef.current = brandId;
   const tokenProvider = useCallback(async (): Promise<string> => {
     const currentScope = getTapToPaySession().scope;
-    const tokenEventId = currentScope?.eventId ?? null;
-    const tokenBrandId = currentScope?.brandId ?? brandIdRef.current;
-    if (tokenEventId === null && tokenBrandId === null) throw new Error("No brand for Tap to Pay");
-    return fetchTerminalConnectionToken({ brandId: tokenBrandId, eventId: tokenEventId });
+    return fetchTerminalConnectionToken({
+      brandId: currentScope?.brandId ?? brandIdRef.current,
+      eventId: currentScope?.eventId ?? null,
+    });
   }, []);
-
-  const hostable =
-    sdk !== null && brandId !== null && live && isTapToPayDeviceSupported(currentTapToPayDevice());
-
-  useEffect(() => {
-    if (!hostable) updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null });
-  }, [hostable]);
-
-  if (!hostable || sdk === null || brandId === null) return null;
   const { StripeTerminalProvider } = sdk;
   return (
     <StripeTerminalProvider
@@ -343,6 +329,23 @@ const TerminalHostInner = (): React.ReactElement | null => {
       <TerminalBridge sdk={sdk} brandId={brandId} merchantDisplayName={merchantDisplayName} />
     </StripeTerminalProvider>
   );
+};
+
+const TerminalHostInner = (): React.ReactElement | null => {
+  const sdk = useMemo(() => loadTerminalSdk(), []);
+  const session = useTapToPayTerminal();
+  const currentBrandId = useCurrentBrandId();
+  const brandId = session.scope?.brandId ?? currentBrandId;
+  const { live } = useTapToPayRelease(brandId);
+  const hostable =
+    sdk !== null && brandId !== null && live && isTapToPayDeviceSupported(currentTapToPayDevice());
+
+  useEffect(() => {
+    if (!hostable) updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null });
+  }, [hostable]);
+
+  if (!hostable || sdk === null || brandId === null) return null;
+  return <LiveTerminal sdk={sdk} brandId={brandId} />;
 };
 
 export const TapToPayTerminalHost = (): React.ReactElement => (

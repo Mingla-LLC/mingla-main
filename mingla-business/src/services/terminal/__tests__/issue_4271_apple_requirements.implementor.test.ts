@@ -540,7 +540,8 @@ describe("B9 every Android string stays clear of the iPhone", () => {
   });
   test("Settings and Payments each have the entry, and the route exists", () => {
     const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
-    expect(read("app/(tabs)/account.tsx")).toContain("useTapToPaySettingsEntry");
+    expect(read("app/(tabs)/account.tsx")).toContain("const tapToPayEntry = useTapToPaySettingsEntry(useCurrentBrandId());");
+    expect(read("app/(tabs)/account.tsx")).toContain("{tapToPayEntry !== null ? (");
     expect(read("app/(tabs)/account.tsx")).toContain('"/account/tap-to-pay"');
     expect(read("src/components/brand/BrandPaymentsView.tsx")).toContain("tapToPayBrandEligible(brand)");
     expect(fs.existsSync(path.join(BIZ_ROOT, "app/account/tap-to-pay.tsx"))).toBe(true);
@@ -617,7 +618,7 @@ describe("B12 each outcome from each code", () => {
 
   test("REQUEST_TIMED_OUT during confirm is unknown even with a PaymentIntent", async () => {
     const h = flow({
-      confirmPaymentIntent: async () => ({ error: { code: "REQUEST_TIMED_OUT", paymentIntent: { status: "processing" } } }),
+      confirmPaymentIntent: async () => ({ error: { code: "REQUEST_TIMED_OUT", paymentIntent: { status: "requires_payment_method" } } }),
     });
     await h.f.start();
     expect(h.last()).toBe("unknown_result");
@@ -731,5 +732,37 @@ describe("B13 the app says what the host saw", () => {
     expect(template.pushBody).not.toContain("iPhone");
     const routing = fs.readFileSync(path.join(BIZ_ROOT, "src/services/businessNotificationRouting.ts"), "utf8");
     expect(routing).toMatch(/business\.door_tap_not_completed":\s*return eventId \? `\/event\/\$\{eventId\}\/door`/);
+  });
+});
+
+describe("override 7: never a second way to pay while the result is unknown", () => {
+  test("an unknown result whose cancel failed refuses the pay code", async () => {
+    const report = jest.fn();
+    const flow = new TapToPaySaleFlow({
+      eventId: "e1",
+      draft: { lines: [], eventDateId: null, buyerPhone: null, phoneCountryIso: null } as never,
+      clientRequestId: "r1",
+      terminal: {
+        ensureReaderConnected: async () => ({}),
+        retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+        collectPaymentMethod: async () => ({ paymentIntent: { id: "pi_1" } }),
+        confirmPaymentIntent: async () => ({ error: {} }),
+        cancelCollectPaymentMethod: async () => ({}),
+      } as never,
+      server: {
+        createIntent: async () =>
+          ({ paymentIntentId: "pi_1", clientSecret: "s", totalCents: 100, currency: "GBP", stripeAccountId: "a", locationId: "tml" }),
+        completeIntent: jest.fn() as never,
+        cancelIntent: async () => {
+          throw new Error("offline");
+        },
+      },
+      onState: () => undefined,
+      report,
+    });
+    await flow.start();
+    expect(flow.getState().kind).toBe("unknown_result");
+    await expect(flow.abandonForPayCode()).resolves.toBe("blocked");
+    expect(report).toHaveBeenCalled();
   });
 });
