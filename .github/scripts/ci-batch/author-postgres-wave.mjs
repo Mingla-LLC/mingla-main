@@ -28,7 +28,7 @@ const SHARED_ORIGIN_PATHS = Object.freeze([
   ".github/scripts/ci-batch/postgres-batch-contract.mjs",
   ".github/scripts/ci-batch/postgres-batch.mjs",
 ]);
-const TRACKED_FILES = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0").filter(Boolean);
+const TRACKED_FILES = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT }).toString().split("\0").filter(Boolean);
 
 const PLAIN = Object.freeze([
   "issue-1406-customer-patterns-performance-tests", "issue-1447-rsvp-admission-tests",

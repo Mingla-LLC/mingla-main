@@ -1243,9 +1243,7 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
-    // #4276: the path list passed Node's default 1 MiB buffer, which failed every
-    // validation with a misleading "requires a git worktree".
-    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
