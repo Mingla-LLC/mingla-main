@@ -267,7 +267,24 @@ const health = (service: string, status: string, http = 200) =>
 const opts = { sanitizeOps: false, sanitizeResources: false };
 
 Deno.test({ name: "a city runs from box to final score with no browser, through pause, resume and a stale search", ...opts, fn: async () => {
-  // ── The world before the run ──
+  // ── The world before the run. A previous run's rows go first. ──
+  await sql(`
+    delete from public.e2e_kicks;
+    delete from public.city_pipeline_runs where city_id = '${CITY}';
+    delete from public.place_intelligence_trial_runs where city_id = '${CITY}';
+    delete from public.place_intelligence_runs where city_id = '${CITY}';
+    delete from public.place_external_reviews where place_pool_id in (select id from public.place_pool where city_id = '${CITY}');
+    delete from public.place_review_fetch_state where place_id in (select id from public.place_pool where city_id = '${CITY}');
+    delete from public.place_scores where place_id in (select id from public.place_pool where city_id = '${CITY}');
+    delete from public.place_pool where city_id = '${CITY}';
+    delete from public.photo_backfill_runs where city = 'E2E City';
+    delete from public.seeding_cities where id = '${CITY}';
+    delete from public.admin_users where id = '${ADMIN}';
+    update public.signal_definitions set current_version_id = null where id = '${SIGNAL}';
+    delete from public.signal_definition_versions where id = '42764000-0000-4000-9000-000000000001';
+    delete from public.signal_definitions where id = '${SIGNAL}';
+    delete from public.api_health_checks where service_key in ('google_places', 'gemini', 'serper');
+  `);
   await sql(`
     insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng, bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng, status)
       values ('${CITY}', 'gp-e2e-city', 'E2E City', 'Testland', 'TL', 10.01, 10.01, ${BOX.sw.lat}, ${BOX.sw.lng}, ${BOX.ne.lat}, ${BOX.ne.lng}, 'draft');

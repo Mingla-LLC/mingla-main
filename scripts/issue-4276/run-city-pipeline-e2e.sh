@@ -4,10 +4,13 @@
 #
 # Needs a container that has replayed every migration and maps its 5432 to a host port:
 #   scripts/issue-4276/run-city-pipeline-e2e.sh <container> <host-port> <postgres-password>
-# It works in its own database, copied from "postgres", and removes its own PostgREST.
+# The container is scratch: this works directly in its "postgres" database, replaces
+# net.http_post there and switches off every replayed cron job. CREATE DATABASE from this
+# template crashed the server on 17.4 here, so no copy is made. It removes only its own
+# PostgREST and its own rows, so it can run again on the same container.
 set -euo pipefail
 CONTAINER="$1"; PORT="$2"; export PGPASSWORD="$3"
-DB=issue4276e2e
+DB=postgres
 REST=issue4276-e2e-postgrest
 REST_PORT="${REST_PORT:-55477}"
 JWT_SECRET="issue-4276-e2e-secret-issue-4276-e2e-secret"
@@ -16,31 +19,22 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 admin() { docker exec -i "$CONTAINER" psql -U supabase_admin -h 127.0.0.1 "$@"; }
 
 docker rm -f "$REST" >/dev/null 2>&1 || true
-# A replay also holds production's cron jobs; they are switched off below as well.
-# pg_cron and pg_net hold connections to the source, and terminating them restarts the
-# server. So they're pointed elsewhere for good: this container is scratch, and only the
-# real kicker functions are under test, not the schedulers.
-admin -d template1 -q \
-  -c "ALTER SYSTEM SET cron.database_name = 'template1'" \
-  -c "ALTER SYSTEM SET pg_net.database_name = 'template1'"
-docker restart "$CONTAINER" >/dev/null
-for _ in $(seq 1 60); do
-  admin -d template1 -Atqc "select 1" >/dev/null 2>&1 && break
+for _ in $(seq 1 150); do
+  admin -d "$DB" -Atqc "select 1" >/dev/null 2>&1 && break
   sleep 2
 done
-admin -d template1 -q \
-  -c "DROP DATABASE IF EXISTS $DB WITH (FORCE)" \
-  -c "CREATE DATABASE $DB TEMPLATE postgres"
 
 admin -d "$DB" -q -v ON_ERROR_STOP=1 <<'SQL'
 ALTER ROLE authenticator WITH PASSWORD 'e2e-authenticator';
 -- A replayed database holds every production cron job. None may run here.
 UPDATE cron.job SET active = false;
 -- Placeholders. The posts they go on are caught below and never leave.
-SELECT vault.create_secret('http://functions.local.test', 'supabase_url');
-SELECT vault.create_secret('e2e-placeholder', 'service_role_key');
+SELECT vault.create_secret('http://functions.local.test', 'supabase_url')
+ WHERE NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'supabase_url');
+SELECT vault.create_secret('e2e-placeholder', 'service_role_key')
+ WHERE NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'service_role_key');
 -- Every outgoing post lands here, and the test delivers it to the function in-process.
-CREATE TABLE public.e2e_kicks (id bigserial PRIMARY KEY, url text, body jsonb);
+CREATE TABLE IF NOT EXISTS public.e2e_kicks (id bigserial PRIMARY KEY, url text, body jsonb);
 GRANT ALL ON TABLE public.e2e_kicks TO service_role;
 GRANT ALL ON SEQUENCE public.e2e_kicks_id_seq TO service_role;
 CREATE OR REPLACE FUNCTION net.http_post(url text, body jsonb DEFAULT '{}'::jsonb, params jsonb DEFAULT '{}'::jsonb, headers jsonb DEFAULT '{}'::jsonb, timeout_milliseconds integer DEFAULT 5000)
