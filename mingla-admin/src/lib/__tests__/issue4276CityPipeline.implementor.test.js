@@ -18,6 +18,7 @@ import {
   approvalLines,
   cityGaps,
   cityReadinessWithGaps,
+  completenessSummary,
   formatGb,
   matrixCells,
   pendingApproval,
@@ -150,4 +151,18 @@ test("exclusion reasons read in words, with shares of the places that failed", (
   assert.deepEqual(rows.map((r) => [r.label, r.share]), [["No website", 50], ["Other (B99)", 5]]);
   assert.equal(formatGb(7516192768), "7.0 GB");
   assert.equal(formatGb(null), "unknown");
+});
+
+// #4276 rework (P1-2): a failed check read as success with 0% missing.
+test("a failed completeness check says it failed, and an unmeasured share is unknown, never 0%", () => {
+  const failed = completenessSummary({ status: "failed", searches_failed: 3, searches_planned: 20, missing_share: null, created_at: "2026-11-05T10:00:00Z" });
+  assert.equal(failed.failed, true);
+  assert.match(failed.text, /^Completeness check failed \(3 of 20 searches failed\)/);
+  const unknown = completenessSummary({ status: "completed", missing_share: null, created_at: "2026-11-05T10:00:00Z" });
+  assert.match(unknown.text, /share missing unknown$/);
+  assert.doesNotMatch(unknown.text, /0%/);
+  assert.match(completenessSummary({ status: "completed", missing_share: 0.12 }).text, /12% missing$/);
+  const panel = read("components/placePool/CityBoxPanel.jsx");
+  assert.equal(/missing_share \?\? 0/.test(panel), false, "the panel must not default an unknown share to 0");
+  assert.ok(panel.includes("completenessSummary(res)") && panel.includes("<Check ok={false} bad text={completenessSummary(last).text} />"));
 });

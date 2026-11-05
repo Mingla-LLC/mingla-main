@@ -15,7 +15,7 @@ import { Spinner } from "../ui/Spinner";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import { seeding } from "../../services/cityPipelineService";
-import { count, usd } from "../../lib/cityPipeline";
+import { completenessSummary, count, usd } from "../../lib/cityPipeline";
 
 const ASK_REASON_TEXT = {
   state_or_region_result: "Google returned a state or region, not a city",
@@ -43,11 +43,11 @@ function OutsideLine({ label, row }) {
   );
 }
 
-function Check({ ok, text }) {
+function Check({ ok, text, bad = false }) {
   return (
     <div className="grid grid-cols-[62px_minmax(0,1fr)] items-start gap-2 border-t border-[var(--color-border)] py-2 text-sm first:border-t-0">
-      <Badge variant={ok === null ? "default" : ok ? "success" : "warning"}>{ok === null ? "?" : ok ? "Yes" : "No"}</Badge>
-      <span>{text}</span>
+      <Badge variant={bad ? "error" : ok === null ? "default" : ok ? "success" : "warning"}>{bad ? "Failed" : ok === null ? "?" : ok ? "Yes" : "No"}</Badge>
+      <span className={bad ? "font-medium text-[var(--color-error-700)]" : ""}>{text}</span>
     </div>
   );
 }
@@ -131,7 +131,10 @@ export function CityBoxPanel({ city, onChanged }) {
     setBusy(true);
     try {
       const res = await seeding("run_completeness_check", { cityId, confirm: true });
-      addToast({ variant: "success", title: "Completeness check done", description: `${Math.round(Number(res.missing_share ?? 0) * 100)}% of what Google returned is missing from the pool.` });
+      const summary = completenessSummary(res);
+      addToast(summary.failed
+        ? { variant: "error", title: summary.text, description: res.error_message ?? undefined }
+        : { variant: "success", title: "Completeness check done", description: summary.text });
       setConfirm(null);
       await load();
     } catch (err) {
@@ -229,7 +232,11 @@ export function CityBoxPanel({ city, onChanged }) {
               <Check ok={checks.noUncoveredArea ?? null} text={`No area outside every tile${status.uncoveredTiles ? ` (${count(status.uncoveredTiles)} tiles needed)` : ""}`} />
               <Check ok={checks.noUnfinishedSearch ?? null} text={`Every search finished${status.unfinished?.total ? ` (${count(status.unfinished.never_searched)} never run, ${count(status.unfinished.failed)} failed)` : ""}`} />
               <Check ok={checks.noOpenCappedSearch ?? null} text={`No search left at the 20-result cap${status.capped_open ? ` (${count(status.capped_open)} capped)` : ""}${status.unresolved?.length ? `; ${count(status.unresolved.length)} unresolved at the smallest size` : ""}`} />
-              <Check ok={checks.completenessCheckOnRecord ?? null} text={last ? `Completeness check on ${new Date(last.created_at).toLocaleDateString()}: ${Math.round(Number(last.missing_share ?? 0) * 100)}% missing` : "A completeness check on record"} />
+              {completenessSummary(last).failed ? (
+                <Check ok={false} bad text={completenessSummary(last).text} />
+              ) : (
+                <Check ok={checks.completenessCheckOnRecord ?? null} text={last ? completenessSummary(last).text : "A completeness check on record"} />
+              )}
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)]">
               Dropped at seed: {count(status.dropped_at_seed?.no_photos)} with no photo, {count(status.dropped_at_seed?.closed_permanently)} permanently closed. They are not added, because Explorer cards need photos.

@@ -345,3 +345,21 @@ export function reasonRows(groups, failed) {
     share: total > 0 ? Math.round(((num(g.places) ?? 0) / total) * 100) : null,
   }));
 }
+
+// ── Completeness check ───────────────────────────────────────────────────────
+
+/** A completeness check in words. A failed check is never shown as a result, and a
+ * share nobody measured is "unknown", never 0%. */
+export function completenessSummary(check) {
+  if (!check) return { state: "none", failed: false, text: "No completeness check on record" };
+  const date = check.created_at ? new Date(check.created_at).toLocaleDateString() : "";
+  if (check.status !== "completed") {
+    const failedN = num(check.searches_failed);
+    const planned = num(check.searches_planned);
+    const counts = failedN !== null && planned !== null ? ` (${count(failedN)} of ${count(planned)} searches failed)` : "";
+    return { state: "failed", failed: true, text: `Completeness check failed${counts}${date ? ` on ${date}` : ""}` };
+  }
+  const share = num(check.missing_share);
+  const missing = share === null ? "share missing unknown" : `${Math.round(share * 100)}% missing`;
+  return { state: "completed", failed: false, text: `Completeness check${date ? ` on ${date}` : ""}: ${missing}` };
+}
