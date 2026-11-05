@@ -392,8 +392,8 @@ $test$;
 -- ticket base (3000), buyer_total_cents is the charge (3135), and Mingla's fee is
 -- stripe_application_fee_amount_cents (135) with application_fee_amount_cents 0.
 --   R-REFUND  (T2) a door code's late refund returns the whole charge, reverses
---             the fee, and the ledger allocations and the host's read agree. A
---             session with no door code is refunded exactly as before.
+--             the fee, and the ledger allocations and the host's read agree. An
+--             online session gets the same (override 8).
 --   R-CLOSE   (T4) a close names the pages Stripe confirmed; any other live page
 --             answers retry and closes nothing.
 --   R-LANDING (T4) a code left open because a payment is landing finalizes past
@@ -500,10 +500,15 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'R-REFUND % minted no refund', v_result; END IF;
 
     IF NOT (v_result->>'door')::boolean THEN
-      -- Online checkout behaviour is unchanged (its base-amount refund is its
-      -- own to change, not this issue's).
-      IF v_row.buyer_refund_requested_cents <> 3000 OR v_row.fee_reversal_required_cents <> 0 THEN
-        RAISE EXCEPTION 'R-REFUND online refund changed: %', to_jsonb(v_row);
+      -- Override 8: an online late refund returns the whole charge too.
+      IF v_row.original_charge_cents <> 3135 OR v_row.buyer_refund_requested_cents <> 3135
+         OR v_row.fee_reversal_required_cents <> 135 OR v_row.fee_state <> 'queued'
+         OR v_row.organizer_refund_liability_cents <> 3000 THEN
+        RAISE EXCEPTION 'R-REFUND online late refund must be the whole charge: %', to_jsonb(v_row);
+      END IF;
+      IF (SELECT jsonb_object_agg(allocation_type, amount_cents) FROM public.source_refund_ledger_allocations WHERE refund_id = v_row.id)
+         IS DISTINCT FROM jsonb_build_object('buyer_refund', 3135, 'organizer_refund_liability', 3000, 'platform_application_fee_reversal', 135) THEN
+        RAISE EXCEPTION 'R-REFUND online allocations disagree with the refund';
       END IF;
       CONTINUE;
     END IF;

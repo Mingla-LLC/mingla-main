@@ -1382,14 +1382,16 @@ REVOKE ALL ON FUNCTION public.biz_door_pay_code_late_payment(uuid) FROM PUBLIC, 
 GRANT EXECUTE ON FUNCTION public.biz_door_pay_code_late_payment(uuid)
   TO authenticated, service_role;
 
--- T2: a door code's late refund returns what the guest was charged. Every late
--- refund for a ticket session is minted by #1930 / #2079 code that reads
--- session.total_cents (the ticket base on a hosted session) and
--- application_fee_amount_cents (0 there). Those functions and online checkout
--- are untouched: this rewrites the row before it lands, only when the session
--- carries a door code. The charge is buyer_total_cents; Mingla's fee is
--- stripe_application_fee_amount_cents, reversed in full.
-CREATE OR REPLACE FUNCTION public.issue_4271_door_late_refund_amounts()
+-- T2, widened to every ticket session (Seth, 2026-11-05): a late refund returns
+-- what the guest was charged. Every late refund for a ticket session is minted by
+-- #1930 / #2079 code that reads session.total_cents (the ticket base on a hosted
+-- session) and application_fee_amount_cents (0 there). Those older files stay
+-- immutable: this rewrites the row before it lands. The charge is
+-- buyer_total_cents (written from Stripe's own total before finalize runs,
+-- automatic tax included), falling back to total_cents for a session with no
+-- recorded total. Paystack's total_cents is already all-in, so nothing doubles.
+-- Mingla's fee is stripe_application_fee_amount_cents, reversed in full.
+CREATE OR REPLACE FUNCTION public.issue_4271_ticket_late_refund_amounts()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1401,7 +1403,7 @@ DECLARE
   v_fee integer;
 BEGIN
   SELECT * INTO v_session FROM public.ticket_checkout_sessions WHERE id = NEW.source_id;
-  IF NOT FOUND OR v_session.door_pay_code_id IS NULL THEN
+  IF NOT FOUND THEN
     RETURN NEW;
   END IF;
   v_charged := coalesce(v_session.buyer_total_cents, v_session.total_cents);
@@ -1423,35 +1425,29 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.issue_4271_door_late_refund_amounts()
+REVOKE ALL ON FUNCTION public.issue_4271_ticket_late_refund_amounts()
   FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS trg_source_refunds_4271_door_amounts ON public.source_refunds;
-CREATE TRIGGER trg_source_refunds_4271_door_amounts
+DROP TRIGGER IF EXISTS trg_source_refunds_4271_late_amounts ON public.source_refunds;
+CREATE TRIGGER trg_source_refunds_4271_late_amounts
 BEFORE INSERT ON public.source_refunds
 FOR EACH ROW
 WHEN (
   NEW.source_type = 'ticket_checkout_session'
   AND NEW.refund_kind = 'late_payment_no_value'
 )
-EXECUTE FUNCTION public.issue_4271_door_late_refund_amounts();
+EXECUTE FUNCTION public.issue_4271_ticket_late_refund_amounts();
 
 -- The ledger allocations follow the same amounts. The minter inserts its own
 -- right after, with these same idempotency keys and ON CONFLICT DO NOTHING, so
--- its base-amount rows never land for a door session.
-CREATE OR REPLACE FUNCTION public.issue_4271_door_late_refund_allocations()
+-- its base-amount rows never land.
+CREATE OR REPLACE FUNCTION public.issue_4271_ticket_late_refund_allocations()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM public.ticket_checkout_sessions
-     WHERE id = NEW.source_id AND door_pay_code_id IS NOT NULL
-  ) THEN
-    RETURN NULL;
-  END IF;
   INSERT INTO public.source_refund_ledger_allocations(
     refund_id, allocation_type, amount_cents, currency, provider, state, idempotency_key
   )
@@ -1468,18 +1464,18 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.issue_4271_door_late_refund_allocations()
+REVOKE ALL ON FUNCTION public.issue_4271_ticket_late_refund_allocations()
   FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS trg_source_refunds_4271_door_allocations ON public.source_refunds;
-CREATE TRIGGER trg_source_refunds_4271_door_allocations
+DROP TRIGGER IF EXISTS trg_source_refunds_4271_late_allocations ON public.source_refunds;
+CREATE TRIGGER trg_source_refunds_4271_late_allocations
 AFTER INSERT ON public.source_refunds
 FOR EACH ROW
 WHEN (
   NEW.source_type = 'ticket_checkout_session'
   AND NEW.refund_kind = 'late_payment_no_value'
 )
-EXECUTE FUNCTION public.issue_4271_door_late_refund_allocations();
+EXECUTE FUNCTION public.issue_4271_ticket_late_refund_allocations();
 
 -- The paid code's guest name for the host's paid screen. A scanner allowed to
 -- take payments reaches that screen but cannot read orders (RLS is buyer or
@@ -2764,6 +2760,406 @@ BEGIN
   );
 END
 $cron$;
+
+-- =============================================================================
+-- §14. Online late refunds, same root as T2 (Seth, 2026-11-05). total_cents is the
+--      ticket base on Stripe paths, so a held payment with passed fees looked like
+--      an amount mismatch and kept the refund, and the operator-review row showed
+--      the base. Both functions are replaced here whole; only the amounts changed.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.release_ticket_checkout_evidence_hold(
+  p_checkout_session_id uuid,
+  p_provider text,
+  p_payment_reference text,
+  p_paystack_transaction_id text,
+  p_stripe_charge_id text,
+  p_observed_account_reference text,
+  p_amount_cents bigint,
+  p_currency text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'auth', 'pg_temp' AS $$
+DECLARE
+  v_event public.events%ROWTYPE;
+  v_session public.ticket_checkout_sessions%ROWTYPE;
+  v_attempt public.ticket_checkout_provider_attempts%ROWTYPE;
+  v_admission public.event_checkout_admission_state%ROWTYPE;
+  v_refund public.source_refunds%ROWTYPE;
+  v_refund_ids uuid[] := ARRAY[]::uuid[];
+  v_refund_snapshot jsonb := '[]'::jsonb;
+  v_evidence_reasons text[] := ARRAY['paid_provider_charge_missing',
+    'paid_provider_transaction_id_invalid','paid_provider_attempt_missing',
+    'paid_provider_reference_missing'];
+  v_outbox_count integer; v_outbox_evidence_only boolean;
+  v_paystack_id numeric(16,0);
+  v_sale_open boolean := false;
+BEGIN
+  IF current_user NOT IN ('postgres','service_role') THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+  IF p_provider NOT IN ('stripe','paystack')
+     OR COALESCE(p_payment_reference,'')=''
+     OR p_amount_cents IS NULL OR p_amount_cents<0
+     OR COALESCE(p_currency,'') !~ '^[A-Za-z]{3}$' THEN
+    RAISE EXCEPTION 'invalid_provider_evidence';
+  END IF;
+
+  -- Canonical lock order, identical to biz_ticket_checkout_finalize.
+  SELECT e.* INTO v_event FROM public.ticket_checkout_sessions s
+    JOIN public.events e ON e.id=s.event_id
+    WHERE s.id=p_checkout_session_id FOR UPDATE OF e;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome','not_held');
+  END IF;
+  PERFORM 1 FROM public.brands
+    WHERE id=v_event.brand_id AND deleted_at IS NULL FOR UPDATE;
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions
+    WHERE id=p_checkout_session_id FOR UPDATE;
+  IF v_session.order_id IS NOT NULL
+     OR v_session.status<>'failed'
+     OR v_session.reversal_state<>'paid_reversal_pending'
+     OR v_session.revoked_at IS NOT NULL THEN
+    RETURN jsonb_build_object('outcome','not_held');
+  END IF;
+  SELECT * INTO v_attempt FROM public.ticket_checkout_provider_attempts
+    WHERE id=v_session.provider_attempt_id AND checkout_session_id=v_session.id
+    FOR UPDATE;
+  SELECT * INTO v_admission FROM public.event_checkout_admission_state
+    WHERE event_id=v_event.id FOR UPDATE;
+
+  -- 1. The hold must exist ONLY because evidence was missing. A late payment
+  --    after a genuine sale closure has no such revocation row.
+  SELECT count(*), COALESCE(bool_and(o.reason=ANY(v_evidence_reasons)),false)
+    INTO v_outbox_count, v_outbox_evidence_only
+    FROM public.checkout_sale_revocation_outbox o
+    WHERE o.subject_type='ticket_checkout_session' AND o.subject_id=v_session.id;
+  PERFORM 1 FROM public.checkout_sale_revocation_outbox o
+    WHERE o.subject_type='ticket_checkout_session' AND o.subject_id=v_session.id
+    FOR UPDATE;
+  IF v_outbox_count=0 OR NOT v_outbox_evidence_only THEN
+    RETURN jsonb_build_object('outcome','not_held');
+  END IF;
+
+  -- 2. Complete evidence that matches the provider attempt exactly.
+  IF v_attempt.id IS NULL THEN
+    RETURN jsonb_build_object('outcome','refund_kept','reason','identity_unverified');
+  END IF;
+  IF v_attempt.provider<>p_provider THEN
+    RETURN jsonb_build_object('outcome','refund_kept','reason','identity_conflict');
+  END IF;
+  IF p_provider='stripe' THEN
+    IF p_paystack_transaction_id IS NOT NULL
+       OR p_payment_reference !~ '^pi_[A-Za-z0-9]+$'
+       OR v_session.stripe_account_id IS DISTINCT FROM p_observed_account_reference
+       OR (v_attempt.flow='stripe_native'
+         AND v_attempt.provider_object_id IS DISTINCT FROM p_payment_reference)
+       OR (v_attempt.flow='stripe_checkout'
+         AND (v_attempt.provider_checkout_id IS DISTINCT FROM v_session.stripe_checkout_session_id
+           OR v_session.stripe_payment_intent_id IS DISTINCT FROM p_payment_reference))
+       OR v_attempt.flow NOT IN ('stripe_native','stripe_checkout') THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','identity_conflict');
+    END IF;
+    IF COALESCE(p_stripe_charge_id,'') !~ '^ch_[A-Za-z0-9]+$' THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','identity_unverified');
+    END IF;
+  ELSE
+    IF p_stripe_charge_id IS NOT NULL
+       OR v_attempt.flow<>'paystack_redirect'
+       OR v_attempt.provider_reference IS DISTINCT FROM p_payment_reference THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','identity_conflict');
+    END IF;
+    IF COALESCE(p_paystack_transaction_id,'') !~ '^[0-9]{1,16}$' THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','identity_unverified');
+    END IF;
+    v_paystack_id:=p_paystack_transaction_id::numeric;
+    IF v_paystack_id<1 OR v_paystack_id>9007199254740991 THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','identity_unverified');
+    END IF;
+  END IF;
+
+  -- 3. The provider's own amount and currency.
+  --    The charge, not the ticket base: a held payment with passed fees completes.
+  IF p_amount_cents<>COALESCE(v_session.buyer_total_cents,v_session.total_cents)
+     OR upper(p_currency)<>upper(trim(v_session.currency)) THEN
+    RETURN jsonb_build_object('outcome','refund_kept','reason','amount_mismatch');
+  END IF;
+
+  -- 4. Every refund for this session is untouched and agrees with the evidence.
+  FOR v_refund IN
+    SELECT * FROM public.source_refunds
+    WHERE source_type='ticket_checkout_session' AND source_id=v_session.id
+    ORDER BY id FOR UPDATE
+  LOOP
+    IF v_refund.refund_kind NOT IN ('late_payment_no_value','checkout_provider_reference_unresolved')
+       OR v_refund.buyer_state NOT IN ('needs_attention','queued')
+       OR v_refund.financial_state NOT IN ('needs_attention','pending')
+       -- NARROWED with the cancellable states: the retirement collapses the fee
+       -- leg to 'cancelled_no_reversal_due' and the reopen restores it from the
+       -- money alone ('not_required' when none is owed, otherwise 'queued',
+       -- which is what both creators write). A fee leg parked on
+       -- 'needs_attention' could not be restored to that exactly, so it is no
+       -- longer releasable at all: the buyer keeps their refund instead of a
+       -- round trip that loses a state a human was waiting on. Neither creator
+       -- can produce it, so this refuses nothing that happens today.
+       OR v_refund.fee_state NOT IN ('not_required','queued')
+       OR v_refund.buyer_refund_processed_cents<>0
+       OR v_refund.fee_reversal_processed_cents<>0
+       OR v_refund.active_buyer_attempt_no<>0
+       OR v_refund.active_fee_attempt_no<>0
+       OR v_refund.provider_refund_id IS NOT NULL
+       OR v_refund.stripe_application_fee_refund_id IS NOT NULL
+       OR v_refund.attention_submission_claim_id IS NOT NULL
+       OR (v_refund.lease_owner IS NOT NULL
+         AND v_refund.leased_at>=now()-interval '10 minutes')
+       OR EXISTS(SELECT 1 FROM public.source_refund_attempts a WHERE a.refund_id=v_refund.id)
+       OR EXISTS(SELECT 1 FROM public.source_refund_events e WHERE e.refund_id=v_refund.id)
+       OR EXISTS(SELECT 1 FROM public.source_refund_notification_deliveries d
+         WHERE d.refund_id=v_refund.id)
+       OR EXISTS(SELECT 1 FROM public.payment_webhook_events w
+         WHERE w.matched_source_refund_id=v_refund.id)
+       OR EXISTS(SELECT 1 FROM public.stay_refunds sr WHERE sr.source_refund_id=v_refund.id)
+       OR EXISTS(SELECT 1 FROM public.source_refund_ledger_allocations l
+         WHERE l.refund_id=v_refund.id AND (l.state<>'prepared'
+           OR l.payout_release_id IS NOT NULL OR l.payout_ledger_adjustment_id IS NOT NULL)) THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','refund_in_progress');
+    END IF;
+    IF v_refund.refund_kind='late_payment_no_value' AND (
+         v_refund.provider<>p_provider
+         OR v_refund.provider_payment_reference IS DISTINCT FROM p_payment_reference
+         OR v_refund.provider_account_reference IS DISTINCT FROM v_session.stripe_account_id
+         OR (v_refund.stripe_charge_id IS NOT NULL
+           AND v_refund.stripe_charge_id IS DISTINCT FROM p_stripe_charge_id)
+         OR (v_refund.paystack_transaction_id IS NOT NULL
+           AND v_refund.paystack_transaction_id IS DISTINCT FROM v_paystack_id)
+         OR (v_refund.last_error_code IS NOT NULL
+           AND NOT (v_refund.last_error_code=ANY(v_evidence_reasons)))) THEN
+      RETURN jsonb_build_object('outcome','refund_kept','reason','identity_conflict');
+    END IF;
+    v_refund_ids:=v_refund_ids||v_refund.id;
+    v_refund_snapshot:=v_refund_snapshot||jsonb_build_array(jsonb_build_object(
+      'refundId',v_refund.id,'refundKind',v_refund.refund_kind,
+      'buyerState',v_refund.buyer_state,'amountCents',v_refund.buyer_refund_requested_cents,
+      'currency',v_refund.currency,'lastErrorCode',v_refund.last_error_code));
+  END LOOP;
+
+  -- 5. The sale is still open for this buyer. The authorization owner reads
+  --    the session's own status, so the check runs with the session restored
+  --    inside a subtransaction that is undone when the sale is not open.
+  BEGIN
+    UPDATE public.ticket_checkout_sessions SET status='processing_payment'
+      WHERE id=v_session.id;
+    IF public.issue_1930_event_sale_reason(v_event)<>'sellable'
+       OR v_session.admission_epoch IS NULL
+       OR v_admission.epoch<>v_session.admission_epoch
+       OR NOT public.issue_1930_ticket_session_authorized(v_session.id,v_event.id) THEN
+      RAISE EXCEPTION 'evidence_hold_sale_unavailable';
+    END IF;
+    v_sale_open:=true;
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM<>'evidence_hold_sale_unavailable' THEN RAISE; END IF;
+    v_sale_open:=false;
+  END;
+  IF NOT v_sale_open THEN
+    -- MONEY RULE (Seth, 2026-09-21): on a ticket checkout refunded because the
+    -- sale could not be completed, Mingla KEEPS its platform fee — the buyer is
+    -- refunded their payment minus our fee, and Mingla does not absorb it. This
+    -- matches his 2026-09-20 ruling on refunds caused by our own bug, and is
+    -- the OPPOSITE of #3391, where a venue cancelling a paid booking makes the
+    -- guest whole and Mingla absorbs the fee; that stays as it is.
+    --
+    -- This branch only tags the reason the buyer is shown. The refund's money
+    -- was already decided by whichever creator opened it — both of them on main
+    -- in 20270411002079: buyer_refund_requested_cents = total_cents and
+    -- platform_fee_absorption_cents = the application fee, i.e. today the fee
+    -- is ABSORBED, not kept. That does not match the rule above, and this issue
+    -- deliberately does not change it: the maths is inherited, not introduced
+    -- here, and a money rule does not get smuggled in through a notice tag. The
+    -- #2079 SQL suite pins the inherited figures so the next edit to them has
+    -- to be deliberate; changing them is its own issue.
+    UPDATE public.source_refunds SET buyer_notice_code='sale_unavailable',updated_at=now()
+      WHERE id=ANY(v_refund_ids) AND refund_kind='late_payment_no_value';
+    RETURN jsonb_build_object('outcome','refund_kept','reason','sale_unavailable');
+  END IF;
+
+  -- 6. Release: the refunds never started, so nothing is owed back.
+  --
+  -- The obligation is RETIRED IN PLACE, never deleted. #1221 makes the money
+  -- ledger append-only: issue_1221_enforce_allocation_monotonic() rejects every
+  -- DELETE on source_refund_ledger_allocations and allows only
+  -- prepared -> posted, and source_refund_ledger_allocations.refund_id is
+  -- ON DELETE RESTRICT, so the source_refunds row cannot go either. Both
+  -- creators of a ticket late refund (issue_2079_capture_ticket_paid_identity_
+  -- attention and issue_1930_mint_ticket_late_reversal) write the three
+  -- prepared allocations at creation, so EVERY hold this function can see has
+  -- them. An append-only ledger is the invariant; the release is what bends.
+  --
+  -- So: append the compensating record #1221 already has a vocabulary for
+  -- (`ops_resolved`), close BOTH legs on the cancelled terminal states this
+  -- migration adds, and move the refund to `financial_state='reconciled'`.
+  -- That last one is the exact predicate claim_source_refund_operations uses to
+  -- decide what is still open (`WHERE financial_state <> 'reconciled'`), and the
+  -- exact predicate every payout arm uses to decide what still blocks a release,
+  -- so one honest value makes the obligation terminal for both. The prepared
+  -- allocations stay exactly as they are: prepared, never posted, which is what
+  -- actually happened.
+  --
+  -- What this must NOT do is claim the refund was paid. Closing the legs on
+  -- 'processed' would drag buyer_refund_processed_cents up to
+  -- buyer_refund_requested_cents (#1221 ties those together in a CHECK) and the
+  -- ledger would assert money left Mingla that never left. The cancelled states
+  -- exist precisely so the row can be terminal and still say zero.
+  INSERT INTO public.audit_log(user_id,brand_id,event_id,action,target_type,target_id,before,after)
+  VALUES(NULL,v_session.brand_id,v_session.event_id,'ticket_checkout.evidence_hold_released',
+    'ticket_checkout_session',v_session.id::text,
+    jsonb_build_object('status',v_session.status,'reversalState',v_session.reversal_state,
+      'attemptState',v_attempt.state,'refunds',v_refund_snapshot),
+    jsonb_build_object('status','processing_payment','reversalState','none',
+      'provider',p_provider,'paymentReference',p_payment_reference,
+      'amountCents',p_amount_cents,'currency',upper(p_currency),
+      'refundsRetired',COALESCE(array_length(v_refund_ids,1),0)));
+  INSERT INTO public.source_refund_events(refund_id,event_key,event_type,from_state,to_state,
+    amount_observed_cents,safe_reason_code,actor_type,safe_payload)
+  SELECT r.id,'evidence-hold-released:'||r.id,'ops_resolved',r.financial_state,'reconciled',
+    0,'sale_completed_no_refund_due','system',
+    jsonb_build_object('checkoutSessionId',v_session.id,'provider',p_provider)
+  FROM public.source_refunds r WHERE r.id=ANY(v_refund_ids)
+  ON CONFLICT(event_key) DO NOTHING;
+  UPDATE public.source_refunds SET
+    financial_state='reconciled',
+    ops_status='resolved',
+    ops_note='Sale completed after a missing-evidence hold; no refund is owed.',
+    last_error_code='sale_completed_no_refund_due',
+    last_error_public=NULL,
+    lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,
+    attention_completed_at=COALESCE(attention_completed_at,now()),
+    attention_expires_at=NULL,
+    -- The legs are CANCELLED, not paid. buyer_refund_processed_cents stays 0
+    -- and buyer_refund_requested_cents is not touched: the ledger keeps saying
+    -- what was asked for and that none of it moved. The fee leg is derived from
+    -- the money, not from its previous value, because #1221 requires
+    -- (fee_state = 'not_required') = (fee_reversal_required_cents = 0) — a
+    -- refund that never owed a fee reversal was already 'not_required' and
+    -- stays there.
+    buyer_state='cancelled_no_refund_due',
+    fee_state=CASE WHEN fee_reversal_required_cents=0
+      THEN 'not_required' ELSE 'cancelled_no_reversal_due' END,
+    -- The provider has just AUTHENTICATED the identity this hold was missing,
+    -- and the loop above already refused to continue if the row carried a
+    -- different one. Recording it is what makes the retirement legal — a ticket
+    -- late refund that is not in 'needs_attention' must name its Paystack
+    -- transaction or Stripe charge (source_refunds_issue_2079_execution_ready)
+    -- and, while it does not, must stay in the attention shape
+    -- (source_refunds_issue_2079_attention_shape). It is also what lets the
+    -- reopen below recognise its own retirement: the reopen matches on identity,
+    -- and an unstamped row no longer matches the evidence that released it.
+    -- This is identity, not money; no amount is rewritten.
+    paystack_transaction_id=CASE WHEN refund_kind='late_payment_no_value'
+      THEN COALESCE(paystack_transaction_id,v_paystack_id) ELSE paystack_transaction_id END,
+    stripe_charge_id=CASE WHEN refund_kind='late_payment_no_value'
+      THEN COALESCE(stripe_charge_id,p_stripe_charge_id) ELSE stripe_charge_id END,
+    updated_at=now()
+  WHERE id=ANY(v_refund_ids);
+  -- The session must RE-HOLD its inventory for the finalize window. A held
+  -- session only counts toward issue_2491_derived_held() while
+  -- `expires_at > now()`, and a hold that reached this function expired long
+  -- ago, so without this the release hands back a session holding nothing and
+  -- the last seat can be sold out from under a buyer who has already paid.
+  -- The window is the session's OWN original hold, re-granted — not a new
+  -- number. If that window is somehow empty the hold simply is not extended and
+  -- the reopen path below is what catches it.
+  UPDATE public.ticket_checkout_sessions SET status='processing_payment',
+    reversal_state='none',failed_at=NULL,
+    expires_at=now()+GREATEST(v_session.expires_at-v_session.created_at,interval '0'),
+    updated_at=now()
+    WHERE id=v_session.id;
+  UPDATE public.ticket_checkout_provider_attempts SET state='ready',updated_at=now()
+    WHERE id=v_attempt.id AND state IN ('provider_unknown','paid_reversal_pending');
+  UPDATE public.checkout_sale_revocation_outbox SET state='sale_completed',
+    lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,last_error_code=NULL,updated_at=now()
+    WHERE subject_type='ticket_checkout_session' AND subject_id=v_session.id;
+  -- `refundsReleased` counts the obligations retired by this call. Nothing is
+  -- deleted, so a replay finds the session no longer held and answers
+  -- `not_held` without touching them again.
+  RETURN jsonb_build_object('outcome','released',
+    'refundsReleased',COALESCE(array_length(v_refund_ids,1),0));
+END $$;
+
+REVOKE ALL ON FUNCTION public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_2168_handoff_revocation_attention(
+  p_outbox_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_row     public.checkout_sale_revocation_outbox%ROWTYPE;
+  v_session public.ticket_checkout_sessions%ROWTYPE;
+  v_buyer   bigint;
+  v_fee     bigint;
+  v_charged bigint;
+BEGIN
+  SELECT * INTO v_row FROM public.checkout_sale_revocation_outbox
+   WHERE id = p_outbox_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'revocation_outbox_missing'; END IF;
+  IF v_row.subject_type <> 'ticket_checkout_session' THEN
+    RAISE EXCEPTION 'revocation_subject_unsupported';
+  END IF;
+  IF v_row.reason NOT LIKE 'paid_provider_%' THEN
+    RAISE EXCEPTION 'revocation_reason_not_paid_provider';
+  END IF;
+
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions
+   WHERE id = v_row.subject_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'revocation_session_missing'; END IF;
+
+  -- #4271: the operator is shown what was charged, not the ticket base.
+  v_charged := COALESCE(v_session.buyer_total_cents, v_session.total_cents, 0);
+  v_fee   := LEAST(v_charged, COALESCE(v_session.application_fee_amount_cents,0));
+  v_buyer := v_charged - v_fee;
+
+  -- A free ticket, or a charge that is entirely platform fee, cannot owe the
+  -- buyer anything. `source_refunds` forbids a zero-value refund by CHECK
+  -- (buyer_refund_requested_cents > 0), and that is correct — there is no money
+  -- to reconcile, so there is nothing for a human to decide.
+  IF v_buyer <= 0 THEN
+    RETURN 'no_money';
+  END IF;
+
+  INSERT INTO public.source_refunds(
+    source_type, source_id, subject_id, brand_id, event_id, refund_kind,
+    requested_by_type, reason, provider, currency,
+    original_charge_cents, buyer_refund_requested_cents,
+    original_application_fee_cents, fee_reversal_required_cents,
+    fee_state, fee_leg_kind, financial_state, buyer_state, ops_status,
+    organizer_refund_liability_cents, platform_fee_absorption_cents,
+    provider_account_reference, idempotency_key)
+  VALUES(
+    'ticket_checkout_session', v_session.id, v_session.id, v_session.brand_id,
+    v_session.event_id, 'checkout_provider_reference_unresolved',
+    'system',
+    'Checkout recorded paid evidence with no resolvable provider reference; '
+      || 'awaiting operator identification before any money moves',
+    CASE WHEN v_session.stripe_account_id IS NOT NULL THEN 'stripe' ELSE 'paystack' END,
+    upper(v_session.currency),
+    v_charged, v_buyer,
+    v_fee, 0,
+    'not_required', 'not_required', 'needs_attention', 'needs_attention', 'needs_review',
+    v_buyer, 0,
+    v_session.stripe_account_id,
+    'issue-2168-reference-unresolved:' || v_session.id)
+  ON CONFLICT (source_type, source_id, refund_kind) DO NOTHING;
+
+  RETURN 'attention_created';
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_2168_handoff_revocation_attention(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.issue_2168_handoff_revocation_attention(uuid) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_2168_handoff_revocation_attention(uuid) TO service_role;
 
 COMMENT ON TABLE public.door_pay_codes IS
   '#4271: a one-time pay link for one door sale; 10 minutes, pays once, never a ticket credential.';
