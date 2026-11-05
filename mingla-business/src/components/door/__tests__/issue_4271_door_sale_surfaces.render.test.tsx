@@ -337,6 +337,66 @@ describe("#4271 B8 the Tap to Pay button", () => {
   });
 });
 
+describe("#4271 final P3: the tax refusal shows once and turns the card buttons off", () => {
+  const TAX = "because tax is added at checkout";
+  const count = (text: string): number => text.split(TAX).length - 1;
+  const buttonNamed = (root: ReactTestInstance, label: string): ReactTestInstance =>
+    root.findAll((n) => n.props.label === label && "disabled" in n.props)[0] as ReactTestInstance;
+  const pressText = (root: ReactTestInstance, label: string): void => {
+    const node = root.findAll(
+      (n) => n.type === "Text" && typeof n.props.onPress === "function" && n.children.includes(label),
+    )[0] as ReactTestInstance;
+    act(() => {
+      node.props.onPress();
+    });
+  };
+  beforeEach(() => {
+    mockQuote = { data: undefined, isLoading: false, isError: true, error: { code: "door_tax_added_at_checkout" } };
+    mockPush.mockClear();
+  });
+  afterEach(() => {
+    mockTapAvailable = false;
+  });
+
+  test("pay code: Show pay code is disabled, pressing adds nothing, no empty total box", () => {
+    const { root } = mount(
+      <DoorSaleNewSheet
+        visible
+        event={{ id: "event-1", currency: "GBP", tickets: [tier] } as never}
+        onClose={jest.fn()}
+        onSuccess={jest.fn()}
+        initialLines={[{ ticketTypeId: "tier-1", quantity: 2 }]}
+        initialMethod="pay_code"
+        brand={null}
+      />,
+    );
+    expect(count(textOf(root))).toBe(1);
+    expect(buttonNamed(root, "Show pay code").props.disabled).toBe(true);
+    pressText(root, "Show pay code");
+    expect(count(textOf(root))).toBe(1);
+    expect(root.findAll((n) => n.props.testID === "door-sale-dock-total-row")).toHaveLength(0);
+  });
+
+  test("tap: pressing Tap to Pay twice still shows the refusal once and starts nothing", () => {
+    mockTapAvailable = true;
+    const { root } = mount(
+      <DoorSaleNewSheet
+        visible
+        event={{ id: "event-1", currency: "GBP", tickets: [tier] } as never}
+        onClose={jest.fn()}
+        onSuccess={jest.fn()}
+        initialLines={[{ ticketTypeId: "tier-1", quantity: 2 }]}
+        brand={null}
+      />,
+    );
+    expect(buttonNamed(root, "Tap to Pay on iPhone").props.disabled).toBe(true);
+    pressText(root, "Tap to Pay on iPhone");
+    pressText(root, "Tap to Pay on iPhone");
+    expect(count(textOf(root))).toBe(1);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
 describe("#4271 scanner invite copy", () => {
   const invite = (paymentProvider: "stripe" | "paystack" | null): string =>
     textOf(

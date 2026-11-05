@@ -386,22 +386,25 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     phoneValid &&
     notesValid &&
     permission.data === true &&
+    // #4271 — tax added at checkout: the refusal is already on screen, so the
+    // card buttons are off rather than printing it a second time.
+    !taxRefused &&
     // #962 G5 / OQ-2(a) — cannot record a paid sale without an established
     // currency; a sale must never freeze a fabricated GBP.
     eventCurrencyCode !== null;
 
   const startTapSale = useCallback((): void => {
-    const blocked = taxRefused
-      ? DOOR_CARD_TAX_REFUSAL
-      : doorTapBlockReason({
-          hasLines: lines.length > 0,
-          dateMissing: doorDateNeeded && doorDateId === null,
-          currencyMissing: eventCurrencyCode === null,
-          permissionLoading: permission.data !== true,
-          emailInvalid: !isValidEmailOrEmpty(buyerEmail),
-          phoneInvalid: !buyerPhone.isEmpty && buyerPhone.e164 === null,
-          notesInvalid: !notesValid,
-        });
+    // The tax refusal already shows in the dock; never print it twice.
+    if (taxRefused) return;
+    const blocked = doorTapBlockReason({
+      hasLines: lines.length > 0,
+      dateMissing: doorDateNeeded && doorDateId === null,
+      currencyMissing: eventCurrencyCode === null,
+      permissionLoading: permission.data !== true,
+      emailInvalid: !isValidEmailOrEmpty(buyerEmail),
+      phoneInvalid: !buyerPhone.isEmpty && buyerPhone.e164 === null,
+      notesInvalid: !notesValid,
+    });
     setTapBlockedMessage(blocked);
     if (blocked !== null) return;
     // The Tap to Pay route owns the card read; we only hand over the basket.
@@ -852,18 +855,16 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
 
         {/* Sticky bottom bar — total + Record sale CTA */}
         <View style={styles.dock}>
-          <View style={styles.dockTotalRow}>
-            {taxRefused ? null : (
-              <>
-                <Text style={styles.dockTotalLabel}>
-                  {quotesServerTotal ? quotedDock.label : "Total"}
-                </Text>
-                <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
-                  {quotesServerTotal ? quotedDock.amount : fmtDoorMoney(total)}
-                </Text>
-              </>
-            )}
-          </View>
+          {taxRefused ? null : (
+            <View style={styles.dockTotalRow} testID="door-sale-dock-total-row">
+              <Text style={styles.dockTotalLabel}>
+                {quotesServerTotal ? quotedDock.label : "Total"}
+              </Text>
+              <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
+                {quotesServerTotal ? quotedDock.amount : fmtDoorMoney(total)}
+              </Text>
+            </View>
+          )}
           {taxRefused ? (
             <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tax-refusal">
               {DOOR_CARD_TAX_REFUSAL}
@@ -910,7 +911,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                   variant="secondary"
                   size="lg"
                   fullWidth
-                  disabled={submitting}
+                  disabled={submitting || taxRefused}
                   accessibilityLabel={tapToPayName(Platform.OS)}
                   testID="door-sale-tap-dock"
                 />
@@ -927,7 +928,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                 size="lg"
                 fullWidth
                 loading={submitting}
-                disabled={paymentMethod === "tap_to_pay" ? submitting : !canSubmit}
+                disabled={paymentMethod === "tap_to_pay" ? submitting || taxRefused : !canSubmit}
                 accessibilityLabel={doorSaleButtonLabel(paymentMethod, Platform.OS)}
                 testID="door-sale-submit"
               />
