@@ -164,10 +164,11 @@ export function classAShardPlan({ manifest, costs, shardCount }) {
 
   // R-3.2(2) — a missing entry takes the committed default. This path is SAFE
   // and never an error: a missing cost cannot drop, duplicate or skip a row,
-  // because every item is placed below whatever its cost is. It is also bounded
-  // by measurement, not hope: a brand-new 90 s untabled gate gives a 272.6 s
-  // shard and an ENTIRELY EMPTY table gives 249.4 s — both under half the 540 s
-  // ceiling.
+  // because every item is placed below whatever its cost is. It is not safe for
+  // time: an untabled gate adds its whole real cost to the shard it lands on, and
+  // an ENTIRELY EMPTY table gave a worst shard of 504-667 s on the 2026-11-05
+  // samples, before #4261. Only the plan gate's floor and the budget job's 540 s
+  // red stand in the way, and class-a-shard-costs.json says so too.
   let costed = 0;
   let defaulted = 0;
   const costOf = (item) => {
