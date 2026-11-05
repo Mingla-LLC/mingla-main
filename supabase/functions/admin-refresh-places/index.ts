@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { derivePoolCategory, googleTypesForCategory } from "../_shared/derivePoolCategory.ts";
+import { mergeGoogleUpdate } from "../_shared/placeGoogleMerge.ts";
 
 // ── Admin-Triggered Place Refresh Edge Function ─────────────────────────────
 // Processes pending place_refresh entries from admin_backfill_log.
@@ -201,14 +202,21 @@ async function refreshPlace(
       ? parseInt(priceRange.endPrice.units, 10) * 100
       : null;
 
-    // ORCH-0550.1 — refresh writes every column the seed transform writes.
-    // Using `?? null` (not `?? undefined`) for new fields so that when Google
-    // stops returning a previously-present boolean/field, we explicitly null it
-    // rather than silently preserve stale data. Identity + price_min/max keep
-    // `?? undefined` so refresh never wipes known-good scalars with 0.
-    await supabase
-      .from("place_pool")
-      .update({
+    // #4276 S3: read the admin marker first. If it can't be read, stop: a failed
+    // refresh is retried, an overwritten admin edit is gone.
+    const { data: markerRow, error: markerErr } = await supabase
+      .from("place_pool_admin_edits")
+      .select("edited_fields")
+      .eq("google_place_id", googlePlaceId)
+      .maybeSingle();
+    if (markerErr) {
+      return { success: false, error: `admin marker read failed: ${markerErr.message}` };
+    }
+
+    // ORCH-0550.1: refresh writes every column the seed transform writes.
+    // #4276 S3: mergeGoogleUpdate then drops every value Google did not return, so
+    // `?? null` below means "absent", and absent never replaces a stored value.
+    const merged = mergeGoogleUpdate({
         name: displayName?.text ?? undefined,
         address: (gPlace.formattedAddress as string) ?? undefined,
         lat: location?.latitude ?? undefined,
@@ -217,10 +225,11 @@ async function refreshPlace(
         primary_type: (gPlace.primaryType as string) ?? undefined,
         primary_type_display_name: primaryTypeDisplayNameText,
         rating: (gPlace.rating as number) ?? undefined,
-        review_count: (gPlace.userRatingCount as number) ?? 0,
+        review_count: (gPlace.userRatingCount as number) ?? undefined,
         price_level: priceLevel ?? undefined,
-        price_min: priceInfo.min,
-        price_max: priceInfo.max,
+        // priceInfo falls back to 0 when Google sent no level; 0 is not an answer.
+        price_min: priceLevel ? priceInfo.min : undefined,
+        price_max: priceLevel ? priceInfo.max : undefined,
         price_tier: priceInfo.tier ?? undefined,
         price_tiers: priceInfo.tier ? [priceInfo.tier] : undefined,
         price_range_currency: priceRangeCurrency,
@@ -277,8 +286,15 @@ async function refreshPlace(
         last_detail_refresh: new Date().toISOString(),
         refresh_failures: 0,
         updated_at: new Date().toISOString(),
-      })
+      }, (markerRow as { edited_fields?: string[] | null } | null)?.edited_fields);
+
+    const { error: updateErr } = await supabase
+      .from("place_pool")
+      .update(merged)
       .eq("google_place_id", googlePlaceId);
+    if (updateErr) {
+      return { success: false, error: `place_pool update failed: ${updateErr.message}` };
+    }
 
     return { success: true };
   } catch (e: unknown) {

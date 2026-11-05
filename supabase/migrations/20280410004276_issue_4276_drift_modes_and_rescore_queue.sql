@@ -65,9 +65,10 @@ ALTER TABLE public.place_intelligence_runs
 
 CREATE TABLE public.place_drift_queue_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  -- Deliberately no foreign keys: recording must not be able to fail, and the
-  -- record should outlive the place it describes.
-  place_pool_id uuid NOT NULL,
+  -- Deliberately no foreign key, and not called place_pool_id: recording must not
+  -- be able to fail, the record should outlive the place, and this table must stay
+  -- out of #2099's pinned list of tables that depend on a place.
+  place_id uuid NOT NULL,
   city_id uuid,
   drift_kind text,
   outcome text NOT NULL CHECK (outcome IN ('skipped_active_run', 'queue_failed')),
@@ -179,7 +180,7 @@ BEGIN
       v_message := SQLERRM;
       BEGIN
         INSERT INTO public.place_drift_queue_events (
-          place_pool_id, city_id, drift_kind, outcome, sqlstate, message
+          place_id, city_id, drift_kind, outcome, sqlstate, message
         ) VALUES (
           NEW.id, NEW.city_id, v_drift_kind, 'skipped_active_run', v_sqlstate, v_message
         );
@@ -193,7 +194,7 @@ BEGIN
       RAISE WARNING 'place drift re-evaluation for % was not queued: % %', NEW.id, v_sqlstate, v_message;
       BEGIN
         INSERT INTO public.place_drift_queue_events (
-          place_pool_id, city_id, drift_kind, outcome, sqlstate, message
+          place_id, city_id, drift_kind, outcome, sqlstate, message
         ) VALUES (
           NEW.id, NEW.city_id, v_drift_kind, 'queue_failed', v_sqlstate, v_message
         );

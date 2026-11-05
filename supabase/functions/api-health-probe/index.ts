@@ -58,6 +58,7 @@ import {
   indicatorToStatus,
   matchClassBDepletion,
   type ProbeResult,
+  serperErrorDetail,
   STATUS_PAGE_URLS,
   tallyDeliveryRows,
   // #3040 — video lane verdict.
@@ -435,7 +436,10 @@ async function probeSerper(): Promise<ProbeResult> {
       headers: { "X-API-KEY": key, "Content-Type": "application/json" },
       body: JSON.stringify({ q: "mingla healthcheck", num: 1 }),
     });
-    return { ok: res.ok, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail: {} };
+    // #4276 S4: keep the body. It is the only place a provider says why: every
+    // Serper check from 6 October was a bare HTTP 400 until someone asked by hand.
+    const detail = res.ok ? {} : serperErrorDetail(res.status, await res.text());
+    return { ok: res.ok, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }

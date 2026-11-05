@@ -9,6 +9,12 @@ import {
   resolveSeedingCategory,
   type SeedingCategoryConfig,
 } from "../_shared/seedingCategories.ts";
+import {
+  adminEditsByGooglePlaceId,
+  buildSeedMergeUpdate,
+  COVERAGE_PAGE_SIZE,
+  loadAllCoverageRows,
+} from "../_shared/placeGoogleMerge.ts";
 import { derivePoolCategory } from "../_shared/derivePoolCategory.ts";
 // Phase 2: type exclusion imports removed — AI is the sole quality gate
 // import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
@@ -606,19 +612,25 @@ async function handleCoverageCheck(body: any, supabase: any) {
 
   // ORCH-0700 Phase 3: count places per Mingla category, derived client-side from
   // primary_type + types (place_pool.seeding_category column dropped in Migration 6).
-  // Must override Supabase default 1000-row limit to get accurate counts.
-  const { data: rows, error } = await supabase
-    .from("place_pool")
-    .select("primary_type, types")
-    .eq("city_id", cityId)
-    .eq("is_active", true)
-    .limit(10000);
-
-  if (error) throw new Error(`Coverage check failed: ${error.message}`);
+  // #4276 U5: page through every row. A fixed limit undercounted large cities, and
+  // a server row cap can return fewer rows than any limit asks for.
+  const rows = await loadAllCoverageRows(async (afterId) => {
+    let page = supabase
+      .from("place_pool")
+      .select("id, primary_type, types")
+      .eq("city_id", cityId)
+      .eq("is_active", true)
+      .order("id")
+      .limit(COVERAGE_PAGE_SIZE);
+    if (afterId) page = page.gt("id", afterId);
+    const { data, error } = await page;
+    if (error) throw new Error(`Coverage check failed: ${error.message}`);
+    return data ?? [];
+  });
 
   // Tally per derived category (matches the SQL helper byte-for-byte).
   const counts: Record<string, number> = {};
-  for (const r of (rows || []) as Array<{ primary_type: string | null; types: string[] | null }>) {
+  for (const r of rows) {
     const cat = derivePoolCategory(r.primary_type, r.types) ?? "unknown";
     counts[cat] = (counts[cat] || 0) + 1;
   }
@@ -1055,79 +1067,25 @@ async function handleRunNextBatch(body: any, supabase: any) {
         // batch=failed and error_details contains the real PostgREST message.
         for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
           const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
+          // #4276 S3: read the admin markers for this batch, and stop rather than risk
+          // writing over an admin's edit if they can't be read.
+          const { data: markerRows, error: markerErr } = await supabase
+            .from("place_pool_admin_edits")
+            .select("google_place_id, edited_fields")
+            .in("google_place_id", updateBatch.map((r) => r.google_place_id));
+          if (markerErr) {
+            throw new Error(`admin marker read failed: ${markerErr.message}`);
+          }
+          const adminEdits = adminEditsByGooglePlaceId(markerRows);
           const results = await Promise.all(
             updateBatch.map((row) =>
               supabase
                 .from("place_pool")
-                .update({
-                  // ORCH-0550.1 — re-seed must write every new column so a repeat
-                  // tile pass cannot degrade a previously-enriched row
-                  // (I-REFRESH-NEVER-DEGRADES).
-                  //
-                  // I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data
-                  // is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively
-                  // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
-                  // The fingerprint check inside the scorer detects photo rotation and
-                  // re-scores automatically when stored_photo_urls change.
-                  //
-                  // I-COLLAGE-SOLE-OWNER (ORCH-0712): photo_collage_url +
-                  // photo_collage_fingerprint are INTENTIONALLY EXCLUDED. Owned exclusively
-                  // by run-place-intelligence-trial compose_collage action. A re-seed must
-                  // NOT clobber the cached collage. Fingerprint detects rotation.
-                  name: row.name,
-                  address: row.address,
-                  lat: row.lat,
-                  lng: row.lng,
-                  types: row.types,
-                  primary_type: row.primary_type,
-                  primary_type_display_name: row.primary_type_display_name,
-                  rating: row.rating,
-                  review_count: row.review_count,
-                  price_level: row.price_level,
-                  price_range_currency: row.price_range_currency,
-                  price_range_start_cents: row.price_range_start_cents,
-                  price_range_end_cents: row.price_range_end_cents,
-                  opening_hours: row.opening_hours,
-                  secondary_opening_hours: row.secondary_opening_hours,
-                  photos: row.photos,
-                  website: row.website,
-                  google_maps_uri: row.google_maps_uri,
-                  national_phone_number: row.national_phone_number,
-                  business_status: row.business_status,
-                  editorial_summary: row.editorial_summary,
-                  generative_summary: row.generative_summary,
-                  reviews: row.reviews,
-                  utc_offset_minutes: row.utc_offset_minutes,
-                  serves_brunch: row.serves_brunch,
-                  serves_lunch: row.serves_lunch,
-                  serves_dinner: row.serves_dinner,
-                  serves_breakfast: row.serves_breakfast,
-                  serves_beer: row.serves_beer,
-                  serves_wine: row.serves_wine,
-                  serves_cocktails: row.serves_cocktails,
-                  serves_coffee: row.serves_coffee,
-                  serves_dessert: row.serves_dessert,
-                  serves_vegetarian_food: row.serves_vegetarian_food,
-                  outdoor_seating: row.outdoor_seating,
-                  live_music: row.live_music,
-                  good_for_groups: row.good_for_groups,
-                  good_for_children: row.good_for_children,
-                  good_for_watching_sports: row.good_for_watching_sports,
-                  allows_dogs: row.allows_dogs,
-                  has_restroom: row.has_restroom,
-                  reservable: row.reservable,
-                  menu_for_children: row.menu_for_children,
-                  dine_in: row.dine_in,
-                  takeout: row.takeout,
-                  delivery: row.delivery,
-                  curbside_pickup: row.curbside_pickup,
-                  accessibility_options: row.accessibility_options,
-                  parking_options: row.parking_options,
-                  payment_options: row.payment_options,
-                  raw_google_data: row.raw_google_data,
-                  last_detail_refresh: row.last_detail_refresh,
-                  refresh_failures: 0,
-                })
+                // I-REFRESH-NEVER-DEGRADES: a merge, never a blind overwrite. The columns
+                // are an allowlist, which also keeps photo_aesthetic_data
+                // (I-PHOTO-AESTHETIC-DATA-SOLE-OWNER) and photo_collage_url + fingerprint
+                // (I-COLLAGE-SOLE-OWNER) out of a re-seed.
+                .update(buildSeedMergeUpdate(row, adminEdits.get(row.google_place_id)))
                 .eq("google_place_id", row.google_place_id)
                 .select("google_place_id")
             )
@@ -1504,79 +1462,25 @@ async function handleRetryBatch(body: any, supabase: any) {
         // ORCH-0598.11.B-002 — surface per-row update errors (see first handler for rationale).
         for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
           const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
+          // #4276 S3: read the admin markers for this batch, and stop rather than risk
+          // writing over an admin's edit if they can't be read.
+          const { data: markerRows, error: markerErr } = await supabase
+            .from("place_pool_admin_edits")
+            .select("google_place_id, edited_fields")
+            .in("google_place_id", updateBatch.map((r) => r.google_place_id));
+          if (markerErr) {
+            throw new Error(`admin marker read failed: ${markerErr.message}`);
+          }
+          const adminEdits = adminEditsByGooglePlaceId(markerRows);
           const results = await Promise.all(
             updateBatch.map((row) =>
               supabase
                 .from("place_pool")
-                .update({
-                  // ORCH-0550.1 — re-seed must write every new column so a repeat
-                  // tile pass cannot degrade a previously-enriched row
-                  // (I-REFRESH-NEVER-DEGRADES).
-                  //
-                  // I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data
-                  // is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively
-                  // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
-                  // The fingerprint check inside the scorer detects photo rotation and
-                  // re-scores automatically when stored_photo_urls change.
-                  //
-                  // I-COLLAGE-SOLE-OWNER (ORCH-0712): photo_collage_url +
-                  // photo_collage_fingerprint are INTENTIONALLY EXCLUDED. Owned exclusively
-                  // by run-place-intelligence-trial compose_collage action. A re-seed must
-                  // NOT clobber the cached collage. Fingerprint detects rotation.
-                  name: row.name,
-                  address: row.address,
-                  lat: row.lat,
-                  lng: row.lng,
-                  types: row.types,
-                  primary_type: row.primary_type,
-                  primary_type_display_name: row.primary_type_display_name,
-                  rating: row.rating,
-                  review_count: row.review_count,
-                  price_level: row.price_level,
-                  price_range_currency: row.price_range_currency,
-                  price_range_start_cents: row.price_range_start_cents,
-                  price_range_end_cents: row.price_range_end_cents,
-                  opening_hours: row.opening_hours,
-                  secondary_opening_hours: row.secondary_opening_hours,
-                  photos: row.photos,
-                  website: row.website,
-                  google_maps_uri: row.google_maps_uri,
-                  national_phone_number: row.national_phone_number,
-                  business_status: row.business_status,
-                  editorial_summary: row.editorial_summary,
-                  generative_summary: row.generative_summary,
-                  reviews: row.reviews,
-                  utc_offset_minutes: row.utc_offset_minutes,
-                  serves_brunch: row.serves_brunch,
-                  serves_lunch: row.serves_lunch,
-                  serves_dinner: row.serves_dinner,
-                  serves_breakfast: row.serves_breakfast,
-                  serves_beer: row.serves_beer,
-                  serves_wine: row.serves_wine,
-                  serves_cocktails: row.serves_cocktails,
-                  serves_coffee: row.serves_coffee,
-                  serves_dessert: row.serves_dessert,
-                  serves_vegetarian_food: row.serves_vegetarian_food,
-                  outdoor_seating: row.outdoor_seating,
-                  live_music: row.live_music,
-                  good_for_groups: row.good_for_groups,
-                  good_for_children: row.good_for_children,
-                  good_for_watching_sports: row.good_for_watching_sports,
-                  allows_dogs: row.allows_dogs,
-                  has_restroom: row.has_restroom,
-                  reservable: row.reservable,
-                  menu_for_children: row.menu_for_children,
-                  dine_in: row.dine_in,
-                  takeout: row.takeout,
-                  delivery: row.delivery,
-                  curbside_pickup: row.curbside_pickup,
-                  accessibility_options: row.accessibility_options,
-                  parking_options: row.parking_options,
-                  payment_options: row.payment_options,
-                  raw_google_data: row.raw_google_data,
-                  last_detail_refresh: row.last_detail_refresh,
-                  refresh_failures: 0,
-                })
+                // I-REFRESH-NEVER-DEGRADES: a merge, never a blind overwrite. The columns
+                // are an allowlist, which also keeps photo_aesthetic_data
+                // (I-PHOTO-AESTHETIC-DATA-SOLE-OWNER) and photo_collage_url + fingerprint
+                // (I-COLLAGE-SOLE-OWNER) out of a re-seed.
+                .update(buildSeedMergeUpdate(row, adminEdits.get(row.google_place_id)))
                 .eq("google_place_id", row.google_place_id)
                 .select("google_place_id")
             )

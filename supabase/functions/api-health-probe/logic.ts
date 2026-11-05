@@ -993,3 +993,15 @@ export function pgCronDownAlertCopy(
       : `Scheduled job(s) failing: ${fullList}`,
   };
 }
+
+// ── issue #4276 S4 — what Serper said when a health check failed (pure) ──
+export function serperErrorDetail(
+  status: number,
+  body: string,
+): { error_body: string; http_status: number; not_enough_credits: boolean } {
+  return {
+    error_body: body.slice(0, 500),
+    http_status: status,
+    not_enough_credits: /not enough credits/i.test(body),
+  };
+}

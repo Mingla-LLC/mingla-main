@@ -92,7 +92,7 @@ begin
   if (select count(*) from public.place_intelligence_trial_runs where place_pool_id = '42760000-0000-4000-b000-000000000001') <> 1 then
     raise exception 'R-DRIFT: a second event queued a second re-evaluation';
   end if;
-  if exists (select 1 from public.place_drift_queue_events where place_pool_id = '42760000-0000-4000-b000-000000000001') then
+  if exists (select 1 from public.place_drift_queue_events where place_id = '42760000-0000-4000-b000-000000000001') then
     raise exception 'R-DRIFT: a covered event was recorded as a problem';
   end if;
 end $$;
@@ -107,7 +107,7 @@ begin
   if (select business_status from public.place_pool where id = '42760000-0000-4000-b000-000000000003') <> 'CLOSED_TEMPORARILY' then
     raise exception 'R-ACTIVE: the place update did not stand';
   end if;
-  if (select count(*) from public.place_drift_queue_events where place_pool_id = '42760000-0000-4000-b000-000000000003' and outcome = 'skipped_active_run' and drift_kind = 'business_status') <> 1 then
+  if (select count(*) from public.place_drift_queue_events where place_id = '42760000-0000-4000-b000-000000000003' and outcome = 'skipped_active_run' and drift_kind = 'business_status') <> 1 then
     raise exception 'R-ACTIVE: the skip was not recorded';
   end if;
 end $$;
@@ -120,7 +120,7 @@ begin
   if (select business_status from public.place_pool where id = '42760000-0000-4000-b000-000000000002') <> 'CLOSED_TEMPORARILY' then
     raise exception 'R-FAIL: the place update did not stand';
   end if;
-  if (select count(*) from public.place_drift_queue_events where place_pool_id = '42760000-0000-4000-b000-000000000002' and outcome = 'queue_failed' and sqlstate = '23502') <> 1 then
+  if (select count(*) from public.place_drift_queue_events where place_id = '42760000-0000-4000-b000-000000000002' and outcome = 'queue_failed' and sqlstate = '23502') <> 1 then
     raise exception 'R-FAIL: the failure was not recorded with its code';
   end if;
   if exists (select 1 from public.place_intelligence_trial_runs where place_pool_id = '42760000-0000-4000-b000-000000000002') then

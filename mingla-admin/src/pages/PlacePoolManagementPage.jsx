@@ -33,6 +33,13 @@ import { Badge } from "../components/ui/Badge";
 import { Breadcrumbs } from "../components/ui/Breadcrumbs";
 import { Spinner } from "../components/ui/Spinner";
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
+import {
+  adminDeactivateError,
+  PLACE_CATEGORY_COLUMN,
+  PLACE_LIST_COLUMNS,
+  PLACE_LIST_COUNT_MODE,
+  PLACE_MAP_COLUMNS,
+} from "../lib/placePoolQueries";
 // ORCH-0553 — SeedTab + RefreshTab extracted to shared seeding components.
 // HARD_CAP_USD + formatCost + TILE_RADIUS_OPTIONS imported from shared lib so
 // both this page and AIValidationPage tabs use a single source of truth.
@@ -214,8 +221,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
 
   const photos = place.stored_photo_urls || [];
   const types = place.types || [];
-  const aiCats = place.ai_categories || [];
-  const hasConflict = place.seeding_category && aiCats.length > 0 && place.seeding_category !== aiCats[0];
+  const placeCategory = place.mingla_category || null;
 
   const bouncerStatusBadge = () => {
     if (place.is_servable === true) return <Badge variant="success">Servable</Badge>;
@@ -424,10 +430,10 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Classification</h4>
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2">
-                <span className="text-[var(--color-text-secondary)]">Google Category:</span>
-                {place.seeding_category ? (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[place.seeding_category] }}>
-                    {CATEGORY_LABELS[place.seeding_category] || place.seeding_category}
+                <span className="text-[var(--color-text-secondary)]">Category:</span>
+                {placeCategory ? (
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[placeCategory] || "#6b7280" }}>
+                    {CATEGORY_LABELS[placeCategory] || placeCategory}
                   </span>
                 ) : <Badge variant="error">None</Badge>}
               </div>
@@ -439,15 +445,6 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--color-text-secondary)]">AI Category:</span>
-                {aiCats.length > 0 ? (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[aiCats[0]] || "#6b7280" }}>
-                    {CATEGORY_LABELS[aiCats[0]] || aiCats[0]}
-                  </span>
-                ) : <Badge variant="outline">Not validated</Badge>}
-                {hasConflict && <Badge variant="warning">Conflict</Badge>}
-              </div>
               <div className="flex items-center gap-2">
                 <span className="text-[var(--color-text-secondary)]">Bouncer Status:</span> {bouncerStatusBadge()}
               </div>
@@ -902,7 +899,7 @@ function AddCityModal({ open, onClose, onSave }) {
               {/* Selected estimate summary */}
               {selectedEstimate && (
                 <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-2.5">
-                  {selectedEstimate.tiles} tiles × 13 categories = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
+                  {selectedEstimate.tiles} tiles × {Math.round(selectedEstimate.apiCalls / Math.max(selectedEstimate.tiles, 1))} searches = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
                 </div>
               )}
             </div>
@@ -1107,7 +1104,7 @@ function UpdateCityModal({ open, onClose, city, onUpdated }) {
 
               {selectedEstimate && (
                 <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-2.5">
-                  {selectedEstimate.tiles} tiles × 13 categories = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
+                  {selectedEstimate.tiles} tiles × {Math.round(selectedEstimate.apiCalls / Math.max(selectedEstimate.tiles, 1))} searches = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
                 </div>
               )}
             </div>
@@ -1143,10 +1140,10 @@ function getTileStatus(tile, ops, placesNearTile) {
     ops.filter((o) => o.tile_id === tile.id && o.status === "completed").map((o) => o.seeding_category)
   );
   // Also count from places within tile radius (more reliable)
-  const catsFromPlaces = new Set(placesNearTile.map((p) => p.seeding_category).filter(Boolean));
+  const catsFromPlaces = new Set(placesNearTile.map((p) => p.mingla_category).filter(Boolean));
   const totalCats = new Set([...seededCats, ...catsFromPlaces]);
 
-  if (totalCats.size >= 13) return "full";
+  if (totalCats.size >= ALL_CATEGORIES.length) return "full";
   if (totalCats.size > 0) return "partial";
   return "unseeded";
 }
@@ -1164,6 +1161,7 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
   const [visibleCats, setVisibleCats] = useState(new Set(ALL_CATEGORIES));
   const [places, setPlaces] = useState([]);
   const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -1171,18 +1169,22 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
     if (!selectedCity) { setPlaces([]); return; }
     setMapLoading(true);
     let q = supabase.from("place_pool")
-      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, is_servable, deleted_at, deleted_reason")
+      .select(PLACE_MAP_COLUMNS)
       .eq("is_active", true)
       .eq("is_servable", true)
       .eq("city_id", selectedCity);
-    q.limit(3000).then(({ data }) => {
-      if (mountedRef.current) { setPlaces(data || []); setMapLoading(false); }
+    q.limit(3000).then(({ data, error }) => {
+      if (!mountedRef.current) return;
+      setMapError(error ? error.message : null);
+      setPlaces(data || []);
+      setMapLoading(false);
     });
     return () => { mountedRef.current = false; };
   }, [selectedCountry, selectedCity]);
 
   if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city from the picker above to view the map.</div>;
   if (mapLoading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading map data...</div>;
+  if (mapError) return <div className="text-center py-12 text-[var(--color-error-600)]">The map could not load places: {mapError}</div>;
   if (places.length === 0) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No places found to display.</div>;
 
   // Compute center from places average
@@ -1193,7 +1195,8 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
       ? [validPlaces.reduce((s, p) => s + p.lat, 0) / validPlaces.length, validPlaces.reduce((s, p) => s + p.lng, 0) / validPlaces.length]
       : [0, 0];
 
-  const filteredPlaces = places.filter((p) => visibleCats.has(p.ai_categories?.[0] || p.seeding_category));
+  // A place with no derived category stays on the map: the toggles can't hide it.
+  const filteredPlaces = places.filter((p) => !p.mingla_category || visibleCats.has(p.mingla_category));
   const showTiles = registeredCity && tiles.length > 0;
 
   // Pre-compute tile data if registered
@@ -1269,11 +1272,11 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
           {/* Place pins */}
           {filteredPlaces.map((p) => (
             <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={5}
-              pathOptions={{ color: CATEGORY_COLORS[p.seeding_category] || "#6b7280", fillColor: CATEGORY_COLORS[p.seeding_category] || "#6b7280", fillOpacity: 0.8, weight: 1 }}>
+              pathOptions={{ color: CATEGORY_COLORS[p.mingla_category] || "#6b7280", fillColor: CATEGORY_COLORS[p.mingla_category] || "#6b7280", fillOpacity: 0.8, weight: 1 }}>
               <Popup>
                 <div className="text-xs">
                   <strong>{p.name}</strong><br />
-                  {CATEGORY_LABELS[p.seeding_category] || p.seeding_category}<br />
+                  {CATEGORY_LABELS[p.mingla_category] || p.mingla_category || "No category"}<br />
                   {p.rating ? `★ ${p.rating}` : "No rating"} · {(p.stored_photo_urls?.length || 0)} photos<br />
                   <Badge variant={p.is_active ? "success" : "error"}>{p.is_active ? "Active" : "Inactive"}</Badge>
                 </div>
@@ -1311,12 +1314,12 @@ function BrowseTab({ scope, onRefresh }) {
     }
 
     let q = supabase.from("place_pool").select(
-      "*, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,source_type,version,updated_by,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)",
-      { count: "exact" },
+      `${PLACE_LIST_COLUMNS}, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,source_type,version,updated_by,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)`,
+      { count: PLACE_LIST_COUNT_MODE },
     );
     if (selectedCity) q = q.eq("city_id", selectedCity);
     else if (countryCityIds && countryCityIds.length > 0) q = q.in("city_id", countryCityIds);
-    if (filters.category) q = q.contains("ai_categories", [filters.category]);
+    if (filters.category) q = q.eq(PLACE_CATEGORY_COLUMN, filters.category);
     if (filters.status === "active") q = q.eq("is_active", true);
     else if (filters.status === "inactive") q = q.eq("is_active", false);
     if (filters.photoStatus === "has") q = q.not("stored_photo_urls", "is", null);
@@ -1351,11 +1354,11 @@ function BrowseTab({ scope, onRefresh }) {
 
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => setDetailPlace(r)}>{r.name}</button> },
-    { key: "ai_categories", label: "Category", render: (_, r) => {
-      const cats = r.ai_categories || [];
-      if (cats.length === 0) return r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]} <span className="ml-1 opacity-60">(seed)</span></span> : "—";
-      return <div className="flex flex-wrap gap-1">{cats.map((c) => <span key={c} className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[c] || "#6b7280" }}>{CATEGORY_LABELS[c] || c}</span>)}</div>;
-    }},
+    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.mingla_category] || "#6b7280" }}>
+        {CATEGORY_LABELS[r.mingla_category] || r.mingla_category}
+      </span>
+    ) : "—" },
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[160px] truncate block">{r.address || "—"}</span> },
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
@@ -2831,25 +2834,32 @@ function ExcludedTab({ scope, onRefresh }) {
   const fetchExcluded = useCallback(async () => {
     setLoading(true);
     let q = supabase.from("place_pool")
-      .select("*", { count: "exact" })
+      .select(PLACE_LIST_COLUMNS, { count: PLACE_LIST_COUNT_MODE })
       .eq("is_active", true)
       .eq("is_servable", false);
     if (scope.cityId) q = q.eq("city_id", scope.cityId);
-    if (filterCat) q = q.eq("seeding_category", filterCat);
+    if (filterCat) q = q.eq(PLACE_CATEGORY_COLUMN, filterCat);
     q = q.order("name").range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-    const { data, count } = await q;
+    const { data, count, error } = await q;
+    if (error) addToast({ variant: "error", title: "Failed to load excluded places", description: error.message });
     setPlaces(data || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [scope.cityId, page, filterCat]);
+  }, [scope.cityId, page, filterCat, addToast]);
 
   useEffect(() => { fetchExcluded(); }, [fetchExcluded]);
   useEffect(() => { setPage(0); }, [scope.cityId, filterCat]);
 
   const handleDelete = async (place) => {
     if (!confirm(`Delete "${place.name}"? This sets it to inactive.`)) return;
-    const { error } = await supabase.from("place_pool").update({ is_active: false }).eq("id", place.id);
-    if (error) { addToast({ variant: "error", title: "Delete failed", description: error.message }); return; }
+    // #4276 U5: the audited path. It records who removed the place and why in
+    // place_admin_actions; a direct table update left no trace.
+    const result = await supabase.rpc("admin_deactivate_place", {
+      p_place_id: place.id,
+      p_reason: "Removed from the Excluded list",
+    });
+    const deactivateError = adminDeactivateError(result);
+    if (deactivateError) { addToast({ variant: "error", title: "Delete failed", description: deactivateError }); return; }
     addToast({ variant: "success", title: `Deleted "${place.name}"` });
     fetchExcluded();
   };
@@ -2861,9 +2871,9 @@ function ExcludedTab({ scope, onRefresh }) {
     )},
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[250px] truncate block">{r.address || "—"}</span> },
     { key: "bouncer_reason", label: "Bouncer Reason", render: (_, r) => <span className="text-xs max-w-[250px] truncate block text-[var(--color-error-600)]">{r.bouncer_reason || "—"}</span> },
-    { key: "seeding_category", label: "Discovered Via", render: (_, r) => r.seeding_category ? (
-      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] || "#6b7280" }}>
-        {CATEGORY_LABELS[r.seeding_category] || r.seeding_category}
+    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.mingla_category] || "#6b7280" }}>
+        {CATEGORY_LABELS[r.mingla_category] || r.mingla_category}
       </span>
     ) : "—" },
     { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
