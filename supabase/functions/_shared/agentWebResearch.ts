@@ -275,13 +275,16 @@ export function curatePublicResearchSources(
     .slice(0, Math.max(1, limit)).map(({ source }) => source);
 }
 
-async function assertPublicDns(hostname: string): Promise<void> {
+async function assertPublicDns(
+  hostname: string,
+  resolveDns: PublicDnsResolver = (host, type) => Deno.resolveDns(host, type),
+): Promise<void> {
   const host = hostname.replace(/^\[|\]$/g, "");
   if (isPrivateIpAddress(host)) throw new Error("PUBLIC_URL_PRIVATE_NETWORK");
   if (/^[0-9a-f:.]+$/i.test(host)) return;
   const addresses = await Promise.all([
-    Deno.resolveDns(host, "A").catch(() => []),
-    Deno.resolveDns(host, "AAAA").catch(() => []),
+    resolveDns(host, "A").catch(() => []),
+    resolveDns(host, "AAAA").catch(() => []),
   ]);
   const resolved = addresses.flat();
   if (resolved.length === 0) throw new Error("PUBLIC_URL_DNS_UNAVAILABLE");
@@ -312,23 +315,59 @@ function stripHtml(html: string): { title: string; text: string } {
   return { title, text: sanitizeAriPublicText(text).text.slice(0, 48_000) };
 }
 
-async function boundedFetch(
+export type PublicDnsResolver = (
+  host: string,
+  type: "A" | "AAAA",
+) => Promise<string[]>;
+
+export interface FetchPublicUrlOptions {
+  method?: "GET" | "HEAD";
+  accept: string;
+  userAgent: string;
+  timeoutMs: number;
+  maxRedirects?: number;
+  signal?: AbortSignal;
+}
+
+/** Test seams only; production callers pass nothing. */
+export interface FetchPublicUrlDeps {
+  fetch?: typeof fetch;
+  resolveDns?: PublicDnsResolver;
+}
+
+/**
+ * Issue #4261: the one SSRF-safe public fetch, shared by Ari's research and
+ * the plan link preview. Every hop re-checks DNS (no private, loopback or
+ * link-local address), redirects are followed by hand and each Location is
+ * re-validated with assertSafePublicUrl, at most `maxRedirects` hops. The
+ * per-hop timeout covers the response headers; an external `signal` (for
+ * example AbortSignal.timeout) also covers the body read.
+ */
+export async function fetchPublicUrl(
   url: URL,
+  opts: FetchPublicUrlOptions,
+  deps: FetchPublicUrlDeps = {},
 ): Promise<{ url: URL; response: Response }> {
+  const maxRedirects = opts.maxRedirects ?? MAX_REDIRECTS;
+  const doFetch = deps.fetch ?? fetch;
   let current = url;
-  for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
-    await assertPublicDns(current.hostname);
+  for (let redirect = 0; redirect <= maxRedirects; redirect++) {
+    opts.signal?.throwIfAborted();
+    await assertPublicDns(current.hostname, deps.resolveDns);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+    const signal = opts.signal
+      ? AbortSignal.any([controller.signal, opts.signal])
+      : controller.signal;
     let response: Response;
     try {
-      response = await fetch(current, {
-        method: "GET",
+      response = await doFetch(current, {
+        method: opts.method ?? "GET",
         redirect: "manual",
-        signal: controller.signal,
+        signal,
         headers: {
-          "User-Agent": "Mingla-Ari-Research/1.0",
-          Accept: "text/html,text/plain,application/json,application/pdf;q=0.7",
+          "User-Agent": opts.userAgent,
+          Accept: opts.accept,
         },
       });
     } finally {
@@ -336,7 +375,7 @@ async function boundedFetch(
     }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const next = response.headers.get("location");
-      if (!next || redirect === MAX_REDIRECTS) {
+      if (!next || redirect === maxRedirects) {
         throw new Error("PUBLIC_URL_REDIRECT_BLOCKED");
       }
       current = assertSafePublicUrl(new URL(next, current).toString());
@@ -345,6 +384,18 @@ async function boundedFetch(
     return { url: current, response };
   }
   throw new Error("PUBLIC_URL_REDIRECT_BLOCKED");
+}
+
+async function boundedFetch(
+  url: URL,
+): Promise<{ url: URL; response: Response }> {
+  return await fetchPublicUrl(url, {
+    method: "GET",
+    accept: "text/html,text/plain,application/json,application/pdf;q=0.7",
+    userAgent: "Mingla-Ari-Research/1.0",
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    maxRedirects: MAX_REDIRECTS,
+  });
 }
 
 export async function readPublicUrl(

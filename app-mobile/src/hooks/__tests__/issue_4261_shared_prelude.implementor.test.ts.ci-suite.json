@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/hooks/__tests__/issue_4261_shared_prelude.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4261-shared-prelude",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -457,7 +457,8 @@ test('T12 all nine expanded-card mount owners remain in the typed batch provider
     'SwipeableCards.tsx',
     'CalendarTab.tsx',
     'SavedTab.tsx',
-    'CollabSessionChatBanners.tsx',
+    'PlansSheet.tsx',
+    'PlanMatchesSheet.tsx',
     'deckCardPlate.tsx',
     'ViewFriendProfileScreen.tsx',
   ]) {

@@ -18,17 +18,21 @@ import { supabase } from '../services/supabase';
 import { moderateText } from '../services/moderationService';
 import type { CardTagEntry, MentionEntry } from '../services/messagingService';
 import type { BusinessEventCard } from '../types/mergedDiscover';
+import type { PlanQuoteSnapshot } from '../types/chatPlans';
 
 export interface Message {
   id: string;
   conversation_id: string;
   sender_id: string | null;
   content?: string;
-  message_type: 'text' | 'image' | 'video' | 'file' | 'card';  // ORCH-0667: + 'video','card'
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card' | 'plan';  // ORCH-0667: + 'video','card'; #4261: + 'plan'
   file_url?: string;
   file_name?: string;
   file_size?: number;
   card_payload?: any;  // ORCH-0667: CardPayload — typed loosely to avoid circular import
+  /** Issue #4261: the plan this message is about, and the sender's picks on a comment. */
+  plan_id?: string | null;
+  plan_quote?: PlanQuoteSnapshot | null;
   mentions?: Array<MentionEntry | string>;
   card_tags?: CardTagEntry[];
   marketing_campaign_id?: string | null;

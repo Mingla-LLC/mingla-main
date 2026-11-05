@@ -16,7 +16,6 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -26,6 +25,8 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { SPINE } from './spineTokens';
+import { useOpenInMingla } from '../InAppBrowserProvider';
+import { classifyLink } from '../../utils/inAppLink';
 
 /** Non-empty after trimming. The one vacuity predicate the body uses. */
 export function present(value: string | null | undefined): value is string {
@@ -170,6 +171,10 @@ export function FactRow({
  * A row that opens a URL, with the ONE pre-flight the six existing
  * `Linking.openURL` call sites did not have between them.
  *
+ * #4261: a website opens in Mingla's in-app browser and a `tel:` number goes to
+ * the phone, both through `useOpenInMingla()`. A URL the helper would refuse
+ * still calls `onUnavailable`.
+ *
  * #1605's bug ledger, items 1-3: six openURL sites, ZERO `canOpenURL`
  * pre-flights and ONE `.catch` (console-only). A URL the OS cannot open is a
  * DEAD TAP (Constitution 1) and a rejected promise is a SILENT FAILURE
@@ -191,6 +196,7 @@ export function LinkRow({
   onUnavailable: () => void;
   first?: boolean;
 }): React.ReactElement | null {
+  const { open } = useOpenInMingla();
   if (!present(value) || url === null) return null;
   return (
     <FactRow
@@ -199,18 +205,11 @@ export function LinkRow({
       trailingIcon={trailingIcon}
       first={first}
       onPress={() => {
-        void (async () => {
-          try {
-            const can = await Linking.canOpenURL(url);
-            if (!can) {
-              onUnavailable();
-              return;
-            }
-            await Linking.openURL(url);
-          } catch {
-            onUnavailable();
-          }
-        })();
+        if (classifyLink(url).kind === 'invalid') {
+          onUnavailable();
+          return;
+        }
+        open(url, label);
       }}
     />
   );

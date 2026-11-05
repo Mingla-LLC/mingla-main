@@ -63,7 +63,9 @@ Deno.test("W-3 every Add a friend goes through send-pair-request, with one invit
   assert(/useSendPairRequest\(\)/.test(view), "AddFriendView must send with useSendPairRequest");
   assert(/addFriendRequestBody\(/.test(view), "AddFriendView must build the body with addFriendRequestBody");
   assert(!/createPendingInvite/.test(view), "AddFriendView must not write a second invite record");
-  assert(!/Alert\.alert/.test(view), "results show inline, not as alerts");
+  // #4261: the one Alert is the "Reset link" confirm (spec 5.2); send results stay inline.
+  const withoutResetConfirm = view.replace(/const confirmResetLink = useCallback\([\s\S]*?\}, \[resetLink, t\]\);/, "");
+  assert(!/Alert\.alert/.test(withoutResetConfirm), "results show inline, not as alerts");
   for (const file of ["components/PairRequestModal.tsx", "components/onboarding/OnboardingFriendsAndPairingStep.tsx"]) {
     assert(!/createPendingInvite/.test(strip(await read(file))), `${file}: one invite record (send-pair-request), no createPendingInvite`);
   }

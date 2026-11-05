@@ -123,7 +123,9 @@ test('H5 all nine production render sites have a real controller callback and cl
     ['app-mobile/src/components/activity/CalendarTab.tsx', ['calendar_expanded']],
     ['app-mobile/src/components/activity/SavedTab.tsx', ['saved_expanded']],
     ['app-mobile/src/components/profile/ViewFriendProfileScreen.tsx', ['friend_profile_expanded']],
-    ['app-mobile/src/components/chat/CollabSessionChatBanners.tsx', ['collab_locked_expanded', 'collab_saved_expanded']],
+    // #4261 moved the two collab mounts out of CollabSessionChatBanners.tsx.
+    ['app-mobile/src/components/chat/PlansSheet.tsx', ['collab_locked_expanded']],
+    ['app-mobile/src/components/chat/PlanMatchesSheet.tsx', ['collab_saved_expanded']],
     ['app-mobile/src/components/DiscoverScreen.tsx', ['discover_expanded']],
   ];
   let renders = 0;
@@ -133,11 +135,27 @@ test('H5 all nine production render sites have a real controller callback and cl
     assert.equal(mounts.length, surfaces.length, `${relative}: unexpected mount count`);
     renders += mounts.length;
     for (const surface of surfaces) {
-      assert.match(source, new RegExp(`openExpandedCardContentShare\\(card, '${surface}'\\)`), `${relative}: ${surface} callback missing`);
+      assert.match(source, new RegExp(`openExpandedCardContentShare\\(card, ['"]${surface}['"]\\)`), `${relative}: ${surface} callback missing`);
       assert.match(source, new RegExp(`shareProducerSurface="${surface}"`), `${relative}: ${surface} classification missing`);
     }
   }
   assert.equal(renders, 9);
+  // The owner list is the whole production population: a tenth mount, or a mount
+  // moved to a file not listed above, fails here instead of going unchecked.
+  const productionMounts = [];
+  for (const root of ['app-mobile/src', 'app-mobile/app']) {
+    for (const entry of fs.readdirSync(path.join(ROOT, root), { recursive: true })) {
+      const relative = `${root}/${entry}`;
+      if (!/\.tsx$/.test(relative) || /__tests__/.test(relative)) continue;
+      const count = (read(relative).match(/<ExpandedCardModal\b/g) ?? []).length;
+      for (let i = 0; i < count; i += 1) productionMounts.push(relative);
+    }
+  }
+  assert.deepEqual(productionMounts.sort(), owners.map(([relative]) => relative).sort());
+  // The moved mounts only exist for people if the thread still renders their sheets.
+  const thread = read('app-mobile/src/components/MessageInterface.tsx');
+  assert.match(thread, /<PlansSheet\b/);
+  assert.match(thread, /<PlanMatchesSheet\b/);
   const joined = owners.map(([relative]) => read(relative)).join('\n');
   assert.doesNotMatch(joined, /onShare=\{\(\) => \{\}\}/);
   assert.doesNotMatch(joined, /Share not implemented/);
