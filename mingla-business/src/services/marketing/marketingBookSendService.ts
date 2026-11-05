@@ -142,8 +142,16 @@ export async function confirmMarketingBook(input: {
   // #3682 wave 3 — some recipients can fail at the provider while others are
   // delivered. That is a partial send, reported as such (sent N, failed M),
   // never a blanket dispatch error. Nothing delivered or held is still a
-  // failure, and the counts must add up to the sealed reach exactly.
+  // failure, and the counts must add up to the sealed reach.
   const recipientFailed = dispatch?.recipient_failed ?? -1;
+  const accounted = (dispatch?.delivered ?? -1) + (dispatch?.deferred ?? -1) +
+    recipientFailed + (dispatch?.skipped_after_confirm ?? -1);
+  // #4273 — a combined send can go out to fewer than it quoted, because the server
+  // keeps contact-match skips out of skipped_after_confirm. Below the quote is a
+  // normal send and reads exactly like one; above it is still a real mismatch.
+  const countsAddUp = input.audience_kind === "combined_sources"
+    ? accounted <= input.quote.reachableCount
+    : accounted === input.quote.reachableCount;
   if (
     dispatch?.processed !== 1 ||
     dispatch.succeeded !== 1 ||
@@ -153,9 +161,7 @@ export async function confirmMarketingBook(input: {
     recipientFailed < 0 ||
     !Number.isInteger(dispatch.skipped_after_confirm) ||
     (dispatch.skipped_after_confirm ?? -1) < 0 ||
-    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) + recipientFailed +
-        (dispatch.skipped_after_confirm ?? -1) !==
-      input.quote.reachableCount ||
+    !countsAddUp ||
     !Array.isArray(dispatch.errors) ||
     dispatch.errors.length !== 0
   ) {
