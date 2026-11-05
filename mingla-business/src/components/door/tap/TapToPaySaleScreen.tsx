@@ -53,7 +53,7 @@ import { GlassCard } from "../../ui/GlassCard";
 import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
 import { TapStatusView } from "./TapStatusView";
-import { useTapToPayTerminal } from "./TapToPayTerminalBoundary";
+import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { summarizeTapLines } from "./tapLineSummary";

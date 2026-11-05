@@ -108,11 +108,7 @@ export async function ensureTerminalLocation(
   return location.id;
 }
 
-/** Brand row + readiness for a Tap to Pay door sale, or the refusal. */
-export async function loadTapContext(
-  supabase: Client,
-  eventId: string,
-): Promise<
+export type TapContext =
   | {
     ok: true;
     brandId: string;
@@ -120,19 +116,46 @@ export async function loadTapContext(
     brandAddress: string | null;
     brandCity: string | null;
     country: string;
+    stripeAccountId: string;
   }
-  | { ok: false; error: "tap_not_available" | "stripe_account_not_ready" }
-> {
+  | { ok: false; error: "tap_not_available" | "stripe_account_not_ready" };
+
+const TAP_BRAND_COLUMNS =
+  "id, name, address, city, country_code, payment_country, payment_provider, stripe_connect_id, stripe_charges_enabled";
+
+/** Brand row + readiness for a Tap to Pay door sale, or the refusal. */
+export async function loadTapContext(
+  supabase: Client,
+  eventId: string,
+): Promise<TapContext> {
   const { data, error } = await supabase
     .from("events")
     .select(
-      "brand_id, brands!inner(id, name, address, city, country_code, payment_country, payment_provider, stripe_connect_id, stripe_charges_enabled)",
+      `brand_id, brands!inner(${TAP_BRAND_COLUMNS})`,
     )
     .eq("id", eventId)
     .maybeSingle();
   if (error || !data) return { ok: false, error: "tap_not_available" };
   const rel = (data as { brands?: unknown }).brands;
   const brand = (Array.isArray(rel) ? rel[0] : rel) as Record<string, unknown>;
+  return tapContextFromBrand(brand);
+}
+
+/** The same, for the root Terminal host: a brand with no event in view. */
+export async function loadBrandTapContext(
+  supabase: Client,
+  brandId: string,
+): Promise<TapContext> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select(TAP_BRAND_COLUMNS)
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error || !data) return { ok: false, error: "tap_not_available" };
+  return tapContextFromBrand(data as Record<string, unknown>);
+}
+
+function tapContextFromBrand(brand: Record<string, unknown>): TapContext {
   if (String(brand?.payment_provider ?? "stripe").toLowerCase() === "paystack") {
     return { ok: false, error: "tap_not_available" };
   }
@@ -151,5 +174,41 @@ export async function loadTapContext(
     brandAddress: typeof brand.address === "string" ? brand.address : null,
     brandCity: typeof brand.city === "string" ? brand.city : null,
     country,
+    stripeAccountId: String(brand.stripe_connect_id),
   };
+}
+
+/**
+ * The brand's Terminal Location with no event in view. An existing Location is
+ * reused first, so a brand that took a door sale needs no address of its own;
+ * otherwise only the brand's own address can make one.
+ */
+export async function ensureBrandTerminalLocation(
+  supabase: Client,
+  stripe: StripeLike,
+  tap: Extract<TapContext, { ok: true }>,
+): Promise<string | null> {
+  const { data: existing, error } = await supabase
+    .from("brand_terminal_locations")
+    .select("stripe_location_id")
+    .eq("brand_id", tap.brandId)
+    .eq("country_code", tap.country)
+    .eq("stripe_account_id", tap.stripeAccountId)
+    .maybeSingle();
+  if (error) throw new Error(`terminal_location_lookup_failed:${error.message}`);
+  if (existing?.stripe_location_id) return existing.stripe_location_id;
+  const address = terminalAddressFor({
+    venueTaxAddress: null,
+    brandAddress: tap.brandAddress,
+    brandCity: tap.brandCity,
+    country: tap.country,
+  });
+  if (address === null) return null;
+  return await ensureTerminalLocation(supabase, stripe, {
+    brandId: tap.brandId,
+    brandName: tap.brandName,
+    stripeAccountId: tap.stripeAccountId,
+    country: tap.country,
+    address,
+  });
 }

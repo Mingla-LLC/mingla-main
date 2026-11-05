@@ -45,7 +45,7 @@ import { IconChrome } from "../../ui/IconChrome";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
 import { TapUpdateIos } from "./TapUpdateIos";
-import { useTapToPayTerminal } from "./TapToPayTerminalBoundary";
+import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 
 export interface TapToPaySetupScreenProps {
   eventId: string;
@@ -136,7 +136,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
       const result = await runTapToPaySetup({
         os: Platform.OS,
         checkDeviceSupport: () => client.checkDeviceSupport(),
-        fetchLocation: () => fetchDoorTapLocation(eventId),
+        fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId }),
         ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId),
         showHowToTap: showHowToTapEducation,
         markComplete: markTapToPaySetupComplete,
@@ -171,7 +171,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
     } finally {
       setBusy(false);
     }
-  }, [terminal, draft, router, eventId, goToDoor]);
+  }, [terminal, draft, router, eventId, goToDoor, route.brand?.id]);
 
   const chrome = (
     <View style={styles.chromeRow}>

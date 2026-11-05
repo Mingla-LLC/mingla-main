@@ -268,7 +268,7 @@ describe("Tap setup runs Apple's terms and How to Tap before the first sale", ()
   test("the setup screen wires the server Location and the shared reader session", () => {
     const src = read("src/components/door/tap/TapToPaySetupScreen.tsx");
     expect(src).toContain("runTapToPaySetup({");
-    expect(src).toContain("fetchLocation: () => fetchDoorTapLocation(eventId)");
+    expect(src).toContain("fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId })");
     expect(src).toContain("ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId)");
   });
 });
@@ -278,7 +278,7 @@ describe("Tap setup runs Apple's terms and How to Tap before the first sale", ()
 describe("door-tap-intent wire shapes match the server", () => {
   test("location sends {action:'location', eventId} and reads locationId", async () => {
     mockInvoke.mockResolvedValueOnce({ data: { locationId: "tml_9" }, error: null });
-    await expect(fetchDoorTapLocation("evt_1")).resolves.toBe("tml_9");
+    await expect(fetchDoorTapLocation({ brandId: null, eventId: "evt_1" })).resolves.toBe("tml_9");
     expect(mockInvoke).toHaveBeenCalledWith("door-tap-intent", {
       body: { action: "location", eventId: "evt_1", platform: Platform.OS },
     });
@@ -305,7 +305,7 @@ describe("door-tap-intent wire shapes match the server", () => {
 
   test("tap_not_available carries the server's reason as detail", async () => {
     mockInvoke.mockResolvedValueOnce(httpError(400, { error: "tap_not_available", reason: "address_missing" }));
-    await expect(fetchDoorTapLocation("evt_1")).rejects.toMatchObject({
+    await expect(fetchDoorTapLocation({ brandId: null, eventId: "evt_1" })).rejects.toMatchObject({
       code: "tap_not_available",
       detail: "address_missing",
     });

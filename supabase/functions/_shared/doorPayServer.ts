@@ -37,6 +37,20 @@ export async function canTakeDoorPayment(
  * Brand readiness and the pricing switches, shared with door-tap-intent's
  * shape. Returns null when the brand cannot take card money yet.
  */
+/** The root Terminal host has a brand and no event: same rule, brand-wide. */
+export async function canTakeBrandDoorPayment(
+  supabase: Client,
+  brandId: string,
+  actorId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc(
+    "issue_4271_can_take_brand_door_payment",
+    { p_brand_id: brandId, p_actor_id: actorId },
+  );
+  if (error) throw new Error(`door_permission_lookup_failed:${error.message}`);
+  return data === true;
+}
+
 /**
  * #4271 release gate, server half: is Tap to Pay on for this brand on this
  * platform? A missing or unknown platform, or an unanswered question, is no.

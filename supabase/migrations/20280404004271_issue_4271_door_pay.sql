@@ -2677,6 +2677,51 @@ REVOKE ALL ON FUNCTION public.biz_tap_to_pay_release(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_tap_to_pay_release(uuid)
   TO authenticated, service_role;
 
+-- The root Terminal host has a brand and no event in view. Same rule as
+-- issue_4271_can_take_door_payment, brand-wide: a scanner invited to one event
+-- gets a session only from that event's door route.
+CREATE OR REPLACE FUNCTION public.issue_4271_can_take_brand_door_payment(
+  p_brand_id uuid,
+  p_actor_id uuid
+) RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT p_actor_id IS NOT NULL AND p_brand_id IS NOT NULL AND (
+    public.biz_brand_effective_rank(p_brand_id, p_actor_id)
+      >= public.biz_role_rank('event_manager')
+    OR EXISTS (
+      SELECT 1
+        FROM public.brand_team_members m
+       WHERE m.brand_id = p_brand_id
+         AND m.user_id = p_actor_id
+         AND m.role = 'scanner'
+         AND m.removed_at IS NULL
+         AND m.accepted_at IS NOT NULL
+         AND (
+           coalesce(m.permissions_override ->> 'canAcceptPayments', 'false') = 'true'
+           OR EXISTS (
+             SELECT 1
+               FROM public.scanner_invitations si
+               JOIN auth.users u ON u.id = p_actor_id
+              WHERE si.brand_id = p_brand_id
+                AND si.scope = 'brand'
+                AND si.status = 'accepted'
+                AND lower(si.email) = lower(u.email)
+                AND coalesce(si.permissions ->> 'canAcceptPayments', 'false') = 'true'
+           )
+         )
+    )
+  );
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_can_take_brand_door_payment(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_can_take_brand_door_payment(uuid, uuid)
+  TO service_role;
+
 COMMENT ON TABLE public.door_pay_codes IS
   '#4271: a one-time pay link for one door sale; 10 minutes, pays once, never a ticket credential.';
 COMMENT ON FUNCTION public.biz_door_tap_record(text, text, integer, text, text) IS

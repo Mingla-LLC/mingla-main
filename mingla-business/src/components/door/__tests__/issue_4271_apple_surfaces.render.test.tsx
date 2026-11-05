@@ -4,7 +4,7 @@
  * Every test here fails when its change is reverted (recorded on the issue).
  */
 import React from "react";
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 
 // react-test-renderer ships no types in this app.
 interface ReactTestInstance {
@@ -15,6 +15,7 @@ interface ReactTestInstance {
 }
 interface ReactTestRenderer {
   root: ReactTestInstance;
+  toJSON: () => unknown;
 }
 const renderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => ReactTestRenderer;
@@ -36,7 +37,73 @@ jest.mock("../../ui/Button", () => {
   };
 });
 
+let mockLive = false;
+let mockBrandId: string | null = "brand-1";
+const mockInitialize = jest.fn(async () => ({}));
+const mockProviderMounts = jest.fn();
+const mockSdk = {
+  StripeTerminalProvider: ({ children }: { children: React.ReactNode }) => {
+    mockProviderMounts();
+    return children;
+  },
+  useStripeTerminal: () => ({
+    initialize: mockInitialize,
+    disconnectReader: jest.fn(async () => ({})),
+    clearCachedCredentials: jest.fn(async () => ({})),
+    getConnectedReader: jest.fn(async () => null),
+    easyConnect: jest.fn(async () => ({})),
+    supportsReadersOfType: jest.fn(async () => ({ readerSupportResult: true })),
+  }),
+  requestNeededAndroidPermissions: jest.fn(async () => ({})),
+};
+jest.mock("../../../services/terminal/terminalSdk", () => ({
+  loadTerminalSdk: () => mockSdk,
+  isTerminalNativeModulePresent: () => true,
+}));
+jest.mock("../../../hooks/useTapToPayRelease", () => ({
+  useTapToPayRelease: () => ({ live: mockLive }),
+  tapToPayLive: () => mockLive,
+}));
+jest.mock("../../../hooks/useBrands", () => ({
+  useBrand: () => ({ data: { displayName: "Door Brand" } }),
+}));
+jest.mock("../../../store/currentBrandStore", () => ({
+  useCurrentBrandId: () => mockBrandId,
+}));
+jest.mock("../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.fn() }));
+jest.mock("../../../services/supabase", () => ({
+  supabase: { functions: { invoke: jest.fn() }, rpc: jest.fn() },
+}));
+jest.mock("../../../services/terminal/howToTap", () => ({
+  isTapToPayIphoneEntitled: () => true,
+  showHowToTapEducation: jest.fn(async () => "shown"),
+}));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+  },
+}));
+
+// eslint-disable-next-line import/first
+import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
+// eslint-disable-next-line import/first
 import { TapUpdateIos } from "../tap/TapUpdateIos";
+// eslint-disable-next-line import/first
+import {
+  getTapToPaySession,
+  resetTapToPaySessionForTests,
+} from "../../../services/terminal/tapToPaySession";
+
+Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
+
+const flush = async (): Promise<void> => {
+  await act(async () => {
+    await Promise.resolve();
+  });
+};
 
 const mount = (element: React.ReactElement): ReactTestRenderer => {
   let tree: ReactTestRenderer | undefined;
@@ -68,5 +135,42 @@ describe("B2 iOS update screen", () => {
       byTestId(root, "tap-update-pay-code").props.onPress();
     });
     expect(onUsePayCode).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("B3 root Terminal host", () => {
+  beforeEach(() => {
+    resetTapToPaySessionForTests();
+    mockInitialize.mockClear();
+    mockProviderMounts.mockClear();
+    mockBrandId = "brand-1";
+  });
+
+  test("not live: nothing renders, Stripe Terminal never starts, screens read unavailable", async () => {
+    mockLive = false;
+    const tree = mount(<TapToPayTerminalHost />);
+    await flush();
+    expect(tree.toJSON()).toBeNull();
+    expect(mockProviderMounts).not.toHaveBeenCalled();
+    expect(mockInitialize).not.toHaveBeenCalled();
+    expect(getTapToPaySession().status).toBe("unavailable");
+  });
+
+  test("no brand: nothing renders even when the flags are on", async () => {
+    mockLive = true;
+    mockBrandId = null;
+    mount(<TapToPayTerminalHost />);
+    await flush();
+    expect(mockProviderMounts).not.toHaveBeenCalled();
+  });
+
+  test("live: starts at the root with no screen open and publishes a ready client", async () => {
+    mockLive = true;
+    mount(<TapToPayTerminalHost />);
+    await flush();
+    await flush();
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+    expect(getTapToPaySession().status).toBe("ready");
+    expect(getTapToPaySession().client).not.toBeNull();
   });
 });

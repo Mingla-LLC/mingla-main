@@ -89,13 +89,13 @@ export const MIN_ANDROID_API = 33;
 
 const majorVersion = (version: string | number): number => {
   if (typeof version === "number") return version;
-  const major = Number.parseInt(version.split(".")[0] ?? "", 10);
+  const major = Number.parseInt(String(version).split(".")[0] ?? "", 10);
   return Number.isNaN(major) ? 0 : major;
 };
 
 const minorVersion = (version: string | number): number => {
   if (typeof version === "number") return 0;
-  const minor = Number.parseInt(version.split(".")[1] ?? "", 10);
+  const minor = Number.parseInt(String(version).split(".")[1] ?? "", 10);
   return Number.isNaN(minor) ? 0 : minor;
 };
 

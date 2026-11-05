@@ -1,56 +1,45 @@
 /**
- * #4271 — mounts Stripe Terminal ONLY around the door Tap to Pay routes
- * (app/event/[id]/door/tap/_layout.tsx), never app-wide.
+ * #4271 — Stripe Terminal for the life of the app, mounted as a SIBLING of the
+ * root <Stack> (app/_layout.tsx). It must never wrap the Stack: flipping the
+ * release state would remount the navigator and lose the host's place.
  *
- * - The SDK is loaded lazily (terminalSdk.ts). On web, or on a binary without
- *   the native module, children render with `status: "unavailable"` and the
- *   screens show "This phone can't take taps" instead of crashing.
- * - tokenProvider calls the terminal-connection-token edge function for this
- *   event; the server scopes the token to the brand's connected Stripe account
- *   and checks the door-payment permission.
- * - Switching to another brand's event clears the SDK's cached credentials so a
- *   token for one connected account is never reused for another.
+ * It renders nothing visible, and nothing at all unless this is a native build,
+ * the release gate says live, the phone is supported and the SDK loaded. So
+ * store builds never start Stripe Terminal.
+ *
+ * - The SDK is loaded lazily (terminalSdk.ts).
+ * - tokenProvider calls terminal-connection-token for the current scope; the
+ *   server scopes the token to the brand's connected Stripe account and checks
+ *   the door-payment permission.
+ * - Switching brand clears the SDK's cached credentials so a token for one
+ *   connected account is never reused for another.
+ * - A crash in here never takes the app down: it is reported and Tap to Pay
+ *   reads as unavailable.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 
 import type { Reader } from "@stripe/stripe-terminal-react-native";
 
-import { loadTerminalSdk, type TerminalSdk } from "../../../services/terminal/terminalSdk";
+import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
+import { useBrand } from "../../../hooks/useBrands";
+import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../hooks/useTapToPayAvailability";
+import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
-import { isTerminalSimulated } from "../../../services/terminal/terminalConfig";
 import type {
-  TapToPayTerminalClient,
   TerminalErrorLike,
   TerminalPaymentIntentLike,
 } from "../../../services/terminal/tapToPayFlow";
-
-export type TapToPayTerminalStatus = "unavailable" | "initializing" | "ready" | "error";
-
-export interface TapToPaySessionClient extends TapToPayTerminalClient {
-  /** Stripe's own check: can this phone run a Tap to Pay reader? */
-  checkDeviceSupport(): Promise<{ supported: boolean; error?: TerminalErrorLike }>;
-}
-
-export interface TapToPayTerminalContextValue {
-  status: TapToPayTerminalStatus;
-  client: TapToPaySessionClient | null;
-  /** Plain-English reason when status is "error". */
-  errorMessage: string | null;
-  retryInitialize: () => void;
-}
-
-const UNAVAILABLE: TapToPayTerminalContextValue = {
-  status: "unavailable",
-  client: null,
-  errorMessage: null,
-  retryInitialize: () => {},
-};
-
-const TapToPayTerminalContext = createContext<TapToPayTerminalContextValue>(UNAVAILABLE);
-
-export const useTapToPayTerminal = (): TapToPayTerminalContextValue =>
-  useContext(TapToPayTerminalContext);
+import {
+  getTapToPaySession,
+  updateTapToPaySession,
+  useTapToPayTerminal,
+  type TapToPaySessionClient,
+  type TapToPayTerminalStatus,
+} from "../../../services/terminal/tapToPaySession";
+import { loadTerminalSdk, type TerminalSdk } from "../../../services/terminal/terminalSdk";
+import { isTerminalSimulated } from "../../../services/terminal/terminalConfig";
+import { useCurrentBrandId } from "../../../store/currentBrandStore";
 
 /** Last connected account scope, per JS runtime (the native SDK is a singleton). */
 let lastInitializedBrandId: string | null = null;
@@ -64,10 +53,9 @@ interface BridgeProps {
   sdk: TerminalSdk;
   brandId: string;
   merchantDisplayName: string;
-  children: React.ReactNode;
 }
 
-const TerminalBridge = ({ sdk, brandId, merchantDisplayName, children }: BridgeProps): React.ReactElement => {
+const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): null => {
   const terminal = sdk.useStripeTerminal();
   const [status, setStatus] = useState<TapToPayTerminalStatus>("initializing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -81,22 +69,6 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName, children }: BridgeP
     const run = async (): Promise<void> => {
       setStatus("initializing");
       setErrorMessage(null);
-      if (Platform.OS === "android") {
-        const permission = (await sdk.requestNeededAndroidPermissions({
-          accessFineLocation: {
-            title: "Location for card payments",
-            message: "Card payments need to know where they are taken. Mingla Host only uses your location for payments at the door.",
-            buttonPositive: "Allow",
-          },
-        })) as unknown as { error?: unknown };
-        if (permission?.error !== undefined) {
-          if (alive) {
-            setStatus("error");
-            setErrorMessage("Allow location for Mingla Host in Settings to take card payments.");
-          }
-          return;
-        }
-      }
       const init = await terminalRef.current.initialize();
       if (!alive) return;
       if (init.error) {
@@ -133,6 +105,20 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName, children }: BridgeP
     async (locationId: string): Promise<{ error?: TerminalErrorLike }> => {
       const current = terminalRef.current;
       try {
+        // Android asks here, when someone is connecting, never at app launch.
+        if (Platform.OS === "android") {
+          const permission = (await sdk.requestNeededAndroidPermissions({
+            accessFineLocation: {
+              title: "Location for card payments",
+              message:
+                "Card payments need to know where they are taken. Mingla Host only uses your location for payments at the door.",
+              buttonPositive: "Allow",
+            },
+          })) as unknown as { error?: unknown };
+          if (permission?.error !== undefined) {
+            return { error: { message: "Allow location for Mingla Host in Settings to take card payments." } };
+          }
+        }
         const connected: Reader.Type | null | undefined = await current.getConnectedReader();
         if (connected && connectedLocationRef.current === locationId) return {};
         if (connected) await current.disconnectReader();
@@ -151,7 +137,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName, children }: BridgeP
         return { error: asTerminalError(error) };
       }
     },
-    [merchantDisplayName],
+    [merchantDisplayName, sdk],
   );
 
   const client = useMemo<TapToPaySessionClient>(
@@ -210,54 +196,84 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName, children }: BridgeP
 
   const retryInitialize = useCallback(() => setAttempt((n) => n + 1), []);
 
-  const value = useMemo<TapToPayTerminalContextValue>(
-    () => ({
+  useEffect(() => {
+    updateTapToPaySession({
       status,
       client: status === "ready" ? client : null,
       errorMessage,
       retryInitialize,
-    }),
-    [status, client, errorMessage, retryInitialize],
+    });
+  }, [status, client, errorMessage, retryInitialize]);
+
+  useEffect(
+    () => () => {
+      updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null });
+    },
+    [],
   );
 
-  return <TapToPayTerminalContext.Provider value={value}>{children}</TapToPayTerminalContext.Provider>;
+  return null;
 };
 
-export interface TapToPayTerminalBoundaryProps {
-  eventId: string | null;
-  brandId: string | null;
-  merchantDisplayName: string;
-  children: React.ReactNode;
+class TerminalHostBoundary extends React.Component<{ children: React.ReactNode }, { crashed: boolean }> {
+  state = { crashed: false };
+
+  static getDerivedStateFromError(): { crashed: boolean } {
+    return { crashed: true };
+  }
+
+  componentDidCatch(error: unknown): void {
+    reportNonFatal("door-tap.host", error);
+    updateTapToPaySession({ status: "unavailable", client: null });
+  }
+
+  render(): React.ReactNode {
+    return this.state.crashed ? null : this.props.children;
+  }
 }
 
-export const TapToPayTerminalBoundary = ({
-  eventId,
-  brandId,
-  merchantDisplayName,
-  children,
-}: TapToPayTerminalBoundaryProps): React.ReactElement => {
+const TerminalHostInner = (): React.ReactElement | null => {
   const sdk = useMemo(() => loadTerminalSdk(), []);
-  const eventIdRef = useRef(eventId);
-  eventIdRef.current = eventId;
+  const session = useTapToPayTerminal();
+  const currentBrandId = useCurrentBrandId();
+  const scope = session.scope;
+  const brandId = scope?.brandId ?? currentBrandId;
+  const { live } = useTapToPayRelease(brandId);
+  const brandQuery = useBrand(brandId);
+  const merchantDisplayName =
+    scope?.merchantDisplayName ?? brandQuery.data?.displayName ?? "Mingla Host";
 
+  const brandIdRef = useRef(brandId);
+  brandIdRef.current = brandId;
   const tokenProvider = useCallback(async (): Promise<string> => {
-    const currentEventId = eventIdRef.current;
-    if (currentEventId === null) throw new Error("No event for Tap to Pay");
-    return fetchTerminalConnectionToken(currentEventId);
+    const currentScope = getTapToPaySession().scope;
+    const tokenEventId = currentScope?.eventId ?? null;
+    const tokenBrandId = currentScope?.brandId ?? brandIdRef.current;
+    if (tokenEventId === null && tokenBrandId === null) throw new Error("No brand for Tap to Pay");
+    return fetchTerminalConnectionToken({ brandId: tokenBrandId, eventId: tokenEventId });
   }, []);
 
-  if (sdk === null || eventId === null || brandId === null) {
-    return <TapToPayTerminalContext.Provider value={UNAVAILABLE}>{children}</TapToPayTerminalContext.Provider>;
-  }
+  const hostable =
+    sdk !== null && brandId !== null && live && isTapToPayDeviceSupported(currentTapToPayDevice());
+
+  useEffect(() => {
+    if (!hostable) updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null });
+  }, [hostable]);
+
+  if (!hostable || sdk === null || brandId === null) return null;
   const { StripeTerminalProvider } = sdk;
   return (
     <StripeTerminalProvider
       tokenProvider={tokenProvider}
       localeConfig={{ type: "hardcoded", locale: "en-GB" }}
     >
-      <TerminalBridge sdk={sdk} brandId={brandId} merchantDisplayName={merchantDisplayName}>
-        {children}
-      </TerminalBridge>
+      <TerminalBridge sdk={sdk} brandId={brandId} merchantDisplayName={merchantDisplayName} />
     </StripeTerminalProvider>
   );
 };
+
+export const TapToPayTerminalHost = (): React.ReactElement => (
+  <TerminalHostBoundary>
+    <TerminalHostInner />
+  </TerminalHostBoundary>
+);

@@ -44,6 +44,14 @@ import {
 } from "../../../hooks/useTapToPayAvailability";
 import { tapToPayLive } from "../../../hooks/useTapToPayRelease";
 import { isTapToPayIphoneEntitled } from "../howToTap";
+import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../doorTapEdge";
+import { supabase } from "../../supabase";
+import {
+  getTapToPaySession,
+  resetTapToPaySessionForTests,
+  setTapToPayScope,
+  subscribeTapToPaySession,
+} from "../tapToPaySession";
 import { classifyTerminalError, type TerminalErrorLike } from "../tapToPayFlow";
 import { runTapToPaySetup, type TapToPaySetupDeps } from "../tapToPaySetup";
 
@@ -223,5 +231,54 @@ describe("B2 iOS update message", () => {
         }),
       ),
     ).resolves.toEqual({ kind: "ios_update_required" });
+  });
+});
+
+describe("B3 the Terminal session lives at the root", () => {
+  const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
+
+  test("the host is a sibling of the Stack, never a wrapper", () => {
+    const layout = read("app/_layout.tsx");
+    expect(layout).toMatch(/<Stack screenOptions=\{\{ headerShown: false \}\} \/>[\s\S]{0,160}<TapToPayTerminalHost \/>/);
+    expect(layout).not.toMatch(/<TapToPayTerminalHost[^/]*>\s*<Stack/);
+    expect(fs.existsSync(path.join(BIZ_ROOT, "src/components/door/tap/TapToPayTerminalBoundary.tsx"))).toBe(false);
+  });
+
+  test("the tap routes set the scope and clear it, and mount no SDK", () => {
+    const route = read("app/event/[id]/door/tap/_layout.tsx");
+    expect(route).toContain("setTapToPayScope({ brandId, eventId, merchantDisplayName })");
+    expect(route).toContain("setTapToPayScope(null)");
+    expect(route).not.toContain("StripeTerminalProvider");
+  });
+
+  test("the store notifies subscribers and scope clears back to the current brand", () => {
+    resetTapToPaySessionForTests();
+    const listener = jest.fn();
+    const unsubscribe = subscribeTapToPaySession(listener);
+    setTapToPayScope({ brandId: "b1", eventId: "e1", merchantDisplayName: "Door" });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getTapToPaySession().scope?.eventId).toBe("e1");
+    setTapToPayScope(null);
+    expect(getTapToPaySession().scope).toBeNull();
+    unsubscribe();
+    setTapToPayScope({ brandId: "b1", eventId: null, merchantDisplayName: null });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  test("token and Location ask by event when there is one, else by brand", async () => {
+    const invoke = supabase.functions.invoke as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>;
+    invoke.mockResolvedValue({ data: { secret: "pst", locationId: "tml" }, error: null });
+    await fetchTerminalConnectionToken({ brandId: "b1", eventId: "e1" });
+    expect(invoke).toHaveBeenLastCalledWith("terminal-connection-token", {
+      body: { eventId: "e1", platform: "ios" },
+    });
+    await fetchTerminalConnectionToken({ brandId: "b1" });
+    expect(invoke).toHaveBeenLastCalledWith("terminal-connection-token", {
+      body: { brandId: "b1", platform: "ios" },
+    });
+    await fetchDoorTapLocation({ brandId: "b1", eventId: null });
+    expect(invoke).toHaveBeenLastCalledWith("door-tap-intent", {
+      body: { action: "location", brandId: "b1", platform: "ios" },
+    });
   });
 });

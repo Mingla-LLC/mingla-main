@@ -1,8 +1,8 @@
 /**
  * #4271 — client for the Tap to Pay edge functions.
  *
- *  terminal-connection-token  {eventId, platform}             → {secret, locationId}
- *  door-tap-intent  location  {eventId, platform}             → {locationId}
+ *  terminal-connection-token  {eventId | brandId, platform}   → {secret, locationId}
+ *  door-tap-intent  location  {eventId | brandId, platform}   → {locationId}
  *  door-tap-intent  create    {eventId, platform, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso}
  *                             → {paymentIntentId, clientSecret, totalCents, currency, stripeAccountId, locationId}
  *  door-tap-intent  complete  {paymentIntentId, clientRequestId} → biz_door_tap_record result
@@ -162,9 +162,21 @@ const requireInt = (data: Record<string, unknown>, key: string): number => {
   return value;
 };
 
-/** Setup: the brand's Terminal Location for this event, so the reader connects before the first sale. */
-export const fetchDoorTapLocation = async (eventId: string): Promise<string> => {
-  const data = await invoke("door-tap-intent", { action: "location", eventId, platform: Platform.OS });
+/** Who the Terminal session is for: the door's event when there is one, else the brand. */
+export interface TapToPayScopeIds {
+  brandId: string | null;
+  eventId?: string | null;
+}
+
+const scopeBody = (scope: TapToPayScopeIds): Record<string, string> => {
+  if (scope.eventId !== null && scope.eventId !== undefined) return { eventId: scope.eventId };
+  if (scope.brandId !== null) return { brandId: scope.brandId };
+  throw new DoorTapError("invalid_request", "no event or brand");
+};
+
+/** Setup and warm-up: the brand's Terminal Location, so the reader connects before the first sale. */
+export const fetchDoorTapLocation = async (scope: TapToPayScopeIds): Promise<string> => {
+  const data = await invoke("door-tap-intent", { action: "location", ...scopeBody(scope), platform: Platform.OS });
   return requireString(data, "locationId");
 };
 
@@ -187,9 +199,9 @@ export const cancelDoorTapIntent = async (input: {
   }
 };
 
-/** Connection token for the brand's connected Stripe account (scoped to the event). */
-export const fetchTerminalConnectionToken = async (eventId: string): Promise<string> => {
-  const data = await invoke("terminal-connection-token", { eventId, platform: Platform.OS });
+/** Connection token for the brand's connected Stripe account. */
+export const fetchTerminalConnectionToken = async (scope: TapToPayScopeIds): Promise<string> => {
+  const data = await invoke("terminal-connection-token", { ...scopeBody(scope), platform: Platform.OS });
   return requireString(data, "secret");
 };
 

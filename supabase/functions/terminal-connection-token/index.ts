@@ -17,12 +17,15 @@ import {
 } from "../_shared/ticketCheckout.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
+  canTakeBrandDoorPayment,
   canTakeDoorPayment,
   loadDoorPricing,
   tapToPayReleased,
 } from "../_shared/doorPayServer.ts";
 import {
+  ensureBrandTerminalLocation,
   ensureTerminalLocation,
+  loadBrandTapContext,
   loadTapContext,
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
@@ -58,9 +61,32 @@ export const createTerminalConnectionTokenHandler = (
     }
     const actorId = await deps.userIdFromAuthHeader(req);
     if (actorId === null) return jsonResponse({ error: "door_access_denied" }, 401);
+    const supabase = deps.serviceClient();
+    if (!isUuid(body?.eventId) && isUuid(body?.brandId)) {
+      // The root host: a brand with no event in view.
+      const brandId = body.brandId as string;
+      if (!(await canTakeBrandDoorPayment(supabase, brandId, actorId))) {
+        return jsonResponse({ error: "door_access_denied" }, 400);
+      }
+      const brandTap = await loadBrandTapContext(supabase, brandId);
+      if (!brandTap.ok) return jsonResponse({ error: brandTap.error }, 400);
+      if (!(await tapToPayReleased(supabase, brandTap.brandId, body.platform))) {
+        return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
+      }
+      const brandStripe = deps.stripe();
+      const brandLocationId = await ensureBrandTerminalLocation(supabase, brandStripe, brandTap);
+      if (brandLocationId === null) {
+        return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
+      }
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const brandToken = await brandStripe.terminal.connectionTokens.create(
+        { location: brandLocationId },
+        { stripeAccount: brandTap.stripeAccountId },
+      );
+      return jsonResponse({ secret: brandToken.secret, locationId: brandLocationId });
+    }
     if (!isUuid(body?.eventId)) return jsonResponse({ error: "invalid_request" }, 400);
     const eventId = body.eventId as string;
-    const supabase = deps.serviceClient();
     if (!(await canTakeDoorPayment(supabase, eventId, actorId))) {
       return jsonResponse({ error: "door_access_denied" }, 400);
     }

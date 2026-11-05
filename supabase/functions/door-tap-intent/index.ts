@@ -26,13 +26,16 @@ import {
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { resolveBuyerPhone } from "../_shared/buyerPhone.ts";
 import {
+  canTakeBrandDoorPayment,
   canTakeDoorPayment,
   loadDoorPricing,
   quoteDoorSale,
   tapToPayReleased,
 } from "../_shared/doorPayServer.ts";
 import {
+  ensureBrandTerminalLocation,
   ensureTerminalLocation,
+  loadBrandTapContext,
   loadTapContext,
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
@@ -215,7 +218,8 @@ async function handleCreate(
 
 /**
  * Setup step: connect the phone's reader before the first sale. Creates or
- * reuses the brand's Terminal Location for its country.
+ * reuses the brand's Terminal Location for its country. With no event in view
+ * (the root host) `brandId` stands in, using the brand's own address only.
  */
 async function handleLocation(
   body: Body,
@@ -223,8 +227,24 @@ async function handleLocation(
   deps: DoorTapIntentDeps,
 ): Promise<Response> {
   const eventId = body.eventId;
-  if (!isUuid(eventId)) return jsonResponse({ error: "invalid_request" }, 400);
   const supabase = deps.serviceClient();
+  if (!isUuid(eventId) && isUuid(body.brandId)) {
+    const brandId = body.brandId as string;
+    if (!(await canTakeBrandDoorPayment(supabase, brandId, actorId))) {
+      return jsonResponse({ error: "door_access_denied" }, 400);
+    }
+    const tap = await loadBrandTapContext(supabase, brandId);
+    if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+    if (!(await tapToPayReleased(supabase, tap.brandId, body.platform))) {
+      return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
+    }
+    const brandLocationId = await ensureBrandTerminalLocation(supabase, deps.stripe(), tap);
+    if (brandLocationId === null) {
+      return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
+    }
+    return jsonResponse({ locationId: brandLocationId });
+  }
+  if (!isUuid(eventId)) return jsonResponse({ error: "invalid_request" }, 400);
   if (!(await canTakeDoorPayment(supabase, eventId, actorId))) {
     return jsonResponse({ error: "door_access_denied" }, 400);
   }
