@@ -343,6 +343,116 @@ END;
 $out$;
 RESET ROLE;
 
+-- ── Finalize: a withheld target reads like a sent one, a real failure stays one ──
+CREATE FUNCTION pg_temp.fin(p_id uuid, p_group text, p_channel text, p_lead uuid DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql AS $f$
+DECLARE v_o uuid := '4273b000-0000-4000-8000-000000000001'; v_b uuid := '4273b000-0000-4000-8000-0000000000b1'; v_a uuid; v_env jsonb;
+BEGIN
+  v_a := (public.biz_get_or_create_marketing_combined_audience_v1(v_o, v_b, jsonb_build_array('group:' || p_group)) ->> 'audienceId')::uuid;
+  INSERT INTO public.marketing_campaigns(id, account_id, brand_id, audience_id, name, channel, channel_payload, status, campaign_group_id)
+  VALUES (p_id, v_o, v_b, v_a, 'F ' || p_channel, p_channel,
+    CASE p_channel WHEN 'sms' THEN '{"kind":"sms","body":"Doors at 9."}'::jsonb
+      ELSE '{"kind":"email","subject":"Hi","body_html":"Hi","body_text":"Hi"}'::jsonb END, 'draft', p_lead);
+  v_env := public.biz_marketing_combined_quote_candidates_v1(v_o, p_id);
+  PERFORM public.biz_confirm_marketing_combined_send_v1(v_o, p_id, gen_random_uuid(), pg_temp.snap(v_env), now() - interval '1 minute');
+  RETURN public.biz_marketing_combined_send_audience_v1(p_id);
+END; $f$;
+CREATE FUNCTION pg_temp.grp(p_id uuid, p_people uuid[]) RETURNS text LANGUAGE sql AS $f$
+  WITH a AS (INSERT INTO public.marketing_audiences(id, account_id, brand_id, name, query_definition, is_system_generated, created_by)
+    VALUES (p_id, '4273b000-0000-4000-8000-000000000001', '4273b000-0000-4000-8000-0000000000b1', 'G ' || p_id::text, '{"kind":"manual_group"}', false, '4273b000-0000-4000-8000-000000000001') RETURNING id),
+  m AS (INSERT INTO public.marketing_manual_group_memberships(brand_id, audience_id, brand_person_id, source, created_by)
+    SELECT '4273b000-0000-4000-8000-0000000000b1', p_id, x, 'book_picker', '4273b000-0000-4000-8000-000000000001' FROM unnest(p_people) x RETURNING 1)
+  SELECT p_id::text || (SELECT '' FROM (SELECT count(*) FROM m) q)
+$f$;
+
+SELECT set_config('request.jwt.claim.sub', '4273b000-0000-4000-8000-000000000001', true);
+DO $final$
+DECLARE
+  v_owner uuid := '4273b000-0000-4000-8000-000000000001'; v_brand uuid := '4273b000-0000-4000-8000-0000000000b1';
+  v_muted uuid := '4273b000-2000-4000-8000-000000000003'; v_block uuid := '4273b000-2000-4000-8000-000000000004';
+  v_ctrl uuid := '4273b000-2000-4000-8000-000000000001'; v_x uuid := '4273b000-2000-4000-8000-000000000005';
+  v_c uuid; v_send jsonb; v_st text; v_rc integer; v_reach integer; v_before jsonb; v_after jsonb; v_g text; v_ex public.marketing_book_send_executions%ROWTYPE; v_res jsonb;
+BEGIN
+  v_before := public.biz_brand_blast_usage_v1(v_owner, v_brand);
+  -- All withheld.
+  v_c := '4273b000-3000-4000-8000-0000000000a1';
+  v_send := pg_temp.fin(v_c, pg_temp.grp('4273b000-6000-4000-8000-000000000001', ARRAY[v_muted, v_block]), 'sms');
+  PERFORM pg_temp.chk('F-00 fixture: everyone is withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
+  v_st := public.mkt_finalize_campaign(v_c);
+  SELECT recipient_count, (SELECT reachable_count FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c) INTO v_rc, v_reach
+    FROM public.marketing_campaigns WHERE id = v_c;
+  PERFORM pg_temp.chk('F-01 all withheld finalizes as sent with the quote''s count', v_st = 'sent' AND v_rc = v_reach, v_st || ' ' || v_rc || '/' || v_reach);
+  SELECT * INTO v_ex FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c;
+  v_res := public.biz_marketing_book_existing_result_v1(v_owner, v_c, v_ex.client_request_id, v_ex.quote_hash, v_ex.quoted_at, v_ex.estimated_cost_minor, v_ex.currency, v_ex.scheduled_for);
+  PERFORM pg_temp.chk('F-02 a retry of it does not read as failed', (v_res ->> 'campaignFailed')::boolean IS NOT TRUE, COALESCE(v_res::text, 'null'));
+  UPDATE public.marketing_campaigns SET status = 'sending', updated_at = now() - interval '11 minutes' WHERE id = v_c;
+  PERFORM public.mkt_claim_campaigns(50, v_c);
+  v_send := public.biz_marketing_combined_send_audience_v1(v_c);
+  v_st := public.mkt_finalize_campaign(v_c);
+  PERFORM pg_temp.chk('F-03 reclaim of it sends nothing and finalizes the same',
+    jsonb_array_length(v_send -> 'rows') = 0 AND v_st = 'sent'
+    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = v_reach, v_st);
+
+  -- A genuine provider failure, alone.
+  v_c := '4273b000-3000-4000-8000-0000000000a2';
+  v_g := pg_temp.grp('4273b000-6000-4000-8000-000000000002', ARRAY[v_ctrl]);
+  v_send := pg_temp.fin(v_c, v_g, 'sms');
+  INSERT INTO public.marketing_messages(id, campaign_id, recipient_phone, channel, status) VALUES (gen_random_uuid(), v_c, '+12025558201', 'sms', 'failed');
+  v_st := public.mkt_finalize_campaign(v_c);
+  PERFORM pg_temp.chk('F-04 a real provider failure still fails', v_st = 'failed'
+    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = 0, v_st);
+
+  -- Withheld plus a real failure, nobody delivered.
+  v_c := '4273b000-3000-4000-8000-0000000000a3';
+  v_send := pg_temp.fin(v_c, pg_temp.grp('4273b000-6000-4000-8000-000000000003', ARRAY[v_muted, v_ctrl]), 'sms');
+  INSERT INTO public.marketing_messages(id, campaign_id, recipient_phone, channel, status) VALUES (gen_random_uuid(), v_c, '+12025558201', 'sms', 'failed');
+  v_st := public.mkt_finalize_campaign(v_c);
+  PERFORM pg_temp.chk('F-05 withheld plus a real failure fails', v_st = 'failed', v_st);
+
+  -- Withheld, delivered and failed together, then a person sent earlier becomes
+  -- withheld on the reclaim pass: the count must stay at or under the quote.
+  v_c := '4273b000-3000-4000-8000-0000000000a4';
+  v_send := pg_temp.fin(v_c, pg_temp.grp('4273b000-6000-4000-8000-000000000004', ARRAY[v_muted, v_ctrl, v_x]), 'sms');
+  INSERT INTO public.marketing_messages(id, campaign_id, recipient_phone, channel, status) VALUES
+    (gen_random_uuid(), v_c, '+12025558201', 'sms', 'sent'), (gen_random_uuid(), v_c, '+12025557114', 'sms', 'sent');
+  v_reach := (SELECT reachable_count FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c);
+  v_st := public.mkt_finalize_campaign(v_c);
+  PERFORM pg_temp.chk('F-06 mixed: sent, count equals the quote', v_st = 'sent'
+    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = v_reach,
+    v_st || ' ' || (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) || '/' || v_reach);
+  INSERT INTO public.brand_follows(user_id, brand_id, muted_until)
+  VALUES ('4273b000-0000-4000-8000-000000000014', v_brand, 'infinity');
+  v_send := public.biz_marketing_combined_send_audience_v1(v_c);
+  v_st := public.mkt_finalize_campaign(v_c);
+  PERFORM pg_temp.chk('F-07 someone already sent and withheld on a later pass is not counted twice',
+    (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) <= v_reach,
+    (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) || ' of quote ' || v_reach);
+  DELETE FROM public.brand_follows WHERE user_id = '4273b000-0000-4000-8000-000000000014' AND brand_id = v_brand;
+
+  -- All withheld across methods: one campaign group.
+  v_c := '4273b000-3000-4000-8000-0000000000a5';
+  v_g := pg_temp.grp('4273b000-6000-4000-8000-000000000005', ARRAY[v_block]);
+  v_send := pg_temp.fin(v_c, v_g, 'sms');
+  PERFORM public.mkt_finalize_campaign(v_c);
+  v_after := public.biz_brand_blast_usage_v1(v_owner, v_brand);
+  PERFORM pg_temp.chk('F-08 monthly use follows sealed reach, not recipient_count',
+    (v_after ->> 'smsUsed')::int = (SELECT sum(e.reachable_count) FROM public.marketing_book_send_executions e JOIN public.marketing_campaigns c ON c.id = e.campaign_id
+       WHERE e.brand_id = v_brand AND c.channel = 'sms'), v_after::text);
+  -- All withheld on two methods of one campaign.
+  v_g := pg_temp.grp('4273b000-6000-4000-8000-000000000006', ARRAY[v_muted, '4273b000-2000-4000-8000-000000000007'::uuid]);
+  v_before := public.biz_brand_blast_usage_v1(v_owner, v_brand);
+  v_send := pg_temp.fin('4273b000-3000-4000-8000-0000000000a6', v_g, 'sms');
+  PERFORM pg_temp.chk('F-09a SMS method withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
+  v_send := pg_temp.fin('4273b000-3000-4000-8000-0000000000a7', v_g, 'email', '4273b000-3000-4000-8000-0000000000a6');
+  PERFORM pg_temp.chk('F-09b email method withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
+  PERFORM pg_temp.chk('F-09 both methods finalize as sent',
+    public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a6') = 'sent'
+    AND public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a7') = 'sent', '');
+  v_after := public.biz_brand_blast_usage_v1(v_owner, v_brand);
+  PERFORM pg_temp.chk('F-10 the two methods count once toward the week',
+    (v_after ->> 'blastsThisWeek')::int = (v_before ->> 'blastsThisWeek')::int + 1, v_before::text || ' -> ' || v_after::text);
+END;
+$final$;
+
 DO $report$
 DECLARE v text;
 BEGIN
