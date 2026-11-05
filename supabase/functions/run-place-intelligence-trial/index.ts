@@ -239,11 +239,13 @@ export async function writeAiSignalScoresToPlacePool(
 const REVIEWS_FETCH_THROTTLE_MS = 200; // gentle Serper throttle
 
 // Reviews fetch
-// #4276 R2: 2 pages by default. 5 pages stored far more than the prompt reads
-// (TOP_REVIEWS_FOR_PROMPT), and every page is a Serper credit.
-const REVIEW_FETCH_PAGES_DEFAULT = 2;
+// #4276 R2: page until the prompt's worth of reviews with text are held for this
+// fetch (TOP_REVIEWS_FOR_PROMPT) or Google has no more, capped here. Sampled on 118
+// places: 2 pages gave a median of 12 with text against up to 30 today, so Gemini's
+// input must not shrink. The saving is only on places that reach 30 early.
+const REVIEW_FETCH_MAX_PAGES = 5;
 const REVIEWS_FRESHNESS_DAYS = 30;
-const TOP_REVIEWS_FOR_PROMPT = 30; // top-N most-recent with text fed to Claude
+const TOP_REVIEWS_FOR_PROMPT = 30; // top-N most-recent with text fed to Gemini
 
 // Retry config (mirrors score-place-photo-aesthetics)
 const MAX_ATTEMPTS = 4;
@@ -1140,10 +1142,11 @@ export async function fetchReviewsForPlace(
   // Page through Serper
   let nextPageToken: string | undefined;
   let totalCollected = 0;
+  const idsWithText = new Set<string>();
   let lastErr: string | null = null;
   let depleted = false;
 
-  for (let page = 1; page <= REVIEW_FETCH_PAGES_DEFAULT; page++) {
+  for (let page = 1; page <= REVIEW_FETCH_MAX_PAGES; page++) {
     const reqBody: Record<string, unknown> = {
       placeId: pp.google_place_id,
       sortBy: "newest",
@@ -1214,8 +1217,14 @@ export async function fetchReviewsForPlace(
         break;
       }
       totalCollected += reviews.length;
+      for (const row of rows) {
+        if (row.review_text && row.review_text.trim().length > 0) {
+          idsWithText.add(row.source_review_id);
+        }
+      }
     }
 
+    if (idsWithText.size >= TOP_REVIEWS_FOR_PROMPT) break;
     nextPageToken = data.nextPageToken;
     if (!nextPageToken) break;
     await new Promise((r) => setTimeout(r, REVIEWS_FETCH_THROTTLE_MS));
@@ -3514,7 +3523,7 @@ async function reconcileAndFinalizeParentFromChildren(
   return reconciliation;
 }
 
-async function handleProcessChunk(
+export async function handleProcessChunk(
   db: SupabaseClient,
   body: Record<string, unknown>,
   geminiKey: string,

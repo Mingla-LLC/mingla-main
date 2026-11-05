@@ -32,6 +32,8 @@ values
   ('42761000-0000-4000-b000-000000000001', 'gp-42761-a', 'Original', 1, 1, array['cafe'], 'cafe', true, true, '42761000-0000-4000-a000-000000000001', 'chill', array['chill'], 'nearby_search'),
   ('42761000-0000-4000-b000-000000000002', 'gp-42761-b', 'Tier fallback', 1, 1, array['hospital','park'], 'hospital', true, true, '42761000-0000-4000-a000-000000000001', 'comfy', array[]::text[], 'nearby_search');
 
+-- This image's auth.email() reads the older single-claim setting.
+select set_config('request.jwt.claim.email', 'admin.w4276@test.local', true);
 select set_config('request.jwt.claims', '{"email":"admin.w4276@test.local"}', true);
 
 do $$

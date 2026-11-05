@@ -6,7 +6,10 @@
 --
 --   R-MODES   both run modes are admitted, with sample_size 1, and an unknown mode
 --             is still refused
---   R-DRIFT   changing a scored place's status queues one parent and one child
+--   R-DRIFT   changing a scored place's status queues one parent and one child; the
+--             parent is 'queued' with no started_at, and holds the city's slot
+--   R-KICK    the cron promotes that parent under the limit of 4, and not over it;
+--             a promoted parent with a stale heartbeat is kicked again
 --   R-ACTIVE  a city already running: the update stands, the skip is recorded
 --   R-FAIL    a place with no city cannot have a parent run: the update stands,
 --             the failure is recorded, no parent or child is left behind
@@ -76,9 +79,16 @@ begin
   if (select business_status from public.place_pool where id = '42760000-0000-4000-b000-000000000001') <> 'CLOSED_TEMPORARILY' then
     raise exception 'R-DRIFT: the place update did not stand';
   end if;
-  if (select count(*) from public.place_intelligence_runs where city_id = '42760000-0000-4000-a000-000000000001' and mode = 'drift_reeval' and status = 'running') <> 1 then
-    raise exception 'R-DRIFT: expected one running parent';
+  if (select count(*) from public.place_intelligence_runs where city_id = '42760000-0000-4000-a000-000000000001' and mode = 'drift_reeval' and status = 'queued' and started_at is null) <> 1 then
+    raise exception 'R-DRIFT: expected one queued parent with no started_at';
   end if;
+  -- A queued parent still holds the slot, so a second run in the city is refused.
+  begin
+    insert into public.place_intelligence_runs (city_id, city_name, mode, total_count, estimated_cost_usd, estimated_minutes, prompt_version, model, status)
+    values ('42760000-0000-4000-a000-000000000001', 'a', 'full_city', 1, 0.01, 1, 'v4', 'm', 'running');
+    raise exception 'R-DRIFT: a queued parent did not hold the city slot';
+  exception when unique_violation then null;
+  end;
   if (select count(*) from public.place_intelligence_trial_runs where place_pool_id = '42760000-0000-4000-b000-000000000001' and source = 'auto-refresh-drift' and status = 'pending') <> 1 then
     raise exception 'R-DRIFT: expected one pending child';
   end if;
@@ -137,6 +147,47 @@ do $$
 begin
   if (select editorial_summary from public.place_pool where id = '42760000-0000-4000-b000-000000000002') <> 'still fine' then
     raise exception 'R-FAIL: an unrecordable failure aborted the update';
+  end if;
+end $$;
+
+-- ── R-KICK ──────────────────────────────────────────────────────────────────
+-- The kicker's own limit, on the parent from R-DRIFT. Four other cities running
+-- leave no free slot; pg_net only queues, so nothing leaves the database.
+select vault.create_secret('test-key-4276', 'service_role_key');
+insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng, bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng, status)
+select ('42760000-0000-4000-a000-00000000001' || n)::uuid, 'gp-city-4276-k' || n, 'Busy ' || n, 'Testland', 'TL', 1, 1, 0, 0, 2, 2, 'draft'
+from generate_series(1, 3) n;
+update public.place_intelligence_runs set status = 'complete'
+ where city_id = '42760000-0000-4000-a000-000000000002';
+insert into public.place_intelligence_runs (city_id, city_name, mode, total_count, estimated_cost_usd, estimated_minutes, prompt_version, model, status, last_heartbeat_at)
+select id, name, 'full_city', 5, 0.01, 1, 'v4', 'm', 'running', now()
+from public.seeding_cities where id in (
+  '42760000-0000-4000-a000-000000000011', '42760000-0000-4000-a000-000000000012',
+  '42760000-0000-4000-a000-000000000013', '42760000-0000-4000-a000-000000000002');
+do $$
+begin
+  perform public.tg_kick_pending_trial_runs();
+  if (select status from public.place_intelligence_runs where mode = 'drift_reeval' and city_id = '42760000-0000-4000-a000-000000000001') <> 'queued' then
+    raise exception 'R-KICK: promoted past the limit of 4';
+  end if;
+  -- One slot frees up.
+  update public.place_intelligence_runs set status = 'complete'
+   where city_id = '42760000-0000-4000-a000-000000000013';
+  perform public.tg_kick_pending_trial_runs();
+  if not exists (select 1 from public.place_intelligence_runs where mode = 'drift_reeval' and city_id = '42760000-0000-4000-a000-000000000001' and status = 'running' and started_at is not null) then
+    raise exception 'R-KICK: the queued parent was not promoted into the free slot';
+  end if;
+  -- A stale heartbeat on it gets a re-kick.
+  update public.place_intelligence_runs set last_heartbeat_at = now() - interval '10 minutes'
+   where mode = 'drift_reeval' and city_id = '42760000-0000-4000-a000-000000000001';
+  delete from net.http_request_queue;
+  perform public.tg_kick_pending_trial_runs();
+  if not exists (
+    select 1 from net.http_request_queue q
+     where convert_from(q.body, 'utf8')::jsonb ->> 'run_id' =
+       (select id::text from public.place_intelligence_runs where mode = 'drift_reeval' and city_id = '42760000-0000-4000-a000-000000000001')
+  ) then
+    raise exception 'R-KICK: a stale drift parent was not kicked again';
   end if;
 end $$;
 

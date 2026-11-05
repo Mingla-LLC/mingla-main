@@ -14,6 +14,12 @@
 -- already holding uniq_one_running_run_per_city used to drop the event silently;
 -- that is recorded as well, so a later stage can re-queue what was skipped.
 --
+-- The parent is inserted as 'queued', not 'running'. A burst of drift events (a
+-- re-seed touching many cities) could otherwise put any number of runs into
+-- 'running', past the limit of 4 that tg_kick_pending_trial_runs and start_run
+-- assume. The cron promotes it under that limit, stamps started_at and kicks it.
+-- 'queued' is inside uniq_one_running_run_per_city, so it still holds the slot.
+--
 -- S2. The 15-minute re-score sweep is capped at 500 pairs and took them
 -- oldest-first by NULL timestamp. Measured in production on 2026-11-05: 367,692
 -- pairs were "stale", of which at least 84,797 can never clear (Gemini vetoed, so
@@ -126,7 +132,7 @@ BEGIN
   IF NEW.is_servable IS NOT TRUE THEN RETURN NEW; END IF;
 
   -- This block is one subtransaction: if either insert fails, neither row stays,
-  -- so no childless 'running' parent can hold the city's run slot.
+  -- so no childless parent can hold the city's run slot.
   BEGIN
     -- A drift re-evaluation already queued for this place covers this event too.
     IF EXISTS (
@@ -141,7 +147,7 @@ BEGIN
     INSERT INTO public.place_intelligence_runs (
       id, city_id, city_name, mode, sample_size, total_count,
       estimated_cost_usd, estimated_minutes,
-      prompt_version, model, started_by, status, started_at
+      prompt_version, model, started_by, status
     ) VALUES (
       v_run_id, NEW.city_id,
       COALESCE((SELECT name FROM public.seeding_cities WHERE id = NEW.city_id LIMIT 1), 'drift'),
@@ -151,7 +157,7 @@ BEGIN
       0.0089, 1,
       'v4', 'gemini-3.6-flash',
       NULL,        -- system-initiated (no admin user)
-      'running', now()
+      'queued'     -- the cron promotes it under the limit of 4 and stamps started_at
     );
 
     INSERT INTO public.place_intelligence_trial_runs (

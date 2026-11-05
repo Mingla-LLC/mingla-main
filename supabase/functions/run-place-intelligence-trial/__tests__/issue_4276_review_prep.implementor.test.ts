@@ -182,7 +182,7 @@ Deno.test({ name: "no reviews on Google is ready, and recorded apart from a fail
   } finally { s.restore(); }
 }});
 
-Deno.test({ name: "reviews store no raw copy, and paging stops at the default", ...opts, fn: async () => {
+Deno.test({ name: "reviews store no raw copy, and paging stops at the page cap when Google keeps going", ...opts, fn: async () => {
   const w = await world();
   const s = stubSerper((n) =>
     Response.json({
@@ -193,11 +193,50 @@ Deno.test({ name: "reviews store no raw copy, and paging stops at the default", 
   try {
     const r = await prep(w);
     assertEquals(r.prepped, 1);
-    assertEquals(s.calls.length, 2, "R2: two pages by default");
-    assertEquals(w.reviewUpserts.length, 2);
+    assertEquals(s.calls.length, 5, "R2: never more than 5 pages");
+    assertEquals(w.reviewUpserts.length, 5);
     for (const row of w.reviewUpserts) assertEquals("raw" in row, false, "R1: raw must not be written");
     assertEquals(w.state?.outcome, "fetched");
-    assertEquals(w.state?.review_count, 2);
+    assertEquals(w.state?.review_count, 5);
+  } finally { s.restore(); }
+}});
+
+/** A Serper page of `count` reviews, of which only `withText` have any words. */
+function reviewPage(page: number, count: number, withText: number, more: boolean) {
+  const reviews = Array.from({ length: count }, (_, i) => ({
+    id: `p${page}-r${i}`,
+    snippet: i < withText ? "words" : "   ",
+    rating: 5,
+  }));
+  return Response.json(more ? { reviews, nextPageToken: "more" } : { reviews });
+}
+
+Deno.test({ name: "paging stops as soon as 30 reviews with text are held", ...opts, fn: async () => {
+  const w = await world();
+  const s = stubSerper((n) => reviewPage(n, 10, 10, true));
+  try {
+    assertEquals((await prep(w)).prepped, 1);
+    assertEquals(s.calls.length, 3, "30 with text arrive on page 3; pages 4 and 5 would be wasted credit");
+    assertEquals(w.state?.review_count, 30);
+  } finally { s.restore(); }
+}});
+
+Deno.test({ name: "reviews without text don't count towards the 30", ...opts, fn: async () => {
+  const w = await world();
+  const s = stubSerper((n) => reviewPage(n, 10, 4, true));
+  try {
+    assertEquals((await prep(w)).prepped, 1);
+    assertEquals(s.calls.length, 5, "only 20 with text by the cap, so it pages all the way");
+  } finally { s.restore(); }
+}});
+
+Deno.test({ name: "paging stops when Google has no more, however few are held", ...opts, fn: async () => {
+  const w = await world();
+  const s = stubSerper((n) => reviewPage(n, 10, 10, n < 2));
+  try {
+    assertEquals((await prep(w)).prepped, 1);
+    assertEquals(s.calls.length, 2);
+    assertEquals(w.state?.review_count, 20);
   } finally { s.restore(); }
 }});
 
