@@ -3,13 +3,23 @@
 // online checkout (ticket-checkout-create with body.doorCode).
 //
 // verify_jwt = false at the gateway: `view` is public (the guest has no Mingla
-// account). `create`, `cancel` and `text_link` verify the bearer in code and
-// require issue_4271_can_take_door_payment for the event.
+// account). `quote`, `create`, `cancel` and `text_link` verify the bearer in
+// code and require issue_4271_can_take_door_payment for the event.
 //
 // A code is a pay link, never a ticket credential. The server always prices.
+//
+// Closing a code (cancel, expiry, "Show a new code") goes through
+// issue_4271_door_pay_code_revoke, which revokes every checkout session the
+// code opened on the #1930 revocation rail, then expires the guest's Stripe
+// Checkout page now on the brand's connected account (Stripe-Account header,
+// the same idempotency key the checkout-sale-revocation worker uses, so the
+// worker finishes the job if this call fails). Paystack has no page to
+// expire: a payment that still lands is refused at finalize and refunded in
+// full by the late-payment refund.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
+import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
   jsonResponse,
   serviceClient,
@@ -40,6 +50,9 @@ export interface DoorPayCodeDeps {
   userIdFromAuthHeader: (req: Request) => Promise<string | null>;
   now: () => number;
   generateCode: () => string;
+  /** The ticket checkout Stripe client; only built when a page must expire. */
+  // deno-lint-ignore no-explicit-any
+  stripe?: () => any;
 }
 
 const defaultDeps: DoorPayCodeDeps = {
@@ -47,12 +60,106 @@ const defaultDeps: DoorPayCodeDeps = {
   userIdFromAuthHeader,
   now: () => Date.now(),
   generateCode: () => generateDoorCode(),
+  stripe: stripeTicketCheckout,
 };
 
 type Body = Record<string, unknown>;
 
 // deno-lint-ignore no-explicit-any
 type Client = any;
+
+interface StripeExpire {
+  checkoutSessionId: string;
+  stripeAccountId: string;
+  idempotencyKey: string;
+}
+
+/**
+ * Cancels or expires a code and closes every checkout it opened. Answers the
+ * code's status afterwards ('cancelled', 'expired', 'paid' or 'not_found'),
+ * or null when the database call failed.
+ */
+async function revokeDoorPayCode(
+  supabase: Client,
+  deps: DoorPayCodeDeps,
+  codeId: string,
+  status: "cancelled" | "expired",
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc("issue_4271_door_pay_code_revoke", {
+    p_code_id: codeId,
+    p_status: status,
+  });
+  if (error || data === null || typeof data !== "object") {
+    console.error("[door-pay-code] revoke failed", error?.message ?? "no_result");
+    return null;
+  }
+  const result = data as { status?: unknown; stripeExpire?: unknown };
+  const pages = Array.isArray(result.stripeExpire)
+    ? (result.stripeExpire as StripeExpire[])
+    : [];
+  if (pages.length > 0) {
+    try {
+      const stripe = (deps.stripe ?? stripeTicketCheckout)();
+      for (const page of pages) {
+        try {
+          // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+          await stripe.checkout.sessions.expire(
+            page.checkoutSessionId,
+            {},
+            {
+              stripeAccount: page.stripeAccountId,
+              idempotencyKey: page.idempotencyKey,
+            },
+          );
+        } catch (expireError) {
+          // The session is already revoked locally and queued on the
+          // revocation outbox; the worker retries the expiry with this key.
+          console.warn(
+            "[door-pay-code] stripe checkout expire deferred to the revocation worker",
+            expireError instanceof Error ? expireError.message : "unknown",
+          );
+        }
+      }
+    } catch (clientError) {
+      console.warn(
+        "[door-pay-code] stripe client unavailable; the revocation worker expires the page",
+        clientError instanceof Error ? clientError.message : "unknown",
+      );
+    }
+  }
+  return typeof result.status === "string" ? result.status : null;
+}
+
+async function handleQuote(
+  req: Request,
+  body: Body,
+  deps: DoorPayCodeDeps,
+): Promise<Response> {
+  const actorId = await deps.userIdFromAuthHeader(req);
+  if (actorId === null) return jsonResponse({ error: "door_access_denied" }, 401);
+  const eventId = body.eventId;
+  const eventDateId = body.eventDateId ?? null;
+  if (!isUuid(eventId) || (eventDateId !== null && !isUuid(eventDateId))) {
+    return jsonResponse({ error: "invalid_lines" }, 400);
+  }
+  const supabase = deps.serviceClient();
+  if (!(await canTakeDoorPayment(supabase, eventId, actorId))) {
+    return jsonResponse({ error: "door_access_denied" }, 400);
+  }
+  // Same pricing as create; nothing is written.
+  const quote = await quoteDoorSale(supabase, {
+    eventId,
+    eventDateId: eventDateId as string | null,
+    lines: body.lines,
+  });
+  if (!quote.ok) return jsonResponse({ error: quote.error }, quote.status);
+  return jsonResponse({
+    subtotalCents: quote.money.subtotalCents,
+    feeCents: quote.money.feeCents,
+    totalCents: quote.money.totalCents,
+    currency: quote.money.currency,
+  });
+}
 
 
 async function handleCreate(
@@ -77,6 +184,26 @@ async function handleCreate(
     lines: body.lines,
   });
   if (!quote.ok) return jsonResponse({ error: quote.error }, quote.status);
+
+  // "Show a new code": the code it replaces stops being payable first, so the
+  // guest can never pay both.
+  if (body.replacesCodeId !== undefined && body.replacesCodeId !== null) {
+    if (!isUuid(body.replacesCodeId)) return jsonResponse({ error: "not_found" }, 404);
+    const { data: previous, error: previousError } = await supabase
+      .from("door_pay_codes")
+      .select("id, event_id, status")
+      .eq("id", body.replacesCodeId)
+      .maybeSingle();
+    if (previousError) return jsonResponse({ error: "server_error" }, 500);
+    if (!previous || previous.event_id !== eventId) {
+      return jsonResponse({ error: "not_found" }, 404);
+    }
+    const closed = await revokeDoorPayCode(supabase, deps, previous.id, "expired");
+    if (closed === null) return jsonResponse({ error: "server_error" }, 500);
+    if (closed === "paid") {
+      return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
+    }
+  }
 
   const expiresAt = new Date(deps.now() + DOOR_CODE_TTL_MS).toISOString();
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -142,10 +269,10 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
 
   let status = effectiveDoorCodeStatus(row.status, row.expires_at, deps.now());
   if (status === "expired" && row.status !== "expired") {
-    await supabase.from("door_pay_codes")
-      .update({ status: "expired", updated_at: new Date(deps.now()).toISOString() })
-      .eq("id", row.id)
-      .in("status", ["open", "opened"]);
+    // Persist the expiry and close the checkout it opened. A payment that
+    // landed meanwhile wins: the code then reads as paid.
+    const closed = await revokeDoorPayCode(supabase, deps, row.id, "expired");
+    if (closed === "paid") status = "paid";
   } else if (status === "open") {
     const { data: flipped } = await supabase.from("door_pay_codes")
       .update({
@@ -252,21 +379,14 @@ async function handleCancel(
   if (row.status === "paid") {
     return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
   }
-  const { data: updated, error } = await supabase.from("door_pay_codes")
-    .update({ status: "cancelled", updated_at: new Date(deps.now()).toISOString() })
-    .eq("id", row.id)
-    .in("status", ["open", "opened", "expired", "failed"])
-    .select("status")
-    .maybeSingle();
-  if (error) return jsonResponse({ error: "server_error" }, 500);
-  if (!updated) {
-    // Paid between the read and the write, or already cancelled.
-    const { data: now } = await supabase.from("door_pay_codes")
-      .select("status").eq("id", row.id).maybeSingle();
-    if (now?.status === "paid") {
-      return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
-    }
+  // The host is told "Nothing was charged": the code and every checkout it
+  // opened close together, under the session + code locks.
+  const closed = await revokeDoorPayCode(supabase, deps, String(row.id), "cancelled");
+  if (closed === null) return jsonResponse({ error: "server_error" }, 500);
+  if (closed === "paid") {
+    return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
   }
+  if (closed === "not_found") return jsonResponse({ error: "not_found" }, 404);
   return jsonResponse({ status: "cancelled" });
 }
 
@@ -315,6 +435,8 @@ export const createDoorPayCodeHandler = (
       return jsonResponse({ error: "invalid_request" }, 400);
     }
     switch (body.action) {
+      case "quote":
+        return await handleQuote(req, body, deps);
       case "create":
         return await handleCreate(req, body, deps);
       case "view":

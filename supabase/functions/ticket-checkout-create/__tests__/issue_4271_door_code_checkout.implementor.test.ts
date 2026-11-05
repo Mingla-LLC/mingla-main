@@ -10,6 +10,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   doorPayStripeUrls,
+  doorStripeExpiresAt,
   linkDoorPaySession,
   resolveDoorPayCheckout,
 } from "../doorPayCheckout.ts";
@@ -30,6 +31,12 @@ function dbWith(row: Record<string, unknown> | null, linkResult: unknown = "link
         : { data: null, error: { message: "unexpected" } },
   );
 }
+
+const DOOR = {
+  codeId: CODE_ID,
+  code: "ABCD2345",
+  expiresAt: new Date(NOW + 60_000).toISOString(),
+};
 
 const OPEN_ROW = {
   id: CODE_ID,
@@ -55,7 +62,11 @@ Deno.test("#4271 a door code rebuilds the checkout from the code alone", async (
   }, NOW);
   assert(result.ok);
   if (!result.ok) return;
-  assertEquals(result.door, { codeId: CODE_ID, code: "ABCD2345" });
+  assertEquals(result.door, {
+    codeId: CODE_ID,
+    code: "ABCD2345",
+    expiresAt: OPEN_ROW.expires_at,
+  });
   assertEquals(result.body, {
     buyer: { name: "Phone Guest", email: "g@example.test", phone: "+12025550101" },
     purchaseTermsAccepted: true,
@@ -109,15 +120,15 @@ Deno.test("#4271 a door checkout names this code's event and needs the terms box
 });
 
 Deno.test("#4271 the session is linked under the code lock", async () => {
-  const ok = await linkDoorPaySession(dbWith(null, "linked"), { codeId: CODE_ID, code: "ABCD2345" }, "s1");
+  const ok = await linkDoorPaySession(dbWith(null, "linked"), DOOR, "s1");
   assertEquals(ok, { ok: true });
-  const paid = await linkDoorPaySession(dbWith(null, "paid"), { codeId: CODE_ID, code: "ABCD2345" }, "s1");
+  const paid = await linkDoorPaySession(dbWith(null, "paid"), DOOR, "s1");
   assertEquals(paid, { ok: false, status: "paid" });
 });
 
 Deno.test("#4271 the provider returns the guest to the code's pay page", () => {
   assertEquals(
-    doorPayStripeUrls("https://host.usemingla.com", { codeId: CODE_ID, code: "ABCD2345" }),
+    doorPayStripeUrls("https://host.usemingla.com", DOOR),
     {
       successUrl: "https://host.usemingla.com/pay/door/ABCD2345?paid=1",
       cancelUrl: "https://host.usemingla.com/pay/door/ABCD2345",
@@ -139,4 +150,26 @@ Deno.test("#4271 ticket-checkout-create wires the door arm in order", async () =
   assertEquals(src.split('Deno.env.get("BUSINESS_WEB_ORIGIN")').length - 1, 1);
   assert(src.includes("callbackUrl: providerCallbackUrl,"));
   assert(src.includes("returnUrl: providerCallbackUrl,"));
+});
+
+Deno.test("#4271 rework: the guest's Stripe page closes with the code, never the 24-hour default", () => {
+  // The code has 1 minute left: Stripe's 30-minute floor (+1 minute of skew).
+  assertEquals(doorStripeExpiresAt(DOOR, NOW), Math.ceil((NOW + 31 * 60_000) / 1000));
+  // A code that outlives the floor closes the page when the code ends.
+  const late = { ...DOOR, expiresAt: new Date(NOW + 45 * 60_000).toISOString() };
+  assertEquals(doorStripeExpiresAt(late, NOW), Math.ceil((NOW + 45 * 60_000) / 1000));
+});
+
+Deno.test("#4271 rework: the door checkout prices and creates inside the door wrappers", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  // The quote: a door code reads issue_4271_door_ticket_quote, nothing else does.
+  const quoteAt = src.indexOf('"issue_4271_door_ticket_quote"');
+  const plainQuoteAt = src.indexOf('supabase.rpc("issue_3872_ticket_quote"');
+  assert(quoteAt > 0 && quoteAt < plainQuoteAt, "door quote branch must come first");
+  assert(src.slice(src.lastIndexOf("if (doorPay !== null) {", quoteAt), quoteAt).length < 200);
+  // Create-session: the door wrapper sits before the plain create in the chain.
+  assert(src.includes(": doorSessionCall !== null\n      ? doorSessionCall\n      : await supabase.rpc("));
+  assert(src.includes('"issue_4271_door_checkout_create_session"'));
+  // Stripe page expiry is set for door codes only.
+  assert(src.includes("? { expires_at: doorStripeExpiresAt(doorPay) }"));
 });

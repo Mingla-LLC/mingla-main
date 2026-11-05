@@ -16,6 +16,28 @@ import {
 export interface DoorPayCheckoutContext {
   codeId: string;
   code: string;
+  /** When the host's code stops being offered (the code row's expires_at). */
+  expiresAt: string;
+}
+
+/** Stripe's floor for a Checkout Session's expires_at is 30 minutes after
+ * creation (docs.stripe.com/api/checkout/sessions/create, `expires_at`: "from
+ * 30 minutes to 24 hours"); one more minute absorbs clock skew. */
+export const STRIPE_CHECKOUT_MIN_EXPIRY_MS = 31 * 60 * 1000;
+
+/**
+ * The guest's Stripe Checkout page closes when the code does, or at Stripe's
+ * 30-minute floor if the code ends sooner (never the 24-hour default). Epoch
+ * seconds, as Stripe takes it.
+ */
+export function doorStripeExpiresAt(
+  door: DoorPayCheckoutContext,
+  nowMs: number = Date.now(),
+): number {
+  const codeEnds = Date.parse(door.expiresAt);
+  const floor = nowMs + STRIPE_CHECKOUT_MIN_EXPIRY_MS;
+  const ends = Number.isFinite(codeEnds) ? Math.max(codeEnds, floor) : floor;
+  return Math.ceil(ends / 1000);
 }
 
 /** The only guest-supplied fields a door checkout keeps. */
@@ -108,7 +130,11 @@ export async function resolveDoorPayCheckout(
   rebuilt.surface = "web";
   rebuilt.mode = "create";
   rebuilt.doorCode = row.code;
-  return { ok: true, door: { codeId: row.id, code: row.code }, body: rebuilt };
+  return {
+    ok: true,
+    door: { codeId: row.id, code: row.code, expiresAt: String(row.expires_at) },
+    body: rebuilt,
+  };
 }
 
 /**

@@ -72,9 +72,14 @@ function db(options: {
       }
       return { data: null, error: null };
     },
-    (name) => {
+    (name, args) => {
       if (name === "issue_4271_can_take_door_payment") {
         return { data: options.canTake ?? true, error: null };
+      }
+      // Rework (#4271 D4): closing a code is one RPC that also revokes the
+      // checkout sessions it opened.
+      if (name === "issue_4271_door_pay_code_revoke") {
+        return { data: { status: args.p_status, stripeExpire: [] }, error: null };
       }
       if (name === "issue_4271_door_quote_lines") {
         return {

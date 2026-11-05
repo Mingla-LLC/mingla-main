@@ -35,6 +35,7 @@ function makeDb(options: {
   insertErrors?: Array<{ message: string; code?: string } | null>;
   codeRow?: Record<string, unknown> | null;
   textLinkError?: string | null;
+  revokeResult?: Record<string, unknown>;
 } = {}) {
   const insertErrors = [...(options.insertErrors ?? [])];
   return new FakeDb(
@@ -85,6 +86,12 @@ function makeDb(options: {
       if (name === "resolve_event_pricing_inputs") {
         return { data: [PRICING_ROW], error: null };
       }
+      if (name === "issue_4271_door_pay_code_revoke") {
+        return {
+          data: options.revokeResult ?? { status: args.p_status, stripeExpire: [] },
+          error: null,
+        };
+      }
       if (name === "issue_4271_door_pay_code_text_link") {
         return options.textLinkError
           ? { data: null, error: { message: options.textLinkError } }
@@ -95,7 +102,12 @@ function makeDb(options: {
   );
 }
 
-function handler(db: FakeDb, codes: string[] = ["ABCD2345"]) {
+function handler(
+  db: FakeDb,
+  codes: string[] = ["ABCD2345"],
+  // deno-lint-ignore no-explicit-any
+  stripe: any = null,
+) {
   const queue = [...codes];
   return createDoorPayCodeHandler({
     serviceClient: () => db,
@@ -103,8 +115,35 @@ function handler(db: FakeDb, codes: string[] = ["ABCD2345"]) {
       Promise.resolve(req.headers.get("authorization") ? ACTOR : null),
     now: () => NOW,
     generateCode: () => queue.shift() ?? "ZZZZ2222",
+    stripe: () => {
+      if (stripe === null) throw new Error("stripe not expected in this test");
+      return stripe;
+    },
   });
 }
+
+function fakeCheckoutStripe() {
+  const expired: Array<{ id: string; options: Record<string, unknown> }> = [];
+  return {
+    expired,
+    client: {
+      checkout: {
+        sessions: {
+          expire: (id: string, _params: unknown, options: Record<string, unknown>) => {
+            expired.push({ id, options });
+            return Promise.resolve({ id, status: "expired" });
+          },
+        },
+      },
+    },
+  };
+}
+
+const STRIPE_PAGE = {
+  checkoutSessionId: "cs_door_live",
+  stripeAccountId: "acct_door1",
+  idempotencyKey: "ticket-attempt-1:expire",
+};
 
 Deno.test("#4271 create prices on the server and returns a pay link", async () => {
   const db = makeDb();
@@ -203,10 +242,11 @@ Deno.test("#4271 view reports an expired code as expired and stores it", async (
   });
   const body = await (await handler(db)(post({ action: "view", code: "ABCD2345" }, false))).json();
   assertEquals(body.status, "expired");
-  assertEquals(
-    (db.opsOn("door_pay_codes", "update")[0].payload as Record<string, unknown>).status,
-    "expired",
-  );
+  // Rework (#4271 D4): the expiry is stored by the revoke RPC, which also
+  // closes the checkout the code opened.
+  const revoke = db.rpcs.find((r) => r.name === "issue_4271_door_pay_code_revoke");
+  assertEquals(revoke?.args, { p_code_id: CODE_ID, p_status: "expired" });
+  assertEquals(db.opsOn("door_pay_codes", "update").length, 0);
 });
 
 const LIVE_CODE = {
@@ -266,4 +306,85 @@ Deno.test("#4271 door money follows the event's pass switches", () => {
   );
   // 10000 + 150 + 300 = 10450, plus 7.5% VAT passed = 784 -> 11234
   assertEquals(ng.totalCents, 11234);
+});
+
+Deno.test("#4271 rework: cancel revokes the code's checkout and expires the guest's Stripe page", async () => {
+  const db = makeDb({
+    codeRow: LIVE_CODE,
+    revokeResult: { status: "cancelled", stripeExpire: [STRIPE_PAGE] },
+  });
+  const stripe = fakeCheckoutStripe();
+  const res = await handler(db, undefined, stripe.client)(post({ action: "cancel", codeId: CODE_ID }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { status: "cancelled" });
+  const revoke = db.rpcs.find((r) => r.name === "issue_4271_door_pay_code_revoke");
+  assertEquals(revoke?.args, { p_code_id: CODE_ID, p_status: "cancelled" });
+  assertEquals(stripe.expired, [{
+    id: "cs_door_live",
+    options: { stripeAccount: "acct_door1", idempotencyKey: "ticket-attempt-1:expire" },
+  }]);
+  // The code row is never written around the RPC.
+  assertEquals(db.opsOn("door_pay_codes", "update").length, 0);
+});
+
+Deno.test("#4271 rework: a code paid while the host cancels answers paid", async () => {
+  const db = makeDb({ codeRow: LIVE_CODE, revokeResult: { status: "paid", stripeExpire: [] } });
+  const res = await handler(db)(post({ action: "cancel", codeId: CODE_ID }));
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "door_code_unavailable", status: "paid" });
+});
+
+Deno.test("#4271 rework: Show a new code closes the code it replaces first", async () => {
+  const db = makeDb({
+    codeRow: { id: "42710000-0000-4000-8000-0000000000aa", event_id: EVENT, status: "opened" },
+    revokeResult: { status: "expired", stripeExpire: [STRIPE_PAGE] },
+  });
+  const stripe = fakeCheckoutStripe();
+  const res = await handler(db, undefined, stripe.client)(post({
+    action: "create", eventId: EVENT, eventDateId: null,
+    lines: [{ ticketTypeId: TIER, quantity: 2 }],
+    replacesCodeId: "42710000-0000-4000-8000-0000000000aa",
+  }));
+  assertEquals(res.status, 200);
+  const revokeAt = db.rpcs.findIndex((r) => r.name === "issue_4271_door_pay_code_revoke");
+  assertEquals(db.rpcs[revokeAt].args, {
+    p_code_id: "42710000-0000-4000-8000-0000000000aa",
+    p_status: "expired",
+  });
+  assertEquals(stripe.expired.length, 1);
+  // The old code is closed before the new one exists.
+  const insertAt = db.ops.findIndex((op) => op.table === "door_pay_codes" && op.action === "insert");
+  assert(insertAt > 0);
+  const replacedPaid = makeDb({
+    codeRow: { id: "42710000-0000-4000-8000-0000000000aa", event_id: EVENT, status: "opened" },
+    revokeResult: { status: "paid", stripeExpire: [] },
+  });
+  const paidRes = await handler(replacedPaid)(post({
+    action: "create", eventId: EVENT, eventDateId: null,
+    lines: [{ ticketTypeId: TIER, quantity: 2 }],
+    replacesCodeId: "42710000-0000-4000-8000-0000000000aa",
+  }));
+  assertEquals(paidRes.status, 409);
+  assertEquals(replacedPaid.opsOn("door_pay_codes", "insert").length, 0);
+});
+
+Deno.test("#4271 rework: quote answers the real total with no row written", async () => {
+  const db = makeDb();
+  const res = await handler(db)(post({
+    action: "quote", eventId: EVENT, eventDateId: null,
+    lines: [{ ticketTypeId: TIER, quantity: 2, priceCents: 1 }],
+  }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.subtotalCents, 4000);
+  assertEquals(body.currency, "USD");
+  assert(body.feeCents > 0 && body.totalCents === body.subtotalCents + body.feeCents);
+  assertEquals(db.opsOn("door_pay_codes").length, 0);
+  const denied = await handler(makeDb({ canTake: false }))(post({
+    action: "quote", eventId: EVENT, lines: [{ ticketTypeId: TIER, quantity: 1 }],
+  }));
+  assertEquals(denied.status, 400);
+  assertEquals((await denied.json()).error, "door_access_denied");
+  const anon = await handler(makeDb())(post({ action: "quote", eventId: EVENT, lines: [] }, false));
+  assertEquals(anon.status, 401);
 });

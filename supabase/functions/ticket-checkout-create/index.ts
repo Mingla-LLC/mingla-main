@@ -150,6 +150,7 @@ import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
 import {
   type DoorPayCheckoutContext,
   doorPayStripeUrls,
+  doorStripeExpiresAt,
   isDoorCheckoutRequest,
   linkDoorPaySession,
   resolveDoorPayCheckout,
@@ -1581,6 +1582,35 @@ export const createTicketCheckoutCreateHandler = (
     };
 
     const loadTicketQuote = async (): Promise<Record<string, unknown>> => {
+      // Issue #4271 — a door code's lines are priced by the door rule: the
+      // wrapper unlocks the code's own in-person-only tiers for this one
+      // call. Every other checkout keeps the online rule.
+      if (doorPay !== null) {
+        const { data, error } = await supabase.rpc(
+          "issue_4271_door_ticket_quote",
+          {
+            p_door_pay_code_id: doorPay.codeId,
+            p_event_id: eventId,
+            p_lines: lines,
+            p_event_date_ids: orderedEventDateIds.length > 0
+              ? orderedEventDateIds
+              : null,
+            p_booked_start_at: bookedStartAt,
+            p_booked_end_at: bookedEndAt,
+            p_booked_party_size: partySize,
+            p_payment_plan_choice: paymentPlanChoice,
+            p_discount_code: discountCode,
+            p_buyer_email: buyerEmail,
+            p_buyer_phone_e164: buyerPhoneE164,
+            p_buyer_user_id: userId,
+            p_queued: queueEngaged,
+          },
+        );
+        if (error !== null || data === null || typeof data !== "object") {
+          throw new Error(error?.message ?? "ticket_quote_failed");
+        }
+        return data as Record<string, unknown>;
+      }
       const { data, error } = await supabase.rpc("issue_3872_ticket_quote", {
         p_event_id: eventId,
         p_lines: lines,
@@ -2106,6 +2136,39 @@ export const createTicketCheckoutCreateHandler = (
         },
       )
       : null;
+    // Issue #4271 — a door code's session is created inside the door wrapper
+    // (same create-session, with the code's door-only tiers unlocked).
+    const doorSessionCall = resolvedAttempt.error === null &&
+        resolvedAttempt.data === null && ticketLinkSessionCall === null &&
+        doorPay !== null
+      ? await supabase.rpc(
+        "issue_4271_door_checkout_create_session",
+        {
+          p_door_pay_code_id: doorPay.codeId,
+          p_event_id: eventId,
+          p_buyer_user_id: userId,
+          p_buyer_name: buyerName,
+          p_buyer_email: buyerEmail,
+          p_buyer_phone_e164: buyerPhoneE164,
+          p_marketing_opt_in: marketingOptIn,
+          p_lines: lines,
+          p_idempotency_key: idempotencyKey,
+          p_expires_at: queueEngaged
+            ? "infinity"
+            : new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          p_application_fee_amount_cents: 0,
+          p_payment_plan_choice: paymentPlanChoice,
+          p_event_date_ids: orderedEventDateIds.length > 0
+            ? orderedEventDateIds
+            : null,
+          p_booked_start_at: bookedStartAt,
+          p_booked_end_at: bookedEndAt,
+          p_booked_party_size: partySize,
+          p_discount_code: discountCode,
+          p_expected_quote_digest: quoteDigest,
+        },
+      )
+      : null;
     // The literal call indentation is pinned by the append-only slice-1 source
     // regression that proves capability refusal still precedes session I/O.
     // deno-fmt-ignore
@@ -2114,6 +2177,8 @@ export const createTicketCheckoutCreateHandler = (
       ? resolvedAttempt
       : ticketLinkSessionCall !== null
       ? ticketLinkSessionCall
+      : doorSessionCall !== null
+      ? doorSessionCall
       : await supabase.rpc(
       "biz_ticket_checkout_create_session",
       {
@@ -4406,6 +4471,11 @@ export const createTicketCheckoutCreateHandler = (
               customer_email: buyerEmail,
               success_url: successUrl,
               cancel_url: cancelUrl,
+              // Issue #4271 — a door code's page closes with the code (at
+              // least Stripe's 30-minute floor), never the 24-hour default.
+              ...(doorPay !== null
+                ? { expires_at: doorStripeExpiresAt(doorPay) }
+                : {}),
               metadata: {
                 mingla_checkout_session_id: checkoutSessionId,
                 mingla_event_id: eventId,
