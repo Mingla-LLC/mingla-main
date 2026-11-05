@@ -17,7 +17,7 @@
  *   reads as unavailable.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, PermissionsAndroid, Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import type { Reader } from "@stripe/stripe-terminal-react-native";
 
@@ -26,6 +26,7 @@ import { useBrand } from "../../../hooks/useBrands";
 import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../hooks/useTapToPayAvailability";
 import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
+import { hasTapToPayLocation, requestTapToPayLocation } from "../../../services/terminal/tapToPayAndroidLocation";
 import { readTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { TapToPayWarmUp } from "../../../services/terminal/tapToPayWarmUp";
 import type {
@@ -142,19 +143,12 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
       try {
         // Android asks here, when someone is connecting, never at app launch.
         // A warm-up never prompts: without the permission it just doesn't run.
+        // The SDK needs coarse location on every API level (see
+        // tapToPayAndroidLocation.ts): fine location is capped at API 30.
         if (Platform.OS === "android" && options?.warm === true) {
-          const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-          if (!granted) return { error: { message: "location_not_granted" } };
+          if (!(await hasTapToPayLocation())) return { error: { message: "location_not_granted" } };
         } else if (Platform.OS === "android") {
-          const permission = (await sdk.requestNeededAndroidPermissions({
-            accessFineLocation: {
-              title: "Location for card payments",
-              message:
-                "Card payments need to know where they are taken. Mingla Host only uses your location for payments at the door.",
-              buttonPositive: "Allow",
-            },
-          })) as unknown as { error?: unknown };
-          if (permission?.error !== undefined) {
+          if (!(await requestTapToPayLocation())) {
             return { error: { message: "Allow location for Mingla Host in Settings to take card payments." } };
           }
         }
@@ -178,7 +172,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
         return { error: asError };
       }
     },
-    [merchantDisplayName, sdk, brandId],
+    [merchantDisplayName, brandId],
   );
 
   // Everything goes through the queue so two connects never overlap in the SDK.

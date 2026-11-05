@@ -4,7 +4,7 @@
  * Every test here fails when its change is reverted (recorded on the issue).
  */
 import React from "react";
-import { AppState, Linking, Platform, Share, Text } from "react-native";
+import { AppState, Linking, PermissionsAndroid, Platform, Share, Text } from "react-native";
 
 // react-test-renderer ships no types in this app.
 interface ReactTestInstance {
@@ -395,6 +395,62 @@ describe("B6 warm-up through the real host", () => {
     expect(mockEasyConnect).toHaveBeenCalledTimes(1);
     expect(mockEasyConnect.mock.calls[0]?.[0]).toMatchObject({ tosAcceptancePermitted: false });
     expect(getTapToPaySession().readerReady).toBe(true);
+  });
+
+  describe("Android: the SDK's own location permission (coarse on every API level)", () => {
+    const setOs = (os: string, version: number | string): void => {
+      Object.defineProperty(Platform, "OS", { value: os, configurable: true });
+      Object.defineProperty(Platform, "Version", { value: version, configurable: true });
+    };
+    afterEach(() => {
+      setOs("ios", "18.1");
+      jest.restoreAllMocks();
+    });
+
+    test("API 33 warm-up checks coarse location, not fine, and connects", async () => {
+      setOs("android", 33);
+      const check = jest.spyOn(PermissionsAndroid, "check").mockResolvedValue(true);
+      mockLive = true;
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("1");
+      mount(<TapToPayTerminalHost />);
+      await settle();
+      expect(check.mock.calls.map((call) => call[0])).toEqual([PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION]);
+      expect(mockEasyConnect).toHaveBeenCalledTimes(1);
+      expect(getTapToPaySession().readerReady).toBe(true);
+    });
+
+    test("API 33 sale asks for coarse location only, no Bluetooth, then connects", async () => {
+      setOs("android", 33);
+      const request = jest.spyOn(PermissionsAndroid, "request").mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
+      mockSdk.requestNeededAndroidPermissions.mockClear();
+      mockLive = true;
+      mount(<TapToPayTerminalHost />);
+      await settle();
+      const client = getTapToPaySession().client;
+      expect(client).not.toBeNull();
+      let result: { error?: unknown } = {};
+      await act(async () => {
+        result = (await client?.ensureReaderConnected("tml_1")) ?? {};
+      });
+      expect(result.error).toBeUndefined();
+      expect(request.mock.calls.map((call) => call[0])).toEqual([PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION]);
+      expect(mockSdk.requestNeededAndroidPermissions).not.toHaveBeenCalled();
+      expect(mockEasyConnect).toHaveBeenCalledTimes(1);
+    });
+
+    test("API 33 sale with location refused never connects and says how to fix it", async () => {
+      setOs("android", 33);
+      jest.spyOn(PermissionsAndroid, "request").mockResolvedValue(PermissionsAndroid.RESULTS.DENIED);
+      mockLive = true;
+      mount(<TapToPayTerminalHost />);
+      await settle();
+      let result: { error?: { message?: string } } = {};
+      await act(async () => {
+        result = ((await getTapToPaySession().client?.ensureReaderConnected("tml_1")) ?? {}) as typeof result;
+      });
+      expect(result.error?.message).toBe("Allow location for Mingla Host in Settings to take card payments.");
+      expect(mockEasyConnect).not.toHaveBeenCalled();
+    });
   });
 
   test("launch without a hint never connects, and nor does a brand that isn't live", async () => {
