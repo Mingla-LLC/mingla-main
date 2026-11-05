@@ -376,7 +376,8 @@ Deno.test("hostile pages at the full fetch size stay linear; the title reader to
     const started = performance.now();
     pageBelongsToBrand({ ...IDENTITY, ownedHosts: ["lanternroom.example"] }, candidate);
     extractCandidates({ page: candidate, basis: "owned_domain", observedAt: "t" });
-    assert(performance.now() - started < 1_000, html.slice(0, 12));
+    // Quadratic work on 700k characters takes minutes; 3 s leaves room for a loaded runner.
+    assert(performance.now() - started < 3_000, html.slice(0, 12));
   }
 });
 

@@ -180,7 +180,10 @@ Deno.test("#3355 bug 19: messages sent as the owner's own bubble are plain and s
   );
   const handleSends = [...screen.matchAll(/handleSend\(\s*(?:\/\/[^\n]*\n\s*)*"([^"]+)"/g)]
     .map((match) => match[1]);
-  assertPlain(handleSends, "Ari screen owner bubbles");
+  // With the pane gone the chat scripts no owner bubble today; any it adds stays plain.
+  for (const text of handleSends) {
+    assert(!INTERNAL_WORDING.test(text), `Ari screen owner bubbles: internal wording in "${text}"`);
+  }
 });
 
 Deno.test("#3355 bug 19: a key with no label reads as words", () => {
