@@ -7,6 +7,7 @@ import { sha256 } from "../../../../lib/crypto";
 import { readPrivateObject } from "../../../../lib/storageReader";
 import { OFFERING_MEDIA_KEY_RE } from "../../../../contracts/generated/artifactV2.ts";
 import { loadPublication, requestHost } from "../../../../lib/publication";
+import { PREVIEW_ASSET_HEADERS, previewArtifactForAsset } from "../../../../lib/previewMedia";
 import { isV2Artifact } from "../../../../lib/siteArtifact";
 
 /*
@@ -24,6 +25,9 @@ import { isV2Artifact } from "../../../../lib/siteArtifact";
  * key the publication names for that cover, and served only when the bytes
  * are the digest the publication records. No rendition recorded → 404 (the
  * card then uses the stored cover).
+ *
+ * #2830 — with `?k=`, the same answer against the host's own private preview
+ * (a site with no publication has offering pictures too); never shared-cached.
  */
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -33,21 +37,32 @@ function notFound(): NextResponse {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ token: string; variant: string }> },
 ) {
   try {
     const { token, variant } = await context.params;
     if (!(OM_VARIANTS as readonly string[]).includes(variant)) return notFound();
-    const { artifact, resolution } = await loadPublication(requestHost(await headers()));
+    const host = requestHost(await headers());
+    const previewKey = new URL(request.url).searchParams.get("k");
+    const { artifact, siteBinding } = previewKey !== null
+      ? await (async () => {
+        const preview = await previewArtifactForAsset(previewKey, host);
+        return { artifact: preview, siteBinding: { site_id: preview.site_id } };
+      })()
+      : await (async () => {
+        const published = await loadPublication(host);
+        return { artifact: published.artifact, siteBinding: published.resolution };
+      })();
     if (!isV2Artifact(artifact)) return notFound();
-    const view = await siteOfferings(resolution, artifact);
-    const path = await pathForToken(resolution.site_id, token, view.offerings);
+    const view = await siteOfferings(siteBinding, artifact);
+    const path = await pathForToken(siteBinding.site_id, token, view.offerings);
+    const privateHeaders = previewKey !== null ? PREVIEW_ASSET_HEADERS : {};
     if (!path) return notFound();
     if (isOmRendition(variant)) {
       const rendition = (artifact.offering_media ?? []).find((row) => row.path === path)?.variants.find((row) => row.name === variant);
       const key = rendition ? OFFERING_MEDIA_KEY_RE.exec(rendition.object_key) : null;
-      if (!rendition || !key || key[1] !== resolution.site_id || key[1] !== artifact.site_id) return notFound();
+      if (!rendition || !key || key[1] !== siteBinding.site_id || key[1] !== artifact.site_id) return notFound();
       const object = await readPrivateObject(runtimeConfig().approvedMediaBucket, rendition.object_key, "force-cache");
       if (!object.ok) return notFound();
       const stored = new Uint8Array(await object.arrayBuffer());
@@ -58,6 +73,7 @@ export async function GET(
           "cache-control": "public, max-age=31536000, immutable",
           "content-digest": `sha-256=:${Buffer.from(rendition.integrity, "hex").toString("base64")}:`,
           "x-content-type-options": "nosniff",
+          ...privateHeaders,
         },
       });
     }
@@ -76,6 +92,7 @@ export async function GET(
         "content-type": type,
         "cache-control": "public, max-age=31536000, immutable",
         "x-content-type-options": "nosniff",
+        ...privateHeaders,
       },
     });
   } catch {

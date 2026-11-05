@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { loadPublication, requestHost } from "../../../../../lib/publication";
+import { PREVIEW_ASSET_HEADERS, previewArtifactForAsset } from "../../../../../lib/previewMedia";
 import {
   MAP_TILE_SOURCE,
   isTileCoordinate,
@@ -34,7 +35,7 @@ const TILE_USER_AGENT =
   "MinglaSites/1.0 (+https://usemingla.com; restaurant website tiles)";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ z: string; x: string; y: string }> },
 ) {
   try {
@@ -44,7 +45,13 @@ export async function GET(
     const row = parseTileSegment(y);
     if (!isTileCoordinate(zoom, column, row)) throw new Error();
     const incoming = await headers();
-    const { artifact } = await loadPublication(requestHost(incoming));
+    // #2830 — `?k=` answers against the host's own private preview instead (its
+    // own draft's map squares, same guard), and is never shared-cached.
+    const host = requestHost(incoming);
+    const previewKey = new URL(request.url).searchParams.get("k");
+    const artifact = previewKey !== null
+      ? await previewArtifactForAsset(previewKey, host)
+      : (await loadPublication(host)).artifact;
     /*
      * Every square this site's own maps need, and no other. Re-derived rather
      * than trusted from the request, so the allowed set cannot drift from what
@@ -91,6 +98,7 @@ export async function GET(
         // Nothing about the page a visitor is reading travels onward, and the
         // square itself is not a document anyone should be able to frame.
         "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+        ...(previewKey !== null ? PREVIEW_ASSET_HEADERS : {}),
       },
     });
   } catch {

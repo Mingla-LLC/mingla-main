@@ -1,5 +1,6 @@
 import { formatCalendarDay } from "../../../contracts/generated/collections.ts";
 import { historyLedger, ledgerDepartureCount } from "../../../contracts/generated/history.ts";
+import { SiteAnchor } from "../../../components/PreviewLinks";
 import { formatDayRange, HeadRow, rows, Section, sectionId, text, type VoyageBlockProps } from "../parts";
 
 /*
@@ -69,7 +70,7 @@ export function OfferingHistoryLedger({ block, index, ctx }: VoyageBlockProps) {
                 <div>
                   <h3 className="history__title">{departure.title}</h3>
                   {departure.place ? <p className="history__place">{departure.place}</p> : null}
-                  {linked.has(departure.id) ? <p className="v-history__link"><a href={departure.href} className="link">See the trip</a></p> : null}
+                  {linked.has(departure.id) ? <p className="v-history__link"><SiteAnchor href={departure.href} className="link">See the trip</SiteAnchor></p> : null}
                 </div>
               </li>
             );

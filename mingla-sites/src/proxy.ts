@@ -4,7 +4,7 @@ import { buildCsp } from "./lib/csp";
 import { PREVIEW_KEY_HEADER } from "./lib/previewArtifact";
 import { SHARE_TOKEN_HEADER, shareTokenFromPath } from "./lib/shareLinks";
 import { siteRedirectFor } from "./lib/siteRedirects";
-import { requestStreamVideoHosts } from "./lib/siteVideo";
+import { previewStreamVideoHosts, requestStreamVideoHosts } from "./lib/siteVideo";
 import { runtimeConfig } from "./lib/config";
 
 /** Local mode only when the runtime config says so (any doubt: production rules). */
@@ -50,7 +50,9 @@ export async function proxy(request: NextRequest) {
     dev: process.env.NODE_ENV === "development",
     // #2829 W6 — a stream-video host only for a site that plays one from an
     // allowed host (none unless SITES_VIDEO_CDN_HOSTS names it).
-    streamHosts: await requestStreamVideoHosts(request.headers),
+    streamHosts: isPrivatePreviewPath(request.nextUrl.pathname)
+      ? previewStreamVideoHosts()
+      : await requestStreamVideoHosts(request.headers),
     localMode: isLocalMode(),
     // #2829 W9f — a Business Vercel preview deployment names itself (checked
     // against the one allowed pattern in frameAncestorsFor).
@@ -80,14 +82,12 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", csp);
   if (isPrivatePreviewPath(request.nextUrl.pathname)) {
-    // #2829 W10 — every private preview (the team's and a shared link) stays
-    // out of search, is never cached, and (shared links) never leaks its
-    // address to a site a visitor follows a link to.
+    // #2829 W10 / #2830 — every private preview (the team's and a shared link)
+    // stays out of search, is never cached, and never leaks its address (the
+    // team's carries the key) to a site a visitor follows a link to.
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
     response.headers.set("Cache-Control", "private, no-store");
-    if (shareToken !== null || request.nextUrl.pathname.startsWith("/preview/share/")) {
-      response.headers.set("Referrer-Policy", "no-referrer");
-    }
+    response.headers.set("Referrer-Policy", "no-referrer");
   }
   return response;
 }

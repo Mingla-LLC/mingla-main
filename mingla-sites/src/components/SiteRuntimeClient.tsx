@@ -5,6 +5,7 @@ import {
   analyticsAllowed,
   captureSiteAdClickIds,
   CONSENT_EVENT,
+  isPreviewPublication,
   sendSiteEvent,
   type SiteEventContext,
 } from "../lib/clientAnalytics";
@@ -39,6 +40,9 @@ function pagePath(): string | undefined {
  */
 export function SiteRuntimeClient({ context }: { context: SiteEventContext }) {
   useEffect(() => {
+    // #2830 — a preview is never counted: no visit, no click, no ad touch, even
+    // when this browser allowed analytics on the live site (same origin).
+    if (isPreviewPublication(context.publicationId)) return undefined;
     // toward #3697: first-party ad click may run before Sites analytics grant.
     captureSiteAdClickIds();
     let sent = false;

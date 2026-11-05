@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- site media is served first-party and immutable from /media. */
-import Link from "next/link";
+import { SiteRouteLink as Link } from "../../../components/PreviewLinks";
 import type { SiteDestination } from "../../../contracts/generated/collections.ts";
 import { destinationHref } from "../../../lib/siteCollections";
 import { Reveal } from "../Reveal";

@@ -6,6 +6,7 @@ import type {
   RichTextText,
 } from "../../contracts/generated/richText.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
+import { SiteAnchor } from "../PreviewLinks";
 
 /*
  * #2829 S-11 — the ONLY way rich text reaches a published page: the closed
@@ -34,10 +35,10 @@ function inlines(nodes: RichTextInline[]): ReactNode[] {
     if (!isSafeHref(node.href)) return <Fragment key={index}>{inlines(node.children)}</Fragment>;
     const external = !node.href.startsWith("/");
     return (
-      <a key={index} href={node.href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>
+      <SiteAnchor key={index} href={node.href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>
         {inlines(node.children)}
         {external ? <span className="sr-only"> (opens in a new tab)</span> : null}
-      </a>
+      </SiteAnchor>
     );
   });
 }

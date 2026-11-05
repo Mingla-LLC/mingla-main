@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { SiteRouteLink as Link } from "../../components/PreviewLinks";
 import type { ReactNode } from "react";
 import type { ArtifactV2, MediaRef } from "../../contracts/generated/artifactV2.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";

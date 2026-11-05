@@ -1,4 +1,5 @@
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
+import { SiteAnchor } from "../../PreviewLinks";
 
 /*
  * #2829 W7 (AD-4) — the design-neutral layouts of the restaurant blocks
@@ -42,7 +43,7 @@ function Shell({ block, children, fallback = "" }: { block: Block; children: Rea
 
 function Action({ href, label }: { href: unknown; label: string }) {
   if (!isSafeHref(href) || !label) return null;
-  return <p className="nb-action"><a className="btn btn--primary" href={href}>{label}</a></p>;
+  return <p className="nb-action"><SiteAnchor className="btn btn--primary" href={href}>{label}</SiteAnchor></p>;
 }
 
 export function MenuNeutral({ block }: { block: Block }) {
