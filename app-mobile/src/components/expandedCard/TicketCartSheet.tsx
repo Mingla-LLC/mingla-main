@@ -1609,6 +1609,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
   };
   const handleSameTicketsForEveryDate = (on: boolean): void => {
+    // A newer choice ends the day notice, so Undo can't put the old one back.
+    setDayNotice(null);
     setSameTicketsForEveryDate(on);
     // Rebuilt from the cart each time, so a removed ticket keeps no saved counts.
     const nextByDate: Record<string, ByDateMap> = {};

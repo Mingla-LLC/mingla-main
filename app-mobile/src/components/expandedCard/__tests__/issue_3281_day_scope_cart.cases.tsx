@@ -208,6 +208,26 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     expect(pass?.quantity).toBe(5);
   });
 
+  test("switching the split mode after a removal ends the notice", () => {
+    const onToggle = jest.fn();
+    const DAY3 = "day-sun";
+    const occurrences = [FRI, SAT, DAY3].map(occurrence);
+    const pick = (selected: string[]) => ({ ...selection(selected, onToggle), occurrences: occurrences as never });
+    const props = makeTicketCartProps({
+      ...signedIn,
+      tickets: fridayOnly(),
+      multiDaySelection: pick([FRI, SAT, DAY3]),
+    });
+    const renderer = mountTicketCart(props);
+    // Friday goes; two dates stay, so the split switch is still there.
+    updateTicketCart(renderer, { ...props, multiDaySelection: pick([SAT, DAY3]) });
+    expect(renderer.root.findAllByProps({ testID: "issue-3281-scope-notice" }).length).toBeGreaterThan(0);
+    TestRenderer.act(() => {
+      renderer.root.findAllByType("Switch" as never)[0].props.onValueChange(false);
+    });
+    expect(renderer.root.findAllByProps({ testID: "issue-3281-scope-notice" })).toHaveLength(0);
+  });
+
   test("Undo is off while checkout is submitting", () => {
     const onToggle = jest.fn();
     const props = makeTicketCartProps({
