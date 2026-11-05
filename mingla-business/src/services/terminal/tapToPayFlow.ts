@@ -261,6 +261,8 @@ export interface TapToPaySaleFlowInput {
   terminal: TapToPayTerminalClient;
   server: TapToPayServer;
   onState: (state: TapSaleState) => void;
+  /** Called right before Apple's tap screen is asked for. */
+  onBeforeCollect?: () => void;
   /** Non-fatal reporter (reportNonFatal in the app). */
   report?: (scope: string, error: unknown, extra?: Record<string, unknown>) => void;
 }
@@ -440,6 +442,7 @@ export class TapToPaySaleFlow {
     if (current === null) return;
 
     this.emit({ kind: "ready", amount });
+    this.input.onBeforeCollect?.();
     const collected = await this.input.terminal.collectPaymentMethod(current);
     if (collected.error || collected.paymentIntent === undefined) {
       if (collected.error?.paymentIntent !== undefined) this.paymentIntent = collected.error.paymentIntent;

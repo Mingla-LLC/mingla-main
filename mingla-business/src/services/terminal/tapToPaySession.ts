@@ -46,6 +46,8 @@ export interface TapToPaySessionState {
   acceptance: TapToPayAcceptance;
   /** The brand `acceptance` is about. Another brand always reads as unknown. */
   acceptanceBrandId: string | null;
+  /** A reader is connected, so the next sale starts warm. */
+  readerReady: boolean;
 }
 
 const noop = (): void => undefined;
@@ -58,6 +60,7 @@ const INITIAL: TapToPaySessionState = {
   scope: null,
   acceptance: "unknown",
   acceptanceBrandId: null,
+  readerReady: false,
 };
 
 let state: TapToPaySessionState = INITIAL;

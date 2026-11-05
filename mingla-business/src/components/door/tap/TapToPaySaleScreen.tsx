@@ -51,6 +51,7 @@ import {
   type TapAmount,
   type TapSaleState,
 } from "../../../services/terminal/tapToPayFlow";
+import { consumeDoorTapPress } from "../../../services/terminal/tapTiming";
 import { formatCurrency, majorFromMinor } from "../../../utils/currency";
 import { HapticFeedback } from "../../../utils/hapticFeedback";
 import { randomUuid } from "../../../utils/randomId";
@@ -146,6 +147,10 @@ export const TapToPaySaleScreen = ({
         cancelIntent: cancelDoorTapIntent,
       },
       onState: setState,
+      onBeforeCollect: () => {
+        const timing = consumeDoorTapPress();
+        if (timing !== null) postHogService.capture("door_tap_ui_ms", { ms: timing.ms, warm: timing.warm });
+      },
       report: reportNonFatal,
     });
     flowRef.current = flow;

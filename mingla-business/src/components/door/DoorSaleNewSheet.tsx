@@ -65,6 +65,8 @@ import {
   useCreateDoorPayCode,
   useDoorPayCodeQuote,
 } from "../../hooks/useEventDoorSales";
+import { getTapToPaySession } from "../../services/terminal/tapToPaySession";
+import { markDoorTapPress } from "../../services/terminal/tapTiming";
 import { useTapToPayAvailability } from "../../hooks/useTapToPayAvailability";
 import { DoorPayCodeError } from "../../services/doorPayCodeService";
 import { useEventDateKeys } from "../../hooks/useEventDateKeys";
@@ -378,6 +380,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     if (paymentMethod === "tap_to_pay") {
       // The Tap to Pay route owns the card read; we only hand over the basket.
       postHogService.capture("door_sale_tap_started", { ticket_count: totalQty });
+      markDoorTapPress(getTapToPaySession().readerReady);
       onClose();
       router.push(
         doorTapNewSaleHref(event.id, {

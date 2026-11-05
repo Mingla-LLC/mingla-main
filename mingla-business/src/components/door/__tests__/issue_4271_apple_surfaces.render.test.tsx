@@ -40,6 +40,7 @@ jest.mock("../../ui/Button", () => {
 let mockLive = false;
 let mockBrandId: string | null = "brand-1";
 const mockInitialize = jest.fn(async () => ({}));
+const mockEasyConnect = jest.fn(async (_params: Record<string, unknown>) => ({}));
 const mockProviderMounts = jest.fn();
 const mockSdk = {
   StripeTerminalProvider: ({ children }: { children: React.ReactNode }) => {
@@ -51,7 +52,7 @@ const mockSdk = {
     disconnectReader: jest.fn(async () => ({})),
     clearCachedCredentials: jest.fn(async () => ({})),
     getConnectedReader: jest.fn(async () => null),
-    easyConnect: jest.fn(async () => ({})),
+    easyConnect: mockEasyConnect,
     supportsReadersOfType: jest.fn(async () => ({ readerSupportResult: true })),
   }),
   requestNeededAndroidPermissions: jest.fn(async () => ({})),
@@ -122,6 +123,10 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   },
 }));
 
+// eslint-disable-next-line import/first
+import AsyncStorage from "@react-native-async-storage/async-storage";
+// eslint-disable-next-line import/first
+import { resetTapToPayWarmHintForTests } from "../../../services/terminal/tapToPaySetupStore";
 // eslint-disable-next-line import/first
 import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
 // eslint-disable-next-line import/first
@@ -286,5 +291,39 @@ describe("B5 only admins accept Apple's terms", () => {
     await flush();
     await flush();
     expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: true });
+  });
+});
+
+describe("B6 warm-up through the real host", () => {
+  beforeEach(() => {
+    resetTapToPaySessionForTests();
+    resetTapToPayWarmHintForTests();
+    mockEasyConnect.mockClear();
+    mockBrandId = "brand-1";
+  });
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 6; i += 1) await flush();
+  };
+
+  test("launch with a hint connects without allowing terms, and the sale finds it ready", async () => {
+    mockLive = true;
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("1");
+    mount(<TapToPayTerminalHost />);
+    await settle();
+    expect(mockEasyConnect).toHaveBeenCalledTimes(1);
+    expect(mockEasyConnect.mock.calls[0]?.[0]).toMatchObject({ tosAcceptancePermitted: false });
+    expect(getTapToPaySession().readerReady).toBe(true);
+  });
+
+  test("launch without a hint never connects, and nor does a brand that isn't live", async () => {
+    mockLive = true;
+    mount(<TapToPayTerminalHost />);
+    await settle();
+    expect(mockEasyConnect).not.toHaveBeenCalled();
+    mockLive = false;
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("1");
+    mount(<TapToPayTerminalHost />);
+    await settle();
+    expect(mockEasyConnect).not.toHaveBeenCalled();
   });
 });

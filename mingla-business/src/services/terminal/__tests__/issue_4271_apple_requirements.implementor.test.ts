@@ -49,6 +49,8 @@ import {
 import { tapToPayLive } from "../../../hooks/useTapToPayRelease";
 import { isTapToPayIphoneEntitled } from "../howToTap";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../doorTapEdge";
+import { consumeDoorTapPress, markDoorTapPress } from "../tapTiming";
+import { TAP_WARM_THROTTLE_MS, TapToPayWarmUp, type TapToPayWarmUpDeps } from "../tapToPayWarmUp";
 import { supabase } from "../../supabase";
 import {
   markTapToPayWarmHint,
@@ -417,5 +419,73 @@ describe("B5 terms are allowed in one place", () => {
     expect(host).toContain("tosAcceptancePermitted: mayAcceptTerms");
     expect(host).not.toMatch(/tosAcceptancePermitted:\s*true/);
     expect(host).toContain('options?.mayAcceptTerms === true');
+  });
+});
+
+describe("B6 warm-up", () => {
+  const harness = (overrides: Partial<TapToPayWarmUpDeps> = {}) => {
+    let clock = 1_000_000;
+    const connect = jest.fn(async () => ({}));
+    const report = jest.fn();
+    const warmUp = new TapToPayWarmUp({
+      isLive: () => true,
+      readHint: async () => true,
+      fetchLocation: async () => "tml_1",
+      connect,
+      now: () => clock,
+      report,
+      ...overrides,
+    });
+    return { warmUp, connect, report, advance: (ms: number) => (clock += ms) };
+  };
+
+  test("with a hint it connects, never allowing Apple's terms", async () => {
+    const h = harness();
+    await h.warmUp.trigger();
+    expect(h.connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: false });
+  });
+
+  test("no hint, no connect, and no Location asked for", async () => {
+    const fetchLocation = jest.fn(async () => "tml_1");
+    const h = harness({ readHint: async () => false, fetchLocation });
+    await h.warmUp.trigger();
+    expect(fetchLocation).not.toHaveBeenCalled();
+    expect(h.connect).not.toHaveBeenCalled();
+  });
+
+  test("not live, no connect", async () => {
+    const h = harness({ isLive: () => false });
+    await h.warmUp.trigger();
+    expect(h.connect).not.toHaveBeenCalled();
+  });
+
+  test("the foreground re-fires only after the throttle", async () => {
+    const h = harness();
+    await h.warmUp.trigger();
+    h.advance(TAP_WARM_THROTTLE_MS - 1);
+    await h.warmUp.trigger();
+    expect(h.connect).toHaveBeenCalledTimes(1);
+    h.advance(1);
+    await h.warmUp.trigger();
+    expect(h.connect).toHaveBeenCalledTimes(2);
+  });
+
+  test("a failed warm-up is reported and throws nothing", async () => {
+    const failed = harness({ connect: async () => ({ error: { nativeErrorCode: "3930" } }) });
+    await expect(failed.warmUp.trigger()).resolves.toBe(true);
+    expect(failed.report).toHaveBeenCalledTimes(1);
+    const thrown = harness({
+      fetchLocation: async () => {
+        throw new Error("offline");
+      },
+    });
+    await expect(thrown.warmUp.trigger()).resolves.toBe(true);
+    expect(thrown.report).toHaveBeenCalledTimes(1);
+  });
+
+  test("the press timer is measured once per press", () => {
+    markDoorTapPress(true, 1000);
+    expect(consumeDoorTapPress(1450)).toEqual({ ms: 450, warm: true });
+    expect(consumeDoorTapPress(2000)).toBeNull();
   });
 });

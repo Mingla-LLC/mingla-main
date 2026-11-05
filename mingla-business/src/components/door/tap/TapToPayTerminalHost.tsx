@@ -17,7 +17,7 @@
  *   reads as unavailable.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, PermissionsAndroid, Platform } from "react-native";
 
 import type { Reader } from "@stripe/stripe-terminal-react-native";
 
@@ -25,7 +25,9 @@ import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { useBrand } from "../../../hooks/useBrands";
 import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../hooks/useTapToPayAvailability";
 import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
-import { fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
+import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
+import { readTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
+import { TapToPayWarmUp } from "../../../services/terminal/tapToPayWarmUp";
 import type {
   TerminalErrorLike,
   TerminalPaymentIntentLike,
@@ -77,6 +79,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<number>(0);
   const connectedLocationRef = useRef<string | null>(null);
+  const connectQueueRef = useRef<Promise<void>>(Promise.resolve());
   const terminalRef = useRef(terminal);
   terminalRef.current = terminal;
 
@@ -101,6 +104,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
         });
         await terminalRef.current.clearCachedCredentials();
         connectedLocationRef.current = null;
+        updateTapToPaySession({ readerReady: false });
       }
       lastInitializedBrandId = brandId;
       if (alive) setStatus("ready");
@@ -120,12 +124,19 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
   const ensureReaderConnected = useCallback(
     async (
       locationId: string,
-      options?: { mayAcceptTerms?: boolean },
+      options?: { mayAcceptTerms?: boolean; warm?: boolean },
     ): Promise<{ error?: TerminalErrorLike }> => {
+      // One connect at a time: a sale that starts during a warm-up waits for it,
+      // then finds the reader already connected.
+      await connectQueueRef.current;
       const current = terminalRef.current;
       try {
         // Android asks here, when someone is connecting, never at app launch.
-        if (Platform.OS === "android") {
+        // A warm-up never prompts: without the permission it just doesn't run.
+        if (Platform.OS === "android" && options?.warm === true) {
+          const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+          if (!granted) return { error: { message: "location_not_granted" } };
+        } else if (Platform.OS === "android") {
           const permission = (await sdk.requestNeededAndroidPermissions({
             accessFineLocation: {
               title: "Location for card payments",
@@ -150,6 +161,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
         noteTapToPayConnectResult(brandId, result.error);
         if (result.error) return { error: result.error };
         connectedLocationRef.current = locationId;
+        updateTapToPaySession({ readerReady: true });
         return {};
       } catch (error) {
         const asError = asTerminalError(error);
@@ -160,9 +172,19 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
     [merchantDisplayName, sdk, brandId],
   );
 
+  // Everything goes through the queue so two connects never overlap in the SDK.
+  const queuedConnect = useCallback<typeof ensureReaderConnected>(
+    (locationId, options) => {
+      const run = ensureReaderConnected(locationId, options);
+      connectQueueRef.current = run.then(() => undefined);
+      return run;
+    },
+    [ensureReaderConnected],
+  );
+
   const client = useMemo<TapToPaySessionClient>(
     () => ({
-      ensureReaderConnected,
+      ensureReaderConnected: queuedConnect,
       checkDeviceSupport: async () => {
         try {
           const result = await terminalRef.current.supportsReadersOfType({
@@ -211,7 +233,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
         }
       },
     }),
-    [ensureReaderConnected],
+    [queuedConnect],
   );
 
   const retryInitialize = useCallback(() => setAttempt((n) => n + 1), []);
@@ -227,10 +249,32 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
 
   useEffect(
     () => () => {
-      updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null });
+      updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null, readerReady: false });
     },
     [],
   );
+
+  // Warm-up: at launch and on each foreground, for a brand set up on this phone.
+  // The bridge only exists while the release gate says live. Web never gets here.
+  useEffect(() => {
+    if (status !== "ready") return undefined;
+    const warmUp = new TapToPayWarmUp({
+      isLive: () => true,
+      readHint: () => readTapToPayWarmHint(brandId),
+      fetchLocation: () => {
+        const scope = getTapToPaySession().scope;
+        return fetchDoorTapLocation({ brandId, eventId: scope?.eventId ?? null });
+      },
+      connect: (locationId) => queuedConnect(locationId, { mayAcceptTerms: false, warm: true }),
+      now: () => Date.now(),
+      report: reportNonFatal,
+    });
+    void warmUp.trigger();
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") void warmUp.trigger();
+    });
+    return () => subscription.remove();
+  }, [status, brandId, queuedConnect]);
 
   return null;
 };
