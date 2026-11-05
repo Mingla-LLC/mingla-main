@@ -15,7 +15,7 @@
  * Per Cycle 9c spec §3.4.2 + §3.4.4 + §3.4.5.
  */
 
-import { TAP_TO_PAY_SHORT } from "../../../../src/constants/tapToPayCopy";
+import { TAP_TO_PAY_SHORT } from "../../../../../src/constants/tapToPayCopy";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
