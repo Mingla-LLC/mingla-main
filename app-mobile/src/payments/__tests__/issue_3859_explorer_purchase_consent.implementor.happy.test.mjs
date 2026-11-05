@@ -24,7 +24,10 @@ test("#3859 Explorer shows the approved purchase-only disclosure", () => {
   assert.match(cartSource, /accessibilityLabel=\{PURCHASE_TERMS_DISCLOSURE_TEXT\}/);
   assert.match(cartSource, /LEGAL_URLS\.termsOfService/);
   assert.match(cartSource, /LEGAL_URLS\.privacyPolicy/);
-  assert.equal((cartSource.match(/event\.stopPropagation\(\)/g) ?? []).length, 2);
+  // #4261: both legal links render through LegalLink (in-app browser), whose
+  // one press handler stops the tap from toggling the consent checkbox.
+  assert.equal((cartSource.match(/<LegalLink\b/g) ?? []).length, 2);
+  assert.match(cartSource, /function LegalLink[\s\S]*?event\.stopPropagation\(\);\s*open\(url, title\)/);
 });
 
 test("#3859 Explorer purchase acceptance cannot mint a marketing consent row", () => {

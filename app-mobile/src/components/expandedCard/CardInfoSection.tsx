@@ -39,8 +39,9 @@
  * | undefined)` call, rendered where it has room to be honest.
  */
 import React from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useOpenInMingla } from "../InAppBrowserProvider";
 import {
   canonicalDiscoveryPriceDetail,
   type CanonicalDiscoveryPrice,
@@ -68,6 +69,8 @@ export default function CardInfoSection({
 }: CardInfoSectionProps): React.ReactElement | null {
   const { t } = useTranslation(["expanded_details", "cards", "common"]);
   const [expanded, setExpanded] = React.useState(false);
+  // #4261: the attribution page opens in Mingla's in-app browser.
+  const { open: openInMingla } = useOpenInMingla();
 
   const priceDetail = canonicalDiscoveryPriceDetail(
     discoveryPrice as CanonicalDiscoveryPrice | undefined,
@@ -142,11 +145,9 @@ export default function CardInfoSection({
                   accessibilityRole="link"
                   style={styles.attribution}
                   onPress={() => {
-                    void Linking.openURL(priceDetail.attributionUrl as string).catch(() => {
-                      // The attribution is a courtesy link, not an action the user
-                      // asked for; a failure here has nothing to surface and
-                      // nothing to retry. Swallowed DELIBERATELY and visibly.
-                    });
+                    // #4261: in-app browser; a link it cannot open is toasted
+                    // by the helper.
+                    openInMingla(priceDetail.attributionUrl as string, "ExchangeRate-API");
                   }}
                 >
                   Rates by ExchangeRate-API

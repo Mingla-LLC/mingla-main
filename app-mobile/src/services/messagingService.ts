@@ -3,6 +3,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 import type { MediaViewRow } from '../utils/chatMedia';
+import type { PlanQuoteSnapshot } from '../types/chatPlans';
 import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
 import type { ChatLiveChange } from '../utils/chatLiveModel';
 import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
@@ -212,7 +213,7 @@ export interface DirectMessage {
   conversation_id: string;
   sender_id: string | null;
   content: string;
-  message_type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system';
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system' | 'plan';
   file_url?: string;
   file_name?: string;
   file_size?: number;
@@ -221,6 +222,13 @@ export interface DirectMessage {
   card_tags?: CardTagEntry[];
   reply_to_id?: string | null;
   marketing_campaign_id?: string | null;
+  /**
+   * Issue #4261: the plan this message is about (the plan card itself, or a
+   * comment on it). Set by the server trigger, never trusted from the phone.
+   */
+  plan_id?: string | null;
+  /** Issue #4261: the sender's picks on that plan when the comment was sent (server snapshot). */
+  plan_quote?: PlanQuoteSnapshot | null;
   /**
    * Issue #4114: id minted by the sending phone before the insert and reused on
    * every retry. The app merges the insert response, the realtime echo and every
@@ -887,6 +895,7 @@ export class MessagingService {
           last_message:messages(
             id, conversation_id, sender_id, content, message_type,
             file_url, file_name, file_size, card_payload, reply_to_id,
+            plan_id, plan_quote,
             marketing_campaign_id, sender_display_name_snapshot, sender_role_snapshot,
             created_at, updated_at, deleted_at,
             read_status:message_reads(user_id)
@@ -1265,6 +1274,12 @@ export class MessagingService {
       width?: number | null;
       height?: number | null;
       albumId?: string | null;
+      /**
+       * Issue #4261: a comment on a deck match (it has no plan message to
+       * reply to). The server keeps it only for a plan in this chat; a reply
+       * to a plan card needs nothing here (the trigger derives it).
+       */
+      planId?: string | null;
     } = {},
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
@@ -1288,6 +1303,7 @@ export class MessagingService {
           ...(clientId ? { client_id: clientId } : {}),
           // Issue #4114 Wave 4: only sent when true, so ordinary sends never name the column.
           ...(options.viewOnce === true ? { view_once: true } : {}),
+          ...(options.planId ? { plan_id: options.planId } : {}),
           ...mediaFactsForInsert(options),
         })
         .select()
@@ -1788,7 +1804,9 @@ export class MessagingService {
         .from('messages')
         .select('id')
         .eq('conversation_id', conversationId)
-        .neq('sender_id', userId)
+        // Issue #4261: system lines have no sender and count as unread
+        // (applyUnreadFilters); a bare neq drops NULL, so they were never read.
+        .or(`sender_id.neq.${userId},sender_id.is.null`)
         .is('deleted_at', null);
       if (idsError) throw idsError;
       const ids = (rows ?? []).map((row: { id: string }) => row.id);

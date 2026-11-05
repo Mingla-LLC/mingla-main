@@ -68,23 +68,24 @@ Deno.test("close and cancel clear every bit of card state", () => {
   assertEquals(run([{ type: "open", target: "a" }, { type: "sheetDismissed" }]).shown, "a", "stray dismiss ignored");
 });
 
+// Issue #4261: the chat's Matches and Plans are PlanMatchesSheet and PlansSheet
+// (ScheduleSheet / SavedToSessionCardsSheet were removed); the handoff rules
+// below now pin those two.
 Deno.test("both chat sheets use the handoff and their cards clear on close", async () => {
   const banners = stripComments(await read("../CollabSessionChatBanners.tsx"));
-  const compact = banners.slice(banners.indexOf("function CompactCollabBottomSheet("), banners.indexOf("export interface CollabPlanCardSource"));
-  assertEquals((compact.match(/onNativeDismiss=\{onNativeDismiss\}/g) ?? []).length, 2, "both sheet bodies pass the native dismiss through");
 
   const hook = banners.slice(banners.indexOf("export function useSheetCard<T>()"), banners.indexOf("export interface CollabPlanCard {"));
   assert(/useReducer\(/.test(hook) && /sheetCardReducer\(current, event\)/.test(hook), "the hook runs the handoff reducer");
   assert(/requestAnimationFrame\(\(\) => dispatch\(\{ type: "frame" \}\)\)/.test(hook), "re-present waits one frame");
   assert(/modalTarget: state\.shown/.test(hook), "the modal shows only the presented card");
 
-  const plans = banners.slice(banners.indexOf("export function ScheduleSheet("), banners.indexOf("export function SavedToSessionCardsSheet("));
+  const plans = stripComments(await read("../PlansSheet.tsx"));
   assert(/onNativeDismiss=\{onSheetDismissed\}/.test(plans), "Plans: the sheet's dismiss releases the card");
-  assert(/openPlanFromSheet\(item\);\s*onClose\(\);/.test(plans), "Plans: a row closes the sheet and holds the card");
-  assert(!/onPress=\{\(\) => openPlan\(item\)\}/.test(plans), "Plans: a row never presents over the sheet");
+  assert(/openPlanFromSheet\(\{ savedCardId: plan\.savedCardId, cardData: plan\.cardData \?\? null \}\);\s*onClose\(\);/.test(plans), "Plans: a row closes the sheet and holds the card");
+  assert(!/openPlan\(/.test(plans), "Plans: a row never presents over the sheet");
   assert(/closePlan\(\);/.test(plans), "Plans: closing the card clears the shared state");
 
-  const matches = banners.slice(banners.indexOf("export function SavedToSessionCardsSheet("), banners.indexOf("const styles = StyleSheet.create"));
+  const matches = stripComments(await read("../PlanMatchesSheet.tsx"));
   assert(/useSheetCard<ExpansionTarget>\(\)/.test(matches) && !/useState<ExpansionTarget/.test(matches), "Matches: uses the handoff, no private state");
   assert(/onNativeDismiss=\{onSheetDismissed\}/.test(matches), "Matches: the sheet's dismiss releases the card");
   assert(/openFromSheet\(target\);\s*onClose\(\);/.test(matches), "Matches: details close the sheet and hold the card");

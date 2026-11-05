@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/plan-link-preview/__tests__/issue_4261_link_preview.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4261-link-preview",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
