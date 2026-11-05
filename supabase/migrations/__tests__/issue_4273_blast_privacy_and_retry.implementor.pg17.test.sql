@@ -4,6 +4,7 @@
 --
 -- MINGLA-INVARIANT: I-4273-PREVIEW-NEVER-CONTACT-MATCHES-GRAPH | issue #4273 | A contact typed into a Book row yields identical Host-visible previews whether or not it belongs to someone known only through followers or friends of followers.
 -- MINGLA-INVARIANT: I-4273-SENT-AT-OR-BELOW-QUOTE | issue #4273 | A combined Blast never sends or counts more than its sealed quote; every sealed target not sent is a recorded skip.
+-- MINGLA-INVARIANT: I-4273-UNSUBSCRIBE-CONTACT-NEVER-REACHES-HOST | issue #4273 | A host reads an opt-out only for a contact their brand already holds; everyone's opt-out still stops the send.
 -- MINGLA-INVARIANT: I-4273-CLAIM-KEEPS-RECLAIM-AND-SEAL | issue #4273 | The claim reclaims a stalled sending campaign and still refuses a sealed-lane campaign with no sealed execution.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -246,6 +247,27 @@ BEGIN
 END;
 $cases$;
 
+-- Opt-outs: who the Host can read, and that nobody hidden gets messaged.
+-- The follower-only contacts below are in no Book, order or RSVP of the brand.
+INSERT INTO public.marketing_unsubscribes(contact_email, contact_phone, channel, scope, brand_id) VALUES
+  ('follower-only@example.test', NULL, 'email', 'brand', '42730000-0000-4000-8000-0000000000b1'),
+  (NULL, '+12025550999', 'sms', 'brand', '42730000-0000-4000-8000-0000000000b1'),
+  ('follower-global@example.test', NULL, 'email', 'global', NULL),
+  ('one@example.test', NULL, 'email', 'brand', '42730000-0000-4000-8000-0000000000b1'),
+  ('tom@example.test', NULL, 'email', 'global', NULL),
+  (NULL, '12025559102', 'sms', 'brand', '42730000-0000-4000-8000-0000000000b1'),
+  ('one2@example.test', NULL, 'email', 'brand', '42730000-0000-4000-8000-0000000000b2');
+DO $optout$
+DECLARE
+  o1 uuid := '42730000-0000-4000-8000-000000000001'; b1 uuid := '42730000-0000-4000-8000-0000000000b1';
+  v jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', o1::text, true);
+  v := public.biz_marketing_combined_audience_reach_v1(o1, b1, '["book"]'::jsonb, 'email')::text::jsonb;
+  PERFORM pg_temp.chk('U-01 a Book contact''s opt-out still suppresses it', v = '0'::jsonb, v::text);
+END;
+$optout$;
+
 -- What the Host reads back: Book and legacy buyer rows work; a row the brand did
 -- not hold shows no contact by any read, and totals stay whole.
 SELECT set_config('request.jwt.claim.sub', '42730000-0000-4000-8000-000000000001', true);
@@ -264,6 +286,22 @@ BEGIN
   PERFORM pg_temp.chk('H-03 the Host read keeps the row, with no contact and no provider text',
     jsonb_array_length(v_rows) = 2 AND v_rows @> '[{"recipient_email":null,"failure_reason":"not_delivered"}]'::jsonb
     AND v_rows::text !~ 'follower-only', v_rows::text);
+  PERFORM pg_temp.chk('U-02 the Host cannot read a follower''s opt-out by email',
+    NOT EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_email = 'follower-only@example.test'), '');
+  PERFORM pg_temp.chk('U-03 nor by phone',
+    NOT EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_phone = '+12025550999'), '');
+  PERFORM pg_temp.chk('U-04 nor a global opt-out of someone the brand does not hold',
+    NOT EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_email = 'follower-global@example.test'), '');
+  PERFORM pg_temp.chk('U-05 a Book contact''s opt-out still shows',
+    EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_email = 'one@example.test'), '');
+  PERFORM pg_temp.chk('U-06 a buyer''s global opt-out still shows, whatever the case',
+    EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_email = 'tom@example.test'), '');
+  PERFORM pg_temp.chk('U-07 a buyer''s phone opt-out still shows, whatever the format',
+    EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_phone = '12025559102'), '');
+  PERFORM pg_temp.chk('U-08 another brand''s opt-out stays another brand''s',
+    NOT EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_email = 'one2@example.test'), '');
+  PERFORM pg_temp.chk('U-09 the check gives no answer about another brand',
+    public.issue_4273_host_may_read_unsubscribe('brand', NULL, '42730000-0000-4000-8000-0000000000b2', 'one2@example.test', NULL) IS FALSE, '');
   PERFORM pg_temp.chk('H-05 the read is empty for another brand''s campaign',
     NOT EXISTS (SELECT 1 FROM public.biz_marketing_campaign_messages_v1(ARRAY['42730000-3000-4000-8000-000000000002'::uuid])), '');
   PERFORM pg_temp.chk('H-06 no probing another brand with the contact check',
