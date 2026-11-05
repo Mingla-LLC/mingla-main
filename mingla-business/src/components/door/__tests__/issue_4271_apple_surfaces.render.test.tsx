@@ -336,6 +336,34 @@ describe("B5 only admins accept Apple's terms", () => {
     expect(root.findAll((n) => n.props.testID === "tap-setup-start")).toHaveLength(0);
   });
 
+  test("final P3: a probe that fails for a network reason leaves the admin copy, with no error text", async () => {
+    mockRole = { rank: 10, isLoading: false };
+    readyClient({ code: "STRIPE_API_CONNECTION_ERROR", message: "network down" });
+    const { root } = await setup();
+    const text = textOf(root);
+    expect(text).toContain("Ask an admin to turn this on");
+    expect(text).toContain("A brand owner or admin needs to accept Apple's terms");
+    expect(text).not.toContain("Check your connection");
+    expect(text).not.toContain("network down");
+  });
+
+  test("final P3: a probe that throws leaves the admin copy, with no error text", async () => {
+    mockRole = { rank: 10, isLoading: false };
+    updateTapToPaySession({
+      status: "ready",
+      client: {
+        ensureReaderConnected: jest.fn(async () => {
+          throw new Error("socket closed");
+        }),
+        checkDeviceSupport: async () => ({ supported: true }),
+      } as never,
+    });
+    const { root } = await setup();
+    const text = textOf(root);
+    expect(text).toContain("A brand owner or admin needs to accept Apple's terms");
+    expect(text).not.toContain("Setup didn't finish");
+  });
+
   test("an event manager is treated the same: rank below brand admin", async () => {
     mockRole = { rank: 40, isLoading: false };
     const connect = readyClient({ nativeErrorCode: "3930" });

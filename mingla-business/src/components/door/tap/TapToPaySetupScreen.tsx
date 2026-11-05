@@ -164,8 +164,10 @@ export const TapToPaySetupScreen = ({
     }
   }, [draft, eventId, router, goToDoor]);
 
+  // A probe is the silent "has an admin already accepted?" check: when it can't
+  // answer, the "Ask an admin" copy stands and no error text replaces it.
   const runSetup = useCallback(
-    async (allowTerms: boolean): Promise<void> => {
+    async (allowTerms: boolean, probe = false): Promise<void> => {
       if (terminal.status === "error") {
         terminal.retryInitialize();
         return;
@@ -204,7 +206,7 @@ export const TapToPaySetupScreen = ({
           return;
         }
         if (result.kind === "failed") {
-          setError(result.message);
+          if (!probe) setError(result.message);
           return;
         }
         // From Settings the screen stays and now reads "On for this brand".
@@ -219,7 +221,7 @@ export const TapToPaySetupScreen = ({
         }
       } catch (setupError) {
         reportNonFatal("door-tap.setup", setupError);
-        setError("Setup didn't finish. Check your connection and try again.");
+        if (!probe) setError("Setup didn't finish. Check your connection and try again.");
       } finally {
         setBusy(false);
       }
@@ -234,7 +236,7 @@ export const TapToPaySetupScreen = ({
     if (!adminRequired || role.isLoading || terminal.client === null || probedRef.current) return;
     probedRef.current = true;
     setProbing(true);
-    void runSetup(false).finally(() => setProbing(false));
+    void runSetup(false, true).finally(() => setProbing(false));
   }, [adminRequired, role.isLoading, terminal.client, runSetup]);
 
   const chrome = (
