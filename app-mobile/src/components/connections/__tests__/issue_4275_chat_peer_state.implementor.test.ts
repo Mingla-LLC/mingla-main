@@ -14,7 +14,7 @@
 //  - delete the isPeerGoneFromDirectChat branch → "a chat whose person is gone"
 //    fails;
 //  - delete either isCurrent check in settleChatPeerRead → "stale" cases fail.
-// MINGLA-INVARIANT: I-4275-CHAT-PEER-READ-FAILURE-IS-NOT-AN-ANSWER | issue #4275 | A failed profile or friends read never hides a 1:1 chat's message box; only active = false, a truly absent row, or a chat with no other participant says the person is gone.
+// MINGLA-INVARIANT: I-4275-CHAT-PEER-READ-FAILURE-IS-NOT-AN-ANSWER | issue #4275 | A failed profile or friends read never hides a 1:1 chat's message box; only a profile switched off by its flag, a truly absent row, or a chat with no other participant says the person is gone.
 
 import {
   classifyPeerAccountRead,
