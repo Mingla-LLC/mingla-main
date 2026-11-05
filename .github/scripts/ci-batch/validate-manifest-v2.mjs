@@ -357,7 +357,7 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the Blast combined-audience migration and its proofs the same way.
 // #4273: register the tester adversarial proofs the same way.
 // #4273: register the rework proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "cfd68292b5c1f4a9223af28652770d0d1b3f93ca854758b02df66a02427645a2";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7cf8cd307bda5fa636af729b1c731c9b80c769bb4347616f8b794a126e449dae";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

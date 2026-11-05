@@ -2297,10 +2297,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
                 {sendChannels.has("email") ? (
                   <View
-                    style={[
-                      styles.editorSlot,
-                      methodCardsFlow ? styles.editorSlotInFlow : null,
-                    ]}
+                    style={methodCardsFlow && (sendChannels.has("sms") || sendChannels.has("push"))
+                      ? styles.editorSlotInFlow
+                      : styles.editorSlot}
                   >
                     <ComposerV2Editor
                       ref={editorHandleRef}
@@ -2724,7 +2723,7 @@ const styles = StyleSheet.create({
   methodCardsInFlow: { flexShrink: 0 },
   editorSlot: { flex: 1, minHeight: 0 },
   // In flow the editor needs a height of its own, or the page scroller lends it none.
-  editorSlotInFlow: { flex: 0, flexShrink: 0, height: 400 },
+  editorSlotInFlow: { flexShrink: 0, height: 400 },
   plainMessage: {
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
