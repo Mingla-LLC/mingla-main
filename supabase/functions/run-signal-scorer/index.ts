@@ -8,6 +8,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizePlaceJudgingCaller } from '../_shared/placeJudgingAuth.ts';
+import { aiSliceIsHeld } from '../_shared/aiScoreHold.ts';
 import { type PlaceForScoring, type SignalConfig } from '../_shared/signalScorer.ts';
 // ORCH-1066 — sticky-through-approval: shared admin-override marker predicates so
 // the scorer and its regression test agree on exactly one definition.
@@ -189,6 +190,19 @@ export const handler = async (req: Request): Promise<Response> => {
 
     // ORCH-1333 — ALL DB IO lives HERE in index.ts (sole-writer strict-grep
     // gates). The shared engine is pure logic + these injected callbacks.
+    // #4276: a place whose AI result for this signal predates the backlog hold is not
+    // rescored, for any caller: its existing score is left untouched (the engine drops
+    // protected ids from both the upsert and the veto delete) and it is reported as
+    // held_old_result. This keeps a held result out of live decks on every by-id path.
+    const heldOld = new Set<string>();
+    const markHeld = (rows: Array<PlaceForScoring & { id: string }>) => {
+      for (const r of rows) {
+        const ai = (r as unknown as { ai_signal_scores?: Record<string, unknown> | null }).ai_signal_scores;
+        if (aiSliceIsHeld(ai?.[signalId])) heldOld.add(r.id);
+      }
+      return rows;
+    };
+
     const deps: ScorerBatchDeps = {
       // Page is_active + is_servable place_pool by id after `cursor`. Per-place
       // mode filters to the exact id set; city mode filters by city_id;
@@ -230,11 +244,11 @@ export const handler = async (req: Request): Promise<Response> => {
           }
           const rows = collected as Array<PlaceForScoring & { id: string }>;
           rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-          return rows.slice(0, size);
+          return markHeld(rows.slice(0, size));
         }
         const { data, error } = await buildBase();
         if (error) throw new Error(`place_pool fetch failed: ${error.message}`);
-        return (data ?? []) as Array<PlaceForScoring & { id: string }>;
+        return markHeld((data ?? []) as Array<PlaceForScoring & { id: string }>);
       },
       // ── ORCH-1066 STICKY-THROUGH-APPROVAL (per page) ──────────────────────
       // An admin can SET / PIN / override a place's signal score via the
@@ -246,7 +260,7 @@ export const handler = async (req: Request): Promise<Response> => {
       // keeps prior pages persisted (Constitution #5 — no silent failure).
       // Authority: I-1066-ADMIN-OVERRIDE-STICKY-THROUGH-RESCORE.
       readProtectedIds: async (ids) => {
-        const out = new Set<string>();
+        const out = new Set<string>(ids.filter((id) => heldOld.has(id)));
         // ORCH-1333 retest — chunk by IN_CHUNK (not BATCH_SIZE): a 500-UUID
         // `.in('place_id', …)` GET URL (~18KB) tripped the HTTP/2 request-URL
         // limit and failed the whole page. ~100 ids per URL is safe.
@@ -380,6 +394,9 @@ export const handler = async (req: Request): Promise<Response> => {
         written: result.written,
         veto_deleted: result.veto_deleted,
         sticky_skipped: result.sticky_skipped,
+        // #4276: left untouched because their AI result predates the backlog hold.
+        held_old_result: heldOld.size,
+        held_old_result_ids: [...heldOld].slice(0, 100),
         next_cursor: result.next_cursor,
         done: result.done,
         remaining: result.remaining,
