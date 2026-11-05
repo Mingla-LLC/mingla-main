@@ -363,8 +363,11 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
 // #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "4fb296dcec26742f5a5cbd958fc74d31bded55002b3236b738b90ede14a69281";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "76f96a5b861cc01bf7fc5b340f09ea2f56031710f5519ea79f6f0a94385a3ef1";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
