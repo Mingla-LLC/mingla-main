@@ -73,8 +73,9 @@ import { ReviewEditor } from "./sections/ReviewEditor";
 import { PastTripsSection } from "./sections/PastTripsSection";
 import { PublishSection } from "./sections/PublishSection";
 import { AddressesSection } from "./sections/AddressesSection";
-import { PlanSection } from "./sections/PlanSection";
 import { SettingsSection } from "./sections/SettingsSection";
+import { WebsiteSetupScreen } from "../setup/WebsiteSetupScreen";
+import { isSetupReturn } from "../../../utils/brandEditReturn";
 
 const HEARTBEAT_MS = 120_000;
 const STUDIO_RESULTS = new Set<StudioReturnResult>(["exchange_expired", "session_expired", "preview_expired", "preview_publish"]);
@@ -92,9 +93,9 @@ export default function WebsiteApp({ brandId, segments, search }: {
   search: Record<string, string | undefined>;
 }): React.ReactElement {
   const safeBrandId = brandId;
-  const route = parseWebsitePath(brandId, segments, { part: search.part ?? null });
+  const route = parseWebsitePath(brandId, segments, { part: search.part ?? null, step: search.step ?? null });
   const studioResult = STUDIO_RESULTS.has(search.studioResult as StudioReturnResult) ? (search.studioResult as StudioReturnResult) : null;
-  const section: WebsiteSection = route.kind === "section" ? route.section : route.kind === "editor" ? route.section : "overview";
+  const section: WebsiteSection = route.kind === "section" ? route.section : route.kind === "editor" ? route.section : route.kind === "setup" ? "plan" : "overview";
   const controller = useWebsiteController(safeBrandId, studioResult, section === "publish");
   const { canCheckAvailability, websiteAvailable } = controller;
 
@@ -197,7 +198,9 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   const heartbeatRef = useRef(heartbeat.mutate);
   heartbeatRef.current = heartbeat.mutate;
   useEffect(() => {
-    if (!canManage || (section !== "design" && section !== "plan")) return undefined;
+    // #2830 — the setup screen owns its own heartbeat: a heartbeat creates the
+    // plan row its first state keys on, and an idle tab must not keep the lock.
+    if (!canManage || section !== "design") return undefined;
     heartbeatRef.current();
     const timer = setInterval(() => heartbeatRef.current(), HEARTBEAT_MS);
     return () => clearInterval(timer);
@@ -230,7 +233,8 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
     tripsTicked,
     unpublishedChanges: unpublished,
     domainNeedsAttention,
-    plan: plan.data ? { done: plan.data.doneCount, total: plan.data.parts.length || 8 } : null,
+    // #2830 — the same number the setup screen shows.
+    plan: plan.data ? { done: plan.data.setupStatus?.doneCount ?? plan.data.doneCount, total: plan.data.parts.length || 8 } : null,
     offline,
   }), [sitePages.data, hasSite, design, designHasCollectionPages, designDirty, destinations.data, stories.data, reviews.data, past.data, reviewsNeeding, tripsTicked, unpublished, domainNeedsAttention, plan.data, offline]);
 
@@ -241,7 +245,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   }, [brandId, phone, router]);
 
   const go = useCallback((next: Exclude<WebsiteRoute, { kind: "redirect" }>) => {
-    const target = next.kind === "section" ? next.section : next.kind === "editor" ? next.section : section;
+    const target = next.kind === "section" ? next.section : next.kind === "editor" ? next.section : next.kind === "setup" ? "plan" : section;
     if (!hasSite && next.kind !== "preview" && target !== "overview" && target !== "plan") {
       toast("Available once your draft exists");
       return;
@@ -268,7 +272,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   }, [brandId, navigate, route, router]);
 
   // A section this site doesn't have (yet) resolves to the Overview.
-  const sectionMissing = route.kind !== "preview" && !sectionInNav(groups, section) && !controller.site.isLoading;
+  const sectionMissing = route.kind !== "preview" && route.kind !== "setup" && !sectionInNav(groups, section) && !controller.site.isLoading;
   useEffect(() => {
     if (!sectionMissing || section === "overview") return;
     if (!hasSite) toast("Available once your draft exists");
@@ -352,7 +356,18 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   }
 
   const shown = routeToRender(route, sectionMissing);
-  const content = <SectionContent route={shown} section={shown.kind === "preview" ? section : shown.section} />;
+  const setupBack = isSetupReturn(search.returnTo) ? search.returnTo ?? null : null;
+  const content = (
+    <>
+      {/* #2830 — "Fix" on the final check came here; this is the way back. */}
+      {setupBack ? (
+        <View style={styles.setupBack}>
+          <WButton label="Back to website setup" size="sm" onPress={() => router.replace(setupBack as never)} testID="website-back-to-setup" />
+        </View>
+      ) : null}
+      <SectionContent route={shown} section={shown.kind === "section" || shown.kind === "editor" ? shown.section : section} />
+    </>
+  );
   const showSide = !phone && hasSite && route.kind === "section" && sectionShowsPreview(section);
   const statusChip = <SiteStatusChip controller={controller} />;
   const dialogs = (
@@ -398,6 +413,21 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
       />
     </>
   );
+
+  if (route.kind === "setup") {
+    return (
+      <WebsiteProvider value={value}>
+        <WebsiteSetupScreen
+          step={route.step}
+          search={search}
+          planQuery={plan}
+          grant={grantState}
+          onHeartbeat={() => heartbeatRef.current()}
+        />
+        {dialogs}
+      </WebsiteProvider>
+    );
+  }
 
   if (!phone) {
     return (
@@ -505,7 +535,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
 }
 
 function SectionContent({ route, section }: { route: Exclude<WebsiteRoute, { kind: "redirect" }>; section: WebsiteSection }): React.ReactElement {
-  const { controller, lock, plan } = useWebsite();
+  const { controller, lock } = useWebsite();
   if (controller.site.isLoading || (controller.site.data && !controller.publicationCacheChecked)) return <LoadingPane />;
   if (controller.site.isError) return <LoadError />;
   const banners = (
@@ -532,7 +562,8 @@ function SectionContent({ route, section }: { route: Exclude<WebsiteRoute, { kin
       case "past": return <PastTripsSection />;
       case "publish": return <PublishSection />;
       case "addresses": return <AddressesSection />;
-      case "plan": return <PlanSection part={route.kind === "section" ? route.planPart ?? null : null} planState={plan} />;
+      // #2830 — Website setup is its own screen; the address redirects there.
+      case "plan": return <LoadingPane />;
       case "settings": return <SettingsSection />;
     }
   })();
@@ -659,9 +690,9 @@ function PhoneStatusCard(): React.ReactElement {
           <>
             <CardTitle>Build your website</CardTitle>
             <Text style={styles.phoneStatusHint}>
-              {ctx.plan ? `${ctx.plan.doneCount} of ${ctx.plan.parts.length || 8} done${ctx.plan.nextPart ? " · next: Setup plan" : ""}` : "Your setup plan"}
+              {ctx.plan ? `${ctx.plan.doneCount} of ${ctx.plan.parts.length || 8} done${ctx.plan.nextPart ? " · next: Website setup" : ""}` : "Your website setup"}
             </Text>
-            <WButton label="See the plan" variant="primary" onPress={() => ctx.go({ kind: "section", section: "plan" })} testID="phone-see-plan" />
+            <WButton label="Open Website setup" variant="primary" onPress={() => ctx.go({ kind: "setup", step: null })} testID="phone-see-plan" />
           </>
         ) : (
           <>
@@ -737,6 +768,7 @@ function FullScreenPreview({ grant, search }: { grant: PreviewGrantState; search
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  setupBack: { alignSelf: "flex-start", marginBottom: spacing.md },
   loadingShell: { padding: 24 },
   desktop: { flex: 1 },
   topbar: { height: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },

@@ -23,16 +23,21 @@ export default function BrandWebsiteAriRoute(): React.ReactElement {
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const safeBrandId = typeof brandId === "string" ? brandId : "";
   const requestedIntent = Array.isArray(params.intent) ? params.intent[0] : params.intent;
-  const intent = requestedIntent === "setup" ? "setup" : "edit";
   const requestedPart = Array.isArray(params.part) ? params.part[0] : params.part;
-  const part = typeof requestedPart === "string" && requestedPart.length > 0
-    ? `&setupPart=${encodeURIComponent(requestedPart)}`
-    : "";
+  const part = typeof requestedPart === "string" && requestedPart.length > 0 ? requestedPart : null;
+  // #2830 — setup with Ari lives on the one setup screen; old links land there.
+  if (requestedIntent === "setup") {
+    return (
+      <Redirect
+        href={
+          `/brand/${encodeURIComponent(safeBrandId)}/website/setup?ari=1${part ? `&step=${encodeURIComponent(part)}` : ""}` as never
+        }
+      />
+    );
+  }
   return (
     <Redirect
-      href={
-        `/(tabs)/ari?brandId=${encodeURIComponent(safeBrandId)}&sitesIntent=${intent}${part}` as never
-      }
+      href={`/(tabs)/ari?brandId=${encodeURIComponent(safeBrandId)}&sitesIntent=edit` as never}
     />
   );
 }

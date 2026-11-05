@@ -18,6 +18,7 @@ import { useBrandSiteDomains } from "../../../../hooks/useBrandSite";
 import { plannedPagesFor } from "../../../../../../packages/site-contracts/src/sitePlan.ts";
 import { PLANNED_PAGE_LABELS } from "../../../../../../packages/site-contracts/src/emptyStates.ts";
 import type { WebsiteSection } from "../../../../sites/websiteNav";
+import { partLabel } from "../../../../sites/sitePlanState";
 
 /**
  * #2829 W9r (DESIGN_SPEC §1.6 Overview) — status first, the one decision
@@ -276,7 +277,7 @@ function NoSiteOverview(): React.ReactElement {
   const ctx = useWebsite();
   const { plan, phone, headingRef, controller } = ctx;
   const router = useRouter();
-  const done = plan?.doneCount ?? 0;
+  const done = plan?.setupStatus?.doneCount ?? plan?.doneCount ?? 0;
   const total = plan?.parts.length || 8;
   const next = plan?.parts.find((part) => !part.done);
   const pages = plannedPagesFor(ctx.offerings).map((key) => PLANNED_PAGE_LABELS[key].menu);
@@ -288,8 +289,8 @@ function NoSiteOverview(): React.ReactElement {
       <Card>
         <View style={styles.statusRow}>
           <View style={styles.grow}>
-            <CardTitle>{`Setup plan · ${done} of ${total} done`}</CardTitle>
-            {next ? <Hint>{`Next: ${partName(next.key)}`}</Hint> : null}
+            <CardTitle>{`Website setup · ${done} of ${total} done`}</CardTitle>
+            {next ? <Hint>{`Next: ${partLabel(next.key)}`}</Hint> : null}
           </View>
           <Chip label="Private until you publish" />
         </View>
@@ -298,7 +299,7 @@ function NoSiteOverview(): React.ReactElement {
         </View>
         <View style={styles.actions}>
           <WButton label="Continue with Ari" icon="spark" variant="primary" onPress={() => router.push(`/brand/${ctx.brandId}/website/ari?intent=setup` as never)} testID="nosite-ari" />
-          <WButton label="See the plan" onPress={() => ctx.go({ kind: "section", section: "plan" })} testID="nosite-plan" />
+          <WButton label="Open Website setup" onPress={() => ctx.go({ kind: "setup", step: null })} testID="nosite-plan" />
         </View>
       </Card>
       <Card>
@@ -313,20 +314,6 @@ function NoSiteOverview(): React.ReactElement {
       {controller.capabilities.canCreate ? null : <Hint>Only a brand admin or the owner can create the website draft.</Hint>}
     </View>
   );
-}
-
-export function partName(key: string): string {
-  const names: Record<string, string> = {
-    offer: "What you'll offer",
-    brand: "Your brand details",
-    look: "Choose your design",
-    story: "Your story",
-    approve: "Approve the plan",
-    build: "Build your pages",
-    first_offering: "Add your first trip or event",
-    publish: "Check and publish",
-  };
-  return names[key] ?? key;
 }
 
 const styles = StyleSheet.create({

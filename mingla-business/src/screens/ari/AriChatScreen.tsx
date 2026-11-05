@@ -24,7 +24,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import * as expoRouter from "expo-router";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -65,7 +66,8 @@ import {
   isBrandEditRoute,
   withReturnTo,
 } from "../../utils/brandEditReturn";
-import { AriWebsiteSetupPane } from "../../components/ari/AriWebsiteSetupPane";
+import { setupStepFromRoute } from "./setupFlowRoute";
+import { brandSiteKeys } from "../../sites/brandSiteKeys";
 import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
   ariRenditionCopyText,
@@ -252,12 +254,29 @@ export interface AriChatScreenProps {
    * the split view and the tab cannot drift into two different Aris.
    */
   embedded?: boolean;
+  /**
+   * #2830 — Ari beside the Website setup form, on that one screen. The setup
+   * conversation has no route of its own: the brand and step come from here.
+   */
+  setup?: {
+    brandId: string;
+    step: string | null;
+    /** The run's chat, when the run is this person's. */
+    conversationId: string | null;
+    onOpenStep: (step: string) => void;
+    onClose: () => void;
+    /** The field the open card asks about, for the form beside it. */
+    onFlowField?: (fieldKey: string | null) => void;
+  };
 }
 
 export const AriChatScreen: React.FC<AriChatScreenProps> = ({
-  embedded = false,
+  embedded: embeddedProp = false,
+  setup,
 }) => {
+  const embedded = embeddedProp || setup !== undefined;
   const router = useRouter();
+  const queryClient = useQueryClient();
   /*
    * #2830 — the Website split view is a MODE of this screen, not a second
    * screen. A separate route importing this module gave it a second consumer,
@@ -275,17 +294,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const sitesIntent = Array.isArray(sitesParams.sitesIntent)
     ? sitesParams.sitesIntent[0]
     : sitesParams.sitesIntent;
-  const sitesBrandId = Array.isArray(sitesParams.brandId)
+  const routeBrandId = Array.isArray(sitesParams.brandId)
     ? sitesParams.brandId[0]
     : sitesParams.brandId;
+  const sitesBrandId = setup ? setup.brandId : routeBrandId;
   const requestedSetupPart = Array.isArray(sitesParams.setupPart)
     ? sitesParams.setupPart[0]
     : sitesParams.setupPart;
-  const setupPart =
+  const routeSetupPart =
     typeof requestedSetupPart === "string" && requestedSetupPart.length > 0
       ? requestedSetupPart
       : null;
-  const websiteSetup = sitesIntent === "setup";
+  const setupPart = setup ? setup.step : routeSetupPart;
+  const websiteSetup = setup !== undefined;
+  // An old address: setup lives on the one setup screen now.
+  const legacySetupRoute =
+    !setup &&
+    sitesIntent === "setup" &&
+    typeof routeBrandId === "string" &&
+    routeBrandId.length > 0;
   const websiteSplit =
     (sitesIntent === "edit" || websiteSetup) &&
     typeof sitesBrandId === "string" &&
@@ -616,17 +643,45 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       setLocalError(ariChatErrorCopy(result.code));
     } else if (result.kind === "question_stale") {
       setLocalError(
-        "That question was replaced by a newer one, so nothing changed.",
+        result.taken_over_text ??
+          "That question was replaced by a newer one, so nothing changed.",
       );
     } else if (result.kind === "text" && result.handoff_route) {
       flowHandoffOpenRef.current = true;
-      router.push(result.handoff_route as never);
+      openSetupRoute(result.handoff_route);
     }
+  };
+  // #2830 — beside the form, a card that opens Brand details or the plan is a
+  // step on this same screen; a creator keeps its way back.
+  const openSetupRoute = (route: string): void => {
+    if (setup) {
+      const step = setupStepFromRoute(route, setup.brandId);
+      if (step) {
+        flowHandoffOpenRef.current = false;
+        setup.onOpenStep(step);
+        void chat.resumeFlow("handoff_return");
+        return;
+      }
+      if (/^\/(trip|event|experience)\/create\b/.test(route)) {
+        router.push(
+          withReturnTo(
+            route,
+            `/brand/${setup.brandId}/website/setup?step=first_offering`,
+          ) as never,
+        );
+        return;
+      }
+    }
+    router.push(route as never);
   };
   // #2830 P4 — a card button that opens a Host page is a route, not an
   // answer: it posts nothing in the owner's name. Coming back re-checks.
   const handleFlowRoute = (route: string): void => {
     flowHandoffOpenRef.current = true;
+    if (setup) {
+      openSetupRoute(route);
+      return;
+    }
     // #3355 bug 18 — Brand Edit returns here after a save, even when it has no
     // back history (a direct web load used to land the owner on Account).
     router.push(
@@ -697,6 +752,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         // resolved — it's a no-op: silently clear the now-stale card. (The primary
         // fix removes the re-confirm affordance entirely; this is the belt for any
         // other path that lands on a non-pending action.)
+        // #2830 — a teammate took this setup over: say why, never quietly clear.
+        if (result.code === "FLOW_TAKEN_OVER") {
+          setLocalError(result.message);
+          chat.clearPendingAction();
+          return { ok: false, error: result.message, terminal: "resolved" };
+        }
         if (isAlreadyResolvedError(result.message)) {
           chat.clearPendingAction();
           return { ok: false, terminal: "resolved" };
@@ -820,6 +881,29 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     sitesBrandId,
     websiteSetup,
   ]);
+  // #2830 — the run's own chat, wherever it was started. Removes the
+  // second-device dead end ("You already have Website setup open…").
+  const setupConversationId = setup?.conversationId ?? null;
+  React.useEffect(() => {
+    if (setupConversationId && setupConversationId !== chat.conversationId) {
+      chat.setConversationId(setupConversationId);
+    }
+    // Only when the run's chat changes: the owner's own moves stay theirs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupConversationId]);
+  // #2830 — each answer shows up in the field beside the chat, without a wait.
+  const setupBrand = setup?.brandId ?? null;
+  const flowArtefactId = chat.flowState?.current_artefact_id ?? null;
+  const pendingId = chat.pendingAction?.pending_action_id ?? null;
+  React.useEffect(() => {
+    if (!setupBrand) return;
+    void queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(setupBrand) });
+  }, [flowArtefactId, pendingId, queryClient, setupBrand]);
+  const onFlowField = setup?.onFlowField;
+  const flowFieldKey = chat.flowState?.current_field_key ?? null;
+  React.useEffect(() => {
+    onFlowField?.(flowFieldKey);
+  }, [flowFieldKey, onFlowField]);
   const activeConversation = conversations.conversations.find(
     (item) => item.id === chat.conversationId,
   );
@@ -852,7 +936,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // rows and orb sizes step down rather than rendering clipped fragments.
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
-    Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
+    Math.max(insets.bottom, spacing.md) +
+    (setup ? 0 : BOTTOM_NAV_CLEARANCE_PX);
   // The one lift, read by both consumers — see `composerOccupiedPxFor`.
   const composerOccupiedPx = composerOccupiedPxFor(
     keyboardHeight,
@@ -952,6 +1037,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
   };
 
+  if (legacySetupRoute) {
+    return (
+      <Redirect
+        href={
+          `/brand/${encodeURIComponent(routeBrandId as string)}/website/setup?ari=1${routeSetupPart ? `&step=${encodeURIComponent(routeSetupPart)}` : ""}` as never
+        }
+      />
+    );
+  }
+
   return (
     <View
       style={[
@@ -960,7 +1055,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         // #2830 — draft LEFT, conversation RIGHT, on wide desktop only. At
         // 390pt a split column gives neither half enough room, so the phone
         // keeps the full-width conversation it already had.
-        websiteSplit && isWideDesktop ? styles.websiteSplitHost : null,
+        websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteSplitHost : null,
       ]}
     >
       {/*
@@ -975,29 +1070,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         not own is whether the owner is told where they are. On a phone the
         same context renders as a banner above the conversation.
       */}
-      {websiteSetup && typeof sitesBrandId === "string" ? (
-        <AriWebsiteSetupPane
-          brandId={sitesBrandId}
-          compact={!isWideDesktop}
-          activePart={setupPart}
-          fixing={chat.isSending}
-          onFixAll={() => {
-            // #3355 bug 19 — this is the owner's own bubble, so it is in the
-            // owner's words (no "durable job", "checkpoint", "re-audit"). It
-            // still names "Fix all … Website gaps", which the server keys the
-            // Fix-all job on; it matches WEBSITE_SETUP_FIX_ALL_MESSAGE in
-            // supabase/functions/_shared/agentWebsiteSetup.ts.
-            handleSend(
-              "Fix all my Website gaps with me, one question at a time. Look up public facts first, and save each change only after I approve it. Don’t build a draft yet.",
-            );
-          }}
-          onReviewGaps={() => {
-            handleSend(
-              "Review every remaining Website setup gap with me. Show what is verified, what is missing or uncertain, and which details need my action. Work through one gap at a time and do not create a draft first.",
-            );
-          }}
-        />
-      ) : websiteSplit ? (
+      {websiteSetup ? null : websiteSplit ? (
         <View
           style={[
             styles.websiteDraftPane,
@@ -1027,20 +1100,33 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       <View
         style={[
           styles.ariPane,
-          websiteSplit && isWideDesktop ? styles.websiteAriPane : null,
+          websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteAriPane : null,
         ]}
       >
         {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
         <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
-          <Pressable
-            onPress={() => setDrawerOpen(true)}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Show conversations"
-          >
-            <Menu size={24} color={textTokens.primary} strokeWidth={2} />
-          </Pressable>
+          {setup ? (
+            // One thread per setup: no drawer here, and the way out instead.
+            <Pressable
+              onPress={setup.onClose}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Close Ari"
+              testID="ari-setup-close"
+            >
+              <Text style={styles.titleMeta}>Close</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => setDrawerOpen(true)}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Show conversations"
+            >
+              <Menu size={24} color={textTokens.primary} strokeWidth={2} />
+            </Pressable>
+          )}
           <View style={styles.headerTitle}>
             <AriOrb size="md" decorative />
             <View style={styles.headerIdentityCopy}>
@@ -1048,14 +1134,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               <Text style={styles.titleMeta}>MINGLA INTELLIGENCE</Text>
             </View>
           </View>
-          <Pressable
-            onPress={() => router.push("/ari/settings" as never)}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Open Ari settings"
-          >
-            <Settings size={22} color={textTokens.primary} strokeWidth={2} />
-          </Pressable>
+          {setup ? null : (
+            <Pressable
+              onPress={() => router.push("/ari/settings" as never)}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Open Ari settings"
+            >
+              <Settings size={22} color={textTokens.primary} strokeWidth={2} />
+            </Pressable>
+          )}
         </View>
 
         <Toast
@@ -1098,7 +1186,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   {
                     paddingBottom:
                       Math.max(insets.bottom, spacing.md) +
-                      BOTTOM_NAV_CLEARANCE_PX +
+                      (setup ? 0 : BOTTOM_NAV_CLEARANCE_PX) +
                       60 +
                       Math.max(0, composerContentHeight - 60),
                   },
@@ -1441,8 +1529,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 // the pill's bottom edge, so any pill-height term is a double
                 // count. When closed, clear the floating BottomNav capsule +
                 // safe-area inset.
-                paddingBottom:
-                  Platform.OS === "web"
+                paddingBottom: setup
+                  ? // #2830 — no tab bar on the setup screen. Same one lift.
+                    Platform.OS === "web"
+                    ? spacing.sm
+                    : composerOccupiedPxFor(
+                        keyboardHeight,
+                        Math.max(insets.bottom, spacing.md),
+                      )
+                  : Platform.OS === "web"
                     ? isWideDesktop
                       ? spacing.sm
                       : // #3460 — narrow web HAS the floating capsule, so it needs the

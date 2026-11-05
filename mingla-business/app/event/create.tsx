@@ -27,7 +27,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -42,6 +42,7 @@ import { useCurrentBrandId } from "../../src/store/currentBrandStore";
 import { useDraftEventStore } from "../../src/store/draftEventStore";
 import { useAuth } from "../../src/context/AuthContext";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { isSetupReturn, withReturnTo } from "../../src/utils/brandEditReturn";
 
 const ROUTE_BOOT_TIMEOUT_MS = 6000;
 const DRAFT_HYDRATION_TIMEOUT_MS = 6000;
@@ -74,6 +75,10 @@ const retryRoute = (router: ReturnType<typeof useRouter>): void => {
 export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // #2830 — carried through to the wizard, only when it is Website setup's.
+  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
   const currentBrandId = useCurrentBrandId();
   const { authError, authStatus, isAuthReady, loading } = useAuth();
   const currentBrandRecovery = useCurrentBrandRecovery();
@@ -190,8 +195,13 @@ export default function EventCreateRoute(): React.ReactElement {
     // into the post-hydration state directly — no subscription staleness,
     // no risk of the persisted state replacing our write.
     const draft = useDraftEventStore.getState().createDraft(currentBrandId);
-    router.replace(`/event/${draft.id}/edit?step=0` as never);
+    router.replace(
+      (setupReturn
+        ? withReturnTo(`/event/${draft.id}/edit?step=0`, setupReturn)
+        : `/event/${draft.id}/edit?step=0`) as never,
+    );
   }, [
+    setupReturn,
     currentBrandId,
     canUseStoredBrandForWeb,
     currentBrandRecovery.isResolving,
@@ -230,7 +240,11 @@ export default function EventCreateRoute(): React.ReactElement {
               label={copy.primaryLabel}
               onPress={() => {
                 if (terminalState === "signed_out" || terminalState === "auth_timeout") {
-                  router.replace("/auth?next=/event/create" as never);
+                  router.replace(
+                    (setupReturn
+                      ? `/auth?next=${encodeURIComponent(withReturnTo("/event/create", setupReturn))}`
+                      : "/auth?next=/event/create") as never,
+                  );
                   return;
                 }
                 retryRoute(router);

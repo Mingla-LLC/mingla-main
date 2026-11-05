@@ -20,6 +20,31 @@ export function safeReturnTo(value: unknown): string | null {
   return trimmed;
 }
 
+/**
+ * #2830 — the creators' return path is honoured only for Website setup. Anything
+ * else behaves exactly as if no `returnTo` was given.
+ */
+export function isSetupReturn(value: unknown): boolean {
+  const safe = safeReturnTo(value);
+  return safe !== null && /^\/brand\/[^/?#]+\/website\/setup(\?|$)/.test(safe);
+}
+
+/** Adds what the setup screen shows on return (state 12). */
+export function setupReturnWith(returnTo: string, kind: "event" | "trip" | "experience", id: string): string {
+  const separator = returnTo.includes("?") ? "&" : "?";
+  return `${returnTo}${separator}added=${kind}&addedId=${encodeURIComponent(id)}`;
+}
+
+/**
+ * A draft that has a server id comes back named; one that never reached the
+ * server (a `d_` id) just comes back.
+ */
+export function setupReturnTarget(returnTo: string, draftId: unknown): string {
+  return typeof draftId === "string" && draftId.length > 0 && !draftId.startsWith("d_")
+    ? setupReturnWith(returnTo, "event", draftId)
+    : returnTo;
+}
+
 export type BrandEditReturn =
   | { kind: "back" }
   | { kind: "replace"; href: string };

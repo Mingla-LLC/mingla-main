@@ -93,7 +93,11 @@ import { TopBar } from "../ui/TopBar";
 // existing `accountId` prop (the signed-in operator) — no new auth dependency.
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { LazyBrandAvatarPickerSheet } from "./LazyBrandAvatarPickerSheet";
-import { BrandEditAddressField } from "./BrandEditAddressField";
+// #2830 — Website setup uses this field too. Lazy at both importers, or sharing
+// it hoists it into __common for every Host (measured).
+const LazyBrandEditAddressField = React.lazy(() =>
+  import("./BrandEditAddressField").then((m) => ({ default: m.BrandEditAddressField })),
+);
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -900,7 +904,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             {/* #3355 P5 (C3) — the same structured address search as brand
                 creation: a pick writes address, city, country and the point
                 together, so city/country can no longer go stale here. */}
-            <BrandEditAddressField
+            <React.Suspense fallback={null}>
+            <LazyBrandEditAddressField
               address={draft.address}
               city={draft.city}
               countryCode={draft.countryCode}
@@ -930,6 +935,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               }}
               testID="brand-edit-address"
             />
+            </React.Suspense>
             <Text style={styles.kindHint}>
               Optional. We&apos;ll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
             </Text>

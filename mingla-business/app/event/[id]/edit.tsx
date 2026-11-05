@@ -102,6 +102,7 @@ import {
   type SectionKey,
 } from "../../../src/components/event/editPublishedSections";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
+import { isSetupReturn, setupReturnTarget, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -173,6 +174,11 @@ function EditPublishedEventWithBuyerNotice(
   );
 }
 
+// #2830 — the way back to Website setup: one on-demand chunk, nothing hoisted.
+const LazyCreatorReturnBar = React.lazy(() =>
+  import("../../../src/components/sites/setup/CreatorReturnBar"),
+);
+
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -181,12 +187,16 @@ export default function EventEditRoute(): React.ReactElement {
     id: string | string[];
     step?: string | string[];
     mode?: string | string[];
+    returnTo?: string | string[];
     section?: string | string[];
     newTicket?: string | string[];
   }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
   const modeParam = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  // #2830 — Website setup's way back. Anything else behaves as if absent.
+  const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
   // Cycle 9b-2: when ?mode=edit-published, render the focused
   // EditPublishedScreen instead of the create wizard. The id refers to
   // a LIVE event, not a draft.
@@ -589,11 +599,12 @@ export default function EventEditRoute(): React.ReactElement {
   useEffect(() => {
     if (isEditPublished || draft === null) return;
     if (draft.isRsvp === true) {
+      const rsvpRoute = `/rsvp/${draft.id}/edit?step=${initialStep ?? 0}`;
       router.replace(
-        `/rsvp/${draft.id}/edit?step=${initialStep ?? 0}` as never,
+        (setupReturn ? withReturnTo(rsvpRoute, setupReturn) : rsvpRoute) as never,
       );
     }
-  }, [draft, isEditPublished, initialStep, router]);
+  }, [draft, isEditPublished, initialStep, router, setupReturn]);
 
   const handleExit = React.useCallback(
     (
@@ -603,6 +614,20 @@ export default function EventEditRoute(): React.ReactElement {
         slug?: { brandSlug: string; eventSlug: string; occurrenceCount?: number };
       },
     ): void => {
+      if (setupReturn) {
+        // #2830 — back to the same setup step, whatever way the creator ended.
+        const publishedId = publishedEventIdRef.current;
+        if (mode === "published" && publishedId) {
+          publishedEventIdRef.current = null;
+          markJustPublished(publishedId);
+          router.replace(setupReturnWith(setupReturn, "event", publishedId) as never);
+          return;
+        }
+        router.replace(
+          (mode === "discarded" ? setupReturn : setupReturnTarget(setupReturn, effectiveDraftId)) as never,
+        );
+        return;
+      }
       if (mode === "published") {
         const name = ctx?.name ?? "Event";
         // issue #3313 — say how many dates the server actually created.
@@ -634,7 +659,7 @@ export default function EventEditRoute(): React.ReactElement {
         router.replace(safeEventsExitRoute() as never);
       }
     },
-    [router],
+    [effectiveDraftId, router, setupReturn],
   );
 
   const handleOpenPreview = React.useCallback((): void => {
@@ -1013,6 +1038,11 @@ export default function EventEditRoute(): React.ReactElement {
 
   return (
     <>
+      {setupReturn ? (
+        <React.Suspense fallback={null}>
+          <LazyCreatorReturnBar onBack={() => router.replace(setupReturnTarget(setupReturn, effectiveDraftId) as never)} />
+        </React.Suspense>
+      ) : null}
       <EventCreatorWizard
         draft={renderDraft}
         brand={brand}

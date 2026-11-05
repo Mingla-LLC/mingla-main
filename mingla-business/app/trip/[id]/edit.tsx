@@ -48,14 +48,24 @@ import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublis
 import { Button } from "../../../src/components/ui/Button";
 import { TRIP_DRAFT_PLACEHOLDER_TITLE } from "../../../src/services/tripsService";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
+import { isSetupReturn, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
+
+// #2830 — the way back to Website setup: one on-demand chunk, nothing hoisted.
+const LazyCreatorReturnBar = React.lazy(() =>
+  import("../../../src/components/sites/setup/CreatorReturnBar"),
+);
 
 export default function TripEditRoute(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{
     id: string | string[];
     step?: string | string[];
+    returnTo?: string | string[];
   }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+  // #2830 — Website setup's way back. Anything else behaves as if absent.
+  const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
   // #3645 — `?step=N` reopens the wizard on the step the host left for bank
   // setup. The wizard validates the number; anything else starts at step 1.
   const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
@@ -97,7 +107,11 @@ export default function TripEditRoute(): React.ReactElement {
             serverId: trip.id,
           });
         }
-        router.replace(`/trip/${trip.id}/edit` as never);
+        router.replace(
+          (setupReturn
+            ? withReturnTo(`/trip/${trip.id}/edit`, setupReturn)
+            : `/trip/${trip.id}/edit`) as never,
+        );
       })
       .catch(() => {
         tripMigratingIdRef.current = null;
@@ -108,6 +122,7 @@ export default function TripEditRoute(): React.ReactElement {
     eventId,
     isClientOnlyId,
     router,
+    setupReturn,
     user,
   ]);
 
@@ -311,6 +326,14 @@ export default function TripEditRoute(): React.ReactElement {
     trip.inclusions.length === 0;
 
   return (
+    <>
+      {setupReturn ? (
+        <React.Suspense fallback={null}>
+          <LazyCreatorReturnBar
+            onBack={() => router.replace((isCreateMode ? setupReturn : setupReturnWith(setupReturn, "trip", trip.id)) as never)}
+          />
+        </React.Suspense>
+      ) : null}
     <TripCreatorWizard
       trip={trip}
       brand={{
@@ -350,10 +373,21 @@ export default function TripEditRoute(): React.ReactElement {
       // Share + the public page (it used to open with no confirmation).
       onPublished={(published) => {
         markJustPublished(published.id);
-        router.replace(`/trip/${published.id}` as never);
+        router.replace(
+          (setupReturn
+            ? setupReturnWith(setupReturn, "trip", published.id)
+            : `/trip/${published.id}`) as never,
+        );
       }}
-      onExit={() => router.back()}
+      onExit={() => {
+        if (setupReturn) {
+          router.replace((isCreateMode ? setupReturn : setupReturnWith(setupReturn, "trip", trip.id)) as never);
+          return;
+        }
+        router.back();
+      }}
     />
+    </>
   );
 }
 

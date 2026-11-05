@@ -216,6 +216,8 @@ export interface FlowStateView {
   /** Who started the run (shown to teammates who can only follow along). */
   owner_name: string;
   view_only: boolean;
+  /** #2830 — the field the open card asks about; the setup form highlights it. */
+  current_field_key: string | null;
 }
 
 export function flowStateOf(run: FlowRun | null): FlowStateView | null {
@@ -234,6 +236,12 @@ export function flowStateOf(run: FlowRun | null): FlowStateView | null {
       : null,
     owner_name: run.started_by_name,
     view_only: !run.started_by_me,
+    current_field_key: (() => {
+      const key = run.current_step_key
+        ? run.step_states[run.current_step_key]?.data?.field_key
+        : null;
+      return typeof key === "string" ? key : null;
+    })(),
   };
 }
 
