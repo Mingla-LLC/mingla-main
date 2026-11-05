@@ -293,6 +293,14 @@ export interface TapToPaySaleFlowInput {
   report?: (scope: string, error: unknown, extra?: Record<string, unknown>) => void;
 }
 
+/**
+ * The ready screen stops waiting for a tap after this long and shows the host the
+ * sale was cancelled. The server's unfinished-tap sweep (door-tap-intent,
+ * UNFINISHED_AFTER_MS = 15 minutes) only runs after it, so it never cancels or
+ * pushes about a sale the host is still looking at.
+ */
+export const TAP_READY_LIMIT_MS = 10 * 60 * 1000;
+
 export class TapToPaySaleFlow {
   private readonly input: TapToPaySaleFlowInput;
   private intent: DoorTapIntent | null = null;
@@ -302,6 +310,7 @@ export class TapToPaySaleFlow {
   private lastCardLabel: string | null = null;
   private busy = false;
   private state: TapSaleState = { kind: "idle" };
+  private readyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(input: TapToPaySaleFlowInput) {
     this.input = input;
@@ -312,8 +321,23 @@ export class TapToPaySaleFlow {
   }
 
   private emit(state: TapSaleState): void {
+    this.clearReadyTimer();
     this.state = state;
+    if (state.kind === "ready") {
+      this.readyTimer = setTimeout(() => {
+        this.readyTimer = null;
+        this.cancel().catch((error: unknown) => this.input.report?.("door-tap.ready-limit", error));
+      }, TAP_READY_LIMIT_MS);
+      // Node (tests) only: a waiting screen's timer never keeps the process alive.
+      (this.readyTimer as { unref?: () => void }).unref?.();
+    }
     this.input.onState(state);
+  }
+
+  private clearReadyTimer(): void {
+    if (this.readyTimer === null) return;
+    clearTimeout(this.readyTimer);
+    this.readyTimer = null;
   }
 
   private amount(): TapAmount {
@@ -550,6 +574,7 @@ export class TapToPaySaleFlow {
 
   /** The host closed the sale. An open intent is cancelled unless it's mid-confirm or paid. */
   async closeSale(): Promise<void> {
+    this.clearReadyTimer();
     const kind = this.state.kind;
     if (kind === "reading" || kind === "saving" || kind === "approved" || kind === "save_failed") return;
     await this.abandonForPayCode();

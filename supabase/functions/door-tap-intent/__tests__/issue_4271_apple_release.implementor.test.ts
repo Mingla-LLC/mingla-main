@@ -325,6 +325,17 @@ Deno.test("#4271 B13 an unseen stale intent is cancelled at Stripe, then the hos
   );
 });
 
+Deno.test("#4271 final P3 the sweep only reads intents older than 15 minutes, past the app's ready limit", async () => {
+  const h = sweepHarness();
+  const before = Date.now();
+  await h.run();
+  const read = h.db.ops.find((op) => op.table === "door_tap_intents" && op.action === "select");
+  const cutoff = read?.filters.find(([kind, column]) => kind === "lt" && column === "created_at")?.[2];
+  assertEquals(typeof cutoff, "string");
+  const ageMs = before - Date.parse(String(cutoff));
+  assertEquals(ageMs >= 15 * 60 * 1000 - 1000 && ageMs <= 15 * 60 * 1000 + 60_000, true, `cutoff age ${ageMs}`);
+});
+
 Deno.test("#4271 B13 a seen intent is left alone", async () => {
   const h = sweepHarness({ row: { outcome_seen_at: "2026-11-05T00:00:00Z" } });
   await h.run();

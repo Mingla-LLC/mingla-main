@@ -13,7 +13,11 @@
  */
 import { describe, expect, jest, test } from "@jest/globals";
 
+import * as fs from "fs";
+import * as path from "path";
+
 import {
+  TAP_READY_LIMIT_MS,
   TapToPaySaleFlow,
   cardLabelFor,
   classifyTerminalError,
@@ -335,5 +339,47 @@ describe("draft + card label helpers", () => {
   test("card label is shown only when the SDK gave card details", () => {
     expect(cardLabelFor(PI_SUCCEEDED)).toBe("Visa contactless ending 4242");
     expect(cardLabelFor({ id: "pi", status: "succeeded" })).toBeNull();
+  });
+});
+
+describe("final P3: a ready screen is never swept while the host is on it", () => {
+  test("the flow stops waiting after TAP_READY_LIMIT_MS and shows cancelled, before the server sweep reads it", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = makeHarness();
+      let resolveCollect: (result: TerminalCallResult) => void = () => undefined;
+      jest.mocked(h.terminal.collectPaymentMethod).mockImplementation(
+        () => new Promise<TerminalCallResult>((resolve) => {
+          resolveCollect = resolve;
+        }),
+      );
+      jest.mocked(h.terminal.cancelCollectPaymentMethod).mockImplementation(async () => {
+        resolveCollect({ error: { code: "CANCELED" } });
+        return {};
+      });
+      const started = h.flow.start();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(h.flow.getState().kind).toBe("ready");
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS - 1);
+      expect(h.terminal.cancelCollectPaymentMethod).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      await started;
+      expect(h.terminal.cancelCollectPaymentMethod).toHaveBeenCalledTimes(1);
+      expect(h.flow.getState().kind).toBe("cancelled");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("the server sweep waits longer than the app's ready limit", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../../../../supabase/functions/door-tap-intent/index.ts"),
+      "utf8",
+    );
+    const match = /export const UNFINISHED_AFTER_MS = (\d+) \* 60 \* 1000;/.exec(source);
+    expect(match).not.toBeNull();
+    const sweepAfterMs = Number(match?.[1]) * 60 * 1000;
+    // A margin of at least 5 minutes: the sweep runs every 5 minutes.
+    expect(sweepAfterMs - TAP_READY_LIMIT_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);
   });
 });

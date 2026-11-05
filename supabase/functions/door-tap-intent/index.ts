@@ -377,7 +377,11 @@ async function handleSeen(
   return jsonResponse({ status: "seen" });
 }
 
-const UNFINISHED_AFTER_MS = 5 * 60 * 1000;
+// The host app stops waiting for a tap after 10 minutes on the ready screen
+// (TAP_READY_LIMIT_MS in mingla-business tapToPayFlow.ts) and shows the host
+// that the sale was cancelled. Sweeping only after 15 minutes means a screen
+// that is still waiting for a tap is never cancelled or pushed about.
+export const UNFINISHED_AFTER_MS = 15 * 60 * 1000;
 const UNFINISHED_WITHIN_MS = 24 * 60 * 60 * 1000;
 
 /**
