@@ -48,6 +48,10 @@ export function useBrandPlanWrites(brandId: string) {
   const add = useMutation({
     mutationFn: ({ item, requestKey }: { item: BrandPlanNewItem; requestKey: string }) => addBrandPlanItem(brandId, item, requestKey),
     onSuccess: refresh,
+    // Refused as too long: the brand's name changed, so the plan's limit did too.
+    onError: (cause) => {
+      if (cause instanceof BrandPlanError && cause.token === "title_too_long") void refresh();
+    },
   });
   const update = useMutation({
     mutationFn: ({ item, changes }: { item: BrandPlanItem; changes: BrandPlanChanges }) =>

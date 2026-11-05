@@ -132,7 +132,7 @@ describe("the real hook against raw PostgREST answers", () => {
     const qc = client();
     mockRpc.mockImplementation((name: string) => Promise.resolve(
       name === "brand_plan_for_host" ? { data: PLAN, error: null }
-        : name === "brand_plan_host_add" ? { data: { kind: "post", status: "added", title_changed: false, item: {} }, error: null }
+        : name === "brand_plan_host_add" ? { data: { kind: "post", status: "added", item: {} }, error: null }
           : { data: null, error: { code: "PT409", message: "stale_write: This changed. Showing the latest." } },
     ));
     const hook = await mount(qc, () => ({ plan: hooks.useBrandPlan("b", "2026-11-01", "2026-11-30"), writes: hooks.useBrandPlanWrites("b") }));
@@ -231,7 +231,7 @@ describe("the client against the migration's own text", () => {
 
   it("what may follow the site name is still allowed; what comes before it is not", () => {
     for (const ok of ["https://canva.com/a@b", "https://canva.com/?who=@me", "https://canva.com/#@", "https://canva.com:8443/x"]) expect(service.isBrandPlanLink(ok)).toBe(true);
-    for (const bad of ["https://a@b.example", "https://a:b@c.example/", "https://a%2F@c.example/", "https://a\\@c.example/", "https://a\\c.example/", "HTTPS://a.example/x", "http://a.example/x"]) {
+    for (const bad of ["https:///evil.example", "https://:443/evil", "https://?x=1", "https://#x", "https://a@b.example", "https://a:b@c.example/", "https://a%2F@c.example/", "https://a\\@c.example/", "https://a\\c.example/", "HTTPS://a.example/x", "http://a.example/x"]) {
       expect(service.isBrandPlanLink(bad)).toBe(false);
     }
     expect(service.isBrandPlanLink(`https://a.example/${"x".repeat(2000)}`)).toBe(false);

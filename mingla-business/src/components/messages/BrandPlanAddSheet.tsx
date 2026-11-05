@@ -3,7 +3,7 @@
 // the wide web rail the same form sits in the rail (inline). Nothing here
 // listens to the keyboard: focused-field clearance belongs to the wrapper.
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View, type TextInput } from "react-native";
+import { Keyboard, StyleSheet, Text, View, type TextInput } from "react-native";
 
 import { glass, spacing, text as textTokens } from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
@@ -16,6 +16,7 @@ import {
   brandPlanFormProblems,
   brandPlanNewItem,
   brandPlanRequestKey,
+  brandPlanTitleLimit,
   isBrandPlanLink,
   mapBrandPlanError,
   type BrandPlanFormField,
@@ -36,6 +37,8 @@ export interface BrandPlanAddSheetProps {
   inline?: boolean;
   brandId: string;
   today: string;
+  /** The plan's limit on a title (title_max): the most this brand's plan can hold. */
+  titleMax: number;
   initialDate?: string | null;
   edit?: BrandPlanEdit | null;
   onClose: () => void;
@@ -55,19 +58,24 @@ function initialForm(today: string, initialDate: string | null | undefined, edit
   };
 }
 
+// Tapping outside or dragging only puts the keyboard away. The sheet holds what
+// the host typed, so only Cancel closes it (D31).
+const holdTheSheet = (): boolean => true;
+const putKeyboardAway = (): void => Keyboard.dismiss();
+
 export function BrandPlanAddSheet(props: BrandPlanAddSheetProps): React.ReactElement | null {
   const { visible, inline = false, onClose } = props;
   const writes = useBrandPlanWrites(props.brandId);
   const busy = writes.add.isPending || writes.update.isPending;
   if (inline) return visible ? <PlanForm {...props} writes={writes} /> : null;
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="full" dismissDisabled={busy} testID="brand-plan-add-sheet">
+    <Sheet visible={visible} onClose={onClose} snapPoint="full" dismissDisabled={busy} dismissGuard={holdTheSheet} onRequestClose={putKeyboardAway} testID="brand-plan-add-sheet">
       {visible ? <PlanForm {...props} writes={writes} /> : <View />}
     </Sheet>
   );
 }
 
-function PlanForm({ today, initialDate, edit, onClose, onDone, onStale, writes }: BrandPlanAddSheetProps & { writes: ReturnType<typeof useBrandPlanWrites> }): React.ReactElement {
+function PlanForm({ today, titleMax: planTitleMax, initialDate, edit, onClose, onDone, onStale, writes }: BrandPlanAddSheetProps & { writes: ReturnType<typeof useBrandPlanWrites> }): React.ReactElement {
   const { t } = useBusinessMediaTranslation();
   const { add, update } = writes;
   const network = useNetInfoSafe();
@@ -77,6 +85,10 @@ function PlanForm({ today, initialDate, edit, onClose, onDone, onStale, writes }
   const [form, setForm] = useState<BrandPlanFormValues>(() => initialForm(today, initialDate, edit));
   const [tried, setTried] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // A newer limit the server gave when it refused the title; the plan's own
+  // limit takes over again once the plan has been read again.
+  const [refusedAt, setRefusedAt] = useState<number | null>(null);
+  const titleMax = refusedAt ?? planTitleMax;
   const keyRef = useRef<{ key: string; value: string } | null>(null);
   const titleRef = useRef<TextInput>(null);
   const linkRef = useRef<TextInput>(null);
@@ -93,12 +105,16 @@ function PlanForm({ today, initialDate, edit, onClose, onDone, onStale, writes }
     keyRef.current = null;
   }, [edit, initialDate, today]);
 
+  useEffect(() => {
+    setRefusedAt(null);
+  }, [planTitleMax]);
+
   const problems = edit
     ? brandPlanFormProblems({ ...form, type: "post", title: edit.item.title }, today).filter((p) => p.field === (edit.field === "date" ? "on" : "link"))
-    : brandPlanFormProblems(form, today);
+    : brandPlanFormProblems(form, today, titleMax);
   const problem = (field: BrandPlanFormField): string | null => {
     const found = tried ? problems.find((p) => p.field === field) : undefined;
-    return found ? t(`plan.${found.key}`) : null;
+    return found ? t(`plan.${found.key}`, { max: titleMax }) : null;
   };
   const set = (patch: Partial<BrandPlanFormValues>): void => {
     setFailed(null);
@@ -136,6 +152,15 @@ function PlanForm({ today, initialDate, edit, onClose, onDone, onStale, writes }
     } catch (cause) {
       const error: BrandPlanError = mapBrandPlanError(cause);
       const key = brandPlanErrorKey(error, edit ? "save_failed" : "add_failed");
+      const limit = brandPlanTitleLimit(error);
+      if (limit !== null) {
+        // The brand's name changed while this was open. Nothing is cut: the
+        // title stays as typed and the host is told the new limit.
+        setRefusedAt(limit);
+        focus("title");
+        setFailed(t(`plan.${key}`, { max: limit }));
+        return;
+      }
       if (edit && (error.code === "stale_write" || error.code === "not_found" || error.code === "locked")) {
         onStale?.(key);
         return;
@@ -161,13 +186,13 @@ function PlanForm({ today, initialDate, edit, onClose, onDone, onStale, writes }
             ref={titleRef}
             value={form.title}
             onChangeText={(title) => set({ title })}
-            maxLength={160}
+            maxLength={titleMax}
             disabled={busy}
             accessibilityLabel={t("plan.what")}
             error={problem("title")}
             testID="brand-plan-what"
           />
-          {form.title.length >= 140 ? <Text style={styles.counter} testID="brand-plan-counter">{`${form.title.length}/160`}</Text> : null}
+          {form.title.length >= titleMax - 20 ? <Text style={styles.counter} testID="brand-plan-counter">{`${form.title.length}/${titleMax}`}</Text> : null}
         </View>
       ) : null}
       {showDate ? (

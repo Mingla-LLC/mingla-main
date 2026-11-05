@@ -12,10 +12,11 @@ const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockPending = { add: false };
 const mockOpenURL = jest.fn(() => Promise.resolve());
+const mockKeyboardDismiss = jest.fn();
 
 jest.mock("react-native", () => {
   const base = jest.requireActual("react-native");
-  return { ...base, Linking: { openURL: mockOpenURL } };
+  return { ...base, Linking: { openURL: mockOpenURL }, Keyboard: { dismiss: mockKeyboardDismiss } };
 });
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 34, left: 0, right: 0 }) }));
 jest.mock("../../../services/supabase", () => ({ supabase: { rpc: jest.fn() } }));
@@ -40,6 +41,8 @@ jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: mockProbe("S
 jest.mock("../../ui/Sheet", () => ({ Sheet: (props: Record<string, unknown>) => props.visible
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   ? require("react").createElement("SheetProbe", props, props.children as React.ReactNode) : null }));
+jest.mock("../../ui/SheetMobile", () => ({ UNMOUNT_DELAY_MS: 280 }));
+jest.mock("../../ui/Modal", () => ({ UNMOUNT_DELAY_MS: 200 }));
 jest.mock("../../ui/Toast", () => ({ Toast: mockProbe("ToastProbe") }));
 jest.mock("../../ui/Icon", () => ({ Icon: mockProbe("IconProbe") }));
 jest.mock("../../ui/Button", () => ({ Button: mockProbe("ButtonProbe") }));
@@ -84,7 +87,7 @@ async function mountForm(extra: Record<string, unknown> = {}): Promise<{ root: T
   const done = jest.fn();
   let renderer!: { root: TestNode };
   await TestRenderer.act(async () => {
-    renderer = TestRenderer.create(<BrandPlanAddSheet visible brandId="b1" today={TODAY} onClose={jest.fn()} onDone={done} {...extra} />);
+    renderer = TestRenderer.create(<BrandPlanAddSheet visible brandId="b1" today={TODAY} titleMax={160} onClose={jest.fn()} onDone={done} {...extra} />);
   });
   return { root: renderer.root, done };
 }
@@ -109,6 +112,7 @@ beforeEach(() => {
   mockAdd.mockReset();
   mockUpdate.mockReset();
   mockRemove.mockReset();
+  mockKeyboardDismiss.mockClear();
   mockOpenURL.mockClear();
   for (const key of Object.keys(mockQuery)) delete mockQuery[key];
 });
@@ -147,6 +151,16 @@ describe("the link check agrees with the server", () => {
       expect(service.isBrandPlanLink(bad)).toBe(false);
     }
     expect(service.isBrandPlanLink("https://canva.com/@tobi/x")).toBe(true);
+  });
+
+  it("a link with no site is refused, a Latin or non-Latin site is not, and format characters stay refused", () => {
+    for (const bad of ["https:///evil.example", "https://:443/evil", "https://?x=1", "https://#x", "https://./x",
+      "https://canva.com\uFF0Fevil.example/", "https://canva.com\uFF1A443/", "https://canva.com\u{1D173}.evil.example", `https://${"a".repeat(254)}/`]) {
+      expect({ bad, ok: service.isBrandPlanLink(bad) }).toEqual({ bad, ok: false });
+    }
+    for (const good of ["https://canva.com/x", "https://bücher.example/x", "https://саnvа.com/x", "https://canva.com:8443/x"]) {
+      expect({ good, ok: service.isBrandPlanLink(good) }).toEqual({ good, ok: true });
+    }
   });
 });
 
@@ -232,11 +246,52 @@ describe("the Add to plan form", () => {
     expect(byId(root, "brand-plan-offline")).toBeDefined();
     expect(byId(root, "brand-plan-submit")?.props.disabled).toBe(true);
   });
-  it("the counter shows from 140 characters", async () => {
-    const { root } = await mountForm();
+  it("the form caps a title at what the plan says fits, and the counter counts to it", async () => {
+    const { root } = await mountForm({ titleMax: 100 });
+    expect(byId(root, "brand-plan-what")?.props.maxLength).toBe(100);
     expect(byId(root, "brand-plan-counter")).toBeUndefined();
-    await type(root, "brand-plan-what", "x".repeat(140));
-    expect(byId(root, "brand-plan-counter")).toBeDefined();
+    await type(root, "brand-plan-what", "x".repeat(80));
+    expect(byId(root, "brand-plan-counter")?.children).toEqual(["80/100"]);
+  });
+  it("a title over the limit is never sent or cut: the host is told and it stays as typed", async () => {
+    const { root } = await mountForm({ titleMax: 100 });
+    await type(root, "brand-plan-what", "x".repeat(101));
+    await press(byId(root, "brand-plan-submit"));
+    expect(mockAdd).not.toHaveBeenCalled();
+    expect(byId(root, "brand-plan-what")?.props.error).toBe("plan.err_title_long");
+    expect(byId(root, "brand-plan-what")?.props.value).toHaveLength(101);
+  });
+  it("a limit that went stale mid-edit: the server's refusal is shown, the title stays, and the form takes the new limit", async () => {
+    mockAdd.mockRejectedValue(service.mapBrandPlanError({ code: "22023", message: "title_too_long: Keep this to 90 characters." }));
+    const { root, done } = await mountForm({ titleMax: 100 });
+    await type(root, "brand-plan-what", "x".repeat(95));
+    await press(byId(root, "brand-plan-submit"));
+    expect(mockAdd).toHaveBeenCalledTimes(1);
+    expect(done).not.toHaveBeenCalled();
+    expect(String((byId(root, "brand-plan-failed") as TestNode).children)).toContain("plan.err_title_long");
+    expect(byId(root, "brand-plan-what")?.props.value).toHaveLength(95);
+    expect(byId(root, "brand-plan-what")?.props.maxLength).toBe(90);
+  });
+  it("tapping outside only puts the keyboard away; Cancel closes", async () => {
+    const onClose = jest.fn();
+    const { root } = await mountForm({ onClose });
+    const sheetNode = root.findAll((n) => n.type === "SheetProbe")[0];
+    expect((sheetNode.props.dismissGuard as () => boolean)()).toBe(true);
+    (sheetNode.props.onRequestClose as () => void)();
+    expect(mockKeyboardDismiss).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    await type(root, "brand-plan-what", "Still here");
+    expect(byId(root, "brand-plan-what")?.props.value).toBe("Still here");
+    await press(byId(root, "brand-plan-cancel"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it("the Change sheets share that rule", async () => {
+    const onClose = jest.fn();
+    const { root } = await mountForm({ onClose, edit: { field: "link", item: item() } });
+    const sheetNode = root.findAll((n) => n.type === "SheetProbe")[0];
+    expect((sheetNode.props.dismissGuard as () => boolean)()).toBe(true);
+    (sheetNode.props.onRequestClose as () => void)();
+    expect(onClose).not.toHaveBeenCalled();
   });
   it("a change the plan has moved past closes the form with the words", async () => {
     mockUpdate.mockRejectedValue(new service.BrandPlanError("stale_write", "stale_write", "This changed."));
@@ -245,6 +300,61 @@ describe("the Add to plan form", () => {
     await press(byId(root, "brand-plan-submit"));
     expect(mockUpdate.mock.calls[0][0].changes).toEqual({ on: "2026-11-06" });
     expect(onStale).toHaveBeenCalledWith("stale");
+  });
+});
+
+describe("words after a sheet closes (iOS shows one native modal at a time)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { DEFER_SETTLE_MS } = require("../../../utils/deferAfterDismiss") as typeof import("../../../utils/deferAfterDismiss");
+  const toastOf = (root: TestNode): TestNode => root.findAll((n) => n.type === "ToastProbe")[0];
+  const settle = async (ms: number): Promise<void> => { await TestRenderer.act(async () => { jest.advanceTimersByTime(ms); }); };
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  async function openAndSubmit(root: TestNode): Promise<void> {
+    await press(byId(root, "brand-plan-add"));
+    await type(root, "brand-plan-what", "Menu");
+    await press(root.findAll((n) => n.props.testID === "brand-plan-submit")[0]);
+  }
+  it("Add: no toast while the sheet is closing, then the words", async () => {
+    mockAdd.mockResolvedValue({ kind: "post", status: "added", item: item() });
+    const root = await mountPanel(plan([]));
+    await openAndSubmit(root);
+    expect(toastOf(root).props.visible).toBe(false);
+    await settle(DEFER_SETTLE_MS - 1);
+    expect(toastOf(root).props.visible).toBe(false);
+    await settle(1);
+    expect(toastOf(root).props).toMatchObject({ visible: true, kind: "success", message: "plan.added_post" });
+  });
+  it("Remove: the same, and a refused remove keeps its words", async () => {
+    mockRemove.mockResolvedValueOnce({ removed: true }).mockRejectedValueOnce(new service.BrandPlanError("locked", "locked", "x"));
+    const root = await mountPanel(plan([item()]));
+    for (const message of ["plan.removed", "plan.err_locked"]) {
+      await press(byId(root, "brand-plan-menu-i1"));
+      await press(root.findAll((n) => n.props.testID === "brand-plan-remove")[0]);
+      await press(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")[0]);
+      expect(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")).toHaveLength(0);
+      await settle(DEFER_SETTLE_MS);
+      expect(toastOf(root).props).toMatchObject({ visible: true, message });
+      await TestRenderer.act(async () => { (toastOf(root).props.onDismiss as () => void)(); });
+    }
+  });
+  it("Change: a stale change closes the sheet and its words still arrive", async () => {
+    mockUpdate.mockRejectedValue(new service.BrandPlanError("stale_write", "stale_write", "This changed."));
+    const root = await mountPanel(plan([item()]));
+    await press(byId(root, "brand-plan-link-edit-i1"));
+    await press(root.findAll((n) => n.props.testID === "brand-plan-submit")[0]);
+    expect(toastOf(root).props.visible).toBe(false);
+    await settle(DEFER_SETTLE_MS);
+    expect(toastOf(root).props).toMatchObject({ visible: true, kind: "warn", message: "plan.stale" });
+  });
+  it("in the wide rail the form is not a sheet, so the words show at once", async () => {
+    mockAdd.mockResolvedValue({ kind: "task", status: "added", item: item() });
+    Object.assign(mockQuery, { data: plan([]), isLoading: false, isError: false, error: null, refetch: jest.fn() });
+    let renderer!: { root: TestNode };
+    await TestRenderer.act(async () => { renderer = TestRenderer.create(<BrandPlanPanel brandId="b1" compact />); });
+    await openAndSubmit(renderer.root);
+    expect(toastOf(renderer.root).props.visible).toBe(true);
   });
 });
 
@@ -297,6 +407,8 @@ describe("the plan panel", () => {
     await press(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")[0]);
     expect(mockRemove).toHaveBeenCalledTimes(1);
     expect(read("BrandPlanPanel.tsx")).not.toContain("Alert.alert");
+    // Let the words that follow the closing sheet land inside this test.
+    await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
   });
   it("a day in the month grid lists its items or says it is empty", async () => {
     const root = await mountPanel(plan([item()]));
@@ -318,9 +430,12 @@ describe("source contracts", () => {
     expect(sheet).toMatch(/scrollFlex:\s*\{ flex: 1 \}/);
     expect(sheet).toContain("<Sheet ");
     for (const source of [sheet, panel]) {
-      expect(source).not.toMatch(/import \{[^}]*\b(ScrollView|Keyboard)\b[^}]*\} from "react-native"/);
+      expect(source).not.toMatch(/import \{[^}]*\bScrollView\b[^}]*\} from "react-native"/);
       expect(source).not.toContain("Keyboard.addListener");
     }
+    // The form only ever asks the keyboard to go away (tapping outside, D31).
+    expect(sheet.match(/Keyboard\.\w+/g)).toEqual(["Keyboard.dismiss"]);
+    expect(panel).not.toMatch(/\bKeyboard\b/);
   });
   it("the pill is only for the brand's own team on a phone, and the rail order is People, Plan, Media", () => {
     expect(chat).toContain('const planBrandId = canBrand && group ? group.brand_id : null;');

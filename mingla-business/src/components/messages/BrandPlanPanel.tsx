@@ -12,6 +12,7 @@ import { useBusinessMediaTranslation } from "../../i18n";
 import {
   addIsoDays,
   addMonths,
+  BRAND_PLAN_TITLE_LIMIT,
   BrandPlanError,
   brandPlanErrorKey,
   brandPlanMonthGrid,
@@ -21,6 +22,7 @@ import {
   mapBrandPlanError,
   type BrandPlanItem,
 } from "../../services/brandPlanService";
+import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -74,6 +76,11 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
     void Linking.openURL(url).catch(() => setToast({ kind: "error", message: t("plan.link_failed") }));
   };
   const closeMenu = (): void => { setMenuItem(null); setConfirmRemove(false); };
+  // iOS presents one native modal at a time. Toast is its own, so words raised
+  // as a sheet closes wait until it has gone, or iOS drops them (#1360).
+  const toastAfterSheet = (next: NonNullable<typeof toast>): void => deferAfterDismiss(() => setToast(next));
+  // In the wide rail the form is not a sheet, so there is nothing to wait for.
+  const toastAfterForm = (next: NonNullable<typeof toast>): void => { if (compact) setToast(next); else toastAfterSheet(next); };
   const openEdit = (field: BrandPlanEdit["field"], item: BrandPlanItem): void => {
     closeMenu();
     setForm({ edit: { field, item }, initialDate: null });
@@ -82,10 +89,10 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
     try {
       await remove.mutateAsync(item);
       closeMenu();
-      setToast({ kind: "success", message: t("plan.removed") });
+      toastAfterSheet({ kind: "success", message: t("plan.removed") });
     } catch (cause) {
       closeMenu();
-      setToast({ kind: "error", message: t(`plan.${brandPlanErrorKey(mapBrandPlanError(cause), "save_failed")}`) });
+      toastAfterSheet({ kind: "error", message: t(`plan.${brandPlanErrorKey(mapBrandPlanError(cause), "save_failed")}`) });
     }
   }
 
@@ -255,11 +262,12 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
         inline={compact}
         brandId={brandId}
         today={today}
+        titleMax={plan?.title_max ?? BRAND_PLAN_TITLE_LIMIT}
         initialDate={form?.initialDate ?? null}
         edit={form?.edit ?? null}
         onClose={() => setForm(null)}
-        onDone={(key) => { setForm(null); setToast({ kind: "success", message: t(`plan.${key}`) }); }}
-        onStale={(key) => { setForm(null); setToast({ kind: "warn", message: t(`plan.${key}`) }); }}
+        onDone={(key) => { setForm(null); toastAfterForm({ kind: "success", message: t(`plan.${key}`) }); }}
+        onStale={(key) => { setForm(null); toastAfterForm({ kind: "warn", message: t(`plan.${key}`) }); }}
       />
 
       <Sheet visible={menuItem !== null} onClose={closeMenu} snapPoint="half" dismissDisabled={remove.isPending} testID="brand-plan-menu-sheet">

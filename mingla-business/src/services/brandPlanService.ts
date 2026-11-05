@@ -28,6 +28,8 @@ export interface BrandPlan {
   from: string;
   to: string;
   can_add: boolean;
+  /** The longest title this brand's plan can hold; the form caps at it, so nothing typed is ever cut. */
+  title_max: number;
   items: BrandPlanItem[];
 }
 
@@ -69,7 +71,7 @@ export function mapBrandPlanError(cause: unknown): BrandPlanError {
   if (token === "read_only") return make("read_only");
   if (token === "too_many") return make("too_many");
   if (token === "no_host_card") return make("no_host_card");
-  if (token.startsWith("invalid_") || token === "unknown_field" || token === "duplicate_title" || token.startsWith("request_key_")) {
+  if (token.startsWith("invalid_") || token === "unknown_field" || token === "duplicate_title" || token === "title_too_long" || token.startsWith("request_key_")) {
     return make("invalid");
   }
   // No database code at all, and the words of a transport failure. The state
@@ -106,7 +108,6 @@ export interface BrandPlanNewItem {
 export interface BrandPlanAddResult {
   kind: "post" | "task";
   status: "added";
-  title_changed: boolean;
   item: BrandPlanItem;
   replayed?: boolean;
 }
@@ -207,15 +208,25 @@ export function addMonths(month: string, count: number): string {
 // The same characters the server refuses (brand_plan_link_hidden): control
 // characters, unusual spaces and invisible formatting characters, so the site
 // name on a link's button always reads as the site it opens.
-const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{E0000}-\u{E0FFF}]/u;
+const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
 
-/** https only, in lower case as the server wants it, with nothing hidden and nothing before the site name. */
+// The same site rule as the server (brand_plan_link_host): there must be a site,
+// short enough to be an address, that stays one site once a browser folds it.
+function hasBrandPlanSite(value: string): boolean {
+  const raw = /^https:\/\/([^/?#:]+)/.exec(value)?.[1];
+  if (!raw || [...raw].length > 253) return false;
+  const host = raw.toLowerCase().normalize("NFKC").toLowerCase().replace(/\u3002/g, ".");
+  return !/[/?#@:\\\s]/.test(host) && /[^.]/.test(host);
+}
+
+/** https only, in lower case as the server wants it, with a site, nothing hidden and nothing before the site name. */
 export function isBrandPlanLink(value: string): boolean {
   return /^https:\/\/[^\s]+$/.test(value)
     && value.length >= 9
     && value.length <= 2000
     && !LINK_HIDDEN.test(value)
-    && !/^https:\/\/[^/?#]*[@\\]/.test(value);
+    && !/^https:\/\/[^/?#]*[@\\]/.test(value)
+    && hasBrandPlanSite(value);
 }
 
 export interface BrandPlanFormValues {
@@ -228,12 +239,16 @@ export interface BrandPlanFormValues {
 
 export type BrandPlanFormField = "title" | "on" | "link" | "note";
 
+/** The most a title can be anywhere; a plan's own title_max is what its form uses. */
+export const BRAND_PLAN_TITLE_LIMIT = 160;
+
 /** Problems in the order the fields appear; `key` is under plan. in the copy. */
-export function brandPlanFormProblems(form: BrandPlanFormValues, today: string): { field: BrandPlanFormField; key: string }[] {
+export function brandPlanFormProblems(form: BrandPlanFormValues, today: string, titleMax: number = BRAND_PLAN_TITLE_LIMIT): { field: BrandPlanFormField; key: string }[] {
   const out: { field: BrandPlanFormField; key: string }[] = [];
   const title = form.title.trim();
   if (!title) out.push({ field: "title", key: "err_title" });
-  else if (title.length > 160 || (form.type === "task" && title.length < 3)) out.push({ field: "title", key: "err_title_length" });
+  else if (title.length > titleMax) out.push({ field: "title", key: "err_title_long" });
+  else if (form.type === "task" && title.length < 3) out.push({ field: "title", key: "err_title_length" });
   if (!form.on) out.push({ field: "on", key: "err_date" });
   else if (form.on < today) out.push({ field: "on", key: "err_date_past" });
   const link = form.link.trim();
@@ -252,6 +267,13 @@ export function brandPlanNewItem(form: BrandPlanFormValues): BrandPlanNewItem {
   return item;
 }
 
+/** The limit the server gave when it refused a title as too long (the brand's name changed), or null. */
+export function brandPlanTitleLimit(error: BrandPlanError): number | null {
+  if (error.token !== "title_too_long") return null;
+  const found = /(\d+)/.exec(error.message)?.[1];
+  return found ? Number(found) : null;
+}
+
 /** The copy key under plan. for a write that failed. */
 export function brandPlanErrorKey(error: BrandPlanError, fallback: "add_failed" | "save_failed"): string {
   switch (error.code) {
@@ -263,6 +285,7 @@ export function brandPlanErrorKey(error: BrandPlanError, fallback: "add_failed" 
     case "too_many": return error.message.includes("an hour") ? "err_changes" : "err_too_many";
     case "invalid":
       if (error.token === "duplicate_title") return "err_duplicate";
+      if (error.token === "title_too_long") return "err_title_long";
       if (error.token === "invalid_link") return "err_link";
       if (error.token === "invalid_note") return "err_note";
       if (error.token === "invalid_title") return "err_title_length";
