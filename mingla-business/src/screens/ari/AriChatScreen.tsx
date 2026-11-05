@@ -1531,10 +1531,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 // safe-area inset.
                 paddingBottom:
                   Platform.OS === "web"
-                    ? // #2830 — no tab bar on the setup screen either.
-                      setup || isWideDesktop
+                    ? isWideDesktop
                       ? spacing.sm
-                      : // #3460 — narrow web HAS the floating capsule, so it needs the
+                      : // #2830 — no tab bar on the setup screen either.
+                        setup
+                        ? spacing.sm
+                        : // #3460 — narrow web HAS the floating capsule, so it needs the
                         // same clearance the native branch below reserves.
                         Math.max(insets.bottom, spacing.md) +
                         BOTTOM_NAV_CLEARANCE_PX
