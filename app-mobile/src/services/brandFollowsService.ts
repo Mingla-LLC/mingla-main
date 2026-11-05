@@ -142,7 +142,15 @@ export const brandFollowsService = {
     if (error) throw error;
   },
 
-  async listFollows(userId: string): Promise<BrandFollowRow[]> {
+  /**
+   * #4265: `onBrandIds` fires as soon as the followed brand ids are known, so a
+   * caller can start the follower-count read in parallel with the brand details
+   * instead of after the whole list resolves.
+   */
+  async listFollows(
+    userId: string,
+    options?: { onBrandIds?: (brandIds: string[]) => void },
+  ): Promise<BrandFollowRow[]> {
     const { data: follows, error } = await supabase
       .from("brand_follows")
       .select("brand_id, source, created_at, muted_until")
@@ -157,11 +165,24 @@ export const brandFollowsService = {
     >();
     const channelMap = new Map<string, Record<BrandFollowChannel, boolean>>();
     if (brandIds.length > 0) {
-      // Public brand profile view — same surface as ConsumerBrandProfileScreen.
-      const { data: brands, error: brandErr } = await supabase
-        .from("business_public_brands_view")
-        .select("id, name, slug, profile_photo_url")
-        .in("id", brandIds);
+      options?.onBrandIds?.(brandIds);
+      // #4265: the brand details and the channel prefs both need only the ids,
+      // so they are read together instead of one after the other.
+      const [
+        { data: brands, error: brandErr },
+        { data: prefs, error: prefErr },
+      ] = await Promise.all([
+        // Public brand profile view — same surface as ConsumerBrandProfileScreen.
+        supabase
+          .from("business_public_brands_view")
+          .select("id, name, slug, profile_photo_url")
+          .in("id", brandIds),
+        supabase
+          .from("brand_follow_channel_prefs")
+          .select("brand_id, channel, enabled")
+          .eq("user_id", userId)
+          .in("brand_id", brandIds),
+      ]);
       if (brandErr) throw brandErr;
       for (const b of brands ?? []) {
         brandMeta.set(b.id as string, {
@@ -171,11 +192,6 @@ export const brandFollowsService = {
         });
       }
 
-      const { data: prefs, error: prefErr } = await supabase
-        .from("brand_follow_channel_prefs")
-        .select("brand_id, channel, enabled")
-        .eq("user_id", userId)
-        .in("brand_id", brandIds);
       if (prefErr) throw prefErr;
       for (const p of prefs ?? []) {
         const bid = p.brand_id as string;

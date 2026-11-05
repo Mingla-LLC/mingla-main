@@ -1,34 +1,42 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+/**
+ * Likes → Calendar tab.
+ *
+ * Issue #4265 redesign (approved design: Calendar.dc.html + the List · Week ·
+ * Month toggle). One agenda merges every plan the user has: scheduled saved
+ * cards, ticket orders (ORCH-0829-A / ORCH-0842), venue reservations
+ * (META-ORCH-1148), stays (ISSUE-1390) and "Going" RSVPs (ORCH-1163). The
+ * merge, dedupe, past/upcoming split (on the effective END — ORCH-0850 /
+ * ORCH-0853), grouping and the grids are pure and live in
+ * `calendarAgendaModel.ts`; this file owns the data hooks, the existing
+ * reschedule / remove / reservation / refund flows, and layout.
+ *
+ * List renders through a virtualised SectionList. There is no search box: the
+ * day strip and the type chips do the narrowing.
+ *
+ * #2468 — this tab builds no maps URL. The old free-text `handleOpenMaps` stays
+ * deleted; a plan that needs directions opens through `utils/openMapsTarget`
+ * (RsvpPassSheet), the one maps-link owner.
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
-  FlatList,
   Linking,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
+  SectionList,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
+  type SectionListData,
+  type SectionListRenderItemInfo,
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
-import { getReadableCategoryName } from "../../utils/categoryUtils";
+import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
-const ANIMATION_DURATION = 250;
-import { Icon } from "../ui/Icon";
-import { CardFilterBar, WhenFilter } from "./CardFilterBar";
-import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { openExpandedCardContentShare } from "../../services/contentShareController";
@@ -46,64 +54,25 @@ import { isBrandExperiencePayload } from "../../utils/isBrandExperiencePayload";
 import { experienceRecToBusinessEventCard } from "../../utils/experienceRecToBusinessEventCard";
 import type { ExpansionTarget } from "../../types/expansion";
 import { useAppStore } from "../../store/appStore";
-import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
 import { HapticFeedback } from "../../utils/hapticFeedback";
-import { formatCurrency } from "../utils/formatters";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
+import { useA11yPreferences } from "../../hooks/useA11yPreferences";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
-import { useKeyboard } from "../../hooks/useKeyboard";
-import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
-import { useTranslation } from "react-i18next";
-import {
-  type CanonicalDiscoveryPrice,
-  canonicalDiscoveryPriceFields,
-} from "../../utils/priceTiers";
+import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 // ORCH-1019 F-1: curated reschedule validation routes through the canonical
 // shared validator (extractWeekdayText + isPlaceOpenAt), same as SavedTab.
 import { checkAllCuratedStopsOpen } from "../../utils/curatedStopsAvailability";
 import { getUserLocale } from "../../utils/localeUtils";
-// ORCH-0829-A: business-event ticket purchases live in `orders`+`tickets`
-// tables. Surface them inside Calendar so the user sees a unified
-// timeline. The legacy prop flow (calendarEntries from AppStateManager
-// via LikesPage) is untouched to minimize blast radius. New invariant:
-// I-PROPOSED-CONSUMER-CALENDAR-UNIONS-ORDERS.
-//
-// ORCH-0842 [Fold Tickets into Active + render real ticket PDF in
-// bottom sheet with venue/QR/Save]: the standalone "Tickets" block above
-// the Active accordion is REMOVED. Business orders are sort-merged into
-// the Active and Archive accordions using a discriminated-union row type
-// (kind: "calendar" | "ticket") rendered locally. Filter parity per SPEC
-// §3.6.1: tickets always pass category + tier; search matches
-// eventTitle + brandName; `when` applies via masterDateUtc with null-date
-// tickets visible only under "all". Past-date paid tickets drop into
-// Archive (mirror of saved-card archive behavior).
 import {
   useBusinessEventOrders,
-  // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs + their
-  // realtime freshness, folded in as a fourth unified-row kind.
+  // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs.
   useMyGoingRsvps,
   useOrdersRealtimeSubscription,
   useRsvpsRealtimeSubscription,
   useTicketsRealtimeSubscription, // ORCH-0854
 } from "../../hooks/useCalendarEntries";
-import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
-import type {
-  BusinessEventCalendarRow as BusinessEventRow,
-  ConsumerRsvpRow,
-} from "../../services/calendarService";
-// ORCH-1163 [rsvp-shared-body] — the consumer RSVP row (cover + "RSVP · Going"
-// pill + View-RSVP → canonical Purchases detail).
-import RsvpCalendarRow from "./RsvpCalendarRow";
-import StayCalendarRow from "./StayCalendarRow";
-import {
-  stayGuestKeys,
-  type MyStayReservationGroup,
-} from "@mingla/brand-rendering/stayGuest";
 import { useMyStayReservations } from "../../hooks/useStayGuest";
-// META-ORCH-1148 2.2b: the signed-in user's venue reservations, folded into the
-// existing Active/Archive buckets as a THIRD unified-row kind.
-import ReservationCalendarRow from "./ReservationCalendarRow";
 import {
   SourceRefundAttentionSheet,
   type SourceRefundBank,
@@ -122,135 +91,46 @@ import {
   stayMessageTarget,
   ticketOrderMessageTarget,
 } from "../brandEnquiry/calendarPlanMessage";
+import { glass } from "../../constants/designSystem";
+import {
+  buildDayStrip,
+  buildMonthGrid,
+  buildUnifiedRows,
+  buildWeekStrip,
+  DAY_STRIP_LENGTH,
+  dateOfDayKey,
+  dayKeyOf,
+  groupByDay,
+  matchesTypeFilter,
+  shiftMonth,
+  sortPast,
+  sortUpcoming,
+  startOfDay,
+  addDays,
+  tagsByDay,
+  rowsInWeek,
+  toggleSelectedDay,
+  upcomingCountsByType,
+  weekRange,
+  weekStartForLocale,
+  type AgendaDayLabel,
+  type AgendaTypeCounts,
+  type AgendaTypeFilter,
+  type CalendarView,
+} from "./calendarAgendaModel";
+import type { CalendarAgendaSources, CalendarEntry } from "./calendarAgendaTypes";
+import { CalendarAgendaRow, CalendarPastRow, type CalendarRow } from "./CalendarAgendaRow";
+import { CalendarDayStrip } from "./CalendarControls";
+import { CalendarMonthView, CalendarWeekHeader } from "./CalendarGrids";
+import { CalendarAgendaSkeleton, CalendarEmptyCard, CalendarPastToggle } from "./CalendarAgendaStates";
+import CalendarPlanActionSheet, { type CalendarPlanAction } from "./CalendarPlanActionSheet";
 
-// ORCH-0842: discriminated-union row for unified Active/Archive rendering.
-// META-ORCH-1148 2.2b adds the "reservation" kind.
-type UnifiedRow =
-  | { kind: "calendar"; key: string; sortAt: number; entry: CalendarEntry }
-  | { kind: "ticket"; key: string; sortAt: number; row: BusinessEventRow }
-  | {
-    kind: "reservation";
-    key: string;
-    sortAt: number;
-    reservation: MyReservationRow;
-  }
-  | {
-    kind: "stay";
-    key: string;
-    sortAt: number;
-    group: MyStayReservationGroup;
-  }
-  // ORCH-1163 [rsvp-shared-body] — a "Going" RSVP (own primary or a plus-one row).
-  | { kind: "rsvp"; key: string; sortAt: number; rsvp: ConsumerRsvpRow };
+const L = glass.likes;
+const LIST_FADE_MS = 200;
 
-// META-ORCH-1148 2.2b — a reservation's effective end for bucket decisions.
-// Reservations have no stored duration; treat them as a single instant + a
-// default dining window so a just-passed booking lingers in Active briefly
-// (mirrors the calendar-entry / business-order bucketing intent).
-const RESERVATION_DEFAULT_DURATION_MIN = 120;
-function reservationEffectiveEndMs(reservedFor: string): number {
-  const startMs = Date.parse(reservedFor);
-  if (!Number.isFinite(startMs)) return Number.NaN;
-  return startMs + RESERVATION_DEFAULT_DURATION_MIN * 60_000;
-}
-
-function stayStartMs(group: MyStayReservationGroup): number {
-  const timestamps = group.lines.flatMap((line) =>
-    [line.roomCheckIn, line.placeStartsAt]
-      .map((value) => value ? Date.parse(value) : Number.NaN)
-      .filter(Number.isFinite)
-  );
-  return timestamps.length > 0 ? Math.min(...timestamps) : Number.NaN;
-}
-
-function stayEndMs(group: MyStayReservationGroup): number {
-  const timestamps = group.lines.flatMap((line) =>
-    [line.roomCheckOut, line.placeEndsAt]
-      .map((value) => value ? Date.parse(value) : Number.NaN)
-      .filter(Number.isFinite)
-  );
-  return timestamps.length > 0 ? Math.max(...timestamps) : Number.NaN;
-}
-
-interface CalendarEntry extends Partial<CanonicalDiscoveryPrice> {
-  id: string;
-  title: string;
-  category: string;
-  categoryIcon: any;
-  image: string;
-  images: string[];
-  rating: number;
-  reviewCount: number;
-  date: string;
-  time: string;
-  source: "solo" | "collaboration";
-  sourceDetails: string;
-  priceRange: string;
-  description: string;
-  fullDescription: string;
-  address: string;
-  highlights: string[];
-  socialStats: {
-    views: number;
-    likes: number;
-    saves: number;
-  };
-  status: "confirmed" | "pending" | "completed";
-  experience?: any;
-  suggestedDates?: string[];
-  sessionType?: string;
-  sessionName?: string;
-  purchaseOption?: any;
-  isPurchased?: boolean;
-  dateTimePreferences?: any;
-  phoneNumber?: string;
-  website?: string;
-  duration_minutes?: number;
-  scheduled_at?: string;
-  device_calendar_event_id?: string | null;
-}
-
-/**
- * ORCH-0850 [End-not-start parity systemic]: derive the effective end-time of
- * a calendar entry for past/future bucket decisions. Returns null if no start
- * time is parseable.
- *
- * Semantics: an entry is "past" if its effective end is before now, i.e.:
- *   effectiveEnd = scheduled_at + duration_minutes  (fallback 120 min)
- *
- * MUST NOT be used for displaying times to the user — display strings still
- * come from entry.suggestedDates[0] / entry.date+entry.time unchanged. The
- * 120-minute default mirrors existing prior art at CalendarTab.tsx:391,
- * CalendarTab.tsx:414, ActionButtons.tsx:580, SavedTab.tsx:1422 (device-
- * calendar event creation), so the bucket cutoff stays consistent with the
- * duration the user already saw at schedule time.
- *
- * Preserves invariant I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START.
- */
-export const DEFAULT_CALENDAR_DURATION_MIN = 120;
-
-// Minimal shape needed for past/upcoming bucket decision. Subset of
-// CalendarEntry; exported so the regression test can construct fixtures
-// without depending on the full CalendarEntry interface.
-export interface CalendarEntryForBucketing {
-  scheduled_at?: string;
-  suggestedDates?: string[];
-  duration_minutes?: number;
-}
-
-export function computeEntryEffectiveEnd(
-  entry: CalendarEntryForBucketing,
-): Date | null {
-  const startIso = entry.scheduled_at ?? entry.suggestedDates?.[0] ?? null;
-  if (startIso === null) return null;
-  const startMs = Date.parse(startIso);
-  if (!Number.isFinite(startMs)) return null;
-  const durationMin =
-    typeof entry.duration_minutes === "number" && entry.duration_minutes > 0
-      ? entry.duration_minutes
-      : DEFAULT_CALENDAR_DURATION_MIN;
-  return new Date(startMs + durationMin * 60_000);
-}
+type AgendaSection =
+  | { key: string; kind: "day"; label: AgendaDayLabel; dayKey: string | null; data: CalendarRow[] }
+  | { key: "past"; kind: "past"; total: number; data: CalendarRow[] };
 
 interface CalendarTabProps {
   calendarEntries: CalendarEntry[];
@@ -258,7 +138,15 @@ interface CalendarTabProps {
   onRemoveFromCalendar: (entry: CalendarEntry) => void;
   onShareCard: (card: any) => void;
   onAddToCalendar: (entry: CalendarEntry) => void;
-  onShowQRCode: (entryId: string) => void;
+  /**
+   * [TRANSITIONAL] unused since #4265 — the row's "Ticket" button opens the
+   * canonical Purchases ticket / RSVP screen (which owns the QR). The only
+   * caller passes a console.log stub. Exit: LikesPage stops passing it, then
+   * this prop is deleted.
+   */
+  onShowQRCode?: (entryId: string) => void;
+  /** #4265 — "Plan from my saves" on the empty state switches to the Saved tab. Absent → the button is hidden. */
+  onPlanFromSaves?: () => void;
   userPreferences?: any;
   accountPreferences?: {
     currency: string;
@@ -266,8 +154,8 @@ interface CalendarTabProps {
   };
   /**
    * ORCH-1030: a calendar/review notification deep link carries the target
-   * entry id here. v1 behavior = SELECT the matching entry (auto-expand its
-   * inline card); no scroll. Null/absent → no selection.
+   * entry id here. v1 behavior = SELECT the matching entry (#4265: its day is
+   * selected); no scroll. Null/absent → no selection.
    */
   selectedEntryId?: string | null;
   /**
@@ -277,6 +165,15 @@ interface CalendarTabProps {
    * frame still paints full-bleed to the physical screen bottom (no black bar).
    */
   bottomNavTotalHeight?: number;
+  /**
+   * #4265 — the List · Week · Month view and the plan-type filter are chosen
+   * on the Likes header line (LikesPage owns those controls and the persisted
+   * view pref); this tab renders them.
+   */
+  view: CalendarView;
+  typeFilter: AgendaTypeFilter;
+  /** Upcoming plans per type, for the header filter menu's counts. */
+  onTypeCountsChange?: (counts: AgendaTypeCounts) => void;
 }
 
 const CalendarTab = ({
@@ -285,27 +182,23 @@ const CalendarTab = ({
   onRemoveFromCalendar,
   onShareCard,
   onAddToCalendar,
-  onShowQRCode,
+  onPlanFromSaves,
   userPreferences,
   accountPreferences,
   selectedEntryId,
   bottomNavTotalHeight = 0,
+  view,
+  typeFilter,
+  onTypeCountsChange,
 }: CalendarTabProps) => {
   const { t } = useTranslation(["activity", "common"]);
+  const router = useRouter();
   const { canAccess } = useFeatureGate();
-  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
-  const keyboardSpacerHeight = keyboardHeight > 0
-    ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT
-    : 0;
+  const { reduceMotion } = useA11yPreferences();
+  const locale = getUserLocale();
+  const weekStart = useMemo(() => weekStartForLocale(locale), [locale]);
   const [showLockedPaywall, setShowLockedPaywall] = useState(false);
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
-  const [currentImageIndex, setCurrentImageIndex] = useState<{
-    [cardId: string]: number;
-  }>({});
   const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
-  const [expandedAccordionItems, setExpandedAccordionItems] = useState<
-    string[]
-  >(["tickets", "active"]); // Start with Tickets + Active expanded
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] = useState(
     false,
   );
@@ -324,10 +217,6 @@ const CalendarTab = ({
     ReservationPass | null
   >(null);
   const [isScheduling, setIsScheduling] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedWhen, setSelectedWhen] = useState<WhenFilter>("all");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedTier, setSelectedTier] = useState<string>("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [attentionRefundId, setAttentionRefundId] = useState<string | null>(
     null,
@@ -337,6 +226,13 @@ const CalendarTab = ({
   const [attentionDeliveryParked, setAttentionDeliveryParked] = useState(false);
   const [attentionBanks, setAttentionBanks] = useState<SourceRefundBank[]>([]);
   const [attentionBanksLoading, setAttentionBanksLoading] = useState(false);
+  // #4265 — agenda state.
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  // Week view's own day selection (its strip shows a different seven days).
+  const [weekDayKey, setWeekDayKey] = useState<string | null>(null);
+  const [showPast, setShowPast] = useState(false);
+  const [actionRow, setActionRow] = useState<CalendarRow | null>(null);
+  const afterActionSheetRef = useRef<(() => void) | null>(null);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const loadAttentionBanks = useCallback(async () => {
@@ -353,54 +249,51 @@ const CalendarTab = ({
     if (attentionRefundId) void loadAttentionBanks();
   }, [attentionRefundId, loadAttentionBanks]);
 
-  // ORCH-0829-A: business-event tickets parallel hook. Legacy
-  // calendarEntries prop continues to flow from AppStateManager via
-  // LikesPage; this hook adds the new source without touching that
-  // path. Invalidated by `ExpandedBusinessEventSheet.handleBuy` on
-  // success via `["businessEventOrders", user.id]`.
   const businessOrdersQuery = useBusinessEventOrders(user?.id);
-  const businessOrders = businessOrdersQuery.data ?? [];
-
-  // META-ORCH-1148 2.2b — the signed-in user's own venue reservations (consumer-
-  // own-read RLS). Folded into the same Active/Archive buckets below.
   const reservationsQuery = useMyReservations(user?.id);
-  const myReservations = reservationsQuery.data ?? [];
-
-  // ISSUE-1390 — Stay reservations join the same consumer itinerary instead
-  // of becoming a separate, undiscoverable booking silo.
+  // ISSUE-1390 — Stay reservations join the same consumer itinerary.
   const staysQuery = useMyStayReservations(user?.id ?? null);
-  const myStays = useMemo(() => staysQuery.data ?? [], [staysQuery.data]);
-
-  // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs (own +
-  // plus-one rows). Folded into the same Active/Archive buckets below.
   const goingRsvpsQuery = useMyGoingRsvps(user?.id);
-  const myGoingRsvps = goingRsvpsQuery.data ?? [];
+  const { refetch: refetchOrders } = businessOrdersQuery;
+  const { refetch: refetchReservations } = reservationsQuery;
+  const { refetch: refetchStays } = staysQuery;
+  const { refetch: refetchRsvps } = goingRsvpsQuery;
+  const myReservations = useMemo(() => reservationsQuery.data ?? [], [reservationsQuery.data]);
 
-  // ORCH-0851 H-1: realtime subscription invalidates
-  // `["businessEventOrders", user.id]` within ~1s of an INSERT/UPDATE/DELETE
-  // on `orders` matching `buyer_user_id=eq.<userId>`. Fallbacks
-  // (refetchOnWindowFocus + the 3-attempt invalidate loop in
-  // ExpandedBusinessEventSheet) remain intact.
+  // Realtime freshness. Each hook subscribes in an effect keyed on
+  // [userId, queryClient] and removes its channel on cleanup, so a re-render
+  // never re-subscribes.
+  // ORCH-0851 H-1: `orders` for this buyer → businessEventOrders.
   useOrdersRealtimeSubscription(user?.id);
-  // ORCH-0854 H-1: realtime subscription on `tickets` table — flips ticket
-  // badge `valid → used` within ~1s of the door scanner's commit. RLS gates
-  // delivery to tickets the buyer owns. Companion publication-add migration:
-  // `supabase/migrations/20260606000200_orch_0854_tickets_realtime_publication.sql`.
+  // ORCH-0854 H-1: `tickets` valid → used flips from the door scanner.
   useTicketsRealtimeSubscription(user?.id);
-  // ORCH-1163 [rsvp-shared-body] — realtime on `event_rsvps`: a host approval
-  // flip / status change refreshes the RSVP rows within ~1s. RLS gates delivery.
+  // ORCH-1163: `event_rsvps` approval / status changes.
   useRsvpsRealtimeSubscription(user?.id);
 
+  // Pull to refresh refreshes EVERY source the agenda reads.
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ["calendarEntries", user?.id],
-      }),
-      queryClient.invalidateQueries({ queryKey: stayGuestKeys.all }),
-    ]);
-    setIsRefreshing(false);
-  }, [queryClient, user?.id]);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["calendarEntries", user?.id],
+        }),
+        refetchOrders(),
+        refetchReservations(),
+        refetchStays(),
+        refetchRsvps(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [
+    queryClient,
+    user?.id,
+    refetchOrders,
+    refetchReservations,
+    refetchStays,
+    refetchRsvps,
+  ]);
 
   // #1221 — cancel one of MY reservations and render only durable refund truth.
   const handleCancelReservation = useCallback(
@@ -481,655 +374,179 @@ const CalendarTab = ({
     },
     [handleCancelReservation, myReservations],
   );
-  const withPlanMessage = (
-    row: Exclude<UnifiedRow, { kind: "calendar" }>,
-    node: React.ReactElement,
-  ): React.ReactElement => {
-    const target =
-      row.kind === "reservation"
-        ? reservationMessageTarget(row.reservation)
-        : row.kind === "stay"
-          ? stayMessageTarget(row.group)
-          : row.kind === "rsvp"
-            ? rsvpMessageTarget(row.rsvp)
-            : ticketOrderMessageTarget(row.row);
-    return (
-      <View key={row.key}>
-        {node}
-        <CalendarPlanMessageButton
-          target={target}
-          onCancelReservation={row.kind === "reservation" ? cancelReservationById : undefined}
-        />
-      </View>
-    );
-  };
 
-  // ORCH-1030: a calendar/review notification deep link selects its target
-  // entry by auto-expanding the matching inline card (v1 = select, no scroll).
-  // Only fires when the entry is actually present in the loaded list, so a
-  // stale id degrades gracefully to the plain Calendar landing.
+  // ── The agenda: every source parsed once, deduped by entity identity ─────
+  // `now` is captured per data change (not per render) so the past/upcoming
+  // split is stable while the user scrolls.
+  const allRows = useMemo<CalendarRow[]>(
+    () =>
+      buildUnifiedRows<CalendarAgendaSources>(
+        {
+          calendarEntries,
+          ticketOrders: businessOrdersQuery.data ?? [],
+          reservations: myReservations,
+          stays: staysQuery.data ?? [],
+          rsvps: goingRsvpsQuery.data ?? [],
+        },
+        Date.now(),
+      ),
+    [
+      calendarEntries,
+      businessOrdersQuery.data,
+      myReservations,
+      staysQuery.data,
+      goingRsvpsQuery.data,
+    ],
+  );
+
+  // A string per render is stable across renders of the same day, so the
+  // memoised strip and grids rebuild only when the date actually changes.
+  const todayKey = dayKeyOf(new Date());
+  const today = useMemo(() => dateOfDayKey(todayKey), [todayKey]);
+  const [weekAnchor, setWeekAnchor] = useState<Date>(() => startOfDay(new Date()));
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), monthIndex: now.getMonth() };
+  });
+  const [monthDayKey, setMonthDayKey] = useState<string>(() => dayKeyOf(new Date()));
+
+  // The header filter menu shows how many upcoming plans each type has.
+  const typeCounts = useMemo(() => upcomingCountsByType(allRows), [allRows]);
+  useEffect(() => {
+    onTypeCountsChange?.(typeCounts);
+  }, [onTypeCountsChange, typeCounts]);
+
+  const typedRows = useMemo(
+    () => allRows.filter((row) => matchesTypeFilter(row.tag, typeFilter)),
+    [allRows, typeFilter],
+  );
+  const upcomingRows = useMemo(
+    () => sortUpcoming(typedRows.filter((row) => !row.isPast)),
+    [typedRows],
+  );
+  const pastRows = useMemo(
+    () => sortPast(typedRows.filter((row) => row.isPast)),
+    [typedRows],
+  );
+  const dayTags = useMemo(() => tagsByDay(typedRows), [typedRows]);
+  const upcomingDayTags = useMemo(() => tagsByDay(upcomingRows), [upcomingRows]);
+
+  // ORCH-1030: a notification deep link selects its entry's day.
   useEffect(() => {
     if (!selectedEntryId) return;
-    const match = calendarEntries.find((e) => e.id === selectedEntryId);
-    if (match) {
-      setExpandedCard(selectedEntryId);
+    const match = allRows.find(
+      (row) => row.kind === "calendar" && row.entry.id === selectedEntryId,
+    );
+    if (match?.dayKey) {
+      // Select that day in every view (List narrows, Week and Month jump to
+      // it) without overwriting the person's saved view choice.
+      const day = dateOfDayKey(match.dayKey);
+      // List can only narrow to a day its strip shows (so it can be cleared).
+      const todayStart = startOfDay(new Date());
+      if (day >= todayStart && day < addDays(todayStart, DAY_STRIP_LENGTH)) {
+        setSelectedDayKey(match.dayKey);
+      }
+      setMonthDayKey(match.dayKey);
+      setMonth({ year: day.getFullYear(), monthIndex: day.getMonth() });
+      setWeekAnchor(day);
+      setWeekDayKey(match.dayKey);
     }
-  }, [selectedEntryId, calendarEntries]);
+  }, [selectedEntryId, allRows]);
 
-  // Animation refs
-  const searchBarOpacity = useRef(new Animated.Value(0)).current;
-  const searchBarSlide = useRef(new Animated.Value(-30)).current;
-  const cardAnimations = useRef<
-    { [key: string]: { opacity: Animated.Value; slide: Animated.Value } }
-  >({});
+  // ── Formatting (the viewer's locale and timezone) ───────────────────────
+  const formats = useMemo(
+    () => ({
+      time: new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }),
+      day: new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short" }),
+    }),
+    [locale],
+  );
+  const timeLabel = useCallback(
+    (row: CalendarRow): string =>
+      Number.isFinite(row.startMs) ? formats.time.format(new Date(row.startMs)) : "",
+    [formats],
+  );
+  const pastLabel = useCallback(
+    (row: CalendarRow): string =>
+      Number.isFinite(row.startMs) ? formats.day.format(new Date(row.startMs)) : "",
+    [formats],
+  );
+  const sectionLabel = useCallback(
+    (label: AgendaDayLabel, dayKey: string | null): string => {
+      if (label === "today") return t("activity:calendarTab.today");
+      if (label === "tomorrow") return t("activity:calendarTab.tomorrow");
+      if (label === "undated" || dayKey === null) return t("activity:calendarTab.dateToBeSet");
+      const [y, m, d] = dayKey.split("-").map(Number);
+      return formats.day.format(new Date(y, m - 1, d));
+    },
+    [formats, t],
+  );
 
-  // Initialize animation for each card
-  const getCardAnimation = (entryId: string) => {
-    if (!cardAnimations.current[entryId]) {
-      cardAnimations.current[entryId] = {
-        opacity: new Animated.Value(0),
-        slide: new Animated.Value(30),
-      };
+  const week = useMemo(() => weekRange(weekAnchor, weekStart), [weekAnchor, weekStart]);
+
+  // ── Sections per view ───────────────────────────────────────────────────
+  // Every view is ONE scroll body: the header (controls + grid + empty state)
+  // is the SectionList header, and the day's plans and "Past plans" follow in
+  // the same list, so nothing sits behind the floating nav.
+  const sections = useMemo<AgendaSection[]>(() => {
+    const out: AgendaSection[] = [];
+    if (view === "month") {
+      const data = sortUpcoming(typedRows.filter((row) => row.dayKey === monthDayKey));
+      if (data.length > 0) {
+        out.push({ key: monthDayKey, kind: "day", label: groupByDay(data, todayKey)[0].label, dayKey: monthDayKey, data });
+      }
+    } else {
+      // List: upcoming plans. Week: that week's plans (its past days' plans
+      // render dimmed). Both narrow to the tapped day and group the same way.
+      const pool = view === "week" ? sortUpcoming(rowsInWeek(typedRows, week)) : upcomingRows;
+      const day = view === "week" ? weekDayKey : selectedDayKey;
+      const visible = day === null ? pool : pool.filter((row) => row.dayKey === day);
+      for (const group of groupByDay(visible, todayKey)) {
+        out.push({ key: group.key, kind: "day", label: group.label, dayKey: group.dayKey, data: group.data });
+      }
     }
-    return cardAnimations.current[entryId];
-  };
+    // Past plans close every view.
+    if (pastRows.length > 0) {
+      out.push({ key: "past", kind: "past", total: pastRows.length, data: showPast ? pastRows : [] });
+    }
+    return out;
+  }, [view, typedRows, week, weekDayKey, monthDayKey, todayKey, selectedDayKey, upcomingRows, pastRows, showPast]);
 
-  // Run search bar entrance animation on mount
+  const hasUpcomingInView = sections.some((s) => s.kind === "day" && s.data.length > 0);
+
+  const strip = useMemo(
+    () => buildDayStrip(today, upcomingDayTags, selectedDayKey),
+    [today, upcomingDayTags, selectedDayKey],
+  );
+  const weekStrip = useMemo(
+    () => buildWeekStrip(weekAnchor, weekStart, today, dayTags, weekDayKey),
+    [weekAnchor, weekStart, today, dayTags, weekDayKey],
+  );
+  const monthCells = useMemo(
+    () => buildMonthGrid(month.year, month.monthIndex, weekStart, today, monthDayKey, dayTags),
+    [month, weekStart, today, monthDayKey, dayTags],
+  );
+
+  // A single fade of the list on first mount; none under reduce motion.
+  const listOpacity = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(searchBarOpacity, {
-        toValue: 1,
-        duration: ANIMATION_DURATION,
-        useNativeDriver: true,
-      }),
-      Animated.timing(searchBarSlide, {
-        toValue: 0,
-        duration: ANIMATION_DURATION,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    if (reduceMotion) {
+      listOpacity.setValue(1);
+      return;
+    }
+    Animated.timing(listOpacity, {
+      toValue: 1,
+      duration: LIST_FADE_MS,
+      useNativeDriver: true,
+    }).start();
+    // First mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Filter entries into Active and Archive based on EFFECTIVE END time.
-  // ORCH-0850: an entry is "past" only after its scheduled_at + duration has
-  // elapsed. Previously this used scheduledDate < now, which flipped events
-  // to Archive the moment they STARTED — e.g. a 3am-to-9pm event hit Archive
-  // at 3:01am while still 18 hours from ending. See I-PROPOSED-CONSUMER-
-  // CALENDAR-USES-END-NOT-START.
-  const { activeEntries, archiveEntries } = useMemo(() => {
-    const now = Date.now();
-    const active: CalendarEntry[] = [];
-    const archive: CalendarEntry[] = [];
-
-    calendarEntries.forEach((entry) => {
-      const effectiveEnd = computeEntryEffectiveEnd(entry);
-      if (effectiveEnd !== null && effectiveEnd.getTime() < now) {
-        archive.push(entry);
-      } else {
-        // Future, in-progress, or no parseable date — stays Active.
-        active.push(entry);
-      }
-    });
-
-    return { activeEntries: active, archiveEntries: archive };
-  }, [calendarEntries]);
-
-  // Apply search and filter controls
-  const { filteredActiveEntries, filteredArchiveEntries } = useMemo(() => {
-    const normalize = (value: string | undefined | null) =>
-      (value || "").toLowerCase();
-
-    const matchesSearch = (entry: CalendarEntry) => {
-      if (!searchQuery.trim()) return true;
-      const q = normalize(searchQuery);
-      const title = normalize(entry.experience?.title || entry.title);
-      const category = normalize(
-        entry.experience?.category || entry.category || "",
-      );
-      const sessionName = normalize(entry.sessionName || "");
-      return (
-        title.includes(q) ||
-        category.includes(q) ||
-        sessionName.includes(q)
-      );
-    };
-
-    const getScheduledDate = (entry: CalendarEntry): Date | null => {
-      const iso = entry.suggestedDates?.[0];
-      if (iso) return new Date(iso);
-      if (entry.date && entry.time) {
-        return new Date(`${entry.date}T${entry.time}`);
-      }
-      return null;
-    };
-
-    const matchesWhen = (entry: CalendarEntry) => {
-      if (selectedWhen === "all") return true;
-      const scheduled = getScheduledDate(entry);
-      if (!scheduled) return false;
-      const now = new Date();
-
-      const isSameDay = scheduled.getFullYear() === now.getFullYear() &&
-        scheduled.getMonth() === now.getMonth() &&
-        scheduled.getDate() === now.getDate();
-
-      if (selectedWhen === "today") return isSameDay;
-
-      if (selectedWhen === "this_week") {
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setHours(0, 0, 0, 0);
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 7);
-        return scheduled >= startOfWeek && scheduled < endOfWeek;
-      }
-
-      if (selectedWhen === "this_month") {
-        return (
-          scheduled.getFullYear() === now.getFullYear() &&
-          scheduled.getMonth() === now.getMonth()
-        );
-      }
-
-      if (selectedWhen === "upcoming") {
-        return scheduled >= now;
-      }
-
-      return true;
-    };
-
-    const matchesCategory = (entry: CalendarEntry) => {
-      if (selectedCategory === "all") return true;
-      const slug = entry.experience?.category || entry.category || "";
-      return slug === selectedCategory;
-    };
-
-    const matchesTier = (entry: CalendarEntry) => {
-      if (selectedTier === "all") return true;
-      // Tier filtering is confined to curated itineraries. Venue discovery
-      // prices are numeric, currency-bearing ranges and never tier-derived.
-      if (entry.experience?.cardType !== 'curated') return false;
-      const tier = entry.experience.priceTier || "";
-      return tier === selectedTier;
-    };
-
-    const applyAllFilters = (entry: CalendarEntry) =>
-      matchesSearch(entry) &&
-      matchesWhen(entry) &&
-      matchesCategory(entry) &&
-      matchesTier(entry);
-
-    return {
-      filteredActiveEntries: activeEntries.filter(applyAllFilters),
-      filteredArchiveEntries: archiveEntries.filter(applyAllFilters),
-    };
-  }, [
-    activeEntries,
-    archiveEntries,
-    searchQuery,
-    selectedWhen,
-    selectedCategory,
-    selectedTier,
-  ]);
-
-  // ORCH-0853: partition business orders into active vs archive using
-  // EFFECTIVE END time (event_dates.end_at when present; start_at fallback
-  // when null — defensive). Mirrors the scheduled-card effectiveEnd logic
-  // at the useMemo above. Pre-fix this used start-only `masterDateUtc < now`
-  // and archived in-progress events the moment they STARTED — e.g. The
-  // Reckoning (10pm-to-3am) flipped to Archive at 10:01pm while still 5
-  // hours from ending. See I-CALENDAR-BUSINESS-TICKET-END-NOT-START.
-  // Sibling fix to ORCH-0850; this is the fifth surface that the systemic
-  // sweep's `scheduled_at` grep scope did not catch. Pending-payment orders
-  // always stay Active.
-  const { activeBusinessOrders, archiveBusinessOrders } = useMemo(() => {
-    const now = Date.now();
-    const active: BusinessEventRow[] = [];
-    const archive: BusinessEventRow[] = [];
-    for (const order of businessOrders) {
-      if (order.paymentStatus === "pending") {
-        active.push(order);
-        continue;
-      }
-      const endTs = order.masterDateEndUtc
-        ? Date.parse(order.masterDateEndUtc)
-        : Number.NaN;
-      const startTs = order.masterDateUtc
-        ? Date.parse(order.masterDateUtc)
-        : Number.NaN;
-      const effectiveEndTs = Number.isFinite(endTs)
-        ? endTs
-        : Number.isFinite(startTs)
-        ? startTs
-        : Number.NaN;
-      if (Number.isFinite(effectiveEndTs) && effectiveEndTs < now) {
-        archive.push(order);
-      } else {
-        active.push(order);
-      }
-    }
-    return { activeBusinessOrders: active, archiveBusinessOrders: archive };
-  }, [businessOrders]);
-
-  // META-ORCH-1148 2.2b — bucket reservations. Cancelled reservations always go
-  // to Archive; otherwise bucket on the effective end (just like orders).
-  const { activeReservations, archiveReservations } = useMemo(() => {
-    const now = Date.now();
-    const active: MyReservationRow[] = [];
-    const archive: MyReservationRow[] = [];
-    for (const r of myReservations) {
-      const cancelled = r.status === "cancelled_by_guest" ||
-        r.status === "cancelled_by_venue" ||
-        r.status === "no_show" ||
-        r.status === "completed";
-      const endMs = reservationEffectiveEndMs(r.reserved_for);
-      if (cancelled || (Number.isFinite(endMs) && endMs < now)) {
-        archive.push(r);
-      } else {
-        active.push(r);
-      }
-    }
-    return { activeReservations: active, archiveReservations: archive };
-  }, [myReservations]);
-
-  const { activeStays, archiveStays } = useMemo(() => {
-    const now = Date.now();
-    const active: MyStayReservationGroup[] = [];
-    const archive: MyStayReservationGroup[] = [];
-    for (const group of myStays) {
-      const terminal = [
-        "declined",
-        "request_expired",
-        "cancelled",
-      ].includes(group.state);
-      const endMs = stayEndMs(group);
-      if (terminal || (Number.isFinite(endMs) && endMs < now)) {
-        archive.push(group);
-      } else {
-        active.push(group);
-      }
-    }
-    return { activeStays: active, archiveStays: archive };
-  }, [myStays]);
-
-  // ORCH-1163 [rsvp-shared-body] — bucket "Going" RSVPs on the event's effective
-  // end (end_at when present, else start_at). Past events drop into Archive; a
-  // null/unparseable date keeps the row Active (mirrors the ticket bucketing).
-  const { activeRsvps, archiveRsvps } = useMemo(() => {
-    const now = Date.now();
-    const active: ConsumerRsvpRow[] = [];
-    const archive: ConsumerRsvpRow[] = [];
-    for (const r of myGoingRsvps) {
-      const endTs = r.masterDateEndUtc
-        ? Date.parse(r.masterDateEndUtc)
-        : Number.NaN;
-      const startTs = r.masterDateUtc
-        ? Date.parse(r.masterDateUtc)
-        : Number.NaN;
-      const effectiveEndTs = Number.isFinite(endTs)
-        ? endTs
-        : Number.isFinite(startTs)
-        ? startTs
-        : Number.NaN;
-      if (Number.isFinite(effectiveEndTs) && effectiveEndTs < now) {
-        archive.push(r);
-      } else {
-        active.push(r);
-      }
-    }
-    return { activeRsvps: active, archiveRsvps: archive };
-  }, [myGoingRsvps]);
-
-  // ORCH-0842: filter parity rules per SPEC §3.6.1.
-  // - search: match eventTitle OR brandName (case-insensitive)
-  // - when: apply to masterDateUtc; null-date tickets show only under "all"
-  // - category + tier: tickets always pass (Mingla taxonomy doesn't apply)
-  const filterBusinessOrders = useCallback(
-    (orders: BusinessEventRow[]): BusinessEventRow[] => {
-      const normalize = (value: string | undefined | null) =>
-        (value || "").toLowerCase();
-      const q = normalize(searchQuery).trim();
-
-      return orders.filter((order) => {
-        if (q) {
-          const title = normalize(order.eventTitle);
-          const brand = normalize(order.brandName);
-          if (!title.includes(q) && !brand.includes(q)) return false;
-        }
-        if (selectedWhen !== "all") {
-          if (!order.masterDateUtc) return false;
-          const scheduled = new Date(order.masterDateUtc);
-          const now = new Date();
-          const isSameDay = scheduled.getFullYear() === now.getFullYear() &&
-            scheduled.getMonth() === now.getMonth() &&
-            scheduled.getDate() === now.getDate();
-          if (selectedWhen === "today" && !isSameDay) return false;
-          if (selectedWhen === "this_week") {
-            const startOfWeek = new Date(now);
-            startOfWeek.setDate(now.getDate() - now.getDay());
-            startOfWeek.setHours(0, 0, 0, 0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 7);
-            if (scheduled < startOfWeek || scheduled >= endOfWeek) {
-              return false;
-            }
-          }
-          if (
-            selectedWhen === "this_month" &&
-            (scheduled.getFullYear() !== now.getFullYear() ||
-              scheduled.getMonth() !== now.getMonth())
-          ) {
-            return false;
-          }
-          if (selectedWhen === "upcoming" && scheduled < now) return false;
-        }
-        // category + tier: always pass for tickets per filter parity table.
-        return true;
-      });
-    },
-    [searchQuery, selectedWhen],
+  const mainScrollContent = useMemo(
+    () => [styles.listContent, { paddingBottom: bottomNavTotalHeight + 24 }],
+    [bottomNavTotalHeight],
   );
-
-  const filteredActiveBusinessOrders = useMemo(
-    () => filterBusinessOrders(activeBusinessOrders),
-    [activeBusinessOrders, filterBusinessOrders],
-  );
-  const filteredArchiveBusinessOrders = useMemo(
-    () => filterBusinessOrders(archiveBusinessOrders),
-    [archiveBusinessOrders, filterBusinessOrders],
-  );
-
-  // ORCH-1163 [rsvp-shared-body]: RSVP rows follow the same filter parity as
-  // tickets — search matches eventTitle OR brandName; `when` applies to
-  // masterDateUtc with null-date rows visible only under "all"; category + tier
-  // always pass (Mingla taxonomy doesn't apply to RSVPs).
-  const filterRsvps = useCallback(
-    (rows: ConsumerRsvpRow[]): ConsumerRsvpRow[] => {
-      const normalize = (value: string | undefined | null) =>
-        (value || "").toLowerCase();
-      const q = normalize(searchQuery).trim();
-
-      return rows.filter((r) => {
-        if (q) {
-          const title = normalize(r.eventTitle);
-          const brand = normalize(r.brandName);
-          if (!title.includes(q) && !brand.includes(q)) return false;
-        }
-        if (selectedWhen !== "all") {
-          if (!r.masterDateUtc) return false;
-          const scheduled = new Date(r.masterDateUtc);
-          const now = new Date();
-          const isSameDay = scheduled.getFullYear() === now.getFullYear() &&
-            scheduled.getMonth() === now.getMonth() &&
-            scheduled.getDate() === now.getDate();
-          if (selectedWhen === "today" && !isSameDay) return false;
-          if (selectedWhen === "this_week") {
-            const startOfWeek = new Date(now);
-            startOfWeek.setDate(now.getDate() - now.getDay());
-            startOfWeek.setHours(0, 0, 0, 0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 7);
-            if (scheduled < startOfWeek || scheduled >= endOfWeek) {
-              return false;
-            }
-          }
-          if (
-            selectedWhen === "this_month" &&
-            (scheduled.getFullYear() !== now.getFullYear() ||
-              scheduled.getMonth() !== now.getMonth())
-          ) {
-            return false;
-          }
-          if (selectedWhen === "upcoming" && scheduled < now) return false;
-        }
-        return true;
-      });
-    },
-    [searchQuery, selectedWhen],
-  );
-
-  const filteredActiveRsvps = useMemo(
-    () => filterRsvps(activeRsvps),
-    [activeRsvps, filterRsvps],
-  );
-  const filteredArchiveRsvps = useMemo(
-    () => filterRsvps(archiveRsvps),
-    [archiveRsvps, filterRsvps],
-  );
-
-  const filterStays = useCallback(
-    (groups: MyStayReservationGroup[]): MyStayReservationGroup[] => {
-      const query = searchQuery.trim().toLowerCase();
-      return groups.filter((group) => {
-        if (
-          query &&
-          !group.venueName.toLowerCase().includes(query) &&
-          !group.brandName.toLowerCase().includes(query) &&
-          !group.publicReference.toLowerCase().includes(query)
-        ) {
-          return false;
-        }
-        if (selectedWhen === "all") return true;
-        const timestamp = stayStartMs(group);
-        if (!Number.isFinite(timestamp)) return false;
-        const scheduled = new Date(timestamp);
-        const now = new Date();
-        const sameDay =
-          scheduled.getFullYear() === now.getFullYear() &&
-          scheduled.getMonth() === now.getMonth() &&
-          scheduled.getDate() === now.getDate();
-        if (selectedWhen === "today") return sameDay;
-        if (selectedWhen === "this_week") {
-          const start = new Date(now);
-          start.setDate(now.getDate() - now.getDay());
-          start.setHours(0, 0, 0, 0);
-          const end = new Date(start);
-          end.setDate(start.getDate() + 7);
-          return scheduled >= start && scheduled < end;
-        }
-        if (selectedWhen === "this_month") {
-          return scheduled.getFullYear() === now.getFullYear() &&
-            scheduled.getMonth() === now.getMonth();
-        }
-        return selectedWhen !== "upcoming" || scheduled >= now;
-      });
-    },
-    [searchQuery, selectedWhen],
-  );
-  const filteredActiveStays = useMemo(
-    () => filterStays(activeStays),
-    [activeStays, filterStays],
-  );
-  const filteredArchiveStays = useMemo(
-    () => filterStays(archiveStays),
-    [archiveStays, filterStays],
-  );
-
-  // ORCH-0842: unified rows = calendar entries + ticket orders, sorted
-  // ascending by date (soonest first; null-date entries go to the bottom).
-  const unifiedActiveRows = useMemo<UnifiedRow[]>(() => {
-    const rows: UnifiedRow[] = [];
-    for (const entry of filteredActiveEntries) {
-      const iso = entry.suggestedDates?.[0];
-      const dateStr = iso ??
-        (entry.date && entry.time ? `${entry.date}T${entry.time}` : null);
-      const ts = dateStr ? Date.parse(dateStr) : Number.NaN;
-      rows.push({
-        kind: "calendar",
-        key: `calendar:${entry.id}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        entry,
-      });
-    }
-    for (const order of filteredActiveBusinessOrders) {
-      const ts = order.masterDateUtc
-        ? Date.parse(order.masterDateUtc)
-        : Number.NaN;
-      rows.push({
-        kind: "ticket",
-        key: `ticket:${order.orderId}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        row: order,
-      });
-    }
-    for (const reservation of activeReservations) {
-      const ts = Date.parse(reservation.reserved_for);
-      rows.push({
-        kind: "reservation",
-        key: `reservation:${reservation.id}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        reservation,
-      });
-    }
-    for (const group of filteredActiveStays) {
-      const timestamp = stayStartMs(group);
-      rows.push({
-        kind: "stay",
-        key: `stay:${group.groupId}`,
-        sortAt: Number.isFinite(timestamp)
-          ? timestamp
-          : Number.POSITIVE_INFINITY,
-        group,
-      });
-    }
-    for (const rsvp of filteredActiveRsvps) {
-      const ts = rsvp.masterDateUtc
-        ? Date.parse(rsvp.masterDateUtc)
-        : Number.NaN;
-      rows.push({
-        kind: "rsvp",
-        key: `rsvp:${rsvp.rsvpId}:${rsvp.guestId ?? "primary"}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        rsvp,
-      });
-    }
-    rows.sort((a, b) => a.sortAt - b.sortAt);
-    return rows;
-  }, [
-    filteredActiveEntries,
-    filteredActiveBusinessOrders,
-    activeReservations,
-    filteredActiveStays,
-    filteredActiveRsvps,
-  ]);
-
-  const unifiedArchiveRows = useMemo<UnifiedRow[]>(() => {
-    const rows: UnifiedRow[] = [];
-    for (const entry of filteredArchiveEntries) {
-      const iso = entry.suggestedDates?.[0];
-      const dateStr = iso ??
-        (entry.date && entry.time ? `${entry.date}T${entry.time}` : null);
-      const ts = dateStr ? Date.parse(dateStr) : Number.NaN;
-      rows.push({
-        kind: "calendar",
-        key: `calendar:${entry.id}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        entry,
-      });
-    }
-    for (const order of filteredArchiveBusinessOrders) {
-      const ts = order.masterDateUtc
-        ? Date.parse(order.masterDateUtc)
-        : Number.NaN;
-      rows.push({
-        kind: "ticket",
-        key: `ticket:${order.orderId}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        row: order,
-      });
-    }
-    for (const reservation of archiveReservations) {
-      const ts = Date.parse(reservation.reserved_for);
-      rows.push({
-        kind: "reservation",
-        key: `reservation:${reservation.id}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        reservation,
-      });
-    }
-    for (const group of filteredArchiveStays) {
-      const timestamp = stayStartMs(group);
-      rows.push({
-        kind: "stay",
-        key: `stay:${group.groupId}`,
-        sortAt: Number.isFinite(timestamp)
-          ? timestamp
-          : Number.NEGATIVE_INFINITY,
-        group,
-      });
-    }
-    for (const rsvp of filteredArchiveRsvps) {
-      const ts = rsvp.masterDateUtc
-        ? Date.parse(rsvp.masterDateUtc)
-        : Number.NaN;
-      rows.push({
-        kind: "rsvp",
-        key: `rsvp:${rsvp.rsvpId}:${rsvp.guestId ?? "primary"}`,
-        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
-        rsvp,
-      });
-    }
-    // Archive: most recently past first.
-    rows.sort((a, b) => b.sortAt - a.sortAt);
-    return rows;
-  }, [
-    filteredArchiveEntries,
-    filteredArchiveBusinessOrders,
-    archiveReservations,
-    filteredArchiveStays,
-    filteredArchiveRsvps,
-  ]);
-
-  // ORCH-0842: animate the UNIFIED active row list — calendar entries
-  // AND ticket orders participate in the same staggered entrance using
-  // their stable discriminated-union keys.
-  useEffect(() => {
-    unifiedActiveRows.forEach((row, index) => {
-      const animation = getCardAnimation(row.key);
-      animation.opacity.setValue(0);
-      animation.slide.setValue(30);
-
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(animation.opacity, {
-            toValue: 1,
-            duration: ANIMATION_DURATION,
-            useNativeDriver: true,
-          }),
-          Animated.timing(animation.slide, {
-            toValue: 0,
-            duration: ANIMATION_DURATION,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }, index * 60);
-    });
-  }, [unifiedActiveRows.length, expandedAccordionItems]);
-
-  useEffect(() => {
-    if (expandedAccordionItems.includes("archive")) {
-      unifiedArchiveRows.forEach((row, index) => {
-        const animation = getCardAnimation(row.key);
-        animation.opacity.setValue(0);
-        animation.slide.setValue(30);
-
-        setTimeout(() => {
-          Animated.parallel([
-            Animated.timing(animation.opacity, {
-              toValue: 1,
-              duration: ANIMATION_DURATION,
-              useNativeDriver: true,
-            }),
-            Animated.timing(animation.slide, {
-              toValue: 0,
-              duration: ANIMATION_DURATION,
-              useNativeDriver: true,
-            }),
-          ]).start();
-        }, index * 60);
-      });
-    }
-  }, [unifiedArchiveRows.length, expandedAccordionItems]);
 
   const handleReschedule = (entry: CalendarEntry) => {
     setEntryToReschedule(entry);
@@ -1320,679 +737,6 @@ const CalendarTab = ({
     }
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    attentionBackdrop: {
-      flex: 1,
-      justifyContent: "flex-end",
-      backgroundColor: "rgba(0,0,0,0.45)",
-    },
-    attentionPanel: {
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      backgroundColor: "#ffffff",
-    },
-    listContent: {
-      gap: 16,
-      paddingTop: 16,
-      paddingBottom: 100, // Increased padding to ensure last card is fully visible
-      paddingHorizontal: 16,
-    },
-    calendarCard: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "#f0f0f0",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 16,
-      elevation: 1,
-      overflow: "hidden",
-    },
-    lockedCardOverflow: {
-      overflow: "hidden",
-    },
-    lockedCalendarBody: {
-      backgroundColor: "#1C1C1E",
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 16,
-      gap: 12,
-    },
-    lockedCalendarInfo: {
-      flex: 1,
-    },
-    lockedCalendarTitle: {
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    lockedCalendarSubtext: {
-      color: "#9CA3AF",
-      fontSize: 12,
-      marginTop: 2,
-    },
-    lockedCalendarUpgrade: {
-      backgroundColor: "#f97316",
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    lockedCalendarUpgradeText: {
-      color: "#fff",
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    cardContent: {
-      padding: 16,
-    },
-    cardHeader: {
-      flexDirection: "row",
-      gap: 12,
-    },
-    cardImage: {
-      width: 64,
-      height: 64,
-      borderRadius: 12,
-      overflow: "hidden",
-    },
-    cardInfo: {
-      flex: 1,
-      minWidth: 0,
-    },
-    cardTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#FFFFFF",
-      marginBottom: 4,
-    },
-    cardSubtitle: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      marginBottom: 8,
-    },
-    eventDetailsContainer: {
-      gap: 8,
-      marginBottom: 8,
-    },
-    eventDetailRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    eventDetailText: {
-      fontSize: 14,
-      color: "#FFFFFF",
-    },
-    // ORCH-1019 F-5: curated per-stop address rail (DESIGN doc §3 tokens).
-    curatedStopRail: {
-      gap: 12,
-    },
-    curatedStopRow: {
-      flexDirection: "row",
-      gap: 8,
-      alignItems: "flex-start",
-    },
-    curatedStopBadgeCol: {
-      width: 20,
-      alignItems: "center",
-    },
-    curatedStopBadge: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: "#eb7825",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    curatedStopBadgeText: {
-      color: "#FFFFFF",
-      fontSize: 12,
-      fontWeight: "700",
-    },
-    curatedStopConnector: {
-      width: 1.5,
-      flex: 1,
-      backgroundColor: "rgba(235,120,37,0.32)",
-      marginTop: 2,
-    },
-    curatedStopTextCol: {
-      flex: 1,
-      minWidth: 0,
-    },
-    curatedStopMeta: {
-      // container line; child <Text> carry their own roles
-    },
-    curatedStopLabel: {
-      color: "#eb7825",
-      fontSize: 11,
-      fontWeight: "600",
-      letterSpacing: 0.5,
-    },
-    curatedStopMiddot: {
-      color: "rgba(255,255,255,0.4)",
-      fontSize: 13,
-    },
-    curatedStopName: {
-      color: "#FFFFFF",
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    curatedStopAddress: {
-      color: "rgba(255,255,255,0.72)",
-      fontSize: 13,
-      fontWeight: "400",
-      marginTop: 2,
-    },
-    curatedStopAddressTBD: {
-      color: "rgba(255,255,255,0.55)",
-      fontSize: 13,
-      fontStyle: "italic",
-      marginTop: 2,
-    },
-    statusIndicators: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginTop: 8,
-    },
-    sessionBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    soloBadge: {
-      backgroundColor: "#dbeafe",
-    },
-    collaborationBadge: {
-      backgroundColor: "#f3e8ff",
-    },
-    soloText: {
-      color: "#1e40af",
-    },
-    collaborationText: {
-      color: "#7c3aed",
-    },
-    sourceText: {
-      fontSize: 12,
-      fontWeight: "500",
-    },
-    statusText: {
-      fontSize: 12,
-      fontWeight: "500",
-    },
-    statusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      flexShrink: 0,
-    },
-    confirmedBadge: {
-      backgroundColor: "#dcfce7",
-    },
-    completedBadge: {
-      backgroundColor: "#dbeafe",
-    },
-    pendingBadge: {
-      backgroundColor: "#fef3c7",
-    },
-    confirmedText: {
-      color: "#166534",
-    },
-    completedText: {
-      color: "#1e40af",
-    },
-    pendingText: {
-      color: "#92400e",
-    },
-    purchaseDetails: {
-      paddingHorizontal: 16,
-    },
-    purchaseCard: {
-      padding: 12,
-      backgroundColor: "#ecfdf5",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#a7f3d0",
-      marginBottom: 16,
-    },
-    purchaseHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 8,
-    },
-    purchaseIcon: {
-      width: 16,
-      height: 16,
-      color: "#059669",
-    },
-    purchaseTitle: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: "#065f46",
-    },
-    purchaseDetailsList: {
-      gap: 4,
-    },
-    purchaseDetailRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-    },
-    purchaseLabel: {
-      fontSize: 12,
-      color: "#047857",
-    },
-    purchaseValue: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: "#047857",
-    },
-    purchaseFeatures: {
-      marginTop: 8,
-    },
-    purchaseFeaturesTitle: {
-      fontSize: 12,
-      color: "#047857",
-      marginBottom: 4,
-    },
-    purchaseFeaturesList: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 4,
-    },
-    purchaseFeature: {
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      backgroundColor: "#a7f3d0",
-      borderRadius: 12,
-    },
-    purchaseFeatureText: {
-      fontSize: 12,
-      color: "#047857",
-    },
-    actionsContainer: {
-      paddingBottom: 16,
-      marginTop: 16,
-      paddingHorizontal: 8,
-    },
-    actionsRow: {
-      flexDirection: "row",
-      gap: 8,
-      alignItems: "center",
-    },
-    proposeDateButton: {
-      flex: 1,
-      backgroundColor: "#eb7825",
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      borderRadius: 24,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    },
-    proposeDateButtonText: {
-      color: "white",
-      fontSize: 16,
-      fontWeight: "600",
-    },
-    shareButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 10,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.12)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    deleteButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderWidth: 0.5,
-      borderColor: "#ef4444", // Red border
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    secondaryButton: {
-      flex: 1,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderWidth: 1,
-      borderColor: "#eb7825",
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      alignItems: "center",
-    },
-    secondaryButtonText: {
-      color: "#eb7825",
-      fontSize: 16,
-      fontWeight: "500",
-    },
-    tertiaryButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.12)",
-      borderRadius: 12,
-    },
-    tertiaryButtonIcon: {
-      width: 20,
-      height: 20,
-      color: "rgba(255, 255, 255, 0.72)",
-    },
-    purchasedButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: "#a7f3d0",
-      backgroundColor: "#ecfdf5",
-      borderRadius: 12,
-    },
-    purchasedButtonIcon: {
-      width: 20,
-      height: 20,
-      color: "#059669",
-    },
-    qrButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: "#93c5fd",
-      backgroundColor: "#dbeafe",
-      borderRadius: 12,
-    },
-    qrButtonIcon: {
-      width: 20,
-      height: 20,
-      color: "#2563eb",
-    },
-    expandedContent: {
-      borderTopWidth: 1,
-      borderTopColor: "#f3f4f6",
-      backgroundColor: "rgba(255, 255, 255, 0.04)",
-    },
-    imageGallery: {
-      position: "relative",
-    },
-    galleryImage: {
-      aspectRatio: 16 / 9,
-      overflow: "hidden",
-    },
-    imageNavigation: {
-      position: "absolute",
-      top: "50%",
-      transform: [{ translateY: -16 }],
-      width: 32,
-      height: 32,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    leftNav: {
-      left: 8,
-    },
-    rightNav: {
-      right: 8,
-    },
-    navIcon: {
-      width: 16,
-      height: 16,
-      color: "white",
-    },
-    imageIndicators: {
-      position: "absolute",
-      bottom: 8,
-      left: "50%",
-      transform: [{ translateX: -50 }],
-      flexDirection: "row",
-      gap: 4,
-    },
-    indicator: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    activeIndicator: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-    },
-    inactiveIndicator: {
-      backgroundColor: "rgba(255, 255, 255, 0.5)",
-    },
-    detailsSection: {
-      padding: 16,
-      gap: 16,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#FFFFFF",
-      marginBottom: 8,
-    },
-    sectionText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      lineHeight: 20,
-    },
-    highlightsContainer: {
-      gap: 8,
-    },
-    highlightsList: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    highlightTag: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: "#fef3e2",
-      borderRadius: 8,
-    },
-    highlightText: {
-      fontSize: 12,
-      color: "#ea580c",
-    },
-    scheduleDetails: {
-      gap: 8,
-    },
-    scheduleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    scheduleIcon: {
-      width: 16,
-      height: 16,
-      color: "#eb7825",
-    },
-    scheduleText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-    },
-    preferencesContainer: {
-      gap: 8,
-    },
-    preferencesTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#FFFFFF",
-      marginBottom: 8,
-    },
-    preferencesList: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    preferenceTag: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: "#dbeafe",
-      borderRadius: 8,
-    },
-    preferenceText: {
-      fontSize: 12,
-      color: "#1e40af",
-    },
-    contactContainer: {
-      gap: 8,
-    },
-    contactTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#FFFFFF",
-      marginBottom: 8,
-    },
-    contactRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    contactIcon: {
-      width: 16,
-      height: 16,
-      color: "#eb7825",
-    },
-    contactText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-    },
-    contactLink: {
-      fontSize: 14,
-      color: "#eb7825",
-      textDecorationLine: "underline",
-    },
-    emptyState: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginHorizontal: 16,
-      marginVertical: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      backgroundColor: "rgba(235, 120, 37, 0.08)",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#f5e6d3",
-      // META-ORCH-1002 Sub-B (C3, dark-canvas): clip the translucent orange fill +
-      // bright border to the radius (kills the corner ring). Glass fill preserved.
-      overflow: "hidden",
-    },
-    emptyStateIconCircle: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "#fef3e2",
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 12,
-    },
-    emptyStateTextContainer: {
-      flex: 1,
-    },
-    emptyStateTitle: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: "#FFFFFF",
-      marginBottom: 2,
-    },
-    emptyStateSubtitle: {
-      fontSize: 13,
-      color: "rgba(255, 255, 255, 0.55)",
-      lineHeight: 18,
-    },
-    mainScrollView: {
-      flex: 1,
-    },
-    mainScrollContent: {
-      // ORCH-1189: clear the floating GlassBottomNav from the INNER scroll content
-      // (LikesPage's `content` View no longer carries a frame-shrinking
-      // paddingBottom, so the tab paints full-bleed to the screen bottom).
-      paddingBottom: bottomNavTotalHeight + 24,
-    },
-    accordionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderWidth: 1,
-      borderColor: "#f0f0f0",
-      borderRadius: 12,
-      marginHorizontal: 16,
-      marginBottom: 8,
-      // META-ORCH-1002 Sub-B (C4, dark-canvas): clip the translucent glass fill +
-      // bright border to the radius (kills the corner ring) and zero the Android
-      // elevation so no hard shadow rectangle draws under the rounded header. iOS
-      // shadow + glass fill preserved.
-      overflow: "hidden",
-      elevation: Platform.select({ ios: 1, android: 0, default: 1 }),
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 16,
-    },
-    accordionTitleContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    accordionTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#FFFFFF",
-    },
-    accordionCount: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      marginLeft: 8,
-    },
-    accordionContentContainer: {
-      backgroundColor: "transparent",
-    },
-    cardWrapper: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-    },
-    rescheduleButton: {
-      flex: 1,
-      backgroundColor: "#eb7825",
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      marginTop: 12,
-    },
-    rescheduleButtonText: {
-      color: "white",
-      fontSize: 16,
-      fontWeight: "600",
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      paddingVertical: 48,
-      gap: 12,
-    },
-    loadingText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      marginTop: 8,
-    },
-  });
-
   const getIconComponent = (iconName: any) => {
     if (typeof iconName === "function") {
       return iconName;
@@ -2025,28 +769,6 @@ const CalendarTab = ({
 
     return iconMap[iconName] || "heart";
   };
-
-  const nextImage = (cardId: string, totalImages: number) => {
-    setCurrentImageIndex((prev) => ({
-      ...prev,
-      [cardId]: ((prev[cardId] || 0) + 1) % totalImages,
-    }));
-  };
-
-  const prevImage = (cardId: string, totalImages: number) => {
-    setCurrentImageIndex((prev) => ({
-      ...prev,
-      [cardId]: ((prev[cardId] || 0) - 1 + totalImages) % totalImages,
-    }));
-  };
-
-  // #2468 — `handleOpenMaps` DELETED, not migrated. It built a free-text
-  // `https://maps.google.com/maps?q=<address>` link and had ZERO callers
-  // anywhere in the app: no JSX referenced it, no prop was bound to it. Keeping
-  // it would have meant maintaining a second, wrong maps-URL owner for a
-  // control that does not exist (Constitution #8 — subtract before adding).
-  // Calendar ticket and RSVP rows route to Purchases, whose detail owns its
-  // maps action.
 
   const handleRemoveFromCalendar = async (entry: CalendarEntry) => {
     if (removingEntryId) return; // Prevent multiple simultaneous removals
@@ -2126,7 +848,7 @@ const CalendarTab = ({
       setIsExpandedModalVisible(true);
       recordCardExpand((entry as any).card_id || entry.id, {
         category: experience.category || (entry as any).category,
-        priceTier: null,
+        priceTier: undefined,
         isCurated: false,
       });
       mixpanelService.trackCardExpanded({
@@ -2291,581 +1013,6 @@ const CalendarTab = ({
     openExpandedCardContentShare(card, 'calendar_expanded');
   };
 
-  const renderCalendarEntry = ({ item: entry }: { item: CalendarEntry }) => {
-    // Format date and time for display
-    const scheduledDate = entry.suggestedDates?.[0]
-      ? new Date(entry.suggestedDates[0])
-      : null;
-
-    const formattedDate = scheduledDate
-      ? scheduledDate.toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })
-      : "TBD";
-
-    const formattedTime = scheduledDate
-      ? scheduledDate.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      })
-      : "";
-
-    // Get subtitle/organizer - could be from entry or experience
-    const subtitle = (entry as any).organizer ||
-      (entry.experience as any)?.organizer ||
-      getReadableCategoryName(
-        entry.experience?.category || entry.category || "",
-      ) ||
-      "Experience";
-
-    // Curated cards are viewable by all tiers — no locked state needed
-
-    return (
-      <View style={styles.calendarCard}>
-        <TouchableOpacity
-          onPress={() => handleCardExpand(entry)}
-          activeOpacity={0.7}
-          style={styles.cardContent}
-        >
-          <View style={styles.cardHeader}>
-            <TouchableOpacity
-              onPress={() => handleCardExpand(entry)}
-              activeOpacity={0.8}
-              style={styles.cardImage}
-            >
-              <ImageWithFallback
-                source={{ uri: entry.experience?.image || entry.image }}
-                alt={entry.experience?.title || entry.title}
-                style={{ width: "100%", height: "100%" }}
-              />
-            </TouchableOpacity>
-
-            <View style={styles.cardInfo}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  marginBottom: 4,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <TouchableOpacity
-                    onPress={() => handleCardExpand(entry)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.cardTitle}>
-                      {entry.experience?.title || entry.title}
-                    </Text>
-                    {/* Subtitle instead of category */}
-                    <Text style={styles.cardSubtitle}>{subtitle}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Event Details: Date, Time, Location with orange icons */}
-              <View style={styles.eventDetailsContainer}>
-                <View style={styles.eventDetailRow}>
-                  <Icon name="calendar" size={16} color="#eb7825" />
-                  <Text style={styles.eventDetailText}>{formattedDate}</Text>
-                </View>
-                {formattedTime
-                  ? (
-                    <View style={styles.eventDetailRow}>
-                      <Icon name="time" size={16} color="#eb7825" />
-                      <Text style={styles.eventDetailText}>
-                        {formattedTime}
-                      </Text>
-                    </View>
-                  )
-                  : null}
-                {(() => {
-                  // ORCH-1019 F-5: curated multi-stop entries surface EVERY
-                  // stop's address inline (numbered rail), so the user can
-                  // execute the plan without opening a second screen or
-                  // expanding each stop. Non-curated entries keep the existing
-                  // single location row unchanged (no regression). Built to
-                  // DESIGN_ORCH-1019_F5_CALENDAR_STOP_ADDRESSES.md.
-                  const railStops = (entry.experience as any)?.stops as
-                    | any[]
-                    | undefined;
-                  const isCuratedRail = Array.isArray(railStops) &&
-                    railStops.length > 0;
-                  if (!isCuratedRail) {
-                    return (
-                      <View style={styles.eventDetailRow}>
-                        <Icon name="location" size={16} color="#eb7825" />
-                        <Text style={styles.eventDetailText}>
-                          {entry.experience?.address ||
-                            entry.address ||
-                            t("activity:calendarTab.locationTBD")}
-                        </Text>
-                      </View>
-                    );
-                  }
-                  return (
-                    <View style={styles.curatedStopRail}>
-                      {railStops.map((stop, idx) => {
-                        const stopNum = typeof stop?.stopNumber === "number" &&
-                            stop.stopNumber >= 1
-                          ? stop.stopNumber
-                          : idx + 1;
-                        const label = typeof stop?.stopLabel === "string"
-                          ? stop.stopLabel
-                          : "";
-                        const placeName =
-                          (typeof stop?.placeName === "string" &&
-                            stop.placeName) ||
-                          (typeof stop?.title === "string" && stop.title) ||
-                          "";
-                        const addr = typeof stop?.address === "string"
-                          ? stop.address.trim()
-                          : "";
-                        const hasAddr = addr.length > 0;
-                        return (
-                          <View
-                            key={`stop-${stopNum}-${idx}`}
-                            style={styles.curatedStopRow}
-                            accessibilityRole="text"
-                            accessibilityLabel={`Stop ${stopNum}${
-                              label ? `, ${label}` : ""
-                            }${placeName ? `, ${placeName}` : ""}, ${
-                              hasAddr
-                                ? addr
-                                : t("activity:calendarTab.locationTBD")
-                            }`}
-                          >
-                            <View style={styles.curatedStopBadgeCol}>
-                              <View style={styles.curatedStopBadge}>
-                                <Text style={styles.curatedStopBadgeText}>
-                                  {stopNum}
-                                </Text>
-                              </View>
-                              {idx < railStops.length - 1
-                                ? (
-                                  <View
-                                    style={styles.curatedStopConnector}
-                                    importantForAccessibility="no"
-                                    accessibilityElementsHidden
-                                  />
-                                )
-                                : null}
-                            </View>
-                            <View style={styles.curatedStopTextCol}>
-                              <Text
-                                style={styles.curatedStopMeta}
-                                numberOfLines={1}
-                              >
-                                {label
-                                  ? (
-                                    <Text style={styles.curatedStopLabel}>
-                                      {label.toUpperCase()}
-                                    </Text>
-                                  )
-                                  : null}
-                                {label && placeName
-                                  ? (
-                                    <Text style={styles.curatedStopMiddot}>
-                                      ·
-                                    </Text>
-                                  )
-                                  : null}
-                                <Text style={styles.curatedStopName}>
-                                  {placeName}
-                                </Text>
-                              </Text>
-                              {hasAddr
-                                ? (
-                                  <Text
-                                    style={styles.curatedStopAddress}
-                                    numberOfLines={2}
-                                    ellipsizeMode="tail"
-                                  >
-                                    {addr}
-                                  </Text>
-                                )
-                                : (
-                                  <Text
-                                    style={styles.curatedStopAddressTBD}
-                                    numberOfLines={1}
-                                  >
-                                    {t("activity:calendarTab.locationTBD")}
-                                  </Text>
-                                )}
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  );
-                })()}
-              </View>
-
-              {
-                /* ORCH-0908: Source Badge — uses collaborationBadge styles for collab entries
-                  (previously hardcoded soloBadge regardless of source, leaving the
-                  collaborationBadge + collaborationText styles at lines 819-826 as dead code). */
-              }
-              <View style={styles.statusIndicators}>
-                <View
-                  style={[
-                    styles.sessionBadge,
-                    entry.source === "solo"
-                      ? styles.soloBadge
-                      : styles.collaborationBadge,
-                  ]}
-                >
-                  <Icon
-                    name={entry.source === "solo" ? "eye" : "people"}
-                    size={12}
-                    color={entry.source === "solo" ? "#1e40af" : "#7c3aed"}
-                  />
-                  <Text
-                    style={[
-                      styles.sourceText,
-                      entry.source === "solo"
-                        ? styles.soloText
-                        : styles.collaborationText,
-                    ]}
-                  >
-                    {entry.source === "solo"
-                      ? t("activity:calendarTab.soloDiscovery")
-                      : `${entry.sessionName}`}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* Purchase Details Section */}
-        {entry.purchaseOption && (
-          <View style={styles.purchaseDetails}>
-            <View style={styles.purchaseCard}>
-              <View style={styles.purchaseHeader}>
-                <Icon name="bag" size={16} color="#059669" />
-                <Text style={styles.purchaseTitle}>
-                  {t("activity:calendarTab.purchaseDetails")}
-                </Text>
-              </View>
-              <View style={styles.purchaseDetailsList}>
-                <View style={styles.purchaseDetailRow}>
-                  <Text style={styles.purchaseLabel}>Option:</Text>
-                  <Text style={styles.purchaseValue}>
-                    {entry.purchaseOption.title}
-                  </Text>
-                </View>
-                <View style={styles.purchaseDetailRow}>
-                  <Text style={styles.purchaseLabel}>Price:</Text>
-                  <Text style={styles.purchaseValue}>
-                    {formatCurrency(
-                      entry.purchaseOption.price,
-                      entry.purchaseOption.currency ||
-                        accountPreferences?.currency ||
-                        "USD",
-                    )}
-                  </Text>
-                </View>
-                {entry.purchaseOption.duration && (
-                  <View style={styles.purchaseDetailRow}>
-                    <Text style={styles.purchaseLabel}>Duration:</Text>
-                    <Text style={styles.purchaseValue}>
-                      {entry.purchaseOption.duration}
-                    </Text>
-                  </View>
-                )}
-                {entry.purchaseOption.includes &&
-                  entry.purchaseOption.includes.length > 0 && (
-                  <View style={styles.purchaseFeatures}>
-                    <Text style={styles.purchaseFeaturesTitle}>
-                      Includes:
-                    </Text>
-                    <View style={styles.purchaseFeaturesList}>
-                      {entry.purchaseOption.includes
-                        .slice(0, 3)
-                        .map((item: string, index: number) => (
-                          <View key={index} style={styles.purchaseFeature}>
-                            <Text style={styles.purchaseFeatureText}>
-                              {item}
-                            </Text>
-                          </View>
-                        ))}
-                      {entry.purchaseOption.includes.length > 3 && (
-                        <View style={styles.purchaseFeature}>
-                          <Text style={styles.purchaseFeatureText}>
-                            +{entry.purchaseOption.includes.length - 3} more
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Calendar Actions */}
-        <View style={styles.actionsContainer}>
-          <View style={styles.actionsRow}>
-            {/* Propose Date Button - Large orange button */}
-            <TouchableOpacity
-              onPress={(e) => {
-                HapticFeedback.buttonPress();
-                e.stopPropagation(); // Prevent card expansion
-                setEntryToReschedule(entry);
-                setShowProposeDateTimeModal(true);
-              }}
-              style={styles.proposeDateButton}
-            >
-              <Icon name="calendar" size={18} color="white" />
-              <Text style={styles.proposeDateButtonText}>
-                {t("activity:calendarTab.reschedule")}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Share Button - Small circular */}
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation(); // Prevent card expansion
-                onShareCard(entry.experience || entry);
-              }}
-              style={styles.shareButton}
-            >
-              <Icon name="share-social-outline" size={18} color="#374151" />
-            </TouchableOpacity>
-
-            {/* Delete Button - Small circular */}
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation(); // Prevent card expansion
-                handleRemoveFromCalendar(entry);
-              }}
-              style={styles.deleteButton}
-              disabled={removingEntryId === entry.id}
-            >
-              {removingEntryId === entry.id
-                ? <ActivityIndicator size="small" color="#ef4444" />
-                : <Icon name="trash-outline" size={18} color="#ef4444" />}
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Expanded Calendar Details */}
-        {expandedCard === entry.id && (
-          <View style={styles.expandedContent}>
-            {/* Image Gallery */}
-            {entry.experience?.images && entry.experience.images.length > 0 && (
-              <View style={styles.imageGallery}>
-                <View style={styles.galleryImage}>
-                  <ImageWithFallback
-                    source={{
-                      uri: entry.experience.images[
-                        currentImageIndex[entry.id] || 0
-                      ],
-                    }}
-                    alt={entry.experience.title}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-
-                  {entry.experience.images.length > 1 && (
-                    <>
-                      <TouchableOpacity
-                        onPress={() =>
-                          prevImage(entry.id, entry.experience.images.length)}
-                        style={[styles.imageNavigation, styles.leftNav]}
-                      >
-                        <Icon name="chevron-back" size={16} color="white" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() =>
-                          nextImage(entry.id, entry.experience.images.length)}
-                        style={[styles.imageNavigation, styles.rightNav]}
-                      >
-                        <Icon
-                          name="chevron-forward"
-                          size={16}
-                          color="white"
-                        />
-                      </TouchableOpacity>
-
-                      {/* Image indicators */}
-                      <View style={styles.imageIndicators}>
-                        {entry.experience.images.map(
-                          (_: any, index: number) => (
-                            <View
-                              key={index}
-                              style={[
-                                styles.indicator,
-                                index === (currentImageIndex[entry.id] || 0)
-                                  ? styles.activeIndicator
-                                  : styles.inactiveIndicator,
-                              ]}
-                            />
-                          ),
-                        )}
-                      </View>
-                    </>
-                  )}
-                </View>
-              </View>
-            )}
-
-            {/* Details */}
-            <View style={styles.detailsSection}>
-              <View>
-                <Text style={styles.sectionTitle}>About this experience</Text>
-                <Text style={styles.sectionText}>
-                  {entry.experience?.fullDescription ||
-                    entry.experience?.description ||
-                    "Join us for this amazing experience! Perfect for creating memorable moments."}
-                </Text>
-              </View>
-
-              {entry.experience?.highlights &&
-                entry.experience.highlights.length > 0 && (
-                <View style={styles.highlightsContainer}>
-                  <Text style={styles.sectionTitle}>Highlights</Text>
-                  <View style={styles.highlightsList}>
-                    {entry.experience.highlights.map(
-                      (highlight: string, index: number) => (
-                        <View key={index} style={styles.highlightTag}>
-                          <Text style={styles.highlightText}>
-                            {highlight}
-                          </Text>
-                        </View>
-                      ),
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Date & Time Details */}
-              <View style={styles.scheduleDetails}>
-                <Text style={styles.sectionTitle}>Schedule Details</Text>
-                <View style={styles.scheduleRow}>
-                  <Icon name="calendar" size={16} color="#eb7825" />
-                  <Text style={styles.scheduleText}>
-                    {entry.suggestedDates?.[0]
-                      ? new Date(entry.suggestedDates[0]).toLocaleDateString(
-                        "en-US",
-                        {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        },
-                      )
-                      : "Date to be determined"}
-                  </Text>
-                </View>
-                <View style={styles.scheduleRow}>
-                  <Icon name="time" size={16} color="#eb7825" />
-                  <Text style={styles.scheduleText}>
-                    {entry.suggestedDates?.[0]
-                      ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
-                        "en-US",
-                        {
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        },
-                      )
-                      : "Time to be determined"}
-                  </Text>
-                </View>
-                <View style={styles.scheduleRow}>
-                  <Icon name="location" size={16} color="#eb7825" />
-                  <Text style={styles.scheduleText}>
-                    {entry.experience?.address ||
-                      "Location details will be provided"}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Date/Time Preferences Applied */}
-              {entry.dateTimePreferences && (
-                <View style={styles.preferencesContainer}>
-                  <Text style={styles.preferencesTitle}>
-                    Your Preferences Applied
-                  </Text>
-                  <View style={styles.preferencesList}>
-                    <View style={styles.preferenceTag}>
-                      <Text style={styles.preferenceText}>
-                        {entry.dateTimePreferences.timeOfDay}
-                      </Text>
-                    </View>
-                    <View style={styles.preferenceTag}>
-                      <Text style={styles.preferenceText}>
-                        {entry.dateTimePreferences.dayOfWeek}
-                      </Text>
-                    </View>
-                    <View style={styles.preferenceTag}>
-                      <Text style={styles.preferenceText}>
-                        {entry.dateTimePreferences.planningTimeframe}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* Contact Information */}
-              {(entry.experience?.phoneNumber || entry.experience?.website) && (
-                <View style={styles.contactContainer}>
-                  <Text style={styles.contactTitle}>Contact Information</Text>
-                  {entry.experience.phoneNumber && (
-                    <View style={styles.contactRow}>
-                      <Text>📞</Text>
-                      <Text style={styles.contactText}>
-                        {entry.experience.phoneNumber}
-                      </Text>
-                    </View>
-                  )}
-                  {entry.experience.website && (
-                    <View style={styles.contactRow}>
-                      <Icon name="link" size={16} color="#eb7825" />
-                      <Text style={styles.contactLink}>Visit Website</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderEmptyComponent = (section: "active" | "archive" = "active") => {
-    const isActive = section === "active";
-    return (
-      <View style={styles.emptyState}>
-        <View style={styles.emptyStateIconCircle}>
-          <Icon
-            name={isActive ? "calendar-outline" : "archive-outline"}
-            size={22}
-            color="#eb7825"
-          />
-        </View>
-        <View style={styles.emptyStateTextContainer}>
-          <Text style={styles.emptyStateTitle}>
-            {isActive
-              ? t("activity:calendarTab.emptyActiveTitle")
-              : t("activity:calendarTab.emptyArchiveTitle")}
-          </Text>
-          <Text style={styles.emptyStateSubtitle}>
-            {isActive
-              ? t("activity:calendarTab.emptyActiveSubtitle")
-              : t("activity:calendarTab.emptyArchiveSubtitle")}
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
   // Convert CalendarEntry to SavedCard format for ProposeDateTimeModal
   const entryToCard = (entry: CalendarEntry) => {
     // ORCH-1019 F-1(a): carry the curated payload so the reschedule modal
@@ -2911,246 +1058,267 @@ const CalendarTab = ({
     };
   };
 
-  if (isLoading) {
+  // ── Row actions ─────────────────────────────────────────────────────────
+  const openTicket = (row: CalendarRow): void => {
+    if (row.kind === "ticket") {
+      // #4063: the canonical Purchases ticket screen owns the QR / pass.
+      const firstTicketId = row.row.tickets.find((ticket) => ticket.status === "valid")?.id;
+      const suffix = firstTicketId
+        ? `?ticket=${encodeURIComponent(firstTicketId)}`
+        : "";
+      router.push(`/purchases/order/${encodeURIComponent(row.row.orderId)}${suffix}` as never);
+    } else if (row.kind === "rsvp") {
+      router.push(`/purchases/rsvp/${row.rsvp.guestId ?? row.rsvp.rsvpId}` as never);
+    }
+  };
+
+  const openRow = (row: CalendarRow): void => {
+    switch (row.kind) {
+      case "calendar":
+        handleCardExpand(row.entry);
+        return;
+      case "ticket":
+        if (row.row.paymentStatus === "pending") {
+          // Pending-payment guard (ORCH-0829-A): no ticket yet — say so.
+          toastManager.info(t("activity:calendarTab.statusFinalizing"));
+          return;
+        }
+        openTicket(row);
+        return;
+      case "rsvp":
+        openTicket(row);
+        return;
+      case "reservation":
+        handleReservationPress(row.reservation);
+        return;
+      case "stay":
+        router.push(`/stay/${row.group.groupId}` as never);
+        return;
+      default: {
+        const never: never = row;
+        return never;
+      }
+    }
+  };
+
+  // "Again": a scheduled card reopens the existing reschedule flow; every
+  // other kind has no schedule-again path, so it opens the plan's detail.
+  const againRow = (row: CalendarRow): void => {
+    if (row.kind === "calendar") {
+      HapticFeedback.buttonPress();
+      handleReschedule(row.entry);
+      return;
+    }
+    openRow(row);
+  };
+
+  // Stable identities for the memoised rows: the latest closures live in a
+  // ref, the callbacks handed to rows never change.
+  const rowHandlersRef = useRef({ openRow, openTicket, againRow });
+  rowHandlersRef.current = { openRow, openTicket, againRow };
+  const onOpenRow = useCallback((row: CalendarRow) => rowHandlersRef.current.openRow(row), []);
+  const onTicketRow = useCallback((row: CalendarRow) => rowHandlersRef.current.openTicket(row), []);
+  const onAgainRow = useCallback((row: CalendarRow) => rowHandlersRef.current.againRow(row), []);
+  const onMoreRow = useCallback((row: CalendarRow) => {
+    HapticFeedback.light();
+    setActionRow(row);
+  }, []);
+
+  // A second modal must wait until the sheet is fully dismissed, or iOS drops
+  // the presentation (same parking as SavedTab's menu).
+  const runAfterSheet = (fn: () => void): void => {
+    afterActionSheetRef.current = fn;
+    setActionRow(null);
+  };
+
+  const sheetActions = useMemo<CalendarPlanAction[]>(() => {
+    const row = actionRow;
+    if (row === null) return [];
+    if (row.kind === "calendar") {
+      const entry = row.entry;
+      return [
+        { key: "reschedule", icon: "calendar", label: t("activity:calendarTab.reschedule"), onPress: () => runAfterSheet(() => handleReschedule(entry)) },
+        { key: "share", icon: "share-outline", label: t("activity:calendarTab.actionShare"), onPress: () => runAfterSheet(() => onShareCard(entry.experience || entry)) },
+        { key: "phone", icon: "add-circle-outline", label: t("activity:calendarTab.actionAddToPhone"), onPress: () => runAfterSheet(() => onAddToCalendar(entry)) },
+        {
+          key: "remove",
+          icon: "trash-outline",
+          label: t("activity:calendarTab.actionRemove"),
+          danger: true,
+          busy: removingEntryId === entry.id,
+          onPress: () => runAfterSheet(() => void handleRemoveFromCalendar(entry)),
+        },
+      ];
+    }
+    const actions: CalendarPlanAction[] = [
+      { key: "open", icon: "open-outline", label: t("activity:calendarTab.actionOpen"), onPress: () => runAfterSheet(() => openRow(row)) },
+    ];
+    if (row.kind === "reservation") {
+      const startMs = Date.parse(row.reservation.reserved_for);
+      const cancellable = Number.isFinite(startMs) && startMs > Date.now() &&
+        (row.reservation.status === "confirmed" || row.reservation.status === "requested");
+      if (cancellable) {
+        const reservation = row.reservation;
+        actions.push({
+          key: "cancel",
+          icon: "close-circle-outline",
+          label: t("activity:calendarTab.actionCancelReservation"),
+          danger: true,
+          onPress: () => runAfterSheet(() => handleCancelReservation(reservation)),
+        });
+      }
+    }
+    return actions;
+    // The handlers are re-created each render; the sheet only needs the row's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionRow, removingEntryId, t]);
+
+  // #4111 Wave D (D6) — every non-card plan carries "Message {Brand}".
+  const sheetMessageControl = useMemo(() => {
+    const row = actionRow;
+    if (row === null || row.kind === "calendar") return null;
+    const target = row.kind === "reservation"
+      ? reservationMessageTarget(row.reservation)
+      : row.kind === "stay"
+      ? stayMessageTarget(row.group)
+      : row.kind === "rsvp"
+      ? rsvpMessageTarget(row.rsvp)
+      : ticketOrderMessageTarget(row.row);
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#eb7825" />
-        <Text style={styles.loadingText}>
-          {t("activity:calendarTab.loadingCalendar")}
-        </Text>
-      </View>
+      <CalendarPlanMessageButton
+        target={target}
+        onCancelReservation={row.kind === "reservation" ? cancelReservationById : undefined}
+      />
     );
-  }
+  }, [actionRow, cancelReservationById]);
+
+  // ── Rendering ───────────────────────────────────────────────────────────
+  const renderItem = useCallback(
+    ({ item, section }: SectionListRenderItemInfo<CalendarRow, AgendaSection>) =>
+      section.kind === "past"
+        ? <CalendarPastRow row={item} timeLabel={pastLabel(item)} onOpen={onOpenRow} onAgain={onAgainRow} />
+        : item.isPast
+        ? <CalendarPastRow row={item} timeLabel={timeLabel(item)} onOpen={onOpenRow} onAgain={onAgainRow} />
+        : <CalendarAgendaRow row={item} timeLabel={timeLabel(item)} onOpen={onOpenRow} onTicket={onTicketRow} onMore={onMoreRow} />,
+    [pastLabel, timeLabel, onOpenRow, onAgainRow, onTicketRow, onMoreRow],
+  );
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: SectionListData<CalendarRow, AgendaSection> }) =>
+      section.kind === "past"
+        ? <CalendarPastToggle count={section.total} expanded={showPast} onToggle={() => setShowPast((v) => !v)} />
+        : (
+          <Text
+            style={[styles.sectionHeader, section.label === "today" && styles.sectionHeaderToday]}
+            accessibilityRole="header"
+          >
+            {sectionLabel(section.label, section.dayKey)}
+          </Text>
+        ),
+    [sectionLabel, showPast],
+  );
+
+  const onPickStripDay = useCallback(
+    (dayKey: string) => setSelectedDayKey((current) => toggleSelectedDay(current, dayKey)),
+    [],
+  );
+  const onPickWeekDay = useCallback(
+    (dayKey: string) => setWeekDayKey((current) => toggleSelectedDay(current, dayKey)),
+    [],
+  );
+  const shiftWeek = useCallback((delta: number) => {
+    setWeekAnchor((d) => addDays(d, delta * 7));
+    setWeekDayKey(null);
+  }, []);
+  const onPickMonthDay = useCallback((dayKey: string) => setMonthDayKey(dayKey), []);
+
+  const showSkeleton = allRows.length === 0 &&
+    (isLoading || businessOrdersQuery.isLoading || reservationsQuery.isLoading ||
+      staysQuery.isLoading || goingRsvpsQuery.isLoading);
+
+  const header = (
+    <View style={styles.header}>
+      {view === "list"
+        ? <CalendarDayStrip days={strip} locale={locale} onPick={onPickStripDay} />
+        : view === "week"
+        ? (
+          <View style={styles.week}>
+            <CalendarWeekHeader
+              first={week.first}
+              last={week.last}
+              locale={locale}
+              onPrev={() => shiftWeek(-1)}
+              onNext={() => shiftWeek(1)}
+            />
+            <CalendarDayStrip days={weekStrip} locale={locale} onPick={onPickWeekDay} />
+          </View>
+        )
+        : (
+          <CalendarMonthView
+            cells={monthCells}
+            year={month.year}
+            monthIndex={month.monthIndex}
+            weekStart={weekStart}
+            locale={locale}
+            onPrev={() => setMonth((m) => shiftMonth(m.year, m.monthIndex, -1))}
+            onNext={() => setMonth((m) => shiftMonth(m.year, m.monthIndex, 1))}
+            onPick={onPickMonthDay}
+          />
+        )}
+      {showSkeleton
+        ? <CalendarAgendaSkeleton reduceMotion={reduceMotion} accessibilityLabel={t("activity:calendarTab.loadingCalendar")} />
+        : !hasUpcomingInView
+        ? (
+          <CalendarEmptyCard
+            scope={view === "month" || (view === "list" ? selectedDayKey : weekDayKey) !== null
+              ? "day"
+              : view === "week"
+              ? "week"
+              : "all"}
+            onPlanFromSaves={onPlanFromSaves}
+          />
+        )
+        : null}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.mainScrollView}
-        contentContainerStyle={styles.mainScrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor="#999"
-          />
-        }
-      >
-        {/* Search & Filters */}
-        <Animated.View
-          style={{
-            opacity: searchBarOpacity,
-            transform: [{ translateY: searchBarSlide }],
-          }}
-        >
-          <CardFilterBar
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            selectedWhen={selectedWhen}
-            onWhenChange={setSelectedWhen}
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-            selectedTier={selectedTier}
-            onTierChange={setSelectedTier}
-          />
-        </Animated.View>
+      <Animated.View style={[styles.container, { opacity: listOpacity }]}>
+        <SectionList<CalendarRow, AgendaSection>
+          sections={showSkeleton ? [] : sections}
+          keyExtractor={(item) => item.key}
+          renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
+          ListHeaderComponent={header}
+          stickySectionHeadersEnabled={false}
+          contentContainerStyle={mainScrollContent}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor="#999"
+            />
+          }
+        />
+      </Animated.View>
 
-        {
-          /* ORCH-0842: standalone "Tickets" block removed. Business orders
-            now sort-merge into the Active + Archive accordions below. */
-        }
-
-        {/* Active Section — unified calendar entries + business-event tickets */}
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() =>
-            setExpandedAccordionItems((prev) =>
-              prev.includes("active")
-                ? prev.filter((i) => i !== "active")
-                : [...prev, "active"]
-            )}
-          activeOpacity={0.7}
-        >
-          <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>
-              {t("activity:calendarTab.active")}
-            </Text>
-            <Text style={styles.accordionCount}>
-              ({unifiedActiveRows.length})
-            </Text>
-          </View>
-          <Icon
-            name={expandedAccordionItems.includes("active")
-              ? "chevron-down"
-              : "chevron-forward"}
-            size={20}
-            color="#9ca3af"
-          />
-        </TouchableOpacity>
-
-        {expandedAccordionItems.includes("active") && (
-          <View style={styles.accordionContentContainer}>
-            {unifiedActiveRows.length === 0
-              ? renderEmptyComponent("active")
-              : unifiedActiveRows.map((row) => {
-                const animation = getCardAnimation(row.key);
-                if (row.kind === "calendar") {
-                  return (
-                    <Animated.View
-                      key={row.key}
-                      style={[
-                        styles.cardWrapper,
-                        {
-                          opacity: animation.opacity,
-                          transform: [{ translateY: animation.slide }],
-                        },
-                      ]}
-                    >
-                      {renderCalendarEntry({ item: row.entry })}
-                    </Animated.View>
-                  );
-                }
-                if (row.kind === "reservation") {
-                  return withPlanMessage(
-                    row,
-                    <ReservationCalendarRow
-                      key={row.key}
-                      reservation={row.reservation}
-                      animation={animation}
-                      onPress={handleReservationPress}
-                    />,
-                  );
-                }
-                if (row.kind === "stay") {
-                  return withPlanMessage(
-                    row,
-                    <StayCalendarRow
-                      key={row.key}
-                      group={row.group}
-                      animation={animation}
-                    />,
-                  );
-                }
-                if (row.kind === "rsvp") {
-                  return withPlanMessage(
-                    row,
-                    <RsvpCalendarRow
-                      key={row.key}
-                      row={row.rsvp}
-                      animation={animation}
-                    />,
-                  );
-                }
-                return withPlanMessage(
-                  row,
-                  <BusinessEventCalendarRow
-                    key={row.key}
-                    entry={row.row}
-                    animation={animation}
-                  />,
-                );
-              })}
-          </View>
-        )}
-
-        {/* Archive Section */}
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() =>
-            setExpandedAccordionItems((prev) =>
-              prev.includes("archive")
-                ? prev.filter((i) => i !== "archive")
-                : [...prev, "archive"]
-            )}
-          activeOpacity={0.7}
-        >
-          <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>
-              {t("activity:calendarTab.archives")}
-            </Text>
-            <Text style={styles.accordionCount}>
-              ({unifiedArchiveRows.length})
-            </Text>
-          </View>
-          <Icon
-            name={expandedAccordionItems.includes("archive")
-              ? "chevron-down"
-              : "chevron-forward"}
-            size={20}
-            color="#9ca3af"
-          />
-        </TouchableOpacity>
-
-        {expandedAccordionItems.includes("archive") && (
-          <View style={styles.accordionContentContainer}>
-            {unifiedArchiveRows.length === 0
-              ? renderEmptyComponent("archive")
-              : unifiedArchiveRows.map((row) => {
-                const animation = getCardAnimation(row.key);
-                if (row.kind === "calendar") {
-                  return (
-                    <Animated.View
-                      key={row.key}
-                      style={[
-                        styles.cardWrapper,
-                        {
-                          opacity: animation.opacity,
-                          transform: [{ translateY: animation.slide }],
-                        },
-                      ]}
-                    >
-                      {renderCalendarEntry({ item: row.entry })}
-                    </Animated.View>
-                  );
-                }
-                if (row.kind === "reservation") {
-                  return withPlanMessage(
-                    row,
-                    <ReservationCalendarRow
-                      key={row.key}
-                      reservation={row.reservation}
-                      animation={animation}
-                      onPress={handleReservationPress}
-                    />,
-                  );
-                }
-                if (row.kind === "stay") {
-                  return withPlanMessage(
-                    row,
-                    <StayCalendarRow
-                      key={row.key}
-                      group={row.group}
-                      animation={animation}
-                    />,
-                  );
-                }
-                if (row.kind === "rsvp") {
-                  return withPlanMessage(
-                    row,
-                    <RsvpCalendarRow
-                      key={row.key}
-                      row={row.rsvp}
-                      animation={animation}
-                    />,
-                  );
-                }
-                return withPlanMessage(
-                  row,
-                  <BusinessEventCalendarRow
-                    key={row.key}
-                    entry={row.row}
-                    animation={animation}
-                  />,
-                );
-              })}
-          </View>
-        )}
-        {keyboardSpacerHeight > 0 && (
-          <View style={{ height: keyboardSpacerHeight }} />
-        )}
-      </ScrollView>
+      <CalendarPlanActionSheet
+        visible={actionRow !== null}
+        title={actionRow?.title ?? ""}
+        actions={sheetActions}
+        messageControl={sheetMessageControl}
+        onClose={() => setActionRow(null)}
+        onDismissed={() => {
+          const next = afterActionSheetRef.current;
+          afterActionSheetRef.current = null;
+          next?.();
+        }}
+      />
 
       {/* Propose Date & Time Modal */}
       {entryToReschedule && (
@@ -3263,5 +1431,42 @@ const CalendarTab = ({
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: L.grid.sidePadding,
+    paddingTop: 12,
+  },
+  header: {
+    gap: 14,
+  },
+  week: {
+    gap: 6,
+  },
+  sectionHeader: {
+    marginTop: 14,
+    marginBottom: 8,
+    color: L.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  sectionHeaderToday: {
+    color: L.accent,
+  },
+  attentionBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  attentionPanel: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    backgroundColor: "#ffffff",
+  },
+});
 
 export default CalendarTab;

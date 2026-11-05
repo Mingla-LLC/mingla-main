@@ -34,8 +34,10 @@ function ok(name, cond, detail) {
 }
 
 const APP = "app-mobile";
+// #4265: the reservation row is now one kind of Calendar agenda row
+// (CalendarAgendaRow.tsx) — compact, tappable, delegating to onOpen.
 const rowSrc = stripComments(
-  read(`${APP}/src/components/activity/ReservationCalendarRow.tsx`),
+  read(`${APP}/src/components/activity/CalendarAgendaRow.tsx`),
 );
 const passSrc = stripComments(
   read(`${APP}/src/components/expandedCard/ReservationPassSection.tsx`),
@@ -64,15 +66,13 @@ ok(
 
 // ── Row — compact + tappable, NOT an in-place expanded card ──────────────────
 ok(
-  "row is a tappable card that calls onPress (no inline expand)",
-  /onPress:\s*\(reservation/.test(rowSrc) &&
-    /onPress\(reservation\)/.test(rowSrc) &&
-    !/setExpanded/.test(rowSrc),
-  "row should delegate to onPress and not manage its own expanded state",
+  "row is a tappable card that calls onOpen (no inline expand)",
+  /onOpen\(row\)/.test(rowSrc) && !/setExpanded/.test(rowSrc),
+  "row should delegate to onOpen and not manage its own expanded state",
 );
 ok(
-  "row keeps the venue cover thumbnail + chips",
-  /ImageWithFallback/.test(rowSrc) && /hueColor\(/.test(rowSrc),
+  "row keeps the venue cover thumbnail (image or video)",
+  /<ExpoImage/.test(rowSrc) && /<EventCoverMedia/.test(rowSrc),
 );
 
 // ── ExpandedCardModal — injects the reservation pass (reuse, not reinvent) ────
@@ -120,7 +120,7 @@ ok(
 ok(
   "tapping a reservation opens the modal via handleReservationPress",
   /handleReservationPress/.test(calSrc) &&
-    /onPress=\{handleReservationPress\}/.test(calSrc),
+    /handleReservationPress\(row\.reservation\)/.test(calSrc),
 );
 ok(
   "the venue card carries location (weather) + address (directions)",

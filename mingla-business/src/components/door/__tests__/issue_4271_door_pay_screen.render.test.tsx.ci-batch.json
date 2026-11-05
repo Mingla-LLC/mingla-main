@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4271",
+  "suite": {
+    "id": "issue-4271-business-door-pay-render",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/app/**",
+      "mingla-business/jest.orch1118.babel.cjs",
+      "packages/phone-input/**"
+    ],
+    "steps": [
+      {
+        "name": "Business door pay rendered surfaces",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/door/__tests__/jest.issue4271.render.cjs --runInBand",
+        "commandId": "assert:issue-4271-business-door-pay-render:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/door/__tests__/jest.issue4271.render.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4271",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/door/__tests__/issue_4271_door_pay_screen.render.test.tsx",
+      "mingla-business/src/components/door/__tests__/issue_4271_door_sale_surfaces.render.test.tsx",
+      "mingla-business/src/components/door/__tests__/jest.issue4271.render.cjs"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.orch1118.babel.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 6,
+      "p95": 20,
+      "evidence": "Local targeted run 2026-11-05"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

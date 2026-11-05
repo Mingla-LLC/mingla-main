@@ -25,6 +25,7 @@ import {
 // DISTANCE-AND-TIME enforces a single source of truth for distance + travel-
 // time math across all edge functions.
 import { haversineKm, estimateTravelMinutes } from './distanceMath.ts';
+import { buildStopPrice } from './curatedPrice.ts';
 export { haversineKm, estimateTravelMinutes };
 
 // ORCH-0985: fixed metro-scale search radius for stop replacement (decoupled
@@ -54,6 +55,8 @@ export interface StopAlternativeResult {
   priceTiers: string[];
   priceMin: number;
   priceMax: number;
+  /** #4265: true when the place has no known max ("$100+"); then priceMax = priceMin. */
+  priceOpenEnded?: true;
   openingHours: Record<string, unknown>;
   website: string | null;
   lat: number;
@@ -202,8 +205,8 @@ export async function fetchStopAlternatives(
       priceLevelLabel: c.price_tiers?.[0] || c.price_tier || 'chill',
       priceTier: c.price_tiers?.[0] || c.price_tier || 'chill',
       priceTiers: c.price_tiers?.length ? c.price_tiers : (c.price_tier ? [c.price_tier] : ['chill']),
-      priceMin: c.price_min ?? 0,
-      priceMax: c.price_max ?? 0,
+      // #4265: an unknown max ("$100+") is never 0 — same rule as the plan builder.
+      ...buildStopPrice(c.price_min, c.price_max),
       openingHours: (c.opening_hours as Record<string, unknown>) || {},
       website: c.website || null,
       lat: c.lat ?? 0,

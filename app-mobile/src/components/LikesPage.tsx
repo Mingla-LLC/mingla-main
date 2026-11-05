@@ -1,7 +1,17 @@
 /**
- * LikesPage — Saved + Calendar tabs behind a glass header with orange-spotlight
- * pill switcher. ORCH-0610: matches the Home / Discover / Friends glass language;
- * the pill switcher mirrors GlassBottomNav's spotlight pattern.
+ * LikesPage — Saved + Calendar tabs behind a glass header. ORCH-0610: matches the
+ * Home / Discover / Friends glass language.
+ *
+ * Issue #4265: the full-width orange segmented bar is replaced by the design's
+ * small, left-aligned pill switcher (Main.dc.html) — a 4pt-padded, fully
+ * rounded quiet capsule holding two 32pt pills; the selected one is white with
+ * dark text. The white pill glides 150 ms between the two (instant under
+ * reduce motion).
+ *
+ * On the Calendar tab the same line also carries the Calendar's controls on
+ * the right — List · Week · Month icons and the plan-type filter menu — so the
+ * calendar starts right under the header. LikesPage owns that choice (the
+ * view is persisted per user); CalendarTab owns the data.
  */
 import React, { useState, useEffect, useRef } from "react";
 import {
@@ -23,14 +33,16 @@ import {
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { Icon, type IconName } from './ui/Icon';
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
+import { CalendarFilterMenu, CalendarViewIcons } from "./activity/CalendarHeaderControls";
+import { useCalendarViewPref } from "./activity/useCalendarViewPref";
+import type { AgendaTypeCounts, AgendaTypeFilter } from "./activity/calendarAgendaModel";
 import { mixpanelService } from "../services/mixpanelService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useAppLayout } from "../hooks/useAppLayout";
@@ -44,6 +56,11 @@ export type LikesTab = "saved" | "calendar";
 
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
 const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
+
+// Issue #4265: small Saved | Calendar switcher tokens.
+const S = glass.likes.switcher;
+// 32pt pills + 6pt vertical slop each side = a 44pt touch target.
+const SWITCHER_HIT_SLOP = { top: 6, bottom: 6, left: 0, right: 0 } as const;
 
 interface LikesPageProps {
   isTabVisible?: boolean;
@@ -78,6 +95,8 @@ interface LikesPageProps {
    */
   deepLinkParams?: Record<string, string> | null;
   onDeepLinkHandled?: () => void;
+  /** Issue #4265: "Find something" / "Find similar" land on Explore. */
+  onExplore?: () => void;
 }
 
 function LikesPage({
@@ -99,6 +118,7 @@ function LikesPage({
   onNavigationComplete,
   deepLinkParams,
   onDeepLinkHandled,
+  onExplore,
 }: LikesPageProps): React.ReactElement {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
@@ -108,7 +128,10 @@ function LikesPage({
   }
 
   useScreenLogger('likes');
-  const { t } = useTranslation(['saved']);
+  const { t } = useTranslation(['saved', 'activity']);
+  // Issue #4265: "N saved" on the title row, reported by SavedTab net of cards
+  // still inside their Undo window. Hidden on Calendar, loading and error.
+  const [savedCount, setSavedCount] = useState<number | null>(null);
   const insets = useSafeAreaInsets();
   const { bottomNavTotalHeight } = useAppLayout();
   // ORCH-0679 Wave 2.8.1: preserve inner-tab selection across tab unmount/remount.
@@ -116,6 +139,17 @@ function LikesPage({
   const likesActiveTabSnapshot = useAppStore.getState().likesActiveTab;
   const setLikesActiveTabRegistry = useAppStore((s) => s.setLikesActiveTab);
   const [activeTab, setActiveTab] = useState<LikesTab>(likesActiveTabSnapshot);
+  // Issue #4265 — Calendar view + plan-type filter, chosen on the header line.
+  const userId = useAppStore((s) => s.user?.id);
+  const { view: calendarView, setView: setCalendarView } = useCalendarViewPref(userId);
+  const [calendarTypeFilter, setCalendarTypeFilter] = useState<AgendaTypeFilter>("all");
+  const [calendarTypeCounts, setCalendarTypeCounts] = useState<AgendaTypeCounts>({
+    all: 0,
+    tickets: 0,
+    reservations: 0,
+    plans: 0,
+    stays: 0,
+  });
   useEffect(() => {
     setLikesActiveTabRegistry(activeTab);
   }, [activeTab, setLikesActiveTabRegistry]);
@@ -164,6 +198,9 @@ function LikesPage({
   };
 
   // ── Glass header geometry ──────────────────────────────
+  // Issue #4265: the switcher band keeps its 52pt height (the small 40pt
+  // switcher sits 8pt below the title inside it), so HEADER_PANEL_HEIGHT — and
+  // with it the content paddingTop BOTH tabs rely on — is unchanged.
   const g = glass.discover;
   const c = glass.chrome;
   const TITLE_TOP = insets.top + c.row.topInset;
@@ -173,10 +210,10 @@ function LikesPage({
   const HEADER_PANEL_HEIGHT = PILL_BAR_TOP + PILL_BAR_HEIGHT + 4;
   const HEADER_PANEL_RADIUS = 28;
 
-  // ── Spotlight pill switcher (mirrors GlassBottomNav pattern) ──
-  const TABS: Array<{ id: LikesTab; label: string; icon: IconName }> = [
-    { id: "saved", label: t('saved:tab_saved'), icon: "bookmark-outline" },
-    { id: "calendar", label: t('saved:tab_calendar'), icon: "calendar-outline" },
+  // ── Small pill switcher (Issue #4265) ──────────────────
+  const TABS: Array<{ id: LikesTab; label: string }> = [
+    { id: "saved", label: t('saved:tab_saved') },
+    { id: "calendar", label: t('saved:tab_calendar') },
   ];
 
   const tabLayoutsRef = useRef<Record<LikesTab, { x: number; width: number } | undefined>>({
@@ -184,51 +221,39 @@ function LikesPage({
     calendar: undefined,
   });
   const [layoutTick, setLayoutTick] = useState(0);
-  // Issue #1638 — `left`/`width` now animate on the UI THREAD via Reanimated shared
-  // values. They used to be an RN Animated.spring WITHOUT the native driver, i.e. a
-  // JS-thread-driven layout spring, and its `layoutTick` dep guarantees it fires ONE
-  // FRAME INTO THE NEW PAGE'S LIFE — precisely when the JS thread is busiest committing
-  // the rest of the mount. ORCH-0995 already did exactly this migration for the bottom
-  // nav (GlassBottomNav.tsx) and left the page headers behind; this closes that gap for
-  // Likes. Reanimated animates `left`/`width` on the UI thread — it is NOT subject to the
-  // RN-Animated native-driver restriction on layout props — and the resting geometry is
-  // pixel-identical (true `left`/`width`, no scaleX radius distortion).
-  const spotlightX = useSharedValue(0);
-  const spotlightWidth = useSharedValue(0);
+  // Issue #1638 — geometry animates on the UI THREAD via Reanimated shared
+  // values (never a JS-thread layout spring one frame into the page's life).
+  const pillX = useSharedValue(0);
+  const pillWidth = useSharedValue(0);
+  const pillPlacedRef = useRef(false);
 
   const handleTabLayout = (id: LikesTab, x: number, width: number): void => {
     tabLayoutsRef.current[id] = { x, width };
     setLayoutTick((v) => v + 1);
   };
 
-  // ORCH-0610: layoutTick dep included so the spotlight re-fires when onLayout
-  // arrives for the first time (mirrors GlassBottomNav R6 fix).
+  // layoutTick dep: re-fires when onLayout arrives for the first time.
   useEffect(() => {
     const layout = tabLayoutsRef.current[activeTab];
     if (!layout) return;
-    const targetX = layout.x + c.nav.spotlightInset;
-    const targetWidth = layout.width - c.nav.spotlightInset * 2;
-
-    if (reduceMotion) {
-      // Instant set, no animation (a11y reduce-motion path preserved).
-      spotlightX.value = targetX;
-      spotlightWidth.value = targetWidth;
+    const targetX = layout.x;
+    const targetWidth = layout.width;
+    // First placement and reduce motion: no glide.
+    if (reduceMotion || !pillPlacedRef.current) {
+      pillPlacedRef.current = true;
+      pillX.value = targetX;
+      pillWidth.value = targetWidth;
       return;
     }
-    // designSystem motion tokens map 1:1 onto Reanimated withSpring config.
-    const springConfig = {
-      damping: c.motion.springDamping,
-      stiffness: c.motion.springStiffness,
-      mass: c.motion.springMass,
-    };
-    spotlightX.value = withSpring(targetX, springConfig);
-    spotlightWidth.value = withSpring(targetWidth, springConfig);
-  }, [activeTab, layoutTick, reduceMotion, spotlightX, spotlightWidth, c.motion.springDamping, c.motion.springStiffness, c.motion.springMass, c.nav.spotlightInset]);
+    const timing = { duration: glass.likes.switcher.moveMs };
+    pillX.value = withTiming(targetX, timing);
+    pillWidth.value = withTiming(targetWidth, timing);
+  }, [activeTab, layoutTick, reduceMotion, pillX, pillWidth]);
 
-  // UI-thread animated style for the spotlight pill (left + width).
-  const spotlightAnimatedStyle = useAnimatedStyle(() => ({
-    left: spotlightX.value,
-    width: spotlightWidth.value,
+  // UI-thread animated style for the white pill (left + width).
+  const pillAnimatedStyle = useAnimatedStyle(() => ({
+    left: pillX.value,
+    width: pillWidth.value,
   }));
 
   return (
@@ -277,53 +302,60 @@ function LikesPage({
           <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
             {t('saved:page_title', 'Likes')}
           </Text>
+          {activeTab === "saved" && savedCount !== null && savedCount > 0 ? (
+            <Text style={styles.countText} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+              {t('activity:savedTab.countSaved', { count: savedCount })}
+            </Text>
+          ) : null}
         </View>
 
-        {/* Spotlight pill switcher — mirrors GlassBottomNav pattern */}
-        <View style={[styles.pillBarAbsolute, { top: PILL_BAR_TOP, height: PILL_BAR_HEIGHT }]}>
-          <View style={styles.pillBarCapsule}>
-            {/* Orange spotlight */}
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.spotlight, spotlightAnimatedStyle]}
-            />
-            {/* Tabs */}
-            <View style={styles.tabsRow}>
-              {TABS.map((tab) => {
-                const active = tab.id === activeTab;
-                return (
-                  <Pressable
-                    key={tab.id}
-                    onPress={() => handleTabChange(tab.id)}
-                    onLayout={(e) => {
-                      const { x, width } = e.nativeEvent.layout;
-                      handleTabLayout(tab.id, x, width);
-                    }}
-                    style={styles.tab}
-                    accessibilityRole="tab"
-                    accessibilityLabel={tab.label}
-                    accessibilityState={{ selected: active }}
+        {/* Issue #4265: small left-aligned pill switcher */}
+        <View style={[styles.switcherBand, { top: PILL_BAR_TOP, height: PILL_BAR_HEIGHT }]}>
+          <View style={styles.switcher} accessibilityRole="tablist">
+            {/* The white selected pill */}
+            <Animated.View pointerEvents="none" style={[styles.switcherPill, pillAnimatedStyle]} />
+            {TABS.map((tab) => {
+              const active = tab.id === activeTab;
+              return (
+                <Pressable
+                  key={tab.id}
+                  onPress={() => handleTabChange(tab.id)}
+                  onLayout={(e) => {
+                    const { x, width } = e.nativeEvent.layout;
+                    handleTabLayout(tab.id, x, width);
+                  }}
+                  hitSlop={SWITCHER_HIT_SLOP}
+                  style={styles.switcherTab}
+                  accessibilityRole="tab"
+                  accessibilityLabel={tab.label}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text
+                    style={[
+                      styles.switcherLabel,
+                      active ? styles.switcherLabelActive : styles.switcherLabelInactive,
+                    ]}
+                    numberOfLines={1}
+                    // The Calendar line also holds its controls: cap the
+                    // switcher's growth there so it all fits at 375pt.
+                    maxFontSizeMultiplier={activeTab === "calendar" ? 1.1 : 1.3}
                   >
-                    <Icon
-                      name={tab.icon}
-                      size={16}
-                      color={active ? c.active.iconColor : c.inactive.iconColor}
-                    />
-                    <Text
-                      style={[
-                        styles.tabLabel,
-                        active ? styles.tabLabelActive : styles.tabLabelInactive,
-                      ]}
-                      numberOfLines={1}
-                      allowFontScaling
-                    >
-                      {tab.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
+          {activeTab === "calendar" ? (
+            <View style={styles.calendarControls}>
+              <CalendarViewIcons view={calendarView} onChange={setCalendarView} />
+              <CalendarFilterMenu
+                value={calendarTypeFilter}
+                counts={calendarTypeCounts}
+                onChange={setCalendarTypeFilter}
+              />
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -358,6 +390,8 @@ function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             bottomNavTotalHeight={bottomNavTotalHeight}
+            onExplore={onExplore}
+            onSavedCountChange={setSavedCount}
           />
         )}
 
@@ -368,11 +402,14 @@ function LikesPage({
             onRemoveFromCalendar={onRemoveFromCalendar || (() => {})}
             onShareCard={onShareCard || (() => {})}
             onAddToCalendar={onAddToCalendar || (() => {})}
-            onShowQRCode={onShowQRCode || (() => {})}
+            onPlanFromSaves={() => handleTabChange("saved")}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             selectedEntryId={deepLinkEntryId}
             bottomNavTotalHeight={bottomNavTotalHeight}
+            view={calendarView}
+            typeFilter={calendarTypeFilter}
+            onTypeCountsChange={setCalendarTypeCounts}
           />
         )}
       </View>
@@ -412,9 +449,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: glass.discover.title.horizontalPadding,
-    justifyContent: 'center',
+    // Issue #4265: title left, "N saved" right on the same row.
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  countText: {
+    color: glass.likes.textSecondary,
+    fontSize: 13,
+    flexShrink: 0,
   },
   titleText: {
+    flexShrink: 1,
     color: glass.discover.title.color,
     fontSize: glass.discover.title.fontSize,
     fontWeight: glass.discover.title.fontWeight,
@@ -423,59 +470,59 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
 
-  // Pill bar
-  pillBarAbsolute: {
+  // Issue #4265: small pill switcher (Main.dc.html)
+  switcherBand: {
     position: 'absolute',
     left: 0,
     right: 0,
-    paddingHorizontal: glass.discover.filterBar.paddingHorizontal,
-    justifyContent: 'center',
-  },
-  pillBarCapsule: {
-    height: 44,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    overflow: 'hidden',
-  },
-  tabsRow: {
-    flex: 1,
+    paddingHorizontal: glass.discover.title.horizontalPadding,
+    paddingTop: 8,
+    // Issue #4265: switcher left, Calendar controls right, one line.
     flexDirection: 'row',
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  tab: {
-    flex: 1,
+  calendarControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
+    flexShrink: 0,
+    marginTop: 1,
   },
-  spotlight: {
+  switcher: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    gap: S.gap,
+    padding: S.padding,
+    borderRadius: 999,
+    backgroundColor: isAndroidPreBlur ? S.fillOpaque : S.fill,
+  },
+  switcherPill: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    borderRadius: 20,
-    backgroundColor: glass.chrome.active.tint,
-    borderWidth: 1,
-    borderColor: glass.chrome.active.border,
-    shadowColor: glass.chrome.active.glowColor,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: glass.chrome.active.glowOpacity,
-    shadowRadius: glass.chrome.active.glowRadius,
-    elevation: 4,
+    top: S.padding,
+    height: S.pillHeight,
+    borderRadius: S.pillHeight / 2,
+    backgroundColor: S.selectedBg,
   },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+  switcherTab: {
+    height: S.pillHeight,
+    paddingHorizontal: S.pillPaddingH,
+    borderRadius: S.pillHeight / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tabLabelActive: {
-    color: glass.chrome.active.labelColor,
+  switcherLabel: {
+    fontSize: S.fontSize,
+    includeFontPadding: false,
+  },
+  switcherLabelActive: {
+    color: S.selectedText,
     fontWeight: '600',
   },
-  tabLabelInactive: {
-    color: glass.chrome.inactive.labelColor,
+  switcherLabelInactive: {
+    color: S.text,
+    fontWeight: '500',
   },
 });
 

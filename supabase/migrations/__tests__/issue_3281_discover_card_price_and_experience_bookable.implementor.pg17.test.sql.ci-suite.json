@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_discover_card_price_and_experience_bookable.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3281-discover-card-price-and-experience-bookable-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

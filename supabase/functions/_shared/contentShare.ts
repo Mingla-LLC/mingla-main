@@ -341,7 +341,7 @@ const NATIVE_PLACE_SOURCE_KEYS = [
 ];
 const NATIVE_CURATED_SOURCE_KEYS = [
   "id","experience_id","cardType","experienceType","pairingKey","title","tagline","categoryLabel","category","categoryIcon","image","images","description",
-  "fullDescription","stops","totalPriceMin","totalPriceMax","estimatedDurationMinutes","shoppingList","tip","priceTier","budget","oneLiner",
+  "fullDescription","stops","totalPriceMin","totalPriceMax","totalPriceOpenEnded","estimatedDurationMinutes","shoppingList","tip","priceTier","budget","oneLiner",
   "rating","reviewCount","travelTime","priceRange","priceRangeStatus","sourceMinMinor","sourceMaxMinor","sourceCurrencyCode","sourceMinorUnitExponent",
   "displayMinMinor","displayMaxMinor","displayCurrencyCode","displayMinorUnitExponent","priceIsApproximate","fxSnapshotId","fxProvider",
   "fxProviderUpdatedAt","fxFreshness","address","openingHours","utcOffsetMinutes","highlights","tags","socialStats","lat","lng","website",
@@ -352,7 +352,7 @@ const NATIVE_CURATED_SOURCE_KEYS = [
 ];
 const NATIVE_CURATED_STOP_KEYS = [
   "stopNumber","stopLabel","placeId","placeName","placeType","address","rating","reviewCount","imageUrl","imageUrls","priceLevelLabel",
-  "priceTier","priceMin","priceMax","openingHours","utcOffsetMinutes","isOpenNow","website","lat","lng","aiDescription",
+  "priceTier","priceMin","priceMax","priceOpenEnded","openingHours","utcOffsetMinutes","isOpenNow","website","lat","lng","aiDescription",
   "estimatedDurationMinutes","optional","dismissible","role","phone","countryCode","comboCategory","rankSignal","distanceFromUserKm",
   "travelTimeFromUserMin","travelTimeFromPreviousStopMin","travelModeFromPreviousStop",
 ];
@@ -383,7 +383,9 @@ export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: R
         placeId: nativeText(stop.placeId, 256, true), placeName: nativeText(stop.placeName, 160, true), placeType: nativeText(stop.placeType, 120),
         address: nativeText(stop.address, 500), rating: nativeRating(stop.rating), reviewCount: nativeCount(stop.reviewCount),
         imageUrl, imageUrls, priceLevelLabel: nativeText(stop.priceLevelLabel, 80), priceTier: nativeText(stop.priceTier, 40),
-        priceMin: nativeMoney(stop.priceMin), priceMax: nativeMoney(stop.priceMax), openingHours: nativeHours(stop.openingHours),
+        priceMin: nativeMoney(stop.priceMin), priceMax: nativeMoney(stop.priceMax),
+        // #4265: an open-ended stop price ("$100+") travels with the share; only `true` is emitted.
+        priceOpenEnded: nativeBoolean(stop.priceOpenEnded) === true ? true : undefined, openingHours: nativeHours(stop.openingHours),
         utcOffsetMinutes: nativeUtcOffsetMinutes(stop.utcOffsetMinutes), isOpenNow: stop.isOpenNow === null ? null : nativeBoolean(stop.isOpenNow),
         website: stop.website === null ? null : nativeExternalUrl(stop.website),
         lat: nativeLatitude(stop.lat), lng: nativeLongitude(stop.lng), aiDescription: nativeText(stop.aiDescription, 4000),
@@ -411,6 +413,7 @@ export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: R
     cardType: kind === "curated" ? "curated" : "single", stops,
     tagline: nativeText(source.tagline, 500), categoryLabel: nativeText(source.categoryLabel, 160), pairingKey: nativeText(source.pairingKey, 160),
     experienceType: nativeText(source.experienceType, 120), totalPriceMin: nativeMoney(source.totalPriceMin), totalPriceMax: nativeMoney(source.totalPriceMax),
+    totalPriceOpenEnded: kind === "curated" && nativeBoolean(source.totalPriceOpenEnded) === true ? true : undefined,
     estimatedDurationMinutes: nativePositiveInteger(source.estimatedDurationMinutes), shoppingList: nativeStrings(source.shoppingList, 500, 12), tip: source.tip === null ? null : nativeText(source.tip, 2000),
   });
   if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 262144) throw new Error("native_snapshot_too_large");

@@ -17,7 +17,10 @@ export function useDiscoverCityWatch({ cityKey, userId, anchor, label }: Args) {
     queryKey: key,
     queryFn: () => discoverCityWatchService.status(cityKey as string),
     enabled: Boolean(cityKey && userId),
-    staleTime: 30_000,
+    // #4265: the watch only changes through subscribe/unsubscribe below (which
+    // invalidate this key) or when the city launches, so a Discover revisit
+    // inside five minutes reuses it instead of refetching on every tab tap.
+    staleTime: 5 * 60_000,
   });
   const subscribe = useMutation({
     mutationFn: async () => {

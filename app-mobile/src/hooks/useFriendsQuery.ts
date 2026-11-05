@@ -28,12 +28,16 @@ const FRIENDS_STALE_TIME = 30_000;
 /**
  * Cached friend list. Freshness via Realtime + focusManager + resume invalidation.
  */
-export function useFriendsList(userId: string | undefined) {
+export function useFriendsList(
+  userId: string | undefined,
+  options?: { staleTime?: number },
+) {
   return useQuery({
     queryKey: friendsKeys.list(userId ?? ""),
     queryFn: () => friendsService.fetchFriends(userId!),
     enabled: !!userId,
-    staleTime: FRIENDS_STALE_TIME,
+    // #4265: a caller that only shows a count (Profile) may reuse the list longer.
+    staleTime: options?.staleTime ?? FRIENDS_STALE_TIME,
     refetchInterval: FALLBACK_REFETCH_INTERVAL,
   });
 }

@@ -351,6 +351,10 @@ test("H-5 consumer inventory: every flatlist consumer passing a header is review
     // #871 tester runtime-verified the title/close header stays pinned while
     // guest rows scroll; this is now a reviewed flatlist+header consumer.
     "src/components/EventGuestListSheet.tsx",
+    // [TEST-MOD-APPROVED #4265] the share sheet's recipient list is now a
+    // virtualised flatlist; its preview/search header stays pinned above the
+    // rows (simulator-verified at 60 fps scroll on #4265).
+    "src/components/share/UnifiedShareProvider.tsx",
   ].sort();
 
   assert.deepEqual(

@@ -48,12 +48,21 @@ const check = (name, pass, detail) => {
 
 const svcSrc = read("app-mobile/src/services/messagingService.ts");
 const pageSrc = read("app-mobile/src/components/ConnectionsPage.tsx");
+// Issue #4265: the unread filters and the 10 s timeout moved into the pure
+// Chats-list loader (Deno-tested); getConversations calls applyUnreadFilters.
+const loadSrc = read("app-mobile/src/components/connections/chatListLoad.ts");
+const unreadFiltersBody = (() => {
+  if (!loadSrc) return null;
+  const m = loadSrc.match(/export\s+function\s+applyUnreadFilters[\s\S]*?\n\}/);
+  return m ? m[0] : null;
+})();
 
 // Extract the getConversations function body (from declaration through closing brace at
 // the same depth). Capture is the public method on the MessagingService class.
 const extractGetConversationsBody = (src) => {
   if (!src) return null;
-  const sigRe = /async\s+getConversations\s*\(\s*userId:\s*string\s*\)\s*:\s*Promise<\{\s*conversations:\s*Conversation\[\]\s*;\s*error:\s*string\s*\|\s*null\s*\}>\s*\{/;
+  // Issue #4265: an optional second `options` parameter (deferSenderProfiles) is allowed.
+  const sigRe = /async\s+getConversations\s*\(\s*userId:\s*string\s*(?:,[\s\S]*?)?\)\s*:\s*Promise<\{\s*conversations:\s*Conversation\[\]\s*;\s*error:\s*string\s*\|\s*null\s*\}>\s*\{/;
   const m = src.match(sigRe);
   if (!m) return null;
   const start = m.index + m[0].length - 1; // position of opening "{"
@@ -142,7 +151,10 @@ check(
   "T-05 [FAILS-ON-REVERT KEY] Unread-count predicate uses .or('sender_id.neq.<X>,sender_id.is.null')" +
     " — defeats the .neq() nullable-column footgun documented in feedback_supabase_neq_null.md",
   body !== null &&
-    /\.or\(\s*`sender_id\.neq\.\$\{userId\}\s*,\s*sender_id\.is\.null`\s*\)/.test(body),
+    /applyUnreadFilters\(/.test(body) &&
+    unreadFiltersBody !== null &&
+    /ops\.or\(\s*query\s*,\s*`sender_id\.neq\.\$\{userId\}\s*,\s*sender_id\.is\.null`\s*\)/.test(unreadFiltersBody) &&
+    /or:\s*\(query,\s*filters\)\s*=>\s*query\.or\(filters\)/.test(body),
   "The legacy `.neq('sender_id', userId)` filter silently dropped NULL-sender rows because" +
     " NULL != 'value' evaluates to NULL (falsy) in SQL. Today no production NULL-sender messages exist," +
     " but ORCH-0898 [Consumer collab session → Friends-tab group chat] explicitly plans round-start system" +
@@ -244,11 +256,11 @@ check(
 check(
   "ConnectionsPage:693 comment updated to reflect post-ORCH-0901 query count" +
     " (replaces stale '4N sequential' text)",
-  pageSrc !== null &&
-    /Post-ORCH-0901,\s*\n?\s*\/\/\s*messagingService\.getConversations\s+runs\s+at\s+most\s+2\s+sequential/.test(
-      pageSrc,
-    ) &&
-    !/messagingService\.getConversations\s+runs\s+4N\s+sequential/.test(pageSrc),
+  // Issue #4265: the fetch left ConnectionsPage for chatListLoad.ts; the
+  // stale '4N sequential' text must not come back in either file.
+  pageSrc !== null && loadSrc !== null &&
+    !/messagingService\.getConversations\s+runs\s+4N\s+sequential/.test(pageSrc) &&
+    !/messagingService\.getConversations\s+runs\s+4N\s+sequential/.test(loadSrc),
   "ConnectionsPage.tsx:693-696 inline comment must replace the stale '4N sequential Supabase queries'" +
     " text with the post-ORCH-0901 description ('at most 2 sequential RLS-filtered Supabase round-trips')." +
     " The 10-second Promise.race timeout (lines 697-703) remains as belt-and-suspenders.",
@@ -258,10 +270,11 @@ check(
 
 check(
   "SC-09: 10-second `Promise.race` timeout retained at ConnectionsPage:697-703",
-  pageSrc !== null &&
-    /setTimeout\(\s*\(\)\s*=>\s*\{\s*\n?\s*const\s+err\s*=\s*new\s+Error\('getConversations\s+timed\s+out\s+after\s+10s'\)/.test(
-      pageSrc,
-    ),
+  // Issue #4265: the race lives in chatListLoad.withChatListTimeout.
+  loadSrc !== null &&
+    /CHAT_LIST_TIMEOUT_MS\s*=\s*10_000/.test(loadSrc) &&
+    /Promise\.race\(\[promise,\s*timeout\]\)/.test(loadSrc) &&
+    /withChatListTimeout\(deps\.getConversations\(userId\)/.test(loadSrc),
   "The belt-and-suspenders 10-second timeout must remain in place. It guards against background-suspended" +
     " Supabase connections hanging the cold-load forever. Removing it is a separate follow-up ORCH after" +
     " operator metric confirmation.",

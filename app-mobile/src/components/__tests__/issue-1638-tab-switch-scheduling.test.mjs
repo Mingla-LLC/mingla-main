@@ -307,8 +307,10 @@ test('S-11 [FAILS-ON-REVERT] the Likes header spotlight animates on the UI threa
       'fire ONE FRAME INTO THE NEW PAGE — exactly when the JS thread is busiest. Same migration ' +
       'ORCH-0995 already did for GlassBottomNav.',
   );
-  assert.match(src, /useSharedValue\(0\)/, 'S-11 spotlight geometry must be Reanimated shared values');
-  assert.match(src, /withSpring\(targetX, springConfig\)/, 'S-11 spring must run through Reanimated');
+  assert.match(src, /useSharedValue\(0\)/, 'S-11 switcher pill geometry must be Reanimated shared values');
+  // Issue #4265: the small pill switcher glides with a 150 ms Reanimated timing
+  // (was a spring on the old orange spotlight) — still UI-thread.
+  assert.match(src, /withTiming\(targetX, timing\)/, 'S-11 the pill glide must run through Reanimated');
 });
 
 test('S-12 [FAILS-ON-REVERT] Reanimated worklet entry points are never import-aliased', () => {

@@ -129,6 +129,10 @@
       "body": "Filtrez par jour, ambiance, musique, destination et plus encore. Les choix changent avec chaque pilule."
     },
     "list_two": "{{a}} et {{b}}",
-    "list_three": "{{a}}, {{b}} et {{c}}"
+    "list_three": "{{a}}, {{b}} et {{c}}",
+    "step3": {
+      "title": "Là où vivent tes favoris",
+      "description": "Tout ce que tu mets en cœur arrive dans Favoris. Partage-le ou ajoute-le à ton agenda en un geste."
+    }
   }
 }

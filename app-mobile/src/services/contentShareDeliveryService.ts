@@ -113,7 +113,7 @@ export async function loadContentShareOperation(shareCode: string, version: numb
 
 export async function reconcileContentShareOperation(
   operation: PersistedContentShareOperation,
-  recipients: ContentShareRecipient[],
+  recipients: readonly ContentShareRecipient[],
 ): Promise<PersistedContentShareOperation> {
   const available = new Map(recipients.map((recipient) => [recipient.key, recipient]));
   const targets = operation.targets.filter((target) => {
@@ -171,32 +171,41 @@ export async function listContentShareRecipients(): Promise<ContentShareRecipien
     const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
+  // #4265: each row's order time and tie-break key are worked out ONCE (the
+  // old loop parsed every date twice and re-normalised both names on every tie).
+  const orderTimes: (number | null)[] = new Array(rows.length);
+  const tieKeys: (string | undefined)[] = new Array(rows.length);
+  const tieKeyAt = (index: number): string => {
+    const cached = tieKeys[index];
+    if (cached !== undefined) return cached;
+    const row = rows[index];
+    const computed = JSON.stringify([row.display_name.normalize('NFKC').toLocaleLowerCase(), row.target_kind, row.key]);
+    tieKeys[index] = computed;
+    return computed;
+  };
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
+    const activityAt = parseTime(row.meaningful_activity_at);
+    const createdAt = parseTime(row.conversation_created_at);
     if (![1, 2, 3].includes(row.recipient_tier)
       || !row.key || !row.target_id || !row.display_name
-      || (row.recipient_tier === 1 && parseTime(row.meaningful_activity_at) === null)
-      || (row.recipient_tier === 2 && (row.meaningful_activity_at !== null || parseTime(row.conversation_created_at) === null))
+      || (row.recipient_tier === 1 && activityAt === null)
+      || (row.recipient_tier === 2 && (row.meaningful_activity_at !== null || createdAt === null))
       || (row.recipient_tier === 3 && (row.meaningful_activity_at !== null || row.conversation_created_at !== null))) {
       throw new Error('malformed_recipient_order');
     }
+    orderTimes[index] = row.recipient_tier === 1 ? activityAt : row.recipient_tier === 2 ? createdAt : null;
     if (index === 0) continue;
     const previous = rows[index - 1];
     if (previous.recipient_tier > row.recipient_tier) throw new Error('nonmonotonic_recipient_order');
     if (previous.recipient_tier !== row.recipient_tier) continue;
-    const previousTime = previous.recipient_tier === 1
-      ? parseTime(previous.meaningful_activity_at)
-      : previous.recipient_tier === 2 ? parseTime(previous.conversation_created_at) : null;
-    const currentTime = row.recipient_tier === 1
-      ? parseTime(row.meaningful_activity_at)
-      : row.recipient_tier === 2 ? parseTime(row.conversation_created_at) : null;
+    const previousTime = orderTimes[index - 1];
+    const currentTime = orderTimes[index];
     if (previousTime !== null && currentTime !== null && previousTime < currentTime) {
       throw new Error('nonmonotonic_recipient_order');
     }
     if (previousTime === currentTime) {
-      const left = [previous.display_name.normalize('NFKC').toLocaleLowerCase(), previous.target_kind, previous.key];
-      const right = [row.display_name.normalize('NFKC').toLocaleLowerCase(), row.target_kind, row.key];
-      if (JSON.stringify(left).localeCompare(JSON.stringify(right)) > 0) throw new Error('nonmonotonic_recipient_order');
+      if (tieKeyAt(index - 1).localeCompare(tieKeyAt(index)) > 0) throw new Error('nonmonotonic_recipient_order');
     }
   }
   return rows.map((row) => ({
