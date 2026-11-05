@@ -1097,7 +1097,7 @@ export function parseGroupCampaignIds(
  * #4273 — keep only the drafts the client named. A named id that is not a
  * draft of this group means the set really changed → stale. Group drafts the
  * client did not name are returned so the client can discard them; they are
- * never priced. MINGLA-INVARIANT: I-4273-GROUP-PREVIEW-PRICES-PICKED-METHODS | issue #4273 | When the client names its drafts, the group preview prices only those; a group draft it did not name is never counted.
+ * never priced. MINGLA-INVARIANT: I-4273-GROUP-PREVIEW-PRICES-PICKED-METHODS | issue #4273 | When the client names the campaigns it is sending, the group preview prices only those; a group campaign it did not name is never counted.
  */
 export function selectGroupDrafts(
   drafts: Array<{ id: string; channel: "email" | "sms" | "push" }>,

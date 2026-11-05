@@ -2,7 +2,7 @@
 // quote failure to its own honest code (never "stale" unless the sealed set
 // changed), and prices only the drafts the client named.
 // MINGLA-INVARIANT: I-4273-STALE-MEANS-STALE | issue #4273 | marketing-send returns BOOK_BLAST_PREVIEW_STALE only when the sealed set, hash, cost or currency changed or the quote aged out; any other quote-build failure has its own code.
-// MINGLA-INVARIANT: I-4273-GROUP-PREVIEW-PRICES-PICKED-METHODS | issue #4273 | When the client names its drafts, the group preview prices only those; a group draft it did not name is never counted.
+// MINGLA-INVARIANT: I-4273-GROUP-PREVIEW-PRICES-PICKED-METHODS | issue #4273 | When the client names the campaigns it is sending, the group preview prices only those; a group campaign it did not name is never counted.
 import {
   assert,
   assertEquals,
