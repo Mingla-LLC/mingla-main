@@ -23,7 +23,6 @@ import {
 import { AppleLogo } from "../ui/BrandIcons";
 import { Icon } from "../ui/Icon";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import {
   spacing,
@@ -50,6 +49,8 @@ const googleIcon = require("../../../assets/google_icon.png");
 const logo = MINGLA_WORDMARK;
 
 import { LEGAL_URLS } from "../../constants/urls";
+// #4261: legal pages open in Mingla's in-app browser (root provider).
+import { useOpenInMingla } from "../InAppBrowserProvider";
 // #2211 — the consumer app has no shared CTA primitive, so every capped label
 // imports the ceiling directly.
 import { BUTTON_MAX_FONT_SCALE } from '../../constants/dynamicType';
@@ -108,6 +109,7 @@ export default function WelcomeScreen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { t } = useTranslation(['auth', 'common']);
+  const { open: openInMingla } = useOpenInMingla();
   const [isGoogleSignInInProgress, setIsGoogleSignInInProgress] =
     useState(false);
   const [isAppleSignInInProgress, setIsAppleSignInInProgress] = useState(false);
@@ -512,12 +514,12 @@ export default function WelcomeScreen({
     }
   };
 
-  const openTerms = async () => {
-    await WebBrowser.openBrowserAsync(LEGAL_URLS.termsOfService);
+  const openTerms = () => {
+    openInMingla(LEGAL_URLS.termsOfService, "Terms of Service");
   };
 
-  const openPrivacy = async () => {
-    await WebBrowser.openBrowserAsync(LEGAL_URLS.privacyPolicy);
+  const openPrivacy = () => {
+    openInMingla(LEGAL_URLS.privacyPolicy, "Privacy Policy");
   };
 
   const logoPillWidth = Math.min(

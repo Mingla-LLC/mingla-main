@@ -29,7 +29,7 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280212014188_issue_4188_pending_venue_repin.sql";
+  "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql";
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -48,12 +48,13 @@ const OLD_PIN =
   "('9a8c2a743af413f17f3b3e75e4f656f3' || 'e9cf3867cda091eb204bb9d5460f1ba0')";
 const NEW_PIN =
   "('52f4624c994529d2e63b8f70b79a3fcf' || 'e28f3ff90dafe300bc45439e37cd2921')";
-// [TEST-MOD-APPROVED #4188] #2855 still owns its historical six-lane forward
-// pin above. The live fixture follows the later reviewed Local and Stay venue
-// dependencies, which stay disallowed and are advanced by their later owners.
+// [TEST-MOD-APPROVED #4261] #2855 still owns its historical six-lane forward
+// pin above. The live fixture follows the later reviewed Local, Stay and
+// group-chat plan venue dependencies, which stay disallowed and are advanced by
+// their later owners (now #4261's repin, which replaces #4188's and reads one
+// value on every runner that applies it).
 const CURRENT_HASHES = [
-  "91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415",
-  "0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711",
+  "957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a",
 ] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
@@ -439,7 +440,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280212014188_issue_4188_pending_venue_repin.sql";
+  const currentPinName = "20280403074261_issue_4261_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),
@@ -449,9 +450,9 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   assert.equal(
     count(d4, currentPinName),
     2,
-    "D4 must replay the current Stay pin owner twice",
+    "D4 must replay the current group-chat plan pin owner twice",
   );
-  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188)[^\s"]+\.sql/g)]
+  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188|4261)[^\s"]+\.sql/g)]
     .map((match) => match[0]);
   assert.deepEqual(tokens, [
     originalName,
@@ -667,7 +668,7 @@ Deno.test("#2855 host-composes the tester fragment into the real outer SQL fixtu
   );
   assert.ok(
     CURRENT_HASHES.every((hash) => sqlTest.includes(hash)),
-    "main SQL fixture must accept both exact reviewed runner hashes",
+    "main SQL fixture must accept the exact reviewed runner hash",
   );
 });
 

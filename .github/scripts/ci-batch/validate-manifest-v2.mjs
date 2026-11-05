@@ -349,6 +349,8 @@ export function phase3dContractDigest(manifest) {
 // #4255: register the admin access and Work closed-range migrations the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
+// #4261: register the friend-share, plan, place-vote, referral and repin migrations.
+// #4261: register the friend-request decline fix migration and its proof the same way.
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
@@ -357,7 +359,8 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the Blast combined-audience migration and its proofs the same way.
 // #4273: register the tester adversarial proofs the same way.
 // #4273: register the rework proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7cf8cd307bda5fa636af729b1c731c9b80c769bb4347616f8b794a126e449dae";
+// #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ae83ad5378c6a648d1c01f791fb85592358d9b707835fb36d02e7e7621f0735b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1243,7 +1246,7 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
-    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
