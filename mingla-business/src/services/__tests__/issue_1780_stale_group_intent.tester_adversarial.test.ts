@@ -119,7 +119,9 @@ describe("#1780 stale saved-group/Everyone recovery", () => {
     // have no localDesired IDs until the server expands them. This proves why
     // their receipt cannot be treated as disposable local retry bookkeeping.
     // [TEST-MOD-APPROVED #3682] Wave 2.8b adds two circle source buttons.
-    expect(receiptOnlyMutations).toHaveLength(4);
+    // #4273: Everyone / Followers / Friends of followers share one toggleSource
+    // call site; saved groups and the "How to reach them" methods are the others.
+    expect(receiptOnlyMutations).toHaveLength(3);
   });
 
   test("a revision conflict retains the only exact intent for explicit retry", () => {

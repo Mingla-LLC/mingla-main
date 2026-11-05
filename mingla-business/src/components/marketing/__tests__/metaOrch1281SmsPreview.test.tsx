@@ -42,16 +42,16 @@ describe("ORCH-1281 — SmsPreviewPane channel-branch", () => {
   });
 
   it("branches the wide-desktop rail + inbox modal to SmsPreviewPane for channel === 'sms'", () => {
-    // Both preview sites gate on channel === "sms" before rendering SmsPreviewPane.
-    const branchMatches = COMPOSE.match(/channel === "sms" \? \(\s*<SmsPreviewPane/g) ?? [];
-    expect(branchMatches.length).toBeGreaterThanOrEqual(2);
+    // #4273: both preview sites share one per-method preview, under a tab per method.
+    expect(COMPOSE).toMatch(/if \(kind === "sms"\) \{[\s\S]*?<SmsPreviewPane/);
+    expect(COMPOSE.match(/<ComposerPreviewTabs/g)?.length).toBe(2);
     // Email is still rendered on the non-sms side (email untouched).
     expect(COMPOSE).toMatch(/<EmailPreviewPane/);
   });
 
   it("retitles the inbox-preview modal to 'Message preview' for SMS", () => {
     expect(COMPOSE).toMatch(
-      /channel === "sms" \? "Message preview" : "Inbox preview"/,
+      /previewChannel === "email" \? "Inbox preview" : "Message preview"/,
     );
   });
 

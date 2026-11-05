@@ -80,14 +80,24 @@ function refSeptets(text: string): number {
   return n;
 }
 
-/** TRUE segment count. */
+/** TRUE segment count: greedy, and neither an escape pair nor a surrogate pair splits. */
 function refSegments(text: string): number {
-  if (refIsGsm7(text)) {
-    const s = refSeptets(text);
-    return s <= 160 ? 1 : Math.ceil(s / 153);
+  const gsm7 = refIsGsm7(text);
+  const cost = (ch: string): number =>
+    gsm7 ? (REF_EXT.indexOf(ch) !== -1 ? 2 : 1) : ch.length;
+  const total = [...text].reduce((sum, ch) => sum + cost(ch), 0);
+  if (total <= (gsm7 ? 160 : 70)) return 1;
+  const room = gsm7 ? 153 : 67;
+  let segments = 1;
+  let used = 0;
+  for (const ch of text) {
+    if (used + cost(ch) > room) {
+      segments += 1;
+      used = 0;
+    }
+    used += cost(ch);
   }
-  const units = text.length; // UTF-16 code units — correct for UCS-2
-  return units <= 70 ? 1 : Math.ceil(units / 67);
+  return segments;
 }
 
 // ===========================================================================
@@ -151,25 +161,10 @@ Deno.test("#1556 ADV-1 — client and server segment counts match an INDEPENDENT
 });
 
 // ===========================================================================
-// ADV-2 — KNOWN GAP T-1556-EXT-SEPTETS (tester finding, P2).
-//
-// The GSM-7 EXTENDED table (`^ { } \ [ ~ ] | €`) costs TWO septets per
-// character: an escape byte plus the character. Both implementations count
-// `text.length`, so a body carrying extended characters is quoted SHORT — the
-// same direction, and for boundary bodies the same magnitude, as the defect
-// this issue was filed for. The server acknowledges the approximation in a
-// comment ("the dispatcher only needs cost observability, not billing
-// precision"); the CLIENT is a money quote shown to a brand, where it is not
-// merely observability.
-//
-// This is PRE-EXISTING and PARITY-PRESERVING: client and server are wrong
-// together, so #1556's wire-parity contract still holds. It is pinned here
-// rather than left as prose so it cannot rot into folklore.
-//
-// WHAT WOULD CLOSE IT: count septets (extended = 2) instead of `.length` in
-// BOTH `computeSegments` implementations, then flip the assertions below.
+// ADV-2 — EXTENDED CHARACTERS COST TWO SEPTETS. Was the known gap
+// T-1556-EXT-SEPTETS, pinned here as wrong on both sides; closed by #4273.
 // ===========================================================================
-Deno.test("#1556 ADV-2 PIN: extended-table characters cost two septets and BOTH sides under-count (KNOWN GAP)", () => {
+Deno.test("#1556 ADV-2: extended-table characters cost two septets on both sides", () => {
   // Deliberately shaped like the corpus's `smart-apostrophe-boundary`: a typed
   // body whose WIRE form lands exactly on 160 UTF-16 units. The footer adds 24
   // ("\n\n" + 22), so the typed body is 136 characters, one of them a '€'.
@@ -183,33 +178,13 @@ Deno.test("#1556 ADV-2 PIN: extended-table characters cost two septets and BOTH 
   assertEquals(refSeptets(wire), 161);
   assertEquals(refSegments(wire), 2, "the carrier bills TWO segments");
 
-  // PARITY (the #1556 contract) still holds — the two agree with each other.
-  assertEquals(
-    clientComputeSegments(wire),
-    serverComputeSegments(composeSmsBody(typed, true)),
-    "REGRESSION: client and server disagree on an extended-table body — that IS #1556 drift",
-  );
+  assertEquals(clientComputeSegments(wire), 2);
+  assertEquals(serverComputeSegments(composeSmsBody(typed, true)), 2);
 
-  // ...and they are BOTH wrong against the carrier. When this assertion starts
-  // failing, the septet fix has landed: delete this pin and close
-  // T-1556-EXT-SEPTETS.
-  assertEquals(
-    clientComputeSegments(wire),
-    1,
-    "PIN BROKEN (good news): the composer now counts extended-table septets. " +
-      "Verify it matches refSegments(), delete this pin, and close T-1556-EXT-SEPTETS.",
-  );
-  assertNotEquals(
-    clientComputeSegments(wire),
-    refSegments(wire),
-    "the gap this pin documents is closed — see the message above",
-  );
-
-  // The commercial shape of the gap, in the units a brand reads: half the bill.
   const est = estimateSmsCost(typed, 1000);
   assertEquals(est.encoding, "GSM-7");
-  assertEquals(est.segmentsPerRecipient, 1);
-  assertEquals(est.totalSegments, 1000, "quoted 1,000 segments against 2,000 billed");
+  assertEquals(est.segmentsPerRecipient, 2);
+  assertEquals(est.totalSegments, 2000);
 });
 
 // ===========================================================================

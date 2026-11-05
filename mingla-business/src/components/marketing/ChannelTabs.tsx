@@ -1,13 +1,12 @@
 /**
- * ChannelTabs — 3-segment tab row (Email · SMS · Push) inside the composer
- * Step 2 "What" card. The active tab is the message being written; the
- * "Also send by" chips (CampaignChannelSelector) add the other channels to
- * the same campaign (#3682 wave 2).
+ * ChannelTabs — the composer's "Send by" row (#4273 wave B): one tick chip per
+ * method, any mix, at least one always on. It replaces the old Email · SMS ·
+ * Push tabs and the "Also send by" chips; the "Push · free" wording is kept.
  *
- * Both channels are live. The dead "RCS" tab was removed in ORCH-1283 (it
- * did nothing and no RCS infrastructure ever shipped). This enforces
- * I-PROPOSED-BS (literal `email` + `sms` strings co-located in this file —
- * checked by the ORCH-0815-B strict-grep gate).
+ * The dead "RCS" tab was removed in ORCH-1283 (it did nothing and no RCS
+ * infrastructure ever shipped). This enforces I-PROPOSED-BS (literal `email` +
+ * `sms` strings co-located in this file — checked by the ORCH-0815-B
+ * strict-grep gate).
  *
  * Accessibility (I-39): every Pressable has accessibilityLabel +
  * accessibilityState.disabled.
@@ -27,124 +26,115 @@ import {
 
 export type MarketingChannelKind = "email" | "sms" | "push";
 
+export const CHANNEL_LABEL: Record<MarketingChannelKind, string> = {
+  email: "Email",
+  sms: "SMS",
+  push: "Push",
+};
+
 export interface ChannelTabsProps {
-  active: MarketingChannelKind;
-  onChange: (kind: MarketingChannelKind) => void;
+  selected: ReadonlySet<MarketingChannelKind>;
+  onToggle: (kind: MarketingChannelKind) => void;
+  /** Why a chip cannot be ticked right now (e.g. the audience has no accounts). */
+  unavailable?: Partial<Record<MarketingChannelKind, string>>;
+  /** A method the host ticked went away: said in a plain sentence. */
+  fallbackSentence?: string | null;
 }
 
 interface TabSpec {
   kind: MarketingChannelKind;
   label: string;
-  enabled: boolean;
-  caption: string;
 }
 
 const TABS: ReadonlyArray<TabSpec> = [
-  { kind: "email", label: "Email", enabled: true, caption: "" },
+  { kind: "email", label: "Email" },
   // META-ORCH-1161 Sub-B — SMS enabled. The send still ships text-dark: the
   // per-market kill-switch (SMS_LIVE_ENABLED_US/_NG) defaults false server-side,
   // so composing/scheduling an SMS blast is live UI but no Twilio HTTP fires
   // until the operator flips the switch.
-  { kind: "sms", label: "SMS", enabled: true, caption: "" },
+  { kind: "sms", label: "SMS" },
   // #3682 wave 2 — free Mingla push to followers and Book people with an account.
-  { kind: "push", label: "Push", enabled: true, caption: "" },
+  { kind: "push", label: "Push · free" },
 ];
 
-export const ChannelTabs: React.FC<ChannelTabsProps> = ({ active, onChange }) => {
+export const ChannelTabs: React.FC<ChannelTabsProps> = ({
+  selected,
+  onToggle,
+  unavailable = {},
+  fallbackSentence = null,
+}) => {
+  const onCount = TABS.filter(
+    (tab) => selected.has(tab.kind) && unavailable[tab.kind] === undefined,
+  ).length;
+  const notes = TABS.flatMap((tab) =>
+    unavailable[tab.kind] ? [`${CHANNEL_LABEL[tab.kind]}: ${unavailable[tab.kind]}`] : [],
+  );
   return (
-    <View style={styles.host} accessibilityRole="tablist">
-      {TABS.map((tab) => {
-        const isActive = tab.kind === active;
-        const disabled = !tab.enabled;
-        return (
-          <Pressable
-            key={tab.kind}
-            onPress={() => {
-              if (!disabled) onChange(tab.kind);
-            }}
-            disabled={disabled}
-            accessibilityRole="tab"
-            accessibilityLabel={
-              tab.enabled
-                ? `${tab.label} channel`
-                : `${tab.label} channel (${tab.caption})`
-            }
-            accessibilityState={{ selected: isActive, disabled }}
-            style={({ pressed }) => [
-              styles.tab,
-              isActive ? styles.tabActive : null,
-              disabled ? styles.tabDisabled : null,
-              pressed && !disabled ? styles.tabPressed : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.label,
-                isActive ? styles.labelActive : styles.labelInactive,
-                disabled ? styles.labelDisabled : null,
+    <View style={styles.host} testID="composer-send-by">
+      <Text style={styles.heading}>SEND BY</Text>
+      <View style={styles.row}>
+        {TABS.map((tab) => {
+          const isOff = unavailable[tab.kind] !== undefined;
+          const isOn = selected.has(tab.kind) && !isOff;
+          // At least one method stays on: the last one ticked cannot be unticked.
+          const isLast = isOn && onCount === 1;
+          const disabled = isOff || isLast;
+          return (
+            <Pressable
+              key={tab.kind}
+              onPress={() => {
+                if (!disabled) onToggle(tab.kind);
+              }}
+              disabled={disabled}
+              accessibilityRole="checkbox"
+              accessibilityLabel={
+                isLast
+                  ? `Send by ${CHANNEL_LABEL[tab.kind]}. At least one method stays on.`
+                  : `Send by ${CHANNEL_LABEL[tab.kind]}`
+              }
+              accessibilityState={{ checked: isOn, disabled }}
+              style={({ pressed }) => [
+                styles.chip,
+                isOn ? styles.chipOn : null,
+                isOff ? styles.chipDisabled : null,
+                pressed && !disabled ? styles.chipPressed : null,
               ]}
             >
-              {tab.label}
-            </Text>
-            {tab.caption.length > 0 ? (
-              <Text style={styles.caption}>{tab.caption}</Text>
-            ) : null}
-          </Pressable>
-        );
-      })}
+              <Text style={[styles.chipText, isOn ? styles.chipTextOn : null]}>
+                {`${isOn ? "✓ " : ""}${tab.label}`}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {fallbackSentence !== null ? (
+        <Text accessibilityRole="alert" style={styles.fallback} testID="composer-send-by-fallback">
+          {fallbackSentence}
+        </Text>
+      ) : null}
+      {notes.map((note) => <Text key={note} style={styles.note}>{note}</Text>)}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  host: {
-    flexDirection: "row",
-    gap: spacing.xs,
-    padding: spacing.xs,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+  host: { gap: spacing.xs },
+  heading: { ...typography.labelCap, color: textTokens.tertiary },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chip: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
   },
-  tab: {
-    flex: 1,
-    minHeight: 44,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-  },
-  tabActive: {
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-  },
-  tabDisabled: {
-    opacity: 0.5,
-  },
-  tabPressed: {
-    opacity: 0.82,
-  },
-  label: {
-    ...typography.bodySm,
-    fontWeight: "600",
-  },
-  labelActive: {
-    color: textTokens.primary,
-  },
-  labelInactive: {
-    color: textTokens.secondary,
-  },
-  labelDisabled: {
-    color: textTokens.tertiary,
-  },
-  caption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    fontSize: 10,
-    letterSpacing: 1,
-  },
+  chipOn: { borderColor: accent.warm, backgroundColor: accent.tint },
+  chipDisabled: { opacity: 0.45 },
+  chipPressed: { opacity: 0.8 },
+  chipText: { color: textTokens.secondary, fontSize: 13, fontWeight: "700" },
+  chipTextOn: { color: textTokens.primary },
+  note: { color: textTokens.tertiary, fontSize: 12 },
+  fallback: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
 });

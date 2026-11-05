@@ -42,7 +42,23 @@ export async function getMarketingAudienceKind(
   const kind = (data as { query_definition?: { kind?: unknown } } | null)
     ?.query_definition?.kind;
   return kind === "all_brand_people" || kind === "manual_group" ||
-      kind === "brand_followers" || kind === "brand_circle_extended"
+      kind === "brand_followers" || kind === "brand_circle_extended" ||
+      kind === "combined_sources"
     ? kind
     : null;
+}
+
+/** #4273 — a reopened draft's audience: its name and the groups it holds. */
+export async function getMarketingAudienceDefinition(
+  audienceId: string,
+): Promise<{ name: string | null; definition: Record<string, unknown> | null }> {
+  assertUuid(audienceId, "getMarketingAudienceDefinition.audience_id");
+  const { data, error } = await supabase
+    .from("marketing_audiences")
+    .select("name, query_definition")
+    .eq("id", audienceId)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as { name?: string | null; query_definition?: Record<string, unknown> | null } | null;
+  return { name: row?.name ?? null, definition: row?.query_definition ?? null };
 }
