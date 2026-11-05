@@ -66,9 +66,15 @@ export async function previewMarketingBook(
  */
 export async function previewMarketingCampaignGroup(
   leadCampaignId: string,
+  /** #4273 — the drafts being sent (lead first); only these are priced. */
+  campaignIds?: readonly string[],
 ): Promise<CampaignGroupPreview> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: { action: "preview_group_v1", campaign_id: leadCampaignId },
+    body: {
+      action: "preview_group_v1",
+      campaign_id: leadCampaignId,
+      ...(campaignIds === undefined ? {} : { campaign_ids: [...campaignIds] }),
+    },
   });
   if (error) throw await parseMarketingBookError(error);
   return data as CampaignGroupPreview;

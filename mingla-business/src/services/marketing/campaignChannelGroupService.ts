@@ -17,6 +17,7 @@ import type {
 import {
   createDraft,
   deleteDraft,
+  listGroupDrafts,
   MarketingBookSendError,
   updateDraft,
 } from "./marketingCampaignService";
@@ -66,7 +67,7 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
   }
   if (code.includes("AUDIENCE_NOT_FOUND")) {
     return channel === "push"
-      ? "Push reaches Mingla accounts only: pick Your Book, Followers, Friends of followers or a saved group."
+      ? "Push reaches Mingla accounts only, so it can't go to a buyer list."
       : `${label} isn't available for this audience.`;
   }
   if (code.includes("FLAG_DISABLED")) return `${label} isn't switched on for this audience yet.`;
@@ -162,9 +163,17 @@ export async function prepareCampaignGroupPreview(input: {
   group: CampaignGroupFigures | null;
   siblings: SiblingChannelState[];
 }> {
+  // A tab that closed with the review open leaves sibling drafts in the group.
+  // Adopt one for a method the host ticked again (a second draft for the same
+  // method would hit the one-per-method index); drop the rest.
+  const adopted = await settleLeftoverGroupDrafts({
+    leadCampaignId: input.leadCampaignId,
+    leadChannel: input.leadChannel,
+    extras: input.extras,
+  });
   const drafts: Array<{ channel: CampaignChannel; campaignId: string }> = [];
   for (const extra of input.extras) {
-    let campaignId = extra.existingCampaignId;
+    let campaignId = extra.existingCampaignId ?? adopted.get(extra.channel) ?? null;
     if (campaignId === null) {
       const row = await createDraft({
         account_id: input.accountId,
@@ -185,7 +194,14 @@ export async function prepareCampaignGroupPreview(input: {
     }
     drafts.push({ channel: extra.channel, campaignId });
   }
-  const preview = await previewMarketingCampaignGroup(input.leadCampaignId);
+  // Name exactly the drafts being sent, so nothing else in the group is priced.
+  const preview = await previewMarketingCampaignGroup(input.leadCampaignId, [
+    input.leadCampaignId,
+    ...drafts.map((draft) => draft.campaignId),
+  ]);
+  if ((preview.unlistedDraftIds ?? []).length > 0) {
+    void discardSiblingDrafts(preview.unlistedDraftIds ?? []);
+  }
   const lead = preview.methods.find((method) => method.channel === input.leadChannel);
   return {
     lead: lead?.quote ?? null,
@@ -254,6 +270,41 @@ export async function confirmSiblingChannels(input: {
     }
   }
   return results;
+}
+
+/**
+ * #4273 — leftover sibling drafts in a group. A draft on the lead's method, or
+ * on a method the host did not tick, is deleted (it would collide with the lead
+ * or be counted for a method nobody picked). A draft on a ticked method that
+ * has no draft in memory is returned to be reused. Returns method → draft id.
+ */
+export async function settleLeftoverGroupDrafts(input: {
+  leadCampaignId: string;
+  leadChannel: CampaignChannel;
+  extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
+}): Promise<Map<CampaignChannel, string>> {
+  const leftovers = await listGroupDrafts(input.leadCampaignId);
+  const known = new Set(
+    input.extras.flatMap((extra) => (extra.existingCampaignId === null ? [] : [extra.existingCampaignId])),
+  );
+  const adopt = new Map<CampaignChannel, string>();
+  const discard: string[] = [];
+  for (const draft of leftovers) {
+    if (known.has(draft.id)) continue;
+    const extra = input.extras.find((row) => row.channel === draft.channel);
+    if (
+      draft.channel !== input.leadChannel &&
+      extra !== undefined &&
+      extra.existingCampaignId === null &&
+      !adopt.has(draft.channel)
+    ) {
+      adopt.set(draft.channel, draft.id);
+    } else {
+      discard.push(draft.id);
+    }
+  }
+  if (discard.length > 0) await discardSiblingDrafts(discard);
+  return adopt;
 }
 
 /** Drop sibling drafts the host backed out of (they never sent). */

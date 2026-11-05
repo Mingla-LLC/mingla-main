@@ -305,6 +305,26 @@ export async function cancelScheduled(
   return data as unknown as MarketingCampaignRow;
 }
 
+/**
+ * #4273 — the other drafts in a campaign's group (not the lead). A tab that
+ * closed with the review open leaves its sibling drafts behind; the composer
+ * reads them so it can adopt or discard them instead of colliding with them.
+ * RLS (`marketing_campaigns_select`) admits the owner or a brand member.
+ */
+export async function listGroupDrafts(
+  leadCampaignId: string,
+): Promise<Array<{ id: string; channel: "email" | "sms" | "push" }>> {
+  assertUuid(leadCampaignId, "listGroupDrafts.lead_campaign_id");
+  const { data, error } = await supabase
+    .from("marketing_campaigns")
+    .select("id, channel")
+    .eq("campaign_group_id", leadCampaignId)
+    .eq("status", "draft")
+    .neq("id", leadCampaignId);
+  if (error) throw error;
+  return (data ?? []) as Array<{ id: string; channel: "email" | "sms" | "push" }>;
+}
+
 export async function deleteDraft(campaignId: string): Promise<void> {
   assertUuid(campaignId, "deleteDraft.campaign_id");
   // .select("id") per I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED — verify a

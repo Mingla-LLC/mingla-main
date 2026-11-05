@@ -50,6 +50,7 @@ import {
   resolveMarketingTrackingOrigin,
   rewriteMarketingSmsLinks,
 } from "../_shared/marketingBookQuote.ts";
+import { dbSmsFxConverter } from "../_shared/marketingSmsFx.ts";
 import {
   type EmbeddedEvent,
   type MarketingVariables,
@@ -79,7 +80,11 @@ import {
   resolveOfferingInviteTokenPepper,
 } from "../_shared/offeringInviteToken.ts";
 
-import { buildCampaignGroupPreview } from "./campaignGroupPreview.ts";
+import {
+  buildCampaignGroupPreview,
+  type GroupRows,
+  type QuoteBrand,
+} from "./campaignGroupPreview.ts";
 import {
   buildPushQuote,
   parsePushQuotedAt,
@@ -488,6 +493,8 @@ export async function handleMarketingSendRequest(
     currency?: string | null;
     scheduledFor?: string | null;
     quotedAt?: string;
+    /** #4273 — preview_group_v1: the drafts the client is sending. */
+    campaign_ids?: unknown;
   } = {};
   try {
     const raw = await req.text();
@@ -538,7 +545,17 @@ export async function handleMarketingSendRequest(
     if (actor.user === null) {
       return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
     }
-    return await handleGroupPreview(supabase, actor.user.id, body.campaign_id);
+    const onlyIds = parseGroupCampaignIds(body.campaign_ids, body.campaign_id);
+    if (onlyIds === "invalid") {
+      return jsonResponse({ error: "BOOK_BLAST_GROUP_INVALID" }, 400);
+    }
+    return await handleGroupPreview(
+      supabase,
+      actor.user.id,
+      body.campaign_id,
+      new Date(),
+      onlyIds ?? undefined,
+    );
   }
   if (isPushAction) {
     if (typeof body.campaign_id !== "string" || isServiceRole) {
@@ -616,17 +633,21 @@ export async function handleMarketingSendRequest(
     const requestedQuotedAt = isConfirmPeopleAction
       ? parseBookQuotedAt(body.quotedAt)
       : new Date();
-    let followBrand: { name: string; slug: string } | null;
+    // #4273 — preview and confirm build with the SAME brand inputs and the
+    // same FX source, so the confirm rebuild at quotedAt reproduces the hash.
+    let quoteBrand: QuoteBrand;
     try {
-      followBrand = await resolveFollowBrandForQuote(
-        supabase,
-        candidates.data,
-      );
+      quoteBrand = await resolveQuoteBrand(supabase, candidates.data);
     } catch {
       return jsonResponse({ error: "BOOK_BLAST_COST_UNAVAILABLE" }, 503);
     }
+    const quoteOptions = {
+      followBrand: quoteBrand.followBrand,
+      costCurrency: quoteBrand.costCurrency,
+      fx: dbSmsFxConverter(supabase),
+    };
     if (requestedQuotedAt === null) {
-      const refreshed = await safeBookQuote(candidates.data, followBrand);
+      const refreshed = await safeBookQuote(candidates.data, quoteOptions);
       if (refreshed.quote === null) {
         return jsonResponse({ error: refreshed.error }, 503);
       }
@@ -649,7 +670,7 @@ export async function handleMarketingSendRequest(
       quote = await buildMarketingBookQuote(
         candidates.data as never,
         requestedQuotedAt,
-        { followBrand },
+        quoteOptions,
       );
     } catch (error) {
       return jsonResponse({
@@ -911,11 +932,12 @@ export async function handleGroupPreview(
   actorId: string,
   leadCampaignId: string,
   now = new Date(),
+  onlyIds?: readonly string[],
 ): Promise<Response> {
   try {
     const preview = await buildCampaignGroupPreview(
       {
-        loadGroup: async (campaignId) => {
+        loadGroup: async (campaignId, only) => {
           const lead = await supabase.from("marketing_campaigns")
             .select("id, campaign_group_id").eq("id", campaignId).maybeSingle();
           if (lead.error) throw new Error(lead.error.message);
@@ -924,7 +946,8 @@ export async function handleGroupPreview(
           const rows = await supabase.from("marketing_campaigns")
             .select("id, channel").eq("campaign_group_id", group).eq("status", "draft");
           if (rows.error) throw new Error(rows.error.message);
-          return rows.data as Array<{ id: string; channel: "email" | "sms" | "push" }>;
+          const drafts = rows.data as Array<{ id: string; channel: "email" | "sms" | "push" }>;
+          return selectGroupDrafts(drafts, only);
         },
         candidates: async (campaignId, channel) => {
           const result = await supabase.rpc(
@@ -936,27 +959,22 @@ export async function handleGroupPreview(
           if (result.error) throw new Error(result.error.message);
           return result.data;
         },
-        followBrand: (candidates) => resolveFollowBrandForQuote(supabase, candidates),
+        quoteBrand: (candidates) => resolveQuoteBrand(supabase, candidates),
+        fx: dbSmsFxConverter(supabase),
         allowance: async (candidates, quote) => {
           const attached = await attachBookAllowance(supabase, actorId, candidates, quote);
           if (!attached.ok) throw new Error("cost_unavailable");
           return attached.quote;
         },
-        errorCode: (error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message.includes("mms")) return "BOOK_BLAST_MMS_NOT_SUPPORTED";
-          if (message.includes("sms_rate") || message.includes("cost_unavailable")) {
-            return marketingBookQuoteErrorCode(error);
-          }
-          return bookRpcErrorEnvelope(message).error;
-        },
+        errorCode: groupMethodErrorCode,
       },
       leadCampaignId,
       now,
+      onlyIds,
     );
     if (preview.methods.every((method) => method.quote === null)) {
       const code = preview.methods[0]?.error ?? "BOOK_BLAST_AUDIENCE_NOT_FOUND";
-      return jsonResponse({ error: code }, 409);
+      return jsonResponse({ error: code }, groupErrorStatus(code));
     }
     return jsonResponse(preview);
   } catch (error) {
@@ -971,10 +989,23 @@ function bookRpcErrorResponse(message: string): Response {
   return jsonResponse({ error: envelope.error }, envelope.status);
 }
 
-export function bookRpcErrorEnvelope(
+/**
+ * #4273 — the Book RPC errors this lane knows, each with its own honest code.
+ *
+ * STALE must be EXPLICIT. `BOOK_BLAST_PREVIEW_STALE` tells the host "what you
+ * reviewed changed, look again"; returning it for a failure that has nothing
+ * to do with the sealed set (a lookup error, an unknown database error, a cost
+ * that cannot be priced) sends the host round a refresh loop that can never
+ * succeed. MINGLA-INVARIANT: I-4273-STALE-MEANS-STALE | issue #4273 | marketing-send returns BOOK_BLAST_PREVIEW_STALE only when the sealed set, hash, cost or currency changed or the quote aged out; any other quote-build failure has its own code.
+ */
+export function knownBookRpcError(
   message: string,
-): { error: string; status: number } {
-  if (message.includes("circle_blast_snapshot_stale")) {
+): { error: string; status: number } | null {
+  if (
+    message.includes("book_blast_preview_stale") ||
+    message.includes("manual_group_preview_stale") ||
+    message.includes("circle_blast_snapshot_stale")
+  ) {
     return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
   }
   if (
@@ -989,7 +1020,10 @@ export function bookRpcErrorEnvelope(
   ) {
     return { error: "BOOK_BLAST_FLAG_DISABLED", status: 503 };
   }
-  if (message.includes("book_blast_forbidden")) {
+  if (
+    message.includes("book_blast_forbidden") ||
+    message.includes("circle_blast_forbidden")
+  ) {
     return { error: "BOOK_BLAST_FORBIDDEN", status: 403 };
   }
   if (message.includes("book_blast_idempotency_conflict")) {
@@ -1001,58 +1035,146 @@ export function bookRpcErrorEnvelope(
   if (message.includes("book_blast_monthly_cap_exceeded")) {
     return { error: "BOOK_BLAST_MONTHLY_CAP_EXCEEDED", status: 409 };
   }
-  return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
+  return null;
 }
 
-async function resolveFollowBrandForQuote(
+/** Unknown is UNAVAILABLE, never STALE (I-4273-STALE-MEANS-STALE). */
+export function bookRpcErrorEnvelope(
+  message: string,
+): { error: string; status: number } {
+  return knownBookRpcError(message) ??
+    { error: "BOOK_BLAST_PREVIEW_UNAVAILABLE", status: 503 };
+}
+
+/** #4273 — one group method's refusal, mapped honestly. */
+export function groupMethodErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("mms")) return "BOOK_BLAST_MMS_NOT_SUPPORTED";
+  return knownBookRpcError(message)?.error ??
+    marketingBookQuoteErrorCode(error);
+}
+
+const KNOWN_GROUP_STATUS: Record<string, number> = {
+  BOOK_BLAST_PREVIEW_STALE: 409,
+  BOOK_BLAST_AUDIENCE_NOT_FOUND: 404,
+  BOOK_BLAST_FLAG_DISABLED: 503,
+  BOOK_BLAST_FORBIDDEN: 403,
+  BOOK_BLAST_IDEMPOTENCY_CONFLICT: 409,
+  BOOK_BLAST_ZERO_RECIPIENTS: 409,
+  BOOK_BLAST_MONTHLY_CAP_EXCEEDED: 409,
+  BOOK_BLAST_MMS_NOT_SUPPORTED: 409,
+};
+
+/** Status when every group method was refused: the first method's own. */
+export function groupErrorStatus(code: string): number {
+  return KNOWN_GROUP_STATUS[code] ?? 503;
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #4273 — `campaign_ids` on preview_group_v1: the drafts the client is
+ * actually sending. Absent → null (old builds: every group draft, as before).
+ * Present → 1–3 unique UUIDs that include the lead, else "invalid".
+ */
+export function parseGroupCampaignIds(
+  value: unknown,
+  leadCampaignId: string,
+): string[] | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  if (
+    !Array.isArray(value) || value.length < 1 || value.length > 3 ||
+    value.some((id) => typeof id !== "string" || !UUID_PATTERN.test(id))
+  ) return "invalid";
+  const ids = (value as string[]).map((id) => id.toLowerCase());
+  if (new Set(ids).size !== ids.length) return "invalid";
+  if (!ids.includes(leadCampaignId.toLowerCase())) return "invalid";
+  return ids;
+}
+
+/**
+ * #4273 — keep only the drafts the client named. A named id that is not a
+ * draft of this group means the set really changed → stale. Group drafts the
+ * client did not name are returned so the client can discard them; they are
+ * never priced. MINGLA-INVARIANT: I-4273-GROUP-PREVIEW-PRICES-PICKED-METHODS | issue #4273 | When the client names its drafts, the group preview prices only those; a group draft it did not name is never counted.
+ */
+export function selectGroupDrafts(
+  drafts: Array<{ id: string; channel: "email" | "sms" | "push" }>,
+  only: readonly string[] | undefined,
+): GroupRows {
+  if (only === undefined) return { rows: drafts, unlisted: [] };
+  const named = new Set(only.map((id) => id.toLowerCase()));
+  const draftIds = new Set(drafts.map((row) => row.id.toLowerCase()));
+  for (const id of named) {
+    if (!draftIds.has(id)) throw new Error("book_blast_preview_stale");
+  }
+  return {
+    rows: drafts.filter((row) => named.has(row.id.toLowerCase())),
+    unlisted: drafts.filter((row) => !named.has(row.id.toLowerCase()))
+      .map((row) => row.id),
+  };
+}
+
+/**
+ * #4273 — one brand read per quote: the Follow line SMS dispatch appends, and
+ * the currency a mixed-currency SMS total is shown in. Non-SMS quotes need
+ * neither and skip the read. Fails closed: a silent null would price SMS
+ * without Follow while dispatch (which re-reads the brand) still appends it
+ * (#3682), or leave a mixed-currency total without a currency.
+ */
+export async function resolveQuoteBrand(
   // deno-lint-ignore no-explicit-any
   db: any,
   candidates: unknown,
-): Promise<{ name: string; slug: string } | null> {
+): Promise<QuoteBrand> {
   const candidateEnvelope = candidates as {
     channel?: unknown;
     content?: { include_follow_cta?: unknown } | null;
   } | null;
-  if (
-    candidateEnvelope?.channel !== "sms" ||
-    candidateEnvelope.content?.include_follow_cta !== true
-  ) {
-    return null;
+  if (candidateEnvelope?.channel !== "sms") {
+    return { followBrand: null, costCurrency: null };
   }
   const brandId = (candidates as { brandId?: unknown } | null)?.brandId;
-  if (typeof brandId !== "string" || brandId.length === 0) return null;
+  if (typeof brandId !== "string" || brandId.length === 0) {
+    throw new Error("cost_unavailable:brand_lookup");
+  }
   const { data, error } = await db
     .from("brands")
-    .select("name, slug")
+    .select("name, slug, pricing_currency, default_currency")
     .eq("id", brandId)
     .maybeSingle();
-  // Fail closed on lookup errors: silent null would price SMS without Follow
-  // while dispatch (which re-reads the brand) still appends it (#3682).
-  if (error) {
-    throw new Error(`follow_brand_lookup:${error.message ?? String(error)}`);
+  if (error || data === null) {
+    throw new Error("cost_unavailable:brand_lookup");
   }
-  if (data === null) {
-    throw new Error("follow_brand_lookup:brand_missing");
+  const rawCurrency = typeof data.pricing_currency === "string" &&
+      data.pricing_currency.trim().length > 0
+    ? data.pricing_currency
+    : data.default_currency;
+  const upper = typeof rawCurrency === "string"
+    ? rawCurrency.trim().toUpperCase()
+    : "";
+  const costCurrency = /^[A-Z]{3}$/.test(upper) ? upper : null;
+  if (candidateEnvelope.content?.include_follow_cta !== true) {
+    return { followBrand: null, costCurrency };
   }
   const slug = typeof data.slug === "string" ? data.slug.trim() : "";
   // No public slug ⇒ Follow URL cannot be formed; omit (same as dispatch).
-  if (slug.length === 0) return null;
+  if (slug.length === 0) return { followBrand: null, costCurrency };
   const name = typeof data.name === "string" && data.name.trim().length > 0
     ? data.name.trim()
     : "Mingla brand";
-  return { name, slug };
+  return { followBrand: { name, slug }, costCurrency };
 }
 
 async function safeBookQuote(
   candidates: unknown,
-  followBrand: { name: string; slug: string } | null = null,
+  options: Parameters<typeof buildMarketingBookQuote>[2],
 ) {
   try {
     return {
       quote: publicMarketingBookQuote(
-        await buildMarketingBookQuote(candidates as never, new Date(), {
-          followBrand,
-        }),
+        await buildMarketingBookQuote(candidates as never, new Date(), options),
       ),
       error: null,
     };
@@ -1072,6 +1194,11 @@ export function marketingBookQuoteErrorCode(error: unknown): string {
     message.includes("sms_rate_unavailable")
   ) {
     return "BOOK_BLAST_RATE_BOOK_UNAVAILABLE";
+  }
+  // #4273 — no FX snapshot as of quotedAt / conversion failed, or the brand
+  // (Follow line, cost currency) could not be read: the cost cannot be stated.
+  if (message.includes("fx_unavailable") || message.includes("brand_lookup")) {
+    return "BOOK_BLAST_COST_UNAVAILABLE";
   }
   return "BOOK_BLAST_COST_UNAVAILABLE";
 }
