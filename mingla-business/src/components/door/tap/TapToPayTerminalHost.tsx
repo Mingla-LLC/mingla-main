@@ -35,6 +35,7 @@ import type {
 import {
   getTapToPaySession,
   noteTapToPayConnectResult,
+  parseTapProgress,
   updateTapToPaySession,
   useTapToPayTerminal,
   type TapToPaySessionClient,
@@ -74,7 +75,15 @@ interface BridgeProps {
 }
 
 const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): null => {
-  const terminal = sdk.useStripeTerminal();
+  const terminal = sdk.useStripeTerminal({
+    onDidStartInstallingUpdate: () =>
+      updateTapToPaySession({ config: { installing: true, progress: null } }),
+    onDidReportReaderSoftwareUpdateProgress: (progress: string) =>
+      updateTapToPaySession({ config: { installing: true, progress: parseTapProgress(progress) } }),
+    onDidFinishInstallingUpdate: () =>
+      updateTapToPaySession({ config: { installing: false, progress: null } }),
+    onDidAcceptTermsOfService: () => noteTapToPayConnectResult(brandId, undefined),
+  });
   const [status, setStatus] = useState<TapToPayTerminalStatus>("initializing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<number>(0);

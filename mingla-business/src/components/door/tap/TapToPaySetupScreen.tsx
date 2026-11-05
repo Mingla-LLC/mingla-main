@@ -48,7 +48,7 @@ import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
-import { Spinner } from "../../ui/Spinner";
+import { TapConfiguringView } from "./TapConfiguringView";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
 import { TapUpdateIos } from "./TapUpdateIos";
@@ -256,9 +256,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
     );
   } else if (adminRequired) {
     body = probing || role.isLoading ? (
-      <View style={styles.probe}>
-        <Spinner size={36} />
-      </View>
+      <TapConfiguringView progress={terminal.config.progress} />
     ) : (
       <TapStatusView
         tone="bad"
@@ -278,6 +276,8 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         testID="tap-setup-admin-only"
       />
     );
+  } else if (busy || terminal.config.installing) {
+    body = <TapConfiguringView progress={terminal.config.progress} />;
   } else {
     const rows = setupRowsFor(Platform.OS);
     body = (
@@ -335,7 +335,6 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
 const styles = StyleSheet.create({
   host: { flex: 1 },
   flex: { flex: 1 },
-  probe: { flex: 1, alignItems: "center", justifyContent: "center" },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",

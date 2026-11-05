@@ -69,3 +69,7 @@ export const TAP_APPLE_TERMS_ROW = {
   title: "Apple's terms",
   sub: "Apple asks a brand owner or admin to accept its terms once. Apple shows them next.",
 } as const;
+
+export const tapConfiguringTitle = (os: string): string => `Getting ${tapToPayName(os)} ready`;
+export const TAP_CONFIGURING_BODY =
+  "This can take a minute the first time. You can't take a tap until it's finished.";

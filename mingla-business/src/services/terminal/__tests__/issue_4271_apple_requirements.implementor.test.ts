@@ -62,6 +62,7 @@ import {
 import {
   getTapToPaySession,
   noteTapToPayConnectResult,
+  parseTapProgress,
   resetTapToPaySessionForTests,
   tapToPayAcceptanceFor,
   setTapToPayScope,
@@ -487,5 +488,27 @@ describe("B6 warm-up", () => {
     markDoorTapPress(true, 1000);
     expect(consumeDoorTapPress(1450)).toEqual({ ms: 450, warm: true });
     expect(consumeDoorTapPress(2000)).toBeNull();
+  });
+});
+
+describe("B7 progress from the SDK", () => {
+  test("a string becomes 0 to 1, anything else reads as unknown", () => {
+    expect(parseTapProgress("0.4")).toBe(0.4);
+    expect(parseTapProgress("1.7")).toBe(1);
+    expect(parseTapProgress("-1")).toBe(0);
+    expect(parseTapProgress("soon")).toBeNull();
+    expect(parseTapProgress("")).toBeNull();
+    expect(parseTapProgress(undefined)).toBeNull();
+  });
+  test("the host passes the SDK's four callbacks", () => {
+    const host = fs.readFileSync(path.join(BIZ_ROOT, "src/components/door/tap/TapToPayTerminalHost.tsx"), "utf8");
+    for (const name of [
+      "onDidStartInstallingUpdate",
+      "onDidReportReaderSoftwareUpdateProgress",
+      "onDidFinishInstallingUpdate",
+      "onDidAcceptTermsOfService",
+    ]) {
+      expect(host).toContain(name);
+    }
   });
 });

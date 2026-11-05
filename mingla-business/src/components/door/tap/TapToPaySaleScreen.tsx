@@ -60,6 +60,7 @@ import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
 import { TapStatusView } from "./TapStatusView";
 import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
+import { TapConfiguringView } from "./TapConfiguringView";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { summarizeTapLines } from "./tapLineSummary";
@@ -263,6 +264,7 @@ export const TapToPaySaleScreen = ({
       }
       return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />;
     }
+    if (terminal.config.installing) return <TapConfiguringView progress={terminal.config.progress} />;
     if (terminal.status === "unavailable") {
       return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />;
     }
@@ -281,12 +283,7 @@ export const TapToPaySaleScreen = ({
     switch (state.kind) {
       case "idle":
       case "starting":
-        return (
-          <View style={styles.waitHost}>
-            <Spinner size={36} />
-            <Text style={styles.waitText}>Getting ready…</Text>
-          </View>
-        );
+        return <TapConfiguringView progress={terminal.config.progress} />;
       case "ready":
       case "reading":
       case "saving":
@@ -458,7 +455,6 @@ const styles = StyleSheet.create({
   chromeTitle: { ...typography.h3, color: textTokens.primary },
   chromeRightSlot: { width: 36 },
   waitHost: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  waitText: { ...typography.bodySm, color: textTokens.secondary },
   amountHost: { flex: 1, alignItems: "center", paddingTop: spacing.xxl, gap: spacing.xs },
   amount: { ...typography.display, fontSize: 44, lineHeight: 56, color: textTokens.primary },
   lines: { ...typography.body, color: textTokens.secondary, textAlign: "center", paddingHorizontal: spacing.lg },

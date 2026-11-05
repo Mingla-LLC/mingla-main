@@ -100,11 +100,40 @@ jest.mock("../../ui/GlassCard", () => ({
 }));
 jest.mock("../../ui/IconChrome", () => ({ IconChrome: () => null }));
 jest.mock("../../ui/Spinner", () => ({ Spinner: () => null }));
+jest.mock("@tanstack/react-query", () => ({
+  ...jest.requireActual("@tanstack/react-query"),
+  useQueryClient: () => ({ invalidateQueries: jest.fn() }),
+}));
+jest.mock("../../../hooks/useEventDoorSales", () => ({
+  doorSaleKeys: { byEvent: () => ["door-sales"] },
+}));
+jest.mock("../../../utils/hapticFeedback", () => ({ HapticFeedback: { success: jest.fn() } }));
+jest.mock("../../../services/postHogService", () => ({ postHogService: { capture: jest.fn() } }));
 jest.mock("../../../services/terminal/doorTapEdge", () => ({
   fetchDoorTapLocation: jest.fn(async () => "tml_1"),
   fetchTerminalConnectionToken: jest.fn(async () => "pst"),
   createDoorPayCodeForLines: jest.fn(async () => ({ codeId: "code-1" })),
-  DoorTapError: class DoorTapError extends Error {},
+  createDoorTapIntent: jest.fn(async () => ({
+    paymentIntentId: "pi_1",
+    clientSecret: "pi_1_secret",
+    totalCents: 3135,
+    currency: "GBP",
+    stripeAccountId: "acct_1",
+    locationId: "tml_1",
+    feeCents: 135,
+    subtotalCents: 3000,
+  })),
+  completeDoorTapIntent: jest.fn(async () => ({ orderId: "o1", ticketIds: ["t1"], receiptQueued: false, replayed: false })),
+  cancelDoorTapIntent: jest.fn(async () => undefined),
+  DoorTapError: class DoorTapError extends Error {
+    code: string;
+    detail: string | null;
+    constructor(code: string, detail: string | null = null) {
+      super(code);
+      this.code = code;
+      this.detail = detail;
+    }
+  },
 }));
 jest.mock("../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.fn() }));
 jest.mock("../../../services/supabase", () => ({
@@ -130,7 +159,13 @@ import { resetTapToPayWarmHintForTests } from "../../../services/terminal/tapToP
 // eslint-disable-next-line import/first
 import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
 // eslint-disable-next-line import/first
+import { TapConfiguringView } from "../tap/TapConfiguringView";
+// eslint-disable-next-line import/first
 import { TapUpdateIos } from "../tap/TapUpdateIos";
+// eslint-disable-next-line import/first
+import { TapToPaySaleScreen } from "../tap/TapToPaySaleScreen";
+// eslint-disable-next-line import/first
+import { encodeTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 // eslint-disable-next-line import/first
 import { TapToPaySetupScreen } from "../tap/TapToPaySetupScreen";
 // eslint-disable-next-line import/first
@@ -325,5 +360,70 @@ describe("B6 warm-up through the real host", () => {
     mount(<TapToPayTerminalHost />);
     await settle();
     expect(mockEasyConnect).not.toHaveBeenCalled();
+  });
+});
+
+const DRAFT = encodeTapToPayDraft({
+  lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+  eventDateId: null,
+  buyerPhone: null,
+  phoneCountryIso: null,
+} as never);
+const saleScreen = (): React.ReactElement => (
+  <TapToPaySaleScreen eventId="event-1" saleId="new" rawDraft={DRAFT} />
+);
+const settleSale = async (): Promise<void> => {
+  for (let i = 0; i < 8; i += 1) await flush();
+};
+
+describe("B7 configuring and progress", () => {
+  beforeEach(() => {
+    resetTapToPaySessionForTests();
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+  });
+
+  test("known progress shows the percent, the bar value and the not-ready sentence", () => {
+    const { root } = mount(<TapConfiguringView progress={0.4} />);
+    const text = textOf(root);
+    expect(text).toContain("40%");
+    expect(text).toContain("You can't take a tap until it's finished.");
+    expect(text).toContain("Getting Tap to Pay on iPhone ready");
+    const bar = root.findAll((n) => n.props.testID === "tap-configuring-bar")[0] as ReactTestInstance;
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 40 });
+  });
+
+  test("no progress shows a spinner and the same sentence", () => {
+    const { root } = mount(<TapConfiguringView progress={null} />);
+    expect(textOf(root)).toContain("You can't take a tap until it's finished.");
+    expect(root.findAll((n) => n.props.testID === "tap-configuring-bar")).toHaveLength(0);
+  });
+
+  test("the sale says it can't take a tap yet while the terminal starts", async () => {
+    updateTapToPaySession({ status: "initializing", client: null });
+    const { root } = mount(saleScreen());
+    await flush();
+    expect(textOf(root)).toContain("You can't take a tap until it's finished.");
+  });
+
+  test("the sale shows live install progress", async () => {
+    updateTapToPaySession({ status: "initializing", client: null, config: { installing: true, progress: 0.25 } });
+    const { root } = mount(saleScreen());
+    await flush();
+    expect(textOf(root)).toContain("25%");
+  });
+
+  test("B2: below iOS 17.6 a device-class failure shows the update screen, on 17.6 it does not", async () => {
+    const failing = {
+      ensureReaderConnected: async () => ({ error: { code: "TAP_TO_PAY_UNSUPPORTED_DEVICE" } }),
+    } as never;
+    Object.defineProperty(Platform, "Version", { value: "17.5", configurable: true });
+    updateTapToPaySession({ status: "ready", client: failing });
+    const old = mount(saleScreen());
+    await settleSale();
+    expect(textOf(old.root)).toContain("Update iOS to use Tap to Pay on iPhone");
+    Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
+    const current = mount(saleScreen());
+    await settleSale();
+    expect(textOf(current.root)).toContain("This phone can't take taps");
   });
 });

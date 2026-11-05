@@ -48,6 +48,8 @@ export interface TapToPaySessionState {
   acceptanceBrandId: string | null;
   /** A reader is connected, so the next sale starts warm. */
   readerReady: boolean;
+  /** Reader software installing, with progress 0 to 1 when the SDK reports it. */
+  config: { installing: boolean; progress: number | null };
 }
 
 const noop = (): void => undefined;
@@ -61,6 +63,15 @@ const INITIAL: TapToPaySessionState = {
   acceptance: "unknown",
   acceptanceBrandId: null,
   readerReady: false,
+  config: { installing: false, progress: null },
+};
+
+/** Beta.33 reports progress as a string. Anything not a number reads as unknown. */
+export const parseTapProgress = (progress: unknown): number | null => {
+  if (progress === null || progress === undefined || progress === "") return null;
+  const value = Number(progress);
+  if (!Number.isFinite(value)) return null;
+  return Math.min(1, Math.max(0, value));
 };
 
 let state: TapToPaySessionState = INITIAL;
