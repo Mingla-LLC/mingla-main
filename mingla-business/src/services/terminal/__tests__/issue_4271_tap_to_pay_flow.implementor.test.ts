@@ -160,6 +160,38 @@ describe("complete only after a succeeded confirm", () => {
     expect(h.completeIntent).not.toHaveBeenCalled();
   });
 
+  test.each(["processing", "requires_capture", "requires_confirmation"])(
+    "final P2-2: confirm returns a %s intent with no error → unknown_result, never declined, same intent retried",
+    async (status) => {
+      const h = makeHarness({
+        confirm: [{ paymentIntent: { id: "pi_123", status } }, { paymentIntent: PI_SUCCEEDED }],
+      });
+      await h.flow.start();
+      expect(h.flow.getState().kind).toBe("unknown_result");
+      expect(h.completeIntent).not.toHaveBeenCalled();
+      await h.flow.retryConfirm();
+      expect(h.flow.getState().kind).toBe("approved");
+      expect(h.createIntent).toHaveBeenCalledTimes(1);
+      expect(h.terminal.confirmPaymentIntent).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  test("final P2-2: a processing intent behind a PIN-looking error is unknown, not needs_pin", async () => {
+    const h = makeHarness({
+      confirm: [
+        {
+          error: {
+            code: "DECLINED_BY_STRIPE_API",
+            apiError: { code: "card_declined", declineCode: "offline_pin_required", message: "" },
+            paymentIntent: { id: "pi_123", status: "processing" },
+          },
+        },
+      ],
+    });
+    await h.flow.start();
+    expect(h.flow.getState().kind).toBe("unknown_result");
+  });
+
   test("collect error → no confirm, no complete", async () => {
     const h = makeHarness({ collect: [{ error: { code: "CANCELED" } }] });
     await h.flow.start();

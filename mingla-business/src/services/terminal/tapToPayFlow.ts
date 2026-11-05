@@ -502,10 +502,11 @@ export class TapToPaySaleFlow {
       // Stripe: with no PaymentIntent back, or a timed-out request, the status is
       // unknown and the answer is to confirm the same intent again. "Nothing was
       // charged" is only true when Stripe says it needs a new card, so anything
-      // else may not say that or offer a second way to pay.
+      // else (processing included) may not say that or offer a second way to pay.
       if (
         error.code === "REQUEST_TIMED_OUT" ||
-        (after?.status !== "requires_payment_method" && classifyTerminalError(error) !== "needs_pin")
+        (after !== undefined && after.status !== "requires_payment_method") ||
+        (after === undefined && classifyTerminalError(error) !== "needs_pin")
       ) {
         this.emit({ kind: "unknown_result", amount });
         return;
@@ -515,9 +516,15 @@ export class TapToPaySaleFlow {
       return;
     }
     this.paymentIntent = confirmed.paymentIntent;
-    if (confirmed.paymentIntent.status !== "succeeded") {
+    if (confirmed.paymentIntent.status === "requires_payment_method") {
       this.collectedPaymentIntent = null;
       this.emit({ kind: "declined", amount, cardLabel: cardLabelFor(confirmed.paymentIntent) });
+      return;
+    }
+    if (confirmed.paymentIntent.status !== "succeeded") {
+      // processing, requires_capture or anything else Stripe hasn't settled: the
+      // result is unknown. Keep the collected intent so "Try again" confirms it.
+      this.emit({ kind: "unknown_result", amount });
       return;
     }
     await this.recordSucceeded(confirmed.paymentIntent);
