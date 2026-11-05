@@ -321,3 +321,44 @@ describe("all 29 languages", () => {
     expect(() => new Intl.DateTimeFormat(language, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date("2026-11-05T12:00:00Z"))).not.toThrow();
   });
 });
+
+describe("the title limit and the site name, against what the server refuses", () => {
+  const form = (title: string): import("../../../services/brandPlanService").BrandPlanFormValues => ({ type: "post", title, on: "2026-12-01", link: "", note: "" });
+
+  it("holds the limit the plan sent, at the edge and one past it", () => {
+    expect(service.brandPlanFormProblems(form("x".repeat(141)), "2026-11-05", 141)).toEqual([]);
+    expect(service.brandPlanFormProblems(form("x".repeat(142)), "2026-11-05", 141)).toEqual([{ field: "title", key: "err_title_long" }]);
+    expect(service.brandPlanFormProblems(form(`  ${"x".repeat(141)}  `), "2026-11-05", 141)).toEqual([]);
+  });
+
+  it("reads the new limit out of the server's refusal, and only out of that one", () => {
+    const refused = service.mapBrandPlanError({ code: "22023", message: "title_too_long: Keep this to 87 characters." });
+    expect(refused.code).toBe("invalid");
+    expect(service.brandPlanTitleLimit(refused)).toBe(87);
+    expect(service.brandPlanErrorKey(refused, "add_failed")).toBe("err_title_long");
+    expect(service.brandPlanTitleLimit(service.mapBrandPlanError({ code: "22023", message: "invalid_note: Keep the note to 500 characters." }))).toBeNull();
+  });
+
+  it("every language says the limit", () => {
+    for (const lang of fs.readdirSync(LOCALES)) {
+      const plan = JSON.parse(fs.readFileSync(path.join(LOCALES, lang, "brandGroupMedia.json"), "utf8")).plan as Record<string, string>;
+      expect(`${lang}:${plan.err_title_long.includes("{{max}}")}`).toBe(`${lang}:true`);
+    }
+  });
+
+  it("a site must stay one site once folded, and be short enough to be an address", () => {
+    for (const ok of ["https://саnvа.example/x", "https://bücher.example/", `https://${"a".repeat(253)}/`]) expect(service.isBrandPlanLink(ok)).toBe(true);
+    for (const bad of ["https://./x", "https://canva.com／evil.example/", "https://canva.com＠evil.example/", "https://canva.com：443/", `https://${"a".repeat(254)}/`]) {
+      expect(service.isBrandPlanLink(bad)).toBe(false);
+    }
+  });
+
+  it("words raised as a sheet closes wait for it, and the Add sheet holds what was typed", () => {
+    expect(PANEL).toMatch(/toastAfterSheet\(\{ kind: "success", message: t\("plan\.removed"\) \}\)/);
+    expect(PANEL).not.toMatch(/setToast\(\{ kind: "success", message: t\("plan\.removed"\) \}\)/);
+    expect(PANEL).toMatch(/onStale=\{\(key\) => \{ setForm\(null\); toastAfterForm\(/);
+    const sheet = fs.readFileSync(path.join(ROOT, "mingla-business/src/components/messages/BrandPlanAddSheet.tsx"), "utf8");
+    expect(sheet).toMatch(/dismissGuard=\{holdTheSheet\}/);
+    expect(sheet).toMatch(/maxLength=\{titleMax\}/);
+  });
+});
