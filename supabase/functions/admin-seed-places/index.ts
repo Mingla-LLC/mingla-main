@@ -443,6 +443,35 @@ function parseCity(gPlace: any, fallback: string): string {
   return fallback;
 }
 
+// #4276: every page. A larger box can pass the server's row cap, and a capped read
+// here would silently leave part of the city unsearched and under-priced.
+const TILE_PAGE_SIZE = 1000;
+
+async function loadBaseTiles(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  cityId: string,
+  tileIds?: string[],
+) {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let from = 0;; from += TILE_PAGE_SIZE) {
+    let query = supabase
+      .from("seeding_tiles")
+      .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx")
+      .eq("city_id", cityId)
+      .is("retired_at", null)
+      .in("kind", ["grid", "fill"]);
+    if (tileIds && tileIds.length > 0) query = query.in("id", tileIds);
+    const { data, error } = await query
+      .order("tile_index")
+      .range(from, from + TILE_PAGE_SIZE - 1);
+    if (error) throw new Error(`Failed to load tiles: ${error.message}`);
+    out.push(...(data ?? []));
+    if ((data ?? []).length < TILE_PAGE_SIZE) return out;
+  }
+}
+
 // ── Action: preview_cost ────────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
@@ -474,17 +503,7 @@ async function handlePreviewCost(body: any, supabase: any) {
   const categoryIds = validConfigs.map(c => c.id);
 
   // Load tiles
-  let tileQuery = supabase
-    .from("seeding_tiles")
-    .select("id")
-    .eq("city_id", cityId)
-    .is("retired_at", null)
-    .in("kind", ["grid", "fill"]);
-  if (tileIds && tileIds.length > 0) {
-    tileQuery = tileQuery.in("id", tileIds);
-  }
-  const { data: tiles, error: tileErr } = await tileQuery;
-  if (tileErr) throw new Error(`Failed to load tiles: ${tileErr.message}`);
+  const tiles = await loadBaseTiles(supabase, cityId, tileIds);
 
   const tileCount = tiles?.length ?? 0;
   const categoryCount = categoryIds.length;
@@ -605,14 +624,7 @@ async function handleCreateRun(body: any, supabase: any) {
   const categoryIds = validConfigs.map((c) => c.appCategorySlug);
 
   // Load tiles ordered by tile_index
-  const { data: tiles, error: tileErr } = await supabase
-    .from("seeding_tiles")
-    .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx")
-    .eq("city_id", cityId)
-    .is("retired_at", null)
-    .in("kind", ["grid", "fill"])
-    .order("tile_index");
-  if (tileErr) throw new Error(`Failed to load tiles: ${tileErr.message}`);
+  const tiles = await loadBaseTiles(supabase, cityId);
   if (!tiles || tiles.length === 0) {
     throw new Error("No tiles found. Generate tiles first.");
   }

@@ -65,6 +65,7 @@ function fakeDb(w: World): any {
     let conflict: string[] = [];
     let ignoreDup = false;
     let limit = Infinity;
+    let range: [number, number] | null = null;
     let head = false;
     const run = () => {
       if (op === "insert" || op === "upsert") {
@@ -82,7 +83,9 @@ function fakeDb(w: World): any {
       }
       const hits = w.tables[table].filter((r) => filters.every((f) => f(r)));
       if (op === "update") { hits.forEach((r) => Object.assign(r, payload)); return { data: hits, error: null, count: hits.length }; }
-      const out = limit === Infinity ? hits : hits.slice(0, limit);
+      // Like the real server, no read returns more than 1,000 rows.
+      const paged = range ? hits.slice(range[0], range[1] + 1) : hits;
+      const out = paged.slice(0, Math.min(limit, 1000));
       return { data: head ? null : out, error: null, count: hits.length };
     };
     // deno-lint-ignore no-explicit-any
@@ -97,8 +100,9 @@ function fakeDb(w: World): any {
       gt: () => chain,
       in: (c: string, v: unknown[]) => { filters.push((r) => v.includes(r[c])); return chain; },
       is: (c: string, _v: null) => { filters.push((r) => r[c] == null); return chain; },
-      order: (c: string) => { const o = run; void o; void c; return chain; },
+      order: () => chain,
       limit: (n: number) => { limit = n; return chain; },
+      range: (a: number, b: number) => { range = [a, b]; return chain; },
       single: () => {
         const r = run();
         const row = (r.data as Row[] | null)?.[0] ?? null;
@@ -183,6 +187,17 @@ Deno.test("T6: a thin-category run writes the same search log, with each of its 
   const res = await dispatchAction({ action: "create_run", cityId: CITY, categories: ["brunch_lunch_casual"] }, fakeDb(w));
   assertEquals(res.status, 200);
   assertEquals(w.tables.seeding_batches.map((b) => b.search_config_id), ["casual_eats", "casual_eats_world", "casual_eats_extended"]);
+});
+
+Deno.test("a city past the server's row cap is priced and searched whole", async () => {
+  const seeding_tiles = Array.from({ length: 2300 }, (_, i) => ({
+    id: `t${i}`, city_id: CITY, tile_index: i, center_lat: 10, center_lng: 10, radius_m: 2000, row_idx: 0, col_idx: i, kind: "grid", retired_at: null,
+  }));
+  const w = world({ tables: { seeding_tiles } as Record<string, Row[]> });
+  const preview = await (await dispatchAction({ action: "preview_cost", cityId: CITY }, fakeDb(w))).json();
+  assertEquals(preview.tileCount, 2300);
+  const run = await (await dispatchAction({ action: "create_run", cityId: CITY, categories: ["play"] }, fakeDb(w))).json();
+  assertEquals(run.totalTiles, 2300);
 });
 
 Deno.test("the cost preview still prices active base tiles only, and flags high cost", async () => {
