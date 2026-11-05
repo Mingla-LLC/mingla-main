@@ -353,7 +353,8 @@ export function phase3dContractDigest(manifest) {
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "99bd09e8f39fcb9ecc8523ab2916468d71578c35dbf908b84c182ec8cfcd8aff";
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e7e613857579cf2763fe454ed6bb5e6f4b3e9cddd716bd73684e65edd703b645";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

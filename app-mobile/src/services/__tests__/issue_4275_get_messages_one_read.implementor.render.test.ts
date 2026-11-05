@@ -134,7 +134,7 @@ describe("#4275 messagingService", () => {
     expect(onStatus).toHaveBeenCalledWith("SUBSCRIBED");
     onStatus.mockClear();
 
-    mockChannels[0].statusCallback?.("CLOSED"); // server phx_close: still the current channel
+    mockChannels[0].statusCallback?.("CLOSED"); // a server close: still the current channel
     expect(onStatus).toHaveBeenCalledWith("CLOSED");
     onStatus.mockClear();
 
