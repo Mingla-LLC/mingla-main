@@ -196,6 +196,82 @@ BEGIN
     RAISE EXCEPTION 'O8 no recorded total must refund total_cents: %', to_jsonb(v_row);
   END IF;
 
+  -- Final test P3-4: no provider total recorded on the session, but the stored
+  -- webhook event holds Stripe's own amount: the refund uses that, not the
+  -- create-time computed total. Three variants: the payment_intent.succeeded
+  -- amount (tax on top), the checkout.session.completed amount (below the
+  -- computed total), and a recorded provider total that wins over the event.
+  FOR v_answer IN
+    SELECT jsonb_build_object('tag', tag, 'type', typ, 'amount', amt, 'reconcile', rec, 'expect', exp)
+      FROM (VALUES
+        ('PI', 'payment_intent.succeeded', 3385, NULL::integer, 3385),
+        ('CS', 'checkout.session.completed', 3000, NULL::integer, 3000),
+        ('RECORDED', 'payment_intent.succeeded', 9999, 3385, 3385)
+      ) x(tag, typ, amt, rec, exp)
+  LOOP
+    v_session := gen_random_uuid();
+    v_pi := 'pi_o8wh'||replace(v_session::text,'-','');
+    INSERT INTO public.ticket_checkout_sessions (
+      id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+      idempotency_key, expires_at, stripe_account_id, stripe_checkout_session_id, stripe_payment_intent_id,
+      stripe_application_fee_amount_cents, list_subtotal_cents, discount_cents, net_subtotal_cents,
+      buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source
+    ) VALUES (
+      v_session, v_event, v_brand, 'Guest', 'guest.o8@example.test', '+447700900123', 3000, 'GBP',
+      'awaiting_web_redirect', 'o8-'||v_session, now() + interval '40 minutes', 'acct_o8',
+      'cs_o8'||replace(v_session::text,'-',''), v_pi, 135, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout'
+    );
+    INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+    VALUES (v_session, v_tier, 'General', 2, 1500, 3000);
+    INSERT INTO public.payment_webhook_events(stripe_event_id, type, payload, provider, provider_event_type)
+    VALUES ('evt_o8'||replace(v_session::text,'-',''), v_answer->>'type',
+      CASE WHEN v_answer->>'type' = 'payment_intent.succeeded'
+        THEN jsonb_build_object('data', jsonb_build_object('object', jsonb_build_object(
+          'id', v_pi, 'amount_received', (v_answer->>'amount')::integer, 'currency', 'gbp')))
+        ELSE jsonb_build_object('data', jsonb_build_object('object', jsonb_build_object(
+          'id', 'cs_o8'||replace(v_session::text,'-',''), 'payment_intent', v_pi,
+          'amount_total', (v_answer->>'amount')::integer, 'currency', 'gbp')))
+      END,
+      'stripe', v_answer->>'type');
+    v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event, 'stripe', 'stripe_checkout', 'o8-fp-'||v_session);
+    PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_o8'||replace(v_session::text,'-',''), NULL, 'o8-cont-'||v_session);
+    IF v_answer->>'reconcile' IS NOT NULL THEN
+      PERFORM public.issue_3872_record_ticket_provider_total(v_session, 'stripe', (v_answer->>'reconcile')::bigint, 250);
+    END IF;
+    PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'stripe', v_pi, NULL, 'ch_o8'||replace(v_session::text,'-',''));
+    SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
+    IF NOT FOUND OR v_row.buyer_refund_requested_cents <> (v_answer->>'expect')::integer
+       OR v_row.original_charge_cents <> (v_answer->>'expect')::integer
+       OR v_row.fee_reversal_required_cents <> 135
+       OR v_row.organizer_refund_liability_cents <> (v_answer->>'expect')::integer - 135 THEN
+      RAISE EXCEPTION 'O8-WEBHOOK % the refund must be the provider''s own amount: %', v_answer->>'tag', to_jsonb(v_row);
+    END IF;
+  END LOOP;
+
+  -- Paystack: the charge.success amount is used the same way.
+  v_session := gen_random_uuid();
+  INSERT INTO public.ticket_checkout_sessions (
+    id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+    idempotency_key, expires_at, application_fee_amount_cents
+  ) VALUES (
+    v_session, v_event_ps, v_brand_ps, 'Guest', 'guest.o8@example.test', '+2348012345678', 1567500, 'NGN',
+    'awaiting_web_redirect', 'o8-'||v_session, now() + interval '40 minutes', 67500
+  );
+  INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+  VALUES (v_session, v_tier_ps, 'General', 1, 1500000, 1500000);
+  INSERT INTO public.payment_webhook_events(stripe_event_id, type, payload, provider, provider_event_type)
+  VALUES ('paystack:o8'||replace(v_session::text,'-',''), 'charge.success',
+    jsonb_build_object('event', 'charge.success', 'data', jsonb_build_object(
+      'reference', 'pswh'||replace(v_session::text,'-',''), 'amount', 1560000, 'currency', 'NGN')),
+    'paystack', 'charge.success');
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event_ps, 'paystack', 'paystack_redirect', 'o8-fp-'||v_session);
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, NULL, 'pswh'||replace(v_session::text,'-',''), 'o8-cont-'||v_session);
+  PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'paystack', 'pswh'||replace(v_session::text,'-',''), '900323456', NULL);
+  SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
+  IF NOT FOUND OR v_row.buyer_refund_requested_cents <> 1560000 OR v_row.original_charge_cents <> 1560000 THEN
+    RAISE EXCEPTION 'O8-WEBHOOK Paystack the refund must be the charge.success amount: %', to_jsonb(v_row);
+  END IF;
+
   -- Case TAX: the webhook records Stripe's total, with tax, before the refund is minted.
   v_session := gen_random_uuid();
   v_pi := 'pi_o8'||replace(v_session::text,'-','');

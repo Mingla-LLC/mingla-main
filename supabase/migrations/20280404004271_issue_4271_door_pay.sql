@@ -1390,6 +1390,7 @@ GRANT EXECUTE ON FUNCTION public.biz_door_pay_code_late_payment(uuid)
 -- buyer_total_cents (written from Stripe's own total before finalize runs,
 -- automatic tax included), falling back to total_cents for a session with no
 -- recorded total. Paystack's total_cents is already all-in, so nothing doubles.
+-- When no provider total was recorded, the stored webhook event's amount wins.
 -- Mingla's fee is stripe_application_fee_amount_cents, reversed in full.
 CREATE OR REPLACE FUNCTION public.issue_4271_ticket_late_refund_amounts()
 RETURNS trigger
@@ -1401,12 +1402,47 @@ DECLARE
   v_session public.ticket_checkout_sessions%ROWTYPE;
   v_charged integer;
   v_fee integer;
+  v_provider_amount integer;
 BEGIN
   SELECT * INTO v_session FROM public.ticket_checkout_sessions WHERE id = NEW.source_id;
   IF NOT FOUND THEN
     RETURN NEW;
   END IF;
-  v_charged := coalesce(v_session.buyer_total_cents, v_session.total_cents);
+  -- When the provider's total was never recorded on the session (the record
+  -- failed, disagreed with checkout, or the session has no computed split), the
+  -- provider's own amount is still in the stored webhook event for this payment
+  -- (both webhooks store the event before processing it). Same lookups as the
+  -- #3872 backfill; same currency only.
+  IF v_session.pricing_source IS DISTINCT FROM 'provider_reconciled'
+     AND NEW.provider_payment_reference IS NOT NULL THEN
+    IF NEW.provider = 'stripe' THEN
+      SELECT (w.payload #>> '{data,object,amount_received}')::integer INTO v_provider_amount
+        FROM public.payment_webhook_events w
+       WHERE w.type = 'payment_intent.succeeded'
+         AND w.payload #>> '{data,object,id}' = NEW.provider_payment_reference
+         AND upper(w.payload #>> '{data,object,currency}') = upper(NEW.currency)
+       ORDER BY w.created_at DESC LIMIT 1;
+      IF v_provider_amount IS NULL THEN
+        SELECT (w.payload #>> '{data,object,amount_total}')::integer INTO v_provider_amount
+          FROM public.payment_webhook_events w
+         WHERE w.type = 'checkout.session.completed'
+           AND w.payload #>> '{data,object,payment_intent}' = NEW.provider_payment_reference
+           AND upper(w.payload #>> '{data,object,currency}') = upper(NEW.currency)
+         ORDER BY w.created_at DESC LIMIT 1;
+      END IF;
+    ELSE
+      SELECT (w.payload #>> '{data,amount}')::integer INTO v_provider_amount
+        FROM public.payment_webhook_events w
+       WHERE w.type = 'charge.success'
+         AND w.payload #>> '{data,reference}' = NEW.provider_payment_reference
+         AND upper(w.payload #>> '{data,currency}') = upper(NEW.currency)
+       ORDER BY w.created_at DESC LIMIT 1;
+    END IF;
+    IF v_provider_amount IS NOT NULL AND v_provider_amount <= 0 THEN
+      v_provider_amount := NULL;
+    END IF;
+  END IF;
+  v_charged := coalesce(v_provider_amount, v_session.buyer_total_cents, v_session.total_cents);
   v_fee := least(v_charged, greatest(
     coalesce(v_session.stripe_application_fee_amount_cents, 0),
     coalesce(v_session.application_fee_amount_cents, 0)));
