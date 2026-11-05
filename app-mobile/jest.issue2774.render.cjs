@@ -87,6 +87,7 @@ module.exports = {
     // chat is never reported as a channel failure.
     "**/__tests__/issue_4275_get_messages_one_read.implementor.render.test.ts",
     "**/__tests__/issue_4275_get_messages_sender_fanout.tester.adversarial.render.test.ts",
+    "**/__tests__/issue_4275_page_catchup.tester.adversarial.render.test.tsx",
     // issue #4275 — the hook around the open-chat recovery controller.
     "**/__tests__/issue_4275_open_chat_recovery.implementor.render.test.tsx",
   ],
