@@ -548,7 +548,7 @@ BEGIN
 
   -- R-DECLINE (T12): a declined card is a note on an open code, nothing more.
   PERFORM public.issue_4271_door_pay_code_mark_declined(v_session);
-  IF (SELECT failure_reason FROM public.door_pay_codes WHERE id = v_code) <> 'card_declined'
+  IF (SELECT failure_reason FROM public.door_pay_codes WHERE id = v_code) IS DISTINCT FROM 'card_declined'
      OR (SELECT status FROM public.door_pay_codes WHERE id = v_code) <> 'opened' THEN
     RAISE EXCEPTION 'R-DECLINE a decline must note the code and leave it open';
   END IF;
