@@ -8,7 +8,7 @@
 //   - put the try/catch back in refreshOpenConversation: "an error result rejects" and
 //     "a timeout rejects" fail.
 //   - drop `&& user?.id` from channelKey: "signing out" fails.
-//   - send recovery through loadBrandChannelNewest: not covered here (see #4275).
+// Not driven here: the brand channel path (source and hook tests only, see #4275).
 
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

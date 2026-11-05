@@ -7,11 +7,13 @@
 //   - `gapUnread` reset removed from the stable timer's check: RX-1 fails.
 //   - `armPoll` removed from the catch-up rejection: RX-2 fails.
 //   - `disposed` removed from armPoll: RX-3 fails.
-//   - `stopPolling` removed from the success branch: RX-4 fails.
+//   - the success branch removed: RX-2 fails.
+//   - `!canWork()` removed from the poll timer: RX-5 fails.
 //   - `started` check removed from the gate's finish: GX-3 fails (running goes wrong).
-//   - watchdog armed at enqueue, not at start: GX-2 fails.
+//   - watchdog never armed: GX-1 and GX-2 never settle, and the run fails.
 //   - `finished` guard removed: GX-1 fails on the late settle.
 //   - `!hasRows` back to `!loaded`: LX-1 fails.
+//   - shared in-flight sender lookup removed: the fan-out render suite fails.
 
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
@@ -176,6 +178,8 @@ Deno.test("RX-3 leaving with a retry armed or a read in flight stops everything"
   const flying = rig({ readMs: 8 * SECOND });
   flying.recovery.onStatus("changes", "SUBSCRIBED");
   flying.recovery.dispose();
+  await flying.advance(9 * SECOND);
+  assertEquals(flying.pending(), 0, "a read failing after leaving arms nothing");
   await flying.advance(10 * MINUTE);
   assertEquals(flying.reads(), 1, "a read failing after leaving arms no retry");
   assertEquals(flying.pending(), 0);
@@ -200,6 +204,8 @@ Deno.test("RX-5 parked retries: background and offline do no reads, and return d
   await r.advance(SECOND);
   const before = r.reads();
   r.setActive(false);
+  await r.advance(20 * SECOND);
+  assertEquals(r.pending(), 0, "parked after the first due timer");
   await r.advance(60 * MINUTE);
   assertEquals(r.reads(), before, "no background reads");
   assertEquals(r.pending(), 0, "parked, not waking the phone");
