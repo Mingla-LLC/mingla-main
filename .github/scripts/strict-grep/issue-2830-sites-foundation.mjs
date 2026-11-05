@@ -1076,47 +1076,68 @@ export function violations(files) {
     "Publishing is always a separate confirmation.",
   ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
   /*
-   * #2830 — ONLY the Ari tab may import AriChatScreen.
+   * #2830 — AriChatScreen is one on-demand chunk.
+   * MINGLA-INVARIANT: I-ARI-CHAT-ONE-CHUNK
    *
-   * A second importer gives Metro two chunks to serve the module from, and it
-   * hoists anything shared into the payload every Business user downloads
-   * before anything renders. Measured when the Website split view imported it
-   * directly: 2,436,294 B to 2,569,912 B, a 133KB regression on the boot path
-   * for people who may never open Ari. `React.lazy` does not help — sharing is
-   * what hoists, not eagerness.
+   * Metro makes each `import()` target one async chunk and moves anything that
+   * sits in two chunks into `__common`, the payload every Business user
+   * downloads before anything renders. A STATIC importer next to a lazy one
+   * duplicates the whole graph. Measured when the Website split view imported
+   * it directly: 2,436,294 B to 2,569,912 B, a 133KB regression on the boot
+   * path. Two dynamic importers of the same module resolve to ONE chunk and
+   * hoist nothing (measured on #2830), so that is the only allowed shape: no
+   * static importer anywhere under app/ or src/components/sites/, and dynamic
+   * importers are only the Ari tab and Website setup.
    *
    * This lives here rather than in a jest file because it is a STRUCTURAL rule
    * about the module graph, which is exactly what I-PROPOSED-1047 says belongs
    * in an additive gate rather than a source-text pin.
    */
   {
-    const ariImporters = [
+    const ALLOWED_DYNAMIC = new Set([
       "mingla-business/app/(tabs)/ari.tsx",
-      "mingla-business/app/brand/[id]/website/ari.tsx",
-      "mingla-business/app/brand/[id]/website.tsx",
-      // #2829 W9r — the Website section's shell is lazy-loaded by that route.
-      "mingla-business/src/components/sites/website/WebsiteApp.tsx",
-    ].filter((file) => {
-      let body = "";
+      "mingla-business/src/components/sites/setup/WebsiteSetupScreen.tsx",
+    ]);
+    const walk = (dir) => {
+      const found = [];
+      let entries = [];
       try {
-        body = fs.readFileSync(path.join(ROOT, file), "utf8");
+        entries = fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true });
       } catch {
-        return false;
+        return found;
       }
-      // Strip block comments: this gate's own docblock names the module, and a
-      // substring match would flag the file that deliberately does not import it.
-      body = body.replace(/\/\*[\s\S]*?\*\//g, "");
-      return /from\s+"[^"]*AriChatScreen"/.test(body);
-    });
-    if (
-      ariImporters.length !== 1 ||
-      ariImporters[0] !== "mingla-business/app/(tabs)/ari.tsx"
-    ) {
-      failures.push(
-        `AriChatScreen import boundary: must have exactly one importer ` +
-          `(app/(tabs)/ari.tsx); found: ${ariImporters.join(", ") || "none"}. ` +
-          `A second importer puts ~133KB on every Business user's boot path.`,
-      );
+      for (const entry of entries) {
+        const child = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (entry.name !== "__tests__") found.push(...walk(child));
+        } else if (/\.tsx?$/.test(entry.name)) found.push(child);
+      }
+      return found;
+    };
+    const dynamicImporters = [];
+    for (const file of [...walk("mingla-business/app"), ...walk("mingla-business/src/components/sites")]) {
+      // Strip comments: docblocks name the module on purpose.
+      const body = fs.readFileSync(path.join(ROOT, file), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      if (/from\s+"[^"]*AriChatScreen"/.test(body)) {
+        failures.push(
+          `AriChatScreen import boundary: static import in ${file}. ` +
+            `It must load through an inline React.lazy; a static importer puts ~133KB on every Business user's boot path.`,
+        );
+      }
+      if (/import\(\s*"[^"]*AriChatScreen"\s*\)/.test(body)) dynamicImporters.push(file);
+    }
+    for (const file of dynamicImporters) {
+      if (!ALLOWED_DYNAMIC.has(file)) {
+        failures.push(
+          `AriChatScreen import boundary: dynamic importer ${file} is not one of ` +
+            `${[...ALLOWED_DYNAMIC].join(", ")}.`,
+        );
+      }
+    }
+    if (!dynamicImporters.includes("mingla-business/app/(tabs)/ari.tsx")) {
+      failures.push("AriChatScreen import boundary: the Ari tab must load AriChatScreen with an inline dynamic import.");
     }
   }
 

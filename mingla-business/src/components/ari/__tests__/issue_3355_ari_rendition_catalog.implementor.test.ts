@@ -59,11 +59,16 @@ describe("#3355 Ari rendition foundation", () => {
     expect(route).not.toContain(
       'import { AriRenditionGalleryScreen } from "../../src/screens/ari/AriRenditionGalleryScreen"',
     );
-    expect(ariRoute).toContain(
+    // #2830 — a static import here would hoist the gallery's shared graph into
+    // __common now that the Ari route lazy-loads the chat. __DEV__ folds the
+    // lazy branch out of production dependencies.
+    expect(ariRoute).not.toContain(
       'import { AriRenditionGalleryScreen } from "../../src/screens/ari/AriRenditionGalleryScreen"',
     );
+    expect(ariRoute).toContain("const LazyAriRenditionGallery = __DEV__");
+    expect(ariRoute).toContain('import("../../src/screens/ari/AriRenditionGalleryScreen")');
     expect(ariRoute).toContain('renditionMode === "gallery"');
-    expect(ariRoute).toContain("<AriRenditionGalleryScreen />");
+    expect(ariRoute).toContain("<LazyAriRenditionGallery />");
     expect(settings).toContain("{__DEV__ ? (");
     expect(settings).toContain("Open 65-state gallery");
   });
