@@ -148,6 +148,28 @@ export const doorSaleLiveAmount = (sale: MoneyDoorSaleRecord): number =>
 export const refundAmount = (refund: { amount?: number; amountGbp: number }): number =>
   refund.amount ?? refund.amountGbp;
 
+const CARD_BRAND_NAMES: Record<string, string> = {
+  visa: "Visa",
+  mastercard: "Mastercard",
+  amex: "American Express",
+  discover: "Discover",
+  diners: "Diners Club",
+  jcb: "JCB",
+  unionpay: "UnionPay",
+  verve: "Verve",
+  eftpos: "EFTPOS",
+};
+
+/** "Visa ending 4242", or null when the provider supplied no last four. */
+export const doorSaleCardLine = (
+  brand: string | null | undefined,
+  last4: string | null | undefined,
+): string | null => {
+  if (typeof last4 !== "string" || last4.length === 0) return null;
+  const name = typeof brand === "string" ? CARD_BRAND_NAMES[brand] : undefined;
+  return `${name ?? "Card"} ending ${last4}`;
+};
+
 /**
  * issue #4271 — the one money shape of a door sale, read from the server's own
  * columns (charge, refunds, fee, and each refund's fee reversal as the provider

@@ -9,6 +9,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  doorChargeMatchesCode,
   doorPayStripeUrls,
   doorStripeExpiresAt,
   linkDoorPaySession,
@@ -46,6 +47,7 @@ const OPEN_ROW = {
   lines: [{ ticketTypeId: TIER, quantity: 2 }],
   status: "opened",
   expires_at: new Date(NOW + 60_000).toISOString(),
+  total_cents: 3135,
 };
 
 Deno.test("#4271 a door code rebuilds the checkout from the code alone", async () => {
@@ -66,6 +68,7 @@ Deno.test("#4271 a door code rebuilds the checkout from the code alone", async (
     codeId: CODE_ID,
     code: "ABCD2345",
     expiresAt: OPEN_ROW.expires_at,
+    totalCents: OPEN_ROW.total_cents,
   });
   assertEquals(result.body, {
     buyer: { name: "Phone Guest", email: "g@example.test", phone: "+12025550101" },
@@ -172,4 +175,15 @@ Deno.test("#4271 rework: the door checkout prices and creates inside the door wr
   assert(src.includes('"issue_4271_door_checkout_create_session"'));
   // Stripe page expiry is set for door codes only.
   assert(src.includes("? { expires_at: doorStripeExpiresAt(doorPay) }"));
+  // Retest T6: a door page's automatic tax sits inside the total, for door codes only.
+  assert(src.includes('? { tax_behavior: "inclusive" as const }'));
+  assert(src.includes('...(doorPay !== null\n                      ? { tax_behavior: "inclusive" as const }'));
+  assertEquals(src.split("doorChargeMatchesCode(doorPay,").length - 1, 2);
+});
+
+Deno.test("#4271 retest T6: a door code charges only what it showed", () => {
+  const door = { codeId: "c", code: "ABCD2345", expiresAt: "", totalCents: 3135 };
+  assert(doorChargeMatchesCode(door, 3135));
+  assert(!doorChargeMatchesCode(door, 3136));
+  assert(!doorChargeMatchesCode(door, 3000));
 });

@@ -10,6 +10,9 @@
  * The phone's clock never ends a code: past its time the screen shows
  * "Checking…" until the server has asked the provider.
  *
+ * While a code is showing the phone stays awake at full brightness, so a guest can
+ * scan it (design H3); leaving restores the phone's own settings.
+ *
  * I-21: operator-side route (useAuth via the hooks below).
  */
 
@@ -59,6 +62,7 @@ import {
   useTextDoorPayLink,
 } from "../../../../../src/hooks/useEventDoorSales";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
+import { useDoorScreenAwake } from "../../../../../src/hooks/useDoorScreenAwake";
 import { DoorPayCodeError, type DoorPayLiveStatus } from "../../../../../src/services/doorPayCodeService";
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { HapticFeedback } from "../../../../../src/utils/hapticFeedback";
@@ -100,6 +104,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
   const status =
     row === null ? null : doorPayHostStatus(row.status, row.expiresAt, nowMs, serverAnswer?.status ?? null);
   const closed = status === "expired" || status === "failed" || status === "cancelled";
+  useDoorScreenAwake(status === "open" || status === "opened");
 
   // The phone's clock passed the code's time: ask the server, again every few
   // seconds until it has an answer. Only the server can say nothing landed.
@@ -416,6 +421,11 @@ export default function DoorPayCodeRoute(): React.ReactElement {
         <Text style={styles.muted}>
           {[summarizeDoorPayLines(namedLines), routeEvent.event?.name].filter(Boolean).join(" · ")}
         </Text>
+        {row.failureReason === "card_declined" ? (
+          <Text style={styles.error} accessibilityRole="alert" testID="door-pay-declined">
+            Guest's card was declined. They can try again.
+          </Text>
+        ) : null}
         {paying ? (
           <View style={[styles.card, styles.payingCard]} accessibilityLiveRegion="polite">
             <Text style={styles.payingTitle}>Guest is paying…</Text>

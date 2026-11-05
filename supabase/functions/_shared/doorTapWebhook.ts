@@ -56,3 +56,23 @@ export async function handleDoorTapStripeEvent(
   }
   return brandId;
 }
+
+/**
+ * A declined card on a door code's checkout, so the host's screen can say so
+ * while the guest tries again. Only ever a note on an open code; a failure here
+ * must not cost the webhook its ticket handling, so it logs and moves on.
+ */
+export async function recordDoorCodeDecline(
+  supabase: ServiceClient,
+  event: DoorTapStripeEvent,
+): Promise<void> {
+  const metadata = event.data?.object?.metadata as Record<string, unknown> | undefined;
+  const sessionId = metadata?.mingla_checkout_session_id;
+  if (typeof sessionId !== "string" || sessionId.length === 0) return;
+  const { error } = await supabase.rpc("issue_4271_door_pay_code_mark_declined", {
+    p_checkout_session_id: sessionId,
+  });
+  if (error) {
+    console.error("[door-pay-code] decline note failed", error.message);
+  }
+}

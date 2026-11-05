@@ -355,6 +355,19 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
     expect(text).toMatch(/Net\s+£0\.00/);
   });
 
+  test("T11: sale detail shows brand and last 4 when the provider gave them", () => {
+    const base = {
+      id: "sale-1", eventId: "event-1", brandId: "brand-1", recordedBy: "", buyerName: "Ada",
+      buyerEmail: "", buyerPhone: "", paymentMethod: "tap_to_pay", lines: [], totalGbpAtSale: 30,
+      totalAtSale: 30, currency: "GBP", notes: "", recordedAt: "2026-11-04T20:00:00.000Z",
+      status: "completed", refundedAmountGbp: 0, refundedAmount: 0, refunds: [], minglaFeeAmount: 1.35,
+    };
+    mockSales = [{ ...base, cardBrand: "visa", cardLast4: "4242" }];
+    expect(textOf(mount(<DoorSaleDetailRoute />).root)).toContain("Visa ending 4242");
+    mockSales = [{ ...base, cardBrand: null, cardLast4: null }];
+    expect(textOf(mount(<DoorSaleDetailRoute />).root)).not.toContain("ending");
+  });
+
   const guestView = (over: Record<string, unknown>): Record<string, unknown> => ({
     status: "cancelled",
     latePayment: null,

@@ -9,6 +9,7 @@ import {
   MINGLA_SERVICE_FEE_BPS,
   type PricingRegion,
   type PricingSwitches,
+  taxBehaviorForRegion,
 } from "./allInPricingEngine.ts";
 
 /** No 0/O, 1/I/L: a guest may read the code aloud or type it. */
@@ -31,6 +32,7 @@ export type DoorPayErrorCode =
   | "door_ticket_capacity_exceeded"
   | "ticket_not_valid_on_chosen_days"
   | "stripe_account_not_ready"
+  | "door_tax_added_at_checkout"
   | "invalid_lines"
   | "not_found"
   | "door_code_unavailable"
@@ -139,10 +141,22 @@ export interface DoorMoney {
 const STRIPE_REGIONS = ["GB", "US", "EU", "CH"] as const;
 
 /**
- * Same engine as online checkout (#3645 flat 4.5%). Stripe Tax is not run at
- * the door: a passed tax on an exclusive-tax region is not added (recorded as
- * a known limit on #4271).
+ * A passed tax that sits on top of the price (exclusive regions, today the US)
+ * isn't known until Stripe has the buyer's address, so no total shown at the door
+ * could be the total charged. These events refuse pay code and Tap to Pay. An
+ * inclusive tax sits inside the price and never changes the total.
  */
+export function doorTaxAddedAtCheckout(
+  pricing: Pick<DoorPricingRow, "pass_tax" | "pricing_region">,
+  provider: "stripe" | "paystack",
+): boolean {
+  if (provider !== "stripe" || pricing.pass_tax !== true) return false;
+  const region = (pricing.pricing_region ?? "").trim().toUpperCase();
+  return (STRIPE_REGIONS as readonly string[]).includes(region) &&
+    taxBehaviorForRegion(region as PricingRegion) === "exclusive";
+}
+
+/** Same engine as online checkout (#3645 flat 4.5%). */
 export function computeDoorMoney(
   pricing: DoorPricingRow,
   provider: "stripe" | "paystack",

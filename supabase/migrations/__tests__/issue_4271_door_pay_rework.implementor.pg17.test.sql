@@ -546,6 +546,13 @@ BEGIN
   v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event, 'stripe', 'stripe_checkout', 't4271-fp-land');
   PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_tland', 'pi_tland', 't4271-c-land');
 
+  -- R-DECLINE (T12): a declined card is a note on an open code, nothing more.
+  PERFORM public.issue_4271_door_pay_code_mark_declined(v_session);
+  IF (SELECT failure_reason FROM public.door_pay_codes WHERE id = v_code) <> 'card_declined'
+     OR (SELECT status FROM public.door_pay_codes WHERE id = v_code) <> 'opened' THEN
+    RAISE EXCEPTION 'R-DECLINE a decline must note the code and leave it open';
+  END IF;
+
   v_result := public.issue_4271_door_pay_code_live_pages(v_code);
   IF v_result->>'status' <> 'opened' OR v_result->'pages'->0->>'checkoutSessionId' <> 'cs_tland'
      OR v_result->'pages'->0->>'stripeAccountId' <> 'acct_t4271'

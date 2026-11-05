@@ -40,6 +40,7 @@ function makeDb(options: {
   liveStatus?: string;
   latePayment?: Record<string, unknown> | null;
   dueCodes?: string[];
+  pricing?: Record<string, unknown>;
 } = {}) {
   const closeResults = Array.isArray(options.closeResult) ? [...options.closeResult] : null;
   const insertErrors = [...(options.insertErrors ?? [])];
@@ -89,7 +90,7 @@ function makeDb(options: {
         };
       }
       if (name === "resolve_event_pricing_inputs") {
-        return { data: [PRICING_ROW], error: null };
+        return { data: [{ ...PRICING_ROW, ...(options.pricing ?? {}) }], error: null };
       }
       if (name === "issue_4271_door_pay_code_live_pages") {
         return {
@@ -526,6 +527,25 @@ Deno.test("#4271 rework: Show a new code closes the code it replaces first", asy
   assertEquals(landingRes.status, 409);
   assertEquals(await landingRes.json(), { error: "door_code_unavailable", status: "payment_landing" });
   assertEquals(landing.opsOn("door_pay_codes", "insert").length, 0);
+});
+
+Deno.test("#4271 retest T6: a tax added on top at checkout refuses the pay code and the quote", async () => {
+  for (const action of ["quote", "create"]) {
+    const db = makeDb({ pricing: { pass_tax: true, pricing_region: "US" } });
+    const res = await handler(db)(post({
+      action, eventId: EVENT, eventDateId: null, lines: [{ ticketTypeId: TIER, quantity: 1 }],
+    }));
+    assertEquals(res.status, 400);
+    assertEquals((await res.json()).error, "door_tax_added_at_checkout");
+    assertEquals(db.opsOn("door_pay_codes", "insert").length, 0);
+  }
+  // Host absorbs in the US, and an inclusive region passing tax: total can't grow.
+  for (const pricing of [{ pass_tax: false, pricing_region: "US" }, { pass_tax: true, pricing_region: "GB" }]) {
+    const res = await handler(makeDb({ pricing }))(post({
+      action: "quote", eventId: EVENT, eventDateId: null, lines: [{ ticketTypeId: TIER, quantity: 1 }],
+    }));
+    assertEquals(res.status, 200);
+  }
 });
 
 Deno.test("#4271 rework: quote answers the real total with no row written", async () => {

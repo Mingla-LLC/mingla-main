@@ -72,6 +72,8 @@ interface DoorSaleRow {
   buyer_phone_e164: string | null;
   door_payment_method: DoorPaymentMethod;
   stripe_application_fee_amount_cents?: number | null;
+  payment_card_brand?: string | null;
+  payment_card_last4?: string | null;
   buyer_total_cents: number | null;
   total_cents: number;
   currency: string | null;
@@ -159,6 +161,8 @@ const mapDoorSale = (row: DoorSaleRow): DoorSaleRecord => {
         ? null
         : centsToMajor(row.stripe_application_fee_amount_cents)
       : null,
+    cardBrand: row.payment_card_brand ?? null,
+    cardLast4: row.payment_card_last4 ?? null,
   };
 };
 
@@ -214,7 +218,7 @@ export async function fetchEventDoorSales(eventId: string): Promise<DoorSaleReco
     .from("orders")
     .select(`
       id,event_id,buyer_name,buyer_email,buyer_phone_e164,door_payment_method,
-      buyer_total_cents,total_cents,stripe_application_fee_amount_cents,currency,created_by_scanner_id,created_at,
+      buyer_total_cents,total_cents,stripe_application_fee_amount_cents,payment_card_brand,payment_card_last4,currency,created_by_scanner_id,created_at,
       payment_status,refunded_amount_cents,metadata,
       events!inner(brand_id),
       order_line_items(id,ticket_type_id,quantity,unit_price_cents,total_cents,list_unit_price_cents,ticket_types(name,is_free)),

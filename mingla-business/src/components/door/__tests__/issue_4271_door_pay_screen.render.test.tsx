@@ -60,6 +60,10 @@ jest.mock("../../ui/Button", () => {
     ),
   };
 });
+const mockAwake = jest.fn();
+jest.mock("../../../hooks/useDoorScreenAwake", () => ({
+  useDoorScreenAwake: (active: boolean) => mockAwake(active),
+}));
 jest.mock("../../../utils/hapticFeedback", () => ({ HapticFeedback: { success: jest.fn() } }));
 jest.mock("../../../hooks/useManagedEventRoute", () => ({
   useManagedEventRoute: () => ({ event: { name: "Afrobeats Night", tickets: [] } }),
@@ -204,6 +208,22 @@ describe("#4271 host Scan to pay screen", () => {
     text = screenText(mount());
     expect(text).not.toContain("Nothing was charged.");
     expect(text).toContain("£31.35 was refunded");
+  });
+
+  test("T10: awake only while a code is showing", () => {
+    mockRow = row("opened");
+    mount();
+    expect(mockAwake).toHaveBeenLastCalledWith(true);
+    mockRow = row("paid");
+    mount();
+    expect(mockAwake).toHaveBeenLastCalledWith(false);
+  });
+
+  test("T12: a declined card is named with the code still open", () => {
+    mockRow = { ...row("opened"), failureReason: "card_declined" };
+    const text = screenText(mount());
+    expect(text).toContain("Guest's card was declined. They can try again.");
+    expect(text).toContain("Guest is paying");
   });
 
   test("Paystack: closed with no payment does not claim nothing can land", () => {

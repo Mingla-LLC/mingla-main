@@ -36,7 +36,7 @@ import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
 import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
-import { doorSaleMoney } from "../../../../src/utils/moneySummary";
+import { doorSaleCardLine, doorSaleMoney } from "../../../../src/utils/moneySummary";
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
@@ -258,6 +258,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
   const refundButtonVisible = sale.status !== "refunded_full";
   const isCardSale = isCardDoorPaymentMethod(sale.paymentMethod);
   const money = doorSaleMoney(sale);
+  const cardLine = doorSaleCardLine(sale.cardBrand, sale.cardLast4);
   const hasBuyerDetails =
     sale.buyerEmail.length > 0 ||
     sale.buyerPhone.length > 0 ||
@@ -346,6 +347,12 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
             <Text style={styles.summaryLabel}>Payment method</Text>
             <Text style={styles.summaryValue}>{paymentMethodLabel}</Text>
           </View>
+          {cardLine !== null ? (
+            <View style={styles.summaryRow} testID="door-sale-card">
+              <Text style={styles.summaryLabel}>Card</Text>
+              <Text style={styles.summaryValue}>{cardLine}</Text>
+            </View>
+          ) : null}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Total</Text>
             <Text style={styles.summaryValue}>

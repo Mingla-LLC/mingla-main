@@ -130,6 +130,10 @@ const makeDoorCartLine = (
   quantity,
 });
 
+/** issue #4271 — tax on top of the price isn't known until checkout (US pass-tax). */
+export const DOOR_CARD_TAX_REFUSAL =
+  "Card payments at the door aren't available for this event yet because tax is added at checkout. Take cash, or send guests to the event page.";
+
 /** issue #4271 — every refusal says what happened; nothing was charged yet. */
 export const doorPayCodeCreateErrorCopy = (code: string): string => {
   switch (code) {
@@ -141,6 +145,8 @@ export const doorPayCodeCreateErrorCopy = (code: string): string => {
       return DOOR_PAYMENTS_NOT_ALLOWED;
     case "stripe_account_not_ready":
       return "Card payments aren't set up for this brand yet. Take cash or manual instead.";
+    case "door_tax_added_at_checkout":
+      return DOOR_CARD_TAX_REFUSAL;
     case "invalid_lines":
       return "Pick at least one ticket.";
     default:

@@ -45,6 +45,7 @@ function brandRow(provider = "stripe", country = "US") {
 }
 
 function makeDb(options: {
+  pricing?: Record<string, unknown>;
   provider?: string;
   storedLocation?: string | null;
   intentRow?: Record<string, unknown> | null;
@@ -85,7 +86,9 @@ function makeDb(options: {
           error: null,
         };
       }
-      if (name === "resolve_event_pricing_inputs") return { data: [PRICING_ROW], error: null };
+      if (name === "resolve_event_pricing_inputs") {
+        return { data: [{ ...PRICING_ROW, ...(options.pricing ?? {}) }], error: null };
+      }
       if (name === "biz_door_tap_record") {
         return {
           data: { orderId: "order-1", ticketIds: ["t-1"], receiptQueued: false, replayed: false },
@@ -135,6 +138,20 @@ Deno.test("#4271 tap create makes a server-priced card_present direct charge", a
   );
   const stored = db.opsOn("door_tap_intents", "update")[0].payload as Record<string, unknown>;
   assertEquals(stored.stripe_payment_intent_id, "pi_door1");
+});
+
+Deno.test("#4271 retest T6: tap refuses a tax added on top at checkout, before any charge", async () => {
+  const db = makeDb({ pricing: { pass_tax: true, pricing_region: "US" } });
+  const stripe = fakeStripe();
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
+  })(post({
+    action: "create", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
+    lines: [{ ticketTypeId: TIER, quantity: 1 }], buyerPhone: null,
+  }));
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).error, "door_tax_added_at_checkout");
+  assertEquals(stripe.calls.filter((c) => c.method === "paymentIntents.create").length, 0);
 });
 
 Deno.test("#4271 tap create replays the same PaymentIntent for the same request", async () => {

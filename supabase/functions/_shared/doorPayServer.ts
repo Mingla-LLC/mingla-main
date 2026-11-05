@@ -5,6 +5,7 @@ import { resolveProviderRouting } from "./paymentProvider.ts";
 import {
   computeDoorMoney,
   doorErrorFromDb,
+  doorTaxAddedAtCheckout,
   type DoorPricingRow,
   parseDoorLines,
 } from "./doorPay.ts";
@@ -128,6 +129,10 @@ export async function quoteDoorSale(
   const loaded = await loadDoorPricing(supabase, input.eventId);
   if (loaded === null) {
     return { ok: false, error: "stripe_account_not_ready", status: 400 };
+  }
+  // Never take money with the wrong total.
+  if (doorTaxAddedAtCheckout(loaded.pricing, loaded.provider)) {
+    return { ok: false, error: "door_tax_added_at_checkout", status: 400 };
   }
   const money = computeDoorMoney(
     loaded.pricing,

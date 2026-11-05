@@ -98,6 +98,7 @@ import {
 import {
   handleDoorTapStripeEvent,
   isDoorTapStripeEvent,
+  recordDoorCodeDecline,
 } from "./doorTapWebhook.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
@@ -2351,6 +2352,11 @@ export async function routeStripeEvent(
         // installment PIs; cancellation is operator-driven via plan cancellation
         // which writes status='cancelled' directly on the ledger row).
       } else {
+        // Issue #4271 — a declined card on a door code tells the host. The
+        // code stays open: the guest can try again on the same page.
+        if (event.type === "payment_intent.payment_failed") {
+          await recordDoorCodeDecline(supabase, event);
+        }
         brandId = await handleTicketCheckoutPaymentIntent(supabase, event);
       }
       break;

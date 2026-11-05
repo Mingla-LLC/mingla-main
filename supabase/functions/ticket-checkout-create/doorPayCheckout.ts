@@ -18,6 +18,20 @@ export interface DoorPayCheckoutContext {
   code: string;
   /** When the host's code stops being offered (the code row's expires_at). */
   expiresAt: string;
+  /** The total the host and guest were shown. */
+  totalCents: number;
+}
+
+/**
+ * The money this checkout would take must be the money shown. A switch or a tier
+ * price changed after the code was made refuses the code: it never charges a
+ * different amount.
+ */
+export function doorChargeMatchesCode(
+  door: DoorPayCheckoutContext,
+  chargeCents: number,
+): boolean {
+  return chargeCents === door.totalCents;
 }
 
 /** Stripe's floor for a Checkout Session's expires_at is 30 minutes after
@@ -75,7 +89,7 @@ export async function resolveDoorPayCheckout(
   }
   const { data: row, error } = await supabase
     .from("door_pay_codes")
-    .select("id, code, event_id, event_date_id, lines, status, expires_at")
+    .select("id, code, event_id, event_date_id, lines, status, expires_at, total_cents")
     .eq("code", raw)
     .maybeSingle();
   if (error) {
@@ -132,7 +146,12 @@ export async function resolveDoorPayCheckout(
   rebuilt.doorCode = row.code;
   return {
     ok: true,
-    door: { codeId: row.id, code: row.code, expiresAt: String(row.expires_at) },
+    door: {
+      codeId: row.id,
+      code: row.code,
+      expiresAt: String(row.expires_at),
+      totalCents: Number(row.total_cents),
+    },
     body: rebuilt,
   };
 }

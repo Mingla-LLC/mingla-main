@@ -821,12 +821,6 @@ const ExportSection: React.FC<ExportSectionProps> = ({
     ) : !exportReady ? (
       <Text style={styles.exportCaption}>Refresh orders before exporting.</Text>
     ) : null}
-    {/* "Email PDF report" — DEFERRED to B-cycle per D-13-7. Visibly disabled, never tappable (Const #1 + #7). */}
-    <View style={styles.exportSecondaryDisabled}>
-      <Icon name="mail" size={18} color={textTokens.tertiary} />
-      <Text style={styles.exportSecondaryLabel}>Email PDF report</Text>
-      <Text style={styles.exportSecondaryHint}>Not available yet</Text>
-    </View>
   </View>
 );
 
@@ -1140,31 +1134,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: textTokens.tertiary,
     textAlign: "center",
-  },
-  exportSecondaryDisabled: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.md - 2,
-    marginTop: spacing.sm,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
-    opacity: 0.6,
-  },
-  exportSecondaryLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "500",
-    color: textTokens.tertiary,
-  },
-  exportSecondaryHint: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.0,
-    color: textTokens.quaternary,
-    textTransform: "uppercase",
   },
 
   // Toast ------------------------------------------------------------

@@ -148,6 +148,7 @@ import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
 // Issue #4271 — door pay code: the guest pays a host-made code on their phone.
 import {
+  doorChargeMatchesCode,
   type DoorPayCheckoutContext,
   doorPayStripeUrls,
   doorStripeExpiresAt,
@@ -3706,6 +3707,10 @@ export const createTicketCheckoutCreateHandler = (
           pricing.vat_rate_bps ?? 0,
           psSwitches.pass_tax,
         );
+      // Issue #4271 — a door code charges exactly what it showed.
+      if (doorPay !== null && !doorChargeMatchesCode(doorPay, psBuyerTotalCents)) {
+        return refuse({ error: "door_code_unavailable", status: "failed" }, 409);
+      }
       const psBreakdown: PricingBreakdown = withDiscounts(
         buildPricingBreakdown({
           input: psEngineInput,
@@ -4166,6 +4171,13 @@ export const createTicketCheckoutCreateHandler = (
       serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
     };
     const buyerSubtotal = computeBuyerSubtotal(engineInput);
+    // Issue #4271 — a door code charges exactly what it showed.
+    if (
+      doorPay !== null &&
+      !doorChargeMatchesCode(doorPay, buyerSubtotal.buyerSubtotalCents)
+    ) {
+      return refuse({ error: "door_code_unavailable", status: "failed" }, 409);
+    }
     // #3645 flat 4.5%: application_fee_amount = miglaFeeCents + serviceFeeCents,
     // ALWAYS (independent of pass/absorb — the switch only changes the
     // buyer-facing gross-up, not what Mingla collects). Mingla pays card
@@ -4420,6 +4432,12 @@ export const createTicketCheckoutCreateHandler = (
                     // the correct basis. (OQ-1: corrects the dispatch's shorthand
                     // "bill buyer_total_cents" for the WEB hosted-Checkout path.)
                     unit_amount: buyerSubtotal.buyerSubtotalCents,
+                    // Issue #4271 — Stripe's automatic tax sits inside a door
+                    // code's total: the page never charges more than the code
+                    // showed. Exclusive passed tax refuses the code earlier.
+                    ...(doorPay !== null
+                      ? { tax_behavior: "inclusive" as const }
+                      : {}),
                     product_data: {
                       name: `Tickets — ${eventName}`,
                       ...(checkoutListSubtotalCents > totalCents

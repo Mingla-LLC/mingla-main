@@ -30,6 +30,7 @@ export type DoorTapErrorCode =
   | "door_ticket_capacity_exceeded"
   | "ticket_not_valid_on_chosen_days"
   | "stripe_account_not_ready"
+  | "door_tax_added_at_checkout"
   | "invalid_lines"
   | "network_error"
   | "invalid_response"
@@ -48,6 +49,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<DoorTapErrorCode>([
   "door_ticket_capacity_exceeded",
   "ticket_not_valid_on_chosen_days",
   "stripe_account_not_ready",
+  "door_tax_added_at_checkout",
   "invalid_lines",
   "network_error",
   "invalid_response",

@@ -77,4 +77,7 @@ export interface DoorSaleRecord {
    * provider has not confirmed yet.
    */
   minglaFeeAmount?: number | null;
+  /** issue #4271 — as the provider reported it. Nothing else about the card. */
+  cardBrand?: string | null;
+  cardLast4?: string | null;
 }

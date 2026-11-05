@@ -192,6 +192,8 @@ const serverMessage = (error: unknown): string => {
         return "Tap to pay isn't available for this brand. Use a pay code instead.";
       case "stripe_account_not_ready":
         return "Card payments aren't set up for this brand yet. Use cash or a pay code.";
+      case "door_tax_added_at_checkout":
+        return "Card payments at the door aren't available for this event yet because tax is added at checkout. Take cash, or send guests to the event page.";
       case "door_ticket_capacity_exceeded":
         return "There aren't enough tickets left for this sale.";
       case "ticket_not_valid_on_chosen_days":

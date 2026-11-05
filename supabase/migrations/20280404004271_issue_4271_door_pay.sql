@@ -1285,6 +1285,29 @@ REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_link_session(uuid, uuid)
 GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_link_session(uuid, uuid)
   TO service_role;
 
+-- The provider declined the guest's card. The code stays open (the guest can try
+-- again on the same page); the host's screen reads failure_reason. Ordinary
+-- checkouts have no code and nothing happens.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_mark_declined(
+  p_checkout_session_id uuid
+) RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  UPDATE public.door_pay_codes c
+     SET failure_reason = 'card_declined', updated_at = now()
+    FROM public.ticket_checkout_sessions s
+   WHERE s.id = p_checkout_session_id
+     AND c.id = s.door_pay_code_id
+     AND c.status IN ('open', 'opened');
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_mark_declined(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_mark_declined(uuid)
+  TO service_role;
+
 -- Did a late payment come in on this closed code, and where is its refund?
 -- NULL when nothing was charged. 'refunded' only once the provider confirmed;
 -- 'refunding' covers a refund still queued (see SOURCE_REFUNDS_POST_DISABLED).
