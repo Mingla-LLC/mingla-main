@@ -81,6 +81,17 @@ BEGIN
     RAISE EXCEPTION 'a refunded extra leaves the door, got %', v_out;
   END IF;
 
+  -- An extra bought for every date of the event reads as every date, not
+  -- "some days": its dates come back null.
+  INSERT INTO public.order_add_on_line_items(
+    order_id,ticket_type_id,add_on_name_at_order,ticket_type_name_at_order,
+    day_scope_at_order,quantity,unit_price_cents,total_cents
+  ) VALUES (v_plain,v_tier,'Wristband','Weekend',ARRAY['fri','sat'],1,0,0);
+  v_out := public.issue_3281_door_order_extras(v_owner, v_event, ARRAY[v_plain]);
+  IF v_out->v_plain::text->0->'eventDateIds' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'an extra for every date must read as every date, got %', v_out;
+  END IF;
+
   -- Another event's door reads nothing of this order.
   IF public.issue_3281_door_order_extras(v_owner, v_other_event, ARRAY[v_order]) <> '{}'::jsonb THEN
     RAISE EXCEPTION 'another event must not read this order';

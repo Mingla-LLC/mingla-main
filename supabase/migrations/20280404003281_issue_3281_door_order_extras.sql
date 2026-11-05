@@ -8,8 +8,8 @@
 --
 -- Returned per order, for live orders only (paid or partly refunded): each
 -- extra's name, the count still owed (bought less refunded or pending
--- refund), and the event dates it is for (null when it covers every date its
--- ticket admits). A fully refunded extra is left out.
+-- refund), and the event dates it is for (null when it is for every date of
+-- the event). A fully refunded extra is left out.
 
 BEGIN;
 
@@ -50,11 +50,23 @@ BEGIN
              jsonb_agg(jsonb_build_object(
                'name', li.add_on_name_at_order,
                'quantity', owed.quantity,
-               'eventDateIds', CASE WHEN li.day_scope_at_order IS NULL THEN NULL ELSE to_jsonb(ARRAY(
-                 SELECT d.id FROM public.event_dates d
-                  WHERE d.event_id = p_event_id
-                    AND d.occurrence_key = ANY (li.day_scope_at_order)
-                  ORDER BY d.start_at, d.id)) END
+               -- null when it is for every date of the event (a single-date
+               -- event included), so the door never says "some days only"
+               -- about an extra good on every day.
+               'eventDateIds', CASE
+                 WHEN li.day_scope_at_order IS NULL THEN NULL
+                 WHEN NOT EXISTS (
+                   SELECT 1 FROM public.event_dates d
+                    WHERE d.event_id = p_event_id
+                      AND (d.occurrence_key IS NULL
+                        OR NOT d.occurrence_key = ANY (li.day_scope_at_order))
+                 ) THEN NULL
+                 ELSE to_jsonb(ARRAY(
+                   SELECT d.id FROM public.event_dates d
+                    WHERE d.event_id = p_event_id
+                      AND d.occurrence_key = ANY (li.day_scope_at_order)
+                    ORDER BY d.start_at, d.id))
+               END
              ) ORDER BY li.add_on_name_at_order, li.id) AS items
         FROM public.order_add_on_line_items li
         JOIN public.orders o ON o.id = li.order_id
