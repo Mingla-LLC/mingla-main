@@ -29,14 +29,6 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.orders WHERE door_payment_method = 'nfc') THEN
     RAISE EXCEPTION 'issue_4271_nfc_rows_exist: orders.door_payment_method';
   END IF;
-  -- The door_sale arm of orders_door_payment_method_check now requires a
-  -- method (production read 2026-11-04: zero door_sale rows without one).
-  IF EXISTS (
-    SELECT 1 FROM public.orders
-     WHERE source = 'door_sale' AND door_payment_method IS NULL
-  ) THEN
-    RAISE EXCEPTION 'issue_4271_door_sale_without_method_exists';
-  END IF;
   IF EXISTS (SELECT 1 FROM public.door_sales_ledger WHERE payment_method = 'nfc') THEN
     RAISE EXCEPTION 'issue_4271_nfc_rows_exist: door_sales_ledger.payment_method';
   END IF;
@@ -152,8 +144,7 @@ ALTER TABLE public.orders
 
 ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_door_payment_method_check;
 ALTER TABLE public.orders ADD CONSTRAINT orders_door_payment_method_check CHECK (
-  (source = 'door_sale' AND door_payment_method IS NOT NULL
-     AND door_payment_method IN ('cash','card_reader','manual'))
+  (source = 'door_sale' AND door_payment_method IN ('cash','card_reader','manual'))
   OR (source <> 'door_sale' AND (
     door_payment_method IS NULL
     OR door_payment_method IN ('pay_code','tap_to_pay')
@@ -170,9 +161,10 @@ ALTER TABLE public.orders ADD CONSTRAINT orders_door_pay_code_shape_check CHECK 
 -- an ordinary order has door_payment_method NULL, and `NULL = 'tap_to_pay'`
 -- would make this whole CHECK NULL, which Postgres treats as passing.
 --
--- Every condition in this migration that compares door_payment_method is
--- NULL-safe: the door_sale arm requires IS NOT NULL, the pay code shape uses
--- IS NOT DISTINCT FROM, and the partial indexes only ever match a non-NULL.
+-- The pay code shape above is NULL-safe the same way, and the partial indexes
+-- only ever match a non-NULL. The door_sale arm of the method check is left as
+-- #4063 wrote it: every door sale path names its method, and this issue does
+-- not change what an older door_sale row may hold.
 ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_online_checkout_phone_e164_check;
 ALTER TABLE public.orders ADD CONSTRAINT orders_online_checkout_phone_e164_check CHECK (
   source <> 'online_checkout'

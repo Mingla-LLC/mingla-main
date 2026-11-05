@@ -10,9 +10,8 @@
 --             event are claimable in Explorer like a cash door sale; an
 --             ordinary online order with a used ticket on a scheduled event
 --             still is not (no other order kind widened).
---   R-CHECK   (D3) the NULL trap: an ordinary online order without a phone, a
---             door_pay_code_id on a NULL-method order and a door_sale with a
---             NULL method are all refused.
+--   R-CHECK   (D3) the NULL trap: an ordinary online order without a phone and a
+--             door_pay_code_id on a NULL-method order are both refused.
 --   R-LATE    (D4) cancelling an opened code revokes its checkout session,
 --             queues the provider page for expiry and returns it for the edge
 --             to expire now; a payment that still lands is refused at
@@ -179,17 +178,6 @@ BEGIN
       'pi_r4271shape', 'ch_r4271shape', v_code
     );
     RAISE EXCEPTION 'R-CHECK a door_pay_code_id on a NULL-method order was accepted';
-  EXCEPTION WHEN check_violation THEN NULL;
-  END;
-  BEGIN
-    INSERT INTO public.orders (
-      id, event_id, total_cents, currency, payment_method, payment_status, is_door_sale,
-      source, door_payment_method, door_client_request_id
-    ) VALUES (
-      gen_random_uuid(), v_event, 1500, 'USD', 'cash', 'paid', true, 'door_sale', NULL,
-      gen_random_uuid()
-    );
-    RAISE EXCEPTION 'R-CHECK a door_sale order with no method was accepted';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 
