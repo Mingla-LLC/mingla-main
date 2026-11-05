@@ -7645,13 +7645,13 @@ const getCampaignReport = writeTool(
     if (isUuid(campaign.brand_id)) {
       await assertAgentReadBrand(client, userId, campaign.brand_id);
     }
-    const { data: messages, error: messageErr } = await client
-      .from("marketing_messages")
-      .select("id, status, sent_at, click_count, delivered_at, opened_at")
-      .eq("campaign_id", args.campaign_id)
-      .limit(500);
+    // #4273 — the masked read: circle rows stay counted, without their contact.
+    const { data: messages, error: messageErr } = await client.rpc(
+      "biz_marketing_campaign_messages_v1",
+      { p_campaign_ids: [args.campaign_id], p_limit: 500 },
+    );
     if (messageErr) throw new ToolError("RPC_FAILED", messageErr.message);
-    const rows = messages ?? [];
+    const rows = (messages ?? []) as Array<Record<string, unknown>>;
     const acceptedStatuses = new Set([
       "sent",
       "delivered",

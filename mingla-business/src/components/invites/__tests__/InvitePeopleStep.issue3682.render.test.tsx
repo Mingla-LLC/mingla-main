@@ -82,18 +82,22 @@ function renderPicker(friends: CircleRowAvailability | undefined, onFriends = je
         selectedCount={0}
         followersDetail={followersRowDetail(4)}
         disabled={false}
-        onSelectEveryone={jest.fn()}
-        onSelectFollowers={jest.fn()}
-        onSelectFriendsOfFollowers={onFriends}
-        onSelectGroup={jest.fn()}
+        onToggleEveryone={jest.fn()}
+        onToggleFollowers={jest.fn()}
+        onToggleFriendsOfFollowers={onFriends}
+        onToggleGroup={jest.fn()}
         onChoosePeople={jest.fn()}
       />,
     );
   });
-  const selectButtons = renderer.root.findAllByType("button")
-    .filter((node: any) => node.props.label === "Select");
-  // Order: Followers, Friends of followers.
-  return { renderer, followers: selectButtons[0], friends: selectButtons[1], onFriends };
+  // #4273: the source rows are tick boxes (the outermost node carrying the testID).
+  const row = (testID: string) => renderer.root.findAll((node: any) => node.props.testID === testID)[0];
+  return {
+    renderer,
+    followers: row("invite-source-followers"),
+    friends: row("invite-source-friends-of-followers"),
+    onFriends,
+  };
 }
 
 describe("#3682 Friends of followers row follows the extended-audience switch", () => {

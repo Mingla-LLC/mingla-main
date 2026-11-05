@@ -10,6 +10,7 @@
  */
 import type {
   CampaignChannelPayload,
+  CampaignGroupFigures,
   MarketingBookQuote,
   SealedMarketingAudienceKind,
 } from "../../types/marketing";
@@ -22,6 +23,7 @@ import {
 import {
   confirmMarketingBook,
   previewMarketingBook,
+  previewMarketingCampaignGroup,
 } from "./marketingBookSendService";
 import { partialSendLine } from "./campaignSendCopy";
 
@@ -135,6 +137,73 @@ export async function prepareSiblingChannel(
       error: siblingErrorMessage(input.channel, error),
     };
   }
+}
+
+/**
+ * #4273 — write every extra method as a sibling draft, then take ONE locked
+ * preview of the whole campaign. Each method keeps its own quote to confirm;
+ * `group` holds the figures that count each person once. All server figures.
+ */
+export async function prepareCampaignGroupPreview(input: {
+  leadCampaignId: string;
+  leadChannel: CampaignChannel;
+  accountId: string;
+  brandId: string;
+  audienceId: string;
+  name: string;
+  extras: Array<{
+    channel: CampaignChannel;
+    payload: CampaignChannelPayload;
+    existingCampaignId: string | null;
+  }>;
+}): Promise<{
+  lead: MarketingBookQuote | null;
+  leadError: string | null;
+  group: CampaignGroupFigures | null;
+  siblings: SiblingChannelState[];
+}> {
+  const drafts: Array<{ channel: CampaignChannel; campaignId: string }> = [];
+  for (const extra of input.extras) {
+    let campaignId = extra.existingCampaignId;
+    if (campaignId === null) {
+      const row = await createDraft({
+        account_id: input.accountId,
+        brand_id: input.brandId,
+        audience_id: input.audienceId,
+        name: input.name,
+        channel_payload: extra.payload,
+        campaign_group_id: input.leadCampaignId,
+      });
+      campaignId = row.id;
+    } else {
+      await updateDraft({
+        campaign_id: campaignId,
+        name: input.name,
+        audience_id: input.audienceId,
+        channel_payload: extra.payload,
+      });
+    }
+    drafts.push({ channel: extra.channel, campaignId });
+  }
+  const preview = await previewMarketingCampaignGroup(input.leadCampaignId);
+  const lead = preview.methods.find((method) => method.channel === input.leadChannel);
+  return {
+    lead: lead?.quote ?? null,
+    leadError: lead?.error ?? (lead === undefined ? "BOOK_BLAST_FAILED" : null),
+    group: preview.group,
+    siblings: drafts.map((draft) => {
+      const method = preview.methods.find((row) => row.campaignId === draft.campaignId);
+      return {
+        channel: draft.channel,
+        campaignId: draft.campaignId,
+        quote: method?.quote ?? null,
+        requestId: newSiblingRequestId(),
+        error: method?.quote
+          ? null
+          : siblingErrorMessage(draft.channel, new Error(method?.error ?? "FAILED")),
+      };
+    }),
+  };
 }
 
 export interface SiblingSendResult {

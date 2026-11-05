@@ -1,4 +1,11 @@
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
+import {
+  legacyWizardInviteSources,
+  parseWizardInviteChannels,
+  parseWizardInviteSources,
+  type WizardInviteChannel,
+  type WizardInviteSources,
+} from "../features/invites/inviteSelectionModel";
 import type { BookCursor, BrandPeopleBookPage } from "../types/people";
 import type { ManualGroupSummary } from "../types/marketing";
 import { listManualGroups } from "./marketing/manualGroupService";
@@ -7,6 +14,7 @@ import { supabase } from "./supabase";
 
 export type WizardOfferingType = "event" | "rsvp" | "experience" | "trip";
 export type WizardInvitePlanState = "draft" | "locked";
+export type { WizardInviteChannel, WizardInviteSources };
 
 export interface WizardInvitePlan {
   eventId: string;
@@ -27,6 +35,16 @@ export interface WizardInvitePlan {
   publishedSelectionRevision: number | null;
   updatedAt: string | null;
   replayed?: boolean;
+  /**
+   * #4273 — which sources are ticked. Always present after parsing: a plan or
+   * receipt written before #4273 gets sources derived from its people.
+   */
+  sources?: WizardInviteSources;
+  /**
+   * #4273 — the methods the host ticked; null = none stored (a legacy plan,
+   * which keeps the automatic behaviour).
+   */
+  deliveryChannels?: WizardInviteChannel[] | null;
 }
 
 export interface WizardInviteQuote {
@@ -50,6 +68,8 @@ export interface WizardInviteSelection {
   manualGroupIds: string[];
   personIds: string[];
   excludedPersonIds: string[];
+  /** #4273 — "How to reach them". Omitted only by legacy callers (automatic). */
+  deliveryChannels?: WizardInviteChannel[];
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -93,12 +113,19 @@ function parsePlan(value: unknown): WizardInvitePlan {
     : value.accountRecipientCount;
   if (!Number.isSafeInteger(accountRecipientCount) || (accountRecipientCount as number) < 0 ||
       (value.selectedCount as number) + (accountRecipientCount as number) > 500) malformed();
+  // #4273 — stored sources and methods; a legacy plan or receipt has neither.
+  const sources = parseWizardInviteSources(value.sources);
+  const deliveryChannels = parseWizardInviteChannels(value.deliveryChannels);
+  if (sources === null || deliveryChannels === "malformed") malformed();
   const plan = value as unknown as WizardInvitePlan;
   return {
     ...plan,
     bookSelectedCount: plan.selectedCount,
     accountRecipientCount: accountRecipientCount as number,
     selectedCount: plan.selectedCount + (accountRecipientCount as number),
+    sources: sources ?? legacyWizardInviteSources(
+      plan.brandPersonIds, accountRecipientCount as number),
+    deliveryChannels,
   };
 }
 

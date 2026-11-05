@@ -69,7 +69,8 @@ export async function assertAudienceQueryMatchesCampaignBrand(
     kind === "brand_buyers" ||
     kind === "brand_followers" ||
     kind === "brand_circle_extended" ||
-    kind === "all_brand_people"
+    kind === "all_brand_people" ||
+    kind === "combined_sources"
   ) {
     if (queryBrandId === null || queryBrandId !== campaignBrandId) {
       throw new Error(AUDIENCE_BRAND_MISMATCH);

@@ -37,9 +37,10 @@ describe("#3682 Wave 2.7 blast caps + week warning", () => {
   });
 
   it("compose wires allowance + week warning into the review sheet", () => {
-    expect(compose).toContain("bookAllowanceLabel");
+    // #4273: the allowance moved onto each method's SENDING BY row.
+    expect(compose).toContain("texts left this month");
+    expect(compose).toContain("emails left this month");
     expect(compose).toContain("bookWeekBlastWarning");
-    expect(compose).toContain("allowanceLabel={bookAllowanceLabel}");
     expect(compose).toContain("weekBlastWarning={bookWeekBlastWarning}");
     expect(compose).toContain("MONTHLY_CAP");
   });
