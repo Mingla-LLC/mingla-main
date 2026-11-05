@@ -14,6 +14,7 @@ import {
   buildDoorPaymentOptions,
   doorMethodCollectsBuyerDetails,
   doorSaleButtonLabel,
+  scannerDoorPaymentsCopy,
 } from "../doorPaymentOptions";
 import {
   assertDoorPayUrl,
@@ -140,7 +141,13 @@ describe("#4271 door sale payment list", () => {
     }
     expect(read("app/event/[id]/reconciliation.tsx")).not.toMatch(/\(door\)"[\s\S]{0,120}Not available yet/);
     expect(read("src/components/scanners/InviteScannerSheet.tsx")).toContain(
+      "scannerDoorPaymentsCopy(paymentProvider)",
+    );
+    expect(scannerDoorPaymentsCopy("stripe")).toBe(
       "Cash, manual, pay codes and Tap to Pay. Card money goes to your bank with online sales.",
+    );
+    expect(scannerDoorPaymentsCopy("paystack")).toBe(
+      "Cash, manual and pay codes. Card money goes to your bank with online sales.",
     );
     expect(read("src/components/scanners/ScannerHome.tsx")).toContain("useCanTakeDoorPayment(");
   });

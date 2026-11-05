@@ -38,6 +38,9 @@ import {
   createDoorCodeCheckout,
   createDoorPayCode,
   DoorPayCodeError,
+  fetchDoorPayGuestName,
+  fetchDoorPayLatePayment,
+  quoteDoorPayCode,
   fetchCanTakeDoorPayment,
   mapDoorPayCodeRow,
   textDoorPayLink,
@@ -251,5 +254,74 @@ describe("#4271 door pay code service", () => {
     expect(query.not).toHaveBeenCalledWith("door_payment_method", "is", null);
     expect(query.eq).not.toHaveBeenCalledWith("source", "door_sale");
     expect(sale).toMatchObject({ paymentMethod: "pay_code", totalAtSale: 31.35, minglaFeeAmount: 1.41 });
+  });
+
+  it("quotes a basket through the server without making a code", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: { subtotalCents: 3000, feeCents: 135, totalCents: 3135, currency: "GBP" },
+      error: null,
+    });
+    await expect(
+      quoteDoorPayCode({
+        eventId: "event-1",
+        eventDateId: null,
+        lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+      }),
+    ).resolves.toEqual({ subtotalCents: 3000, feeCents: 135, totalCents: 3135, currency: "GBP" });
+    expect(mockInvoke.mock.calls[0][1].body).toEqual({
+      action: "quote",
+      eventId: "event-1",
+      eventDateId: null,
+      lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+    });
+  });
+
+  it("a new code names the code it replaces; a first code does not", async () => {
+    const created = {
+      codeId: "code-2",
+      code: "K7Q2M9XB",
+      payUrl: "https://host.usemingla.com/pay/door/K7Q2M9XB",
+      totalCents: 3135,
+      subtotalCents: 3000,
+      feeCents: 135,
+      currency: "GBP",
+      expiresAt: "2026-11-04T20:10:00.000Z",
+      lines: [],
+    };
+    mockInvoke.mockResolvedValue({ data: created, error: null });
+    const input = { eventId: "event-1", eventDateId: null, lines: [{ ticketTypeId: "tier-1", quantity: 2 }] };
+    await createDoorPayCode({ ...input, replacesCodeId: "code-1" });
+    expect(mockInvoke.mock.calls[0][1].body.replacesCodeId).toBe("code-1");
+    await createDoorPayCode(input);
+    expect(mockInvoke.mock.calls[1][1].body).not.toHaveProperty("replacesCodeId");
+  });
+
+  it("reads a late payment from the server; null means nothing was charged", async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: { state: "refunding", amountCents: 3135, currency: "GBP" },
+      error: null,
+    });
+    await expect(fetchDoorPayLatePayment("code-1")).resolves.toEqual({
+      state: "refunding",
+      amountCents: 3135,
+      currency: "GBP",
+    });
+    expect(mockRpc).toHaveBeenCalledWith("biz_door_pay_code_late_payment", { p_code_id: "code-1" });
+    mockRpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(fetchDoorPayLatePayment("code-1")).resolves.toBeNull();
+    mockRpc.mockResolvedValueOnce({ data: null, error: { code: "42501" } });
+    await expect(fetchDoorPayLatePayment("code-1")).rejects.toBeInstanceOf(DoorPayCodeError);
+  });
+
+  it("the guest's name comes through the door permission, not an orders read", async () => {
+    mockRpc.mockResolvedValueOnce({ data: " Ada Okafor ", error: null });
+    await expect(fetchDoorPayGuestName("code-1")).resolves.toBe("Ada Okafor");
+    expect(mockRpc).toHaveBeenCalledWith("biz_door_pay_code_guest_name", { p_code_id: "code-1" });
+    expect(mockFrom).not.toHaveBeenCalled();
+    mockRpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(fetchDoorPayGuestName("code-1")).resolves.toBeNull();
+    // A failed read is an error, never a false walk-up.
+    mockRpc.mockResolvedValueOnce({ data: null, error: { code: "42501" } });
+    await expect(fetchDoorPayGuestName("code-1")).rejects.toBeInstanceOf(DoorPayCodeError);
   });
 });

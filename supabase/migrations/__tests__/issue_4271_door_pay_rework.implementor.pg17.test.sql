@@ -4,6 +4,8 @@
 --   R-ONLINE  (D1) a door-only tier (in person, not online) is priced and
 --             authorised inside its own pay code's checkout, and stays
 --             refused by every other checkout.
+--   R-GUEST-NAME the host's paid screen reads the guest through the door
+--             permission, for a scanner who cannot read orders.
 --   R-CLAIM   (D2) a Tap to Pay order and a pay-code order on a scheduled
 --             event are claimable in Explorer like a cash door sale; an
 --             ordinary online order with a used ticket on a scheduled event
@@ -35,6 +37,9 @@ DO $test$
 DECLARE
   v_owner uuid := gen_random_uuid();
   v_guest uuid := gen_random_uuid();
+  v_scanner_on uuid := gen_random_uuid();
+  v_scanner_off uuid := gen_random_uuid();
+  v_late_code uuid;
   v_brand uuid := gen_random_uuid();
   v_event uuid := gen_random_uuid();
   v_event_sched uuid := gen_random_uuid();
@@ -250,6 +255,7 @@ BEGIN
   IF v_result->>'state' <> 'refunding' OR (v_result->>'amountCents')::integer <> 4180 THEN
     RAISE EXCEPTION 'R-LATE the host must see the refund on the code, got %', v_result;
   END IF;
+  v_late_code := v_code;
 
   -- Another tab is closed once the code is paid.
   v_code := gen_random_uuid();
@@ -294,6 +300,44 @@ BEGIN
   IF (public.issue_4271_door_pay_code_revoke(v_code, 'cancelled'))->>'status' <> 'paid' THEN
     RAISE EXCEPTION 'R-LATE a paid code must never be cancelled';
   END IF;
+
+  -- ------------------------------------------------------------ R-GUEST-NAME
+  -- A scanner with the switch on reaches the paid screen but cannot read
+  -- orders, so the name must come through the door permission.
+  INSERT INTO auth.users (id, email) VALUES
+    (v_scanner_on, 'scanner.on.r4271@example.test'),
+    (v_scanner_off, 'scanner.off.r4271@example.test');
+  INSERT INTO public.event_scanners (event_id, user_id, permissions, assigned_by) VALUES
+    (v_event, v_scanner_on, '{"canScan":true,"canAcceptPayments":true}'::jsonb, v_owner),
+    (v_event, v_scanner_off, '{"canScan":true,"canAcceptPayments":false}'::jsonb, v_owner);
+  IF public.biz_can_read_order(v_order, v_scanner_on) THEN
+    RAISE EXCEPTION 'R-GUEST-NAME fixture: this scanner was meant to be unable to read orders';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_scanner_on::text, true);
+  IF public.biz_door_pay_code_guest_name(v_code) IS DISTINCT FROM 'Tab one' THEN
+    RAISE EXCEPTION 'R-GUEST-NAME a scanner allowed to take payments must see the guest, got %',
+      public.biz_door_pay_code_guest_name(v_code);
+  END IF;
+  v_result := public.biz_door_pay_code_late_payment(v_late_code);
+  IF v_result->>'state' <> 'refunding' THEN
+    RAISE EXCEPTION 'R-GUEST-NAME the same scanner must see a late payment, got %', v_result;
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_scanner_off::text, true);
+  v_raised := NULL;
+  BEGIN
+    PERFORM public.biz_door_pay_code_guest_name(v_code);
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM;
+  END;
+  IF v_raised IS DISTINCT FROM 'door_access_denied' THEN
+    RAISE EXCEPTION 'R-GUEST-NAME a scanner without the switch must be refused, got %', coalesce(v_raised, 'allowed');
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
+  -- An order with no name is a real walk-up: NULL, not an empty string.
+  UPDATE public.orders SET buyer_name = '  ' WHERE id = v_order;
+  IF public.biz_door_pay_code_guest_name(v_code) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-GUEST-NAME a nameless order must read as no name';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
 
   -- ----------------------------------------------------------------- R-CLAIM
   INSERT INTO public.verified_phone_identities (user_id, phone_e164) VALUES (v_guest, '+12025550188');
