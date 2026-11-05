@@ -830,7 +830,9 @@ export const fetchBusinessEventById = async (
         "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, " +
         "rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, " +
         // issue #3284 — the refund terms the edit surface diffs and gates against.
-        "refund_policy",
+        "refund_policy, " +
+        // issue #3281 — the pricing mode, for the ticket sheet's capacity and price hints.
+        "multi_date_pricing_mode",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -856,6 +858,7 @@ export const fetchBusinessEventById = async (
     rsvp_contribution_min_cents?: number | null;
     // issue #3284 — events.refund_policy (jsonb; not on the generated types).
     refund_policy?: unknown;
+    multi_date_pricing_mode?: string | null;
   } | null;
   if (probeRow !== null && probeRow.event_type === "trip") {
     return null;
@@ -917,6 +920,11 @@ export const fetchBusinessEventById = async (
       detail.event,
       refundPolicyFromColumn(probeRow.refund_policy),
     );
+    // issue #3281 — so the edit screen's ticket sheet can say what a guest uses.
+    const mode = probeRow.multi_date_pricing_mode;
+    if (mode === "per_day" || mode === "all_days") {
+      detail.event = { ...detail.event, multiDatePricingMode: mode };
+    }
   }
   return detail;
 };

@@ -154,7 +154,12 @@
         "mingla-business/src/components/checkout/checkoutPersistence.ts",
         "app-mobile/app/purchases/index.tsx",
         "app-mobile/jest.issue2774.render.cjs",
-        "supabase/migrations/20280322004251_issue_4251_going_rsvps_cover_media_type.sql"
+        "supabase/migrations/20280322004251_issue_4251_going_rsvps_cover_media_type.sql",
+        "app-mobile/src/components/expandedCard/EventDayChooser.tsx",
+        "app-mobile/src/components/expandedCard/ticketDayScope.ts",
+        "mingla-business/src/hooks/useTicketLinkUnlock.ts",
+        "mingla-business/src/services/ticketLinkPublicTypes.ts",
+        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql"
       ]
     },
     {
@@ -784,7 +789,9 @@
         "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql",
         "mingla-business/src/components/event/ChangeSummaryModal.tsx",
         "mingla-business/src/components/event/EditPublishedScreen.tsx",
-        "mingla-business/src/utils/publishedEventEditGuards.ts"
+        "mingla-business/src/utils/publishedEventEditGuards.ts",
+        "mingla-business/src/store/liveEventStore.ts",
+        "mingla-business/src/utils/liveEventAdapter.ts"
       ]
     },
     {

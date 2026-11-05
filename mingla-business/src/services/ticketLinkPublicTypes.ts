@@ -39,6 +39,8 @@ export interface TicketLinkResolve {
     maxPurchaseQty?: number | null;
     isUnlimited?: boolean;
     waitlistEnabled?: boolean;
+    /** issue #3281 — the dates a listed ticket covers (event_dates ids); null is All dates. */
+    validOccurrenceIds?: string[] | null;
     remaining?: number | null;
     saleStartAt?: string | null;
     saleEndAt?: string | null;
