@@ -13,6 +13,11 @@ UPDATE public.feature_flags SET is_enabled = true
 WHERE flag_key IN ('contact_import_v1', 'brand_book_blast_v1', 'manual_contact_groups_v1',
   'brand_circle_followers_v1', 'brand_circle_followers_email_v1', 'brand_circle_followers_sms_v1');
 
+-- The email arm of the identity rule reads auth.identities, which this image's stub
+-- auth schema lacks. Same shape GoTrue has, so the branch really runs here.
+CREATE TABLE IF NOT EXISTS auth.identities(user_id uuid, provider text, identity_data jsonb);
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
+
 CREATE TEMP TABLE r4273_fail(id serial, line text) ON COMMIT DROP;
 GRANT ALL ON r4273_fail TO authenticated;
 GRANT ALL ON SEQUENCE r4273_fail_id_seq TO authenticated;
@@ -246,6 +251,79 @@ BEGIN
     ('42730000-5000-4000-8000-000000000003', c2, 'tom@example.test', 'email', 'sent', NULL);
 END;
 $cases$;
+
+-- Email contact match: the branch that decides who gets messaged on email.
+-- Book rows hold addresses that verified accounts also hold, unlinked to the row.
+-- 41 muted this brand; 42 blocked the host; 44 is fine; 45 muted but its address is
+-- unverified, so it names no account; 'plain' matches nobody.
+INSERT INTO auth.users(id, email) VALUES
+  ('42730000-0000-4000-8000-000000000041', 'muted@example.test'),
+  ('42730000-0000-4000-8000-000000000042', 'blocker@example.test'),
+  ('42730000-0000-4000-8000-000000000044', 'fine@example.test'),
+  ('42730000-0000-4000-8000-000000000045', 'unverified@example.test');
+INSERT INTO auth.identities(user_id, provider, identity_data) VALUES
+  ('42730000-0000-4000-8000-000000000041', 'email', '{"email":"muted@example.test"}'),
+  ('42730000-0000-4000-8000-000000000042', 'email', '{"email":"blocker@example.test"}'),
+  ('42730000-0000-4000-8000-000000000044', 'email', '{"email":"fine@example.test"}'),
+  ('42730000-0000-4000-8000-000000000045', 'google', '{"email":"unverified@example.test","email_verified":false}');
+INSERT INTO public.profiles(id, first_name, display_name, username, active, has_completed_onboarding, visibility_mode)
+SELECT id, 'E', 'E', 'r4273e-' || right(id::text, 2), true, true, 'friends' FROM auth.users
+ WHERE id::text LIKE '42730000-0000-4000-8000-00000000004%';
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, created_at, updated_at) VALUES
+  ('42730000-0000-4000-8000-0000000000b3', '42730000-0000-4000-8000-000000000001', 'Mail', 'issue-4273r-mail', 'USD', now(), now());
+INSERT INTO public.brand_follows(user_id, brand_id, muted_until) VALUES
+  ('42730000-0000-4000-8000-000000000041', '42730000-0000-4000-8000-0000000000b3', 'infinity'),
+  ('42730000-0000-4000-8000-000000000044', '42730000-0000-4000-8000-0000000000b3', NULL),
+  ('42730000-0000-4000-8000-000000000045', '42730000-0000-4000-8000-0000000000b3', 'infinity');
+INSERT INTO public.blocked_users(blocker_id, blocked_id) VALUES
+  ('42730000-0000-4000-8000-000000000042', '42730000-0000-4000-8000-000000000001');
+INSERT INTO public.brand_people(id, brand_id, display_name, record_status) VALUES
+  ('42730000-2000-4000-8000-000000000031', '42730000-0000-4000-8000-0000000000b3', 'A', 'active'),
+  ('42730000-2000-4000-8000-000000000032', '42730000-0000-4000-8000-0000000000b3', 'B', 'active'),
+  ('42730000-2000-4000-8000-000000000033', '42730000-0000-4000-8000-0000000000b3', 'C', 'active'),
+  ('42730000-2000-4000-8000-000000000034', '42730000-0000-4000-8000-0000000000b3', 'D', 'active'),
+  ('42730000-2000-4000-8000-000000000035', '42730000-0000-4000-8000-0000000000b3', 'E', 'active');
+INSERT INTO public.brand_person_contact_methods(brand_id, brand_person_id, channel, normalized_value, provenance_scope, is_exportable, is_primary, record_state, marketing_consent_state) VALUES
+  ('42730000-0000-4000-8000-0000000000b3', '42730000-2000-4000-8000-000000000031', 'email', 'muted@example.test', 'brand_owned', true, true, 'active', 'unknown'),
+  ('42730000-0000-4000-8000-0000000000b3', '42730000-2000-4000-8000-000000000032', 'email', 'blocker@example.test', 'brand_owned', true, true, 'active', 'unknown'),
+  ('42730000-0000-4000-8000-0000000000b3', '42730000-2000-4000-8000-000000000033', 'email', 'fine@example.test', 'brand_owned', true, true, 'active', 'unknown'),
+  ('42730000-0000-4000-8000-0000000000b3', '42730000-2000-4000-8000-000000000034', 'email', 'plain@example.test', 'brand_owned', true, true, 'active', 'unknown'),
+  ('42730000-0000-4000-8000-0000000000b3', '42730000-2000-4000-8000-000000000035', 'email', 'unverified@example.test', 'brand_owned', true, true, 'active', 'unknown');
+SELECT public.issue_1777_refresh_brand_reach('42730000-0000-4000-8000-0000000000b3', 'follower');
+SELECT set_config('request.jwt.claim.sub', '42730000-0000-4000-8000-000000000001', true);
+
+DO $email$
+DECLARE
+  o1 uuid := '42730000-0000-4000-8000-000000000001'; b3 uuid := '42730000-0000-4000-8000-0000000000b3';
+  a3 uuid; c3 uuid; e3 jsonb; send3 jsonb; emails text[];
+BEGIN
+  PERFORM pg_temp.chk('E-00 fixture: the email arm of the identity read really runs',
+    EXISTS (SELECT 1 FROM public.verified_account_identifiers('42730000-0000-4000-8000-000000000041') i WHERE i.kind = 'email' AND i.value = 'muted@example.test')
+    AND '42730000-0000-4000-8000-000000000041'::uuid IN (SELECT public.issue_4273_accounts_holding('email', 'MUTED@example.test')), '');
+  PERFORM pg_temp.chk('E-01 an unverified address names no account',
+    NOT EXISTS (SELECT 1 FROM public.issue_4273_accounts_holding('email', 'unverified@example.test')), '');
+  a3 := (public.biz_get_or_create_marketing_combined_audience_v1(o1, b3, '["book","followers"]'::jsonb) ->> 'audienceId')::uuid;
+  c3 := pg_temp.draft('42730000-3000-4000-8000-000000000031', o1, b3, a3, 'email');
+  e3 := public.biz_marketing_combined_quote_candidates_v1(o1, c3);
+  PERFORM public.biz_confirm_marketing_combined_send_v1(o1, c3, '42730000-4000-4000-8000-000000000031', pg_temp.snap(e3), now() + interval '1 hour');
+  send3 := public.biz_marketing_combined_send_audience_v1(c3);
+  SELECT array_agg(x ->> 'raw_email' ORDER BY x ->> 'raw_email') INTO emails FROM jsonb_array_elements(send3 -> 'rows') x;
+  PERFORM pg_temp.chk('E-02 an account that muted the brand stops the Book row on the same address',
+    NOT ('muted@example.test' = ANY(emails)), emails::text);
+  PERFORM pg_temp.chk('E-03 an account that blocked the host stops the Book row on the same address',
+    NOT ('blocker@example.test' = ANY(emails)), emails::text);
+  PERFORM pg_temp.chk('E-04 a clean match and a stranger both send, once each',
+    emails = ARRAY['fine@example.test', 'plain@example.test', 'unverified@example.test'], emails::text);
+  PERFORM pg_temp.chk('E-05 those drops are recorded and hidden from the skipped count',
+    public.biz_marketing_combined_hidden_skips_v1(c3) >= 2, public.biz_marketing_combined_hidden_skips_v1(c3)::text);
+  -- A global opt-out on the account's address, after confirm.
+  INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope) VALUES ('fine@example.test', 'email', 'global');
+  send3 := public.biz_marketing_combined_send_audience_v1(c3);
+  PERFORM pg_temp.chk('E-06 an opt-out on the address after confirm stops the send',
+    NOT (send3 -> 'rows' @> '[{"raw_email":"fine@example.test"}]'::jsonb), send3::text);
+  DELETE FROM public.marketing_unsubscribes WHERE contact_email = 'fine@example.test';
+END;
+$email$;
 
 -- Opt-outs: who the Host can read, and that nobody hidden gets messaged.
 -- The follower-only contacts below are in no Book, order or RSVP of the brand.
