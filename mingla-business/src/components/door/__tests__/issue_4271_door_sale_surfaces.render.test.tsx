@@ -15,7 +15,7 @@ interface ReactTestInstance {
 interface ReactTestRenderer {
   root: ReactTestInstance;
 }
-const renderer = jest.requireActual("react-test-renderer") as {
+const renderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => ReactTestRenderer;
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
