@@ -39,6 +39,7 @@
     "envNames": [],
     "isolation": "clean-worktree",
     "expectedFiles": [
+      "mingla-business/src/components/door/__tests__/issue_4271_apple_surfaces.render.test.tsx",
       "mingla-business/src/components/door/__tests__/issue_4271_door_pay_screen.render.test.tsx",
       "mingla-business/src/components/door/__tests__/issue_4271_door_sale_surfaces.render.test.tsx",
       "mingla-business/src/components/door/__tests__/jest.issue4271.render.cjs"

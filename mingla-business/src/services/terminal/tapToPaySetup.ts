@@ -27,6 +27,7 @@ export interface TapToPaySetupDeps {
 export type TapToPaySetupResult =
   | { kind: "done"; locationId: string }
   | { kind: "device_rejected" }
+  | { kind: "ios_update_required" }
   | { kind: "not_available" }
   | { kind: "failed"; message: string };
 
@@ -61,7 +62,11 @@ const locationFailure = (error: unknown): TapToPaySetupResult => {
 
 export const runTapToPaySetup = async (deps: TapToPaySetupDeps): Promise<TapToPaySetupResult> => {
   const support = await deps.checkDeviceSupport();
-  if (!support.supported) return { kind: "device_rejected" };
+  if (!support.supported) {
+    return support.error !== undefined && classifyTerminalError(support.error) === "ios_update_required"
+      ? { kind: "ios_update_required" }
+      : { kind: "device_rejected" };
+  }
 
   let locationId: string;
   try {
@@ -72,9 +77,9 @@ export const runTapToPaySetup = async (deps: TapToPaySetupDeps): Promise<TapToPa
 
   const connected = await deps.ensureReaderConnected(locationId);
   if (connected.error) {
-    if (classifyTerminalError(connected.error) === "not_on_this_phone") {
-      return { kind: "device_rejected" };
-    }
+    const kind = classifyTerminalError(connected.error);
+    if (kind === "not_on_this_phone") return { kind: "device_rejected" };
+    if (kind === "ios_update_required") return { kind: "ios_update_required" };
     return {
       kind: "failed",
       message:

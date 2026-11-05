@@ -16,6 +16,9 @@
  *   - the sale's currency is GBP or USD (Tap to Pay countries Mingla supports:
  *     GB and US; Stripe Terminal charges in the account's own currency)
  *   - the brand can take card payments (Stripe charges enabled)
+ * iOS 17.0 to 17.5 stays visible with reason "ios_update_required": Apple wants
+ * an update message, not a hidden row. Below iOS 17 stays hidden: an iPhone X or
+ * 8 can never reach 17.6, and the app can't tell it apart without a model library.
  * Stripe's own device check (attestation, NFC on, Apple entitlement) runs on the
  * setup screen; if it fails there the screen says "This phone can't take taps".
  */
@@ -42,7 +45,7 @@ export type TapToPayUnavailableReason =
   | "unsupported_country"
   | "no_card_payments";
 
-export type TapToPayReason = "ok" | TapToPayUnavailableReason;
+export type TapToPayReason = "ok" | "ios_update_required" | TapToPayUnavailableReason;
 
 export interface TapToPayAvailability {
   available: boolean;
@@ -81,12 +84,30 @@ export const TAP_TO_PAY_COUNTRY_BY_CURRENCY: Readonly<Record<string, "GB" | "US"
 };
 
 export const MIN_IOS_MAJOR = 17;
+export const MIN_IOS_FOR_TAP = { major: 17, minor: 6 } as const;
 export const MIN_ANDROID_API = 33;
 
 const majorVersion = (version: string | number): number => {
   if (typeof version === "number") return version;
   const major = Number.parseInt(version.split(".")[0] ?? "", 10);
   return Number.isNaN(major) ? 0 : major;
+};
+
+const minorVersion = (version: string | number): number => {
+  if (typeof version === "number") return 0;
+  const minor = Number.parseInt(version.split(".")[1] ?? "", 10);
+  return Number.isNaN(minor) ? 0 : minor;
+};
+
+/** iPhone that runs Tap to Pay only after an iOS update (17.0 to 17.5). */
+export const isIosBelowTapFloor = (os: string, version: string | number): boolean => {
+  if (os !== "ios") return false;
+  const major = majorVersion(version);
+  return (
+    major >= MIN_IOS_MAJOR &&
+    (major < MIN_IOS_FOR_TAP.major ||
+      (major === MIN_IOS_FOR_TAP.major && minorVersion(version) < MIN_IOS_FOR_TAP.minor))
+  );
 };
 
 export const isTapToPayDeviceSupported = (device: TapToPayDeviceFacts): boolean => {
@@ -120,6 +141,9 @@ export const resolveTapToPayAvailability = (
   const currency = (input?.currency ?? "").trim().toUpperCase();
   if (TAP_TO_PAY_COUNTRY_BY_CURRENCY[currency] === undefined) return unavailable("unsupported_country");
   if (!isBrandChargeReady(brand)) return unavailable("no_card_payments");
+  if (isIosBelowTapFloor(device.os, device.version)) {
+    return { available: true, needsSetup: false, reason: "ios_update_required" };
+  }
   return { available: true, needsSetup: !setupComplete, reason: "ok" };
 };
 

@@ -44,8 +44,20 @@ import {
 } from "../../../hooks/useTapToPayAvailability";
 import { tapToPayLive } from "../../../hooks/useTapToPayRelease";
 import { isTapToPayIphoneEntitled } from "../howToTap";
+import { classifyTerminalError, type TerminalErrorLike } from "../tapToPayFlow";
+import { runTapToPaySetup, type TapToPaySetupDeps } from "../tapToPaySetup";
 
 const BIZ_ROOT = path.join(__dirname, "..", "..", "..", "..");
+const makeSetupDeps = (overrides: Partial<TapToPaySetupDeps> = {}): TapToPaySetupDeps => ({
+  os: "ios",
+  checkDeviceSupport: async () => ({ supported: true }),
+  fetchLocation: async () => "tml_1",
+  ensureReaderConnected: async () => ({}),
+  showHowToTap: async () => "shown",
+  markComplete: async () => undefined,
+  ...overrides,
+});
+
 const STRIPE: TapToPayBrandFacts = {
   id: "brand-1",
   paymentProvider: "stripe",
@@ -154,5 +166,62 @@ describe("B1 release gate", () => {
       const code = fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
       expect(code).not.toContain("__DEV__");
     }
+  });
+});
+
+describe("B2 iOS update message", () => {
+  const sale = { brand: STRIPE, currency: "GBP", released: true };
+  const on = (version: string): TapToPayDeviceFacts => ({ ...IPHONE, version });
+
+  test("17.5 keeps the row with the update reason, 17.6 is fine, 16.7 is hidden", () => {
+    expect(resolveTapToPayAvailability(sale, on("17.5"), false)).toEqual({
+      available: true,
+      needsSetup: false,
+      reason: "ios_update_required",
+    });
+    expect(resolveTapToPayAvailability(sale, on("17.0.1"), true).reason).toBe("ios_update_required");
+    expect(resolveTapToPayAvailability(sale, on("17.6"), true)).toEqual({
+      available: true,
+      needsSetup: false,
+      reason: "ok",
+    });
+    expect(resolveTapToPayAvailability(sale, on("18.0"), true).reason).toBe("ok");
+    expect(resolveTapToPayAvailability(sale, on("16.7"), true)).toEqual({
+      available: false,
+      needsSetup: false,
+      reason: "unsupported_device",
+    });
+  });
+
+  test("native 2910 is its own kind and beats the SDK's generic code", () => {
+    const error: TerminalErrorLike = { code: "UNSUPPORTED_OPERATION", nativeErrorCode: "2910" };
+    expect(classifyTerminalError(error)).toBe("ios_update_required");
+    expect(classifyTerminalError({ code: "UNSUPPORTED_OPERATION" })).toBe("not_on_this_phone");
+  });
+
+  test("setup reads Stripe's own answer: support.error 2910 is the update, not a rejected phone", async () => {
+    await expect(
+      runTapToPaySetup(
+        makeSetupDeps({
+          checkDeviceSupport: async () => ({
+            supported: false,
+            error: { code: "UNSUPPORTED_OPERATION", nativeErrorCode: "2910" },
+          }),
+        }),
+      ),
+    ).resolves.toEqual({ kind: "ios_update_required" });
+    await expect(
+      runTapToPaySetup(makeSetupDeps({ checkDeviceSupport: async () => ({ supported: false }) })),
+    ).resolves.toEqual({ kind: "device_rejected" });
+  });
+
+  test("a connect that answers 2910 is the update too", async () => {
+    await expect(
+      runTapToPaySetup(
+        makeSetupDeps({
+          ensureReaderConnected: async () => ({ error: { nativeErrorCode: "2910" } }),
+        }),
+      ),
+    ).resolves.toEqual({ kind: "ios_update_required" });
   });
 });

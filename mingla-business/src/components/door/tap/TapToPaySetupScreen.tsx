@@ -28,7 +28,11 @@ import {
 } from "../../../constants/designSystem";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
-import { useTapToPayAvailability } from "../../../hooks/useTapToPayAvailability";
+import {
+  currentTapToPayDevice,
+  isIosBelowTapFloor,
+  useTapToPayAvailability,
+} from "../../../hooks/useTapToPayAvailability";
 import { createDoorPayCodeForLines, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPaySetupComplete } from "../../../services/terminal/tapToPaySetupStore";
@@ -40,6 +44,7 @@ import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
+import { TapUpdateIos } from "./TapUpdateIos";
 import { useTapToPayTerminal } from "./TapToPayTerminalBoundary";
 
 export interface TapToPaySetupScreenProps {
@@ -81,6 +86,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   const terminal = useTapToPayTerminal();
   const [busy, setBusy] = useState<boolean>(false);
   const [deviceRejected, setDeviceRejected] = useState<boolean>(false);
+  const [iosUpdateRequired, setIosUpdateRequired] = useState<boolean>(false);
   const [brandNotAvailable, setBrandNotAvailable] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
@@ -139,6 +145,10 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         setDeviceRejected(true);
         return;
       }
+      if (result.kind === "ios_update_required") {
+        setIosUpdateRequired(true);
+        return;
+      }
       if (result.kind === "not_available") {
         setBrandNotAvailable(true);
         return;
@@ -179,8 +189,16 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         availability.reason === "unsupported_device" ||
         availability.reason === "web"));
 
+  const device = currentTapToPayDevice();
+  const showIosUpdate =
+    iosUpdateRequired ||
+    availability.reason === "ios_update_required" ||
+    (deviceRejected && isIosBelowTapFloor(device.os, device.version));
+
   let body: React.ReactElement;
-  if (deviceBlocked) {
+  if (showIosUpdate) {
+    body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;
+  } else if (deviceBlocked) {
     body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;
   } else if (!availability.available || brandNotAvailable) {
     body = (

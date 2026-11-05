@@ -23,7 +23,11 @@ import {
 } from "../../../constants/designSystem";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
 import { doorSaleKeys } from "../../../hooks/useEventDoorSales";
-import { useTapToPayAvailability } from "../../../hooks/useTapToPayAvailability";
+import {
+  currentTapToPayDevice,
+  isIosBelowTapFloor,
+  useTapToPayAvailability,
+} from "../../../hooks/useTapToPayAvailability";
 import { postHogService } from "../../../services/postHogService";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import {
@@ -51,6 +55,7 @@ import { Spinner } from "../../ui/Spinner";
 import { TapStatusView } from "./TapStatusView";
 import { useTapToPayTerminal } from "./TapToPayTerminalBoundary";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
+import { TapUpdateIos } from "./TapUpdateIos";
 import { summarizeTapLines } from "./tapLineSummary";
 
 export interface TapToPaySaleScreenProps {
@@ -117,6 +122,7 @@ export const TapToPaySaleScreen = ({
     if (
       draft === null ||
       !availability.available ||
+      availability.reason === "ios_update_required" ||
       availability.needsSetup ||
       terminal.status !== "ready" ||
       terminal.client === null ||
@@ -221,6 +227,12 @@ export const TapToPaySaleScreen = ({
         />
       );
     }
+    const device = currentTapToPayDevice();
+    const belowFloor = isIosBelowTapFloor(device.os, device.version);
+    const updateIos = (
+      <TapUpdateIos onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />
+    );
+    if (availability.reason === "ios_update_required") return updateIos;
     if (!availability.available) {
       if (
         availability.reason === "not_released" ||
@@ -349,8 +361,15 @@ export const TapToPaySaleScreen = ({
             secondary={payCodeAction}
           />
         );
+      case "ios_update_required":
+        return updateIos;
       case "not_on_this_phone":
-        return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />;
+        // Below iOS 17.6 a device-class failure is the iOS version until proven otherwise.
+        return belowFloor ? (
+          updateIos
+        ) : (
+          <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />
+        );
       case "save_failed":
         return (
           <TapStatusView

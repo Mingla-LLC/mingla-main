@@ -175,7 +175,7 @@ describe("loadTerminalSdk — over-the-air safety", () => {
   test("an iPad never qualifies", () => {
     mockPlatform.isPad = true;
     mockNativeModules.StripeTerminalReactNative = {};
-    expect(currentTapToPayDevice()).toMatchObject({ os: "ios", isPad: true, nativeModulePresent: true, entitled: true });
+    expect(currentTapToPayDevice()).toMatchObject({ os: "ios", isPad: true, nativeModulePresent: true });
   });
 });
 

@@ -99,6 +99,7 @@ export type TapSaleState =
   | { kind: "declined"; amount: TapAmount }
   | { kind: "cancelled"; amount: TapAmount }
   | { kind: "not_on_this_phone" }
+  | { kind: "ios_update_required" }
   | { kind: "save_failed"; amount: TapAmount; message: string }
   | { kind: "failed"; message: string };
 
@@ -109,6 +110,7 @@ export type TerminalFailureKind =
   | "declined"
   | "cancelled"
   | "not_on_this_phone"
+  | "ios_update_required"
   | "failed";
 
 const PIN_MARKERS = ["offline_pin_required", "online_or_offline_pin_required"];
@@ -136,7 +138,18 @@ const DECLINE_CODES: ReadonlySet<string> = new Set([
 
 const CANCEL_CODES: ReadonlySet<string> = new Set(["CANCELED", "TAP_TO_PAY_READER_REQUEST_INTERRUPTED"]);
 
+/**
+ * Native (iOS) error codes come first: several of them share one SDK `code`, and
+ * only the native number tells them apart. These strings do not occur on Android.
+ */
+const NATIVE_KINDS: Readonly<Record<string, TerminalFailureKind>> = {
+  // iOS version or capabilities. Apple wants an update message.
+  "2910": "ios_update_required",
+};
+
 export const classifyTerminalError = (error: TerminalErrorLike): TerminalFailureKind => {
+  const native = error.nativeErrorCode === undefined ? undefined : NATIVE_KINDS[String(error.nativeErrorCode)];
+  if (native !== undefined) return native;
   const haystack = [
     error.code,
     error.nativeErrorCode,
@@ -363,6 +376,10 @@ export class TapToPaySaleFlow {
     const kind = classifyTerminalError(error);
     if (kind === "not_on_this_phone") {
       this.emit({ kind: "not_on_this_phone" });
+      return;
+    }
+    if (kind === "ios_update_required") {
+      this.emit({ kind: "ios_update_required" });
       return;
     }
     if (this.intent === null) {
