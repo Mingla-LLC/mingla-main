@@ -141,8 +141,8 @@ Deno.test("every Google update path goes through the merge", () => {
   const seed = Deno.readTextFileSync(new URL("../../admin-seed-places/index.ts", import.meta.url));
   assertEquals(
     seed.match(/\.update\(buildSeedMergeUpdate\(row, adminEdits\.get\(row\.google_place_id\)\)\)/g)?.length,
-    2,
-    "both the run and the retry path must merge",
+    1,
+    "the run and the retry path share one search, which must merge",
   );
   assertEquals(seed.includes("name: row.name,"), false, "a field-by-field re-seed update is back");
   assertEquals(seed.includes(".limit(10000)"), false, "coverage_check is truncating again");

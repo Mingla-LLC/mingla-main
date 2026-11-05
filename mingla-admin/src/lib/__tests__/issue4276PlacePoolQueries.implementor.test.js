@@ -73,3 +73,10 @@ test("no screen states a hard-coded count of categories", () => {
   assert.equal(seedTab.includes("of 13 categories"), false);
   assert.equal(page.includes("totalCats.size >= 13"), false);
 });
+
+test("the map and seed tab show only the tiles still in use", () => {
+  assert.ok(
+    page.includes('.from("seeding_tiles").select("*").eq("city_id", data.id).is("retired_at", null).in("kind", ["grid", "fill"])'),
+    "retired tiles and split children must not be drawn or counted",
+  );
+});

@@ -16,12 +16,37 @@ import {
   loadAllCoverageRows,
 } from "../_shared/placeGoogleMerge.ts";
 import { derivePoolCategory } from "../_shared/derivePoolCategory.ts";
+import {
+  COST_PER_NEARBY_SEARCH,
+  COST_PER_PHOTO,
+  countGridTiles,
+  EXPECTED_UNIQUE_PLACES_PER_TILE,
+  HIGH_COST_USD,
+  metersPerDegreeLng,
+  METERS_PER_DEGREE_LAT,
+  PHOTOS_PER_PLACE,
+} from "../_shared/seedingGeometry.ts";
+import {
+  applyCityBox,
+  citySearchStatus,
+  generateTilesForCity,
+  type GeocodeResult,
+  PipelineRefusal,
+  placesOutsideBox,
+  planCityBox,
+  previewFill,
+  previewSplitLevel,
+  retiredTileHistory,
+  runCompletenessCheck,
+  startFill,
+  startSplitLevel,
+} from "./searchPipeline.ts";
 // Phase 2: type exclusion imports removed — AI is the sole quality gate
 // import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 import { seedCountryFields } from "./countryLogic.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
-// Ten actions:
+// Actions:
 //   Setup:
 //     1. generate_tiles  — compute tile grid from city bounding box
 //     2. preview_cost    — calculate cost estimate
@@ -35,6 +60,10 @@ import { seedCountryFields } from "./countryLogic.ts";
 //     9. run_status      — load full run state for UI hydration on page load
 //   City registration:
 //    10. geocode_city    — geocode a city name → returns center + viewport bbox + tile estimates
+//   One pipeline (#4276, see searchPipeline.ts):
+//    preview_fill, start_fill, preview_split_level, start_split_level,
+//    run_completeness_check, city_search_status, plan_city_box, apply_city_box,
+//    places_outside_box, retired_tile_history
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -126,11 +155,7 @@ const FIELD_MASK = [
   "places.paymentOptions",
 ].join(",");
 
-const COST_PER_NEARBY_SEARCH = 0.032;
-const COST_PER_PHOTO = 0.007;
-const HARD_CAP_USD = 500;
-const EXPECTED_UNIQUE_PLACES_PER_TILE = 10; // conservative estimate for photo cost
-const PHOTOS_PER_PLACE = 5;
+const HARD_CAP_USD = HIGH_COST_USD;
 const API_TIMEOUT_MS = 10000;
 
 // RELIABILITY: These ranges MUST match app-mobile/src/constants/priceTiers.ts
@@ -159,88 +184,18 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// ── Tile Grid Generation ────────────────────────────────────────────────────
-
-interface TileData {
-  tile_index: number;
-  center_lat: number;
-  center_lng: number;
-  radius_m: number;
-  row_idx: number;
-  col_idx: number;
-}
-
-// BBOX MODEL (2026-04): Cities are defined by their Google Geocoding viewport
-// bounding box, NOT by a center point + radius. The bbox_sw/ne columns on
-// seeding_cities are the source of truth. coverage_radius_km is deprecated.
-// See: outputs/SPEC_CITY_SEEDING_BOUNDING_BOX.md
-function generateTileGrid(
-  swLat: number,
-  swLng: number,
-  neLat: number,
-  neLng: number,
-  tileRadiusM: number,
-): TileData[] {
-  const spacingM = tileRadiusM * 1.4;
-
-  // Convert to degrees (approximate, using center latitude)
-  const metersPerDegreeLat = 111320;
-  const centerLat = (swLat + neLat) / 2;
-  const metersPerDegreeLng =
-    111320 * Math.cos((centerLat * Math.PI) / 180);
-
-  const spacingLat = spacingM / metersPerDegreeLat;
-  const spacingLng = spacingM / metersPerDegreeLng;
-
-  const tiles: TileData[] = [];
-  let tileIndex = 0;
-  let rowIdx = 0;
-
-  for (let lat = swLat; lat <= neLat; lat += spacingLat) {
-    let colIdx = 0;
-    for (let lng = swLng; lng <= neLng; lng += spacingLng) {
-      tiles.push({
-        tile_index: tileIndex++,
-        center_lat: lat,
-        center_lng: lng,
-        radius_m: tileRadiusM,
-        row_idx: rowIdx,
-        col_idx: colIdx,
-      });
-      colIdx++;
-    }
-    rowIdx++;
-  }
-
-  return tiles;
-}
-
 // ── Tile Estimate Calculator (pure math, no DB) ────────────────────────────
 
 function calculateTileEstimates(
   swLat: number, swLng: number, neLat: number, neLng: number,
 ) {
-  const metersPerDegreeLat = 111320;
-  const centerLat = (swLat + neLat) / 2;
-  const metersPerDegreeLng = 111320 * Math.cos((centerLat * Math.PI) / 180);
-
-  const extentLatKm = (neLat - swLat) * metersPerDegreeLat / 1000;
-  const extentLngKm = (neLng - swLng) * metersPerDegreeLng / 1000;
-  const areaKm2 = extentLatKm * extentLngKm;
+  const box = { swLat, swLng, neLat, neLng };
+  const extentLatKm = (neLat - swLat) * METERS_PER_DEGREE_LAT / 1000;
+  const extentLngKm = (neLng - swLng) * metersPerDegreeLng((swLat + neLat) / 2) / 1000;
 
   function countTiles(tileRadiusM: number): { tiles: number; apiCalls: number; searchCostUsd: number } {
-    const spacingM = tileRadiusM * 1.4;
-    const spacingLat = spacingM / metersPerDegreeLat;
-    const spacingLng = spacingM / metersPerDegreeLng;
-
-    let tiles = 0;
-    for (let lat = swLat; lat <= neLat; lat += spacingLat) {
-      for (let lng = swLng; lng <= neLng; lng += spacingLng) {
-        tiles++;
-      }
-    }
-
-    const apiCalls = tiles * ALL_SEEDING_CATEGORY_IDS.length;
+    const tiles = countGridTiles(box, tileRadiusM);
+    const apiCalls = tiles * SEEDING_CATEGORIES.length;
     const searchCostUsd = Math.round(apiCalls * COST_PER_NEARBY_SEARCH * 100) / 100;
     return { tiles, apiCalls, searchCostUsd };
   }
@@ -251,7 +206,7 @@ function calculateTileEstimates(
     atRadius2500: countTiles(2500),
     extentLatKm: Math.round(extentLatKm * 10) / 10,
     extentLngKm: Math.round(extentLngKm * 10) / 10,
-    areaKm2: Math.round(areaKm2),
+    areaKm2: Math.round(extentLatKm * extentLngKm),
   };
 }
 
@@ -393,38 +348,60 @@ function transformGooglePlaceForSeed(
 
 // ── Post-fetch filters ──────────────────────────────────────────────────────
 
+interface DroppedResult {
+  google_place_id: string;
+  reason: "no_photos" | "closed_permanently";
+  name: string | null;
+  primary_type: string | null;
+}
+
 interface FilterResult {
   // deno-lint-ignore no-explicit-any
   passed: any[];
+  dropped: DroppedResult[];
   rejectedNoPhotos: number;
   rejectedClosed: number;
   rejectedExcludedType: number;
 }
 
 // deno-lint-ignore no-explicit-any
-function applyPostFetchFilters(places: any[], _categoryId: string): FilterResult {
+export function applyPostFetchFilters(places: any[], _categoryId: string): FilterResult {
   let rejectedNoPhotos = 0;
   let rejectedClosed = 0;
+  const dropped: DroppedResult[] = [];
 
   // Phase 2: Type exclusions removed — AI is the sole quality gate.
   // All place types now enter the pool. AI validates quality post-seeding.
 
   // deno-lint-ignore no-explicit-any
+  const drop = (p: any, reason: DroppedResult["reason"]) => {
+    if (p.id) {
+      dropped.push({
+        google_place_id: p.id,
+        reason,
+        name: p.displayName?.text ?? null,
+        primary_type: p.primaryType ?? null,
+      });
+    }
+  };
+  // deno-lint-ignore no-explicit-any
   const passed = places.filter((p: any) => {
     // Reject permanently closed
     if (p.businessStatus === "CLOSED_PERMANENTLY") {
       rejectedClosed++;
+      drop(p, "closed_permanently");
       return false;
     }
     // Reject no photos
     if (!p.photos || p.photos.length === 0) {
       rejectedNoPhotos++;
+      drop(p, "no_photos");
       return false;
     }
     return true;
   });
 
-  return { passed, rejectedNoPhotos, rejectedClosed, rejectedExcludedType: 0 };
+  return { passed, dropped, rejectedNoPhotos, rejectedClosed, rejectedExcludedType: 0 };
 }
 
 // ── Country ─────────────────────────────────────────────────────────────────
@@ -466,71 +443,6 @@ function parseCity(gPlace: any, fallback: string): string {
   return fallback;
 }
 
-// ── Action: generate_tiles ──────────────────────────────────────────────────
-
-// deno-lint-ignore no-explicit-any
-async function handleGenerateTiles(body: any, supabase: any) {
-  const { cityId } = body;
-  if (!cityId) throw new Error("cityId is required");
-
-  // Load city
-  const { data: city, error: cityErr } = await supabase
-    .from("seeding_cities")
-    .select("*")
-    .eq("id", cityId)
-    .single();
-  if (cityErr || !city) throw new Error(`City not found: ${cityId}`);
-
-  // Use bounding box (bbox model)
-  if (!city.bbox_sw_lat || !city.bbox_ne_lat) {
-    throw new Error("City has no bounding box. Re-register with geocoding.");
-  }
-
-  const tiles = generateTileGrid(
-    city.bbox_sw_lat,
-    city.bbox_sw_lng,
-    city.bbox_ne_lat,
-    city.bbox_ne_lng,
-    city.tile_radius_m,
-  );
-
-  // Delete existing tiles for regeneration
-  await supabase.from("seeding_tiles").delete().eq("city_id", cityId);
-
-  // Insert new tiles — chunk if >500 rows (large cities)
-  const CHUNK_SIZE = 500;
-  const allInserted: Record<string, unknown>[] = [];
-
-  for (let i = 0; i < tiles.length; i += CHUNK_SIZE) {
-    const chunk = tiles.slice(i, i + CHUNK_SIZE).map((t) => ({
-      city_id: cityId,
-      ...t,
-    }));
-
-    const { data: inserted, error: insertErr } = await supabase
-      .from("seeding_tiles")
-      .insert(chunk)
-      .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx");
-
-    if (insertErr) throw new Error(`Failed to insert tiles (chunk ${Math.floor(i / CHUNK_SIZE) + 1}): ${insertErr.message}`);
-    allInserted.push(...(inserted || []));
-  }
-
-  return {
-    cityId,
-    tileCount: allInserted.length,
-    tiles: allInserted.map((t) => ({
-      id: t.id,
-      tileIndex: t.tile_index,
-      centerLat: t.center_lat,
-      centerLng: t.center_lng,
-      radiusM: t.radius_m,
-      row: t.row_idx,
-      col: t.col_idx,
-    })),
-  };
-}
-
 // ── Action: preview_cost ────────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
@@ -565,7 +477,9 @@ async function handlePreviewCost(body: any, supabase: any) {
   let tileQuery = supabase
     .from("seeding_tiles")
     .select("id")
-    .eq("city_id", cityId);
+    .eq("city_id", cityId)
+    .is("retired_at", null)
+    .in("kind", ["grid", "fill"]);
   if (tileIds && tileIds.length > 0) {
     tileQuery = tileQuery.in("id", tileIds);
   }
@@ -695,6 +609,8 @@ async function handleCreateRun(body: any, supabase: any) {
     .from("seeding_tiles")
     .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx")
     .eq("city_id", cityId)
+    .is("retired_at", null)
+    .in("kind", ["grid", "fill"])
     .order("tile_index");
   if (tileErr) throw new Error(`Failed to load tiles: ${tileErr.message}`);
   if (!tiles || tiles.length === 0) {
@@ -749,6 +665,11 @@ async function handleCreateRun(body: any, supabase: any) {
         tile_index: tile.tile_index,
         seeding_category: config.appCategorySlug,
         app_category: config.appCategory,
+        // #4276: the category alone can't say which of its configs this search is.
+        search_config_id: config.id,
+        center_lat: tile.center_lat,
+        center_lng: tile.center_lng,
+        radius_m: tile.radius_m,
         batch_index: batchIndex++,
         status: "pending",
       });
@@ -818,7 +739,7 @@ async function handleCreateRun(body: any, supabase: any) {
     batchIndex: b.batch_index,
     tileIndex: b.tile_index,
     category: b.seeding_category,
-    categoryLabel: resolveSeedingCategory(b.seeding_category)?.label ?? b.seeding_category,
+    categoryLabel: SEEDING_CATEGORY_MAP[b.search_config_id]?.label ?? b.seeding_category,
   }));
 
   return {
@@ -829,6 +750,227 @@ async function handleCreateRun(body: any, supabase: any) {
     totalCategories: validConfigs.length,
     estimatedCostUsd: Math.round(estimatedTotalCost * 100) / 100,
     preview,
+  };
+}
+
+// ── One search, shared by run_next_batch and retry_batch ─────────────────────
+
+interface SearchCircle {
+  center_lat: number;
+  center_lng: number;
+  radius_m: number;
+}
+
+// #4276 T1: a search keeps its own centre and radius. Older rows fall back to the tile.
+// deno-lint-ignore no-explicit-any
+async function loadSearchCircle(supabase: any, batch: any): Promise<SearchCircle | null> {
+  if (batch.center_lat != null && batch.center_lng != null && batch.radius_m != null) {
+    return { center_lat: batch.center_lat, center_lng: batch.center_lng, radius_m: batch.radius_m };
+  }
+  if (!batch.tile_id) return null;
+  const { data } = await supabase
+    .from("seeding_tiles")
+    .select("center_lat, center_lng, radius_m")
+    .eq("id", batch.tile_id)
+    .single();
+  return data ?? null;
+}
+
+// #4276: a category can have several configs, and resolving it picks only the first,
+// which ran the first config repeatedly and never ran the others. Rows that record
+// their config run exactly that one. A recorded config that no longer exists fails
+// the batch rather than quietly searching something else.
+// deno-lint-ignore no-explicit-any
+export function resolveBatchConfig(batch: any): SeedingCategoryConfig | undefined {
+  if (batch.search_config_id) return SEEDING_CATEGORY_MAP[batch.search_config_id];
+  // Handles both old seeding IDs and new app slugs (ORCH-0434)
+  return resolveSeedingCategory(batch.seeding_category);
+}
+
+async function executeBatchSearch(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  args: {
+    // deno-lint-ignore no-explicit-any
+    batch: any;
+    tile: SearchCircle;
+    config: SeedingCategoryConfig;
+    cityName: string;
+    cityCountry: string;
+    cityCountryCode: string | null;
+  },
+) {
+  const { batch, tile, config, cityName, cityCountry, cityCountryCode } = args;
+  let batchStatus = "completed";
+  let errorMessage: string | null = null;
+  // deno-lint-ignore no-explicit-any
+  let errorDetails: any = null;
+  let placesReturned = 0;
+  let rejectedNoPhotos = 0;
+  let rejectedClosed = 0;
+  let rejectedExcludedType = 0;
+  let newInserted = 0;
+  let duplicateSkipped = 0;
+
+  try {
+    const requestBody = {
+      // #4276 T5: at the minimum radius a capped search repeats on part of its types.
+      includedTypes: batch.included_types_override ?? config.includedTypes,
+      excludedPrimaryTypes: config.excludedPrimaryTypes,
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: tile.center_lat,
+            longitude: tile.center_lng,
+          },
+          radius: tile.radius_m,
+        },
+      },
+      rankPreference: "POPULARITY",
+    };
+
+    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify(requestBody),
+      timeoutMs: API_TIMEOUT_MS,
+    });
+
+    if (!response.ok) {
+      const respBody = await response.text();
+      batchStatus = "failed";
+      errorMessage = `Google API ${response.status}: ${respBody.substring(0, 200)}`;
+      errorDetails = { http_status: response.status, response_body: respBody.substring(0, 500) };
+    } else {
+      const data = await response.json();
+      const places = data.places || [];
+      placesReturned = places.length;
+
+      // Apply post-fetch filters
+      const filterResult = applyPostFetchFilters(places, config.id);
+      rejectedNoPhotos = filterResult.rejectedNoPhotos;
+      rejectedClosed = filterResult.rejectedClosed;
+      rejectedExcludedType = filterResult.rejectedExcludedType;
+
+      // #4276 T7: keep which places were dropped. The search itself succeeded, so a
+      // failure here is reported on the batch rather than failing it.
+      if (filterResult.dropped.length > 0) {
+        const seenAt = new Date().toISOString();
+        const { error: droppedErr } = await supabase
+          .from("seeding_filtered_results")
+          .upsert(
+            filterResult.dropped.map((d) => ({ ...d, city_id: batch.city_id, last_seen_at: seenAt })),
+            { onConflict: "city_id,google_place_id,reason" },
+          );
+        if (droppedErr) {
+          console.error(`[admin-seed-places] dropped results not recorded: ${droppedErr.message}`);
+          errorDetails = { filtered_results_error: droppedErr.message };
+        }
+      }
+
+      // Deduplicate by google_place_id
+      // deno-lint-ignore no-explicit-any
+      const uniquePlaces = new Map<string, any>();
+      for (const p of filterResult.passed) {
+        if (p.id && !uniquePlaces.has(p.id)) {
+          uniquePlaces.set(p.id, p);
+        }
+      }
+
+      // Upsert to place_pool
+      if (uniquePlaces.size > 0) {
+        const rows = Array.from(uniquePlaces.values()).map((p) =>
+          transformGooglePlaceForSeed(p, batch.city_id, cityCountry, parseCity(p, cityName), cityCountryCode)
+        );
+
+        // Step 1: Insert new places only
+        const { data: insertedData, error: insertErr } = await supabase
+          .from("place_pool")
+          .upsert(rows, { onConflict: "google_place_id", ignoreDuplicates: true })
+          .select("google_place_id");
+
+        if (insertErr) {
+          errorMessage = `Upsert error: ${insertErr.message}`;
+          errorDetails = { upsert_error: insertErr.message };
+          // Don't mark as failed — partial success is still useful
+        }
+
+        const insertedIds = new Set(
+          (insertedData ?? []).map((r: { google_place_id: string }) => r.google_place_id)
+        );
+        newInserted = insertedIds.size;
+
+        // Step 2: Update existing places selectively (batched in groups of 10)
+        const existingRows = rows.filter((r) => !insertedIds.has(r.google_place_id));
+        duplicateSkipped = existingRows.length;
+        const UPDATE_BATCH_SIZE = 10;
+
+        // ORCH-0598.11.B-002 — surface per-row update errors instead of swallowing.
+        // Previously: Promise.all resolved even when every update returned {error},
+        // so 28 dupes silently failed while batch was marked completed.
+        // Now: collect errors, log them, throw at batch level so outer catch marks
+        // batch=failed and error_details contains the real PostgREST message.
+        for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
+          const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
+          // #4276 S3: read the admin markers for this batch, and stop rather than risk
+          // writing over an admin's edit if they can't be read.
+          const { data: markerRows, error: markerErr } = await supabase
+            .from("place_pool_admin_edits")
+            .select("google_place_id, edited_fields")
+            .in("google_place_id", updateBatch.map((r) => r.google_place_id));
+          if (markerErr) {
+            throw new Error(`admin marker read failed: ${markerErr.message}`);
+          }
+          const adminEdits = adminEditsByGooglePlaceId(markerRows);
+          const results = await Promise.all(
+            updateBatch.map((row) =>
+              supabase
+                .from("place_pool")
+                // I-REFRESH-NEVER-DEGRADES: a merge, never a blind overwrite. The columns
+                // are an allowlist, which also keeps photo_aesthetic_data
+                // (I-PHOTO-AESTHETIC-DATA-SOLE-OWNER) and photo_collage_url + fingerprint
+                // (I-COLLAGE-SOLE-OWNER) out of a re-seed.
+                .update(buildSeedMergeUpdate(row, adminEdits.get(row.google_place_id)))
+                .eq("google_place_id", row.google_place_id)
+                .select("google_place_id")
+            )
+          );
+          // deno-lint-ignore no-explicit-any
+          const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
+          if (failed.length > 0) {
+            // deno-lint-ignore no-explicit-any
+            const sample = failed.slice(0, 3).map((r: any, idx: number) => {
+              const row = updateBatch[results.indexOf(r)];
+              return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
+            }).join(' | ');
+            console.error(`[admin-seed-places] Update failed on ${failed.length}/${updateBatch.length} rows. Sample: ${sample}`);
+            throw new Error(`duplicate-update-path: ${failed.length}/${updateBatch.length} rows failed. First: ${sample}`);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    batchStatus = "failed";
+    const isTimeout = err instanceof DOMException && err.name === "AbortError";
+    errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
+    errorDetails = { error_type: isTimeout ? "timeout" : "unknown", error_stack: err instanceof Error ? err.stack : undefined };
+  }
+
+  return {
+    batchStatus,
+    errorMessage,
+    errorDetails,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
   };
 }
 
@@ -904,12 +1046,8 @@ async function handleRunNextBatch(body: any, supabase: any) {
   // #1704 — both fields from the seeded city row. No address is consulted.
   const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
 
-  // Load tile
-  const { data: tile } = await supabase
-    .from("seeding_tiles")
-    .select("id, tile_index, center_lat, center_lng, radius_m")
-    .eq("id", batch.tile_id)
-    .single();
+  // Load where this search looks
+  const tile = await loadSearchCircle(supabase, batch);
 
   if (!tile) {
     // Tile missing — mark batch failed
@@ -939,8 +1077,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
     };
   }
 
-  // Get category config — handles both old seeding IDs and new app slugs (ORCH-0434)
-  const config = resolveSeedingCategory(batch.seeding_category);
+  const config = resolveBatchConfig(batch);
   if (!config) {
     await supabase
       .from("seeding_batches")
@@ -969,145 +1106,24 @@ async function handleRunNextBatch(body: any, supabase: any) {
   }
 
   // Execute ONE Google Nearby Search
-  let batchStatus = "completed";
-  let errorMessage: string | null = null;
-  let errorDetails: unknown = null;
-  let placesReturned = 0;
-  let rejectedNoPhotos = 0;
-  let rejectedClosed = 0;
-  let rejectedExcludedType = 0;
-  let newInserted = 0;
-  let duplicateSkipped = 0;
-
-  try {
-    const requestBody = {
-      includedTypes: config.includedTypes,
-      excludedPrimaryTypes: config.excludedPrimaryTypes,
-      maxResultCount: 20,
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: tile.center_lat,
-            longitude: tile.center_lng,
-          },
-          radius: tile.radius_m,
-        },
-      },
-      rankPreference: "POPULARITY",
-    };
-
-    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      body: JSON.stringify(requestBody),
-      timeoutMs: API_TIMEOUT_MS,
-    });
-
-    if (!response.ok) {
-      const respBody = await response.text();
-      batchStatus = "failed";
-      errorMessage = `Google API ${response.status}: ${respBody.substring(0, 200)}`;
-      errorDetails = { http_status: response.status, response_body: respBody.substring(0, 500) };
-    } else {
-      const data = await response.json();
-      const places = data.places || [];
-      placesReturned = places.length;
-
-      // Apply post-fetch filters
-      const filterResult = applyPostFetchFilters(places, config.id);
-      rejectedNoPhotos = filterResult.rejectedNoPhotos;
-      rejectedClosed = filterResult.rejectedClosed;
-      rejectedExcludedType = filterResult.rejectedExcludedType;
-
-      // Deduplicate by google_place_id
-      // deno-lint-ignore no-explicit-any
-      const uniquePlaces = new Map<string, any>();
-      for (const p of filterResult.passed) {
-        if (p.id && !uniquePlaces.has(p.id)) {
-          uniquePlaces.set(p.id, p);
-        }
-      }
-
-      // Upsert to place_pool
-      if (uniquePlaces.size > 0) {
-        const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, cityCountry, parseCity(p, cityName), cityCountryCode)
-        );
-
-        // Step 1: Insert new places only
-        const { data: insertedData, error: insertErr } = await supabase
-          .from("place_pool")
-          .upsert(rows, { onConflict: "google_place_id", ignoreDuplicates: true })
-          .select("google_place_id");
-
-        if (insertErr) {
-          errorMessage = `Upsert error: ${insertErr.message}`;
-          errorDetails = { upsert_error: insertErr.message };
-          // Don't mark as failed — partial success is still useful
-        }
-
-        const insertedIds = new Set(
-          (insertedData ?? []).map((r: { google_place_id: string }) => r.google_place_id)
-        );
-        newInserted = insertedIds.size;
-
-        // Step 2: Update existing places selectively (batched in groups of 10)
-        const existingRows = rows.filter((r) => !insertedIds.has(r.google_place_id));
-        duplicateSkipped = existingRows.length;
-        const UPDATE_BATCH_SIZE = 10;
-
-        // ORCH-0598.11.B-002 — surface per-row update errors instead of swallowing.
-        // Previously: Promise.all resolved even when every update returned {error},
-        // so 28 dupes silently failed while batch was marked completed.
-        // Now: collect errors, log them, throw at batch level so outer catch marks
-        // batch=failed and error_details contains the real PostgREST message.
-        for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
-          const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
-          // #4276 S3: read the admin markers for this batch, and stop rather than risk
-          // writing over an admin's edit if they can't be read.
-          const { data: markerRows, error: markerErr } = await supabase
-            .from("place_pool_admin_edits")
-            .select("google_place_id, edited_fields")
-            .in("google_place_id", updateBatch.map((r) => r.google_place_id));
-          if (markerErr) {
-            throw new Error(`admin marker read failed: ${markerErr.message}`);
-          }
-          const adminEdits = adminEditsByGooglePlaceId(markerRows);
-          const results = await Promise.all(
-            updateBatch.map((row) =>
-              supabase
-                .from("place_pool")
-                // I-REFRESH-NEVER-DEGRADES: a merge, never a blind overwrite. The columns
-                // are an allowlist, which also keeps photo_aesthetic_data
-                // (I-PHOTO-AESTHETIC-DATA-SOLE-OWNER) and photo_collage_url + fingerprint
-                // (I-COLLAGE-SOLE-OWNER) out of a re-seed.
-                .update(buildSeedMergeUpdate(row, adminEdits.get(row.google_place_id)))
-                .eq("google_place_id", row.google_place_id)
-                .select("google_place_id")
-            )
-          );
-          const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
-          if (failed.length > 0) {
-            const sample = failed.slice(0, 3).map((r: any, idx: number) => {
-              const row = updateBatch[results.indexOf(r)];
-              return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
-            }).join(' | ');
-            console.error(`[admin-seed-places] Update failed on ${failed.length}/${updateBatch.length} rows. Sample: ${sample}`);
-            throw new Error(`duplicate-update-path: ${failed.length}/${updateBatch.length} rows failed. First: ${sample}`);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    batchStatus = "failed";
-    const isTimeout = err instanceof DOMException && err.name === "AbortError";
-    errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
-    errorDetails = { error_type: isTimeout ? "timeout" : "unknown", error_stack: err instanceof Error ? err.stack : undefined };
-  }
+  const {
+    batchStatus,
+    errorMessage,
+    errorDetails,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+  } = await executeBatchSearch(supabase, {
+    batch,
+    tile,
+    config,
+    cityName,
+    cityCountry,
+    cityCountryCode,
+  });
 
   const completedAt = new Date().toISOString();
   const costUsd = COST_PER_NEARBY_SEARCH; // Always 1 API call per batch
@@ -1315,12 +1331,8 @@ async function handleRetryBatch(body: any, supabase: any) {
   // #1704 — both fields from the seeded city row. No address is consulted.
   const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
 
-  // Load tile
-  const { data: tile } = await supabase
-    .from("seeding_tiles")
-    .select("id, tile_index, center_lat, center_lng, radius_m")
-    .eq("id", batch.tile_id)
-    .single();
+  // Load where this search looks
+  const tile = await loadSearchCircle(supabase, batch);
 
   if (!tile) {
     await supabase
@@ -1346,7 +1358,7 @@ async function handleRetryBatch(body: any, supabase: any) {
     };
   }
 
-  const config = resolveSeedingCategory(batch.seeding_category);
+  const config = resolveBatchConfig(batch);
   if (!config) {
     await supabase
       .from("seeding_batches")
@@ -1371,138 +1383,25 @@ async function handleRetryBatch(body: any, supabase: any) {
     };
   }
 
-  // Execute ONE Google Nearby Search (identical logic to run_next_batch)
-  let batchStatus = "completed";
-  let errorMessage: string | null = null;
-  let errorDetails: unknown = null;
-  let placesReturned = 0;
-  let rejectedNoPhotos = 0;
-  let rejectedClosed = 0;
-  let rejectedExcludedType = 0;
-  let newInserted = 0;
-  let duplicateSkipped = 0;
-
-  try {
-    const requestBody = {
-      includedTypes: config.includedTypes,
-      excludedPrimaryTypes: config.excludedPrimaryTypes,
-      maxResultCount: 20,
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: tile.center_lat,
-            longitude: tile.center_lng,
-          },
-          radius: tile.radius_m,
-        },
-      },
-      rankPreference: "POPULARITY",
-    };
-
-    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      body: JSON.stringify(requestBody),
-      timeoutMs: API_TIMEOUT_MS,
-    });
-
-    if (!response.ok) {
-      const respBody = await response.text();
-      batchStatus = "failed";
-      errorMessage = `Google API ${response.status}: ${respBody.substring(0, 200)}`;
-      errorDetails = { http_status: response.status, response_body: respBody.substring(0, 500) };
-    } else {
-      const data = await response.json();
-      const places = data.places || [];
-      placesReturned = places.length;
-
-      const filterResult = applyPostFetchFilters(places, config.id);
-      rejectedNoPhotos = filterResult.rejectedNoPhotos;
-      rejectedClosed = filterResult.rejectedClosed;
-      rejectedExcludedType = filterResult.rejectedExcludedType;
-
-      // deno-lint-ignore no-explicit-any
-      const uniquePlaces = new Map<string, any>();
-      for (const p of filterResult.passed) {
-        if (p.id && !uniquePlaces.has(p.id)) {
-          uniquePlaces.set(p.id, p);
-        }
-      }
-
-      if (uniquePlaces.size > 0) {
-        const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, cityCountry, parseCity(p, cityName), cityCountryCode)
-        );
-
-        // Step 1: Insert new places only
-        const { data: insertedData, error: insertErr } = await supabase
-          .from("place_pool")
-          .upsert(rows, { onConflict: "google_place_id", ignoreDuplicates: true })
-          .select("google_place_id");
-
-        if (insertErr) {
-          errorMessage = `Upsert error: ${insertErr.message}`;
-          errorDetails = { upsert_error: insertErr.message };
-        }
-
-        const insertedIds = new Set(
-          (insertedData ?? []).map((r: { google_place_id: string }) => r.google_place_id)
-        );
-        newInserted = insertedIds.size;
-
-        // Step 2: Update existing places (batched in groups of 10)
-        const existingRows = rows.filter((r) => !insertedIds.has(r.google_place_id));
-        duplicateSkipped = existingRows.length;
-        const UPDATE_BATCH_SIZE = 10;
-
-        // ORCH-0598.11.B-002 — surface per-row update errors (see first handler for rationale).
-        for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
-          const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
-          // #4276 S3: read the admin markers for this batch, and stop rather than risk
-          // writing over an admin's edit if they can't be read.
-          const { data: markerRows, error: markerErr } = await supabase
-            .from("place_pool_admin_edits")
-            .select("google_place_id, edited_fields")
-            .in("google_place_id", updateBatch.map((r) => r.google_place_id));
-          if (markerErr) {
-            throw new Error(`admin marker read failed: ${markerErr.message}`);
-          }
-          const adminEdits = adminEditsByGooglePlaceId(markerRows);
-          const results = await Promise.all(
-            updateBatch.map((row) =>
-              supabase
-                .from("place_pool")
-                // I-REFRESH-NEVER-DEGRADES: a merge, never a blind overwrite. The columns
-                // are an allowlist, which also keeps photo_aesthetic_data
-                // (I-PHOTO-AESTHETIC-DATA-SOLE-OWNER) and photo_collage_url + fingerprint
-                // (I-COLLAGE-SOLE-OWNER) out of a re-seed.
-                .update(buildSeedMergeUpdate(row, adminEdits.get(row.google_place_id)))
-                .eq("google_place_id", row.google_place_id)
-                .select("google_place_id")
-            )
-          );
-          const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
-          if (failed.length > 0) {
-            const sample = failed.slice(0, 3).map((r: any, idx: number) => {
-              const row = updateBatch[results.indexOf(r)];
-              return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
-            }).join(' | ');
-            console.error(`[admin-seed-places retry] Update failed on ${failed.length}/${updateBatch.length} rows. Sample: ${sample}`);
-            throw new Error(`duplicate-update-path (retry): ${failed.length}/${updateBatch.length} rows failed. First: ${sample}`);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    batchStatus = "failed";
-    const isTimeout = err instanceof DOMException && err.name === "AbortError";
-    errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
-    errorDetails = { error_type: isTimeout ? "timeout" : "unknown" };
-  }
+  // Execute ONE Google Nearby Search
+  const {
+    batchStatus,
+    errorMessage,
+    errorDetails,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+  } = await executeBatchSearch(supabase, {
+    batch,
+    tile,
+    config,
+    cityName,
+    cityCountry,
+    cityCountryCode,
+  });
 
   const completedAt = new Date().toISOString();
   const costUsd = COST_PER_NEARBY_SEARCH;
@@ -1748,7 +1647,7 @@ async function handleRunStatus(body: any, supabase: any) {
     .eq("run_id", runId)
     .order("batch_index");
 
-  // Load city + tiles for context
+  // Load city for context
   const { data: city } = await supabase
     .from("seeding_cities")
     .select("name, country, center_lat, center_lng")
@@ -1817,6 +1716,8 @@ async function handleGeocodeCity(body: any) {
     country,
     countryCode,
     formattedAddress: result.formatted_address || "",
+    // #4276 B1: tells a city from a state or region.
+    resultTypes: Array.isArray(result.types) ? result.types : [],
     center: {
       lat: geo.location.lat,
       lng: geo.location.lng,
@@ -1838,7 +1739,65 @@ async function handleGeocodeCity(body: any) {
 
 // ── Main Handler ────────────────────────────────────────────────────────────
 
-serve(async (req) => {
+const geocodeForPipeline = async (query: string): Promise<GeocodeResult> => {
+  const r = await handleGeocodeCity({ query });
+  return {
+    center: r.center,
+    viewport: r.viewport,
+    resultTypes: r.resultTypes,
+    formattedAddress: r.formattedAddress,
+  };
+};
+
+// deno-lint-ignore no-explicit-any
+export async function dispatchAction(body: any, supabase: any): Promise<Response> {
+  switch (body.action) {
+    case "geocode_city":
+      return json(await handleGeocodeCity(body));
+    case "generate_tiles":
+      return json(await generateTilesForCity(supabase, body.cityId));
+    case "preview_cost":
+      return json(await handlePreviewCost(body, supabase));
+    case "coverage_check":
+      return json(await handleCoverageCheck(body, supabase));
+    case "create_run":
+      return json(await handleCreateRun(body, supabase));
+    case "run_next_batch":
+      return json(await handleRunNextBatch(body, supabase));
+    case "retry_batch":
+      return json(await handleRetryBatch(body, supabase));
+    case "skip_batch":
+      return json(await handleSkipBatch(body, supabase));
+    case "cancel_run":
+      return json(await handleCancelRun(body, supabase));
+    case "run_status":
+      return json(await handleRunStatus(body, supabase));
+    case "city_search_status":
+      return json(await citySearchStatus(supabase, body));
+    case "preview_fill":
+      return json(await previewFill(supabase, body));
+    case "start_fill":
+      return json(await startFill(supabase, body));
+    case "preview_split_level":
+      return json(await previewSplitLevel(supabase, body));
+    case "start_split_level":
+      return json(await startSplitLevel(supabase, body));
+    case "run_completeness_check":
+      return json(await runCompletenessCheck(supabase, body, { googleApiKey: GOOGLE_API_KEY }));
+    case "plan_city_box":
+      return json(await planCityBox(supabase, body, geocodeForPipeline));
+    case "apply_city_box":
+      return json(await applyCityBox(supabase, body, geocodeForPipeline));
+    case "places_outside_box":
+      return json(await placesOutsideBox(supabase, body));
+    case "retired_tile_history":
+      return json(await retiredTileHistory(supabase, body));
+    default:
+      return json({ error: `Unknown action: ${body.action}` }, 400);
+  }
+}
+
+export const httpHandler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -1852,56 +1811,45 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
 
-    if (authError || !user) {
-      return json({ error: "Unauthorized" }, 401);
-    }
+    // #4276: the server-driven conductor calls in with the service key. Everyone else
+    // is a signed-in, active admin.
+    if (token !== SUPABASE_SERVICE_ROLE_KEY) {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token);
 
-    // Admin check
-    const { data: adminRow } = await supabase
-      .from("admin_users")
-      .select("id")
-      .eq("email", user.email)
-      .eq("status", "active")
-      .maybeSingle();
+      if (authError || !user) {
+        return json({ error: "Unauthorized" }, 401);
+      }
 
-    if (!adminRow) {
-      return json({ error: "Forbidden: admin access required" }, 403);
+      // Admin check
+      const { data: adminRow } = await supabase
+        .from("admin_users")
+        .select("id")
+        .eq("email", user.email)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!adminRow) {
+        return json({ error: "Forbidden: admin access required" }, 403);
+      }
     }
 
     const body = await req.json();
-
-    switch (body.action) {
-      case "geocode_city":
-        return json(await handleGeocodeCity(body));
-      case "generate_tiles":
-        return json(await handleGenerateTiles(body, supabase));
-      case "preview_cost":
-        return json(await handlePreviewCost(body, supabase));
-      case "coverage_check":
-        return json(await handleCoverageCheck(body, supabase));
-      case "create_run":
-        return json(await handleCreateRun(body, supabase));
-      case "run_next_batch":
-        return json(await handleRunNextBatch(body, supabase));
-      case "retry_batch":
-        return json(await handleRetryBatch(body, supabase));
-      case "skip_batch":
-        return json(await handleSkipBatch(body, supabase));
-      case "cancel_run":
-        return json(await handleCancelRun(body, supabase));
-      case "run_status":
-        return json(await handleRunStatus(body, supabase));
-      default:
-        return json({ error: `Unknown action: ${body.action}` }, 400);
-    }
+    return await dispatchAction(body, supabase);
   } catch (e: unknown) {
+    if (e instanceof PipelineRefusal) {
+      return json({ error: e.message, code: e.code, ...e.detail }, e.status);
+    }
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[admin-seed-places] FATAL:", msg, e instanceof Error ? e.stack : "");
     return json({ error: msg }, 500);
   }
-});
+};
+
+// Importing this file for tests must not start a server.
+if (import.meta.main) {
+  serve(httpHandler);
+}

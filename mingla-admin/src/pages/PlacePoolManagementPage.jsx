@@ -3002,7 +3002,7 @@ export function PlacePoolManagementPage({ section = "browse" }) {
         if (!mountedRef.current) return;
         setRegisteredCity(data || null);
         if (data) {
-          supabase.from("seeding_tiles").select("*").eq("city_id", data.id).order("tile_index")
+          supabase.from("seeding_tiles").select("*").eq("city_id", data.id).is("retired_at", null).in("kind", ["grid", "fill"]).order("tile_index")
             .then(({ data: t }) => { if (mountedRef.current) setTiles(t || []); });
           supabase.rpc("admin_city_place_stats", { p_city_id: data.id })
             .then(({ data: s }) => { if (mountedRef.current) setStats(s); });
