@@ -367,6 +367,27 @@ BEGIN
 END;
 $$;
 
+-- A stage's lifecycle has one writer each way, called only by the conductor's tick.
+CREATE OR REPLACE FUNCTION public.city_pipeline_stage_begin(p_stage_id uuid)
+RETURNS void
+LANGUAGE sql
+SET search_path = public
+AS $$
+  UPDATE public.city_pipeline_stages
+     SET status = 'running', started_at = COALESCE(started_at, now())
+   WHERE id = p_stage_id AND status = 'pending';
+$$;
+
+CREATE OR REPLACE FUNCTION public.city_pipeline_stage_finish(p_stage_id uuid, p_result jsonb)
+RETURNS void
+LANGUAGE sql
+SET search_path = public
+AS $$
+  UPDATE public.city_pipeline_stages
+     SET status = 'complete', completed_at = now(), result = p_result, approval = NULL
+   WHERE id = p_stage_id;
+$$;
+
 -- ── C9: what the gates read ─────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.city_pipeline_gate_inputs()
 RETURNS jsonb
@@ -775,7 +796,7 @@ $$;
 -- ── M1: spend per city and stage ────────────────────────────────────────────
 ALTER TABLE public.place_intelligence_runs
   ADD COLUMN serper_requests integer NOT NULL DEFAULT 0,
-  ADD COLUMN paused_at timestamptz,
+  ADD COLUMN paused_since timestamptz,
   ADD COLUMN auto_resume_attempts integer NOT NULL DEFAULT 0,
   ADD COLUMN next_auto_resume_at timestamptz,
   ADD COLUMN last_kicked_at timestamptz,
@@ -977,7 +998,7 @@ BEGIN
        WHERE parent_run_id = r.id AND status IN ('pending', 'running');
     ELSE
       UPDATE public.place_intelligence_runs
-         SET status = 'paused', error_reason = 'stalled_no_progress', paused_at = now()
+         SET status = 'paused', error_reason = 'stalled_no_progress', paused_since = now()
        WHERE id = r.id;
     END IF;
     v_reaped := v_reaped + 1;
@@ -997,7 +1018,7 @@ DECLARE
   v_resumed integer := 0;
 BEGIN
   FOR r IN
-    SELECT id, paused_at, auto_resume_attempts FROM public.place_intelligence_runs
+    SELECT id, paused_since, auto_resume_attempts FROM public.place_intelligence_runs
      WHERE status = 'paused'
        AND mode IN ('drift_reeval', 'admin_reeval')
        AND error_reason = 'review_provider_out_of_credits'
@@ -1006,7 +1027,7 @@ BEGIN
      LIMIT p_limit
      FOR UPDATE SKIP LOCKED
   LOOP
-    CONTINUE WHEN NOT public.place_intel_provider_healthy('serper', r.paused_at);
+    CONTINUE WHEN NOT public.place_intel_provider_healthy('serper', r.paused_since);
     BEGIN
       UPDATE public.place_intelligence_runs
          SET status = 'queued',
@@ -1394,19 +1415,15 @@ BEGIN
 END;
 $$;
 
-DO $cron$
-DECLARE
-  v_job_id bigint;
-BEGIN
-  SELECT jobid INTO v_job_id FROM cron.job WHERE jobname = 'city_pipeline_tick';
-  IF v_job_id IS NOT NULL THEN PERFORM cron.unschedule(v_job_id); END IF;
-  PERFORM cron.schedule('city_pipeline_tick', '* * * * *', 'SELECT public.tg_kick_city_pipeline();');
-END;
-$cron$;
+SELECT cron.unschedule('city_pipeline_tick')
+ WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'city_pipeline_tick');
+SELECT cron.schedule('city_pipeline_tick', '* * * * *', 'SELECT public.tg_kick_city_pipeline();');
 
 -- ── Grants: service role only, the admin reaches these through run-city-pipeline ──
 REVOKE ALL ON FUNCTION public.city_pipeline_start(uuid, uuid, text, numeric, boolean, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.city_pipeline_claim_tick(integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.city_pipeline_stage_begin(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.city_pipeline_stage_finish(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.city_pipeline_gate_inputs() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.city_pipeline_hold_unjudged(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.city_pipeline_place_counts(uuid) FROM PUBLIC, anon, authenticated;
@@ -1431,6 +1448,8 @@ REVOKE ALL ON FUNCTION public.tg_kick_city_pipeline() FROM PUBLIC, anon, authent
 
 GRANT EXECUTE ON FUNCTION public.city_pipeline_start(uuid, uuid, text, numeric, boolean, boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.city_pipeline_claim_tick(integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.city_pipeline_stage_begin(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.city_pipeline_stage_finish(uuid, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.city_pipeline_gate_inputs() TO service_role;
 GRANT EXECUTE ON FUNCTION public.city_pipeline_hold_unjudged(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.city_pipeline_place_counts(uuid) TO service_role;

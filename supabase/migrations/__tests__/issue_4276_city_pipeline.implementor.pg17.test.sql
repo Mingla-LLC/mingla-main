@@ -13,6 +13,8 @@
 --   R-RELEASE  release needs an AI result unless a person chose rules only; a rejected
 --              place stops being held and stays unservable
 --   R-RUN      a run needs an active admin; one per city, one running at a time
+--   R-BLOCK    a stale paused run is named as what holds the city, and cancelling frees it
+--   R-NOCITY   no-city places are reported, and only those in exactly one box are assigned
 --   R-TICK     no run means no post; a run means one post; a tick leases one run
 --   R-CLAIM    two claims never get one search; a stale claim is reclaimed; the first
 --              worker's late finish changes nothing; counters count once
@@ -149,6 +151,26 @@ begin
     raise exception 'R-SERVE place_discovery_range_for_viewer returned a price for a held place';
   end if;
 
+  -- A plan can't name a held place.
+  begin
+    v_json := public.chat_plan_parse_where('place', jsonb_build_object('placePoolId', '42763000-0000-4000-b000-000000000002'), null);
+    if v_json ->> 'placePoolId' is not null then
+      raise exception 'R-SERVE chat_plan_parse_where accepted a held place: %', v_json;
+    end if;
+  exception
+    when raise_exception then
+      if sqlerrm like 'R-SERVE%' then raise; end if;
+    when others then null; -- refused, which is the point
+  end;
+
+  -- These need a signed-in person and a saved person to call, so they're read by source.
+  if (select prosrc from pg_proc where oid = 'public.query_person_hero_places_by_signal(uuid,uuid,double precision,double precision,text[],uuid[],integer,integer,integer,integer)'::regprocedure) not like '%pp.is_servable = true%' then
+    raise exception 'R-SERVE query_person_hero_places_by_signal must require is_servable = true';
+  end if;
+  if (select prosrc from pg_proc where oid = 'public.pg_aggregate_collab_prefs(uuid)'::regprocedure) not like '%pp.is_servable = true%' then
+    raise exception 'R-SERVE pg_aggregate_collab_prefs must require is_servable = true';
+  end if;
+
   -- The paths that count a NULL as usable, by source: they must also name the hold.
   if (select prosrc from pg_proc where oid = 'public.local_place_candidates(text)'::regprocedure) not like '%NOT p.serving_hold%' then
     raise exception 'R-SERVE local_place_candidates does not exclude held places';
@@ -195,6 +217,42 @@ begin
   v := public.city_pipeline_release_places('42763000-0000-4000-a000-000000000001', true);
   if (v ->> 'released')::int <> 1 or (v ->> 'unfinished')::int <> 0 then
     raise exception 'R-RELEASE: rules only releases a passed place: %', v;
+  end if;
+end $$;
+
+-- ── C2, C5: what is stuck, and places with no city ──────────────────────────
+insert into public.seeding_runs (id, city_id, selected_categories, total_tiles, total_batches, status, created_at)
+values ('42763000-0000-4000-c000-000000000009', '42763000-0000-4000-a000-000000000002', array['nature'], 1, 1, 'paused', now() - interval '2 days');
+insert into public.place_pool (id, google_place_id, name, lat, lng, is_active, city_id, fetched_via)
+values ('42763000-0000-4000-b000-000000000010', 'gp-w3-orphan-in', 'Orphan in', 3, 3, true, null, 'nearby_search'),
+       ('42763000-0000-4000-b000-000000000011', 'gp-w3-orphan-out', 'Orphan out', 80, 80, true, null, 'nearby_search');
+
+do $$
+declare v jsonb; v_before jsonb;
+begin
+  -- A paused run from long ago is visible as what's holding the city, and as stale.
+  v := public.city_pipeline_blockers('42763000-0000-4000-a000-000000000002');
+  if jsonb_array_length(v) <> 1 or v -> 0 ->> 'kind' <> 'seeding' or (v -> 0 ->> 'stale')::boolean is not true then
+    raise exception 'R-BLOCK: a stale paused run should be named: %', v;
+  end if;
+  update public.seeding_runs set status = 'cancelled' where id = '42763000-0000-4000-c000-000000000009';
+  if jsonb_array_length(public.city_pipeline_blockers('42763000-0000-4000-a000-000000000002')) <> 0 then
+    raise exception 'R-BLOCK: a cancelled run holds nothing';
+  end if;
+
+  v := public.city_pipeline_no_city_report();
+  if (v ->> 'in_one_box')::int < 1 or (v ->> 'in_no_box')::int < 1 then
+    raise exception 'R-NOCITY: the report should see both: %', v;
+  end if;
+  v_before := public.city_pipeline_no_city_report();
+  if public.city_pipeline_assign_no_city() < 1 then
+    raise exception 'R-NOCITY: a place inside one box should be assigned';
+  end if;
+  if (select city_id from public.place_pool where id = '42763000-0000-4000-b000-000000000010') is distinct from '42763000-0000-4000-a000-000000000002' then
+    raise exception 'R-NOCITY: assigned to the wrong city';
+  end if;
+  if (select city_id from public.place_pool where id = '42763000-0000-4000-b000-000000000011') is not null then
+    raise exception 'R-NOCITY: a place in no box stays listed, unassigned';
   end if;
 end $$;
 
@@ -382,7 +440,7 @@ update public.place_intelligence_runs set status = 'complete'
  where status in ('pending', 'queued', 'running', 'paused', 'cancelling');
 delete from public.api_health_checks where service_key in ('serper', 'gemini');
 
-insert into public.place_intelligence_runs (id, city_id, city_name, mode, sample_size, total_count, status, estimated_cost_usd, estimated_minutes, prompt_version, model, error_reason, paused_at)
+insert into public.place_intelligence_runs (id, city_id, city_name, mode, sample_size, total_count, status, estimated_cost_usd, estimated_minutes, prompt_version, model, error_reason, paused_since)
 values
   ('42763000-0000-4000-f000-000000000003', '42763000-0000-4000-a000-000000000001', 'W3 A', 'drift_reeval', 1, 1, 'paused', 0.0089, 1, 'v4', 'm', 'review_provider_out_of_credits', now()),
   ('42763000-0000-4000-f000-000000000004', '42763000-0000-4000-a000-000000000002', 'W3 B', 'remainder', null, 100, 'paused', 0.89, 1, 'v4', 'm', 'review_provider_out_of_credits', now());

@@ -16,15 +16,26 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 admin() { docker exec -i "$CONTAINER" psql -U supabase_admin -h 127.0.0.1 "$@"; }
 
 docker rm -f "$REST" >/dev/null 2>&1 || true
-# pg_cron and pg_net hold connections to the source, so they are shut out for the copy.
+# A replay also holds production's cron jobs; they are switched off below as well.
+# pg_cron and pg_net hold connections to the source, and terminating them restarts the
+# server. So they're pointed elsewhere for good: this container is scratch, and only the
+# real kicker functions are under test, not the schedulers.
+admin -d template1 -q \
+  -c "ALTER SYSTEM SET cron.database_name = 'template1'" \
+  -c "ALTER SYSTEM SET pg_net.database_name = 'template1'"
+docker restart "$CONTAINER" >/dev/null
+for _ in $(seq 1 60); do
+  admin -d template1 -Atqc "select 1" >/dev/null 2>&1 && break
+  sleep 2
+done
 admin -d template1 -q \
   -c "DROP DATABASE IF EXISTS $DB WITH (FORCE)" \
-  -c "ALTER DATABASE postgres ALLOW_CONNECTIONS false" \
-  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'postgres'" \
-  -c "CREATE DATABASE $DB TEMPLATE postgres" \
-  -c "ALTER DATABASE postgres ALLOW_CONNECTIONS true"
+  -c "CREATE DATABASE $DB TEMPLATE postgres"
+
 admin -d "$DB" -q -v ON_ERROR_STOP=1 <<'SQL'
 ALTER ROLE authenticator WITH PASSWORD 'e2e-authenticator';
+-- A replayed database holds every production cron job. None may run here.
+UPDATE cron.job SET active = false;
 -- Placeholders. The posts they go on are caught below and never leave.
 SELECT vault.create_secret('http://functions.local.test', 'supabase_url');
 SELECT vault.create_secret('e2e-placeholder', 'service_role_key');

@@ -134,6 +134,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
   if (url.host === "places.googleapis.com") {
     if (path.endsWith(":searchNearby")) {
       calls.google_search++;
+      // Google fails the first search of all: the level goes on, and a later round runs it.
+      if (calls.google_search === 1) return new Response("try later", { status: 500 });
       const hook = onNextSearch;
       onNextSearch = null;
       if (hook) await hook();
@@ -365,7 +367,10 @@ Deno.test({ name: "a city runs from box to final score with no browser, through 
 
   // ── Searching counts what it did, once ──
   const counts = await sql(`select count(*) filter (where b.status <> 'completed'), count(*) filter (where b.status = 'completed') from public.seeding_batches b where b.city_id = '${CITY}'`);
-  assertEquals(counts.split("|")[0], "0", "no search left unfinished");
+  // The search Google failed stays failed on its level, and a later round ran it again.
+  const failedOnce = await sql(`select count(*) from public.seeding_batches b where b.city_id = '${CITY}' and b.status <> 'completed' and b.error_message like 'Google API 500%'`);
+  assertEquals(counts.split("|")[0], failedOnce, "nothing unfinished except that one record");
+  assertEquals(failedOnce, "1");
 
   // ── Serper is out of credits: the run stops before sending Serper one request ──
   assertEquals(row.status, "paused", `expected the provider pause, got ${row.status} at ${row.current_stage}: ${row.last_error}`);

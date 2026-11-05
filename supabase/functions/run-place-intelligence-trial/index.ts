@@ -3447,7 +3447,7 @@ export async function handlePauseRun(
     .update({
       status: "paused",
       error_reason: typeof body.reason === "string" ? body.reason : "paused",
-      paused_at: new Date().toISOString(),
+      paused_since: new Date().toISOString(),
     })
     .eq("id", runId)
     .in("status", ["queued", "running"])
@@ -3466,7 +3466,7 @@ export async function handleResumeRun(
 
   const { data: run, error } = await db
     .from("place_intelligence_runs")
-    .update({ status: "queued", error_reason: null, paused_at: null })
+    .update({ status: "queued", error_reason: null, paused_since: null })
     .eq("id", runId)
     .eq("status", "paused")
     .select("id, status")
@@ -4435,7 +4435,7 @@ export async function runPrepIteration(args: {
       .update({
         status: "paused",
         error_reason: "review_provider_out_of_credits",
-        paused_at: new Date().toISOString(),
+        paused_since: new Date().toISOString(),
       })
       .eq("id", runId)
       .eq("status", "running");

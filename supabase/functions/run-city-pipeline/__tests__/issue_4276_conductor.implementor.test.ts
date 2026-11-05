@@ -356,3 +356,28 @@ Deno.test("resume re-queues, so the gates are read again on the next tick", asyn
   assertEquals(out.status, "queued");
   assertEquals(w.run.spend_limit_usd, 500);
 });
+
+Deno.test("C5: another run holding the city pauses this one and names it, so a person can cancel it", async () => {
+  const held = { id: "old-paused-run", status: "paused", kind: "seed" };
+  const w = world("fill", (_f, b) => b.action === "preview_fill" ? fillPreview(5, { blockedByRun: held }) : ok());
+  assertEquals((await tick(deps(w))).ended, "blocked_by_run");
+  assertEquals((w.run.pause_detail as Row).run, held);
+  assertEquals(paidCalls(w), []);
+});
+
+Deno.test("C7: the two serving paths that tolerate a never-judged place also refuse a held one", async () => {
+  const read = (p: string) => Deno.readTextFile(new URL(p, import.meta.url));
+  const share = await read("../../_shared/contentShare.ts");
+  assert(share.includes('row.is_servable === false || row.serving_hold === true) throw new Error("not_public")'));
+  assert(share.includes("is_active,is_servable,serving_hold"), "the column has to be selected to be checked");
+  const card = await read("../../shared-card/index.ts");
+  assert(card.includes("place.is_servable === false || place.serving_hold === true"));
+  assert(card.includes("is_servable,serving_hold,"), "the column has to be selected to be checked");
+});
+
+Deno.test("M3: the refresh warns at half its cron interval", async () => {
+  const { mvRefreshNearLimit } = await import("../../api-health-probe/logic.ts");
+  assertEquals(mvRefreshNearLimit({ max_seconds: 299, interval_seconds: 600 }), false);
+  assertEquals(mvRefreshNearLimit({ max_seconds: 300, interval_seconds: 600 }), true);
+  assertEquals(mvRefreshNearLimit({ max_seconds: null, interval_seconds: 600 }), false);
+});

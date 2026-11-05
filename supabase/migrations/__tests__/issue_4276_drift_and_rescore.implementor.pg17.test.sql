@@ -177,8 +177,9 @@ begin
   if not exists (select 1 from public.place_intelligence_runs where mode = 'drift_reeval' and city_id = '42760000-0000-4000-a000-000000000001' and status = 'running' and started_at is not null) then
     raise exception 'R-KICK: the queued parent was not promoted into the free slot';
   end if;
-  -- A stale heartbeat on it gets a re-kick.
-  update public.place_intelligence_runs set last_heartbeat_at = now() - interval '10 minutes'
+  -- A stale heartbeat on it gets a re-kick, once its own last kick is old too: a run
+  -- just kicked isn't kicked again in the same breath (wave 3).
+  update public.place_intelligence_runs set last_heartbeat_at = now() - interval '10 minutes', last_kicked_at = now() - interval '10 minutes'
    where mode = 'drift_reeval' and city_id = '42760000-0000-4000-a000-000000000001';
   delete from net.http_request_queue;
   perform public.tg_kick_pending_trial_runs();

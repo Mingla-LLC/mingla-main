@@ -711,12 +711,10 @@ async function pauseRun(deps: Deps, run: Row, reason: string, detail: Record<str
 
 async function advance(deps: Deps, run: Row, stage: Row, result: unknown): Promise<Row | null> {
   const nowIso = new Date((deps.now ?? Date.now)()).toISOString();
-  const { error } = await deps.db.from("city_pipeline_stages").update({
-    status: "complete",
-    completed_at: nowIso,
-    result: result ?? null,
-    approval: null,
-  }).eq("id", stage.id);
+  const { error } = await deps.db.rpc("city_pipeline_stage_finish", {
+    p_stage_id: stage.id,
+    p_result: result ?? null,
+  });
   if (error) throw new Error(`stage could not finish: ${error.message}`);
   const next = STAGE_ORDER[STAGE_ORDER.indexOf(stage.stage) + 1] ?? null;
   const { error: runErr } = await deps.db.from("city_pipeline_runs").update({
@@ -764,14 +762,17 @@ export async function driveRun(deps: Deps, run: Row): Promise<{ ended: string }>
       .from("city_pipeline_stages").select("*").eq("run_id", run.id).eq("stage", run.current_stage).single();
     if (stageErr) throw new Error(`stage read failed: ${stageErr.message}`);
     if (stage.status === "skipped") {
-      await advance(deps, run, { ...stage }, stage.result);
+      // Keeps its skipped status. Only the run moves on.
+      const next = STAGE_ORDER[STAGE_ORDER.indexOf(stage.stage) + 1] ?? null;
+      const { error: skipErr } = await deps.db.from("city_pipeline_runs")
+        .update({ current_stage: next, updated_at: new Date(clock()).toISOString() }).eq("id", run.id);
+      if (skipErr) throw new Error(`run could not advance: ${skipErr.message}`);
+      run.current_stage = next;
       continue;
     }
     if (stage.status === "pending") {
-      await deps.db.from("city_pipeline_stages").update({
-        status: "running",
-        started_at: new Date(clock()).toISOString(),
-      }).eq("id", stage.id);
+      const { error: beginErr } = await deps.db.rpc("city_pipeline_stage_begin", { p_stage_id: stage.id });
+      if (beginErr) throw new Error(`stage could not begin: ${beginErr.message}`);
       stage.status = "running";
     }
 
@@ -826,7 +827,8 @@ export async function driveRun(deps: Deps, run: Row): Promise<{ ended: string }>
 
 /** A stage that keeps throwing pauses and says why, instead of retrying for ever. */
 export async function tick(deps: Deps): Promise<Record<string, unknown>> {
-  const claimed = await rpc(deps.db, "city_pipeline_claim_tick", { p_lease_seconds: 170 });
+  const { data: claimed, error: claimErr } = await deps.db.rpc("city_pipeline_claim_tick", { p_lease_seconds: 170 });
+  if (claimErr) throw new Error(`city_pipeline_claim_tick: ${claimErr.message}`);
   const run: Row | undefined = claimed?.[0];
   if (!run) return { idle: true };
 
