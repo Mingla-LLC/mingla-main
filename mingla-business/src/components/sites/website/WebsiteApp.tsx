@@ -690,7 +690,7 @@ function PhoneStatusCard(): React.ReactElement {
           <>
             <CardTitle>Build your website</CardTitle>
             <Text style={styles.phoneStatusHint}>
-              {ctx.plan ? `${ctx.plan.doneCount} of ${ctx.plan.parts.length || 8} done${ctx.plan.nextPart ? " · next: Website setup" : ""}` : "Your website setup"}
+              {ctx.plan ? `${ctx.plan.setupStatus?.doneCount ?? ctx.plan.doneCount} of ${ctx.plan.parts.length || 8} done${(ctx.plan.setupStatus?.nextPart ?? ctx.plan.nextPart) ? " · next: Website setup" : ""}` : "Your website setup"}
             </Text>
             <WButton label="Open Website setup" variant="primary" onPress={() => ctx.go({ kind: "setup", step: null })} testID="phone-see-plan" />
           </>

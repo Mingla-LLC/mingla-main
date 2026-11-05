@@ -81,6 +81,14 @@ describe("#2830 T-RET-2 the experience creator's way back", () => {
     expect(mockReplace).toHaveBeenLastCalledWith(`${SETUP}&added=experience&addedId=e1`);
   });
 
+  it("the experience wizard has no autosave, so the bar doesn't promise one", async () => {
+    mockParams = { returnTo: SETUP };
+    const tree = await mount();
+    const words = JSON.stringify(tree.root.findAll((n) => typeof n.props.children === "string").map((n) => n.props.children));
+    expect(words).toContain("Back to website setup");
+    expect(words).not.toContain("Saved as a draft");
+  });
+
   it("opened any other way: no bar, today's exits exactly", async () => {
     const tree = await mount();
     expect(bar(tree)).toHaveLength(0);

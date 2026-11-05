@@ -19803,6 +19803,8 @@
         "supabase/migrations/__tests__/issue_2830_local_media_url_validity.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_2830_website_setup_takeover.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_2830_website_setup_takeover.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_2830_website_setup_takeover.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_2830_website_setup_takeover.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
         "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
         "supabase/migrations/__tests__/issue_2893_sites_readiness_activation.test.sql",
@@ -24694,6 +24696,8 @@
         "supabase/migrations/__tests__/issue_2830_local_media_url_validity.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_2830_website_setup_takeover.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_2830_website_setup_takeover.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_2830_website_setup_takeover.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_2830_website_setup_takeover.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
         "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
         "supabase/migrations/__tests__/issue_2893_sites_readiness_activation.test.sql",
@@ -41885,6 +41889,7 @@
         "scripts/sites/__tests__/issue_2830_cms_migrations_guard.test.mjs",
         "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs",
         "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs",
+        "scripts/sites/__tests__/issue_2830_multi_tenant_recovery.test.mjs",
         "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
         "scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs",
         "scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs",
@@ -52843,5 +52848,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "5c8e410d9fe013c4842f56224c714af51dae43943377a3597a9bdb8e585b45f7"
+  "phase3eContractSha256": "26c98f8a393a0cc9756354df65c1449821c5aa3821266a80265b6c68138fff81"
 }

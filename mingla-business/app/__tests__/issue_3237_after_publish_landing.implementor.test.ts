@@ -100,7 +100,9 @@ describe("#3237 publishing lands on the item's manage screen", () => {
 
   test("trip: publish marks the trip just-published before opening /trip/{id}", () => {
     expect(tripEdit).toMatch(
-      /onPublished=\{\(published\) => \{\s*markJustPublished\(published\.id\);\s*router\.replace\(`\/trip\/\$\{published\.id\}` as never\);/,
+      // #2830 deliberately adds one branch between the two: a trip opened from
+      // Website setup returns to that setup step instead of the dashboard.
+      /onPublished=\{\(published\) => \{\s*markJustPublished\(published\.id\);\s*if \(setupReturn\) \{\s*router\.replace\(setupReturnWith\(setupReturn, "trip", published\.id\) as never\);\s*return;\s*\}\s*router\.replace\(`\/trip\/\$\{published\.id\}` as never\);/,
     );
   });
 

@@ -17,7 +17,7 @@ import {
 } from "../services/brandSitesService";
 import { brandSiteKeys } from "./brandSiteKeys";
 import { composeBrandSiteFromPlan } from "./planApi";
-import type { SitePlanState } from "./sitePlanState";
+import { planBuildDone, type SitePlanState } from "./sitePlanState";
 import {
   setupDraftState,
   type SetupDraftSite,
@@ -120,12 +120,7 @@ export function useMarkNotApplicable(brandId: string) {
   });
 }
 
-/** The one reading of "the pages are built", shared with the setup screen. */
-export function planBuildDone(plan: SitePlanState | null | undefined): boolean {
-  return plan?.setupStatus?.parts.find((part) => part.key === "build")?.done
-    ?? plan?.parts.find((part) => part.key === "build")?.done
-    ?? false;
-}
+export { planBuildDone };
 
 const CHECK_EVERY_MS = 20_000;
 const MAX_CHECKS = 3;
@@ -151,6 +146,8 @@ export function useSetupDraft(args: {
   canManage: boolean;
 }): {
   state: SetupDraftState;
+  /** Core refused and said why: not a fault on our side, and worth saying so. */
+  refusal: string | null;
   start: () => void;
   retry: () => void;
 } {
@@ -160,6 +157,7 @@ export function useSetupDraft(args: {
   const [composePending, setComposePending] = useState(false);
   const [composeFailed, setComposeFailed] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const operationRef = useRef<string | null>(null);
   const checksRef = useRef(0);
@@ -177,12 +175,15 @@ export function useSetupDraft(args: {
   const provision = useCallback(async (operationId: string) => {
     operationRef.current = operationId;
     setEnsurePending(true);
+    setRefusal(null);
     try {
       await persistProvisionOperation(brandId, { operationId, startedAt: Date.now() });
       await provisionBrandSite(brandId, operationId);
       setUnknownOutcome(false);
     } catch (error) {
-      setUnknownOutcome(outcomeUnknown(error));
+      const unknown = outcomeUnknown(error);
+      setUnknownOutcome(unknown);
+      if (!unknown && error instanceof BrandSitesError) setRefusal(error.message);
     } finally {
       setEnsurePending(false);
       refresh();
@@ -207,8 +208,14 @@ export function useSetupDraft(args: {
       await queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) });
       const latest = queryClient.getQueryData<SitePlanState>(brandSiteKeys.plan(brandId));
       if (latest && !planBuildDone(latest)) setComposeFailed(true);
-    } catch {
-      setComposeFailed(true);
+    } catch (error) {
+      // Someone else has the form. Not a failure of the build, and they may be
+      // about to run it: leave it, and try again on the next visit.
+      if (error instanceof BrandSitesError && error.code === "PLAN_LOCKED") {
+        composedRef.current = false;
+      } else {
+        setComposeFailed(true);
+      }
     } finally {
       setComposePending(false);
       refresh();
@@ -261,5 +268,5 @@ export function useSetupDraft(args: {
     void compose();
   }, [approved, buildDone, canManage, compose, ready]);
 
-  return { state, start, retry };
+  return { state, refusal, start, retry };
 }

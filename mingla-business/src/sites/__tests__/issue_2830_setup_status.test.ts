@@ -122,7 +122,7 @@ describe("T-PRES-1 who is on setup", () => {
     expect(presence({ flow: flowView({ stopped: true }), canManage: false })).toMatchObject({ kind: "stopped", canContinue: false });
   });
   it("what was mine and isn't any more is displaced, naming who", () => {
-    expect(presence({ flow: flowView(), wasMine: true })).toEqual({ kind: "displaced", name: "Ama" });
+    expect(presence({ flow: flowView(), wasMyRun: true })).toEqual({ kind: "displaced", name: "Ama" });
     expect(presence({ lock: { active: true, heldByMe: false, holderName: "Tobi" }, wasMine: true })).toEqual({ kind: "displaced", name: "Tobi" });
   });
   it("no name is A teammate, never blank", () => {

@@ -225,3 +225,10 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
 export function partLabel(key: PlanPartKey): string {
   return PLAN_PARTS.find((part) => part.key === key)?.label ?? key;
 }
+
+/** #2830 — the one reading of "the pages are built". A draft status does not say so. */
+export function planBuildDone(plan: SitePlanState | null | undefined): boolean {
+  return plan?.setupStatus?.parts.find((part) => part.key === "build")?.done
+    ?? plan?.parts.find((part) => part.key === "build")?.done
+    ?? false;
+}

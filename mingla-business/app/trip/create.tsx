@@ -56,11 +56,11 @@ export default function TripCreateRoute(): React.ReactElement {
     // ORCH-0893: synchronous client-side id, no server round-trip.
     // I-PROPOSED-CREATOR-ENTRY-IS-INSTANT.
     const clientId = generateDraftId();
-    router.replace(
-      (setupReturn
-        ? withReturnTo(`/trip/${clientId}/edit`, setupReturn)
-        : `/trip/${clientId}/edit`) as never,
-    );
+    if (setupReturn) {
+      router.replace(withReturnTo(`/trip/${clientId}/edit`, setupReturn) as never);
+      return;
+    }
+    router.replace(`/trip/${clientId}/edit` as never);
   }, [currentBrand, router, setupReturn]);
 
   if (currentBrand === null) {

@@ -6,20 +6,36 @@ import { BuildPart } from "../plan/BuildPart";
 import type { PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
 /** Design states 7, 8, 9 and the idle card. State 10 is drawn by the screen. */
-export function SetupDraftStep({ brandId, brandName, state, canManage, onStart, onRetry, onTellMingla, onDone }: {
+export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, nextStep, onStart, onRetry, onTellMingla, onDone }: {
   brandId: string;
   brandName: string;
   state: SetupDraftState;
   canManage: boolean;
+  /** Core refused and said why, so it is not "on our side". */
+  refusal?: string | null;
+  /** The first step still open, for "what's missing". */
+  nextStep?: PlanPartKey | null;
   onStart: () => void;
   onRetry: () => void;
   onTellMingla: () => void;
   onDone: (next: PlanPartKey) => void;
 }): React.ReactElement | null {
+  const refused = refusal ? (
+    <View style={styles.host} testID="setup-draft-refused">
+      <Text style={styles.title} accessibilityRole="alert">Your draft can&apos;t be built yet.</Text>
+      <Text style={styles.body}>{refusal}</Text>
+      {nextStep ? (
+        <View style={styles.row}>
+          <WButton label="Go to what's missing" variant="primary" onPress={() => onDone(nextStep)} testID="setup-draft-missing" />
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+  if (refused && state.kind !== "ready" && state.kind !== "building" && state.kind !== "checking") return refused;
   switch (state.kind) {
     case "not_ready":
     case "can_start":
-      return <BuildPart brandId={brandId} onBuild={onStart} onDone={onDone} />;
+      return <BuildPart brandId={brandId} readOnly={!canManage} onBuild={onStart} onDone={onDone} />;
     case "building":
       return (
         <View style={styles.host} role="status" accessibilityLiveRegion="polite" testID="setup-draft-building">

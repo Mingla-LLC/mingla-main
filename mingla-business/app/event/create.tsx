@@ -195,11 +195,11 @@ export default function EventCreateRoute(): React.ReactElement {
     // into the post-hydration state directly — no subscription staleness,
     // no risk of the persisted state replacing our write.
     const draft = useDraftEventStore.getState().createDraft(currentBrandId);
-    router.replace(
-      (setupReturn
-        ? withReturnTo(`/event/${draft.id}/edit?step=0`, setupReturn)
-        : `/event/${draft.id}/edit?step=0`) as never,
-    );
+    if (setupReturn) {
+      router.replace(withReturnTo(`/event/${draft.id}/edit?step=0`, setupReturn) as never);
+      return;
+    }
+    router.replace(`/event/${draft.id}/edit?step=0` as never);
   }, [
     setupReturn,
     currentBrandId,

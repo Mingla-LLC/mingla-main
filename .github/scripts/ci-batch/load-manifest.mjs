@@ -145,7 +145,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
 // #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
-export const BOOTSTRAP_SHA256 = "2bbebf28b419fa8565631b6b8c94823d2af9ef6ebab95e0503d78fcd5f50e328";
+export const BOOTSTRAP_SHA256 = "5597615263603fa4b320c09caf7e922c5f67c1c4444e7cbe1b6e1db51d170d7e";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

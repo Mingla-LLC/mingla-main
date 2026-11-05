@@ -8,7 +8,11 @@ import { accent, spacing, text as textTokens } from "../../../constants/designSy
  * Rendered by each creator route above its wizard, loaded by an inline
  * React.lazy there, so wizard internals stay untouched and nothing is hoisted.
  */
-export default function CreatorReturnBar({ onBack }: { onBack: () => void }): React.ReactElement {
+export default function CreatorReturnBar({ onBack, savesDraft = true }: {
+  onBack: () => void;
+  /** Only where the creator really autosaves: the experience wizard does not. */
+  savesDraft?: boolean;
+}): React.ReactElement {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.bar, { paddingTop: insets.top }]} testID="creator-return-bar">
@@ -21,7 +25,7 @@ export default function CreatorReturnBar({ onBack }: { onBack: () => void }): Re
       >
         <Text style={styles.backLabel}>Back to website setup</Text>
       </Pressable>
-      <Text style={styles.note}>Saved as a draft if you go back</Text>
+      {savesDraft ? <Text style={styles.note}>Saved as a draft if you go back</Text> : null}
     </View>
   );
 }

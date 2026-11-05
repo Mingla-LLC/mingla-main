@@ -127,13 +127,15 @@ export function setupPresence(input: {
   flow: SetupFlowView | null;
   lock: SetupLockView | null;
   canManage: boolean;
-  /** This screen held the run or the lock a moment ago. */
+  /** This screen held the form lock a moment ago. */
   wasMine: boolean;
+  /** This screen owned the run a moment ago. A lapsed lock says nothing about it. */
+  wasMyRun?: boolean;
 }): SetupPresence {
   const { flow, lock } = input;
   if (input.paused) return { kind: "paused" };
   const theirs = flow !== null && !flow.mine;
-  if (theirs && input.wasMine) return { kind: "displaced", name: nameOf(flow.ownerName) };
+  if (theirs && input.wasMyRun) return { kind: "displaced", name: nameOf(flow.ownerName) };
   if (theirs && !flow.stopped) {
     return { kind: "active", source: "ari", name: nameOf(flow.ownerName), stepKey: flow.stepKey, canTakeOver: flow.canTakeOver && input.canManage };
   }
@@ -185,6 +187,8 @@ export function setupDraftState(input: {
   const inProgress = site !== null && site.status === "provisioning";
   const failedStatus = site !== null && site.status === "error";
   if (site !== null && !inProgress && !failedStatus && input.buildDone) return { kind: "ready" };
+  // Paused by Mingla: nothing is being built, and nothing can be started.
+  if (site?.status === "suspended") return { kind: "not_ready" };
   if (input.ensurePending || input.composePending) return { kind: "building" };
   if (site === null) return input.approved ? { kind: "can_start" } : { kind: "not_ready" };
   const receipt = site.latest_provision_operation ?? null;

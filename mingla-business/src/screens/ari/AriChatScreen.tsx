@@ -754,9 +754,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         // other path that lands on a non-pending action.)
         // #2830 — a teammate took this setup over: say why, never quietly clear.
         if (result.code === "FLOW_TAKEN_OVER") {
-          setLocalError(result.message);
+          const words = result.message;
+          setLocalError(words);
           chat.clearPendingAction();
-          return { ok: false, error: result.message, terminal: "resolved" };
+          return { ok: false, error: words, terminal: "resolved" };
         }
         if (isAlreadyResolvedError(result.message)) {
           chat.clearPendingAction();
@@ -936,8 +937,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // rows and orb sizes step down rather than rendering clipped fragments.
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
-    Math.max(insets.bottom, spacing.md) +
-    (setup ? 0 : BOTTOM_NAV_CLEARANCE_PX);
+    Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
   // The one lift, read by both consumers — see `composerOccupiedPxFor`.
   const composerOccupiedPx = composerOccupiedPxFor(
     keyboardHeight,
@@ -1186,7 +1186,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   {
                     paddingBottom:
                       Math.max(insets.bottom, spacing.md) +
-                      (setup ? 0 : BOTTOM_NAV_CLEARANCE_PX) +
+                      BOTTOM_NAV_CLEARANCE_PX +
                       60 +
                       Math.max(0, composerContentHeight - 60),
                   },
@@ -1529,16 +1529,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 // the pill's bottom edge, so any pill-height term is a double
                 // count. When closed, clear the floating BottomNav capsule +
                 // safe-area inset.
-                paddingBottom: setup
-                  ? // #2830 — no tab bar on the setup screen. Same one lift.
-                    Platform.OS === "web"
-                    ? spacing.sm
-                    : composerOccupiedPxFor(
-                        keyboardHeight,
-                        Math.max(insets.bottom, spacing.md),
-                      )
-                  : Platform.OS === "web"
-                    ? isWideDesktop
+                paddingBottom:
+                  Platform.OS === "web"
+                    ? // #2830 — no tab bar on the setup screen either.
+                      setup || isWideDesktop
                       ? spacing.sm
                       : // #3460 — narrow web HAS the floating capsule, so it needs the
                         // same clearance the native branch below reserves.
@@ -1552,7 +1546,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       composerOccupiedPxFor(
                         keyboardHeight,
                         Math.max(insets.bottom, spacing.md) +
-                          BOTTOM_NAV_CLEARANCE_PX,
+                          (setup ? 0 : BOTTOM_NAV_CLEARANCE_PX),
                       ),
               },
             ]}

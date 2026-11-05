@@ -25,8 +25,9 @@ export function safeReturnTo(value: unknown): string | null {
  * else behaves exactly as if no `returnTo` was given.
  */
 export function isSetupReturn(value: unknown): boolean {
-  const safe = safeReturnTo(value);
-  return safe !== null && /^\/brand\/[^/?#]+\/website\/setup(\?|$)/.test(safe);
+  // Exact: not trimmed, no encoded or walking id, only a plain query after it.
+  return safeReturnTo(value) === value &&
+    /^\/brand\/[A-Za-z0-9_-]+\/website\/setup(\?[\w=&%-]*)?$/.test(value as string);
 }
 
 /** Adds what the setup screen shows on return (state 12). */

@@ -107,11 +107,11 @@ export default function TripEditRoute(): React.ReactElement {
             serverId: trip.id,
           });
         }
-        router.replace(
-          (setupReturn
-            ? withReturnTo(`/trip/${trip.id}/edit`, setupReturn)
-            : `/trip/${trip.id}/edit`) as never,
-        );
+        if (setupReturn) {
+          router.replace(withReturnTo(`/trip/${trip.id}/edit`, setupReturn) as never);
+          return;
+        }
+        router.replace(`/trip/${trip.id}/edit` as never);
       })
       .catch(() => {
         tripMigratingIdRef.current = null;
@@ -373,11 +373,11 @@ export default function TripEditRoute(): React.ReactElement {
       // Share + the public page (it used to open with no confirmation).
       onPublished={(published) => {
         markJustPublished(published.id);
-        router.replace(
-          (setupReturn
-            ? setupReturnWith(setupReturn, "trip", published.id)
-            : `/trip/${published.id}`) as never,
-        );
+        if (setupReturn) {
+          router.replace(setupReturnWith(setupReturn, "trip", published.id) as never);
+          return;
+        }
+        router.replace(`/trip/${published.id}` as never);
       }}
       onExit={() => {
         if (setupReturn) {

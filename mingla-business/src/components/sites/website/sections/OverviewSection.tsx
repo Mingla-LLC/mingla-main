@@ -18,7 +18,7 @@ import { useBrandSiteDomains } from "../../../../hooks/useBrandSite";
 import { plannedPagesFor } from "../../../../../../packages/site-contracts/src/sitePlan.ts";
 import { PLANNED_PAGE_LABELS } from "../../../../../../packages/site-contracts/src/emptyStates.ts";
 import type { WebsiteSection } from "../../../../sites/websiteNav";
-import { partLabel } from "../../../../sites/sitePlanState";
+import { partLabel, planBuildDone } from "../../../../sites/sitePlanState";
 
 /**
  * #2829 W9r (DESIGN_SPEC §1.6 Overview) — status first, the one decision
@@ -74,12 +74,19 @@ function StatusCard({ published, offline, host }: { published: boolean; offline:
   const changes = useDraftChanges(site.id);
   const count = changes.data?.changes.length ?? 0;
   const publishedAt = changes.data?.published_at ?? null;
+  // #2830 — a provisioned site is not a built draft: one empty Home page must
+  // not read as ready. Only the server's build tick says it is.
+  const unfinished = !published && ctx.plan !== null && !planBuildDone(ctx.plan);
   const title = offline
     ? `Offline since ${formatWebsiteDateTime(site.owner_offline_at)}`
-    : !published
+    : unfinished
+      ? "Draft not finished"
+      : !published
       ? "Draft ready · not published yet"
       : `Live · published ${formatWebsiteDateTime(publishedAt ?? site.updated_at)}`;
-  const hint = !published
+  const hint = unfinished
+    ? "Finish it in Website setup. Your answers are saved"
+    : !published
     ? "Add content, then publish when you're happy"
     : count > 0
       ? `${count} ${count === 1 ? "change" : "changes"} in your draft that visitors can't see yet`
@@ -279,7 +286,7 @@ function NoSiteOverview(): React.ReactElement {
   const router = useRouter();
   const done = plan?.setupStatus?.doneCount ?? plan?.doneCount ?? 0;
   const total = plan?.parts.length || 8;
-  const next = plan?.parts.find((part) => !part.done);
+  const nextKey = plan?.setupStatus?.nextPart ?? plan?.nextPart ?? null;
   const pages = plannedPagesFor(ctx.offerings).map((key) => PLANNED_PAGE_LABELS[key].menu);
   const pageWords = ["Home", ...pages.filter((name) => name !== "Home"), "About", "Contact"];
   const uniquePages = [...new Set(pageWords)];
@@ -290,7 +297,7 @@ function NoSiteOverview(): React.ReactElement {
         <View style={styles.statusRow}>
           <View style={styles.grow}>
             <CardTitle>{`Website setup · ${done} of ${total} done`}</CardTitle>
-            {next ? <Hint>{`Next: ${partLabel(next.key)}`}</Hint> : null}
+            {nextKey ? <Hint>{`Next: ${partLabel(nextKey)}`}</Hint> : null}
           </View>
           <Chip label="Private until you publish" />
         </View>

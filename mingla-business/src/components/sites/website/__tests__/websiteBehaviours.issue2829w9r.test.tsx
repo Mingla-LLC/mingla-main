@@ -438,6 +438,32 @@ describe("#2829 W11 who is working on it", () => {
   });
 });
 
+describe("#2830 a site with no built pages is not a ready draft", () => {
+  const planWith = (done: boolean) => ({
+    parts: [{ key: "build", done, skipped: false, optional: false }],
+    setupStatus: { doneCount: 0, nextPart: "build", total: 8, parts: [{ key: "build", done, skipped: false, fieldCount: 0, openFields: [] }] },
+  });
+  it("provisioned, compose never ran: says so, not 'Draft ready'", () => {
+    const value = context();
+    Object.assign(value, { plan: planWith(false) });
+    Object.assign(value.controller.site, { data: { ...value.controller.site.data, status: "draft", active_publication_id: null } });
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(<QueryClientProvider client={new QueryClient()}><WebsiteProvider value={value}><OverviewSection /></WebsiteProvider></QueryClientProvider>); });
+    mounted.push(tree);
+    expect(textOf(tree.root)).toContain("Draft not finished");
+    expect(textOf(tree.root)).not.toContain("Draft ready");
+  });
+  it("the build tick is what makes it ready", () => {
+    const value = context();
+    Object.assign(value, { plan: planWith(true) });
+    Object.assign(value.controller.site, { data: { ...value.controller.site.data, status: "draft", active_publication_id: null } });
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(<QueryClientProvider client={new QueryClient()}><WebsiteProvider value={value}><OverviewSection /></WebsiteProvider></QueryClientProvider>); });
+    mounted.push(tree);
+    expect(textOf(tree.root)).toContain("Draft ready");
+  });
+});
+
 describe("Overview signals", () => {
   it("before a website exists: the plan, the proposed address, and nothing that claims it is live", () => {
     const { root } = render(<OverviewSection />, { site: null, plan: { doneCount: 2, parts: [] } as unknown as SitePlanState });

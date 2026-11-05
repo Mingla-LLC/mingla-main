@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -65,6 +65,19 @@ function settledValue(field: BrandContextField): string {
 }
 
 type FieldSave = (patch: Partial<Brand>) => Promise<boolean>;
+/** Saves what is typed but not sent. True: nothing is left, or it saved. */
+type Flush = () => Promise<boolean>;
+type RegisterFlush = (key: string, flush: Flush | null) => void;
+
+/** A tap on Next doesn't blur a field on native, so Next asks each field to send. */
+function useFlush(register: RegisterFlush, key: string, flush: Flush): void {
+  const latest = useRef(flush);
+  latest.current = flush;
+  useEffect(() => {
+    register(key, () => latest.current());
+    return () => register(key, null);
+  }, [key, register]);
+}
 
 function SavedRow({ field }: { field: BrandContextField }): React.ReactElement {
   return (
@@ -93,6 +106,11 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
   const [problem, setProblem] = useState<{ key: string; message: string } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const flushers = useRef(new Map<string, Flush>());
+  const registerFlush = useCallback<RegisterFlush>((key, flush) => {
+    if (flush) flushers.current.set(key, flush);
+    else flushers.current.delete(key);
+  }, []);
 
   const fields = useMemo(() => {
     const byKey = new Map((plan.completeness?.fields ?? []).map((field) => [field.key, field]));
@@ -160,6 +178,7 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
           problem={problem?.key === field.key ? problem.message : null}
           saving={saving === field.key}
           onFocus={() => setFocused(field.key)}
+          registerFlush={registerFlush}
           onSave={(patch) => guarded(field.key, patch)}
           onProblem={(message) => setProblem(message ? { key: field.key, message } : null)}
         />
@@ -171,8 +190,14 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
             label={nextField ? `Next: ${nextField.label.toLowerCase()}` : nextStepLabel ? `Next: ${nextStepLabel.toLowerCase()}` : "Next"}
             variant="primary"
             onPress={() => {
-              if (nextField) setFocused(nextField.key);
-              else onNext();
+              void (async () => {
+                for (const flush of [...flushers.current.values()]) {
+                  // What didn't save stays on screen with why; Next stays here.
+                  if (!(await flush())) return;
+                }
+                if (nextField) setFocused(nextField.key);
+                else onNext();
+              })();
             }}
             testID="setup-next"
           />
@@ -183,7 +208,7 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
   );
 }
 
-function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, problem, saving, onFocus, onSave, onProblem }: {
+function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, problem, saving, registerFlush, onFocus, onSave, onProblem }: {
   field: BrandContextField;
   brand: Brand;
   brandId: string;
@@ -192,6 +217,7 @@ function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, pro
   readOnly: boolean;
   problem: string | null;
   saving: boolean;
+  registerFlush: RegisterFlush;
   onFocus: () => void;
   onSave: FieldSave;
   onProblem: (message: string | null) => void;
@@ -202,18 +228,18 @@ function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, pro
   ) : null;
   switch (field.key) {
     case "name":
-      return <TextFieldEditor field={field} initial={brand.displayName ?? ""} max={80} hot={hot} readOnly={readOnly} problem={problem} saving={saving} onFocus={onFocus} commit={(value) => onSave({ displayName: value })} />;
+      return <TextFieldEditor field={field} initial={brand.displayName ?? ""} max={80} hot={hot} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onFocus={onFocus} commit={(value) => onSave({ displayName: value })} />;
     case "description":
-      return <TextFieldEditor field={field} multiline initial={joinBrandDescription(brand.tagline, brand.bio) ?? ""} max={500} hot={hot} readOnly={readOnly} problem={problem} saving={saving} onFocus={onFocus} commit={(value) => onSave({ tagline: "", bio: value })} />;
+      return <TextFieldEditor field={field} multiline initial={joinBrandDescription(brand.tagline, brand.bio) ?? ""} max={500} hot={hot} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onFocus={onFocus} commit={(value) => onSave({ tagline: "", bio: value })} />;
     case "contact_email":
-      return <TextFieldEditor field={field} initial={brand.contact?.email ?? ""} placeholder="hello@yourbrand.com" keyboardType="email-address" hot={hot} readOnly={readOnly} problem={problem} saving={saving} onFocus={onFocus} validate={validateBrandContactEmail} commit={(value) => onSave({ contact: { ...brand.contact, email: value } })} />;
+      return <TextFieldEditor field={field} initial={brand.contact?.email ?? ""} placeholder="hello@yourbrand.com" keyboardType="email-address" hot={hot} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onFocus={onFocus} validate={validateBrandContactEmail} commit={(value) => onSave({ contact: { ...brand.contact, email: value } })} />;
     case "contact_phone":
-      return <PhoneEditor field={field} brand={brand} readOnly={readOnly} problem={problem} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
+      return <PhoneEditor field={field} brand={brand} readOnly={readOnly} problem={problem} registerFlush={registerFlush} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
     case "address":
     case "city_country":
-      return <AddressEditor field={field} brand={brand} readOnly={readOnly} problem={problem} saving={saving} onSave={onSave} />;
+      return <AddressEditor field={field} brand={brand} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onSave={onSave} />;
     case "social_links":
-      return <LinksEditor field={field} brand={brand} hot={hot} readOnly={readOnly} problem={problem} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
+      return <LinksEditor field={field} brand={brand} hot={hot} readOnly={readOnly} problem={problem} registerFlush={registerFlush} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
     case "profile_photo":
     case "cover_media":
       return (
@@ -239,7 +265,7 @@ function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, pro
   }
 }
 
-function TextFieldEditor({ field, initial, max, multiline, placeholder, keyboardType, hot, readOnly, problem, saving, onFocus, validate, commit }: {
+function TextFieldEditor({ field, initial, max, multiline, placeholder, keyboardType, hot, readOnly, problem, saving, registerFlush, onFocus, validate, commit }: {
   field: BrandContextField;
   initial: string;
   max?: number;
@@ -250,20 +276,30 @@ function TextFieldEditor({ field, initial, max, multiline, placeholder, keyboard
   readOnly: boolean;
   problem: string | null;
   saving: boolean;
+  registerFlush: RegisterFlush;
   onFocus: () => void;
   validate?: (value: string) => string | null;
   commit: (value: string) => Promise<boolean>;
 }): React.ReactElement {
   const [value, setValue] = useState(initial);
   const [invalid, setInvalid] = useState<string | null>(null);
-  const send = () => {
+  // Blur and Next can both fire for one edit: one value is sent once.
+  const sent = useRef<{ value: string; result: Promise<boolean> } | null>(null);
+  const send: Flush = () => {
     const trimmed = value.trim();
-    if (trimmed.length === 0 || trimmed === initial.trim()) return;
+    if (trimmed.length === 0 || trimmed === initial.trim()) return Promise.resolve(true);
     const bad = validate?.(trimmed) ?? null;
     setInvalid(bad);
-    if (bad) return;
-    void commit(trimmed);
+    if (bad) return Promise.resolve(false);
+    if (sent.current?.value === trimmed) return sent.current.result;
+    const result = commit(trimmed).then((saved) => {
+      if (!saved) sent.current = null;
+      return saved;
+    });
+    sent.current = { value: trimmed, result };
+    return result;
   };
+  useFlush(registerFlush, field.key, send);
   return (
     <View style={[styles.field, hot ? styles.hot : null]}>
       <Field
@@ -276,12 +312,12 @@ function TextFieldEditor({ field, initial, max, multiline, placeholder, keyboard
         autoCapitalize={keyboardType ? "none" : undefined}
         editable={!readOnly}
         onFocus={onFocus}
-        onBlur={send}
+        onBlur={() => { void send(); }}
         onChangeText={(next) => { setValue(next); if (invalid) setInvalid(null); }}
         error={invalid}
         testID={`setup-field-${field.key}`}
       />
-      {problem ? <ProblemRetry problem={problem} fieldKey={field.key} onRetry={send} saving={saving} /> : null}
+      {problem ? <ProblemRetry problem={problem} fieldKey={field.key} onRetry={() => { void send(); }} saving={saving} /> : null}
     </View>
   );
 }
@@ -300,11 +336,12 @@ function ProblemRetry({ problem, fieldKey, onRetry, saving }: { problem: string;
  * as Brand Edit; its rules module is not shared here, or it would hoist 4,401 B
  * into __common for every Host (measured).
  */
-function PhoneEditor({ field, brand, readOnly, problem, onFocus, onSave, onProblem }: {
+function PhoneEditor({ field, brand, readOnly, problem, registerFlush, onFocus, onSave, onProblem }: {
   field: BrandContextField;
   brand: Brand;
   readOnly: boolean;
   problem: string | null;
+  registerFlush: RegisterFlush;
   onFocus: () => void;
   onSave: FieldSave;
   onProblem: (message: string | null) => void;
@@ -313,23 +350,31 @@ function PhoneEditor({ field, brand, readOnly, problem, onFocus, onSave, onProbl
   const [text, setText] = useState(brand.contact?.phone?.startsWith("+") ? "" : brand.contact?.phone ?? "");
   const [iso, setIso] = useState<string | null>(own?.iso ?? null);
   const [invalid, setInvalid] = useState<string | null>(null);
-  const send = () => {
+  const sent = useRef<{ value: string; result: Promise<boolean> } | null>(null);
+  const send: Flush = () => {
     const typed = text.trim();
-    if (typed.length === 0) return;
+    if (typed.length === 0) return Promise.resolve(true);
     const country = PHONE_COUNTRIES.find((row) => row.iso === iso) ?? null;
     if (country === null && !typed.startsWith("+")) {
       setInvalid("Choose the country for this phone number.");
-      return;
+      return Promise.resolve(false);
     }
     const parsed = parsePhoneEntry(typed, { countryIso: country?.iso ?? null, dialCode: country?.dialCode ?? "+1", mode: "any" });
     if (!parsed.ok) {
       setInvalid(parsed.message);
-      return;
+      return Promise.resolve(false);
     }
     setInvalid(null);
     onProblem(null);
-    void onSave({ contact: { ...brand.contact, phone: parsed.e164 } });
+    if (sent.current?.value === parsed.e164) return sent.current.result;
+    const result = onSave({ contact: { ...brand.contact, phone: parsed.e164 } }).then((saved) => {
+      if (!saved) sent.current = null;
+      return saved;
+    });
+    sent.current = { value: parsed.e164, result };
+    return result;
   };
+  useFlush(registerFlush, field.key, send);
   return (
     <View style={styles.field} testID="setup-field-contact_phone">
       <Text style={styles.label}>{field.label}</Text>
@@ -338,7 +383,7 @@ function PhoneEditor({ field, brand, readOnly, problem, onFocus, onSave, onProbl
         value={text}
         editable={!readOnly}
         onFocus={onFocus}
-        onBlur={send}
+        onBlur={() => { void send(); }}
         onChangeText={(next) => { setText(next); if (invalid) setInvalid(null); }}
         defaultCountryIso={own?.iso}
         countryIso={iso ?? undefined}
@@ -349,17 +394,18 @@ function PhoneEditor({ field, brand, readOnly, problem, onFocus, onSave, onProbl
         error={invalid}
         errorId="setup-contact-phone-error"
       />
-      {problem ? <ProblemRetry problem={problem} fieldKey={field.key} onRetry={send} /> : null}
+      {problem ? <ProblemRetry problem={problem} fieldKey={field.key} onRetry={() => { void send(); }} /> : null}
     </View>
   );
 }
 
-function AddressEditor({ field, brand, readOnly, problem, saving, onSave }: {
+function AddressEditor({ field, brand, readOnly, problem, saving, registerFlush, onSave }: {
   field: BrandContextField;
   brand: Brand;
   readOnly: boolean;
   problem: string | null;
   saving: boolean;
+  registerFlush: RegisterFlush;
   onSave: FieldSave;
 }): React.ReactElement {
   const [pending, setPending] = useState<BrandAddressPatch | null>(null);
@@ -368,6 +414,12 @@ function AddressEditor({ field, brand, readOnly, problem, saving, onSave }: {
     if (pending?.city || pending?.countryCode) void onSave(pending).then((saved) => { if (saved) setPending(null); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
+  useFlush(registerFlush, field.key, () => (pending
+    ? onSave(pending).then((saved) => {
+      if (saved) setPending(null);
+      return saved;
+    })
+    : Promise.resolve(true)));
   return (
     <View style={styles.field} testID={`setup-field-${field.key}`}>
       <Text style={styles.label}>{field.label}</Text>
@@ -396,12 +448,13 @@ const MORE_LINKS: ReadonlyArray<[keyof NonNullable<Brand["links"]>, string]> = [
   ["tiktok", "TikTok"], ["x", "X"], ["facebook", "Facebook"], ["youtube", "YouTube"], ["linkedin", "LinkedIn"], ["threads", "Threads"],
 ];
 
-function LinksEditor({ field, brand, hot, readOnly, problem, onFocus, onSave, onProblem }: {
+function LinksEditor({ field, brand, hot, readOnly, problem, registerFlush, onFocus, onSave, onProblem }: {
   field: BrandContextField;
   brand: Brand;
   hot: boolean;
   readOnly: boolean;
   problem: string | null;
+  registerFlush: RegisterFlush;
   onFocus: () => void;
   onSave: FieldSave;
   onProblem: (message: string | null) => void;
@@ -410,18 +463,27 @@ function LinksEditor({ field, brand, hot, readOnly, problem, onFocus, onSave, on
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [invalid, setInvalid] = useState<string | null>(null);
   const valueOf = (key: string) => draft[key] ?? ((brand.links as Record<string, unknown> | undefined)?.[key] as string | undefined) ?? "";
-  const send = () => {
+  const sent = useRef<{ value: string; result: Promise<boolean> } | null>(null);
+  const send: Flush = () => {
     const changed = Object.entries(draft).filter(([, value]) => value.trim().length > 0);
-    if (changed.length === 0) return;
+    if (changed.length === 0) return Promise.resolve(true);
     // The audit only accepts https links, so say so here rather than after a save.
     if (changed.some(([, value]) => !/^https:\/\//i.test(value.trim()))) {
       setInvalid("Links need to start with https://");
-      return;
+      return Promise.resolve(false);
     }
     setInvalid(null);
     onProblem(null);
-    void onSave({ links: { ...brand.links, ...Object.fromEntries(changed.map(([key, value]) => [key, value.trim()])) } });
+    const key = JSON.stringify(changed);
+    if (sent.current?.value === key) return sent.current.result;
+    const result = onSave({ links: { ...brand.links, ...Object.fromEntries(changed.map(([name, value]) => [name, value.trim()])) } }).then((saved) => {
+      if (!saved) sent.current = null;
+      return saved;
+    });
+    sent.current = { value: key, result };
+    return result;
   };
+  useFlush(registerFlush, field.key, send);
   const input = (key: string, label: string) => (
     <Field
       key={key}
@@ -431,7 +493,7 @@ function LinksEditor({ field, brand, hot, readOnly, problem, onFocus, onSave, on
       autoCapitalize="none"
       editable={!readOnly}
       onFocus={onFocus}
-      onBlur={send}
+      onBlur={() => { void send(); }}
       onChangeText={(next) => { setDraft((current) => ({ ...current, [key]: next })); if (invalid) setInvalid(null); }}
       testID={`setup-link-${key}`}
     />
@@ -444,7 +506,7 @@ function LinksEditor({ field, brand, hot, readOnly, problem, onFocus, onSave, on
         <WButton label="More links" variant="ghost" size="sm" onPress={() => setMore(true)} testID="setup-more-links" />
       )}
       {invalid ? <Text style={styles.problem} accessibilityRole="alert">{invalid}</Text> : null}
-      {problem ? <ProblemRetry problem={problem} fieldKey={field.key} onRetry={send} /> : null}
+      {problem ? <ProblemRetry problem={problem} fieldKey={field.key} onRetry={() => { void send(); }} /> : null}
     </View>
   );
 }

@@ -321,6 +321,37 @@ describe("T-DRAFT-2 useSetupDraft", () => {
     expect(seen.current?.state).toEqual({ kind: "failed", retry: "compose" });
   });
 
+  // Tester's P2: PLAN_NOT_READY on Try again read "on our side, not your answers".
+  it("a refusal Core named is said as itself, not as our fault, and is not 'checking'", async () => {
+    const { BrandSitesError } = jest.requireMock("../../../../services/brandSitesService") as { BrandSitesError: new (code: string, message: string, retryable: boolean) => Error };
+    mockProvision.mockRejectedValue(new BrandSitesError("PLAN_NOT_READY", "Approve your plan first.", false));
+    const { seen } = harness({ site: { status: "error" } });
+    await act(async () => { seen.current?.retry(); });
+    await flush();
+    expect(seen.current?.refusal).toBe("Approve your plan first.");
+    expect(seen.current?.state.kind).not.toBe("checking");
+    const step = mount(
+      <SetupDraftStep brandId="b" brandName="Lantern Room" state={{ kind: "failed", retry: "new_operation" }} canManage refusal="Approve your plan first." nextStep="approve" onStart={noop} onRetry={noop} onTellMingla={noop} onDone={noop} />,
+    );
+    const text = textOf(step.root);
+    expect(text).toContain("Approve your plan first.");
+    expect(text).not.toContain("on our side");
+    expect(has(step.root, "setup-draft-missing")).toBe(true);
+    // Refused from the idle card too: it never just shows nothing.
+    const idle = mount(
+      <SetupDraftStep brandId="b" brandName="Lantern Room" state={{ kind: "can_start" }} canManage refusal="Approve your plan first." onStart={noop} onRetry={noop} onTellMingla={noop} onDone={noop} />,
+    );
+    expect(textOf(idle.root)).toContain("Approve your plan first.");
+  });
+
+  it("someone else holding the form is not a failed compose", async () => {
+    const { BrandSitesError } = jest.requireMock("../../../../services/brandSitesService") as { BrandSitesError: new (code: string, message: string, retryable: boolean) => Error };
+    mockCompose.mockRejectedValue(new BrandSitesError("PLAN_LOCKED", "Locked", false));
+    const { seen } = harness({ site: { status: "draft" } });
+    await flush();
+    expect(seen.current?.state.kind).not.toBe("failed");
+  });
+
   it("no second compose or provision for someone who can't manage", async () => {
     harness({ site: { status: "draft" }, canManage: false });
     await flush();

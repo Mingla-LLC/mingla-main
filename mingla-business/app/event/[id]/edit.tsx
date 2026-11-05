@@ -614,20 +614,6 @@ export default function EventEditRoute(): React.ReactElement {
         slug?: { brandSlug: string; eventSlug: string; occurrenceCount?: number };
       },
     ): void => {
-      if (setupReturn) {
-        // #2830 — back to the same setup step, whatever way the creator ended.
-        const publishedId = publishedEventIdRef.current;
-        if (mode === "published" && publishedId) {
-          publishedEventIdRef.current = null;
-          markJustPublished(publishedId);
-          router.replace(setupReturnWith(setupReturn, "event", publishedId) as never);
-          return;
-        }
-        router.replace(
-          (mode === "discarded" ? setupReturn : setupReturnTarget(setupReturn, effectiveDraftId)) as never,
-        );
-        return;
-      }
       if (mode === "published") {
         const name = ctx?.name ?? "Event";
         // issue #3313 — say how many dates the server actually created.
@@ -643,11 +629,14 @@ export default function EventEditRoute(): React.ReactElement {
         publishedEventIdRef.current = null;
         if (publishedEventId !== null && publishedEventId.length > 0) {
           markJustPublished(publishedEventId);
-          router.replace(
-            `/event/${encodeURIComponent(publishedEventId)}` as never,
-          );
+          // #2830 — back to the same setup step, whatever way the creator ended.
+          if (setupReturn) {
+            router.replace(setupReturnWith(setupReturn, "event", publishedEventId) as never);
+            return;
+          }
+          router.replace(`/event/${encodeURIComponent(publishedEventId)}` as never);
         } else {
-          router.replace(safeEventsExitRoute() as never);
+          router.replace((setupReturn ?? safeEventsExitRoute()) as never);
         }
       } else {
         // Discarded / abandoned (chrome X close) — route to Events tab
@@ -655,6 +644,12 @@ export default function EventEditRoute(): React.ReactElement {
         // event easily, per founder UX directive.
         if (mode === "discarded") {
           setToast({ visible: true, message: "Draft discarded." });
+        }
+        if (setupReturn) {
+          router.replace(
+            (mode === "discarded" ? setupReturn : setupReturnTarget(setupReturn, effectiveDraftId)) as never,
+          );
+          return;
         }
         router.replace(safeEventsExitRoute() as never);
       }

@@ -86,7 +86,7 @@ export default function ExperienceCreateRoute(): React.ReactElement {
     <SafeScreen style={styles.host}>
       {setupReturn ? (
         <React.Suspense fallback={null}>
-          <LazyCreatorReturnBar onBack={handleExit} />
+          <LazyCreatorReturnBar onBack={handleExit} savesDraft={false} />
         </React.Suspense>
       ) : null}
       <React.Suspense fallback={<ActivityIndicator />}>

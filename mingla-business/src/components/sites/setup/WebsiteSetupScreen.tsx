@@ -62,6 +62,7 @@ const FLOW_PROBLEM: Readonly<Record<string, string>> = {
   flow_run_busy: "Try again in a moment.",
   flow_revision_conflict: "This just changed. Here's the latest.",
   flow_brand_paused: "Mingla has paused your website, so setup is paused too.",
+  flow_form_locked: "A teammate is on this form right now. Try again when they've finished.",
   TAKEOVER_UNAVAILABLE: "We couldn't do that just now. Try again in a moment.",
   UNAVAILABLE: "We couldn't do that just now. Try again in a moment.",
 };
@@ -80,8 +81,8 @@ function useAddedOffering(kind: AddedKind | null, id: string | null) {
     enabled: kind !== null && id !== null,
     staleTime: 0,
     queryFn: async () => {
-      const table = kind === "experience" ? "experiences" : "events";
-      const { data, error } = await supabase.from(table).select("*").eq("id", id!).maybeSingle();
+      // Trips and experiences are events too (event_type); there is no other table.
+      const { data, error } = await supabase.from("events").select("*").eq("id", id!).maybeSingle();
       if (error) throw error;
       const row = (data ?? null) as { name?: unknown; title?: unknown; status?: unknown; deleted_at?: unknown } | null;
       if (!row || row.deleted_at) return null;
@@ -125,11 +126,15 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   const flowView = flow.data ?? null;
   const lockView = plan?.lock ?? null;
   const wasMineRef = useRef(false);
-  const mineNow = (flowView?.mine === true) || (lockView?.active === true && lockView.heldByMe);
-  const presence = setupPresence({ paused, flow: flowView, lock: lockView, canManage, wasMine: wasMineRef.current && !mineNow });
-  if (mineNow) wasMineRef.current = true;
+  const wasMyRunRef = useRef(false);
+  const lockMine = lockView?.active === true && lockView.heldByMe;
+  const presence = setupPresence({ paused, flow: flowView, lock: lockView, canManage, wasMine: wasMineRef.current && !lockMine, wasMyRun: wasMyRunRef.current });
+  if (lockMine) wasMineRef.current = true;
+  if (flowView?.mine === true) wasMyRunRef.current = true;
+  // Who else is here isn't known until this answers. Until then nothing locks.
+  const presenceKnown = flow.data !== undefined || flow.isError;
   const free = presence.kind === "free";
-  const readOnly = !free || !canManage;
+  const readOnly = !free || !canManage || !presenceKnown;
   useEffect(() => {
     setFlowPoll(flowView !== null && !flowView.mine);
   }, [flowView]);
@@ -148,13 +153,15 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   heartbeatRef.current = onHeartbeat;
   const hasPlanRow = plan?.plan !== null && plan?.plan !== undefined;
   useEffect(() => {
-    if (!canManage || !free || !hasPlanRow) return undefined;
+    // A watcher must not lock: a heartbeat here would refuse the active owner's
+    // Ari writes (sites_plan_locked) for ten minutes.
+    if (!canManage || !free || !hasPlanRow || !presenceKnown) return undefined;
     heartbeatRef.current();
     const timer = setInterval(() => {
       if (Date.now() - lastTouchRef.current < IDLE_STOP_MS) heartbeatRef.current();
     }, HEARTBEAT_MS);
     return () => clearInterval(timer);
-  }, [canManage, free, hasPlanRow]);
+  }, [canManage, free, hasPlanRow, presenceKnown]);
 
   // ── Steps ──────────────────────────────────────────────────────────────
   const save = useSaveBrandSitePlan(brandId);
@@ -164,7 +171,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   const refetchSite = useCallback(() => { void controller.site.refetch(); }, [controller.site]);
   const buildDone = planBuildDone(plan);
   const approved = Boolean(plan?.plan?.approvedAt);
-  const draft = useSetupDraft({ brandId, site: siteDraft, refetchSite, approved, buildDone, canManage });
+  // Only the person working on setup moves the draft on: a watcher never composes.
+  const draft = useSetupDraft({ brandId, site: siteDraft, refetchSite, approved, buildDone, canManage: canManage && free && presenceKnown });
   const publishFailed = controller.publicationReceipt.data?.status === "failed";
   const status = useMemo(() => setupSteps({
     setupStatus: plan?.setupStatus ?? null,
@@ -198,7 +206,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
 
   // ── Takeover ───────────────────────────────────────────────────────────
   const runTakeOver = (mode: "continue" | "take_over") => {
-    if (!flowView) {
+    // Someone's form, not someone's run (even my own run's lock): the lock's take over.
+    if (!flowView || (presence.kind === "active" && presence.source === "hand")) {
       ctx.lock.takeOver();
       return;
     }
@@ -288,7 +297,9 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
             brandId={brandId}
             brandName={brandName}
             state={draft.state}
-            canManage={canManage && free}
+            canManage={canManage && free && presenceKnown}
+            refusal={draft.refusal}
+            nextStep={status.nextKey === "build" ? null : status.nextKey}
             onStart={draft.start}
             onRetry={draft.retry}
             onTellMingla={() => router.push("/support/inbox" as never)}
@@ -404,7 +415,11 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
           problem={flowProblem}
           onContinue={() => runTakeOver("continue")}
           onWatch={() => setWatching(true)}
-          onTakeOver={() => setConfirmTake(true)}
+          // The form's take over brings its own warning.
+          onTakeOver={() => {
+            if (presence.kind === "active" && presence.source === "hand") ctx.lock.takeOver();
+            else setConfirmTake(true);
+          }}
           onAskAdmin={() => ctx.askAdmin("plan")}
           asking={ctx.asking}
         />

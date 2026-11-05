@@ -6,8 +6,9 @@ import { BrandSitesError } from "../../../services/brandSitesService";
 import { planMenuPreview, type PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
 /** #2829 W9a / #2830 — plan part 6, before it starts: "Create website draft". */
-export function BuildPart({ brandId, onBuild, onDone }: {
+export function BuildPart({ brandId, onBuild, onDone, readOnly = false }: {
   brandId: string;
+  readOnly?: boolean;
   onBuild: () => void;
   onDone: (next: PlanPartKey) => void;
 }): React.ReactElement {
@@ -21,7 +22,7 @@ export function BuildPart({ brandId, onBuild, onDone }: {
     <SiteBuildView
       isLoading={plan.isLoading}
       loadError={loadError}
-      canManage={plan.data?.canManage === true}
+      canManage={!readOnly && plan.data?.canManage === true}
       approved={Boolean(plan.data?.plan?.approvedAt)}
       pagesLine={planMenuPreview(offerings, plan.data?.plan?.story?.main_action ?? null)}
       address={label.data?.hostname ?? null}

@@ -356,7 +356,7 @@ export function phase3dContractDigest(manifest) {
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5c8e410d9fe013c4842f56224c714af51dae43943377a3597a9bdb8e585b45f7";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "26c98f8a393a0cc9756354df65c1449821c5aa3821266a80265b6c68138fff81";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
