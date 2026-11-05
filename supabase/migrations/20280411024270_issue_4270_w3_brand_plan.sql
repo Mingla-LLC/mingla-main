@@ -39,7 +39,7 @@
 -- Static SQL only (no EXECUTE of built strings); write conflicts raise PT409,
 -- never 40001. CREATE OR REPLACE keeps every owner and grant. Do not
 -- auto-apply. Release through the governed migration lane, after
--- 20280403014270.
+-- 20280411014270.
 
 BEGIN;
 

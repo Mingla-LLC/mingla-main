@@ -1,5 +1,5 @@
 -- Issue #4270 (Wave 2) -- implementor happy path for
--- 20280403014270_issue_4270_w2_host_card.sql, on the fully replayed PG17
+-- 20280411014270_issue_4270_w2_host_card.sql, on the fully replayed PG17
 -- schema.
 -- MINGLA-INVARIANT: I-4270-NO-NEW-PROMISED-EVENTS | issue #4270 | ops_expected_event_set never adds a promised event (from a person or an agent); a saved one can still change, repeat, cancel or link (D9, D16).
 -- MINGLA-INVARIANT: I-4270-AGENT-NEVER-SHOWS-HOSTS | issue #4270 | a request with via set can never switch on on_brand_plan (add or update); a person can (D15).

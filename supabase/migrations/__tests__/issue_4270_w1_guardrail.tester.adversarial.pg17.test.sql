@@ -1,5 +1,5 @@
 -- Issue #4270 (Wave 1) -- tester adversarial suite for
--- 20280403004270_issue_4270_w1_work_board_three_columns.sql, on the fully
+-- 20280411004270_issue_4270_w1_work_board_three_columns.sql, on the fully
 -- replayed PG17 schema. It attacks angles the implementor's happy path does
 -- not:
 --
