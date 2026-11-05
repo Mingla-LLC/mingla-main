@@ -9,6 +9,7 @@ import {
   runBrandResearch,
   type ResearchPage,
 } from "../ariBrandResearch.ts";
+import { buildWebsiteSetupPresentation } from "../agentWebsiteSetup.ts";
 
 const brand: BrandIdentity = {
   brandId: "b",
@@ -122,4 +123,32 @@ Deno.test("a small page built to hang the regexes costs under a second of the wo
     const ms = performance.now() - started;
     assert(ms < 1_000, `${name}: blocked the worker for ${Math.round(ms)} ms`);
   }
+});
+
+Deno.test("Ari's own summary uses the one status: no 'done' beside a screen that says open", () => {
+  const plan = {
+    status: {
+      done_count: 5,
+      parts: [{ key: "brand", done: true }, { key: "story", done: false }],
+    },
+    setup_status: {
+      done_count: 1,
+      next_part: "brand",
+      total: 8,
+      parts: [
+        { key: "brand", done: false, skipped: false, field_count: 10, open_fields: ["contact_email"] },
+        { key: "story", done: false, skipped: false, field_count: 3, open_fields: ["story.who"] },
+      ],
+    },
+    completeness: { fields: [] },
+    can_manage: true,
+  };
+  const presentation = buildWebsiteSetupPresentation(
+    "audit",
+    [{ tool: "get_site_plan", args: {}, result: plan, elapsedMs: 1 } as never],
+    "Lantern Room",
+    "33550000-0000-4000-8000-000000000019",
+  );
+  const text = JSON.stringify(presentation);
+  assert(!text.includes("5 of"), "Ari counts by the old rule while the screen beside it says 1");
 });
