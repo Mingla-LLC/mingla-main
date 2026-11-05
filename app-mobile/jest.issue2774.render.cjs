@@ -81,5 +81,12 @@ module.exports = {
     // issue #4251 — RSVP covers keep their media type, and the compact
     // Purchases card draws a fixed 72 x 72 cover or its date tile.
     "**/__tests__/issue_4251_purchase_card_cover.implementor.happy.render.test.tsx",
+    // issue #4275 — a restored `{}` error never reaches Sentry; a real Error does.
+    "**/__tests__/issue_4275_your_circle_sentry.implementor.render.test.tsx",
+    // issue #4275 — one read-status read per page, and a deliberate leave of a
+    // chat is never reported as a channel failure.
+    "**/__tests__/issue_4275_get_messages_one_read.implementor.render.test.ts",
+    // issue #4275 — the hook around the open-chat recovery controller.
+    "**/__tests__/issue_4275_open_chat_recovery.implementor.render.test.tsx",
   ],
 };
