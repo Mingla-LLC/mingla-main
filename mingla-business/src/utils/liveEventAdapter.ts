@@ -46,6 +46,19 @@ import {
  *   - lastStepReached: 0 (sectioned UI doesn't use it)
  *   - status: "live" (never triggers publishDraft path)
  */
+/**
+ * issue #3281 — an open editor takes the pricing mode from a fresher live
+ * event, and nothing else from it, so in-progress edits stay. Returns the same
+ * draft when there is nothing to fill in.
+ */
+export const withLivePricingMode = (
+  draft: DraftEvent,
+  mode: LiveEvent["multiDatePricingMode"],
+): DraftEvent =>
+  mode === undefined || draft.multiDatePricingMode === mode
+    ? draft
+    : { ...draft, multiDatePricingMode: mode };
+
 export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   id: e.id,
   brandId: e.brandId,
@@ -106,6 +119,8 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   requireApproval: e.requireApproval,
   allowTransfers: e.allowTransfers,
   hideRemainingCount: e.hideRemainingCount,
+  // issue #3281 — the ticket sheet's capacity and price hints read it.
+  multiDatePricingMode: e.multiDatePricingMode,
   passwordProtected: e.passwordProtected,
   // #1022 C-3 — normalise so a never-themed event projects `null`, not
   // {null,null,null}. Without this the JSON.stringify deepEqual below sees

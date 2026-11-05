@@ -240,8 +240,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     (on: boolean): void => {
       setSameTicketsForEveryDate(on);
       for (const line of lines) {
-        const validIds = publicEventQuery.data?.event?.tickets.find(
-          (ticket) => ticket.id === line.ticketTypeId,
+        // issue #3281 — an unlocked private ticket is not among the public
+        // tickets; its dates come with the link.
+        const validIds = (
+          publicEventQuery.data?.event?.tickets.find(
+            (ticket) => ticket.id === line.ticketTypeId,
+          ) ??
+          (ticketLink.ticket?.id === line.ticketTypeId ? ticketLink.ticket : undefined)
         )?.validOccurrenceIds;
         const perDate = quantityPerDate(line);
         setLineQuantity({
@@ -264,7 +269,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         });
       }
     },
-    [eventDateIds, lines, publicEventQuery.data, setLineQuantity],
+    [eventDateIds, lines, publicEventQuery.data, setLineQuantity, ticketLink.ticket],
   );
 
   // issue #2135 — seed the chosen occurrence into the cart (the SAME pattern the
