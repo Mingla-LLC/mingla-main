@@ -204,7 +204,7 @@ Deno.test("RX-5 parked retries: background and offline do no reads, and return d
   await r.advance(SECOND);
   const before = r.reads();
   r.setActive(false);
-  await r.advance(20 * SECOND);
+  await r.advance(31 * SECOND); // past the stable timer; a live retry chain would still be armed
   assertEquals(r.pending(), 0, "parked after the first due timer");
   await r.advance(60 * MINUTE);
   assertEquals(r.reads(), before, "no background reads");
