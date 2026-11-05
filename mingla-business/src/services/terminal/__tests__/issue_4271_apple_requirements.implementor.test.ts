@@ -69,7 +69,7 @@ import {
   setTapToPayScope,
   subscribeTapToPaySession,
 } from "../tapToPaySession";
-import { classifyTerminalError, TapToPaySaleFlow, type TerminalErrorLike } from "../tapToPayFlow";
+import { classifyTerminalError, shouldReportTapSeen, TapToPaySaleFlow, type TerminalErrorLike } from "../tapToPayFlow";
 import { runTapToPaySetup, type TapToPaySetupDeps } from "../tapToPaySetup";
 
 const BIZ_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -708,5 +708,28 @@ describe("B12 each outcome from each code", () => {
     expect(declined).toContain("Not approved. No money was taken.");
     expect(declined).not.toContain("Includes fees");
     expect(`${approved}${declined}`).not.toMatch(/@|\+\d{6}/);
+  });
+});
+
+describe("B13 the app says what the host saw", () => {
+  test("an end state counts only with the app in front of someone", () => {
+    expect(shouldReportTapSeen("declined", "active")).toBe(true);
+    expect(shouldReportTapSeen("declined", "background")).toBe(false);
+    expect(shouldReportTapSeen("declined", "inactive")).toBe(false);
+  });
+  test("a sale still open doesn't count: the sweep must still finish it", () => {
+    for (const kind of ["ready", "reading", "saving", "unknown_result", "save_failed", "starting"] as const) {
+      expect(shouldReportTapSeen(kind, "active")).toBe(false);
+    }
+  });
+  test("the push uses the short name, routes to the door and has a template", () => {
+    const { BUSINESS_NOTIFICATION_TEMPLATES } = jest.requireActual<
+      typeof import("../../../constants/businessNotificationTemplates")
+    >("../../../constants/businessNotificationTemplates");
+    const template = BUSINESS_NOTIFICATION_TEMPLATES["business.door_tap_not_completed"];
+    expect(template.pushBody).toContain("Tap to Pay sale");
+    expect(template.pushBody).not.toContain("iPhone");
+    const routing = fs.readFileSync(path.join(BIZ_ROOT, "src/services/businessNotificationRouting.ts"), "utf8");
+    expect(routing).toMatch(/business\.door_tap_not_completed":\s*return eventId \? `\/event\/\$\{eventId\}\/door`/);
   });
 });

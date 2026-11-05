@@ -43,6 +43,18 @@ class FakeQuery implements PromiseLike<DbResult> {
     this.op.filters.push(["eq", column, value]);
     return this;
   }
+  lt(column: string, value: unknown): this {
+    this.op.filters.push(["lt", column, value]);
+    return this;
+  }
+  gt(column: string, value: unknown): this {
+    this.op.filters.push(["gt", column, value]);
+    return this;
+  }
+  not(column: string, operator: string, value: unknown): this {
+    this.op.filters.push([`not.${operator}`, column, value]);
+    return this;
+  }
   in(column: string, value: unknown): this {
     this.op.filters.push(["in", column, value]);
     return this;

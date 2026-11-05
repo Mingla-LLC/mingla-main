@@ -207,6 +207,18 @@ export const cancelDoorTapIntent = async (input: {
   }
 };
 
+/** Tells the server the host saw how this tap ended, so no "not finished" push follows. */
+export const markDoorTapOutcomeSeen = async (input: {
+  paymentIntentId: string;
+  clientRequestId: string;
+}): Promise<void> => {
+  await invoke("door-tap-intent", {
+    action: "seen",
+    paymentIntentId: input.paymentIntentId,
+    clientRequestId: input.clientRequestId,
+  });
+};
+
 /** Connection token for the brand's connected Stripe account. */
 export const fetchTerminalConnectionToken = async (scope: TapToPayScopeIds): Promise<string> => {
   const data = await invoke("terminal-connection-token", { ...scopeBody(scope), platform: Platform.OS });

@@ -379,6 +379,7 @@ type BusinessPreferenceType =
   | "business.event_sold_out"
   | "business.low_inventory"
   | "business.refund_processed"
+  | "business.door_tap_not_completed"
   | "business.dispute_opened"
   | "business.installment_failed"
   | "business.installment_at_risk"
@@ -419,6 +420,7 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.event_sold_out": { push: true, in_app: true },
   "business.low_inventory": { push: true, in_app: true },
   "business.refund_processed": { push: true, in_app: true },
+  "business.door_tap_not_completed": { push: true, in_app: true },
   "business.dispute_opened": { push: true, in_app: true },
   "business.installment_failed": { push: true, in_app: true },
   "business.installment_at_risk": { push: true, in_app: true },

@@ -8,7 +8,22 @@
 --   A-BRAND-PERM  the brand-wide door permission: owner, event manager and a
 --              brand scanner with the switch may; a brand scanner without it, an
 --              event-only scanner and an outsider may not; service role only.
+--   A-UNFINISHED  the sweep's columns exist and authenticated can't touch the table.
 BEGIN;
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'door_tap_intents'
+         AND column_name IN ('outcome_seen_at','unfinished_notified_at')) <> 2 THEN
+    RAISE EXCEPTION 'A-UNFINISHED both columns must exist';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.door_tap_intents', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.door_tap_intents', 'UPDATE')
+     OR has_column_privilege('authenticated', 'public.door_tap_intents', 'outcome_seen_at', 'UPDATE') THEN
+    RAISE EXCEPTION 'A-UNFINISHED authenticated must have no access';
+  END IF;
+END;
+$$;
 DO $$
 DECLARE
   v_listed uuid := '42710000-0000-4000-8000-00000000b001';

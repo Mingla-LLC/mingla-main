@@ -4,7 +4,7 @@
  * Every test here fails when its change is reverted (recorded on the issue).
  */
 import React from "react";
-import { Linking, Platform, Share, Text } from "react-native";
+import { AppState, Linking, Platform, Share, Text } from "react-native";
 
 // react-test-renderer ships no types in this app.
 interface ReactTestInstance {
@@ -141,6 +141,7 @@ jest.mock("../../../services/terminal/doorTapEdge", () => ({
   })),
   completeDoorTapIntent: jest.fn(async () => ({ orderId: "o1", ticketIds: ["t1"], receiptQueued: false, replayed: false })),
   cancelDoorTapIntent: jest.fn(async () => undefined),
+  markDoorTapOutcomeSeen: jest.fn(async () => undefined),
   DoorTapError: class DoorTapError extends Error {
     code: string;
     detail: string | null;
@@ -744,5 +745,42 @@ describe("B12 outcomes", () => {
     });
     await flush();
     expect(edge.cancelDoorTapIntent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("B13 seen", () => {
+  const declining = {
+    ensureReaderConnected: async () => ({}),
+    retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+    collectPaymentMethod: async () => ({ paymentIntent: { id: "pi_1" } }),
+    confirmPaymentIntent: async () => ({
+      error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { id: "pi_1", status: "requires_payment_method" } },
+    }),
+    cancelCollectPaymentMethod: async () => ({}),
+  };
+  const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as { markDoorTapOutcomeSeen: jest.Mock };
+  const run = async (appState: string): Promise<void> => {
+    Object.defineProperty(AppState, "currentState", { value: appState, configurable: true });
+    edge.markDoorTapOutcomeSeen.mockClear();
+    resetTapToPaySessionForTests();
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: declining as never });
+    mount(saleScreen());
+    await settleSale();
+  };
+  afterEach(() => {
+    Object.defineProperty(AppState, "currentState", { value: "active", configurable: true });
+  });
+
+  test("an end state on screen is reported", async () => {
+    await run("active");
+    expect(edge.markDoorTapOutcomeSeen).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentIntentId: "pi_1" }),
+    );
+  });
+
+  test("not when the app is in the background", async () => {
+    await run("background");
+    expect(edge.markDoorTapOutcomeSeen).not.toHaveBeenCalled();
   });
 });

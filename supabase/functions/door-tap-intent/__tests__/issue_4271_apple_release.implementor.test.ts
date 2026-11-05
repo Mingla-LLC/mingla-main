@@ -249,3 +249,164 @@ Deno.test("#4271 B3 connection token by brand is on the connected account, and t
   })(post({ action: "location", brandId: BRAND }));
   await refused(refused3, noPlatform.calls);
 });
+
+// ---- B13 ------------------------------------------------------------------
+const STALE = {
+  id: INTENT, brand_id: BRAND, event_id: EVENT, stripe_payment_intent_id: "pi_door1",
+  stripe_account_id: "acct_door1", created_by: ACTOR, events: { title: "Door night" },
+};
+
+function sweepHarness(options: {
+  row?: Record<string, unknown>;
+  status?: string;
+  key?: string;
+  cancelThrows?: boolean;
+} = {}) {
+  const rowState: Record<string, unknown> = {
+    status: "created", outcome_seen_at: null, unfinished_notified_at: null, ...STALE, ...(options.row ?? {}),
+  };
+  const db = new FakeDb(
+    (op) => {
+      if (op.table !== "door_tap_intents") return { data: null, error: null };
+      if (op.action === "update") {
+        Object.assign(rowState, op.payload as Record<string, unknown>);
+        return { data: null, error: null };
+      }
+      const passes = op.filters.every(([kind, column, value]) => {
+        if (kind === "eq") return rowState[column] === value;
+        if (kind === "is") return rowState[column] === value;
+        return true;
+      });
+      return { data: passes ? [rowState] : [], error: null };
+    },
+    (name) =>
+      name === "biz_door_tap_record"
+        ? { data: { orderId: "o1", ticketIds: [] }, error: null }
+        : { data: null, error: { message: `unexpected rpc ${name}` } },
+  );
+  const stripe = fakeStripe({
+    retrievePi: (id: string) => ({
+      id, status: options.status ?? "requires_payment_method", amount: 2090, amount_received: 2090,
+    }),
+  });
+  const pushes: Array<Record<string, unknown>> = [];
+  const handler = createDoorTapIntentHandler({
+    serviceClient: () => db,
+    userIdFromAuthHeader: () => Promise.resolve(null),
+    stripe: () => stripe.client,
+    serviceRoleKey: () => "service-key",
+    notify: ((input: Record<string, unknown>) => {
+      pushes.push(input);
+      return Promise.resolve();
+    }) as never,
+  });
+  const run = () =>
+    handler(new Request("http://x/door-tap-intent", {
+      method: "POST",
+      headers: { authorization: `Bearer ${options.key ?? "service-key"}`, "content-type": "application/json" },
+      body: JSON.stringify({ action: "sweep_unfinished" }),
+    }));
+  return { db, stripe, pushes, run, rowState };
+}
+
+Deno.test("#4271 B13 an unseen stale intent is cancelled at Stripe, then the host gets one push", async () => {
+  const h = sweepHarness();
+  const res = await h.run();
+  assertEquals((await res.json()).swept, { recorded: 0, notified: 1, skipped: 0, failed: 0 });
+  const cancel = h.stripe.calls.find((c) => c.method === "paymentIntents.cancel")!;
+  assertEquals((cancel.options as { idempotencyKey: string }).idempotencyKey, `door_tap_sweep_cancel:${INTENT}`);
+  assertEquals(h.rowState.status, "cancelled");
+  assertEquals(h.pushes.length, 1);
+  assertEquals(h.pushes[0].userId, ACTOR);
+  assertEquals(h.pushes[0].type, "business.door_tap_not_completed");
+  assertEquals(
+    h.pushes[0].body,
+    "A Tap to Pay sale for Door night wasn't approved. No money was taken. Open door sales to take it again.",
+  );
+});
+
+Deno.test("#4271 B13 a seen intent is left alone", async () => {
+  const h = sweepHarness({ row: { outcome_seen_at: "2026-11-05T00:00:00Z" } });
+  await h.run();
+  assertEquals(h.pushes.length, 0);
+  assertEquals(h.stripe.calls.some((c) => c.method === "paymentIntents.cancel"), false);
+});
+
+Deno.test("#4271 B13 a payment that succeeded is recorded and nobody is told it failed", async () => {
+  const h = sweepHarness({ status: "succeeded" });
+  const res = await h.run();
+  assertEquals((await res.json()).swept.recorded, 1);
+  assertEquals(h.db.rpcs.some((r) => r.name === "biz_door_tap_record"), true);
+  assertEquals(h.pushes.length, 0);
+  assertEquals(h.stripe.calls.some((c) => c.method === "paymentIntents.cancel"), false);
+});
+
+Deno.test("#4271 B13 a second sweep sends nothing", async () => {
+  const h = sweepHarness();
+  await h.run();
+  await h.run();
+  assertEquals(h.pushes.length, 1);
+});
+
+Deno.test("#4271 B13 a payment being processed is not cancelled or called failed", async () => {
+  const h = sweepHarness({ status: "processing" });
+  const res = await h.run();
+  assertEquals((await res.json()).swept.skipped, 1);
+  assertEquals(h.pushes.length, 0);
+  assertEquals(h.rowState.status, "created");
+});
+
+Deno.test("#4271 B13 only the service role may sweep", async () => {
+  const h = sweepHarness({ key: "someone-elses-token" } as never);
+  const bad = sweepHarness();
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => bad.db,
+    userIdFromAuthHeader: () => Promise.resolve(ACTOR),
+    stripe: () => bad.stripe.client,
+    serviceRoleKey: () => "service-key",
+    notify: (() => Promise.resolve()) as never,
+  })(new Request("http://x/door-tap-intent", {
+    method: "POST",
+    headers: { authorization: "Bearer a-host-jwt", "content-type": "application/json" },
+    body: JSON.stringify({ action: "sweep_unfinished" }),
+  }));
+  assertEquals(res.status, 401);
+  assertEquals(bad.stripe.calls.length, 0);
+  assertEquals(h.pushes.length, 0);
+});
+
+Deno.test("#4271 B13 seen records it, with the same auth as cancel", async () => {
+  const stripe = fakeStripe();
+  const updates: unknown[] = [];
+  const db = new FakeDb(
+    (op) => {
+      if (op.table === "door_tap_intents" && op.action === "select") {
+        return { data: { id: INTENT, event_id: EVENT, client_request_id: REQ }, error: null };
+      }
+      if (op.action === "update") updates.push(op.payload);
+      return { data: null, error: null };
+    },
+    () => ({ data: true, error: null }),
+  );
+  const handler = createDoorTapIntentHandler({
+    serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
+  });
+  const ok = await handler(post({ action: "seen", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals(await ok.json(), { status: "seen" });
+  assertEquals(typeof (updates[0] as { outcome_seen_at: string }).outcome_seen_at, "string");
+
+  const wrongSale = await handler(post({
+    action: "seen", paymentIntentId: "pi_door1", clientRequestId: "42710000-0000-4000-8000-0000000000ff",
+  }));
+  assertEquals(wrongSale.status, 404);
+
+  const denied = await createDoorTapIntentHandler({
+    serviceClient: () => new FakeDb(
+      () => ({ data: { id: INTENT, event_id: EVENT, client_request_id: REQ }, error: null }),
+      () => ({ data: false, error: null }),
+    ),
+    userIdFromAuthHeader: auth,
+    stripe: () => stripe.client,
+  })(post({ action: "seen", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals((await denied.json()).error, "door_access_denied");
+});

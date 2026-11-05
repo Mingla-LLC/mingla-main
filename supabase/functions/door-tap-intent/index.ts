@@ -40,6 +40,7 @@ import {
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
 import { doorErrorFromDb, isUuid } from "../_shared/doorPay.ts";
+import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 
 export interface DoorTapIntentDeps {
   // deno-lint-ignore no-explicit-any
@@ -47,6 +48,10 @@ export interface DoorTapIntentDeps {
   userIdFromAuthHeader: (req: Request) => Promise<string | null>;
   // deno-lint-ignore no-explicit-any
   stripe: () => any;
+  /** Test seam: the sweep's bearer. */
+  serviceRoleKey?: () => string | undefined;
+  /** Test seam: the host's push. */
+  notify?: typeof dispatchNotification;
 }
 
 const defaultDeps: DoorTapIntentDeps = {
@@ -338,6 +343,149 @@ async function handleCancel(
   return jsonResponse({ status: "cancelled" });
 }
 
+/** The host saw how this tap ended. Same auth as cancel. */
+async function handleSeen(
+  body: Body,
+  actorId: string,
+  deps: DoorTapIntentDeps,
+): Promise<Response> {
+  const paymentIntentId = body.paymentIntentId;
+  if (
+    typeof paymentIntentId !== "string" || !/^pi_[A-Za-z0-9]+$/.test(paymentIntentId) ||
+    !isUuid(body.clientRequestId)
+  ) {
+    return jsonResponse({ error: "invalid_request" }, 400);
+  }
+  const supabase = deps.serviceClient();
+  const { data: intent, error } = await supabase
+    .from("door_tap_intents")
+    .select("id, event_id, client_request_id")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+  if (error) return jsonResponse({ error: "server_error" }, 500);
+  if (!intent || intent.client_request_id !== body.clientRequestId) {
+    return jsonResponse({ error: "not_found" }, 404);
+  }
+  if (!(await canTakeDoorPayment(supabase, intent.event_id, actorId))) {
+    return jsonResponse({ error: "door_access_denied" }, 400);
+  }
+  const { error: updateError } = await supabase.from("door_tap_intents")
+    .update({ outcome_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", intent.id)
+    .is("outcome_seen_at", null);
+  if (updateError) return jsonResponse({ error: "server_error" }, 500);
+  return jsonResponse({ status: "seen" });
+}
+
+const UNFINISHED_AFTER_MS = 5 * 60 * 1000;
+const UNFINISHED_WITHIN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Apple 5.12: a sale that ended while the app was closed. Every 5 minutes, for
+ * tap intents nobody saw an outcome for: money that landed is recorded (no push);
+ * anything else is cancelled at Stripe first, and only then is the host told no
+ * money was taken. A step that can't be confirmed leaves the row for the next run.
+ */
+async function handleSweepUnfinished(
+  req: Request,
+  deps: DoorTapIntentDeps,
+): Promise<Response> {
+  const expected = (deps.serviceRoleKey ?? (() => Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")))();
+  if (!expected || req.headers.get("authorization") !== `Bearer ${expected}`) {
+    return jsonResponse({ error: "not_authorized" }, 401);
+  }
+  const supabase = deps.serviceClient();
+  const stripe = deps.stripe();
+  const notify = deps.notify ?? dispatchNotification;
+  const now = Date.now();
+  const { data: rows, error } = await supabase
+    .from("door_tap_intents")
+    .select(
+      "id, brand_id, event_id, stripe_payment_intent_id, stripe_account_id, created_by, events(title)",
+    )
+    .eq("status", "created")
+    .lt("created_at", new Date(now - UNFINISHED_AFTER_MS).toISOString())
+    .gt("created_at", new Date(now - UNFINISHED_WITHIN_MS).toISOString())
+    .is("outcome_seen_at", null)
+    .is("unfinished_notified_at", null)
+    .not("stripe_payment_intent_id", "is", null)
+    .limit(100);
+  if (error) {
+    console.error("[door-tap-intent] sweep read failed", error.message);
+    return jsonResponse({ error: "server_error" }, 500);
+  }
+  const tally = { recorded: 0, notified: 0, skipped: 0, failed: 0 };
+  for (const row of (rows ?? []) as Array<Record<string, unknown>>) {
+    const paymentIntentId = row.stripe_payment_intent_id as string;
+    const stripeAccount = row.stripe_account_id as string;
+    try {
+      // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const pi = await stripe.paymentIntents.retrieve(
+        paymentIntentId,
+        { expand: ["latest_charge"] },
+        { stripeAccount },
+      );
+      if (pi?.status === "succeeded") {
+        const card = cardPresentDetails(pi);
+        const { error: recordError } = await supabase.rpc("biz_door_tap_record", {
+          p_payment_intent_id: paymentIntentId,
+          p_charge_id: card.chargeId,
+          p_amount_received_cents: Number(pi.amount_received ?? pi.amount ?? 0),
+          p_card_brand: card.brand,
+          p_card_last4: card.last4,
+        });
+        if (recordError) throw new Error(recordError.message);
+        tally.recorded += 1;
+        continue;
+      }
+      // Being processed right now: only Stripe's answer can say no money moved.
+      if (pi?.status === "processing") {
+        tally.skipped += 1;
+        continue;
+      }
+      if (pi?.status !== "canceled") {
+        // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+        await stripe.paymentIntents.cancel(paymentIntentId, {}, {
+          stripeAccount,
+          idempotencyKey: `door_tap_sweep_cancel:${row.id}`,
+        });
+      }
+      const nowIso = new Date().toISOString();
+      const { error: updateError } = await supabase.from("door_tap_intents")
+        .update({ status: "cancelled", unfinished_notified_at: nowIso, updated_at: nowIso })
+        .eq("id", row.id)
+        .is("unfinished_notified_at", null);
+      if (updateError) throw new Error(updateError.message);
+      const rel = row.events as { title?: string } | Array<{ title?: string }> | null;
+      const eventTitle = (Array.isArray(rel) ? rel[0]?.title : rel?.title) ?? "your event";
+      const message =
+        `A Tap to Pay sale for ${eventTitle} wasn't approved. No money was taken. Open door sales to take it again.`;
+      await notify({
+        userId: row.created_by as string,
+        brandId: row.brand_id as string,
+        type: "business.door_tap_not_completed",
+        title: "Door payment not finished",
+        body: message,
+        data: { eventId: row.event_id, eventTitle },
+        relatedId: row.id as string,
+        relatedType: "door_tap_intent",
+        idempotencyKey: `door_tap_not_completed:${row.id}`,
+        deepLink: `mingla-business://event/${row.event_id}/door`,
+      });
+      tally.notified += 1;
+    } catch (rowError) {
+      tally.failed += 1;
+      console.error(
+        "[door-tap-intent] sweep row failed",
+        row.id,
+        rowError instanceof Error ? rowError.message : "unknown",
+      );
+    }
+  }
+  return jsonResponse({ swept: tally });
+}
+
 /** The card brand and last four of a succeeded card_present charge. */
 export function cardPresentDetails(
   // deno-lint-ignore no-explicit-any
@@ -438,6 +586,7 @@ export const createDoorTapIntentHandler = (
     } catch {
       return jsonResponse({ error: "invalid_request" }, 400);
     }
+    if (body.action === "sweep_unfinished") return await handleSweepUnfinished(req, deps);
     const actorId = await deps.userIdFromAuthHeader(req);
     if (actorId === null) return jsonResponse({ error: "door_access_denied" }, 401);
     switch (body.action) {
@@ -449,6 +598,8 @@ export const createDoorTapIntentHandler = (
         return await handleLocation(body, actorId, deps);
       case "cancel":
         return await handleCancel(body, actorId, deps);
+      case "seen":
+        return await handleSeen(body, actorId, deps);
       default:
         return jsonResponse({ error: "invalid_request" }, 400);
     }

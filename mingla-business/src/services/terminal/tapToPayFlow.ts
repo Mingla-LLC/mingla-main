@@ -112,6 +112,26 @@ export type TapSaleState =
   | { kind: "save_failed"; amount: TapAmount; message: string }
   | { kind: "failed"; message: string };
 
+/**
+ * Ends the host has actually been told about. Not unknown_result or save_failed:
+ * those are still open, and the sweep should finish them if the app goes away.
+ */
+const TAP_SEEN_KINDS: ReadonlySet<TapSaleState["kind"]> = new Set<TapSaleState["kind"]>([
+  "approved",
+  "declined",
+  "timed_out",
+  "needs_pin",
+  "cancelled",
+  "failed",
+  "reader_problem",
+  "not_on_this_phone",
+  "ios_update_required",
+]);
+
+/** Only a person looking at the screen has seen it. */
+export const shouldReportTapSeen = (kind: TapSaleState["kind"], appState: string | null): boolean =>
+  appState === "active" && TAP_SEEN_KINDS.has(kind);
+
 // ---- Error classification ---------------------------------------------
 
 export type TerminalFailureKind =

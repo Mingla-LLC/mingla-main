@@ -41,6 +41,7 @@ export type BusinessNotificationType =
   | "business.low_inventory"
   | "business.refund_processed"
   | "business.cancel_refunds_released"
+  | "business.door_tap_not_completed"
   | "business.dispute_opened"
   | "business.installment_failed"
   | "business.installment_at_risk"
@@ -164,6 +165,21 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     defaultInApp: true,
   },
   // #3645 item 6 — admin released a held cancel-refund batch; fan-out is moving.
+  "business.door_tap_not_completed": {
+    type: "business.door_tap_not_completed",
+    pushTitle: "Door payment not finished",
+    pushBody:
+      "A Tap to Pay sale for {eventTitle} wasn't approved. No money was taken. Open door sales to take it again.",
+    inAppTitle: "Door payment not finished",
+    inAppBody:
+      "A Tap to Pay sale for {eventTitle} wasn't approved. No money was taken. Open door sales to take it again.",
+    severity: "warning",
+    family: "money",
+    icon: "refund",
+    masterCategory: "orderActivity",
+    defaultPush: true,
+    defaultInApp: true,
+  },
   "business.cancel_refunds_released": {
     type: "business.cancel_refunds_released",
     pushTitle: "Refunds are on their way",

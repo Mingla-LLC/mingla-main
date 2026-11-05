@@ -8,7 +8,7 @@
  * succeeded payment (door-tap-intent complete).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Share, StyleSheet, Text, View } from "react-native";
+import { AppState, Platform, Share, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -46,6 +46,7 @@ import {
   completeDoorTapIntent,
   createDoorPayCodeForLines,
   createDoorTapIntent,
+  markDoorTapOutcomeSeen,
 } from "../../../services/terminal/doorTapEdge";
 import {
   encodeTapToPayDraft,
@@ -53,6 +54,7 @@ import {
   type TapToPayDraft,
 } from "../../../services/terminal/tapToPayDraft";
 import {
+  shouldReportTapSeen,
   TapToPaySaleFlow,
   type TapAmount,
   type TapSaleState,
@@ -180,6 +182,25 @@ export const TapToPaySaleScreen = ({
       postHogService.capture("door_sale_failed", { reason: `tap_${state.kind}` });
     }
   }, [state, queryClient, eventId, draft]);
+
+  // The host saw how this tap ended, so the server needn't push about it later.
+  // Rendered while backgrounded doesn't count; coming back to it does.
+  useEffect(() => {
+    const report = (appState: string | null): void => {
+      const facts = flowRef.current?.getReceiptFacts();
+      if (!shouldReportTapSeen(state.kind, appState) || !facts?.paymentIntentId) return;
+      void markDoorTapOutcomeSeen({
+        paymentIntentId: facts.paymentIntentId,
+        clientRequestId: facts.clientRequestId,
+      }).catch((error: unknown) => reportNonFatal("door-tap.seen", error));
+    };
+    report(AppState.currentState);
+    if (AppState.currentState === "active") return undefined;
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") report(next);
+    });
+    return () => subscription.remove();
+  }, [state.kind]);
 
   const showPayCodeInstead = useCallback(async (): Promise<void> => {
     if (draft === null) {

@@ -2722,6 +2722,49 @@ REVOKE ALL ON FUNCTION public.issue_4271_can_take_brand_door_payment(uuid, uuid)
 GRANT EXECUTE ON FUNCTION public.issue_4271_can_take_brand_door_payment(uuid, uuid)
   TO service_role;
 
+-- =============================================================================
+-- §13. A tap that ended while the app was closed (Apple 5.12). The app marks what
+--      the host saw; a 5-minute sweep records money that landed, cancels the rest
+--      at Stripe and only then tells the host no money was taken.
+-- =============================================================================
+ALTER TABLE public.door_tap_intents
+  ADD COLUMN IF NOT EXISTS outcome_seen_at timestamptz,
+  ADD COLUMN IF NOT EXISTS unfinished_notified_at timestamptz;
+CREATE INDEX IF NOT EXISTS door_tap_intents_unfinished_idx
+  ON public.door_tap_intents (created_at)
+  WHERE status = 'created' AND outcome_seen_at IS NULL AND unfinished_notified_at IS NULL;
+
+DO $cron$
+DECLARE v_job_id bigint;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+     OR NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net') THEN
+    RAISE NOTICE 'Issue #4271: pg_cron/pg_net unavailable; door tap sweep not scheduled.';
+    RETURN;
+  END IF;
+  SELECT jobid INTO v_job_id FROM cron.job
+  WHERE jobname = 'issue_4271_door_tap_unfinished_sweep' LIMIT 1;
+  IF v_job_id IS NOT NULL THEN PERFORM cron.unschedule(v_job_id); END IF;
+  PERFORM cron.schedule(
+    'issue_4271_door_tap_unfinished_sweep',
+    '*/5 * * * *',
+    $command$
+      SELECT net.http_post(
+        url := (SELECT decrypted_secret FROM vault.decrypted_secrets
+                WHERE name='supabase_url' LIMIT 1) || '/functions/v1/door-tap-intent',
+        headers := jsonb_build_object(
+          'Content-Type','application/json',
+          'Authorization','Bearer ' || (SELECT decrypted_secret
+            FROM vault.decrypted_secrets WHERE name='service_role_key' LIMIT 1)
+        ),
+        body := '{"action":"sweep_unfinished"}'::jsonb,
+        timeout_milliseconds := 55000
+      );
+    $command$
+  );
+END
+$cron$;
+
 COMMENT ON TABLE public.door_pay_codes IS
   '#4271: a one-time pay link for one door sale; 10 minutes, pays once, never a ticket credential.';
 COMMENT ON FUNCTION public.biz_door_tap_record(text, text, integer, text, text) IS
