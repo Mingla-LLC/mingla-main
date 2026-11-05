@@ -146,10 +146,11 @@ export async function confirmMarketingBook(input: {
   const recipientFailed = dispatch?.recipient_failed ?? -1;
   const accounted = (dispatch?.delivered ?? -1) + (dispatch?.deferred ?? -1) +
     recipientFailed + (dispatch?.skipped_after_confirm ?? -1);
-  // #4273 — a combined send can go out to fewer than it quoted, because the server
-  // keeps contact-match skips out of skipped_after_confirm. Below the quote is a
-  // normal send and reads exactly like one; above it is still a real mismatch.
-  const countsAddUp = input.audience_kind === "combined_sources"
+  // #4273 — a combined email or SMS send can go out to fewer than it quoted, because
+  // the server keeps contact-match skips out of skipped_after_confirm. Below the quote
+  // is a normal send and reads exactly like one; above it is still a real mismatch.
+  // Push is by account, has no contact match, and stays exact.
+  const countsAddUp = input.audience_kind === "combined_sources" && input.channel !== "push"
     ? accounted <= input.quote.reachableCount
     : accounted === input.quote.reachableCount;
   if (

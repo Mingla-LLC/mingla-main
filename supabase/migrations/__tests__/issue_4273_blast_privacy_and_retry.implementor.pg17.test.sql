@@ -334,6 +334,59 @@ BEGIN
 END;
 $email$;
 
+-- A one-contact list must not answer whether that contact belongs to someone.
+-- b4 probe: the only Book row holds a muted account's phone. b5 control: a stranger's.
+-- b6: one Book row whose message the provider really failed.
+INSERT INTO auth.users(id, email) VALUES ('42730000-0000-4000-8000-000000000051', 'solo@example.test');
+INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES ('42730000-0000-4000-8000-000000000051', '+12025556151');
+INSERT INTO public.profiles(id, first_name, display_name, username, active, has_completed_onboarding, visibility_mode)
+VALUES ('42730000-0000-4000-8000-000000000051', 'S', 'S', 'r4273-solo', true, true, 'friends');
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, created_at, updated_at)
+SELECT ('42730000-0000-4000-8000-0000000000b' || x)::uuid, '42730000-0000-4000-8000-000000000001', 'Solo ' || x, 'issue-4273r-solo-' || x, 'USD', now(), now()
+  FROM unnest(ARRAY['4', '5', '6']) x;
+INSERT INTO public.brand_follows(user_id, brand_id, muted_until)
+VALUES ('42730000-0000-4000-8000-000000000051', '42730000-0000-4000-8000-0000000000b4', 'infinity');
+INSERT INTO public.brand_people(id, brand_id, display_name, record_status)
+SELECT ('42730000-2000-4000-8000-00000000004' || x)::uuid, ('42730000-0000-4000-8000-0000000000b' || x)::uuid, 'Solo', 'active'
+  FROM unnest(ARRAY['4', '5', '6']) x;
+INSERT INTO public.brand_person_contact_methods(brand_id, brand_person_id, channel, normalized_value, provenance_scope, is_exportable, is_primary, record_state, marketing_consent_state) VALUES
+  ('42730000-0000-4000-8000-0000000000b4', '42730000-2000-4000-8000-000000000044', 'phone', '+12025556151', 'brand_owned', true, true, 'active', 'unknown'),
+  ('42730000-0000-4000-8000-0000000000b5', '42730000-2000-4000-8000-000000000045', 'phone', '+12025556152', 'brand_owned', true, true, 'active', 'unknown'),
+  ('42730000-0000-4000-8000-0000000000b6', '42730000-2000-4000-8000-000000000046', 'phone', '+12025556153', 'brand_owned', true, true, 'active', 'unknown');
+DO $solo$
+DECLARE
+  o1 uuid := '42730000-0000-4000-8000-000000000001';
+  x text; b uuid; a uuid; c uuid; e jsonb; send jsonb; ids uuid[] := '{}';
+  v_probe jsonb; v_control jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', o1::text, true);
+  FOREACH x IN ARRAY ARRAY['4', '5', '6'] LOOP
+    b := ('42730000-0000-4000-8000-0000000000b' || x)::uuid;
+    a := (public.biz_get_or_create_marketing_combined_audience_v1(o1, b, '["book"]'::jsonb) ->> 'audienceId')::uuid;
+    c := pg_temp.draft(('42730000-3000-4000-8000-00000000004' || x)::uuid, o1, b, a, 'sms');
+    e := public.biz_marketing_combined_quote_candidates_v1(o1, c);
+    PERFORM public.biz_confirm_marketing_combined_send_v1(o1, c, ('42730000-4000-4000-8000-00000000004' || x)::uuid, pg_temp.snap(e), now() + interval '1 hour');
+    send := public.biz_marketing_combined_send_audience_v1(c);
+    -- What the dispatcher does with the rows it was handed.
+    INSERT INTO public.marketing_messages(campaign_id, recipient_phone, channel, status, failure_reason)
+    SELECT c, r ->> 'raw_phone', 'sms', CASE x WHEN '6' THEN 'failed' ELSE 'sent' END, CASE x WHEN '6' THEN 'provider_error' END
+      FROM jsonb_array_elements(send -> 'rows') r;
+    PERFORM public.mkt_finalize_campaign(c);
+    ids := ids || c;
+  END LOOP;
+  PERFORM pg_temp.chk('D-00 fixture: the probe really was withheld and the control really sent',
+    public.biz_marketing_combined_hidden_skips_v1(ids[1]) = 1
+    AND NOT EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[1])
+    AND EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[2]), '');
+  SELECT jsonb_build_object('status', status, 'count', recipient_count, 'sent', sent_at IS NOT NULL) INTO v_probe FROM public.marketing_campaigns WHERE id = ids[1];
+  SELECT jsonb_build_object('status', status, 'count', recipient_count, 'sent', sent_at IS NOT NULL) INTO v_control FROM public.marketing_campaigns WHERE id = ids[2];
+  PERFORM pg_temp.chk('D-01 a one-contact list all withheld by a contact match finalizes like its control',
+    v_probe = v_control AND v_probe ->> 'status' = 'sent', v_probe::text || ' vs ' || v_control::text);
+  PERFORM pg_temp.chk('D-02 a genuine provider failure still reads as failed',
+    (SELECT status FROM public.marketing_campaigns WHERE id = ids[3]) = 'failed', '');
+END;
+$solo$;
+
 -- Opt-outs: who the Host can read, and that nobody hidden gets messaged.
 -- The follower-only contacts below are in no Book, order or RSVP of the brand.
 INSERT INTO public.marketing_unsubscribes(contact_email, contact_phone, channel, scope, brand_id) VALUES

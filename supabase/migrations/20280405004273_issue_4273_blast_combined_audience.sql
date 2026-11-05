@@ -1198,16 +1198,106 @@ AS $fn$
   )
 $fn$;
 
--- Measured at 500 opt-outs by 500 orders: a scan of orders per row became a bitmap
--- lookup, 270ms to 79ms. Exactly the two expressions the check above compares.
-CREATE INDEX issue_4273_orders_buyer_email_norm ON public.orders (lower(btrim(buyer_email)));
-CREATE INDEX issue_4273_orders_buyer_phone_digits
-  ON public.orders (regexp_replace(COALESCE(buyer_phone_e164, buyer_phone, ''), '[^0-9]', '', 'g'));
-
 DROP POLICY IF EXISTS marketing_unsubscribes_select ON public.marketing_unsubscribes;
 CREATE POLICY marketing_unsubscribes_select ON public.marketing_unsubscribes
   FOR SELECT TO authenticated
   USING (public.issue_4273_host_may_read_unsubscribe(scope, account_id, brand_id, contact_email, contact_phone));
+
+-- ── Finalize: the 20280401043682 body + hidden skips ───────────────────────
+-- A target that went unsent only because of a contact match must not show in the
+-- final status or count: it finalizes as if sent, or a one-contact list would
+-- answer whether that contact belongs to someone. A provider failure still fails.
+CREATE OR REPLACE FUNCTION public.mkt_finalize_campaign(p_campaign_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SET search_path TO public, pg_temp
+AS $$
+DECLARE
+  v_delivered integer;
+  v_deferred integer;
+  v_preview integer;
+  v_failed integer;
+  v_hidden integer;
+  v_min_next timestamptz;
+  v_new_status text;
+  v_channel text;
+BEGIN
+  SELECT channel INTO v_channel FROM public.marketing_campaigns WHERE id = p_campaign_id;
+  IF v_channel = 'push' THEN
+    SELECT count(*) FILTER (WHERE status = 'sent') INTO v_delivered
+      FROM public.marketing_push_messages WHERE campaign_id = p_campaign_id;
+    v_new_status := CASE WHEN v_delivered > 0 THEN 'sent' ELSE 'failed' END;
+    UPDATE public.marketing_campaigns
+       SET status = v_new_status,
+           recipient_count = v_delivered,
+           sent_at = CASE WHEN v_delivered > 0 THEN now() ELSE sent_at END,
+           updated_at = now()
+     WHERE id = p_campaign_id;
+    RETURN v_new_status;
+  END IF;
+
+  SELECT
+    count(*) FILTER (WHERE status IN ('sent', 'delivered', 'opened', 'clicked')),
+    count(*) FILTER (WHERE status = 'deferred'),
+    count(*) FILTER (WHERE status = 'preview_skipped'),
+    count(*) FILTER (WHERE status IN ('failed', 'bounced')),
+    min(next_attempt_at) FILTER (WHERE status = 'deferred')
+  INTO v_delivered, v_deferred, v_preview, v_failed, v_min_next
+  FROM public.marketing_messages
+  WHERE campaign_id = p_campaign_id;
+
+  SELECT count(*)::integer INTO v_hidden
+    FROM public.marketing_combined_send_skips s
+    JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
+   WHERE e.campaign_id = p_campaign_id AND NOT s.host_visible;
+
+  IF v_deferred > 0 THEN
+    v_new_status := 'scheduled';
+    UPDATE public.marketing_campaigns
+       SET status = 'scheduled',
+           recipient_count = v_delivered + v_hidden,
+           sent_at = NULL,
+           scheduled_for = COALESCE(v_min_next, now() + interval '15 minutes'),
+           updated_at = now()
+     WHERE id = p_campaign_id;
+  ELSIF v_delivered > 0 THEN
+    v_new_status := 'sent';
+    UPDATE public.marketing_campaigns
+       SET status = 'sent',
+           recipient_count = v_delivered + v_hidden,
+           sent_at = now(),
+           updated_at = now()
+     WHERE id = p_campaign_id;
+  ELSIF v_preview > 0 THEN
+    v_new_status := 'sent';
+    UPDATE public.marketing_campaigns
+       SET status = 'sent',
+           recipient_count = v_preview + v_hidden,
+           sent_at = now(),
+           updated_at = now()
+     WHERE id = p_campaign_id;
+  ELSIF v_hidden > 0 AND v_failed = 0 THEN
+    v_new_status := 'sent';
+    UPDATE public.marketing_campaigns
+       SET status = 'sent',
+           recipient_count = v_hidden,
+           sent_at = now(),
+           updated_at = now()
+     WHERE id = p_campaign_id;
+  ELSE
+    -- INVARIANT (I-PROPOSED-1270-NO-EMPTY-SENT): 'sent' needs delivered or preview > 0,
+    -- or (#4273) a sealed target withheld only by a hidden contact match.
+    v_new_status := 'failed';
+    UPDATE public.marketing_campaigns
+       SET status = 'failed',
+           recipient_count = 0,
+           updated_at = now()
+     WHERE id = p_campaign_id;
+  END IF;
+
+  RETURN v_new_status;
+END;
+$$;
 
 -- ── Push: the 20280401043682 body + a combined branch ───────────────────────
 CREATE OR REPLACE FUNCTION public.biz_marketing_push_quote_candidates_v1(

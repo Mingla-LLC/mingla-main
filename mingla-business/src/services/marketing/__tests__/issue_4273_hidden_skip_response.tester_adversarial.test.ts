@@ -41,6 +41,16 @@ const confirm = () =>
     channel: "email",
   });
 
+describe("#4273: combined push has no hidden skips", () => {
+  it("a shortfall on push is a real mismatch", async () => {
+    invoke.mockResolvedValueOnce(answer({ delivered: 2, skipped_after_confirm: 0 }));
+    await expect(confirmMarketingBook({
+      campaign_id: "c1", client_request_id: "r1", quote, scheduled_for: null,
+      audience_kind: "combined_sources", channel: "push",
+    })).rejects.toMatchObject({ code: "BOOK_BLAST_DISPATCH_FAILED" });
+  });
+});
+
 describe("#4273 retest: a hidden skip is not a failed send", () => {
   it("delivered below the quote's reach, with nothing visible skipped, reads as sent", async () => {
     // What marketing-send answers: reach 3, one address sent once for two rows.
