@@ -339,10 +339,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
   const { isWideDesktop, isShort } = useResponsiveLayout();
-  // #4273 — on a phone browser Band B is the page scroller (WEB_FLEX_REGION_RECOVERY),
-  // so the method cards lie in it in flow rather than in a box of their own. Native
+  // #4273 — on web, at every width, Band B is the page scroller
+  // (WEB_FLEX_REGION_RECOVERY), so the method cards lie in it in flow below an editor
+  // of fixed height. Sharing the height squeezed the editor under the cards. Native
   // keeps its own region: the editor's WebView stays out of any ScrollView (F.7).
-  const methodCardsFlow = Platform.OS === "web" && !isWideDesktop;
+  const methodCardsFlow = Platform.OS === "web";
   const MethodCardsHost: React.ElementType = methodCardsFlow ? View : ScrollView;
   const params = useLocalSearchParams<{
     audience?: string;
@@ -2300,6 +2301,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                     style={methodCardsFlow && (sendChannels.has("sms") || sendChannels.has("push"))
                       ? styles.editorSlotInFlow
                       : styles.editorSlot}
+                    testID="composer-editor-slot"
                   >
                     <ComposerV2Editor
                       ref={editorHandleRef}
