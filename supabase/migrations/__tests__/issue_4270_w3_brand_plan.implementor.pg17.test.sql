@@ -31,6 +31,12 @@
 --            only, never in audit metadata), host state, lines on add, move
 --            and rename (OQ-5); ops_calendar rows carry the brand
 --   P-LINE   quiet system lines (no sender) in the Brand group
+--   P-WHEN   an event sits on the date it is on now or next; live means a
+--            date is on right now (both plans)
+--   P-RW     the Wave 3 test fixes: hidden items, hidden characters and
+--            addresses in links, titles answer the same either way, a limit on
+--            changes, can_edit needs write rank, venue staff read only, a raced
+--            title, the form's task defaults, the Host can see this line
 --
 -- FAILS-ON-REVERT: drop the membership statement from brand_plan_for_host ->
 -- P-MEMBER fails; drop the brand_plan_line calls -> P-LINE fails; read
@@ -51,7 +57,8 @@ insert into tp_people (who, id, email) values
   ('tobi',   '42730000-0000-4000-a0f1-000000000002', 'tobi.p4270@test.local'),
   ('sam',    '42730000-0000-4000-a0f1-000000000003', 'sam.p4270@test.local'),
   ('bea',    '42730000-0000-4000-a0f1-000000000004', 'bea.p4270@test.local'),
-  ('nina',   '42730000-0000-4000-a0f1-000000000005', 'nina.p4270@test.local');
+  ('nina',   '42730000-0000-4000-a0f1-000000000005', 'nina.p4270@test.local'),
+  ('vic',    '42730000-0000-4000-a0f1-000000000006', 'vic.p4270@test.local');
 insert into auth.users (id, email, email_confirmed_at) select id, email, now() from tp_people;
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('gia.p4270@test.local', 'growth', 'active', now()), ('kunle.p4270@test.local', 'growth', 'active', now());
@@ -179,6 +186,7 @@ insert into public.brand_team_members (brand_id, user_id, role, invited_at, acce
   ('42730000-0000-4000-b0f0-000000000001', '42730000-0000-4000-a0f1-000000000001', 'brand_owner', now() - interval '80 days', now() - interval '80 days'),
   ('42730000-0000-4000-b0f0-000000000001', '42730000-0000-4000-a0f1-000000000002', 'marketing_manager', now() - interval '20 days', now() - interval '20 days'),
   ('42730000-0000-4000-b0f0-000000000001', '42730000-0000-4000-a0f1-000000000003', 'scanner', now() - interval '20 days', now() - interval '20 days'),
+  ('42730000-0000-4000-b0f0-000000000001', '42730000-0000-4000-a0f1-000000000006', 'venue_staff', now() - interval '20 days', now() - interval '20 days'),
   ('42730000-0000-4000-b0f0-000000000002', '42730000-0000-4000-a0f1-000000000004', 'brand_owner', now() - interval '20 days', now() - interval '20 days');
 insert into public.conversations (id, type, linked_entity_type, brand_id, name, is_enabled) values
   ('42730000-0000-4000-e0f0-000000000001', 'group', 'brand', '42730000-0000-4000-b0f0-000000000001', 'P4270 Palm Brand · Brand group', true),
@@ -330,12 +338,14 @@ begin
   v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001',
     jsonb_build_object('type', 'post', 'title', 'P4270 Our new menu', 'on', %L, 'link', 'https://photos.example.com/menu', 'note', 'Use the blue photos'), 'p4270-hadd-0001')::text$q$, v_on));
   perform pg_temp.tp_check('P-HADD', 'the same request again is a replay, not a second post',
-    (pg_temp.tp_j(v_t)->>'replayed') || '/' || (select count(*) from public.content_calendar_items where title = 'P4270 Our new menu')::text, 'true/1');
+    (pg_temp.tp_j(v_t)->>'replayed') || '/' || (select count(*) from public.content_calendar_items where title = 'P4270 Our new menu · P4270 Palm Brand')::text, 'true/1');
 
   -- D24: the title is taken on the Calendar (brand B's post) -> " · brand"
   v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001',
     jsonb_build_object('type', 'post', 'title', 'P4270 Dress code post', 'on', %L), 'p4270-hadd-0002')::text$q$, v_on)));
-  perform pg_temp.tp_check('P-CLASH', 'a taken title gets the brand name', (v #>> '{item,title}') || '/' || (v->>'title_changed'), 'P4270 Dress code post · P4270 Palm Brand/true');
+  perform pg_temp.tp_check('P-CLASH', 'a host item is always stored with the brand name; the host sees it without, and is told nothing about other titles',
+    (v #>> '{item,title}') || '/' || (v->>'title_changed') || '/' || (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid),
+    'P4270 Dress code post/false/P4270 Dress code post · P4270 Palm Brand');
   v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001',
     jsonb_build_object('type', 'post', 'title', 'P4270 Dress code post', 'on', %L), 'p4270-hadd-0003')::text$q$, v_on));
   perform pg_temp.tp_check('P-CLASH', 'and when that is taken too, the host is asked to change it',
@@ -380,11 +390,11 @@ $hadd$;
 do $own$
 declare v jsonb; v_t text; v_post uuid; v_task uuid; v_rev bigint; v_on date := pg_temp.tp_day(14);
 begin
-  select id, revision into v_post, v_rev from public.content_calendar_items where title = 'P4270 Our new menu';
+  select id, revision into v_post, v_rev from public.content_calendar_items where title = 'P4270 Our new menu · P4270 Palm Brand';
   v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_update('post', %L, jsonb_build_object('on', %L), %s)::text$q$, v_post, v_on, v_rev)));
   perform pg_temp.tp_check('P-OWN', 'a host moves their own idea; the plan reads the Calendar row itself (no copy)',
     (v #>> '{item,on}') || '/' || (select ((publish_at AT TIME ZONE 'UTC')::date)::text from public.content_calendar_items where id = v_post)
-      || '/' || (select count(*) from public.content_calendar_items where title = 'P4270 Our new menu')::text, format('%s/%s/1', v_on, v_on));
+      || '/' || (select count(*) from public.content_calendar_items where title = 'P4270 Our new menu · P4270 Palm Brand')::text, format('%s/%s/1', v_on, v_on));
   perform pg_temp.tp_like('P-LINE', 'moving it posts a line', pg_temp.tp_lines(), format('%%Tobi P moved “P4270 Our new menu” to %s.%%', public.brand_plan_day_words(v_on)));
   v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_update('post', %L, jsonb_build_object('on', %L), %s)::text$q$, v_post, v_on, v_rev));
   perform pg_temp.tp_like('P-OWN', 'an old revision is a PT409 stale write', v_t, 'ERR:PT409:stale_write:%');
@@ -400,7 +410,7 @@ begin
   v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_remove('post', %L, %s)::text$q$, v_post, (select revision from public.content_calendar_items where id = v_post))));
   perform pg_temp.tp_check('P-OWN', 'the host removes their own idea (soft delete) and the chat is told',
     (v->>'removed') || '/' || (select (deleted_at is not null)::text from public.content_calendar_items where id = v_post) || '/' || (pg_temp.tp_lines() like '%Tobi P removed “P4270 Our new menu” from the plan.%')::text, 'true/true/true');
-  select id, revision into v_task, v_rev from public.ops_work_cards where title = 'P4270 Print the menus';
+  select id, revision into v_task, v_rev from public.ops_work_cards where title = 'P4270 Print the menus · P4270 Palm Brand';
   v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_update('task', %L, '{"link":null,"note":"Two hundred copies"}'::jsonb, %s)::text$q$, v_task, v_rev)));
   perform pg_temp.tp_check('P-OWN', 'a host changes their own task while it is in To do',
     (select coalesce(files_url, '<none>') || '|' || instructions from public.ops_work_cards where id = v_task), '<none>|Added by Tobi P from the Brand group plan. Note: Two hundred copies');
@@ -481,6 +491,121 @@ begin
     (select c->>'brand_name' from jsonb_array_elements(v->'content') c where c->>'title' = 'P4270 Dated idea'), 'P4270 Palm Brand');
 end;
 $cal$;
+
+-- ---------------------------------------------------------------------------
+-- P-WHEN: the date an event is on now or next (W3 test P2-1)
+-- ---------------------------------------------------------------------------
+do $when$
+declare v_host jsonb; v_staff jsonb; v_card jsonb;
+begin
+  set local session_replication_role = replica;
+  insert into public.events (id, brand_id, title, slug, visibility, status, timezone, published_at, event_type, location_text) values
+    ('42730000-0000-4000-f0f0-000000000011', '42730000-0000-4000-b0f0-000000000001', 'P4270 Weekly Jazz', 'p4270-weekly', 'discover', 'scheduled', 'UTC', now() - interval '20 days', 'event', 'P4270 Street'),
+    ('42730000-0000-4000-f0f0-000000000012', '42730000-0000-4000-b0f0-000000000001', 'P4270 Pottery Course', 'p4270-course', 'discover', 'scheduled', 'UTC', now() - interval '50 days', 'experience', 'P4270 Street');
+  insert into public.event_dates (event_id, start_at, end_at, is_master) values
+    ('42730000-0000-4000-f0f0-000000000011', (pg_temp.tp_day(-14)::timestamp + time '19:00') AT TIME ZONE 'UTC', (pg_temp.tp_day(-14)::timestamp + time '22:00') AT TIME ZONE 'UTC', true),
+    ('42730000-0000-4000-f0f0-000000000011', (pg_temp.tp_day(6)::timestamp + time '19:00') AT TIME ZONE 'UTC', (pg_temp.tp_day(6)::timestamp + time '22:00') AT TIME ZONE 'UTC', false),
+    ('42730000-0000-4000-f0f0-000000000012', now() - interval '40 days', now() + interval '30 days', true);
+  set local session_replication_role = origin;
+  v_host := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_for_host('42730000-0000-4000-b0f0-000000000001', %L, %L)::text$q$, pg_temp.tp_day(-7), pg_temp.tp_day(60))));
+  v_staff := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_brand_plan('42730000-0000-4000-c0f0-000000000001', %L, %L)::text$q$, pg_temp.tp_day(-7), pg_temp.tp_day(60))));
+  perform pg_temp.tp_check('P-WHEN', 'a weekly event between dates is not live and sits on its next date, on both plans',
+    (select (i->>'on') || '/' || (i->>'state') from jsonb_array_elements(v_host->'items') i where i->>'title' = 'P4270 Weekly Jazz') || ' ' ||
+    (select (i->>'on') || '/' || (i->>'state') from jsonb_array_elements(v_staff->'items') i where i->>'title' = 'P4270 Weekly Jazz'),
+    format('%s/on_mingla %s/on_mingla', pg_temp.tp_day(6), pg_temp.tp_day(6)));
+  perform pg_temp.tp_check('P-WHEN', 'a course that started weeks ago and is still running is on today, Live now, on both plans',
+    (select (i->>'on') || '/' || (i->>'state_words') from jsonb_array_elements(v_host->'items') i where i->>'title' = 'P4270 Pottery Course') || ' ' ||
+    (select (i->>'on') || '/' || (i->>'state_words') from jsonb_array_elements(v_staff->'items') i where i->>'title' = 'P4270 Pottery Course'),
+    format('%s/Live now %s/Live now', pg_temp.tp_day(0), pg_temp.tp_day(0)));
+end;
+$when$;
+
+-- ---------------------------------------------------------------------------
+-- P-RW: the Wave 3 test fixes
+-- ---------------------------------------------------------------------------
+create function pg_temp.tp_race() returns trigger
+language plpgsql as $fn$
+begin
+  raise unique_violation using message = 'duplicate key value violates unique constraint "content_calendar_items_title_key"';
+end;
+$fn$;
+
+do $rw$
+declare v jsonb; v_t text; v_bad text; v_out text := ''; v_id uuid; v_rev bigint; v_card uuid; v_a jsonb; v_b jsonb; v_n integer := 0; v_lines integer; v_on date := pg_temp.tp_day(12); i integer;
+begin
+  -- Hidden characters and anything before the site name are refused (P3-2).
+  foreach v_bad in array array[
+      'https://canva.com' || chr(8238) || 'moc.live', 'https://canva.com' || chr(8203) || '/x', 'https://canva.com/' || chr(7),
+      'https://canva.com' || chr(160) || '/x', 'https://canva.com/' || chr(917505), 'https://canva.com:x@evil.example', 'https://canva.com@evil.example/', 'https://canva.com\@evil.example'] loop
+    v_out := v_out || left(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Sneaky link','on',%L,'link',%L), 'p4270-rw-link-' || md5(%L))::text$q$, v_on, v_bad, v_bad)), 22) || ' ';
+  end loop;
+  perform pg_temp.tp_check('P-RW', 'a link with hidden characters, or with anything before the site name, is refused', btrim(v_out), btrim(repeat('ERR:22023:invalid_link ', 8)));
+  v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 At in the path','on',%L,'link','https://canva.com/@tobi/x'), 'p4270-rw-at-0001')::text$q$, v_on)));
+  perform pg_temp.tp_check('P-RW', 'an @ after the site name is fine', v #>> '{item,link,site}', 'canva.com');
+
+  -- What a host is told never depends on titles they cannot see (P3-3).
+  insert into public.content_calendar_items (title, owner_emails, created_by, updated_by) values ('P4270 Secret launch', ARRAY[]::text[], 'gia.p4270@test.local', 'gia.p4270@test.local');
+  v_a := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Secret launch','on',%L), 'p4270-rw-oracle-1')::text$q$, v_on)));
+  v_b := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Nothing like it','on',%L), 'p4270-rw-oracle-2')::text$q$, v_on)));
+  perform pg_temp.tp_check('P-RW', 'a taken title and a free title answer the same', (v_a->>'title_changed') || '/' || (v_b->>'title_changed') || '/' || (v_a #>> '{item,title}'), 'false/false/P4270 Secret launch');
+
+  -- A raced title gets the D24 words, not the raw constraint (P3-8).
+  create trigger tp_race_trigger before insert on public.content_calendar_items for each row when (new.title like 'P4270 Raced%') execute function pg_temp.tp_race();
+  v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Raced host','on',%L), 'p4270-rw-race-01')::text$q$, v_on));
+  perform pg_temp.tp_check('P-RW', 'a host add that loses a race on the title is told in plain words', v_t, 'ERR:23505:duplicate_title: Something with this name is already planned. Change the name a little.');
+  v_t := pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_add('42730000-0000-4000-c0f0-000000000001', jsonb_build_object('type','post','title','P4270 Raced staff','on',%L), 'p4270-rw-race-02')::text$q$, v_on));
+  perform pg_temp.tp_check('P-RW', 'a staff add that loses a race on the title is told in plain words', v_t, 'ERR:23505:duplicate_title: Something with this name is already planned. Change the name a little.');
+  drop trigger tp_race_trigger on public.content_calendar_items;
+
+  -- The form shows what will be saved; [] means nobody (P3-9).
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_brand_plan('42730000-0000-4000-c0f0-000000000001', %L, %L)::text$q$, pg_temp.tp_day(0), pg_temp.tp_day(30))));
+  perform pg_temp.tp_check('P-RW', 'the staff plan says who owns and watches a new task', (v->'task_defaults')::text, '{"owners": ["gia.p4270@test.local"], "watchers": ["kunle.p4270@test.local"]}');
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_add('42730000-0000-4000-c0f0-000000000001', jsonb_build_object('type','task','title','P4270 Nobody watches','on',%L,'watchers','[]'::jsonb), 'p4270-rw-watch-1')::text$q$, v_on)));
+  perform pg_temp.tp_check('P-RW', 'a task sent with no watchers has none', (select count(*)::text from public.ops_work_people p where p.card_id = (v #>> '{item,id}')::uuid and p.role = 'watcher'), '0');
+
+  -- Staff switching Host can see this: the card leaves, and the host can no longer change it (P3-1); the chat is told (P4).
+  v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','task','title','P4270 Hidden later','on',%L), 'p4270-rw-hide-01')::text$q$, v_on)));
+  v_card := (v #>> '{item,id}')::uuid;
+  update public.ops_work_cards set on_brand_plan = false, updated_by = 'gia.p4270@test.local' where id = v_card returning revision into v_rev;
+  perform pg_temp.tp_like('P-RW', 'switching it off tells the chat', pg_temp.tp_lines(), '%Gia removed “P4270 Hidden later” from the plan.%');
+  v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_update('task', %L, '{"title":"P4270 Still mine"}'::jsonb, %s)::text$q$, v_card, v_rev));
+  perform pg_temp.tp_check('P-RW', 'a host cannot rename their task once hidden', v_t, 'ERR:P0002:not_found: This item is not on your plan.');
+  v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_remove('task', %L, %s)::text$q$, v_card, v_rev));
+  perform pg_temp.tp_check('P-RW', 'nor remove it', v_t, 'ERR:P0002:not_found: This item is not on your plan.');
+  update public.ops_work_cards set on_brand_plan = true, updated_by = 'gia.p4270@test.local' where id = v_card;
+  perform pg_temp.tp_like('P-RW', 'switching it on tells the chat', pg_temp.tp_lines(), format('%%Gia added “P4270 Hidden later” to the plan for %s.%%', public.brand_plan_day_words(v_on)));
+
+  -- can_edit needs write rank (P3-5).
+  update public.brand_team_members set role = 'scanner' where brand_id = '42730000-0000-4000-b0f0-000000000001' and user_id = '42730000-0000-4000-a0f1-000000000002';
+  v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_for_host('42730000-0000-4000-b0f0-000000000001', %L, %L)::text$q$, pg_temp.tp_day(0), pg_temp.tp_day(30))));
+  perform pg_temp.tp_check('P-RW', 'a host demoted to scanner keeps their items but cannot edit them',
+    (select (x->>'mine') || '/' || (x->>'can_edit') from jsonb_array_elements(v->'items') x where x->>'title' = 'P4270 Nothing like it') || '/' || (v->>'can_add'), 'true/false/false');
+  update public.brand_team_members set role = 'marketing_manager' where brand_id = '42730000-0000-4000-b0f0-000000000001' and user_id = '42730000-0000-4000-a0f1-000000000002';
+
+  -- Venue staff read the plan (D14), never write, and get no private events (P3-6).
+  v := pg_temp.tp_j(pg_temp.tp_as('vic', format($q$select public.brand_plan_for_host('42730000-0000-4000-b0f0-000000000001', %L, %L)::text$q$, pg_temp.tp_day(0), pg_temp.tp_day(30))));
+  perform pg_temp.tp_check('P-RW', 'venue staff read the plan, cannot add, and see public events but no private one',
+    (v->>'can_add') || '/' || (select count(*)::text from jsonb_array_elements(v->'items') x where x->>'title' = 'P4270 Supper Club') || '/' || (select count(*)::text from jsonb_array_elements(v->'items') x where x->>'title' = 'P4270 Private Night'), 'false/1/0');
+  v_t := pg_temp.tp_as('vic', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Vic post','on',%L), 'p4270-rw-vic-001')::text$q$, v_on));
+  perform pg_temp.tp_like('P-RW', 'venue staff cannot add', v_t, 'ERR:42501:read_only:%');
+  update public.brand_team_members set removed_at = now() where brand_id = '42730000-0000-4000-b0f0-000000000001' and user_id = '42730000-0000-4000-a0f1-000000000006';
+  v_t := pg_temp.tp_as('vic', format($q$select public.brand_plan_for_host('42730000-0000-4000-b0f0-000000000001', %L, %L)::text$q$, pg_temp.tp_day(0), pg_temp.tp_day(30)));
+  perform pg_temp.tp_check('P-RW', 'removed venue staff get the same not_found', v_t, 'ERR:P0002:not_found: This plan is not here.');
+
+  -- A limit on changes, so renames cannot flood the chat (P3-4). Last: it uses up Tobi's hour.
+  v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Rename me','on',%L), 'p4270-rw-flood-1')::text$q$, v_on)));
+  v_id := (v #>> '{item,id}')::uuid;
+  v_lines := pg_temp.tp_line_count();
+  for i in 1..16 loop
+    select revision into v_rev from public.content_calendar_items where id = v_id;
+    v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_update('post', %L, jsonb_build_object('title', %L), %s)::text$q$, v_id, 'P4270 Rename me ' || i, v_rev));
+    exit when v_t like 'ERR:%';
+    v_n := v_n + 1;
+  end loop;
+  perform pg_temp.tp_like('P-RW', 'too many changes in an hour are refused', v_t, 'ERR:22023:too_many:%');
+  perform pg_temp.tp_check('P-RW', 'so at most 12 changes post lines', ((pg_temp.tp_line_count() - v_lines) <= 12 and v_n between 1 and 12)::text, 'true');
+end;
+$rw$;
 
 select count(*) as tp_total, count(*) filter (where not ok) as tp_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as tp_failures

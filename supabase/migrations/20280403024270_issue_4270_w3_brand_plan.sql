@@ -106,13 +106,15 @@ AS $$
   END
 $$;
 
--- Rework (W3 test P3-2): a link with a control character or an invisible
--- formatting character (zero-width, bidirectional and the like) is refused,
--- so the site name on its button always reads as the site it opens.
+-- Rework (W3 test P3-2): a link with a control character, an invisible
+-- formatting character (zero-width, bidirectional and the like), an unusual
+-- space, or anything before the site name is refused, so the site name on its
+-- button always reads as the site it opens.
 CREATE FUNCTION public.brand_plan_link_hidden(p_url text) RETURNS boolean
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT p_url ~ '[[:cntrl:]\u0080-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB]'
+  SELECT p_url ~ '[[:cntrl:]\u0080-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U000E0000-\U000E0FFF]'
+      OR p_url ~ '^https://[^/?#]*[@\\]'
 $$;
 
 -- {url, site} for a plan link ("canva.com"), or null.
@@ -215,7 +217,7 @@ AS $$
   SELECT CASE WHEN s.suffix IS NOT NULL AND char_length(p_title) > char_length(s.suffix)
                    AND right(p_title, char_length(s.suffix)) = s.suffix
               THEN left(p_title, char_length(p_title) - char_length(s.suffix)) ELSE p_title END
-    FROM (SELECT (SELECT ' · ' || b.name FROM public.brands b WHERE b.id = p_brand_id) AS suffix) s
+    FROM (SELECT (SELECT ' · ' || left(b.name, 80) FROM public.brands b WHERE b.id = p_brand_id) AS suffix) s
 $$;
 
 -- Rework (W3 test P3-3, D24): a host-added item is always stored as
@@ -226,9 +228,9 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_suffix text; v_try text;
 BEGIN
-  SELECT ' · ' || b.name INTO v_suffix FROM public.brands b WHERE b.id = p_brand_id;
+  SELECT ' · ' || left(b.name, 80) INTO v_suffix FROM public.brands b WHERE b.id = p_brand_id;
   v_try := public.brand_plan_title_words(p_title, p_brand_id);
-  v_try := left(v_try, GREATEST(1, 160 - char_length(COALESCE(v_suffix, '')))) || COALESCE(v_suffix, '');
+  v_try := left(v_try, 160 - char_length(COALESCE(v_suffix, ''))) || COALESCE(v_suffix, '');
   IF p_kind = 'post' AND NOT EXISTS (SELECT 1 FROM public.content_calendar_items i
                                        WHERE i.deleted_at IS NULL AND i.title_key = public.crm_name_key(v_try)
                                          AND i.id IS DISTINCT FROM p_except) THEN
@@ -407,9 +409,11 @@ BEGIN
   END IF;
   -- Rework (W3 test P3-9): who owns and watches a task added here unless the
   -- form changes it (D6, D21), so the form shows exactly what will be saved.
-  v_owners := ARRAY(SELECT o.owner_email FROM public.crm_record_owners o WHERE o.record_id = r.id ORDER BY o.added_at, o.owner_email);
+  v_owners := ARRAY(SELECT o.owner_email FROM public.crm_record_owners o WHERE o.record_id = r.id
+                       AND public.ops_team_email(o.owner_email) IS NOT NULL ORDER BY o.added_at, o.owner_email);
   v_watchers := ARRAY(SELECT DISTINCT o.owner_email FROM public.crm_record_owners o JOIN public.crm_records x ON x.id = o.record_id
                        WHERE x.brand_id = b.id AND x.pipeline = 'hosts' AND x.deleted_at IS NULL AND x.id <> r.id
+                         AND public.ops_team_email(o.owner_email) IS NOT NULL
                          AND NOT (o.owner_email = ANY (v_owners)) ORDER BY 1);
   SELECT COALESCE(jsonb_agg(x.j ORDER BY x.j->>'on', x.j->>'kind', x.j->>'title'), '[]'::jsonb) INTO v_items FROM (
     SELECT public.brand_plan_post_item(i, false, NULL, false) AS j FROM public.content_calendar_items i
@@ -444,11 +448,13 @@ $$;
 
 -- The plan as the brand's own team sees it in the Host app. The team's own
 -- private and hidden events are on it: the team already reads them in the
--- Host app (the staff plan keeps them off).
+-- Host app (the staff plan keeps them off). Venue staff read the plan (D14) but
+-- not those events (they have no read rank on events), so they get only the
+-- events anyone can open.
 CREATE FUNCTION public.brand_plan_for_host(p_brand_id uuid, p_from date, p_to date) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v_uid uuid := auth.uid(); b public.brands; v_today date; v_items jsonb; v_can_write boolean;
+DECLARE v_uid uuid := auth.uid(); b public.brands; v_today date; v_items jsonb; v_can_write boolean; v_team boolean;
 BEGIN
   IF v_uid IS NULL OR NOT public.brand_plan_can_read(p_brand_id, v_uid) THEN
     RAISE EXCEPTION 'not_found: This plan is not here.' USING ERRCODE = 'P0002';
@@ -457,6 +463,7 @@ BEGIN
   PERFORM public.brand_plan_window_check(p_from, p_to);
   v_today := (now() AT TIME ZONE COALESCE(NULLIF(b.default_timezone, ''), 'UTC'))::date;
   v_can_write := public.brand_plan_can_write(p_brand_id, v_uid);
+  v_team := public.biz_is_brand_member_for_read(p_brand_id, v_uid);
   SELECT COALESCE(jsonb_agg(x.j ORDER BY x.j->>'on', x.j->>'kind', x.j->>'title'), '[]'::jsonb) INTO v_items FROM (
     SELECT public.brand_plan_post_item(i, true, v_uid, v_can_write) AS j FROM public.content_calendar_items i
      WHERE i.deleted_at IS NULL AND i.brand_id = b.id AND i.publish_at IS NOT NULL
@@ -473,6 +480,7 @@ BEGIN
       FROM public.events e
      CROSS JOIN LATERAL public.ops_event_when(e.id) w
      WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND e.status <> 'cancelled' AND w.starts_at IS NOT NULL
+       AND (v_team OR public.ops_event_public(e.id))
        AND CASE WHEN w.live THEN GREATEST(w.start_on, v_today) ELSE w.start_on END BETWEEN p_from AND p_to
   ) x;
   RETURN jsonb_build_object('brand', jsonb_build_object('id', b.id, 'name', b.name), 'today', v_today,
@@ -990,9 +998,14 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_brand uuid; v_who text;
 BEGIN
-  IF NEW.archived_at IS NOT NULL OR NEW.status = 'done' THEN RETURN NEW; END IF;
+  -- A card with no due date is not on the plan either way. The switch never
+  -- starts a Brand group and never fails a card save over one: with no group
+  -- yet there is nobody to tell.
+  IF NEW.archived_at IS NOT NULL OR NEW.status = 'done' OR NEW.due_on IS NULL THEN RETURN NEW; END IF;
   v_brand := public.brand_plan_card_brand(NEW.id);
-  IF v_brand IS NULL THEN RETURN NEW; END IF;
+  IF v_brand IS NULL OR NOT EXISTS (SELECT 1 FROM public.conversations x WHERE x.linked_entity_type = 'brand' AND x.brand_id = v_brand) THEN
+    RETURN NEW;
+  END IF;
   v_who := public.brand_plan_staff_first(NEW.updated_by);
   IF NEW.on_brand_plan THEN
     PERFORM public.brand_plan_line(v_brand, format('%s added “%s” to the plan for %s.', v_who,
@@ -1352,7 +1365,9 @@ BEGIN
   -- Links: https only, and no hidden characters.
   IF public.brand_plan_link_json('https://canva.com/x') IS NULL OR public.brand_plan_link_json('http://canva.com') IS NOT NULL
      OR public.brand_plan_link_json('https://canva.com' || chr(8238) || 'moc.evil') IS NOT NULL
-     OR public.brand_plan_link_json('https://canva.com' || chr(7) || 'x') IS NOT NULL THEN
+     OR public.brand_plan_link_json('https://canva.com' || chr(7) || 'x') IS NOT NULL
+     OR public.brand_plan_link_json('https://canva.com:x@evil.example') IS NOT NULL
+     OR public.brand_plan_link_json('https://canva.com/a@b') IS NULL THEN
     RAISE EXCEPTION 'issue 4270 wave 3 self-check: plan links are not checked as stated';
   END IF;
   -- Who reads and who writes (D14): the read rule names the Brand group's
@@ -1404,6 +1419,10 @@ BEGIN
       RAISE EXCEPTION 'issue 4270 wave 3 self-check: % does not check the write rank', r.sig;
     END IF;
   END LOOP;
+  IF (SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid = 'public.brand_plan_for_host(uuid,date,date)'::regprocedure)
+       NOT LIKE '%AND (v_team OR public.ops_event_public(e.id))%' THEN
+    RAISE EXCEPTION 'issue 4270 wave 3 self-check: venue staff could read events they cannot open';
+  END IF;
   -- Nothing of the plan is runnable by anon; every internal helper is closed
   -- to signed-in users too (only the four host functions and the staff ops_
   -- functions are callable).

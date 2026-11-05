@@ -442,13 +442,13 @@ declare v_words text := 'ERR:P0002:not_found: This item is not on your plan.'; v
 begin
   -- Ola adds her own post, then staff move it to brand B.
   perform pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', '{"type":"post","title":"T4270 Ola moved post","on":"%s"}'::jsonb, 'ola-key-moved1')::text$q$, pg_temp.ta_day(4)));
-  update public.content_calendar_items set brand_id = '42740000-0000-4000-b0a0-000000000002' where title = 'T4270 Ola moved post';
+  update public.content_calendar_items set brand_id = '42740000-0000-4000-b0a0-000000000002' where title like 'T4270 Ola moved post · %';
   v_rows := pg_temp.ta_rows();
   for v_k, v_kind, v_id in values
     ('staff post', 'post', '42740000-0000-4000-d0a0-000000000001'),
     ('another host''s post', 'post', '42740000-0000-4000-d0a0-000000000009'),
     ('brand B host''s post', 'post', '42740000-0000-4000-d0a0-000000000008'),
-    ('own post moved to brand B', 'post', (select id::text from public.content_calendar_items where title = 'T4270 Ola moved post')),
+    ('own post moved to brand B', 'post', (select id::text from public.content_calendar_items where title like 'T4270 Ola moved post · %')),
     ('a staff task', 'task', (select id::text from ta_ids where k = 'K1')),
     ('a post id sent as a task', 'task', '42740000-0000-4000-d0a0-000000000009'),
     ('an unknown kind', 'event', '42740000-0000-4000-f0a0-000000000001'),
@@ -502,7 +502,7 @@ begin
   perform pg_temp.ta_check('T-LEAK', 'brand B''s plan has none of brand A''s items',
     (select string_agg(replace(i->>'title', 'T4270 ', ''), ',' order by i->>'title')
        from jsonb_array_elements(pg_temp.ta_j(pg_temp.ta_person('bob', format($q$select public.brand_plan_for_host('42740000-0000-4000-b0a0-000000000002', %L, %L)::text$q$, pg_temp.ta_day(-7), pg_temp.ta_day(60))))->'items') i),
-    'Bob own post,Cedar Party,Cedar promo,Cedar task,Ola moved post');
+    'Bob own post,Cedar Party,Cedar promo,Cedar task,Ola moved post · Basil House');
 
   v := pg_temp.ta_j(pg_temp.ta_person('gia', format($q$select public.ops_brand_plan('42740000-0000-4000-c0a0-000000000002', %L, %L)::text$q$, pg_temp.ta_day(-7), pg_temp.ta_day(60))));
   perform pg_temp.ta_check('T-STAFF', 'the staff plan (from the second host record): private and hidden events off, the promised event as Promised, the Drive link apart',
@@ -544,19 +544,21 @@ declare v jsonb; v_t text; v_long text := 'T4270 ' || repeat('x', 152); v_id uui
 begin
   -- "T4270 Cedar promo" is brand B's post: brand A's host gets the suffix.
   v := pg_temp.ta_j(pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', '{"type":"post","title":"  t4270   CEDAR promo ","on":"%s"}'::jsonb, 'ola-key-clash1')::text$q$, pg_temp.ta_day(7))));
-  perform pg_temp.ta_check('T-CLASH', 'a clash that is only case and spaces with another brand''s post gets " · {brand}"',
-    (v #>> '{item,title}') || ' / ' || (v->>'title_changed'), 't4270 CEDAR promo · T4270 Basil House / true');
+  perform pg_temp.ta_check('T-CLASH', 'a host item is always stored with " · {brand}", so a clash with another brand''s post tells the host nothing',
+    (v #>> '{item,title}') || ' / ' || (v->>'title_changed') || ' / ' || (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid),
+    't4270 CEDAR promo / false / t4270 CEDAR promo · T4270 Basil House');
   v_t := pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', '{"type":"post","title":"T4270 Cedar promo","on":"%s"}'::jsonb, 'ola-key-clash2')::text$q$, pg_temp.ta_day(7)));
   perform pg_temp.ta_check('T-CLASH', 'a clash that remains after the suffix asks to change the name (23505)', v_t,
     'ERR:23505:duplicate_title: Something with this name is already planned. Change the name a little.');
   v := pg_temp.ta_j(pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', '{"type":"task","title":"T4270 Finished task","on":"%s"}'::jsonb, 'ola-key-clash3')::text$q$, pg_temp.ta_day(7))));
   perform pg_temp.ta_check('T-CLASH', 'a done card''s title is free for a new task', (v #>> '{item,title}') || '/' || (v->>'title_changed'), 'T4270 Finished task/false');
   v := pg_temp.ta_j(pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', '{"type":"task","title":"T4270 Cedar task","on":"%s"}'::jsonb, 'ola-key-clash4')::text$q$, pg_temp.ta_day(7))));
-  perform pg_temp.ta_check('T-CLASH', 'an open card of another brand: the task gets the suffix', v #>> '{item,title}', 'T4270 Cedar task · T4270 Basil House');
+  perform pg_temp.ta_check('T-CLASH', 'an open card of another brand: the task is stored with the suffix and shown without',
+    (v #>> '{item,title}') || ' / ' || (select title from public.ops_work_cards where id = (v #>> '{item,id}')::uuid), 'T4270 Cedar task / T4270 Cedar task · T4270 Basil House');
   insert into public.content_calendar_items (title, owner_emails, created_by, updated_by) values (v_long, ARRAY[]::text[], 'gia.t4270@test.local', 'gia.t4270@test.local');
   v := pg_temp.ta_j(pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', jsonb_build_object('type','post','title',%L,'on',%L), 'ola-key-clash5')::text$q$, v_long, pg_temp.ta_day(7))));
-  perform pg_temp.ta_check('T-CLASH', 'a 158-character title keeps the suffix and stays within 160',
-    char_length(v #>> '{item,title}')::text || '/' || ((v #>> '{item,title}') like '% · T4270 Basil House')::text, '160/true');
+  perform pg_temp.ta_check('T-CLASH', 'a 158-character title keeps the suffix and stays within 160; the host is told it was shortened',
+    (select char_length(title)::text || '/' || (title like '% · T4270 Basil House')::text from public.content_calendar_items where id = (v #>> '{item,id}')::uuid) || '/' || (v->>'title_changed'), '160/true/true');
 
   -- D17 noon UTC, D6 owners and D21 watchers, C-6 text.
   v := pg_temp.ta_j(pg_temp.ta_person('ola', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000001', '{"type":"post","title":"T4270 Noon post","on":"%s"}'::jsonb, 'ola-key-noon01')::text$q$, pg_temp.ta_day(9))));
@@ -575,7 +577,7 @@ begin
   v_t := pg_temp.ta_person('nora', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000004', '{"type":"task","title":"T4270 New brand task","on":"%s"}'::jsonb, 'nora-key-0001')::text$q$, pg_temp.ta_day(3)));
   perform pg_temp.ta_like('T-OWN', 'a brand with no host record cannot add a task', v_t, 'ERR:22023:no_host_card:%');
   v := pg_temp.ta_j(pg_temp.ta_person('nora', format($q$select public.brand_plan_host_add('42740000-0000-4000-b0a0-000000000004', '{"type":"post","title":"T4270 New brand post","on":"%s"}'::jsonb, 'nora-key-0002')::text$q$, pg_temp.ta_day(3))));
-  perform pg_temp.ta_check('T-OWN', 'but can add a post, with no owners', (v->>'status') || '/' || (select cardinality(owner_emails) from public.content_calendar_items where title = 'T4270 New brand post'), 'added/0');
+  perform pg_temp.ta_check('T-OWN', 'but can add a post, with no owners', (v->>'status') || '/' || (select cardinality(owner_emails) from public.content_calendar_items where title like 'T4270 New brand post · %'), 'added/0');
 end;
 $add$;
 
@@ -585,8 +587,8 @@ $add$;
 do $link$
 declare v_bad jsonb; v_out text := ''; v jsonb; v_id uuid; v_rev bigint; v_card uuid; v_crev bigint;
 begin
-  select id, revision into v_id, v_rev from public.content_calendar_items where title = 'T4270 Noon post';
-  select id, revision into v_card, v_crev from public.ops_work_cards where title = 'T4270 Bring the banners';
+  select id, revision into v_id, v_rev from public.content_calendar_items where title like 'T4270 Noon post · %';
+  select id, revision into v_card, v_crev from public.ops_work_cards where title like 'T4270 Bring the banners · %';
   for v_bad in select x from (values ('"http://example.com/a"'::jsonb), ('"javascript:alert(1)"'::jsonb), ('"https://"'::jsonb), ('"https://a b.com"'::jsonb),
       (to_jsonb('https://' || repeat('a', 1993))), ('5'::jsonb), ('"HTTPS://EXAMPLE.COM"'::jsonb)) t(x) loop
     v_out := v_out
