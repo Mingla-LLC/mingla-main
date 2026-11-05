@@ -37,6 +37,10 @@
 --            addresses in links, titles answer the same either way, a limit on
 --            changes, can_edit needs write rank, venue staff read only, a raced
 --            title, the form's task defaults, the Host can see this line
+--   P-R4-*   the W4 test fixes: LINK a site on every door, SITE real addresses
+--            and format characters, DATE a missing key, MAX the form's limit and
+--            nothing cut, TITLE the plain title after a rename or a move,
+--            ORACLE "already planned" only for what the host can see
 --
 -- FAILS-ON-REVERT: drop the membership statement from brand_plan_for_host ->
 -- P-MEMBER fails; drop the brand_plan_line calls -> P-LINE fails; read
@@ -344,8 +348,8 @@ begin
   v := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001',
     jsonb_build_object('type', 'post', 'title', 'P4270 Dress code post', 'on', %L), 'p4270-hadd-0002')::text$q$, v_on)));
   perform pg_temp.tp_check('P-CLASH', 'a host item is always stored with the brand name; the host sees it without, and is told nothing about other titles',
-    (v #>> '{item,title}') || '/' || (v->>'title_changed') || '/' || (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid),
-    'P4270 Dress code post/false/P4270 Dress code post · P4270 Palm Brand');
+    (v #>> '{item,title}') || '/' || (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid),
+    'P4270 Dress code post/P4270 Dress code post · P4270 Palm Brand');
   v_t := pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001',
     jsonb_build_object('type', 'post', 'title', 'P4270 Dress code post', 'on', %L), 'p4270-hadd-0003')::text$q$, v_on));
   perform pg_temp.tp_check('P-CLASH', 'and when that is taken too, the host is asked to change it',
@@ -547,7 +551,7 @@ begin
   insert into public.content_calendar_items (title, owner_emails, created_by, updated_by) values ('P4270 Secret launch', ARRAY[]::text[], 'gia.p4270@test.local', 'gia.p4270@test.local');
   v_a := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Secret launch','on',%L), 'p4270-rw-oracle-1')::text$q$, v_on)));
   v_b := pg_temp.tp_j(pg_temp.tp_as('tobi', format($q$select public.brand_plan_host_add('42730000-0000-4000-b0f0-000000000001', jsonb_build_object('type','post','title','P4270 Nothing like it','on',%L), 'p4270-rw-oracle-2')::text$q$, v_on)));
-  perform pg_temp.tp_check('P-RW', 'a taken title and a free title answer the same', (v_a->>'title_changed') || '/' || (v_b->>'title_changed') || '/' || (v_a #>> '{item,title}'), 'false/false/P4270 Secret launch');
+  perform pg_temp.tp_check('P-RW', 'a taken title and a free title answer the same', (v_a ?| ARRAY['title_changed'])::text || '/' || (select string_agg(k, ',' order by k) from jsonb_object_keys(v_a) k) || '/' || (select string_agg(k, ',' order by k) from jsonb_object_keys(v_b) k) || '/' || (v_a #>> '{item,title}'), 'false/item,kind,status/item,kind,status/P4270 Secret launch');
 
   -- A raced title gets the D24 words, not the raw constraint (P3-8).
   create trigger tp_race_trigger before insert on public.content_calendar_items for each row when (new.title like 'P4270 Raced%') execute function pg_temp.tp_race();
@@ -606,6 +610,132 @@ begin
   perform pg_temp.tp_check('P-RW', 'so at most 12 changes post lines', ((pg_temp.tp_line_count() - v_lines) <= 12 and v_n between 1 and 12)::text, 'true');
 end;
 $rw$;
+
+-- The W4 test fixes: a link needs a site, a site name reads as its real address,
+-- a missing date is a date problem, titles are never cut, hosts see the plain
+-- title after a rename or a move, and "already planned" only speaks of what the
+-- host can already see.
+do $r4$
+declare v jsonb; v_t text; v_on text := pg_temp.tp_day(12)::text; v_good text; v_i integer := 0; v_id uuid; v_rev bigint; v_max integer; v_n integer;
+  A constant text := '42730000-0000-4000-b0f0-000000000001'; B constant text := '42730000-0000-4000-b0f0-000000000002';
+  HR constant text := '42730000-0000-4000-c0f0-000000000001';
+begin
+  -- P2-1: no site, on every door.
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R4 link door','on',%L), 'r4-link-door')::text$q$, A, v_on)));
+  v_id := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
+  foreach v_good in array ARRAY['https:///evil.example', 'https://:443/evil', 'https://?x=1', 'https://#x', 'https://./x', 'https://canva.com' || U&'\FF0F' || 'evil.example/', 'https://canva.com' || U&'\FF1A' || '443/'] loop
+    v_i := v_i + 1;
+    perform pg_temp.tp_like('P-R4-LINK', 'host add refuses ' || v_good,
+      pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R4 no site','on',%L,'link',%L), %L)::text$q$, A, v_on, v_good, 'r4-nosite-' || v_i)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_like('P-R4-LINK', 'host update refuses ' || v_good,
+      pg_temp.tp_as('annie', format($q$select public.brand_plan_host_update('post', %L, jsonb_build_object('link',%L), %s)::text$q$, v_id, v_good, v_rev)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_like('P-R4-LINK', 'staff add refuses ' || v_good,
+      pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_add(%L, jsonb_build_object('type','post','title','R4 staff no site','on',%L,'link',%L), %L)::text$q$, HR, v_on, v_good, 'r4-nosite-s' || v_i)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_like('P-R4-LINK', 'staff set_link refuses ' || v_good,
+      pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_set_link('post', %L, %L, %s)::text$q$, v_id, v_good, v_rev)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_like('P-R4-LINK', 'the Calendar refuses ' || v_good,
+      pg_temp.tp_person('growth', format($q$select public.content_calendar_update(%L, jsonb_build_object('plan_link_url',%L), %s, null)::text$q$, v_id, v_good, v_rev)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_check('P-R4-LINK', 'never shown if it slipped in: ' || v_good, public.brand_plan_link_json(v_good)::text, null);
+  end loop;
+  perform pg_temp.tp_like('P-R4-LINK', 'a Files link needs a site too',
+    pg_temp.tp_person('growth', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick',true,'title','R4 files card','owners',jsonb_build_array('gia.p4270@test.local'),'due_on',%L,'files_url','https:///evil.example')), 'r4-files-card')::text$q$, v_on)), '%Links start with https://%');
+
+  -- P3-1, D30: the label is the real address; the link itself is untouched.
+  for v_good, v_t in values
+    ('bücher', 'xn--bcher-kva'), ('münchen', 'xn--mnchen-3ya'), ('ñandú', 'xn--and-6ma2c'), ('пример', 'xn--e1afmkfd'),
+    ('例え', 'xn--r8jz45g'), ('ドメイン', 'xn--eckwd4c7c'), ('한글', 'xn--bj0bj06e'), ('مثال', 'xn--mgbh0fb'),
+    ('faß', 'xn--fa-hia'), ('саnvа', 'xn--nv-6kcc5f'), ('a😀b', 'xn--ab-no82a'), ('canva', 'canva')
+  loop
+    perform pg_temp.tp_check('P-R4-SITE', v_good, public.brand_plan_link_json('https://' || v_good || '.com/x')->>'site', v_t || '.com');
+  end loop;
+  perform pg_temp.tp_check('P-R4-SITE', 'www and capitals go', public.brand_plan_link_json('https://www.ПРИМЕР.Com:8443/x?y=1')->>'site', 'xn--e1afmkfd.com');
+  perform pg_temp.tp_check('P-R4-SITE', 'wide letters read as the site a browser opens', public.brand_plan_link_json('https://' || U&'\FF43\FF41\FF4E\FF56\FF41' || '.com/x')->>'site', 'canva.com');
+  perform pg_temp.tp_check('P-R4-SITE', 'so does a wide full stop', public.brand_plan_link_json('https://canva' || U&'\3002' || 'evil.example/')->>'site', 'canva.evil.example');
+  perform pg_temp.tp_check('P-R4-SITE', 'the url stays as given', public.brand_plan_link_json('https://саnvа.com/x')->>'url', 'https://саnvа.com/x');
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R4 lookalike','on',%L,'link','https://саnvа.com/x'), 'r4-lookalike')::text$q$, A, v_on)));
+  perform pg_temp.tp_check('P-R4-SITE', 'a lookalike saves and its button shows its real address', v #>> '{item,link,site}', 'xn--nv-6kcc5f.com');
+  foreach v_good in array ARRAY[U&'\+01D173', U&'\+01D17A', U&'\+01BCA0', U&'\+013430', U&'\+0110BD', U&'\0600', U&'\06DD', U&'\070F', U&'\08E2', U&'\2800'] loop
+    v_i := v_i + 1;
+    perform pg_temp.tp_like('P-R4-SITE', 'format character refused U+' || to_hex(ascii(v_good)),
+      pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R4 format','on',%L,'link',%L), %L)::text$q$, A, v_on, 'https://canva.com' || v_good || '.evil.example/', 'r4-format-' || v_i)), 'ERR:22023:invalid_link:%');
+  end loop;
+
+  -- P3-2: a missing date key.
+  perform pg_temp.tp_like('P-R4-DATE', 'a post with no date key', pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, '{"type":"post","title":"R4 no date"}', 'r4-nodate-1')::text$q$, A)), 'ERR:22023:invalid_date:%');
+  perform pg_temp.tp_like('P-R4-DATE', 'a task with no date key', pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, '{"type":"task","title":"R4 no date"}', 'r4-nodate-2')::text$q$, A)), 'ERR:22023:invalid_date:%');
+
+  -- P2-2, D28: the limit the form gets, and nothing is cut.
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_for_host(%L, %L, %L)::text$q$, A, pg_temp.tp_day(0), pg_temp.tp_day(30))));
+  v_max := (v->>'title_max')::integer;
+  perform pg_temp.tp_check('P-R4-MAX', 'the limit is what fits with the brand''s name', v_max::text, (160 - char_length(' · P4270 Palm Brand') - 5)::text);
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title',%L,'on',%L), 'r4-max-fits')::text$q$, A, repeat('m', v_max), v_on)));
+  perform pg_temp.tp_check('P-R4-MAX', 'a title at the limit is whole, shown and stored',
+    (v #>> '{item,title}') || '/' || (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid), repeat('m', v_max) || '/' || repeat('m', v_max) || ' · P4270 Palm Brand');
+  perform pg_temp.tp_check('P-R4-MAX', 'the answer no longer speaks of a changed title', (v ? 'title_changed')::text, 'false');
+  v_t := pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title',%L,'on',%L), 'r4-max-over1')::text$q$, A, repeat('o', v_max + 1), v_on));
+  perform pg_temp.tp_check('P-R4-MAX', 'one more is refused with the limit, not cut', v_t, format('ERR:22023:title_too_long: Keep this to %s characters.', v_max));
+  perform pg_temp.tp_check('P-R4-MAX', 'and nothing was saved', (select count(*)::text from public.content_calendar_items where title like 'ooo%'), '0');
+  v_t := pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','task','title',%L,'on',%L), 'r4-max-over2')::text$q$, A, repeat('o', v_max + 1), v_on));
+  perform pg_temp.tp_like('P-R4-MAX', 'a task too', v_t, 'ERR:22023:title_too_long:%');
+  -- A form still holding the old limit after the brand's name grew.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.brands set name = 'P4270 Palm Brand of Lagos and Beyond' where id = A::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  v_t := pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title',%L,'on',%L), 'r4-max-stale')::text$q$, A, repeat('s', v_max), v_on));
+  perform pg_temp.tp_check('P-R4-MAX', 'a stale limit is told the new one', v_t, format('ERR:22023:title_too_long: Keep this to %s characters.', 160 - char_length(' · P4270 Palm Brand of Lagos and Beyond') - 5));
+  perform set_config('session_replication_role', 'replica', true);
+  update public.brands set name = 'P4270 Palm Brand' where id = A::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  -- Staff: a taken title with no room for the brand's name is asked to change, never cut.
+  insert into public.content_calendar_items (title, owner_emails, created_by, updated_by) values (repeat('k', 160), ARRAY[]::text[], 'gia.p4270@test.local', 'gia.p4270@test.local');
+  v_t := pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_add(%L, jsonb_build_object('type','post','title',%L,'on',%L), 'r4-staff-cut')::text$q$, HR, repeat('k', 160), v_on));
+  perform pg_temp.tp_like('P-R4-MAX', 'staff are asked to change a taken title with no room', v_t, 'ERR:23505:duplicate_title:%');
+  insert into public.content_calendar_items (title, owner_emails, created_by, updated_by) values ('R4 staff taken', ARRAY[]::text[], 'gia.p4270@test.local', 'gia.p4270@test.local');
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_add(%L, jsonb_build_object('type','post','title','R4 staff taken','on',%L), 'r4-staff-tail')::text$q$, HR, v_on)));
+  perform pg_temp.tp_check('P-R4-TITLE', 'a staff add that needs the brand''s name: stored with it, hosts see the plain title',
+    (v #>> '{item,title}') || '/' || (select plan_title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid), 'R4 staff taken · P4270 Palm Brand/R4 staff taken');
+
+  -- P3-3, D29: rename and move.
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R4 rename probe','on',%L), 'r4-rename-post')::text$q$, A, v_on)));
+  v_id := (v #>> '{item,id}')::uuid;
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','task','title','R4 rename task','on',%L), 'r4-rename-task')::text$q$, A, v_on)));
+  perform set_config('session_replication_role', 'replica', true);
+  update public.brands set name = 'P4270 New Palm' where id = A::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_for_host(%L, %L, %L)::text$q$, A, pg_temp.tp_day(0), pg_temp.tp_day(30))));
+  perform pg_temp.tp_check('P-R4-TITLE', 'after a brand rename hosts read the plain post title', (select count(*)::text from jsonb_array_elements(v->'items') x where x->>'title' = 'R4 rename probe'), '1');
+  perform pg_temp.tp_check('P-R4-TITLE', 'and the plain task title', (select count(*)::text from jsonb_array_elements(v->'items') x where x->>'title' = 'R4 rename task'), '1');
+  perform pg_temp.tp_check('P-R4-TITLE', 'no old name anywhere on the plan', (select count(*)::text from jsonb_array_elements(v->'items') x where x->>'title' like '%· P4270 Palm Brand%'), '0');
+  perform set_config('session_replication_role', 'replica', true);
+  update public.brands set name = 'P4270 Palm Brand' where id = A::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  update public.content_calendar_items set brand_id = B::uuid, updated_by = 'gia.p4270@test.local' where id = v_id;
+  v := pg_temp.tp_j(pg_temp.tp_as('bea', format($q$select public.brand_plan_for_host(%L, %L, %L)::text$q$, B, pg_temp.tp_day(0), pg_temp.tp_day(30))));
+  perform pg_temp.tp_check('P-R4-TITLE', 'moved to another brand: its hosts read the plain title, no other brand''s name', (select count(*)::text from jsonb_array_elements(v->'items') x where x->>'title' = 'R4 rename probe'), '1');
+  perform pg_temp.tp_check('P-R4-TITLE', 'and nothing says Palm', (v::text like '%Palm%')::text, 'false');
+  update public.content_calendar_items set brand_id = A::uuid, updated_by = 'gia.p4270@test.local' where id = v_id;
+  -- Staff renames: hosts read the new words.
+  v_rev := (select revision from public.content_calendar_items where id = v_id);
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.content_calendar_update(%L, jsonb_build_object('title','R4 staff words · P4270 Palm Brand'), %s, null)::text$q$, v_id, v_rev)));
+  perform pg_temp.tp_check('P-R4-TITLE', 'staff change the words and keep the brand: hosts read the new words', (select plan_title from public.content_calendar_items where id = v_id), 'R4 staff words');
+  perform pg_temp.tp_like('P-R4-TITLE', 'and the line uses them', pg_temp.tp_lines(), '%renamed “R4 rename probe” to “R4 staff words”.%');
+  v_rev := (select revision from public.content_calendar_items where id = v_id);
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.content_calendar_update(%L, jsonb_build_object('title','R4 whole new title'), %s, null)::text$q$, v_id, v_rev)));
+  perform pg_temp.tp_check('P-R4-TITLE', 'a whole new title: hosts read all of it', (select coalesce(plan_title, 'null') || '/' || title from public.content_calendar_items where id = v_id), 'null/R4 whole new title');
+
+  -- P3-5: "already planned" speaks only of what the host can see.
+  insert into public.content_calendar_items (title, owner_emails, created_by, updated_by) values ('R4 Secret launch · P4270 Palm Brand', ARRAY[]::text[], 'gia.p4270@test.local', 'gia.p4270@test.local');
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R4 Secret launch','on',%L), 'r4-oracle-1')::text$q$, A, v_on)));
+  perform pg_temp.tp_check('P-R4-ORACLE', 'a hidden staff post with that stored title changes nothing for the host', (v #>> '{item,title}') || '/' || (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid),
+    'R4 Secret launch/R4 Secret launch · P4270 Palm Brand (2)');
+  perform pg_temp.tp_like('P-R4-ORACLE', 'the same name again, which the host can see, is already planned',
+    pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','r4  secret LAUNCH','on',%L), 'r4-oracle-2')::text$q$, A, v_on)), 'ERR:23505:duplicate_title:%');
+  insert into public.ops_work_cards (title, instructions, done_means, status, kind, due_on, due_source, sprint_id, plan, created_by, updated_by)
+  values ('R4 Hidden card · P4270 Palm Brand', 'R4 hidden card text', 'Done with proof.', 'todo', 'task', v_on::date, 'explicit', public.ops_sprint_for(v_on::date, public.ops_today(NULL)), '[]'::jsonb, 'gia.p4270@test.local', 'gia.p4270@test.local');
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','task','title','R4 Hidden card','on',%L), 'r4-oracle-3')::text$q$, A, v_on)));
+  perform pg_temp.tp_check('P-R4-ORACLE', 'an unflagged card with that stored title changes nothing either', v #>> '{item,title}', 'R4 Hidden card');
+end;
+$r4$;
 
 select count(*) as tp_total, count(*) filter (where not ok) as tp_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as tp_failures

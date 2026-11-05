@@ -26,9 +26,12 @@
 --      D17); a task becomes a Work card in To do owned by the host record's
 --      owners, watched by the owners of the brand's other host records (D6,
 --      D21), with instructions and done means written by Mingla (C-6). A
---      title that is already taken gets " · {brand}" (D24). Hosts change and
---      remove only their own items, while Mingla has not started on them
---      (D7). Hosts see Mingla's people by first name only (D19).
+--      host's title is kept plain in plan_title and stored as "{title} ·
+--      {brand}" for the Calendar and the Work board, so a brand rename or a
+--      move never shows a host another brand's name (D29). Nothing is ever cut:
+--      the plan tells the form how long a title may be (title_max, D28). Hosts
+--      change and remove only their own items, while Mingla has not started on
+--      them (D7). Hosts see Mingla's people by first name only (D19).
 --   7. ops_brand_plan_set_link: staff add, change or remove the plan link on
 --      any post or task on the plan (D12).
 --   8. brand_plan_line: a quiet system line in the Brand group when an item
@@ -54,6 +57,14 @@ ALTER TABLE public.content_calendar_items ADD COLUMN collaborator_record_id uuid
 ALTER TABLE public.content_calendar_items ADD COLUMN plan_link_url text;
 ALTER TABLE public.content_calendar_items ADD COLUMN brand_plan_author_id uuid;
 ALTER TABLE public.content_calendar_items ADD COLUMN brand_plan_source text;
+-- D29: the title the brand's hosts see, when the stored title carries more than
+-- that (" · {brand}"). Null means the stored title is the one they see.
+ALTER TABLE public.content_calendar_items ADD COLUMN plan_title text;
+ALTER TABLE public.ops_work_cards ADD COLUMN plan_title text;
+ALTER TABLE public.content_calendar_items ADD CONSTRAINT content_calendar_plan_title_check
+  CHECK (plan_title IS NULL OR char_length(plan_title) BETWEEN 1 AND 160);
+ALTER TABLE public.ops_work_cards ADD CONSTRAINT ops_work_cards_plan_title_check
+  CHECK (plan_title IS NULL OR char_length(plan_title) BETWEEN 1 AND 160);
 ALTER TABLE public.content_calendar_items ADD CONSTRAINT content_calendar_plan_link_check
   CHECK (plan_link_url IS NULL OR (char_length(plan_link_url) BETWEEN 9 AND 2000 AND plan_link_url ~ '^https://[^[:space:]]+$'));
 ALTER TABLE public.content_calendar_items ADD CONSTRAINT content_calendar_plan_source_check
@@ -70,6 +81,10 @@ COMMENT ON COLUMN public.content_calendar_items.plan_link_url IS
   'Issue #4270. The plan link: staff and the brand''s hosts both see it. https only. The Drive link stays staff-only.';
 COMMENT ON COLUMN public.content_calendar_items.brand_plan_author_id IS
   'Issue #4270. The host user who added this post from the Host app. Only with brand_plan_source host_app.';
+COMMENT ON COLUMN public.content_calendar_items.plan_title IS
+  'Issue #4270. The title the brand''s hosts see when the stored title carries more than that. Null: the stored title.';
+COMMENT ON COLUMN public.ops_work_cards.plan_title IS
+  'Issue #4270. The title the brand''s hosts see when the stored title carries more than that. Null: the stored title.';
 COMMENT ON COLUMN public.content_calendar_items.brand_plan_source IS
   'Issue #4270. Where a plan post came from: host_card (staff) or host_app (a host).';
 
@@ -106,15 +121,99 @@ AS $$
   END
 $$;
 
--- Rework (W3 test P3-2): a link with a control character, an invisible
--- formatting character (zero-width, bidirectional and the like), an unusual
--- space, or anything before the site name is refused, so the site name on its
--- button always reads as the site it opens.
+-- Rework (W4 test P2-1, P3-1): the site a link opens, as a browser reads it:
+-- lower case, compatibility forms folded, every full stop a plain one. Null when
+-- there is no site at all, when it could not be one (too long for an address),
+-- or when folding turns part of it into a character that ends a site name.
+CREATE FUNCTION public.brand_plan_link_host(p_url text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE WHEN char_length(n.raw) <= 253 AND n.host !~ '[/?#@:\\[:space:]]' AND n.host ~ '[^.]' THEN n.host END
+    FROM (SELECT r.raw, replace(lower(normalize(lower(r.raw), NFKC)), U&'\3002', '.') AS host
+            FROM (SELECT substring(p_url FROM '^https://([^/?#:]+)') AS raw) r) n
+$$;
+
+-- Rework (W3 test P3-2, W4 test P2-1): a link with a control character, an
+-- invisible formatting character (zero-width, bidirectional and the like), an
+-- unusual space, anything before the site name, or no site name at all is
+-- refused, so the site name on its button always reads as the site it opens.
 CREATE FUNCTION public.brand_plan_link_hidden(p_url text) RETURNS boolean
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT p_url ~ '[[:cntrl:]\u0080-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U000E0000-\U000E0FFF]'
+  SELECT p_url ~ '[[:cntrl:]\u0080-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
       OR p_url ~ '^https://[^/?#]*[@\\]'
+      OR public.brand_plan_link_host(p_url) IS NULL
+$$;
+
+-- Rework (W4 test P3-1, D30): one label of a site name as its real address, the
+-- punycode a browser opens (RFC 3492, section 6.3), with the "xn--" a browser
+-- shows. A plain label stays as it is.
+CREATE FUNCTION public.brand_plan_label_ascii(p_label text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE STRICT SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  c_base constant integer := 36; c_tmin constant integer := 1; c_tmax constant integer := 26;
+  c_skew constant integer := 38; c_damp constant integer := 700;
+  v_points integer[]; v_out text := ''; v_n bigint := 128; v_delta bigint := 0; v_bias integer := 72;
+  v_handled integer := 0; v_basic integer := 0; v_total integer; v_next bigint; v_point integer;
+  v_q bigint; v_k integer; v_t integer; v_digit bigint; v_i integer;
+BEGIN
+  IF p_label !~ '[^\x01-\x7F]' THEN RETURN p_label; END IF;
+  v_total := char_length(p_label);
+  FOR v_i IN 1..v_total LOOP
+    v_points[v_i] := ascii(substr(p_label, v_i, 1));
+    IF v_points[v_i] < 128 THEN
+      v_out := v_out || chr(v_points[v_i]);
+      v_basic := v_basic + 1;
+    END IF;
+  END LOOP;
+  v_handled := v_basic;
+  IF v_basic > 0 THEN v_out := v_out || '-'; END IF;
+  WHILE v_handled < v_total LOOP
+    SELECT min(p) INTO v_next FROM unnest(v_points) p WHERE p >= v_n;
+    v_delta := v_delta + (v_next - v_n) * (v_handled + 1);
+    v_n := v_next;
+    FOREACH v_point IN ARRAY v_points LOOP
+      IF v_point < v_n THEN v_delta := v_delta + 1; END IF;
+      IF v_point = v_n THEN
+        v_q := v_delta;
+        v_k := c_base;
+        LOOP
+          v_t := CASE WHEN v_k <= v_bias THEN c_tmin WHEN v_k >= v_bias + c_tmax THEN c_tmax ELSE v_k - v_bias END;
+          EXIT WHEN v_q < v_t;
+          v_digit := v_t + (v_q - v_t) % (c_base - v_t);
+          v_out := v_out || chr((v_digit + CASE WHEN v_digit < 26 THEN 97 ELSE 22 END)::integer);
+          v_q := (v_q - v_t) / (c_base - v_t);
+          v_k := v_k + c_base;
+        END LOOP;
+        v_out := v_out || chr((v_q + CASE WHEN v_q < 26 THEN 97 ELSE 22 END)::integer);
+        -- Bias adaptation.
+        v_delta := CASE WHEN v_handled = v_basic THEN v_delta / c_damp ELSE v_delta / 2 END;
+        v_delta := v_delta + v_delta / (v_handled + 1);
+        v_k := 0;
+        WHILE v_delta > ((c_base - c_tmin) * c_tmax) / 2 LOOP
+          v_delta := v_delta / (c_base - c_tmin);
+          v_k := v_k + c_base;
+        END LOOP;
+        v_bias := v_k + ((c_base - c_tmin + 1) * v_delta / (v_delta + c_skew))::integer;
+        v_delta := 0;
+        v_handled := v_handled + 1;
+      END IF;
+    END LOOP;
+    v_delta := v_delta + 1;
+    v_n := v_n + 1;
+  END LOOP;
+  RETURN 'xn--' || v_out;
+END;
+$$;
+
+-- What a link's button says: its site, in real characters. A non-Latin site name
+-- shows its real address, so a lookalike never reads as another site (D30).
+CREATE FUNCTION public.brand_plan_link_site(p_url text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT string_agg(public.brand_plan_label_ascii(l.label), '.' ORDER BY l.n)
+    FROM string_to_table(regexp_replace(public.brand_plan_link_host(p_url), '^www\.', ''), '.') WITH ORDINALITY AS l(label, n)
 $$;
 
 -- {url, site} for a plan link ("canva.com"), or null.
@@ -122,8 +221,7 @@ CREATE FUNCTION public.brand_plan_link_json(p_url text) RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT CASE WHEN p_url IS NULL OR p_url !~ '^https://[^[:space:]]+$' OR public.brand_plan_link_hidden(p_url) THEN NULL
-    ELSE jsonb_build_object('url', p_url,
-      'site', regexp_replace(lower(substring(p_url FROM '^https://([^/?#:]+)')), '^www\.', '')) END
+    ELSE jsonb_build_object('url', p_url, 'site', public.brand_plan_link_site(p_url)) END
 $$;
 
 -- "Wed 12 Nov".
@@ -209,41 +307,91 @@ AS $$
      AND public.biz_brand_effective_rank(p_brand_id, p_uid) >= public.biz_role_rank('marketing_manager')
 $$;
 
--- A title as the brand's plan shows it: without the " · {brand}" that
--- host-added items always carry on the Calendar and the Work board.
-CREATE FUNCTION public.brand_plan_title_words(p_title text, p_brand_id uuid) RETURNS text
+-- " · {brand}": what a host-added item carries on the Calendar and the Work
+-- board, where titles are unique.
+CREATE FUNCTION public.brand_plan_title_suffix(p_brand_id uuid) RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT CASE WHEN s.suffix IS NOT NULL AND char_length(p_title) > char_length(s.suffix)
-                   AND right(p_title, char_length(s.suffix)) = s.suffix
-              THEN left(p_title, char_length(p_title) - char_length(s.suffix)) ELSE p_title END
-    FROM (SELECT (SELECT ' · ' || left(b.name, 80) FROM public.brands b WHERE b.id = p_brand_id) AS suffix) s
+  SELECT COALESCE((SELECT ' · ' || left(b.name, 80) FROM public.brands b WHERE b.id = p_brand_id), '')
 $$;
 
--- Rework (W3 test P3-3, D24): a host-added item is always stored as
--- "{title} · {brand}", so what a host is told never depends on titles they
--- cannot see. Null when that title is taken too.
+-- D28: the longest title a host can give on this brand's plan. The stored title
+-- must fit in 160 with the brand's name and, rarely, " (50)" after it. The plan
+-- sends this to the form, so nothing typed is ever cut.
+CREATE FUNCTION public.brand_plan_title_max(p_brand_id uuid) RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT 160 - char_length(public.brand_plan_title_suffix(p_brand_id)) - 5
+$$;
+
+-- Rework (W3 test P3-3, D24; W4 test P2-2, P3-3, P3-5, D28, D29): the stored
+-- title for a host's plain title. "Already planned" (null) only ever means an
+-- item this brand's team can already see has that exact name: what a host is told
+-- never depends on titles they cannot see. A stored title taken by something they
+-- cannot see simply gets a number. A title too long for this brand is refused
+-- with the current limit, never cut, so a form holding an old limit is told.
 CREATE FUNCTION public.brand_plan_host_title(p_kind text, p_title text, p_brand_id uuid, p_except uuid) RETURNS text
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v_suffix text; v_try text;
+DECLARE v_max integer := public.brand_plan_title_max(p_brand_id); v_suffix text := public.brand_plan_title_suffix(p_brand_id);
+  v_key text := public.crm_name_key(p_title); v_try text; v_n integer;
 BEGIN
-  SELECT ' · ' || left(b.name, 80) INTO v_suffix FROM public.brands b WHERE b.id = p_brand_id;
-  v_try := public.brand_plan_title_words(p_title, p_brand_id);
-  v_try := left(v_try, 160 - char_length(COALESCE(v_suffix, ''))) || COALESCE(v_suffix, '');
-  IF p_kind = 'post' AND NOT EXISTS (SELECT 1 FROM public.content_calendar_items i
-                                       WHERE i.deleted_at IS NULL AND i.title_key = public.crm_name_key(v_try)
-                                         AND i.id IS DISTINCT FROM p_except) THEN
-    RETURN v_try;
+  IF char_length(p_title) > v_max THEN
+    RAISE EXCEPTION '%', format('title_too_long: Keep this to %s characters.', v_max) USING ERRCODE = '22023';
   END IF;
-  IF p_kind = 'task' AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards w
-                                       WHERE w.archived_at IS NULL AND w.status <> 'done' AND w.title_key = public.crm_name_key(v_try)
-                                         AND w.id IS DISTINCT FROM p_except) THEN
-    RETURN v_try;
+  IF p_kind = 'post' AND EXISTS (SELECT 1 FROM public.content_calendar_items i
+                                  WHERE i.deleted_at IS NULL AND i.brand_id = p_brand_id AND i.id IS DISTINCT FROM p_except
+                                    AND i.publish_at IS NOT NULL AND public.brand_plan_post_state(i.stage, i.publish_at) IS NOT NULL
+                                    AND public.crm_name_key(COALESCE(i.plan_title, i.title)) = v_key) THEN
+    RETURN NULL;
   END IF;
+  IF p_kind = 'task' AND EXISTS (SELECT 1 FROM public.ops_work_cards w
+                                  WHERE w.archived_at IS NULL AND w.status <> 'done' AND w.on_brand_plan AND w.id IS DISTINCT FROM p_except
+                                    AND EXISTS (SELECT 1 FROM public.ops_work_links l JOIN public.crm_records r ON r.id = l.target_id
+                                                 WHERE l.card_id = w.id AND l.kind = 'host' AND r.pipeline = 'hosts' AND r.deleted_at IS NULL AND r.brand_id = p_brand_id)
+                                    AND public.crm_name_key(COALESCE(w.plan_title, w.title)) = v_key) THEN
+    RETURN NULL;
+  END IF;
+  FOR v_n IN 1..50 LOOP
+    v_try := p_title || v_suffix || CASE WHEN v_n > 1 THEN format(' (%s)', v_n) ELSE '' END;
+    IF p_kind = 'post' AND NOT EXISTS (SELECT 1 FROM public.content_calendar_items i
+                                         WHERE i.deleted_at IS NULL AND i.title_key = public.crm_name_key(v_try)
+                                           AND i.id IS DISTINCT FROM p_except) THEN
+      RETURN v_try;
+    END IF;
+    IF p_kind = 'task' AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards w
+                                         WHERE w.archived_at IS NULL AND w.status <> 'done' AND w.title_key = public.crm_name_key(v_try)
+                                           AND w.id IS DISTINCT FROM p_except) THEN
+      RETURN v_try;
+    END IF;
+  END LOOP;
   RETURN NULL;
 END;
 $$;
+
+-- D29: when anyone changes a stored title without saying what hosts should see
+-- (staff on the Calendar or a card, an agent, an undo), hosts see the new words:
+-- without the old tail when it is still there, or the whole new title.
+CREATE FUNCTION public.brand_plan_title_follow() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_tail text;
+BEGIN
+  IF NEW.title IS NOT DISTINCT FROM OLD.title OR OLD.plan_title IS NULL OR NEW.plan_title IS DISTINCT FROM OLD.plan_title THEN
+    RETURN NEW;
+  END IF;
+  IF left(OLD.title, char_length(OLD.plan_title)) = OLD.plan_title THEN
+    v_tail := substr(OLD.title, char_length(OLD.plan_title) + 1);
+  END IF;
+  NEW.plan_title := CASE WHEN v_tail <> '' AND char_length(NEW.title) > char_length(v_tail) AND right(NEW.title, char_length(v_tail)) = v_tail
+                         THEN left(NEW.title, char_length(NEW.title) - char_length(v_tail)) END;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER content_calendar_items_plan_title_follow BEFORE UPDATE OF title ON public.content_calendar_items
+  FOR EACH ROW EXECUTE FUNCTION public.brand_plan_title_follow();
+CREATE TRIGGER ops_work_cards_plan_title_follow BEFORE UPDATE OF title ON public.ops_work_cards
+  FOR EACH ROW EXECUTE FUNCTION public.brand_plan_title_follow();
 
 -- A from/to window of at most 120 days.
 CREATE FUNCTION public.brand_plan_window_check(p_from date, p_to date) RETURNS void
@@ -264,7 +412,9 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_try text;
 BEGIN
-  FOREACH v_try IN ARRAY ARRAY[p_title, left(p_title, GREATEST(1, 160 - char_length(' · ' || COALESCE(p_brand_name, '')))) || ' · ' || COALESCE(p_brand_name, '')] LOOP
+  -- Rework (W4 test P2-2): never cut. With no room for the brand's name, the
+  -- person is asked to change the name a little.
+  FOREACH v_try IN ARRAY ARRAY[p_title, p_title || ' · ' || COALESCE(p_brand_name, '')] LOOP
     CONTINUE WHEN v_try IS NULL OR char_length(v_try) > 160;
     IF p_kind = 'post' AND NOT EXISTS (SELECT 1 FROM public.content_calendar_items i
                                          WHERE i.deleted_at IS NULL AND i.title_key = public.crm_name_key(v_try)
@@ -321,7 +471,7 @@ CREATE FUNCTION public.brand_plan_post_item(i public.content_calendar_items, p_f
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT CASE WHEN p_for_host THEN
-    jsonb_build_object('kind', 'post', 'id', i.id, 'title', public.brand_plan_title_words(i.title, i.brand_id),
+    jsonb_build_object('kind', 'post', 'id', i.id, 'title', COALESCE(i.plan_title, i.title),
       'on', (i.publish_at AT TIME ZONE 'UTC')::date,
       'at', CASE WHEN i.stage IN ('scheduled','published') THEN i.publish_at END,
       'state', public.brand_plan_post_state(i.stage, i.publish_at),
@@ -350,7 +500,7 @@ CREATE FUNCTION public.brand_plan_card_item(c public.ops_work_cards, p_for_host 
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT CASE WHEN p_for_host THEN
-    jsonb_build_object('kind', 'task', 'id', c.id, 'title', public.brand_plan_title_words(c.title, public.brand_plan_card_brand(c.id)),
+    jsonb_build_object('kind', 'task', 'id', c.id, 'title', COALESCE(c.plan_title, c.title),
       'on', c.due_on, 'at', NULL,
       'state', c.status, 'state_words', public.brand_plan_state_words(c.status),
       'link', public.brand_plan_link_json(c.files_url),
@@ -484,7 +634,7 @@ BEGIN
        AND CASE WHEN w.live THEN GREATEST(w.start_on, v_today) ELSE w.start_on END BETWEEN p_from AND p_to
   ) x;
   RETURN jsonb_build_object('brand', jsonb_build_object('id', b.id, 'name', b.name), 'today', v_today,
-    'from', p_from, 'to', p_to, 'can_add', v_can_write, 'items', v_items);
+    'from', p_from, 'to', p_to, 'can_add', v_can_write, 'title_max', public.brand_plan_title_max(b.id), 'items', v_items);
 END;
 $$;
 
@@ -529,7 +679,7 @@ BEGIN
     END IF;
   END IF;
   IF p_need_type OR p_item ? 'on' THEN
-    IF jsonb_typeof(p_item->'on') <> 'string' OR (p_item->>'on') !~ '^\d{4}-\d{2}-\d{2}$' THEN
+    IF jsonb_typeof(p_item->'on') IS DISTINCT FROM 'string' OR (p_item->>'on') !~ '^\d{4}-\d{2}-\d{2}$' THEN
       RAISE EXCEPTION 'invalid_date: Pick a date.' USING ERRCODE = '22023';
     END IF;
     BEGIN
@@ -603,15 +753,15 @@ BEGIN
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
-    INSERT INTO public.content_calendar_items (title, owner_emails, publish_at, notes, brand_id, plan_link_url, brand_plan_source, created_by, updated_by)
-    VALUES (v_title, COALESCE((SELECT array_agg(DISTINCT x) FROM unnest(v_owners) x), ARRAY[v.actor_email]),
+    INSERT INTO public.content_calendar_items (title, plan_title, owner_emails, publish_at, notes, brand_id, plan_link_url, brand_plan_source, created_by, updated_by)
+    VALUES (v_title, NULLIF(cl->>'title', v_title), COALESCE((SELECT array_agg(DISTINCT x) FROM unnest(v_owners) x), ARRAY[v.actor_email]),
             (v_on::timestamp + time '12:00') AT TIME ZONE 'UTC', cl->>'note', b.id, cl->>'link', 'host_card', v.actor_email, v.actor_email)
     RETURNING * INTO i;
     PERFORM public.content_calendar_audit_write(i.id, v.actor_email, NULL, 'content.created',
       jsonb_build_object('to_revision', i.revision, 'source', 'host_card',
         'changed_fields', jsonb_build_array('title','owners','stage','publish_at','brand_id','plan_link_url')));
     PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_who,
-      public.brand_plan_title_words(i.title, b.id), public.brand_plan_day_words(v_on)));
+      cl->>'title', public.brand_plan_day_words(v_on)));
     v_out := jsonb_build_object('kind', 'post', 'status', 'added', 'title_changed', i.title <> (cl->>'title'),
       'item', public.brand_plan_post_item(i, false, NULL, false));
   ELSE
@@ -640,9 +790,11 @@ BEGIN
     v_res := public.ops_work_add(jsonb_build_array(v_task), p_request_key || '-task');
     v_row := v_res->'results'->0;
     IF v_row->>'status' = 'added' THEN
-      SELECT * INTO c FROM public.ops_work_cards w WHERE w.id = (v_row #>> '{card,id}')::uuid;
+      -- D29: hosts see the plain title when the stored one had to carry more.
+      UPDATE public.ops_work_cards w SET plan_title = NULLIF(cl->>'title', w.title)
+       WHERE w.id = (v_row #>> '{card,id}')::uuid RETURNING * INTO c;
       PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_who,
-        public.brand_plan_title_words(c.title, b.id), public.brand_plan_day_words(v_on)));
+        cl->>'title', public.brand_plan_day_words(v_on)));
       v_out := jsonb_build_object('kind', 'task', 'status', 'added', 'title_changed', c.title <> (cl->>'title'),
         'item', public.brand_plan_card_item(c, false, NULL, false), 'card', v_row->'card');
     ELSE
@@ -683,7 +835,7 @@ BEGIN
     SELECT * INTO c FROM public.ops_work_cards x WHERE x.id = p_id AND x.archived_at IS NULL AND x.on_brand_plan;
     v_brand := CASE WHEN FOUND THEN public.brand_plan_card_brand(c.id) END;
     IF v_brand IS NULL THEN RAISE EXCEPTION 'not_found: That item is no longer on the plan.' USING ERRCODE = 'P0002'; END IF;
-    v_words := public.brand_plan_link_words(public.brand_plan_staff_first(v.actor_email), public.brand_plan_title_words(c.title, v_brand), c.files_url, v_link);
+    v_words := public.brand_plan_link_words(public.brand_plan_staff_first(v.actor_email), COALESCE(c.plan_title, c.title), c.files_url, v_link);
     PERFORM public.ops_work_update(p_id, jsonb_build_object('files_url', v_link), p_expected_revision, NULL);
     PERFORM public.brand_plan_line(v_brand, v_words);
     SELECT * INTO c FROM public.ops_work_cards x WHERE x.id = p_id;
@@ -719,7 +871,7 @@ BEGIN
   v_replay := public.ops_request_begin(v_actor, p_request_key, 'brand_plan_host_add', jsonb_build_object('brand_id', p_brand_id, 'item', p_item));
   IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
   cl := public.brand_plan_clean_item(p_item, ARRAY['type','title','on','link','note'], v_today, true);
-  v_title := cl->>'title'; v_on := (cl->>'on')::date;
+  v_shown := cl->>'title'; v_title := v_shown; v_on := (cl->>'on')::date;
   -- At most 30 adds a day for one person on one brand.
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('brand_plan_host_add:' || v_uid::text || ':' || p_brand_id::text, 0));
   SELECT (SELECT count(*) FROM public.content_calendar_items x
@@ -734,23 +886,23 @@ BEGIN
   v_owners := ARRAY(SELECT o.owner_email FROM public.crm_record_owners o WHERE o.record_id = v_record ORDER BY o.added_at, o.owner_email);
 
   IF cl->>'type' = 'post' THEN
-    -- D24 (rework, P3-3): always "{title} · {brand}" on the Calendar.
-    v_title := public.brand_plan_host_title('post', v_title, b.id, NULL);
+    -- D24 (rework, P3-3): always "{title} · {brand}" on the Calendar; hosts
+    -- see the plain title (D29).
+    v_title := public.brand_plan_host_title('post', v_shown, b.id, NULL);
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
-    INSERT INTO public.content_calendar_items (title, owner_emails, publish_at, notes, brand_id, plan_link_url,
+    INSERT INTO public.content_calendar_items (title, plan_title, owner_emails, publish_at, notes, brand_id, plan_link_url,
       brand_plan_author_id, brand_plan_source, created_by, updated_by)
-    VALUES (v_title, v_owners, (v_on::timestamp + time '12:00') AT TIME ZONE 'UTC',
+    VALUES (v_title, v_shown, v_owners, (v_on::timestamp + time '12:00') AT TIME ZONE 'UTC',
       format('Added by %s in the Host app.', v_name) || COALESCE(' Note: ' || (cl->>'note'), ''),
       b.id, cl->>'link', v_uid, 'host_app', v_actor, v_actor)
     RETURNING * INTO i;
     PERFORM public.content_calendar_audit_write(i.id, v_actor, NULL, 'content.created',
       jsonb_build_object('to_revision', i.revision, 'source', 'host_app',
         'changed_fields', jsonb_build_array('title','owners','stage','publish_at','brand_id','plan_link_url')));
-    v_shown := public.brand_plan_title_words(i.title, b.id);
     PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_name, v_shown, public.brand_plan_day_words(v_on)));
-    v_out := jsonb_build_object('kind', 'post', 'status', 'added', 'title_changed', v_shown <> (cl->>'title'),
+    v_out := jsonb_build_object('kind', 'post', 'status', 'added',
       'item', public.brand_plan_post_item(i, true, v_uid, true));
   ELSE
     IF v_record IS NULL THEN
@@ -759,7 +911,7 @@ BEGIN
     IF char_length(v_title) < 3 THEN
       RAISE EXCEPTION 'invalid_title: Say what it is in 3 to 160 characters.' USING ERRCODE = '22023';
     END IF;
-    v_title := public.brand_plan_host_title('task', v_title, b.id, NULL);
+    v_title := public.brand_plan_host_title('task', v_shown, b.id, NULL);
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
@@ -767,9 +919,9 @@ BEGIN
     v_watchers := ARRAY(SELECT DISTINCT o.owner_email FROM public.crm_record_owners o JOIN public.crm_records x ON x.id = o.record_id
                          WHERE x.brand_id = b.id AND x.pipeline = 'hosts' AND x.deleted_at IS NULL AND x.id <> v_record
                            AND NOT (o.owner_email = ANY (v_owners)));
-    INSERT INTO public.ops_work_cards (title, instructions, done_means, status, kind, due_on, due_source, sprint_id, plan,
+    INSERT INTO public.ops_work_cards (title, plan_title, instructions, done_means, status, kind, due_on, due_source, sprint_id, plan,
       files_url, on_brand_plan, brand_plan_author_id, brand_plan_source, created_by, created_via, updated_by, updated_via)
-    VALUES (v_title,
+    VALUES (v_title, v_shown,
       format('Added by %s from the Brand group plan.', v_name) || COALESCE(' Note: ' || (cl->>'note'), ''),
       'Done and the host is told in the Brand group.', 'todo', 'task', v_on, 'explicit',
       public.ops_sprint_for(v_on, public.ops_today(NULL)), '[]'::jsonb,
@@ -782,9 +934,8 @@ BEGIN
     PERFORM public.ops_notify_people(c.id, v_event, v_watchers, v_actor, format('%s added a task on the %s plan: %s', v_name, b.name, c.title));
     PERFORM public.ops_log_write(v_actor, NULL, 'card_added', 'ok', c.id, 'work_card', c.id,
       format('Added Card %s from the Host app: %s', c.number, c.title), jsonb_build_object('source', 'host_app', 'owners', cardinality(v_owners)));
-    v_shown := public.brand_plan_title_words(c.title, b.id);
     PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_name, v_shown, public.brand_plan_day_words(v_on)));
-    v_out := jsonb_build_object('kind', 'task', 'status', 'added', 'title_changed', v_shown <> (cl->>'title'),
+    v_out := jsonb_build_object('kind', 'task', 'status', 'added',
       'item', public.brand_plan_card_item(c, true, v_uid, true));
   END IF;
   PERFORM public.ops_request_finish(v_actor, p_request_key, 'brand_plan_host_add', v_out);
@@ -862,15 +1013,17 @@ BEGIN
     END IF;
     PERFORM public.brand_plan_host_change_check(v_brand, v_uid, v_actor);
     v_title := i.title;
+    v_shown := i.plan_title;
     IF (cl->>'has_title')::boolean THEN
-      v_title := public.brand_plan_host_title('post', cl->>'title', b.id, i.id);
+      v_shown := cl->>'title';
+      v_title := public.brand_plan_host_title('post', v_shown, b.id, i.id);
       IF v_title IS NULL THEN
         RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
       END IF;
     END IF;
     v_on := CASE WHEN (cl->>'has_on')::boolean THEN (cl->>'on')::date ELSE (i.publish_at AT TIME ZONE 'UTC')::date END;
     v_link := CASE WHEN (cl->>'has_link')::boolean THEN cl->>'link' ELSE i.plan_link_url END;
-    UPDATE public.content_calendar_items SET title = v_title,
+    UPDATE public.content_calendar_items SET title = v_title, plan_title = v_shown,
       publish_at = CASE WHEN (cl->>'has_on')::boolean THEN (v_on::timestamp + time '12:00') AT TIME ZONE 'UTC' ELSE publish_at END,
       plan_link_url = v_link,
       notes = CASE WHEN (cl->>'has_note')::boolean THEN format('Added by %s in the Host app.', v_name) || COALESCE(' Note: ' || (cl->>'note'), '') ELSE notes END,
@@ -883,8 +1036,8 @@ BEGIN
     PERFORM public.content_calendar_audit_write(n.id, v_actor, NULL,
       CASE WHEN v_fields = ARRAY['publish_at'] THEN 'content.rescheduled' ELSE 'content.updated' END,
       jsonb_build_object('changed_fields', to_jsonb(v_fields), 'from_revision', i.revision, 'to_revision', n.revision, 'source', 'host_app'));
-    v_old_shown := public.brand_plan_title_words(i.title, v_brand);
-    v_shown := public.brand_plan_title_words(n.title, v_brand);
+    v_old_shown := COALESCE(i.plan_title, i.title);
+    v_shown := COALESCE(n.plan_title, n.title);
     IF n.publish_at IS DISTINCT FROM i.publish_at THEN
       PERFORM public.brand_plan_line(v_brand, format('%s moved “%s” to %s.', v_name, v_shown, public.brand_plan_day_words(v_on)));
     END IF;
@@ -903,25 +1056,27 @@ BEGIN
   END IF;
   PERFORM public.brand_plan_host_change_check(v_brand, v_uid, v_actor);
   v_title := c.title;
+  v_shown := c.plan_title;
   IF (cl->>'has_title')::boolean THEN
     IF char_length(cl->>'title') < 3 THEN
       RAISE EXCEPTION 'invalid_title: Say what it is in 3 to 160 characters.' USING ERRCODE = '22023';
     END IF;
-    v_title := public.brand_plan_host_title('task', cl->>'title', b.id, c.id);
+    v_shown := cl->>'title';
+    v_title := public.brand_plan_host_title('task', v_shown, b.id, c.id);
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
   END IF;
   v_before := public.ops_card_snapshot(c.id);
-  UPDATE public.ops_work_cards SET title = v_title,
+  UPDATE public.ops_work_cards SET title = v_title, plan_title = v_shown,
     due_on = CASE WHEN (cl->>'has_on')::boolean THEN (cl->>'on')::date ELSE due_on END, due_source = 'explicit',
     files_url = CASE WHEN (cl->>'has_link')::boolean THEN cl->>'link' ELSE files_url END,
     instructions = CASE WHEN (cl->>'has_note')::boolean THEN format('Added by %s from the Brand group plan.', v_name) || COALESCE(' Note: ' || (cl->>'note'), '') ELSE instructions END,
     revision = revision + 1, updated_by = v_actor, updated_via = NULL, updated_at = now()
    WHERE id = c.id RETURNING * INTO w;
   PERFORM public.ops_card_event(w.id, v_actor, NULL, 'updated', 'Changed from the Host app.', v_before, public.ops_card_snapshot(w.id), c.revision, w.revision);
-  v_old_shown := public.brand_plan_title_words(c.title, v_brand);
-  v_shown := public.brand_plan_title_words(w.title, v_brand);
+  v_old_shown := COALESCE(c.plan_title, c.title);
+  v_shown := COALESCE(w.plan_title, w.title);
   IF w.due_on IS DISTINCT FROM c.due_on THEN
     PERFORM public.brand_plan_line(v_brand, format('%s moved “%s” to %s.', v_name, v_shown, public.brand_plan_day_words(w.due_on)));
   END IF;
@@ -972,7 +1127,7 @@ BEGIN
      WHERE id = i.id RETURNING * INTO n;
     PERFORM public.content_calendar_audit_write(n.id, v_actor, NULL, 'content.deleted',
       jsonb_build_object('from_revision', i.revision, 'to_revision', n.revision, 'changed_fields', jsonb_build_array('deleted_at'), 'source', 'host_app'));
-    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, public.brand_plan_title_words(i.title, v_brand)));
+    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, COALESCE(i.plan_title, i.title)));
     RETURN jsonb_build_object('kind', 'post', 'id', i.id, 'removed', true);
   END IF;
   IF c.status <> 'todo' THEN
@@ -986,7 +1141,7 @@ BEGIN
     revision = revision + 1, updated_by = v_actor, updated_via = NULL, updated_at = now()
    WHERE id = c.id RETURNING * INTO w;
   PERFORM public.ops_card_event(w.id, v_actor, NULL, 'archived', 'Removed by the host in the Host app.', v_before, public.ops_card_snapshot(w.id), c.revision, w.revision);
-  PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, public.brand_plan_title_words(c.title, v_brand)));
+  PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, COALESCE(c.plan_title, c.title)));
   RETURN jsonb_build_object('kind', 'task', 'id', c.id, 'removed', true);
 END;
 $$;
@@ -1009,9 +1164,9 @@ BEGIN
   v_who := public.brand_plan_staff_first(NEW.updated_by);
   IF NEW.on_brand_plan THEN
     PERFORM public.brand_plan_line(v_brand, format('%s added “%s” to the plan for %s.', v_who,
-      public.brand_plan_title_words(NEW.title, v_brand), public.brand_plan_day_words(NEW.due_on)));
+      COALESCE(NEW.plan_title, NEW.title), public.brand_plan_day_words(NEW.due_on)));
   ELSE
-    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_who, public.brand_plan_title_words(NEW.title, v_brand)));
+    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_who, COALESCE(NEW.plan_title, NEW.title)));
   END IF;
   RETURN NEW;
 END;
@@ -1197,20 +1352,20 @@ BEGIN
   v_old_state := CASE WHEN v_old.brand_id IS NOT NULL THEN public.brand_plan_post_state(v_old.stage, v_old.publish_at) END;
   v_new_state := CASE WHEN v_item.brand_id IS NOT NULL THEN public.brand_plan_post_state(v_item.stage, v_item.publish_at) END;
   IF v_old_state IS NOT NULL AND (v_new_state IS NULL OR v_old.brand_id IS DISTINCT FROM v_item.brand_id) THEN
-    PERFORM public.brand_plan_line(v_old.brand_id, format('%s removed “%s” from the plan.', v_who, public.brand_plan_title_words(v_old.title, v_old.brand_id)));
+    PERFORM public.brand_plan_line(v_old.brand_id, format('%s removed “%s” from the plan.', v_who, COALESCE(v_old.plan_title, v_old.title)));
   END IF;
   IF v_new_state IS NOT NULL AND (v_old_state IS NULL OR v_old.brand_id IS DISTINCT FROM v_item.brand_id) THEN
-    PERFORM public.brand_plan_line(v_item.brand_id, format('%s added “%s” to the plan for %s.', v_who, public.brand_plan_title_words(v_item.title, v_item.brand_id),
+    PERFORM public.brand_plan_line(v_item.brand_id, format('%s added “%s” to the plan for %s.', v_who, COALESCE(v_item.plan_title, v_item.title),
       public.brand_plan_day_words((v_item.publish_at AT TIME ZONE 'UTC')::date)));
   ELSIF v_new_state IS NOT NULL THEN
     IF (v_old.publish_at AT TIME ZONE 'UTC')::date IS DISTINCT FROM (v_item.publish_at AT TIME ZONE 'UTC')::date THEN
-      PERFORM public.brand_plan_line(v_item.brand_id, format('%s moved “%s” to %s.', v_who, public.brand_plan_title_words(v_item.title, v_item.brand_id),
+      PERFORM public.brand_plan_line(v_item.brand_id, format('%s moved “%s” to %s.', v_who, COALESCE(v_item.plan_title, v_item.title),
         public.brand_plan_day_words((v_item.publish_at AT TIME ZONE 'UTC')::date)));
     END IF;
     IF v_old.title IS DISTINCT FROM v_item.title THEN
-      PERFORM public.brand_plan_line(v_item.brand_id, format('%s renamed “%s” to “%s”.', v_who, public.brand_plan_title_words(v_old.title, v_item.brand_id), public.brand_plan_title_words(v_item.title, v_item.brand_id)));
+      PERFORM public.brand_plan_line(v_item.brand_id, format('%s renamed “%s” to “%s”.', v_who, COALESCE(v_old.plan_title, v_old.title), COALESCE(v_item.plan_title, v_item.title)));
     END IF;
-    PERFORM public.brand_plan_line(v_item.brand_id, public.brand_plan_link_words(v_who, public.brand_plan_title_words(v_item.title, v_item.brand_id), v_old.plan_link_url, v_item.plan_link_url));
+    PERFORM public.brand_plan_line(v_item.brand_id, public.brand_plan_link_words(v_who, COALESCE(v_item.plan_title, v_item.title), v_old.plan_link_url, v_item.plan_link_url));
   END IF;
   v_out := jsonb_build_object('item', v_after, 'audit_id', v_audit);
   PERFORM public.content_calendar_request_finish(v.actor_email, p_request_key, 'update', v_out);
@@ -1298,9 +1453,14 @@ REVOKE ALL ON FUNCTION public.brand_plan_line(uuid, text) FROM PUBLIC, anon, aut
 REVOKE ALL ON FUNCTION public.brand_plan_post_item(public.content_calendar_items, boolean, uuid, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_card_item(public.ops_work_cards, boolean, uuid, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_link_hidden(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_link_host(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_label_ascii(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_link_site(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_can_read(uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_can_write(uuid, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.brand_plan_title_words(text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_title_suffix(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_title_max(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_title_follow() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_host_title(text, text, uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_host_change_check(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_flag_line() FROM PUBLIC, anon, authenticated;
@@ -1367,7 +1527,10 @@ BEGIN
      OR public.brand_plan_link_json('https://canva.com' || chr(8238) || 'moc.evil') IS NOT NULL
      OR public.brand_plan_link_json('https://canva.com' || chr(7) || 'x') IS NOT NULL
      OR public.brand_plan_link_json('https://canva.com:x@evil.example') IS NOT NULL
-     OR public.brand_plan_link_json('https://canva.com/a@b') IS NULL THEN
+     OR public.brand_plan_link_json('https://canva.com/a@b') IS NULL
+     OR public.brand_plan_link_json('https:///evil.example') IS NOT NULL
+     OR public.brand_plan_link_json('https://:443/evil') IS NOT NULL
+     OR public.brand_plan_link_json('https://bücher.example/x')->>'site' <> 'xn--bcher-kva.example' THEN
     RAISE EXCEPTION 'issue 4270 wave 3 self-check: plan links are not checked as stated';
   END IF;
   -- Who reads and who writes (D14): the read rule names the Brand group's

@@ -10,8 +10,9 @@
 --   L-CLASS   link characters by class, through all four doors (host add, host
 --             update, staff set_link, the Calendar); what may follow the site
 --             name stays allowed
---   S-SHOWN   the stored title always carries the suffix within 160; the shown
---             title never does; plan lines use the shown title
+--   S-SHOWN   the stored title always carries the suffix within 160, and a title
+--             that cannot fit is refused, never cut; the shown title never
+--             carries it; plan lines use the shown title
 --   R-LIMIT   12 changes an hour is per person and per brand, is shared by
 --             posts and tasks, and a refused change writes nothing
 --   F-FLAG    the card flag trigger: no Brand group, done and archived cards,
@@ -202,7 +203,9 @@ begin
     'https://canva.com/' || U&'\00A0' || 'x', 'https://canva.com/' || U&'\FEFF' || 'x', 'https://canva.com/' || U&'\+0E0061' || 'x',
     'https://canva.com/' || U&'\2060' || 'x', 'https://canva.com/' || U&'\3000' || 'x', 'https://canva.com/' || U&'\180E' || 'x',
     'https://user@evil.example/', 'https://canva.com:x@evil.example/', 'https://canva.com%2F@evil.example/', 'https://canva.com\@evil.example/',
-    'https://canva.com\evil.example/', 'HTTPS://canva.com/x', 'http://canva.com/x', 'javascript:alert(1)', 'https://', 'https://a b.example/'];
+    'https://canva.com\evil.example/', 'HTTPS://canva.com/x', 'http://canva.com/x', 'javascript:alert(1)', 'https://', 'https://a b.example/',
+    'https:///evil.example', 'https://:443/evil', 'https://?x=1', 'https://#x',
+    'https://canva.com' || U&'\+01D173' || '.evil.example'];
   foreach v_good in array v_bad loop
     v_i := v_i + 1;
     v_t := pg_temp.v_add('ola', A, jsonb_build_object('type', 'post', 'title', 'V4270 link ' || v_i, 'on', pg_temp.v_day(9), 'link', v_good), 'vlinkkey' || lpad(v_i::text, 4, '0'));
@@ -228,7 +231,7 @@ begin
   perform pg_temp.v_check('S-SHOWN', 'stored with the suffix',
     (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid), 'V4270 shown · V4270 Basil');
   perform pg_temp.v_check('S-SHOWN', 'shown without it', v #>> '{item,title}', 'V4270 shown');
-  perform pg_temp.v_check('S-SHOWN', 'not called changed', v ->> 'title_changed', 'false');
+  perform pg_temp.v_check('S-SHOWN', 'the answer no longer speaks of a changed title', (v ? 'title_changed')::text, 'false');
   v := pg_temp.v_read('venue', A);
   perform pg_temp.v_check('S-SHOWN', 'nobody reads the suffix on their own brand',
     (select count(*)::text from jsonb_array_elements(v->'items') i where i->>'title' like '% · V4270 Basil'), '0');
@@ -236,13 +239,12 @@ begin
     (select string_agg(content, '|') from public.messages where conversation_id = CA::uuid and content like '%V4270 shown%'), '%“V4270 shown” to the plan for%');
   perform pg_temp.v_check('S-SHOWN', 'and never the suffix',
     (select count(*)::text from public.messages where conversation_id = CA::uuid and message_type = 'system' and content like '%· V4270 Basil%'), '0');
-  v := pg_temp.v_add('ola', A, jsonb_build_object('type', 'post', 'title', repeat('L', 160), 'on', pg_temp.v_day(9)), 'vshown00002')::jsonb;
-  perform pg_temp.v_check('S-SHOWN', '160 characters: stored within the limit',
-    (select (char_length(title) <= 160)::text from public.content_calendar_items where id = (v #>> '{item,id}')::uuid), 'true');
-  perform pg_temp.v_check('S-SHOWN', '160 characters: said to be changed', v ->> 'title_changed', 'true');
-  v_t := pg_temp.v_add('ola', A, jsonb_build_object('type', 'task', 'title', 'V4270 long task ' || repeat('T', 144), 'on', pg_temp.v_day(9)), 'vshown00003');
-  perform pg_temp.v_check('S-SHOWN', 'a 160-character task saves',
-    (select (char_length(title) <= 160)::text from public.ops_work_cards where id = (v_t::jsonb #>> '{item,id}')::uuid), 'true');
+  v_t := pg_temp.v_add('ola', A, jsonb_build_object('type', 'post', 'title', repeat('L', 160), 'on', pg_temp.v_day(9)), 'vshown00002');
+  perform pg_temp.v_like('S-SHOWN', '160 characters: refused, never cut', v_t, 'ERR:22023:title_too_long: Keep this to 141 characters.');
+  v := pg_temp.v_add('ola', A, jsonb_build_object('type', 'task', 'title', 'V4270 long task ' || repeat('T', 141 - 16), 'on', pg_temp.v_day(9)), 'vshown00003')::jsonb;
+  perform pg_temp.v_check('S-SHOWN', 'a task at the limit is whole',
+    (select title from public.ops_work_cards where id = (v #>> '{item,id}')::uuid), 'V4270 long task ' || repeat('T', 141 - 16) || ' · V4270 Basil');
+  perform pg_temp.v_check('S-SHOWN', 'the plan tells the form the limit', pg_temp.v_read('ola', A) ->> 'title_max', '141');
   perform set_config('session_replication_role', 'replica', true);
   update public.brands set name = repeat('N', 200) where id = B::uuid;
   perform set_config('session_replication_role', 'origin', true);
@@ -252,7 +254,7 @@ begin
   update public.brands set name = 'V4270 Cedar' where id = B::uuid;
   perform set_config('session_replication_role', 'origin', true);
   perform pg_temp.v_check('S-SHOWN', 'the same title on another brand is free',
-    (pg_temp.v_add('bob', B, jsonb_build_object('type', 'post', 'title', 'V4270 shown', 'on', pg_temp.v_day(9)), 'vshown00005')::jsonb ->> 'title_changed'), 'false');
+    (pg_temp.v_add('bob', B, jsonb_build_object('type', 'post', 'title', 'V4270 shown', 'on', pg_temp.v_day(9)), 'vshown00005')::jsonb #>> '{item,title}'), 'V4270 shown');
   perform pg_temp.v_like('S-SHOWN', 'twice on one brand: the D24 words',
     pg_temp.v_add('ola', A, jsonb_build_object('type', 'post', 'title', 'v4270   SHOWN', 'on', pg_temp.v_day(9)), 'vshown00006'), 'ERR:23505:duplicate_title:%');
 
@@ -307,7 +309,7 @@ begin
   v := pg_temp.v_add('ola', A, jsonb_build_object('type', 'task', 'title', 'V4270 keys task', 'on', pg_temp.v_day(10), 'link', 'https://canva.com/k'), 'vkeys000001')::jsonb;
   for r in select * from (values ('ola'), ('scan'), ('venue')) x(who) loop
     v := pg_temp.v_read(r.who, A);
-    perform pg_temp.v_check('K-KEYS', r.who || ': top keys', (select string_agg(k, ',' order by k) from jsonb_object_keys(v) k), 'brand,can_add,from,items,to,today');
+    perform pg_temp.v_check('K-KEYS', r.who || ': top keys', (select string_agg(k, ',' order by k) from jsonb_object_keys(v) k), 'brand,can_add,from,items,title_max,to,today');
     perform pg_temp.v_check('K-KEYS', r.who || ': post keys', (select string_agg(distinct k, ',' order by k) from jsonb_array_elements(v->'items') i, jsonb_object_keys(i) k where i->>'kind' = 'post'),
       'at,by,can_edit,id,kind,link,live_url,mine,on,revision,state,state_words,title');
     perform pg_temp.v_check('K-KEYS', r.who || ': task keys', (select string_agg(distinct k, ',' order by k) from jsonb_array_elements(v->'items') i, jsonb_object_keys(i) k where i->>'kind' = 'task'),

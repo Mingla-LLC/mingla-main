@@ -232,7 +232,7 @@ BEGIN
     v_files := CASE WHEN jsonb_typeof(p_item->'files_url') = 'string' THEN btrim(p_item->>'files_url') END;
     IF v_files = '' THEN v_files := NULL;
     ELSIF v_files IS NULL OR char_length(v_files) NOT BETWEEN 9 AND 2000 OR v_files !~ '^https://[^[:space:]]+$'
-          OR public.ops_has_control(v_files) THEN
+          OR v_files !~ '^https://[^/?#:@\\]' OR public.ops_has_control(v_files) THEN
       v_fixes := v_fixes || jsonb_build_array(jsonb_build_object('field', 'files_url', 'message', 'Links start with https:// and stay under 2,000 characters.'));
       v_files := NULL;
     END IF;
