@@ -129,6 +129,10 @@
       "body": "Filtra per giorno, atmosfera, musica, destinazione e altro ancora. Le scelte cambiano con ogni pillola."
     },
     "list_two": "{{a}} e {{b}}",
-    "list_three": "{{a}}, {{b}} e {{c}}"
+    "list_three": "{{a}}, {{b}} e {{c}}",
+    "step3": {
+      "title": "Qui vivono i tuoi salvataggi",
+      "description": "Tutto ciò a cui metti il cuore finisce in Mi piace. Condividilo o mettilo in calendario con un tocco."
+    }
   }
 }

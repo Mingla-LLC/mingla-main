@@ -22,17 +22,18 @@ import { useCoachMark } from "../hooks/useCoachMark";
 import { useCoachMarkContext } from "../contexts/CoachMarkContext";
 import { shouldSkipDiscoverPillCoachStep } from "../contexts/coachMarkSkipState";
 import { useDiscoverCityWatch } from "../hooks/useDiscoverCityWatch";
-import { useDiscoverFacets } from "../hooks/useDiscoverFacets";
-import { useDiscoverFeed } from "../hooks/useDiscoverFeed";
-import { discoverKeys } from "../hooks/discoverQueryKeys";
-import { savedCardKeys } from "../hooks/queryKeys";
+import { discoverFacetsQueryOptions, useDiscoverFacets } from "../hooks/useDiscoverFacets";
+import { discoverFeedQueryOptions, useDiscoverFeed } from "../hooks/useDiscoverFeed";
+import { discoverKeys, discoverLastCityKeys } from "../hooks/discoverQueryKeys";
+import { savedCardKeys, userPreferencesKeys } from "../hooks/queryKeys";
+import { fetchUserPreferences } from "../hooks/useUserPreferences";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { geocodingService } from "../services/geocodingService";
 import { mixpanelService } from "../services/mixpanelService";
 import { offlineService } from "../services/offlineService";
-import { captureConsumerOfferingEngagement } from "../services/offeringEngagementService";
 import { PreferencesService } from "../services/preferencesService";
+import { captureConsumerOfferingEngagement } from "../services/offeringEngagementService";
 import { savedCardsService } from "../services/savedCardsService";
 import { discoverCityWatchService } from "../services/discoverCityWatchService";
 import { openExpandedCardContentShare } from "../services/contentShareController";
@@ -41,7 +42,8 @@ import type { DiscoverCity } from "../types/discoverFilters";
 import { DISCOVER_KIND_ORDER, emptyDiscoverFilters, type DiscoverAnchorV2, type DiscoverCardV2, type DiscoverFiltersV2, type DiscoverKind } from "../types/discoverFeed";
 import type { ExpandedCardData } from "../types/expandedCardTypes";
 import type { ExpansionTarget } from "../types/expansion";
-import { discoverCityFromPreferences, discoverQueryAnchorKey, readLastResolvedDiscoverCity, sameDiscoverAnchorCity, writeResolvedDiscoverCity } from "../utils/discoverEventsCache";
+import type { UserPreferences } from "../types/preferences";
+import { asRememberedDiscoverCity, deviceCityStillValid, discoverAnchorReady, discoverCityFromPreferences, discoverQueryAnchorKey, reconcileDiscoverCity, sameDiscoverAnchorCity, type DiscoverCitySource, type RememberedDiscoverCity } from "../utils/discoverEventsCache";
 import { dedupeDiscoverFeedCards } from "../utils/discoverFeedDedupe";
 
 interface DiscoverScreenProps {
@@ -59,10 +61,16 @@ interface DiscoverScreenProps {
 
 const SEARCH_RADIUS_KM = 50;
 const PREFERENCES_GATE_MAX_WAIT_MS = 1_500;
+// Same freshness as useUserPreferences: a Discover revisit inside a minute
+// reuses the cached preferences row instead of reading it again.
+const USER_PREFERENCES_FRESH_MS = 60_000;
 
-function initialCity(): DiscoverCity | null {
-  const cached = readLastResolvedDiscoverCity();
-  return cached ? { ...cached } : null;
+function anchorFor(city: DiscoverCity): DiscoverAnchorV2 {
+  return { name: city.name, stateCode: city.stateCode, countryCode: city.countryCode, lat: city.lat, lng: city.lng, radiusKm: SEARCH_RADIUS_KM };
+}
+
+function anchorKeyFor(city: DiscoverCity): string {
+  return discoverQueryAnchorKey({ kind: "city", cityName: city.name ?? "", cityLat: city.lat, cityLng: city.lng });
 }
 
 function entityType(card: Extract<DiscoverCardV2, { source: "mingla" }>) {
@@ -96,8 +104,20 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const { skipStep: skipCoachStep, setStepCopyOverride } = useCoachMarkContext();
   const pillRowRef = useRef<DiscoverPillRowHandle>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
-  const [city, setCity] = useState<DiscoverCity | null>(initialCity);
+  // #4265: the city this user last saw on Discover (persisted with the React
+  // Query cache, so it survives a cold start). Painting starts from it at once.
+  const [seed] = useState<{ userId: string; remembered: RememberedDiscoverCity } | null>(() => {
+    if (!user?.id) return null;
+    const remembered = asRememberedDiscoverCity(queryClient.getQueryData(discoverLastCityKeys.forUser(user.id)));
+    return remembered ? { userId: user.id, remembered } : null;
+  });
+  const [city, setCity] = useState<DiscoverCity | null>(() => (seed ? { ...seed.remembered.city } : null));
   const cityRef = useRef(city);
+  const citySourceRef = useRef<DiscoverCitySource | null>(seed?.remembered.source ?? null);
+  const swapTokenRef = useRef(0);
+  const paintedAnchorKeyRef = useRef("none");
+  const firstPreferencesRefreshKeyRef = useRef(preferencesRefreshKey);
+  const [deviceResolveRequested, setDeviceResolveRequested] = useState(false);
   const [preferencesSettledFor, setPreferencesSettledFor] = useState<string | null>(null);
   const [selectedKind, setSelectedKind] = useState<DiscoverKind>(selectedKindStore ?? "events");
   const [appliedFilters, setAppliedFilters] = useState<DiscoverFiltersV2>(filtersStore[selectedKind] ?? emptyDiscoverFilters(selectedKind));
@@ -114,7 +134,45 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const impressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useUserLocation(user?.id, "solo");
   const saved = useSavedCards(user?.id);
-  const preferencesSettled = !user?.id || preferencesSettledFor === user.id;
+  const preferencesSettled = discoverAnchorReady({ userId: user?.id ?? null, preferencesSettledFor, seededAtMount: seed !== null && seed.userId === user?.id });
+  const appliedFiltersRef = useRef(appliedFilters);
+  const facetFiltersRef = useRef(debouncedFacetFilters);
+  appliedFiltersRef.current = appliedFilters;
+  facetFiltersRef.current = debouncedFacetFilters;
+
+  // Remember a city for this user (next mount paints from it) and record where it came from.
+  const rememberCity = useCallback((next: DiscoverCity, source: DiscoverCitySource) => {
+    citySourceRef.current = source;
+    if (!user?.id) return;
+    queryClient.setQueryData<RememberedDiscoverCity>(discoverLastCityKeys.forUser(user.id), {
+      city: { name: next.name, stateCode: next.stateCode, countryCode: next.countryCode, lat: next.lat, lng: next.lng },
+      source,
+    });
+  }, [queryClient, user?.id]);
+
+  // Move to another city. While cards for the current anchor are on screen, the
+  // new city's feed and counts are fetched first and the city changes only once
+  // they are in the cache — one swap, no skeleton, no slide (#4258 order kept).
+  const swapToCity = useCallback((next: DiscoverCity, source: DiscoverCitySource) => {
+    const token = ++swapTokenRef.current;
+    if (paintedAnchorKeyRef.current === "none") {
+      setCity(next);
+      rememberCity(next, source);
+      return;
+    }
+    const nextKey = anchorKeyFor(next);
+    const nextAnchor = anchorFor(next);
+    void Promise.all([
+      queryClient.prefetchInfiniteQuery(discoverFeedQueryOptions(nextKey, nextAnchor, appliedFiltersRef.current)),
+      queryClient.prefetchQuery(discoverFacetsQueryOptions(nextKey, nextAnchor, facetFiltersRef.current)),
+    ]).finally(() => {
+      // A prefetch failure is not swallowed: the live queries for the new key
+      // show their own error state once the city changes.
+      if (swapTokenRef.current !== token) return;
+      setCity(next);
+      rememberCity(next, source);
+    });
+  }, [queryClient, rememberCity]);
 
   useEffect(() => {
     cityRef.current = city;
@@ -132,60 +190,78 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     let cancelled = false;
     void discoverCityWatchService.status(pendingWatchCity).then((watch) => {
       if (cancelled || !watch) return;
-      setCity({
+      const watched = {
         name: watch.cityName ?? watch.cityLabel,
         stateCode: watch.stateCode,
         countryCode: watch.countryCode,
         lat: watch.lat,
         lng: watch.lng,
-      });
-      writeResolvedDiscoverCity(watch.lat, watch.lng, {
-        name: watch.cityName ?? watch.cityLabel,
-        stateCode: watch.stateCode,
-        countryCode: watch.countryCode,
-        lat: watch.lat,
-        lng: watch.lng,
-      });
+      };
+      swapTokenRef.current += 1;
+      setCity(watched);
+      rememberCity(watched, "transient");
     }).catch((error) => {
       console.warn("[Discover] watch-city deep link could not be restored", error);
     }).finally(() => {
       if (!cancelled) setPendingWatchCity(null);
     });
     return () => { cancelled = true; };
-  }, [pendingWatchCity, setPendingWatchCity, user?.id]);
+  }, [pendingWatchCity, rememberCity, setPendingWatchCity, user?.id]);
 
+  // Saved-city preference: settle the gate and reconcile the city on screen.
+  // #4265: read from the React Query cache first (no network inside a minute),
+  // then the local mirror, then the row itself only when the cache is stale. A
+  // bump of preferencesRefreshKey (the user saved preferences) always re-reads.
   useEffect(() => {
     if (!user?.id) return;
     const userId = user.id;
     let cancelled = false;
-    let seeded = cityRef.current;
+    const forceFresh = preferencesRefreshKey !== firstPreferencesRefreshKeyRef.current;
     const capId = setTimeout(() => {
       if (!cancelled) setPreferencesSettledFor(userId);
     }, PREFERENCES_GATE_MAX_WAIT_MS);
 
+    const apply = (preferences: UserPreferences | null | undefined): void => {
+      if (cancelled) return;
+      const current = cityRef.current ? { city: cityRef.current, source: citySourceRef.current ?? "transient" } : null;
+      const decision = reconcileDiscoverCity(current, preferences);
+      if (decision.kind === "swap") {
+        swapToCity({ ...decision.city }, "preferences");
+      } else if (decision.kind === "resolve-device") {
+        setDeviceResolveRequested(true);
+      } else if (current && citySourceRef.current !== "preferences" && discoverCityFromPreferences(preferences ?? null)) {
+        rememberCity(current.city, "preferences");
+      }
+    };
+
     void (async () => {
-      try {
-        const mirrored = discoverCityFromPreferences(await offlineService.getOfflineUserPreferences());
-        if (cancelled) return;
-        if (mirrored) {
-          if (!sameDiscoverAnchorCity(seeded, mirrored)) setCity(mirrored);
-          seeded = mirrored;
-          writeResolvedDiscoverCity(mirrored.lat, mirrored.lng, mirrored);
-          setPreferencesSettledFor(userId);
+      const cached = forceFresh ? undefined : queryClient.getQueryData<UserPreferences | null>(userPreferencesKeys.detail(userId));
+      if (cached !== undefined) {
+        apply(cached);
+        if (!cancelled) setPreferencesSettledFor(userId);
+      } else {
+        try {
+          const mirrored = await offlineService.getOfflineUserPreferences();
+          if (cancelled) return;
+          if (discoverCityFromPreferences(mirrored)) {
+            apply(mirrored);
+            setPreferencesSettledFor(userId);
+          }
+        } catch (error) {
+          // A missing or corrupt mirror only means the row owns the seed.
+          console.warn("[Discover] preferences mirror unreadable", error);
         }
-      } catch {
-        // A missing or corrupt mirror only means the network row owns the seed.
       }
 
       try {
-        const preferences = await PreferencesService.getUserPreferences(userId);
-        if (cancelled) return;
-        const authoritative = discoverCityFromPreferences(preferences);
-        if (preferences) void offlineService.cacheUserPreferences(preferences).catch(() => {});
-        if (preferences && !sameDiscoverAnchorCity(seeded, authoritative)) {
-          setCity(authoritative);
-          if (authoritative) writeResolvedDiscoverCity(authoritative.lat, authoritative.lng, authoritative);
-        }
+        const preferences = await queryClient.fetchQuery({
+          queryKey: userPreferencesKeys.detail(userId),
+          queryFn: ({ signal }) => fetchUserPreferences(userId, signal),
+          staleTime: forceFresh ? 0 : USER_PREFERENCES_FRESH_MS,
+        });
+        apply(preferences);
+      } catch (error) {
+        console.warn("[Discover] preferences read failed; keeping the current city", error);
       } finally {
         if (!cancelled) setPreferencesSettledFor(userId);
       }
@@ -195,25 +271,41 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       cancelled = true;
       clearTimeout(capId);
     };
-  }, [preferencesRefreshKey, user?.id]);
+  }, [preferencesRefreshKey, queryClient, rememberCity, swapToCity, user?.id]);
 
+  // Device city: resolve one when there is no city, when preferences asked for it
+  // (no saved city), or when a remembered GPS city is now far from the device.
+  const preferencesReadFor = preferencesSettledFor === user?.id;
   useEffect(() => {
-    if (city || typeof location.data?.lat !== "number" || typeof location.data?.lng !== "number") return;
+    if (typeof location.data?.lat !== "number" || typeof location.data?.lng !== "number") return;
     const lat = location.data.lat;
     const lng = location.data.lng;
+    const current = cityRef.current;
+    if (current && !deviceResolveRequested) {
+      if (citySourceRef.current !== "device" || !preferencesReadFor) return;
+      if (deviceCityStillValid(current, lat, lng)) return;
+    }
     let cancelled = false;
     void geocodingService.reverseGeocode(lat, lng).then((place) => {
-      if (cancelled || !place.city) return;
+      if (cancelled) return;
+      setDeviceResolveRequested(false);
+      if (!place.city) return;
       const next = { name: place.city, stateCode: place.state ?? null, countryCode: place.countryCode ?? null, lat, lng };
-      setCity(next);
-      writeResolvedDiscoverCity(lat, lng, next);
+      if (current && sameDiscoverAnchorCity(current, next)) {
+        if (citySourceRef.current !== "device") rememberCity(current, "device");
+        return;
+      }
+      swapToCity(next, "device");
+    }).catch((error) => {
+      console.warn("[Discover] could not name the device city", error);
     });
     return () => { cancelled = true; };
-  }, [city, location.data]);
+  }, [city, deviceResolveRequested, location.data, preferencesReadFor, rememberCity, swapToCity]);
 
-  const anchor = useMemo<DiscoverAnchorV2 | null>(() => city ? { name: city.name, stateCode: city.stateCode, countryCode: city.countryCode, lat: city.lat, lng: city.lng, radiusKm: SEARCH_RADIUS_KM } : null, [city]);
+  const anchor = useMemo<DiscoverAnchorV2 | null>(() => (city ? anchorFor(city) : null), [city]);
   const activeAnchor = preferencesSettled ? anchor : null;
   const anchorKey = useMemo(() => activeAnchor ? discoverQueryAnchorKey({ kind: "city", cityName: activeAnchor.name ?? "", cityLat: activeAnchor.lat, cityLng: activeAnchor.lng }) : "none", [activeAnchor]);
+  paintedAnchorKeyRef.current = anchorKey;
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFacetFilters(facetFilters), 250);
     return () => clearTimeout(timer);
@@ -423,6 +515,56 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }, [evaluateViewability, feed]);
 
   const { cityEmpty, filteredEmpty } = loadState;
+  // The picker saved discover_city_* to the preferences row. #4265: mirror that
+  // into the cached row and the offline mirror, so the next mount (which now
+  // trusts the cache) reconciles to the picked city, never the previous one.
+  const onCityPicked = useCallback((next: DiscoverCity) => {
+    swapTokenRef.current += 1;
+    setCity(next);
+    rememberCity(next, "preferences");
+    if (!user?.id) return;
+    const patch = {
+      discover_city_name: next.name,
+      discover_city_state_code: next.stateCode,
+      discover_city_country_code: next.countryCode,
+      discover_city_lat: next.lat,
+      discover_city_lng: next.lng,
+    };
+    const updated = queryClient.setQueryData<UserPreferences | null>(userPreferencesKeys.detail(user.id), (previous) => (previous ? { ...previous, ...patch } : previous));
+    void (async () => {
+      const base = updated ?? await offlineService.getOfflineUserPreferences();
+      if (base) await offlineService.cacheUserPreferences({ ...base, ...patch });
+    })().catch((error) => {
+      console.warn("[Discover] could not mirror the picked city", error);
+    });
+  }, [queryClient, rememberCity, user?.id]);
+  // #4265: "Nearest city" is a real choice, like a picker pick. It shows at
+  // once, then is saved to the preferences row exactly as the picker saves it
+  // (and mirrored by onCityPicked), so a later preferences read never swaps
+  // the screen back to the GPS city. A pick or swap made meanwhile wins.
+  const nearestCity = facets.data?.nearestCity ?? null;
+  const onNearestCity = useCallback(() => {
+    if (!nearestCity) return;
+    const next: DiscoverCity = { name: nearestCity.label, stateCode: null, countryCode: null, lat: nearestCity.lat, lng: nearestCity.lng };
+    swapTokenRef.current += 1;
+    citySourceRef.current = "transient";
+    setCity(next);
+    if (!user?.id) return;
+    const token = swapTokenRef.current;
+    void PreferencesService.updateUserPreferences(user.id, {
+      discover_city_name: next.name,
+      discover_city_state_code: next.stateCode,
+      discover_city_country_code: next.countryCode,
+      discover_city_lat: next.lat,
+      discover_city_lng: next.lng,
+    }).then(() => {
+      if (swapTokenRef.current !== token) return;
+      onCityPicked(next);
+    }).catch((error: unknown) => {
+      // The city stays on screen for this visit; it is just not remembered.
+      console.warn("[Discover] could not save the nearest city", error);
+    });
+  }, [nearestCity, onCityPicked, user?.id]);
   const toggleCityWatch = useCallback(async () => {
     try {
       if (cityWatch.subscribed) {
@@ -442,7 +584,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={refresh} tintColor="#eb7825" title={isPullRefreshing ? t("loading.refreshing", "Refreshing events…") : undefined} titleColor="rgba(255,255,255,.72)" colors={["#eb7825"]} progressBackgroundColor="#1b1e24" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         {loadState.showSkeleton ? <DiscoverGridSkeleton /> : null}
         {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
-        {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={() => facets.data?.nearestCity && setCity({ name: facets.data.nearestCity.label, stateCode: null, countryCode: null, lat: facets.data.nearestCity.lat, lng: facets.data.nearestCity.lng })} /> : null}
+        {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={onNearestCity} /> : null}
         {filteredEmpty ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
         {items.length > 0 ? <>
           <View style={styles.grid} onLayout={(event) => { gridTopRef.current = event.nativeEvent.layout.y; evaluateViewability(); }}>
@@ -462,7 +604,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
         ) : null}
       </ScrollView>
       <FilterDropdown visible={filterOpen} groups={facets.data?.groups ?? []} filters={facetFilters} resultCount={facets.data?.selected.total ?? 0} priceBands={facets.data?.priceBands ?? null} onDraftChange={setFacetFilters} onApply={(next) => { mixpanelService.track("discover_filter_applied", { kind: selectedKind, groups: Object.keys(next.f).sort(), option_count: discoverFilterSelectionCount(next), result_count: facets.data?.selected.total ?? 0 }); setAppliedFilters(next); setFacetFilters(next); setFiltersStore({ ...filtersStore, [selectedKind]: next }); setFilterOpen(false); }} onClose={() => { setFacetFilters(appliedFilters); setFilterOpen(false); }} t={(key, values) => t(key, values)} />
-      <CityPickerSheet visible={cityPickerOpen} userId={user?.id ?? null} currentCity={city} onClose={() => setCityPickerOpen(false)} onCityPicked={(next) => { setCity(next); writeResolvedDiscoverCity(next.lat, next.lng, next); }} />
+      <CityPickerSheet visible={cityPickerOpen} userId={user?.id ?? null} currentCity={city} onClose={() => setCityPickerOpen(false)} onCityPicked={onCityPicked} />
       <ExpandedCardModal visible={expansionTarget !== null} target={expansionTarget} onClose={() => setExpansionTarget(null)} onSave={async () => { if (expansionTarget?.kind === "nightOut") await toggleSave({ source: "ticketmaster", kind: "event", id: expansionTarget.data.id, title: expansionTarget.data.title, venueName: expansionTarget.data.nightOutData?.venueName ?? "", imageUrl: expansionTarget.data.image, startsLocalDate: expansionTarget.data.nightOutData?.date ?? "", startsLocalTime: expansionTarget.data.nightOutData?.time ?? null, genre: expansionTarget.data.nightOutData?.genre ?? null, price: null, ticketStatus: expansionTarget.data.nightOutData?.ticketStatus ?? "", ticketUrl: expansionTarget.data.nightOutData?.ticketUrl ?? "", raw: {} }); }} onShare={(card) => openExpandedCardContentShare(card, 'discover_expanded')} shareProducerSurface="discover_expanded" isSaved={expansionTarget?.kind === "nightOut" ? savedIds.has(expansionTarget.data.id) : false} currentMode="solo" accountPreferences={accountPreferences} />
     </View>
   );

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4265_device_calendar_cost.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4265-device-calendar-cost-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

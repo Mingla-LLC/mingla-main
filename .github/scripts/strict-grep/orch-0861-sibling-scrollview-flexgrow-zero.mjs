@@ -19,7 +19,7 @@
  * codebase knows the pattern — the gate's job is to keep new screens
  * from forgetting it):
  *   - mingla-business/app/event/[id]/orders/index.tsx (filtersScroll)
- *   - app-mobile/src/components/activity/CardFilterBar.tsx (chipScroll)
+ *   - app-mobile/src/components/activity/CardFilterBar.tsx (chipScroll; file deleted in #4265)
  *   - mingla-business/app/(tabs)/hub/events.tsx (pillsScroll — post-ORCH-0857)
  *
  * **Heuristic (intentionally simple to avoid JSX-AST dependency):**

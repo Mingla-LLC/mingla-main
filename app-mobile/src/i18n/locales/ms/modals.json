@@ -129,6 +129,10 @@
       "body": "Tapis mengikut hari, getaran, muzik, destinasi dan banyak lagi. Pilihan berubah dengan setiap pil."
     },
     "list_two": "{{a}} dan {{b}}",
-    "list_three": "{{a}}, {{b}} dan {{c}}"
+    "list_three": "{{a}}, {{b}} dan {{c}}",
+    "step3": {
+      "title": "Di sini simpanan anda berada",
+      "description": "Semua yang anda beri hati masuk ke Suka. Kongsi atau masukkan ke kalendar dengan satu ketikan."
+    }
   }
 }

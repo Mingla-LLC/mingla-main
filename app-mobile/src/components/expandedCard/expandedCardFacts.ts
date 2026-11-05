@@ -92,6 +92,7 @@ import type { MetaSpanInput } from '../deckCardPlate';
 import { parseAndFormatDistance } from '../utils/formatters';
 import { tierLabel, TIER_BY_SLUG, type PriceTierSlug } from '../../constants/priceTiers';
 import { getReadableCategoryName } from '../../utils/categoryUtils';
+import { sumPriceSpans } from '../../utils/curatedPriceRange';
 
 export interface FactsOptions {
   readonly measurementSystem?: 'Metric' | 'Imperial';
@@ -163,6 +164,7 @@ interface PlanStopLike {
   readonly optional?: boolean;
   readonly priceMin?: number;
   readonly priceMax?: number;
+  readonly priceOpenEnded?: boolean;
   readonly distanceFromUserKm?: number;
 }
 
@@ -295,16 +297,23 @@ function curatedPriceLabel(
   visibleStops: readonly PlanStopLike[],
   options: CuratedFactsOptions,
 ): string | null {
-  const min =
+  // #4265: a span whose max is below its min is open-ended ("$100+" stored
+  // with no max) — show "from" instead of "$100.00–$0.00". See curatedPriceRange.
+  const { min, max, openEnded } = sumPriceSpans(
     options.isBrandExperience === true
-      ? finite(card.totalPriceMin)
-      : visibleStops.reduce((sum, stop) => sum + finite(stop.priceMin), 0);
-  const max =
-    options.isBrandExperience === true
-      ? finite(card.totalPriceMax)
-      : visibleStops.reduce((sum, stop) => sum + finite(stop.priceMax), 0);
+      ? [{ min: finite(card.totalPriceMin), max: finite(card.totalPriceMax), openEnded: card.totalPriceOpenEnded }]
+      : visibleStops.map((stop) => ({
+          min: finite(stop.priceMin),
+          max: finite(stop.priceMax),
+          openEnded: stop.priceOpenEnded,
+        })),
+  );
 
   if (min === 0 && max === 0) return trimmed(options.freeLabel);
+  if (openEnded) {
+    const from = trimmed(options.formatMoney(min));
+    return from === null ? null : `${from}+`;
+  }
   if (min === max) return trimmed(options.formatMoney(min));
   // U+2013 en-dash (not hyphen) — typographic convention for ranges.
   const lo = trimmed(options.formatMoney(min));

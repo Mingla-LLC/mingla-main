@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Toast } from './Toast';
-import { toastManager } from './Toast';
+import { toastManager, type ToastAction } from './Toast';
 
 export const ToastContainer: React.FC = () => {
   const [toasts, setToasts] = useState<Array<{
@@ -9,6 +9,7 @@ export const ToastContainer: React.FC = () => {
     message: string;
     type: 'success' | 'error' | 'info' | 'warning';
     duration?: number;
+    action?: ToastAction;
   }>>([]);
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export const ToastContainer: React.FC = () => {
           message={toast.message}
           type={toast.type}
           duration={toast.duration}
+          action={toast.action}
           visible={true}
           onClose={() => toastManager.remove(toast.id)}
         />

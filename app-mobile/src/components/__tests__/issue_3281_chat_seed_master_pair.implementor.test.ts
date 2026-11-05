@@ -5,8 +5,11 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 Deno.test("chat seed maps master end from master_end_at, not next_end_at", () => {
+  // #4265: the list-row transform moved to connections/chatListLoad.ts.
   const src = Deno.readTextFileSync(
     "app-mobile/src/components/ConnectionsPage.tsx",
+  ) + Deno.readTextFileSync(
+    "app-mobile/src/components/connections/chatListLoad.ts",
   );
   // Separated nights must not cross-pair master start with next end.
   assertEquals(

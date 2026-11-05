@@ -129,6 +129,10 @@
       "body": "Filtrați după zi, vibrație, muzică, destinație și multe altele. Opțiunile se schimbă cu fiecare pastilă."
     },
     "list_two": "{{a}} și {{b}}",
-    "list_three": "{{a}}, {{b}} și {{c}}"
+    "list_three": "{{a}}, {{b}} și {{c}}",
+    "step3": {
+      "title": "Aici stau salvările tale",
+      "description": "Tot ce marchezi cu inimă ajunge în Aprecieri. Distribuie sau pune în calendar dintr-o atingere."
+    }
   }
 }

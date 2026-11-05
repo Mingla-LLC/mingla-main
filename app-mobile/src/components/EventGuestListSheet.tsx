@@ -89,6 +89,7 @@ import {
   setShowMeAsGoing,
 } from "../services/socialProofService";
 import { messagingService } from "../services/messagingService";
+import { invalidateChatListWith } from "../services/chatListRefresh";
 import { guestSheetHeaderSubtitle } from "./guestSheetHeaderCopy";
 
 // Fixed single detent — EventAudienceSheet precedent (MessageInterface.tsx:96).
@@ -546,6 +547,8 @@ export function EventGuestListSheet({
         showHint(row.key, "Couldn't send — try again");
         return;
       }
+      // #4265: a DM started here may be new — the Chats list must show it.
+      void invalidateChatListWith(queryClient);
       // SEALED close-before-NAVIGATE: dismiss the sheet FIRST, then ride the
       // shell's open-DM rail (the Discover-map Message idiom —
       // setPendingOpenDmUserId + page 'connections' → MessageInterface opens
@@ -569,7 +572,7 @@ export function EventGuestListSheet({
       onClose();
       openDirectMessageInApp(profileId);
     },
-    [viewerId, onClose, onOpenConversation, showHint],
+    [viewerId, onClose, onOpenConversation, showHint, queryClient],
   );
 
   // ORCH-1360 Part 2 — WITHDRAW-AFTER-SENT. The withdraw body: deletes the

@@ -96,12 +96,15 @@ check(
   /cacheReady\s*&&\s*\(?\s*[\s\S]{0,200}?<PersistQueryClientProvider\b/.test(layoutCode),
   "The Android 2MB-CursorWindow pre-clear must resolve (cacheReady) before the provider mounts.",
 );
+// #4265: the pre-clear no longer deletes the whole cache; it trims an oversized
+// blob to the budget (src/utils/queryPersistenceBudget.ts) and removes an
+// unreadable one, via primePersistedQueryCache in src/config/queryClient.ts.
 check(
-  "T-7b the 1.5MB cache pre-clear effect lives in _layout.tsx and resolves cacheReady",
-  /REACT_QUERY_OFFLINE_CACHE/.test(layoutCode) &&
-    /1_500_000/.test(layoutCode) &&
-    /setCacheReady\(true\)/.test(layoutCode),
-  "The cache pre-clear (clear when length > 1.5MB) + setCacheReady(true) must run at root before the provider mounts.",
+  "T-7b the cache startup guard runs in _layout.tsx and resolves cacheReady",
+  /primePersistedQueryCache\(\)[\s\S]{0,80}?setCacheReady\(true\)/.test(layoutCode) &&
+    /REACT_QUERY_OFFLINE_CACHE/.test(read("src/config/queryClient.ts")) &&
+    /PERSISTED_CACHE_BUDGET_BYTES = 1_000_000/.test(read("src/utils/queryPersistenceBudget.ts")),
+  "The cache startup guard (trim to budget, remove unreadable) + setCacheReady(true) must run at root before the provider mounts.",
 );
 check(
   "T-7c the cache pre-clear effect was REMOVED from index.tsx (single owner)",

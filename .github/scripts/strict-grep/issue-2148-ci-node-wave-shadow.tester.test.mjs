@@ -115,6 +115,13 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // suite gained a case proving ratchet PR bodies carry the issue link and
 // Feature Guide line. Paths, order, the other hashes, and both lock call sites
 // remain unchanged; the value was derived from the file on disk.
+// [TEST-MOD-APPROVED #4265] Two lock VALUES re-banked: the #1638 tab-switch
+// suite re-anchored two source bindings (Profile reads useFriendsList; the
+// Chats retry anchors on handleRetryLoad) after the Chats/Profile caching work,
+// and the #1615 curated terminal-UI adversarial suite now slices `loadShare`
+// at its own dependency list (it gained `runAfterOpen`). Paths, order, the
+// other hashes, and both lock call sites remain unchanged; both values were
+// derived from the files on disk.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -122,7 +129,7 @@ const REFERENCE_SHA256 = locks(`
 .github/scripts/strict-grep/issue-1607-explorer-guard-integrity.mjs 02043b12c819cbda96dcdd8bc1d93ab51b3ca7052ab9733e389e36d0a53c275d
 .github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs 6c85c55d3a6d4b5027bd9cdf0b23535755c9cff734392bdca5995b231bd4bed8
 .github/scripts/strict-grep/issue-2084-credential-output-safety.mjs 904d78e5e171247af178881a622c97e1485caea2da06969e38be7001f2bcd635
-app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs 852f38916b00c85709eccbfaab634986c8b123a02c27dd40d50ef7324b7b3948
+app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs cb62ddb696eef37dc70def9c9c092608986d4985eeec348a6fbcfa5728f80188
 app-mobile/src/components/deckHeroConstants.ts bdb476b046e64fa2601f9081abfc1919a589a079a4b248ca5aeb38324d1e6749
 app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs 075bc8e558fdca1d993d99f8ba7ada4e4b3fbfc400d6ec72acd922610688c04d
 app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs 6f2cee42857f5f6d6c6f42fc466dbb310272fc3d6b9b129bd12cda583557e565
@@ -145,7 +152,7 @@ packages/card-identity/__tests__/card_identity_single_source.test.mjs 537507cbf1
 scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 3c377ee6bd6860704961477c2512482628848e895f6a65d23081915afa6f7022
 scripts/ci/issue-2062-expo-config-node20.mjs 9abac62742457bce556e2c3fbb21d512cd77b95f091769d92a315d6e248dba7d
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8
-scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 4d382fefd13bd483b711715005b602e4f4445b324a9804554458ef438bb99a39
+scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 93bbb32f57c49489d64bc12237e40631cf26c730968bfea0547eb1a469683725
 scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 24909501d087c1df2b5455fedd8f0e9f52ee165768d73d0d508a811675c2770d
 scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb8934df9435b1de1ce1daf8cb0fe8cf8abe8d481ce7ab734ea2e62807e
 .github/workflows/issue-2393-valid-marketing-test-fixtures.yml 466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e

@@ -487,8 +487,10 @@ test('C3.5 SOURCE BINDING: ProfilePage no longer force-invalidates friends on mo
   );
   assert.doesNotMatch(src, /\bfetchFriends\s*\(/, 'ProfilePage must not call fetchFriends');
   // It must still READ the friends data — the count on the profile cannot go dark.
-  assert.match(src, /const \{ friends: realFriends, friendCount \} = useFriends\(\);/);
-  assert.match(src, /const actualConnectionsCount = friendCount;/);
+  // #4265: Profile now subscribes to the friends LIST only (it shows only the count),
+  // through the same useFriendsList query, with Profile's revisit window.
+  assert.match(src, /const \{ data: friendsList \} = useFriendsList\(user\?\.id, \{ staleTime: PROFILE_REVISIT_STALE_MS \}\);/);
+  assert.match(src, /const actualConnectionsCount = friendsList\?\.length \?\? 0;/);
 });
 
 test('C3.6 SOURCE BINDING: ConnectionsPage no longer force-invalidates on mount', () => {
@@ -516,8 +518,11 @@ test('C3.7 OVER-DELETION GUARD: every action-driven invalidation still fires', (
     'pull-to-refresh must still force a refetch',
   );
   // The error-state "Try again" button.
+  // [TEST-MOD-APPROVED #4265] the chat list's loading flag now comes from
+  // useChatList (no setConversationsLoading), so the anchor is the retry
+  // handler itself; it must still refetch chats, friends and requests.
   assert.match(
-    conn, /setConversationsLoading\(true\);[\s\S]{0,240}?fetchFriends\(\);[\s\S]{0,80}?loadFriendRequests\(\);/,
+    conn, /const handleRetryLoad = useCallback\(\(\) => \{[\s\S]{0,120}?fetchConversations\(user\.id\);[\s\S]{0,80}?fetchFriends\(\);[\s\S]{0,80}?loadFriendRequests\(\);/,
     'the error-state retry must still force a refetch',
   );
   // A request sent from the add-friend surface must show up immediately.

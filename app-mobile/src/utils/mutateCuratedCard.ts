@@ -1,4 +1,5 @@
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
+import { sumPriceSpans } from './curatedPriceRange';
 
 // ── Geo Utilities (same formulas as edge function) ─────────────────────────
 
@@ -59,6 +60,8 @@ export interface StopAlternative {
   priceTiers: string[];
   priceMin: number;
   priceMax: number;
+  /** #4265: the place has no known max ("$100+"); priceMax then equals priceMin. */
+  priceOpenEnded?: boolean;
   openingHours: Record<string, unknown>;
   website: string | null;
   lat: number;
@@ -112,6 +115,7 @@ export function buildReplacementStop(
     priceTier: alternative.priceTier as CuratedStop['priceTier'],
     priceMin: alternative.priceMin,
     priceMax: alternative.priceMax,
+    priceOpenEnded: alternative.priceOpenEnded === true ? true : undefined,
     openingHours: alternative.openingHours as Record<string, string>,
     // ORCH-0677.QA-1: honest unknown (Constitution #9). StopAlternative
     // doesn't carry openingHours.openNow, so we cannot derive truthfully
@@ -174,8 +178,10 @@ export function replaceStopInCard(
   // Recalculate aggregates
   const mainStops = newStops.filter(s => !s.optional);
   const title = mainStops.map(s => s.placeName).join(' → ');
-  const totalPriceMin = mainStops.reduce((sum, s) => sum + s.priceMin, 0);
-  const totalPriceMax = mainStops.reduce((sum, s) => sum + s.priceMax, 0);
+  // #4265: same open-ended rule as the server (an unknown max is never summed as 0).
+  const priceTotal = sumPriceSpans(
+    mainStops.map((s) => ({ min: s.priceMin, max: s.priceMax, openEnded: s.priceOpenEnded })),
+  );
   const totalDuration =
     mainStops.reduce((sum, s) => sum + (s.estimatedDurationMinutes || 45), 0) +
     mainStops.slice(1).reduce((sum, s) => sum + (s.travelTimeFromPreviousStopMin ?? 0), 0);
@@ -189,8 +195,9 @@ export function replaceStopInCard(
     ...card,
     stops: newStops,
     title,
-    totalPriceMin,
-    totalPriceMax,
+    totalPriceMin: priceTotal.min,
+    totalPriceMax: priceTotal.max,
+    totalPriceOpenEnded: priceTotal.openEnded ? true : undefined,
     estimatedDurationMinutes: totalDuration,
     shoppingList,
     // Keep original card ID (EC-1: solo save upsert works correctly)

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { EventCoverMedia } from "@mingla/offering-rendering";
 
 import { usePurchases } from "../../hooks/usePurchases";
+import { PROFILE_REVISIT_STALE_MS } from "./profileFreshness";
 import { postHogService } from "../../services/postHogService";
 import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
 import SettingsRow from "./SettingsRow";
@@ -48,7 +49,7 @@ export function PurchasesCard({
   onFinishSetup,
 }: PurchasesCardProps): React.ReactElement {
   const { t } = useTranslation("purchases");
-  const purchases = usePurchases(userId);
+  const purchases = usePurchases(userId, { staleTime: PROFILE_REVISIT_STALE_MS });
   const upcoming = useMemo(
     () =>
       purchases.timeline.upcoming.flatMap((group) =>
