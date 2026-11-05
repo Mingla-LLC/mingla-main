@@ -281,7 +281,7 @@ export const TapToPaySetupScreen = ({
     body = (
       <TapStatusView
         tone="bad"
-        icon="tap"
+        icon={Platform.OS === "ios" ? "close" : "tap"}
         title={`${TAP_TO_PAY_SHORT} isn't available here`}
         body="This brand can't take taps. Use a pay code instead. It works on any phone."
         primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
@@ -316,9 +316,12 @@ export const TapToPaySetupScreen = ({
     body = (
       <View style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.heroIcon}>
-            <Icon name="tap" size={28} color={accent.warm} />
-          </View>
+          {/* Apple allows no art of the feature on iPhone. */}
+          {Platform.OS === "android" ? (
+            <View style={styles.heroIcon}>
+              <Icon name="tap" size={28} color={accent.warm} />
+            </View>
+          ) : null}
           <Text style={styles.heroTitle} accessibilityRole="header">
             {Platform.OS === "ios" ? "Take cards on this iPhone" : "Take cards on this phone"}
           </Text>

@@ -257,7 +257,7 @@ export const TapToPaySaleScreen = ({
         return (
           <TapStatusView
             tone="bad"
-            icon="tap"
+            icon={Platform.OS === "ios" ? "close" : "tap"}
             title={`${TAP_TO_PAY_SHORT} isn't available here`}
             body="This brand can't take taps. Use a pay code instead. It works on any phone."
             primary={{ label: "Use a pay code", onPress: () => void showPayCodeInstead(), loading: payCodeBusy }}
@@ -274,7 +274,7 @@ export const TapToPaySaleScreen = ({
       return (
         <TapStatusView
           tone="bad"
-          icon="tap"
+          icon={Platform.OS === "ios" ? "close" : "tap"}
           title="Tap to Pay didn't start"
           body={`${terminal.errorMessage ?? "Try again."} Nothing was charged.`}
           primary={{ label: "Try again", onPress: terminal.retryInitialize }}

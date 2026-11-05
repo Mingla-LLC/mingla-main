@@ -560,3 +560,16 @@ describe("B10 where the card goes", () => {
     );
   });
 });
+
+describe("B11 source rule", () => {
+  test('name="tap" only appears behind an Android branch or in TapToPayIcon', () => {
+    const dir = path.join(BIZ_ROOT, "src/components/door/tap");
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith(".tsx") || file === "TapToPayIcon.tsx") continue;
+      const code = fs.readFileSync(path.join(dir, file), "utf8");
+      expect([file, /icon="tap"|icon="phone"/.test(code)]).toEqual([file, false]);
+      const at = code.indexOf('name="tap"');
+      if (at !== -1) expect(code.slice(Math.max(0, at - 200), at)).toContain('Platform.OS === "android"');
+    }
+  });
+});

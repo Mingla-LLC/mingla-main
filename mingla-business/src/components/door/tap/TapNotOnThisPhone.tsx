@@ -20,7 +20,7 @@ export interface TapNotOnThisPhoneProps {
 export const TapNotOnThisPhone = ({ onUsePayCode, loading = false }: TapNotOnThisPhoneProps): React.ReactElement => (
   <TapStatusView
     tone="bad"
-    icon="phone"
+    icon={Platform.OS === "ios" ? "close" : "phone"}
     title="This phone can't take taps"
     body={Platform.OS === "ios" ? TAP_NOT_ON_THIS_PHONE_BODY_IOS : TAP_NOT_ON_THIS_PHONE_BODY_ANDROID}
     primary={{ label: "Use a pay code", onPress: onUsePayCode, loading, testID: "tap-use-pay-code" }}

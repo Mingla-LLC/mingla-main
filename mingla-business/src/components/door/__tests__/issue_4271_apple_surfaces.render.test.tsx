@@ -23,7 +23,13 @@ const renderer = require("react-test-renderer") as {
 };
 const { act } = renderer;
 
-jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+const mockIconNames: string[] = [];
+jest.mock("../../ui/Icon", () => ({
+  Icon: ({ name }: { name: string }) => {
+    mockIconNames.push(name);
+    return null;
+  },
+}));
 jest.mock("../../ui/Button", () => {
   const { Pressable, Text } = jest.requireActual("react-native");
   const ReactLocal = jest.requireActual("react");
@@ -624,5 +630,36 @@ describe("B10 onboarding and awareness", () => {
     const off = mount(<TapToPayAwarenessModal assets={ASSETS} />);
     await settleSale();
     expect(off.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+  });
+});
+
+describe("B11 no feature art on iPhone", () => {
+  beforeEach(() => {
+    mockIconNames.length = 0;
+    resetTapToPaySessionForTests();
+    mockRole = { rank: 60, isLoading: false };
+    updateTapToPaySession({ status: "ready", client: { checkDeviceSupport: async () => ({ supported: true }) } as never });
+  });
+  const seen = (): string[] => mockIconNames.filter((name) => name === "tap" || name === "phone");
+
+  test("iPhone: setup, not-on-this-phone and brand refusal draw neither glyph", async () => {
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await flush();
+    mount(<TapNotOnThisPhone onUsePayCode={jest.fn()} />);
+    mockAvailability = { available: false, needsSetup: false, reason: "paystack" };
+    mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    mount(saleScreen());
+    await flush();
+    expect(seen()).toEqual([]);
+  });
+
+  test("Android may keep its own glyph", async () => {
+    Object.defineProperty(Platform, "OS", { value: "android", configurable: true });
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await flush();
+    Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
+    expect(seen()).toContain("tap");
   });
 });
