@@ -49,6 +49,7 @@ import {
 import { tapToPayLive } from "../../../hooks/useTapToPayRelease";
 import { isTapToPayIphoneEntitled } from "../howToTap";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../doorTapEdge";
+import { buildTapReceiptText } from "../tapReceipt";
 import { consumeDoorTapPress, markDoorTapPress } from "../tapTiming";
 import { TAP_WARM_THROTTLE_MS, TapToPayWarmUp, type TapToPayWarmUpDeps } from "../tapToPayWarmUp";
 import { supabase } from "../../supabase";
@@ -571,5 +572,141 @@ describe("B11 source rule", () => {
       const at = code.indexOf('name="tap"');
       if (at !== -1) expect(code.slice(Math.max(0, at - 200), at)).toContain('Platform.OS === "android"');
     }
+  });
+});
+
+describe("B12 each outcome from each code", () => {
+  const flow = (terminal: Record<string, unknown> = {}) => {
+    const states: Array<Record<string, unknown>> = [];
+    const f = new TapToPaySaleFlow({
+      eventId: "e1",
+      draft: { lines: [], eventDateId: null, buyerPhone: null, phoneCountryIso: null } as never,
+      clientRequestId: "r1",
+      terminal: {
+        ensureReaderConnected: async () => ({}),
+        retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+        collectPaymentMethod: async () => ({ paymentIntent: { id: "pi_1" } }),
+        confirmPaymentIntent: async () => ({ paymentIntent: { id: "pi_1", status: "succeeded" } }),
+        cancelCollectPaymentMethod: async () => ({}),
+        ...terminal,
+      } as never,
+      server: {
+        createIntent: async () =>
+          ({ paymentIntentId: "pi_1", clientSecret: "s", totalCents: 100, currency: "GBP", stripeAccountId: "a", locationId: "tml", feeCents: 5, subtotalCents: 95 }),
+        completeIntent: async () => ({ orderId: "o", ticketIds: [], receiptQueued: false, replayed: false }),
+        cancelIntent: async () => undefined,
+      },
+      onState: (state) => states.push(state as never),
+    });
+    return { f, states, last: () => states[states.length - 1]?.kind };
+  };
+
+  test("CARD_READ_TIMED_OUT is timed_out", async () => {
+    const h = flow({ collectPaymentMethod: async () => ({ error: { code: "CARD_READ_TIMED_OUT" } }) });
+    await h.f.start();
+    expect(h.last()).toBe("timed_out");
+  });
+
+  test("confirm with no PaymentIntent back is unknown, whatever the error says", async () => {
+    for (const error of [{ code: "STRIPE_API_ERROR" }, { code: "DECLINED_BY_STRIPE_API" }, {}]) {
+      const h = flow({ confirmPaymentIntent: async () => ({ error }) });
+      await h.f.start();
+      expect(h.last()).toBe("unknown_result");
+    }
+  });
+
+  test("REQUEST_TIMED_OUT during confirm is unknown even with a PaymentIntent", async () => {
+    const h = flow({
+      confirmPaymentIntent: async () => ({ error: { code: "REQUEST_TIMED_OUT", paymentIntent: { status: "processing" } } }),
+    });
+    await h.f.start();
+    expect(h.last()).toBe("unknown_result");
+  });
+
+  test('"Nothing was charged" only when Stripe says requires_payment_method', async () => {
+    const said = flow({
+      confirmPaymentIntent: async () => ({ error: { code: "OTHER", paymentIntent: { status: "requires_payment_method" } } }),
+    });
+    await said.f.start();
+    expect(said.last()).toBe("declined");
+    const unsure = flow({
+      confirmPaymentIntent: async () => ({ error: { code: "OTHER", paymentIntent: { status: "processing" } } }),
+    });
+    await unsure.f.start();
+    expect(unsure.last()).toBe("unknown_result");
+    const declinedButProcessing = flow({
+      confirmPaymentIntent: async () => ({
+        error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { status: "processing" } },
+      }),
+    });
+    await declinedButProcessing.f.start();
+    expect(declinedButProcessing.last()).toBe("unknown_result");
+  });
+
+  test("a retried confirm that succeeded records the sale", async () => {
+    let calls = 0;
+    const h = flow({
+      confirmPaymentIntent: async () => {
+        calls += 1;
+        return calls === 1 ? { error: {} } : { paymentIntent: { id: "pi_1", status: "succeeded" } };
+      },
+    });
+    await h.f.start();
+    await h.f.retryConfirm();
+    expect(h.last()).toBe("approved");
+  });
+
+  test("closing cancels an open intent, but never one mid-confirm or paid", async () => {
+    const cancel = jest.fn(async () => undefined);
+    const open = new TapToPaySaleFlow({
+      eventId: "e1",
+      draft: { lines: [], eventDateId: null, buyerPhone: null, phoneCountryIso: null } as never,
+      clientRequestId: "r1",
+      terminal: {
+        ensureReaderConnected: async () => ({}),
+        retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+        collectPaymentMethod: async () => ({ error: { code: "CANCELED" } }),
+        confirmPaymentIntent: async () => ({}),
+        cancelCollectPaymentMethod: async () => ({}),
+      } as never,
+      server: {
+        createIntent: async () =>
+          ({ paymentIntentId: "pi_1", clientSecret: "s", totalCents: 100, currency: "GBP", stripeAccountId: "a", locationId: "tml", feeCents: 0, subtotalCents: 100 }),
+        completeIntent: jest.fn() as never,
+        cancelIntent: cancel,
+      },
+      onState: () => undefined,
+    });
+    await open.start();
+    await open.closeSale();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    const paid = flow();
+    await paid.f.start();
+    expect(paid.last()).toBe("approved");
+    const before = paid.states.length;
+    await paid.f.closeSale();
+    expect(paid.states.length).toBe(before);
+  });
+
+  test("the receipt names the outcome and the fee, never a person", () => {
+    const base = {
+      eventName: "Night",
+      brandName: "Door",
+      totalCents: 3135,
+      feeCents: 135,
+      currency: "GBP",
+      cardLabel: "Visa contactless ending 4242",
+      whenIso: "2026-11-05T20:00:00.000Z",
+      paymentIntentId: "pi_abcdefgh12345678",
+    };
+    const approved = buildTapReceiptText({ ...base, outcome: "approved" });
+    expect(approved).toContain("Approved.");
+    expect(approved).toContain("Reference: 12345678");
+    expect(approved).not.toContain("pi_abcdefgh");
+    expect(approved).toContain("£1.35");
+    const declined = buildTapReceiptText({ ...base, outcome: "declined", feeCents: 0 });
+    expect(declined).toContain("Not approved. No money was taken.");
+    expect(declined).not.toContain("Includes fees");
+    expect(`${approved}${declined}`).not.toMatch(/@|\+\d{6}/);
   });
 });

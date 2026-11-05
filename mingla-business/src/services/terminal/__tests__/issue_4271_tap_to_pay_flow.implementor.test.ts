@@ -146,7 +146,7 @@ describe("happy path", () => {
 describe("complete only after a succeeded confirm", () => {
   test("confirm error → declined, complete never called", async () => {
     const h = makeHarness({
-      confirm: [{ error: { code: "DECLINED_BY_STRIPE_API", apiError: { declineCode: "insufficient_funds", code: "card_declined", message: "" } } }],
+      confirm: [{ error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { status: "requires_payment_method" }, apiError: { declineCode: "insufficient_funds", code: "card_declined", message: "" } } }],
     });
     await h.flow.start();
     expect(h.flow.getState().kind).toBe("declined");

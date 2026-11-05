@@ -8,7 +8,7 @@
  * succeeded payment (door-tap-intent complete).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Share, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,6 +23,10 @@ import {
 } from "../../../constants/designSystem";
 import {
   TAP_CARD_NEEDS_INSERT_COPY,
+  TAP_PROCESSING_TEXT,
+  TAP_SEND_RECEIPT,
+  TAP_TIMED_OUT_COPY,
+  TAP_UNKNOWN_RESULT_COPY,
   TAP_TO_PAY_SHORT,
   tapReaderProblemCanRetry,
   tapReaderProblemCopy,
@@ -53,10 +57,12 @@ import {
   type TapAmount,
   type TapSaleState,
 } from "../../../services/terminal/tapToPayFlow";
+import { buildTapReceiptText } from "../../../services/terminal/tapReceipt";
 import { consumeDoorTapPress } from "../../../services/terminal/tapTiming";
 import { formatCurrency, majorFromMinor } from "../../../utils/currency";
 import { HapticFeedback } from "../../../utils/hapticFeedback";
 import { randomUuid } from "../../../utils/randomId";
+import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";
 import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
@@ -111,7 +117,7 @@ export const TapToPaySaleScreen = ({
   }, [router, eventId]);
 
   const handleClose = useCallback((): void => {
-    void flowRef.current?.cancel();
+    void flowRef.current?.closeSale().catch((error: unknown) => reportNonFatal("door-tap.close", error));
     if (router.canGoBack()) router.back();
     else goToDoor();
   }, [router, goToDoor]);
@@ -213,6 +219,45 @@ export const TapToPaySaleScreen = ({
     );
   }, [draft, eventId, router, goToDoor]);
 
+  const sendReceipt = useCallback(
+    async (outcome: "approved" | "declined", amount: TapAmount, cardLabel: string | null): Promise<void> => {
+      const facts = flowRef.current?.getReceiptFacts();
+      const message = buildTapReceiptText({
+        eventName: route.event?.name ?? null,
+        brandName: route.brand?.displayName ?? null,
+        outcome,
+        totalCents: amount.totalCents,
+        feeCents: facts?.feeCents ?? null,
+        currency: amount.currency,
+        cardLabel,
+        whenIso: new Date().toISOString(),
+        paymentIntentId: facts?.paymentIntentId ?? null,
+      });
+      try {
+        await Share.share({ message });
+      } catch (error) {
+        reportNonFatal("door-tap.receipt", error);
+      }
+    },
+    [route.event?.name, route.brand?.displayName],
+  );
+
+  const receiptButton = (
+    outcome: "approved" | "declined",
+    amount: TapAmount,
+    cardLabel: string | null,
+  ): React.ReactElement => (
+    <Button
+      label={TAP_SEND_RECEIPT}
+      onPress={() => void sendReceipt(outcome, amount, cardLabel)}
+      variant="ghost"
+      size="md"
+      fullWidth
+      accessibilityLabel={TAP_SEND_RECEIPT}
+      testID="tap-send-receipt"
+    />
+  );
+
   const chrome = (
     <View style={styles.chromeRow}>
       <IconChrome icon="close" size={36} onPress={handleClose} accessibilityLabel="Close" />
@@ -301,7 +346,7 @@ export const TapToPaySaleScreen = ({
                     ? "Hold the card near the top of the iPhone."
                     : "Hold the card on the back of the phone."
                   : state.kind === "reading"
-                    ? "Reading card…"
+                    ? TAP_PROCESSING_TEXT
                     : "Saving the sale…"}
               </Text>
             </View>
@@ -333,6 +378,7 @@ export const TapToPaySaleScreen = ({
                 <Text style={styles.kvValueOk}>Checked in</Text>
               </View>
             </GlassCard>
+            {receiptButton("approved", state.amount, state.cardLabel)}
           </TapStatusView>
         );
       case "needs_pin":
@@ -357,6 +403,38 @@ export const TapToPaySaleScreen = ({
             primary={payCodeAction}
             secondary={{ label: "Try another card", onPress: () => void flowRef.current?.tryAnotherCard() }}
             testID="tap-state-declined"
+          >
+            {receiptButton("declined", state.amount, state.cardLabel)}
+          </TapStatusView>
+        );
+      case "timed_out":
+        return (
+          <TapStatusView
+            tone="bad"
+            icon="clock"
+            title={TAP_TIMED_OUT_COPY.title}
+            body={TAP_TIMED_OUT_COPY.body}
+            primary={{ label: "Try again", onPress: () => void flowRef.current?.tryAnotherCard() }}
+            secondary={payCodeAction}
+            testID="tap-state-timed_out"
+          >
+            {receiptButton("declined", state.amount, null)}
+          </TapStatusView>
+        );
+      case "unknown_result":
+        // Deliberately no pay code here: it could charge the guest twice.
+        return (
+          <TapStatusView
+            tone="bad"
+            icon="clock"
+            title={TAP_UNKNOWN_RESULT_COPY.title}
+            body={TAP_UNKNOWN_RESULT_COPY.body}
+            primary={{
+              label: "Try again",
+              onPress: () => void flowRef.current?.retryConfirm(),
+              testID: "tap-unknown-retry",
+            }}
+            testID="tap-state-unknown_result"
           />
         );
       case "cancelled":

@@ -77,6 +77,9 @@ export interface DoorTapIntent {
   currency: string;
   stripeAccountId: string;
   locationId: string;
+  /** What the guest pays in fees; null from a server that doesn't say. */
+  feeCents?: number | null;
+  subtotalCents?: number | null;
 }
 
 export interface DoorTapCompleteResult {
@@ -162,6 +165,11 @@ const requireInt = (data: Record<string, unknown>, key: string): number => {
   return value;
 };
 
+const optionalInt = (data: Record<string, unknown>, key: string): number | null => {
+  const value = data[key];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+};
+
 /** Who the Terminal session is for: the door's event when there is one, else the brand. */
 export interface TapToPayScopeIds {
   brandId: string | null;
@@ -225,6 +233,8 @@ export const createDoorTapIntent = async (
     currency: requireString(data, "currency"),
     stripeAccountId: requireString(data, "stripeAccountId"),
     locationId: requireString(data, "locationId"),
+    feeCents: optionalInt(data, "feeCents"),
+    subtotalCents: optionalInt(data, "subtotalCents"),
   };
 };
 

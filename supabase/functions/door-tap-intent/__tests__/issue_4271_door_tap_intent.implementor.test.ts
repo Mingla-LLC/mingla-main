@@ -119,6 +119,8 @@ Deno.test("#4271 tap create makes a server-priced card_present direct charge", a
     paymentIntentId: "pi_door1",
     clientSecret: "pi_door1_secret_x",
     totalCents: 2090,
+    subtotalCents: 2000,
+    feeCents: 90,
     currency: "USD",
     stripeAccountId: "acct_door1",
     locationId: "tml_door1",

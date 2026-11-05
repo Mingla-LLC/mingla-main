@@ -268,7 +268,7 @@ describe("Tap setup runs Apple's terms and How to Tap before the first sale", ()
   test("the setup screen wires the server Location and the shared reader session", () => {
     const src = read("src/components/door/tap/TapToPaySetupScreen.tsx");
     expect(src).toContain("runTapToPaySetup({");
-    expect(src).toContain("fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId })");
+    expect(src).toContain("fetchLocation: () => fetchDoorTapLocation({ brandId, eventId })");
     expect(src).toContain("client.ensureReaderConnected(locationId, { mayAcceptTerms: allowTerms })");
   });
 });

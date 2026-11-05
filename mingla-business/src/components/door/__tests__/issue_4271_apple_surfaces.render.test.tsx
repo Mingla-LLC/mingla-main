@@ -4,7 +4,7 @@
  * Every test here fails when its change is reverted (recorded on the issue).
  */
 import React from "react";
-import { Linking, Platform, Text } from "react-native";
+import { Linking, Platform, Share, Text } from "react-native";
 
 // react-test-renderer ships no types in this app.
 interface ReactTestInstance {
@@ -107,7 +107,14 @@ jest.mock("react-native-safe-area-context", () => ({
 jest.mock("../../ui/GlassCard", () => ({
   GlassCard: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock("../../ui/IconChrome", () => ({ IconChrome: () => null }));
+jest.mock("../../ui/IconChrome", () => {
+  const mocked: { lastOnPress?: () => void; IconChrome?: unknown } = {};
+  mocked.IconChrome = ({ onPress }: { onPress: () => void }) => {
+    mocked.lastOnPress = onPress;
+    return null;
+  };
+  return mocked;
+});
 jest.mock("../../ui/Spinner", () => ({ Spinner: () => null }));
 jest.mock("@tanstack/react-query", () => ({
   ...jest.requireActual("@tanstack/react-query"),
@@ -661,5 +668,81 @@ describe("B11 no feature art on iPhone", () => {
     await flush();
     Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
     expect(seen()).toContain("tap");
+  });
+});
+
+describe("B12 outcomes", () => {
+  const client = (overrides: Record<string, unknown> = {}) => ({
+    ensureReaderConnected: async () => ({}),
+    retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+    collectPaymentMethod: async () => ({ paymentIntent: { id: "pi_1", status: "requires_confirmation" } }),
+    confirmPaymentIntent: async () => ({ paymentIntent: { id: "pi_1", status: "succeeded" } }),
+    cancelCollectPaymentMethod: async () => ({}),
+    ...overrides,
+  });
+  const sale = async (terminal: Record<string, unknown>): Promise<ReactTestRenderer> => {
+    resetTapToPaySessionForTests();
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: terminal as never });
+    const tree = mount(saleScreen());
+    await settleSale();
+    return tree;
+  };
+
+  test("a card read that timed out says so and still offers a pay code", async () => {
+    const { root } = await sale(client({ collectPaymentMethod: async () => ({ error: { code: "CARD_READ_TIMED_OUT" } }) }));
+    expect(textOf(root)).toContain("Payment timed out");
+    expect(textOf(root)).toContain("No card was read. Nothing was charged.");
+    expect(root.findAll((n) => n.props.testID === "tap-show-pay-code").length).toBeGreaterThan(0);
+  });
+
+  test("an unknown result offers no pay code, and retry confirms the same intent", async () => {
+    const confirm = jest
+      .fn<Promise<unknown>, unknown[]>()
+      .mockResolvedValueOnce({ error: { code: "STRIPE_API_ERROR" } })
+      .mockResolvedValue({ paymentIntent: { id: "pi_1", status: "succeeded" } });
+    const { root } = await sale(client({ confirmPaymentIntent: confirm }));
+    const text = textOf(root);
+    expect(text).toContain("We don't know yet if this went through.");
+    expect(text).not.toContain("Nothing was charged");
+    expect(root.findAll((n) => n.props.testID === "tap-show-pay-code")).toHaveLength(0);
+    await act(async () => {
+      byTestId(root, "tap-unknown-retry").props.onPress();
+    });
+    await settleSale();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm.mock.calls[1]?.[0]).toEqual(confirm.mock.calls[0]?.[0]);
+    expect(textOf(root)).toContain("Paid");
+  });
+
+  test("Send receipt on a declined card opens the share sheet with no personal data", async () => {
+    const share = jest.spyOn(Share, "share").mockResolvedValue({ action: "sharedAction" } as never);
+    const { root } = await sale(
+      client({
+        confirmPaymentIntent: async () => ({
+          error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { id: "pi_1", status: "requires_payment_method" } },
+        }),
+      }),
+    );
+    expect(textOf(root)).toContain("Card declined");
+    await act(async () => {
+      byTestId(root, "tap-send-receipt").props.onPress();
+    });
+    expect(share).toHaveBeenCalledTimes(1);
+    const message = (share.mock.calls[0]?.[0] as { message: string }).message;
+    expect(message).toContain("Not approved. No money was taken.");
+  });
+
+  test("closing an open sale cancels the intent on the server", async () => {
+    const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as { cancelDoorTapIntent: jest.Mock };
+    edge.cancelDoorTapIntent.mockClear();
+    const { root } = await sale(client({ collectPaymentMethod: async () => ({ error: { code: "CARD_READ_TIMED_OUT" } }) }));
+    const chromeClose = jest.requireMock("../../ui/IconChrome") as { lastOnPress?: () => void };
+    expect(root).toBeTruthy();
+    await act(async () => {
+      chromeClose.lastOnPress?.();
+    });
+    await flush();
+    expect(edge.cancelDoorTapIntent).toHaveBeenCalledTimes(1);
   });
 });

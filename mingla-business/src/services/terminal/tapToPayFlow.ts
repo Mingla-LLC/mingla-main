@@ -101,7 +101,9 @@ export type TapSaleState =
   | { kind: "saving"; amount: TapAmount }
   | { kind: "approved"; amount: TapAmount; result: DoorTapCompleteResult; cardLabel: string | null }
   | { kind: "needs_pin"; amount: TapAmount }
-  | { kind: "declined"; amount: TapAmount }
+  | { kind: "declined"; amount: TapAmount; cardLabel: string | null }
+  | { kind: "timed_out"; amount: TapAmount }
+  | { kind: "unknown_result"; amount: TapAmount }
   | { kind: "cancelled"; amount: TapAmount }
   | { kind: "not_on_this_phone" }
   | { kind: "ios_update_required" }
@@ -116,6 +118,7 @@ export type TerminalFailureKind =
   | "needs_pin"
   | "declined"
   | "cancelled"
+  | "timed_out"
   | "not_on_this_phone"
   | "ios_update_required"
   | "terms_not_accepted"
@@ -193,6 +196,7 @@ export const classifyTerminalError = (error: TerminalErrorLike): TerminalFailure
   if (PIN_MARKERS.some((marker) => haystack.includes(marker))) return "needs_pin";
   const code = error.code ?? "";
   if (code === "TAP_TO_PAY_READER_MERCHANT_BLOCKED") return "merchant_blocked";
+  if (code === "CARD_READ_TIMED_OUT") return "timed_out";
   if (CANCEL_CODES.has(code)) return "cancelled";
   if (DEVICE_CODES.has(code)) return "not_on_this_phone";
   if (DECLINE_CODES.has(code)) return "declined";
@@ -271,6 +275,7 @@ export class TapToPaySaleFlow {
   private readonly input: TapToPaySaleFlowInput;
   private intent: DoorTapIntent | null = null;
   private paymentIntent: TerminalPaymentIntentLike | null = null;
+  private collectedPaymentIntent: TerminalPaymentIntentLike | null = null;
   private succeededPaymentIntentId: string | null = null;
   private lastCardLabel: string | null = null;
   private busy = false;
@@ -431,7 +436,9 @@ export class TapToPaySaleFlow {
     }
     const amount = this.amount();
     if (kind === "needs_pin") this.emit({ kind: "needs_pin", amount });
-    else if (kind === "declined") this.emit({ kind: "declined", amount });
+    else if (kind === "declined") {
+      this.emit({ kind: "declined", amount, cardLabel: cardLabelFor(error.paymentIntent ?? this.paymentIntent ?? undefined) });
+    } else if (kind === "timed_out") this.emit({ kind: "timed_out", amount });
     else if (kind === "cancelled") this.emit({ kind: "cancelled", amount });
     else this.emit({ kind: "failed", message: fallbackMessage });
   }
@@ -451,21 +458,84 @@ export class TapToPaySaleFlow {
     }
     this.paymentIntent = collected.paymentIntent;
 
+    this.collectedPaymentIntent = collected.paymentIntent;
+    await this.confirm();
+  }
+
+  private async confirm(): Promise<void> {
+    const amount = this.amount();
+    const collected = this.collectedPaymentIntent;
+    if (collected === null) return;
     this.emit({ kind: "reading", amount });
-    const confirmed = await this.input.terminal.confirmPaymentIntent(collected.paymentIntent);
+    const confirmed = await this.input.terminal.confirmPaymentIntent(collected);
     if (confirmed.error || confirmed.paymentIntent === undefined) {
-      if (confirmed.error?.paymentIntent !== undefined) this.paymentIntent = confirmed.error.paymentIntent;
-      this.emitTerminalFailure(confirmed.error ?? {}, "The payment didn't go through. Nothing was charged. Try again.");
+      const error = confirmed.error ?? {};
+      const after = error.paymentIntent;
+      if (after !== undefined) this.paymentIntent = after;
+      // Stripe: with no PaymentIntent back, or a timed-out request, the status
+      // is unknown and the answer is to confirm the same intent again. Nothing
+      // here may say "not charged" or offer a second way to pay.
+      if (
+        error.code === "REQUEST_TIMED_OUT" ||
+        (after === undefined && classifyTerminalError(error) !== "needs_pin")
+      ) {
+        this.emit({ kind: "unknown_result", amount });
+        return;
+      }
+      if (after?.status === "succeeded") {
+        await this.recordSucceeded(after);
+        return;
+      }
+      // "Nothing was charged" is only true when Stripe says it needs a new card.
+      if (after?.status !== "requires_payment_method" && classifyTerminalError(error) !== "needs_pin") {
+        this.emit({ kind: "unknown_result", amount });
+        return;
+      }
+      this.collectedPaymentIntent = null;
+      this.emitTerminalFailure(error, "The payment didn't go through. Nothing was charged. Try again.");
       return;
     }
     this.paymentIntent = confirmed.paymentIntent;
     if (confirmed.paymentIntent.status !== "succeeded") {
-      this.emit({ kind: "declined", amount });
+      this.collectedPaymentIntent = null;
+      this.emit({ kind: "declined", amount, cardLabel: cardLabelFor(confirmed.paymentIntent) });
       return;
     }
+    await this.recordSucceeded(confirmed.paymentIntent);
+  }
+
+  private async recordSucceeded(paymentIntent: TerminalPaymentIntentLike): Promise<void> {
+    this.collectedPaymentIntent = null;
     this.succeededPaymentIntentId = this.intent?.paymentIntentId ?? null;
-    this.lastCardLabel = cardLabelFor(confirmed.paymentIntent);
+    this.lastCardLabel = cardLabelFor(paymentIntent);
     await this.complete();
+  }
+
+  /** "Try again" on an unknown result: confirm the SAME intent. */
+  async retryConfirm(): Promise<void> {
+    if (this.busy || this.state.kind !== "unknown_result") return;
+    this.busy = true;
+    try {
+      await this.confirm();
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** The host closed the sale. An open intent is cancelled unless it's mid-confirm or paid. */
+  async closeSale(): Promise<void> {
+    const kind = this.state.kind;
+    if (kind === "reading" || kind === "saving" || kind === "approved" || kind === "save_failed") return;
+    await this.abandonForPayCode();
+  }
+
+  /** What a receipt or the sweep's "seen" call needs. */
+  getReceiptFacts(): { paymentIntentId: string | null; feeCents: number | null; clientRequestId: string } {
+    return {
+      paymentIntentId: this.intent?.paymentIntentId ?? null,
+      feeCents: this.intent?.feeCents ?? null,
+      clientRequestId: this.input.clientRequestId,
+    };
   }
 
   private async complete(): Promise<void> {

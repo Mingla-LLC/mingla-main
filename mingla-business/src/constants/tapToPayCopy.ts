@@ -125,3 +125,16 @@ export const tapOnboardingCopy = (os: string): { title: string; body: string; bu
   body: "No card machine. Guests tap a card or phone on your phone at the door.",
   button: `Set up ${tapToPayName(os)}`,
 });
+
+export const TAP_TIMED_OUT_COPY = {
+  title: "Payment timed out",
+  body: "No card was read. Nothing was charged.",
+} as const;
+
+export const TAP_UNKNOWN_RESULT_COPY = {
+  title: "Checking the payment",
+  body: "We don't know yet if this went through. Don't take another payment until this finishes.",
+} as const;
+
+export const TAP_PROCESSING_TEXT = "Processing payment…";
+export const TAP_SEND_RECEIPT = "Send receipt";

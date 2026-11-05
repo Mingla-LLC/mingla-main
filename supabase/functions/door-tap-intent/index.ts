@@ -94,7 +94,7 @@ async function handleCreate(
   const { data: existing } = await supabase
     .from("door_tap_intents")
     .select(
-      "id, stripe_payment_intent_id, stripe_account_id, stripe_location_id, total_cents, currency",
+      "id, stripe_payment_intent_id, stripe_account_id, stripe_location_id, total_cents, currency, fee_cents, subtotal_cents",
     )
     .eq("event_id", eventId)
     .eq("client_request_id", clientRequestId)
@@ -111,6 +111,8 @@ async function handleCreate(
       paymentIntentId: pi.id,
       clientSecret: pi.client_secret,
       totalCents: existing.total_cents,
+      subtotalCents: existing.subtotal_cents,
+      feeCents: existing.fee_cents,
       currency: existing.currency,
       stripeAccountId: existing.stripe_account_id,
       locationId: existing.stripe_location_id,
@@ -210,6 +212,8 @@ async function handleCreate(
     paymentIntentId: pi.id,
     clientSecret: pi.client_secret,
     totalCents: quote.money.totalCents,
+    subtotalCents: quote.money.subtotalCents,
+    feeCents: quote.money.feeCents,
     currency: quote.money.currency,
     stripeAccountId: quote.stripeAccountId,
     locationId,
