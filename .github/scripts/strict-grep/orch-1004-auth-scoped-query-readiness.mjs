@@ -64,6 +64,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useMyBrandPlans.ts",
   // #3988 — brand-group media/list metadata RPCs are membership-gated.
   "useBrandGroupMedia.ts",
+  // #4270 W4 — the brand plan read (brand_plan_for_host, auth.uid() membership
+  // check). Folds isAuthReady into enabled.
+  "useBrandPlan.ts",
   "useBusinessRecentReader.ts",
   "useVenueListings.ts",
   "useBrandReservationSettingsList.ts",
