@@ -15,6 +15,8 @@
 --   S-SHOWN   the stored title always carries the suffix within 160, and a title
 --             that cannot fit is refused, never cut; the shown title never
 --             carries it; plan lines use the shown title
+--   T-TITLE   staff rename and move, the quiet number and the limit against plan_title
+--   L-PUNY    a site label against the address a browser opens
 --   R-LIMIT   12 changes an hour is per person and per brand, is shared by
 --             posts and tasks, and a refused change writes nothing
 --   F-FLAG    the card flag trigger: no Brand group, done and archived cards,
@@ -326,6 +328,91 @@ begin
     perform pg_temp.v_check('K-KEYS', r.who || ': no address anywhere', (v::text like '%@%')::text, 'false');
     perform pg_temp.v_check('K-KEYS', r.who || ': no line says who added it to another brand', (v::text like '%V4270 Cedar%')::text, 'false');
   end loop;
+
+  -- T-TITLE (D28, D29) ------------------------------------------------------
+  v := pg_temp.v_add('dem', A, jsonb_build_object('type', 'post', 'title', 'V4270 follow', 'on', pg_temp.v_day(30)), 'vtitle00001')::jsonb;
+  v_id := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
+  perform pg_temp.v_check('T-TITLE', 'stored with the suffix, plain beside it',
+    (select title || ' | ' || plan_title from public.content_calendar_items where id = v_id), 'V4270 follow · V4270 Basil | V4270 follow');
+  perform pg_temp.v_as('gia', format($q$select public.content_calendar_update(%L, '{"title":"V4270 follow two · V4270 Basil"}'::jsonb, %s, 'vtitlec0001')::text$q$, v_id, v_rev));
+  perform pg_temp.v_check('T-TITLE', 'staff rename keeping the tail: hosts read the new words without it',
+    (select i->>'title' from jsonb_array_elements(pg_temp.v_read('venue', A)->'items') i where i->>'id' = v_id::text), 'V4270 follow two');
+  v_rev := (select revision from public.content_calendar_items where id = v_id);
+  perform pg_temp.v_as('gia', format($q$select public.content_calendar_update(%L, '{"title":"V4270 follow three"}'::jsonb, %s, 'vtitlec0002')::text$q$, v_id, v_rev));
+  perform pg_temp.v_check('T-TITLE', 'staff rename dropping the tail: hosts read the whole new title',
+    (select i->>'title' from jsonb_array_elements(pg_temp.v_read('venue', A)->'items') i where i->>'id' = v_id::text), 'V4270 follow three');
+  perform pg_temp.v_check('T-TITLE', 'and the column empties', (select plan_title from public.content_calendar_items where id = v_id), null);
+
+  v := pg_temp.v_add('dem', A, jsonb_build_object('type', 'task', 'title', 'V4270 card follow', 'on', pg_temp.v_day(30)), 'vtitle00002')::jsonb;
+  v_card := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
+  perform pg_temp.v_as('gia', format($q$select public.ops_work_update(%L, '{"title":"V4270 card two · V4270 Basil"}'::jsonb, %s, 'vtitlec0003')::text$q$, v_card, v_rev));
+  perform pg_temp.v_check('T-TITLE', 'a card follows a staff rename too',
+    (select i->>'title' from jsonb_array_elements(pg_temp.v_read('venue', A)->'items') i where i->>'id' = v_card::text), 'V4270 card two');
+
+  v := pg_temp.v_add('dem', A, jsonb_build_object('type', 'post', 'title', 'V4270 moved', 'on', pg_temp.v_day(30)), 'vtitle00003')::jsonb;
+  v_id := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
+  perform pg_temp.v_as('gia', format($q$select public.content_calendar_update(%L, %L::jsonb, %s, 'vtitlec0004')::text$q$, v_id, jsonb_build_object('brand_id', B), v_rev));
+  v := pg_temp.v_read('bob', B);
+  perform pg_temp.v_check('T-TITLE', 'moved to another brand: its hosts read the plain title',
+    (select i->>'title' from jsonb_array_elements(v->'items') i where i->>'id' = v_id::text), 'V4270 moved');
+  perform pg_temp.v_check('T-TITLE', 'and never the old brand''s name', (v::text like '%V4270 Basil%')::text, 'false');
+  perform pg_temp.v_check('T-TITLE', 'the line in its group says only the plain title',
+    (select count(*)::text from public.messages where conversation_id = CB::uuid and content like '%V4270 moved%' and content not like '%Basil%'), '1');
+
+  -- A clash with something the host cannot see is numbered quietly.
+  insert into public.content_calendar_items (title, owner_emails, brand_id, created_by, updated_by)
+  values ('V4270 secret · V4270 Basil', ARRAY['gia.v4270@test.local'], A::uuid, 'gia.v4270@test.local', 'gia.v4270@test.local');
+  v := pg_temp.v_add('dem', A, jsonb_build_object('type', 'post', 'title', 'V4270 secret', 'on', pg_temp.v_day(30)), 'vtitle00004')::jsonb;
+  perform pg_temp.v_check('T-TITLE', 'a hidden clash: the host is told nothing', v #>> '{item,title}', 'V4270 secret');
+  perform pg_temp.v_check('T-TITLE', 'the number is only on the stored title',
+    (select title from public.content_calendar_items where id = (v #>> '{item,id}')::uuid), 'V4270 secret · V4270 Basil (2)');
+  perform pg_temp.v_check('T-TITLE', 'no answer or line carries the number',
+    ((v::text like '%(2)%') or exists (select 1 from public.messages where conversation_id = CA::uuid and content like '%V4270 secret%(2)%'))::text, 'false');
+  perform pg_temp.v_like('T-TITLE', 'once it is on the plan, the same name gets the D24 words',
+    pg_temp.v_add('dem', A, jsonb_build_object('type', 'post', 'title', 'v4270 SECRET', 'on', pg_temp.v_day(30)), 'vtitle00005'), 'ERR:23505:duplicate_title:%');
+
+  -- The limit the plan sends is the limit the server keeps.
+  perform pg_temp.v_like('T-TITLE', 'one over the limit: refused with the limit',
+    pg_temp.v_add('dem', A, jsonb_build_object('type', 'post', 'title', repeat('o', 142), 'on', pg_temp.v_day(30)), 'vtitle00006'), 'ERR:22023:title_too_long: Keep this to 141 characters.');
+  perform pg_temp.v_like('T-TITLE', 'a task the same',
+    pg_temp.v_add('dem', A, jsonb_build_object('type', 'task', 'title', repeat('o', 142), 'on', pg_temp.v_day(30)), 'vtitle00007'), 'ERR:22023:title_too_long: Keep this to 141 characters.');
+  perform pg_temp.v_check('T-TITLE', 'refused means not written',
+    (select count(*)::text from public.content_calendar_items where title like 'ooo%'), '0');
+  v := pg_temp.v_add('dem', A, jsonb_build_object('type', 'post', 'title', repeat('o', 141), 'on', pg_temp.v_day(30)), 'vtitle00008')::jsonb;
+  perform pg_temp.v_check('T-TITLE', 'at the limit: whole, and stored within 160',
+    (select plan_title || '/' || (char_length(title) <= 160)::text from public.content_calendar_items where id = (v #>> '{item,id}')::uuid), repeat('o', 141) || '/true');
+  perform set_config('session_replication_role', 'replica', true);
+  update public.brands set name = repeat('N', 200) where id = B::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  perform pg_temp.v_check('T-TITLE', 'the longest brand name leaves 72', pg_temp.v_read('bob', B) ->> 'title_max', '72');
+  insert into public.content_calendar_items (title, owner_emails, brand_id, created_by, updated_by)
+  values (repeat('u', 72) || ' · ' || repeat('N', 80), ARRAY['gia.v4270@test.local'], B::uuid, 'gia.v4270@test.local', 'gia.v4270@test.local');
+  v := pg_temp.v_add('bob', B, jsonb_build_object('type', 'post', 'title', repeat('u', 72), 'on', pg_temp.v_day(30)), 'vtitle00009')::jsonb;
+  perform pg_temp.v_check('T-TITLE', 'the number fits in the room kept for it',
+    (select right(title, 4) || '/' || (char_length(title) <= 160)::text from public.content_calendar_items where id = (v #>> '{item,id}')::uuid),  ' (2)/true');
+  perform set_config('session_replication_role', 'replica', true);
+  update public.brands set name = 'V4270 Cedar' where id = B::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+
+  -- L-PUNY (D30): the label against the address a browser opens -------------
+  for r in select * from (values
+      ('https://' || U&'\0441\0430nv\0430' || '.example/x', 'xn--nv-6kcc5f.example'),
+      ('https://' || U&'\0421\0410NV\0410' || '.EXAMPLE/x', 'xn--nv-6kcc5f.example'),
+      ('https://b' || U&'\00FC' || 'cher.example/', 'xn--bcher-kva.example'),
+      ('https://www.b' || U&'\00FC' || 'cher.example/', 'xn--bcher-kva.example'),
+      ('https://canva.com.' || U&'\0441\0430nv\0430' || '.example/', 'canva.com.xn--nv-6kcc5f.example'),
+      ('https://' || U&'\FF43\FF41\FF4E\FF56\FF41' || '.com/', 'canva.com'),
+      ('https://canva' || U&'\3002' || 'com/', 'canva.com'),
+      ('https://XN--80AK6AA92E.com/', 'xn--80ak6aa92e.com'),
+      ('https://' || U&'\+01F600' || '.example/', 'xn--e28h.example')) x(url, want) loop
+    perform pg_temp.v_check('L-PUNY', r.url, public.brand_plan_link_json(r.url) ->> 'site', r.want);
+  end loop;
+  perform pg_temp.v_check('L-PUNY', 'folding that ends the site name is refused',
+    (public.brand_plan_link_json('https://canva.com' || U&'\FF0F' || 'evil.example/') is null
+     and public.brand_plan_link_json('https://canva.com' || U&'\FF20' || 'evil.example/') is null)::text, 'true');
+  perform pg_temp.v_check('L-PUNY', '253 characters is a site, 254 is not',
+    (public.brand_plan_link_json('https://' || repeat('a', 253) || '/') is not null
+     and public.brand_plan_link_json('https://' || repeat('a', 254) || '/') is null)::text, 'true');
 end;
 $main$;
 
