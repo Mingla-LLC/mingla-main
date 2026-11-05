@@ -802,7 +802,13 @@ export default function ScannerCameraRoute(): React.ReactElement {
               onPress={dismissOverlay}
               style={styles.overlayCard}
               accessibilityRole="button"
-              accessibilityLabel="Dismiss scan result"
+              // issue #3281 — a screen reader hears the result, the ticket and
+              // what the guest is still owed, not only how to dismiss it.
+              accessibilityLabel={[overlay.message, overlay.detail, overlay.extras]
+                .filter((part): part is string => typeof part === "string" && part.length > 0)
+                .join(". ")}
+              accessibilityHint="Dismisses the scan result"
+              accessibilityLiveRegion="polite"
             >
               <View
                 style={[

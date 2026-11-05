@@ -267,6 +267,8 @@ describe("issue #3827 — door Find by name", () => {
     // The day-label enrichment replaces the detail but keeps the extras.
     expect(src).toMatch(/detail: copy\.detail,\s*extras,/);
     expect(src).toMatch(/showResult\(\{ kind, message, detail, extras \}\)/);
+    // A screen reader hears the extras too, not only "Dismiss".
+    expect(src).toMatch(/accessibilityLabel=\{\[overlay\.message, overlay\.detail, overlay\.extras\]/);
   });
 
   test("S-3 no match: empty copy", async () => {
