@@ -224,7 +224,7 @@ Deno.test("AX-L4 a cached empty list: a refresh that keeps failing holds its awa
       return shouldRetryChatList(count, error, rows > 0, false);
     },
     retryDelay: () => 1,
-    enabled: false,
+    staleTime: Infinity, // no fetch on mount; the refetch below is the only one
   });
   const unsubscribe = observer.subscribe((result: Parameters<typeof chatListViewState>[0]) => {
     views.push(chatListViewState(result));
