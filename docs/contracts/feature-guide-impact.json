@@ -161,6 +161,7 @@
         "app-mobile/src/components/chat/GroupInfoSheet.tsx",
         "app-mobile/src/components/connections/ChatListItem.tsx",
         "app-mobile/src/components/connections/chatListModel.ts",
+        "app-mobile/src/components/connections/chatPeerState.ts",
         "app-mobile/src/components/discover/BusinessEventCard.tsx",
         "app-mobile/src/hooks/useBrandBySlug.ts",
         "app-mobile/src/hooks/useMessages.ts",
