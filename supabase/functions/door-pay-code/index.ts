@@ -338,7 +338,7 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
   const { data: row, error } = await supabase
     .from("door_pay_codes")
     .select(
-      "id, event_id, event_date_id, lines, currency, subtotal_cents, fee_cents, total_cents, status, expires_at, events!inner(title, location_text, city, brands!inner(name))",
+      "id, event_id, event_date_id, provider, lines, currency, subtotal_cents, fee_cents, total_cents, status, expires_at, events!inner(title, location_text, city, brands!inner(name))",
     )
     .eq("code", raw)
     .maybeSingle();
@@ -419,6 +419,9 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
     totalCents: row.total_cents,
     currency: row.currency,
     expiresAt: row.expires_at,
+    // Paystack has no close call: the guest page needs the provider so it never
+    // tells a Paystack guest they weren't charged on a closed code.
+    provider: row.provider === "paystack" ? "paystack" : row.provider === "stripe" ? "stripe" : null,
     // Only a closed code with money on it adds this: amount and refund state,
     // never who paid.
     ...(latePayment !== null ? { latePayment } : {}),

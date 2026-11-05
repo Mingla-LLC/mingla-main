@@ -502,6 +502,7 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
     totalCents: 3135,
     currency: "GBP",
     expiresAt: "2099-01-01T00:00:00.000Z",
+    provider: "stripe",
     ...over,
   });
 
@@ -550,6 +551,34 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
       currency: "GBP",
       expiresAt: "2099-01-01T00:00:00.000Z",
     });
+    let tree: ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    expect(textOf((tree as ReactTestRenderer).root)).not.toContain("weren't charged");
+  });
+
+  test.each([
+    ["expired", "This code has expired"],
+    ["cancelled", "The door cancelled this sale"],
+  ])("P2-1: a Paystack guest on a %s code is told a late payment is refunded in full, never not charged", async (status, title) => {
+    const service = jest.requireMock("../../../services/doorPayCodeService") as { viewDoorPayCode: jest.Mock };
+    mockParams = { code: "PSKP2345" };
+    service.viewDoorPayCode.mockResolvedValueOnce(guestView({ status, provider: "paystack", currency: "NGN" }));
+    let tree: ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    const text = textOf((tree as ReactTestRenderer).root);
+    expect(text).toContain(title);
+    expect(text).toContain("If one still lands, it's refunded to you in full.");
+    expect(text).not.toContain("weren't charged");
+  });
+
+  test("P2-1: a closed code whose provider the server didn't name never says not charged", async () => {
+    const service = jest.requireMock("../../../services/doorPayCodeService") as { viewDoorPayCode: jest.Mock };
+    mockParams = { code: "K7Q2M9XA" };
+    service.viewDoorPayCode.mockResolvedValueOnce(guestView({ status: "expired", provider: null }));
     let tree: ReactTestRenderer | undefined;
     await act(async () => {
       tree = renderer.create(<DoorPayGuestPage />);

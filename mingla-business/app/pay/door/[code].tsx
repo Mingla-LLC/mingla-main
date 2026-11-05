@@ -236,7 +236,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
     content = page.justPaid ? (
       <PaidCard view={page.view} contact={readContact(code)} />
     ) : (
-      <StateCard {...doorPayGuestEndCopy("paid")} />
+      <StateCard {...doorPayGuestEndCopy("paid", page.view.provider)} />
     );
   } else {
     const view = page.view;
@@ -252,7 +252,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
     } else if (view.status === "open" || view.status === "opened") {
       content = <PayForm code={code} view={view} />;
     } else if (view.status === "paid") {
-      content = <StateCard {...doorPayGuestEndCopy("paid")} />;
+      content = <StateCard {...doorPayGuestEndCopy("paid", view.provider)} />;
     } else if (view.status === "payment_landing" || view.status === "checking") {
       content = (
         <StateCard
@@ -263,7 +263,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
         />
       );
     } else {
-      content = <StateCard {...doorPayGuestEndCopy(view.status)} />;
+      content = <StateCard {...doorPayGuestEndCopy(view.status, view.provider)} />;
     }
   }
 
@@ -376,7 +376,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
     );
   }
   if (endStatus !== null) {
-    return <StateCard {...doorPayGuestEndCopy(endStatus)} />;
+    return <StateCard {...doorPayGuestEndCopy(endStatus, view.provider)} />;
   }
 
   return (

@@ -165,6 +165,9 @@ Deno.test("#4271 tester: view never leaks buyer, session, order or creator data"
   const allowed = new Set([
     "status", "eventId", "eventDateId", "eventName", "eventStartsAt", "venueLabel",
     "brandName", "lines", "subtotalCents", "feeCents", "totalCents", "currency", "expiresAt",
+    // Final test P2-1: the provider name (stripe/paystack) is public and the
+    // guest page needs it so a Paystack guest is never told they weren't charged.
+    "provider",
   ]);
   for (const key of Object.keys(body)) assert(allowed.has(key), `view answered extra key ${key}`);
   assertEquals(body.status, "paid", "a paid code past its time stays paid, never expired");

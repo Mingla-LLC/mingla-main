@@ -174,15 +174,25 @@ export interface DoorPayGuestEndCopy {
   body: string;
 }
 
-/** B5 — the guest's "can't be used" states. Pre-purchase: no app talk. */
+/**
+ * B5 — the guest's "can't be used" states. Pre-purchase: no app talk.
+ * "You weren't charged." only when Stripe is the provider: the server closes a
+ * Stripe page before it reports a code closed. Paystack has no close call, so a
+ * Paystack guest (or one whose provider the server didn't name) is told what
+ * happens if a payment still lands: it's refunded in full.
+ */
 export const doorPayGuestEndCopy = (
   status: "expired" | "paid" | "cancelled" | "failed",
+  provider: "stripe" | "paystack" | null,
 ): DoorPayGuestEndCopy => {
+  const closeConfirmed = provider === "stripe";
   switch (status) {
     case "expired":
       return {
         title: "This code has expired",
-        body: "You weren't charged. Ask the door to show a new one.",
+        body: closeConfirmed
+          ? "You weren't charged. Ask the door to show a new one."
+          : "No payment has come in. If one still lands, it's refunded to you in full. Ask the door to show a new one.",
       };
     case "paid":
       return {
@@ -192,7 +202,9 @@ export const doorPayGuestEndCopy = (
     case "cancelled":
       return {
         title: "The door cancelled this sale",
-        body: "You weren't charged.",
+        body: closeConfirmed
+          ? "You weren't charged."
+          : "No payment has come in. If one still lands, it's refunded to you in full.",
       };
     case "failed":
       return {

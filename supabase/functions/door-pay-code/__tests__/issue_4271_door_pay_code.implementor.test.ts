@@ -438,6 +438,15 @@ Deno.test("#4271 retest T3: a closed code's view names a late refund, never the 
   assertEquals(body.latePayment, { state: "refunding", amountCents: 3135, currency: "GBP" });
 });
 
+Deno.test("#4271 final P2-1: view names the provider so a Paystack guest is never told not charged", async () => {
+  for (const provider of ["paystack", "stripe"]) {
+    const db = makeDb({ codeRow: { ...PAST_CODE, status: "cancelled", provider } });
+    const body = await (await handler(db)(post({ action: "view", code: "ABCD2345" }, false))).json();
+    assertEquals(body.status, "cancelled");
+    assertEquals(body.provider, provider);
+  }
+});
+
 Deno.test("#4271 retest T4: settle is the server's answer to the host's clock", async () => {
   // Not past its time on the server's clock: nothing closes.
   const early = makeDb({ codeRow: LIVE_CODE });

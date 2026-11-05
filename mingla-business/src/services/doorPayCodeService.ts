@@ -86,6 +86,11 @@ export interface DoorPayCodeView {
   totalCents: number;
   currency: string;
   expiresAt: string;
+  /**
+   * Who takes the money. Null when the server did not say: the guest page then
+   * uses the Paystack wording, since it can't know no payment can still land.
+   */
+  provider: "stripe" | "paystack" | null;
 }
 
 /** The host-side row, as RLS lets the brand team read it. */
@@ -215,6 +220,7 @@ export const parseDoorPayCodeView = (data: Record<string, unknown>): DoorPayCode
     totalCents: num(data.totalCents),
     currency: str(data.currency),
     expiresAt: str(data.expiresAt),
+    provider: data.provider === "stripe" || data.provider === "paystack" ? data.provider : null,
   };
 };
 

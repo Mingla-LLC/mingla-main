@@ -257,9 +257,21 @@ describe("#4271 pay code states", () => {
     });
     expect(doorPayHostEndCopy("failed").body).toBe("Their bank declined it. Nothing was charged.");
     expect(doorPayHostEndCopy("cancelled").primary.label).toBe("Back to door sales");
-    expect(doorPayGuestEndCopy("expired").body).toBe("You weren't charged. Ask the door to show a new one.");
-    expect(doorPayGuestEndCopy("paid").title).toBe("This code is already paid");
-    expect(doorPayGuestEndCopy("cancelled").title).toBe("The door cancelled this sale");
+    expect(doorPayGuestEndCopy("expired", "stripe").body).toBe("You weren't charged. Ask the door to show a new one.");
+    expect(doorPayGuestEndCopy("paid", "stripe").title).toBe("This code is already paid");
+    expect(doorPayGuestEndCopy("cancelled", "stripe").title).toBe("The door cancelled this sale");
+  });
+
+  test("P2-1: a Paystack guest's closed code says a late payment is refunded in full", () => {
+    for (const provider of ["paystack", null] as const) {
+      expect(doorPayGuestEndCopy("expired", provider).body).toBe(
+        "No payment has come in. If one still lands, it's refunded to you in full. Ask the door to show a new one.",
+      );
+      expect(doorPayGuestEndCopy("cancelled", provider).body).toBe(
+        "No payment has come in. If one still lands, it's refunded to you in full.",
+      );
+    }
+    expect(doorPayGuestEndCopy("cancelled", "stripe").body).toBe("You weren't charged.");
   });
 
   test("the guest page talks about the ticket, not the app, before payment", () => {
