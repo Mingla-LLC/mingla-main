@@ -35,7 +35,10 @@
 --             AND on a 'scheduled' event (doors open before the start time).
 --   A-ONLINE  (defect probe) any tier the door quote accepts for a pay code
 --             must also be accepted by the online checkout quote the guest's
---             payment runs through (issue_3872_ticket_quote).
+--             payment runs through. Rework (#4271 D1): the guest's checkout
+--             runs that quote inside issue_4271_door_ticket_quote, which
+--             unlocks the code's own door-only tiers; the plain online quote
+--             (every non-door checkout) must still refuse a door-only tier.
 --
 -- Every check records a failure instead of stopping, so one run reports every
 -- broken guard; the block raises once at the end if any failed.
@@ -679,6 +682,27 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_ok := false;
   END;
   IF v_ok THEN
+    v_code := gen_random_uuid();
+    INSERT INTO public.door_pay_codes (
+      id, brand_id, event_id, event_date_id, code, lines, currency, subtotal_cents,
+      fee_cents, total_cents, provider, created_by
+    ) VALUES (
+      v_code, v_brand, v_event, NULL, 'DRNY2345',
+      jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier_door, 'quantity', 1)),
+      'USD', 2000, 90, 2090, 'stripe', v_owner
+    );
+    v_raised := NULL;
+    BEGIN
+      PERFORM public.issue_4271_door_ticket_quote(
+        v_code, v_event, jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier_door, 'quantity', 1)),
+        NULL, NULL, NULL, NULL, 'full', NULL, 'guest.a4271@example.test', '+12025550101',
+        NULL, false);
+    EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM;
+    END;
+    IF v_raised IS NOT NULL THEN
+      v_fail := v_fail || format('A-ONLINE DEFECT a door-only tier gets a pay code but the guest''s checkout refuses it (%s)', v_raised);
+    END IF;
+    -- The unlock lasts one call: the plain online quote still refuses it.
     v_raised := NULL;
     BEGIN
       PERFORM public.issue_3872_ticket_quote(
@@ -687,8 +711,21 @@ BEGIN
         NULL, NULL, false);
     EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM;
     END;
-    IF v_raised IS NOT NULL THEN
-      v_fail := v_fail || format('A-ONLINE DEFECT a door-only tier gets a pay code but the guest''s checkout refuses it (%s)', v_raised);
+    IF v_raised IS DISTINCT FROM 'ticket_type_unavailable' THEN
+      v_fail := v_fail || format('A-ONLINE a door-only tier must stay off every non-door checkout, got %s', coalesce(v_raised, 'accepted'));
+    END IF;
+    -- A cancelled code unlocks nothing.
+    UPDATE public.door_pay_codes SET status = 'cancelled' WHERE id = v_code;
+    v_raised := NULL;
+    BEGIN
+      PERFORM public.issue_4271_door_ticket_quote(
+        v_code, v_event, jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier_door, 'quantity', 1)),
+        NULL, NULL, NULL, NULL, 'full', NULL, 'guest.a4271@example.test', '+12025550101',
+        NULL, false);
+    EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM;
+    END;
+    IF v_raised IS NULL THEN
+      v_fail := v_fail || text 'A-ONLINE a cancelled code still priced its door-only tier';
     END IF;
   END IF;
   -- Control: a tier sold both ways passes both quotes.

@@ -231,6 +231,15 @@ BEGIN
   v_text := public.issue_4271_door_pay_code_link_session(v_code_id, v_session);
   IF v_text <> 'paid' THEN RAISE EXCEPTION 'P-CODE a paid code must refuse, got %', v_text; END IF;
 
+  -- Paying the code closed the guest's other tab (#4271 D4): it is revoked
+  -- and queued for the revocation worker, so the provider page expires.
+  IF NOT EXISTS (SELECT 1 FROM public.ticket_checkout_sessions
+                  WHERE id = v_session AND revoked_at IS NOT NULL)
+     OR NOT EXISTS (SELECT 1 FROM public.checkout_sale_revocation_outbox
+                     WHERE subject_id = v_session) THEN
+    RAISE EXCEPTION 'P-CODE the other tab must be revoked once the code is paid';
+  END IF;
+
   -- A second payment on the other session never re-points the code.
   INSERT INTO public.orders (
     id, event_id, buyer_name, buyer_email, buyer_phone, buyer_phone_e164,
@@ -246,7 +255,7 @@ BEGIN
   UPDATE public.ticket_checkout_sessions SET order_id = v_order2 WHERE id = v_session;
   SELECT * INTO v_row FROM public.orders WHERE id = v_order2;
   IF v_row.door_pay_code_id IS NOT NULL OR v_row.door_payment_method IS NOT NULL
-     OR NOT (v_row.metadata ? 'door_pay_code_duplicate') THEN
+     OR NOT coalesce((v_row.metadata ->> 'door_pay_code_late')::boolean, false) THEN
     RAISE EXCEPTION 'P-CODE a second payment must stay an ordinary order';
   END IF;
   IF (SELECT order_id FROM public.door_pay_codes WHERE id = v_code_id) IS DISTINCT FROM v_order THEN

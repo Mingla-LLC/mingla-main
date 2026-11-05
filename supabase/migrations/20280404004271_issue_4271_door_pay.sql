@@ -29,6 +29,14 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.orders WHERE door_payment_method = 'nfc') THEN
     RAISE EXCEPTION 'issue_4271_nfc_rows_exist: orders.door_payment_method';
   END IF;
+  -- The door_sale arm of orders_door_payment_method_check now requires a
+  -- method (production read 2026-11-04: zero door_sale rows without one).
+  IF EXISTS (
+    SELECT 1 FROM public.orders
+     WHERE source = 'door_sale' AND door_payment_method IS NULL
+  ) THEN
+    RAISE EXCEPTION 'issue_4271_door_sale_without_method_exists';
+  END IF;
   IF EXISTS (SELECT 1 FROM public.door_sales_ledger WHERE payment_method = 'nfc') THEN
     RAISE EXCEPTION 'issue_4271_nfc_rows_exist: door_sales_ledger.payment_method';
   END IF;
@@ -144,7 +152,8 @@ ALTER TABLE public.orders
 
 ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_door_payment_method_check;
 ALTER TABLE public.orders ADD CONSTRAINT orders_door_payment_method_check CHECK (
-  (source = 'door_sale' AND door_payment_method IN ('cash','card_reader','manual'))
+  (source = 'door_sale' AND door_payment_method IS NOT NULL
+     AND door_payment_method IN ('cash','card_reader','manual'))
   OR (source <> 'door_sale' AND (
     door_payment_method IS NULL
     OR door_payment_method IN ('pay_code','tap_to_pay')
@@ -153,15 +162,21 @@ ALTER TABLE public.orders ADD CONSTRAINT orders_door_payment_method_check CHECK 
 
 ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_door_pay_code_shape_check;
 ALTER TABLE public.orders ADD CONSTRAINT orders_door_pay_code_shape_check CHECK (
-  door_pay_code_id IS NULL OR door_payment_method = 'pay_code'
+  door_pay_code_id IS NULL OR door_payment_method IS NOT DISTINCT FROM 'pay_code'
 );
 
 -- A tapped card at the door does not carry a phone number unless the guest
--- gives one; every other online checkout still must.
+-- gives one; every other online checkout still must. IS NOT DISTINCT FROM:
+-- an ordinary order has door_payment_method NULL, and `NULL = 'tap_to_pay'`
+-- would make this whole CHECK NULL, which Postgres treats as passing.
+--
+-- Every condition in this migration that compares door_payment_method is
+-- NULL-safe: the door_sale arm requires IS NOT NULL, the pay code shape uses
+-- IS NOT DISTINCT FROM, and the partial indexes only ever match a non-NULL.
 ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_online_checkout_phone_e164_check;
 ALTER TABLE public.orders ADD CONSTRAINT orders_online_checkout_phone_e164_check CHECK (
   source <> 'online_checkout'
-  OR (door_payment_method = 'tap_to_pay'
+  OR (door_payment_method IS NOT DISTINCT FROM 'tap_to_pay'
       AND (buyer_phone_e164 IS NULL OR buyer_phone_e164 ~ '^\+[1-9][0-9]{1,14}$'))
   OR (buyer_phone_e164 IS NOT NULL AND buyer_phone_e164 ~ '^\+[1-9][0-9]{1,14}$')
 );
@@ -687,7 +702,269 @@ GRANT EXECUTE ON FUNCTION public.biz_door_sale_record(
 -- §7. Pay code finalize: when the normal checkout finalize stamps the order on
 --     a session that carries a door pay code, the order becomes a door card
 --     sale. Locks the code row so a code pays once.
+--
+--     A code that stops being payable (cancelled, expired, paid by another
+--     session) closes every checkout session it opened, through the same
+--     revocation rail an event closing uses (#1930): the session is revoked,
+--     the checkout-sale-revocation worker expires the provider's page, and a
+--     payment that still lands is refused at finalize and refunded in full by
+--     the late-payment refund (issue_1930_mint_ticket_late_reversal ->
+--     source_refunds 'late_payment_no_value' -> source-refund-sweep).
+--
+--     Lock order everywhere in this file: checkout sessions (by id), then the
+--     code row. Finalize holds its session before this trigger takes the code.
 -- =============================================================================
+
+-- True for a door order of any kind: cash/manual/card_reader door sales and
+-- the two card door methods. NULL-safe: an ordinary order is false, never NULL.
+CREATE OR REPLACE FUNCTION public.issue_4271_is_door_order(
+  p_source text,
+  p_door_payment_method text
+) RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $function$
+  SELECT coalesce(p_source = 'door_sale', false)
+      OR coalesce(p_door_payment_method IN ('pay_code', 'tap_to_pay'), false);
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_is_door_order(text, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_is_door_order(text, text)
+  TO service_role;
+
+-- Revokes every still-open checkout session a code opened (except one), the
+-- same shape as issue_1930_revoke_event_checkout_admissions. Returns the
+-- Stripe Checkout pages to expire now (the worker expires them too, with the
+-- same idempotency key, if this answer is lost).
+CREATE OR REPLACE FUNCTION public.issue_4271_door_revoke_code_sessions(
+  p_code_id uuid,
+  p_reason text,
+  p_except_session_id uuid,
+  p_skip_locked boolean
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_row record;
+  v_expire jsonb := '[]'::jsonb;
+  v_item jsonb;
+  v_reason text := left(coalesce(nullif(btrim(p_reason), ''), 'door_code_closed'), 80);
+BEGIN
+  FOR v_row IN
+    SELECT s.id, s.event_id, s.provider_attempt_id, s.admission_epoch,
+           s.stripe_account_id
+      FROM public.ticket_checkout_sessions s
+     WHERE s.door_pay_code_id = p_code_id
+       AND s.id IS DISTINCT FROM p_except_session_id
+       AND s.order_id IS NULL
+       AND s.revoked_at IS NULL
+       AND s.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect')
+     ORDER BY s.id
+  LOOP
+    -- The caller already holds these rows (cancel / link lock sessions first);
+    -- the finalize trigger skips a row another writer holds, because that
+    -- writer is closing it anyway.
+    IF p_skip_locked THEN
+      PERFORM 1 FROM public.ticket_checkout_sessions
+        WHERE id = v_row.id FOR UPDATE SKIP LOCKED;
+      IF NOT FOUND THEN CONTINUE; END IF;
+    END IF;
+    UPDATE public.ticket_checkout_sessions
+       SET revoked_at = now(),
+           revoked_reason = v_reason,
+           reversal_state = CASE WHEN reversal_state = 'none'
+             THEN 'neutralization_pending' ELSE reversal_state END,
+           status = 'failed',
+           failed_at = coalesce(failed_at, now()),
+           updated_at = now(),
+           idempotency_key = idempotency_key || ':revoked:' || id::text
+     WHERE id = v_row.id
+       AND order_id IS NULL
+       AND revoked_at IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    INSERT INTO public.checkout_sale_revocation_outbox (
+      subject_type, subject_id, event_id, provider_attempt_id, target_epoch, reason
+    )
+    SELECT 'ticket_checkout_session', v_row.id, v_row.event_id, v_row.provider_attempt_id,
+           coalesce(a.claimed_epoch, v_row.admission_epoch, 1), v_reason
+      FROM (SELECT 1) one
+      LEFT JOIN public.ticket_checkout_provider_attempts a ON a.id = v_row.provider_attempt_id
+    ON CONFLICT (subject_type, subject_id, target_epoch) DO NOTHING;
+    UPDATE public.ticket_checkout_provider_attempts
+       SET state = 'neutralization_pending', updated_at = now()
+     WHERE id = v_row.provider_attempt_id
+       AND state IN ('claimed', 'provider_unknown', 'ready');
+    v_item := NULL;
+    SELECT jsonb_build_object(
+             'checkoutSessionId', a.provider_checkout_id,
+             'stripeAccountId', v_row.stripe_account_id,
+             'idempotencyKey', a.provider_idempotency_key || ':expire')
+      INTO v_item
+      FROM public.ticket_checkout_provider_attempts a
+     WHERE a.id = v_row.provider_attempt_id
+       AND a.provider = 'stripe'
+       AND a.flow = 'stripe_checkout'
+       AND a.provider_checkout_id IS NOT NULL
+       AND v_row.stripe_account_id IS NOT NULL;
+    IF v_item IS NOT NULL THEN
+      v_expire := v_expire || jsonb_build_array(v_item);
+    END IF;
+  END LOOP;
+  RETURN v_expire;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_revoke_code_sessions(uuid, text, uuid, boolean)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_revoke_code_sessions(uuid, text, uuid, boolean)
+  TO service_role;
+
+-- Cancel or expire a code and close every checkout it opened. A paid code is
+-- never closed. Returns {status, stripeExpire}: status is the code's status
+-- after the call ('cancelled', 'expired' or 'paid'; 'not_found').
+CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_revoke(
+  p_code_id uuid,
+  p_status text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_code public.door_pay_codes%ROWTYPE;
+  v_expire jsonb := '[]'::jsonb;
+BEGIN
+  IF p_status NOT IN ('cancelled', 'expired') THEN
+    RAISE EXCEPTION 'invalid_request' USING ERRCODE = '22023';
+  END IF;
+  -- Sessions first, then the code (the finalize order).
+  PERFORM 1 FROM public.ticket_checkout_sessions
+    WHERE door_pay_code_id = p_code_id ORDER BY id FOR UPDATE;
+  SELECT * INTO v_code FROM public.door_pay_codes WHERE id = p_code_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found', 'stripeExpire', '[]'::jsonb);
+  END IF;
+  IF v_code.status = 'paid' THEN
+    RETURN jsonb_build_object('status', 'paid', 'stripeExpire', '[]'::jsonb);
+  END IF;
+  IF p_status = 'cancelled' AND v_code.status <> 'cancelled' THEN
+    UPDATE public.door_pay_codes
+       SET status = 'cancelled', updated_at = now()
+     WHERE id = p_code_id;
+    v_code.status := 'cancelled';
+  ELSIF p_status = 'expired' AND v_code.status IN ('open', 'opened') THEN
+    UPDATE public.door_pay_codes
+       SET status = 'expired', updated_at = now()
+     WHERE id = p_code_id;
+    v_code.status := 'expired';
+  END IF;
+  -- Whatever the code's end state, nothing it opened stays payable.
+  v_expire := public.issue_4271_door_revoke_code_sessions(
+    p_code_id, 'door_code_' || v_code.status, NULL, false);
+  RETURN jsonb_build_object('status', v_code.status, 'stripeExpire', v_expire);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_revoke(uuid, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_revoke(uuid, text)
+  TO service_role;
+
+-- A door checkout session may be paid only while its code is open/opened.
+-- Time alone does not close a code mid-payment: the provider page lives at
+-- least 30 minutes (Stripe's floor), so a code is closed only by a write that
+-- also revokes its sessions (cancel, expire, a new code, another payment).
+CREATE OR REPLACE FUNCTION public.issue_4271_door_session_payable(
+  p_session_id uuid
+) RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.ticket_checkout_sessions s
+      JOIN public.door_pay_codes c ON c.id = s.door_pay_code_id
+     WHERE s.id = p_session_id
+       AND c.event_id = s.event_id
+       AND c.status IN ('open', 'opened')
+  );
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_session_payable(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_session_payable(uuid)
+  TO service_role;
+
+-- The door rule for a tier inside a code's checkout: the tier is one of the
+-- code's own lines and is sold in person. Used only where the online rule
+-- would refuse a tier that is not sold online; every other rule (hidden,
+-- disabled, sale window, capacity) still applies to a door checkout.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_code_allows_tier(
+  p_code_id uuid,
+  p_ticket_type_id uuid
+) RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT p_code_id IS NOT NULL AND p_ticket_type_id IS NOT NULL AND EXISTS (
+    SELECT 1
+      FROM public.door_pay_codes c
+      JOIN public.ticket_types tt ON tt.id = p_ticket_type_id AND tt.event_id = c.event_id
+     WHERE c.id = p_code_id
+       AND tt.available_in_person = true
+       AND EXISTS (
+         SELECT 1 FROM jsonb_array_elements(c.lines) l
+          WHERE l ->> 'ticketTypeId' = p_ticket_type_id::text
+       )
+  );
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_code_allows_tier(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_code_allows_tier(uuid, uuid)
+  TO service_role;
+
+-- The checkout quote and create-session read the door code through this
+-- transaction-local setting, set only by the two door wrappers below (the
+-- #3827 private-link pattern). A code that is not open/opened unlocks nothing.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_code_unlocks_tier(
+  p_ticket_type_id uuid
+) RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_setting text := current_setting('mingla.door_pay_code_id', true);
+  v_code_id uuid;
+BEGIN
+  IF v_setting IS NULL OR v_setting = '' THEN RETURN false; END IF;
+  BEGIN
+    v_code_id := v_setting::uuid;
+  EXCEPTION WHEN invalid_text_representation THEN
+    RETURN false;
+  END;
+  RETURN EXISTS (
+    SELECT 1 FROM public.door_pay_codes c
+     WHERE c.id = v_code_id AND c.status IN ('open', 'opened')
+  ) AND public.issue_4271_door_code_allows_tier(v_code_id, p_ticket_type_id);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_code_unlocks_tier(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_code_unlocks_tier(uuid)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_finalize()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -712,18 +989,26 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF v_code.status = 'paid' THEN
-    -- A second payment for one code (two tabs). The money is taken, so the
-    -- order stands as an ordinary online order the host can refund; it is
-    -- never pointed at the code and its tickets are not born used.
+  IF v_code.status NOT IN ('open', 'opened') THEN
+    -- A late payment: the code was cancelled, expired or already paid by
+    -- another session. The checkout finalize refuses these sessions (they are
+    -- revoked when the code closes, and issue_1930_ticket_session_authorized
+    -- asks issue_4271_door_session_payable), so the guest's money goes to the
+    -- automatic late-payment refund and no order is made. This branch is the
+    -- backstop for any writer that stamps an order without that finalize: the
+    -- order stands as an ordinary online order the host can refund, flagged,
+    -- and is never pointed at the code, never burned and never a door sale.
     IF v_code.order_id IS DISTINCT FROM v_order.id THEN
       UPDATE public.orders
          SET metadata = coalesce(metadata, '{}'::jsonb)
-               || jsonb_build_object('door_pay_code_duplicate', v_code.id),
+               || jsonb_build_object(
+                    'door_pay_code_late', true,
+                    'door_pay_code_late_code_id', v_code.id,
+                    'door_pay_code_late_status', v_code.status),
              updated_at = v_now
        WHERE id = v_order.id;
-      RAISE WARNING 'issue_4271_door_code_paid_twice code=% order=%',
-        v_code.id, v_order.id;
+      RAISE WARNING 'issue_4271_door_code_late_payment code=% status=% order=%',
+        v_code.id, v_code.status, v_order.id;
     END IF;
     RETURN NEW;
   END IF;
@@ -776,6 +1061,10 @@ BEGIN
     NULL, v_now
   ) ON CONFLICT DO NOTHING;
 
+  -- Paid once: any other tab the guest opened stops being payable.
+  PERFORM public.issue_4271_door_revoke_code_sessions(
+    v_code.id, 'door_code_paid', NEW.id, true);
+
   RETURN NEW;
 END;
 $function$;
@@ -796,7 +1085,8 @@ WHEN (
 EXECUTE FUNCTION public.issue_4271_door_pay_code_finalize();
 
 -- Link a fresh checkout session to its code. Refuses a paid, cancelled,
--- failed or expired code with PT409 so the edge function answers 409.
+-- failed or expired code with its status so the edge function answers 409;
+-- a code found past its time is expired (and its sessions closed) here.
 CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_link_session(
   p_code_id uuid,
   p_checkout_session_id uuid
@@ -808,14 +1098,16 @@ AS $function$
 DECLARE
   v_code public.door_pay_codes%ROWTYPE;
 BEGIN
+  -- Sessions first, then the code (the finalize order).
+  PERFORM 1 FROM public.ticket_checkout_sessions
+    WHERE id = p_checkout_session_id OR door_pay_code_id = p_code_id
+    ORDER BY id FOR UPDATE;
   SELECT * INTO v_code FROM public.door_pay_codes WHERE id = p_code_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'door_code_unavailable:not_found' USING ERRCODE = 'PT409';
   END IF;
   IF v_code.status IN ('open', 'opened') AND v_code.expires_at <= now() THEN
-    UPDATE public.door_pay_codes
-       SET status = 'expired', updated_at = now()
-     WHERE id = p_code_id;
+    PERFORM public.issue_4271_door_pay_code_revoke(p_code_id, 'expired');
     RETURN 'expired';
   END IF;
   IF v_code.status NOT IN ('open', 'opened') THEN
@@ -842,6 +1134,808 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_link_session(uuid, uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_link_session(uuid, uuid)
+  TO service_role;
+
+-- What a host sees on a closed code: did a late payment come in, and was it
+-- refunded? NULL when nothing was charged.
+CREATE OR REPLACE FUNCTION public.biz_door_pay_code_late_payment(p_code_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_event_id uuid;
+  v_result jsonb;
+BEGIN
+  SELECT event_id INTO v_event_id FROM public.door_pay_codes WHERE id = p_code_id;
+  IF v_event_id IS NULL OR NOT public.biz_can_take_door_payment(v_event_id) THEN
+    RAISE EXCEPTION 'door_access_denied' USING ERRCODE = '42501';
+  END IF;
+  SELECT jsonb_build_object(
+           'state', CASE
+             WHEN bool_and(r.buyer_state = 'processed') THEN 'refunded'
+             ELSE 'refunding' END,
+           'amountCents', sum(r.buyer_refund_requested_cents),
+           'currency', max(r.currency))
+    INTO v_result
+    FROM public.ticket_checkout_sessions s
+    JOIN public.source_refunds r
+      ON r.source_type = 'ticket_checkout_session'
+     AND r.source_id = s.id
+     AND r.refund_kind = 'late_payment_no_value'
+   WHERE s.door_pay_code_id = p_code_id
+  HAVING count(*) > 0;
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.biz_door_pay_code_late_payment(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.biz_door_pay_code_late_payment(uuid)
+  TO authenticated, service_role;
+
+-- =============================================================================
+-- §7b. The guest's checkout prices a door code's lines by the door rule.
+--      A tier sold in person but not online can be paid through its own pay
+--      code and nowhere else: the online rule is untouched for every other
+--      checkout. The quote and create-session run inside these wrappers,
+--      which set mingla.door_pay_code_id for the one transaction.
+-- =============================================================================
+
+-- issue_3872_ticket_line_price from 20280228003281_issue_3281_day_limited_tickets.sql
+-- (its newest definition), with ONE change: `NOT v_tt.available_online` is
+-- refused unless this transaction's door code unlocks the tier.
+CREATE OR REPLACE FUNCTION public.issue_3872_ticket_line_price(
+  p_event_id uuid,p_ticket_type_id uuid,p_qty_raw integer,p_ctx jsonb,
+  p_expires_at timestamptz,p_booked_party_size integer
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,auth,pg_temp AS $fn$
+DECLARE v_event record; v_tt record; v_qty integer; v_unit bigint; v_admits integer:=1;
+  v_basis text; v_blocks integer; v_day_count integer; v_mode text; v_value_scale integer:=1; v_count_scale integer:=1;
+  v_start timestamptz; v_end timestamptz;
+BEGIN
+  IF COALESCE(p_qty_raw,0)<=0 THEN RAISE EXCEPTION 'ticket_quantity_invalid'; END IF;
+  SELECT e.event_type,e.discounts_allowed INTO v_event FROM public.events e
+    WHERE e.id=p_event_id AND e.deleted_at IS NULL;
+  SELECT * INTO v_tt FROM public.ticket_types t
+    WHERE t.id=p_ticket_type_id AND t.event_id=p_event_id AND t.deleted_at IS NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ticket_type_not_found'; END IF;
+  IF (v_tt.is_hidden AND NOT public.issue_3827_link_unlocks_tier(v_tt.id))
+     OR v_tt.is_disabled
+     -- issue #4271 — a door-only tier is paid only through its own pay code.
+     OR (NOT v_tt.available_online AND NOT public.issue_4271_door_code_unlocks_tier(v_tt.id)) THEN RAISE EXCEPTION 'ticket_type_unavailable'; END IF;
+  IF v_tt.sale_start_at IS NOT NULL AND v_tt.sale_start_at>now() AND NOT (
+    p_expires_at='infinity'::timestamptz AND EXISTS(SELECT 1 FROM public.ticket_queue_arming a
+      WHERE a.ticket_type_id=v_tt.id AND a.disarmed_at IS NULL)) THEN
+    RAISE EXCEPTION 'ticket_sales_not_started';
+  END IF;
+  IF v_tt.sale_end_at IS NOT NULL AND v_tt.sale_end_at<=now() THEN RAISE EXCEPTION 'ticket_sales_ended'; END IF;
+  IF p_qty_raw<v_tt.min_purchase_qty THEN RAISE EXCEPTION 'ticket_quantity_below_min'; END IF;
+  -- A by-date line over several dates arrives as its total with no day
+  -- multiplier, a shape no uniform cart has. create-session checks each date.
+  IF v_tt.max_purchase_qty IS NOT NULL AND p_qty_raw>v_tt.max_purchase_qty
+     AND NOT (COALESCE(p_ctx->>'pricingMode','per_day')='per_day'
+       AND COALESCE((p_ctx->>'dayCount')::integer,0)>1
+       AND COALESCE((p_ctx->>'dayMultiplier')::integer,1)=1) THEN
+    RAISE EXCEPTION 'ticket_quantity_above_max';
+  END IF;
+
+  v_day_count:=COALESCE((p_ctx->>'dayCount')::integer,0);
+  -- issue #3281 — an all_days pass counts only the dates it admits.
+  IF v_tt.valid_occurrence_keys IS NOT NULL THEN
+    v_day_count:=COALESCE(cardinality(public.issue_3281_days_in_scope(v_tt.id,ARRAY(
+      SELECT value::uuid FROM jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(p_ctx->'dayIds')='array' THEN p_ctx->'dayIds' ELSE '[]'::jsonb END)
+    ))),0);
+  END IF;
+  v_mode:=COALESCE(p_ctx->>'pricingMode','per_day');
+  v_qty:=p_qty_raw*COALESCE((p_ctx->>'dayMultiplier')::integer,1);
+  v_unit:=v_tt.price_cents; v_basis:=COALESCE(v_tt.price_basis,'person');
+  v_start:=NULLIF(p_ctx->>'bookedStart','')::timestamptz; v_end:=NULLIF(p_ctx->>'bookedEnd','')::timestamptz;
+  IF v_event.event_type='experience' AND v_basis='group' THEN
+    IF p_booked_party_size IS NULL OR p_booked_party_size<1 OR v_tt.group_max IS NULL
+       OR p_booked_party_size>v_tt.group_max THEN RAISE EXCEPTION 'booked_party_invalid'; END IF;
+    v_admits:=v_tt.group_max;
+  ELSIF v_event.event_type='experience' AND v_basis='block' THEN
+    IF v_start IS NULL OR v_end IS NULL OR v_tt.block_minutes IS NULL OR v_end<=v_start THEN
+      RAISE EXCEPTION 'booked_length_invalid';
+    END IF;
+    v_blocks:=(extract(epoch FROM (v_end-v_start))/(v_tt.block_minutes::numeric*60.0))::integer;
+    IF v_blocks<COALESCE(v_tt.min_blocks,1) OR v_blocks>COALESCE(v_tt.max_blocks,v_blocks) THEN
+      RAISE EXCEPTION 'booked_length_invalid';
+    END IF;
+    v_unit:=v_tt.price_cents*v_blocks; v_value_scale:=v_blocks; v_count_scale:=v_blocks;
+  ELSIF v_mode='all_days' AND v_day_count>0 THEN v_count_scale:=v_day_count;
+  END IF;
+  RETURN jsonb_build_object('ticketTypeId',v_tt.id,'ticketName',v_tt.name,
+    'rawQuantity',p_qty_raw,'quantity',v_qty,'unitPriceCents',v_unit,'totalCents',v_unit*v_qty,
+    'admitsCount',v_admits,'priceBasis',v_basis,'blocks',v_blocks,'currency',v_tt.currency,
+    'isFree',COALESCE(v_tt.is_free,false) OR COALESCE(v_tt.price_cents,0)=0,
+    'discountsAllowed',COALESCE(v_event.discounts_allowed,true) AND COALESCE(v_tt.discounts_allowed,true),
+    'valueScale',v_value_scale,'countScale',v_count_scale);
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3872_ticket_line_price(uuid,uuid,integer,jsonb,timestamptz,integer)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_ticket_line_price(uuid,uuid,integer,jsonb,timestamptz,integer)
+  TO service_role;
+
+-- issue_1930_ticket_session_authorized from 20280313003281_issue_3281_extras_checkout.sql
+-- (its newest definition), with TWO changes: a door code's session is payable
+-- only while its code is (issue_4271_door_session_payable), and a tier not
+-- sold online passes only inside its own code's session.
+CREATE OR REPLACE FUNCTION public.issue_1930_ticket_session_authorized(
+  p_session_id uuid, p_event_id uuid
+) RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=public,auth,pg_temp AS $function$
+DECLARE
+  v_event public.events%ROWTYPE; v_bad boolean;
+  v_session public.ticket_checkout_sessions%ROWTYPE; v_decision text;
+  v_per_occurrence boolean; -- issue #3313
+BEGIN
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id;
+  IF public.issue_1930_event_sale_reason(v_event) <> 'sellable' THEN RETURN false; END IF;
+  -- #2101 — the sole decision owner, consuming this session's snapshots. It
+  -- takes event -> brand in the canonical order before any lower-order row.
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions
+    WHERE id=p_session_id AND event_id=p_event_id;
+  IF NOT FOUND THEN RETURN false; END IF;
+  v_decision := public.issue_2101_ticket_checkout_access_decision(
+    p_event_id, v_session.buyer_user_id,
+    v_session.checkout_access_mode_snapshot,
+    v_session.checkout_access_restrictive_epoch_snapshot,
+    v_session.checkout_access_membership_id_snapshot,
+    v_session.checkout_access_membership_epoch_snapshot);
+  IF v_decision NOT IN ('allowed_unrestricted','allowed_named') THEN RETURN false; END IF;
+  v_per_occurrence := COALESCE(
+    (public.issue_3313_event_day_choice(p_event_id) ->> 'perOccurrenceCapacity')::boolean, false);
+  IF NOT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions s
+    WHERE s.id=p_session_id AND s.event_id=p_event_id AND s.revoked_at IS NULL
+      AND s.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect'))
+  THEN RETURN false; END IF;
+  -- issue #4271 — a pay code's checkout is payable only while its code is.
+  IF v_session.door_pay_code_id IS NOT NULL
+     AND NOT public.issue_4271_door_session_payable(p_session_id) THEN
+    RETURN false;
+  END IF;
+  SELECT EXISTS(
+    SELECT 1 FROM public.ticket_checkout_session_items i
+    LEFT JOIN public.ticket_types tt ON tt.id=i.ticket_type_id AND tt.event_id=p_event_id
+    WHERE i.checkout_session_id=p_session_id AND (
+      tt.id IS NULL OR tt.deleted_at IS NOT NULL OR tt.is_hidden OR tt.is_disabled
+      -- issue #4271 — a door-only tier passes only inside its own code's session.
+      OR (NOT tt.available_online
+        AND NOT public.issue_4271_door_code_allows_tier(v_session.door_pay_code_id, tt.id))
+      OR (tt.sale_start_at IS NOT NULL AND tt.sale_start_at > now())
+      OR (tt.sale_end_at IS NOT NULL AND tt.sale_end_at <= now())
+      -- issue #3313 — a recurring event's capacity is PER NIGHT, so the
+      -- finalize-time re-check measures each of this session's nights (every
+      -- upcoming night when it has none): everyone else's sold + held places
+      -- that night, plus this session's own places that night. The shared
+      -- whole-run check below stays for every other event. DELETE THIS and a
+      -- second night's buyer is authorised at reserve and refused at finalize.
+      -- issue #3281 — a day-limited ticket is measured per date, on its dates.
+      OR ((v_per_occurrence OR tt.valid_occurrence_keys IS NOT NULL)
+        AND NOT tt.is_unlimited AND tt.quantity_total IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+            FROM public.event_dates night
+           WHERE night.event_id = p_event_id
+             AND (tt.valid_occurrence_keys IS NULL
+               OR night.occurrence_key = ANY (tt.valid_occurrence_keys))
+             AND (
+               EXISTS (SELECT 1 FROM public.ticket_checkout_session_event_dates sd
+                        WHERE sd.checkout_session_id = p_session_id AND sd.event_date_id = night.id)
+               OR (NOT EXISTS (SELECT 1 FROM public.ticket_checkout_session_event_dates sd
+                                WHERE sd.checkout_session_id = p_session_id)
+                   AND night.end_at > now())
+             )
+             AND public.issue_3313_ticket_type_occurrence_taken(tt.id, night.id, p_session_id)
+                 + CASE
+                     WHEN jsonb_typeof(i.by_date) = 'object'
+                       THEN COALESCE((i.by_date ->> night.id::text)::integer, 0)
+                     WHEN COALESCE(v_session.multi_date_pricing_mode_snapshot, 'per_day') = 'per_day'
+                          AND (SELECT count(*) FROM public.ticket_checkout_session_event_dates sd
+                                WHERE sd.checkout_session_id = p_session_id) > 0
+                       THEN i.quantity / (SELECT count(*) FROM public.ticket_checkout_session_event_dates sd
+                                           WHERE sd.checkout_session_id = p_session_id)
+                     ELSE i.quantity
+                   END
+                 > tt.quantity_total
+        ))
+      OR (NOT v_per_occurrence AND tt.valid_occurrence_keys IS NULL
+        AND NOT tt.is_unlimited AND tt.quantity_total IS NOT NULL AND
+        (SELECT count(*) FROM public.tickets sold
+          WHERE sold.ticket_type_id=tt.id
+            AND sold.status IN ('valid','used','transferred'))
+        + (SELECT COALESCE(sum(reserved.quantity),0) FROM public.ticket_checkout_session_items reserved
+            JOIN public.ticket_checkout_sessions active
+              ON active.id=reserved.checkout_session_id
+          WHERE reserved.ticket_type_id=tt.id
+            AND active.id<>p_session_id
+            AND active.expires_at>now()
+            AND active.order_id IS NULL
+            AND active.revoked_at IS NULL
+            AND active.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect'))
+        + i.quantity > tt.quantity_total)
+    )
+  ) INTO v_bad;
+  IF v_bad THEN RETURN false; END IF;
+  -- issue #3281 — every extra this session holds is still on sale and still
+  -- fits, measured per date for a date-limited extra.
+  IF EXISTS (
+    SELECT 1 FROM public.ticket_checkout_session_add_on_items x
+      LEFT JOIN public.ticket_add_ons a ON a.id = x.ticket_add_on_id
+     WHERE x.checkout_session_id = p_session_id
+       AND (a.id IS NULL OR NOT a.is_active
+         OR (NOT a.is_unlimited AND (
+           (a.valid_occurrence_keys IS NULL
+             AND public.issue_3281_add_on_taken(a.id, NULL, p_session_id) + x.quantity > a.quantity_total)
+           OR (a.valid_occurrence_keys IS NOT NULL AND EXISTS (
+             SELECT 1 FROM unnest(x.day_scope) AS k
+              WHERE public.issue_3281_add_on_taken(a.id, k, p_session_id) + x.quantity > a.quantity_total))
+         )))
+  ) THEN RETURN false; END IF;
+  IF EXISTS(SELECT 1 FROM public.ticket_checkout_sessions s
+    WHERE s.id=p_session_id AND (s.metadata->>'event_date_id') IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM public.event_dates d
+        WHERE d.id=(s.metadata->>'event_date_id')::uuid AND d.event_id=p_event_id
+          AND d.end_at > now())) THEN RETURN false; END IF;
+  -- ══ issue #2160 — RE-VALIDATE **EVERY** CHOSEN DAY, NOT JUST THE ANCHOR ══
+  -- The clause above re-checks only `metadata->>'event_date_id'`, which under
+  -- #2160 is the ANCHOR (the latest-ENDING day). Without the clause below a
+  -- stale NON-anchor day could still mint an entitlement at finalize for an
+  -- occurrence that has already ended — the guest gets a pass for a day that
+  -- is over, and the scanner correctly refuses them at a door they paid for.
+  --
+  -- DELETE THIS BLOCK and a session that sat in the cart across the end of
+  -- day 1 finalizes into a day-1 pass.
+  IF EXISTS(SELECT 1 FROM public.ticket_checkout_session_event_dates i
+             WHERE i.checkout_session_id=p_session_id
+               AND NOT EXISTS(SELECT 1 FROM public.event_dates d
+                 WHERE d.id=i.event_date_id AND d.event_id=p_event_id
+                   AND d.end_at > now())) THEN RETURN false; END IF;
+  RETURN true;
+END $function$;
+
+REVOKE ALL ON FUNCTION public.issue_1930_ticket_session_authorized(uuid,uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1930_ticket_session_authorized(uuid,uuid)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_4271_door_assert_code(
+  p_door_pay_code_id uuid,
+  p_event_id uuid,
+  p_lines jsonb
+) RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_code public.door_pay_codes%ROWTYPE;
+BEGIN
+  SELECT * INTO v_code FROM public.door_pay_codes WHERE id = p_door_pay_code_id;
+  IF NOT FOUND OR v_code.event_id IS DISTINCT FROM p_event_id THEN
+    RAISE EXCEPTION 'door_code_unavailable:not_found' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_code.status NOT IN ('open', 'opened') THEN
+    RAISE EXCEPTION 'door_code_unavailable:%', v_code.status USING ERRCODE = 'PT409';
+  END IF;
+  IF p_lines IS NULL OR jsonb_typeof(p_lines) <> 'array' OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_lines) l
+     WHERE NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(v_code.lines) c
+        WHERE c ->> 'ticketTypeId' = l ->> 'ticketTypeId'
+          AND c ->> 'quantity' = l ->> 'quantity')
+  ) THEN
+    RAISE EXCEPTION 'door_code_unavailable:lines' USING ERRCODE = 'PT409';
+  END IF;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_assert_code(uuid, uuid, jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_assert_code(uuid, uuid, jsonb)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_4271_door_ticket_quote(
+  p_door_pay_code_id uuid,
+  p_event_id uuid,
+  p_lines jsonb,
+  p_event_date_ids uuid[],
+  p_booked_start_at timestamptz,
+  p_booked_end_at timestamptz,
+  p_booked_party_size integer,
+  p_payment_plan_choice text,
+  p_discount_code text,
+  p_buyer_email text,
+  p_buyer_phone_e164 text,
+  p_buyer_user_id uuid,
+  p_queued boolean
+) RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_result jsonb;
+BEGIN
+  PERFORM public.issue_4271_door_assert_code(p_door_pay_code_id, p_event_id, p_lines);
+  PERFORM set_config('mingla.door_pay_code_id', p_door_pay_code_id::text, true);
+  v_result := public.issue_3872_ticket_quote(
+    p_event_id, p_lines, p_event_date_ids, p_booked_start_at, p_booked_end_at,
+    p_booked_party_size, p_payment_plan_choice, p_discount_code, p_buyer_email,
+    p_buyer_phone_e164, p_buyer_user_id, NULL, p_queued);
+  PERFORM set_config('mingla.door_pay_code_id', '', true);
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_ticket_quote(
+  uuid, uuid, jsonb, uuid[], timestamptz, timestamptz, integer, text, text, text, text, uuid, boolean
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_ticket_quote(
+  uuid, uuid, jsonb, uuid[], timestamptz, timestamptz, integer, text, text, text, text, uuid, boolean
+) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_4271_door_checkout_create_session(
+  p_door_pay_code_id uuid,
+  p_event_id uuid,
+  p_buyer_user_id uuid,
+  p_buyer_name text,
+  p_buyer_email text,
+  p_buyer_phone_e164 text,
+  p_marketing_opt_in boolean,
+  p_lines jsonb,
+  p_idempotency_key text,
+  p_expires_at timestamptz,
+  p_application_fee_amount_cents integer DEFAULT 0,
+  p_payment_plan_choice text DEFAULT 'auto',
+  p_event_date_ids uuid[] DEFAULT NULL,
+  p_booked_start_at timestamptz DEFAULT NULL,
+  p_booked_end_at timestamptz DEFAULT NULL,
+  p_booked_party_size integer DEFAULT NULL,
+  p_discount_code text DEFAULT NULL,
+  p_expected_quote_digest text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_result jsonb;
+BEGIN
+  PERFORM public.issue_4271_door_assert_code(p_door_pay_code_id, p_event_id, p_lines);
+  PERFORM set_config('mingla.door_pay_code_id', p_door_pay_code_id::text, true);
+  v_result := public.biz_ticket_checkout_create_session(
+    p_event_id, p_buyer_user_id, p_buyer_name, p_buyer_email,
+    p_buyer_phone_e164, p_marketing_opt_in, p_lines, p_idempotency_key,
+    p_expires_at, p_application_fee_amount_cents, p_payment_plan_choice,
+    p_event_date_ids, p_booked_start_at, p_booked_end_at, p_booked_party_size,
+    p_discount_code, p_expected_quote_digest
+  );
+  PERFORM set_config('mingla.door_pay_code_id', '', true);
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_checkout_create_session(
+  uuid,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_checkout_create_session(
+  uuid,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text
+) TO service_role;
+
+-- =============================================================================
+-- §7c. A paid card door order is claimable in Explorer exactly like a cash
+--      door sale: its tickets are born used, so the "valid ticket on a
+--      scheduled event" rule never matched it. Door orders (cash, manual,
+--      card reader, pay code, Tap to Pay) are claimable on a scheduled, live
+--      or ended event for 30 days. Every other order kind is unchanged.
+-- =============================================================================
+
+-- claim_attendance_by_verified_identity from 20271218014063_issue_4063_claim_core.sql
+-- (its newest definition), with the door_sale test widened to
+-- issue_4271_is_door_order(source, door_payment_method) in the window, the
+-- noun and the source label.
+CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity(
+  p_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_emails text[];
+  v_phones text[];
+  v_row record;
+  v_claimed jsonb := '[]'::jsonb;
+  v_conv uuid;
+  v_more boolean := false;
+  v_pass_count integer;
+BEGIN
+  IF p_user_id IS NULL THEN RAISE EXCEPTION 'invalid_claim'; END IF;
+
+  SELECT
+    coalesce(array_agg(DISTINCT value) FILTER (WHERE kind = 'email'), '{}'::text[]),
+    coalesce(array_agg(DISTINCT value) FILTER (WHERE kind = 'phone'), '{}'::text[])
+    INTO v_emails, v_phones
+    FROM (
+      SELECT kind, value
+        FROM public.verified_account_identifiers(p_user_id)
+      UNION
+      SELECT 'phone'::text, phone_e164
+        FROM public.verified_phone_identities
+       WHERE user_id = p_user_id
+      UNION
+      SELECT channel, value
+        FROM public.account_claim_contacts
+       WHERE user_id = p_user_id AND revoked_at IS NULL
+    ) identifiers;
+
+  IF coalesce(array_length(v_emails, 1), 0) = 0
+     AND coalesce(array_length(v_phones, 1), 0) = 0 THEN
+    RETURN jsonb_build_object(
+      'claimed', v_claimed, 'count', 0, 'more', false
+    );
+  END IF;
+
+  -- Orders, including used door receipts on recently ended events.
+  v_pass_count := 0;
+  FOR v_row IN
+    SELECT o.id, o.event_id, o.source, o.door_payment_method, e.event_type, e.title,
+           coalesce(o.booked_start_at, chosen.start_at, master.start_at) AS starts_at,
+           coalesce(chosen.timezone, master.timezone, e.timezone) AS timezone,
+           (SELECT count(*)::integer FROM public.tickets t
+             WHERE t.order_id = o.id AND t.status IN ('valid', 'used')) AS quantity
+      FROM public.orders o
+      JOIN public.events e ON e.id = o.event_id
+      JOIN public.brands b ON b.id = e.brand_id
+      LEFT JOIN public.event_dates chosen ON chosen.id = o.event_date_id
+      LEFT JOIN LATERAL (
+        SELECT d.start_at, d.timezone
+          FROM public.event_dates d
+         WHERE d.event_id = e.id AND d.is_master IS TRUE
+         ORDER BY d.start_at, d.id LIMIT 1
+      ) master ON true
+     WHERE o.buyer_user_id IS NULL
+       AND o.attendance_identity_claim_armed_at IS NOT NULL
+       AND (lower(btrim(o.buyer_email)) = ANY(v_emails)
+         OR o.buyer_phone_e164 = ANY(v_phones))
+       AND public.account_owns_contact(
+         p_user_id, o.buyer_email, o.buyer_phone_e164
+       )
+       AND o.payment_status IN ('paid', 'partial_refund')
+       AND e.event_type IN ('event', 'trip', 'experience')
+       AND e.deleted_at IS NULL AND b.deleted_at IS NULL
+       AND (
+         (public.issue_4271_is_door_order(o.source, o.door_payment_method)
+           AND e.status IN ('scheduled', 'live', 'ended')
+           AND o.created_at >= now() - interval '30 days')
+         OR
+         (NOT public.issue_4271_is_door_order(o.source, o.door_payment_method)
+           AND e.status IN ('scheduled', 'live')
+           AND EXISTS (
+             SELECT 1 FROM public.tickets t
+              WHERE t.order_id = o.id
+                AND t.approval_status IN ('auto', 'approved')
+                AND ((e.status = 'scheduled' AND t.status = 'valid')
+                  OR (e.status = 'live' AND t.status IN ('valid', 'used')))
+           ))
+       )
+     ORDER BY o.created_at, o.id
+     LIMIT 25
+     FOR UPDATE OF o SKIP LOCKED
+  LOOP
+    UPDATE public.orders o
+       SET buyer_user_id = p_user_id,
+           attendance_claim_token_digest = NULL,
+           attendance_claim_token_generation = NULL,
+           attendance_claim_legacy_token_digest = NULL,
+           attendance_claim_legacy_token_created_at = NULL,
+           attendance_claim_token_consumed_at = CASE
+             WHEN o.attendance_claim_token_created_at IS NOT NULL
+               THEN coalesce(o.attendance_claim_token_consumed_at, now())
+             ELSE o.attendance_claim_token_consumed_at END
+     WHERE o.id = v_row.id AND o.buyer_user_id IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    v_pass_count := v_pass_count + 1;
+
+    UPDATE public.attendance_claim_recovery_items
+       SET state = 'claimed', resolved_via = 'verified_identity',
+           reconciled_at = now(), updated_at = now()
+     WHERE order_id = v_row.id;
+    UPDATE public.attendance_claim_deliveries
+       SET status = 'failed_terminal', next_attempt_at = NULL,
+           lease_id = NULL, lease_expires_at = NULL,
+           provider_attempt_started_at = NULL,
+           last_error_code = 'claim_resolved', updated_at = now()
+     WHERE source_id = v_row.id
+       AND kind IN ('order_recovery_email', 'order_recovery_sms')
+       AND status IN ('pending', 'processing', 'failed_retryable');
+    PERFORM public.add_buyer_to_event_chat(
+      v_row.event_id, p_user_id, v_row.id, NULL
+    );
+    UPDATE public.pending_trip_chat_claims
+       SET claimed_at = now(), claimed_by_user_id = p_user_id
+     WHERE order_id = v_row.id AND claimed_at IS NULL;
+
+    v_conv := NULL;
+    SELECT c.id INTO v_conv
+      FROM public.conversations c
+      JOIN public.conversation_participants cp
+        ON cp.conversation_id = c.id AND cp.user_id = p_user_id
+     WHERE c.event_id = v_row.event_id
+       AND c.linked_entity_type IN ('trip', 'event')
+     LIMIT 1;
+
+    v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
+      'kind', 'order', 'id', v_row.id,
+      'orderId', v_row.id, 'eventId', v_row.event_id,
+      'routeKind', 'order', 'routeId', v_row.id,
+      'offeringType', v_row.event_type,
+      'noun', CASE
+        WHEN public.issue_4271_is_door_order(v_row.source, v_row.door_payment_method)
+          THEN 'receipt'
+        WHEN v_row.event_type = 'event' THEN 'ticket'
+        ELSE 'booking' END,
+      'title', v_row.title, 'orderLabel', NULL,
+      'startsAt', v_row.starts_at, 'timezone', v_row.timezone,
+      'venueLine', NULL, 'quantity', v_row.quantity,
+      'source', CASE
+        WHEN v_row.source = 'comp'
+          OR public.issue_4271_is_door_order(v_row.source, v_row.door_payment_method)
+          THEN 'door'
+        ELSE 'purchase' END,
+      'sentByFirstName', NULL,
+      'chatJoined', v_conv IS NOT NULL, 'conversationId', v_conv
+    ));
+  END LOOP;
+  v_more := v_more OR v_pass_count = 25;
+
+  -- Anonymous RSVP primaries.
+  v_pass_count := 0;
+  FOR v_row IN
+    SELECT r.id, r.event_id, e.title, 1 + coalesce(r.plus_count, 0) AS quantity,
+           master.start_at, coalesce(master.timezone, e.timezone) AS timezone
+      FROM public.event_rsvps r
+      JOIN public.events e ON e.id = r.event_id
+      JOIN public.brands b ON b.id = e.brand_id
+      LEFT JOIN LATERAL (
+        SELECT d.start_at, d.timezone
+          FROM public.event_dates d
+         WHERE d.event_id = e.id AND d.is_master IS TRUE
+         ORDER BY d.start_at, d.id LIMIT 1
+      ) master ON true
+     WHERE r.user_id IS NULL
+       AND (lower(btrim(r.guest_email)) = ANY(v_emails)
+         OR r.guest_phone = ANY(v_phones))
+       AND public.account_owns_contact(
+         p_user_id, r.guest_email, r.guest_phone
+       )
+       AND e.event_type = 'rsvp' AND e.deleted_at IS NULL
+       AND b.deleted_at IS NULL AND e.status IN ('scheduled', 'live')
+       AND r.rsvp_status <> 'not_going'
+       AND r.approval_status <> 'denied'
+       AND NOT EXISTS (
+         SELECT 1 FROM public.event_rsvps x
+          WHERE x.event_id = r.event_id AND x.user_id = p_user_id
+       )
+     ORDER BY r.created_at, r.id
+     LIMIT 25
+     FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    UPDATE public.event_rsvps
+       SET user_id = p_user_id
+     WHERE id = v_row.id AND user_id IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    v_pass_count := v_pass_count + 1;
+    v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
+      'kind', 'rsvp', 'id', v_row.id,
+      'routeKind', 'rsvp', 'routeId', v_row.id,
+      'offeringType', 'rsvp', 'noun', 'pass',
+      'title', v_row.title, 'orderLabel', NULL,
+      'startsAt', v_row.start_at, 'timezone', v_row.timezone,
+      'venueLine', NULL, 'quantity', v_row.quantity,
+      'source', 'rsvp', 'sentByFirstName', NULL,
+      'chatJoined', NULL, 'conversationId', NULL
+    ));
+  END LOOP;
+  v_more := v_more OR v_pass_count = 25;
+
+  -- RSVP plus-ones that did not have an account at RSVP time.
+  v_pass_count := 0;
+  FOR v_row IN
+    SELECT g.id, g.rsvp_id, r.event_id, e.title, master.start_at,
+           coalesce(master.timezone, e.timezone) AS timezone
+      FROM public.event_rsvp_guests g
+      JOIN public.event_rsvps r ON r.id = g.rsvp_id
+      JOIN public.events e ON e.id = r.event_id
+      JOIN public.brands b ON b.id = e.brand_id
+      LEFT JOIN LATERAL (
+        SELECT d.start_at, d.timezone
+          FROM public.event_dates d
+         WHERE d.event_id = e.id AND d.is_master IS TRUE
+         ORDER BY d.start_at, d.id LIMIT 1
+      ) master ON true
+     WHERE g.matched_user_id IS NULL
+       AND (lower(btrim(g.email)) = ANY(v_emails) OR g.phone = ANY(v_phones))
+       AND public.account_owns_contact(p_user_id, g.email, g.phone)
+       AND e.event_type = 'rsvp' AND e.deleted_at IS NULL
+       AND b.deleted_at IS NULL AND e.status IN ('scheduled', 'live')
+       AND r.rsvp_status <> 'not_going' AND r.approval_status <> 'denied'
+       AND r.user_id IS DISTINCT FROM p_user_id
+       AND NOT EXISTS (
+         SELECT 1 FROM public.event_rsvps owned
+          WHERE owned.event_id = r.event_id AND owned.user_id = p_user_id
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.event_rsvp_guests other
+           JOIN public.event_rsvps other_rsvp ON other_rsvp.id = other.rsvp_id
+          WHERE other_rsvp.event_id = r.event_id
+            AND other.matched_user_id = p_user_id
+       )
+     ORDER BY g.created_at, g.id
+     LIMIT 25
+     FOR UPDATE OF g SKIP LOCKED
+  LOOP
+    UPDATE public.event_rsvp_guests
+       SET matched_user_id = p_user_id
+     WHERE id = v_row.id AND matched_user_id IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    v_pass_count := v_pass_count + 1;
+    v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
+      'kind', 'rsvp_guest', 'id', v_row.id,
+      'routeKind', 'rsvp', 'routeId', v_row.rsvp_id,
+      'offeringType', 'rsvp', 'noun', 'pass',
+      'title', v_row.title, 'orderLabel', NULL,
+      'startsAt', v_row.start_at, 'timezone', v_row.timezone,
+      'venueLine', NULL, 'quantity', 1,
+      'source', 'rsvp', 'sentByFirstName', NULL,
+      'chatJoined', NULL, 'conversationId', NULL
+    ));
+  END LOOP;
+  v_more := v_more OR v_pass_count = 25;
+
+  -- Venue reservations.
+  v_pass_count := 0;
+  FOR v_row IN
+    SELECT r.id, r.venue_id, r.reserved_for, r.party_size,
+           vl.name AS title,
+           CASE WHEN vac.iana_timezone_source = 'default' THEN NULL
+             ELSE vac.iana_timezone END AS timezone
+      FROM public.reservations r
+      LEFT JOIN public.venue_listings vl ON vl.id = r.venue_id
+      LEFT JOIN public.venue_availability_config vac ON vac.venue_id = r.venue_id
+     WHERE r.consumer_user_id IS NULL
+       AND (lower(btrim(r.guest_email)) = ANY(v_emails)
+         OR r.guest_phone_e164 = ANY(v_phones))
+       AND public.account_owns_contact(
+         p_user_id, r.guest_email, r.guest_phone_e164
+       )
+       AND r.reserved_for >= now() - interval '30 days'
+     ORDER BY r.reserved_for, r.id
+     LIMIT 25
+     FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    UPDATE public.reservations
+       SET consumer_user_id = p_user_id
+     WHERE id = v_row.id AND consumer_user_id IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    v_pass_count := v_pass_count + 1;
+    v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
+      'kind', 'reservation', 'id', v_row.id,
+      'routeKind', 'reservation', 'routeId', v_row.id,
+      'offeringType', 'venue', 'noun', 'booking',
+      'title', coalesce(v_row.title, 'Reservation'), 'orderLabel', NULL,
+      'startsAt', v_row.reserved_for, 'timezone', v_row.timezone,
+      'venueLine', v_row.title, 'quantity', v_row.party_size,
+      'source', 'booking', 'sentByFirstName', NULL,
+      'chatJoined', NULL, 'conversationId', NULL
+    ));
+  END LOOP;
+  v_more := v_more OR v_pass_count = 25;
+
+  -- Stay groups. These tables are intentionally small; the contact prefilter
+  -- is still present so a future volume increase cannot turn this into a scan.
+  v_pass_count := 0;
+  FOR v_row IN
+    SELECT g.id, g.venue_id, vl.name AS title
+      FROM public.stay_reservation_groups g
+      LEFT JOIN public.venue_listings vl ON vl.id = g.venue_id
+     WHERE g.user_id IS NULL
+       AND (lower(btrim(g.guest_snapshot->>'email')) = ANY(v_emails)
+         OR g.guest_snapshot->>'phone' = ANY(v_phones))
+       AND public.account_owns_contact(
+         p_user_id, g.guest_snapshot->>'email', g.guest_snapshot->>'phone'
+       )
+     ORDER BY g.created_at, g.id
+     LIMIT 25
+     FOR UPDATE OF g SKIP LOCKED
+  LOOP
+    UPDATE public.stay_reservation_groups
+       SET user_id = p_user_id, updated_at = now()
+     WHERE id = v_row.id AND user_id IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    v_pass_count := v_pass_count + 1;
+    v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
+      'kind', 'stay_group', 'id', v_row.id,
+      'routeKind', 'stay', 'routeId', v_row.id,
+      'offeringType', 'stay', 'noun', 'booking',
+      'title', coalesce(v_row.title, 'Stay'), 'orderLabel', NULL,
+      'startsAt', NULL, 'timezone', NULL,
+      'venueLine', v_row.title, 'quantity', NULL,
+      'source', 'booking', 'sentByFirstName', NULL,
+      'chatJoined', NULL, 'conversationId', NULL
+    ));
+  END LOOP;
+  v_more := v_more OR v_pass_count = 25;
+
+  -- Paid Mingla food and drink orders.
+  v_pass_count := 0;
+  FOR v_row IN
+    SELECT vo.id, vo.venue_id, vo.created_at, vo.pickup_code,
+           vl.name AS title,
+           coalesce((SELECT sum(i.quantity)::integer
+             FROM public.venue_order_items i
+            WHERE i.venue_order_id = vo.id), 0) AS quantity
+      FROM public.venue_orders vo
+      JOIN public.venue_listings vl ON vl.id = vo.venue_id
+     WHERE vo.buyer_user_id IS NULL
+       AND vo.money_path = 'mingla'
+       AND vo.payment_status IN ('paid', 'partial_refund', 'refunded')
+       AND vo.created_at >= now() - interval '90 days'
+       AND (lower(btrim(vo.buyer_email)) = ANY(v_emails)
+         OR vo.buyer_phone_e164 = ANY(v_phones))
+       AND public.account_owns_contact(
+         p_user_id, vo.buyer_email, vo.buyer_phone_e164
+       )
+     ORDER BY vo.created_at, vo.id
+     LIMIT 25
+     FOR UPDATE OF vo SKIP LOCKED
+  LOOP
+    UPDATE public.venue_orders
+       SET buyer_user_id = p_user_id
+     WHERE id = v_row.id AND buyer_user_id IS NULL;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    v_pass_count := v_pass_count + 1;
+    v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
+      'kind', 'venue_order', 'id', v_row.id,
+      'routeKind', 'venue_order', 'routeId', v_row.id,
+      'offeringType', 'food', 'noun', 'receipt',
+      'title', v_row.title,
+      'orderLabel', CASE WHEN btrim(coalesce(v_row.pickup_code, '')) <> ''
+        THEN 'Order #' || v_row.pickup_code
+        ELSE 'Order ' || upper(substr(replace(v_row.id::text, '-', ''), 1, 8))
+        END,
+      'startsAt', v_row.created_at, 'timezone', NULL,
+      'venueLine', v_row.title, 'quantity', v_row.quantity,
+      'source', 'food', 'sentByFirstName', NULL,
+      'chatJoined', NULL, 'conversationId', NULL
+    ));
+  END LOOP;
+  v_more := v_more OR v_pass_count = 25;
+
+  RETURN jsonb_build_object(
+    'claimed', v_claimed,
+    'count', jsonb_array_length(v_claimed),
+    'more', v_more
+  );
+END;
+$function$;
+
+COMMENT ON FUNCTION public.claim_attendance_by_verified_identity(uuid) IS
+  '#2217 + #3524 + #4063 + #4271: the identity rail for orders, RSVPs, plus-ones, reservations, stays and food orders. Takes NO identifier from the caller; every row is gated by account_owns_contact; any event visibility; safe to call repeatedly (SKIP LOCKED, unowned-guarded writes); returns only rows claimed by this call. Door orders of every method share the 30-day door window.';
+REVOKE ALL ON FUNCTION public.claim_attendance_by_verified_identity(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_attendance_by_verified_identity(uuid)
   TO service_role;
 
 -- =============================================================================
