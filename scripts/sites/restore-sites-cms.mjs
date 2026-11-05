@@ -12,12 +12,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  TENANT_DOCUMENTS_SQL,
   callCore,
   coreConfigFromEnv,
   decryptBundle,
   encryptionKeyFromEnv,
   extractPlainBundle,
   fail,
+  manifestTenants,
   postgresEnvFromUrl,
   requiredEnv,
   requireUuid,
@@ -39,9 +41,13 @@ SELECT json_build_object(
     (SELECT count(*) FROM sites_cms.footer) +
     (SELECT count(*) FROM sites_cms.site_settings) +
     (SELECT count(*) FROM sites_cms.publication_jobs),
-  'site_ids', COALESCE((
-    SELECT json_agg(core_site_id ORDER BY core_site_id)
-    FROM sites_cms.tenants
+  'tenant_rows', COALESCE((
+    SELECT json_agg(json_build_object(
+      'tenant_id', tenant.id,
+      'site_id', tenant.core_site_id,
+      'documents', ${TENANT_DOCUMENTS_SQL}
+    ) ORDER BY tenant.id)
+    FROM sites_cms.tenants tenant
   ), '[]'::json)
 );`;
 
@@ -89,6 +95,15 @@ function assertEmptyTarget(env, spawn) {
   if (output !== "0") fail("RESTORE_TARGET_NOT_EMPTY");
 }
 
+// #2830 — one comparable line per tenant: a brand whose rows did not come back
+// fails here even if another brand's rows happen to make the totals add up.
+function tenantRestoreLines(tenants) {
+  return tenants
+    .map(({ tenant_id, site_id, documents }) =>
+      stableJson({ tenant_id, site_id, documents: Number(documents) }))
+    .sort();
+}
+
 function readRestoredCounts(env, spawn) {
   const output = runCommand(
     "psql",
@@ -107,9 +122,9 @@ function readRestoredCounts(env, spawn) {
   if (
     !Number.isSafeInteger(tenants) || tenants < 0 ||
     !Number.isSafeInteger(documents) || documents < 0 ||
-    !Array.isArray(value?.site_ids)
+    !Array.isArray(value?.tenant_rows)
   ) fail("RESTORE_COUNTS_INVALID");
-  return { tenants, documents, site_ids: value.site_ids };
+  return { tenants, documents, tenant_rows: value.tenant_rows };
 }
 
 export async function runRestore({
@@ -158,9 +173,13 @@ export async function runRestore({
     if (
       counts.tenants !== extracted.manifest.counts.tenants ||
       counts.documents !== extracted.manifest.counts.documents ||
-      counts.site_ids.length !== 1 || counts.site_ids[0] !== siteId
+      stableJson(tenantRestoreLines(counts.tenant_rows)) !==
+        stableJson(tenantRestoreLines(manifestTenants(extracted.manifest)))
     ) fail("RESTORE_DATABASE_COUNT_MISMATCH");
-    if (counts.tenants < 1 || counts.documents < 1) fail("RESTORE_EMPTY_PILOT");
+    // The signing site must have come back with content. Another brand may
+    // legitimately be empty: a provision can stop before its first documents.
+    const signingTenant = counts.tenant_rows.find((tenant) => tenant.site_id === siteId);
+    if (!signingTenant || Number(signingTenant.documents) < 1) fail("RESTORE_EMPTY_PILOT");
     if (extracted.objects.length !== extracted.manifest.counts.objects) {
       fail("RESTORE_OBJECT_COUNT_MISMATCH");
     }
