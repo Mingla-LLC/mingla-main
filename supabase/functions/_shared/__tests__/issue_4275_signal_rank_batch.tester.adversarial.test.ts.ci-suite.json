@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4275_signal_rank_batch.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-signal-rank-batch-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read", "env"]
+}

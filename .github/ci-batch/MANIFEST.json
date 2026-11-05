@@ -20652,6 +20652,8 @@
         "supabase/migrations/__tests__/issue_4255_admin_access_email_drafts.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4275_cron_cadence.tester.adversarial.test.ts",
+        "supabase/migrations/__tests__/issue_4275_cron_cadence.tester.adversarial.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4275_cron_stagger.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4275_cron_stagger.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4275_cron_stagger_more.implementor.pg17.test.sql",
@@ -20660,6 +20662,8 @@
         "supabase/migrations/__tests__/issue_4275_cron_stagger_source.implementor.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4275_signal_rank_batch.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4275_signal_rank_batch.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4275_signal_rank_batch.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4275_signal_rank_batch.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -25535,6 +25539,8 @@
         "supabase/migrations/__tests__/issue_4255_admin_access_email_drafts.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4275_cron_cadence.tester.adversarial.test.ts",
+        "supabase/migrations/__tests__/issue_4275_cron_cadence.tester.adversarial.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4275_cron_stagger.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4275_cron_stagger.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4275_cron_stagger_more.implementor.pg17.test.sql",
@@ -25543,6 +25549,8 @@
         "supabase/migrations/__tests__/issue_4275_cron_stagger_source.implementor.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4275_signal_rank_batch.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4275_signal_rank_batch.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4275_signal_rank_batch.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4275_signal_rank_batch.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -52815,5 +52823,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "e7e613857579cf2763fe454ed6bb5e6f4b3e9cddd716bd73684e65edd703b645"
+  "phase3eContractSha256": "2dfdcb5ebe85dc7193aaeec490ddc8272daed3f017cfc2bd03f318df18a25d32"
 }

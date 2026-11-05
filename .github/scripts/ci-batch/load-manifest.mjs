@@ -141,7 +141,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
-export const BOOTSTRAP_SHA256 = "c1d1d694586560be447f2ea3d00bba42a97aeef53f991242decbdabe8cd61e19";
+export const BOOTSTRAP_SHA256 = "9499d9322111037f042c82f972a799cd54138e7557e0abbd9f5eb72b3de367ac";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
