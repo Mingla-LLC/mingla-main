@@ -1258,7 +1258,8 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
-    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
+    // The list of tracked paths has passed Node's default 1 MiB output limit.
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
