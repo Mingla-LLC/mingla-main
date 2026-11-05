@@ -154,7 +154,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the private link dates migration and test
 // #3281: skip the private link dates migration on the pre-feature lanes
 // #3281: skip the private link dates migration on the pre-feature lanes
-export const BOOTSTRAP_SHA256 = "1649d9ff2590963a850eb3e67ed3babb820a09a8a3be3662186c92d636f07165";
+// #4283: register the accept single-member-row migration and its proofs
+export const BOOTSTRAP_SHA256 = "b17a707c4d644a2d2ab2c1d20891ca076854ea083d47cf45da5df8b1d87be66f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
