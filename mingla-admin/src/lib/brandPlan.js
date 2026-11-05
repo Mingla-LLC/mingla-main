@@ -83,19 +83,41 @@ export function planWeeks(items, today) {
 
 /** "canva.com" from a plan link. */
 export function linkSite(url) {
-  const m = /^https:\/\/([^/?#:]+)/i.exec(String(url || ""));
+  const m = /^https:\/\/([^/?#:]+)/.exec(String(url || ""));
   return m ? m[1].toLowerCase().replace(/^www\./, "") : "";
 }
 
-/** A plan link must be https. "" means no link. */
+// The same characters the server refuses (brand_plan_link_hidden): control
+// characters, unusual spaces and invisible formatting characters, so the site
+// name on a link's button always reads as the site it opens.
+const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{E0000}-\u{E0FFF}]/u;
+
+/**
+ * A plan link must be https, in lower case like the server wants it, with
+ * nothing hidden and nothing before the site name. "" means no link.
+ */
 export function planLinkProblem(value) {
   const v = String(value || "").trim();
   if (!v) return "";
-  return /^https:\/\/[^\s]+$/i.test(v) && v.length >= 9 && v.length <= 2000 ? "" : "Links start with https://";
+  const ok = /^https:\/\/[^\s]+$/.test(v) && v.length >= 9 && v.length <= 2000 && !LINK_HIDDEN.test(v) && !/^https:\/\/[^/?#]*[@\\]/.test(v);
+  return ok ? "" : "Links start with https://";
 }
 
 export function emptyPlanForm(owners = []) {
   return { type: "post", title: "", on: "", link: "", note: "", owners: owners.slice(), watchers: [] };
+}
+
+/**
+ * Who owns and watches a new task, as the server says (D6, D21): the form
+ * shows exactly this and sends what it shows. Before the plan has loaded, the
+ * host card's owners and no watchers.
+ */
+export function planTaskDefaults(plan, hostOwners = []) {
+  const d = plan?.task_defaults;
+  return {
+    owners: Array.isArray(d?.owners) ? d.owners.slice() : hostOwners.slice(),
+    watchers: Array.isArray(d?.watchers) ? d.watchers.slice() : [],
+  };
 }
 
 /** The Add to plan form's problems, in the order the fields appear. */

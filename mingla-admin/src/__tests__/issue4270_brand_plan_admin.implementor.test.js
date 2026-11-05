@@ -33,7 +33,10 @@ import {
   planAddedWords,
   planFormProblems,
   planWeeks,
+  planLinkProblem,
+  planTaskDefaults,
 } from "../lib/brandPlan.js";
+import { sideHref } from "../lib/panelStack.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -180,5 +183,40 @@ describe("B-4 services and the quiet line", () => {
   it("site names", () => {
     assert.equal(linkSite("https://www.canva.com/design/x"), "canva.com");
     assert.equal(linkSite("http://canva.com"), "");
+  });
+});
+
+// Rework after the Wave 3 test: P1-1, P3-2, P3-7, P3-9.
+describe("W3 rework: the Plan block's links and the form's defaults", () => {
+  const plan = code("components/crm/HostPlanSection.jsx");
+  const ID = "42730000-0000-4000-d0f0-000000000001";
+  it("P1-1 a plan row links to what the Calendar and Work board read", () => {
+    assert.ok(plan.includes("href={sideHref(itemSide(item))}"));
+    assert.ok(!plan.includes("?item="), "the Calendar reads card=, never item=");
+    assert.equal(sideHref({ kind: "content", id: ID }), `#/content-calendar?card=${ID}`);
+    assert.equal(sideHref({ kind: "card", id: ID }), `#/work-board?card=${ID}`);
+    assert.equal(sideHref({ kind: "event", id: ID }), `#/content-calendar?event=event:${ID}`);
+    assert.equal(sideHref({ kind: "expected", id: ID }), `#/content-calendar?event=expected:${ID}`);
+  });
+  it("P3-7 upper-case schemes are refused here too, as the server refuses them", () => {
+    assert.equal(planLinkProblem("HTTPS://X.COM"), "Links start with https://");
+    assert.equal(planLinkProblem("Https://x.com"), "Links start with https://");
+    assert.equal(linkSite("HTTPS://X.COM"), "");
+  });
+  it("P3-2 hidden characters and anything before the site name are refused, as on the server", () => {
+    for (const bad of ["https://canva.com\u202Emoc.live", "https://canva.com\u200B/x", "https://canva.com/\u0007", "https://canva.com\u00A0/x", "https://canva.com/\u{E0001}",
+      "https://canva.com:x@evil.example", "https://canva.com@evil.example/", "https://canva.com\\@evil.example"]) {
+      assert.equal(planLinkProblem(bad), "Links start with https://", JSON.stringify(bad));
+    }
+    assert.equal(planLinkProblem("https://canva.com/@tobi/x"), "");
+    assert.equal(planLinkProblem("https://example.com/caf\u00E9"), "", "ordinary non-English letters are fine");
+  });
+  it("P3-9 the form shows the task defaults the server returns, and sends them", () => {
+    const d = planTaskDefaults({ task_defaults: { owners: ["gia@x.test"], watchers: ["kunle@x.test"] } }, ["other@x.test"]);
+    assert.deepEqual(d, { owners: ["gia@x.test"], watchers: ["kunle@x.test"] });
+    assert.deepEqual(planTaskDefaults(null, ["other@x.test"]), { owners: ["other@x.test"], watchers: [] });
+    assert.ok(plan.includes('watchers: type === "task" ? taskDefaults.watchers : []'));
+    assert.deepEqual(planAddItem({ type: "task", title: "Print", on: "2026-12-01", link: "", note: "", owners: d.owners, watchers: d.watchers }).watchers, ["kunle@x.test"]);
+    assert.deepEqual(planAddItem({ type: "task", title: "Print", on: "2026-12-01", link: "", note: "", owners: d.owners, watchers: [] }).watchers, [], "cleared means nobody");
   });
 });

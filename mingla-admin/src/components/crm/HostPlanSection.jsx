@@ -18,6 +18,7 @@ import { PeopleField } from "../people/PeopleField";
 import { useToast } from "../../context/ToastContext";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import * as ops from "../../services/opsService";
+import { sideHref } from "../../lib/panelStack";
 import { opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
 import {
   KIND_HELP,
@@ -29,6 +30,7 @@ import {
   planDay,
   planFormProblems,
   planLinkProblem,
+  planTaskDefaults,
   planWeeks,
 } from "../../lib/brandPlan";
 
@@ -72,12 +74,6 @@ function useBrandPlan(recordId, brandId) {
   return { ...state, retry: load };
 }
 
-function itemHref(item) {
-  if (item.kind === "task") return `#/work-board?card=${item.id}`;
-  if (item.kind === "post") return `#/content-calendar?item=${item.id}`;
-  if (item.kind === "promised") return `#/content-calendar?event=expected:${item.id}`;
-  return `#/content-calendar?event=event:${item.id}`;
-}
 function itemSide(item) {
   if (item.kind === "task") return { kind: "card", id: item.id };
   if (item.kind === "post") return { kind: "content", id: item.id };
@@ -141,7 +137,7 @@ export function PlanLinkRow({ item, online, onSave }) {
 export function PlanRow({ item, online, onSaveLink }) {
   return (
     <div data-plan-item={item.kind} className="flex min-w-0 flex-col gap-1 rounded-lg border border-[var(--gray-200)] px-3 py-2">
-      <SideLink side={itemSide(item)} href={itemHref(item)} className={`flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-md hover:bg-[var(--gray-50)] ${FOCUS}`}>
+      <SideLink side={itemSide(item)} href={sideHref(itemSide(item))} className={`flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-md hover:bg-[var(--gray-50)] ${FOCUS}`}>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className={`text-[13px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{item.title}</span>
           <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] text-[var(--color-text-tertiary)]">
@@ -179,11 +175,13 @@ export function HostPlanSection({ record, online, onChanged }) {
   const problemFor = (field) => (tried ? problems.find((p) => p.field === field)?.message || "" : "");
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const fid = (key) => `host-plan-${id}-${key}`;
-  // Post: owned by you; Task: owned by the host card's owners (D6).
-  const ownersFor = (type) => (type === "task" ? hostOwners : [me].filter(Boolean));
+  // Post: owned by you. Task: the owners and watchers the server says (D6,
+  // D21); the form shows them and sends what it shows.
+  const taskDefaults = planTaskDefaults(data, hostOwners);
+  const ownersFor = (type) => (type === "task" ? taskDefaults.owners : [me].filter(Boolean));
 
   const open = () => { setForm(emptyPlanForm(ownersFor("post"))); setTried(false); setRefused(null); setFailed(""); setAdding(true); };
-  const pickType = (type) => set({ type, owners: ownersFor(type), watchers: type === "post" ? [] : form.watchers });
+  const pickType = (type) => set({ type, owners: ownersFor(type), watchers: type === "task" ? taskDefaults.watchers : [] });
 
   const saveLink = async (item, link) => {
     try {
