@@ -7,9 +7,11 @@
 --   V-DEMOTE  an author demoted to venue staff keeps "mine", loses can_edit,
 --             is refused writes, and their view of private events narrows
 --   V-DOOR    the staff functions and the internal helpers are shut to a host
---   L-CLASS   link characters by class, through all four doors (host add, host
---             update, staff set_link, the Calendar); what may follow the site
---             name stays allowed
+--   L-CLASS   link characters by class and links with no site, through the host
+--             doors (the implementor suite's P-R4-LINK holds the staff doors and
+--             the Calendar to the same list); what may follow the site name
+--             stays allowed
+--   D-NOKEY   a hand-made add with no date key is a date problem, post and task
 --   S-SHOWN   the stored title always carries the suffix within 160, and a title
 --             that cannot fit is refused, never cut; the shown title never
 --             carries it; plan lines use the shown title
@@ -225,6 +227,11 @@ begin
     perform pg_temp.v_check('L-CLASS', 'allowed and labelled by its site: ' || v_good, public.brand_plan_link_json(v_good)->>'site', 'canva.com');
   end loop;
   perform pg_temp.v_check('L-CLASS', 'www is dropped from the label', public.brand_plan_link_json('https://WWW.Canva.com/x')->>'site', 'canva.com');
+
+  -- D-NOKEY -----------------------------------------------------------------
+  perform pg_temp.v_like('D-NOKEY', 'a post with no date key', pg_temp.v_add('ola', A, jsonb_build_object('type', 'post', 'title', 'V4270 no date post'), 'vnokey00001'), 'ERR:22023:invalid_date:%');
+  perform pg_temp.v_like('D-NOKEY', 'a task with no date key', pg_temp.v_add('ola', A, jsonb_build_object('type', 'task', 'title', 'V4270 no date task'), 'vnokey00002'), 'ERR:22023:invalid_date:%');
+  perform pg_temp.v_check('D-NOKEY', 'neither wrote a line', (select count(*)::text from public.messages where conversation_id = CA::uuid and content like '%V4270 no date%'), '0');
 
   -- S-SHOWN -----------------------------------------------------------------
   v := pg_temp.v_add('ola', A, jsonb_build_object('type', 'post', 'title', 'V4270 shown', 'on', pg_temp.v_day(9)), 'vshown00001')::jsonb;
