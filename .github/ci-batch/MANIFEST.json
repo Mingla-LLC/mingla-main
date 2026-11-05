@@ -20652,6 +20652,8 @@
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_invite_sources_and_methods.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_invite_sources_and_methods.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
@@ -25530,6 +25532,8 @@
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_invite_sources_and_methods.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_invite_sources_and_methods.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
@@ -29870,6 +29874,7 @@
         "mingla-business/src/components/marketing/__tests__/issue_4273_send_by.render.test.tsx",
         "mingla-business/src/features/invites/__tests__/inviteSelectionModel.issue4273.test.ts",
         "mingla-business/src/features/marketing/__tests__/blastSendModel.issue4273.test.ts",
+        "mingla-business/src/features/marketing/__tests__/blastSendModel.issue4273.tester_adversarial.test.ts",
         "mingla-business/src/services/__tests__/issue_1780_auth_recovery.tester_adversarial.test.ts",
         "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts",
         "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts",
@@ -52810,5 +52815,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "de5ee83d8edd3608ddd8502c6317af937ac2abac39a589d1996f488cf2547d7a"
+  "phase3eContractSha256": "fae82f90e7bd97a4e3089ac49da85148f2418254cb1622a865ee440fe524b03e"
 }
