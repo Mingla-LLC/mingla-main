@@ -2,10 +2,7 @@
 // all read. Runs both real calculators, the server adapter's and the Host app's,
 // over one table of hand-derived cases and a sweep, so they cannot drift apart.
 //
-// Invariant I-4273-SMS-SEGMENTS-MATCH-ENCODER | issue #4273 | computeSegments in
-// smsAdapter.ts and smsCost.ts give one answer for every body, and that answer
-// counts GSM-7 extended characters as two septets with no escape pair or
-// surrogate pair split across a segment.
+// MINGLA-INVARIANT: I-4273-SMS-SEGMENTS-MATCH-ENCODER | issue #4273 | computeSegments in smsAdapter.ts and smsCost.ts agree for every body, count GSM-7 extended characters as two septets and split no escape or surrogate pair across segments.
 //
 // Fails on revert: restore `Math.ceil(len / 153)` in either file and the
 // `extended`, `pair-straddles` and `ucs2-emoji` cases fail, naming the side.

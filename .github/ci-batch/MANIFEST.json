@@ -37718,6 +37718,7 @@
           "mingla-business/playwright/issue2262/**",
           "mingla-business/src/components/marketing/ComposerCommitBar.tsx",
           "mingla-business/src/components/marketing/ComposerHeader.tsx",
+          "mingla-business/src/components/marketing/ComposerMethodCards.tsx",
           "mingla-business/src/components/marketing/ComposerStepWho.tsx",
           "mingla-business/src/components/marketing/ComposerV2/ComposerCanvas.web.tsx",
           "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
