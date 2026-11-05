@@ -17,9 +17,6 @@ import {
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  // ORCH-0733 — computeCostUsd dropped from active import; only referenced
-  // in commented-historical Anthropic helper. Re-add if Anthropic is ever
-  // re-enabled (would also need DEC entry).
   computeCostUsdGemini,
   MINGLA_SIGNAL_IDS,
 } from "../_shared/photoAestheticEnums.ts";
@@ -66,20 +63,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-// ORCH-0733 — Anthropic Claude Haiku 4.5 dropped from active trial pipeline per
-// DEC-101. Constants preserved as commented historical reference for `git
-// revert`-cheap reversal if HYBRID architecture is ever revisited. DO NOT
-// re-enable without a DEC entry. Live evidence: comparison run fe15cb99
-// vs Anthropic baseline 942fbddf — Gemini 2.5 Flash matched quality at
-// −71% cost; HYBRID rejected, Gemini-only locked.
-/*
-const MODEL_ID = "claude-haiku-4-5-20251001";
-const MODEL_NAME_SHORT = "claude-haiku-4-5";
-const ANTHROPIC_VERSION = "2023-06-01";
-const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-type Provider = "anthropic" | "gemini";
-*/
 
 // ORCH-0713 Gemini A/B (2026-05-05) — became sole provider per ORCH-0733.
 // issue #3526 — both the long id and the short name now come from the single
@@ -257,59 +240,6 @@ function json(data: unknown, status = 200): Response {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
-
-// ─── Anthropic call helper with retry — DEPRECATED (ORCH-0733) ──────────────
-// Preserved as commented historical reference for `git revert`-cheap reversal.
-// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
-// DO NOT re-enable without a DEC entry. Constants (MODEL_ID, ANTHROPIC_VERSION,
-// ANTHROPIC_MESSAGES_URL) are also commented above.
-/*
-interface AnthropicUsage {
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
-}
-
-async function callAnthropicWithRetry(
-  apiKey: string,
-  reqBody: Record<string, unknown>,
-): Promise<{ payload: any; usage: AnthropicUsage }> {
-  let lastErrText = "";
-  let res: Response;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    res = await fetch(ANTHROPIC_MESSAGES_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify(reqBody),
-    });
-
-    if (res.ok) break;
-
-    const status = res.status;
-    lastErrText = await res.text();
-    const isRetryable = status === 429 || (status >= 500 && status < 600);
-    if (!isRetryable || attempt === MAX_ATTEMPTS) {
-      throw new Error(`Anthropic ${status}: ${lastErrText.slice(0, 500)}`);
-    }
-    const retryAfter = res.headers.get("retry-after");
-    const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
-    const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
-    console.log(`[place-intel-trial] Anthropic ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
-    await new Promise((r) => setTimeout(r, backoffMs));
-  }
-
-  if (!res!.ok) throw new Error(`Anthropic exhausted retries: ${lastErrText.slice(0, 500)}`);
-
-  const payload = await res!.json();
-  const usage: AnthropicUsage = payload?.usage || { input_tokens: 0, output_tokens: 0 };
-  return { payload, usage };
-}
-*/
 
 // ─── Gemini call helper with retry (ORCH-0713 A/B comparison) ───────────────
 
@@ -717,7 +647,6 @@ export const httpHandler = async (req: Request): Promise<Response> => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     // ORCH-0733 — Anthropic dropped from trial pipeline; Gemini 2.5 Flash is sole provider per DEC-101.
-    // ANTHROPIC_API_KEY env var no longer required (helpers preserved as commented historical reference).
     const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
     const serperKey = Deno.env.get("SERPER_API_KEY") ?? "";
 
@@ -2242,7 +2171,6 @@ async function processOnePlace(args: {
 
     // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
     // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
-    // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
     // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
     const {
       aggregate: q2,
@@ -2365,64 +2293,6 @@ async function processOnePlace(args: {
     attachTimingDiagnostics(err, diagnostics);
   }
 }
-
-// ─── Anthropic Q2 wrapper — DEPRECATED (ORCH-0733) ──────────────────────────
-// Preserved as commented historical reference for `git revert`-cheap reversal.
-// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
-// DO NOT re-enable without a DEC entry. Helpers (callAnthropicWithRetry,
-// AnthropicUsage) are also commented above.
-/*
-async function callQuestion(args: {
-  apiKey: string;
-  systemPrompt: string;
-  userTextBlock: string;
-  collageUrl: string;
-  tool: typeof Q2_TOOL;
-  cacheSystem: boolean;
-}): Promise<{ aggregate: any; totalCostUsd: number }> {
-  const { apiKey, systemPrompt, userTextBlock, collageUrl, tool, cacheSystem } = args;
-
-  const systemBlock = [
-    cacheSystem
-      ? { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }
-      : { type: "text", text: systemPrompt },
-  ];
-
-  const reqBody = {
-    model: MODEL_ID,
-    max_tokens: 2000,
-    system: systemBlock,
-    messages: [{
-      role: "user",
-      content: [
-        { type: "image", source: { type: "url", url: collageUrl } },
-        { type: "text", text: userTextBlock },
-      ],
-    }],
-    tool_choice: { type: "tool", name: tool.name },
-    tools: [tool],
-  };
-
-  const { payload, usage } = await callAnthropicWithRetry(apiKey, reqBody);
-  const toolUseBlock = (payload?.content || []).find(
-    (b: { type: string; name?: string }) => b.type === "tool_use" && b.name === tool.name,
-  );
-  if (!toolUseBlock) {
-    throw new Error(`Claude returned no tool_use block for ${tool.name}`);
-  }
-  const aggregate = (toolUseBlock as { input: any }).input;
-
-  const cost = computeCostUsd({
-    inputTokens: usage.input_tokens || 0,
-    outputTokens: usage.output_tokens || 0,
-    cacheReadTokens: usage.cache_read_input_tokens || 0,
-    cacheWriteTokens: usage.cache_creation_input_tokens || 0,
-    useBatchApi: false,
-  });
-
-  return { aggregate, totalCostUsd: cost };
-}
-*/
 
 // ─── Gemini equivalent of callQuestion (ORCH-0713 A/B comparison) ───────────
 // Same inputs (system prompt, user text block, collage URL, Q2 tool schema).
