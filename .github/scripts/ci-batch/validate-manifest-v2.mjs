@@ -357,7 +357,8 @@ export function phase3dContractDigest(manifest) {
 // migration joins the pre-#1931 replay's exact-file exclusion (#2492).
 // #4271: register the tester adversarial PostgreSQL proof the same way.
 // #4271: register the rework implementor PostgreSQL proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5847b35957c4df4578fa1df5c1e9637e2c298f2d6b9275ad6ae4ccc2f9e1d3c3";
+// #4271: register the Apple build PostgreSQL proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "852f70995ffd668595882d216f7b1437932a9c6520021eeecbcc6bb228d0a4e4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
