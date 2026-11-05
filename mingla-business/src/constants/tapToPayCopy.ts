@@ -55,3 +55,17 @@ export const tapReaderProblemCopy = (problem: TapReaderProblem, os: string): str
 };
 
 export const tapReaderProblemTitle = (os: string): string => `${tapToPayName(os)} didn't start`;
+
+export const TAP_ADMIN_ONLY_COPY = {
+  title: "Ask an admin to turn this on",
+  body: "A brand owner or admin needs to accept Apple's terms for Tap to Pay on iPhone. Ask them to open Account, then Tap to Pay on iPhone, in Mingla Host.",
+  usePayCode: "Use a pay code",
+} as const;
+
+export const tapToPaySetupButtonLabel = (os: string): string =>
+  os === "ios" ? "Accept Apple's terms and set up" : "Set up Tap to Pay";
+
+export const TAP_APPLE_TERMS_ROW = {
+  title: "Apple's terms",
+  sub: "Apple asks a brand owner or admin to accept its terms once. Apple shows them next.",
+} as const;

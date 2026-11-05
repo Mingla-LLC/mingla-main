@@ -410,3 +410,12 @@ describe("B4 acceptance comes from Apple, and errors say what happened", () => {
     expect(tapReaderProblemCopy("prepare_failed", "android")).not.toContain("iPhone");
   });
 });
+
+describe("B5 terms are allowed in one place", () => {
+  test("the connect parameter is the only tosAcceptancePermitted, and never a literal true", () => {
+    const host = fs.readFileSync(path.join(BIZ_ROOT, "src/components/door/tap/TapToPayTerminalHost.tsx"), "utf8");
+    expect(host).toContain("tosAcceptancePermitted: mayAcceptTerms");
+    expect(host).not.toMatch(/tosAcceptancePermitted:\s*true/);
+    expect(host).toContain('options?.mayAcceptTerms === true');
+  });
+});

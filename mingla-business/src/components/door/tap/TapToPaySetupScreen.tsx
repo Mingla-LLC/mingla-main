@@ -12,7 +12,7 @@
  *      waiting (the draft travels in the URL). The reader stays connected
  *      into the sale (one Terminal session for the tap route group).
  */
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,7 +26,13 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
+import {
+  TAP_ADMIN_ONLY_COPY,
+  TAP_APPLE_TERMS_ROW,
+  tapToPaySetupButtonLabel,
+} from "../../../constants/tapToPayCopy";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
+import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
 import {
   currentTapToPayDevice,
@@ -42,10 +48,12 @@ import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
+import { Spinner } from "../../ui/Spinner";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
 import { TapUpdateIos } from "./TapUpdateIos";
-import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
+import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
+import { BRAND_ROLE_RANK } from "../../../utils/brandRole";
 
 export interface TapToPaySetupScreenProps {
   eventId: string;
@@ -69,10 +77,17 @@ export const setupRowsFor = (os: string): SetupRow[] => {
       sub: "Paid out with your online sales. Mingla fee 4.5%.",
     },
     ios
-      ? { title: "Apple's terms", sub: "Apple asks the brand owner to accept its Tap to Pay terms once." }
+      ? TAP_APPLE_TERMS_ROW
       : { title: "Quick phone check", sub: "We check NFC is on and the phone is secure." },
   ];
 };
+
+/**
+ * Apple: only an admin or authorized party may accept the terms. A loading or
+ * failed role check reads as no. This can only be a client check because the
+ * terms sheet is native; the server still gates the money.
+ */
+export const tapToPayMayAcceptTerms = (rank: number): boolean => rank >= BRAND_ROLE_RANK.brand_admin;
 
 export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenProps): React.ReactElement => {
   const insets = useSafeAreaInsets();
@@ -84,6 +99,14 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
     currency: route.event?.currency ?? route.brand?.defaultCurrency ?? null,
   });
   const terminal = useTapToPayTerminal();
+  const brandId = route.brand?.id ?? route.event?.brandId ?? null;
+  const role = useCurrentBrandRole(brandId);
+  const mayAcceptTerms = tapToPayMayAcceptTerms(role.rank);
+  const acceptance = tapToPayAcceptanceFor(terminal, brandId);
+  // iPhone only: Android has no Apple terms, so anyone with door access sets up.
+  const adminRequired = Platform.OS === "ios" && !mayAcceptTerms && acceptance !== "accepted";
+  const [probing, setProbing] = useState<boolean>(false);
+  const probedRef = useRef<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [deviceRejected, setDeviceRejected] = useState<boolean>(false);
   const [iosUpdateRequired, setIosUpdateRequired] = useState<boolean>(false);
@@ -123,61 +146,76 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
     }
   }, [draft, eventId, router, goToDoor]);
 
-  const runSetup = useCallback(async (): Promise<void> => {
-    if (terminal.status === "error") {
-      terminal.retryInitialize();
-      return;
-    }
-    if (terminal.client === null) return;
-    setBusy(true);
-    setError(null);
-    const client = terminal.client;
-    try {
-      const result = await runTapToPaySetup({
-        os: Platform.OS,
-        checkDeviceSupport: () => client.checkDeviceSupport(),
-        fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId }),
-        ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId, { mayAcceptTerms: true }),
-        showHowToTap: showHowToTapEducation,
-        markComplete: async () => {
-          if (route.brand?.id) await markTapToPayWarmHint(route.brand.id);
-        },
-      });
-      if (result.kind === "device_rejected") {
-        setDeviceRejected(true);
+  const runSetup = useCallback(
+    async (allowTerms: boolean): Promise<void> => {
+      if (terminal.status === "error") {
+        terminal.retryInitialize();
         return;
       }
-      if (result.kind === "ios_update_required") {
-        setIosUpdateRequired(true);
-        return;
+      if (terminal.client === null) return;
+      setBusy(true);
+      setError(null);
+      const client = terminal.client;
+      try {
+        const result = await runTapToPaySetup({
+          os: Platform.OS,
+          checkDeviceSupport: () => client.checkDeviceSupport(),
+          fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId }),
+          ensureReaderConnected: (locationId) =>
+            client.ensureReaderConnected(locationId, { mayAcceptTerms: allowTerms }),
+          showHowToTap: showHowToTapEducation,
+          markComplete: async () => {
+            if (route.brand?.id) await markTapToPayWarmHint(route.brand.id);
+          },
+        });
+        if (result.kind === "device_rejected") {
+          setDeviceRejected(true);
+          return;
+        }
+        if (result.kind === "ios_update_required") {
+          setIosUpdateRequired(true);
+          return;
+        }
+        if (result.kind === "not_available") {
+          setBrandNotAvailable(true);
+          return;
+        }
+        if (result.kind === "terms_required") {
+          // Asking Apple is how we learn this; the admin-only message now stands.
+          if (allowTerms) setError("Apple's terms need accepting before this phone can take taps.");
+          return;
+        }
+        if (result.kind === "failed") {
+          setError(result.message);
+          return;
+        }
+        if (draft !== null) {
+          // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
+          router.replace(
+            `/event/${eventId}/door/tap/new?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
+          );
+        } else {
+          goToDoor();
+        }
+      } catch (setupError) {
+        reportNonFatal("door-tap.setup", setupError);
+        setError("Setup didn't finish. Check your connection and try again.");
+      } finally {
+        setBusy(false);
       }
-      if (result.kind === "not_available") {
-        setBrandNotAvailable(true);
-        return;
-      }
-      if (result.kind === "terms_required") {
-        setError("Apple's terms need accepting before this phone can take taps.");
-        return;
-      }
-      if (result.kind === "failed") {
-        setError(result.message);
-        return;
-      }
-      if (draft !== null) {
-        // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
-        router.replace(
-          `/event/${eventId}/door/tap/new?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
-        );
-      } else {
-        goToDoor();
-      }
-    } catch (setupError) {
-      reportNonFatal("door-tap.setup", setupError);
-      setError("Setup didn't finish. Check your connection and try again.");
-    } finally {
-      setBusy(false);
-    }
-  }, [terminal, draft, router, eventId, goToDoor, route.brand?.id]);
+    },
+    [terminal, draft, router, eventId, goToDoor, route.brand?.id],
+  );
+
+  // Someone who may not accept the terms never gets a setup button, but an admin
+  // may already have accepted them. Apple only answers when asked, so ask once,
+  // never allowing the terms sheet.
+  useEffect(() => {
+    if (!adminRequired || role.isLoading || terminal.client === null || probedRef.current) return;
+    probedRef.current = true;
+    setProbing(true);
+    void runSetup(false).finally(() => setProbing(false));
+  }, [adminRequired, role.isLoading, terminal.client, runSetup]);
 
   const chrome = (
     <View style={styles.chromeRow}>
@@ -216,6 +254,30 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
       />
     );
+  } else if (adminRequired) {
+    body = probing || role.isLoading ? (
+      <View style={styles.probe}>
+        <Spinner size={36} />
+      </View>
+    ) : (
+      <TapStatusView
+        tone="bad"
+        icon="close"
+        title={TAP_ADMIN_ONLY_COPY.title}
+        body={error ?? TAP_ADMIN_ONLY_COPY.body}
+        primary={
+          draft !== null
+            ? {
+                label: TAP_ADMIN_ONLY_COPY.usePayCode,
+                onPress: () => void startPayCode(),
+                loading: payCodeBusy,
+                testID: "tap-use-pay-code",
+              }
+            : null
+        }
+        testID="tap-setup-admin-only"
+      />
+    );
   } else {
     const rows = setupRowsFor(Platform.OS);
     body = (
@@ -242,8 +304,8 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         </ScrollView>
         <View style={styles.bar}>
           <Button
-            label="Set up Tap to Pay"
-            onPress={() => void runSetup()}
+            label={tapToPaySetupButtonLabel(Platform.OS)}
+            onPress={() => void runSetup(mayAcceptTerms)}
             loading={busy || terminal.status === "initializing"}
             disabled={busy || terminal.status === "initializing"}
             variant="primary"
@@ -273,6 +335,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
 const styles = StyleSheet.create({
   host: { flex: 1 },
   flex: { flex: 1 },
+  probe: { flex: 1, alignItems: "center", justifyContent: "center" },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -269,7 +269,7 @@ describe("Tap setup runs Apple's terms and How to Tap before the first sale", ()
     const src = read("src/components/door/tap/TapToPaySetupScreen.tsx");
     expect(src).toContain("runTapToPaySetup({");
     expect(src).toContain("fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId })");
-    expect(src).toContain("ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId,");
+    expect(src).toContain("client.ensureReaderConnected(locationId, { mayAcceptTerms: allowTerms })");
   });
 });
 

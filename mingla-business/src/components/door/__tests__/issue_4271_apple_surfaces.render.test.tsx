@@ -70,6 +70,41 @@ jest.mock("../../../hooks/useBrands", () => ({
 jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandId: () => mockBrandId,
 }));
+let mockRole: { rank: number; isLoading: boolean } = { rank: 60, isLoading: false };
+jest.mock("../../../hooks/useCurrentBrandRole", () => ({
+  useCurrentBrandRole: () => mockRole,
+}));
+const mockReplace = jest.fn();
+let mockAvailability: Record<string, unknown> = { available: true, needsSetup: true, reason: "ok" };
+jest.mock("../../../hooks/useTapToPayAvailability", () => ({
+  ...jest.requireActual("../../../hooks/useTapToPayAvailability"),
+  useTapToPayAvailability: () => mockAvailability,
+}));
+jest.mock("../../../hooks/useManagedEventRoute", () => ({
+  useManagedEventRoute: () => ({
+    brand: { id: "brand-1", displayName: "Door Brand", defaultCurrency: "GBP" },
+    event: { id: "event-1", brandId: "brand-1", currency: "GBP", tickets: [] },
+  }),
+}));
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ replace: mockReplace, push: jest.fn(), back: jest.fn(), canGoBack: () => true }),
+  useLocalSearchParams: () => ({}),
+  Stack: () => null,
+}));
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+jest.mock("../../ui/GlassCard", () => ({
+  GlassCard: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock("../../ui/IconChrome", () => ({ IconChrome: () => null }));
+jest.mock("../../ui/Spinner", () => ({ Spinner: () => null }));
+jest.mock("../../../services/terminal/doorTapEdge", () => ({
+  fetchDoorTapLocation: jest.fn(async () => "tml_1"),
+  fetchTerminalConnectionToken: jest.fn(async () => "pst"),
+  createDoorPayCodeForLines: jest.fn(async () => ({ codeId: "code-1" })),
+  DoorTapError: class DoorTapError extends Error {},
+}));
 jest.mock("../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.fn() }));
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn() }, rpc: jest.fn() },
@@ -92,9 +127,12 @@ import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
 // eslint-disable-next-line import/first
 import { TapUpdateIos } from "../tap/TapUpdateIos";
 // eslint-disable-next-line import/first
+import { TapToPaySetupScreen } from "../tap/TapToPaySetupScreen";
+// eslint-disable-next-line import/first
 import {
   getTapToPaySession,
   resetTapToPaySessionForTests,
+  updateTapToPaySession,
 } from "../../../services/terminal/tapToPaySession";
 
 Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
@@ -172,5 +210,81 @@ describe("B3 root Terminal host", () => {
     expect(mockInitialize).toHaveBeenCalledTimes(1);
     expect(getTapToPaySession().status).toBe("ready");
     expect(getTapToPaySession().client).not.toBeNull();
+  });
+});
+
+describe("B5 only admins accept Apple's terms", () => {
+  const readyClient = (error?: Record<string, unknown>) => {
+    const ensureReaderConnected = jest.fn(async () => (error === undefined ? {} : { error }));
+    updateTapToPaySession({
+      status: "ready",
+      client: {
+        ensureReaderConnected,
+        checkDeviceSupport: async () => ({ supported: true }),
+      } as never,
+    });
+    return ensureReaderConnected;
+  };
+  const setup = async (): Promise<ReactTestRenderer> => {
+    const tree = mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await flush();
+    await flush();
+    await flush();
+    return tree;
+  };
+
+  beforeEach(() => {
+    resetTapToPaySessionForTests();
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    mockReplace.mockClear();
+  });
+
+  test("a scanner never gets the setup button, sees who to ask, and Apple is asked without terms", async () => {
+    mockRole = { rank: 10, isLoading: false };
+    const connect = readyClient({ nativeErrorCode: "3930" });
+    const { root } = await setup();
+    expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: false });
+    const text = textOf(root);
+    expect(text).toContain("Ask an admin to turn this on");
+    expect(root.findAll((n) => n.props.testID === "tap-setup-start")).toHaveLength(0);
+  });
+
+  test("an event manager is treated the same: rank below brand admin", async () => {
+    mockRole = { rank: 40, isLoading: false };
+    const connect = readyClient({ nativeErrorCode: "3930" });
+    const { root } = await setup();
+    expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: false });
+    expect(root.findAll((n) => n.props.testID === "tap-setup-start")).toHaveLength(0);
+  });
+
+  test("while the role loads nothing is offered and Apple is not asked", async () => {
+    mockRole = { rank: 0, isLoading: true };
+    const connect = readyClient();
+    const { root } = await setup();
+    expect(connect).not.toHaveBeenCalled();
+    expect(root.findAll((n) => n.props.testID === "tap-setup-start")).toHaveLength(0);
+  });
+
+  test("a scanner whose admin already accepted just finishes setup", async () => {
+    mockRole = { rank: 10, isLoading: false };
+    const connect = readyClient();
+    await setup();
+    expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: false });
+    expect(mockReplace).toHaveBeenCalled();
+  });
+
+  test("an admin may accept, and only by pressing the button", async () => {
+    mockRole = { rank: 50, isLoading: false };
+    const connect = readyClient();
+    const { root } = await setup();
+    expect(connect).not.toHaveBeenCalled();
+    expect(textOf(root)).toContain("Accept Apple's terms and set up");
+    await act(async () => {
+      byTestId(root, "tap-setup-start").props.onPress();
+      await Promise.resolve();
+    });
+    await flush();
+    await flush();
+    expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: true });
   });
 });

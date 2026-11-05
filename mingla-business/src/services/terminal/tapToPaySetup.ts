@@ -20,6 +20,7 @@ export interface TapToPaySetupDeps {
   os: string;
   checkDeviceSupport(): Promise<{ supported: boolean; error?: TerminalErrorLike }>;
   fetchLocation(): Promise<string>;
+  /** The setup screen decides who may accept Apple's terms and binds it here. */
   ensureReaderConnected(locationId: string): Promise<{ error?: TerminalErrorLike }>;
   showHowToTap(): Promise<unknown>;
   markComplete(): Promise<void>;
