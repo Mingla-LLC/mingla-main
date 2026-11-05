@@ -150,7 +150,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
-export const BOOTSTRAP_SHA256 = "7713824a2a24a40d88b88e9510e83dc9816a74b1e834d1b41b541972029a0bfa";
+// #3281: register the door extras migration and test
+export const BOOTSTRAP_SHA256 = "54fca49b0c97a80731d68437e0bcd918cf89f6172a03ac58781c14a74928efd1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

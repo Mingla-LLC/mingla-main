@@ -734,7 +734,11 @@
         "mingla-business/src/components/door/DoorSaleNewSheet.tsx",
         "mingla-business/src/services/doorSalesService.ts",
         "supabase/migrations/20280229003281_issue_3281_door_active_date.sql",
-        "mingla-business/src/store/orderStoreHelpers.ts"
+        "mingla-business/src/store/orderStoreHelpers.ts",
+        "mingla-business/src/components/scanner/doorExtras.ts",
+        "mingla-business/src/services/guestListService.ts",
+        "supabase/functions/guest-list/index.ts",
+        "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql"
       ]
     },
     {

@@ -160,6 +160,180 @@ describe("issue #3827 — door Find by name", () => {
     expect(r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Admit all 2")).toHaveLength(1);
   });
 
+  test("issue #3281 — the door sees what each guest is still owed", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [
+        {
+          ...LOLADE,
+          extras: [
+            { name: "Friday dinner", quantity: 2, eventDateIds: ["day-fri"] },
+            { name: "Tote bag", quantity: 1, eventDateIds: null },
+          ],
+        },
+        LOLU,
+      ],
+      truncated: false,
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    expect(text(r.root)).toContain("Extras: Friday dinner × 2 (some days only) · Tote bag × 1");
+    // A guest without extras gets no line.
+    expect(r.root.findAll((n) => n.props.testID === "door-extras-o-lolu")).toHaveLength(0);
+  });
+
+  test("issue #3281 — after admission, an extra for another day says so", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [{
+        ...LOLU,
+        extras: [
+          { name: "Friday dinner", quantity: 2, eventDateIds: ["day-fri"] },
+          { name: "Tote bag", quantity: 1, eventDateIds: null },
+        ],
+      }],
+      truncated: false,
+    });
+    mockAdmit.mockResolvedValue({
+      result: "success", ticketId: "tk-l1", orderId: "o-lolu", buyerName: "Lolu Ade",
+      ticketName: "Guest list", nextStartAt: null, lastEndAt: null, eventDateId: "day-sat",
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Lolu Ade, Guest list");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(line).toBeDefined();
+    expect(text(line)).toBe("Extras: Friday dinner × 2 (another day) · Tote bag × 1");
+  });
+
+  test("issue #3281 — a refund between search and admission leaves the banner without that extra", async () => {
+    const withDinner = {
+      ...LOLU,
+      extras: [
+        { name: "Friday dinner", quantity: 2, eventDateIds: null },
+        { name: "Tote bag", quantity: 1, eventDateIds: null },
+      ],
+    };
+    // The search shows the dinner; the dinner is refunded before admission,
+    // so the refreshed answer after admission no longer owes it.
+    mockSearch
+      .mockResolvedValueOnce({ orders: [withDinner], truncated: false })
+      .mockResolvedValue({
+        orders: [{ ...withDinner, extras: [{ name: "Tote bag", quantity: 1, eventDateIds: null }] }],
+        truncated: false,
+      });
+    mockAdmit.mockResolvedValue({
+      result: "success", ticketId: "tk-l1", orderId: "o-lolu", buyerName: "Lolu Ade",
+      ticketName: "Guest list", nextStartAt: null, lastEndAt: null, eventDateId: null,
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    expect(text(r.root)).toContain("Friday dinner × 2");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Lolu Ade, Guest list");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(line).toBeDefined();
+    expect(text(line)).toBe("Extras: Tote bag × 1");
+    expect(text(r.root)).not.toContain("Friday dinner");
+  });
+
+  test("issue #3281 — a failed refresh after admission shows no extras line", async () => {
+    mockSearch
+      .mockResolvedValueOnce({
+        orders: [{ ...LOLU, extras: [{ name: "Friday dinner", quantity: 2, eventDateIds: null }] }],
+        truncated: false,
+      })
+      .mockRejectedValue(new Error("network down"));
+    mockAdmit.mockResolvedValue({
+      result: "success", ticketId: "tk-l1", orderId: "o-lolu", buyerName: "Lolu Ade",
+      ticketName: "Guest list", nextStartAt: null, lastEndAt: null, eventDateId: null,
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Lolu Ade, Guest list");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(r.root.findAll((n) => n.props.testID === "door-admit-extras")).toHaveLength(0);
+    // Nor does the guest row keep listing extras from the stale answer.
+    expect(r.root.findAll((n) => n.props.testID === "door-extras-o-lolu")).toHaveLength(0);
+  });
+
+  test("issue #3281 — a refused ticket in a mixed admit never names the admitted day", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [{
+        ...LOLADE,
+        extras: [{ name: "Friday dinner", quantity: 1, eventDateIds: ["day-fri"] }],
+      }],
+      truncated: false,
+    });
+    // The first ticket is admitted on Friday; the second is refused, naming Saturday.
+    mockAdmit
+      .mockResolvedValueOnce({
+        result: "success", ticketId: "tk-1", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-fri",
+      })
+      .mockResolvedValue({
+        result: "duplicate", ticketId: "tk-2", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-sat",
+      });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [all] = r.root.findAll((n) => n.type === "ButtonProbe" && typeof n.props.label === "string" && n.props.label.startsWith("Admit all"));
+    await act(async () => { (all.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(line).toBeDefined();
+    expect(text(line)).toBe("Extras: Friday dinner × 1");
+  });
+
+  test("issue #3281 — an Admit all across two dates matches extras to either day", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [{
+        ...LOLADE,
+        extras: [
+          { name: "Friday dinner", quantity: 1, eventDateIds: ["day-fri"] },
+          { name: "Saturday brunch", quantity: 1, eventDateIds: ["day-sat"] },
+          { name: "Sunday lunch", quantity: 1, eventDateIds: ["day-sun"] },
+        ],
+      }],
+      truncated: false,
+    });
+    // Overlapping scan windows: one ticket admits Friday, the other Saturday.
+    mockAdmit
+      .mockResolvedValueOnce({
+        result: "success", ticketId: "tk-b", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-fri",
+      })
+      .mockResolvedValue({
+        result: "success", ticketId: "tk-c", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-sat",
+      });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [all] = r.root.findAll((n) => n.type === "ButtonProbe" && typeof n.props.label === "string" && n.props.label.startsWith("Admit all"));
+    await act(async () => { (all.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(text(line)).toBe(
+      "Extras: Friday dinner × 1 · Saturday brunch × 1 · Sunday lunch × 1 (another day)",
+    );
+  });
+
+  test("issue #3281 — the scan card shows extras on their own unclipped line, through the day label", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),
+      "utf8",
+    );
+    // Its own Text, with no line limit, so a long ticket or day label can't hide it.
+    expect(src).toMatch(/<Text style=\{styles\.overlayDetail\} testID="scan-result-extras">/);
+    // The day-label enrichment replaces the detail but keeps the extras.
+    expect(src).toMatch(/detail: copy\.detail,\s*extras,/);
+    expect(src).toMatch(/showResult\(\{ kind, message, detail, extras \}\)/);
+    // A screen reader hears the extras too, not only "Dismiss".
+    expect(src).toMatch(/accessibilityLabel=\{\[overlay\.message, overlay\.detail, overlay\.extras\]/);
+  });
+
   test("S-3 no match: empty copy", async () => {
     mockSearch.mockResolvedValue({ orders: [], truncated: false });
     const r = await mount();
