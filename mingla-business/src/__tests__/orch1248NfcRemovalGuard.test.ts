@@ -42,7 +42,7 @@ type AppJson = {
 };
 
 type ResolvedConfig = {
-  ios?: { entitlements?: Record<string, unknown> };
+  ios?: { entitlements?: Record<string, unknown>; infoPlist?: Record<string, unknown> };
   android?: { permissions?: string[]; blockedPermissions?: string[] };
   plugins?: unknown[];
 };
@@ -185,6 +185,7 @@ describe("#4271 iOS entitlements", () => {
     for (const value of [undefined, "0", "true", "yes", ""]) {
       const resolved = resolveConfig({ MINGLA_TAP_TO_PAY_ENTITLEMENT: value });
       expect(resolved.ios?.entitlements?.[TAP_TO_PAY_ENTITLEMENT]).toBeUndefined();
+      expect(resolved.ios?.infoPlist?.MinglaTapToPayEntitled).toBeUndefined();
       expect(resolved.ios?.entitlements?.["com.apple.developer.in-app-payments"]).toBeDefined();
     }
   });
@@ -193,6 +194,7 @@ describe("#4271 iOS entitlements", () => {
     const resolved = resolveConfig({ MINGLA_TAP_TO_PAY_ENTITLEMENT: "1" });
     const ent = resolved.ios?.entitlements ?? {};
     expect(ent[TAP_TO_PAY_ENTITLEMENT]).toBe(true);
+    expect(resolved.ios?.infoPlist?.MinglaTapToPayEntitled).toBe(true);
     expect(ent["com.apple.developer.in-app-payments"]).toEqual(
       readAppJson().expo.ios?.entitlements?.["com.apple.developer.in-app-payments"],
     );

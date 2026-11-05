@@ -13,6 +13,12 @@ public class MinglaTapToPayEducationModule: Module {
   public func definition() -> ModuleDefinition {
     Name("MinglaTapToPayEducation")
 
+    // #4271 release gate, binary half. Set only by the entitled build profile
+    // (app.config.js); an over-the-air update cannot change Info.plist.
+    Function("isEntitled") { () -> Bool in
+      Bundle.main.object(forInfoDictionaryKey: "MinglaTapToPayEntitled") as? Bool == true
+    }
+
     AsyncFunction("isAvailable") { () -> Bool in
       #if canImport(ProximityReader)
       if #available(iOS 18.0, *) {

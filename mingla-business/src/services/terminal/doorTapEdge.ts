@@ -1,9 +1,9 @@
 /**
  * #4271 — client for the Tap to Pay edge functions.
  *
- *  terminal-connection-token  {eventId}                       → {secret, locationId}
- *  door-tap-intent  location  {eventId}                       → {locationId}
- *  door-tap-intent  create    {eventId, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso}
+ *  terminal-connection-token  {eventId, platform}             → {secret, locationId}
+ *  door-tap-intent  location  {eventId, platform}             → {locationId}
+ *  door-tap-intent  create    {eventId, platform, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso}
  *                             → {paymentIntentId, clientSecret, totalCents, currency, stripeAccountId, locationId}
  *  door-tap-intent  complete  {paymentIntentId, clientRequestId} → biz_door_tap_record result
  *  door-tap-intent  cancel    {paymentIntentId, clientRequestId} → {status:"cancelled"}
@@ -14,6 +14,8 @@
  * records an order once Stripe says the PaymentIntent succeeded. Every call
  * throws a DoorTapError on failure (never returns a silent fallback).
  */
+import { Platform } from "react-native";
+
 import { supabase } from "../supabase";
 import type { TapToPayDraftLine } from "./tapToPayDraft";
 
@@ -162,7 +164,7 @@ const requireInt = (data: Record<string, unknown>, key: string): number => {
 
 /** Setup: the brand's Terminal Location for this event, so the reader connects before the first sale. */
 export const fetchDoorTapLocation = async (eventId: string): Promise<string> => {
-  const data = await invoke("door-tap-intent", { action: "location", eventId });
+  const data = await invoke("door-tap-intent", { action: "location", eventId, platform: Platform.OS });
   return requireString(data, "locationId");
 };
 
@@ -187,7 +189,7 @@ export const cancelDoorTapIntent = async (input: {
 
 /** Connection token for the brand's connected Stripe account (scoped to the event). */
 export const fetchTerminalConnectionToken = async (eventId: string): Promise<string> => {
-  const data = await invoke("terminal-connection-token", { eventId });
+  const data = await invoke("terminal-connection-token", { eventId, platform: Platform.OS });
   return requireString(data, "secret");
 };
 
@@ -196,6 +198,7 @@ export const createDoorTapIntent = async (
 ): Promise<DoorTapIntent> => {
   const data = await invoke("door-tap-intent", {
     action: "create",
+    platform: Platform.OS,
     eventId: input.eventId,
     eventDateId: input.eventDateId,
     lines: input.lines,

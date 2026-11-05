@@ -12,6 +12,7 @@ module.exports = {
     "**/src/native/__tests__/issue_4271_android_min_sdk.implementor.test.ts",
     "**/src/hooks/__tests__/issue_4271_door_screen_awake.implementor.test.ts",
     "**/src/utils/__tests__/issue_4271_door_sale_money.implementor.test.ts",
+    "**/src/services/terminal/__tests__/issue_4271_apple_requirements.implementor.test.ts",
     // #4271 tester adversarial suites.
     "**/src/components/door/__tests__/issue_4271_door_pay_qr.tester.adversarial.test.ts",
     "**/src/hooks/__tests__/issue_4271_tap_to_pay_availability.tester.adversarial.test.ts",

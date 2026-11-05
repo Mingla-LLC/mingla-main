@@ -44,13 +44,14 @@ jest.mock("react-native", () => ({
   TurboModuleRegistry: { get: (name: string) => mockTurboGet(name) },
 }));
 jest.mock("@stripe/stripe-terminal-react-native", () => mockSdkFactory(), { virtual: false });
+jest.mock("../useTapToPayRelease", () => ({ useTapToPayRelease: () => ({ live: false }) }));
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
   default: { getItem: jest.fn(async () => null), setItem: jest.fn(async () => undefined) },
 }));
 
-const IPHONE: TapToPayDeviceFacts = { os: "ios", version: "18.1", isPad: false, nativeModulePresent: true };
-const ANDROID: TapToPayDeviceFacts = { os: "android", version: 34, isPad: false, nativeModulePresent: true };
+const IPHONE: TapToPayDeviceFacts = { os: "ios", version: "18.1", isPad: false, nativeModulePresent: true, entitled: true };
+const ANDROID: TapToPayDeviceFacts = { os: "android", version: 34, isPad: false, nativeModulePresent: true, entitled: true };
 const STRIPE_BRAND: TapToPayBrandFacts = {
   paymentProvider: "stripe",
   stripeStatus: "active",
@@ -70,12 +71,12 @@ beforeEach(() => {
 
 describe("resolveTapToPayAvailability — each reason", () => {
   test("available on a supported iPhone for a GB Stripe brand; needsSetup until set up", () => {
-    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP" }, IPHONE, false)).toEqual({
+    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP", released: true }, IPHONE, false)).toEqual({
       available: true,
       needsSetup: true,
       reason: "ok",
     });
-    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "gbp" }, IPHONE, true)).toEqual({
+    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "gbp", released: true }, IPHONE, true)).toEqual({
       available: true,
       needsSetup: false,
       reason: "ok",
@@ -83,12 +84,12 @@ describe("resolveTapToPayAvailability — each reason", () => {
   });
 
   test("available on Android 13+ for a US Stripe brand", () => {
-    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "USD" }, ANDROID, true).available).toBe(true);
+    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "USD", released: true }, ANDROID, true).available).toBe(true);
   });
 
   test("web → hidden", () => {
     const web = { ...IPHONE, os: "web" };
-    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP" }, web, true)).toEqual({
+    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP", released: true }, web, true)).toEqual({
       available: false,
       needsSetup: false,
       reason: "web",
@@ -97,7 +98,7 @@ describe("resolveTapToPayAvailability — each reason", () => {
 
   test("binary without the Terminal native module (OTA on an old build) → hidden", () => {
     const old = { ...IPHONE, nativeModulePresent: false };
-    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP" }, old, true).reason).toBe("sdk_missing");
+    expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP", released: true }, old, true).reason).toBe("sdk_missing");
   });
 
   test("unsupported device or OS → hidden", () => {
@@ -107,15 +108,15 @@ describe("resolveTapToPayAvailability — each reason", () => {
       { ...ANDROID, version: 32 },
     ];
     for (const device of cases) {
-      const result = resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP" }, device, true);
+      const result = resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency: "GBP", released: true }, device, true);
       expect(result.available).toBe(false);
       expect(result.reason).toBe("unsupported_device");
     }
   });
 
   test("no brand yet → hidden", () => {
-    expect(resolveTapToPayAvailability({ brand: null, currency: "GBP" }, IPHONE, true).reason).toBe("no_brand");
-    expect(resolveTapToPayAvailability(null, IPHONE, true).reason).toBe("no_brand");
+    expect(resolveTapToPayAvailability({ brand: null, currency: "GBP", released: true }, IPHONE, true).reason).toBe("no_brand");
+    expect(resolveTapToPayAvailability(null, IPHONE, true).reason).toBe("not_released");
   });
 
   test("Paystack / Nigeria brand → hidden", () => {
@@ -123,12 +124,12 @@ describe("resolveTapToPayAvailability — each reason", () => {
       paymentProvider: "paystack",
       paystackSubaccountCode: "ACCT_123",
     };
-    expect(resolveTapToPayAvailability({ brand: paystack, currency: "NGN" }, IPHONE, true).reason).toBe("paystack");
+    expect(resolveTapToPayAvailability({ brand: paystack, currency: "NGN", released: true }, IPHONE, true).reason).toBe("paystack");
   });
 
   test("currency outside GB / US → hidden", () => {
     for (const currency of ["EUR", "NGN", "CAD", "", null]) {
-      expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency }, IPHONE, true).reason).toBe(
+      expect(resolveTapToPayAvailability({ brand: STRIPE_BRAND, currency, released: true }, IPHONE, true).reason).toBe(
         "unsupported_country",
       );
     }
@@ -141,7 +142,7 @@ describe("resolveTapToPayAvailability — each reason", () => {
       { paymentProvider: "stripe" },
     ];
     for (const brand of cases) {
-      expect(resolveTapToPayAvailability({ brand, currency: "USD" }, IPHONE, true).reason).toBe("no_card_payments");
+      expect(resolveTapToPayAvailability({ brand, currency: "USD", released: true }, IPHONE, true).reason).toBe("no_card_payments");
     }
   });
 });
@@ -174,7 +175,7 @@ describe("loadTerminalSdk — over-the-air safety", () => {
   test("an iPad never qualifies", () => {
     mockPlatform.isPad = true;
     mockNativeModules.StripeTerminalReactNative = {};
-    expect(currentTapToPayDevice()).toMatchObject({ os: "ios", isPad: true, nativeModulePresent: true });
+    expect(currentTapToPayDevice()).toMatchObject({ os: "ios", isPad: true, nativeModulePresent: true, entitled: true });
   });
 });
 

@@ -20,6 +20,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { Platform } from "react-native";
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const mockInvoke = jest.fn<(fn: string, options: { body: Record<string, unknown> }) => Promise<unknown>>();
@@ -278,7 +279,9 @@ describe("door-tap-intent wire shapes match the server", () => {
   test("location sends {action:'location', eventId} and reads locationId", async () => {
     mockInvoke.mockResolvedValueOnce({ data: { locationId: "tml_9" }, error: null });
     await expect(fetchDoorTapLocation("evt_1")).resolves.toBe("tml_9");
-    expect(mockInvoke).toHaveBeenCalledWith("door-tap-intent", { body: { action: "location", eventId: "evt_1" } });
+    expect(mockInvoke).toHaveBeenCalledWith("door-tap-intent", {
+      body: { action: "location", eventId: "evt_1", platform: Platform.OS },
+    });
   });
 
   test("cancel sends {action:'cancel', paymentIntentId, clientRequestId} and needs status cancelled", async () => {

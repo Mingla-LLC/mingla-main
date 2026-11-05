@@ -74,6 +74,7 @@ function makeDb(options: {
       return { data: null, error: null };
     },
     (name) => {
+      if (name === "biz_tap_to_pay_release") return { data: { iphone: true, android: true }, error: null };
       if (name === "issue_4271_can_take_door_payment") {
         return { data: options.canTake ?? true, error: null };
       }
@@ -205,7 +206,7 @@ Deno.test("#4271 tester: create ignores a phone-sent amount and refuses without 
   const db = makeDb();
   const stripe = fakeStripe();
   const res = await run(db, stripe, {
-    action: "create", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
+    action: "create", platform: "ios", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
     lines: [{ ticketTypeId: TIER, quantity: 1, unitCents: 1 }],
     amount: 1, totalCents: 1, application_fee_amount: 0, currency: "ngn",
   });
@@ -221,7 +222,7 @@ Deno.test("#4271 tester: create ignores a phone-sent amount and refuses without 
   const denied = makeDb({ canTake: false });
   const deniedStripe = fakeStripe();
   const no = await run(denied, deniedStripe, {
-    action: "create", eventId: EVENT, clientRequestId: REQ,
+    action: "create", platform: "ios", eventId: EVENT, clientRequestId: REQ,
     lines: [{ ticketTypeId: TIER, quantity: 1 }],
   });
   assertEquals(no.status, 400);

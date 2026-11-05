@@ -37,6 +37,28 @@ export async function canTakeDoorPayment(
  * Brand readiness and the pricing switches, shared with door-tap-intent's
  * shape. Returns null when the brand cannot take card money yet.
  */
+/**
+ * #4271 release gate, server half: is Tap to Pay on for this brand on this
+ * platform? A missing or unknown platform, or an unanswered question, is no.
+ * Money already taken is never gated: `complete` and `cancel` do not call this.
+ */
+export async function tapToPayReleased(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  brandId: string,
+  platform: unknown,
+): Promise<boolean> {
+  if (platform !== "ios" && platform !== "android") return false;
+  const { data, error } = await supabase.rpc("biz_tap_to_pay_release", {
+    p_brand_id: brandId,
+  });
+  if (error) {
+    console.error("[door-pay] tap release lookup failed", error.message);
+    return false;
+  }
+  return data?.[platform === "ios" ? "iphone" : "android"] === true;
+}
+
 export async function loadDoorPricing(
   supabase: Client,
   eventId: string,

@@ -13,6 +13,7 @@
 import { Platform } from "react-native";
 
 interface HowToTapNativeModule {
+  isEntitled(): boolean;
   isAvailable(): Promise<boolean>;
   showHowToTap(): Promise<boolean>;
 }
@@ -29,6 +30,22 @@ const loadModule = (): HowToTapNativeModule | null => {
     return expo.requireOptionalNativeModule<HowToTapNativeModule>("MinglaTapToPayEducation");
   } catch {
     return null;
+  }
+};
+
+/**
+ * The binary half of the release gate: was this iPhone build made with Apple's
+ * Tap to Pay entitlement? Read from Info.plist through the module, so an
+ * over-the-air update cannot turn it on. No module means no: an older binary
+ * stays hidden.
+ */
+export const isTapToPayIphoneEntitled = (): boolean => {
+  const native = loadModule();
+  if (native === null || typeof native.isEntitled !== "function") return false;
+  try {
+    return native.isEntitled() === true;
+  } catch {
+    return false;
   }
 };
 

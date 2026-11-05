@@ -6,6 +6,10 @@
  *   - a native iOS/Android build (not web)
  *   - the binary includes the Stripe Terminal native module (an over-the-air
  *     update on an older binary has no module: hidden, never crashes)
+ *   - the release gate: iPhone needs an entitled binary AND the server's yes;
+ *     Android needs the server's yes (useTapToPayRelease). __DEV__ does not
+ *     bypass this. A development build passes only because it is entitled and
+ *     its brand is listed in the server's test brands.
  *   - a phone that can take taps: iPhone on iOS 17+ (iOS 17 runs only on
  *     iPhone XS / XR and newer) or Android 13+; never an iPad
  *   - a Stripe brand (Paystack / Nigeria has no Stripe Terminal)
@@ -20,15 +24,18 @@ import { Platform } from "react-native";
 
 import type { Brand } from "../types/brand";
 import { isBrandChargeReady } from "../utils/brandPayout";
+import { isTapToPayIphoneEntitled } from "../services/terminal/howToTap";
 import { isTerminalNativeModulePresent } from "../services/terminal/terminalSdk";
 import {
   readTapToPaySetupComplete,
   subscribeTapToPaySetup,
 } from "../services/terminal/tapToPaySetupStore";
+import { useTapToPayRelease } from "./useTapToPayRelease";
 
 export type TapToPayUnavailableReason =
   | "web"
   | "sdk_missing"
+  | "not_released"
   | "unsupported_device"
   | "no_brand"
   | "paystack"
@@ -46,12 +53,15 @@ export interface TapToPayAvailability {
 export type TapToPayBrandFacts = Pick<
   Brand,
   "paymentProvider" | "stripeStatus" | "chargesEnabled" | "paystackSubaccountCode" | "payoutHoldCutoverAt"
->;
+> &
+  Partial<Pick<Brand, "id">>;
 
 export interface TapToPayAvailabilityInput {
   brand: TapToPayBrandFacts | null | undefined;
   /** The sale's currency (the event's currency, else the brand default). */
   currency: string | null | undefined;
+  /** The server's answer for this brand and platform (useTapToPayRelease). */
+  released: boolean;
 }
 
 export interface TapToPayDeviceFacts {
@@ -60,6 +70,8 @@ export interface TapToPayDeviceFacts {
   version: string | number;
   isPad: boolean;
   nativeModulePresent: boolean;
+  /** iPhone: the binary carries Apple's entitlement (Info.plist). Unused on Android. */
+  entitled: boolean;
 }
 
 /** ISO-2 country each supported Tap to Pay currency settles in. */
@@ -97,6 +109,10 @@ export const resolveTapToPayAvailability = (
 ): TapToPayAvailability => {
   if (device.os !== "ios" && device.os !== "android") return unavailable("web");
   if (!device.nativeModulePresent) return unavailable("sdk_missing");
+  const released = input?.released === true;
+  if (device.os === "ios" ? !(device.entitled && released) : !released) {
+    return unavailable("not_released");
+  }
   if (!isTapToPayDeviceSupported(device)) return unavailable("unsupported_device");
   const brand = input?.brand ?? null;
   if (brand === null) return unavailable("no_brand");
@@ -112,10 +128,11 @@ export const currentTapToPayDevice = (): TapToPayDeviceFacts => ({
   version: Platform.Version,
   isPad: Platform.OS === "ios" && (Platform as { isPad?: boolean }).isPad === true,
   nativeModulePresent: isTerminalNativeModulePresent(),
+  entitled: isTapToPayIphoneEntitled(),
 });
 
 export const useTapToPayAvailability = (
-  input: TapToPayAvailabilityInput | null,
+  input: Omit<TapToPayAvailabilityInput, "released"> | null,
 ): TapToPayAvailability => {
   const [setupComplete, setSetupComplete] = useState<boolean>(false);
 
@@ -136,8 +153,9 @@ export const useTapToPayAvailability = (
   const brand = input?.brand ?? null;
   const currency = input?.currency ?? null;
   const hasBrand = brand !== null;
+  const { live } = useTapToPayRelease(brand?.id ?? null);
   return useMemo(
-    () => resolveTapToPayAvailability({ brand, currency }, currentTapToPayDevice(), setupComplete),
+    () => resolveTapToPayAvailability({ brand, currency, released: live }, currentTapToPayDevice(), setupComplete),
     // Brand facts that matter are listed so a fresh brand object does not recompute needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -148,6 +166,7 @@ export const useTapToPayAvailability = (
       brand?.payoutHoldCutoverAt,
       hasBrand,
       currency,
+      live,
       setupComplete,
     ],
   );

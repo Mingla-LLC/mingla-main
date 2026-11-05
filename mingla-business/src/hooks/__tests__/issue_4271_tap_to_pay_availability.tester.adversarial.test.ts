@@ -60,7 +60,7 @@ import {
 } from "../../services/terminal/terminalSdk";
 import * as webSdk from "../../services/terminal/terminalSdk.web";
 
-const IPHONE: TapToPayDeviceFacts = { os: "ios", version: "18.1", isPad: false, nativeModulePresent: true };
+const IPHONE: TapToPayDeviceFacts = { os: "ios", version: "18.1", isPad: false, nativeModulePresent: true, entitled: true };
 const STRIPE: TapToPayBrandFacts = { paymentProvider: "stripe", stripeStatus: "active", chargesEnabled: true };
 
 beforeEach(() => {
@@ -82,7 +82,7 @@ describe("#4271 tester: the live device read", () => {
     mockTurboGet.mockImplementation(() => ({}));
     const device = currentTapToPayDevice();
     expect(device.nativeModulePresent).toBe(false);
-    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "GBP" }, device, true)).toEqual({
+    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "GBP", released: true }, device, true)).toEqual({
       available: false,
       needsSetup: false,
       reason: "web",
@@ -107,7 +107,7 @@ describe("#4271 tester: an over-the-air update on an older or mismatched binary"
     expect(loadTerminalSdk()).toBeNull();
     expect(mockSdkFactory).not.toHaveBeenCalled();
     const device = currentTapToPayDevice();
-    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "USD" }, device, true).available).toBe(false);
+    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "USD", released: true }, device, true).available).toBe(false);
   });
 
   test("a package that fails to load on a binary with the module returns null, never throws", () => {
@@ -129,7 +129,7 @@ describe("#4271 tester: Nigeria is hidden whichever way it shows up", () => {
   test("a Paystack brand, even on a GBP or USD sale", () => {
     for (const currency of ["GBP", "USD", "NGN"]) {
       const result = resolveTapToPayAvailability(
-        { brand: { ...STRIPE, paymentProvider: "paystack" }, currency },
+        { brand: { ...STRIPE, paymentProvider: "paystack" }, currency, released: true },
         IPHONE,
         true,
       );
@@ -138,7 +138,7 @@ describe("#4271 tester: Nigeria is hidden whichever way it shows up", () => {
   });
 
   test("a Stripe brand selling in naira", () => {
-    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "NGN" }, IPHONE, true).available).toBe(false);
+    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "NGN", released: true }, IPHONE, true).available).toBe(false);
   });
 
   test("an unset provider carrying a Paystack subaccount and naira", () => {
@@ -148,21 +148,21 @@ describe("#4271 tester: Nigeria is hidden whichever way it shows up", () => {
       stripeStatus: "not_connected",
       chargesEnabled: false,
     } as unknown as TapToPayBrandFacts;
-    expect(resolveTapToPayAvailability({ brand, currency: "NGN" }, IPHONE, true).available).toBe(false);
+    expect(resolveTapToPayAvailability({ brand, currency: "NGN", released: true }, IPHONE, true).available).toBe(false);
   });
 });
 
 describe("#4271 tester: boundaries", () => {
   test("currency is normalised and look-alikes are refused", () => {
-    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "  gbp " }, IPHONE, true).available).toBe(true);
+    expect(resolveTapToPayAvailability({ brand: STRIPE, currency: "  gbp ", released: true }, IPHONE, true).available).toBe(true);
     for (const currency of ["EUR", "GB", "US", "", null, undefined, "GBPX"]) {
-      expect(resolveTapToPayAvailability({ brand: STRIPE, currency }, IPHONE, true).available).toBe(false);
+      expect(resolveTapToPayAvailability({ brand: STRIPE, currency, released: true }, IPHONE, true).available).toBe(false);
     }
   });
 
   test("OS version edges", () => {
     const at = (os: string, version: string | number, isPad = false) =>
-      resolveTapToPayAvailability({ brand: STRIPE, currency: "USD" }, { os, version, isPad, nativeModulePresent: true }, true)
+      resolveTapToPayAvailability({ brand: STRIPE, currency: "USD", released: true }, { os, version, isPad, nativeModulePresent: true, entitled: true }, true)
         .available;
     expect(at("ios", "16.7.10")).toBe(false);
     expect(at("ios", "17.0.1")).toBe(true);
@@ -173,11 +173,11 @@ describe("#4271 tester: boundaries", () => {
   });
 
   test("setup state only changes needsSetup, never availability", () => {
-    const fresh = resolveTapToPayAvailability({ brand: STRIPE, currency: "USD" }, IPHONE, false);
-    const ready = resolveTapToPayAvailability({ brand: STRIPE, currency: "USD" }, IPHONE, true);
+    const fresh = resolveTapToPayAvailability({ brand: STRIPE, currency: "USD", released: true }, IPHONE, false);
+    const ready = resolveTapToPayAvailability({ brand: STRIPE, currency: "USD", released: true }, IPHONE, true);
     expect(fresh).toEqual({ available: true, needsSetup: true, reason: "ok" });
     expect(ready).toEqual({ available: true, needsSetup: false, reason: "ok" });
-    const hidden = resolveTapToPayAvailability({ brand: STRIPE, currency: "NGN" }, IPHONE, false);
+    const hidden = resolveTapToPayAvailability({ brand: STRIPE, currency: "NGN", released: true }, IPHONE, false);
     expect(hidden.needsSetup).toBe(false);
   });
 });

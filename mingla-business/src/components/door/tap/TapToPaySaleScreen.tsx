@@ -223,6 +223,7 @@ export const TapToPaySaleScreen = ({
     }
     if (!availability.available) {
       if (
+        availability.reason === "not_released" ||
         availability.reason === "paystack" ||
         availability.reason === "unsupported_country" ||
         availability.reason === "no_card_payments" ||

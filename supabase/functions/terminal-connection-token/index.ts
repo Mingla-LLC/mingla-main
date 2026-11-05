@@ -16,7 +16,11 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
-import { canTakeDoorPayment, loadDoorPricing } from "../_shared/doorPayServer.ts";
+import {
+  canTakeDoorPayment,
+  loadDoorPricing,
+  tapToPayReleased,
+} from "../_shared/doorPayServer.ts";
 import {
   ensureTerminalLocation,
   loadTapContext,
@@ -62,6 +66,9 @@ export const createTerminalConnectionTokenHandler = (
     }
     const tap = await loadTapContext(supabase, eventId);
     if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+    if (!(await tapToPayReleased(supabase, tap.brandId, body.platform))) {
+      return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
+    }
     const pricing = await loadDoorPricing(supabase, eventId);
     if (pricing === null || pricing.stripeAccountId === null) {
       return jsonResponse({ error: "stripe_account_not_ready" }, 400);

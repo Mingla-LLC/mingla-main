@@ -1,0 +1,158 @@
+/**
+ * #4271 phase 2 — the Tap to Pay on iPhone build against Apple's requirements.
+ * Pure behaviour and source rules. Render proofs live in
+ * src/components/door/__tests__/issue_4271_apple_surfaces.render.test.tsx.
+ *
+ * Every test here fails when its change is reverted (recorded on the issue).
+ */
+import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import fs from "node:fs";
+import path from "node:path";
+
+const mockPlatform: { OS: string; Version: string | number; isPad?: boolean } = {
+  OS: "ios",
+  Version: "18.1",
+};
+const mockOptionalModule = jest.fn((_name: string): unknown => null);
+
+jest.mock("react-native", () => ({
+  get Platform() {
+    return mockPlatform;
+  },
+  NativeModules: {},
+  TurboModuleRegistry: { get: () => null },
+}));
+jest.mock("expo", () => ({
+  requireOptionalNativeModule: (name: string) => mockOptionalModule(name),
+}));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+  },
+}));
+jest.mock("../../supabase", () => ({ supabase: { functions: { invoke: jest.fn() }, rpc: jest.fn() } }));
+jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ isAuthReady: true }) }));
+jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
+
+import {
+  resolveTapToPayAvailability,
+  type TapToPayBrandFacts,
+  type TapToPayDeviceFacts,
+} from "../../../hooks/useTapToPayAvailability";
+import { tapToPayLive } from "../../../hooks/useTapToPayRelease";
+import { isTapToPayIphoneEntitled } from "../howToTap";
+
+const BIZ_ROOT = path.join(__dirname, "..", "..", "..", "..");
+const STRIPE: TapToPayBrandFacts = {
+  id: "brand-1",
+  paymentProvider: "stripe",
+  stripeStatus: "active",
+  chargesEnabled: true,
+};
+const IPHONE: TapToPayDeviceFacts = {
+  os: "ios",
+  version: "18.1",
+  isPad: false,
+  nativeModulePresent: true,
+  entitled: true,
+};
+const ANDROID: TapToPayDeviceFacts = {
+  os: "android",
+  version: 34,
+  isPad: false,
+  nativeModulePresent: true,
+  entitled: false,
+};
+
+beforeEach(() => {
+  mockPlatform.OS = "ios";
+  mockPlatform.Version = "18.1";
+  mockOptionalModule.mockReset();
+  mockOptionalModule.mockReturnValue(null);
+});
+
+describe("B1 release gate", () => {
+  const sale = (released: boolean) => ({ brand: STRIPE, currency: "GBP", released });
+
+  test("iPhone with every other fact good but no entitlement is hidden as not_released", () => {
+    expect(resolveTapToPayAvailability(sale(true), { ...IPHONE, entitled: false }, true)).toEqual({
+      available: false,
+      needsSetup: false,
+      reason: "not_released",
+    });
+  });
+
+  test("iPhone entitled but the server says no is hidden as not_released", () => {
+    expect(resolveTapToPayAvailability(sale(false), IPHONE, true).reason).toBe("not_released");
+  });
+
+  test("Android the server says no is hidden; the entitlement means nothing there", () => {
+    expect(resolveTapToPayAvailability(sale(false), ANDROID, true).reason).toBe("not_released");
+    expect(resolveTapToPayAvailability(sale(true), ANDROID, true).available).toBe(true);
+  });
+
+  test("both halves true is available", () => {
+    expect(resolveTapToPayAvailability(sale(true), IPHONE, true).available).toBe(true);
+  });
+
+  test("the one live value: loading, error and web read as off", () => {
+    expect(tapToPayLive("ios", true, { iphone: true, android: false })).toBe(true);
+    expect(tapToPayLive("ios", false, { iphone: true, android: true })).toBe(false);
+    expect(tapToPayLive("ios", true, { iphone: false, android: true })).toBe(false);
+    expect(tapToPayLive("android", false, { iphone: false, android: true })).toBe(true);
+    expect(tapToPayLive("android", true, { iphone: true, android: false })).toBe(false);
+    expect(tapToPayLive("ios", true, null)).toBe(false);
+    expect(tapToPayLive("ios", true, undefined)).toBe(false);
+    expect(tapToPayLive("web", true, { iphone: true, android: true })).toBe(false);
+  });
+
+  test("the entitlement is read from the native module and an older binary reads false", () => {
+    expect(isTapToPayIphoneEntitled()).toBe(false);
+    mockOptionalModule.mockReturnValue({ isEntitled: () => true });
+    expect(isTapToPayIphoneEntitled()).toBe(true);
+    mockOptionalModule.mockReturnValue({ isEntitled: () => false });
+    expect(isTapToPayIphoneEntitled()).toBe(false);
+    // A module from an older build has no isEntitled at all.
+    mockOptionalModule.mockReturnValue({ isAvailable: async () => true });
+    expect(isTapToPayIphoneEntitled()).toBe(false);
+    mockOptionalModule.mockReturnValue({
+      isEntitled: () => {
+        throw new Error("native failure");
+      },
+    });
+    expect(isTapToPayIphoneEntitled()).toBe(false);
+    mockPlatform.OS = "android";
+    mockOptionalModule.mockReturnValue({ isEntitled: () => true });
+    expect(isTapToPayIphoneEntitled()).toBe(false);
+  });
+
+  test("eas.json sets the entitlement on development and on no other profile", () => {
+    const eas = JSON.parse(fs.readFileSync(path.join(BIZ_ROOT, "eas.json"), "utf8")) as {
+      build: Record<string, { env?: Record<string, string> }>;
+    };
+    expect(eas.build.development?.env?.MINGLA_TAP_TO_PAY_ENTITLEMENT).toBe("1");
+    expect(Object.keys(eas.build)).toEqual(expect.arrayContaining(["production", "preview"]));
+    for (const [name, profile] of Object.entries(eas.build)) {
+      if (name === "development") continue;
+      expect([name, profile.env?.MINGLA_TAP_TO_PAY_ENTITLEMENT]).toEqual([name, undefined]);
+    }
+  });
+
+  test("the Swift module reads the Info.plist key the config writes", () => {
+    const swift = fs.readFileSync(
+      path.join(BIZ_ROOT, "modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducationModule.swift"),
+      "utf8",
+    );
+    expect(swift).toContain('forInfoDictionaryKey: "MinglaTapToPayEntitled"');
+  });
+
+  test("__DEV__ never appears in the release decision", () => {
+    for (const rel of ["src/hooks/useTapToPayRelease.ts"]) {
+      const code = fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(code).not.toContain("__DEV__");
+    }
+  });
+});

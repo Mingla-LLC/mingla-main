@@ -77,6 +77,7 @@ function makeDb(options: {
       return { data: null, error: null };
     },
     (name) => {
+      if (name === "biz_tap_to_pay_release") return { data: { iphone: true, android: true }, error: null };
       if (name === "issue_4271_can_take_door_payment") return { data: true, error: null };
       if (name === "issue_4271_door_quote_lines") {
         return {
@@ -109,7 +110,7 @@ Deno.test("#4271 tap create makes a server-priced card_present direct charge", a
   const res = await createDoorTapIntentHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
   })(post({
-    action: "create", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
+    action: "create", platform: "ios", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
     lines: [{ ticketTypeId: TIER, quantity: 1 }], buyerPhone: null,
   }));
   assertEquals(res.status, 200);
@@ -147,7 +148,7 @@ Deno.test("#4271 retest T6: tap refuses a tax added on top at checkout, before a
   const res = await createDoorTapIntentHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
   })(post({
-    action: "create", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
+    action: "create", platform: "ios", eventId: EVENT, eventDateId: null, clientRequestId: REQ,
     lines: [{ ticketTypeId: TIER, quantity: 1 }], buyerPhone: null,
   }));
   assertEquals(res.status, 400);
@@ -166,7 +167,7 @@ Deno.test("#4271 tap create replays the same PaymentIntent for the same request"
   const body = await (await createDoorTapIntentHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
   })(post({
-    action: "create", eventId: EVENT, clientRequestId: REQ,
+    action: "create", platform: "ios", eventId: EVENT, clientRequestId: REQ,
     lines: [{ ticketTypeId: TIER, quantity: 1 }],
   }))).json();
   assertEquals(body.paymentIntentId, "pi_prev");
@@ -179,7 +180,7 @@ Deno.test("#4271 tap is not offered to a Paystack brand", async () => {
   const res = await createDoorTapIntentHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
   })(post({
-    action: "create", eventId: EVENT, clientRequestId: REQ,
+    action: "create", platform: "ios", eventId: EVENT, clientRequestId: REQ,
     lines: [{ ticketTypeId: TIER, quantity: 1 }],
   }));
   assertEquals((await res.json()).error, "tap_not_available");
@@ -237,7 +238,7 @@ Deno.test("#4271 tap location creates the brand's Location before the first sale
   const stripe = fakeStripe();
   const res = await createDoorTapIntentHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
-  })(post({ action: "location", eventId: EVENT }));
+  })(post({ action: "location", platform: "ios", eventId: EVENT }));
   assertEquals(await res.json(), { locationId: "tml_door1" });
   assertEquals(db.opsOn("brand_terminal_locations", "upsert").length, 1);
 });
@@ -269,7 +270,7 @@ Deno.test("#4271 connection token is made on the connected account at a stored L
   const stripe = fakeStripe();
   const res = await createTerminalConnectionTokenHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
-  })(post({ eventId: EVENT }));
+  })(post({ eventId: EVENT, platform: "ios" }));
   assertEquals(await res.json(), { secret: "pst_test_door", locationId: "tml_saved" });
   assert(!stripe.calls.some((c) => c.method === "terminal.locations.create"));
   const token = stripe.calls.find((c) => c.method === "terminal.connectionTokens.create")!;
@@ -282,7 +283,7 @@ Deno.test("#4271 connection token refuses a Paystack brand", async () => {
   const stripe = fakeStripe();
   const res = await createTerminalConnectionTokenHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
-  })(post({ eventId: EVENT }));
+  })(post({ eventId: EVENT, platform: "ios" }));
   assertEquals((await res.json()).error, "tap_not_available");
 });
 

@@ -126,11 +126,15 @@ const iosUrlScheme = iosClientId
 // build that declares it can be signed. Declaring it before Apple grants it
 // makes every EAS iOS build fail at provisioning. So the entitlement is added
 // ONLY when the build environment sets MINGLA_TAP_TO_PAY_ENTITLEMENT=1 (set it on
-// the EAS profile once Apple has granted the matching entitlement). Without it
-// the binary still ships the Stripe Terminal SDK, and Tap to Pay on iPhone stays
-// hidden at runtime because reader discovery fails without the entitlement
-// (useTapToPayAvailability → "not on this phone"). app.json never declares it;
-// orch1248NfcRemovalGuard.test.ts pins both halves of this rule.
+// the EAS profile once Apple has granted the matching entitlement).
+//
+// The same switch writes MinglaTapToPayEntitled into Info.plist. That value lives
+// in the binary, so an over-the-air update can't change it, and it is the binary
+// half of the release gate: without it isTapToPayIphoneEntitled() is false and
+// useTapToPayAvailability hides Tap to Pay on iPhone everywhere ("not_released"),
+// whatever the server switch biz_tap_to_pay_release says. Do not use `extra`
+// for this: OTA manifests overwrite it. app.json never declares either value;
+// orch1248NfcRemovalGuard.test.ts pins this rule.
 const TAP_TO_PAY_ENTITLEMENT = "com.apple.developer.proximity-reader.payment.acceptance";
 
 /**
@@ -144,9 +148,14 @@ const withTapToPayEntitlementGate = (ios, env) => {
     base.entitlements !== null && typeof base.entitlements === "object"
       ? base.entitlements
       : {};
+  const infoPlist =
+    base.infoPlist !== null && typeof base.infoPlist === "object"
+      ? base.infoPlist
+      : {};
   return {
     ...base,
     entitlements: { ...entitlements, [TAP_TO_PAY_ENTITLEMENT]: true },
+    infoPlist: { ...infoPlist, MinglaTapToPayEntitled: true },
   };
 };
 
