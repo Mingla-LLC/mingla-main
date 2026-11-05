@@ -39,10 +39,11 @@ describe("issue #3682 Wave 2.8b — wizard invite followers", () => {
     expect(picker).toContain('title="Friends of followers"');
     expect(picker).not.toContain("already in Your Book");
     expect(picker).toContain("followersRowDetail");
-    expect(picker).toContain("onSelectFollowers");
-    expect(picker).toContain("onSelectFriendsOfFollowers");
-    expect(picker).toContain("includeFollowers: true");
-    expect(picker).toContain("includeFriendsOfFollowers: true");
+    // #4273: the sources are combining tick boxes.
+    expect(picker).toContain("onToggleFollowers");
+    expect(picker).toContain("onToggleFriendsOfFollowers");
+    expect(picker).toContain('toggleSource("followers"');
+    expect(picker).toContain('toggleSource("friendsOfFollowers"');
     // #3682 closeout: the header says "Choose who to invite"; the source rows above name each source.
     expect(picker).toContain("Choose who to invite. Nothing sends until this");
   });

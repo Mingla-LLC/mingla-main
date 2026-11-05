@@ -149,27 +149,33 @@ describe("issue #1780 tester adversarial — deployed web checkbox semantics", (
     mockUseOfferingInvitePlan.mockReturnValue(model);
   });
 
+  // #4273: Everyone, Followers and Friends of followers are all tick boxes now;
+  // Select all is ticked only when Everyone in Your Book is a source.
   test.each([
-    [0, "false"],
-    [1, "mixed"],
-    [2, "true"],
-  ])("Select all with %i-of-2 selected emits aria-checked=%s", (selectedCount, expected) => {
+    [0, false, "false"],
+    [1, false, "mixed"],
+    [2, true, "true"],
+  ])("Select all with %i-of-2 selected (everyone=%s) emits aria-checked=%s", (selectedCount, everyone, expected) => {
     const markup = renderToStaticMarkup(
       <InviteSourcePicker
         bookCount={2}
         groups={[]}
         selectedCount={selectedCount as number}
+        sources={{
+          includeEveryone: everyone as boolean, includeFollowers: false,
+          includeFriendsOfFollowers: false, manualGroupIds: [], personIds: [], excludedPersonIds: [],
+        }}
         disabled={false}
-        onSelectEveryone={jest.fn()}
-        onSelectFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
-        onSelectFriendsOfFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
-        onSelectGroup={jest.fn()}
+        onToggleEveryone={jest.fn()}
+        onToggleFollowers={jest.fn()}
+        onToggleFriendsOfFollowers={jest.fn()}
+        onToggleGroup={jest.fn()}
         onChoosePeople={jest.fn()}
       />,
     );
 
     const tags = checkboxOpeningTags(markup);
-    expect(tags).toHaveLength(1);
+    expect(tags).toHaveLength(3);
     const [selectAll] = tags;
     expect(selectAll).toContain('aria-label="Select all"');
     expect(selectAll).toContain(`aria-checked="${expected}"`);
@@ -185,11 +191,17 @@ describe("issue #1780 tester adversarial — deployed web checkbox semantics", (
     // checkbox topology before using that order to read each opening tag.
     expect(markup.indexOf("Select all")).toBeLessThan(markup.indexOf("Avery Tester"));
     expect(markup.indexOf("Avery Tester")).toBeLessThan(markup.indexOf("Blake Tester"));
+    // #4273 topology: 3 source rows, 3 "How to reach them" chips, 2 people.
     const tags = checkboxOpeningTags(markup);
-    expect(tags).toHaveLength(3);
+    expect(tags).toHaveLength(8);
     expect(tags[0]).toContain('aria-label="Select all"');
     expect(tags[0]).toContain('aria-checked="mixed"');
-    expect(tags[1]).toContain('aria-checked="true"');
-    expect(tags[2]).toContain('aria-checked="false"');
+    expect(tags[1]).toContain('aria-label="Followers"');
+    expect(tags[1]).toContain('aria-checked="false"');
+    expect(tags[3]).toContain('aria-label="Push · free"');
+    // A legacy plan (people, no stored methods) still sends automatically: all ticked.
+    for (const chip of tags.slice(3, 6)) expect(chip).toContain('aria-checked="true"');
+    expect(tags[6]).toContain('aria-checked="true"');
+    expect(tags[7]).toContain('aria-checked="false"');
   });
 });

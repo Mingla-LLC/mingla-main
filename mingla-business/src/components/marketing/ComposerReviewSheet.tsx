@@ -52,6 +52,8 @@ export interface ComposerReviewSheetProps {
    */
   channelKind?: "email" | "sms" | "push";
   messagePreview?: string;
+  /** #4273 — the push line when push goes out alongside another method. */
+  extraPushPreview?: string | null;
   hasMedia?: boolean;
   estimatedCostLabel?: string;
   selectedCount?: number;
@@ -72,11 +74,13 @@ export interface ComposerReviewSheetProps {
    */
   weekBlastWarning?: boolean;
   /**
-   * #3682 wave 2 — the other channels this campaign goes out on together
-   * (sibling sends confirmed right after the lead). Each row shows its own
-   * reach, cost and allowance; push is free.
+   * #4273 — every method this campaign goes out on (replaces "ALSO SENDING
+   * BY"). Each row shows the server's reach, cost and monthly allowance for that
+   * method; push is free. Absent on a plain buyer-list send, which has no quote.
    */
-  additionalChannels?: ReadonlyArray<ReviewChannelRow>;
+  sendingBy?: ReadonlyArray<ReviewChannelRow>;
+  /** #4273 — each picked group, from the server's totals. */
+  audienceGroups?: ReadonlyArray<{ key: string; name: string; detail: string }>;
 }
 
 export interface ReviewChannelRow {
@@ -105,6 +109,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   onScheduleForNextWindow,
   channelKind,
   messagePreview,
+  extraPushPreview,
   hasMedia,
   estimatedCostLabel,
   selectedCount,
@@ -119,7 +124,8 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   staleDetail,
   allowanceLabel,
   weekBlastWarning,
-  additionalChannels,
+  sendingBy,
+  audienceGroups,
 }) => {
   const showWeekWarning = weekBlastWarning === true;
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
@@ -154,6 +160,11 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           <Text style={styles.value}>{audienceName ?? "—"}</Text>
           {audienceReason !== undefined ? (
             <Text style={styles.metaText}>{audienceReason}</Text>
+          ) : null}
+          {audienceGroups !== undefined && audienceGroups.length > 0 ? (
+            <Text style={styles.metaText} testID="composer-review-audience-groups">
+              {audienceGroups.map((group) => `${group.name} · ${group.detail}`).join("  |  ")}
+            </Text>
           ) : null}
           {recipientCount !== null && selectedCount === undefined ? (
             <Text style={styles.metaText}>
@@ -238,10 +249,10 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             </Pressable>
           ) : null}
         </View>
-        {additionalChannels !== undefined && additionalChannels.length > 0 ? (
-          <View style={styles.section} testID="composer-review-additional-channels">
-            <Text style={styles.label}>ALSO SENDING BY</Text>
-            {additionalChannels.map((row) => (
+        {sendingBy !== undefined && sendingBy.length > 0 ? (
+          <View style={styles.section} testID="composer-review-sending-by">
+            <Text style={styles.label}>SENDING BY</Text>
+            {sendingBy.map((row) => (
               <View key={row.key} style={styles.channelRow}>
                 <Text style={styles.value}>{row.label}</Text>
                 <Text style={styles.metaText}>{`${row.reachLabel} · ${row.costLabel}`}</Text>
@@ -251,9 +262,11 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
                 {row.error ? <Text style={styles.errorText}>{row.error}</Text> : null}
               </View>
             ))}
-            <Text style={styles.metaText}>
-              One campaign: it counts once toward your weekly blasts.
-            </Text>
+            {sendingBy.length > 1 ? (
+              <Text style={styles.metaText}>
+                One campaign: it counts once toward your weekly blasts.
+              </Text>
+            ) : null}
           </View>
         ) : null}
         {channelKind === "push" ? (
@@ -287,6 +300,12 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             </Text>
           </View>
         )}
+        {extraPushPreview ? (
+          <View style={styles.section}>
+            <Text style={styles.label}>PUSH MESSAGE</Text>
+            <Text style={styles.value} numberOfLines={4}>{extraPushPreview}</Text>
+          </View>
+        ) : null}
         <View style={styles.section}>
           <Text style={styles.label}>
             {isSendNow ? "DELIVERY" : "SCHEDULED FOR"}

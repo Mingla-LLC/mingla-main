@@ -33,6 +33,8 @@ export interface ComposerStepWhoProps {
    * never a step in this ladder — it is the last thing standing.
    */
   compact?: boolean;
+  /** #4273 — several groups: "3 people · each counted once" (the server's total). */
+  combinedCaption?: string | null;
 }
 
 export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
@@ -42,13 +44,14 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
   onOpenPicker,
   disabled,
   compact,
+  combinedCaption,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
   const isEmpty = audienceName === null;
-  const reachText =
+  const reachText = combinedCaption ?? (
     totalAudience !== null && reachableEmail !== null
       ? `${totalAudience} people · ${reachableEmail} with marketing consent`
-      : null;
+      : null);
   const reachCount = totalAudience !== null ? `${totalAudience}` : null;
   const isCompact = compact === true;
   return (
