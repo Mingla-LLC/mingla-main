@@ -43,8 +43,8 @@ describe("#4273 adversarial: SMS pre-fill is one segment by the real calculator"
 });
 
 describe("#4273 adversarial: the carrier's count, not the string length", () => {
-  // GSM 03.38: each of ^ { } \\ [ ] ~ | € costs two septets. computeSegments
-  // counts them as one, so this measures what a carrier bills.
+  // GSM 03.38: each of ^ { } \\ [ ] ~ | € costs two septets. Measured here on
+  // its own, separately from computeSegments, as a second opinion on the count.
   const septets = (text: string): number =>
     [...text].reduce((sum, ch) => sum + ("^{}\\[]~|€".includes(ch) ? 2 : 1), 0);
   it("auto-filled text with the footer fits 160 septets", () => {
@@ -53,6 +53,7 @@ describe("#4273 adversarial: the carrier's count, not the string length", () => 
       measure,
     );
     expect(septets(wireBody(text))).toBeLessThanOrEqual(160);
+    expect(computeSegments(wireBody(text))).toBe(1);
   });
 });
 

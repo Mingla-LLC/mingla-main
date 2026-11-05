@@ -6,7 +6,6 @@ import path from "path";
 import {
   blastFallbackSentence,
   emailBodyToPlainText,
-  gsmSeptets,
   leadStepsAside,
   prefillPushFromEmail,
   prefillSmsFromEmail,
@@ -14,7 +13,7 @@ import {
   smsReachNote,
   stripUnsupportedTokens,
 } from "../blastSendModel";
-import { computeSegments, isGsm7, sanitizeGsm7, wireBody } from "../../../utils/smsCost";
+import { computeSegments, gsmSeptets, isGsm7, sanitizeGsm7, wireBody } from "../../../utils/smsCost";
 
 const measure = { isGsm7, sanitizeGsm7 };
 const hasLoneSurrogate = (text: string): boolean =>

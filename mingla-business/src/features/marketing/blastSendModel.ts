@@ -5,6 +5,8 @@
  * Every count the host reads comes from the server. Nothing here adds rows up.
  */
 
+import { gsmSeptets } from "../../utils/smsCost";
+
 export type BlastChannel = "email" | "sms" | "push";
 
 /** Display order of the "Send by" chips, and the order a lead is chosen in. */
@@ -353,15 +355,6 @@ function cutAtCharacter(text: string, units: number): string {
     }
     end -= 1;
   }
-}
-
-const GSM_EXTENDED = "^{}\\[~]|\u20AC";
-
-/** What a carrier counts: each GSM extended character costs two septets. */
-export function gsmSeptets(text: string): number {
-  let total = 0;
-  for (const character of text) total += GSM_EXTENDED.includes(character) ? 2 : 1;
-  return total;
 }
 
 function fitToLength(

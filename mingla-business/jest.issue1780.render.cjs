@@ -35,6 +35,7 @@ module.exports = {
     "**/__tests__/blastSendModel.issue4273.tester_adversarial.test.ts",
     "**/__tests__/issue_4273_hidden_skip_response.tester_adversarial.test.ts",
     "**/__tests__/blastSendModel.issue4273.rework.test.ts",
+    "**/__tests__/smsCost.issue4273.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",
