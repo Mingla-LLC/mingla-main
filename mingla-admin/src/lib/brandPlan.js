@@ -83,23 +83,39 @@ export function planWeeks(items, today) {
 
 /** "canva.com" from a plan link. */
 export function linkSite(url) {
-  const m = /^https:\/\/([^/?#:]+)/.exec(String(url || ""));
-  return m ? m[1].toLowerCase().replace(/^www\./, "") : "";
+  const v = String(url || "");
+  if (!/^https:\/\/[^/?#:@\\]/.test(v)) return "";
+  // URL reads a site the way the browser will open it: a non-Latin site name
+  // comes back as its real address (xn--...), the same as the server's label.
+  try {
+    return new URL(v).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 // The same characters the server refuses (brand_plan_link_hidden): control
 // characters, unusual spaces and invisible formatting characters, so the site
 // name on a link's button always reads as the site it opens.
-const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{E0000}-\u{E0FFF}]/u;
+const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
+
+// The same site rule as the server (brand_plan_link_host): there must be a site,
+// short enough to be an address, that stays one site once a browser folds it.
+function hasPlanSite(value) {
+  const raw = /^https:\/\/([^/?#:]+)/.exec(value)?.[1];
+  if (!raw || [...raw].length > 253) return false;
+  const host = raw.toLowerCase().normalize("NFKC").toLowerCase().replace(/\u3002/g, ".");
+  return !/[/?#@:\\\s]/.test(host) && /[^.]/.test(host);
+}
 
 /**
  * A plan link must be https, in lower case like the server wants it, with
- * nothing hidden and nothing before the site name. "" means no link.
+ * a site, nothing hidden and nothing before the site name. "" means no link.
  */
 export function planLinkProblem(value) {
   const v = String(value || "").trim();
   if (!v) return "";
-  const ok = /^https:\/\/[^\s]+$/.test(v) && v.length >= 9 && v.length <= 2000 && !LINK_HIDDEN.test(v) && !/^https:\/\/[^/?#]*[@\\]/.test(v);
+  const ok = /^https:\/\/[^\s]+$/.test(v) && v.length >= 9 && v.length <= 2000 && !LINK_HIDDEN.test(v) && !/^https:\/\/[^/?#]*[@\\]/.test(v) && hasPlanSite(v);
   return ok ? "" : "Links start with https://";
 }
 

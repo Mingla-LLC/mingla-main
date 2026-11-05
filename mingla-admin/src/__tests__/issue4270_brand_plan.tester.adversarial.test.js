@@ -84,7 +84,7 @@ describe("Q-LINK the plan link check", () => {
     assert.equal(planLinkProblem("  https://www.canva.com/design/x  "), "");
     assert.equal(planLinkProblem(""), "");
     assert.equal(planLinkProblem("   "), "");
-    assert.equal(planLinkProblem(`https://${"a".repeat(1992)}`), "", "2,000 characters is the limit, not over it");
+    assert.equal(planLinkProblem(`https://a.example/${"a".repeat(1982)}`), "", "2,000 characters is the limit, not over it");
   });
 });
 

@@ -22,7 +22,7 @@ export const PERSON_REASONS = TAG_LABELS;
 export function filesUrlProblem(value) {
   const v = String(value || "").trim();
   if (!v) return "";
-  if (v.length > 2000 || !/^https:\/\/\S+$/.test(v)) return "Links start with https://";
+  if (v.length > 2000 || !/^https:\/\/\S+$/.test(v) || !/^https:\/\/[^/?#:@\\]/.test(v)) return "Links start with https://";
   return "";
 }
 

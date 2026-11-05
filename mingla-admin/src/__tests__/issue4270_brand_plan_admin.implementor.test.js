@@ -36,6 +36,7 @@ import {
   planLinkProblem,
   planTaskDefaults,
 } from "../lib/brandPlan.js";
+import { filesHost, filesUrlProblem } from "../lib/opsModel.js";
 import { sideHref } from "../lib/panelStack.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -183,6 +184,19 @@ describe("B-4 services and the quiet line", () => {
   it("site names", () => {
     assert.equal(linkSite("https://www.canva.com/design/x"), "canva.com");
     assert.equal(linkSite("http://canva.com"), "");
+  });
+  it("W4 rework: a site name reads as its real address, and a link needs a site", () => {
+    assert.equal(linkSite("https://саnvа.com/x"), "xn--nv-6kcc5f.com");
+    assert.equal(linkSite("https://www.bücher.example/x"), "xn--bcher-kva.example");
+    for (const bad of ["https:///evil.example", "https://:443/evil", "https://?x=1", "https://#x"]) {
+      assert.equal(linkSite(bad), "", bad);
+      assert.equal(planLinkProblem(bad), "Links start with https://", bad);
+      assert.equal(filesUrlProblem(bad), "Links start with https://", bad);
+    }
+    assert.equal(planLinkProblem("https://canva.com\u{1D173}.evil.example"), "Links start with https://");
+    assert.equal(planLinkProblem("https://саnvа.com/x"), "");
+    assert.equal(filesHost("https://саnvа.com/x"), "xn--nv-6kcc5f.com");
+    assert.equal(filesUrlProblem("https://drive.google.com/x"), "");
   });
 });
 
