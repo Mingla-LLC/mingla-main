@@ -36,6 +36,7 @@ import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
 import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
+import { doorSaleMoney } from "../../../../src/utils/moneySummary";
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
@@ -256,7 +257,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
   const paymentMethodLabel = PAYMENT_METHOD_LABELS[sale.paymentMethod];
   const refundButtonVisible = sale.status !== "refunded_full";
   const isCardSale = isCardDoorPaymentMethod(sale.paymentMethod);
-  const cardFee = isCardSale ? sale.minglaFeeAmount ?? null : null;
+  const money = doorSaleMoney(sale);
   const hasBuyerDetails =
     sale.buyerEmail.length > 0 ||
     sale.buyerPhone.length > 0 ||
@@ -359,11 +360,11 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
               </Text>
             </View>
           ) : null}
-          {cardFee !== null ? (
+          {money.minglaFee > 0 ? (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Mingla fee</Text>
               <Text style={styles.summaryValueWarn}>
-                −{formatCurrency(cardFee, sale.currency)}
+                −{formatCurrency(money.minglaFee, sale.currency)}
               </Text>
             </View>
           ) : null}
@@ -371,10 +372,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabelStrong}>Net</Text>
             <Text style={styles.summaryValueStrong}>
-              {formatCurrency(
-                sale.totalGbpAtSale - sale.refundedAmountGbp - (cardFee ?? 0),
-                sale.currency,
-              )}
+              {money.net === null ? "Confirming" : formatCurrency(money.net, sale.currency)}
             </Text>
           </View>
           {isCardSale ? (

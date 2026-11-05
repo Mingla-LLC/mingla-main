@@ -40,6 +40,8 @@ export interface DoorRefundRecord {
   amount?: number;
   reason: string;
   refundedAt: string;
+  /** issue #4271 — Mingla's fee this refund reversed, as the provider reported. */
+  applicationFeeRefundedCents?: number | null;
   lines: {
     ticketTypeId: string;
     quantity: number;

@@ -25,7 +25,7 @@ import {
 import {
   doorPayGuestEndCopy,
   doorPayHostEndCopy,
-  effectiveDoorPayStatus,
+  doorPayHostStatus,
   formatDoorPayCountdown,
 } from "../doorPayCodeState";
 import { decodeDoorTapDraft, doorSellAnotherHref, doorTapNewSaleHref } from "../doorTapDraft";
@@ -206,10 +206,14 @@ describe("#4271 pay code states", () => {
   const before = Date.parse("2026-11-04T20:00:18.000Z");
   const after = Date.parse("2026-11-04T20:10:01.000Z");
 
-  test("an open or opened code past its expiry reads as expired", () => {
-    expect(effectiveDoorPayStatus("open", expiresAt, before)).toBe("open");
-    expect(effectiveDoorPayStatus("opened", expiresAt, after)).toBe("expired");
-    expect(effectiveDoorPayStatus("paid", expiresAt, after)).toBe("paid");
+  test("past its time a code reads checking until the server answers", () => {
+    expect(doorPayHostStatus("open", expiresAt, before, null)).toBe("open");
+    expect(doorPayHostStatus("opened", expiresAt, after, null)).toBe("checking");
+    expect(doorPayHostStatus("opened", expiresAt, after, "checking")).toBe("checking");
+    expect(doorPayHostStatus("opened", expiresAt, after, "opened")).toBe("opened");
+    expect(doorPayHostStatus("opened", expiresAt, before, "payment_landing")).toBe("payment_landing");
+    expect(doorPayHostStatus("expired", expiresAt, after, null)).toBe("expired");
+    expect(doorPayHostStatus("paid", expiresAt, after, "payment_landing")).toBe("paid");
     expect(formatDoorPayCountdown(expiresAt, before)).toBe("9:42");
     expect(formatDoorPayCountdown(expiresAt, after)).toBe("0:00");
   });
@@ -384,7 +388,7 @@ describe("#4271 card money at the door", () => {
     expect(summary.revenueByMethod.cash).toBe(40);
     expect(summary.revenueByMethod.pay_code).toBe(31.35);
     expect(summary.grossRevenue).toBe(71.35);
-    expect(summary.stripeFeeOnlineMajor).toBe(1.41);
+    expect(summary.doorCardMinglaFee).toBe(1.41);
     expect(Object.keys(summary.revenueByMethod)).not.toContain("nfc");
   });
 });

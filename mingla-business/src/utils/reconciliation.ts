@@ -19,8 +19,8 @@
  * application-fee columns (orders.stripe_application_fee_amount_cents +
  * orders.refunded_amount_cents + refunds.application_fee_refunded_cents). Door revenue
  * contributes 1.0 for cash/manual. issue #4271: card door money (pay_code, tap_to_pay)
- * is an online-rail order, so it is read from the orders stream with its real
- * application fee and never double-counted from the door stream.
+ * is read from the door stream, the one that holds the charge and its fee through
+ * doorSaleMoney, and never double-counted from the orders stream.
  * Returns null when no payments exist so UI renders "—" instead of £0.00.
  *
  * D1/D2/D3 discrepancy detection: ADVISORY-only per D-13-4. D4 (unscanned) is informational,
@@ -99,6 +99,8 @@ export interface ReconciliationSummary {
    * activity exists. ORCH-0796.
    */
   stripeFeeOnlineMajor: number | null;
+  /** issue #4271 — Mingla's fee still held on card door sales. */
+  doorCardMinglaFee: number;
   /** Online refund subtotal; for break-down rendering. */
   onlineRefunded: number;
   /** Door refund subtotal; for break-down rendering. */
@@ -168,6 +170,7 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
   revenueByMethod: { ...ZERO_REVENUE_BY_METHOD },
   expectedPayoutMajor: null,
   stripeFeeOnlineMajor: null,
+  doorCardMinglaFee: 0,
   onlineRefunded: 0,
   doorRefunded: 0,
   currenciesPresent: [],
@@ -185,6 +188,10 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
 };
 
 // ---- Helpers ---------------------------------------------------------
+
+/** issue #4271 — an order the door stream also reports. */
+export const isDoorOrder = (order: OrderRecord): boolean =>
+  order.source === "door_sale" || isCardDoorPaymentMethod(order.paymentMethod);
 
 /** Round to 2 decimal places to avoid float drift in revenue arithmetic. */
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -232,15 +239,10 @@ export const computeReconciliation = (
   // ---- Tickets (online live, excludes cancelled — refunded-partial keeps live qty - refundedQty) ----
   const eventOrders = orderEntries.filter((o) => o.eventId === eventId);
   // issue #3827 — online "sold", revenue and fees are sales only.
-  // issue #4271 — each sale is counted from exactly one stream. Cash/manual
-  // door orders (source door_sale) come from the door stream; card door money
-  // (pay_code, tap_to_pay) comes from the orders stream, which carries the real
-  // application fee and the online refund path.
-  const eventSales = eventOrders.filter(
-    (o) =>
-      !isCompOrder(o) &&
-      !(o.source === "door_sale" && !isCardDoorPaymentMethod(o.paymentMethod)),
-  );
+  // issue #4271 — every door sale is counted from the door stream, whatever its
+  // method. It holds what the guest was charged, so a figure here equals the door
+  // screen's: the orders stream keeps a pay code's ticket base in total_cents.
+  const eventSales = eventOrders.filter((o) => !isCompOrder(o) && !isDoorOrder(o));
   const liveOrders = eventSales.filter(
     (o) => o.status === "paid" || o.status === "refunded_partial",
   );
@@ -252,9 +254,7 @@ export const computeReconciliation = (
   }
 
   // ---- Tickets (door live — no status filter; refunded sales still contribute live tickets per OBS-1) ----
-  const eventDoorSales = doorEntries.filter(
-    (s) => s.eventId === eventId && !isCardDoorPaymentMethod(s.paymentMethod),
-  );
+  const eventDoorSales = doorEntries.filter((s) => s.eventId === eventId);
   let doorLiveTickets = 0;
   for (const sale of eventDoorSales) {
     for (const line of sale.lines) {
@@ -285,6 +285,7 @@ export const computeReconciliation = (
     totalRefunded,
     expectedPayoutMajor,
     stripeFeeOnlineMajor,
+    doorCardMinglaFee,
   } = moneySummary;
 
   // ---- Scans ----
@@ -408,6 +409,7 @@ export const computeReconciliation = (
     revenueByMethod,
     expectedPayoutMajor,
     stripeFeeOnlineMajor,
+    doorCardMinglaFee,
     onlineRefunded: round2(onlineRefunded),
     doorRefunded: round2(doorRefunded),
     currenciesPresent: moneySummary.currenciesPresent,

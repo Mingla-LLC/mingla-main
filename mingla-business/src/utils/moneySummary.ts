@@ -101,6 +101,8 @@ export interface EventMoneySummary {
    * money is paid out with online sales.
    */
   doorCardMinglaFee: number;
+  /** Door revenue less that fee. Null while a card refund's fee is unconfirmed. */
+  doorNet: number | null;
   revenueByMethod: Partial<Record<CheckoutPaymentMethod | MoneyDoorPaymentMethod, number>>;
   byCurrency: CurrencyBreakdown[];
   mismatches: CurrencyMismatch[];
@@ -145,6 +147,52 @@ export const doorSaleLiveAmount = (sale: MoneyDoorSaleRecord): number =>
 
 export const refundAmount = (refund: { amount?: number; amountGbp: number }): number =>
   refund.amount ?? refund.amountGbp;
+
+/**
+ * issue #4271 — the one money shape of a door sale, read from the server's own
+ * columns (charge, refunds, fee, and each refund's fee reversal as the provider
+ * reported it). Every surface reads this: sale detail, door list, hub,
+ * reconciliation and CSV.
+ *
+ * Net is what the host keeps before the provider's own cost: charge, less the
+ * refund, less the fee Mingla still holds. Null while a refund's fee reversal is
+ * unconfirmed: a guess here is a wrong number on an accountant's sheet.
+ */
+export interface DoorSaleMoney {
+  charged: number;
+  refunded: number;
+  /** Charge left after refunds. */
+  live: number;
+  /** Mingla's fee still held (the fee less what came back). 0 for cash/manual. */
+  minglaFee: number;
+  net: number | null;
+}
+
+export const doorSaleMoney = (sale: MoneyDoorSaleRecord): DoorSaleMoney => {
+  const charged = sale.totalAtSale ?? sale.totalGbpAtSale;
+  const refunded = sale.refundedAmount ?? sale.refundedAmountGbp;
+  const live = doorSaleLiveAmount(sale);
+  if (!isCardDoorPaymentMethod(sale.paymentMethod)) {
+    return { charged, refunded, live: round2(live), minglaFee: 0, net: round2(live) };
+  }
+  const feeCents = Math.round(Math.max(0, sale.minglaFeeAmount ?? 0) * 100);
+  let feeBackCents = 0;
+  let feeBackKnown = true;
+  for (const refund of sale.refunds) {
+    if (refund.applicationFeeRefundedCents === null && refundAmount(refund) > 0) {
+      feeBackKnown = false;
+    }
+    feeBackCents += refund.applicationFeeRefundedCents ?? 0;
+  }
+  const minglaFee = Math.max(0, feeCents - feeBackCents) / 100;
+  return {
+    charged,
+    refunded,
+    live: round2(live),
+    minglaFee,
+    net: feeBackKnown ? round2(Math.max(0, live - minglaFee)) : null,
+  };
+};
 
 const singleStoredMoneyCurrency = (
   orders: MoneyOrderRecord[],
@@ -203,6 +251,7 @@ export const summarizeEventMoney = (args: {
   let hasAnyDoorPayment = false;
   let hasUnknownApplicationFeeRefund = false;
   let doorCardMinglaFee = 0;
+  let doorFeeUnknown = false;
 
   const addRevenue = (
     method: CheckoutPaymentMethod | MoneyDoorPaymentMethod,
@@ -310,9 +359,16 @@ export const summarizeEventMoney = (args: {
     if (live > 0) {
       addRevenue(sale.paymentMethod, live);
       hasAnyDoorPayment = true;
-      if (isCardDoorPaymentMethod(sale.paymentMethod)) {
-        doorCardMinglaFee += Math.max(0, sale.minglaFeeAmount ?? 0);
+    }
+    if (isCardDoorPaymentMethod(sale.paymentMethod)) {
+      const money = doorSaleMoney(sale);
+      doorCardMinglaFee += money.minglaFee;
+      if (money.net === null) {
+        doorFeeUnknown = true;
+        hasUnknownApplicationFeeRefund = true;
       }
+      // A fully refunded card sale still has a real payout: zero, not "no payments".
+      if (money.charged > 0) hasAnyDoorPayment = true;
     }
   }
 
@@ -343,6 +399,7 @@ export const summarizeEventMoney = (args: {
     minglaFeeOnlineMajor,
     expectedPayoutMajor,
     doorCardMinglaFee: round2(doorCardMinglaFee),
+    doorNet: doorFeeUnknown ? null : round2(doorRevenue - doorCardMinglaFee),
     revenueByMethod,
     byCurrency: Array.from(byCurrency.values()).sort((a, b) =>
       a.currency.localeCompare(b.currency),

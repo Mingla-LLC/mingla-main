@@ -61,6 +61,7 @@ interface DoorRefundRow {
   reason: string | null;
   created_at: string;
   status: string;
+  application_fee_refunded_cents?: number | null;
 }
 
 interface DoorSaleRow {
@@ -124,6 +125,7 @@ const mapDoorSale = (row: DoorSaleRow): DoorSaleRecord => {
       amount: centsToMajor(refund.amount_cents),
       reason: refund.reason ?? "Door sale refund",
       refundedAt: refund.created_at,
+      applicationFeeRefundedCents: refund.application_fee_refunded_cents ?? null,
       lines: [],
     }));
   const total = centsToMajor(row.buyer_total_cents ?? row.total_cents);
@@ -216,7 +218,7 @@ export async function fetchEventDoorSales(eventId: string): Promise<DoorSaleReco
       payment_status,refunded_amount_cents,metadata,
       events!inner(brand_id),
       order_line_items(id,ticket_type_id,quantity,unit_price_cents,total_cents,list_unit_price_cents,ticket_types(name,is_free)),
-      refunds(id,amount_cents,reason,created_at,status)
+      refunds(id,amount_cents,reason,created_at,status,application_fee_refunded_cents)
     `)
     .eq("event_id", eventId)
     // issue #4271 — every sale taken at the door: cash/manual door orders and

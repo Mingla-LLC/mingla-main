@@ -239,7 +239,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const refundedTotal = doorMoneySummary.doorRefunded;
   const cardFeeTotal = doorMoneySummary.doorCardMinglaFee;
   const cardRevenueTotal = totalsByMethod.pay_code + totalsByMethod.tap_to_pay;
-  const netTotal = doorMoneySummary.doorRevenue - cardFeeTotal;
+  const netTotal = doorMoneySummary.doorNet;
   const hasCardSales = eventSales.some((sale) => isCardDoorPaymentMethod(sale.paymentMethod));
 
   // ---- UI state ----
@@ -530,7 +530,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           <View style={styles.reconRow}>
             <Text style={styles.reconLabelStrong}>NET</Text>
             <Text style={styles.reconValueStrong}>
-              {fmtDoor(netTotal)}
+              {netTotal === null ? "Confirming" : fmtDoor(netTotal)}
             </Text>
           </View>
           {hasCardSales ? (
