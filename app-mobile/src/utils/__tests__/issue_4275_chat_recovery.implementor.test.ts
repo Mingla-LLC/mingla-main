@@ -91,6 +91,7 @@ function makeRig(options: { holdCatchUp?: boolean; failReads?: () => boolean } =
     rebuildTimes,
     advance: async (ms) => {
       const end = time + ms;
+      await flush(); // a read settled just before this call arms its retry first
       for (;;) {
         const due = [...timers.entries()].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
         if (!due) break;

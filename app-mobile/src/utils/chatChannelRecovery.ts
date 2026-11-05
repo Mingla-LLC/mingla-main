@@ -206,7 +206,7 @@ export function createChatRecovery(deps: ChatRecoveryDeps): ChatRecovery {
       pollAttempts = 0;
       stopPolling();
       requestCatchUp();
-      if (changesDown || gapUnread) armPoll();
+      if (changesDown) armPoll();
       for (const source of ['changes', 'broadcast'] as const) {
         const state = sources[source];
         state.rebuildAttempts = 0;
