@@ -255,6 +255,36 @@ describe("issue #3827 — door Find by name", () => {
     await act(async () => { (admit.props.onPress as () => void)(); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     expect(r.root.findAll((n) => n.props.testID === "door-admit-extras")).toHaveLength(0);
+    // Nor does the guest row keep listing extras from the stale answer.
+    expect(r.root.findAll((n) => n.props.testID === "door-extras-o-lolu")).toHaveLength(0);
+  });
+
+  test("issue #3281 — a refused ticket in a mixed admit never names the admitted day", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [{
+        ...LOLADE,
+        extras: [{ name: "Friday dinner", quantity: 1, eventDateIds: ["day-fri"] }],
+      }],
+      truncated: false,
+    });
+    // The first ticket is admitted on Friday; the second is refused, naming Saturday.
+    mockAdmit
+      .mockResolvedValueOnce({
+        result: "success", ticketId: "tk-1", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-fri",
+      })
+      .mockResolvedValue({
+        result: "duplicate", ticketId: "tk-2", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-sat",
+      });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [all] = r.root.findAll((n) => n.type === "ButtonProbe" && typeof n.props.label === "string" && n.props.label.startsWith("Admit all"));
+    await act(async () => { (all.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(line).toBeDefined();
+    expect(text(line)).toBe("Extras: Friday dinner × 1");
   });
 
   test("issue #3281 — the scan card shows extras on their own unclipped line, through the day label", () => {

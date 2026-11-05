@@ -155,7 +155,10 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
             noun,
           );
           if (res.result === "success") admitted += 1;
-          if (typeof res.eventDateId === "string") admittedDateId = res.eventDateId;
+          // The day a ticket was actually admitted; a refusal names no such day.
+          if (res.result === "success" && typeof res.eventDateId === "string") {
+            admittedDateId = res.eventDateId;
+          }
           onAdmitted?.(copy, res);
         }
         if (copy !== null && tickets.length > 1 && admitted > 1) {
@@ -281,8 +284,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                 {guest.cameWithName !== null ? <Text style={styles.guestMeta}>{`with ${guest.cameWithName}`}</Text> : null}
                 {guest.viaLinkLabel !== null ? <Text style={styles.guestMeta}>{`via ${guest.viaLinkLabel}`}</Text> : null}
                 {(() => {
-                  // issue #3281 — what this order still has to be handed.
-                  const line = doorExtrasLine(readDoorExtras(guest.extras));
+                  // issue #3281 — what this order still has to be handed. Not
+                  // from an answer whose refresh failed: it may owe a refund.
+                  const line = query.isError ? null : doorExtrasLine(readDoorExtras(guest.extras));
                   return line !== null ? (
                     <Text style={styles.guestMeta} testID={`door-extras-${guest.orderId}`}>{line}</Text>
                   ) : null;
