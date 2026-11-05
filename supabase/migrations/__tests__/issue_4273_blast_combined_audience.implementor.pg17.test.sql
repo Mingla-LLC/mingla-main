@@ -39,28 +39,34 @@ INSERT INTO public.brand_follows(user_id, brand_id, muted_until) VALUES
 INSERT INTO public.brand_people(id, brand_id, linked_user_id, display_name, record_status) VALUES
   ('42739200-2000-4000-8000-000000000001', '42739200-0000-4000-8000-000000000010', '42739200-0000-4000-8000-000000000002', 'Ann Book', 'active'),
   ('42739200-2000-4000-8000-000000000002', '42739200-0000-4000-8000-000000000010', NULL, 'Cara Book', 'active'),
-  ('42739200-2000-4000-8000-000000000003', '42739200-0000-4000-8000-000000000010', '42739200-0000-4000-8000-000000000004', 'Mia Book', 'active');
+  ('42739200-2000-4000-8000-000000000003', '42739200-0000-4000-8000-000000000010', '42739200-0000-4000-8000-000000000004', 'Mia Book', 'active'),
+  ('42739200-2000-4000-8000-000000000004', '42739200-0000-4000-8000-000000000010', NULL, 'Gia Book', 'active');
 INSERT INTO public.brand_person_contact_methods(brand_id, brand_person_id, channel, normalized_value, provenance_scope, is_exportable, is_primary, record_state) VALUES
   ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000001', 'phone', '+12025550102', 'brand_owned', true, true, 'active'),
   ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000002', 'phone', '+12025550201', 'brand_owned', true, true, 'active'),
   ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000002', 'email', 'cara@example.test', 'brand_owned', true, true, 'active'),
-  ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000003', 'phone', '+12025550104', 'brand_owned', true, true, 'active');
+  ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000003', 'phone', '+12025550104', 'brand_owned', true, true, 'active'),
+  ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000004', 'phone', '+12025550202', 'brand_owned', true, true, 'active'),
+  ('42739200-0000-4000-8000-000000000010', '42739200-2000-4000-8000-000000000004', 'email', 'gia@example.test', 'brand_owned', true, true, 'active');
 INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone, theme) VALUES
   ('42739200-1000-4000-8000-000000000001', '42739200-0000-4000-8000-000000000010', '42739200-0000-4000-8000-000000000001',
    'Highlife', 'b4273-highlife', 'event', 'scheduled', 'public', 'UTC', '{}'::jsonb),
   ('42739200-1000-4000-8000-000000000002', '42739200-0000-4000-8000-000000000011', '42739200-0000-4000-8000-000000000005',
    'Other night', 'b4273-other', 'event', 'scheduled', 'public', 'UTC', '{}'::jsonb);
 -- Cara also bought (same contact as her Book row, different case); Dan and Eve
--- are known only from orders; Fay's phone said STOP; Zoe's order is another brand's.
+-- are known only from orders; Fay's phone said STOP; Gia is in the Book too, but
+-- the phone on her order said STOP, which blocks her; Zoe's order is another brand's.
 INSERT INTO public.orders(id, event_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency, payment_status, source) VALUES
   ('42739200-1100-4000-8000-000000000001', '42739200-1000-4000-8000-000000000001', 'CARA@example.test', NULL, 'Cara Buyer', 1000, 'USD', 'paid', 'legacy'),
   ('42739200-1100-4000-8000-000000000002', '42739200-1000-4000-8000-000000000001', 'dan@example.test', '+12025550301', 'Dan Buyer', 1000, 'USD', 'paid', 'legacy'),
   ('42739200-1100-4000-8000-000000000003', '42739200-1000-4000-8000-000000000001', 'dan@example.test', '+12025550301', 'Dan Buyer', 2000, 'USD', 'paid', 'legacy'),
   ('42739200-1100-4000-8000-000000000004', '42739200-1000-4000-8000-000000000001', 'eve@example.test', NULL, 'Eve Buyer', 1000, 'USD', 'paid', 'legacy'),
   ('42739200-1100-4000-8000-000000000005', '42739200-1000-4000-8000-000000000001', 'fay@example.test', '+12025550302', 'Fay Buyer', 1000, 'USD', 'paid', 'legacy'),
-  ('42739200-1100-4000-8000-000000000006', '42739200-1000-4000-8000-000000000002', 'zoe@example.test', '+12025550303', 'Zoe Buyer', 1000, 'USD', 'paid', 'legacy');
+  ('42739200-1100-4000-8000-000000000006', '42739200-1000-4000-8000-000000000002', 'zoe@example.test', '+12025550303', 'Zoe Buyer', 1000, 'USD', 'paid', 'legacy'),
+  ('42739200-1100-4000-8000-000000000007', '42739200-1000-4000-8000-000000000001', 'gia@example.test', '+12025550402', 'Gia Buyer', 1000, 'USD', 'paid', 'legacy');
 INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason)
-SELECT NULL, '+12025550302', 'sms', 'marketing', 'stop_keyword';
+VALUES (NULL, '+12025550302', 'sms', 'marketing', 'stop_keyword'),
+  (NULL, '+12025550402', 'sms', 'marketing', 'stop_keyword');
 SELECT public.issue_1777_refresh_brand_reach('42739200-0000-4000-8000-000000000010', 'follower');
 SELECT set_config('request.jwt.claim.sub', '42739200-0000-4000-8000-000000000001', true);
 
@@ -124,9 +130,9 @@ BEGIN
   END LOOP;
 
   -- C-03 Summary: one person once across groups; totals only, no contact.
-  -- Ann, Cara, Mia (Book) + Ben (follower) + Dan, Eve, Fay (buyers) = 7.
+  -- Ann, Cara, Mia, Gia (Book) + Ben (follower) + Dan, Eve, Fay (buyers) = 8.
   v_summary := public.biz_marketing_combined_audience_summary_v1(v_owner, v_brand, v_all);
-  IF (v_summary ->> 'peopleCount')::int <> 7
+  IF (v_summary ->> 'peopleCount')::int <> 8
      OR (v_summary ->> 'followersTotal')::int <> 3
      OR (v_summary ->> 'followersAlsoInBook')::int <> 2
      OR v_summary::text ~ '@|\+1202' THEN
@@ -142,17 +148,18 @@ BEGIN
     '{"kind":"sms","body":"Doors at 9."}', 'draft');
 
   -- C-04 SMS candidates: each person once. Mia is muted (her Book contact does
-  -- not bring her back), Fay said STOP, Eve has no phone.
+  -- not bring her back), Fay said STOP, Gia's order phone said STOP (the
+  -- strictest identity wins), Eve has no phone.
   v_env := public.biz_marketing_combined_quote_candidates_v1(v_owner, v_sms);
-  IF (v_env ->> 'selectedCount')::int <> 7
-     OR jsonb_array_length(v_env -> 'candidates') <> 7
+  IF (v_env ->> 'selectedCount')::int <> 8
+     OR jsonb_array_length(v_env -> 'candidates') <> 8
      OR (SELECT count(*) FROM jsonb_array_elements(v_env -> 'candidates') x WHERE (x ->> 'allowed')::boolean) <> 4
-     OR (SELECT count(DISTINCT x ->> 'personKey') FROM jsonb_array_elements(v_env -> 'candidates') x) <> 7
+     OR (SELECT count(DISTINCT x ->> 'personKey') FROM jsonb_array_elements(v_env -> 'candidates') x) <> 8
      OR (SELECT count(DISTINCT x ->> 'normalizedContact') FROM jsonb_array_elements(v_env -> 'candidates') x
-          WHERE x ->> 'normalizedContact' IS NOT NULL) <> 6 THEN
+          WHERE x ->> 'normalizedContact' IS NOT NULL) <> 7 THEN
     RAISE EXCEPTION 'C-04 FAIL: %', v_env;
   END IF;
-  IF NOT (v_env -> 'candidates' @> '[{"normalizedContact":"+12025550104","allowed":false},{"normalizedContact":"+12025550302","allowed":false}]'::jsonb) THEN
+  IF NOT (v_env -> 'candidates' @> '[{"normalizedContact":"+12025550104","allowed":false},{"normalizedContact":"+12025550302","allowed":false},{"normalizedContact":"+12025550402","allowed":false}]'::jsonb) THEN
     RAISE EXCEPTION 'C-04 FAIL: mute or STOP not honoured %', v_env;
   END IF;
   -- C-05 A stale preview is PT409, never 40001.
@@ -174,13 +181,13 @@ BEGIN
     '42739200-4000-4000-8000-000000000002', v_snapshot, now() + interval '1 hour');
   IF (v_replay ->> 'replay')::boolean IS NOT TRUE
      OR (SELECT count(*) FROM public.marketing_book_send_targets t
-          WHERE t.execution_id = (v_confirm ->> 'executionId')::uuid) <> 7
+          WHERE t.execution_id = (v_confirm ->> 'executionId')::uuid) <> 8
      OR (SELECT count(*) FROM public.marketing_book_send_targets t
           WHERE t.execution_id = (v_confirm ->> 'executionId')::uuid AND t.outcome = 'queued') <> 4
      OR (SELECT reachable_count FROM public.marketing_book_send_executions
           WHERE id = (v_confirm ->> 'executionId')::uuid) <> 4
      OR (SELECT count(*) FROM public.marketing_book_send_targets t
-          WHERE t.execution_id = (v_confirm ->> 'executionId')::uuid AND t.buyer_contact_key IS NOT NULL) <> 3 THEN
+          WHERE t.execution_id = (v_confirm ->> 'executionId')::uuid AND t.buyer_contact_key IS NOT NULL) <> 4 THEN
     RAISE EXCEPTION 'C-06 FAIL: sealed set differs from quote';
   END IF;
 
