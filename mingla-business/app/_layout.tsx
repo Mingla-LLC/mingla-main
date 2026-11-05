@@ -46,6 +46,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { TapToPayAwarenessModal } from "../src/components/door/tap/TapToPayAwarenessModal";
 import { TapToPayTerminalHost } from "../src/components/door/tap/TapToPayTerminalHost";
 // #2107 (U1): the launch guard installs when this file is imported, before
 // Sentry.init below wraps the global error handler.
@@ -838,6 +839,7 @@ function RootLayoutInner(): React.ReactElement {
       <Stack screenOptions={{ headerShown: false }} />
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
+      <TapToPayAwarenessModal />
     </ErrorBoundary>
   );
 }

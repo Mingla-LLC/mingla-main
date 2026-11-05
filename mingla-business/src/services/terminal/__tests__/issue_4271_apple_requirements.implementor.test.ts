@@ -545,3 +545,18 @@ describe("B9 every Android string stays clear of the iPhone", () => {
     expect(fs.existsSync(path.join(BIZ_ROOT, "app/account/tap-to-pay.tsx"))).toBe(true);
   });
 });
+
+describe("B10 where the card goes", () => {
+  test("complete-active and already-active have it, complete-verifying does not", () => {
+    const view = fs.readFileSync(path.join(BIZ_ROOT, "src/components/brand/BrandOnboardView.tsx"), "utf8");
+    expect(view.match(/<TapToPayOnboardingCard brand=\{brand\} \/>/g)).toHaveLength(2);
+    const verifying = view.slice(view.indexOf('viewState === "complete-verifying" ? ('));
+    expect(verifying.slice(0, 1200)).not.toContain("TapToPayOnboardingCard");
+  });
+  test("the modal is a sibling of the Stack and the assets are unset until the toolkit lands", () => {
+    expect(fs.readFileSync(path.join(BIZ_ROOT, "app/_layout.tsx"), "utf8")).toContain("<TapToPayAwarenessModal />");
+    expect(fs.readFileSync(path.join(BIZ_ROOT, "src/constants/tapToPayMarketing.ts"), "utf8")).toContain(
+      "TAP_TO_PAY_AWARENESS: TapToPayAwarenessAssets | null = null",
+    );
+  });
+});

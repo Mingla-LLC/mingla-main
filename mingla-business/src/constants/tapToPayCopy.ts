@@ -119,3 +119,9 @@ export const TAP_CARD_NEEDS_INSERT_COPY = {
   title: "This card can't be tapped",
   body: "This card needs to be inserted, and a phone can't do that. Try Apple Pay, another card, or a pay code.",
 } as const;
+
+export const tapOnboardingCopy = (os: string): { title: string; body: string; button: string } => ({
+  title: `Take cards with ${tapToPayName(os)}`,
+  body: "No card machine. Guests tap a card or phone on your phone at the door.",
+  button: `Set up ${tapToPayName(os)}`,
+});

@@ -97,6 +97,7 @@ const SELLING_ADD_BANK_SUB =
   "You can keep selling. Your money waits until you add a bank.";
 
 import { Button } from "../ui/Button";
+import { TapToPayOnboardingCard } from "../door/tap/TapToPayOnboardingCard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
@@ -1259,6 +1260,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </Text>
             </View>
             <View style={styles.actionsCol}>
+              <TapToPayOnboardingCard brand={brand} />
               <Button
                 label="Done"
                 onPress={handleDone}
@@ -1441,6 +1443,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </Text>
             </View>
             <View style={styles.actionsCol}>
+              <TapToPayOnboardingCard brand={brand} />
               <Button
                 label="Done"
                 onPress={handleDone}

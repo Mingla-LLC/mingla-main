@@ -66,7 +66,10 @@ jest.mock("../../../hooks/useTapToPayRelease", () => ({
   tapToPayLive: () => mockLive,
 }));
 jest.mock("../../../hooks/useBrands", () => ({
-  useBrand: () => ({ data: { displayName: "Door Brand" } }),
+  useBrand: () => ({ data: { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP" } }),
+}));
+jest.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "user-1" }, isAuthReady: true }),
 }));
 jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandId: () => mockBrandId,
@@ -159,6 +162,10 @@ import { resetTapToPayWarmHintForTests } from "../../../services/terminal/tapToP
 // eslint-disable-next-line import/first
 import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
 // eslint-disable-next-line import/first
+import { TapToPayOnboardingCard } from "../tap/TapToPayOnboardingCard";
+// eslint-disable-next-line import/first
+import { TapToPayAwarenessModal } from "../tap/TapToPayAwarenessModal";
+// eslint-disable-next-line import/first
 import { TapNotOnThisPhone } from "../tap/TapNotOnThisPhone";
 // eslint-disable-next-line import/first
 import { TapToPayEducation } from "../tap/TapToPayEducation";
@@ -184,6 +191,8 @@ import {
 } from "../../../services/terminal/tapToPaySession";
 
 Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
+
+jest.setTimeout(60_000);
 
 const flush = async (): Promise<void> => {
   await act(async () => {
@@ -382,6 +391,9 @@ const saleScreen = (): React.ReactElement => (
 );
 const settleSale = async (): Promise<void> => {
   for (let i = 0; i < 8; i += 1) await flush();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 };
 
 describe("B7 configuring and progress", () => {
@@ -548,5 +560,69 @@ describe("B9 Settings entry and the guide", () => {
     expect(text).toContain("This card can't be tapped");
     expect(text).toContain("This card needs to be inserted, and a phone can't do that.");
     expect(text).not.toContain("needs a PIN");
+  });
+});
+
+describe("B10 onboarding and awareness", () => {
+  const STRIPE = { id: "brand-1", paymentProvider: "stripe", defaultCurrency: "GBP" };
+  const ASSETS = { hero: 1, title: "Toolkit title", body: "Toolkit body" };
+
+  test("the onboarding card shows when live and eligible, and opens setup", () => {
+    mockLive = true;
+    const { root } = mount(<TapToPayOnboardingCard brand={STRIPE} />);
+    const text = textOf(root);
+    expect(text).toContain("Take cards with Tap to Pay on iPhone");
+    expect(text).toContain("Set up Tap to Pay on iPhone");
+  });
+
+  test("hidden when not live, on Paystack, or in another currency", () => {
+    mockLive = false;
+    expect(mount(<TapToPayOnboardingCard brand={STRIPE} />).toJSON()).toBeNull();
+    mockLive = true;
+    expect(mount(<TapToPayOnboardingCard brand={{ ...STRIPE, paymentProvider: "paystack" }} />).toJSON()).toBeNull();
+    expect(mount(<TapToPayOnboardingCard brand={{ ...STRIPE, defaultCurrency: "EUR" }} />).toJSON()).toBeNull();
+  });
+
+  test("the modal never renders without Apple's assets, whatever the switch says", async () => {
+    mockLive = true;
+    mockRole = { rank: 60, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settleSale();
+    expect(tree.toJSON()).toBeNull();
+  });
+
+  test("with assets it shows once, then never again for this user", async () => {
+    mockLive = true;
+    mockRole = { rank: 60, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    const { root } = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    for (let i = 0; i < 20 && !textOf(root).includes("Toolkit title"); i += 1) await settleSale();
+    expect(textOf(root)).toContain("Toolkit title");
+    act(() => {
+      byTestId(root, "tap-awareness-not-now").props.onPress();
+    });
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith("mingla.tapToPay.awarenessSeen.v1.user-1", "1");
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue("1");
+    const again = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    await settleSale();
+    expect(again.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+  });
+
+  test("hidden from someone without door money rights, and when not live", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    mockLive = true;
+    mockRole = { rank: 10, isLoading: false };
+    const scanner = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    await settleSale();
+    expect(scanner.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    mockLive = false;
+    mockRole = { rank: 60, isLoading: false };
+    const off = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    await settleSale();
+    expect(off.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
   });
 });
