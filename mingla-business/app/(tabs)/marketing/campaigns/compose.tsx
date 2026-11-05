@@ -81,8 +81,10 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type ViewStyle,
 } from "react-native";
@@ -159,6 +161,7 @@ import {
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
 import {
+  getMarketingAudienceDefinition,
   getMarketingAudienceKind,
   getOrCreateMarketingCircleAudience,
 } from "../../../../src/services/marketing/marketingCircleAudienceService";
@@ -170,7 +173,10 @@ import {
   campaignPayloadIssues,
 } from "../../../../src/services/marketing/campaignPayloadContract";
 import { useBrandEvents } from "../../../../src/services/marketing/brandEvents";
-import { ChannelTabs } from "../../../../src/components/marketing/ChannelTabs";
+import {
+  CHANNEL_LABEL,
+  ChannelTabs,
+} from "../../../../src/components/marketing/ChannelTabs";
 // #3682 wave 2 — push channel + one campaign across push, email and SMS.
 import {
   PushComposeCard,
@@ -178,24 +184,44 @@ import {
   pushBodyIssue,
   type PushAudienceReason,
 } from "../../../../src/components/marketing/PushComposeCard";
+import { useAutoFilledText } from "../../../../src/features/marketing/useAutoFilledText";
+import { ComposerPreviewTabs } from "../../../../src/components/marketing/ComposerPreviewTabs";
 import {
-  CHANNEL_LABEL,
-  CampaignChannelSelector,
-} from "../../../../src/components/marketing/CampaignChannelSelector";
+  audienceButtonName,
+  audienceSourceDetail,
+  combinedCountCaption,
+  leadBlastChannel,
+  needsCombinedLane,
+  prefillPushFromEmail,
+  prefillSmsFromEmail,
+  pushTitleFromSubject,
+  reconcileBlastChannels,
+  sendByUnavailable,
+  sourceKeyForOption,
+  sourceKeysForDefinition,
+  sortBlastChannels,
+  stripUnsupportedTokens,
+  toggleBlastChannel,
+} from "../../../../src/features/marketing/blastSendModel";
 import {
   confirmSiblingChannels,
   discardSiblingDrafts,
   campaignPreviewInput,
   extendedPushReady,
-  prepareSiblingChannel,
+  prepareCampaignGroupPreview,
   type CampaignChannel,
   type SiblingChannelState,
 } from "../../../../src/services/marketing/campaignChannelGroupService";
+import {
+  getCombinedAudienceSummary,
+  getOrCreateCombinedAudience,
+} from "../../../../src/services/marketing/marketingCombinedAudienceService";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import { SmsComposeCard } from "../../../../src/components/marketing/SmsComposeCard";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import type {
   CampaignChannelPayload,
+  CampaignGroupFigures,
   MarketingBookQuote,
   SealedMarketingAudienceKind,
 } from "../../../../src/types/marketing";
@@ -214,7 +240,7 @@ import {
 import { BrandCoverError } from "../../../../src/utils/brandCoverRules";
 // ORCH-1281 — wire body (incl. STOP footer) for the review-sheet MESSAGE row.
 import { smsBlastBodyWithFollow } from "../../../../src/utils/marketing/blastFollow";
-import { bodyWithFooter } from "../../../../src/utils/smsCost";
+import { bodyWithFooter, isGsm7, sanitizeGsm7 } from "../../../../src/utils/smsCost";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { useFeatureFlag } from "../../../../src/hooks/useFeatureFlag";
@@ -361,18 +387,42 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const resolvedAudience = useResolveAudience(audienceParam);
 
   // Composer state
-  const [channel, setChannel] = useState<MarketingChannelKind>("email");
+  // #4273 — "Send by": every ticked method. The first in display order leads the
+  // campaign group; at least one stays on.
+  const [sendChannels, setSendChannels] = useState<ReadonlySet<CampaignChannel>>(
+    () => new Set<CampaignChannel>(["email"]),
+  );
+  const channel = useMemo<MarketingChannelKind>(() => leadBlastChannel(sendChannels), [sendChannels]);
+  const extraChannels = useMemo<ReadonlySet<CampaignChannel>>(
+    () => new Set([...sendChannels].filter((kind) => kind !== channel)),
+    [channel, sendChannels],
+  );
+  const setChannel = useCallback((next: MarketingChannelKind): void => {
+    setSendChannels(new Set<CampaignChannel>([next]));
+  }, []);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  // META-ORCH-1161 Sub-B — SMS blast body (plain text, separate from the HTML
-  // email `body`). Only used when channel === 'sms'.
-  const [smsBody, setSmsBody] = useState("");
-  // #3682 wave 2 — the push line (max PUSH_BODY_MAX) and the other channels
-  // this campaign goes out on together ("Also send by").
-  const [pushBody, setPushBody] = useState("");
-  const [extraChannels, setExtraChannels] = useState<ReadonlySet<CampaignChannel>>(
-    () => new Set<CampaignChannel>(),
+  // #4273 — SMS and push pre-fill from the email until the host edits them; once
+  // edited, a later email change never overwrites their text.
+  const smsMessage = useAutoFilledText(useMemo(
+    () => prefillSmsFromEmail({ subject, bodyHtml: body, brandName }, { isGsm7, sanitizeGsm7 }),
+    [body, brandName, subject],
+  ));
+  const pushMessage = useAutoFilledText(useMemo(
+    () => prefillPushFromEmail({ bodyHtml: body, brandName }),
+    [body, brandName],
+  ));
+  const smsBody = smsMessage.text;
+  const setSmsBody = smsMessage.edit;
+  const pushBody = pushMessage.text;
+  const setPushBody = pushMessage.edit;
+  const pushTitle = useMemo<string>(
+    () => pushTitleFromSubject(subject, brandName),
+    [brandName, subject],
   );
+  const [previewTab, setPreviewTab] = useState<CampaignChannel>("email");
+  const previewChannel: CampaignChannel = sendChannels.has(previewTab) ? previewTab : channel;
+  const [groupFigures, setGroupFigures] = useState<CampaignGroupFigures | null>(null);
   const [siblings, setSiblings] = useState<SiblingChannelState[]>([]);
   const [siblingsPending, setSiblingsPending] = useState(false);
   // #3682 — Follow is useful for some campaigns but must not be forced into a
@@ -422,6 +472,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   );
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
+  // #4273 — the picked groups as the server's source keys, one lane decision:
+  // one group by one method keeps its lane, anything wider goes combined.
+  const [pickedKeys, setPickedKeys] = useState<readonly string[]>([]);
+  const [combinedPeople, setCombinedPeople] = useState<number | null>(null);
+  const [followersAlsoInBook, setFollowersAlsoInBook] = useState(0);
+  const [audiencePending, setAudiencePending] = useState(false);
   const [sealedAudienceKind, setSealedAudienceKind] =
     useState<SealedMarketingAudienceKind | null>(null);
   const [isBookAudience, setIsBookAudience] = useState(false);
@@ -453,16 +509,20 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     currentBrandRole.rank,
     bookOnline,
   );
-  const followerDeliveryFlag = channel === "sms"
-    ? followerSmsFlag
-    : channel === "push"
-      ? circleRosterFlag
-      : followerEmailFlag;
-  const extendedDeliveryFlag = channel === "sms"
-    ? extendedSmsFlag
-    : channel === "push"
-      ? extendedPushFlag
-      : extendedEmailFlag;
+  // #4273 — each method's switch, per Mingla-reach group. A group's row is open
+  // when any ticked method can reach it; the chip of a method that cannot says so.
+  const followersEnabled: Record<CampaignChannel, boolean> = {
+    email: followerEmailFlag.data === true,
+    sms: followerSmsFlag.data === true,
+    push: circleRosterFlag.data === true,
+  };
+  const extendedEnabled: Record<CampaignChannel, boolean> = {
+    email: extendedEmailFlag.data === true,
+    sms: extendedSmsFlag.data === true,
+    push: extendedPushFlag.data === true,
+  };
+  const followerDeliveryFlag = { data: [...sendChannels].some((kind) => followersEnabled[kind]) };
+  const extendedDeliveryFlag = { data: [...sendChannels].some((kind) => extendedEnabled[kind]) };
   const circleAudienceEnabled =
     bookBlastEnabled && circleRosterFlag.data === true;
   const circleReachRequest = useRef(0);
@@ -637,18 +697,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     channel,
   });
 
-  const bookAllowanceLabel = (() => {
-    const allowance = bookQuote?.allowance;
-    if (!allowance || !isBookAudience) return undefined;
-    if (channel === "sms") {
-      return `${allowance.smsRemaining} of ${allowance.smsCap} texts left this month`;
-    }
-    if (channel === "email") {
-      return `${allowance.emailRemaining} of ${allowance.emailCap} emails left this month`;
-    }
-    return undefined;
-  })();
-
   const bookWeekBlastWarning =
     isBookAudience &&
     bookQuote?.allowance != null &&
@@ -726,6 +774,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(manual.groupId);
           setAudienceName(manual.name);
+          setPickedKeys([`group:${manual.groupId}`]);
           setSealedAudienceKind("manual_group");
           setIsBookAudience(true);
         } else if (
@@ -747,6 +796,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           );
           setSealedAudienceKind(audienceKind);
           setIsBookAudience(true);
+          setPickedKeys([audienceKind === "brand_followers" ? "followers" : "extended"]);
         } else if (audienceParam.kind === "brand") {
           // #3682 — refuse a deep-link that targets another brand's buyers.
           if (audienceParam.id !== brandId) {
@@ -763,6 +813,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setAudienceName("All brand buyers");
           setSealedAudienceKind(null);
           setIsBookAudience(false);
+          setPickedKeys(["brand_buyers"]);
         } else {
           // #3682 — event buyers must belong to the active brand.
           await assertEventBelongsToBrand({
@@ -779,6 +830,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setAudienceName("Event buyers");
           setSealedAudienceKind(null);
           setIsBookAudience(false);
+          setPickedKeys([`event:${audienceParam.id}`]);
         }
       } catch (err) {
         if (!cancelled) {
@@ -860,6 +912,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           );
           setSealedAudienceKind(storedAudienceKind);
           setIsBookAudience(storedAudienceKind !== null);
+          const stored = await getMarketingAudienceDefinition(restoredAudienceId);
+          if (!cancelled) {
+            setPickedKeys(sourceKeysForDefinition(restoredAudienceId, stored.definition));
+            if (stored.name !== null) setAudienceName(stored.name);
+          }
         } else {
           setSealedAudienceKind(null);
           setIsBookAudience(false);
@@ -882,9 +939,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setSubject(row.channel_payload.subject ?? "");
           setBody(row.channel_payload.body_html ?? "");
         } else if (row.channel_payload.kind === "push") {
-          setPushBody(row.channel_payload.body ?? "");
+          // A reopened draft holds the host's own text: never re-filled.
+          if (row.channel_payload.body) setPushBody(row.channel_payload.body);
         } else if (row.channel_payload.kind === "sms") {
-          setSmsBody(row.channel_payload.body ?? "");
+          if (row.channel_payload.body) setSmsBody(row.channel_payload.body);
           setIncludeSmsFollowCta(
             row.channel_payload.include_follow_cta === true,
           );
@@ -933,11 +991,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // `channel` from `kind`, so the discriminated union drives everything.
   // #3682 wave 2 — the payload for ANY channel (lead or "Also send by").
   const payloadFor = useCallback((kind: CampaignChannel): CampaignChannelPayload => {
-    if (kind === "push") return { kind: "push", body: pushBody.trim() };
+    if (kind === "push") {
+      return {
+        kind: "push",
+        body: stripUnsupportedTokens(pushBody, brandName),
+        ...(pushTitle.length > 0 ? { title: pushTitle } : {}),
+      };
+    }
     if (kind === "sms") {
       return {
         kind: "sms",
-        body: smsBody,
+        body: stripUnsupportedTokens(smsBody, brandName),
         include_follow_cta: includeSmsFollowCta,
         ...(mmsMediaUrls.length > 0 ? { media_urls: mmsMediaUrls } : {}),
       };
@@ -949,27 +1013,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       body_text: stripHtml(body),
       embedded_events: extractEmbeddedEventIds(body),
     };
-  }, [pushBody, smsBody, includeSmsFollowCta, mmsMediaUrls, subject, body]);
+  }, [brandName, pushBody, pushTitle, smsBody, includeSmsFollowCta, mmsMediaUrls, subject, body]);
 
-  const buildPayload = useCallback((): CampaignChannelPayload => {
-    if (channel === "push") return payloadFor("push");
-    if (channel === "sms") {
-      // ORCH-1282 — only attach media_urls when a verified photo is present.
-      return {
-        kind: "sms",
-        body: smsBody,
-        include_follow_cta: includeSmsFollowCta,
-        ...(mmsMediaUrls.length > 0 ? { media_urls: mmsMediaUrls } : {}),
-      };
-    }
-    return {
-      kind: "email",
-      subject,
-      body_html: body,
-      body_text: stripHtml(body),
-      embedded_events: extractEmbeddedEventIds(body),
-    };
-  }, [channel, payloadFor, smsBody, includeSmsFollowCta, mmsMediaUrls, subject, body]);
+  const buildPayload = useCallback(
+    (): CampaignChannelPayload => payloadFor(channel),
+    [channel, payloadFor],
+  );
 
   // Campaign name — email uses the subject; SMS uses the first ~40 chars of the
   // body (SMS has no subject line).
@@ -1037,6 +1086,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       subject,
       body,
       smsBody,
+      pushBody,
       includeSmsFollowCta,
       mmsMediaUrls,
       embeddedEvents: extractEmbeddedEventIds(body),
@@ -1066,8 +1116,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   );
 
   const coreFooterDisabled = useMemo<boolean>(() => {
-    return audienceId === null || !contentReady;
-  }, [audienceId, contentReady]);
+    return audienceId === null || audiencePending || !contentReady;
+  }, [audienceId, audiencePending, contentReady]);
 
   // F.10c: human-readable "what's missing" message for the toast banner
   // that fires when an operator taps Send Now / Schedule before filling
@@ -1075,7 +1125,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const missingFieldsLabel = useCallback((): string | null => {
     // ORCH-1289 — never fire a send while a photo is mid-upload; only VERIFIED
     // public URLs ride the payload, so a partial send would silently drop media.
-    if (channel === "sms" && mmsUploading) {
+    if (sendChannels.has("sms") && mmsUploading) {
       return "Photos are still uploading — try again in a moment.";
     }
     const missing: string[] = [];
@@ -1099,7 +1149,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     if (missing.length === 2)
       return `Add ${missing[0]} and ${missing[1]} first.`;
     return `Add ${missing[0]}, ${missing[1]}, and ${missing[2]} first.`;
-  }, [audienceId, channel, channelContentReady, extraChannels, pushBody, smsBody, subject, body, mmsUploading]);
+  }, [audienceId, channel, channelContentReady, extraChannels, pushBody, sendChannels, smsBody, subject, body, mmsUploading]);
 
   // Validation — Review CTA disabled until required fields are present.
   const validationIssues = useMemo<string[]>(() => {
@@ -1146,6 +1196,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     },
   });
 
+  const openReviewRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const handleConfirmSchedule = useCallback(() => {
     if (campaignId === null) return;
     if (isBookAudience) {
@@ -1159,7 +1210,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           // spread overrides it only for one of the two new circle kinds.
           audience_kind: isManualAudience ? "manual_group" : "all_brand_people",
           ...(sealedAudienceKind === "brand_followers" ||
-          sealedAudienceKind === "brand_circle_extended"
+          sealedAudienceKind === "brand_circle_extended" ||
+          sealedAudienceKind === "combined_sources"
             ? { audience_kind: sealedAudienceKind }
             : {}),
           channel,
@@ -1222,6 +1274,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             }
             if (
               error instanceof MarketingBookSendError &&
+              error.refreshedPreview !== null &&
+              sealedAudienceKind === "combined_sources"
+            ) {
+              // #4273 — the set moved: every method and the tiles refresh together.
+              setBookStaleDetail(undefined);
+              void openReviewRef.current().then(() => setBookStaleWarning(true));
+              return;
+            }
+            if (
+              error instanceof MarketingBookSendError &&
               error.refreshedPreview !== null
             ) {
               const next = error.refreshedPreview;
@@ -1273,36 +1335,103 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     scheduleMutation,
   ]);
 
-  // #3682 wave 2 — create/refresh a sibling draft + sealed preview for every
-  // "Also send by" channel. Called when the review sheet opens.
-  const prepareSiblings = useCallback(async (leadId: string): Promise<void> => {
-    if (extraChannels.size === 0 || accountId === null || brandId === null || audienceId === null) {
-      setSiblings([]);
+  // #4273 — one lane decision. A wider selection needs the server's combined
+  // audience; going back to one group by one method returns to that group's lane.
+  const usesCombinedLane = bookBlastEnabled &&
+    needsCombinedLane(pickedKeys, sortBlastChannels(sendChannels), followersAlsoInBook);
+  const combinedKey = usesCombinedLane ? pickedKeys.slice().sort().join("|") : null;
+  useEffect(() => {
+    if (combinedKey === null || accountId === null || brandId === null) return;
+    let cancelled = false;
+    setAudiencePending(true);
+    void (async () => {
+      try {
+        const [combined, summary] = await Promise.all([
+          getOrCreateCombinedAudience({ actor_id: accountId, brand_id: brandId, sources: pickedKeys }),
+          getCombinedAudienceSummary({ actor_id: accountId, brand_id: brandId, sources: pickedKeys }),
+        ]);
+        if (cancelled) return;
+        setAudienceId(combined.audienceId);
+        setSealedAudienceKind("combined_sources");
+        setIsBookAudience(true);
+        setCombinedPeople(summary.peopleCount);
+        setBookQuote(null);
+        setIsDirty(true);
+      } catch (err) {
+        if (!cancelled) {
+          setErrorBanner(
+            err instanceof Error
+              ? err.message
+              : "Couldn't combine these groups. Pick them again or retry.",
+          );
+        }
+      } finally {
+        if (!cancelled) setAudiencePending(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- combinedKey stands for pickedKeys
+  }, [accountId, brandId, combinedKey]);
+
+  // Every path into the review: save, then the server's locked preview.
+  const openReviewWithServerPreview = useCallback(async (): Promise<void> => {
+    // A method unticked since the last review must not stay in the group, or
+    // clash with the lead taking over its channel.
+    const staleSiblings = siblings.filter((row) => !extraChannels.has(row.channel));
+    if (staleSiblings.length > 0) {
+      await discardSiblingDrafts(staleSiblings.map((row) => row.campaignId));
+    }
+    const id = await flushDraft();
+    if (id === null) {
+      setErrorBanner("Save the draft, then preview again.");
       return;
     }
-    setSiblingsPending(true);
-    const next: SiblingChannelState[] = [];
-    for (const kind of extraChannels) {
-      const existing = siblings.find((row) => row.channel === kind)?.campaignId ?? null;
-      try {
-        next.push(await prepareSiblingChannel({
-          leadCampaignId: leadId,
+    setBookPreviewError(null);
+    setBookQuote(null);
+    setGroupFigures(null);
+    setShowReview(true);
+    const newRequestId = (): string =>
+      globalThis.crypto?.randomUUID?.() ??
+        `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`;
+    try {
+      if (sealedAudienceKind === "combined_sources" && accountId !== null && brandId !== null && audienceId !== null) {
+        setSiblingsPending(true);
+        const prepared = await prepareCampaignGroupPreview({
+          leadCampaignId: id,
+          leadChannel: channel,
           accountId,
           brandId,
           audienceId,
-          audienceKind: sealedAudienceKind ?? "all_brand_people",
-          channel: kind,
           name: campaignName,
-          payload: payloadFor(kind),
-          existingCampaignId: existing,
-        }));
-      } catch {
-        setErrorBanner(`Couldn't prepare the ${CHANNEL_LABEL[kind]} part. Try again.`);
+          extras: [...extraChannels].map((kind) => ({
+            channel: kind,
+            payload: payloadFor(kind),
+            existingCampaignId: siblings.find((row) => row.channel === kind)?.campaignId ?? null,
+          })),
+        });
+        setSiblingsPending(false);
+        setSiblings(prepared.siblings);
+        setGroupFigures(prepared.group);
+        if (prepared.lead === null) {
+          setBookPreviewError(bookPreviewFailure(new Error(prepared.leadError ?? "BOOK_BLAST_FAILED")));
+          return;
+        }
+        setBookQuote(prepared.lead);
+      } else {
+        setBookQuote(await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel)));
       }
+      setBookStaleWarning(false);
+      setBookNow(Date.now());
+      setBookRequestId(newRequestId());
+    } catch (error) {
+      setSiblingsPending(false);
+      setBookPreviewError(bookPreviewFailure(error));
     }
-    setSiblings(next);
-    setSiblingsPending(false);
-  }, [accountId, audienceId, brandId, campaignName, extraChannels, payloadFor, sealedAudienceKind, siblings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bookPreviewFailure reads only the audience kind below
+  }, [accountId, audienceId, bookPreviewMutation, brandId, campaignName, channel, extraChannels, flushDraft, payloadFor, sealedAudienceKind, siblings]);
+  openReviewRef.current = openReviewWithServerPreview;
 
   // Sibling drafts never outlive a review the host backed out of: the lead
   // draft's channel follows the active tab, so a stale sibling could clash.
@@ -1312,6 +1441,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       void discardSiblingDrafts(siblings.map((row) => row.campaignId));
       setSiblings([]);
     }
+    setGroupFigures(null);
   }, [siblings]);
 
   // ORCH-1270 F-1 — capture the soonest global send window at the moment the
@@ -1320,12 +1450,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // send-now — it's informational (off-hours recipients are held, not lost),
   // not a conditional warning.
   const captureSmsSendWindow = useCallback((): void => {
-    if (channel !== "sms") {
+    if (!sendChannels.has("sms")) {
       setNextWindowIso(null);
       return;
     }
     setNextWindowIso(nextGlobalSendWindowOpen(new Date()).toISOString());
-  }, [channel]);
+  }, [sendChannels]);
 
   // ORCH-1270 RC-3 — "Schedule for {next window}" secondary CTA. Schedules the
   // blast for the soonest sending window instead of firing into a currently
@@ -1428,21 +1558,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   const reach = resolvedAudience.data?.reach ?? null;
 
-  // META-ORCH-1161 Sub-B — channel switch (Email ↔ SMS). Marks dirty so the
-  // channel choice persists to the draft.
-  const handleChannelChange = useCallback(
-    (next: MarketingChannelKind): void => {
-      setChannel(next);
+  // #4273 — "Send by": tick any mix, at least one stays on. Marks dirty so the
+  // lead method persists to the draft.
+  const handleToggleChannel = useCallback(
+    (kind: MarketingChannelKind): void => {
+      const next = toggleBlastChannel(sortBlastChannels(sendChannels), kind);
+      if (next === null) return;
+      setSendChannels(new Set(next));
       setIsDirty(true);
-      setExtraChannels((prev) => {
-        if (!prev.has(next)) return prev;
-        const copy = new Set(prev);
-        copy.delete(next);
-        return copy;
-      });
-      // ORCH-1282 / ORCH-1289 — attached photos are meaningless off the SMS
-      // channel; clear them (and revoke any web blob URLs first).
-      if (next !== "sms") {
+      // ORCH-1282 / ORCH-1289 — attached photos are meaningless without SMS;
+      // clear them (and revoke any web blob URLs first).
+      if (!next.includes("sms")) {
         revokeBrowserPickedFiles(
           mmsMedia
             .filter((m) => m.objectUrl !== null)
@@ -1451,8 +1577,28 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         setMmsMedia([]);
       }
     },
-    [mmsMedia],
+    [mmsMedia, sendChannels],
   );
+
+  // #4273 — why a chip is off for the picked groups. The Push rule is unchanged:
+  // a buyer list turns Push off for the whole selection, never for a subset.
+  const channelUnavailable = useMemo(
+    () => sendByUnavailable({
+      sourceKeys: pickedKeys,
+      combinedAllowed: bookBlastEnabled,
+      sealedAudience: isBookAudience,
+      lead: channel,
+      followersEnabled,
+      extendedEnabled,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the two maps are read from flags
+    [bookBlastEnabled, channel, isBookAudience, pickedKeys, followerEmailFlag.data, followerSmsFlag.data, circleRosterFlag.data, extendedEmailFlag.data, extendedSmsFlag.data, extendedPushFlag.data],
+  );
+  useEffect(() => {
+    const current = sortBlastChannels(sendChannels);
+    const next = reconcileBlastChannels(current, channelUnavailable);
+    if (next.join() !== current.join()) setSendChannels(new Set(next));
+  }, [channelUnavailable, sendChannels]);
 
   // ORCH-1282 / ORCH-1289 — pick + upload up to MMS_MAX_MEDIA photos. Mirrors
   // ExperienceStopPhotoSheet.pickFromLibrary cross-platform acquisition (native
@@ -1620,8 +1766,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       sealedAudienceKind === "brand_circle_extended"
       ? (bookQuote?.reachableCount ?? null)
       : channelReachable;
-  const displayedAudienceTotal =
-    sealedAudienceKind === "brand_followers" ||
+  const composerAudienceCaption = sealedAudienceKind === "combined_sources"
+    ? combinedCountCaption(combinedPeople)
+    : null;
+  const displayedAudienceTotal = sealedAudienceKind === "combined_sources"
+    ? combinedPeople
+    : sealedAudienceKind === "brand_followers" ||
       sealedAudienceKind === "brand_circle_extended"
       ? selectedCircleTotal
       : (reach?.total ?? null);
@@ -1638,6 +1788,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const handleSelectAudience = useCallback(
     async (option: AudienceOption) => {
       setAudienceName(option.name);
+      setPickedKeys([sourceKeyForOption(option)]);
       const nextSealedKind: SealedMarketingAudienceKind | null =
         option.kind === "all_brand_people" ||
           option.kind === "manual_group" ||
@@ -1686,6 +1837,44 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     },
     [accountId, brandId],
   );
+
+  // #4273 — "Done" in the picker: one group keeps its own lane (handled above),
+  // several become one combined audience through the lane decision.
+  const handleAudienceDone = useCallback(
+    (options: AudienceOption[]): void => {
+      const keys = options.map(sourceKeyForOption);
+      setPickedKeys(keys);
+      setAudienceName(audienceButtonName(options.map((option) => option.name)));
+      setCombinedPeople(null);
+      setIsDirty(true);
+      // One group by one method keeps its own lane; the lane effect owns the rest.
+      if (!needsCombinedLane(keys, sortBlastChannels(sendChannels), followersAlsoInBook)) {
+        void handleSelectAudience(options[0]);
+      } else {
+        setBookQuote(null);
+      }
+    },
+    [followersAlsoInBook, handleSelectAudience, sendChannels],
+  );
+  const needsPickerSummary = pickedKeys.includes("followers") && pickedKeys.length === 1;
+  useEffect(() => {
+    if (!needsPickerSummary || accountId === null || brandId === null || !bookBlastEnabled) {
+      setFollowersAlsoInBook(0);
+      return;
+    }
+    let cancelled = false;
+    void getCombinedAudienceSummary({ actor_id: accountId, brand_id: brandId, sources: [] })
+      .then((summary) => {
+        if (!cancelled) setFollowersAlsoInBook(summary.followersAlsoInBook ?? 0);
+      })
+      .catch(() => {
+        // Followers keeps its own lane; the server preview stays the truth.
+        if (!cancelled) setFollowersAlsoInBook(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, bookBlastEnabled, brandId, needsPickerSummary]);
 
   const onSubjectChange = useCallback((value: string) => {
     setSubject(value);
@@ -1756,11 +1945,15 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const blockedReason = useMemo<string | null>(() => {
     if (!coreFooterDisabled) return null;
     if (audienceId === null) return "Pick an audience first.";
-    if (channel === "push") return pushBodyIssue(pushBody) ?? "Write each channel's message.";
-    if (channel === "sms") return "Write your message.";
-    if (subject.trim().length === 0) return "Add a subject.";
+    if (audiencePending) return "Combining your groups…";
+    if (sendChannels.has("email")) {
+      if (subject.trim().length === 0) return "Add a subject.";
+      if (body.trim().length === 0) return "Write your message.";
+    }
+    if (sendChannels.has("sms") && smsBody.trim().length === 0) return "Write your message.";
+    if (sendChannels.has("push")) return pushBodyIssue(pushBody) ?? "Write your message.";
     return "Write your message.";
-  }, [coreFooterDisabled, audienceId, channel, pushBody, subject]);
+  }, [coreFooterDisabled, audienceId, audiencePending, body, pushBody, sendChannels, smsBody, subject]);
 
   // ORCH-1270 RC-3 — short human label for the "Schedule for …" affordance,
   // same locale format as scheduledLabel.
@@ -1801,28 +1994,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       // silently resetting it would discard a time the operator has already
       // picked and is looking at.
       if (isBookAudience) {
-        void (async () => {
-          const id = await flushDraft();
-          if (id === null) {
-            setErrorBanner("Save the draft, then preview again.");
-            return;
-          }
-          setBookPreviewError(null);
-          setBookQuote(null);
-          setShowReview(true);
-          try {
-            const quote = await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel));
-            void prepareSiblings(id);
-            setBookQuote(quote);
-            setBookStaleWarning(false);
-            setBookRequestId(
-              globalThis.crypto?.randomUUID?.() ??
-                `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
-            );
-          } catch (error) {
-            setBookPreviewError(bookPreviewFailure(error));
-          }
-        })();
+        void openReviewWithServerPreview();
         return;
       }
       setShowReview(true);
@@ -1859,6 +2031,52 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       }
     },
   });
+
+  // #4273 — one preview per ticked method, for the desktop pane and the phone sheet.
+  const renderMethodPreview = (kind: CampaignChannel): React.ReactElement => {
+    if (kind === "push") {
+      return (
+        <PushPreview
+          body={stripUnsupportedTokens(pushBody, brandName)}
+          brandName={brandName ?? "Your brand"}
+          reason={pushAudienceReason}
+          title={pushTitle}
+        />
+      );
+    }
+    if (kind === "sms") {
+      // ORCH-1281 — SMS shows the phone-bubble preview.
+      return (
+        <SmsPreviewPane
+          body={stripUnsupportedTokens(smsBody, brandName)}
+          brandName={brandName}
+          brandSlug={brandSlug}
+          includeFollowCta={includeSmsFollowCta}
+          reachableSms={reach?.reachable_sms ?? null}
+          currencyCode={currentBrand?.defaultCurrency ?? "USD"}
+          hasMedia={mmsMedia.length > 0}
+          mediaUris={mmsPreviewUris}
+        />
+      );
+    }
+    return (
+      <EmailPreviewPane
+        subject={subject}
+        bodyHtml={body}
+        variables={previewVariables}
+        brandName={brandName}
+        brandSlug={brandSlug}
+        brandHeaderImageUrl={
+          currentBrand?.coverMediaType !== "video"
+            ? (currentBrand?.coverMediaUrl ?? null)
+            : null
+        }
+        embeddedEvents={brandEvents.filter((e) =>
+          extractEmbeddedEventIds(body).includes(e.id),
+        )}
+      />
+    );
+  };
 
   // Pre-fill loading skeleton
   if (audienceParam !== null && audienceId === null && errorBanner === null) {
@@ -1953,6 +2171,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       onOpenPicker={() => setShowAudiencePicker(true)}
                       disabled={brandId === null}
                       compact={isShort}
+                      combinedCaption={composerAudienceCaption}
                     />
                   </View>
 
@@ -1963,67 +2182,15 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       isShort ? styles.channelRowShort : null,
                     ]}
                   >
-                    <ChannelTabs active={channel} onChange={handleChannelChange} />
+                    <ChannelTabs
+                      selected={sendChannels}
+                      onToggle={handleToggleChannel}
+                      unavailable={channelUnavailable}
+                    />
                   </View>
-                  <CampaignChannelSelector
-                    lead={channel}
-                    selected={extraChannels}
-                    onToggle={(kind) => {
-                      setIsDirty(true);
-                      setExtraChannels((prev) => {
-                        const copy = new Set(prev);
-                        if (copy.has(kind)) copy.delete(kind);
-                        else copy.add(kind);
-                        return copy;
-                      });
-                    }}
-                    unavailable={isBookAudience ? {} : {
-                      push: "pick Your Book, Followers or a saved group",
-                      ...(channel === "sms" ? {} : { sms: "pick Your Book, Followers or a saved group" }),
-                      ...(channel === "email" ? {} : { email: "pick Your Book, Followers or a saved group" }),
-                    }}
-                  />
                 </View>
 
-                {channel === "push" ? (
-                  <PushComposeCard
-                    body={pushBody}
-                    onChangeBody={(text) => {
-                      setPushBody(text);
-                      setIsDirty(true);
-                    }}
-                    brandName={brandName ?? "Your brand"}
-                    reason={pushAudienceReason}
-                    unavailableReason={isBookAudience ? null
-                      : "Push reaches Mingla accounts only. Pick Your Book, Followers, Friends of followers or a saved group."}
-                  />
-                ) : channel === "sms" ? (
-                  <SmsComposeCard
-                    value={smsBody}
-                    onChangeText={(text) => {
-                      setSmsBody(text);
-                      setIsDirty(true);
-                    }}
-                    reachableSms={reach?.reachable_sms ?? null}
-                    currencyCode={currentBrand?.defaultCurrency ?? "USD"}
-                    editable={!scheduleMutation.isPending}
-                    includeFollowCta={includeSmsFollowCta}
-                    brandName={brandName}
-                    brandSlug={brandSlug}
-                    onIncludeFollowCtaChange={(value) => {
-                      setIncludeSmsFollowCta(value);
-                      setIsDirty(true);
-                    }}
-                    brandId={brandId}
-                    media={mmsComposeItems}
-                    maxMedia={MMS_MAX_MEDIA}
-                    uploading={mmsUploading}
-                    onPickMedia={() => {
-                      void handlePickMms();
-                    }}
-                    onRemoveMedia={handleRemoveMms}
-                  />
-                ) : (
+                {sendChannels.has("email") ? (
                   <ComposerV2Editor
                     ref={editorHandleRef}
                     initialBodyHtml={body}
@@ -2038,17 +2205,80 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                     currentDraftIsDirty={isDirty}
                     onErrorToast={(msg) => setErrorBanner(msg)}
                   />
+                ) : (
+                  /* Email off: the same one message, without the email toolbar. */
+                  <View style={styles.plainMessage} testID="composer-plain-message">
+                    <TextInput
+                      value={subject}
+                      onChangeText={onSubjectChange}
+                      placeholder="Title"
+                      placeholderTextColor={textTokens.tertiary}
+                      accessibilityLabel="Title"
+                      style={styles.plainTitle}
+                    />
+                    <TextInput
+                      value={body}
+                      onChangeText={onBodyChange}
+                      placeholder="Write to your people…"
+                      placeholderTextColor={textTokens.tertiary}
+                      accessibilityLabel="Message"
+                      multiline
+                      style={styles.plainBody}
+                    />
+                  </View>
                 )}
-                {channel !== "push" && extraChannels.has("push") ? (
-                  <PushComposeCard
-                    body={pushBody}
-                    onChangeBody={(text) => {
-                      setPushBody(text);
-                      setIsDirty(true);
-                    }}
-                    brandName={brandName ?? "Your brand"}
-                    reason={pushAudienceReason}
-                  />
+                {sendChannels.has("sms") || sendChannels.has("push") ? (
+                  <ScrollView
+                    style={[
+                      styles.methodCards,
+                      sendChannels.has("email") ? styles.methodCardsUnderEditor : null,
+                    ]}
+                    keyboardShouldPersistTaps="handled"
+                    testID="composer-method-cards"
+                  >
+                    {sendChannels.has("sms") ? (
+                      <SmsComposeCard
+                        stacked
+                        autoFillLabel={smsMessage.label}
+                        value={smsBody}
+                        onChangeText={(text) => {
+                          setSmsBody(text);
+                          setIsDirty(true);
+                        }}
+                        reachableSms={reach?.reachable_sms ?? null}
+                        currencyCode={currentBrand?.defaultCurrency ?? "USD"}
+                        editable={!scheduleMutation.isPending}
+                        includeFollowCta={includeSmsFollowCta}
+                        brandName={brandName}
+                        brandSlug={brandSlug}
+                        onIncludeFollowCtaChange={(value) => {
+                          setIncludeSmsFollowCta(value);
+                          setIsDirty(true);
+                        }}
+                        brandId={brandId}
+                        media={mmsComposeItems}
+                        maxMedia={MMS_MAX_MEDIA}
+                        uploading={mmsUploading}
+                        onPickMedia={() => {
+                          void handlePickMms();
+                        }}
+                        onRemoveMedia={handleRemoveMms}
+                      />
+                    ) : null}
+                    {sendChannels.has("push") ? (
+                      <PushComposeCard
+                        autoFillLabel={pushMessage.label}
+                        title={pushTitle}
+                        body={pushBody}
+                        onChangeBody={(text) => {
+                          setPushBody(text);
+                          setIsDirty(true);
+                        }}
+                        brandName={brandName ?? "Your brand"}
+                        reason={pushAudienceReason}
+                      />
+                    ) : null}
+                  </ScrollView>
                 ) : null}
               </View>
 
@@ -2063,7 +2293,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               <ComposerCommitBar
                 onPreview={() => setShowPreview(true)}
                 previewLabel={
-                  channel === "sms" ? "Preview message" : "Preview email"
+                  channel === "email" ? "Preview email" : "Preview message"
                 }
                 onPickTime={() => {
                   // The picker sets WHEN. It no longer needs the fields to
@@ -2086,30 +2316,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   }
                   // ORCH-1270 RC-3 — snapshot the send window at tap time (SMS).
                   captureSmsSendWindow();
-                  if (isBookAudience) {
-                    void (async () => {
-                      const id = await flushDraft();
-                      if (id === null) {
-                        setErrorBanner("Save the draft, then preview again.");
-                        return;
-                      }
-                      setBookPreviewError(null);
-                      setBookQuote(null);
-                      setShowReview(true);
-                      try {
-                        const quote = await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel));
-            void prepareSiblings(id);
-                        setBookQuote(quote);
-                        setBookStaleWarning(false);
-                        setBookRequestId(
-                          globalThis.crypto?.randomUUID?.() ??
-                            `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
-                        );
-                      } catch (error) {
-                        setBookPreviewError(bookPreviewFailure(error));
-                      }
-                    })();
-                  } else setShowReview(true);
+                  if (isBookAudience) void openReviewWithServerPreview();
+                  else setShowReview(true);
                 }}
                 commitDisabled={coreFooterDisabled}
                 blockedReason={blockedReason}
@@ -2119,38 +2327,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }
           preview={
             isWideDesktop ? (
-              // ORCH-1281 — SMS channel shows the phone-bubble preview; email
-              // keeps EmailPreviewPane (untouched).
-              channel === "push" ? (
-                <PushPreview body={pushBody} brandName={brandName ?? "Your brand"} reason={pushAudienceReason} />
-              ) : channel === "sms" ? (
-                <SmsPreviewPane
-                  body={smsBody}
-                  brandName={brandName}
-                  brandSlug={brandSlug}
-                  includeFollowCta={includeSmsFollowCta}
-                  reachableSms={reach?.reachable_sms ?? null}
-                  currencyCode={currentBrand?.defaultCurrency ?? "USD"}
-                  hasMedia={mmsMedia.length > 0}
-                  mediaUris={mmsPreviewUris}
-                />
-              ) : (
-                <EmailPreviewPane
-                  subject={subject}
-                  bodyHtml={body}
-                  variables={previewVariables}
-                  brandName={brandName}
-                  brandSlug={brandSlug}
-                  brandHeaderImageUrl={
-                    currentBrand?.coverMediaType !== "video"
-                      ? (currentBrand?.coverMediaUrl ?? null)
-                      : null
-                  }
-                  embeddedEvents={brandEvents.filter((e) =>
-                    extractEmbeddedEventIds(body).includes(e.id),
-                  )}
-                />
-              )
+              <ComposerPreviewTabs
+                channels={sortBlastChannels(sendChannels)}
+                active={previewChannel}
+                onSelect={setPreviewTab}
+                pane={renderMethodPreview(previewChannel)}
+              />
             ) : undefined
           }
         />
@@ -2164,6 +2346,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           selectedAudienceId={audienceId}
           onClose={() => setShowAudiencePicker(false)}
           onSelect={handleSelectAudience}
+          multiSelect={bookBlastEnabled
+            ? { selectedKeys: pickedKeys, onDone: handleAudienceDone }
+            : undefined}
           actorId={accountId}
           bookBlastEnabled={bookBlastEnabled}
           manualGroupsEnabled={bookBlastEnabled && manualGroupFlag.data === true}
@@ -2182,10 +2367,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               ? "They opted into extended brand reach · Consent controlled"
               : undefined}
           recipientCount={
-            isBookAudience
+            groupFigures !== null
+              ? groupFigures.reachableCount
+              : isBookAudience
               ? (bookQuote?.reachableCount ?? null)
               : channelReachable
           }
+          audienceGroups={groupFigures?.audienceSources.map((source) => ({
+            key: source.key,
+            name: source.name,
+            detail: audienceSourceDetail(source),
+          }))}
           subject={subject}
           scheduledLabel={scheduledLabel}
           isSendNow={sendMode === "now"}
@@ -2199,7 +2391,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           onBack={closeReview}
           onClose={closeReview}
           onConfirm={handleConfirmSchedule}
-          smsInfoNote={channel === "sms"}
+          smsInfoNote={sendChannels.has("sms")}
           nextWindowLabel={nextWindowLabel}
           onScheduleForNextWindow={
             isBookAudience ? undefined : handleScheduleForNextWindow
@@ -2209,32 +2401,41 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           messagePreview={channel === "push"
             ? pushBody.trim()
             : bodyWithFooter(smsBlastBodyWithFollow(smsBody, brandName, includeSmsFollowCta ? brandSlug : null)).slice(0, 160)}
-          additionalChannels={[...extraChannels].map((kind) => {
-            const row = siblings.find((item) => item.channel === kind);
-            const quote = row?.quote ?? null;
-            const allowance = quote?.allowance;
-            return {
-              key: kind,
-              label: CHANNEL_LABEL[kind],
-              reachLabel: siblingsPending && row === undefined
-                ? "Checking reach…"
-                : quote === null ? "Reach unavailable" : `${quote.reachableCount} reachable`,
-              costLabel: kind === "push" || quote?.costKind === "not_metered"
-                ? "Free"
-                : quote === null
-                  ? "Cost unavailable"
-                  : `${quote.currency ?? ""} ${((quote.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated`,
-              allowanceLabel: allowance === undefined || kind === "push"
-                ? undefined
-                : kind === "sms"
-                  ? `${allowance.smsRemaining} of ${allowance.smsCap} texts left this month`
-                  : `${allowance.emailRemaining} of ${allowance.emailCap} emails left this month`,
-              error: row?.error ?? null,
-            };
-          })}
+          extraPushPreview={channel !== "push" && sendChannels.has("push") ? pushBody.trim() : null}
+          sendingBy={isBookAudience
+            ? sortBlastChannels(sendChannels).map((kind) => {
+                const row = siblings.find((item) => item.channel === kind);
+                const quote = kind === channel ? bookQuote : row?.quote ?? null;
+                const allowance = quote?.allowance;
+                return {
+                  key: kind,
+                  label: CHANNEL_LABEL[kind],
+                  reachLabel: (kind === channel ? bookPreviewMutation.isPending : siblingsPending) && quote === null
+                    ? "Checking reach…"
+                    : quote === null ? "Reach unavailable" : `${quote.reachableCount} reachable`,
+                  costLabel: kind === "push" || quote?.costKind === "not_metered"
+                    ? "Free"
+                    : quote === null
+                      ? "Cost unavailable"
+                      : `${quote.currency ?? ""} ${((quote.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated`,
+                  allowanceLabel: allowance === undefined
+                    ? undefined
+                    : kind === "sms"
+                      ? `${allowance.smsRemaining} of ${allowance.smsCap} texts left this month`
+                      : kind === "email"
+                        ? `${allowance.emailRemaining} of ${allowance.emailCap} emails left this month`
+                        : "Unlimited",
+                  error: kind === channel ? null : row?.error ?? null,
+                };
+              })
+            : undefined}
           hasMedia={mmsMedia.length > 0}
           estimatedCostLabel={
-            isBookAudience && bookQuote !== null && channel === "push"
+            groupFigures !== null
+              ? groupFigures.costKind === "not_metered"
+                ? "Free"
+                : `${groupFigures.currency ?? ""} ${((groupFigures.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated provider cost`
+              : isBookAudience && bookQuote !== null && channel === "push"
               ? "Free · push is unlimited"
               : isBookAudience && bookQuote !== null
               ? bookQuote.costKind === "not_metered"
@@ -2242,33 +2443,23 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 : `${bookQuote.currency ?? ""} ${((bookQuote.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated provider cost`
               : undefined
           }
-          selectedCount={isBookAudience ? bookQuote?.selectedCount : undefined}
+          selectedCount={groupFigures?.selectedCount ?? (isBookAudience ? bookQuote?.selectedCount : undefined)}
           suppressedCount={
-            isBookAudience ? bookQuote?.suppressedCount : undefined
+            groupFigures?.skippedCount ?? (isBookAudience ? bookQuote?.suppressedCount : undefined)
           }
           unavailableCount={
-            isBookAudience ? bookQuote?.unavailableCount : undefined
+            groupFigures !== null ? 0 : isBookAudience ? bookQuote?.unavailableCount : undefined
           }
           quoteExpiresAt={isBookAudience ? bookQuote?.expiresAt : undefined}
           staleWarning={bookStaleWarning}
           disabledReason={isBookAudience ? bookDisabledReason : null}
           retryDisabled={isBookAudience && !bookOnline}
           staleDetail={bookStaleDetail}
-          allowanceLabel={bookAllowanceLabel}
           weekBlastWarning={bookWeekBlastWarning}
           onRetryPreview={
             isBookAudience && campaignId !== null
               ? () => {
-                  setBookPreviewError(null);
-                  bookPreviewMutation.mutate(campaignPreviewInput(campaignId, sealedAudienceKind, channel), {
-                    onSuccess: (quote) => {
-                      setBookQuote(quote);
-                      setBookNow(Date.now());
-                      setBookStaleWarning(false);
-                    },
-                    onError: (error) =>
-                      setBookPreviewError(bookPreviewFailure(error)),
-                  });
+                  void openReviewWithServerPreview();
                 }
               : undefined
           }
@@ -2291,27 +2482,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 setShowReview(true);
                 return;
               }
-              void (async () => {
-                const id = await flushDraft();
-                if (id === null) return;
-                setBookPreviewError(null);
-                setBookQuote(null);
-                setShowReview(true);
-                try {
-                  // #3682 wave 3 — a scheduled push (or multi-channel)
-                  // campaign previews through its own lane, siblings too.
-                  const quote = await bookPreviewMutation.mutateAsync(campaignPreviewInput(id, sealedAudienceKind, channel));
-                  void prepareSiblings(id);
-                  setBookQuote(quote);
-                  setBookStaleWarning(false);
-                  setBookRequestId(
-                    globalThis.crypto?.randomUUID?.() ??
-                      `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
-                  );
-                } catch (error) {
-                  setBookPreviewError(bookPreviewFailure(error));
-                }
-              })();
+              // #3682 wave 3 — a scheduled push (or multi-method) campaign
+              // previews through its own lane, every method too.
+              void openReviewWithServerPreview();
             }, 350);
           }}
         />
@@ -2329,7 +2502,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             <View style={styles.previewHeader}>
               {/* ORCH-1281 — title tracks the channel. */}
               <Text style={styles.previewTitle}>
-                {channel === "sms" ? "Message preview" : "Inbox preview"}
+                {previewChannel === "email" ? "Inbox preview" : "Message preview"}
               </Text>
               <Pressable
                 onPress={() => setShowPreview(false)}
@@ -2344,36 +2517,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 <Text style={styles.previewDoneLabel}>Done</Text>
               </Pressable>
             </View>
-            {/* ORCH-1281 — SMS gets the phone-bubble preview (brings its own
-                dark canvas); email keeps EmailPreviewPane. */}
-            {channel === "sms" ? (
-              <SmsPreviewPane
-                body={smsBody}
-                brandName={brandName}
-                brandSlug={brandSlug}
-                includeFollowCta={includeSmsFollowCta}
-                reachableSms={reach?.reachable_sms ?? null}
-                currencyCode={currentBrand?.defaultCurrency ?? "USD"}
-                hasMedia={mmsMedia.length > 0}
-                mediaUris={mmsPreviewUris}
-              />
-            ) : (
-              <EmailPreviewPane
-                subject={subject}
-                bodyHtml={body}
-                variables={previewVariables}
-                brandName={brandName}
-                brandSlug={brandSlug}
-                brandHeaderImageUrl={
-                  currentBrand?.coverMediaType !== "video"
-                    ? (currentBrand?.coverMediaUrl ?? null)
-                    : null
-                }
-                embeddedEvents={brandEvents.filter((e) =>
-                  extractEmbeddedEventIds(body).includes(e.id),
-                )}
-              />
-            )}
+            {/* #4273 — the same tabs as the desktop pane, one per ticked method. */}
+            <ComposerPreviewTabs
+              channels={sortBlastChannels(sendChannels)}
+              active={previewChannel}
+              onSelect={setPreviewTab}
+              pane={renderMethodPreview(previewChannel)}
+            />
           </View>
         </Modal>
         {/* F.9: TemplatePreviewDrawer and InsertionBar moved back inside
@@ -2448,6 +2598,36 @@ const styles = StyleSheet.create({
   },
   topRows: {
     flexShrink: 0,
+  },
+  /**
+   * #4273 — the SMS and push cards scroll in their own region, which is what
+   * keeps the editor's WebView out of a ScrollView (Stage F.7) while Band B stays
+   * bounded. Under the editor they share the height; alone they take all of it.
+   */
+  methodCards: { flex: 1, minHeight: 0 },
+  methodCardsUnderEditor: { flex: 0, flexBasis: "42%", flexShrink: 1 },
+  plainMessage: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+  },
+  plainTitle: {
+    ...typography.body,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    color: textTokens.primary,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.09)",
+  },
+  plainBody: {
+    ...typography.body,
+    minHeight: 96,
+    padding: spacing.md,
+    color: textTokens.primary,
+    textAlignVertical: "top",
   },
   /** bpShort step 2: audience + channel merge onto one row (~62pt recovered). */
   topRowsShort: {

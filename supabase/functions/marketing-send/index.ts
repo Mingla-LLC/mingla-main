@@ -940,7 +940,7 @@ export async function handleGroupPreview(
     );
     if (preview.methods.every((method) => method.quote === null)) {
       const code = preview.methods[0]?.error ?? "BOOK_BLAST_AUDIENCE_NOT_FOUND";
-      return jsonResponse({ error: code, methods: preview.methods }, 409);
+      return jsonResponse({ error: code }, 409);
     }
     return jsonResponse(preview);
   } catch (error) {

@@ -22,6 +22,8 @@ import {
   PUSH_PREFILL_MAX,
   SMS_PREFILL_MAX_GSM,
 } from "../blastSendModel";
+import { readFileSync } from "fs";
+import path from "path";
 import { computeSegments, isGsm7, sanitizeGsm7, wireBody } from "../../../utils/smsCost";
 
 const measure = { isGsm7, sanitizeGsm7 };
@@ -174,5 +176,28 @@ describe("#4273 pre-fill", () => {
     expect(prefillPushFromEmail({ bodyHtml: LONG, brandName: null }).length).toBeLessThanOrEqual(PUSH_PREFILL_MAX);
     expect(prefillPushFromEmail({ bodyHtml: "", brandName: null })).toBe("");
     expect(prefillSmsFromEmail({ subject: "", bodyHtml: "<p></p>", brandName: "H" }, measure)).toBe("");
+  });
+});
+
+describe("#4273 composer wiring", () => {
+  const compose = readFileSync(
+    path.join(__dirname, "../../../../app/(tabs)/marketing/campaigns/compose.tsx"),
+    "utf8",
+  );
+
+  it("the tiles read the server's group figures, never a client sum", () => {
+    expect(compose).toContain("selectedCount={groupFigures?.selectedCount");
+    expect(compose).toContain("groupFigures.reachableCount");
+    expect(compose).not.toMatch(/reachableCount\s*\+/);
+  });
+
+  it("SMS and push leave the composer with no unsupported token", () => {
+    expect(compose).toContain("body: stripUnsupportedTokens(pushBody, brandName)");
+    expect(compose).toContain("body: stripUnsupportedTokens(smsBody, brandName)");
+  });
+
+  it("both previews get a tab per ticked method", () => {
+    expect(compose.match(/<ComposerPreviewTabs/g)).toHaveLength(2);
+    expect(compose).not.toContain("CampaignChannelSelector");
   });
 });

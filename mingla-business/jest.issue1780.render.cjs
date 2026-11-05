@@ -28,6 +28,9 @@ module.exports = {
     "**/__tests__/issue_3682_push_campaign.render.test.tsx",
     // #3682 closeout: the composer carries the subject once (email + push).
     "**/__tests__/issue_3682_subject_once.render.test.tsx",
+    // #4273 wave B: the audience picker, Send by, pre-fill and the review sheet.
+    "**/__tests__/issue_4273_send_by.render.test.tsx",
+    "**/__tests__/blastSendModel.issue4273.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",

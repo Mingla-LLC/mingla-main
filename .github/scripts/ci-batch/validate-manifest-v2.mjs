@@ -355,7 +355,7 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4273: register the Invite step sources-and-methods migration and its proofs the same way.
 // #4273: register the Blast combined-audience migration and its proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "6866fba5bc1773952cf2ff7c32df5d6bc1d0bdd40f14dfb863f1f5715380a337";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "de5ee83d8edd3608ddd8502c6317af937ac2abac39a589d1996f488cf2547d7a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

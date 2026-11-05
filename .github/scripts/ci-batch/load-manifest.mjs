@@ -142,7 +142,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4273: register the Invite step sources-and-methods migration and its proofs the same way.
 // #4273: register the Blast combined-audience migration and its proofs the same way.
-export const BOOTSTRAP_SHA256 = "c49ecf095755589aa512d2ddfc7d1873ea380298a47aac1a6ccda41a685becc5";
+export const BOOTSTRAP_SHA256 = "d4d204abfc42ced8b8883d3a5b67fc4dd9317203a4a1f4662bb9c660ffe58e52";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

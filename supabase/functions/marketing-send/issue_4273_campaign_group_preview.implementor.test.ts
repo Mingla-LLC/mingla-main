@@ -6,6 +6,7 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildCampaignGroupPreview } from "./campaignGroupPreview.ts";
+import { handleGroupPreview } from "./index.ts";
 import {
   buildMarketingBookQuote,
   publicMarketingBookQuote,
@@ -339,4 +340,61 @@ Deno.test("#4273 the subject feeds the push title; no title keeps the brand name
     } as never);
   });
   assertEquals(seen[0].title, "Highlife Live");
+});
+
+function groupClient(rpc: (name: string) => unknown) {
+  const select = () => ({
+    eq: (column: string) =>
+      column === "id"
+        ? {
+          maybeSingle: () =>
+            Promise.resolve({
+              data: { id: "lead", campaign_group_id: "lead" },
+              error: null,
+            }),
+        }
+        : {
+          eq: () =>
+            Promise.resolve({
+              data: [{ id: "lead", channel: "push" }],
+              error: null,
+            }),
+        },
+  });
+  return {
+    from: () => ({ select }),
+    rpc: (name: string) => Promise.resolve(rpc(name)),
+  };
+}
+
+Deno.test("#4273 the group preview action answers with the server's figures", async () => {
+  const response = await handleGroupPreview(
+    groupClient((name) =>
+      name === "biz_brand_blast_usage_v1"
+        ? { data: { blastsThisWeek: 1 }, error: null }
+        : { data: PUSH, error: null }
+    ),
+    "actor",
+    "lead",
+    NOW,
+  );
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.group.reachableCount, 2);
+  assertEquals(body.methods[0].quote.allowance.blastsThisWeek, 1);
+  assert(!JSON.stringify(body).includes("u-ann"));
+});
+
+Deno.test("#4273 when every method is refused, the host gets the reason", async () => {
+  const response = await handleGroupPreview(
+    groupClient(() => ({
+      data: null,
+      error: { message: "book_blast_audience_not_found" },
+    })),
+    "actor",
+    "lead",
+    NOW,
+  );
+  assertEquals(response.status, 409);
+  assertEquals((await response.json()).error, "BOOK_BLAST_AUDIENCE_NOT_FOUND");
 });

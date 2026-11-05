@@ -94,6 +94,10 @@ export interface SmsComposeCardProps {
   onPickMedia?: () => void;
   /** Parent clears a single attachment by key. */
   onRemoveMedia?: (key: string) => void;
+  /** #4273 — "Filled in from your email · edit anytime" / "Edited by you". */
+  autoFillLabel?: string | null;
+  /** #4273 — sits in a stack with other cards, so it takes its natural height. */
+  stacked?: boolean;
 }
 
 export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
@@ -112,6 +116,8 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   uploading = false,
   onPickMedia,
   onRemoveMedia,
+  autoFillLabel = null,
+  stacked = false,
 }) => {
   const hasMedia = media.length > 0;
   const bodyForEstimate = useMemo(
@@ -145,16 +151,22 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
     // suite's SMS assertions resolved to null and its vacuity guard fired —
     // which is how the first harness ended up proving SC-2-Web-D's 285px dead
     // gap against a two-line fake instead of this card.
-    <View style={styles.host} testID="composer-v2-sheet">
+    <View
+      style={[styles.host, stacked ? styles.hostStacked : null]}
+      testID={stacked ? "composer-sms-card" : "composer-v2-sheet"}
+    >
       <View style={styles.headerRow}>
         <Text style={styles.label}>SMS MESSAGE</Text>
         <Text style={styles.reach} accessibilityLabel={reachLabel}>
           {reachLabel}
         </Text>
       </View>
+      {autoFillLabel ? (
+        <Text style={styles.autoFill} testID="sms-autofill-label">{autoFillLabel}</Text>
+      ) : null}
 
       <TextInput
-        style={styles.input}
+        style={[styles.input, stacked ? styles.inputStacked : null]}
         value={value}
         onChangeText={onChangeText}
         editable={editable}
@@ -345,6 +357,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     overflow: "hidden",
   },
+  hostStacked: { flex: 0, flexShrink: 0, minHeight: composerSheetMinHeight },
+  autoFill: { color: accent.warm, fontSize: 11, fontWeight: "700" },
   headerRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -372,6 +386,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: spacing.xs,
   },
+  inputStacked: { flex: 0, minHeight: 96 },
   estimateBox: {
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
