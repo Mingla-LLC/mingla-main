@@ -166,7 +166,7 @@ export async function prepareCampaignGroupPreview(input: {
   // A tab that closed with the review open leaves sibling drafts in the group.
   // Adopt one for a method the host ticked again (a second draft for the same
   // method would hit the one-per-method index); drop the rest.
-  const { adopt: adopted, keep } = await settleLeftoverGroupDraftsDetailed({
+  const { adopt: adopted, keep, groupId } = await settleLeftoverGroupDraftsDetailed({
     leadCampaignId: input.leadCampaignId,
     leadChannel: input.leadChannel,
     extras: input.extras,
@@ -181,7 +181,9 @@ export async function prepareCampaignGroupPreview(input: {
         audience_id: input.audienceId,
         name: input.name,
         channel_payload: extra.payload,
-        campaign_group_id: input.leadCampaignId,
+        // The real group, COALESCE(campaign_group_id, id): a sibling reopened
+        // from Drafts is not a group of its own (#4273).
+        campaign_group_id: groupId,
       });
       campaignId = row.id;
     } else {
@@ -296,9 +298,17 @@ async function settleLeftoverGroupDraftsDetailed(input: {
   leadCampaignId: string;
   leadChannel: CampaignChannel;
   extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
-}): Promise<{ adopt: Map<CampaignChannel, string>; keep: Set<string> }> {
-  const leftovers = await listGroupDrafts(input.leadCampaignId);
+}): Promise<{ adopt: Map<CampaignChannel, string>; keep: Set<string>; groupId: string }> {
+  const { groupId, drafts: leftovers } = await listGroupDrafts(input.leadCampaignId);
   const keep = new Set(leftovers.filter((draft) => draft.isHead).map((draft) => draft.id));
+  // The head is the host's original campaign. It is never reused, overwritten
+  // or deleted from a sibling's composer: if this composer wants the head's
+  // method, say so plainly instead.
+  for (const head of leftovers.filter((draft) => draft.isHead)) {
+    const wanted = head.channel === input.leadChannel ||
+      input.extras.some((extra) => extra.channel === head.channel && extra.existingCampaignId !== head.id);
+    if (wanted) throw new GroupHeadMethodTakenError(head.channel);
+  }
   const known = new Set(
     input.extras.flatMap((extra) => (extra.existingCampaignId === null ? [] : [extra.existingCampaignId])),
   );
@@ -308,6 +318,7 @@ async function settleLeftoverGroupDraftsDetailed(input: {
     if (known.has(draft.id)) continue;
     const extra = input.extras.find((row) => row.channel === draft.channel);
     if (
+      !draft.isHead &&
       draft.channel !== input.leadChannel &&
       extra !== undefined &&
       extra.existingCampaignId === null &&
@@ -320,7 +331,41 @@ async function settleLeftoverGroupDraftsDetailed(input: {
     }
   }
   if (discard.length > 0) await discardSiblingDrafts(discard);
-  return { adopt, keep };
+  return { adopt, keep, groupId };
+}
+
+const METHOD_LABEL: Record<CampaignChannel, string> = { email: "Email", sms: "SMS", push: "Push" };
+
+/** #4273 — a sibling's composer asked for the method its original campaign uses. */
+export class GroupHeadMethodTakenError extends Error {
+  constructor(public readonly channel: CampaignChannel) {
+    const label = METHOD_LABEL[channel];
+    super(
+      `Your original campaign already sends by ${label}. Open it from Drafts to send by ${label}, or untick ${label} here.`,
+    );
+    this.name = "GroupHeadMethodTakenError";
+  }
+}
+
+/**
+ * #4273 — a draft save the database refused, in plain words. Never the raw
+ * database text: hosts saw "duplicate key value violates unique constraint …".
+ */
+export function draftSaveErrorMessage(error: unknown): string {
+  const text = error instanceof Error
+    ? error.message
+    : typeof (error as { message?: unknown } | null)?.message === "string"
+      ? (error as { message: string }).message
+      : "";
+  const code = (error as { code?: unknown } | null)?.code;
+  if (text.includes("issue_3682_one_channel_per_campaign_group") || code === "23505") {
+    return "Another draft of this campaign already sends by this method. Open it from Drafts, or pick a different method here.";
+  }
+  if (text.includes("campaign_group_invalid")) {
+    return "This draft can't join that campaign. Start a new campaign from Blast and try again.";
+  }
+  // Anything else keeps today's wording (already plain, e.g. the brand check).
+  return error instanceof Error ? error.message : "Couldn't save draft. Tap Save draft to retry.";
 }
 
 /** Drop sibling drafts the host backed out of (they never sent). */

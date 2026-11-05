@@ -214,6 +214,8 @@ import {
   extendedPushReady,
   prepareCampaignGroupPreview,
   settleLeftoverGroupDrafts,
+  draftSaveErrorMessage,
+  GroupHeadMethodTakenError,
   type CampaignChannel,
   type SiblingChannelState,
 } from "../../../../src/services/marketing/campaignChannelGroupService";
@@ -1050,7 +1052,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     return subject.length > 0 ? subject : "Untitled campaign";
   }, [channel, pushBody, smsBody, subject]);
 
+  // #4273 — the last save was refused with its own message; the review must
+  // not then tell the host to "save the draft" as if saving could succeed.
+  const saveRefusedRef = useRef(false);
   const flushDraft = useCallback(async (): Promise<string | null> => {
+    saveRefusedRef.current = false;
     if (accountId === null || brandId === null || audienceId === null)
       return null;
     const payload = buildPayload();
@@ -1078,11 +1084,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       setIsDirty(false);
       return campaignId;
     } catch (err) {
-      setErrorBanner(
-        err instanceof Error
-          ? err.message
-          : "Couldn't save draft. Tap Save draft to retry.",
-      );
+      // #4273 — plain words, never the database's constraint text.
+      saveRefusedRef.current = true;
+      setErrorBanner(draftSaveErrorMessage(err));
     }
     return null;
   }, [
@@ -1451,13 +1455,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             : [],
         });
       } catch (error) {
-        setErrorBanner(error instanceof Error ? error.message : "Couldn't check this campaign's drafts. Try again.");
+        setErrorBanner(
+          error instanceof GroupHeadMethodTakenError
+            ? error.message
+            : "Couldn't check this campaign's drafts. Try again.",
+        );
         return;
       }
     }
     const id = await flushDraft();
     if (id === null) {
-      setErrorBanner("Save the draft, then preview again.");
+      if (!saveRefusedRef.current) setErrorBanner("Save the draft, then preview again.");
       return;
     }
     setBookPreviewError(null);

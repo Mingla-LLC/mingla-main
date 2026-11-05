@@ -24,7 +24,13 @@ jest.mock("../marketingBookSendService", () => ({
   previewMarketingCampaignGroup: (...a: unknown[]) => previewMarketingCampaignGroup(...a),
 }));
 
+/** The head's id when one is listed, else the lead's own group (LEAD). */
+const GROUP_OF = (drafts: Array<{ id: string; channel: string; isHead?: boolean }>): string =>
+  drafts.find((draft) => draft.isHead)?.id ?? "42730000-0000-4000-8000-000000000001";
+
 import {
+  draftSaveErrorMessage,
+  GroupHeadMethodTakenError,
   prepareCampaignGroupPreview,
   settleLeftoverGroupDrafts,
   siblingErrorMessage,
@@ -53,7 +59,7 @@ describe("#4273 leftover group drafts", () => {
   });
 
   it("J-5 a leftover SMS draft with Email only is deleted and never priced", async () => {
-    listGroupDrafts.mockResolvedValue([{ id: SMS, channel: "sms" }]);
+    listGroupDrafts.mockResolvedValue({ groupId: GROUP_OF([{ id: SMS, channel: "sms" }]), drafts: [{ id: SMS, channel: "sms" }] });
     previewMarketingCampaignGroup.mockResolvedValue(preview([{ campaignId: LEAD, channel: "email" }]));
     const out = await prepareCampaignGroupPreview({ ...base, extras: [] });
     expect(deleteDraft).toHaveBeenCalledWith(SMS);
@@ -62,7 +68,7 @@ describe("#4273 leftover group drafts", () => {
   });
 
   it("J-6 a leftover SMS draft is reused when the host ticks SMS again", async () => {
-    listGroupDrafts.mockResolvedValue([{ id: SMS, channel: "sms" }]);
+    listGroupDrafts.mockResolvedValue({ groupId: GROUP_OF([{ id: SMS, channel: "sms" }]), drafts: [{ id: SMS, channel: "sms" }] });
     updateDraft.mockResolvedValue({ id: SMS });
     previewMarketingCampaignGroup.mockResolvedValue(preview([
       { campaignId: LEAD, channel: "email" },
@@ -80,7 +86,7 @@ describe("#4273 leftover group drafts", () => {
   });
 
   it("a leftover on the lead's own method is deleted so the lead can take it", async () => {
-    listGroupDrafts.mockResolvedValue([{ id: SMS, channel: "sms" }, { id: PUSH, channel: "push" }]);
+    listGroupDrafts.mockResolvedValue({ groupId: GROUP_OF([{ id: SMS, channel: "sms" }, { id: PUSH, channel: "push" }]), drafts: [{ id: SMS, channel: "sms" }, { id: PUSH, channel: "push" }] });
     const adopted = await settleLeftoverGroupDrafts({
       leadCampaignId: LEAD,
       leadChannel: "sms",
@@ -92,7 +98,7 @@ describe("#4273 leftover group drafts", () => {
   });
 
   it("drafts the server says were not named are discarded", async () => {
-    listGroupDrafts.mockResolvedValue([]);
+    listGroupDrafts.mockResolvedValue({ groupId: GROUP_OF([]), drafts: [] });
     previewMarketingCampaignGroup.mockResolvedValue({
       ...preview([{ campaignId: LEAD, channel: "email" }]),
       unlistedDraftIds: [PUSH],
@@ -121,7 +127,7 @@ describe("#4273 the group head is never discarded", () => {
   });
 
   it("a sibling lead sending alone leaves the head draft in place", async () => {
-    listGroupDrafts.mockResolvedValue([{ id: HEAD, channel: "email", isHead: true }]);
+    listGroupDrafts.mockResolvedValue({ groupId: GROUP_OF([{ id: HEAD, channel: "email", isHead: true }]), drafts: [{ id: HEAD, channel: "email", isHead: true }] });
     previewMarketingCampaignGroup.mockResolvedValue({
       ...preview([{ campaignId: SIB, channel: "sms" }]),
       // An old server still reports the head as unlisted.
@@ -133,9 +139,76 @@ describe("#4273 the group head is never discarded", () => {
     expect(previewMarketingCampaignGroup).toHaveBeenCalledWith(SIB, [SIB]);
   });
 
-  it("the head on the lead's own method is kept, not deleted", async () => {
-    listGroupDrafts.mockResolvedValue([{ id: HEAD, channel: "sms", isHead: true }]);
-    await settleLeftoverGroupDrafts({ leadCampaignId: SIB, leadChannel: "sms", extras: [] });
+  it("the head on the lead's own method is kept, not deleted, and the host is told", async () => {
+    listGroupDrafts.mockResolvedValue({ groupId: HEAD, drafts: [{ id: HEAD, channel: "sms", isHead: true }] });
+    await expect(settleLeftoverGroupDrafts({ leadCampaignId: SIB, leadChannel: "sms", extras: [] }))
+      .rejects.toBeInstanceOf(GroupHeadMethodTakenError);
     expect(deleteDraft).not.toHaveBeenCalled();
+  });
+
+  it("ticking the head's method again never reuses or overwrites the original", async () => {
+    listGroupDrafts.mockResolvedValue({ groupId: HEAD, drafts: [{ id: HEAD, channel: "email", isHead: true }] });
+    const run = prepareCampaignGroupPreview({
+      ...base,
+      leadCampaignId: SIB,
+      leadChannel: "sms",
+      extras: [{ channel: "email", payload: { kind: "email", subject: "New", body_html: "x", body_text: "x" } as never, existingCampaignId: null }],
+    });
+    await expect(run).rejects.toThrow(
+      "Your original campaign already sends by Email. Open it from Drafts to send by Email, or untick Email here.",
+    );
+    expect(updateDraft).not.toHaveBeenCalled();
+    expect(createDraft).not.toHaveBeenCalled();
+    expect(deleteDraft).not.toHaveBeenCalled();
+    expect(previewMarketingCampaignGroup).not.toHaveBeenCalled();
+  });
+
+  it("a brand-new method under a sibling lead joins the real group, not the sibling", async () => {
+    listGroupDrafts.mockResolvedValue({ groupId: HEAD, drafts: [] });
+    createDraft.mockResolvedValue({ id: PUSH });
+    previewMarketingCampaignGroup.mockResolvedValue(preview([
+      { campaignId: SIB, channel: "sms" },
+      { campaignId: PUSH, channel: "push" },
+    ]));
+    await prepareCampaignGroupPreview({
+      ...base,
+      leadCampaignId: SIB,
+      leadChannel: "sms",
+      extras: [{ channel: "push", payload: { kind: "push", body: "Doors at 9" } as never, existingCampaignId: null }],
+    });
+    expect(createDraft).toHaveBeenCalledWith(expect.objectContaining({ campaign_group_id: HEAD }));
+  });
+});
+
+describe("#4273 a refused draft save reads in plain words", () => {
+  it("the one-method-per-campaign index", () => {
+    const raw = { code: "23505", message: 'duplicate key value violates unique constraint "issue_3682_one_channel_per_campaign_group"' };
+    const text = draftSaveErrorMessage(raw);
+    expect(text).toBe("Another draft of this campaign already sends by this method. Open it from Drafts, or pick a different method here.");
+    expect(text).not.toContain("duplicate key");
+    expect(draftSaveErrorMessage(new Error(raw.message))).toBe(text);
+  });
+
+  it("campaign_group_invalid", () => {
+    const text = draftSaveErrorMessage({ code: "23514", message: "campaign_group_invalid" });
+    expect(text).toBe("This draft can't join that campaign. Start a new campaign from Blast and try again.");
+  });
+
+  it("an already-plain message keeps its words", () => {
+    expect(draftSaveErrorMessage(new Error("That audience belongs to another brand. Pick one for this brand.")))
+      .toBe("That audience belongs to another brand. Pick one for this brand.");
+  });
+
+  it("the review never says 'save the draft' after a refused save", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
+    const compose: string = readFileSync(
+      path.join(__dirname, "../../../../app/(tabs)/marketing/campaigns/compose.tsx"),
+      "utf8",
+    );
+    expect(compose).toContain("setErrorBanner(draftSaveErrorMessage(err));");
+    expect(compose).toContain('if (!saveRefusedRef.current) setErrorBanner("Save the draft, then preview again.");');
   });
 });

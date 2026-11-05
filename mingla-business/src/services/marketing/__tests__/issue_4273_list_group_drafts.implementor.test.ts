@@ -41,7 +41,7 @@ describe("#4273 listGroupDrafts", () => {
     const or = calls.find((call) => call.method === "or");
     expect(or?.args[0]).toBe(`campaign_group_id.eq.${HEAD},id.eq.${HEAD}`);
     expect(calls).toContainEqual({ method: "neq", args: ["id", SIB] });
-    expect(drafts).toEqual([{ id: HEAD, channel: "email", isHead: true }]);
+    expect(drafts).toEqual({ groupId: HEAD, drafts: [{ id: HEAD, channel: "email", isHead: true }] });
   });
 
   it("a head lead reads its own group; its siblings are not heads", async () => {
@@ -49,6 +49,6 @@ describe("#4273 listGroupDrafts", () => {
     groupRows = [{ id: SIB, channel: "sms" }];
     const drafts = await listGroupDrafts(HEAD);
     expect(calls.find((call) => call.method === "or")?.args[0]).toBe(`campaign_group_id.eq.${HEAD},id.eq.${HEAD}`);
-    expect(drafts).toEqual([{ id: SIB, channel: "sms", isHead: false }]);
+    expect(drafts).toEqual({ groupId: HEAD, drafts: [{ id: SIB, channel: "sms", isHead: false }] });
   });
 });

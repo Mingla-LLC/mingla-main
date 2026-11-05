@@ -317,7 +317,11 @@ export async function cancelScheduled(
  */
 export async function listGroupDrafts(
   leadCampaignId: string,
-): Promise<Array<{ id: string; channel: "email" | "sms" | "push"; isHead: boolean }>> {
+): Promise<{
+  /** COALESCE(campaign_group_id, id) of the lead: the id new siblings join. */
+  groupId: string;
+  drafts: Array<{ id: string; channel: "email" | "sms" | "push"; isHead: boolean }>;
+}> {
   assertUuid(leadCampaignId, "listGroupDrafts.lead_campaign_id");
   const lead = await supabase
     .from("marketing_campaigns")
@@ -336,10 +340,13 @@ export async function listGroupDrafts(
     .eq("status", "draft")
     .neq("id", leadCampaignId);
   if (error) throw error;
-  return ((data ?? []) as Array<{ id: string; channel: "email" | "sms" | "push" }>).map((draft) => ({
-    ...draft,
-    isHead: draft.id === group,
-  }));
+  return {
+    groupId: group,
+    drafts: ((data ?? []) as Array<{ id: string; channel: "email" | "sms" | "push" }>).map((draft) => ({
+      ...draft,
+      isHead: draft.id === group,
+    })),
+  };
 }
 
 export async function deleteDraft(campaignId: string): Promise<void> {
