@@ -17,6 +17,22 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  applyWizardInvitePeopleEdits,
+  EMPTY_WIZARD_INVITE_SOURCES,
+  effectiveWizardInviteChannels,
+  toggleWizardInviteChannel,
+  toggleWizardInviteGroup,
+  toggleWizardInviteSource,
+  WIZARD_INVITE_CHANNEL_LABEL,
+  WIZARD_INVITE_CHANNEL_ORDER,
+  wizardInviteChannelLine,
+  wizardInviteSelection,
+  wizardInviteSourcesForPlan,
+  type WizardInviteChannel,
+  type WizardInviteSourceKey,
+  type WizardInviteSources,
+} from "../../features/invites/inviteSelectionModel";
 import { captureWizardInvite } from "../../features/invites/wizardInviteAnalytics";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useOfferingInvitePlan, useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
@@ -93,11 +109,30 @@ const accessFailureFor = (error: unknown): InviteAccessFailure | null => {
  * #3682 wave 2 — every follower can be invited, in Your Book or not. Contact
  * details stay hidden: followers outside Your Book are reached through Mingla.
  */
-export function followersRowDetail(followerCount: number | null | undefined): string {
+export function followersRowDetail(
+  followerCount: number | null | undefined,
+  /**
+   * #4273 — followers who are NOT in Your Book (the circle reach count), when
+   * known. 0 with followers means every follower is also in Your Book.
+   */
+  outsideBookCount?: number | null,
+): string {
   if (followerCount === null || followerCount === undefined) return "Checking count…";
   if (followerCount === 0) return "No followers yet";
-  return `All ${followerCount} ${followerCount === 1 ? "follower" : "followers"}`;
+  const all = `All ${followerCount} ${followerCount === 1 ? "follower" : "followers"}`;
+  return outsideBookCount === 0 ? `${all} · also in Your Book` : all;
 }
+
+/** #4273 — the circle count of followers outside Your Book, when it is fresh. */
+export function followersOutsideBook(
+  summary: BrandCircleReachSummary | null | undefined,
+): number | null {
+  if (!summary || summary.availability.followers.state !== "ready") return null;
+  return summary.counts.followers;
+}
+
+/** #4273 — Friends of followers is live but nobody has opted in yet. */
+export const FRIENDS_OF_FOLLOWERS_EMPTY = "0 so far · grows as guests opt in";
 
 /** Copy shared with the Blast audience picker for the same server state. */
 export const FRIENDS_OF_FOLLOWERS_UNAVAILABLE =
@@ -125,6 +160,11 @@ export function friendsOfFollowersRowAvailability(input: {
   }
   if (input.summary.availability.extended.reason === "controls_not_live") {
     return { available: false, detail: FRIENDS_OF_FOLLOWERS_UNAVAILABLE };
+  }
+  // #4273 — a live audience with nobody in it yet explains itself instead of
+  // offering a tick that adds no one.
+  if (input.summary.availability.extended.state === "ready" && input.summary.counts.extended === 0) {
+    return { available: false, detail: FRIENDS_OF_FOLLOWERS_EMPTY };
   }
   return { available: true, detail: "Friends of your followers who chose to hear from brands" };
 }
@@ -156,6 +196,15 @@ export function InvitePeopleStep({
   const persistedIds = useMemo(
     () => sortedUnique(plan?.brandPersonIds ?? []),
     [plan?.brandPersonIds],
+  );
+  // #4273 — the ticked sources and methods the saved plan holds.
+  const persistedSources = useMemo<WizardInviteSources>(
+    () => plan ? wizardInviteSourcesForPlan(plan) : EMPTY_WIZARD_INVITE_SOURCES,
+    [plan],
+  );
+  const channels = useMemo<WizardInviteChannel[]>(
+    () => effectiveWizardInviteChannels(plan ?? { deliveryChannels: null, selectedCount: 0 }),
+    [plan],
   );
   const visibleIds = desiredIds ?? persistedIds;
   const visibleSelected = useMemo(() => new Set(visibleIds), [visibleIds]);
@@ -189,7 +238,7 @@ export function InvitePeopleStep({
       return;
     }
     if (isDirty && desiredIds !== null) {
-      void persistSelection(explicitSelection(desiredIds), desiredIds, dirtyDescription, false);
+      void persistSelection(peopleSelection(desiredIds), desiredIds, dirtyDescription, false);
       return;
     }
     void model.refreshAuthoritative().catch(() => undefined);
@@ -260,15 +309,34 @@ export function InvitePeopleStep({
     }
   }, [eventType, model.quote.failureCount, model.quote.isError, plan?.selectionRevision]);
 
-  function explicitSelection(ids: string[]): WizardInviteSelection {
-    return {
-      includeEveryone: false,
-      includeFollowers: false,
-      includeFriendsOfFollowers: false,
-      manualGroupIds: [],
-      personIds: sortedUnique(ids),
-      excludedPersonIds: [],
-    };
+  /** #4273 — the saved sources with the "Choose people" edits folded in. */
+  function peopleSelection(ids: string[]): WizardInviteSelection {
+    return wizardInviteSelection(
+      applyWizardInvitePeopleEdits(persistedSources, persistedIds, ids),
+      channels,
+    );
+  }
+
+  /** #4273 — every other source and the methods stay as they are. */
+  function toggleSource(key: WizardInviteSourceKey, description: string) {
+    void persistSelection(
+      wizardInviteSelection(toggleWizardInviteSource(persistedSources, key), channels),
+      null,
+      description,
+      false,
+    );
+  }
+
+  function toggleChannel(channel: WizardInviteChannel) {
+    const next = toggleWizardInviteChannel(channels, channel);
+    // At least one method stays on; the last ticked chip is disabled anyway.
+    if (next === null) return;
+    void persistSelection(
+      wizardInviteSelection(persistedSources, next),
+      null,
+      "Unsaved delivery methods",
+      false,
+    );
   }
 
   async function persistSelection(
@@ -285,6 +353,9 @@ export function InvitePeopleStep({
       manualGroupIds: sortedUnique(selection.manualGroupIds),
       personIds: sortedUnique(selection.personIds),
       excludedPersonIds: sortedUnique(selection.excludedPersonIds),
+      ...(selection.deliveryChannels
+        ? { deliveryChannels: [...new Set(selection.deliveryChannels)].sort() }
+        : {}),
     };
     const key = JSON.stringify([plan.selectionRevision, normalized]);
     if (!exactRetry || pendingReceipt.current?.key !== key) {
@@ -398,7 +469,7 @@ export function InvitePeopleStep({
       return;
     }
     const saved = await persistSelection(
-      explicitSelection(visibleIds),
+      peopleSelection(visibleIds),
       visibleIds,
       dirtyDescription,
       false,
@@ -454,72 +525,43 @@ export function InvitePeopleStep({
         })}
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
         bookSelectedCount={isDirty ? visibleIds.length : plan.bookSelectedCount}
-        followersDetail={followersRowDetail(followerCount.isError ? undefined : followerCount.data)}
+        sources={persistedSources}
+        followersDetail={followersRowDetail(
+          followerCount.isError ? undefined : followerCount.data,
+          followersOutsideBook(model.circle.data),
+        )}
         disabled={isSaving || plan.state === "locked" || ambiguous}
-        onSelectEveryone={() => void persistSelection(
-          {
-            includeEveryone: true,
-            includeFollowers: false,
-            includeFriendsOfFollowers: false,
-            manualGroupIds: [],
-            personIds: [],
-            excludedPersonIds: [],
-          },
-          null,
-          "Unsaved Everyone in Your Book selection",
-          false,
-        )}
-        onSelectFollowers={() => void persistSelection(
-          {
-            includeEveryone: false,
-            includeFollowers: true,
-            includeFriendsOfFollowers: false,
-            manualGroupIds: [],
-            personIds: [],
-            excludedPersonIds: [],
-          },
-          null,
-          "Unsaved Followers selection",
-          false,
-        )}
-        onSelectFriendsOfFollowers={() => void persistSelection(
-          {
-            includeEveryone: false,
-            includeFollowers: false,
-            includeFriendsOfFollowers: true,
-            manualGroupIds: [],
-            personIds: [],
-            excludedPersonIds: [],
-          },
-          null,
-          "Unsaved Friends of followers selection",
-          false,
-        )}
-        onSelectGroup={(groupId, groupName) => void persistSelection(
-          {
-            includeEveryone: false,
-            includeFollowers: false,
-            includeFriendsOfFollowers: false,
-            manualGroupIds: [groupId],
-            personIds: persistedIds,
-            excludedPersonIds: [],
-          },
+        onToggleEveryone={() => toggleSource("everyone", "Unsaved Everyone in Your Book selection")}
+        onToggleFollowers={() => toggleSource("followers", "Unsaved Followers selection")}
+        onToggleFriendsOfFollowers={() =>
+          toggleSource("friendsOfFollowers", "Unsaved Friends of followers selection")}
+        onToggleGroup={(groupId, groupName) => void persistSelection(
+          wizardInviteSelection(toggleWizardInviteGroup(persistedSources, groupId), channels),
           null,
           `Unsaved ${groupName} group selection`,
           false,
         )}
         onChoosePeople={openPicker}
       />
+      <InviteMethodChips channels={channels}
+        disabled={isSaving || plan.state === "locked" || ambiguous}
+        onToggle={toggleChannel} />
       <InviteSelectionSummary
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
         accountCount={isDirty ? 0 : plan.accountRecipientCount}
         people={people.filter((person) => visibleSelected.has(person.personId))}
         saving={isSaving}
         dirty={isDirty || dirtyDescription !== null}
-        onClear={() => void persistSelection(explicitSelection([]), [], "Unsaved cleared selection", false)}
+        onClear={() => void persistSelection(
+          wizardInviteSelection(EMPTY_WIZARD_INVITE_SOURCES, channels),
+          [],
+          "Unsaved cleared selection",
+          false,
+        )}
       />
       {dirtyDescription ? <Text accessibilityRole="alert" style={styles.dirty}>{dirtyDescription}</Text> : null}
-      <InviteQuoteCard quote={quoteIsCurrent ? quote : null} loading={isChecking} error={model.quote.isError} />
+      <InviteQuoteCard quote={quoteIsCurrent ? quote : null} loading={isChecking} error={model.quote.isError}
+        channels={channels} />
       {saveError ? <View style={styles.inlineError}><Text accessibilityRole="alert" style={styles.error}>{saveError}</Text>
         {staleConflict ? <Button label="Review changed selection" size="sm" variant="secondary"
           onPress={() => { setPickerOpen(true); setStaleConflict(false); }} /> : null}</View> : null}
@@ -558,36 +600,43 @@ export function InviteSourcePicker(props: {
   /** Omitted only by legacy callers; treated as unavailable (never a dead tap). */
   friendsOfFollowers?: CircleRowAvailability;
   selectedCount: number;
-  /** Your Book people in the selection (the Select all checkbox state). */
+  /** Your Book people in the selection (drives the Select all mixed state). */
   bookSelectedCount?: number;
+  /** #4273 — which sources are ticked; they combine. */
+  sources?: WizardInviteSources;
   followersDetail?: string;
   disabled: boolean;
-  onSelectEveryone: () => void;
-  onSelectFollowers: () => void;
-  onSelectFriendsOfFollowers: () => void;
-  onSelectGroup: (groupId: string, groupName: string) => void;
+  onToggleEveryone: () => void;
+  onToggleFollowers: () => void;
+  onToggleFriendsOfFollowers: () => void;
+  onToggleGroup: (groupId: string, groupName: string) => void;
   onChoosePeople: () => void;
 }) {
+  const sources = props.sources ?? EMPTY_WIZARD_INVITE_SOURCES;
   const bookSelected = props.bookSelectedCount ?? props.selectedCount;
-  const selectAllChecked: boolean | "mixed" = bookSelected === 0
-    ? false
-    : props.bookCount !== null && bookSelected >= props.bookCount
-      ? true
-      : "mixed";
+  // Ticked only when Everyone is a source; some Book people chosen another way
+  // (or hand-removed from Everyone) reads as partly ticked.
+  const everyoneChecked: boolean | "mixed" = sources.includeEveryone
+    ? (sources.excludedPersonIds.length > 0 ? "mixed" : true)
+    : bookSelected > 0 ? "mixed" : false;
   const friendsRow = props.friendsOfFollowers ??
     { available: false, detail: FRIENDS_OF_FOLLOWERS_UNAVAILABLE };
   return (
     <View style={styles.sourceCard}>
-      <SourceRow title="Everyone in Your Book" detail={props.bookCount === null ? "Checking count…" : `${props.bookCount} active people`}
-        action="Select all" disabled={props.disabled} onPress={props.onSelectEveryone}
-        accessibilityRole="checkbox" accessibilityChecked={selectAllChecked} />
+      <SourceCheckRow testID="invite-source-everyone" accessibilityLabel="Select all"
+        title="Everyone in Your Book"
+        detail={props.bookCount === null ? "Checking count…" : `${props.bookCount} active people`}
+        checked={everyoneChecked} disabled={props.disabled} onPress={props.onToggleEveryone} />
       <View style={styles.divider} />
-      <SourceRow title="Followers" detail={props.followersDetail ?? followersRowDetail(null)}
-        action="Select" disabled={props.disabled} onPress={props.onSelectFollowers} />
-      <SourceRow title="Friends of followers"
-        detail={friendsRow.detail}
-        action="Select" disabled={props.disabled || !friendsRow.available}
-        onPress={props.onSelectFriendsOfFollowers} />
+      <SourceCheckRow testID="invite-source-followers" title="Followers"
+        detail={props.followersDetail ?? followersRowDetail(null)}
+        checked={sources.includeFollowers} disabled={props.disabled}
+        onPress={props.onToggleFollowers} />
+      <SourceCheckRow testID="invite-source-friends-of-followers" title="Friends of followers"
+        detail={friendsRow.detail} checked={sources.includeFriendsOfFollowers}
+        // A ticked row stays untickable even after the audience goes away.
+        disabled={props.disabled || (!friendsRow.available && !sources.includeFriendsOfFollowers)}
+        onPress={props.onToggleFriendsOfFollowers} />
       <View style={styles.divider} />
       <Text style={styles.sourceTitle}>Saved groups</Text>
       {props.groupsPending ? <Text style={styles.muted}>Loading saved groups…</Text> :
@@ -595,9 +644,11 @@ export function InviteSourcePicker(props: {
           {props.onRetryGroups ? <Button label="Retry saved groups" size="sm" variant="secondary"
             onPress={props.onRetryGroups} /> : null}</View> :
         props.groups.length === 0 ? <Text style={styles.muted}>No saved manual groups yet.</Text> :
-        props.groups.map((group) => <SourceRow key={group.groupId} title={group.name}
-          detail={`${group.memberCount} people`} action="Add group" disabled={props.disabled}
-          onPress={() => props.onSelectGroup(group.groupId, group.name)} />)}
+        props.groups.map((group) => <SourceCheckRow key={group.groupId}
+          testID={`invite-source-group-${group.groupId}`} title={group.name}
+          detail={`${group.memberCount} people`}
+          checked={sources.manualGroupIds.includes(group.groupId)} disabled={props.disabled}
+          onPress={() => props.onToggleGroup(group.groupId, group.name)} />)}
       <View style={styles.divider} />
       <SourceRow title="Choose people" detail={`${props.selectedCount} selected`}
         action={props.selectedCount === 0 ? "Choose people" : "Edit selection"}
@@ -606,13 +657,64 @@ export function InviteSourcePicker(props: {
   );
 }
 
-function SourceRow(props: { title: string; detail: string; action: string; disabled: boolean; onPress: () => void;
-  accessibilityRole?: "button" | "checkbox"; accessibilityChecked?: boolean | "mixed" }) {
+function SourceRow(props: { title: string; detail: string; action: string; disabled: boolean; onPress: () => void }) {
   return <View style={styles.sourceRow}><View style={styles.flex}><Text style={styles.sourceTitle}>{props.title}</Text>
     <Text style={styles.muted}>{props.detail}</Text></View><Button label={props.action} size="sm" variant="secondary"
-      accessibilityRole={props.accessibilityRole}
-      accessibilityState={props.accessibilityRole === "checkbox" ? { checked: props.accessibilityChecked } : undefined}
       disabled={props.disabled} onPress={props.onPress} /></View>;
+}
+
+/** #4273 — a whole-row tick box; ticks combine instead of replacing each other. */
+function SourceCheckRow(props: {
+  title: string;
+  detail: string;
+  checked: boolean | "mixed";
+  disabled: boolean;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  testID?: string;
+}) {
+  const on = props.checked !== false;
+  return <Pressable testID={props.testID} accessibilityRole="checkbox"
+    accessibilityLabel={props.accessibilityLabel ?? props.title}
+    accessibilityHint={props.accessibilityLabel ? props.title : undefined}
+    accessibilityState={{ checked: props.checked, disabled: props.disabled }}
+    aria-checked={props.checked} aria-disabled={props.disabled}
+    disabled={props.disabled} onPress={props.onPress}
+    style={[styles.sourceRow, styles.checkRow, on && styles.checkRowOn, props.disabled && styles.checkRowDisabled]}>
+    <View style={[styles.checkBox, on && styles.checkBoxOn]}>
+      <Text style={styles.checkMark}>{props.checked === "mixed" ? "–" : props.checked ? "✓" : ""}</Text>
+    </View>
+    <View style={styles.flex}><Text style={styles.sourceTitle}>{props.title}</Text>
+      <Text style={styles.muted}>{props.detail}</Text></View>
+  </Pressable>;
+}
+
+/** #4273 — "How to reach them". At least one method stays ticked. */
+export function InviteMethodChips(props: {
+  channels: readonly WizardInviteChannel[];
+  disabled: boolean;
+  onToggle: (channel: WizardInviteChannel) => void;
+}) {
+  return <View style={styles.methodBlock}>
+    <Text style={styles.methodLabel} accessibilityRole="header">HOW TO REACH THEM</Text>
+    <View style={styles.methodRow} accessibilityRole="none">
+      {WIZARD_INVITE_CHANNEL_ORDER.map((channel) => {
+        const on = props.channels.includes(channel);
+        const last = on && props.channels.length === 1;
+        const disabled = props.disabled || last;
+        return <Pressable key={channel} testID={`invite-method-${channel}`} accessibilityRole="checkbox"
+          accessibilityLabel={WIZARD_INVITE_CHANNEL_LABEL[channel]}
+          accessibilityHint={last ? "At least one way to reach them stays on." : undefined}
+          accessibilityState={{ checked: on, disabled }} aria-checked={on} aria-disabled={disabled}
+          disabled={disabled} onPress={() => props.onToggle(channel)}
+          style={[styles.methodChip, on && styles.methodChipOn, disabled && styles.checkRowDisabled]}>
+          <Text style={[styles.methodChipText, on && styles.methodChipTextOn]}>
+            {on ? `✓ ${WIZARD_INVITE_CHANNEL_LABEL[channel]}` : WIZARD_INVITE_CHANNEL_LABEL[channel]}
+          </Text>
+        </Pressable>;
+      })}
+    </View>
+  </View>;
 }
 
 function PeoplePickerSheet(props: {
@@ -712,19 +814,27 @@ export function InviteSelectionSummary(props: {
       disabled={props.saving} onPress={props.onClear} /> : null}</View>;
 }
 
-export function InviteQuoteCard(props: { quote: WizardInviteQuote | null; loading: boolean; error: boolean }) {
+export function InviteQuoteCard(props: {
+  quote: WizardInviteQuote | null;
+  loading: boolean;
+  error: boolean;
+  /** #4273 — the ticked methods; the line and the text cost follow them. */
+  channels?: readonly WizardInviteChannel[] | null;
+}) {
   if (props.loading) return <View style={styles.quoteCard}><Text style={styles.sectionTitle}>Invite delivery</Text><Text style={styles.muted}>Checking…</Text></View>;
   if (props.error || props.quote === null) return <View style={styles.quoteCard}><Text style={styles.sectionTitle}>Invite delivery</Text>
     <Text style={styles.error}>Delivery estimate unavailable. Refresh before publishing.</Text></View>;
   const q = props.quote;
+  const channels = props.channels ?? null;
+  const textChosen = channels === null || channels.includes("sms");
   return <View style={styles.quoteCard}><Text style={styles.sectionTitle}>Invite delivery</Text>
     <View style={styles.metricRow}><Metric label="Selected" value={q.selectedCount} /><Metric label="Can receive" value={q.canReceiveCount} />
       <Metric label="Skipped" value={q.skippedCount} /></View>
     {q.selectedCount > 0 && q.canReceiveCount === 0 ? <Text style={styles.zeroReachable}>
       No selected people can receive an invite right now. You can still publish without sending invitations.
     </Text> : null}
-    <Text style={styles.channelText}>Email {q.perChannelReachable.email} · Text {q.perChannelReachable.sms} · Mingla {q.perChannelReachable.push}</Text>
-    <Text style={styles.cost}>{q.estimatedCostMinor > 0 ? `Estimated text cost ${formatWizardInviteMoney(q.estimatedCostMinor, q.currency)}` : "No paid-channel cost"}</Text>
+    <Text style={styles.channelText}>{wizardInviteChannelLine(q.perChannelReachable, channels)}</Text>
+    <Text style={styles.cost}>{textChosen && q.estimatedCostMinor > 0 ? `Estimated text cost ${formatWizardInviteMoney(q.estimatedCostMinor, q.currency)}` : "No paid-channel cost"}</Text>
   </View>;
 }
 
@@ -809,6 +919,19 @@ const styles = StyleSheet.create({
   sourceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 64 },
   sourceTitle: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: glass.border.profileBase },
+  checkRow: { borderRadius: radius.md, paddingHorizontal: spacing.sm },
+  checkRowOn: { backgroundColor: "rgba(235,120,37,0.10)" },
+  checkRowDisabled: { opacity: 0.5 },
+  checkBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: glass.border.profileBase, alignItems: "center", justifyContent: "center" },
+  checkBoxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
+  checkMark: { ...typography.caption, color: textTokens.inverse, fontWeight: "700" },
+  methodBlock: { gap: spacing.xs },
+  methodLabel: { ...typography.caption, color: textTokens.secondary, fontWeight: "700", letterSpacing: 0.6 },
+  methodRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  methodChip: { minHeight: 44, justifyContent: "center", borderRadius: radius.full, borderWidth: 1, borderColor: glass.border.profileBase, paddingHorizontal: spacing.md },
+  methodChipOn: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.12)" },
+  methodChipText: { ...typography.bodySm, color: textTokens.secondary, fontWeight: "600" },
+  methodChipTextOn: { color: textTokens.primary },
   summaryCard: { flexDirection: "row", alignItems: "center", borderRadius: radius.md, backgroundColor: glass.tint.profileElevated, padding: spacing.md, gap: spacing.sm },
   avatarStack: { flexDirection: "row", marginTop: spacing.xxs },
   smallAvatar: { width: 24, height: 24, marginRight: -6, borderRadius: 12, backgroundColor: accent.warm, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#171717" },
