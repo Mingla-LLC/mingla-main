@@ -41,6 +41,12 @@ export function usd(value) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: n < 1 && n > 0 ? 4 : 2 });
 }
 
+/** "1 place", "2 places", "1,204 places". */
+export function plural(value, one, many = `${one}s`) {
+  const n = num(value);
+  return `${count(n)} ${n === 1 ? one : many}`;
+}
+
 export function count(value) {
   const n = num(value);
   return n === null ? "–" : n.toLocaleString("en-US");
@@ -50,8 +56,8 @@ export function count(value) {
 export function serperCostText(requests, ratePerRequest) {
   const r = num(requests) ?? 0;
   const rate = num(ratePerRequest);
-  if (rate === null) return `${count(r)} Serper requests, cost unknown until a rate is set`;
-  return `${count(r)} Serper requests, ${usd(r * rate)}`;
+  if (rate === null) return `${plural(r, "Serper request")}, cost unknown until a rate is set`;
+  return `${plural(r, "Serper request")}, ${usd(r * rate)}`;
 }
 
 /** The rate is stored per request; people think per 1,000. */
@@ -150,15 +156,15 @@ export function approvalLines(approval, serperRate) {
   if (!approval) return [];
   const n = approval.numbers ?? {};
   const lines = [];
-  if (n.searches !== undefined) lines.push(`${count(n.searches)} searches`);
-  if (n.tiles !== undefined) lines.push(`${count(n.tiles)} tiles`);
-  if (n.places !== undefined) lines.push(`${count(n.places)} places`);
+  if (n.searches !== undefined) lines.push(plural(n.searches, "search", "searches"));
+  if (n.tiles !== undefined) lines.push(plural(n.tiles, "tile"));
+  if (n.places !== undefined) lines.push(plural(n.places, "place"));
   if (n.estimatedCostUsd !== undefined) lines.push(`Google or Gemini: ${usd(n.estimatedCostUsd)}${n.costIsFloor ? " at least" : ""}`);
   if (n.estimatedSeedCostUsd !== undefined) lines.push(`Seeding this box: ${usd(n.estimatedSeedCostUsd)}`);
   if (n.serper_requests_max !== undefined) lines.push(serperCostText(n.serper_requests_max, serperRate));
   if (Array.isArray(n.askReasons) && n.askReasons.length) lines.push(`Asks a person because: ${n.askReasons.join(", ")}`);
   const outside = n.placesOutside?.outside_active;
-  if (outside) lines.push(`${count(outside)} active places would sit outside this box`);
+  if (outside) lines.push(`${plural(outside, "active place")} would sit outside this box`);
   return lines;
 }
 
@@ -254,10 +260,10 @@ export function gapLines(gaps) {
   if (gaps.missingReviews > 0) lines.push(`${count(gaps.missingReviews)} without reviews`);
   if (gaps.searchUnknown) lines.push("Searches couldn't be checked");
   else {
-    if ((gaps.unsearchedAreas ?? 0) > 0) lines.push(`${count(gaps.unsearchedAreas)} areas never searched`);
-    if ((gaps.unfinishedSearches ?? 0) > 0) lines.push(`${count(gaps.unfinishedSearches)} searches unfinished`);
+    if ((gaps.unsearchedAreas ?? 0) > 0) lines.push(`${plural(gaps.unsearchedAreas, "area")} never searched`);
+    if ((gaps.unfinishedSearches ?? 0) > 0) lines.push(`${plural(gaps.unfinishedSearches, "search", "searches")} unfinished`);
   }
-  if (gaps.outsideBox > 0) lines.push(`Box flagged: ${count(gaps.outsideBox)} places outside it`);
+  if (gaps.outsideBox > 0) lines.push(`Box flagged: ${plural(gaps.outsideBox, "place")} outside it`);
   return lines;
 }
 

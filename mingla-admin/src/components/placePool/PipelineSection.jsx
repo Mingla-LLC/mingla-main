@@ -29,6 +29,7 @@ import {
 import {
   MATRIX_COLUMNS,
   count,
+  plural,
   formatGb,
   matrixCells,
   perThousand,
@@ -152,7 +153,7 @@ function NoCityPanel({ onAssigned }) {
     setBusy(true);
     try {
       const res = await pipeline("assign_no_city");
-      addToast({ variant: "success", title: `${count(res.assigned)} places given a city` });
+      addToast({ variant: "success", title: `${plural(res.assigned, "place")} given a city` });
       setConfirm(false);
       await load();
       onAssigned();
@@ -169,12 +170,12 @@ function NoCityPanel({ onAssigned }) {
         : !report ? <div className="flex justify-center py-4"><Spinner /></div>
         : (
           <div className="flex flex-col gap-2 text-sm">
-            <p className="tabular-nums">{count(report.total)} places ({count(report.active)} active, {count(report.unjudged)} never checked): {count(report.in_one_box)} inside one city's box, {count(report.in_several_boxes)} inside several, {count(report.in_no_box)} inside none.</p>
+            <p className="tabular-nums">{plural(report.total, "place")} ({count(report.active)} active, {count(report.unjudged)} never checked): {count(report.in_one_box)} inside one city's box, {count(report.in_several_boxes)} inside several, {count(report.in_no_box)} inside none.</p>
             {report.by_city?.length > 0 && (
               <p className="text-xs text-[var(--color-text-secondary)]">{report.by_city.map((c) => `${c.name} ${count(c.places)}`).join(" · ")}</p>
             )}
             <div>
-              <Button size="sm" variant="secondary" disabled={!report.in_one_box} onClick={() => setConfirm(true)}>Give {count(report.in_one_box)} places their city</Button>
+              <Button size="sm" variant="secondary" disabled={!report.in_one_box} onClick={() => setConfirm(true)}>{Number(report.in_one_box) === 1 ? "Give 1 place its city" : `Give ${count(report.in_one_box)} places their city`}</Button>
             </div>
           </div>
         )}
@@ -299,7 +300,7 @@ export function PipelineSection() {
               </table>
             </div>
             <p className="px-4 pb-3 text-xs text-[var(--color-text-secondary)]">
-              {noCity ? `${count(noCity.active)} active places have no city and sit outside this table. ` : ""}
+              {noCity ? `${plural(noCity.active, "active place")} ${Number(noCity.active) === 1 ? "has" : "have"} no city and ${Number(noCity.active) === 1 ? "sits" : "sit"} outside this table. ` : ""}
               Counted {funnel.counted_at ? new Date(funnel.counted_at).toLocaleTimeString() : "just now"}.
             </p>
           </div>

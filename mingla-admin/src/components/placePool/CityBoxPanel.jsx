@@ -15,7 +15,8 @@ import { Spinner } from "../ui/Spinner";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import { seeding } from "../../services/cityPipelineService";
-import { completenessSummary, count, usd } from "../../lib/cityPipeline";
+import { completenessSummary, count, plural, usd } from "../../lib/cityPipeline";
+import { CityBoxMap } from "./CityBoxMap";
 
 const ASK_REASON_TEXT = {
   state_or_region_result: "Google returned a state or region, not a city",
@@ -38,7 +39,7 @@ function OutsideLine({ label, row }) {
   const active = Number(row.outside_active ?? 0);
   return (
     <p className={`text-sm ${active > 0 ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-secondary)]"}`}>
-      {label}: {count(active)} active places outside{active > 0 ? `, ${count(row.outside_servable)} of them seen by Explorers` : ""}.
+      {label}: {plural(active, "active place")} outside{active > 0 ? `, ${count(row.outside_servable)} of them seen by Explorers` : ""}.
     </p>
   );
 }
@@ -59,6 +60,7 @@ export function CityBoxPanel({ city, onChanged }) {
   const [statusError, setStatusError] = useState(null);
   const [outside, setOutside] = useState(undefined);
   const [history, setHistory] = useState(null);
+  const [tileMap, setTileMap] = useState(undefined);
   const [plan, setPlan] = useState(null);
   const [planError, setPlanError] = useState(null);
   const [planning, setPlanning] = useState(false);
@@ -68,11 +70,13 @@ export function CityBoxPanel({ city, onChanged }) {
 
   const load = useCallback(async () => {
     setStatusError(null);
-    const [s, o, h] = await Promise.allSettled([
+    const [s, o, h, m] = await Promise.allSettled([
       seeding("city_search_status", { cityId }),
       seeding("places_outside_box", { cityId }),
       seeding("retired_tile_history", { cityId }),
+      seeding("city_tile_map", { cityId }),
     ]);
+    setTileMap(m.status === "fulfilled" ? m.value : { error: m.reason.message });
     if (s.status === "fulfilled") setStatus(s.value); else setStatusError(s.reason.message);
     setOutside(o.status === "fulfilled" ? (o.value.report ?? []).find((r) => r.city_id === cityId) ?? null : null);
     setHistory(h.status === "fulfilled" ? h.value.history ?? [] : []);
@@ -81,7 +85,7 @@ export function CityBoxPanel({ city, onChanged }) {
   useEffect(() => {
     // A server read; its state changes happen when it answers.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setStatus(null); setOutside(undefined); setHistory(null); setPlan(null); setPlanError(null); setManual(null);
+    setStatus(null); setOutside(undefined); setHistory(null); setTileMap(undefined); setPlan(null); setPlanError(null); setManual(null);
     load();
   }, [load]);
 
@@ -92,6 +96,7 @@ export function CityBoxPanel({ city, onChanged }) {
       const p = await seeding("plan_city_box", { cityId });
       setPlan(p);
       setManual({ ...p.box });
+      setConfirm(null);
     } catch (err) {
       setPlanError(err.message);
     } finally {
@@ -112,8 +117,8 @@ export function CityBoxPanel({ city, onChanged }) {
         const out = Number(res.placesOutside?.outside_active ?? 0);
         addToast({
           variant: out > 0 ? "warning" : "success",
-          title: `Box saved: ${count(res.tileCount)} tiles, ${count(res.retiredTiles)} retired`,
-          description: out > 0 ? `${count(out)} active places sit outside the new box. Nothing was deleted.` : undefined,
+          title: `Box saved: ${plural(res.tileCount, "tile")}, ${count(res.retiredTiles)} retired`,
+          description: out > 0 ? `${plural(out, "active place")} ${out === 1 ? "sits" : "sit"} outside the new box. Nothing was deleted.` : undefined,
         });
       }
       setConfirm(null);
@@ -163,16 +168,30 @@ export function CityBoxPanel({ city, onChanged }) {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" icon={MapPinned} onClick={askGoogle} loading={planning}>Ask Google for this city's box</Button>
+            <Button variant="secondary" icon={MapPinned} onClick={() => setConfirm({ kind: "geocode" })} loading={planning}>Ask Google for this city's box</Button>
           </div>
           {planError && <AlertCard variant="error" title="Couldn't get Google's box">{planError}</AlertCard>}
+
+          {tileMap === undefined ? (
+            <div className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]"><Spinner size="sm" /> Loading the map…</div>
+          ) : tileMap.error ? (
+            <AlertCard variant="error" title="Couldn't load the tile map">{tileMap.error}</AlertCard>
+          ) : (
+            <CityBoxMap
+              stored={tileMap.box}
+              google={plan?.google?.box ?? null}
+              proposed={plan?.changed ? plan.box : manualValid && manualChanged ? Object.fromEntries(Object.entries(manual).map(([k, v]) => [k, Number(v)])) : null}
+              tiles={tileMap.tiles}
+              uncovered={tileMap.uncovered}
+            />
+          )}
 
           {plan && (
             <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3 text-sm">
               <p><span className="text-[var(--color-text-secondary)]">Google ({plan.query}):</span> {boxText(plan.google?.box)}</p>
               <p><span className="text-[var(--color-text-secondary)]">Stored:</span> {boxText(plan.stored)}</p>
               <p><span className="text-[var(--color-text-secondary)]">Proposed:</span> {boxText(plan.box)}{plan.grewEdges?.length ? ` (grows to the ${plan.grewEdges.map((e) => EDGE_WORD[e] ?? e).join(", ")})` : ""}</p>
-              <p className="tabular-nums">{count(plan.tiles)} tiles · seeding about {usd(plan.estimatedSeedCostUsd)}</p>
+              <p className="tabular-nums">{plural(plan.tiles, "tile")} · seeding about {usd(plan.estimatedSeedCostUsd)}</p>
               <OutsideLine label="Proposed box" row={plan.placesOutside} />
               {Array.isArray(plan.overlaps) && plan.overlaps.length > 0 && (
                 <p className="text-[var(--color-text-secondary)]">Overlaps {plan.overlaps.map((o) => o.name ?? o.city_name).join(", ")}. Allowed when updating.</p>
@@ -191,10 +210,10 @@ export function CityBoxPanel({ city, onChanged }) {
               <details className="mt-2">
                 <summary className="cursor-pointer text-[var(--color-text-secondary)]">Adjust by hand</summary>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {[["swLat", "South edge (lat)"], ["swLng", "West edge (lng)"], ["neLat", "North edge (lat)"], ["neLng", "East edge (lng)"]].map(([k, label]) => (
+                  {[["swLat", "South edge"], ["swLng", "West edge"], ["neLat", "North edge"], ["neLng", "East edge"]].map(([k, label]) => (
                     <label key={k} className="flex flex-col gap-1 text-xs font-medium text-[var(--color-text-secondary)]">
-                      {label}
-                      <input className={inputClass} inputMode="decimal" value={manual?.[k] ?? ""} onChange={(e) => setManual((m) => ({ ...m, [k]: e.target.value }))} />
+                      {label} <span className="font-normal text-[var(--color-text-tertiary)]">{k.endsWith("Lat") ? "latitude" : "longitude"}</span>
+                      <input className={inputClass} inputMode="decimal" name={label} aria-label={label} value={manual?.[k] ?? ""} onChange={(e) => setManual((m) => ({ ...m, [k]: e.target.value }))} />
                     </label>
                   ))}
                 </div>
@@ -209,7 +228,7 @@ export function CityBoxPanel({ city, onChanged }) {
               <div className="mb-1 font-medium">Retired tiles</div>
               <ul className="flex flex-col gap-1 text-xs tabular-nums text-[var(--color-text-secondary)]">
                 {history.map((h) => (
-                  <li key={h.retired_at}>{new Date(h.retired_at).toLocaleDateString()}: {count(h.tiles)} tiles, {count(h.searches)} searches, {count(h.places_new)} new places, {usd(h.cost_usd)}</li>
+                  <li key={h.retired_at}>{new Date(h.retired_at).toLocaleDateString()}: {plural(h.tiles, "tile")}, {plural(h.searches, "search", "searches")}, {plural(h.places_new, "new place")}, {usd(h.cost_usd)}</li>
                 ))}
               </ul>
             </div>
@@ -251,18 +270,20 @@ export function CityBoxPanel({ city, onChanged }) {
         )}
       </SectionCard>
 
-      <Modal open={!!confirm} onClose={busy ? () => {} : () => setConfirm(null)} title={confirm?.kind === "completeness" ? "Run a completeness check?" : `Change ${city.city_name}'s box?`}>
+      <Modal open={!!confirm} onClose={busy ? () => {} : () => setConfirm(null)} title={confirm?.kind === "completeness" ? "Run a completeness check?" : confirm?.kind === "geocode" ? `Ask Google for ${city.city_name}'s box?` : `Change ${city.city_name}'s box?`}>
         <ModalBody>
           <div className="flex flex-col gap-2 text-sm text-[var(--color-text-secondary)]">
-            {confirm?.kind === "completeness" ? (
-              <p>20 paid Google searches at random points in the box, the same price as 20 seeding searches. It measures what share of places Google knows here is missing from the pool.</p>
+            {confirm?.kind === "geocode" ? (
+              <p>One Google Geocoding request, about {usd(status?.geocodeCostUsd ?? null)}. Nothing changes until you apply the box it suggests.</p>
+            ) : confirm?.kind === "completeness" ? (
+              <p>{count(status?.completenessSearches ?? null)} paid Google searches at random points in the box, about {usd(status?.completenessCostUsd ?? null)}. It stops early after 3 failed searches in a row. It measures what share of places Google knows here is missing from the pool.</p>
             ) : (
               <>
                 <p>New box: {boxText(confirm?.kind === "manual" ? Object.fromEntries(Object.entries(manual ?? {}).map(([k, v]) => [k, Number(v)])) : plan?.box)}</p>
                 <p>Old tiles are retired with their search history kept. New area stays unsearched until the next run.</p>
                 {confirm?.kind === "google" && <p>{(plan?.askReasons ?? []).map((r) => ASK_REASON_TEXT[r] ?? r).join(". ")}.</p>}
                 {confirm?.kind === "google" && Number(plan?.placesOutside?.outside_active ?? 0) > 0 && (
-                  <p className="text-[var(--color-warning-700)]">{count(plan.placesOutside.outside_active)} active places would sit outside. Nothing is deleted.</p>
+                  <p className="text-[var(--color-warning-700)]">{plural(plan.placesOutside.outside_active, "active place")} would sit outside. Nothing is deleted.</p>
                 )}
               </>
             )}
@@ -270,8 +291,8 @@ export function CityBoxPanel({ city, onChanged }) {
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setConfirm(null)} disabled={busy}>Keep as is</Button>
-          <Button loading={busy} onClick={() => (confirm?.kind === "completeness" ? runCompleteness() : apply(confirm.kind))}>
-            {confirm?.kind === "completeness" ? "Run the check" : "Save the box"}
+          <Button loading={busy || planning} onClick={() => (confirm?.kind === "geocode" ? askGoogle() : confirm?.kind === "completeness" ? runCompleteness() : apply(confirm.kind))}>
+            {confirm?.kind === "geocode" ? "Ask Google" : confirm?.kind === "completeness" ? "Run the check" : "Save the box"}
           </Button>
         </ModalFooter>
       </Modal>

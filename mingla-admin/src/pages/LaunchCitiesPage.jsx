@@ -241,7 +241,7 @@ export function LaunchCitiesPage() {
         if (!row.has_bbox) return <Badge variant="warning" dot>No box</Badge>;
         const outside = gaps?.[row.city_id]?.outsideBox ?? 0;
         return outside > 0
-          ? <Badge variant="error" dot>{`${outside.toLocaleString()} places outside`}</Badge>
+          ? <Badge variant="error" dot>{`${outside.toLocaleString()} ${outside === 1 ? "place" : "places"} outside`}</Badge>
           : <Badge variant="success" dot>Box set</Badge>;
       },
     },

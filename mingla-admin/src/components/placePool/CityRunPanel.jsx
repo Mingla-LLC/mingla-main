@@ -164,17 +164,17 @@ function RunPlan({ city, serperRate, onStarted }) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Spend limit, USD" hint="Required. The run pauses when it reaches this.">
-          <input className={inputClass} inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="e.g. 50" aria-invalid={limit !== "" && !limitOk} />
+          <input className={inputClass} aria-label="Spend limit, USD" inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="e.g. 50" aria-invalid={limit !== "" && !limitOk} />
         </Field>
         <div className="flex flex-col gap-2 text-sm">
-          <label className="flex min-h-10 items-center gap-2">
-            <input type="checkbox" className="h-5 w-5" checked={wholeCity} onChange={(e) => setWholeCity(e.target.checked)} />
-            Re-check the whole city, not just new places
-          </label>
-          <label className="flex min-h-10 items-center gap-2">
-            <input type="checkbox" className="h-5 w-5" checked={skipSearch} onChange={(e) => setSkipSearch(e.target.checked)} />
-            Skip searching; only check, photograph and score
-          </label>
+          <div className="flex min-h-10 items-center gap-2">
+            <input id={`whole-city-${city.city_id}`} type="checkbox" className="h-5 w-5" checked={wholeCity} onChange={(e) => setWholeCity(e.target.checked)} />
+            <label htmlFor={`whole-city-${city.city_id}`}>Re-check the whole city, not just new places</label>
+          </div>
+          <div className="flex min-h-10 items-center gap-2">
+            <input id={`skip-search-${city.city_id}`} type="checkbox" className="h-5 w-5" checked={skipSearch} onChange={(e) => setSkipSearch(e.target.checked)} />
+            <label htmlFor={`skip-search-${city.city_id}`}>Skip searching; only check, photograph and score</label>
+          </div>
         </div>
       </div>
 
@@ -278,10 +278,10 @@ function RunStatus({ runId, serperRate, onChanged }) {
             {approvalLines(approval, serperRate).map((l) => <li key={l}>{l}</li>)}
           </ul>
           {approval.highCost && (
-            <label className="flex min-h-10 items-center gap-2 text-sm">
-              <input type="checkbox" className="h-5 w-5" checked={highCostOk} onChange={(e) => setHighCostOk(e.target.checked)} />
-              I accept this is above the high-cost limit
-            </label>
+            <div className="flex min-h-10 items-center gap-2 text-sm">
+              <input id={`high-cost-${runId}`} type="checkbox" className="h-5 w-5" checked={highCostOk} onChange={(e) => setHighCostOk(e.target.checked)} />
+              <label htmlFor={`high-cost-${runId}`}>I accept this is above the high-cost limit</label>
+            </div>
           )}
           <div className="flex flex-wrap gap-2">
             <Button icon={Check} disabled={approval.highCost && !highCostOk} loading={busy === "approve"}

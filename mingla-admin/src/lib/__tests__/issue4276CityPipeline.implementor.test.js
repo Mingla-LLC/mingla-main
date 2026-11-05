@@ -19,6 +19,7 @@ import {
   cityGaps,
   cityReadinessWithGaps,
   completenessSummary,
+  plural,
   formatGb,
   matrixCells,
   pendingApproval,
@@ -165,4 +166,34 @@ test("a failed completeness check says it failed, and an unmeasured share is unk
   const panel = read("components/placePool/CityBoxPanel.jsx");
   assert.equal(/missing_share \?\? 0/.test(panel), false, "the panel must not default an unknown share to 0");
   assert.ok(panel.includes("completenessSummary(res)") && panel.includes("<Check ok={false} bad text={completenessSummary(last).text} />"));
+});
+
+// #4276 rework (P4, P2-2, P3): words for one, the map in the box panel, accessible controls.
+test("one place reads as one place", () => {
+  assert.equal(plural(1, "place"), "1 place");
+  assert.equal(plural(2, "place"), "2 places");
+  assert.equal(plural(1, "search", "searches"), "1 search");
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes('"Give 1 place its city"'));
+  assert.equal(/\{count\(report\.total\)\} places/.test(section), false);
+});
+
+test("the box panel draws boxes and tiles on the map, and asks before a paid geocode", () => {
+  const panel = read("components/placePool/CityBoxPanel.jsx");
+  assert.ok(panel.includes('seeding("city_tile_map", { cityId })'));
+  assert.ok(panel.includes("<CityBoxMap"));
+  assert.ok(panel.includes('onClick={() => setConfirm({ kind: "geocode" })}'), "Ask Google confirms first");
+  assert.ok(panel.includes("One Google Geocoding request, about {usd(status?.geocodeCostUsd ?? null)}"));
+  const map = read("components/placePool/CityBoxMap.jsx");
+  assert.ok(map.includes('from "react-leaflet"'), "the same map library as the Map tab");
+  for (const s of ["searched", "unfinished", "never_searched"]) assert.ok(map.includes(`${s}: {`), s);
+  for (const b of ["stored", "google", "proposed"]) assert.ok(map.includes(`${b}: {`), b);
+});
+
+test("run-plan checkboxes and box edges have names", () => {
+  const run = read("components/placePool/CityRunPanel.jsx");
+  assert.equal((run.match(/<label htmlFor=\{`(whole-city|skip-search|high-cost)-/g) ?? []).length, 3);
+  const panel = read("components/placePool/CityBoxPanel.jsx");
+  for (const edge of ["South edge", "West edge", "North edge", "East edge"]) assert.ok(panel.includes(`"${edge}"`), edge);
+  assert.ok(panel.includes("aria-label={label}"));
 });
