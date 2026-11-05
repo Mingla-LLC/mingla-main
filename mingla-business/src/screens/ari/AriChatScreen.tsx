@@ -83,6 +83,7 @@ import type {
 import {
   ARI_PROPOSAL_EXPIRED_COPY,
   ariChatErrorCopy,
+  flowTakenOverCopy,
   shouldReportAriChatError,
 } from "./ariChatErrorCopy";
 import { isAriProposalExpired } from "./ariProposalExpiry";
@@ -131,7 +132,7 @@ import { MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 // Matches NAV_HEIGHT (64) + paddingTop (8) + paddingBottom (≥8) in
 // (tabs)/_layout.tsx — leave 80pt clearance when the keyboard is closed
 // so the input bar doesn't tuck behind the nav.
-const BOTTOM_NAV_CLEARANCE_PX = 80;
+const TAB_BAR_CLEARANCE_PX = 80;
 
 /**
  * #3355 P3 — expo-router's focus effect when the router provides it (tests
@@ -307,6 +308,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       : null;
   const setupPart = setup ? setup.step : routeSetupPart;
   const websiteSetup = setup !== undefined;
+  // #2830 — Website setup has no tab bar, so nothing here clears one: the
+  // composer, its resting lift and the empty hero all read this one value.
+  const BOTTOM_NAV_CLEARANCE_PX = websiteSetup ? 0 : TAB_BAR_CLEARANCE_PX;
   // An old address: setup lives on the one setup screen now.
   const legacySetupRoute =
     !setup &&
@@ -754,7 +758,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         // other path that lands on a non-pending action.)
         // #2830 — a teammate took this setup over: say why, never quietly clear.
         if (result.code === "FLOW_TAKEN_OVER") {
-          const words = result.message;
+          // The registry sentence with the teammate's name; never raw server text.
+          const words = flowTakenOverCopy(result.message);
           setLocalError(words);
           chat.clearPendingAction();
           return { ok: false, error: words, terminal: "resolved" };
@@ -1548,7 +1553,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       composerOccupiedPxFor(
                         keyboardHeight,
                         Math.max(insets.bottom, spacing.md) +
-                          (setup ? 0 : BOTTOM_NAV_CLEARANCE_PX),
+                          BOTTOM_NAV_CLEARANCE_PX,
                       ),
               },
             ]}

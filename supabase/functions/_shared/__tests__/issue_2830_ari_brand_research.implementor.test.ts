@@ -392,3 +392,19 @@ Deno.test("the source line is plain words", () => {
     /^From lanternroom\.example, checked on 1 Oct 2026$/,
   );
 });
+
+Deno.test("a run stops parsing once its parse budget is spent, and keeps what it found", async () => {
+  // Each parse "costs" 1 s on this clock: the second page uses up the budget.
+  let t = 0;
+  const pages: Record<string, ResearchPage> = {};
+  const urls = ["https://a.example/", "https://b.example/", "https://c.example/", "https://d.example/"];
+  for (const url of urls) pages[url] = { ...OWN, url };
+  const fetched: string[] = [];
+  const result = await runBrandResearch(IDENTITY, {
+    ...deps({ pages }),
+    fetchPage: (url) => { fetched.push(url); return Promise.resolve(pages[url] ?? null); },
+    clock: () => (t += 1_000),
+  });
+  assertEquals(fetched.length, 2);
+  assertEquals(result.pages_read, 2);
+});

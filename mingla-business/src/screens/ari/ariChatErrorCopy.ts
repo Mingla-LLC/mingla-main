@@ -131,6 +131,19 @@ export function ariChatErrorCopy(code: string): string {
  * an envelope this app refused, an unclassified edge error, or any code with
  * no copy of its own.
  */
+/**
+ * #2830 — FLOW_TAKEN_OVER's words, with the teammate's name the server filled
+ * in. Only the registry sentence is accepted; anything else the server sent
+ * becomes the registry sentence as is, so raw server text never shows.
+ */
+export function flowTakenOverCopy(serverMessage: string): string {
+  const fixed = ariChatErrorCopy("FLOW_TAKEN_OVER");
+  const tail = fixed.slice("A teammate".length);
+  if (!serverMessage.endsWith(tail)) return fixed;
+  const name = serverMessage.slice(0, -tail.length).trim();
+  return name.length > 0 && name.length <= 80 && !/[\n<>]/.test(name) ? `${name}${tail}` : fixed;
+}
+
 export function shouldReportAriChatError(code: string): boolean {
   if (code === "ENVELOPE_INVALID" || code === "EDGE_ERROR") return true;
   return ownCopy(REGISTRY_COPY, code) === undefined &&

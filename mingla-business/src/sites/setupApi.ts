@@ -23,6 +23,7 @@ import {
   type SetupDraftSite,
   type SetupDraftState,
   type SetupFlowView,
+  UNNAMED_TEAMMATE,
 } from "./setupStatus";
 
 type Raw = Record<string, unknown>;
@@ -48,7 +49,7 @@ export function normalizeSetupFlow(value: unknown): SetupFlowView | null {
     conversationId: str(raw.conversation_id),
     canTakeOver: raw.can_take_over === true,
     lastTakeover: last
-      ? { toName: str(last.to_name) ?? "A teammate", fromName: str(last.from_name) ?? "A teammate", kind: String(last.kind ?? ""), createdAt: String(last.created_at ?? "") }
+      ? { toName: str(last.to_name) ?? UNNAMED_TEAMMATE, fromName: str(last.from_name) ?? UNNAMED_TEAMMATE, kind: String(last.kind ?? ""), createdAt: String(last.created_at ?? "") }
       : null,
   };
 }

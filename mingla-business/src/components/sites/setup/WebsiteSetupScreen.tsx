@@ -8,7 +8,7 @@ import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
 import { useSaveBrandSitePlan } from "../../../sites/planApi";
 import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
-import { setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
+import { nameInSentence, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
 import { useCurrentBrandStore } from "../../../store/currentBrandStore";
@@ -178,9 +178,10 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     setupStatus: plan?.setupStatus ?? null,
     fallbackParts: plan?.parts ?? [],
     fields,
-    draftFailed: draft.state.kind === "failed",
+    // A refusal is not a failure: it names what is missing (no "Didn't work" chip).
+    draftFailed: draft.state.kind === "failed" && !draft.refusal,
     publishFailed,
-  }), [draft.state.kind, fields, plan?.parts, plan?.setupStatus, publishFailed]);
+  }), [draft.refusal, draft.state.kind, fields, plan?.parts, plan?.setupStatus, publishFailed]);
   const activeStep: PlanPartKey = step ?? plan?.plan?.activePart ?? status.nextKey ?? "offer";
   const activeIndex = status.steps.findIndex((row) => row.key === activeStep);
   const active = status.steps[activeIndex] ?? status.steps[0];
@@ -200,9 +201,11 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   };
 
   const startWith = useCallback((withAri: boolean) => {
+    // The start screen is a way in, not a way past a teammate who is already here.
+    if (!free || !presenceKnown) return;
     onHeartbeat();
     if (withAri) setAriOpen(true);
-  }, [onHeartbeat]);
+  }, [free, onHeartbeat, presenceKnown]);
 
   // ── Takeover ───────────────────────────────────────────────────────────
   const runTakeOver = (mode: "continue" | "take_over") => {
@@ -400,14 +403,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     ? brandStep.status.left
     : fields.filter((field) => field.requirement !== "optional" && field.state !== "verified" && field.state !== "not_applicable" && field.group === "Brand").length;
 
-  const body = (
-    <View style={styles.gapLarge} onTouchStart={() => { lastTouchRef.current = Date.now(); }}>
-      {planQuery.isError ? (
-        <Banner tone="err" icon="alert" title="We couldn't load your setup. Nothing is lost." testID="setup-load-error">
-          <WButton label="Try again" size="sm" onPress={() => { void planQuery.refetch(); }} testID="setup-load-retry" />
-        </Banner>
-      ) : null}
-      {presence.kind !== "free" ? (
+  const presenceCard = presence.kind === "free" ? null : (
         <SetupPresenceCard
           presence={presence}
           watching={watching}
@@ -423,7 +419,16 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
           onAskAdmin={() => ctx.askAdmin("plan")}
           asking={ctx.asking}
         />
+  );
+
+  const body = (
+    <View style={styles.gapLarge} onTouchStart={() => { lastTouchRef.current = Date.now(); }}>
+      {planQuery.isError ? (
+        <Banner tone="err" icon="alert" title="We couldn't load your setup. Nothing is lost." testID="setup-load-error">
+          <WButton label="Try again" size="sm" onPress={() => { void planQuery.refetch(); }} testID="setup-load-retry" />
+        </Banner>
       ) : null}
+      {presenceCard}
       {flowView?.lastTakeover && !flowView.mine && presence.kind === "free" ? (
         <Chip label={`${flowView.lastTakeover.toName} took over`} />
       ) : null}
@@ -447,7 +452,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
       }}
       title="Take over Website setup?"
       description={presence.kind === "active"
-        ? `If you take over, ${presence.name}'s next answer won't save, and we'll tell ${presence.name} why.`
+        ? `If you take over, ${nameInSentence(presence.name)}'s next answer won't save, and we'll tell ${nameInSentence(presence.name)} why.`
         : "Your teammate's next answer won't save, and we'll tell them why."}
       confirmLabel="Take over"
       testID="setup-take-over-confirm"
@@ -474,6 +479,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     return (
       <SafeScreen style={{ backgroundColor: canvas.discover }}>
         <ScrollView contentContainerStyle={styles.startPane} keyboardShouldPersistTaps="handled">
+          {/* A teammate already here: say who, and the start buttons do nothing (startWith). */}
+          {presenceCard}
           <SetupStart
             brandName={brandName}
             openCount={openBrandCount}
@@ -484,6 +491,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
             ariAvailable={!flow.isError}
           />
         </ScrollView>
+        {takeDialog}
       </SafeScreen>
     );
   }

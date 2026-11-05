@@ -66,6 +66,12 @@ export default function TripEditRoute(): React.ReactElement {
   // #2830 — Website setup's way back. Anything else behaves as if absent.
   const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
+  /** Opened from Website setup: go back to that step with the trip. True when it did. */
+  const backToSetup = (tripId: string): boolean => {
+    if (!setupReturn) return false;
+    router.replace(setupReturnWith(setupReturn, "trip", tripId) as never);
+    return true;
+  };
   // #3645 — `?step=N` reopens the wizard on the step the host left for bank
   // setup. The wizard validates the number; anything else starts at step 1.
   const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
@@ -373,10 +379,7 @@ export default function TripEditRoute(): React.ReactElement {
       // Share + the public page (it used to open with no confirmation).
       onPublished={(published) => {
         markJustPublished(published.id);
-        if (setupReturn) {
-          router.replace(setupReturnWith(setupReturn, "trip", published.id) as never);
-          return;
-        }
+        if (backToSetup(published.id)) return;
         router.replace(`/trip/${published.id}` as never);
       }}
       onExit={() => {

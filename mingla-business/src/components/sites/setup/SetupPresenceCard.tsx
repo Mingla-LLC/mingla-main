@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { partLabel } from "../../../sites/sitePlanState";
-import type { SetupPresence } from "../../../sites/setupStatus";
+import { nameInSentence, type SetupPresence } from "../../../sites/setupStatus";
 import { Card, Chip, WButton, ui } from "../website/ui";
 import { PLAN_PARTS, type PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
@@ -70,7 +70,7 @@ export function SetupPresenceCard({ presence, watching, busy, problem, onContinu
             <Text style={styles.title}>{`${presence.name} is on ${stepWords(presence.stepKey)} right now.`}</Text>
             <Text style={styles.body}>
               {presence.canTakeOver
-                ? `You can watch progress here. If you take over, ${presence.name}'s next answer won't save, and we'll tell ${presence.name} why.`
+                ? `You can watch progress here. If you take over, ${nameInSentence(presence.name)}'s next answer won't save, and we'll tell ${nameInSentence(presence.name)} why.`
                 : "You can watch progress here. A brand admin can take this over if it needs to move on."}
             </Text>
             {problemLine}

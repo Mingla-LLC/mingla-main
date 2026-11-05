@@ -6,6 +6,7 @@ import React from "react";
 
 const mockFlow = { data: undefined as unknown, isError: false, refetch: jest.fn() };
 const mockDraftArgs: { canManage?: boolean }[] = [];
+const mockDraft: { state: { kind: string; retry?: string }; refusal: string | null } = { state: { kind: "not_ready" }, refusal: null };
 
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn(), setParams: jest.fn() }) }));
@@ -19,7 +20,7 @@ jest.mock("../../../../sites/setupApi", () => ({
   useTakeOverSetup: () => ({ mutate: jest.fn(), isPending: false }),
   useSetupDraft: (args: { canManage?: boolean }) => {
     mockDraftArgs.push(args);
-    return { state: { kind: "not_ready" }, refusal: null, start: jest.fn(), retry: jest.fn() };
+    return { ...mockDraft, start: jest.fn(), retry: jest.fn() };
   },
 }));
 jest.mock("../../../../store/currentBrandStore", () => ({ useCurrentBrandStore: () => jest.fn() }));
@@ -51,9 +52,9 @@ import { WebsiteSetupScreen } from "../WebsiteSetupScreen";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { act, create } = require("react-test-renderer") as {
   act: (fn: () => unknown) => Promise<void>;
-  create: (node: React.ReactElement) => { unmount: () => void };
+  create: (node: React.ReactElement) => { unmount: () => void; root: { findAll: (t: (n: { props: Record<string, unknown> }) => boolean) => { props: Record<string, unknown> }[] } };
 };
-const mounted: { unmount: () => void }[] = [];
+const mounted: ReturnType<typeof create>[] = [];
 // The heartbeat and poll timers must not outlive a test (they keep Jest alive).
 afterEach(async () => {
   await act(async () => { mounted.splice(0).forEach((tree) => tree.unmount()); });
@@ -68,11 +69,11 @@ const plan = {
   completeness: { fields: [] },
   lock: { active: false, heldByMe: false, holderName: null },
 };
-const open = async (beat: jest.Mock) => {
+const open = async (beat: jest.Mock, step = "brand") => {
   await act(async () => {
     mounted.push(create(
       <QueryClientProvider client={new QueryClient()}>
-        <WebsiteSetupScreen step="brand" search={{}} planQuery={{ data: plan, isLoading: false, isError: false, refetch: jest.fn() } as never} grant={{} as never} onHeartbeat={beat} />
+        <WebsiteSetupScreen step={step as never} search={{}} planQuery={{ data: plan, isLoading: false, isError: false, refetch: jest.fn() } as never} grant={{} as never} onHeartbeat={beat} />
       </QueryClientProvider>,
     ));
   });
@@ -116,5 +117,17 @@ describe("who locks", () => {
     const beat = jest.fn();
     await open(beat);
     expect(beat).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a refused draft is not a failure", () => {
+  afterEach(() => { mockDraft.state = { kind: "not_ready" }; mockDraft.refusal = null; });
+  it("no 'Didn't work' chip when Core named what is missing", async () => {
+    mockFlow.data = null;
+    mockDraft.state = { kind: "failed", retry: "new_operation" };
+    mockDraft.refusal = "Approve your plan first.";
+    await open(jest.fn(), "build");
+    const chips = mounted[0].root.findAll((n) => n.props.testID === "setup-chip").map((n) => n.props.label);
+    expect(chips).not.toContain("Didn't work");
   });
 });

@@ -574,6 +574,12 @@ const SEARCH_TIMEOUT_MS = 20_000;
 const MAX_PAGES = 4;
 /** After the search: no new page is read past this. A page is 6 s at most. */
 const RUN_MAX_MS = 30_000;
+/**
+ * Parsing time across the whole run. A worst-case page parses in under a
+ * second on a loaded machine; past this budget the run keeps what it found and
+ * reads no more, so four hostile pages can't approach the function's CPU limit.
+ */
+export const PARSE_BUDGET_MS = 1_500;
 
 async function fetchResearchPage(rawUrl: string): Promise<ResearchPage | null> {
   const signal = AbortSignal.timeout(PAGE_TIMEOUT_MS);
@@ -613,6 +619,8 @@ export interface ResearchRunDeps {
   search(query: string): Promise<AriResearchResult>;
   fetchPage(url: string): Promise<ResearchPage | null>;
   now(): string;
+  /** Milliseconds, for the parse budget. Defaults to performance.now. */
+  clock?: () => number;
 }
 
 const PRODUCTION_DEPS: ResearchRunDeps = {
@@ -670,7 +678,12 @@ export async function runBrandResearch(
   const queue = urls.slice(0, MAX_PAGES);
   const seen = new Set<string>();
   const deadline = Date.now() + RUN_MAX_MS;
-  while (queue.length > 0 && pagesRead < MAX_PAGES && Date.now() < deadline) {
+  const clock = deps.clock ?? (() => performance.now());
+  let parseMs = 0;
+  while (
+    queue.length > 0 && pagesRead < MAX_PAGES && Date.now() < deadline &&
+    parseMs < PARSE_BUDGET_MS
+  ) {
     const next = queue.shift()!;
     if (seen.has(next)) continue;
     seen.add(next);
@@ -683,6 +696,7 @@ export async function runBrandResearch(
     pagesRead += 1;
     if (!page) continue;
     // One bad page or value costs that page, never the run.
+    const parseStarted = clock();
     try {
       const basis = pageBelongsToBrand(identity, page);
       if (!basis) continue;
@@ -699,6 +713,8 @@ export async function runBrandResearch(
       }
     } catch (_error) {
       continue;
+    } finally {
+      parseMs += clock() - parseStarted;
     }
   }
   const candidates = mergeCandidates(found);

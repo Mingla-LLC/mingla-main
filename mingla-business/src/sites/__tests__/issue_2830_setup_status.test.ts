@@ -10,6 +10,7 @@
 import {
   DRAFT_CHECK_AFTER_MS,
   DRAFT_GIVE_UP_MS,
+  nameInSentence,
   setupDraftState,
   setupPresence,
   setupStepChip,
@@ -125,9 +126,11 @@ describe("T-PRES-1 who is on setup", () => {
     expect(presence({ flow: flowView(), wasMyRun: true })).toEqual({ kind: "displaced", name: "Ama" });
     expect(presence({ lock: { active: true, heldByMe: false, holderName: "Tobi" }, wasMine: true })).toEqual({ kind: "displaced", name: "Tobi" });
   });
-  it("no name is A teammate, never blank", () => {
-    expect(presence({ flow: flowView({ ownerName: null }) })).toMatchObject({ name: "A teammate" });
-    expect(presence({ lock: { active: true, heldByMe: false, holderName: null } })).toMatchObject({ name: "A teammate" });
+  it("no name is Your teammate, never blank, and reads naturally mid-sentence", () => {
+    expect(presence({ flow: flowView({ ownerName: null }) })).toMatchObject({ name: "Your teammate" });
+    expect(presence({ lock: { active: true, heldByMe: false, holderName: null } })).toMatchObject({ name: "Your teammate" });
+    expect(`we'll tell ${nameInSentence("Your teammate")} why`).toBe("we'll tell your teammate why");
+    expect(nameInSentence("Ama")).toBe("Ama");
   });
 });
 
@@ -200,5 +203,18 @@ describe("T-RET-1 the creators' way back", () => {
     expect(setupStepFromRoute("/brand/b/website/setup?step=story", "b")).toBe("story");
     expect(setupStepFromRoute("/brand/other/edit", "b")).toBeNull();
     expect(setupStepFromRoute("/trip/create", "b")).toBeNull();
+  });
+});
+
+describe("#2830 setup has no tab bar to clear", () => {
+  it("every Ari clearance reads one value that is 0 inside Website setup", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as typeof import("path");
+    const screen = fs.readFileSync(path.resolve(__dirname, "../../screens/ari/AriChatScreen.tsx"), "utf8");
+    expect(screen).toContain("const BOTTOM_NAV_CLEARANCE_PX = websiteSetup ? 0 : TAB_BAR_CLEARANCE_PX;");
+    // No second, module-level 80 that a use could silently fall back to.
+    expect(screen).not.toMatch(/^const BOTTOM_NAV_CLEARANCE_PX/m);
   });
 });

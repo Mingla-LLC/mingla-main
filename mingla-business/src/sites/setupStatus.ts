@@ -120,7 +120,11 @@ export type SetupPresence =
   | { kind: "active"; source: "ari" | "hand"; name: string; stepKey: string | null; canTakeOver: boolean }
   | { kind: "displaced"; name: string };
 
-const nameOf = (value: string | null | undefined): string => (value && value.trim() ? value.trim() : "A teammate");
+/** Who, when the server has no name for them. Starts a sentence; see `nameInSentence`. */
+export const UNNAMED_TEAMMATE = "Your teammate";
+const nameOf = (value: string | null | undefined): string => (value && value.trim() ? value.trim() : UNNAMED_TEAMMATE);
+/** A name placed mid-sentence: "tell your teammate why", never "tell Your teammate why". */
+export const nameInSentence = (name: string): string => (name === UNNAMED_TEAMMATE ? "your teammate" : name);
 
 export function setupPresence(input: {
   paused: boolean;
