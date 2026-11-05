@@ -1583,7 +1583,7 @@ export default function ConsumerEventDetailScreen({
     socialProofQuery.data?.hideRemainingCount === true ||
     (bundleHideRemainingCount !== false &&
       socialProofQuery.data?.hideRemainingCount !== false);
-  const publicEventForBody: PublicEventProps =
+  const sourcedPublicEvent: PublicEventProps =
     canonical === null
       ? {
           ...seededPublicEvent,
@@ -1601,21 +1601,26 @@ export default function ConsumerEventDetailScreen({
           dateLine: seededPublicEvent.dateLine,
           dateSubline: occurrenceSummary,
           hideRemainingCount,
-          // issue #3281 — each listed ticket says which days it covers, and
-          // reads as off the guest's days when it covers none of them.
-          tickets: canonical.event.tickets.map((ticket) => ({
-            ...ticket,
-            dayScopeLabel: ticketDayScopeLabel(
-              ticket.validOccurrenceIds,
-              validOccurrences,
-              canonical.timezone,
-            ),
-            offChosenDays: ticketOffChosenDays(
-              ticket.validOccurrenceIds,
-              selectedEventDateIds,
-            ),
-          })),
         };
+  // issue #3281 — each listed ticket says which days it covers, and reads as
+  // off the guest's days when it covers none of them. Decorated after either
+  // source is chosen, so a deck or chat arrival (warm, seeded) gets it too;
+  // each source keeps its own tickets.
+  const publicEventForBody: PublicEventProps = {
+    ...sourcedPublicEvent,
+    tickets: sourcedPublicEvent.tickets.map((ticket) => ({
+      ...ticket,
+      dayScopeLabel: ticketDayScopeLabel(
+        ticket.validOccurrenceIds,
+        validOccurrences,
+        validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
+      ),
+      offChosenDays: ticketOffChosenDays(
+        ticket.validOccurrenceIds,
+        selectedEventDateIds,
+      ),
+    })),
+  };
   const canonicalLifecycleReady =
     validatedDayCanonical !== null && !canonicalQuery.isError;
   const canonicalLifecycleBlockedLabel = canonicalQuery.isError

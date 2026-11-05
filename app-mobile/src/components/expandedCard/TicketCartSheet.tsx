@@ -556,16 +556,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   >({});
   // issue #3281 — the notice after a day change took tickets out, and the
   // days and tickets its Undo brings back.
+  // The snapshot is the whole cart as it stood before the day change: every
+  // line, the split mode and every per-date map, since dropping to one date
+  // also folds split lines back to uniform.
   const [dayNotice, setDayNotice] = useState<{
     message: string;
     days: readonly string[];
     quantities: Record<string, number>;
-    byDate: Record<string, ByDateMap | undefined>;
+    byDate: Record<string, ByDateMap>;
+    sameTicketsForEveryDate: boolean;
   } | null>(null);
   const pendingDayRestoreRef = React.useRef<{
     days: readonly string[];
     quantities: Record<string, number>;
-    byDate: Record<string, ByDateMap | undefined>;
+    byDate: Record<string, ByDateMap>;
+    sameTicketsForEveryDate: boolean;
   } | null>(null);
   // issue #3281 — the extras the guest asked for, by ticket. The quote lines
   // below fit them to each line, so a lowered ticket count never over-asks.
@@ -1684,12 +1689,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         })),
       ),
       days: previousDays,
+      // This render still holds the cart from before the day change.
       quantities: Object.fromEntries(
-        removed.map(({ ticket, quantity }) => [ticket.id, quantity]),
+        lines.map((line) => [line.ticketTypeId, line.quantity]),
       ),
-      byDate: Object.fromEntries(
-        removed.map(({ ticket }) => [ticket.id, byDateByTicket[ticket.id]]),
-      ),
+      byDate: { ...byDateByTicket },
+      sameTicketsForEveryDate,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, quoteEventDateIds, visibleTickets]);
@@ -1699,13 +1704,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     if (pending === null) return;
     if (pending.days.join(",") !== quoteEventDateIds.join(",")) return;
     pendingDayRestoreRef.current = null;
-    setByDateByTicket((current) => {
-      const next = { ...current };
-      for (const [id, map] of Object.entries(pending.byDate)) {
-        if (map !== undefined) next[id] = map;
-      }
-      return next;
-    });
+    setSameTicketsForEveryDate(pending.sameTicketsForEveryDate);
+    setByDateByTicket(pending.byDate);
     for (const [id, quantity] of Object.entries(pending.quantities)) {
       const ticket = visibleTickets.find((t) => t.id === id);
       if (ticket !== undefined) setLineQuantity(seedForTicket(ticket), quantity);
@@ -1713,7 +1713,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteEventDateIds]);
   const undoDayRemoval = (): void => {
-    if (dayNotice === null || multiDaySelection === null) return;
+    if (dayNotice === null || multiDaySelection === null || isSubmitting) return;
     pendingDayRestoreRef.current = dayNotice;
     const before = new Set(dayNotice.days);
     for (const id of quoteEventDateIds) {
@@ -1922,8 +1922,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             </Text>
             <Pressable
               onPress={undoDayRemoval}
+              // Checkout has the cart once it is submitting.
+              disabled={isSubmitting}
               accessibilityRole="button"
               accessibilityLabel="Undo"
+              accessibilityState={{ disabled: isSubmitting }}
               style={styles.dayNoticeUndo}
             >
               <Text style={styles.dayNoticeUndoText}>Undo</Text>

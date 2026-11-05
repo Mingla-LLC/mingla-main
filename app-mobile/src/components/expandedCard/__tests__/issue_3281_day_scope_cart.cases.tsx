@@ -101,6 +101,87 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     expect(renderer.root.findAllByProps({ testID: "issue-3281-scope-notice" })).toHaveLength(0);
   });
 
+  test("Undo brings back the whole cart: split counts on other tickets too", () => {
+    const onToggle = jest.fn();
+    const ALL = "ticket-all-dates";
+    const tickets = [
+      { ...baseTicket, validOccurrenceIds: [FRI] },
+      { ...baseTicket, id: ALL, name: "Day pass", validOccurrenceIds: null },
+    ] as never;
+    const props = makeTicketCartProps({
+      ...signedIn,
+      tickets,
+      initialTicketTypeId: null as never,
+      initialQuantities: { [baseTicket.id]: 2, [ALL]: 2 } as never,
+      multiDaySelection: selection([FRI, SAT], onToggle),
+    });
+    const renderer = mountTicketCart(props);
+    // Split per date: the day pass is Friday 1, Saturday 3.
+    TestRenderer.act(() => {
+      renderer.root.findAllByType("Switch" as never)[0].props.onValueChange(false);
+    });
+    const rowFor = (dateId: string, ticketId: string) =>
+      renderer.root
+        .findByProps({ testID: `issue-3281-date-${dateId}` })
+        .findAllByType("QuantityRow" as never)
+        .find((row) => row.props.ticket.id === ticketId)!;
+    TestRenderer.act(() => { rowFor(FRI, ALL).props.onQuantityChange(1); });
+    TestRenderer.act(() => { rowFor(SAT, ALL).props.onQuantityChange(3); });
+    const lines = () =>
+      (mockTicketQuote.input as { lines: Array<{ ticketTypeId: string; quantity: number; byDate?: Record<string, number> }> }).lines;
+    // Line order is not part of the cart; compare by ticket.
+    const sorted = () =>
+      JSON.stringify([...lines()].sort((a, b) => a.ticketTypeId.localeCompare(b.ticketTypeId)));
+    const before = sorted();
+
+    // Friday goes: the Friday-only ticket leaves, and the day pass folds back.
+    updateTicketCart(renderer, { ...props, multiDaySelection: selection([SAT], onToggle) });
+    expect(lines().some((line) => line.ticketTypeId === baseTicket.id)).toBe(false);
+
+    TestRenderer.act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Undo" }).props.onPress();
+    });
+    updateTicketCart(renderer, { ...props, multiDaySelection: selection([FRI, SAT], onToggle) });
+    expect(sorted()).toBe(before);
+    expect(lines().find((line) => line.ticketTypeId === ALL)).toMatchObject({
+      quantity: 4,
+      byDate: { [FRI]: 1, [SAT]: 3 },
+    });
+  });
+
+  test("Undo is off while checkout is submitting", () => {
+    const onToggle = jest.fn();
+    const props = makeTicketCartProps({
+      ...signedIn,
+      tickets: fridayOnly(),
+      multiDaySelection: selection([FRI, SAT], onToggle),
+    });
+    const renderer = mountTicketCart(props);
+    updateTicketCart(renderer, { ...props, multiDaySelection: selection([SAT], onToggle) });
+    updateTicketCart(renderer, {
+      ...props,
+      isSubmitting: true,
+      multiDaySelection: selection([SAT], onToggle),
+    });
+    const undo = renderer.root.findAllByProps({ accessibilityLabel: "Undo" })[0];
+    expect(undo.props.disabled).toBe(true);
+    TestRenderer.act(() => { undo.props.onPress(); });
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  test("the event page decorates tickets from either source, deck and chat arrivals included", () => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const screen = readFileSync(
+      join(__dirname, "../../../screens/Event/ConsumerEventDetailScreen.tsx"),
+      "utf8",
+    );
+    // The scope fields are added after the canonical-or-seeded choice.
+    expect(screen).toMatch(
+      /const publicEventForBody: PublicEventProps = \{\s*\.\.\.sourcedPublicEvent,\s*tickets: sourcedPublicEvent\.tickets\.map/,
+    );
+  });
+
   test("the helpers say nothing for an All dates ticket", () => {
     expect(ticketDayScopeLabel(null, OCCURRENCES as never, "UTC")).toBeNull();
     expect(ticketDayScopeLabel([FRI, SAT], OCCURRENCES as never, "UTC")).toBeNull();

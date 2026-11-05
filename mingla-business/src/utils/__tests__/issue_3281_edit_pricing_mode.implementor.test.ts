@@ -5,7 +5,7 @@
 import { expect, test } from "@jest/globals";
 
 import type { LiveEvent } from "../../store/liveEventStore";
-import { liveEventToEditableDraft } from "../liveEventAdapter";
+import { liveEventToEditableDraft, withLivePricingMode } from "../liveEventAdapter";
 import { capacityHelper } from "../ticketDayScopeCopy";
 
 const live = (mode: LiveEvent["multiDatePricingMode"]): LiveEvent =>
@@ -31,4 +31,17 @@ test("#3281 with the mode known, an All dates ticket's capacity hint shows", () 
     "Shared across all dates. Each guest uses 1, however many days they pick.",
   );
   expect(capacityHelper(null, [], 100, undefined)).toBeNull();
+});
+
+test("#3281 an editor opened from the publish cache takes the mode when the fresh read lands, keeping its edits", () => {
+  // Opened from the publish cache: no mode yet, and the host has typed a name.
+  const opened = { ...liveEventToEditableDraft(live(undefined)), name: "Edited name" };
+  expect(opened.multiDatePricingMode).toBeUndefined();
+  // The by-id read lands with the same updatedAt, carrying the mode.
+  const hydrated = withLivePricingMode(opened, "per_day");
+  expect(hydrated.multiDatePricingMode).toBe("per_day");
+  expect(hydrated.name).toBe("Edited name");
+  // Nothing to fill in leaves the draft as it was.
+  expect(withLivePricingMode(hydrated, "per_day")).toBe(hydrated);
+  expect(withLivePricingMode(hydrated, undefined)).toBe(hydrated);
 });

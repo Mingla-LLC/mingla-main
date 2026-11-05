@@ -88,6 +88,7 @@ import {
   classifySeverity,
   editableDraftToPatch,
   liveEventToEditableDraft,
+  withLivePricingMode,
   type FieldDiff,
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
@@ -501,6 +502,15 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   const hydratedKeyRef = useRef<string>(
     `${liveEvent.id}::${liveEvent.updatedAt}`,
   );
+
+  // issue #3281 — the pricing mode is read-only here and comes from the by-id
+  // read, which can land after an editor opened from the publish cache with the
+  // same updatedAt (so the guarded re-seed above skips it). Fill in just that
+  // field when it arrives; it is not part of the save diff, so no edit is lost.
+  const freshPricingMode = liveEvent.multiDatePricingMode;
+  useEffect(() => {
+    setEditState((current) => withLivePricingMode(current, freshPricingMode));
+  }, [freshPricingMode]);
 
   // Currently expanded section (accordion — only one at a time)
   const [openSection, setOpenSection] = useState<SectionKey | null>(() =>

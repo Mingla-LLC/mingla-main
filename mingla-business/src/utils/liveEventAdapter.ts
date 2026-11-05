@@ -46,6 +46,19 @@ import {
  *   - lastStepReached: 0 (sectioned UI doesn't use it)
  *   - status: "live" (never triggers publishDraft path)
  */
+/**
+ * issue #3281 — an open editor takes the pricing mode from a fresher live
+ * event, and nothing else from it, so in-progress edits stay. Returns the same
+ * draft when there is nothing to fill in.
+ */
+export const withLivePricingMode = (
+  draft: DraftEvent,
+  mode: LiveEvent["multiDatePricingMode"],
+): DraftEvent =>
+  mode === undefined || draft.multiDatePricingMode === mode
+    ? draft
+    : { ...draft, multiDatePricingMode: mode };
+
 export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   id: e.id,
   brandId: e.brandId,

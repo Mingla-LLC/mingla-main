@@ -364,7 +364,9 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the segment-count proofs the same way.
 // #3281: register the door extras migration and test
 // #3281: register the private link dates migration and test
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ed4e3359b50ec16fb3a37a589c967c0f05ebc6ba5fce59b4cc8dfeed7d6fbeb8";
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9f2aed2e143950ed8fb6ab87e21cf489dc95e2eb854d95dc5d6f33ac0f513533";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
