@@ -52,7 +52,7 @@ import { WebsiteSetupScreen } from "../WebsiteSetupScreen";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { act, create } = require("react-test-renderer") as {
   act: (fn: () => unknown) => Promise<void>;
-  create: (node: React.ReactElement) => { unmount: () => void; root: { findAll: (t: (n: { props: Record<string, unknown> }) => boolean) => { props: Record<string, unknown> }[] } };
+  create: (node: React.ReactElement) => { unmount: () => void; root: { findAll: (t: (n: { props: Record<string, unknown> }) => boolean) => { props: Record<string, unknown>; children?: unknown[] }[] } };
 };
 const mounted: ReturnType<typeof create>[] = [];
 // The heartbeat and poll timers must not outlive a test (they keep Jest alive).
@@ -120,14 +120,31 @@ describe("who locks", () => {
   });
 });
 
+
+/** Every string under the build step's row in the rail, where its chip shows. */
+const buildRowText = (): string => {
+  const out: string[] = [];
+  const walk = (node: unknown): void => {
+    if (typeof node === "string") { out.push(node); return; }
+    const n = node as { children?: unknown[] } | null;
+    n?.children?.forEach(walk);
+  };
+  mounted[0].root.findAll((n) => n.props.testID === "setup-step-build").forEach(walk);
+  return out.join(" ");
+};
 describe("a refused draft is not a failure", () => {
   afterEach(() => { mockDraft.state = { kind: "not_ready" }; mockDraft.refusal = null; });
-  it("no 'Didn't work' chip when Core named what is missing", async () => {
+  it("no 'Didn't work' on the build step when Core named what is missing", async () => {
     mockFlow.data = null;
     mockDraft.state = { kind: "failed", retry: "new_operation" };
     mockDraft.refusal = "Approve your plan first.";
     await open(jest.fn(), "build");
-    const chips = mounted[0].root.findAll((n) => n.props.testID === "setup-chip").map((n) => n.props.label);
-    expect(chips).not.toContain("Didn't work");
+    expect(buildRowText()).not.toContain("Didn't work");
+  });
+  it("control: a real failure still says so", async () => {
+    mockFlow.data = null;
+    mockDraft.state = { kind: "failed", retry: "new_operation" };
+    await open(jest.fn(), "build");
+    expect(buildRowText()).toContain("Didn't work");
   });
 });
