@@ -227,7 +227,7 @@ export function LaunchCitiesPage() {
           <div className="flex min-w-0 flex-col items-start gap-1">
             <Badge variant={readiness.variant} dot>{readiness.label}</Badge>
             {readiness.gaps.length > 0 && (
-              <span className="text-xs text-[var(--color-text-secondary)]">{readiness.gaps.join(" · ")}</span>
+              <span className="whitespace-normal break-words text-xs text-[var(--color-text-secondary)]">{readiness.gaps.join(" · ")}</span>
             )}
           </div>
         );

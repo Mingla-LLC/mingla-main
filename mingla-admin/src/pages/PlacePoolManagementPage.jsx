@@ -915,215 +915,8 @@ function AddCityModal({ open, onClose, onSave }) {
   );
 }
 
-// ── Update City Modal (Re-geocode existing city) ──────────────────────────────
-
-function UpdateCityModal({ open, onClose, city, onUpdated }) {
-  const [query, setQuery] = useState("");
-  const [tileRadius, setTileRadius] = useState("1500");
-  const [geocodeResult, setGeocodeResult] = useState(null);
-  const [overlap, setOverlap] = useState([]);
-  const [geocoding, setGeocoding] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
-  // Pre-fill when modal opens or city changes
-  useEffect(() => {
-    if (open && city) {
-      setQuery(city.name || "");
-      setTileRadius(String(city.tile_radius_m || 1500));
-      setGeocodeResult(null);
-      setOverlap([]);
-      setError(null);
-    }
-  }, [open, city]);
-
-  const handleGeocode = useCallback(async () => {
-    if (!query.trim() || query.trim().length < 2) return;
-    setGeocoding(true);
-    setGeocodeResult(null);
-    setOverlap([]);
-    setError(null);
-    try {
-      const { data, error: fnErr } = await supabase.functions.invoke("admin-seed-places", {
-        body: { action: "geocode_city", query: query.trim() },
-      });
-      if (fnErr) throw new Error(await extractFunctionError(fnErr, "Geocoding failed"));
-      if (data?.error) throw new Error(data.error);
-      setGeocodeResult(data);
-
-      // Check overlap — exclude THIS city (the key difference from AddCityModal)
-      const { data: overlapData } = await supabase.rpc("check_city_bbox_overlap", {
-        p_sw_lat: data.viewport.swLat,
-        p_sw_lng: data.viewport.swLng,
-        p_ne_lat: data.viewport.neLat,
-        p_ne_lng: data.viewport.neLng,
-        p_exclude_id: city.id,
-      });
-      setOverlap(overlapData || []);
-    } catch (err) {
-      setError(err.message || "Geocoding failed");
-    } finally {
-      setGeocoding(false);
-    }
-  }, [query, city]);
-
-  // Overlap is informational for updates — neighboring cities may legitimately overlap
-  const isValid = geocodeResult && tileRadius;
-
-  const handleSave = useCallback(async () => {
-    if (!geocodeResult || !isValid || !city) return;
-    setSaving(true);
-    const vp = geocodeResult.viewport;
-    const tileRadiusNum = parseInt(tileRadius);
-
-    try {
-      // UPDATE existing city record (not INSERT)
-      const { error: updateErr } = await supabase.from("seeding_cities").update({
-        google_place_id: `geocoded_${geocodeResult.center.lat}_${geocodeResult.center.lng}`,
-        name: geocodeResult.cityName,
-        country: geocodeResult.country,
-        country_code: geocodeResult.countryCode,
-        center_lat: geocodeResult.center.lat,
-        center_lng: geocodeResult.center.lng,
-        bbox_sw_lat: vp.swLat,
-        bbox_sw_lng: vp.swLng,
-        bbox_ne_lat: vp.neLat,
-        bbox_ne_lng: vp.neLng,
-        coverage_radius_km: 0,
-        tile_radius_m: tileRadiusNum,
-        updated_at: new Date().toISOString(),
-      }).eq("id", city.id);
-      if (updateErr) throw updateErr;
-
-      // Regenerate tiles with new bbox + radius
-      const { data: tileResult, error: tileErr } = await supabase.functions.invoke("admin-seed-places", {
-        body: { action: "generate_tiles", cityId: city.id },
-      });
-      if (tileErr) throw new Error(await extractFunctionError(tileErr, "Tile generation failed"));
-      if (tileResult?.error) throw new Error(tileResult.error);
-
-      onUpdated(tileResult?.tileCount || 0);
-      onClose();
-    } catch (err) {
-      setError(err.message || "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }, [geocodeResult, isValid, tileRadius, city, onUpdated, onClose]);
-
-  const selectedEstimate = geocodeResult?.tileEstimates?.[`atRadius${tileRadius}`] || null;
-
-  if (!city) return null;
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Update City — ${city.name}`} size="md">
-      <ModalBody>
-        <div className="space-y-4">
-          {/* City search (pre-filled) */}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Input label="City Name" placeholder="e.g. Raleigh, NC" value={query}
-                onChange={(e) => { setQuery(e.target.value); setGeocodeResult(null); setOverlap([]); setError(null); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleGeocode(); }}
-              />
-            </div>
-            <div className="pt-6">
-              <Button variant="secondary" icon={Search} loading={geocoding} onClick={handleGeocode}
-                disabled={!query.trim() || query.trim().length < 2}>
-                Re-geocode
-              </Button>
-            </div>
-          </div>
-
-          {/* Current bbox info */}
-          {!geocodeResult && city.bbox_sw_lat && (
-            <div className="rounded-lg border border-[var(--gray-200)] p-3 space-y-1 bg-[var(--gray-50)]">
-              <p className="text-xs font-medium text-[var(--color-text-secondary)]">Current bounding box</p>
-              <p className="text-xs text-[var(--color-text-tertiary)]">
-                {((city.bbox_ne_lat - city.bbox_sw_lat) * 111.32).toFixed(1)}km × {((city.bbox_ne_lng - city.bbox_sw_lng) * 111.32 * Math.cos((city.center_lat * Math.PI) / 180)).toFixed(1)}km · {city.tile_radius_m}m tiles
-              </p>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="flex items-start gap-2 text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] rounded-lg p-3">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Geocode result */}
-          {geocodeResult && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-[var(--gray-200)] p-3 space-y-1">
-                <p className="text-sm font-semibold text-[var(--color-text-primary)]">{geocodeResult.cityName}</p>
-                <p className="text-xs text-[var(--color-text-secondary)]">{geocodeResult.formattedAddress}</p>
-                <p className="text-xs text-[var(--color-text-tertiary)]">
-                  Country: {geocodeResult.country} ({geocodeResult.countryCode}) · {geocodeResult.tileEstimates.extentLatKm} km × {geocodeResult.tileEstimates.extentLngKm} km · ~{geocodeResult.tileEstimates.areaKm2.toLocaleString()} km²
-                </p>
-              </div>
-
-              {/* Overlap notice (informational — does not block save for updates) */}
-              {overlap.length > 0 && (
-                <div className="flex items-start gap-2 text-sm text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-3">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-warning-500)]" />
-                  <span>Bbox overlaps with: {overlap.map((c) => `${c.name} (${c.country})`).join(", ")}. This is normal for neighboring cities.</span>
-                </div>
-              )}
-
-              {/* Tile radius picker */}
-              <div>
-                <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-2">Tile Radius (search granularity)</p>
-                <div className="flex gap-2">
-                  {TILE_RADIUS_OPTIONS.map((opt) => {
-                    const est = geocodeResult.tileEstimates[`atRadius${opt.value}`];
-                    const active = tileRadius === opt.value;
-                    return (
-                      <button key={opt.value} onClick={() => setTileRadius(opt.value)}
-                        className={[
-                          "flex-1 rounded-lg border p-2.5 text-left transition-all cursor-pointer",
-                          active
-                            ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-500)]"
-                            : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
-                        ].join(" ")}
-                      >
-                        <p className={`text-sm font-semibold ${active ? "text-[var(--color-brand-700)]" : "text-[var(--color-text-primary)]"}`}>{opt.label}</p>
-                        <p className="text-xs text-[var(--color-text-tertiary)]">{opt.desc}</p>
-                        {est && (
-                          <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-                            {est.tiles} tiles · ${est.searchCostUsd}
-                          </p>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {selectedEstimate && (
-                <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-2.5">
-                  {selectedEstimate.tiles} tiles × {Math.round(selectedEstimate.apiCalls / Math.max(selectedEstimate.tiles, 1))} searches = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} onClick={handleSave} disabled={!isValid}>
-          Update & Regenerate Tiles
-        </Button>
-      </ModalFooter>
-    </Modal>
-  );
-}
-
-// ── Tab 1: Seed & Import ─────────────────────────────────────────────────────
-
-// ORCH-0553 — function SeedTab(...) MOVED to components/seeding/SeedTab.jsx (~838 lines).
-// Imported at top of this file. Behavior unchanged.
+// #4276 (B1): the Update Bbox modal is gone. A box changes only in the pipeline's
+// geo box panel (apply_city_box), which keeps the larger edge and warns first.
 
 // ── Tab 2: Map View ──────────────────────────────────────────────────────────
 
@@ -1456,7 +1249,7 @@ function BrowseTab({ scope, onRefresh }) {
 
       <DataTable columns={columns} rows={places} loading={loading}
         emptyMessage="No places found" emptyIcon={Globe}
-        pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
+        pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
 
       <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { fetchPlaces(); if (onRefresh) onRefresh(); }} />
     </div>
@@ -2913,7 +2706,7 @@ function ExcludedTab({ scope, onRefresh }) {
 
       <DataTable columns={columns} rows={places} loading={loading}
         emptyMessage="No Bouncer-excluded places" emptyIcon={CheckCircle}
-        pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
+        pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
 
       {/* Place detail modal — reuses the same modal as Browse tab */}
       <PlaceDetailModal place={detailPlace} open={!!detailPlace}
@@ -2954,7 +2747,7 @@ export function PlacePoolManagementPage({ section = "browse" }) {
   // Tab state
   const tabs = SECTION_TABS[section] || SECTION_TABS.browse;
   const [activeTab, setActiveTab] = useState(tabs[0].id);
-  const [seedingActive, setSeedingActive] = useState(false);
+  const [, setSeedingActive] = useState(false);
 
   // Seeding state (loaded when a city is selected)
   const [registeredCity, setRegisteredCity] = useState(null);
@@ -2962,7 +2755,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
   const [stats, setStats] = useState(null);
   const [seedingOps, setSeedingOps] = useState([]);
   const [addCityOpen, setAddCityOpen] = useState(false);
-  const [updateCityOpen, setUpdateCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Photo backfill job status bar
@@ -3029,11 +2821,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
     setScope({ countryCode: city.country_code || null, cityId: city.id });
   };
 
-  const handleCityUpdated = (tileCount) => {
-    addToast({ variant: "success", title: `City updated — ${tileCount} tiles regenerated` });
-    refresh();
-  };
-
   const handleDeleteCity = async (city) => {
     try {
       const { error } = await supabase.from("seeding_cities").delete().eq("id", city.id);
@@ -3054,10 +2841,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
         actions={
           <>
             <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
-            {scope.cityId && registeredCity && (
-              <Button icon={RefreshCw} size="sm" variant="secondary" onClick={() => setUpdateCityOpen(true)}
-                disabled={seedingActive}>Update Bbox</Button>
-            )}
             <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>
           </>
         }
@@ -3140,7 +2923,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
       </div>
 
       <AddCityModal open={addCityOpen} onClose={() => setAddCityOpen(false)} onSave={handleAddCity} />
-      <UpdateCityModal open={updateCityOpen} onClose={() => setUpdateCityOpen(false)} city={registeredCity} onUpdated={handleCityUpdated} />
     </div>
   );
 }

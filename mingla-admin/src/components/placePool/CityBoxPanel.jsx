@@ -22,6 +22,8 @@ const ASK_REASON_TEXT = {
   seed_estimate_over_limit: "Seeding this box is estimated over $500",
 };
 
+const EDGE_WORD = { swLat: "south", swLng: "west", neLat: "north", neLng: "east" };
+
 const inputClass =
   "h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] tabular-nums";
 
@@ -166,7 +168,7 @@ export function CityBoxPanel({ city, onChanged }) {
             <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3 text-sm">
               <p><span className="text-[var(--color-text-secondary)]">Google ({plan.query}):</span> {boxText(plan.google?.box)}</p>
               <p><span className="text-[var(--color-text-secondary)]">Stored:</span> {boxText(plan.stored)}</p>
-              <p><span className="text-[var(--color-text-secondary)]">Proposed:</span> {boxText(plan.box)}{plan.grewEdges?.length ? ` (grows ${plan.grewEdges.join(", ")})` : ""}</p>
+              <p><span className="text-[var(--color-text-secondary)]">Proposed:</span> {boxText(plan.box)}{plan.grewEdges?.length ? ` (grows to the ${plan.grewEdges.map((e) => EDGE_WORD[e] ?? e).join(", ")})` : ""}</p>
               <p className="tabular-nums">{count(plan.tiles)} tiles · seeding about {usd(plan.estimatedSeedCostUsd)}</p>
               <OutsideLine label="Proposed box" row={plan.placesOutside} />
               {Array.isArray(plan.overlaps) && plan.overlaps.length > 0 && (

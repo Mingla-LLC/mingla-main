@@ -125,7 +125,9 @@ function HealthStrip({ health, error, onReload, onRateSaved }) {
           {health.serper_usd_per_request == null ? "Serper is counted by request; its cost shows as unknown until a rate is set." : "Serper cost is priced from this rate."}
         </span>
         <span className={`ml-auto text-xs ${mvNear ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-tertiary)]"}`}>
-          Place list refresh: longest {mv.max_seconds ?? "–"} s of its {mv.interval_seconds ?? 600} s slot in the last day{mvNear ? ", over half" : ""}
+          {mv.max_seconds == null
+            ? "Place list refresh: no run recorded in the last day"
+            : `Place list refresh: longest ${mv.max_seconds} s of its ${mv.interval_seconds ?? 600} s slot in the last day${mvNear ? ", over half" : ""}`}
         </span>
       </div>
     </div>

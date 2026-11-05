@@ -325,7 +325,7 @@ function RunStatus({ runId, serperRate, onChanged }) {
               <Field label="New spend limit, USD (optional)">
                 <input className={inputClass} inputMode="decimal" value={newLimit} onChange={(e) => setNewLimit(e.target.value)} placeholder={String(run.spend_limit_usd)} aria-invalid={!newLimitOk} />
               </Field>
-              <Button icon={RotateCcw} disabled={!newLimitOk} loading={busy === "resume"}
+              <Button className="justify-self-start" icon={RotateCcw} disabled={!newLimitOk} loading={busy === "resume"}
                 onClick={() => act("resume", newLimit.trim() ? { spendLimitUsd: limitNumber } : {}, "Resumed. Gates are checked again before the next step.")}>
                 Resume
               </Button>

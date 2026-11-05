@@ -87,7 +87,7 @@ function CohortSlider({ signalId, onChange }) {
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm text-[--color-text-secondary]">
-          Served to <span className="font-mono font-semibold text-[--color-text-primary]">{pct}%</span> of users on new path
+          <span className="font-mono font-semibold text-[--color-text-primary]">{pct}%</span> of Explorers get this signal
         </div>
         {saving && <Spinner size="sm" />}
       </div>
