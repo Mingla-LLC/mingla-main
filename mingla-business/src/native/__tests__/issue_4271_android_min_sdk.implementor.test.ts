@@ -3,9 +3,6 @@
  * fails below that. The real merge proof lives in the issue evidence; this pins
  * that the plugin stays wired into the app config and writes the property.
  */
-import fs from "node:fs";
-import path from "node:path";
-
 const { ensureMinSdkProperty } = require("../../../plugins/withAndroidMinSdk26");
 
 const property = (key: string, value: string) => ({ type: "property", key, value });
@@ -26,7 +23,10 @@ describe("#4271 Android minSdk for Stripe Terminal", () => {
   });
 
   test("the business app config applies the plugin", () => {
-    const source = fs.readFileSync(path.resolve(__dirname, "../../../app.config.js"), "utf8");
-    expect(source).toMatch(/^\s*"\.\/plugins\/withAndroidMinSdk26",$/m);
+    const appConfig = require("../../../app.config.js") as (context: {
+      config: Record<string, unknown>;
+    }) => { plugins: unknown[] };
+    const { plugins } = appConfig({ config: { plugins: [], extra: {} } });
+    expect(plugins).toContain("./plugins/withAndroidMinSdk26");
   });
 });

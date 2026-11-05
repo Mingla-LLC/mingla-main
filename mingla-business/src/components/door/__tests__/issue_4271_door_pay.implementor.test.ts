@@ -25,6 +25,7 @@ import {
 import {
   doorPayGuestEndCopy,
   doorPayHostEndCopy,
+  closeDoorPayCodeThen,
   doorPayHostStatus,
   formatDoorPayCountdown,
 } from "../doorPayCodeState";
@@ -216,6 +217,33 @@ describe("#4271 pay code states", () => {
     expect(doorPayHostStatus("paid", expiresAt, after, "payment_landing")).toBe("paid");
     expect(formatDoorPayCountdown(expiresAt, before)).toBe("9:42");
     expect(formatDoorPayCountdown(expiresAt, after)).toBe("0:00");
+  });
+
+  test("T4: the sale sheet opens only after a live code is confirmed closed", async () => {
+    const open = jest.fn();
+    await closeDoorPayCodeThen({ status: "opened", close: () => Promise.resolve(false), open });
+    expect(open).not.toHaveBeenCalled();
+    const order: string[] = [];
+    await closeDoorPayCodeThen({
+      status: "open",
+      close: () => {
+        order.push("close");
+        return Promise.resolve(true);
+      },
+      open: () => order.push("open"),
+    });
+    expect(order).toEqual(["close", "open"]);
+    // Already over on the server, or paid: nothing to close.
+    const close = jest.fn(() => Promise.resolve(true));
+    await closeDoorPayCodeThen({ status: "expired", close, open });
+    await closeDoorPayCodeThen({ status: "paid", close, open });
+    expect(close).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test("T13: stale copy is gone", () => {
+    expect(read("app/event/[id]/reconciliation.tsx")).not.toContain("Email PDF report");
+    expect(read("src/store/scannerInvitationsStore.ts")).not.toMatch(/NFC/);
   });
 
   test("every end state says nothing was charged and offers one-tap recovery", () => {

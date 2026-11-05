@@ -11,6 +11,7 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { recordDoorCodeDecline } from "../../_shared/doorTapWebhook.ts";
 import { createDoorTapIntentHandler } from "../index.ts";
 import { createTerminalConnectionTokenHandler } from "../../terminal-connection-token/index.ts";
 import {
@@ -309,4 +310,30 @@ Deno.test("#4271 webhook backstop records a door tap once Stripe says succeeded"
     data: null, error: { message: "boom" },
   }));
   await assertRejects(() => handleDoorTapStripeEvent(failing, event));
+});
+
+Deno.test("#4271 retest T12: a declined card notes the door code and never breaks the webhook", async () => {
+  const calls: Array<[string, unknown]> = [];
+  const client = (error: { message: string } | null) => ({
+    rpc: (name: string, args: unknown) => {
+      calls.push([name, args]);
+      return Promise.resolve({ error });
+    },
+  });
+  const event = (metadata: Record<string, string>) => ({
+    id: "evt_1",
+    type: "payment_intent.payment_failed",
+    data: { object: { metadata } },
+  });
+  await recordDoorCodeDecline(client(null), event({ mingla_checkout_session_id: "session-1" }));
+  assertEquals(calls, [["issue_4271_door_pay_code_mark_declined", { p_checkout_session_id: "session-1" }]]);
+  // An intent that isn't a checkout: nothing to note.
+  calls.length = 0;
+  await recordDoorCodeDecline(client(null), event({}));
+  assertEquals(calls.length, 0);
+  // A failed note is logged; the ticket handling still runs.
+  await recordDoorCodeDecline(client({ message: "boom" }), event({ mingla_checkout_session_id: "session-1" }));
+  const router = await Deno.readTextFile(new URL("../../_shared/stripeWebhookRouter.ts", import.meta.url));
+  const hook = router.indexOf("await recordDoorCodeDecline(supabase, event);");
+  assert(hook > 0 && hook < router.indexOf("brandId = await handleTicketCheckoutPaymentIntent(supabase, event);", hook));
 });

@@ -34,6 +34,7 @@ import { DoorPayQr } from "../../../../../src/components/door/DoorPayQr";
 import { doorSellAnotherHref } from "../../../../../src/components/door/doorTapDraft";
 import { formatDoorPayCode, makeDoorPayUrl, isDoorPayCode } from "../../../../../src/components/door/doorPayUrl";
 import {
+  closeDoorPayCodeThen,
   doorPayGuestRowValue,
   doorPayHostEndBody,
   doorPayHostEndCopy,
@@ -236,9 +237,11 @@ export default function DoorPayCodeRoute(): React.ReactElement {
   const closeThenOpenSheet = useCallback(
     async (method: "pay_code" | "cash"): Promise<void> => {
       setActionError(null);
-      const live = row?.status === "open" || row?.status === "opened";
-      if (live && !(await closeCode())) return;
-      openSheet(method);
+      await closeDoorPayCodeThen({
+        status: row?.status,
+        close: closeCode,
+        open: () => openSheet(method),
+      });
     },
     [closeCode, openSheet, row?.status],
   );

@@ -325,7 +325,7 @@ describe("guest page refusals from ticket-checkout-create", () => {
   test("purchase_terms_required and a not_found 409 each have their own copy", () => {
     const src = read("app/pay/door/[code].tsx");
     expect(src).toContain('error.code === "purchase_terms_required"');
-    expect(src).toContain("else setCodeInvalid(true);");
+    expect(src).toContain("if (error.codeStatus === null) setCodeInvalid(true);");
   });
 });
 

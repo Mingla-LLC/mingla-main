@@ -91,6 +91,21 @@ export const doorPayHostEndCopy = (
   }
 };
 
+/**
+ * Opens the sale sheet only once nothing can still land on this code: a live code
+ * is closed first, and a close that didn't confirm (a payment landed, or no
+ * answer) leaves the sheet shut so the host can't charge twice.
+ */
+export const closeDoorPayCodeThen = async (args: {
+  status: DoorPayCodeStatus | undefined;
+  close: () => Promise<boolean>;
+  open: () => void;
+}): Promise<void> => {
+  const live = args.status === "open" || args.status === "opened";
+  if (live && !(await args.close())) return;
+  args.open();
+};
+
 /** What the server says about money on a closed code. */
 export type DoorPayLatePaymentRead =
   | { kind: "checking" }
