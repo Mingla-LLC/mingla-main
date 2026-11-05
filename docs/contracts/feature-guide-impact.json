@@ -347,6 +347,7 @@
         "app-mobile/src/constants/chatTokens.ts",
         "app-mobile/src/hooks/useBrandBySlug.ts",
         "app-mobile/src/hooks/useChatList.ts",
+        "app-mobile/src/utils/threadModel.ts",
         "app-mobile/src/hooks/useChatPlans.ts",
         "app-mobile/src/hooks/useMessages.ts",
         "app-mobile/src/hooks/usePlanPlaceSearch.ts",
