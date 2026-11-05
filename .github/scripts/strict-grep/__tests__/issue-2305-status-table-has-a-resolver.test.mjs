@@ -246,3 +246,48 @@ test("an exemption that is no longer NEEDED is reported too", () => {
   );
   assert.ok(r.unneededExemptions.includes("brand_person_merge_events"));
 });
+
+// [TEST-MOD-APPROVED #4261] Each function's answer is now worked out once. These
+// pin that the shared answer is exact: per function, across every UPDATE it holds,
+// and blind to the same things the per-UPDATE scan was blind to.
+test("a function's reachability is shared across its UPDATEs and never across functions", () => {
+  const advancer = (fn, value) => `CREATE OR REPLACE FUNCTION public.${fn}() RETURNS void LANGUAGE plpgsql AS $f$
+    BEGIN
+      PERFORM 1 FROM public.widget_reviews;
+      UPDATE public.widget_reviews SET status='${value}', resolved_at=now();
+      UPDATE public.widget_reviews SET status='rejected', resolved_at=now();
+    END;
+  $f$;`;
+  const r = analyze(
+    [mig(LIFECYCLE), mig(advancer("biz_dark", "resolved"), "20270202000000_y.sql")],
+    ["// nothing"],
+  );
+  assert.deepEqual(r.violations[0].unreachableFns, ["biz_dark", "biz_dark"], "every UPDATE in a dark function is reported");
+
+  const live = analyze(
+    [
+      mig(LIFECYCLE),
+      mig(advancer("biz_dark", "resolved"), "20270202000000_y.sql"),
+      mig(advancer("biz_live", "resolved"), "20270303000000_z.sql"),
+      mig("SELECT public.biz_live();", "20270404000000_q.sql"),
+    ],
+    ["// nothing"],
+  );
+  assert.equal(live.results[0].reachableAdvancer, true);
+  assert.deepEqual(live.results[0].unreachableFns, ["biz_dark", "biz_dark"], "a call to one function must not answer for another");
+});
+
+test("a name in a literal, a grant, or the function's own head is still not a call", () => {
+  const body = `CREATE OR REPLACE FUNCTION public.biz_only_named() RETURNS void LANGUAGE plpgsql AS $f$
+    BEGIN
+      PERFORM 1 FROM public.widget_reviews;
+      UPDATE public.widget_reviews SET status='resolved', resolved_at=now();
+    END;
+  $f$;
+  GRANT EXECUTE ON FUNCTION public.biz_only_named() TO authenticated;
+  DO $assert$ BEGIN PERFORM ARRAY['public.biz_only_named()']; END; $assert$;`;
+  const dark = analyze([mig(LIFECYCLE), mig(body, "20270202000000_y.sql")], ["// nothing"]);
+  assert.deepEqual(dark.violations[0].unreachableFns, ["biz_only_named"]);
+  const called = analyze([mig(LIFECYCLE), mig(body, "20270202000000_y.sql")], ['supabase.rpc("biz_only_named")']);
+  assert.deepEqual(called.violations, [], "a production rpc call still makes it reachable");
+});
