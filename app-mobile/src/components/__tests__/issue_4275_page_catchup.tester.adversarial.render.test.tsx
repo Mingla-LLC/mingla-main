@@ -234,6 +234,18 @@ describe("#4275 tester: ConnectionsPage hands recovery the truth about a read", 
     await expect(mockRecovery.options.catchUp()).rejects.toThrow("statement timeout");
   });
 
+  it("a page whose sender names failed is written, then rejects so recovery reads it again", async () => {
+    const before = mockGetMessages.mock.calls.length;
+    mockGetMessages.mockResolvedValueOnce({
+      messages: [{ id: "m-degraded", conversation_id: "conv-1", sender_id: "friend-1", sender_name: "Unknown", content: "x", created_at: "2026-01-01T00:00:00Z", is_read: true }],
+      error: null,
+      hasMore: false,
+      degraded: true,
+    });
+    await expect(mockRecovery.options.catchUp()).rejects.toThrow("sender names unavailable");
+    expect(mockGetMessages.mock.calls.length).toBe(before + 1);
+  });
+
   it("a thrown read rejects", async () => {
     mockGetMessages.mockRejectedValueOnce(new Error("network"));
     await expect(mockRecovery.options.catchUp()).rejects.toThrow("network");

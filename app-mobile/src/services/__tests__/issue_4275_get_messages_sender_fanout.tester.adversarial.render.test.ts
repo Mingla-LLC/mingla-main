@@ -12,6 +12,9 @@
 // FAILS-ON-REVERT: remove the in-flight lookup from getSenderName and the 50-row cold
 // page makes 50 profile reads. Cache a failed read again and the healing test fails.
 
+// Set true to run the DEFECT case below; it fails until the defect is fixed.
+const REPRO_DEFECTS = false;
+
 type MockRow = Record<string, unknown>;
 const mockCounts = { profiles: 0, reads: 0 };
 let mockMessageRows: MockRow[] = [];
@@ -188,5 +191,40 @@ describe("#4275 tester: sender names in getMessages", () => {
     const healed = await messagingService.getMessages("c1", "me");
     const afterGood = mergeMessages(afterFail as never[], [{ ...onScreen, senderName: healed.messages[0].sender_name }] as never[]) as Array<typeof onScreen>;
     expect(afterGood[0].senderName).toBe("Other");
+  });
+
+  it("a failed read marks the page degraded only while the failure stands: a later good read clears it", async () => {
+    mockMessageRows = rowsWithoutSnapshot(2, "flaky-sender");
+    mockProfileFails = true;
+    expect((await messagingService.getMessages("c1", "me")).degraded).toBe(true);
+    mockProfileFails = false;
+    expect((await messagingService.getMessages("c1", "me")).degraded).toBe(false);
+  });
+
+  (REPRO_DEFECTS ? it : it.skip)("DEFECT-SN1 a name the chat list warms after a failed read clears the failure, so good pages are not degraded", async () => {
+    mockMessageRows = rowsWithoutSnapshot(3, "warmed-after-failure");
+    mockProfileFails = true;
+    await messagingService.getMessages("c1", "me");
+    mockProfileFails = false;
+    // The Chats list's profiles read (rememberSenderProfiles) now knows the name.
+    messagingService.rememberSenderProfiles([{ id: "warmed-after-failure", display_name: "Warm Name" }] as never);
+    const page = await messagingService.getMessages("c1", "me");
+    expect(page.messages[0].sender_name).toBe("Warm Name");
+    expect(page.degraded).toBe(false);
+  });
+
+  it("pinned today: with a fresh name from the chat list, a failed sender stays failed and every page reads as degraded", async () => {
+    mockMessageRows = rowsWithoutSnapshot(3, "pinned-warmed-after-failure");
+    mockProfileFails = true;
+    await messagingService.getMessages("c1", "me");
+    mockProfileFails = false;
+    messagingService.rememberSenderProfiles([{ id: "pinned-warmed-after-failure", display_name: "Warm Name" }] as never);
+    const before = mockCounts.profiles;
+    for (let read = 0; read < 3; read += 1) {
+      const page = await messagingService.getMessages("c1", "me");
+      expect(page.messages[0].sender_name).toBe("Warm Name");
+      expect(page.degraded).toBe(true);
+    }
+    expect(mockCounts.profiles).toBe(before);
   });
 });
