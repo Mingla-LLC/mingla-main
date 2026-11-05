@@ -145,6 +145,8 @@ interface ResultOverlayState {
   kind: ScanResult;
   message: string;
   detail?: string;
+  /** issue #3281 — what the guest is still owed; never clipped. */
+  extras?: string;
 }
 
 interface ResultOverlaySpec {
@@ -403,17 +405,13 @@ export default function ScannerCameraRoute(): React.ReactElement {
             kind === "success" || kind === "duplicate"
               ? doorExtrasLine(readDoorExtras(result.extras), admittedId)
               : null;
-          const withExtras = (detail: string | undefined): string | undefined =>
-            extrasLine === null
-              ? detail
-              : detail !== undefined
-                ? `${detail}\n${extrasLine}`
-                : extrasLine;
+          const extras = extrasLine ?? undefined;
           if (kind === "success") {
             showResult({
               kind,
               message: `${result.buyerName ?? "Guest"} checked in`,
-              detail: withExtras(result.ticketName ?? "Ticket"),
+              detail: result.ticketName ?? "Ticket",
+              extras,
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -440,7 +438,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             } else {
               message = "Ticket not found";
             }
-            showResult({ kind, message, detail: withExtras(detail) });
+            showResult({ kind, message, detail, extras });
             void Haptics.notificationAsync(
               kind === "duplicate" ||
                 kind === "not_yet_open" ||
@@ -569,7 +567,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
             showResult({
               kind: copy.kind,
               message: copy.message,
-              detail: withExtras(copy.detail),
+              detail: copy.detail,
+              extras,
             });
           } catch {
             // Keep the authoritative base overlay.
@@ -823,6 +822,13 @@ export default function ScannerCameraRoute(): React.ReactElement {
               {overlay.detail !== undefined ? (
                 <Text style={styles.overlayDetail} numberOfLines={2}>
                   {overlay.detail}
+                </Text>
+              ) : null}
+              {overlay.extras !== undefined ? (
+                // issue #3281 — its own line, unclipped: a long ticket or day
+                // label must not hide a count or an "(another day)".
+                <Text style={styles.overlayDetail} testID="scan-result-extras">
+                  {overlay.extras}
                 </Text>
               ) : null}
             </Pressable>

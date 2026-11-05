@@ -160,6 +160,39 @@ describe("issue #3827 — door Find by name", () => {
     expect(r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Admit all 2")).toHaveLength(1);
   });
 
+  test("issue #3281 — the door sees what each guest is still owed", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [
+        {
+          ...LOLADE,
+          extras: [
+            { name: "Friday dinner", quantity: 2, eventDateIds: ["day-fri"] },
+            { name: "Tote bag", quantity: 1, eventDateIds: null },
+          ],
+        },
+        LOLU,
+      ],
+      truncated: false,
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    expect(text(r.root)).toContain("Extras: Friday dinner × 2 · Tote bag × 1");
+    // A guest without extras gets no line.
+    expect(r.root.findAll((n) => n.props.testID === "door-extras-o-lolu")).toHaveLength(0);
+  });
+
+  test("issue #3281 — the scan card shows extras on their own unclipped line, through the day label", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),
+      "utf8",
+    );
+    // Its own Text, with no line limit, so a long ticket or day label can't hide it.
+    expect(src).toMatch(/<Text style=\{styles\.overlayDetail\} testID="scan-result-extras">/);
+    // The day-label enrichment replaces the detail but keeps the extras.
+    expect(src).toMatch(/detail: copy\.detail,\s*extras,/);
+    expect(src).toMatch(/showResult\(\{ kind, message, detail, extras \}\)/);
+  });
+
   test("S-3 no match: empty copy", async () => {
     mockSearch.mockResolvedValue({ orders: [], truncated: false });
     const r = await mount();
