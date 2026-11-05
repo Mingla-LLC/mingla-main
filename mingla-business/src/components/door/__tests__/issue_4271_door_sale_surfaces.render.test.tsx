@@ -24,10 +24,12 @@ const { act } = renderer;
 let mockQuote: Record<string, unknown> = {};
 const mockQuoteArgs: Array<Record<string, unknown>> = [];
 let mockSales: unknown[] = [];
+let mockTapAvailable = false;
+let mockParams: Record<string, string> = { id: "event-1", saleId: "sale-1", code: "K7Q2M9XA" };
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn(), back: jest.fn(), canGoBack: () => true }),
-  useLocalSearchParams: () => ({ id: "event-1", saleId: "sale-1", code: "K7Q2M9XA" }),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -99,7 +101,7 @@ jest.mock("../../../hooks/useManagedEventRoute", () => ({
   useManagedEventRoute: () => ({ event: { id: "event-1", name: "Night", tickets: [] }, brand: null }),
 }));
 jest.mock("../../../hooks/useTapToPayAvailability", () => ({
-  useTapToPayAvailability: () => ({ available: false, needsSetup: false }),
+  useTapToPayAvailability: () => ({ available: mockTapAvailable, needsSetup: false }),
 }));
 jest.mock("../../../hooks/useEventDateKeys", () => ({
   useEventDateKeys: () => ({ data: [], isLoading: false }),
@@ -292,5 +294,89 @@ describe("#4271 sale detail", () => {
     expect(text).toContain("REFUNDED");
     expect(text).toMatch(/Refunded\s+−\s*£31\.35/);
     expect(text).not.toContain("Refund to card");
+  });
+});
+
+// Retest (head 44989e9be0) — open defects, red until the rework lands.
+describe("#4271 retest: every amount shown is the amount charged", () => {
+  afterEach(() => {
+    mockTapAvailable = false;
+    mockParams = { id: "event-1", saleId: "sale-1", code: "K7Q2M9XA" };
+  });
+
+  test("DEFECT: Take <amount> names what door-tap-intent charges when guests pay fees", () => {
+    mockTapAvailable = true;
+    mockQuote = {
+      data: { totalCents: 3135, subtotalCents: 3000, feeCents: 135, currency: "GBP" },
+      isLoading: false,
+    };
+    const element = (
+      <DoorSaleNewSheet
+        visible
+        event={{ id: "event-1", currency: "GBP", tickets: [tier] } as never}
+        onClose={jest.fn()}
+        onSuccess={jest.fn()}
+        initialLines={[{ ticketTypeId: "tier-1", quantity: 2 }]}
+        initialMethod="tap_to_pay"
+        brand={null}
+      />
+    );
+    const text = textOf(mount(element).root);
+    expect(text).toContain("Take £31.35");
+    expect(text).not.toContain("Take £30.00");
+  });
+
+  test("DEFECT: a fully refunded sale whose Mingla fee came back does not read as a loss", () => {
+    mockSales = [
+      {
+        id: "sale-1",
+        eventId: "event-1",
+        brandId: "brand-1",
+        recordedBy: "",
+        buyerName: "Ada",
+        buyerEmail: "",
+        buyerPhone: "",
+        paymentMethod: "tap_to_pay",
+        lines: [],
+        totalGbpAtSale: 30,
+        totalAtSale: 30,
+        currency: "GBP",
+        notes: "",
+        recordedAt: "2026-11-04T20:00:00.000Z",
+        status: "refunded_full",
+        refundedAmountGbp: 30,
+        refundedAmount: 30,
+        refunds: [],
+        minglaFeeAmount: 1.35,
+      },
+    ];
+    const text = textOf(mount(<DoorSaleDetailRoute />).root);
+    expect(text).toMatch(/Net\s+£0\.00/);
+  });
+
+  test("DEFECT: a guest returning from a paid provider page is never told they weren't charged", async () => {
+    const service = jest.requireMock("../../../services/doorPayCodeService") as {
+      viewDoorPayCode: jest.Mock;
+    };
+    mockParams = { code: "K7Q2M9XA", paid: "1" };
+    service.viewDoorPayCode.mockResolvedValueOnce({
+      status: "cancelled",
+      eventId: "event-1",
+      eventName: "Night",
+      eventStartsAt: null,
+      venueLabel: null,
+      brandName: "Brand",
+      lines: [],
+      subtotalCents: 3000,
+      feeCents: 135,
+      totalCents: 3135,
+      currency: "GBP",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    let tree: ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    expect(textOf((tree as ReactTestRenderer).root)).not.toContain("weren't charged");
   });
 });

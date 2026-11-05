@@ -750,4 +750,165 @@ BEGIN
 END;
 $test$;
 
+-- =============================================================================
+-- Retest (head 44989e9be0) — angles the rework's own suite did not take.
+--   B-XBRAND   the two RPCs the rework added (late payment, guest name) refuse a
+--              cross-brand owner and a scanner without the switch.
+--   B-SKIPPED  a tab the paid-code revoke skipped (its row was locked, SKIP
+--              LOCKED) lands through the real finalize: refused, no second
+--              order, the paid code keeps its order.
+--   B-REFUND   (open defect) on a hosted Stripe session the session's total_cents
+--              is the ticket base and buyer_total_cents is the charge
+--              (orderMoneyTruth.ts:25). The late refund must return the charge.
+--   B-REPOINT  (open defect) a checkout replayed by the same buyer must not move
+--              from one open code to another (idempotent session, two codes).
+-- fails-on-revert: see the #4271 retest comment on the issue.
+-- =============================================================================
+DO $retest$
+DECLARE
+  v_owner uuid := gen_random_uuid();
+  v_other uuid := gen_random_uuid();
+  v_scanner uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_other_brand uuid := gen_random_uuid();
+  v_event uuid := gen_random_uuid();
+  v_tier uuid := gen_random_uuid();
+  v_code uuid := gen_random_uuid();
+  v_code2 uuid := gen_random_uuid();
+  v_code3 uuid := gen_random_uuid();
+  v_s1 uuid := gen_random_uuid();
+  v_s2 uuid := gen_random_uuid();
+  v_s3 uuid := gen_random_uuid();
+  v_claim jsonb;
+  v_result jsonb;
+  v_raised text;
+  v_order uuid;
+  v_n integer;
+  v_pepper text := 'b4271-retest-pepper-0123456789-abcdef';
+  v_fail text[] := ARRAY[]::text[];
+BEGIN
+  INSERT INTO auth.users (id, email) VALUES
+    (v_owner, 'owner.rt4271@example.test'), (v_other, 'other.rt4271@example.test'),
+    (v_scanner, 'scanner.rt4271@example.test');
+  INSERT INTO public.creator_accounts (id, email, display_name) VALUES
+    (v_owner, 'owner.rt4271@example.test', 'Owner'), (v_other, 'other.rt4271@example.test', 'Other');
+  INSERT INTO public.brands (id, account_id, name, slug, default_currency, pricing_currency, payment_provider, payout_hold_cutover_at)
+  VALUES (v_brand, v_owner, 'B door', 'b-door-'||v_brand, 'GBP', 'GBP', 'stripe', now() - interval '1 day'),
+         (v_other_brand, v_other, 'B other', 'b-other-'||v_other_brand, 'GBP', 'GBP', 'stripe', now() - interval '1 day');
+  INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at) VALUES
+    (v_brand, v_owner, 'brand_owner', now() - interval '9 days', now() - interval '9 days'),
+    (v_other_brand, v_other, 'brand_owner', now() - interval '9 days', now() - interval '9 days'),
+    (v_brand, v_scanner, 'scanner', now() - interval '9 days', now() - interval '9 days')
+  ON CONFLICT DO NOTHING;
+  INSERT INTO public.events (id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_event, v_brand, 'B night', 'b-night-'||v_event, 'event', 'live', 'public', 'UTC', 'GBP');
+  INSERT INTO public.event_dates (id, event_id, start_at, end_at, timezone, is_master, occurrence_key)
+  VALUES (gen_random_uuid(), v_event, now() - interval '1 hour', now() + interval '3 hours', 'UTC', true, 'one');
+  INSERT INTO public.ticket_types (id, event_id, name, price_cents, currency, quantity_total, is_unlimited, available_online, available_in_person, is_disabled, is_hidden)
+  VALUES (v_tier, v_event, 'General', 1500, 'GBP', 50, false, true, true, false, false);
+  INSERT INTO public.door_pay_codes (id, brand_id, event_id, code, lines, currency, subtotal_cents, fee_cents, total_cents, provider, created_by) VALUES
+    (v_code, v_brand, v_event, 'RTAB2345', jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier, 'quantity', 2)), 'GBP', 3000, 135, 3135, 'stripe', v_owner),
+    (v_code2, v_brand, v_event, 'RREF2345', jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier, 'quantity', 2)), 'GBP', 3000, 135, 3135, 'stripe', v_owner),
+    (v_code3, v_brand, v_event, 'RPNT2345', jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier, 'quantity', 2)), 'GBP', 3000, 135, 3135, 'stripe', v_owner);
+
+  -- Hosted Stripe shape, as ticket-checkout-create writes it (guests pay fees).
+  INSERT INTO public.ticket_checkout_sessions (
+    id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+    idempotency_key, expires_at, stripe_account_id, stripe_checkout_session_id, stripe_payment_intent_id,
+    stripe_application_fee_amount_cents, list_subtotal_cents, discount_cents, net_subtotal_cents,
+    buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source
+  )
+  SELECT s.id, v_event, v_brand, 'Guest', 'guest.rt4271@example.test', '+447700900123', 3000, 'GBP',
+         'awaiting_web_redirect', 'b4271-'||s.id, now() + interval '40 minutes', 'acct_b4271',
+         'cs_b4271'||s.tag, 'pi_b4271'||s.tag, 135, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout'
+    FROM (VALUES (v_s1, 'one'), (v_s2, 'two'), (v_s3, 'three')) s(id, tag);
+  INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+  SELECT id, v_tier, 'General', 2, 1500, 3000 FROM unnest(ARRAY[v_s1, v_s2, v_s3]) id;
+
+  PERFORM public.issue_4271_door_pay_code_link_session(v_code, v_s1);
+  PERFORM public.issue_4271_door_pay_code_link_session(v_code, v_s2);
+  PERFORM public.issue_4271_door_pay_code_link_session(v_code2, v_s3);
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_s1, v_event, 'stripe', 'stripe_checkout', 'b4271-fp-1');
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_b4271one', 'pi_b4271one', 'b4271-c1');
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_s2, v_event, 'stripe', 'stripe_checkout', 'b4271-fp-2');
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_b4271two', 'pi_b4271two', 'b4271-c2');
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_s3, v_event, 'stripe', 'stripe_checkout', 'b4271-fp-3');
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_b4271three', 'pi_b4271three', 'b4271-c3');
+
+  -- B-SKIPPED
+  v_result := public.biz_ticket_checkout_finalize(v_s1, 'pi_b4271one', 'ch_b4271one', 'card', v_pepper);
+  IF v_result->>'outcome' <> 'finalized' THEN
+    v_fail := v_fail || format('B-SKIPPED first payment must finalize, got %s', v_result);
+  END IF;
+  SELECT order_id INTO v_order FROM public.door_pay_codes WHERE id = v_code;
+  -- The paid-code revoke skips a row another writer holds: undo its revoke.
+  UPDATE public.ticket_checkout_sessions
+     SET revoked_at = NULL, revoked_reason = NULL, status = 'awaiting_web_redirect',
+         failed_at = NULL, reversal_state = 'none'
+   WHERE id = v_s2;
+  v_result := public.biz_ticket_checkout_finalize(v_s2, 'pi_b4271two', 'ch_b4271two', 'card', v_pepper);
+  IF v_result->>'outcome' <> 'paid_reversal_pending' THEN
+    v_fail := v_fail || format('B-SKIPPED a skipped tab must be refused, got %s', v_result);
+  END IF;
+  SELECT count(*) INTO v_n FROM public.orders WHERE checkout_session_id = v_s2;
+  IF v_n <> 0 THEN v_fail := v_fail || text 'B-SKIPPED the skipped tab made a second order'; END IF;
+  IF (SELECT order_id FROM public.door_pay_codes WHERE id = v_code) IS DISTINCT FROM v_order THEN
+    v_fail := v_fail || text 'B-SKIPPED the paid code was re-pointed';
+  END IF;
+
+  -- B-XBRAND
+  PERFORM set_config('request.jwt.claim.sub', v_other::text, true);
+  v_raised := NULL;
+  BEGIN PERFORM public.biz_door_pay_code_late_payment(v_code); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'door_access_denied' THEN
+    v_fail := v_fail || format('B-XBRAND late payment read by another brand: %s', coalesce(v_raised, 'allowed'));
+  END IF;
+  v_raised := NULL;
+  BEGIN PERFORM public.biz_door_pay_code_guest_name(v_code); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'door_access_denied' THEN
+    v_fail := v_fail || format('B-XBRAND guest name read by another brand: %s', coalesce(v_raised, 'allowed'));
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_scanner::text, true);
+  v_raised := NULL;
+  BEGIN PERFORM public.biz_door_pay_code_guest_name(v_code); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised IS DISTINCT FROM 'door_access_denied' THEN
+    v_fail := v_fail || format('B-XBRAND guest name read by a scanner without the switch: %s', coalesce(v_raised, 'allowed'));
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  -- B-REFUND (open defect)
+  PERFORM public.issue_4271_door_pay_code_revoke(v_code2, 'cancelled');
+  v_result := public.biz_ticket_checkout_finalize(v_s3, 'pi_b4271three', 'ch_b4271three', 'card', v_pepper);
+  IF v_result->>'outcome' <> 'paid_reversal_pending' THEN
+    v_fail := v_fail || format('B-REFUND late payment must reverse, got %s', v_result);
+  ELSIF (SELECT buyer_refund_requested_cents FROM public.source_refunds
+          WHERE source_id = v_s3 AND refund_kind = 'late_payment_no_value') IS DISTINCT FROM 3135 THEN
+    v_fail := v_fail || format('B-REFUND guest charged 3135 is refunded %s',
+      (SELECT buyer_refund_requested_cents FROM public.source_refunds
+        WHERE source_id = v_s3 AND refund_kind = 'late_payment_no_value'));
+  END IF;
+
+  -- B-REPOINT (open defect). A fresh session on code 3, then the same session
+  -- linked to a second open code, as an idempotent checkout replay does.
+  v_s1 := gen_random_uuid();
+  INSERT INTO public.ticket_checkout_sessions (id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status, idempotency_key, expires_at)
+  VALUES (v_s1, v_event, v_brand, 'Guest', 'guest.rt4271@example.test', '+447700900123', 3000, 'GBP', 'requires_payment', 'b4271-rp-'||v_s1, now() + interval '40 minutes');
+  v_code := gen_random_uuid();
+  INSERT INTO public.door_pay_codes (id, brand_id, event_id, code, lines, currency, subtotal_cents, fee_cents, total_cents, provider, created_by)
+  VALUES (v_code, v_brand, v_event, 'RPNU2345', jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier, 'quantity', 2)), 'GBP', 3000, 135, 3135, 'stripe', v_owner);
+  PERFORM public.issue_4271_door_pay_code_link_session(v_code3, v_s1);
+  v_raised := NULL;
+  BEGIN PERFORM public.issue_4271_door_pay_code_link_session(v_code, v_s1); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF (SELECT door_pay_code_id FROM public.ticket_checkout_sessions WHERE id = v_s1) IS DISTINCT FROM v_code3 THEN
+    v_fail := v_fail || text 'B-REPOINT a live session moved from its open code to another code';
+  END IF;
+
+  IF array_length(v_fail, 1) IS NOT NULL THEN
+    RAISE EXCEPTION E'#4271 retest adversarial: % failure(s)\n  - %',
+      array_length(v_fail, 1), array_to_string(v_fail, E'\n  - ');
+  END IF;
+  RAISE NOTICE '#4271 retest adversarial: all checks passed';
+END;
+$retest$;
+
 ROLLBACK;
