@@ -6,22 +6,9 @@
  * MINGLA-INVARIANT: I-WEBSITE-SETUP-TICK-MEANS-NOTHING-OPEN | issue #2830 | setup_status part done implies empty open_fields, unless published; a tick here only ever comes from that.
  */
 import { PLAN_PARTS, type PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
-import type { BrandContextField, BrandContextFieldState } from "./sitePlanState";
+import type { BrandContextField, BrandContextFieldState, RawSetupPart, RawSetupStatus } from "./sitePlanState";
 
-export type RawSetupPart = {
-  key: PlanPartKey;
-  done: boolean;
-  skipped: boolean;
-  fieldCount: number;
-  openFields: string[];
-};
-
-export type RawSetupStatus = {
-  parts: RawSetupPart[];
-  doneCount: number;
-  nextPart: PlanPartKey | null;
-  total: number;
-};
+export type { RawSetupPart, RawSetupStatus };
 
 export type SetupStatusField = { key: string; label: string; state: BrandContextFieldState };
 

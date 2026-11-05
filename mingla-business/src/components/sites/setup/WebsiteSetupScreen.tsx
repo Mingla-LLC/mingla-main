@@ -7,7 +7,7 @@ import { supabase } from "../../../services/supabase";
 import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
 import { useSaveBrandSitePlan } from "../../../sites/planApi";
-import { SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
+import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
 import { setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
@@ -162,7 +162,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     ? { status: site.status, provisioning_error_code: site.provisioning_error_code, latest_provision_operation: site.latest_provision_operation ?? null }
     : null;
   const refetchSite = useCallback(() => { void controller.site.refetch(); }, [controller.site]);
-  const buildDone = plan?.setupStatus?.parts.find((part) => part.key === "build")?.done ?? plan?.parts.find((part) => part.key === "build")?.done ?? false;
+  const buildDone = planBuildDone(plan);
   const approved = Boolean(plan?.plan?.approvedAt);
   const draft = useSetupDraft({ brandId, site: siteDraft, refetchSite, approved, buildDone, canManage });
   const publishFailed = controller.publicationReceipt.data?.status === "failed";

@@ -10,7 +10,6 @@
  * with — and hoisted into — the boot payload (#3493).
  */
 import { PLAN_PARTS, type PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
-import type { RawSetupStatus } from "./setupStatus";
 
 export type SitePlanPart = { key: PlanPartKey; done: boolean; skipped: boolean; optional: boolean };
 
@@ -54,6 +53,22 @@ export type BrandContextCompleteness = {
   minimumComplete: boolean;
   contextComplete: boolean;
   checkedAt: string | null;
+};
+
+/** #2830 — the server's one display status (brand_site_setup_status_internal). */
+export type RawSetupPart = {
+  key: PlanPartKey;
+  done: boolean;
+  skipped: boolean;
+  fieldCount: number;
+  openFields: string[];
+};
+
+export type RawSetupStatus = {
+  parts: RawSetupPart[];
+  doneCount: number;
+  nextPart: PlanPartKey | null;
+  total: number;
 };
 
 export type SitePlanState = {

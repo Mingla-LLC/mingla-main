@@ -17,6 +17,7 @@ import {
 } from "../services/brandSitesService";
 import { brandSiteKeys } from "./brandSiteKeys";
 import { composeBrandSiteFromPlan } from "./planApi";
+import type { SitePlanState } from "./sitePlanState";
 import {
   setupDraftState,
   type SetupDraftSite,
@@ -119,6 +120,13 @@ export function useMarkNotApplicable(brandId: string) {
   });
 }
 
+/** The one reading of "the pages are built", shared with the setup screen. */
+export function planBuildDone(plan: SitePlanState | null | undefined): boolean {
+  return plan?.setupStatus?.parts.find((part) => part.key === "build")?.done
+    ?? plan?.parts.find((part) => part.key === "build")?.done
+    ?? false;
+}
+
 const CHECK_EVERY_MS = 20_000;
 const MAX_CHECKS = 3;
 const POLL_MS = 2_000;
@@ -193,13 +201,19 @@ export function useSetupDraft(args: {
     setComposePending(true);
     try {
       await composeBrandSiteFromPlan(brandId);
+      // "Draft ready" belongs to the server's build tick, never to this call
+      // returning. A compose the plan doesn't show as built is a failed compose,
+      // or this screen would say "building" forever over an empty Home page.
+      await queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) });
+      const latest = queryClient.getQueryData<SitePlanState>(brandSiteKeys.plan(brandId));
+      if (latest && !planBuildDone(latest)) setComposeFailed(true);
     } catch {
       setComposeFailed(true);
     } finally {
       setComposePending(false);
       refresh();
     }
-  }, [brandId, refresh]);
+  }, [brandId, queryClient, refresh]);
 
   const retry = useCallback(() => {
     if (state.kind !== "failed") return;

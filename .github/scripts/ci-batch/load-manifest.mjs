@@ -144,7 +144,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
-export const BOOTSTRAP_SHA256 = "22b3f4eff0ffba5edd0662f94dfc9a90b6c44a526d676eb33f39f816361bad87";
+// #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
+export const BOOTSTRAP_SHA256 = "2bbebf28b419fa8565631b6b8c94823d2af9ef6ebab95e0503d78fcd5f50e328";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

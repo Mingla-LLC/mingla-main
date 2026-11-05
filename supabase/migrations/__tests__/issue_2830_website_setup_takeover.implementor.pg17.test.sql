@@ -286,6 +286,18 @@ BEGIN
     RAISE EXCEPTION 'T-STAT-3: a skipped look with no design is open: %', v_part;
   END IF;
 
+  -- T-STAT-6: found on production. Provision worked and compose never ran: a
+  -- draft site with built_at null is not built, whatever the site's status says.
+  INSERT INTO public.brand_sites(brand_id,status,created_by,payload_tenant_id)
+  VALUES (v_brand,'draft',v_owner,gen_random_uuid()::text);
+  UPDATE public.brand_site_plans SET built_at = NULL, built_pages = NULL WHERE brand_id = v_brand;
+  SELECT value INTO v_part FROM jsonb_array_elements(public.brand_site_setup_status_internal(v_brand)->'parts')
+  WHERE value->>'key' = 'build';
+  IF (v_part->>'done')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'T-STAT-6: no compose means no build tick: %', v_part;
+  END IF;
+  DELETE FROM public.brand_sites WHERE brand_id = v_brand;
+
   -- T-STAT-2: a published site reads done everywhere, gaps or not.
   -- The publication FK is deferred and this block rolls back, so no row is needed.
   INSERT INTO public.brand_sites(brand_id,status,created_by,payload_tenant_id,last_successful_publication_id)

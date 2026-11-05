@@ -279,6 +279,48 @@ describe("T-DRAFT-2 useSetupDraft", () => {
     expect(mockProvision).not.toHaveBeenCalled();
   });
 
+  // Found on production: provision recovered, compose never ran, the site was
+  // `draft` with one empty Home page and built_at null under "Draft ready".
+  it("provision succeeded and compose not run: not ready, and it composes by itself", async () => {
+    mockCompose.mockResolvedValue({});
+    const { seen } = harness({ site: { status: "draft" }, buildDone: false });
+    expect(seen.current?.state.kind).not.toBe("ready");
+    await flush();
+    expect(mockCompose).toHaveBeenCalledTimes(1);
+  });
+
+  it("state 10 only follows the server's build tick; a stuck site recovered continues into compose", async () => {
+    mockCompose.mockResolvedValue({});
+    const { seen, rerender } = harness({ site: ambiguous, buildDone: false });
+    await flush();
+    expect(mockCompose).not.toHaveBeenCalled();
+    rerender({ site: { status: "draft" }, buildDone: false });
+    await flush();
+    expect(mockCompose).toHaveBeenCalledTimes(1);
+    expect(seen.current?.state.kind).not.toBe("ready");
+    rerender({ site: { status: "draft" }, buildDone: true });
+    expect(seen.current?.state).toEqual({ kind: "ready" });
+  });
+
+  it("a compose that returned but left the plan unbuilt is the failed state, with retry", async () => {
+    mockCompose.mockResolvedValue({});
+    const client = new QueryClient();
+    client.setQueryData(["brand-sites", "b", "plan"], {
+      setupStatus: { parts: [{ key: "build", done: false, skipped: false, fieldCount: 0, openFields: [] }] },
+      parts: [],
+    });
+    const seen: { current: ReturnType<typeof useSetupDraft> | null } = { current: null };
+    const Probe = () => {
+      seen.current = useSetupDraft({ brandId: "b", site: { status: "draft" }, refetchSite: noop, approved: true, buildDone: false, canManage: true });
+      return null;
+    };
+    act(() => { create(<QueryClientProvider client={client}><Probe /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(mockCompose).toHaveBeenCalledTimes(1);
+    expect(seen.current?.state).toEqual({ kind: "failed", retry: "compose" });
+  });
+
   it("no second compose or provision for someone who can't manage", async () => {
     harness({ site: { status: "draft" }, canManage: false });
     await flush();

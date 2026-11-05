@@ -2,10 +2,11 @@
  * #2830 — one status per step, who is on setup, how the draft is going, the
  * routes, the creators' way back. Pure, so every branch is pinned here.
  *
+ * The structural half (creator routes, the migration's field map) is in
+ * .github/scripts/strict-grep/issue-2830-sites-foundation.mjs.
+ *
  * MINGLA-INVARIANT: I-WEBSITE-SETUP-TICK-MEANS-NOTHING-OPEN | issue #2830 | No tick while a required or recommended field is open.
  */
-import fs from "node:fs";
-import path from "node:path";
 import {
   DRAFT_CHECK_AFTER_MS,
   DRAFT_GIVE_UP_MS,
@@ -88,30 +89,6 @@ describe("T-STAT-4 one status, first match wins", () => {
     const out = setupSteps({ setupStatus: null, fallbackParts: [{ key: "offer", done: true, skipped: false }, { key: "first_offering", done: true, skipped: true }], fields: [], draftFailed: false, publishFailed: false });
     expect(stepOf(out, "offer").status).toEqual({ kind: "done" });
     expect(stepOf(out, "first_offering").status).toEqual({ kind: "skipped" });
-  });
-});
-
-describe("T-STAT-5 the migration's field map equals the Ari steps", () => {
-  const root = path.resolve(__dirname, "../../../..");
-  const flow = fs.readFileSync(path.join(root, "supabase/functions/_shared/ariFlows/websiteSetup.ts"), "utf8");
-  const dir = path.join(root, "supabase/migrations");
-  const name = fs.readdirSync(dir).find((file) => file.endsWith("_issue_2830_website_setup_takeover.sql"))!;
-  const sql = fs.readFileSync(path.join(dir, name), "utf8");
-  const listAfter = (text: string, marker: string, close: string) => {
-    const at = text.indexOf(marker);
-    expect(at).toBeGreaterThan(-1);
-    const end = text.indexOf(close, at + marker.length);
-    return [...text.slice(at + marker.length, end).matchAll(/["']([a-z_.]+)["']/g)].map((match) => match[1]);
-  };
-  it("brand, offer, look and story", () => {
-    expect(listAfter(sql, "WHEN 'brand' THEN ARRAY[", "]")).toEqual(listAfter(flow, "WEBSITE_BRAND_FIELD_ORDER: readonly string[] = Object.freeze([", "]"));
-    const stepFields = (part: string) => {
-      const at = flow.indexOf(`part: "${part}"`);
-      return listAfter(flow.slice(at), "fieldKeys: [", "]");
-    };
-    expect(listAfter(sql, "WHEN 'offer' THEN ARRAY[", "]")).toEqual(stepFields("offer"));
-    expect(listAfter(sql, "WHEN 'look' THEN ARRAY[", "]")).toEqual(stepFields("look"));
-    expect(listAfter(sql, "WHEN 'story' THEN ARRAY[", "]")).toEqual(stepFields("story"));
   });
 });
 
@@ -223,51 +200,5 @@ describe("T-RET-1 the creators' way back", () => {
     expect(setupStepFromRoute("/brand/b/website/setup?step=story", "b")).toBe("story");
     expect(setupStepFromRoute("/brand/other/edit", "b")).toBeNull();
     expect(setupStepFromRoute("/trip/create", "b")).toBeNull();
-  });
-});
-
-describe("T-RET-2 / T-RET-3 every creator route honours it, and only behind the check", () => {
-  const app = path.resolve(__dirname, "../../../app");
-  const read = (file: string) => fs.readFileSync(path.join(app, file), "utf8");
-  it.each(["event/[id]/edit.tsx", "rsvp/[id]/edit.tsx", "trip/[id]/edit.tsx", "experience/create.tsx"])("%s shows the bar and exits to setup", (file) => {
-    const source = read(file);
-    expect(source).toContain("isSetupReturn(rawReturnTo)");
-    expect(source).toMatch(/\{setupReturn \? \(\s*<React\.Suspense fallback=\{null\}>\s*<LazyCreatorReturnBar/);
-    expect(source).toContain('import("../');
-    expect(source).toContain("setupReturnWith(setupReturn,");
-  });
-  it.each(["event/create.tsx", "trip/create.tsx"])("%s carries it to the wizard", (file) => {
-    expect(read(file)).toContain("withReturnTo(");
-  });
-  it("the event draft's id swap keeps it: setParams merges and never names returnTo", () => {
-    const source = read("event/[id]/edit.tsx");
-    const swaps = source.match(/router\.setParams\(\{[\s\S]*?\}\)/g) ?? [];
-    expect(swaps.length).toBeGreaterThan(0);
-    for (const swap of swaps) expect(swap).not.toContain("returnTo");
-    expect(source).not.toMatch(/router\.replace\(\s*`\/event\/\$\{swapped\.id\}/);
-  });
-  it("the trip's d_ swap and the RSVP redirect carry it", () => {
-    expect(read("trip/[id]/edit.tsx")).toContain("withReturnTo(`/trip/${trip.id}/edit`, setupReturn)");
-    expect(read("event/[id]/edit.tsx")).toContain("withReturnTo(rsvpRoute, setupReturn)");
-  });
-});
-
-describe("I-ARI-CHAT-ONE-CHUNK and old links", () => {
-  const src = path.resolve(__dirname, "../..");
-  it("the chat beside the form keeps its one lift, no tab-bar gap, and shows why a card can't save", () => {
-    const chat = fs.readFileSync(path.join(src, "screens/ari/AriChatScreen.tsx"), "utf8");
-    expect(chat).toContain("Math.max(insets.bottom, spacing.md),\n                      )\n                  : Platform.OS");
-    expect(chat).toContain('result.code === "FLOW_TAKEN_OVER"');
-    expect(chat.indexOf('result.code === "FLOW_TAKEN_OVER"')).toBeLessThan(chat.indexOf("isAlreadyResolvedError(result.message)"));
-    expect(chat).toContain("brandSiteKeys.plan(setupBrand)");
-    expect(chat).toContain("setup.onOpenStep(step)");
-  });
-  it("setup never pulls the chat service into its chunk", () => {
-    const api = fs.readFileSync(path.join(src, "sites/setupApi.ts"), "utf8");
-    expect(api).not.toMatch(/from\s+"[^"]*agentChatService"/);
-    const screen = fs.readFileSync(path.join(src, "components/sites/setup/SetupBrandStep.tsx"), "utf8");
-    expect(screen).not.toMatch(/from\s+"[^"]*brandContactPhoneRules"/);
-    expect(screen).not.toMatch(/from\s+"[^"]*BrandEditAddressField"/);
-    expect(screen).not.toMatch(/^import \{[^}]*ARI_FLOW_UPLOAD_COPY/m);
   });
 });
