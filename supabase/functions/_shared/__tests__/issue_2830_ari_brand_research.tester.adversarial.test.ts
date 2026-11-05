@@ -10,6 +10,7 @@ import {
   type ResearchPage,
 } from "../ariBrandResearch.ts";
 import { buildWebsiteSetupPresentation } from "../agentWebsiteSetup.ts";
+import { mapLegacyAriErrorCode } from "../agentReliability.ts";
 
 const brand: BrandIdentity = {
   brandId: "b",
@@ -151,4 +152,11 @@ Deno.test("Ari's own summary uses the one status: no 'done' beside a screen that
   );
   const text = JSON.stringify(presentation);
   assert(!text.includes("5 of"), "Ari counts by the old rule while the screen beside it says 1");
+});
+
+Deno.test("a displaced person's confirm keeps its code: the error registry knows FLOW_TAKEN_OVER", () => {
+  // agent-confirm-action answers through ariErrorResponse, which discards the
+  // message and maps the code. Runtime proof on the local stack: the displaced
+  // person got "A newer update is available. Refresh and try again."
+  assertEquals(mapLegacyAriErrorCode("FLOW_TAKEN_OVER"), "FLOW_TAKEN_OVER");
 });
