@@ -1025,7 +1025,7 @@ test("no retired wrapper filename survives outside its authorised historical car
   ]);
   const names = Object.keys(WRAPPERS);
   const scan = (root) => {
-    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 1 << 28 }).split("\0").filter(Boolean);
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0").filter(Boolean);
     const offenders = [];
     for (const relative of tracked) {
       if (CARRIERS.has(relative) || isNonAuthoritativeProviderEvidence(relative)) continue;

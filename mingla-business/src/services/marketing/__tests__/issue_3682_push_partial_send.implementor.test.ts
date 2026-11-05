@@ -85,7 +85,9 @@ describe("#3682 wave 3 — push-only campaigns", () => {
       path.join(__dirname, "../../../../app/(tabs)/marketing/campaigns/compose.tsx"),
       "utf8",
     );
-    expect(compose.match(/campaignPreviewInput\(/g)?.length).toBe(4);
+    // #4273: every path into the review shares one preview call.
+    expect(compose.match(/campaignPreviewInput\(/g)?.length).toBe(1);
+    expect(compose).toContain("void openReviewWithServerPreview()");
     expect(compose).not.toMatch(/bookPreviewMutation\.mutate(Async)?\(\{ campaignId/);
     expect(compose).toContain("setBookFailedConfirmationCount(result.failed)");
   });

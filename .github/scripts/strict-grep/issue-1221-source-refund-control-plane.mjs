@@ -675,7 +675,7 @@ function readRepo() {
   const tracked = spawnSync("git", ["ls-files", "-z"], {
     cwd: ROOT,
     encoding: "buffer",
-    maxBuffer: 1 << 28,
+    maxBuffer: 64 * 1024 * 1024,
   });
   const trackedEntries = tracked.status === 0
     ? tracked.stdout.toString("utf8").split("\0").filter(Boolean).map(

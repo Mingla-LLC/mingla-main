@@ -97,7 +97,31 @@ class MockQuery {
 jest.mock("../../supabase", () => ({
   supabase: {
     from: jest.fn((table: string) => new MockQuery(table)),
-    rpc: jest.fn((name: string) => {
+    rpc: jest.fn((name: string, args: {
+      p_from?: number;
+      p_limit?: number;
+      p_newest_first?: boolean;
+    } = {}) => {
+      // #4273 — the masked message read pages the same way the table read did.
+      if (name === "biz_marketing_campaign_messages_v1") {
+        const from = args.p_from ?? 0;
+        const limit = args.p_limit ?? 500;
+        const query = {
+          table: "marketing_messages",
+          selected: "",
+          filters: [] as Array<[string, ...unknown[]]>,
+          orders: [["id", { ascending: true }]] as Array<[string, unknown]>,
+          ...(args.p_newest_first
+            ? { limit, terminal: "limit" as const }
+            : { range: [from, from + limit - 1] as [number, number], terminal: "range" as const }),
+        };
+        const result = mockRuntime.resolve(query);
+        mockRuntime.calls.push({
+          ...query,
+          resultCount: Array.isArray(result.data) ? result.data.length : 0,
+        });
+        return Promise.resolve(result);
+      }
       mockRuntime.rpcCalls.push(name);
       return Promise.resolve(mockRuntime.health);
     }),

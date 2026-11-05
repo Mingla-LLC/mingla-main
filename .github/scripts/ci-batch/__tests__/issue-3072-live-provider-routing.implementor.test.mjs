@@ -44,7 +44,7 @@ const LANES = ["#1403", "#1421", "#1484", "#1501", "#1532", "#874"];
 const BASELINE = "mingla-business/scripts/ci/bundle-baseline.json";
 
 const trackedFiles = () =>
-  execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "buffer", maxBuffer: 1 << 28 })
+  execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 })
     .toString("utf8")
     .split("\0")
     .filter(Boolean);

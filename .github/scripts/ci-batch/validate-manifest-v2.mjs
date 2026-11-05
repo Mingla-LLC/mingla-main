@@ -355,9 +355,16 @@ export function phase3dContractDigest(manifest) {
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
+// #4273: register the Invite step sources-and-methods migration and its proofs the same way.
+// #4273: register the Blast combined-audience migration and its proofs the same way.
+// #4273: register the tester adversarial proofs the same way.
+// #4273: register the rework proofs the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
+// #4273: register the tester retest proofs the same way.
+// #4273: register the segment-count proofs the same way.
+// #3281: register the door extras migration and test
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3bb0cc9ea5fcff209f0b25adb92b6cbae53b344e5d148aea54319787f802f8a1";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4fb296dcec26742f5a5cbd958fc74d31bded55002b3236b738b90ede14a69281";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1259,8 +1266,7 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
-    // #4275: the listing passed Node's 1 MiB default as the repo grew.
-    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 1 << 28 })
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);

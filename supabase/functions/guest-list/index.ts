@@ -362,6 +362,18 @@ async function rateLimited(
   return isObject(data) && data.allowed === false;
 }
 
+// issue #3281 — how long a door search waits for its optional extras.
+export const DOOR_EXTRAS_DEADLINE_MS = 1500;
+
+/** Settles with the promise's value, or null once `ms` passes first. */
+const withDeadline = <T>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+};
+
 // Defence in depth: the door gets exactly these fields, whatever the SQL adds.
 export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
   if (!Array.isArray(orders)) return [];
@@ -381,6 +393,16 @@ export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
         eventDateIds: Array.isArray(t.eventDateIds) ? t.eventDateIds : [],
       }))
       : [],
+    // issue #3281 — present only for an order with extras still owed.
+    ...(Array.isArray(o.extras) && o.extras.length > 0
+      ? {
+        extras: o.extras.filter(isObject).map((x) => ({
+          name: typeof x.name === "string" ? x.name : "",
+          quantity: Number.isInteger(x.quantity) ? x.quantity : 0,
+          eventDateIds: Array.isArray(x.eventDateIds) ? x.eventDateIds : null,
+        })),
+      }
+      : {}),
   }));
 }
 
@@ -587,13 +609,35 @@ export function createHandler(
           console.error("[guest-list] ticket-link attribution unavailable");
         }
         const labels = isObject(labelResult.data) ? labelResult.data : {};
+        // issue #3281 — each order's extras, optional like the labels above:
+        // a slow, refused or failed read leaves the search answer as it was.
+        let extrasByOrder: Record<string, unknown> = {};
+        try {
+          const extrasResult = await withDeadline(
+            Promise.resolve(deps.rpc("issue_3281_door_order_extras", {
+              p_actor_id: actorId,
+              p_event_id: body.eventId,
+              p_order_ids: orderIds,
+            })),
+            DOOR_EXTRAS_DEADLINE_MS,
+          );
+          if (extrasResult === null || extrasResult.error) {
+            console.error("[guest-list] door extras unavailable");
+          } else if (isObject(extrasResult.data)) {
+            extrasByOrder = extrasResult.data;
+          }
+        } catch {
+          console.error("[guest-list] door extras unavailable");
+        }
         const attributedOrders = Array.isArray(out.orders)
           ? out.orders.map((order) => {
             if (!isObject(order) || !isUuid(order.orderId)) return order;
             const label = labels[order.orderId];
+            const extras = extrasByOrder[order.orderId];
             return {
               ...order,
               viaLinkLabel: typeof label === "string" ? label : null,
+              ...(Array.isArray(extras) && extras.length > 0 ? { extras } : {}),
             };
           })
           : [];

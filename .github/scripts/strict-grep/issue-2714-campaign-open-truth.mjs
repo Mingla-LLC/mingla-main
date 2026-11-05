@@ -209,7 +209,14 @@ function check(sources, migrationEntries, migrationSha) {
     "overview-brand-scoped-whitelists",
     sources.overviewService,
     '.in("campaign_id", ids)',
-    2,
+    1,
+  );
+  // #4273 — the message read moved to the masked RPC, still scoped by these ids.
+  requireExactCount(
+    "overview-brand-scoped-message-read",
+    sources.overviewService,
+    "p_campaign_ids: ids",
+    1,
   );
   requireAll("report-independent-coverage-formulas", compact.reportService, [
     "hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0",
@@ -320,7 +327,7 @@ if (process.argv.includes("--self-test")) {
   good.webhook =
     'data === "campaign_unmatched" data === "campaign_unmatched_stale" status: 500 correlationHash';
   good.overviewService =
-    'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0 .in("campaign_id", ids) .in("campaign_id", ids)';
+    'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0 .in("campaign_id", ids) p_campaign_ids: ids';
   good.reportService =
     'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0 hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0';
   good.overview =

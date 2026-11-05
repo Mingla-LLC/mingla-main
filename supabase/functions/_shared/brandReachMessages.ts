@@ -95,8 +95,10 @@ export function renderBrandReachMessage(
     };
   }
   const body = plain(payload.body, 120) || `New from ${brand}.`;
+  // #4273 — the email subject feeds the push title when the host wrote one.
+  const pushTitle = plain(payload.title, 80) || brand;
   return {
-    push: { title: brand, body: `${body} ${why}` },
+    push: { title: pushTitle, body: `${body} ${why}` },
     email: { subject: brand, body: `${body}\n\n${why}` },
     sms: "",
   };

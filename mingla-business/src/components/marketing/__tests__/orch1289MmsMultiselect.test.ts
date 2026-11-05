@@ -121,7 +121,7 @@ describe("ORCH-1289 fix #2 — multi-select up to the safe MMS limit (10)", () =
   });
 
   it("never fires a send while a photo is still uploading", () => {
-    expect(COMPOSE).toMatch(/channel === "sms" && mmsUploading/);
+    expect(COMPOSE).toMatch(/sendChannels\.has\("sms"\) && mmsUploading/);
   });
 });
 

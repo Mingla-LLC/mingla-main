@@ -74,6 +74,8 @@ export interface SmsComposeCardProps {
   onChangeText: (text: string) => void;
   /** Truthful SMS reach from the audience resolver; null while loading. */
   reachableSms: number | null;
+  /** #4273 — what to say when there is no number yet. */
+  reachNote?: string;
   /** Brand default currency (ISO 4217) for the cost estimate display. */
   currencyCode: string;
   editable?: boolean;
@@ -94,12 +96,17 @@ export interface SmsComposeCardProps {
   onPickMedia?: () => void;
   /** Parent clears a single attachment by key. */
   onRemoveMedia?: (key: string) => void;
+  /** #4273 — "Filled in from your email · edit anytime" / "Edited by you". */
+  autoFillLabel?: string | null;
+  /** #4273 — sits in a stack with other cards, so it takes its natural height. */
+  stacked?: boolean;
 }
 
 export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   value,
   onChangeText,
   reachableSms,
+  reachNote,
   currencyCode,
   editable = true,
   includeFollowCta = false,
@@ -112,6 +119,8 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   uploading = false,
   onPickMedia,
   onRemoveMedia,
+  autoFillLabel = null,
+  stacked = false,
 }) => {
   const hasMedia = media.length > 0;
   const bodyForEstimate = useMemo(
@@ -130,7 +139,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
 
   const hasBody = value.trim().length > 0;
   const reachLabel = reachableSms === null
-    ? "Loading reach…"
+    ? reachNote ?? "Loading reach…"
     : `${reachableSms} reachable on SMS`;
   const isMms = estimate.encoding === "MMS";
   const perRecipientUnit = isMms
@@ -145,16 +154,22 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
     // suite's SMS assertions resolved to null and its vacuity guard fired —
     // which is how the first harness ended up proving SC-2-Web-D's 285px dead
     // gap against a two-line fake instead of this card.
-    <View style={styles.host} testID="composer-v2-sheet">
+    <View
+      style={[styles.host, stacked ? styles.hostStacked : null]}
+      testID={stacked ? "composer-sms-card" : "composer-v2-sheet"}
+    >
       <View style={styles.headerRow}>
         <Text style={styles.label}>SMS MESSAGE</Text>
         <Text style={styles.reach} accessibilityLabel={reachLabel}>
           {reachLabel}
         </Text>
       </View>
+      {autoFillLabel ? (
+        <Text style={styles.autoFill} testID="sms-autofill-label">{autoFillLabel}</Text>
+      ) : null}
 
       <TextInput
-        style={styles.input}
+        style={[styles.input, stacked ? styles.inputStacked : null]}
         value={value}
         onChangeText={onChangeText}
         editable={editable}
@@ -345,6 +360,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     overflow: "hidden",
   },
+  // Sized by its content: a zero basis clipped the Follow link row off the bottom.
+  hostStacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", minHeight: composerSheetMinHeight },
+  autoFill: { color: accent.warm, fontSize: 11, fontWeight: "700" },
   headerRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -372,6 +390,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: spacing.xs,
   },
+  inputStacked: { flex: 0, minHeight: 96 },
   estimateBox: {
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,

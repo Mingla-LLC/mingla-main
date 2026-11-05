@@ -173,7 +173,10 @@ function Harness(): React.ReactElement {
             />
           </View>
           <View style={[styles.channelRow, isShort ? styles.channelRowShort : null]}>
-            <ChannelTabs active={channel} onChange={setChannel} />
+            <ChannelTabs
+              selected={new Set([channel])}
+              onToggle={setChannel}
+            />
           </View>
         </View>
 
