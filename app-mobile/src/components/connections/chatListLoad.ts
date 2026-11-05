@@ -652,6 +652,8 @@ export type ChatListQueryState = {
   isFetching: boolean;
   isError: boolean;
   error: unknown;
+  /** Failed attempts of the fetch in progress; React Query resets it when a fetch starts. */
+  failureCount?: number;
 };
 
 /**
@@ -677,6 +679,42 @@ export function chatListViewState(query: ChatListQueryState): {
     conversations: query.data?.conversations ?? null,
     loaded,
     loading: !loaded && (query.isPending || query.isFetching),
-    failed: query.isError && !query.isFetching && (!hasRows || !isChatListTimeout(query.error)),
+    failed: (query.isError && !query.isFetching && (!hasRows || !isChatListTimeout(query.error)))
+      // Issue #4275: over a cached empty list a refresh retries for up to about
+      // 130 s. Once an attempt has failed, that is the error row, not "no chats".
+      || (loaded && !hasRows && (query.failureCount ?? 0) > 0),
   };
+}
+
+// ── Awaiting a refresh ──────────────────────────────────────────────────
+
+const failedAttemptWaiters = new Map<string, Set<() => void>>();
+
+/** useChatList's query function calls this when an attempt fails. */
+export function noteChatListAttemptFailed(userId: string): void {
+  const waiters = failedAttemptWaiters.get(userId);
+  if (!waiters) return;
+  failedAttemptWaiters.delete(userId);
+  for (const wake of waiters) wake();
+}
+
+/**
+ * Issue #4275: a refresh that the person is waiting on (pull to refresh, accepting
+ * an invite) settles when it succeeds or at its first failed attempt. React Query
+ * keeps retrying in the background; the list shows the error row meanwhile
+ * (chatListViewState). Before, the awaiter held through every retry, about 130 s
+ * over a cached empty list. Never rejects, like the refetch it wraps.
+ */
+export function refreshUntilFirstFailure(userId: string, refetch: () => Promise<unknown>): Promise<void> {
+  let wake: () => void = () => {};
+  const failedOnce = new Promise<void>((resolve) => {
+    wake = resolve;
+  });
+  const waiters = failedAttemptWaiters.get(userId) ?? new Set<() => void>();
+  waiters.add(wake);
+  failedAttemptWaiters.set(userId, waiters);
+  const settled = refetch().then(() => undefined, () => undefined);
+  return Promise.race([failedOnce, settled]).finally(() => {
+    failedAttemptWaiters.get(userId)?.delete(wake);
+  });
 }

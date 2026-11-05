@@ -564,6 +564,9 @@ export class MessagingService {
   private senderProfileCache: Map<string, { name: string; cachedAt: number }> = new Map();
   // Issue #4275: a cold page holds up to 50 rows from one sender; they share one read.
   private senderNameLookups: Map<string, Promise<string>> = new Map();
+  // Issue #4275: senders whose last name read failed. A page showing one of them is
+  // "degraded", so the open chat's recovery reads it again (same cap and backoff).
+  private failedSenderLookups: Set<string> = new Set();
   private static PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   /**
@@ -1066,7 +1069,7 @@ export class MessagingService {
     userId: string,
     limit: number = MESSAGE_PAGE_SIZE,
     before?: string,
-  ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean }> {
+  ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean; degraded?: boolean }> {
     try {
       const ids = typeof conversationId === 'string' ? [conversationId] : Array.from(new Set(conversationId));
       if (ids.length === 0) return { messages: [], error: null, hasMore: false };
@@ -1102,7 +1105,13 @@ export class MessagingService {
         ...(msg.view_once === true ? { media_views: viewsByMessage.get(msg.id) ?? [] } : {}),
       }));
 
-      return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
+      // Issue #4275: true when a row's sender name could not be read, so it shows a
+      // fallback. The rows are still good; the caller decides whether to read again.
+      const degraded = (data || []).some((msg: { sender_id?: string | null; sender_display_name_snapshot?: unknown }) =>
+        !(typeof msg.sender_display_name_snapshot === 'string' && msg.sender_display_name_snapshot.trim()) &&
+        !!msg.sender_id && this.failedSenderLookups.has(msg.sender_id));
+
+      return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit, degraded };
     } catch (error: any) {
       console.error('Error getting messages:', error);
       return { messages: [], error: error.message, hasMore: false };
@@ -2053,8 +2062,10 @@ export class MessagingService {
       // is no retry here; the next attempt is the next page read, sharing one lookup.
       if (error && error.code !== 'PGRST116') {
         console.warn('[messagingService] sender name read failed; not caching it', error);
+        this.failedSenderLookups.add(senderId);
         return cached?.name ?? 'Unknown';
       }
+      this.failedSenderLookups.delete(senderId);
 
       const senderName = getDisplayName(profile, 'Unknown');
 

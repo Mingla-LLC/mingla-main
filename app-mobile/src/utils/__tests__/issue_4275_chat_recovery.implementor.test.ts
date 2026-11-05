@@ -416,6 +416,9 @@ Deno.test("T-A14 both page readers let a failure reach the controller", () => {
   assert(/if \(msgError\) throw new Error\(msgError\);/.test(brand), "brand: an error result rejects");
   assert(/throw e;/.test(brand), "brand: a timeout rejects");
   assert(/channelKey: showMessageInterface && user\?\.id/.test(page), "sign-out disposes the controller");
+  // P3-A: a page whose sender names failed is kept but reads again.
+  assert(/if \(degraded\) throw new Error\('sender names unavailable'\);/.test(refresh), "chat: a degraded page retries");
+  assert(/if \(degraded\) throw new Error\('sender names unavailable'\);/.test(brand), "brand: a degraded page retries");
 });
 
 Deno.test("T-A8 in the background due timers do no work; resume runs once and resets the caps", async () => {

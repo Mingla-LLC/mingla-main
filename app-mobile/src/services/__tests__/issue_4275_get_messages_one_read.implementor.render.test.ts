@@ -3,6 +3,7 @@
 // getMessages used to make one `.single()` message_reads request per row (up to 50
 // a page, each answering 406 with no row). Recovery reads this on every reconnect.
 //
+// FAILS-ON-REVERT (P3-A): drop failedSenderLookups.add and the degraded test fails.
 // FAILS-ON-REVERT: map back to enrichMessage and T-A12 fails on the request count.
 // Move channels.delete after removeChannel and T-A10 fails: the deliberate CLOSED
 // reaches onStatus.
@@ -13,6 +14,7 @@ const mockReadRequests: Array<{ kind: "in" | "single"; ids: unknown }> = [];
 let mockMessageRows: MockRow[] = [];
 let mockReadRows: MockRow[] = [];
 let mockReadError: { message: string } | null = null;
+let mockProfileFails = false;
 type MockChannelEntry = {
   name: string;
   statusCallback: ((status: string) => void) | null;
@@ -34,6 +36,17 @@ jest.mock("../supabase", () => ({
   supabase: {
     from(table: string) {
       if (table === "messages") return mockThenable({ data: mockMessageRows, error: null });
+      if (table === "profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve(mockProfileFails
+                ? { data: null, error: { code: "57014", message: "statement timeout" } }
+                : { data: { display_name: "Named" }, error: null }),
+            }),
+          }),
+        };
+      }
       if (table === "message_reads") {
         const query = mockThenable({ data: mockReadRows, error: mockReadError }) as Record<string, unknown>;
         query.in = (_column: string, ids: unknown) => {
@@ -167,5 +180,33 @@ describe("#4275 messagingService", () => {
     messagingService.unsubscribeFromConversation("system-1");
     system?.({ extension: "postgres_changes", status: "error" });
     expect(onSystemError).toHaveBeenCalledTimes(1);
+  });
+
+  it("P3-A a page whose sender name could not be read is marked degraded, and heals", async () => {
+    mockMessageRows = rows(3).map((row) => ({ ...row, sender_display_name_snapshot: null, sender_id: "p3a-sender" }));
+    mockReadRows = [];
+    mockProfileFails = true;
+    try {
+      const failed = await messagingService.getMessages("c1", "me", 50);
+      expect(failed.error).toBeNull();
+      expect(failed.degraded).toBe(true);
+      mockProfileFails = false;
+      const healed = await messagingService.getMessages("c1", "me", 50);
+      expect(healed.degraded).toBe(false);
+      expect(healed.messages[0].sender_name).toBe("Named");
+    } finally {
+      mockProfileFails = false;
+    }
+  });
+
+  it("P3-A rows that carry a name snapshot are never degraded, even when profile reads fail", async () => {
+    mockMessageRows = rows(3);
+    mockProfileFails = true;
+    try {
+      const page = await messagingService.getMessages("c1", "me", 50);
+      expect(page.degraded).toBe(false);
+    } finally {
+      mockProfileFails = false;
+    }
   });
 });

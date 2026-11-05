@@ -174,7 +174,7 @@ describe("#4275 tester: sender names in getMessages", () => {
     }
   });
 
-  it("reachable today: a stored good name with an empty name cache is replaced by Unknown, until the next good read", async () => {
+  it("fixed in the P3-A rework (was \"reachable today\"): a stored good name with an empty name cache survives a failed read", async () => {
     const { mergeMessages } = require("../../utils/mergeMessages") as typeof import("../../utils/mergeMessages");
     mockMessageRows = rowsWithoutSnapshot(1, "stored-only-sender");
     const onScreen = { id: "m0", senderName: "Stored Name", timestamp: "2026-01-01T00:00:00Z" };
@@ -182,7 +182,9 @@ describe("#4275 tester: sender names in getMessages", () => {
     const failed = await messagingService.getMessages("c1", "me");
     mockProfileFails = false;
     const afterFail = mergeMessages([onScreen] as never[], [{ ...onScreen, senderName: failed.messages[0].sender_name }] as never[]) as Array<typeof onScreen>;
-    expect(afterFail[0].senderName).toBe("Unknown");
+    expect(failed.messages[0].sender_name).toBe("Unknown");
+    expect(failed.degraded).toBe(true);
+    expect(afterFail[0].senderName).toBe("Stored Name");
     const healed = await messagingService.getMessages("c1", "me");
     const afterGood = mergeMessages(afterFail as never[], [{ ...onScreen, senderName: healed.messages[0].sender_name }] as never[]) as Array<typeof onScreen>;
     expect(afterGood[0].senderName).toBe("Other");

@@ -178,6 +178,7 @@ import { startupTeamBrandIds, teamBrandCacheKey } from "./connections/teamBrandC
 import {
   archivedConversationIds,
   chatListViewState,
+  refreshUntilFirstFailure,
   updateChatListConversations,
   type ChatListLoadDeps,
   type ChatListProfile,
@@ -1318,9 +1319,12 @@ function ConnectionsPageRefactored({
   // (useChatList above): cached and persisted, so a revisit renders at once and
   // refreshes quietly. Every "reload the chats" call site refetches that entry;
   // the reads and the row transform live in connections/chatListLoad.ts.
-  const fetchConversations = useCallback(async (userId: string): Promise<void> => {
-    await queryClient.refetchQueries({ queryKey: chatListKeys.list(userId), exact: true });
-  }, [queryClient]);
+  // Issue #4275: settles when the first attempt does. A failing refresh keeps
+  // retrying in the background, but pull to refresh and accepting an invite no
+  // longer wait out every retry (about 130 s) for it.
+  const fetchConversations = useCallback((userId: string): Promise<void> =>
+    refreshUntilFirstFailure(userId, () => queryClient.refetchQueries({ queryKey: chatListKeys.list(userId), exact: true })),
+  [queryClient]);
 
   // ── Issue #4114: pull-to-refresh reloads chats and friends ──
   // Pull to refresh: chats start first; friends (awaited, issue-1638 C3.7)
@@ -1805,7 +1809,7 @@ function ConnectionsPageRefactored({
   const fetchBrandChannelNewest = (channel: BrandChannel, userId: string): Promise<void> => {
     const memberIds = channel.events.map((event) => event.conversationId);
     return withTimeout(messagingService.getMessages(memberIds, userId), 8000, 'getMessages')
-      .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+      .then(({ messages: freshMsgs, error: msgError, hasMore, degraded }) => {
         for (const id of memberIds) markMessagesSettled(id);
         if (msgError) throw new Error(msgError);
         const byConversation = new Map<string, Message[]>(memberIds.map((id) => [id, []]));
@@ -1819,6 +1823,8 @@ function ConnectionsPageRefactored({
           }
         }
         noteNewestPageLoaded(channel.id, hasMore);
+        // Issue #4275: rows kept, a sender name failed: recovery reads again.
+        if (degraded) throw new Error('sender names unavailable');
       })
       .catch((e) => {
         for (const id of memberIds) markMessagesSettled(id);
@@ -2629,7 +2635,7 @@ function ConnectionsPageRefactored({
   // refresh below and by recovery; merge-only, so a pending send survives it.
   // Rejects on a failed read or a timeout, because recovery retries on that.
   const refreshOpenConversation = useCallback(async (conversationId: string, userId: string): Promise<void> => {
-    const { messages: freshMsgs, error: msgError, hasMore } =
+    const { messages: freshMsgs, error: msgError, hasMore, degraded } =
       await withTimeout(messagingService.getMessages(conversationId, userId), 8000, 'getMessages');
     if (msgError) throw new Error(msgError);
     if (freshMsgs) {
@@ -2641,6 +2647,9 @@ function ConnectionsPageRefactored({
         markConversationAsRead(conversationId, userId, transformed);
       }
     }
+    // Issue #4275: the rows are kept, but a sender name failed: reject so recovery
+    // reads the page again on its existing backoff and cap.
+    if (degraded) throw new Error('sender names unavailable');
   }, [transformMessage, writeConversationMessages, noteNewestPageLoaded, markConversationAsRead]);
 
   // ── Auto-refresh messages when network reconnects ───────

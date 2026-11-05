@@ -6,6 +6,7 @@ import {
   chatListAttemptTimeoutMs,
   chatListRetryDelayMs,
   loadChatList,
+  noteChatListAttemptFailed,
   shouldRetryChatList,
   type ChatEventPublicCard,
   type ChatListData,
@@ -60,7 +61,14 @@ export function useChatList<TCard extends ChatEventPublicCard>(
     retryDelay: (attempt) => (hasCachedList() ? Math.min(1000 * 2 ** attempt, 30_000) : chatListRetryDelayMs(attempt)),
     queryFn: async () => {
       if (!userId) return { conversations: [], teamBrandIds: null };
-      const data = await loadChatList(userId, { ...deps, timeoutMs: chatListAttemptTimeoutMs(hasCachedList()) });
+      let data: ChatListData;
+      try {
+        data = await loadChatList(userId, { ...deps, timeoutMs: chatListAttemptTimeoutMs(hasCachedList()) });
+      } catch (error) {
+        // Issue #4275: wakes anyone awaiting this refresh (refreshUntilFirstFailure).
+        noteChatListAttemptFailed(userId);
+        throw error;
+      }
       if (data.teamBrandIds === null) {
         // The team read failed: keep the last known set.
         const previous = queryClient.getQueryData<ChatListData>(queryKey);
