@@ -51,8 +51,13 @@ import { WebsiteSetupScreen } from "../WebsiteSetupScreen";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { act, create } = require("react-test-renderer") as {
   act: (fn: () => unknown) => Promise<void>;
-  create: (node: React.ReactElement) => unknown;
+  create: (node: React.ReactElement) => { unmount: () => void };
 };
+const mounted: { unmount: () => void }[] = [];
+// The heartbeat and poll timers must not outlive a test (they keep Jest alive).
+afterEach(async () => {
+  await act(async () => { mounted.splice(0).forEach((tree) => tree.unmount()); });
+});
 
 const plan = {
   canManage: true,
@@ -65,11 +70,11 @@ const plan = {
 };
 const open = async (beat: jest.Mock) => {
   await act(async () => {
-    create(
+    mounted.push(create(
       <QueryClientProvider client={new QueryClient()}>
         <WebsiteSetupScreen step="brand" search={{}} planQuery={{ data: plan, isLoading: false, isError: false, refetch: jest.fn() } as never} grant={{} as never} onHeartbeat={beat} />
       </QueryClientProvider>,
-    );
+    ));
   });
 };
 const run = (over: Record<string, unknown>) => ({ runId: "r", status: "active", stepKey: "brand", revision: 2, mine: false, stopped: false, ownerName: "Ama", ownerSince: null, lastActivityAt: null, conversationId: null, canTakeOver: true, lastTakeover: null, ...over });
@@ -77,6 +82,15 @@ const run = (over: Record<string, unknown>) => ({ runId: "r", status: "active", 
 describe("who locks", () => {
   beforeEach(() => { mockDraftArgs.length = 0; mockFlow.isError = false; });
 
+  it("before anyone else's run is known: no lock and no compose (the tester's P1)", async () => {
+    // A heartbeat sent while this answer loads would take the form from an
+    // owner who is mid-run, and nothing on this screen could give it back.
+    mockFlow.data = undefined;
+    const beat = jest.fn();
+    await open(beat);
+    expect(beat).not.toHaveBeenCalled();
+    expect(mockDraftArgs.at(-1)?.canManage).toBe(false);
+  });
   it("a teammate's active run: no lock, and this screen never composes", async () => {
     mockFlow.data = run({});
     const beat = jest.fn();
