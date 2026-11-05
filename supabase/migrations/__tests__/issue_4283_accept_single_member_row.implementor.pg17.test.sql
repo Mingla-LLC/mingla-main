@@ -85,13 +85,13 @@ VALUES
    now() + interval '7 days', 'pending', 'leave'),
   ('00000000-4283-4000-8000-000000000311', 'issue4283-b@example.test', 'brand_admin',
    '4283hashB00000000000000000000000000000000000000000000000000000',
-   now() + interval '7 days', 'pending', NULL),
+   now() + interval '7 days', 'pending', 'leave'),
   ('00000000-4283-4000-8000-000000000312', 'issue4283-c@example.test', 'brand_owner',
    '4283hashC00000000000000000000000000000000000000000000000000000',
    now() + interval '7 days', 'pending', 'stay'),
   ('00000000-4283-4000-8000-000000000313', 'issue4283-b2@example.test', 'event_manager',
    '4283hashD00000000000000000000000000000000000000000000000000000',
-   now() + interval '7 days', 'pending', NULL);
+   now() + interval '7 days', 'pending', 'leave');
 
 -- A ------------------------------------------------------------------------
 DO $$
