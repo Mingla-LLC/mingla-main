@@ -27,12 +27,15 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import {
+  TAP_ON_FOR_BRAND,
   TAP_TO_PAY_SHORT,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
+  tapToPayName,
   tapToPaySetupButtonLabel,
 } from "../../../constants/tapToPayCopy";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
+import { useBrand } from "../../../hooks/useBrands";
 import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
 import {
@@ -52,12 +55,16 @@ import { IconChrome } from "../../ui/IconChrome";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
+import { TapToPayEducation } from "./TapToPayEducation";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 import { BRAND_ROLE_RANK } from "../../../utils/brandRole";
 
 export interface TapToPaySetupScreenProps {
-  eventId: string;
+  /** Settings passes this; a door route gets the brand from its event. */
+  brandId?: string | null;
+  /** Null when opened from Settings, with no door to go back to. */
+  eventId: string | null;
   rawDraft: string | null;
 }
 
@@ -90,17 +97,21 @@ export const setupRowsFor = (os: string): SetupRow[] => {
  */
 export const tapToPayMayAcceptTerms = (rank: number): boolean => rank >= BRAND_ROLE_RANK.brand_admin;
 
-export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenProps): React.ReactElement => {
+export const TapToPaySetupScreen = ({
+  brandId: brandIdProp = null,
+  eventId,
+  rawDraft,
+}: TapToPaySetupScreenProps): React.ReactElement => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const route = useManagedEventRoute(eventId);
   const draft = useMemo(() => parseTapToPayDraft(rawDraft), [rawDraft]);
-  const availability = useTapToPayAvailability({
-    brand: route.brand,
-    currency: route.event?.currency ?? route.brand?.defaultCurrency ?? null,
-  });
+  const brandQuery = useBrand(eventId === null ? brandIdProp : null);
+  const brand = route.brand ?? brandQuery.data ?? null;
+  const currency = route.event?.currency ?? brand?.defaultCurrency ?? null;
+  const availability = useTapToPayAvailability({ brand, currency });
   const terminal = useTapToPayTerminal();
-  const brandId = route.brand?.id ?? route.event?.brandId ?? null;
+  const brandId = brand?.id ?? route.event?.brandId ?? brandIdProp;
   const role = useCurrentBrandRole(brandId);
   const mayAcceptTerms = tapToPayMayAcceptTerms(role.rank);
   const acceptance = tapToPayAcceptanceFor(terminal, brandId);
@@ -116,6 +127,10 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
 
   const goToDoor = useCallback((): void => {
+    if (eventId === null) {
+      router.replace("/(tabs)/account" as never);
+      return;
+    }
     // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
     router.replace(`/event/${eventId}/door` as never);
   }, [router, eventId]);
@@ -126,7 +141,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   }, [router, goToDoor]);
 
   const startPayCode = useCallback(async (): Promise<void> => {
-    if (draft === null) {
+    if (draft === null || eventId === null) {
       goToDoor();
       return;
     }
@@ -161,12 +176,12 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         const result = await runTapToPaySetup({
           os: Platform.OS,
           checkDeviceSupport: () => client.checkDeviceSupport(),
-          fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId }),
+          fetchLocation: () => fetchDoorTapLocation({ brandId, eventId }),
           ensureReaderConnected: (locationId) =>
             client.ensureReaderConnected(locationId, { mayAcceptTerms: allowTerms }),
           showHowToTap: showHowToTapEducation,
           markComplete: async () => {
-            if (route.brand?.id) await markTapToPayWarmHint(route.brand.id);
+            if (brandId !== null) await markTapToPayWarmHint(brandId);
           },
         });
         if (result.kind === "device_rejected") {
@@ -190,6 +205,8 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
           setError(result.message);
           return;
         }
+        // From Settings the screen stays and now reads "On for this brand".
+        if (eventId === null) return;
         if (draft !== null) {
           // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
           router.replace(
@@ -205,7 +222,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         setBusy(false);
       }
     },
-    [terminal, draft, router, eventId, goToDoor, route.brand?.id],
+    [terminal, draft, router, eventId, goToDoor, brandId],
   );
 
   // Someone who may not accept the terms never gets a setup button, but an admin
@@ -221,7 +238,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
   const chrome = (
     <View style={styles.chromeRow}>
       <IconChrome icon="arrowL" size={36} onPress={handleBack} accessibilityLabel="Back" />
-      <Text style={styles.chromeTitle}>Tap to Pay</Text>
+      <Text style={styles.chromeTitle}>{tapToPayName(Platform.OS)}</Text>
       <View style={styles.chromeRightSlot} />
     </View>
   );
@@ -240,8 +257,23 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
     availability.reason === "ios_update_required" ||
     (deviceRejected && isIosBelowTapFloor(device.os, device.version));
 
+  const pinRow = (currency ?? "").trim().toUpperCase() === "GBP";
+  // Settings: nothing to set up (or no brand to set up): say so and keep the guide.
+  const settingsGuideOnly = eventId === null && (brandId === null || (availability.available && !availability.needsSetup));
+
   let body: React.ReactElement;
-  if (showIosUpdate) {
+  if (settingsGuideOnly) {
+    body = (
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {brandId !== null ? (
+          <Text style={styles.heroTitle} accessibilityRole="header" testID="tap-on-for-brand">
+            {TAP_ON_FOR_BRAND}
+          </Text>
+        ) : null}
+        <TapToPayEducation pinRow={pinRow} />
+      </ScrollView>
+    );
+  } else if (showIosUpdate) {
     body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;
   } else if (deviceBlocked) {
     body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;

@@ -47,6 +47,8 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
+import { useRouter } from "expo-router";
+
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -71,6 +73,7 @@ import {
   useDisconnectPaystack,
 } from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../hooks/useTapToPaySettingsEntry";
 import { useBrandPayoutVisibility } from "../../hooks/useBrandPayoutVisibility";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
@@ -245,6 +248,8 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // V3 (Sub-C Session A): live status query gives access to requirements
   // shape for the KycRemediationCard. Sibling-pattern: cached + Realtime-fed.
   const stripeStatusQuery = useBrandStripeStatus(brand?.id ?? null);
+  const router = useRouter();
+  const tapToPayEntry = useTapToPaySettingsEntry(brand?.id ?? null);
   const stripeStatus = getEffectiveBrandStripeStatus({
     liveStatus: stripeStatusQuery.data?.status,
     cachedStatus: brand?.stripeStatus,
@@ -717,6 +722,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           onDownloadPayouts={onOpenReports}
           suppressAttention={stripeStatus !== "active" || cardRailAddBank}
         />
+
+        {tapToPayEntry !== null && tapToPayBrandEligible(brand) ? (
+          <Button
+            label={tapToPayEntry.label}
+            onPress={() => router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brand?.id ?? "")}` as never)}
+            variant="secondary"
+            size="md"
+            fullWidth
+            accessibilityLabel={tapToPayEntry.label}
+            testID="brand-payments-tap-to-pay"
+          />
+        ) : null}
 
         {brand && stripeStatusQuery.data?.detached_at != null
           ? <BrandStripeOrphanedRefundsSection brandId={brand.id} />

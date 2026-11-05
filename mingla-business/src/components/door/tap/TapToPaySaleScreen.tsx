@@ -22,6 +22,7 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import {
+  TAP_CARD_NEEDS_INSERT_COPY,
   TAP_TO_PAY_SHORT,
   tapReaderProblemCanRetry,
   tapReaderProblemCopy,
@@ -339,8 +340,8 @@ export const TapToPaySaleScreen = ({
           <TapStatusView
             tone="bad"
             icon="close"
-            title="This card needs a PIN"
-            body="Some cards ask for chip and PIN, and a phone can't take that. Try Apple Pay, another card, or a pay code."
+            title={TAP_CARD_NEEDS_INSERT_COPY.title}
+            body={TAP_CARD_NEEDS_INSERT_COPY.body}
             primary={payCodeAction}
             secondary={{ label: "Try another card", onPress: () => void flowRef.current?.tryAnotherCard() }}
             testID="tap-state-needs_pin"

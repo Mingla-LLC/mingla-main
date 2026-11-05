@@ -4,7 +4,7 @@
  * Every test here fails when its change is reverted (recorded on the issue).
  */
 import React from "react";
-import { Linking, Platform } from "react-native";
+import { Linking, Platform, Text } from "react-native";
 
 // react-test-renderer ships no types in this app.
 interface ReactTestInstance {
@@ -158,6 +158,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetTapToPayWarmHintForTests } from "../../../services/terminal/tapToPaySetupStore";
 // eslint-disable-next-line import/first
 import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
+// eslint-disable-next-line import/first
+import { TapNotOnThisPhone } from "../tap/TapNotOnThisPhone";
+// eslint-disable-next-line import/first
+import { TapToPayEducation } from "../tap/TapToPayEducation";
+// eslint-disable-next-line import/first
+import { useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
+// eslint-disable-next-line import/first
+import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 // eslint-disable-next-line import/first
 import { TapConfiguringView } from "../tap/TapConfiguringView";
 // eslint-disable-next-line import/first
@@ -425,5 +433,120 @@ describe("B7 configuring and progress", () => {
     const current = mount(saleScreen());
     await settleSale();
     expect(textOf(current.root)).toContain("This phone can't take taps");
+  });
+});
+
+describe("B9 Settings entry and the guide", () => {
+  const Entry = (): React.ReactElement => {
+    const entry = useTapToPaySettingsEntry("brand-1");
+    return <Text testID="entry">{entry?.label ?? "none"}</Text>;
+  };
+  const withOs = (os: string, version: string): void => {
+    Object.defineProperty(Platform, "OS", { value: os, configurable: true });
+    Object.defineProperty(Platform, "Version", { value: version, configurable: true });
+  };
+  afterEach(() => withOs("ios", "18.1"));
+
+  test("the row is hidden when not live and present when live", () => {
+    mockLive = false;
+    expect(textOf(mount(<Entry />).root)).toContain("none");
+    mockLive = true;
+    expect(textOf(mount(<Entry />).root)).toContain("Tap to Pay on iPhone");
+  });
+
+  test("iOS 17: the guide's rows cover contactless, wallets and the fallback, with no Apple button", () => {
+    withOs("ios", "17.6");
+    const { root } = mount(<TapToPayEducation pinRow={false} />);
+    const text = textOf(root);
+    expect(text).toContain("Contactless cards");
+    expect(text).toContain("Apple Pay and other wallets");
+    expect(text).toContain("If a tap doesn't work");
+    expect(text).not.toContain("PIN");
+    expect(text).not.toContain("Show How to Tap");
+  });
+
+  test("iOS 18: the button calls Apple's guide; a failure says so", async () => {
+    const { root } = mount(<TapToPayEducation pinRow />);
+    expect(textOf(root)).toContain("Accessibility options are on that screen.");
+    await act(async () => {
+      byTestId(root, "tap-show-how-to-tap").props.onPress();
+    });
+    expect(showHowToTapEducation).toHaveBeenCalled();
+    (showHowToTapEducation as jest.Mock).mockRejectedValueOnce(new Error("networkUnavailable"));
+    await act(async () => {
+      byTestId(root, "tap-show-how-to-tap").props.onPress();
+    });
+    expect(textOf(root)).toContain("Couldn't show Apple's How to Tap guide.");
+  });
+
+  test("Android: no screen says iPhone or Apple's terms", async () => {
+    withOs("android", "34");
+    const education = textOf(mount(<TapToPayEducation pinRow />).root);
+    expect(education).not.toContain("iPhone");
+    expect(education).toContain("on the back of the phone");
+    expect(education).not.toContain("PIN");
+    mockRole = { rank: 10, isLoading: false };
+    resetTapToPaySessionForTests();
+    updateTapToPaySession({ status: "ready", client: { checkDeviceSupport: async () => ({ supported: true }) } as never });
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    const setupScreen = mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await flush();
+    const text = textOf(setupScreen.root);
+    expect(text).not.toContain("iPhone");
+    expect(text).not.toContain("Apple's terms");
+    expect(text).not.toContain("Ask an admin");
+    expect(setupScreen.root.findAll((n) => n.props.testID === "tap-setup-start").length).toBeGreaterThan(0);
+    const not = mount(<TapNotOnThisPhone onUsePayCode={jest.fn()} />);
+    expect(textOf(not.root)).not.toContain("iPhone");
+  });
+
+  test("Settings: on for this brand shows the guide and no setup", async () => {
+    mockRole = { rank: 60, isLoading: false };
+    resetTapToPaySessionForTests();
+    updateTapToPaySession({ status: "ready", client: { checkDeviceSupport: async () => ({ supported: true }) } as never });
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    const { root } = mount(<TapToPaySetupScreen brandId="brand-1" eventId={null} rawDraft={null} />);
+    await flush();
+    expect(textOf(root)).toContain("On for this brand");
+    expect(textOf(root)).toContain("If a tap doesn't work");
+    expect(root.findAll((n) => n.props.testID === "tap-setup-start")).toHaveLength(0);
+  });
+
+  test("Settings: not accepted and admin offers setup; not admin gets the message", async () => {
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    resetTapToPaySessionForTests();
+    const connect = jest.fn(async () => ({ error: { nativeErrorCode: "3930" } }));
+    updateTapToPaySession({
+      status: "ready",
+      client: { ensureReaderConnected: connect, checkDeviceSupport: async () => ({ supported: true }) } as never,
+    });
+    mockRole = { rank: 60, isLoading: false };
+    const admin = mount(<TapToPaySetupScreen brandId="brand-1" eventId={null} rawDraft={null} />);
+    await flush();
+    expect(admin.root.findAll((n) => n.props.testID === "tap-setup-start").length).toBeGreaterThan(0);
+    mockRole = { rank: 10, isLoading: false };
+    const scanner = mount(<TapToPaySetupScreen brandId="brand-1" eventId={null} rawDraft={null} />);
+    for (let i = 0; i < 5; i += 1) await flush();
+    expect(textOf(scanner.root)).toContain("Ask an admin to turn this on");
+  });
+
+  test("the card-needs-inserting screen tells the truth", async () => {
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    resetTapToPaySessionForTests();
+    updateTapToPaySession({
+      status: "ready",
+      client: {
+        ensureReaderConnected: async () => ({}),
+        retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+        collectPaymentMethod: async () => ({ error: { code: "x", message: "offline_pin_required" } }),
+        cancelCollectPaymentMethod: async () => ({}),
+      } as never,
+    });
+    const { root } = mount(saleScreen());
+    await settleSale();
+    const text = textOf(root);
+    expect(text).toContain("This card can't be tapped");
+    expect(text).toContain("This card needs to be inserted, and a phone can't do that.");
+    expect(text).not.toContain("needs a PIN");
   });
 });

@@ -522,3 +522,26 @@ describe("B8 the mark", () => {
     expect(icon).toContain("if (SymbolView === null) return null;");
   });
 });
+
+describe("B9 every Android string stays clear of the iPhone", () => {
+  test("the copy functions take the platform", () => {
+    const { tapEducationRows, tapToPayName, tapConfiguringTitle, tapToPaySetupButtonLabel, tapOnboardingCopy } =
+      jest.requireActual<typeof import("../../../constants/tapToPayCopy")>("../../../constants/tapToPayCopy");
+    const android = [
+      tapToPayName("android"),
+      tapConfiguringTitle("android"),
+      tapToPaySetupButtonLabel("android"),
+      JSON.stringify(tapEducationRows("android", { pinRow: true })),
+      JSON.stringify(tapOnboardingCopy("android")),
+    ].join(" ");
+    expect(android).not.toContain("iPhone");
+    expect(android).not.toContain("Apple's terms");
+  });
+  test("Settings and Payments each have the entry, and the route exists", () => {
+    const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
+    expect(read("app/(tabs)/account.tsx")).toContain("useTapToPaySettingsEntry");
+    expect(read("app/(tabs)/account.tsx")).toContain('"/account/tap-to-pay"');
+    expect(read("src/components/brand/BrandPaymentsView.tsx")).toContain("tapToPayBrandEligible(brand)");
+    expect(fs.existsSync(path.join(BIZ_ROOT, "app/account/tap-to-pay.tsx"))).toBe(true);
+  });
+});

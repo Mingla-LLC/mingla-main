@@ -13,5 +13,5 @@ const first = (value: string | string[] | undefined): string | null =>
 
 export default function DoorTapSetupRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id?: string | string[]; draft?: string | string[] }>();
-  return <TapToPaySetupScreen eventId={first(params.id) ?? ""} rawDraft={first(params.draft)} />;
+  return <TapToPaySetupScreen eventId={first(params.id)} rawDraft={first(params.draft)} />;
 }

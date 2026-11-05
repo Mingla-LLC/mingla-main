@@ -73,3 +73,49 @@ export const TAP_APPLE_TERMS_ROW = {
 export const tapConfiguringTitle = (os: string): string => `Getting ${tapToPayName(os)} ready`;
 export const TAP_CONFIGURING_BODY =
   "This can take a minute the first time. You can't take a tap until it's finished.";
+
+export interface TapEducationRow {
+  title: string;
+  sub: string;
+}
+
+/**
+ * The re-findable guide (Apple 4.3 to 4.8). Text only. The PIN row's accessibility
+ * wording still needs checking against Apple's guide.
+ */
+export const tapEducationRows = (os: string, options: { pinRow: boolean }): TapEducationRow[] => {
+  const where = os === "ios" ? "near the top of the iPhone" : "on the back of the phone";
+  const rows: TapEducationRow[] = [
+    {
+      title: "Contactless cards",
+      sub:
+        os === "ios"
+          ? "Hold the card flat near the top of the iPhone until you see the check mark."
+          : "Hold the card flat on the back of the phone until it says it's done.",
+    },
+    {
+      title: "Apple Pay and other wallets",
+      sub: `Guests hold their phone or watch ${where} the same way.`,
+    },
+  ];
+  if (os === "ios" && options.pinRow) {
+    rows.push({
+      title: "PIN",
+      sub: "Some cards ask for a PIN. Apple shows a PIN screen on the iPhone, and the guest enters it. Accessibility options are on that screen.",
+    });
+  }
+  rows.push({
+    title: "If a tap doesn't work",
+    sub: "Use a pay code. The guest scans it and pays on their own phone. It's one tap from the tap screen.",
+  });
+  return rows;
+};
+
+export const TAP_HOW_TO_TAP_BUTTON = "Show How to Tap";
+export const TAP_HOW_TO_TAP_FAILED = "Couldn't show Apple's How to Tap guide. Try again.";
+export const TAP_ON_FOR_BRAND = "On for this brand";
+
+export const TAP_CARD_NEEDS_INSERT_COPY = {
+  title: "This card can't be tapped",
+  body: "This card needs to be inserted, and a phone can't do that. Try Apple Pay, another card, or a pay code.",
+} as const;
