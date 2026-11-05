@@ -361,7 +361,7 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the rework proofs the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4273: register the tester retest proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "2efffdaae4dbe4038b1b7fc2e1beddcfe53ab22a29755c091fb6b0ba3dd34213";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c23d3addd6ab9ead81e33a99464d1598cd5a082a32d2bca5dc0d10a1cceadf47";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
