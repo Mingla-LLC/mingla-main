@@ -861,8 +861,25 @@ export class MessagingService {
     profiles: ReadonlyArray<{ id: string; display_name?: string | null; username?: string | null; first_name?: string | null; last_name?: string | null }>,
   ): void {
     for (const p of profiles) {
-      this.senderProfileCache.set(p.id, { name: getDisplayName(p, 'Unknown'), cachedAt: Date.now() });
+      this.rememberSenderName(p.id, getDisplayName(p, 'Unknown'));
     }
+  }
+
+  /**
+   * Issue #4275: every write of a sender's name goes through here. A stored answer
+   * also ends that sender's failure mark, or a fresh cache (no lookup runs) would
+   * keep every page with their rows "degraded" and spend recovery's retries for nothing.
+   */
+  private rememberSenderName(senderId: string, name: string): void {
+    this.senderProfileCache.set(senderId, { name, cachedAt: Date.now() });
+    this.failedSenderLookups.delete(senderId);
+  }
+
+  /** Issue #4275: sign-out. Names, lookups in flight and failure marks belonged to that account. */
+  clearSenderNames(): void {
+    this.senderProfileCache.clear();
+    this.senderNameLookups.clear();
+    this.failedSenderLookups.clear();
   }
 
   /**
@@ -984,7 +1001,7 @@ export class MessagingService {
           .in('id', Array.from(senderIds));
         for (const p of profiles || []) {
           const name = getDisplayName(p, 'Unknown');
-          this.senderProfileCache.set(p.id, { name, cachedAt: Date.now() });
+          this.rememberSenderName(p.id, name);
         }
       }
 
@@ -2065,11 +2082,10 @@ export class MessagingService {
         this.failedSenderLookups.add(senderId);
         return cached?.name ?? 'Unknown';
       }
-      this.failedSenderLookups.delete(senderId);
 
       const senderName = getDisplayName(profile, 'Unknown');
 
-      this.senderProfileCache.set(senderId, { name: senderName, cachedAt: Date.now() });
+      this.rememberSenderName(senderId, senderName);
       return senderName;
     })().finally(() => {
       this.senderNameLookups.delete(senderId);

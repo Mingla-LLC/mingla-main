@@ -12,9 +12,7 @@
 // FAILS-ON-REVERT: remove the in-flight lookup from getSenderName and the 50-row cold
 // page makes 50 profile reads. Cache a failed read again and the healing test fails.
 
-// Set true to run the DEFECT case below; it fails until the defect is fixed.
-const REPRO_DEFECTS = false;
-
+// SN1 was a defect repro behind a flag; it runs as an ordinary test since the P3-C fix.
 type MockRow = Record<string, unknown>;
 const mockCounts = { profiles: 0, reads: 0 };
 let mockMessageRows: MockRow[] = [];
@@ -201,7 +199,7 @@ describe("#4275 tester: sender names in getMessages", () => {
     expect((await messagingService.getMessages("c1", "me")).degraded).toBe(false);
   });
 
-  (REPRO_DEFECTS ? it : it.skip)("DEFECT-SN1 a name the chat list warms after a failed read clears the failure, so good pages are not degraded", async () => {
+  it("SN1 (fixed in the P3-C rework) a name the chat list warms after a failed read clears the failure, so good pages are not degraded", async () => {
     mockMessageRows = rowsWithoutSnapshot(3, "warmed-after-failure");
     mockProfileFails = true;
     await messagingService.getMessages("c1", "me");
@@ -213,7 +211,7 @@ describe("#4275 tester: sender names in getMessages", () => {
     expect(page.degraded).toBe(false);
   });
 
-  it("pinned today: with a fresh name from the chat list, a failed sender stays failed and every page reads as degraded", async () => {
+  it("fixed in the P3-C rework (was \"pinned today\"): with a fresh name from the chat list, a failed sender is no longer degraded", async () => {
     mockMessageRows = rowsWithoutSnapshot(3, "pinned-warmed-after-failure");
     mockProfileFails = true;
     await messagingService.getMessages("c1", "me");
@@ -223,8 +221,21 @@ describe("#4275 tester: sender names in getMessages", () => {
     for (let read = 0; read < 3; read += 1) {
       const page = await messagingService.getMessages("c1", "me");
       expect(page.messages[0].sender_name).toBe("Warm Name");
-      expect(page.degraded).toBe(true);
+      expect(page.degraded).toBe(false);
     }
     expect(mockCounts.profiles).toBe(before);
+  });
+
+  it("P3-C sign-out clears sender names, lookups and failure marks", async () => {
+    mockMessageRows = rowsWithoutSnapshot(2, "signed-out-sender");
+    mockProfileFails = true;
+    const failed = await messagingService.getMessages("c1", "me");
+    expect(failed.degraded).toBe(true);
+    messagingService.clearSenderNames();
+    const internals = messagingService as unknown as { failedSenderLookups: Set<string>; senderProfileCache: Map<string, unknown> };
+    expect(internals.failedSenderLookups.size).toBe(0);
+    expect(internals.senderProfileCache.size).toBe(0);
+    const source = require("fs").readFileSync(require("path").join(__dirname, "../../utils/authCleanup.ts"), "utf8") as string;
+    expect(source).toMatch(/messagingService\.clearSenderNames\(\)/);
   });
 });

@@ -62,6 +62,13 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
     queryClient.clear();
   }
 
+  // Issue #4275: sender names and their failure marks belong to the signed-in user.
+  import("../services/messagingService").then(({ messagingService }) => {
+    messagingService.clearSenderNames();
+  }).catch((error) => {
+    console.warn(`[AUTH_CLEANUP] sender name reset failed (${reason}):`, error);
+  });
+
   // Issue #4275: curated calls queued or in flight belong to the signed-in user.
   import("../services/curatedExperiencesService").then(({ resetCuratedRequests }) => {
     resetCuratedRequests();
