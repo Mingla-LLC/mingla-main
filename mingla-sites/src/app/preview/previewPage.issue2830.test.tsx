@@ -26,6 +26,7 @@ vi.mock("../../lib/previewArtifact", async (original) => ({ ...(await original<t
 vi.mock("../../lib/shareLinks", () => ({ SHARE_TOKEN: /^[A-Za-z0-9_-]{43}$/, sharedPreviewForRequest }));
 vi.mock("../../lib/pageExtras", () => ({ loadPageExtras: async () => ({}) }));
 
+import { PreviewLinkScope, SiteSearchForm } from "../../components/PreviewLinks";
 import { SitePageView } from "../../components/SitePageView";
 import { gogiV1Fixture } from "../../contracts/gogiV1.fixture";
 import { upgradeV1ToV2 } from "../../contracts/generated/upgradeV1ToV2.ts";
@@ -138,9 +139,11 @@ describe("#2830 preview specifics", () => {
   });
 
   it("a search form stays in the preview, because a GET form drops the action's query", async () => {
-    const html = await team(asPreview(voyageSyntheticArtifact()), "trips");
-    expect(html).toMatch(/<form action="\/preview" method="get"[^>]*><input type="hidden" name="k" value="publications\//);
-    expect(html).toContain('<input type="hidden" name="path" value="trips"/>');
+    const scope = { target: { key: KEY }, path: "about", assetKey: KEY };
+    expect(renderToStaticMarkup(<PreviewLinkScope scope={scope}><SiteSearchForm action="/trips" /></PreviewLinkScope>))
+      .toBe(`<form action="/preview" method="get"><input type="hidden" name="k" value="${KEY}"/><input type="hidden" name="path" value="trips"/></form>`);
+    expect(renderToStaticMarkup(<PreviewLinkScope scope={scope}><SiteSearchForm /></PreviewLinkScope>)).toContain('name="path" value="about"');
+    expect(renderToStaticMarkup(<SiteSearchForm action="/trips" />)).toBe('<form action="/trips" method="get"></form>');
   });
 
   it("the current page is marked from the preview's path, not /preview", async () => {
