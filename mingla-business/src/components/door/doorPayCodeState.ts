@@ -70,6 +70,52 @@ export const doorPayHostEndCopy = (
   }
 };
 
+/** What the server says about money on a closed code. */
+export type DoorPayLatePaymentRead =
+  | { kind: "checking" }
+  | { kind: "unknown" }
+  | { kind: "none" }
+  | { kind: "payment"; state: "refunding" | "refunded"; amount: string };
+
+/**
+ * The end-state body. "Nothing was charged." only when the server confirmed
+ * it: a payment that landed after the code closed is named with its refund,
+ * and the copy never claims either way before the answer arrives.
+ */
+export const doorPayHostEndBody = (
+  status: "expired" | "failed" | "cancelled",
+  late: DoorPayLatePaymentRead,
+): string => {
+  switch (late.kind) {
+    case "none":
+      return doorPayHostEndCopy(status).body;
+    case "checking":
+      return "Checking for a payment…";
+    case "unknown":
+      return "Couldn't check for a payment. Check your connection before charging them again.";
+    case "payment":
+      return late.state === "refunded"
+        ? `A payment came in after this code closed. ${late.amount} was refunded to the guest.`
+        : `A payment came in after this code closed. We're refunding ${late.amount} to the guest automatically.`;
+    default: {
+      const exhaustive: never = late;
+      return exhaustive;
+    }
+  }
+};
+
+/**
+ * The paid screen's Guest row. Null hides the row: "Walk-up" is only ever the
+ * server's answer, never a name that is still loading or failed to load.
+ */
+export const doorPayGuestRowValue = (read: {
+  isSuccess: boolean;
+  name: string | null | undefined;
+}): string | null => {
+  if (!read.isSuccess) return null;
+  return typeof read.name === "string" && read.name.trim().length > 0 ? read.name.trim() : "Walk-up";
+};
+
 export interface DoorPayGuestEndCopy {
   title: string;
   body: string;

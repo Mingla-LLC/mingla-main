@@ -46,6 +46,7 @@ import { Toast } from "../../../src/components/ui/Toast";
 import { Button } from "../../../src/components/ui/Button";
 
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useBrand } from "../../../src/hooks/useBrands";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 import { InviteScannerSheet } from "../../../src/components/scanners/InviteScannerSheet";
@@ -99,6 +100,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
+  const brandQuery = useBrand(typeof brandId === "string" ? brandId : null);
   const { rank: currentRank } = useCurrentBrandRole(
     typeof brandId === "string" ? brandId : null,
   );
@@ -329,6 +331,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
         visible={inviteSheetOpen}
         event={null}
         brandId={brandId}
+        paymentProvider={brandQuery.data?.paymentProvider ?? null}
         operatorAccountId={operatorAccountId}
         brandOnly
         onClose={() => setInviteSheetOpen(false)}

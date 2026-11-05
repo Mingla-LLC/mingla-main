@@ -36,6 +36,7 @@ import {
   type ScannerInvitationScope,
 } from "../../services/scannerInvitationsService";
 import type { LiveEvent } from "../../store/liveEventStore";
+import { scannerDoorPaymentsCopy } from "../door/doorPaymentOptions";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -54,6 +55,8 @@ export interface InviteScannerSheetProps {
   /** Pass when invoking from /event/[id]/scanners; omit for brand-only flow. */
   event: LiveEvent | null;
   brandId: string;
+  /** The brand's payment rail: Tap to Pay is not on Paystack. */
+  paymentProvider: "stripe" | "paystack" | null;
   /** Retained for prop compatibility; canonical invited_by is auth.uid()
    *  inside the edge fn. */
   operatorAccountId: string;
@@ -105,6 +108,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
   visible,
   event,
   brandId,
+  paymentProvider,
   operatorAccountId: _operatorAccountId,
   brandOnly,
   onClose,
@@ -299,7 +303,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             <View style={styles.toggleCol}>
               <Text style={styles.toggleLabel}>Take payments at the door</Text>
               <Text style={styles.toggleSubline}>
-                Cash, manual, pay codes and Tap to Pay. Card money goes to your bank with online sales.
+                {scannerDoorPaymentsCopy(paymentProvider)}
               </Text>
             </View>
             <Pressable

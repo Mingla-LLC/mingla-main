@@ -357,6 +357,7 @@ export default function EventScannersListRoute(): React.ReactElement {
           visible={inviteSheetOpen}
           event={event}
           brandId={brand.id}
+          paymentProvider={brand.paymentProvider ?? "stripe"}
           operatorAccountId={operatorAccountId}
           onClose={() => setInviteSheetOpen(false)}
           onSuccess={handleInviteSuccess}

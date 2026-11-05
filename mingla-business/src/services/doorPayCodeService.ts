@@ -4,7 +4,8 @@
  * and pays through the normal checkout (Stripe hosted page or Paystack).
  *
  * Edge function `door-pay-code` (POST {action, ...}):
- *   create    (host)   → DoorPayCodeCreated
+ *   quote     (host)   → DoorPayCodeQuote (same pricing as create, no row)
+ *   create    (host)   → DoorPayCodeCreated (replacesCodeId closes the old code first)
  *   view      (public) → DoorPayCodeView, 404 {error:"not_found"}
  *   cancel    (host)   → {status:"cancelled"}
  *   text_link (host)   → {sent:true, last4}
@@ -204,7 +205,44 @@ export interface CreateDoorPayCodeInput {
   eventId: string;
   eventDateId: string | null;
   lines: { ticketTypeId: string; quantity: number }[];
+  /** "Show a new code": the server closes this code (and its checkout) first. */
+  replacesCodeId?: string | null;
 }
+
+/** The server's price for a door basket, fees included, before any code. */
+export interface DoorPayCodeQuote {
+  subtotalCents: number;
+  feeCents: number;
+  totalCents: number;
+  currency: string;
+}
+
+export const parseDoorPayCodeQuote = (data: Record<string, unknown>): DoorPayCodeQuote => {
+  const currency = str(data.currency);
+  const totalCents = num(data.totalCents);
+  if (currency.length === 0 || totalCents <= 0) throw new DoorPayCodeError("invalid_response");
+  return {
+    subtotalCents: num(data.subtotalCents),
+    feeCents: num(data.feeCents),
+    totalCents,
+    currency,
+  };
+};
+
+export const quoteDoorPayCode = async (
+  input: Omit<CreateDoorPayCodeInput, "replacesCodeId">,
+): Promise<DoorPayCodeQuote> =>
+  parseDoorPayCodeQuote(
+    await invokeDoorPayCode({
+      action: "quote",
+      eventId: input.eventId,
+      eventDateId: input.eventDateId,
+      lines: input.lines.map((line) => ({
+        ticketTypeId: line.ticketTypeId,
+        quantity: line.quantity,
+      })),
+    }),
+  );
 
 export const createDoorPayCode = async (
   input: CreateDoorPayCodeInput,
@@ -218,6 +256,9 @@ export const createDoorPayCode = async (
         ticketTypeId: line.ticketTypeId,
         quantity: line.quantity,
       })),
+      ...(typeof input.replacesCodeId === "string" && input.replacesCodeId.length > 0
+        ? { replacesCodeId: input.replacesCodeId }
+        : {}),
     }),
   );
 
@@ -289,6 +330,46 @@ export const fetchDoorPayCode = async (codeId: string): Promise<DoorPayCodeRow> 
     .single();
   if (error !== null) throw new DoorPayCodeError(error.code ?? "door_pay_code_load_failed");
   return mapDoorPayCodeRow(data as unknown as DoorPayCodeDbRow);
+};
+
+/**
+ * A payment that landed after the code closed is refunded in full
+ * automatically. Null when nothing was charged.
+ */
+export interface DoorPayLatePayment {
+  state: "refunding" | "refunded";
+  amountCents: number;
+  currency: string;
+}
+
+export const parseDoorPayLatePayment = (data: unknown): DoorPayLatePayment | null => {
+  if (!isRecord(data)) return null;
+  const state = data.state === "refunded" ? "refunded" : data.state === "refunding" ? "refunding" : null;
+  if (state === null) return null;
+  return { state, amountCents: num(data.amountCents), currency: str(data.currency) };
+};
+
+export const fetchDoorPayLatePayment = async (codeId: string): Promise<DoorPayLatePayment | null> => {
+  const { data, error } = await supabase.rpc("biz_door_pay_code_late_payment", {
+    p_code_id: codeId,
+  });
+  if (error !== null) throw new DoorPayCodeError(error.code ?? "door_late_payment_load_failed");
+  return parseDoorPayLatePayment(data);
+};
+
+/**
+ * The paid code's guest name for the host's paid screen; null for a walk-up.
+ * Server path on purpose: a scanner allowed to take payments reaches that
+ * screen but cannot read `orders` under RLS, and an empty read would look like
+ * a false "Walk-up".
+ */
+export const fetchDoorPayGuestName = async (codeId: string): Promise<string | null> => {
+  const { data, error } = await supabase.rpc("biz_door_pay_code_guest_name", {
+    p_code_id: codeId,
+  });
+  if (error !== null) throw new DoorPayCodeError(error.code ?? "door_guest_load_failed");
+  const name = typeof data === "string" ? data.trim() : "";
+  return name.length > 0 ? name : null;
 };
 
 /** issue #4271 — server answer to "may this user take money at this door?" */

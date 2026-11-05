@@ -63,6 +63,7 @@ import { useRecordDoorSale } from "../../hooks/useEventDoorSales";
 import {
   useCanTakeDoorPayment,
   useCreateDoorPayCode,
+  useDoorPayCodeQuote,
 } from "../../hooks/useEventDoorSales";
 import { useTapToPayAvailability } from "../../hooks/useTapToPayAvailability";
 import { DoorPayCodeError } from "../../services/doorPayCodeService";
@@ -81,6 +82,7 @@ import { doorTierUnitPrice } from "./doorListPrice";
 import {
   buildDoorPaymentOptions,
   doorMethodCollectsBuyerDetails,
+  doorPayCodeDockTotal,
   doorSaleButtonLabel,
   DOOR_PAY_CODE_BUYER_NOTE,
   DOOR_PAYMENTS_NOT_ALLOWED,
@@ -328,6 +330,22 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     else if (doorDates.length === 1) setDoorDateId(doorDates[0][0]);
     else if (!doorDates.some(([id]) => id === doorDateId)) setDoorDateId(null);
   }, [doorDateId, doorDateNeeded, doorDates]);
+
+  // issue #4271 — the pay code's real total comes from the server, the same
+  // pricing the code is created with. Never estimated on the phone.
+  const payCodeQuote = useDoorPayCodeQuote({
+    eventId: event.id,
+    eventDateId: doorDateId,
+    lines,
+    enabled:
+      visible &&
+      paymentMethod === "pay_code" &&
+      permission.data === true &&
+      (!doorDateNeeded || doorDateId !== null),
+  });
+  const payCodeDock = doorPayCodeDockTotal(payCodeQuote.data, fmtDoorMoney(total), (cents, currency) =>
+    formatCurrency(cents, currency, true),
+  );
 
   const canSubmit =
     !submitting &&
@@ -770,11 +788,13 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         <View style={styles.dock}>
           <View style={styles.dockTotalRow}>
             <Text style={styles.dockTotalLabel}>
-              {paymentMethod === "pay_code" ? "Tickets" : "Total"}
+              {paymentMethod === "pay_code" ? payCodeDock.label : "Total"}
             </Text>
-            <Text style={styles.dockTotalValue}>{fmtDoorMoney(total)}</Text>
+            <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
+              {paymentMethod === "pay_code" ? payCodeDock.amount : fmtDoorMoney(total)}
+            </Text>
           </View>
-          {paymentMethod === "pay_code" && eventCurrencyCode !== null ? (
+          {paymentMethod === "pay_code" && eventCurrencyCode !== null && !payCodeDock.quoted ? (
             <Text style={styles.currencyGateHint}>
               The pay code shows the final total, with any fees.
             </Text>

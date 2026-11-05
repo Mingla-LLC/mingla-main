@@ -123,3 +123,32 @@ export const DOOR_PAYMENTS_NOT_ALLOWED =
   "Ask the brand owner to let you take payments.";
 export const DOOR_PAY_CODE_BUYER_NOTE =
   "They type their own name, email and number on their phone. Their ticket goes to that email and number.";
+
+/**
+ * The sale sheet's dock for a pay code. The fee is the server's alone: the
+ * quoted "Total incl. fees" when it has answered, otherwise only the tickets'
+ * own subtotal (loading or offline). No fee is ever estimated here.
+ */
+export const doorPayCodeDockTotal = (
+  quote: { totalCents: number; currency: string } | null | undefined,
+  subtotalLabel: string,
+  formatQuote: (totalCents: number, currency: string) => string,
+): { label: string; amount: string; quoted: boolean } =>
+  quote !== null && quote !== undefined
+    ? {
+        label: "Total incl. fees",
+        amount: formatQuote(quote.totalCents, quote.currency),
+        quoted: true,
+      }
+    : { label: "Tickets", amount: subtotalLabel, quoted: false };
+
+/**
+ * Tap to Pay does not exist on the Paystack rail (Nigeria); it is named only
+ * once the brand is known to be on Stripe.
+ */
+export const scannerDoorPaymentsCopy = (
+  paymentProvider: "stripe" | "paystack" | null | undefined,
+): string =>
+  paymentProvider === "stripe"
+    ? "Cash, manual, pay codes and Tap to Pay. Card money goes to your bank with online sales."
+    : "Cash, manual and pay codes. Card money goes to your bank with online sales.";

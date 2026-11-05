@@ -1175,6 +1175,37 @@ REVOKE ALL ON FUNCTION public.biz_door_pay_code_late_payment(uuid) FROM PUBLIC, 
 GRANT EXECUTE ON FUNCTION public.biz_door_pay_code_late_payment(uuid)
   TO authenticated, service_role;
 
+-- The paid code's guest name for the host's paid screen. A scanner allowed to
+-- take payments reaches that screen but cannot read orders (RLS is buyer or
+-- brand team), so the name comes through the same door permission as the code
+-- row. NULL means the order really has no name: a true walk-up.
+CREATE OR REPLACE FUNCTION public.biz_door_pay_code_guest_name(p_code_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_event_id uuid;
+  v_order_id uuid;
+BEGIN
+  SELECT event_id, order_id INTO v_event_id, v_order_id
+    FROM public.door_pay_codes
+   WHERE id = p_code_id;
+  IF v_event_id IS NULL OR NOT public.biz_can_take_door_payment(v_event_id) THEN
+    RAISE EXCEPTION 'door_access_denied' USING ERRCODE = '42501';
+  END IF;
+  RETURN (SELECT nullif(btrim(o.buyer_name), '')
+            FROM public.orders o
+           WHERE o.id = v_order_id);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.biz_door_pay_code_guest_name(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.biz_door_pay_code_guest_name(uuid)
+  TO authenticated, service_role;
+
 -- =============================================================================
 -- §7b. The guest's checkout prices a door code's lines by the door rule.
 --      A tier sold in person but not online can be paid through its own pay

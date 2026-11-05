@@ -406,7 +406,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
           entry={phone}
           required
           showErrors={showErrors}
-          accessibilityLabel="Mobile number, required"
+          accessibilityLabel="Mobile number"
           placeholder="Mobile number"
           testID="door-pay-buyer-phone"
         />

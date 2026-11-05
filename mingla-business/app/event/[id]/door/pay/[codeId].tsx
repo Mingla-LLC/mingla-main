@@ -32,6 +32,8 @@ import { DoorPayQr } from "../../../../../src/components/door/DoorPayQr";
 import { doorSellAnotherHref } from "../../../../../src/components/door/doorTapDraft";
 import { formatDoorPayCode, makeDoorPayUrl, isDoorPayCode } from "../../../../../src/components/door/doorPayUrl";
 import {
+  doorPayGuestRowValue,
+  doorPayHostEndBody,
   doorPayHostEndCopy,
   doorPayTextLinkErrorMessage,
   effectiveDoorPayStatus,
@@ -39,6 +41,7 @@ import {
   openedAgoLabel,
   summarizeDoorPayLines,
   type DoorPayHostAction,
+  type DoorPayLatePaymentRead,
 } from "../../../../../src/components/door/doorPayCodeState";
 import { Button } from "../../../../../src/components/ui/Button";
 import { IconChrome } from "../../../../../src/components/ui/IconChrome";
@@ -50,6 +53,8 @@ import {
   useCreateDoorPayCode,
   useCreatedDoorPayCode,
   useDoorPayCode,
+  useDoorPayGuestName,
+  useDoorPayLatePayment,
   useTextDoorPayLink,
 } from "../../../../../src/hooks/useEventDoorSales";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
@@ -89,6 +94,34 @@ export default function DoorPayCodeRoute(): React.ReactElement {
 
   const row = codeQuery.data ?? null;
   const status = row === null ? null : effectiveDoorPayStatus(row.status, row.expiresAt, nowMs);
+  const closed = status === "expired" || status === "failed" || status === "cancelled";
+
+  // "Nothing was charged" is only said once the server confirms it; a payment
+  // that landed after the code closed is named with its refund.
+  const latePaymentQuery = useDoorPayLatePayment(codeId, closed);
+  const latePayment: DoorPayLatePaymentRead = latePaymentQuery.isSuccess
+    ? latePaymentQuery.data === null
+      ? { kind: "none" }
+      : {
+          kind: "payment",
+          state: latePaymentQuery.data.state,
+          amount: formatCurrency(
+            latePaymentQuery.data.amountCents,
+            latePaymentQuery.data.currency.length > 0
+              ? latePaymentQuery.data.currency
+              : (row?.currency ?? ""),
+            true,
+          ),
+        }
+    : latePaymentQuery.isError
+      ? { kind: "unknown" }
+      : { kind: "checking" };
+
+  const guestNameQuery = useDoorPayGuestName(codeId, status === "paid");
+  const guestRow = doorPayGuestRowValue({
+    isSuccess: guestNameQuery.isSuccess,
+    name: guestNameQuery.data,
+  });
 
   // Ticket names: from the create answer when this phone made the code,
   // otherwise from the event's own tiers.
@@ -151,9 +184,17 @@ export default function DoorPayCodeRoute(): React.ReactElement {
         eventId,
         eventDateId: row.eventDateId,
         lines: row.lines,
+        // The server closes this code and its checkout first, so a guest still
+        // on the old page can never pay both.
+        replacesCodeId: row.id,
       });
       router.replace(`/event/${eventId}/door/pay/${next.codeId}` as never);
     } catch (error) {
+      // The guest's payment beat the new code: show the paid screen instead.
+      if (error instanceof DoorPayCodeError && error.code === "door_code_unavailable") {
+        void codeQuery.refetch();
+        return;
+      }
       // A dated ticket needs its date again: reopen the sheet with the tickets.
       if (error instanceof DoorPayCodeError && error.code === "ticket_not_valid_on_chosen_days") {
         sellAnother("pay_code");
@@ -161,7 +202,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
       }
       setActionError("Couldn't make a new code. Nothing was charged. Try again.");
     }
-  }, [createCode, eventId, router, row, sellAnother]);
+  }, [codeQuery, createCode, eventId, router, row, sellAnother]);
 
   const handleAction = useCallback(
     (action: DoorPayHostAction): void => {
@@ -228,6 +269,12 @@ export default function DoorPayCodeRoute(): React.ReactElement {
             <Text style={styles.kvKey}>Tickets</Text>
             <Text style={styles.kvValue}>{summarizeDoorPayLines(namedLines)}</Text>
           </View>
+          {guestRow !== null ? (
+            <View style={styles.kv} testID="door-pay-guest-row">
+              <Text style={styles.kvKey}>Guest</Text>
+              <Text style={styles.kvValue}>{guestRow}</Text>
+            </View>
+          ) : null}
           <View style={styles.kv}>
             <Text style={styles.kvKey}>Entry</Text>
             <Text style={styles.kvValueOk}>Checked in</Text>
@@ -254,7 +301,9 @@ export default function DoorPayCodeRoute(): React.ReactElement {
           <Icon name={status === "expired" ? "clock" : "close"} size={28} color={semantic.errorText} />
         </View>
         <Text style={styles.endTitle}>{copy.title}</Text>
-        <Text style={styles.muted}>{copy.body}</Text>
+        <Text style={styles.muted} testID="door-pay-end-body" accessibilityLiveRegion="polite">
+          {doorPayHostEndBody(status, latePayment)}
+        </Text>
         <View style={styles.actions}>
           <Button
             label={copy.primary.label}
