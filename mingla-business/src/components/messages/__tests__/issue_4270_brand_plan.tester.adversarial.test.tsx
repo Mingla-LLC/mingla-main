@@ -30,6 +30,8 @@ const service = require("../../../services/brandPlanService") as typeof import("
 
 const ROOT = path.resolve(__dirname, "../../../../..");
 const MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280414024270_issue_4270_w3_brand_plan.sql"), "utf8");
+// W5: the link rule moved to the host card migration, where the Files link uses it too.
+const LINK_RULE_MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280414014270_issue_4270_w2_host_card.sql"), "utf8");
 const LOCALES = path.join(ROOT, "mingla-business/src/i18n/locales");
 const en = JSON.parse(fs.readFileSync(path.join(LOCALES, "en/brandGroupMedia.json"), "utf8")).plan as Record<string, string>;
 const PANEL = fs.readFileSync(path.join(ROOT, "mingla-business/src/components/messages/BrandPlanPanel.tsx"), "utf8");
@@ -213,7 +215,7 @@ describe("the client against the migration's own text", () => {
   });
 
   it("every code point the server's hidden list names is refused by the client as well", () => {
-    const body = /CREATE FUNCTION public\.brand_plan_link_hidden[\s\S]*?\$\$;/.exec(MIGRATION)?.[0] ?? "";
+    const body = /CREATE FUNCTION public\.brand_plan_link_hidden[\s\S]*?\$\$;/.exec(LINK_RULE_MIGRATION)?.[0] ?? "";
     const cls = /\[\[:cntrl:\]([^\]]+)\]/.exec(body)?.[1] ?? "";
     const parts = [...cls.matchAll(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8}))(?:-\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})))?/g)];
     expect(parts.length).toBeGreaterThan(15);
