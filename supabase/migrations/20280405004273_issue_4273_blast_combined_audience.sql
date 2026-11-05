@@ -1218,6 +1218,7 @@ DECLARE
   v_preview integer;
   v_failed integer;
   v_hidden integer;
+  v_quoted integer;
   v_min_next timestamptz;
   v_new_status text;
   v_channel text;
@@ -1246,16 +1247,28 @@ BEGIN
   FROM public.marketing_messages
   WHERE campaign_id = p_campaign_id;
 
+  -- A target withheld on a reclaim pass may already hold a message from an earlier
+  -- pass: that person is in the row count, so they are not added again. A duplicate
+  -- address is a different target and still counts, as it does on any list.
+  SELECT e.reachable_count INTO v_quoted
+    FROM public.marketing_book_send_executions e WHERE e.campaign_id = p_campaign_id;
   SELECT count(*)::integer INTO v_hidden
     FROM public.marketing_combined_send_skips s
     JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
-   WHERE e.campaign_id = p_campaign_id AND NOT s.host_visible;
+    JOIN public.marketing_book_send_targets t ON t.id = s.target_id
+   WHERE e.campaign_id = p_campaign_id AND NOT s.host_visible
+     AND (s.reason = 'address_duplicate' OR NOT EXISTS (
+       SELECT 1 FROM public.marketing_messages m
+        WHERE m.campaign_id = p_campaign_id
+          AND t.contact_value_digest IN (
+            encode(extensions.digest(convert_to(m.recipient_phone, 'UTF8'), 'sha256'), 'hex'),
+            encode(extensions.digest(convert_to(lower(btrim(m.recipient_email)), 'UTF8'), 'sha256'), 'hex'))));
 
   IF v_deferred > 0 THEN
     v_new_status := 'scheduled';
     UPDATE public.marketing_campaigns
        SET status = 'scheduled',
-           recipient_count = v_delivered + v_hidden,
+           recipient_count = LEAST(v_delivered + v_hidden, v_quoted),
            sent_at = NULL,
            scheduled_for = COALESCE(v_min_next, now() + interval '15 minutes'),
            updated_at = now()
@@ -1264,7 +1277,7 @@ BEGIN
     v_new_status := 'sent';
     UPDATE public.marketing_campaigns
        SET status = 'sent',
-           recipient_count = v_delivered + v_hidden,
+           recipient_count = LEAST(v_delivered + v_hidden, v_quoted),
            sent_at = now(),
            updated_at = now()
      WHERE id = p_campaign_id;
@@ -1272,7 +1285,7 @@ BEGIN
     v_new_status := 'sent';
     UPDATE public.marketing_campaigns
        SET status = 'sent',
-           recipient_count = v_preview + v_hidden,
+           recipient_count = LEAST(v_preview + v_hidden, v_quoted),
            sent_at = now(),
            updated_at = now()
      WHERE id = p_campaign_id;
@@ -1280,7 +1293,7 @@ BEGIN
     v_new_status := 'sent';
     UPDATE public.marketing_campaigns
        SET status = 'sent',
-           recipient_count = v_hidden,
+           recipient_count = LEAST(v_hidden, v_quoted),
            sent_at = now(),
            updated_at = now()
      WHERE id = p_campaign_id;
