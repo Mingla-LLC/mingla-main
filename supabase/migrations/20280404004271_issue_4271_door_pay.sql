@@ -3088,13 +3088,12 @@ REVOKE ALL ON FUNCTION public.release_ticket_checkout_evidence_hold(uuid,text,te
 GRANT EXECUTE ON FUNCTION public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)
   TO service_role;
 
-CREATE OR REPLACE FUNCTION public.issue_2168_handoff_revocation_attention(
-  p_outbox_id uuid)
-RETURNS text
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $fn$
+CREATE OR REPLACE FUNCTION public.issue_2168_handoff_revocation_attention(p_outbox_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
 DECLARE
   v_row     public.checkout_sale_revocation_outbox%ROWTYPE;
   v_session public.ticket_checkout_sessions%ROWTYPE;
@@ -3115,6 +3114,18 @@ BEGIN
   SELECT * INTO v_session FROM public.ticket_checkout_sessions
    WHERE id = v_row.subject_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'revocation_session_missing'; END IF;
+
+  -- The paid evidence already has an owner: the sale completed, an order
+  -- exists, or a late-payment refund carries the provider reference. A second,
+  -- operator-only refund row would only duplicate it.
+  IF v_row.state = 'sale_completed'
+     OR v_session.order_id IS NOT NULL
+     OR EXISTS (SELECT 1 FROM public.source_refunds r
+       WHERE r.source_type = 'ticket_checkout_session'
+         AND r.source_id = v_session.id
+         AND r.refund_kind = 'late_payment_no_value') THEN
+    RETURN 'already_owned';
+  END IF;
 
   -- #4271: the operator is shown what was charged, not the ticket base.
   v_charged := COALESCE(v_session.buyer_total_cents, v_session.total_cents, 0);
@@ -3155,8 +3166,7 @@ BEGIN
 
   RETURN 'attention_created';
 END;
-$fn$;
-
+$function$;
 REVOKE ALL ON FUNCTION public.issue_2168_handoff_revocation_attention(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.issue_2168_handoff_revocation_attention(uuid) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_2168_handoff_revocation_attention(uuid) TO service_role;

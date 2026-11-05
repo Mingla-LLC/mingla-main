@@ -306,6 +306,12 @@ BEGIN
      OR v_row.buyer_refund_processed_cents <> 0 THEN
     RAISE EXCEPTION 'O8 the review row must show the charge: %', to_jsonb(v_row);
   END IF;
+
+  -- The replacement keeps the newer guard: paid evidence with an owner opens nothing.
+  UPDATE public.checkout_sale_revocation_outbox SET state = 'sale_completed' WHERE id = v_outbox;
+  IF public.issue_2168_handoff_revocation_attention(v_outbox) <> 'already_owned' THEN
+    RAISE EXCEPTION 'O8 a completed sale must not open a review row';
+  END IF;
 END;
 $o8$;
 ROLLBACK;

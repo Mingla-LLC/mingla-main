@@ -2,15 +2,17 @@
  * #4271 — design T1 "Set up Tap to Pay (once per phone)".
  *
  * Steps behind "Set up Tap to Pay":
- *   1. Stripe Terminal starts (connection token for this event's brand).
+ *   1. Stripe Terminal is already up in the root host (TapToPayTerminalHost).
  *   2. runTapToPaySetup (services/terminal/tapToPaySetup.ts): Stripe's device
  *      check, the brand's Terminal Location (door-tap-intent `location`), the
  *      reader connection there (Apple's Tap to Pay terms appear HERE, during
  *      setup, not at the first sale), then on iPhone Apple's "How to Tap"
  *      education (ProximityReaderDiscovery, iOS 18+).
- *   3. The phone remembers setup is done, and the sale continues if one was
- *      waiting (the draft travels in the URL). The reader stays connected
- *      into the sale (one Terminal session for the tap route group).
+ *   3. The phone remembers this brand is worth warming up, and the sale continues
+ *      if one was waiting (the draft travels in the URL). The reader stays connected
+ *      into the sale. Opened from Settings (no event), the screen stays and shows
+ *      that it's on, with the guide. Only a brand owner or admin may accept Apple's
+ *      terms; anyone else is told who to ask.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
