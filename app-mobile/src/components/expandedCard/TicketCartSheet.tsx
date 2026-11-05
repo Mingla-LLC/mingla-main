@@ -26,7 +26,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -87,6 +86,7 @@ import {
   PURCHASE_TERMS_LABEL_TERMS,
 } from "../../constants/consentDisclosure";
 import { LEGAL_URLS } from "../../constants/urls";
+import { InAppBrowserProvider, useOpenInMingla } from "../InAppBrowserProvider";
 import { recordConsent } from "../../services/consentService";
 import { Icon } from "../ui/Icon";
 // ORCH-1025 [Seamless native consumer cart] — the buyer billing-address +
@@ -429,6 +429,38 @@ export interface TicketCartSheetProps {
   /** Available only after server truth says a new attempt is safe. */
   onTerminalRetry?: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
+}
+
+/**
+ * #4261: a Mingla legal page opened from the consent line. It reads the
+ * provider this sheet mounts inside its own window, so the in-app browser
+ * presents over the cart instead of leaving Mingla.
+ */
+function LegalLink({
+  url,
+  title,
+  accessibilityLabel,
+  children,
+}: {
+  url: string;
+  title: string;
+  accessibilityLabel: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const { open } = useOpenInMingla();
+  return (
+    <Text
+      style={styles.checkboxLink}
+      onPress={(event) => {
+        event.stopPropagation();
+        open(url, title);
+      }}
+      accessibilityRole="link"
+      accessibilityLabel={accessibilityLabel}
+    >
+      {children}
+    </Text>
+  );
 }
 
 export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
@@ -1651,29 +1683,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
           <Text style={styles.checkboxLabel}>
             {PURCHASE_TERMS_LABEL_PREFIX}
-            <Text
-              style={styles.checkboxLink}
-              onPress={(event) => {
-                event.stopPropagation();
-                void Linking.openURL(LEGAL_URLS.termsOfService);
-              }}
-              accessibilityRole="link"
+            <LegalLink
+              url={LEGAL_URLS.termsOfService}
+              title="Terms of Service"
               accessibilityLabel="Open Mingla Terms of Service"
             >
               {PURCHASE_TERMS_LABEL_TERMS}
-            </Text>
+            </LegalLink>
             {PURCHASE_TERMS_LABEL_JOINER}
-            <Text
-              style={styles.checkboxLink}
-              onPress={(event) => {
-                event.stopPropagation();
-                void Linking.openURL(LEGAL_URLS.privacyPolicy);
-              }}
-              accessibilityRole="link"
+            <LegalLink
+              url={LEGAL_URLS.privacyPolicy}
+              title="Privacy Policy"
               accessibilityLabel="Open Mingla Privacy Policy"
             >
               {PURCHASE_TERMS_LABEL_PRIVACY}
-            </Text>
+            </LegalLink>
             {PURCHASE_TERMS_LABEL_SUFFIX}
           </Text>
         </Pressable>
@@ -2261,9 +2285,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         showsVerticalScrollIndicator: false,
       }}
     >
-      {header}
-      {body}
-      {stickyFooter}
+      {/* #4261: legal links in this sheet open in-app inside its window. */}
+      <InAppBrowserProvider>
+        {header}
+        {body}
+        {stickyFooter}
+      </InAppBrowserProvider>
     </BaseBottomSheet>
   );
 };

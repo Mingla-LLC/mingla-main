@@ -32,54 +32,39 @@ const repoRoot = path.resolve(__dirname, "../../..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-const source = read("app-mobile/src/components/chat/CollabSessionChatBanners.tsx");
+// [TEST-MOD-APPROVED #4261] the chat's Matches sheet is now PlanMatchesSheet
+// (SavedToSessionCardsSheet was removed). The same rule holds there: its
+// view-mode body reserves the bottom safe-area inset (floor 16) so the cards
+// sit above the home indicator / nav area at both snap points.
+const source = read("app-mobile/src/components/chat/PlanMatchesSheet.tsx");
 
 const checks = [];
 const check = (name, pass, detail) => {
   checks.push({ name, pass, detail });
 };
 
-// Isolate the SavedToSessionCardsSheet (the "Matches" sheet) component body so
-// we assert the inset is wired into THAT sheet, not some other sheet in the file.
-const sheetStart = source.indexOf("export function SavedToSessionCardsSheet");
-assert.ok(
-  sheetStart >= 0,
-  "SavedToSessionCardsSheet must exist in CollabSessionChatBanners.tsx",
-);
+const sheetStart = source.indexOf("export function PlanMatchesSheet");
+assert.ok(sheetStart >= 0, "PlanMatchesSheet must exist in PlanMatchesSheet.tsx");
 const sheetEnd = source.indexOf("const styles = StyleSheet.create", sheetStart);
-const sheetBody =
-  sheetEnd > sheetStart ? source.slice(sheetStart, sheetEnd) : source.slice(sheetStart);
+const sheetBody = sheetEnd > sheetStart ? source.slice(sheetStart, sheetEnd) : source.slice(sheetStart);
 
-// Confirm this is the Matches sheet (title="Matches" + the matched-cards deck).
 check(
-  "G-00 SavedToSessionCardsSheet is the Matches sheet with the SwipeableSessionCards deck",
-  /title="Matches"/.test(sheetBody) &&
-    /<SwipeableSessionCards/.test(sheetBody) &&
-    /styles\.savedCardsBody/.test(sheetBody),
-  "SavedToSessionCardsSheet must be the Matches sheet rendering SwipeableSessionCards inside savedCardsBody.",
+  "G-00 PlanMatchesSheet is the Matches sheet (view-mode body)",
+  /t\("chat:matches_title"\)/.test(sheetBody) && /scrollMode="view"/.test(sheetBody),
+  "PlanMatchesSheet must be the Matches sheet with a view-mode body.",
 );
 
 check(
   "G-01 useSafeAreaInsets imported",
-  /import\s*\{[^}]*useSafeAreaInsets[^}]*\}\s*from\s*["']react-native-safe-area-context["']/.test(
-    source,
-  ),
-  "CollabSessionChatBanners.tsx must import useSafeAreaInsets from react-native-safe-area-context.",
+  /import\s*\{[^}]*useSafeAreaInsets[^}]*\}\s*from\s*["']react-native-safe-area-context["']/.test(source),
+  "PlanMatchesSheet.tsx must import useSafeAreaInsets from react-native-safe-area-context.",
 );
 
 check(
-  "G-02 Matches sheet reads bottom safe-area inset with a >=16 floor",
+  "G-02/G-03 the sheet body reserves Math.max(insets.bottom, 16) as paddingBottom",
   /const\s+insets\s*=\s*useSafeAreaInsets\(\)/.test(sheetBody) &&
-    /Math\.max\(\s*insets\.bottom\s*,\s*16\s*\)/.test(sheetBody),
-  "SavedToSessionCardsSheet must compute a bottom inset as Math.max(insets.bottom, 16) so the cards clear the home indicator / nav area.",
-);
-
-check(
-  "G-03 inset applied as paddingBottom on the matched-cards (savedCardsBody) container",
-  /style=\{\[\s*styles\.savedCardsBody\s*,\s*\{\s*paddingBottom:\s*savedCardsBottomInset\s*\}\s*,?\s*\]\}/.test(
-    sheetBody,
-  ),
-  "The matched-cards container must reserve the bottom safe-area inset as paddingBottom (reduces the deck's effective height so cards sit ABOVE the safe area).",
+    /style=\{\[\s*styles\.sheetBody\s*,\s*\{\s*paddingBottom:\s*Math\.max\(\s*insets\.bottom\s*,\s*16\s*\)\s*\}\s*\]\}/.test(sheetBody),
+  "The Matches body must reserve the bottom safe-area inset as paddingBottom so cards sit ABOVE the safe area.",
 );
 
 // ----------------------------------------------------------------------------

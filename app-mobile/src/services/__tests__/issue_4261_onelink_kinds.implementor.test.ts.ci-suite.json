@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4261_onelink_kinds.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4261-onelink-kinds",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

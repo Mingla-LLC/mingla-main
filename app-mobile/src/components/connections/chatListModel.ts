@@ -492,3 +492,97 @@ export function chatAvatarSpec(input: ChatAvatarInput): ChatAvatarSpec {
     }
   }
 }
+
+// ── Issue #4261: the last-message preview text ─────────────────────────────
+export interface ChatPreviewMessageLike {
+  content?: string | null;
+  message_type?: string | null;
+  card_payload?: unknown;
+}
+
+export type ChatPreviewTranslate = (key: string, params?: Record<string, unknown>) => string;
+
+function planTitleOf(message: ChatPreviewMessageLike): string {
+  const content = (message.content ?? "").replace(/\s+/g, " ").trim();
+  // The plan message's content is "<first name> added a plan: <title>".
+  const marker = " added a plan: ";
+  const at = content.indexOf(marker);
+  return at >= 0 ? content.slice(at + marker.length).trim() : content;
+}
+
+/**
+ * The chat list's preview of a last message. Photos, videos and files keep
+ * their labels; a plan reads "Plan: {title}"; a plan or group system row
+ * (`plan_event` / `group_event`) reads its own content; everything else is the
+ * message text on one line.
+ */
+export function chatPreviewText(message: ChatPreviewMessageLike | null | undefined, t: ChatPreviewTranslate): string {
+  if (!message) return "";
+  switch (message.message_type) {
+    case "image":
+      return t("chat:photoPreview");
+    case "file":
+      return t("chat:filePreview");
+    case "video":
+      return t("chat:videoPreview");
+    case "plan": {
+      const title = planTitleOf(message);
+      return title ? t("chat:plan_preview", { title }) : t("chat:plan_chip");
+    }
+    default:
+      return (message.content ?? "").replace(/\s+/g, " ").trim();
+  }
+}
+
+// ── Issue #4261 amendment 1 (B-3): the preview line with its sender prefix ──
+export interface ChatPreviewLineMessage {
+  sender_id?: string | null;
+  sender_name?: string | null;
+  message_type?: string | null;
+  marketing_campaign_id?: string | null;
+}
+
+/** A system row (plan / group events, joins): written by Mingla, never by a person. */
+export function isSystemPreviewRow(message: ChatPreviewLineMessage): boolean {
+  return message.message_type === "system" || message.sender_id == null;
+}
+
+/**
+ * The chat list's preview line from the preview text (`chatPreviewText`):
+ * "You: …" for my own message, "{sender}: …" in a group (the brand's name for
+ * a brand message in an event chat), "{event} · …" in a brand channel. A system
+ * row is never prefixed (it used to read "Deleted User: Seth locked in …",
+ * because a system row has no sender).
+ */
+export function chatPreviewLine(input: {
+  message: ChatPreviewLineMessage;
+  text: string;
+  isGroup: boolean;
+  isEvent: boolean;
+  isBrandChannel: boolean;
+  currentUserId: string | null | undefined;
+  eventTitle?: string | null;
+  eventBrandName?: string | null;
+  eventBrandAccountId?: string | null;
+  t: ChatPreviewTranslate;
+}): string {
+  const { message, text, t } = input;
+  const system = isSystemPreviewRow(message);
+  const mine = !system && !!message.sender_id && message.sender_id === input.currentUserId;
+  if (input.isBrandChannel) {
+    const line = mine ? t("connections:preview_you", { text }) : text;
+    const eventTitle = input.eventTitle?.trim();
+    return eventTitle ? `${eventTitle} · ${line}` : line;
+  }
+  if (system) return text;
+  if (mine) return t("connections:preview_you", { text });
+  if (input.isGroup && message.sender_name) {
+    const brandName = input.eventBrandName?.trim();
+    const fromBrand = input.isEvent && !!brandName && (
+      !!message.marketing_campaign_id ||
+      (!!input.eventBrandAccountId && message.sender_id === input.eventBrandAccountId)
+    );
+    return `${fromBrand ? brandName : message.sender_name}: ${text}`;
+  }
+  return text;
+}

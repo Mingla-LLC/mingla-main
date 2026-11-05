@@ -29,6 +29,24 @@ export const chatTokens = {
   success: "#34D399",
   online: "#10B981",
   scrim: "rgba(0, 0, 0, 0.5)",
+  // Issue #4261: plans in chats (prototype values; spec section 5.9).
+  /** "Can't" RSVP fill and its border. */
+  planCant: "#3A3F47",
+  planCantBorder: "#5A606A",
+  /** Text on the `warning` (Maybe) fill. */
+  planMaybeText: "#141413",
+  /** Source chips: "FROM THE DECK" / "FROM THE CHAT" (= receivedBubbleTokens.icon / link). */
+  tagDeck: "#FFB27A",
+  tagChat: "#9CCBFF",
+  tagText: "#141413",
+  /** Matches card hero fallbacks when there is no photo. */
+  planHeroDeck: "#1F3A2C",
+  planHeroChat: "#2A2116",
+  planCard: "#15181D",
+  /** Input fields in the plan form (= surfaceRaised). */
+  inputBg: "#1A1E24",
+  /** "Add a plan" row border in the attach sheet (accent at 45%). */
+  accentBorder: "rgba(235, 120, 37, 0.45)",
 } as const;
 
 /**

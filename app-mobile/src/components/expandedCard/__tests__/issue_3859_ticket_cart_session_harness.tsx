@@ -23,7 +23,6 @@ jest.mock("react-native", () => {
     Text: host("Text"),
     TextInput: host("TextInput"),
     View: host("View"),
-    Linking: { openURL: jest.fn(() => Promise.resolve()) },
     Platform: { OS: "ios" },
     StyleSheet: { create: <T,>(styles: T): T => styles },
     useWindowDimensions: () => ({ width: 390, height: 844 }),
@@ -131,6 +130,16 @@ jest.mock("../../../payments/explorerCheckoutContact.mjs", () => {
     validateExplorerCheckoutContact: validate,
   };
 });
+
+// #4261: the sheet's legal links go through the in-app browser provider. It pulls
+// expo-web-browser, react-native-webview and Toast, which read AppState and
+// Dimensions at import time, and this harness's react-native has neither. Like
+// the sheet's other collaborators below, it is out of scope for the session guard.
+jest.mock("../../InAppBrowserProvider", () => ({
+  __esModule: true,
+  InAppBrowserProvider: ({ children }: { children: unknown }) => children,
+  useOpenInMingla: () => ({ open: jest.fn(), openDocument: jest.fn() }),
+}));
 
 jest.mock("../../ui/BaseBottomSheet", () => {
   const React = require("react");

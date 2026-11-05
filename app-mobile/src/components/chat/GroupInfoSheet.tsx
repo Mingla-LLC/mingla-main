@@ -4,10 +4,12 @@
  * 1:1 menu is direct-only). Session groups keep BoardSettingsDropdown, which
  * already owns name, members, add people, mute and leave for them.
  *
- * Here: the name, the members (tap to open a profile), Photos/videos/cards,
- * Mute (this member's conversation_participants.notifications_muted) and Leave
- * (leave_group_conversation, after a confirm). Adding people is not offered:
- * without a session there is no server path that lets a member add others.
+ * Here: Add people and Share group link (issue #4261), the GROUP LINK card,
+ * the members (tap to open a profile), Photos/videos/cards, Mute (this
+ * member's conversation_participants.notifications_muted) and Leave
+ * (leave_group_conversation, after a confirm). Add people opens
+ * AddGroupPeopleSheet (add_group_members); this sheet steps aside while it is
+ * up (iOS presents one RN Modal at a time) and comes back on Back.
  */
 import React, { useEffect, useState } from "react";
 import { Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
@@ -17,6 +19,9 @@ import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { chatTokens } from "../../constants/chatTokens";
 import { messagingService } from "../../services/messagingService";
+import { useShareGroupLink } from "../../hooks/useGroupLink";
+import { GroupLinkSection } from "./GroupLinkSection";
+import { AddGroupPeopleSheet } from "./AddGroupPeopleSheet";
 
 const GROUP_INFO_SNAP = ["70%"];
 
@@ -65,6 +70,13 @@ export function GroupInfoSheet({
   const [muted, setMuted] = useState(initiallyMuted);
   const [muteBusy, setMuteBusy] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // #4261: Add people steps this sheet aside (one RN Modal at a time on iOS).
+  const [addingPeople, setAddingPeople] = useState(false);
+  const { share: shareGroupLink, busy: sharingLink } = useShareGroupLink(managed ? null : conversationId, name);
+
+  useEffect(() => {
+    if (!visible) setAddingPeople(false);
+  }, [visible]);
 
   useEffect(() => {
     setMuted(initiallyMuted);
@@ -105,8 +117,9 @@ export function GroupInfoSheet({
   };
 
   return (
+    <>
     <BaseBottomSheet
-      visible={visible}
+      visible={visible && !addingPeople}
       onClose={onClose}
       snapPoints={GROUP_INFO_SNAP}
       wrapInRNModal
@@ -123,6 +136,36 @@ export function GroupInfoSheet({
       }
     >
       <View style={styles.body} testID="group-info-sheet">
+        {!managed && conversationId ? (
+          <>
+            <View style={styles.tiles}>
+              <TouchableOpacity
+                style={[styles.tile, styles.tileAdd]}
+                onPress={() => setAddingPeople(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:group_add_people")}
+              >
+                <Icon name="person-add-outline" size={22} color={chatTokens.tagDeck} />
+                <Text style={styles.tileText}>{t("chat:group_add_people")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tile, styles.tileShare]}
+                onPress={() => void shareGroupLink()}
+                disabled={sharingLink}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:group_link_share")}
+                accessibilityState={{ busy: sharingLink }}
+              >
+                <Icon name="link-outline" size={22} color={chatTokens.tagChat} />
+                <Text style={styles.tileText}>{t("chat:group_link_share")}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.linkSection}>
+              <GroupLinkSection conversationId={conversationId} groupName={name} showShareButton={false} />
+            </View>
+          </>
+        ) : null}
+
         <TouchableOpacity
           style={styles.row}
           onPress={() => {
@@ -194,6 +237,17 @@ export function GroupInfoSheet({
         </TouchableOpacity> : null}
       </View>
     </BaseBottomSheet>
+    {!managed && conversationId ? (
+      <AddGroupPeopleSheet
+        visible={visible && addingPeople}
+        conversationId={conversationId}
+        memberIds={members.map((member) => member.id)}
+        onBack={() => setAddingPeople(false)}
+        onShareLink={() => void shareGroupLink()}
+        sharing={sharingLink}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -216,6 +270,36 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: 20,
     paddingBottom: 32,
+  },
+  tiles: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  tile: {
+    flex: 1,
+    minHeight: 72,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  tileAdd: {
+    borderColor: chatTokens.accentBorder,
+    backgroundColor: chatTokens.accentSoft,
+  },
+  tileShare: {
+    borderColor: chatTokens.hairline,
+    backgroundColor: chatTokens.strip,
+  },
+  linkSection: {
+    marginBottom: 8,
+  },
+  tileText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: chatTokens.textPrimary,
   },
   row: {
     minHeight: 48,
