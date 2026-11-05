@@ -13,6 +13,7 @@
 
 import { supabase } from "../supabase";
 import type {
+  CampaignGroupPreview,
   MarketingBookQuote,
   SealedMarketingAudienceKind,
 } from "../../types/marketing";
@@ -45,7 +46,9 @@ export async function previewMarketingBook(
 ): Promise<MarketingBookQuote> {
   const audienceKind = typeof input === "string" ? "all_brand_people" : input.audienceKind;
   const isPush = typeof input !== "string" && input.channel === "push";
-  const action = isPush ? "preview_push_v1" : audienceKind === "manual_group"
+  const action = isPush ? "preview_push_v1" : audienceKind === "combined_sources"
+    ? "preview_combined_v1"
+    : audienceKind === "manual_group"
     ? "preview_people_v2"
     : audienceKind === "brand_followers" || audienceKind === "brand_circle_extended"
       ? "preview_circle_v1"
@@ -55,6 +58,20 @@ export async function previewMarketingBook(
   });
   if (error) throw await parseMarketingBookError(error);
   return data as MarketingBookQuote;
+}
+/**
+ * #4273 — every method of one campaign previewed at one moment. Each method
+ * keeps its own lockable quote; `group` holds the figures that count each
+ * person once. All of it is the server's.
+ */
+export async function previewMarketingCampaignGroup(
+  leadCampaignId: string,
+): Promise<CampaignGroupPreview> {
+  const { data, error } = await supabase.functions.invoke("marketing-send", {
+    body: { action: "preview_group_v1", campaign_id: leadCampaignId },
+  });
+  if (error) throw await parseMarketingBookError(error);
+  return data as CampaignGroupPreview;
 }
 export async function confirmMarketingBook(input: {
   campaign_id: string;
@@ -69,6 +86,8 @@ export async function confirmMarketingBook(input: {
     body: {
       action: input.channel === "push"
         ? "confirm_push_v1"
+        : input.audience_kind === "combined_sources"
+        ? "confirm_combined_v1"
         : input.audience_kind === "manual_group"
         ? "confirm_people_v2"
         : input.audience_kind === "brand_followers" || input.audience_kind === "brand_circle_extended"
