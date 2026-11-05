@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import {
@@ -14,6 +14,11 @@ import {
 import { brandPlanKeys } from "./brandPlanKeys";
 
 export { brandPlanKeys } from "./brandPlanKeys";
+
+/** Read this brand's plan again (every window). The one place the plan is refreshed from. */
+export function refreshBrandPlan(queryClient: QueryClient, brandId: string): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: brandPlanKeys.brand(brandId) });
+}
 
 /** One window of the plan. A plan the caller cannot read is final: no retry loop. */
 export function useBrandPlan(brandId: string | null, from: string, to: string) {
@@ -41,7 +46,7 @@ export function useBrandPlan(brandId: string | null, from: string, to: string) {
  */
 export function useBrandPlanWrites(brandId: string) {
   const queryClient = useQueryClient();
-  const refresh = (): Promise<void> => queryClient.invalidateQueries({ queryKey: brandPlanKeys.brand(brandId) });
+  const refresh = (): Promise<void> => refreshBrandPlan(queryClient, brandId);
   const refreshLate = (): void => { void refresh(); };
   const refreshIfStale = (cause: unknown): void => {
     if (cause instanceof BrandPlanError && (cause.code === "stale_write" || cause.code === "not_found" || cause.code === "locked")) void refresh();

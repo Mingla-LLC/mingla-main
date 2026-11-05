@@ -56,7 +56,6 @@ jest.mock("../../ui/Input", () => {
   return { Input: R.forwardRef((props: Record<string, unknown>, ref: unknown) => R.createElement("InputProbe", { ...props, ref: undefined, inputRef: ref })) };
 });
 jest.mock("../../ui/DateField", () => ({ DateField: mockProbe("DateProbe") }));
-jest.mock("../../ui/OptionCard", () => ({ OptionCard: mockProbe("OptionProbe") }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
@@ -675,6 +674,98 @@ describe("source contracts", () => {
     expect(block).not.toContain("Reply");
     expect(block).not.toContain("Select");
     expect(chat).toContain('payload.new?.message_type === "system"');
-    expect(chat).toContain("brandPlanKeys.brand(planBrandId)");
+  });
+});
+
+// #3493 bundle gate (W6): nothing of the plan loads with the chat or with every
+// screen. The chat refreshes the plan through the lazy plan module, and the
+// Post/Task choice is the sheet's own copy of OptionCard, so OptionCard stays
+// with its one other lazy screen.
+describe("the plan stays out of the first download (W6)", () => {
+  const chat = read("../../../app/messages/[conversationId].tsx");
+  const sheet = read("BrandPlanAddSheet.tsx");
+  const panel = read("BrandPlanPanel.tsx");
+  const staticImports = (source: string): string[] => [...source.matchAll(/^import[^;]*?from "([^"]+)";/gms)].map((m) => m[1]);
+
+  it("the chat imports nothing of the plan up front; only the lazy loader does", () => {
+    const eager = staticImports(chat);
+    expect(eager.filter((from) => /brandPlan|BrandPlan|useBrandPlan/.test(from))).toEqual([]);
+    expect(chat).not.toContain("brandPlanKeys");
+    // One loader fetches the plan module; the other mention is a type only.
+    expect(chat.match(/await import\("\.\.\/\.\.\/src\/components\/messages\/BrandPlanPanel"\)/g)?.length).toBe(1);
+    expect(chat).toContain('let loadedPlanModule: typeof import("../../src/components/messages/BrandPlanPanel") | null = null;');
+  });
+  it("a quiet plan line refreshes the plan through the loaded plan module", () => {
+    expect(chat).toMatch(/loadedPlanModule = module;\s*return \{ default: module\.BrandPlanPanel \};/);
+    const handler = chat.slice(chat.indexOf("// #4270: a quiet plan line means the plan changed."));
+    expect(handler.slice(0, 300)).toMatch(/if \(planBrandId && payload\.new\?\.message_type === "system" && loadedPlanModule\) \{\s*void loadedPlanModule\.refreshBrandPlan\(queryClient, planBrandId\);/);
+    expect(panel).toContain('export { refreshBrandPlan } from "../../hooks/useBrandPlan";');
+  });
+  it("refreshBrandPlan marks every window of that brand stale, and no other brand's", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { QueryClient } = require("@tanstack/react-query") as typeof import("@tanstack/react-query");
+    const real = jest.requireActual("../../../hooks/useBrandPlan") as typeof import("../../../hooks/useBrandPlan");
+    const client = new QueryClient();
+    const nov = real.brandPlanKeys.window("b1", "2026-11-01", "2026-11-30", "u1");
+    const dec = real.brandPlanKeys.window("b1", "2026-12-01", "2026-12-31", "u1");
+    const other = real.brandPlanKeys.window("b2", "2026-11-01", "2026-11-30", "u1");
+    for (const key of [nov, dec, other]) client.setQueryData(key, { items: [] });
+    await real.refreshBrandPlan(client, "b1");
+    expect(client.getQueryState(nov)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(dec)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(other)?.isInvalidated).toBe(false);
+    client.clear();
+  });
+  it("the sheet does not import OptionCard", () => {
+    expect(staticImports(sheet).some((from) => /OptionCard/.test(from))).toBe(false);
+  });
+  it("Post and Task look and read exactly like OptionCard, unselected and selected", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { StyleSheet } = require("react-native") as typeof import("react-native");
+    const { OptionCard } = jest.requireActual("../../ui/OptionCard") as typeof import("../../ui/OptionCard");
+    type Shape = { type: string; style: unknown; a11y: unknown[]; text: string[]; kids: Shape[] };
+    const shape = (node: TestNode): Shape => ({
+      type: String(node.type),
+      style: StyleSheet.flatten(node.props.style as never) ?? null,
+      a11y: [node.props.accessibilityRole, node.props.accessibilityState, node.props.accessibilityLabel, node.props.accessibilityHint, node.props.disabled, node.props.testID, node.props.name, node.props.size, node.props.color],
+      text: node.children.filter((c): c is string => typeof c === "string"),
+      kids: hosts(node).map(shape),
+    });
+    // The nearest host nodes under a node, looking through components.
+    const hosts = (node: TestNode): TestNode[] => node.children
+      .filter((c): c is TestNode => typeof c !== "string")
+      .flatMap((c) => (typeof c.type === "string" ? [c] : hosts(c)));
+    const { root } = await mountForm();
+    for (const [id, selected] of [["brand-plan-type-post", true], ["brand-plan-type-task", false]] as const) {
+      const ours = byId(root, id);
+      expect(ours).toBeDefined();
+      const label = id.endsWith("post") ? "plan.kind_post" : "plan.kind_task";
+      const helper = id.endsWith("post") ? "plan.help_post" : "plan.help_task";
+      let reference!: { root: TestNode };
+      await TestRenderer.act(async () => {
+        reference = TestRenderer.create(<OptionCard label={label} helper={helper} selected={selected} onPress={jest.fn()} disabled={false} testID={id} />);
+      });
+      const theirs = byId(reference.root, id);
+      expect(theirs).toBeDefined();
+      expect(shape(ours as TestNode)).toEqual(shape(theirs as TestNode));
+      expect((ours as TestNode).props.accessibilityState).toEqual({ checked: selected, disabled: false });
+    }
+    // Disabled while a save runs: same dimmed card.
+    mockPending.add = true;
+    const busy = await mountForm();
+    const dimmed = byId(busy.root, "brand-plan-type-task") as TestNode;
+    let ref!: { root: TestNode };
+    await TestRenderer.act(async () => {
+      ref = TestRenderer.create(<OptionCard label="plan.kind_task" helper="plan.help_task" selected={false} onPress={jest.fn()} disabled testID="brand-plan-type-task" />);
+    });
+    expect(shape(dimmed)).toEqual(shape(byId(ref.root, "brand-plan-type-task") as TestNode));
+  });
+  it("pressing Task chooses Task", async () => {
+    const { root } = await mountForm();
+    // Pressable's host node has no onPress; drive it through the composite.
+    const composite = root.findAll((node) => node.props.testID === "brand-plan-type-task" && typeof node.props.onPress === "function")[0];
+    await press(composite);
+    expect((byId(root, "brand-plan-type-task") as TestNode).props.accessibilityState).toEqual({ checked: true, disabled: false });
+    expect((byId(root, "brand-plan-type-post") as TestNode).props.accessibilityState).toEqual({ checked: false, disabled: false });
   });
 });

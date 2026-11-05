@@ -3,9 +3,19 @@
 // the wide web rail the same form sits in the rail (inline). Nothing here
 // listens to the keyboard: focused-field clearance belongs to the wrapper.
 import React, { useEffect, useRef, useState } from "react";
-import { Keyboard, StyleSheet, Text, View, type TextInput } from "react-native";
+import { Keyboard, Platform, Pressable, StyleSheet, Text, View, type TextInput, type ViewStyle } from "react-native";
 
-import { glass, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  accent,
+  androidOpaque,
+  glass,
+  optionCardMinHeight,
+  optionCardMinWidth,
+  radius,
+  spacing,
+  text as textTokens,
+  typography,
+} from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { addPlanEnglish } from "../../i18n/brandPlanEnglish";
 import { useBrandPlanWrites } from "../../hooks/useBrandPlan";
@@ -28,7 +38,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { DateField } from "../ui/DateField";
 import { Input } from "../ui/Input";
-import { OptionCard } from "../ui/OptionCard";
+import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
 // The plan's English words load with the plan, not with every screen.
@@ -229,8 +239,8 @@ function PlanForm({ today, titleMax: planTitleMax, initialDate, edit, onClose, o
       ) : null}
       {showWhat ? (
         <View style={styles.types} accessibilityRole="radiogroup">
-          <OptionCard label={t("plan.kind_post")} helper={t("plan.help_post")} selected={form.type === "post"} onPress={() => set({ type: "post" })} disabled={busy} testID="brand-plan-type-post" />
-          <OptionCard label={t("plan.kind_task")} helper={t("plan.help_task")} selected={form.type === "task"} onPress={() => set({ type: "task" })} disabled={busy} testID="brand-plan-type-task" />
+          <PlanTypeChoice label={t("plan.kind_post")} helper={t("plan.help_post")} selected={form.type === "post"} onPress={() => set({ type: "post" })} disabled={busy} testID="brand-plan-type-post" />
+          <PlanTypeChoice label={t("plan.kind_task")} helper={t("plan.help_task")} selected={form.type === "task"} onPress={() => set({ type: "task" })} disabled={busy} testID="brand-plan-type-task" />
         </View>
       ) : null}
       {showLink ? (
@@ -293,4 +303,75 @@ const styles = StyleSheet.create({
   types: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", paddingTop: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
   error: { color: "#ff8b8b", fontSize: 13, lineHeight: 18 },
   footer: { gap: spacing.sm, paddingTop: spacing.xs },
+});
+
+// Post or Task. It looks and reads exactly like the shared OptionCard (label,
+// helper, check when chosen, radio role) but lives here so it loads with the
+// plan: sharing OptionCard with another lazy screen put it in every visitor's
+// first download (#3493 bundle gate). Change both together.
+interface PlanTypeChoiceProps {
+  label: string;
+  helper: string;
+  selected: boolean;
+  onPress: () => void;
+  disabled: boolean;
+  testID: string;
+}
+
+function PlanTypeChoice({ label, helper, selected, onPress, disabled, testID }: PlanTypeChoiceProps): React.ReactElement {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected, disabled }}
+      accessibilityLabel={label}
+      accessibilityHint={helper}
+      onPress={onPress}
+      disabled={disabled}
+      testID={testID}
+      style={[choiceStyles.cardInRow, selected ? choiceStyles.cardSelected : choiceStyles.cardIdle, disabled ? choiceStyles.cardDisabled : null]}
+    >
+      <View style={choiceStyles.headRow}>
+        <Text style={choiceStyles.label} numberOfLines={2}>{label}</Text>
+        {selected ? (
+          <View style={choiceStyles.checkWrap} testID={`${testID}-check`}>
+            <Icon name="check" size={14} color={accent.warm} />
+          </View>
+        ) : null}
+      </View>
+      <Text style={choiceStyles.helper}>{helper}</Text>
+    </Pressable>
+  );
+}
+
+const CHOICE_IDLE = Platform.select({
+  android: { backgroundColor: androidOpaque.rowFill, borderColor: androidOpaque.rowBorder },
+  default: { backgroundColor: glass.tint.profileBase, borderColor: glass.border.profileBase },
+}) as ViewStyle;
+
+const CHOICE_SELECTED = Platform.select({
+  android: { backgroundColor: androidOpaque.accentFill, borderColor: accent.warm },
+  default: { backgroundColor: accent.tint, borderColor: accent.warm },
+}) as ViewStyle;
+
+const choiceStyles = StyleSheet.create({
+  // ROW-ONLY (I-AXIS-SCOPED-FLEX): the two choices share the row; minWidth wraps them.
+  cardInRow: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: optionCardMinWidth,
+    minHeight: optionCardMinHeight,
+    gap: spacing.xxs,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  cardIdle: CHOICE_IDLE,
+  cardSelected: { ...CHOICE_SELECTED, borderWidth: 1.5 },
+  cardDisabled: { opacity: 0.55 },
+  headRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", flexShrink: 1 },
+  checkWrap: { marginLeft: "auto" },
+  helper: { ...typography.caption, color: textTokens.secondary },
 });

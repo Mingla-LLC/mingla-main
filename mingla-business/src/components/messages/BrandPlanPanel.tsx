@@ -33,6 +33,10 @@ import { BrandPlanAddSheet, type BrandPlanEdit } from "./BrandPlanAddSheet";
 // The plan's English words load with the plan, not with every screen.
 addPlanEnglish();
 
+// The chat screen refreshes the plan through this lazy module, so the plan's
+// query keys never load with the chat (#3493 bundle gate).
+export { refreshBrandPlan } from "../../hooks/useBrandPlan";
+
 interface Props {
   brandId: string;
   /** In the wide web rail: no back button, and the form sits in the rail. */

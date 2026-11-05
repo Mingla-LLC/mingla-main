@@ -41,7 +41,6 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { brandGroupMediaKeys } from "../../src/hooks/brandGroupMediaKeys";
-import { brandPlanKeys } from "../../src/hooks/brandPlanKeys";
 import { brandEnquiryKeys } from "../../src/hooks/useBrandEnquiries";
 import { findBrandEnquiryIdForConversation } from "../../src/services/brandEnquiryList";
 import { brandEnquiryThreadRoute } from "../../src/utils/brandEnquiryWaiting";
@@ -77,8 +76,13 @@ const LazyBrandGroupMediaPanel = React.lazy(async () => {
   return { default: module.BrandGroupMediaPanel };
 });
 
+// The plan's module once the panel has loaded it. Only that module reads the
+// plan, so before it loads there is no plan to refresh.
+let loadedPlanModule: typeof import("../../src/components/messages/BrandPlanPanel") | null = null;
+
 const LazyBrandPlanPanel = React.lazy(async () => {
   const module = await import("../../src/components/messages/BrandPlanPanel");
+  loadedPlanModule = module;
   return { default: module.BrandPlanPanel };
 });
 
@@ -336,8 +340,8 @@ function BrandGroupThreadScreen(): React.ReactElement {
         { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
         (payload: { new?: { message_type?: unknown } }) => {
           // #4270: a quiet plan line means the plan changed.
-          if (planBrandId && payload.new?.message_type === "system") {
-            void queryClient.invalidateQueries({ queryKey: brandPlanKeys.brand(planBrandId) });
+          if (planBrandId && payload.new?.message_type === "system" && loadedPlanModule) {
+            void loadedPlanModule.refreshBrandPlan(queryClient, planBrandId);
           }
           void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "list", conversationId] });
           void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "meta", conversationId] });
