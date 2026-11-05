@@ -75,6 +75,7 @@ import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
+import { doorExtrasLine, readDoorExtras } from "../../../../src/components/scanner/doorExtras";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -397,11 +398,22 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // haptics on optional day-label enrichment (ticket already consumed).
           const admittedId =
             typeof result.eventDateId === "string" ? result.eventDateId : null;
+          // issue #3281 — what this guest is still owed, under the ticket.
+          const extrasLine =
+            kind === "success" || kind === "duplicate"
+              ? doorExtrasLine(readDoorExtras(result.extras), admittedId)
+              : null;
+          const withExtras = (detail: string | undefined): string | undefined =>
+            extrasLine === null
+              ? detail
+              : detail !== undefined
+                ? `${detail}\n${extrasLine}`
+                : extrasLine;
           if (kind === "success") {
             showResult({
               kind,
               message: `${result.buyerName ?? "Guest"} checked in`,
-              detail: result.ticketName ?? "Ticket",
+              detail: withExtras(result.ticketName ?? "Ticket"),
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -428,7 +440,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             } else {
               message = "Ticket not found";
             }
-            showResult({ kind, message, detail });
+            showResult({ kind, message, detail: withExtras(detail) });
             void Haptics.notificationAsync(
               kind === "duplicate" ||
                 kind === "not_yet_open" ||
@@ -557,7 +569,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             showResult({
               kind: copy.kind,
               message: copy.message,
-              detail: copy.detail,
+              detail: withExtras(copy.detail),
             });
           } catch {
             // Keep the authoritative base overlay.

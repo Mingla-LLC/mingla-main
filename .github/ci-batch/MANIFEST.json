@@ -17762,6 +17762,7 @@
         "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql",
         "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql",
+        "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19462,6 +19463,7 @@
         "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql",
         "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql",
+        "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -19881,6 +19883,8 @@
         "supabase/migrations/__tests__/issue_3281_discover_card_price_and_experience_bookable.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_door_active_date.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_door_active_date.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3281_door_order_extras.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_door_order_extras.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_explorer_hides_unbuyable.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_explorer_hides_unbuyable.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_explorer_listing_fast.implementor.pg17.test.sql",
@@ -24350,6 +24354,7 @@
         "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql",
         "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql",
+        "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -24769,6 +24774,8 @@
         "supabase/migrations/__tests__/issue_3281_discover_card_price_and_experience_bookable.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_door_active_date.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_door_active_date.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3281_door_order_extras.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_door_order_extras.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_explorer_hides_unbuyable.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_explorer_hides_unbuyable.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_explorer_listing_fast.implementor.pg17.test.sql",
@@ -52835,5 +52842,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "7957ba99390299dc410822ed7b40d40b9a7e94dcbd6f016272dc5ea7562c0bcf"
+  "phase3eContractSha256": "0f866cc0e4d9dfa5b9415c5bfb0e4e379b830f0df08578e619b24a0acdfd18ce"
 }

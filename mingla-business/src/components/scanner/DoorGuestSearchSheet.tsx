@@ -52,6 +52,7 @@ export {
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
+import { doorExtrasLine, readDoorExtras } from "./doorExtras";
 
 // issue #3827 — the guest-list client is its own chunk (__common ceiling).
 const loadGuestList = () => import("../../services/guestListService");
@@ -252,6 +253,13 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                 <Text style={styles.guestMeta}>{guest.maskedEmail ?? "No email"}</Text>
                 {guest.cameWithName !== null ? <Text style={styles.guestMeta}>{`with ${guest.cameWithName}`}</Text> : null}
                 {guest.viaLinkLabel !== null ? <Text style={styles.guestMeta}>{`via ${guest.viaLinkLabel}`}</Text> : null}
+                {(() => {
+                  // issue #3281 — what this order still has to be handed.
+                  const line = doorExtrasLine(readDoorExtras(guest.extras));
+                  return line !== null ? (
+                    <Text style={styles.guestMeta} testID={`door-extras-${guest.orderId}`}>{line}</Text>
+                  ) : null;
+                })()}
                 {guest.tickets.map((ticket) => {
                   const state = ticketStateLabel(ticket);
                   return (

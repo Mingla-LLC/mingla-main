@@ -41,5 +41,26 @@ serve(async (req) => {
     return jsonResponse({ error: "scan_failed", detail: error.message }, status);
   }
 
+  // issue #3281 — the extras this order still owes, for the door. Optional:
+  // the scan is already recorded, so a failed read never changes the answer,
+  // and an order without extras keeps the body byte-identical.
+  const scan = data as Record<string, unknown> | null;
+  const orderId = typeof scan?.orderId === "string" ? scan.orderId : null;
+  if (scan !== null && orderId !== null) {
+    const extras = await supabase.rpc("issue_3281_door_order_extras", {
+      p_actor_id: userData.user.id,
+      p_event_id: eventId,
+      p_order_ids: [orderId],
+    });
+    if (extras.error) {
+      console.error("[scan-ticket] door extras unavailable");
+    } else {
+      const items = (extras.data as Record<string, unknown> | null)?.[orderId];
+      if (Array.isArray(items) && items.length > 0) {
+        return jsonResponse({ ...scan, extras: items });
+      }
+    }
+  }
+
   return jsonResponse(data);
 });
