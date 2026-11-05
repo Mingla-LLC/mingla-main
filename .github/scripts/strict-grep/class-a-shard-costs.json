@@ -13,165 +13,164 @@
     "regeneration would silently wipe these measurements and rebalance the plan with nobody noticing."
   ],
   "source": {
-    "measuredOn": "2026-09-20",
+    "measuredOn": "2026-11-05",
     "runIds": [
-      "35181441133",
-      "35532748162",
-      "35532749593",
-      "35532751449",
-      "35532753062",
-      "35532754759",
-      "35532847046",
-      "35534612679",
-      "35535031104",
-      "35536914313"
+      "41828319523",
+      "41867206708",
+      "41899489539",
+      "41906155626",
+      "41933971447",
+      "41972504633",
+      "41985771701"
     ],
-    "sampleRuns": 10,
+    "sampleRuns": 7,
     "statistic": "median",
-    "classAExecutions": 1033,
+    "classAExecutions": 1051,
     "topK": 50
   },
   "defaultCostMs": 100,
   "costMs": {
     ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs": {
-      "plain": 8359
+      "plain": 25322
     },
     ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs": {
-      "plain": 89075
+      "plain": 238674
     },
     ".github/scripts/ci-batch/__tests__/issue-2439-deno-wave-shadow-parity.implementor.test.mjs": {
-      "plain": 3365
+      "plain": 6941
+    },
+    ".github/scripts/ci-batch/__tests__/issue-3643-workflow-properties-not-bytes.implementor.test.mjs": {
+      "plain": 43504
     },
     ".github/scripts/strict-grep/__tests__/issue-1001-dead-logo-urls.adversarial.mjs": {
-      "plain": 1152
+      "plain": 1315
     },
     ".github/scripts/strict-grep/__tests__/issue-1221-source-refund-control-plane.test.mjs": {
-      "plain": 1928,
-      "self-test": 3889
+      "plain": 4168,
+      "self-test": 3675
     },
     ".github/scripts/strict-grep/__tests__/issue-1541-sms-provider-sole-send-path.tester.adversarial.test.mjs": {
-      "plain": 1375
+      "plain": 1643
     },
     ".github/scripts/strict-grep/__tests__/issue-1850-quarantine-invariant-handoff.happy.test.mjs": {
-      "plain": 1872
+      "plain": 1947
     },
     ".github/scripts/strict-grep/__tests__/issue-2113-empty-window-negative-assertion.test.mjs": {
-      "plain": 1080
+      "plain": 1153
     },
     ".github/scripts/strict-grep/__tests__/issue-3197-search-promotion-has-a-caller.test.mjs": {
-      "plain": 3878
+      "plain": 9163
     },
     ".github/scripts/strict-grep/__tests__/issue-994-ota-publish-guardrails.tester.adversarial.test.mjs": {
-      "plain": 4699
+      "plain": 5625
     },
-    ".github/scripts/strict-grep/i-proposed-1224-business-route-adversarial.test.mjs": {
-      "plain": 1435
+    ".github/scripts/strict-grep/i-3526-gemini-model-single-source.mjs": {
+      "plain": 1420
     },
     ".github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs": {
-      "plain": 1093
+      "plain": 1455
     },
     ".github/scripts/strict-grep/issue-1203-secret-capacity.mjs": {
-      "plain": 1082
+      "plain": 1801
+    },
+    ".github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs": {
+      "plain": 4673
     },
     ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs": {
-      "self-test": 1862
+      "self-test": 2295
     },
     ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs": {
-      "plain": 4094,
-      "self-test": 6043
+      "plain": 8037,
+      "self-test": 14213
     },
     ".github/scripts/strict-grep/issue-2113-comment-satisfied-assertion.mjs": {
-      "plain": 2431
+      "plain": 3131
     },
     ".github/scripts/strict-grep/issue-2148-ci-deno-wave-shadow.tester.test.mjs": {
-      "plain": 23483
+      "plain": 170717
     },
     ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs": {
-      "plain": 14307
+      "plain": 45036
     },
     ".github/scripts/strict-grep/issue-2148-ci-registry-v2.implementor.test.mjs": {
-      "plain": 2449
+      "plain": 7132
     },
     ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs": {
-      "plain": 1623,
-      "self-test": 22710
+      "plain": 5842,
+      "self-test": 140143
     },
     ".github/scripts/strict-grep/issue-2148-ci-registry-v2.tester.test.mjs": {
-      "plain": 2245
+      "plain": 9749
     },
     ".github/scripts/strict-grep/issue-2148-ci-runner-v2.implementor.test.mjs": {
-      "plain": 4898
+      "plain": 4977
     },
     ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs": {
-      "plain": 1647,
-      "self-test": 14193
+      "plain": 5788,
+      "self-test": 80007
     },
     ".github/scripts/strict-grep/issue-2148-ci-runner-v2.tester.test.mjs": {
-      "plain": 2290
+      "plain": 2157
     },
     ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.mjs": {
-      "plain": 1502
+      "plain": 2079
     },
     ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.tester.test.mjs": {
-      "plain": 2681
+      "plain": 3479
+    },
+    ".github/scripts/strict-grep/issue-2290-queue-worker-has-cron-caller.mjs": {
+      "plain": 1107
     },
     ".github/scripts/strict-grep/issue-2305-status-table-has-a-resolver.mjs": {
-      "plain": 32908
+      "plain": 125090
     },
     ".github/scripts/strict-grep/issue-2417-ari-contract-collision-census.tester.test.mjs": {
-      "plain": 2187
+      "plain": 1721
     },
     ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs": {
-      "plain": 11362
-    },
-    ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs": {
-      "plain": 1058,
-      "self-test": 9556
-    },
-    ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs": {
-      "plain": 26618
+      "plain": 2243
     },
     ".github/scripts/strict-grep/issue-2539-rnw-image-filter-clip.implementor.test.mjs": {
-      "plain": 1069
+      "plain": 1155
     },
     ".github/scripts/strict-grep/issue-2539-rnw-image-filter-clip.tester.test.mjs": {
-      "plain": 1594
+      "plain": 1723
+    },
+    ".github/scripts/strict-grep/issue-2592-ari-cert-requirements-digest-parity.mjs": {
+      "self-test": 4647
     },
     ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs": {
-      "plain": 18670
-    },
-    ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.mjs": {
-      "self-test": 1208
-    },
-    ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.tester.test.mjs": {
-      "plain": 1411
+      "plain": 6098
     },
     ".github/scripts/strict-grep/issue-2871-concurrency-proof-event-independence.tester.test.mjs": {
-      "plain": 33875
+      "plain": 8295
     },
     ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.implementor.test.mjs": {
-      "plain": 7417
+      "plain": 6066
     },
     ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs": {
-      "self-test": 2082
+      "self-test": 1833
     },
     ".github/scripts/strict-grep/issue-2909-main-health-wiring.mjs": {
-      "self-test": 4260
+      "self-test": 2518
     },
-    ".github/scripts/strict-grep/issue-3095-policy-projection-adversarial.tester.test.mjs": {
-      "plain": 1360
+    ".github/scripts/strict-grep/issue-3197-search-promotion-has-a-caller.mjs": {
+      "plain": 2068
     },
     ".github/scripts/strict-grep/issue-3336-class-a-margin.tester.test.mjs": {
-      "plain": 8083
+      "plain": 21231
     },
     ".github/scripts/strict-grep/issue-3372-naira-glyph-wiring.mjs": {
-      "self-test": 7695
+      "self-test": 8468
+    },
+    ".github/scripts/strict-grep/orch-0854-tickets-realtime-publication-paired.mjs": {
+      "plain": 1458
     },
     ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.adversarial.test.mjs": {
-      "plain": 1793
+      "plain": 1862
     },
     "app-mobile/scripts/ci/issue-1669-expanded-card-one-producer.mjs": {
-      "self-test": 1174
+      "self-test": 1225
     }
   }
 }
