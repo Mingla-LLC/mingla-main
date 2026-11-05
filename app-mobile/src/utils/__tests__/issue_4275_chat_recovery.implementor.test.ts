@@ -41,7 +41,7 @@ type Rig = {
   release: () => void;
 };
 
-function makeRig(options: { holdCatchUp?: boolean } = {}): Rig {
+function makeRig(options: { holdCatchUp?: boolean; failReads?: () => boolean } = {}): Rig {
   let time = 0;
   let nextId = 1;
   const timers = new Map<number, { at: number; callback: () => void }>();
@@ -58,6 +58,7 @@ function makeRig(options: { holdCatchUp?: boolean } = {}): Rig {
   const recovery = createChatRecovery({
     catchUp: () => {
       catchUpTimes.push(time);
+      if (options.failReads?.()) return Promise.reject(new Error("read timed out"));
       if (!options.holdCatchUp) return Promise.resolve();
       return new Promise<void>((resolve) => {
         releaseHeld = resolve;
@@ -320,6 +321,102 @@ Deno.test("T-A7 a failed read is reported and does not stop the next one", async
   }
 });
 
+async function quietly(run: () => Promise<void>): Promise<void> {
+  const realWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await run();
+  } finally {
+    console.warn = realWarn;
+  }
+}
+
+Deno.test("T-A14 a failed catch-up retries on the backoff after the channel is back, and the first success stops it", () => quietly(async () => {
+  let failing = true;
+  const rig = makeRig({ failReads: () => failing });
+  rig.recovery.onStatus("changes", "CHANNEL_ERROR");
+  rig.recovery.onStatus("changes", "SUBSCRIBED");
+  await rig.advance(0);
+  assertEquals(rig.catchUps(), 1, "the read on SUBSCRIBED fails");
+  await rig.advance(CATCH_UP_BACKOFF_MS[0]);
+  assertEquals(rig.catchUps(), 2, "tried again on the first step");
+  failing = false;
+  await rig.advance(CATCH_UP_BACKOFF_MS[1]);
+  assertEquals(rig.catchUps(), 3, "tried again on the second step, and it works");
+  await rig.advance(600_000);
+  assertEquals(rig.catchUps(), 3, "the first success stops the retries");
+  assertEquals(rig.rebuilds, [], "a failed read is not a channel failure");
+}));
+
+Deno.test("T-A14 a read that keeps failing stops at the cap, also across staying subscribed, and resume starts again", () => quietly(async () => {
+  let failing = true;
+  const rig = makeRig({ failReads: () => failing });
+  rig.recovery.onStatus("changes", "SUBSCRIBED");
+  await rig.advance(3_600_000);
+  assertEquals(rig.catchUps(), 1 + MAX_POLLS_PER_EPISODE, "bounded under overload");
+  failing = false;
+  rig.recovery.onResume();
+  await rig.advance(0);
+  assertEquals(rig.catchUps(), 2 + MAX_POLLS_PER_EPISODE, "resume reads again");
+  await rig.advance(3_600_000);
+  assertEquals(rig.catchUps(), 2 + MAX_POLLS_PER_EPISODE);
+}));
+
+Deno.test("T-A14 no retry after dispose, also for a read that fails after it", () => quietly(async () => {
+  let reject: ((error: Error) => void) | null = null;
+  let reads = 0;
+  const timers: Array<() => void> = [];
+  const recovery = createChatRecovery({
+    catchUp: () => {
+      reads += 1;
+      return new Promise<void>((_resolve, rejectRead) => {
+        reject = rejectRead;
+      });
+    },
+    rebuild: () => {},
+    channelState: () => "joined",
+    isActive: () => true,
+    isOnline: () => true,
+    setTimer: (callback) => timers.push(callback),
+    clearTimer: () => {},
+    now: () => reads * 10_000,
+    random: () => 0.5,
+  });
+  recovery.onStatus("changes", "SUBSCRIBED");
+  const armedBefore = timers.length;
+  recovery.dispose();
+  (reject as unknown as (error: Error) => void)(new Error("late failure"));
+  for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  assertEquals(timers.length, armedBefore, "nothing armed after leaving");
+  assertEquals(reads, 1);
+}));
+
+Deno.test("T-A14 a failed read in the background parks, and resume picks it up", () => quietly(async () => {
+  let failing = true;
+  const rig = makeRig({ failReads: () => failing });
+  rig.recovery.onStatus("changes", "SUBSCRIBED");
+  await rig.advance(0);
+  rig.setActive(false);
+  await rig.advance(600_000);
+  assertEquals(rig.catchUps(), 1, "no background traffic");
+  failing = false;
+  rig.setActive(true);
+  rig.recovery.onResume();
+  await rig.advance(0);
+  assertEquals(rig.catchUps(), 2);
+}));
+
+Deno.test("T-A14 both page readers let a failure reach the controller", () => {
+  const page = strip(read("components/ConnectionsPage.tsx"));
+  const refresh = page.slice(page.indexOf("const refreshOpenConversation"), page.indexOf("const prevIsOfflineRef"));
+  assert(/if \(msgError\) throw new Error\(msgError\);/.test(refresh), "an error result rejects");
+  assert(!/catch/.test(refresh), "a timeout rejects");
+  const brand = page.slice(page.indexOf("const fetchBrandChannelNewest"), page.indexOf("const loadBrandChannelNewest"));
+  assert(/if \(msgError\) throw new Error\(msgError\);/.test(brand), "brand: an error result rejects");
+  assert(/throw e;/.test(brand), "brand: a timeout rejects");
+  assert(/channelKey: showMessageInterface && user\?\.id/.test(page), "sign-out disposes the controller");
+});
+
 Deno.test("T-A8 in the background due timers do no work; resume runs once and resets the caps", async () => {
   const rig = makeRig();
   rig.recovery.onStatus("changes", "CHANNEL_ERROR");
@@ -441,9 +538,9 @@ Deno.test("T-A13 a brand channel catches up through its one per-conversation loa
   const hook = page.slice(page.indexOf("useOpenChatRecovery({"), page.indexOf("getChangesChannelState:"));
   assert(/activeBrandChannel \? conversationChannelKey\(brandChannelMemberIds\) : currentConversationId/.test(hook),
     "a brand channel recovers as one key");
-  assert(/await loadBrandChannelNewest\(brandChannel, user\.id\)/.test(hook), "brand catch-up");
+  assert(/await fetchBrandChannelNewest\(brandChannel, user\.id\)/.test(hook), "brand catch-up");
   assert(/await refreshOpenConversation\(currentConversationId, user\.id\)/.test(hook), "chat catch-up");
-  const loader = page.slice(page.indexOf("const loadBrandChannelNewest"), page.indexOf("const handleOpenBrandChannel"));
+  const loader = page.slice(page.indexOf("const fetchBrandChannelNewest"), page.indexOf("const handleOpenBrandChannel"));
   assert(/byConversation\.get\(raw\.conversation_id\)\?\.push/.test(loader), "rows land in their own conversation");
   assert(/onStatus: \(status: string\) => \{\s*chatChannelBus\.emit/.test(page), "the changes channel reports on the bus");
 });

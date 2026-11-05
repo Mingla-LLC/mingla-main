@@ -1,6 +1,7 @@
 import { supabase, trackedInvoke } from './supabase';
 import type { CuratedExperienceCard, CuratedSummary } from '../types/curatedExperience';
 import { createCuratedRequestGate } from './curatedRequestGate';
+import { useAppStore } from '../store/appStore';
 
 interface GenerateCuratedParams {
   experienceType: 'adventurous' | 'first-date' | 'romantic' | 'group-fun' | 'picnic-dates' | 'take-a-stroll';
@@ -35,8 +36,13 @@ export interface CuratedResponse {
 
 // Issue #4275: at most CURATED_MAX_CONCURRENT calls in flight per device, and
 // identical requests share one call. This is the only path to the function
-// from the app.
+// from the app. The key carries the user, and sign-out resets it (authCleanup), so one
+// account can never share another's in-flight answer.
 const curatedGate = createCuratedRequestGate<CuratedResponse>();
+
+export function resetCuratedRequests(): void {
+  curatedGate.reset();
+}
 
 class CuratedExperiencesService {
   async generateCuratedExperiences(params: GenerateCuratedParams): Promise<CuratedResponse> {
@@ -74,7 +80,7 @@ class CuratedExperiencesService {
     // curated delivers as soon as THIS call returns; no 20s dead-wait.
     // The ceiling only matters for curated-only decks; shrinking it further
     // is ORCH-0495 territory (client warm-ping of discover-cards, deferred).
-    return curatedGate.run(JSON.stringify(body), async () => {
+    return curatedGate.run(JSON.stringify([useAppStore.getState().user?.id ?? null, body]), async () => {
       const { data, error } = await trackedInvoke('generate-curated-experiences', { body });
       if (error) throw error;
       const cards = (data?.cards ?? []) as CuratedExperienceCard[];

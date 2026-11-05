@@ -62,6 +62,13 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
     queryClient.clear();
   }
 
+  // Issue #4275: curated calls queued or in flight belong to the signed-in user.
+  import("../services/curatedExperiencesService").then(({ resetCuratedRequests }) => {
+    resetCuratedRequests();
+  }).catch((error) => {
+    console.warn(`[AUTH_CLEANUP] curated request reset failed (${reason}):`, error);
+  });
+
   // Issue #4114 Wave 4: signed chat-media links belong to the signed-in user.
   import("../services/chatMediaUploadService").then(({ clearChatMediaUrlCache }) => {
     clearChatMediaUrlCache();

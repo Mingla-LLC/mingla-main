@@ -58,6 +58,9 @@ export function createChatRecovery(deps: ChatRecoveryDeps): ChatRecovery {
   let disposed = false;
   // True from a failure until the next SUBSCRIBED: resume re-arms polling from this.
   let changesDown = false;
+  // True from a failed read until a read succeeds. The channel can be back while the
+  // database is still too slow for the read, and live messages then land above a hole.
+  let gapUnread = false;
   let pollAttempts = 0;
   let pollTimer: unknown = null;
   let catchUpRunning = false;
@@ -94,8 +97,16 @@ export function createChatRecovery(deps: ChatRecoveryDeps): ChatRecovery {
     catchUpRunning = true;
     lastCatchUpAt = deps.now();
     deps.catchUp()
+      .then(() => {
+        gapUnread = false;
+        if (!changesDown) stopPolling();
+      })
       .catch((error: unknown) => {
         console.warn('[chatChannelRecovery] catch-up failed', error);
+        // Same backoff and the same per-episode cap as polling, so an overloaded
+        // database gets at most MAX_POLLS_PER_EPISODE more reads from this chat.
+        gapUnread = true;
+        armPoll();
       })
       .finally(() => {
         catchUpRunning = false;
@@ -120,7 +131,7 @@ export function createChatRecovery(deps: ChatRecoveryDeps): ChatRecovery {
       if (!canWork()) return;
       pollAttempts += 1;
       requestCatchUp();
-      armPoll();
+      if (changesDown || gapUnread) armPoll();
     }, jittered(delay));
   };
 
@@ -162,7 +173,8 @@ export function createChatRecovery(deps: ChatRecoveryDeps): ChatRecovery {
         state.stableTimer = deps.setTimer(() => {
           state.stableTimer = null;
           state.rebuildAttempts = 0;
-          if (source === 'changes') pollAttempts = 0;
+          // Staying subscribed says nothing about a read that keeps failing.
+          if (source === 'changes' && !gapUnread) pollAttempts = 0;
         }, STABLE_AFTER_MS);
         if (source === 'changes') {
           changesDown = false;
@@ -194,7 +206,7 @@ export function createChatRecovery(deps: ChatRecoveryDeps): ChatRecovery {
       pollAttempts = 0;
       stopPolling();
       requestCatchUp();
-      if (changesDown) armPoll();
+      if (changesDown || gapUnread) armPoll();
       for (const source of ['changes', 'broadcast'] as const) {
         const state = sources[source];
         state.rebuildAttempts = 0;

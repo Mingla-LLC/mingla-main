@@ -748,7 +748,8 @@ function ConnectionsPageRefactored({
   );
   // A cached list never shows the skeleton or, on a timeout, an error row: the
   // timeout is expected recovery after the app was in the background.
-  // Issue #4275: with no list, a settled failure (timeouts too) is the error row.
+  // Issue #4275: with no rows to show, a settled failure (timeouts too) is the error
+  // row, also over a cached empty list: that says nothing about the server right now.
   const error = chatListView.failed ? t('connections:failed_load') : null;
 
   // ── Archive state (ORCH-0435) ───────────────────────────
@@ -1794,15 +1795,13 @@ function ConnectionsPageRefactored({
   };
 
   /** Loads the newest page across every event chat of the channel (one query). */
-  const loadBrandChannelNewest = (channel: BrandChannel, userId: string) => {
+  // Issue #4275: rejects on a failed read, because recovery retries on that.
+  const fetchBrandChannelNewest = (channel: BrandChannel, userId: string): Promise<void> => {
     const memberIds = channel.events.map((event) => event.conversationId);
     return withTimeout(messagingService.getMessages(memberIds, userId), 8000, 'getMessages')
       .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
         for (const id of memberIds) markMessagesSettled(id);
-        if (msgError) {
-          console.error("Error loading brand channel messages:", msgError);
-          return;
-        }
+        if (msgError) throw new Error(msgError);
         const byConversation = new Map<string, Message[]>(memberIds.map((id) => [id, []]));
         for (const raw of freshMsgs || []) {
           byConversation.get(raw.conversation_id)?.push(transformMessage(raw, userId));
@@ -1817,9 +1816,14 @@ function ConnectionsPageRefactored({
       })
       .catch((e) => {
         for (const id of memberIds) markMessagesSettled(id);
-        console.warn("[ConnectionsPage] Brand channel refresh failed (offline?):", e);
+        throw e;
       });
   };
+
+  const loadBrandChannelNewest = (channel: BrandChannel, userId: string): Promise<void> =>
+    fetchBrandChannelNewest(channel, userId).catch((e) => {
+      console.warn("[ConnectionsPage] Brand channel refresh failed (offline?):", e);
+    });
 
   const handleOpenBrandChannel = async (channel: BrandChannel, preferredConversationId?: string | null) => {
     if (!user?.id) return;
@@ -2596,25 +2600,19 @@ function ConnectionsPageRefactored({
 
   // Issue #4275: the newest page of an open chat, merged in. Used by the reconnect
   // refresh below and by recovery; merge-only, so a pending send survives it.
+  // Rejects on a failed read or a timeout, because recovery retries on that.
   const refreshOpenConversation = useCallback(async (conversationId: string, userId: string): Promise<void> => {
-    try {
-      const { messages: freshMsgs, error: msgError, hasMore } =
-        await withTimeout(messagingService.getMessages(conversationId, userId), 8000, 'getMessages');
-      if (msgError) {
-        console.warn("[ConnectionsPage] Open chat refresh failed:", msgError);
-        return;
+    const { messages: freshMsgs, error: msgError, hasMore } =
+      await withTimeout(messagingService.getMessages(conversationId, userId), 8000, 'getMessages');
+    if (msgError) throw new Error(msgError);
+    if (freshMsgs) {
+      const transformed = freshMsgs.map((m) => transformMessage(m, userId));
+      // Issue #4114: merge, never replace — pending sends survive the refresh.
+      writeConversationMessages(conversationId, transformed, { snapshot: { complete: !hasMore } });
+      noteNewestPageLoaded(conversationId, hasMore);
+      if (subscribedConversationIdRef.current === conversationId) {
+        markConversationAsRead(conversationId, userId, transformed);
       }
-      if (freshMsgs) {
-        const transformed = freshMsgs.map((m) => transformMessage(m, userId));
-        // Issue #4114: merge, never replace — pending sends survive the refresh.
-        writeConversationMessages(conversationId, transformed, { snapshot: { complete: !hasMore } });
-        noteNewestPageLoaded(conversationId, hasMore);
-        if (subscribedConversationIdRef.current === conversationId) {
-          markConversationAsRead(conversationId, userId, transformed);
-        }
-      }
-    } catch (e) {
-      console.warn("[ConnectionsPage] Open chat refresh failed:", e);
     }
   }, [transformMessage, writeConversationMessages, noteNewestPageLoaded, markConversationAsRead]);
 
@@ -2635,7 +2633,9 @@ function ConnectionsPageRefactored({
       // Re-establish realtime subscription (may have died or never been set up)
       setupRealtimeSubscription(currentConversationId, user.id);
 
-      void refreshOpenConversation(currentConversationId, user.id);
+      refreshOpenConversation(currentConversationId, user.id).catch((e) => {
+        console.warn("[ConnectionsPage] Reconnection refresh failed:", e);
+      });
 
       // Also refresh the conversations list
       fetchConversations(user.id);
@@ -2790,7 +2790,8 @@ function ConnectionsPageRefactored({
   // its own conversation's store. Rebuild goes through setupRealtimeSubscription,
   // so there is one channel slot and no duplicates.
   useOpenChatRecovery({
-    channelKey: showMessageInterface
+    // No user means signed out: the controller disposes, so retries stop.
+    channelKey: showMessageInterface && user?.id
       ? (activeBrandChannel ? conversationChannelKey(brandChannelMemberIds) : currentConversationId)
       : null,
     conversationId: currentConversationId,
@@ -2799,7 +2800,7 @@ function ConnectionsPageRefactored({
       if (!user?.id) return;
       const brandChannel = activeBrandChannelRef.current;
       if (brandChannel) {
-        await loadBrandChannelNewest(brandChannel, user.id);
+        await fetchBrandChannelNewest(brandChannel, user.id);
       } else if (currentConversationId) {
         await refreshOpenConversation(currentConversationId, user.id);
       }
@@ -4203,12 +4204,12 @@ function ConnectionsPageRefactored({
     </Pressable>
   ) : null;
 
-  // Issue #4275: "no chats" is a statement about a loaded list. Until there is
-  // one, it is the skeleton (loading, retries waiting, offline) or the error row.
+  // Issue #4275: "no chats" is a statement about a list the server just confirmed.
+  // Until then it is the skeleton (loading, retries waiting, offline) or the error row.
   const showSkeleton = !chatListView.loaded && !error;
   const listEmpty = showSkeleton ? (
     <ChatListSkeleton />
-  ) : error && !chatListView.loaded ? null : searchActive ? (
+  ) : error && conversations.length === 0 ? null : searchActive ? (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
     </View>

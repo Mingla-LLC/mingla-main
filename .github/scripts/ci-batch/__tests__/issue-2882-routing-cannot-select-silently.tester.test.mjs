@@ -301,7 +301,7 @@ test("#2882 adversarial 10: the four repaired Phase 2 suites route on what their
 // 11. SELF-COVERAGE. The invariant that decides whether routing loses coverage.
 // ---------------------------------------------------------------------------
 function trackedFiles() {
-  return execFileSync("git", ["ls-files", "-z"], { cwd: REPO_ROOT, encoding: "buffer" })
+  return execFileSync("git", ["ls-files", "-z"], { cwd: REPO_ROOT, encoding: "buffer", maxBuffer: 1 << 28 })
     .toString("utf8").split("\0").filter(Boolean);
 }
 

@@ -17,7 +17,8 @@
 -- refresh_admin_place_pool_mv also drops from every 10 to every 30 minutes (it
 -- runs 10 s on average, 99 s at worst). Every reader of that view is an admin
 -- page; `admin_refresh_place_pool_mv` still forces a refresh from the page's own
--- button. To revert just this one job's cadence, run:
+-- button. To revert just this one job's cadence, run the statement below and put
+-- "every 10 minutes" back in mingla-admin PlacePoolPage.jsx and systemPagesService.js:
 --   SELECT cron.alter_job(job_id := <jobid>, schedule := '3,13,23,33,43,53 * * * *');
 --
 -- Static on purpose (RLS gate C7 refuses dynamic SQL): no dynamic statements,

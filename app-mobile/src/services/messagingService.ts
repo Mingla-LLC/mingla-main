@@ -554,6 +554,8 @@ export const MESSAGE_CLIENT_ID_UNIQUE_INDEX = 'messages_unique_client_id_per_con
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
   private senderProfileCache: Map<string, { name: string; cachedAt: number }> = new Map();
+  // Issue #4275: a cold page holds up to 50 rows from one sender; they share one read.
+  private senderNameLookups: Map<string, Promise<string>> = new Map();
   private static PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   /**
@@ -2018,16 +2020,25 @@ export class MessagingService {
       return cached.name;
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('display_name, username, first_name, last_name')
-      .eq('id', senderId)
-      .single();
+    const inFlight = this.senderNameLookups.get(senderId);
+    if (inFlight) return inFlight;
 
-    const senderName = getDisplayName(profile, 'Unknown');
+    const lookup = (async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name, username, first_name, last_name')
+        .eq('id', senderId)
+        .single();
 
-    this.senderProfileCache.set(senderId, { name: senderName, cachedAt: Date.now() });
-    return senderName;
+      const senderName = getDisplayName(profile, 'Unknown');
+
+      this.senderProfileCache.set(senderId, { name: senderName, cachedAt: Date.now() });
+      return senderName;
+    })().finally(() => {
+      this.senderNameLookups.delete(senderId);
+    });
+    this.senderNameLookups.set(senderId, lookup);
+    return lookup;
   }
 
   /**

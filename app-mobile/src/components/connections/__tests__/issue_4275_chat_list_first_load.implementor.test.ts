@@ -72,6 +72,17 @@ Deno.test("T-B4 a real failure with a cached list still reports", () => {
   eq(view.failed, true, "failed");
 });
 
+Deno.test("T-B8 a cached empty list plus a failed refresh is a failure, not no chats", () => {
+  for (const error of [timeout, serverError]) {
+    const view = chatListViewState({ data: empty, isPending: false, isFetching: false, isError: true, error });
+    eq(view.failed, true, `failed on ${error.name}`);
+    eq(view.loaded, true, "loaded");
+  }
+  const hook = Deno.readTextFileSync(new URL("../../../hooks/useChatList.ts", import.meta.url));
+  assert(/getQueryData<ChatListData>\(queryKey\)\?\.conversations\.length \?\? 0\) > 0/.test(hook),
+    "a cached empty list refreshes with first-load patience");
+});
+
 Deno.test("T-B5 the retry table", () => {
   eq(CHAT_LIST_FIRST_LOAD_RETRIES, 4, "retries");
   // Fatal: never, cached or not.
@@ -117,7 +128,7 @@ Deno.test("T-B7 the page reaches the empty state only with a loaded list", () =>
   const page = Deno.readTextFileSync(new URL("../../ConnectionsPage.tsx", import.meta.url));
   assert(/const showSkeleton = !chatListView\.loaded && !error;/.test(page), "skeleton until loaded, or the error row");
   const listEmpty = page.slice(page.indexOf("const listEmpty = showSkeleton"), page.indexOf("let screen: React.ReactNode;"));
-  const failedBranch = listEmpty.indexOf("error && !chatListView.loaded ? null");
+  const failedBranch = listEmpty.indexOf("error && conversations.length === 0 ? null");
   assert(failedBranch > 0, "a failure with no list shows only the error row");
   for (const copy of ["connections:no_results", "connections:filter_empty_", "connections:empty_title"]) {
     assert(listEmpty.indexOf(copy) > failedBranch, `${copy} comes after the not-loaded branches`);

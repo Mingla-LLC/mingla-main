@@ -9,10 +9,8 @@
 // FAILS-ON-REVERT: delete the rememberSenderProfiles cache read from getSenderName
 // and "a warm cache" fails.
 //
-// REPRO_DEFECTS below stays false so the lane is green. Set it true and DEFECT-2
-// fails with 50 profile reads. Rework dedupes in-flight lookups, then removes the flag.
-
-const REPRO_DEFECTS = false;
+// FAILS-ON-REVERT: remove the in-flight lookup from getSenderName and the 50-row cold
+// page makes 50 profile reads.
 
 type MockRow = Record<string, unknown>;
 const mockCounts = { profiles: 0, reads: 0 };
@@ -87,7 +85,7 @@ describe("#4275 tester: sender names in getMessages", () => {
     expect(messages[0].sender_name).toBe("Warm");
   });
 
-  (REPRO_DEFECTS ? it : it.skip)("DEFECT-2 a cold cache asks for one sender once, not once per row", async () => {
+  it("a cold cache asks for one sender once, not once per row", async () => {
     mockMessageRows = rowsWithoutSnapshot(50, "cold-sender");
     await messagingService.getMessages("c1", "me");
     expect(mockCounts.profiles).toBe(1);

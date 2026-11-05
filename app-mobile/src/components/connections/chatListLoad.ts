@@ -657,9 +657,10 @@ export type ChatListQueryState = {
 /**
  * Cached rows render at once, also while a background refresh runs; the
  * skeleton shows only when there is no list yet (the first-ever visit). A
- * failed refresh shows the error row only once it has settled. A timeout with a
- * cached list stays silent (expected after the app was in the background); a
- * timeout with no list is a failure, because nothing else is on screen.
+ * failed refresh shows the error row only once it has settled. A timeout over
+ * cached rows stays silent (expected after the app was in the background); a
+ * timeout with no rows is a failure, because nothing else is on screen and a cached
+ * empty list cannot say the person has no chats right now.
  *
  * invariant: I-CHAT-LIST-EMPTY-MEANS-SERVER-EMPTY — the empty state requires a
  * loaded list. Enforced by issue_4275_chat_list_first_load.implementor.test.ts.
@@ -671,10 +672,11 @@ export function chatListViewState(query: ChatListQueryState): {
   failed: boolean;
 } {
   const loaded = query.data !== undefined;
+  const hasRows = (query.data?.conversations.length ?? 0) > 0;
   return {
     conversations: query.data?.conversations ?? null,
     loaded,
     loading: !loaded && (query.isPending || query.isFetching),
-    failed: query.isError && !query.isFetching && (!loaded || !isChatListTimeout(query.error)),
+    failed: query.isError && !query.isFetching && (!hasRows || !isChatListTimeout(query.error)),
   };
 }

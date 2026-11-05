@@ -114,7 +114,7 @@ function PoolOverview({ funnel, loading, error, onRetry }) {
     <div className="flex flex-col gap-6">
       <SectionCard
         title="From active place to the Explorer's deck"
-        subtitle="Every share is of active places. Counts refresh every 10 minutes."
+        subtitle="Every share is of active places. Counts refresh every 30 minutes."
         action={
           <Button size="sm" variant="secondary" icon={RotateCcw} loading={refreshing} onClick={recount}>
             {refreshing ? "Updating…" : "Update now"}

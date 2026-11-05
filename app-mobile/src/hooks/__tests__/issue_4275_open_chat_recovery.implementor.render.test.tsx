@@ -137,6 +137,22 @@ describe("#4275 useOpenChatRecovery", () => {
     expect(props.rebuildChanges).toHaveBeenCalledTimes(1);
   });
 
+  it("a failed read retries through the latest callback, and leaving stops it", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    await mount({ catchUp: jest.fn(() => Promise.reject(new Error("read timed out"))) });
+    chatChannelBus.emit({ kind: "status", source: "changes", conversationId: "chat-1", status: "SUBSCRIBED" });
+    await tick();
+    expect(props.catchUp).toHaveBeenCalledTimes(1);
+    await tick(6500);
+    expect(props.catchUp).toHaveBeenCalledTimes(2);
+    await TestRenderer.act(async () => {
+      renderer.update(<Harness {...props} channelKey={null} />);
+    });
+    await tick(600_000);
+    expect(props.catchUp).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalled();
+  });
+
   it("a later timer calls the latest callbacks, not the ones from when the chat opened", async () => {
     await mount();
     const newer = jest.fn(() => Promise.resolve());

@@ -47,7 +47,9 @@ export function useChatList<TCard extends ChatEventPublicCard>(
 ): UseQueryResult<ChatListData> {
   const queryClient = useQueryClient();
   const queryKey = chatListKeys.list(userId ?? 'none');
-  const hasCachedList = (): boolean => queryClient.getQueryData<ChatListData>(queryKey) !== undefined;
+  // Rows, not just a value: a cached empty list leaves the person with nothing to
+  // look at, so its refresh gets the same patience as a first load.
+  const hasCachedList = (): boolean => (queryClient.getQueryData<ChatListData>(queryKey)?.conversations.length ?? 0) > 0;
   return useQuery<ChatListData>({
     queryKey,
     enabled: Boolean(userId),

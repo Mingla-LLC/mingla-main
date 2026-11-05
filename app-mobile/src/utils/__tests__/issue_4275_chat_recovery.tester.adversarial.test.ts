@@ -14,8 +14,6 @@
 //   - CATCH_UP_MIN_INTERVAL_MS gate removed from requestCatchUp: AX-A5 fails.
 //   - armRebuild removed from the CLOSED branch: AX-A7 fails (no rebuild).
 //
-// REPRO_DEFECTS below stays false so the lane is green. Rework flips it to true and
-// deletes the flag once the defect is fixed; set true today and DEFECT-1 fails.
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
@@ -26,7 +24,6 @@ import {
   type ChatRecovery,
 } from "../chatChannelRecovery.ts";
 
-const REPRO_DEFECTS = false;
 
 type Rig = {
   recovery: ChatRecovery;
@@ -210,8 +207,7 @@ Deno.test("AX-A6 a server closing the channel right after every join stops at th
 });
 
 Deno.test({
-  name: "DEFECT-1 a catch-up that fails right after the channel returns is tried again",
-  ignore: !REPRO_DEFECTS,
+  name: "a catch-up that fails right after the channel returns is tried again",
   fn: async () => {
     const rig = makeRig();
     const warn = console.warn;

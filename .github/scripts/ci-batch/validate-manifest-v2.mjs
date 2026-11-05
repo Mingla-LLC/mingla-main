@@ -1240,11 +1240,13 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
-    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
+    // #4275: the listing passed Node's 1 MiB default as the repo grew.
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 1 << 28 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOBUFS") throw new Error("registry validation: git ls-files output exceeded maxBuffer");
     throw new Error("registry validation requires a git worktree");
   }
   if (!scope) return listed;

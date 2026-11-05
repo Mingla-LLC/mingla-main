@@ -85,3 +85,12 @@ Deno.test("T-D4 every moved job keeps its cadence, and the time-critical jobs do
     assert(!moreCode.includes(`jobname = '${unmoved}'`), `${unmoved} stays on offset 0`);
   }
 });
+
+Deno.test("the admin copy states the place pool view's real cadence", () => {
+  assert(code.includes("schedule := '3,33 * * * *'"), "the view refreshes every 30 minutes");
+  const root = new URL("../../../mingla-admin/src/", import.meta.url);
+  const page = Deno.readTextFileSync(new URL("pages/PlacePoolPage.jsx", root));
+  assert(page.includes("Counts refresh every 30 minutes."), "the page says 30");
+  const service = Deno.readTextFileSync(new URL("services/systemPagesService.js", root));
+  assert(service.includes("refreshes every 30 minutes"), "the service comment says 30");
+});

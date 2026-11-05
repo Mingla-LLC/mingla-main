@@ -79,6 +79,11 @@ import { buildStopPrice, sumStopPrices } from '../_shared/curatedPrice.ts';
  * 6 experience types. Category configs from seedingCategories.ts.
  * ──────────────────────────────────────────────────────────────────────────── */
 
+// Issue #4275: anchors whose near data is fetched in one batch. With 2 categories
+// each, 5 anchors is 10 lookups in one statement. How many lookups share a statement
+// is the trade-off to tune: see also SIGNAL_RANK_BATCH_MAX_REQUESTS.
+const NEAR_DATA_ANCHORS_PER_BATCH = 5;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -1101,7 +1106,7 @@ async function generateCardsForType(
         const anchorIsMissingNearData = (anchorPlace: any) =>
           nearCategories.some((catId) => !categoryPlaces[nearKey(catId, anchorPlace)]);
         if (anchorIsMissingNearData(anchor)) {
-          const batchSize = Math.min(5, Math.max(limit - cards.length, 1));
+          const batchSize = Math.min(NEAR_DATA_ANCHORS_PER_BATCH, Math.max(limit - cards.length, 1));
           const nextAnchors = anchorPlaces.filter(anchorIsMissingNearData).slice(0, batchSize);
           await fetchCategoryGroup(nextAnchors.flatMap((anchorPlace) =>
             nearCategories

@@ -53,7 +53,7 @@ export function systemErrorWords(error) {
   return msg || "Something went wrong. Try again.";
 }
 
-/** Re-counts the admin place view now (it also refreshes every 10 minutes). */
+/** Re-counts the admin place view now (it also refreshes every 30 minutes). */
 export function refreshPlacePoolStats() {
   return call("admin_refresh_place_pool_mv");
 }
