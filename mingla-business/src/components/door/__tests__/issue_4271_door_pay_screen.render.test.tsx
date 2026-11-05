@@ -4,7 +4,22 @@
  * old code. Hooks are mocked at the query boundary; the screen itself is real.
  */
 import React from "react";
-import renderer, { act, type ReactTestInstance } from "react-test-renderer";
+
+// react-test-renderer ships no types in this app.
+interface ReactTestInstance {
+  type: unknown;
+  props: Record<string, any>;
+  children: (ReactTestInstance | string)[];
+  findAll: (predicate: (node: ReactTestInstance) => boolean) => ReactTestInstance[];
+}
+interface ReactTestRenderer {
+  root: ReactTestInstance;
+}
+const renderer = jest.requireActual("react-test-renderer") as {
+  create: (element: React.ReactElement) => ReactTestRenderer;
+  act: (callback: () => void | Promise<void>) => void | Promise<void>;
+};
+const { act } = renderer;
 
 const mockReplace = jest.fn();
 const mockMutateAsync = jest.fn();
@@ -97,15 +112,15 @@ const row = (status: string): Record<string, unknown> => ({
 const textOf = (node: ReactTestInstance | string): string =>
   typeof node === "string" ? node : node.children.map(textOf).join("");
 
-const mount = (): renderer.ReactTestRenderer => {
-  let tree: renderer.ReactTestRenderer | undefined;
+const mount = (): ReactTestRenderer => {
+  let tree: ReactTestRenderer | undefined;
   act(() => {
     tree = renderer.create(<DoorPayCodeRoute />);
   });
-  return tree as renderer.ReactTestRenderer;
+  return tree as ReactTestRenderer;
 };
 
-const screenText = (tree: renderer.ReactTestRenderer): string => textOf(tree.root);
+const screenText = (tree: ReactTestRenderer): string => textOf(tree.root);
 
 describe("#4271 host Scan to pay screen", () => {
   beforeEach(() => {

@@ -4,7 +4,22 @@
  * detail of a refunded card sale. Services are mocked; the screens are real.
  */
 import React from "react";
-import renderer, { act, type ReactTestInstance } from "react-test-renderer";
+
+// react-test-renderer ships no types in this app.
+interface ReactTestInstance {
+  type: unknown;
+  props: Record<string, any>;
+  children: (ReactTestInstance | string)[];
+  findAll: (predicate: (node: ReactTestInstance) => boolean) => ReactTestInstance[];
+}
+interface ReactTestRenderer {
+  root: ReactTestInstance;
+}
+const renderer = jest.requireActual("react-test-renderer") as {
+  create: (element: React.ReactElement) => ReactTestRenderer;
+  act: (callback: () => void | Promise<void>) => void | Promise<void>;
+};
+const { act } = renderer;
 
 let mockQuote: Record<string, unknown> = {};
 const mockQuoteArgs: Array<Record<string, unknown>> = [];
@@ -136,12 +151,12 @@ import DoorSaleDetailRoute from "../../../../app/event/[id]/door/[saleId]";
 const textOf = (node: ReactTestInstance | string): string =>
   typeof node === "string" ? node : node.children.map(textOf).join(" ");
 
-const mount = (element: React.ReactElement): renderer.ReactTestRenderer => {
-  let tree: renderer.ReactTestRenderer | undefined;
+const mount = (element: React.ReactElement): ReactTestRenderer => {
+  let tree: ReactTestRenderer | undefined;
   act(() => {
     tree = renderer.create(element);
   });
-  return tree as renderer.ReactTestRenderer;
+  return tree as ReactTestRenderer;
 };
 
 const tier = {
@@ -229,11 +244,11 @@ describe("#4271 scanner invite copy", () => {
 
 describe("#4271 guest page phone field", () => {
   test("announces required exactly once", async () => {
-    let tree: renderer.ReactTestRenderer | undefined;
+    let tree: ReactTestRenderer | undefined;
     await act(async () => {
       tree = renderer.create(<DoorPayGuestPage />);
     });
-    const labels = (tree as renderer.ReactTestRenderer).root
+    const labels = (tree as ReactTestRenderer).root
       .findAll(
         (n) =>
           typeof n.type === "string" &&
