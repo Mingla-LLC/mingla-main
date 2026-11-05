@@ -59,7 +59,8 @@ Deno.test("#3682 Wave 2.7 happy: Host review sheet + compose wire warning + allo
       import.meta.url,
     ),
   );
-  assert(compose.includes("bookAllowanceLabel"));
+  // #4273: each method now carries its own allowance line on the review sheet.
+  assert(compose.includes("allowanceLabel: allowance === undefined"));
   assert(compose.includes("bookWeekBlastWarning"));
   assert(compose.includes("MONTHLY_CAP"));
 

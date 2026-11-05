@@ -55,6 +55,7 @@ export const TARGETS = [
   "mingla-business/src/components/marketing/ComposerV2/ComposerCanvas.web.tsx",
   "mingla-business/src/components/marketing/SmsComposeCard.tsx",
   "mingla-business/src/components/marketing/ComposerCommitBar.tsx",
+  "mingla-business/src/components/marketing/ComposerMethodCards.tsx",
 ];
 
 const ORCH_0892_GATE = ".github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs";
@@ -284,6 +285,25 @@ export function checkSource(rawSrc, relPath, failures) {
       failures.push(
         `${relPath}: the narrow-web branch marker is missing. This rule must not ` +
           `be satisfiable by deleting the branch it guards (#2262 R12).`,
+      );
+    }
+  }
+
+  // ---- R13: the SMS and push cards scroll through the keyboard-aware wrapper.
+  // Their TextInputs arrive as children, so this file never names one, and a raw
+  // ScrollView here would leave those fields under the keyboard on native (#4273).
+  if (name === "ComposerMethodCards.tsx") {
+    if (/import\s+(?:\*\s+as\s+\w+|\{[^}]*\bScrollView\b[^}]*\})\s+from\s+["']react-native["']/.test(src)) {
+      failures.push(
+        `${relPath}: takes its scroll container from react-native. It must come ` +
+          `from wrappers/SmartScrollView, which keeps the focused field clear of ` +
+          `the keyboard (#4273 R13).`,
+      );
+    }
+    if (!/import\s+\{\s*ScrollView\s*\}\s+from\s+["'][^"']*wrappers\/SmartScrollView["']/.test(src)) {
+      failures.push(
+        `${relPath}: no longer imports ScrollView from wrappers/SmartScrollView. ` +
+          `This rule must not be satisfiable by deleting the container (#4273 R13).`,
       );
     }
   }
@@ -539,6 +559,19 @@ if (process.argv.includes("--self-test")) {
   // (k2) R12 must not be satisfiable by deleting the branch.
   if (run("return null;\n", canvasRel).length === 0) {
     selfFailures.push("(k2) a deleted narrow-web branch was not flagged (R12)");
+  }
+
+  // (m) R13 — the method cards keep the keyboard-aware wrapper.
+  const cardsRel = "mingla-business/src/components/marketing/ComposerMethodCards.tsx";
+  const OK_CARDS = 'import { ScrollView } from "../../wrappers/SmartScrollView";\n<ScrollView>{children}</ScrollView>\n';
+  if (run(OK_CARDS, cardsRel).length !== 0) {
+    selfFailures.push("(m0) the shipped method cards were wrongly flagged (R13)");
+  }
+  if (run('import { ScrollView, View } from "react-native";\n<ScrollView>{children}</ScrollView>\n', cardsRel).length === 0) {
+    selfFailures.push("(m) a raw react-native ScrollView was not flagged (R13)");
+  }
+  if (run('import * as RN from "react-native";\nimport { ScrollView } from "../../wrappers/SmartScrollView";\n', cardsRel).length === 0) {
+    selfFailures.push("(m2) a namespace react-native import was not flagged (R13)");
   }
 
   // (l) R12b — Band B losing its recovery, and the bar moving inside it.

@@ -2,7 +2,7 @@
  * marketingReportService — aggregates per-campaign deliverability + click
  * data for the campaign report screen (Sub-ORCH-0815-C-1).
  *
- * Reads `marketing_messages` + `marketing_clicks` filtered by campaign_id
+ * Reads messages (through the masked #4273 read) + `marketing_clicks` by campaign_id
  * (RLS-gated to brand members) and rolls them into a single shape the
  * report screen consumes.
  *
@@ -107,14 +107,11 @@ async function loadAllMetricMessages(
 ): Promise<MetricMessageRow[]> {
   const rows: MetricMessageRow[] = [];
   for (let from = 0; ; from += METRIC_PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from("marketing_messages")
-      .select(
-        "id, recipient_email, status, sent_at, click_count, failure_reason, delivered_at, opened_at, delivery_tracking_eligible_at, open_tracking_eligible_at",
-      )
-      .eq("campaign_id", campaignId)
-      .order("id", { ascending: true })
-      .range(from, from + METRIC_PAGE_SIZE - 1);
+    // #4273 — the server blanks contacts the brand did not itself hold.
+    const { data, error } = await supabase.rpc(
+      "biz_marketing_campaign_messages_v1",
+      { p_campaign_ids: [campaignId], p_from: from, p_limit: METRIC_PAGE_SIZE },
+    );
     if (error) throw error;
     const page = (data ?? []) as unknown as MetricMessageRow[];
     rows.push(...page);
@@ -203,14 +200,10 @@ export async function getCampaignReport(
 
   // 2) Complete metric rows, then a separate bounded presentation list.
   const messages = await loadAllMetricMessages(campaignId);
-  const { data: recipientData, error: recipientErr } = await supabase
-    .from("marketing_messages")
-    .select(
-      "id, recipient_email, status, sent_at, click_count, failure_reason, delivered_at, opened_at",
-    )
-    .eq("campaign_id", campaignId)
-    .order("sent_at", { ascending: false, nullsFirst: false })
-    .limit(500);
+  const { data: recipientData, error: recipientErr } = await supabase.rpc(
+    "biz_marketing_campaign_messages_v1",
+    { p_campaign_ids: [campaignId], p_limit: 500, p_newest_first: true },
+  );
   if (recipientErr) throw recipientErr;
   const recipients = (recipientData ?? []) as unknown as PerRecipientRow[];
 
