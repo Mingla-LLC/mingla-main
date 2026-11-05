@@ -57,4 +57,16 @@ describe("#4273 retest: a hidden skip is not a failed send", () => {
     invoke.mockResolvedValueOnce(answer({ delivered: 4 }));
     await expect(confirm()).rejects.toMatchObject({ code: "BOOK_BLAST_DISPATCH_FAILED" });
   });
+
+  it("other lanes still must add up exactly", async () => {
+    invoke.mockResolvedValueOnce(answer({ delivered: 2 }));
+    await expect(confirmMarketingBook({
+      campaign_id: "c1",
+      client_request_id: "r1",
+      quote,
+      scheduled_for: null,
+      audience_kind: "all_brand_people",
+      channel: "email",
+    })).rejects.toMatchObject({ code: "BOOK_BLAST_DISPATCH_FAILED" });
+  });
 });

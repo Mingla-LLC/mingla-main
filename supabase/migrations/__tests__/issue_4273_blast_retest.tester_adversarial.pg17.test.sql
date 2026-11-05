@@ -39,7 +39,12 @@ SELECT u.id, 'email', jsonb_build_object('email', u.email)
   FROM auth.users u WHERE u.id::text LIKE '4273b000-0000-4000-8000-00000000001%';
 INSERT INTO auth.identities(user_id, provider, identity_data) VALUES
   ('4273b000-0000-4000-8000-000000000015', 'google',
-   '{"email":"g-alt-r4273@example.test","email_verified":true}');
+   '{"email":"g-alt-r4273@example.test","email_verified":true}'),
+  -- Never proved: must not match anyone, must not block the address.
+  ('4273b000-0000-4000-8000-000000000015', 'google',
+   '{"email":"g-unverified-r4273@example.test","email_verified":false}'),
+  ('4273b000-0000-4000-8000-000000000013', 'github',
+   '{"email":"h-unverified-r4273@example.test"}');
 INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES
   ('4273b000-0000-4000-8000-000000000011', '+12025557111'),
   ('4273b000-0000-4000-8000-000000000012', '+12025557112'),
@@ -142,14 +147,18 @@ BEGIN
     ('4273b000-2000-4000-8000-000000000004', v_brand, 'Probe blocked F3', 'active'),
     ('4273b000-2000-4000-8000-000000000005', v_brand, 'Probe friend X', 'active'),
     ('4273b000-2000-4000-8000-000000000006', v_brand, 'Probe F1 email', 'active'),
-    ('4273b000-2000-4000-8000-000000000007', v_brand, 'Probe alt email of muted G', 'active');
+    ('4273b000-2000-4000-8000-000000000007', v_brand, 'Probe alt email of muted G', 'active'),
+    ('4273b000-2000-4000-8000-000000000008', v_brand, 'Holds an unverified email of muted G', 'active'),
+    ('4273b000-2000-4000-8000-000000000009', v_brand, 'Holds an unverified email of a blocker', 'active');
   INSERT INTO public.brand_person_contact_methods(brand_id, brand_person_id, channel, normalized_value, provenance_scope, is_exportable, is_primary, record_state) VALUES
     (v_brand, '4273b000-2000-4000-8000-000000000002', 'phone', '+12025557111', 'brand_owned', true, true, 'active'),
     (v_brand, '4273b000-2000-4000-8000-000000000003', 'phone', '+12025557112', 'brand_owned', true, true, 'active'),
     (v_brand, '4273b000-2000-4000-8000-000000000004', 'phone', '+12025557113', 'brand_owned', true, true, 'active'),
     (v_brand, '4273b000-2000-4000-8000-000000000005', 'phone', '+12025557114', 'brand_owned', true, true, 'active'),
     (v_brand, '4273b000-2000-4000-8000-000000000006', 'email', 'f1-r4273@example.test', 'brand_owned', true, true, 'active'),
-    (v_brand, '4273b000-2000-4000-8000-000000000007', 'email', 'g-alt-r4273@example.test', 'brand_owned', true, true, 'active');
+    (v_brand, '4273b000-2000-4000-8000-000000000007', 'email', 'g-alt-r4273@example.test', 'brand_owned', true, true, 'active'),
+    (v_brand, '4273b000-2000-4000-8000-000000000008', 'email', 'g-unverified-r4273@example.test', 'brand_owned', true, true, 'active'),
+    (v_brand, '4273b000-2000-4000-8000-000000000009', 'email', 'h-unverified-r4273@example.test', 'brand_owned', true, true, 'active');
   PERFORM public.issue_1777_refresh_brand_reach(v_brand, 'follower');
   PERFORM public.issue_1777_refresh_brand_reach(v_brand, 'extended');
   v_after := pg_temp.host_view(v_all);
@@ -191,6 +200,9 @@ BEGIN
   PERFORM pg_temp.chk('R-06 a muted account is matched by its verified identity email, not only its main email',
     NOT (v_send -> 'rows' @> '[{"raw_email":"g-alt-r4273@example.test"}]'::jsonb),
     'still emails g-alt-r4273@example.test');
+  PERFORM pg_temp.chk('R-06b an unverified identity email blocks nobody and matches nobody',
+    v_send -> 'rows' @> '[{"raw_email":"g-unverified-r4273@example.test"},{"raw_email":"h-unverified-r4273@example.test"}]'::jsonb,
+    v_send::text);
   v_exec := (SELECT e.id FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_id);
 
   -- Per method: a STOP on a phone does not stop the email of the same person.
