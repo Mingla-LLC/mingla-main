@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, SUITES_FOLDED_IN_POSTGRES_WAVE, PHASE3D_HOSTS, PHASE3E_HOSTS,
+import { discoverExpectedFilesForSuite, discoverLiveOrigins, discoverWorkflowProviders, inspectBatchWorkflow, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, SUITES_FOLDED_IN_POSTGRES_WAVE, PHASE3D_HOSTS, PHASE3E_HOSTS,
 } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
@@ -140,10 +140,16 @@ const PHASE3B_PROVIDER_NAMES = new Set(["issue-1022-theme-control-tests.yml","is
 // commit conditional on identity being present — a skip is worse than the red.
 const GIT_IDENTITY = ["-c", "user.email=ci@example.invalid", "-c", "user.name=CI"];
 function git(root, args) { return execFileSync("git", [...GIT_IDENTITY, ...args], { cwd: root, encoding: "utf8" }).trim(); }
+// [TEST-MOD-APPROVED #4261] One snapshot walks the tree once. It used to discover
+// providers here and again inside validateRegistry, about 4 s each, 15 times over.
+// The same tree gives the validator the same inventory, and the scope closes
+// before the caller mutates anything, so every snapshot still sees fresh truth.
 function providerSnapshot(root) {
-  const value = effectiveManifest(root);
-  const providers = discoverWorkflowProviders(root);
-  return JSON.stringify({ providers, errors: validateRegistry(value, { root }) });
+  return withTrackedFilesScope(root, () => {
+    const value = effectiveManifest(root);
+    const providers = discoverWorkflowProviders(root);
+    return JSON.stringify({ providers, errors: validateRegistry(value, { root, workflowProviders: providers }) });
+  });
 }
 
 // [TEST-MOD-APPROVED #3336 · Amendment 2] A bundle belongs to one exact-root,
@@ -781,6 +787,48 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     discoverWorkflowProviders(temp);
     assert.equal(trackedFilesProcessInvocations() - unwound, 1, "a thrown scope body must still exit the scope");
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+// [TEST-MOD-APPROVED #4261] Validation repeated the same tree walk per suite and
+// per attack, which is what grew the #2148 gates 5-7x. The cost contract is counts,
+// so this pins the walk count, and that leaving the scope restores fresh truth.
+test("expected-file discovery walks a suite cwd once per scope and never outside one", () => {
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "issue-4261-observe-once-")));
+  const walkRoot = path.join(temp, "pkg");
+  const realReaddir = fs.readdirSync;
+  let walks = 0;
+  try {
+    fs.mkdirSync(walkRoot);
+    fs.writeFileSync(path.join(walkRoot, "issue-1-first.test.mjs"), "first\n");
+    fs.writeFileSync(path.join(walkRoot, "issue-2-second.test.mjs"), "second\n");
+    git(temp, ["init", "-q"]); git(temp, ["add", "."]); git(temp, ["commit", "-qm", "fixture"]);
+    const suite = (token) => ({ lifecycle: "batched-active", cwd: "pkg", steps: [{ cwd: "pkg", run: `node --test ${token}` }] });
+    fs.readdirSync = (...args) => { if (args[0] === walkRoot) walks += 1; return realReaddir(...args); };
+
+    const scoped = withTrackedFilesScope(temp, () => {
+      const first = discoverExpectedFilesForSuite(suite("issue-1"), temp);
+      const second = discoverExpectedFilesForSuite(suite("issue-2"), temp);
+      assert.equal(walks, 1, "two suites in one scope must share one walk of their cwd");
+      // The answer is still per suite: the walk is shared, the verdict is not.
+      assert.deepEqual(first, ["pkg/issue-1-first.test.mjs"]);
+      assert.deepEqual(second, ["pkg/issue-2-second.test.mjs"]);
+      fs.writeFileSync(path.join(walkRoot, "issue-1-third.test.mjs"), "third\n");
+      return discoverExpectedFilesForSuite(suite("issue-1"), temp);
+    });
+    assert.deepEqual(scoped, ["pkg/issue-1-first.test.mjs"], "a scope promises an immutable tree, so it holds its first observation");
+
+    walks = 0;
+    const fresh = discoverExpectedFilesForSuite(suite("issue-1"), temp);
+    assert.deepEqual(fresh, ["pkg/issue-1-first.test.mjs", "pkg/issue-1-third.test.mjs"], "leaving the scope must restore fresh truth");
+    discoverExpectedFilesForSuite(suite("issue-1"), temp);
+    assert.equal(walks, 2, "outside a scope every call must walk again");
+  } finally {
+    fs.readdirSync = realReaddir;
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+  const parsed = inspectBatchWorkflow("jobs: {}\n");
+  parsed.jobs = "tampered";
+  assert.notEqual(inspectBatchWorkflow("jobs: {}\n").jobs, "tampered", "each caller must get its own copy of a cached inspection");
 });
 
 // [#2438 SC-13/SC-17/SC-21] The terminal branch is the LIVE state now, so this
