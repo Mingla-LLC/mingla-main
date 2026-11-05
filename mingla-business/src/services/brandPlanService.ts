@@ -91,6 +91,30 @@ async function call<T>(name: string, args: Record<string, unknown>): Promise<T> 
   return result.data as T;
 }
 
+/** How long a write waits for an answer before the form says it failed. */
+export const BRAND_PLAN_WRITE_TIMEOUT_MS = 25_000;
+
+// A write the server never answers must not hold the form: after the limit it
+// fails with the same words as any other failure and what was typed stays. The
+// server may still have done it. A late answer shows no words, only reads the plan
+// again (`onLate`), and a retry of an add sends the same request key, so it can
+// never add two.
+async function write<T>(name: string, args: Record<string, unknown>, onLate?: () => void): Promise<T> {
+  const answer = call<T>(name, args);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      if (onLate) void answer.then(onLate, onLate);
+      reject(new BrandPlanError("network", "timed_out", "The plan did not answer in time."));
+    }, BRAND_PLAN_WRITE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([answer, limit]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export async function fetchBrandPlan(brandId: string, from: string, to: string): Promise<BrandPlan> {
   const plan = await call<BrandPlan>("brand_plan_for_host", { p_brand_id: brandId, p_from: from, p_to: to });
   if (!plan || !Array.isArray(plan.items)) throw new BrandPlanError("failed", "", "The plan came back empty.");
@@ -112,8 +136,8 @@ export interface BrandPlanAddResult {
   replayed?: boolean;
 }
 
-export function addBrandPlanItem(brandId: string, item: BrandPlanNewItem, requestKey: string): Promise<BrandPlanAddResult> {
-  return call<BrandPlanAddResult>("brand_plan_host_add", { p_brand_id: brandId, p_item: item, p_request_key: requestKey });
+export function addBrandPlanItem(brandId: string, item: BrandPlanNewItem, requestKey: string, onLate?: () => void): Promise<BrandPlanAddResult> {
+  return write<BrandPlanAddResult>("brand_plan_host_add", { p_brand_id: brandId, p_item: item, p_request_key: requestKey }, onLate);
 }
 
 export interface BrandPlanChanges {
@@ -123,12 +147,12 @@ export interface BrandPlanChanges {
   note?: string | null;
 }
 
-export function updateBrandPlanItem(kind: "post" | "task", id: string, changes: BrandPlanChanges, revision: number): Promise<{ kind: string; item: BrandPlanItem }> {
-  return call("brand_plan_host_update", { p_kind: kind, p_id: id, p_changes: changes, p_expected_revision: revision });
+export function updateBrandPlanItem(kind: "post" | "task", id: string, changes: BrandPlanChanges, revision: number, onLate?: () => void): Promise<{ kind: string; item: BrandPlanItem }> {
+  return write("brand_plan_host_update", { p_kind: kind, p_id: id, p_changes: changes, p_expected_revision: revision }, onLate);
 }
 
-export function removeBrandPlanItem(kind: "post" | "task", id: string, revision: number): Promise<{ kind: string; id: string; removed: boolean }> {
-  return call("brand_plan_host_remove", { p_kind: kind, p_id: id, p_expected_revision: revision });
+export function removeBrandPlanItem(kind: "post" | "task", id: string, revision: number, onLate?: () => void): Promise<{ kind: string; id: string; removed: boolean }> {
+  return write("brand_plan_host_remove", { p_kind: kind, p_id: id, p_expected_revision: revision }, onLate);
 }
 
 // ---------------------------------------------------------------------------
@@ -211,12 +235,20 @@ export function addMonths(month: string, count: number): string {
 const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
 
 // The same site rule as the server (brand_plan_link_host): there must be a site,
-// short enough to be an address, that stays one site once a browser folds it.
+// short enough to be an address, that a person can read as what it opens. Refused:
+// "www." with nothing after it, anything that folds into a character that breaks a
+// site name or into an extra full stop, % (a browser decodes it into another site)
+// and an IP address in any spelling.
 function hasBrandPlanSite(value: string): boolean {
   const raw = /^https:\/\/([^/?#:]+)/.exec(value)?.[1];
   if (!raw || [...raw].length > 253) return false;
-  const host = raw.toLowerCase().normalize("NFKC").toLowerCase().replace(/\u3002/g, ".");
-  return !/[/?#@:\\\s]/.test(host) && /[^.]/.test(host);
+  const stops = raw.replace(/[\u3002\uFF0E\uFF61]/g, ".");
+  const host = stops.toLowerCase().normalize("NFKC").toLowerCase();
+  const lastLabel = host.replace(/\.$/, "").split(".").pop() ?? "";
+  return !/[/?#@:\\\s%<>^|[\]]/.test(host)
+    && /[^.]/.test(host.replace(/^www\./, ""))
+    && host.split(".").length === stops.split(".").length
+    && !/^(\d+|0x[0-9a-f]*)$/.test(lastLabel);
 }
 
 /** https only, in lower case as the server wants it, with a site, nothing hidden and nothing before the site name. */

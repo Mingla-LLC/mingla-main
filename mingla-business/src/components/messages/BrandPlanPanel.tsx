@@ -2,7 +2,7 @@
 // a month grid. Hosts see Mingla as "Mingla", never a staff name (D19). Titles
 // wrap and are never cut. Links open only when they pass the same check the
 // server applies.
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,7 +22,6 @@ import {
   mapBrandPlanError,
   type BrandPlanItem,
 } from "../../services/brandPlanService";
-import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -38,6 +37,7 @@ interface Props {
 }
 
 const MAX_DOTS = 3;
+const SHEET_GONE_SAFETY_MS = 3000;
 const KNOWN_STATES = new Set(["planned", "being_made", "in_review", "scheduled", "posted", "todo", "doing", "done", "live", "draft", "happened", "on_mingla"]);
 
 export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): React.ReactElement {
@@ -51,6 +51,10 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
   const [menuItem, setMenuItem] = useState<BrandPlanItem | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "warn" | "error"; message: string } | null>(null);
+  // The words stay on the card while it slides away, so it never shows blank.
+  const lastToast = useRef(toast);
+  if (toast) lastToast.current = toast;
+  const shownToast = toast ?? lastToast.current;
   const grid = useMemo(() => brandPlanMonthGrid(month), [month]);
   const windowFrom = segment === "timeline" ? addIsoDays(deviceToday, -7) : grid[0];
   const windowTo = segment === "timeline" ? addIsoDays(deviceToday, 90) : grid[grid.length - 1];
@@ -75,24 +79,57 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
     if (!isBrandPlanLink(url)) return;
     void Linking.openURL(url).catch(() => setToast({ kind: "error", message: t("plan.link_failed") }));
   };
-  const closeMenu = (): void => { setMenuItem(null); setConfirmRemove(false); };
-  // iOS presents one native modal at a time. Toast is its own, so words raised
-  // as a sheet closes wait until it has gone, or iOS drops them (#1360).
-  const toastAfterSheet = (next: NonNullable<typeof toast>): void => deferAfterDismiss(() => setToast(next));
-  // In the wide rail the form is not a sheet, so there is nothing to wait for.
-  const toastAfterForm = (next: NonNullable<typeof toast>): void => { if (compact) setToast(next); else toastAfterSheet(next); };
+  // iOS shows one native modal at a time: the menu, the form and the words
+  // (Toast) are each one. A second one raised while another is still up is
+  // dropped, and the screen stops answering (W4 retest P0-1, P2-A). So nothing
+  // opens until the one before it has really gone: each sheet reports that
+  // (Sheet onDismissed), and whatever waits for it runs then.
+  const leaving = useRef({ menu: false, form: false });
+  const waiting = useRef<(() => void)[]>([]);
+  const whenSheetsGone = (next: () => void): void => {
+    if (leaving.current.menu || leaving.current.form) waiting.current.push(next);
+    else next();
+  };
+  const sheetGone = (which: "menu" | "form"): void => {
+    leaving.current[which] = false;
+    if (leaving.current.menu || leaving.current.form) return;
+    const queued = waiting.current;
+    waiting.current = [];
+    for (const next of queued) next();
+  };
+  // Safety only: if a sheet never reports that it has gone, the plan must not
+  // stay shut. It is far longer than a sheet takes to go, even on a busy phone.
+  const closing = useRef({ menu: 0, form: 0 });
+  const startLeaving = (which: "menu" | "form"): void => {
+    leaving.current[which] = true;
+    const token = ++closing.current[which];
+    setTimeout(() => { if (closing.current[which] === token && leaving.current[which]) sheetGone(which); }, SHEET_GONE_SAFETY_MS);
+  };
+  const closeMenu = (): void => {
+    if (menuItem !== null) startLeaving("menu");
+    setMenuItem(null);
+    setConfirmRemove(false);
+  };
+  const closeForm = (): void => {
+    // In the wide rail the form is not a sheet, so there is nothing to wait for.
+    if (form !== null && !compact) startLeaving("form");
+    setForm(null);
+  };
+  const say = (next: NonNullable<typeof toast>): void => whenSheetsGone(() => setToast(next));
+  const openMenu = (item: BrandPlanItem): void => whenSheetsGone(() => setMenuItem(item));
+  const openForm = (next: NonNullable<typeof form>): void => whenSheetsGone(() => setForm(next));
   const openEdit = (field: BrandPlanEdit["field"], item: BrandPlanItem): void => {
     closeMenu();
-    setForm({ edit: { field, item }, initialDate: null });
+    openForm({ edit: { field, item }, initialDate: null });
   };
   async function confirmRemoval(item: BrandPlanItem): Promise<void> {
     try {
       await remove.mutateAsync(item);
       closeMenu();
-      toastAfterSheet({ kind: "success", message: t("plan.removed") });
+      say({ kind: "success", message: t("plan.removed") });
     } catch (cause) {
       closeMenu();
-      toastAfterSheet({ kind: "error", message: t(`plan.${brandPlanErrorKey(mapBrandPlanError(cause), "save_failed")}`) });
+      say({ kind: "error", message: t(`plan.${brandPlanErrorKey(mapBrandPlanError(cause), "save_failed")}`) });
     }
   }
 
@@ -103,7 +140,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
     return (
       <Pressable
         key={`${item.kind}-${item.id}`}
-        onLongPress={item.can_edit ? () => setMenuItem(item) : undefined}
+        onLongPress={item.can_edit ? () => openMenu(item) : undefined}
         style={styles.row}
         testID={`brand-plan-item-${item.id}`}
       >
@@ -114,7 +151,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
           </View>
           <View style={styles.chip}><Text style={styles.chipText}>{stateWords}</Text></View>
           {item.can_edit ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={t("plan.menu_a11y", { title: item.title })} hitSlop={4} onPress={() => setMenuItem(item)} style={styles.menuButton} testID={`brand-plan-menu-${item.id}`}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t("plan.menu_a11y", { title: item.title })} hitSlop={4} onPress={() => openMenu(item)} style={styles.menuButton} testID={`brand-plan-menu-${item.id}`}>
               <Icon name="moreH" size={18} color={textTokens.secondary} />
             </Pressable>
           ) : null}
@@ -249,7 +286,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
           </View>
           {body}
           {canAdd && form === null && menuItem === null ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={t("plan.submit")} onPress={() => setForm({ edit: null, initialDate: addDate })} style={[styles.fab, { bottom: insets.bottom + spacing.md }]} testID="brand-plan-add">
+            <Pressable accessibilityRole="button" accessibilityLabel={t("plan.submit")} onPress={() => openForm({ edit: null, initialDate: addDate })} style={[styles.fab, { bottom: insets.bottom + spacing.md }]} testID="brand-plan-add">
               <Icon name="plus" size={18} color="#101216" />
               <Text style={styles.fabText}>{t("plan.add_fab")}</Text>
             </Pressable>
@@ -265,12 +302,13 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
         titleMax={plan?.title_max ?? BRAND_PLAN_TITLE_LIMIT}
         initialDate={form?.initialDate ?? null}
         edit={form?.edit ?? null}
-        onClose={() => setForm(null)}
-        onDone={(key) => { setForm(null); toastAfterForm({ kind: "success", message: t(`plan.${key}`) }); }}
-        onStale={(key) => { setForm(null); toastAfterForm({ kind: "warn", message: t(`plan.${key}`) }); }}
+        onClose={closeForm}
+        onDone={(key) => { closeForm(); say({ kind: "success", message: t(`plan.${key}`) }); }}
+        onStale={(key) => { closeForm(); say({ kind: "warn", message: t(`plan.${key}`) }); }}
+        onDismissed={() => sheetGone("form")}
       />
 
-      <Sheet visible={menuItem !== null} onClose={closeMenu} snapPoint="half" dismissDisabled={remove.isPending} testID="brand-plan-menu-sheet">
+      <Sheet visible={menuItem !== null} onClose={closeMenu} onDismissed={() => sheetGone("menu")} snapPoint="half" dismissDisabled={remove.isPending} testID="brand-plan-menu-sheet">
         {menuItem ? (
           <View style={styles.menu}>
             <Text style={styles.menuTitle}>{menuItem.title}</Text>
@@ -291,7 +329,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
         ) : <View />}
       </Sheet>
 
-      <Toast visible={toast !== null} kind={toast?.kind ?? "success"} message={toast?.message ?? ""} onDismiss={() => setToast(null)} />
+      <Toast visible={toast !== null} kind={shownToast?.kind ?? "success"} message={shownToast?.message ?? ""} onDismiss={() => setToast(null)} />
     </View>
   );
 }

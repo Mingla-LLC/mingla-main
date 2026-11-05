@@ -10,7 +10,7 @@ const mockQuery: Record<string, unknown> = {};
 const mockAdd = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
-const mockPending = { add: false };
+const mockPending = { add: false, update: false };
 const mockOpenURL = jest.fn(() => Promise.resolve());
 const mockKeyboardDismiss = jest.fn();
 
@@ -28,7 +28,7 @@ jest.mock("../../../hooks/useBrandPlan", () => ({
   useBrandPlan: () => mockQuery,
   useBrandPlanWrites: () => ({
     add: { mutateAsync: mockAdd, isPending: mockPending.add },
-    update: { mutateAsync: mockUpdate, isPending: false },
+    update: { mutateAsync: mockUpdate, isPending: mockPending.update },
     remove: { mutateAsync: mockRemove, isPending: false },
   }),
 }));
@@ -38,9 +38,13 @@ function mockProbe(name: string) {
     require("react").createElement(name, props, props.children as React.ReactNode);
 }
 jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: mockProbe("SmartScroll") }));
-jest.mock("../../ui/Sheet", () => ({ Sheet: (props: Record<string, unknown>) => props.visible
+// The last props each sheet got, so a test can say when the sheet has gone.
+const mockSheets: Record<string, Record<string, unknown>> = {};
+jest.mock("../../ui/Sheet", () => ({ Sheet: (props: Record<string, unknown>) => {
+  mockSheets[String(props.testID)] = props;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  ? require("react").createElement("SheetProbe", props, props.children as React.ReactNode) : null }));
+  return props.visible ? require("react").createElement("SheetProbe", props, props.children as React.ReactNode) : null;
+} }));
 jest.mock("../../ui/SheetMobile", () => ({ UNMOUNT_DELAY_MS: 280 }));
 jest.mock("../../ui/Modal", () => ({ UNMOUNT_DELAY_MS: 200 }));
 jest.mock("../../ui/Toast", () => ({ Toast: mockProbe("ToastProbe") }));
@@ -162,6 +166,34 @@ describe("the link check agrees with the server", () => {
       expect({ good, ok: service.isBrandPlanLink(good) }).toEqual({ good, ok: true });
     }
   });
+
+  it("W4 retest: www with nothing after it, % in a site, IP addresses and dead lookalike stops are refused", () => {
+    for (const bad of ["https://www./x", "https://WWW./x", "https://www../x",
+      "https://canva.com%2eevil.example/", "https://canva%2ecom/", "https://%d1%81anva.example/", "https://canva\uFF05com/",
+      "https://134744072/", "https://8.8.8.8/", "https://8.8.8.8./", "https://0x8.0x8.0x8.0x8/", "https://0x/", "https://\uFF11\uFF12\uFF13/", "https://[2606:4700:4700::1111]/", "https://canva\uFF3Bcom/",
+      "https://canva\u2024com/", "https://canva\u2025com/", "https://canva\u2026com/", "https://a\u24881com/", "https://a\u33C2com/", "https://canva\uFE52com/", "https://canva\u{1F100}com/",
+      "https://a<b.example/", "https://a>b.example/", "https://a^b.example/", "https://a|b.example/", "https://a\uFF1Cb.example/", "https://a\uFF5Cb.example/"]) {
+      expect({ bad, ok: service.isBrandPlanLink(bad) }).toEqual({ bad, ok: false });
+    }
+    for (const good of ["https://www.canva.com/x", "https://www/x", "https://canva.com./x", "https://canva\u3002com/x", "https://canva\uFF0Ecom/x", "https://canva\uFF61com/x",
+      "https://canva.com/50%25-off", "https://canva.com/8.8.8.8", "https://1password.com/", "https://a1.b2/", "https://0xcafe.example/"]) {
+      expect({ good, ok: service.isBrandPlanLink(good) }).toEqual({ good, ok: true });
+    }
+  });
+  it("W4 retest: no character folds to plain punctuation a browser refuses in a site", () => {
+    const dead: string[] = [];
+    for (let point = 0x80; point <= 0x1FFFF; point += 1) {
+      if (point >= 0xD800 && point <= 0xDFFF) continue;
+      const char = String.fromCodePoint(point);
+      const folded = char.normalize("NFKC").toLowerCase();
+      // Letters and digits from a newer Unicode than this runtime's are not this rule's business.
+      if (folded === char || !/^[\x21-\x7e]+$/.test(folded) || /^[a-z0-9]+$/.test(folded)) continue;
+      const link = `https://canva${char}com/`;
+      if (!service.isBrandPlanLink(link)) continue;
+      try { new URL(link); } catch { dead.push(point.toString(16)); }
+    }
+    expect(dead).toEqual([]);
+  });
 });
 
 describe("weeks and months", () => {
@@ -272,26 +304,52 @@ describe("the Add to plan form", () => {
     expect(byId(root, "brand-plan-what")?.props.value).toHaveLength(95);
     expect(byId(root, "brand-plan-what")?.props.maxLength).toBe(90);
   });
-  it("tapping outside only puts the keyboard away; Cancel closes", async () => {
+  it("D32: with nothing typed, tap outside, drag, Android back and web Escape close the sheet", async () => {
     const onClose = jest.fn();
     const { root } = await mountForm({ onClose });
+    const sheetNode = root.findAll((n) => n.type === "SheetProbe")[0];
+    expect((sheetNode.props.dismissGuard as () => boolean)()).toBe(false);
+    expect(sheetNode.props.dismissDisabled).toBeFalsy();
+  });
+  it("D32: with something typed the sheet holds and only the keyboard goes; Cancel still closes", async () => {
+    const onClose = jest.fn();
+    const { root } = await mountForm({ onClose });
+    await type(root, "brand-plan-what", "Still here");
     const sheetNode = root.findAll((n) => n.type === "SheetProbe")[0];
     expect((sheetNode.props.dismissGuard as () => boolean)()).toBe(true);
     (sheetNode.props.onRequestClose as () => void)();
     expect(mockKeyboardDismiss).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
-    await type(root, "brand-plan-what", "Still here");
     expect(byId(root, "brand-plan-what")?.props.value).toBe("Still here");
     await press(byId(root, "brand-plan-cancel"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-  it("the Change sheets share that rule", async () => {
+  it("D32: typing and clearing it again lets go of the sheet", async () => {
+    const { root } = await mountForm({});
+    await type(root, "brand-plan-what", "x");
+    expect((root.findAll((n) => n.type === "SheetProbe")[0].props.dismissGuard as () => boolean)()).toBe(true);
+    await type(root, "brand-plan-what", "");
+    expect((root.findAll((n) => n.type === "SheetProbe")[0].props.dismissGuard as () => boolean)()).toBe(false);
+  });
+  it("D32: a Change sheet holds only once its value differs from what it opened with", async () => {
+    const { root } = await mountForm({ edit: { field: "link", item: item({ link: { url: "https://canva.com/a", site: "canva.com" } }) } });
+    const guard = (): boolean => (root.findAll((n) => n.type === "SheetProbe")[0].props.dismissGuard as () => boolean)();
+    expect(guard()).toBe(false);
+    await type(root, "brand-plan-link", "https://canva.com/b");
+    expect(guard()).toBe(true);
+    await type(root, "brand-plan-link", "https://canva.com/a");
+    expect(guard()).toBe(false);
+  });
+  it("D32: a running save holds the sheet even with nothing changed, and Cancel waits for it", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    mockUpdate.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    mockPending.update = true;
     const onClose = jest.fn();
-    const { root } = await mountForm({ onClose, edit: { field: "link", item: item() } });
-    const sheetNode = root.findAll((n) => n.type === "SheetProbe")[0];
-    expect((sheetNode.props.dismissGuard as () => boolean)()).toBe(true);
-    (sheetNode.props.onRequestClose as () => void)();
-    expect(onClose).not.toHaveBeenCalled();
+    const { root } = await mountForm({ onClose, edit: { field: "date", item: item() } });
+    expect((root.findAll((n) => n.type === "SheetProbe")[0].props.dismissGuard as () => boolean)()).toBe(true);
+    expect(byId(root, "brand-plan-cancel")?.props.disabled).toBe(true);
+    answer({});
+    mockPending.update = false;
   });
   it("a change the plan has moved past closes the form with the words", async () => {
     mockUpdate.mockRejectedValue(new service.BrandPlanError("stale_write", "stale_write", "This changed."));
@@ -303,12 +361,14 @@ describe("the Add to plan form", () => {
   });
 });
 
-describe("words after a sheet closes (iOS shows one native modal at a time)", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { DEFER_SETTLE_MS } = require("../../../utils/deferAfterDismiss") as typeof import("../../../utils/deferAfterDismiss");
+describe("one native modal at a time: nothing opens until the sheet before it has gone (W4 retest P0-1, P2-A)", () => {
   const toastOf = (root: TestNode): TestNode => root.findAll((n) => n.type === "ToastProbe")[0];
-  const settle = async (ms: number): Promise<void> => { await TestRenderer.act(async () => { jest.advanceTimersByTime(ms); }); };
-  beforeEach(() => { jest.useFakeTimers(); });
+  const gone = async (testID: string): Promise<void> => {
+    await TestRenderer.act(async () => { (mockSheets[testID].onDismissed as () => void)(); });
+  };
+  const formOpen = (): boolean => mockSheets["brand-plan-add-sheet"]?.visible === true;
+  const menuOpen = (): boolean => mockSheets["brand-plan-menu-sheet"]?.visible === true;
+  beforeEach(() => { jest.useFakeTimers(); for (const key of Object.keys(mockSheets)) delete mockSheets[key]; });
   afterEach(() => { jest.useRealTimers(); });
 
   async function openAndSubmit(root: TestNode): Promise<void> {
@@ -316,37 +376,83 @@ describe("words after a sheet closes (iOS shows one native modal at a time)", ()
     await type(root, "brand-plan-what", "Menu");
     await press(root.findAll((n) => n.props.testID === "brand-plan-submit")[0]);
   }
-  it("Add: no toast while the sheet is closing, then the words", async () => {
+  for (const [route, button] of [["date", "brand-plan-change-date"], ["link", "brand-plan-change-link"]] as const) {
+    it(`menu, then Change ${route}: the form opens only once the menu sheet has gone`, async () => {
+      const root = await mountPanel(plan([item()]));
+      await press(byId(root, "brand-plan-menu-i1"));
+      expect(menuOpen()).toBe(true);
+      await press(root.findAll((n) => n.props.testID === button)[0]);
+      expect(menuOpen()).toBe(false);
+      expect(formOpen()).toBe(false);
+      await TestRenderer.act(async () => { jest.advanceTimersByTime(2000); });
+      expect(formOpen()).toBe(false);
+      await gone("brand-plan-menu-sheet");
+      expect(formOpen()).toBe(true);
+      expect(byId(root, "brand-plan-submit")).toBeDefined();
+    });
+  }
+  it("Add: the words wait for the sheet to go, however long that takes", async () => {
     mockAdd.mockResolvedValue({ kind: "post", status: "added", item: item() });
     const root = await mountPanel(plan([]));
     await openAndSubmit(root);
+    expect(formOpen()).toBe(false);
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(2000); });
     expect(toastOf(root).props.visible).toBe(false);
-    await settle(DEFER_SETTLE_MS - 1);
-    expect(toastOf(root).props.visible).toBe(false);
-    await settle(1);
+    await gone("brand-plan-add-sheet");
     expect(toastOf(root).props).toMatchObject({ visible: true, kind: "success", message: "plan.added_post" });
   });
-  it("Remove: the same, and a refused remove keeps its words", async () => {
+  it("Remove: removed and locked words both arrive once the menu has gone", async () => {
     mockRemove.mockResolvedValueOnce({ removed: true }).mockRejectedValueOnce(new service.BrandPlanError("locked", "locked", "x"));
     const root = await mountPanel(plan([item()]));
     for (const message of ["plan.removed", "plan.err_locked"]) {
       await press(byId(root, "brand-plan-menu-i1"));
       await press(root.findAll((n) => n.props.testID === "brand-plan-remove")[0]);
       await press(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")[0]);
-      expect(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")).toHaveLength(0);
-      await settle(DEFER_SETTLE_MS);
+      expect(menuOpen()).toBe(false);
+      expect(toastOf(root).props.visible).toBe(false);
+      await gone("brand-plan-menu-sheet");
       expect(toastOf(root).props).toMatchObject({ visible: true, message });
       await TestRenderer.act(async () => { (toastOf(root).props.onDismiss as () => void)(); });
     }
   });
-  it("Change: a stale change closes the sheet and its words still arrive", async () => {
-    mockUpdate.mockRejectedValue(new service.BrandPlanError("stale_write", "stale_write", "This changed."));
+  it("Change: stale and locked words arrive once the form has gone", async () => {
+    for (const [code, kind, message] of [["stale_write", "warn", "plan.stale"], ["locked", "warn", "plan.err_locked"]] as const) {
+      mockUpdate.mockRejectedValueOnce(new service.BrandPlanError(code, code, "x"));
+      const root = await mountPanel(plan([item()]));
+      await press(byId(root, "brand-plan-link-edit-i1"));
+      await press(root.findAll((n) => n.props.testID === "brand-plan-submit")[0]);
+      expect(formOpen()).toBe(false);
+      expect(toastOf(root).props.visible).toBe(false);
+      await gone("brand-plan-add-sheet");
+      expect(toastOf(root).props).toMatchObject({ visible: true, kind, message });
+    }
+  });
+  it("a sheet asked for while another is going waits its turn", async () => {
+    mockAdd.mockResolvedValue({ kind: "post", status: "added", item: item() });
     const root = await mountPanel(plan([item()]));
     await press(byId(root, "brand-plan-link-edit-i1"));
-    await press(root.findAll((n) => n.props.testID === "brand-plan-submit")[0]);
-    expect(toastOf(root).props.visible).toBe(false);
-    await settle(DEFER_SETTLE_MS);
-    expect(toastOf(root).props).toMatchObject({ visible: true, kind: "warn", message: "plan.stale" });
+    await press(root.findAll((n) => n.props.testID === "brand-plan-cancel")[0]);
+    await press(byId(root, "brand-plan-menu-i1"));
+    expect(menuOpen()).toBe(false);
+    await gone("brand-plan-add-sheet");
+    expect(menuOpen()).toBe(true);
+  });
+  it("if a sheet never says it has gone, the plan opens again after a while", async () => {
+    const root = await mountPanel(plan([item()]));
+    await press(byId(root, "brand-plan-menu-i1"));
+    await press(root.findAll((n) => n.props.testID === "brand-plan-change-date")[0]);
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(2999); });
+    expect(formOpen()).toBe(false);
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(1); });
+    expect(formOpen()).toBe(true);
+  });
+  it("the words stay on the card while it slides away", async () => {
+    mockAdd.mockResolvedValue({ kind: "post", status: "added", item: item() });
+    const root = await mountPanel(plan([]));
+    await openAndSubmit(root);
+    await gone("brand-plan-add-sheet");
+    await TestRenderer.act(async () => { (toastOf(root).props.onDismiss as () => void)(); });
+    expect(toastOf(root).props).toMatchObject({ visible: false, kind: "success", message: "plan.added_post" });
   });
   it("in the wide rail the form is not a sheet, so the words show at once", async () => {
     mockAdd.mockResolvedValue({ kind: "task", status: "added", item: item() });
@@ -355,6 +461,93 @@ describe("words after a sheet closes (iOS shows one native modal at a time)", ()
     await TestRenderer.act(async () => { renderer = TestRenderer.create(<BrandPlanPanel brandId="b1" compact />); });
     await openAndSubmit(renderer.root);
     expect(toastOf(renderer.root).props.visible).toBe(true);
+  });
+});
+
+describe("a sheet reports when it has really gone (useSheetGone)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require("react-native") as { Platform: { OS: string } };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useSheetGone } = require("../../ui/useSheetGone") as typeof import("../../ui/useSheetGone");
+  let latest: ReturnType<typeof useSheetGone> = { waiting: false, onModalDismiss: undefined };
+  function Probe({ mounted, onDismissed }: { mounted: boolean; onDismissed?: () => void }): null {
+    latest = useSheetGone(mounted, onDismissed);
+    return null;
+  }
+  const os = RN.Platform.OS;
+  afterEach(() => { RN.Platform.OS = os; });
+  it("iOS: stays in the tree until the Modal's own dismissal, then says so once", async () => {
+    RN.Platform.OS = "ios";
+    const done = jest.fn();
+    let r!: { update: (n: React.ReactElement) => void };
+    await TestRenderer.act(async () => { r = TestRenderer.create(<Probe mounted onDismissed={done} />) as unknown as typeof r; });
+    expect(latest.waiting).toBe(false);
+    await TestRenderer.act(async () => { r.update(<Probe mounted={false} onDismissed={done} />); });
+    expect(latest.waiting).toBe(true);
+    expect(done).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => { latest.onModalDismiss?.(); });
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(latest.waiting).toBe(false);
+    await TestRenderer.act(async () => { latest.onModalDismiss?.(); });
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it("Android and web: says so once it has unmounted", async () => {
+    RN.Platform.OS = "android";
+    const done = jest.fn();
+    let r!: { update: (n: React.ReactElement) => void };
+    await TestRenderer.act(async () => { r = TestRenderer.create(<Probe mounted onDismissed={done} />) as unknown as typeof r; });
+    await TestRenderer.act(async () => { r.update(<Probe mounted={false} onDismissed={done} />); });
+    expect(latest.waiting).toBe(false);
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it("a sheet that does not ask keeps the old path", async () => {
+    RN.Platform.OS = "ios";
+    let r!: { update: (n: React.ReactElement) => void };
+    await TestRenderer.act(async () => { r = TestRenderer.create(<Probe mounted />) as unknown as typeof r; });
+    await TestRenderer.act(async () => { r.update(<Probe mounted={false} />); });
+    expect(latest).toEqual({ waiting: false, onModalDismiss: undefined });
+  });
+});
+
+describe("a write that never answers (W4 retest P2-C)", () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const supa = require("../../../services/supabase") as { supabase: { rpc: jest.Mock } };
+  it("fails at 25 s with the failed words; a late answer only reads the plan again", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    supa.supabase.rpc.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    const late = jest.fn();
+    const result = service.addBrandPlanItem("b1", { type: "post", title: "x", on: TODAY }, "plan_key_12345", late);
+    const caught = result.catch((cause: unknown) => cause);
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(service.BRAND_PLAN_WRITE_TIMEOUT_MS - 1); });
+    expect(late).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(1); });
+    const error = (await caught) as InstanceType<typeof service.BrandPlanError>;
+    expect({ code: error.code, token: error.token }).toEqual({ code: "network", token: "timed_out" });
+    expect(service.brandPlanErrorKey(error, "add_failed")).toBe("add_failed");
+    expect(service.brandPlanErrorKey(error, "save_failed")).toBe("save_failed");
+    await TestRenderer.act(async () => { answer({ data: { status: "added" }, error: null }); });
+    expect(late).toHaveBeenCalledTimes(1);
+  });
+  it("an answer in time clears the clock and never reads as late", async () => {
+    supa.supabase.rpc.mockResolvedValue({ data: { kind: "post", id: "i1", removed: true }, error: null });
+    const late = jest.fn();
+    await expect(service.removeBrandPlanItem("post", "i1", 1, late)).resolves.toMatchObject({ removed: true });
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(60_000); });
+    expect(late).not.toHaveBeenCalled();
+  });
+  it("the form: failed words, Cancel back, values kept, and a retry sends the same key", async () => {
+    mockAdd.mockRejectedValueOnce(new service.BrandPlanError("network", "timed_out", "x")).mockResolvedValueOnce({ kind: "post", status: "added", item: item() });
+    const { root, done } = await mountForm();
+    await type(root, "brand-plan-what", "Hung add");
+    await press(byId(root, "brand-plan-submit"));
+    expect(String((byId(root, "brand-plan-failed") as TestNode).children)).toContain("plan.add_failed");
+    expect(byId(root, "brand-plan-cancel")?.props.disabled).toBe(false);
+    expect(byId(root, "brand-plan-what")?.props.value).toBe("Hung add");
+    await press(byId(root, "brand-plan-submit"));
+    expect(mockAdd.mock.calls[1][0].requestKey).toBe(mockAdd.mock.calls[0][0].requestKey);
+    expect(done).toHaveBeenCalledWith("added_post");
   });
 });
 

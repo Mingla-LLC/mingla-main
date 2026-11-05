@@ -42,11 +42,12 @@ export function useBrandPlan(brandId: string | null, from: string, to: string) {
 export function useBrandPlanWrites(brandId: string) {
   const queryClient = useQueryClient();
   const refresh = (): Promise<void> => queryClient.invalidateQueries({ queryKey: brandPlanKeys.brand(brandId) });
+  const refreshLate = (): void => { void refresh(); };
   const refreshIfStale = (cause: unknown): void => {
     if (cause instanceof BrandPlanError && (cause.code === "stale_write" || cause.code === "not_found" || cause.code === "locked")) void refresh();
   };
   const add = useMutation({
-    mutationFn: ({ item, requestKey }: { item: BrandPlanNewItem; requestKey: string }) => addBrandPlanItem(brandId, item, requestKey),
+    mutationFn: ({ item, requestKey }: { item: BrandPlanNewItem; requestKey: string }) => addBrandPlanItem(brandId, item, requestKey, refreshLate),
     onSuccess: refresh,
     // Refused as too long: the brand's name changed, so the plan's limit did too.
     onError: (cause) => {
@@ -55,12 +56,12 @@ export function useBrandPlanWrites(brandId: string) {
   });
   const update = useMutation({
     mutationFn: ({ item, changes }: { item: BrandPlanItem; changes: BrandPlanChanges }) =>
-      updateBrandPlanItem(item.kind as "post" | "task", item.id, changes, item.revision ?? 0),
+      updateBrandPlanItem(item.kind as "post" | "task", item.id, changes, item.revision ?? 0, refreshLate),
     onSuccess: refresh,
     onError: refreshIfStale,
   });
   const remove = useMutation({
-    mutationFn: (item: BrandPlanItem) => removeBrandPlanItem(item.kind as "post" | "task", item.id, item.revision ?? 0),
+    mutationFn: (item: BrandPlanItem) => removeBrandPlanItem(item.kind as "post" | "task", item.id, item.revision ?? 0, refreshLate),
     onSuccess: refresh,
     onError: refreshIfStale,
   });

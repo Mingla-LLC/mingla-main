@@ -45,7 +45,8 @@ export interface BrandPlanAddSheetProps {
   /** Saved: `key` is the copy to show under plan. */
   onDone: (key: string) => void;
   /** A change the server refused because the plan moved on: the sheet closes. */
-  onStale?: (key: string) => void;
+  onStale?: (key: string) => void;  /** The sheet has fully gone (see Sheet's onDismissed). Never called inline. */
+  onDismissed?: () => void;
 }
 
 function initialForm(today: string, initialDate: string | null | undefined, edit: BrandPlanEdit | null | undefined): BrandPlanFormValues {
@@ -58,24 +59,29 @@ function initialForm(today: string, initialDate: string | null | undefined, edit
   };
 }
 
-// Tapping outside or dragging only puts the keyboard away. The sheet holds what
-// the host typed, so only Cancel closes it (D31).
-const holdTheSheet = (): boolean => true;
 const putKeyboardAway = (): void => Keyboard.dismiss();
 
 export function BrandPlanAddSheet(props: BrandPlanAddSheetProps): React.ReactElement | null {
   const { visible, inline = false, onClose } = props;
   const writes = useBrandPlanWrites(props.brandId);
   const busy = writes.add.isPending || writes.update.isPending;
+  const [typed, setTyped] = useState(false);
+  useEffect(() => {
+    if (!visible) setTyped(false);
+  }, [visible]);
   if (inline) return visible ? <PlanForm {...props} writes={writes} /> : null;
+  // While something is typed or a save is running, tapping outside, dragging,
+  // Android back and web Escape keep the sheet and only put the keyboard away.
+  // Otherwise all four close it (D32). Cancel closes it unless a save is running.
+  const holdTheSheet = (): boolean => busy || typed;
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="full" dismissDisabled={busy} dismissGuard={holdTheSheet} onRequestClose={putKeyboardAway} testID="brand-plan-add-sheet">
-      {visible ? <PlanForm {...props} writes={writes} /> : <View />}
+    <Sheet visible={visible} onClose={onClose} snapPoint="full" dismissGuard={holdTheSheet} onRequestClose={putKeyboardAway} onDismissed={props.onDismissed} testID="brand-plan-add-sheet">
+      {visible ? <PlanForm {...props} writes={writes} onTypedChange={setTyped} /> : <View />}
     </Sheet>
   );
 }
 
-function PlanForm({ today, titleMax: planTitleMax, initialDate, edit, onClose, onDone, onStale, writes }: BrandPlanAddSheetProps & { writes: ReturnType<typeof useBrandPlanWrites> }): React.ReactElement {
+function PlanForm({ today, titleMax: planTitleMax, initialDate, edit, onClose, onDone, onStale, writes, onTypedChange }: BrandPlanAddSheetProps & { writes: ReturnType<typeof useBrandPlanWrites>; onTypedChange?: (typed: boolean) => void }): React.ReactElement {
   const { t } = useBusinessMediaTranslation();
   const { add, update } = writes;
   const network = useNetInfoSafe();
@@ -108,6 +114,12 @@ function PlanForm({ today, titleMax: planTitleMax, initialDate, edit, onClose, o
   useEffect(() => {
     setRefusedAt(null);
   }, [planTitleMax]);
+
+  // "Typed" means changed from what the form opened with.
+  const typed = JSON.stringify(form) !== JSON.stringify(initialForm(today, initialDate, edit));
+  useEffect(() => {
+    onTypedChange?.(typed);
+  }, [onTypedChange, typed]);
 
   const problems = edit
     ? brandPlanFormProblems({ ...form, type: "post", title: edit.item.title }, today).filter((p) => p.field === (edit.field === "date" ? "on" : "link"))

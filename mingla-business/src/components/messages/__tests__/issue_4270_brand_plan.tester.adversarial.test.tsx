@@ -354,9 +354,11 @@ describe("the title limit and the site name, against what the server refuses", (
   });
 
   it("words raised as a sheet closes wait for it, and the Add sheet holds what was typed", () => {
-    expect(PANEL).toMatch(/toastAfterSheet\(\{ kind: "success", message: t\("plan\.removed"\) \}\)/);
+    // W5: words wait for the sheet to have really gone (Sheet onDismissed), not a timer.
+    expect(PANEL).toMatch(/say\(\{ kind: "success", message: t\("plan\.removed"\) \}\)/);
     expect(PANEL).not.toMatch(/setToast\(\{ kind: "success", message: t\("plan\.removed"\) \}\)/);
-    expect(PANEL).toMatch(/onStale=\{\(key\) => \{ setForm\(null\); toastAfterForm\(/);
+    expect(PANEL).toMatch(/onStale=\{\(key\) => \{ closeForm\(\); say\(/);
+    expect(PANEL).toMatch(/onDismissed=\{\(\) => sheetGone\("menu"\)\}/);
     const sheet = fs.readFileSync(path.join(ROOT, "mingla-business/src/components/messages/BrandPlanAddSheet.tsx"), "utf8");
     expect(sheet).toMatch(/dismissGuard=\{holdTheSheet\}/);
     expect(sheet).toMatch(/maxLength=\{titleMax\}/);
