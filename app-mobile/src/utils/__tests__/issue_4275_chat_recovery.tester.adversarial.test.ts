@@ -153,6 +153,7 @@ Deno.test("AX-A3 leaving during an in-flight read with a queued trigger makes no
   assertEquals(rig.rebuilds(), 0);
   assertEquals(rig.pending(), 0);
   rig.recovery.onStatus("changes", "SUBSCRIBED");
+  assertEquals(rig.pending(), 0, "SUBSCRIBED after leaving arms nothing");
   rig.recovery.onStatus("changes", "CLOSED");
   rig.recovery.onSystemError("changes");
   rig.recovery.onResume();
