@@ -34,7 +34,7 @@ describe("template coverage", () => {
   // three Host inbox types to the same exhaustive catalog.
   // [TEST-MOD-APPROVED #3645] Late and debt-withheld payout states lift the
   // exhaustive catalog from 25 to 27.
-  // #4271 added business.door_tap_not_completed (a Tap to Pay sale that ended
+  // [TEST-MOD-APPROVED #4271] business.door_tap_not_completed (a Tap to Pay sale that ended
   // with the app closed): 28.
   test("28 business types include payout, Community, support, Brand groups, discounts and the door tap", () => {
     expect(TYPES).toHaveLength(28);
