@@ -17,6 +17,7 @@ type MockRow = Record<string, unknown>;
 const mockCounts = { profiles: 0, reads: 0 };
 let mockMessageRows: MockRow[] = [];
 let mockProfileFails = false;
+let mockProfileDelayMs = 1;
 let mockProfileMissing = false;
 
 function mockThenable(result: unknown) {
@@ -45,7 +46,7 @@ jest.mock("../supabase", () => ({
                     : mockProfileFails
                     ? { data: null, error: { code: "57014", message: "statement timeout" } }
                     : { data: { display_name: "Other" }, error: null },
-                ), 1));
+                ), mockProfileDelayMs));
               },
             }),
           }),
@@ -237,5 +238,36 @@ describe("#4275 tester: sender names in getMessages", () => {
     expect(internals.senderProfileCache.size).toBe(0);
     const source = require("fs").readFileSync(require("path").join(__dirname, "../../utils/authCleanup.ts"), "utf8") as string;
     expect(source).toMatch(/messagingService\.clearSenderNames\(\)/);
+  });
+
+  it("P3-C confirm: a sender whose read keeps failing, with no name stored anywhere, stays degraded on every read", async () => {
+    mockMessageRows = rowsWithoutSnapshot(2, "always-failing-sender");
+    mockProfileFails = true;
+    try {
+      for (let read = 0; read < 9; read += 1) {
+        expect((await messagingService.getMessages("c1", "me")).degraded).toBe(true);
+      }
+    } finally {
+      mockProfileFails = false;
+    }
+  });
+
+  it("pinned (P4): a name lookup in flight at sign-out still writes the old account's answer afterwards", async () => {
+    messagingService.clearSenderNames();
+    mockMessageRows = rowsWithoutSnapshot(1, "in-flight-at-sign-out");
+    mockProfileFails = true;
+    mockProfileDelayMs = 30;
+    const internals = messagingService as unknown as { failedSenderLookups: Set<string>; senderProfileCache: Map<string, unknown> };
+    try {
+      const page = messagingService.getMessages("c1", "me");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      messagingService.clearSenderNames(); // sign-out while the lookup is on the wire
+      await page;
+      expect(internals.failedSenderLookups.has("in-flight-at-sign-out")).toBe(true);
+    } finally {
+      mockProfileFails = false;
+      mockProfileDelayMs = 1;
+      messagingService.clearSenderNames();
+    }
   });
 });
