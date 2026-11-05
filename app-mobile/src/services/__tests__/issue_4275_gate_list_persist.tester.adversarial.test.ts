@@ -4,8 +4,8 @@
 //
 // FAILS-ON-REVERT, each proven at the tester commit recorded on #4275:
 //   - `inFlight.delete(key)` removed from the gate: AX-G2 fails (a failure sticks).
-//   - `.finally` slot release moved to the success path: AX-G3 fails (a rejected
-//     call wedges the Home feed).
+//   - slot released on success only: AX-G3 fails (a rejected call wedges the Home
+//     feed).
 //   - `failed` back to ignoring a timeout with no list: AX-L1 fails.
 //   - retry count raised or made unbounded: AX-L2 fails.
 //   - `status === "error"` branch removed from serializePersistedQuery: AX-P1 fails.

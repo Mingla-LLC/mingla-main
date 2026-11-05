@@ -8,8 +8,9 @@
 // FAILS-ON-REVERT, each proven at the tester commit recorded on #4275:
 //   - cap check removed from armPoll: AX-A1 fails (reads grow without bound).
 //   - cap check removed from armRebuild: AX-A2 and AX-A6 fail.
-//   - `catchUpQueued = false` removed from dispose: AX-A3 fails.
-//   - `!canWork()` removed from the poll timer: AX-A4 fails.
+//   - `if (disposed) return` removed from onStatus: AX-A3 fails.
+//   - `!canWork()` removed from the poll timer: AX-A4 fails (timers keep waking the
+//     phone in the background).
 //   - CATCH_UP_MIN_INTERVAL_MS gate removed from requestCatchUp: AX-A5 fails.
 //   - armRebuild removed from the CLOSED branch: AX-A7 fails (no rebuild).
 //
@@ -151,9 +152,11 @@ Deno.test("AX-A3 leaving during an in-flight read with a queued trigger makes no
   assertEquals(rig.reads(), 1);
   assertEquals(rig.rebuilds(), 0);
   assertEquals(rig.pending(), 0);
+  rig.recovery.onStatus("changes", "SUBSCRIBED");
   rig.recovery.onStatus("changes", "CLOSED");
   rig.recovery.onSystemError("changes");
   rig.recovery.onResume();
+  assertEquals(rig.pending(), 0, "events after leaving arm nothing");
   await rig.advance(10 * MINUTE);
   assertEquals(rig.reads(), 1, "events after leaving are no-ops");
   assertEquals(rig.rebuilds(), 0);
@@ -167,6 +170,8 @@ Deno.test("AX-A4 an hour in the background does no work, and returning does one 
   rig.recovery.onStatus("changes", "CHANNEL_ERROR");
   rig.recovery.onStatus("broadcast", "CLOSED");
   rig.setActive(false);
+  await rig.advance(20 * SECOND);
+  assertEquals(rig.pending(), 0, "parked after the first due timer, not waking the phone again");
   await rig.advance(60 * MINUTE);
   assertEquals(rig.reads(), before, "no background reads");
   assertEquals(rig.rebuilds(), 0, "no background rebuilds");

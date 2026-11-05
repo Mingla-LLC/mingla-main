@@ -56,12 +56,12 @@ DECLARE
 BEGIN
   SELECT prosecdef, provolatile, proconfig INTO r FROM pg_proc
    WHERE oid = 'public.fetch_local_signal_ranked_batch(jsonb)'::regprocedure;
-  IF NOT r.prosecdef OR r.provolatile <> 's' OR NOT ('search_path=public' = ANY(r.proconfig)) THEN
+  IF NOT r.prosecdef OR r.provolatile <> 's' OR NOT COALESCE('search_path=public' = ANY(r.proconfig), false) THEN
     RAISE EXCEPTION 'T2: batch definer shape wrong: % % %', r.prosecdef, r.provolatile, r.proconfig;
   END IF;
   SELECT prosecdef, provolatile, proconfig INTO r FROM pg_proc
    WHERE oid = 'public.fetch_feed_places_by_ids(uuid[])'::regprocedure;
-  IF r.prosecdef OR r.provolatile <> 's' OR NOT ('search_path=public' = ANY(r.proconfig)) THEN
+  IF r.prosecdef OR r.provolatile <> 's' OR NOT COALESCE('search_path=public' = ANY(r.proconfig), false) THEN
     RAISE EXCEPTION 'T2: hydrate shape wrong: % % %', r.prosecdef, r.provolatile, r.proconfig;
   END IF;
 END;
