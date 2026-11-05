@@ -25,10 +25,11 @@ let mockQuote: Record<string, unknown> = {};
 const mockQuoteArgs: Array<Record<string, unknown>> = [];
 let mockSales: unknown[] = [];
 let mockTapAvailable = false;
+const mockPush = jest.fn();
 let mockParams: Record<string, string> = { id: "event-1", saleId: "sale-1", code: "K7Q2M9XA" };
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ replace: jest.fn(), push: jest.fn(), back: jest.fn(), canGoBack: () => true }),
+  useRouter: () => ({ replace: jest.fn(), push: mockPush, back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => mockParams,
 }));
 jest.mock("react-native-safe-area-context", () => ({
@@ -73,6 +74,8 @@ jest.mock("../../ui/Sheet", () => ({
     visible ? children : null,
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+jest.mock("../tap/TapToPayIcon", () => ({ TapToPayIcon: () => null }));
+jest.mock("../../../services/terminal/tapToPaySession", () => ({ getTapToPaySession: () => ({ readerReady: false }) }));
 jest.mock("../../ui/IconChrome", () => ({ IconChrome: () => null }));
 jest.mock("../../ui/Toast", () => ({ Toast: () => null }));
 jest.mock("../../ui/GlassCard", () => ({
@@ -216,6 +219,108 @@ describe("#4271 sale sheet, pay code total", () => {
   });
 });
 
+describe("#4271 B8 the Tap to Pay button", () => {
+  const openSheet = (extra: Record<string, unknown> = {}, lines: unknown[] = [{ ticketTypeId: "tier-1", quantity: 2 }]) => (
+    <DoorSaleNewSheet
+      visible
+      event={{ id: "event-1", currency: "GBP", tickets: [tier] } as never}
+      onClose={jest.fn()}
+      onSuccess={jest.fn()}
+      initialLines={lines as never}
+      brand={null}
+      {...extra}
+    />
+  );
+  const pressable = (root: ReactTestInstance, label: string): ReactTestInstance =>
+    root.findAll((n) => n.type === "Text" && typeof n.props.onPress === "function" && n.children.includes(label))[0] as ReactTestInstance;
+
+  beforeEach(() => {
+    mockQuote = { data: { totalCents: 3135, subtotalCents: 3000, feeCents: 135, currency: "GBP" }, isLoading: false };
+    mockPush.mockClear();
+    mockTapAvailable = true;
+  });
+  afterEach(() => {
+    mockTapAvailable = false;
+  });
+
+  test("it is the default when available, in Apple's words, and is the top row", () => {
+    const { root } = mount(openSheet());
+    const text = textOf(root);
+    expect(text).toContain("Tap to Pay on iPhone");
+    const rows = root.findAll((n) => typeof n.props.testID === "string" && n.props.testID.startsWith("door-sale-method-") && typeof n.type === "string");
+    expect(rows[0]?.props.testID).toBe("door-sale-method-tap_to_pay");
+    expect(text).toContain("Take £31.35");
+  });
+
+  test("an empty basket: not greyed, pressing says why and does not start the sale", () => {
+    const { root } = mount(openSheet({}, []));
+    act(() => {
+      pressable(root, "Tap to Pay on iPhone").props.onPress();
+    });
+    expect(textOf(root)).toContain("Pick at least one ticket first.");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  test("with tickets it goes straight to the tap route", () => {
+    const { root } = mount(openSheet());
+    act(() => {
+      pressable(root, "Tap to Pay on iPhone").props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(String(mockPush.mock.calls[0]?.[0])).toContain("/door/tap/new");
+  });
+
+  test("with cash chosen, a Tap to Pay button stays in the dock, outside the scroll list", () => {
+    const { root } = mount(openSheet({ initialMethod: "cash" }));
+    const dock = root.findAll((n) => n.props.testID === "door-sale-tap-dock");
+    expect(dock.length).toBeGreaterThan(0);
+    const scrolls = root.findAll((n) => n.type === "RCTScrollView");
+    for (const scroll of scrolls) {
+      expect(scroll.findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
+    }
+    act(() => {
+      pressable(root, "Tap to Pay on iPhone").props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  test("the host's own choice is not overridden when Tap to Pay resolves late", () => {
+    mockTapAvailable = false;
+    const tree = mount(openSheet({ initialMethod: "cash" }));
+    mockTapAvailable = true;
+    act(() => {
+      (tree as unknown as { update: (e: React.ReactElement) => void }).update(openSheet({ initialMethod: "cash" }));
+    });
+    expect(textOf(tree.root)).toContain("Complete sale");
+  });
+
+  test("the tap dock asks the server for the total", () => {
+    mockQuoteArgs.length = 0;
+    mount(openSheet());
+    expect(mockQuoteArgs[mockQuoteArgs.length - 1]).toMatchObject({ enabled: true });
+  });
+
+  test("before the quote answers: only the tickets, and a note the tap screen has the total", () => {
+    mockQuote = { data: undefined, isLoading: true };
+    const text = textOf(mount(openSheet()).root);
+    expect(text).toContain("Tickets");
+    expect(text).toContain("The tap screen shows the final total, with any fees.");
+    expect(text).not.toContain("Take £");
+  });
+
+  test("tax added at checkout: the refusal, no amount, and no sale starts", () => {
+    mockQuote = { data: undefined, isLoading: false, isError: true, error: { code: "door_tax_added_at_checkout" } };
+    const { root } = mount(openSheet());
+    const text = textOf(root);
+    expect(text).toContain("because tax is added at checkout");
+    expect(root.findAll((n) => n.props.testID === "door-sale-dock-total")).toHaveLength(0);
+    act(() => {
+      pressable(root, "Tap to Pay on iPhone").props.onPress();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
 describe("#4271 scanner invite copy", () => {
   const invite = (paymentProvider: "stripe" | "paystack" | null): string =>
     textOf(
@@ -304,7 +409,6 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
     mockParams = { id: "event-1", saleId: "sale-1", code: "K7Q2M9XA" };
   });
 
-  // The one DEFECT left red after phase 1: APPLE_BUILD_CONTRACT.md (phase 2) owns the tap dock amount.
   test("DEFECT: Take <amount> names what door-tap-intent charges when guests pay fees", () => {
     mockTapAvailable = true;
     mockQuote = {

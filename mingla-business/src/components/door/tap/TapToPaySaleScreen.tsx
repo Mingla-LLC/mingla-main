@@ -22,6 +22,7 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import {
+  TAP_TO_PAY_SHORT,
   tapReaderProblemCanRetry,
   tapReaderProblemCopy,
   tapReaderProblemTitle,
@@ -214,7 +215,7 @@ export const TapToPaySaleScreen = ({
   const chrome = (
     <View style={styles.chromeRow}>
       <IconChrome icon="close" size={36} onPress={handleClose} accessibilityLabel="Close" />
-      <Text style={styles.chromeTitle}>Tap to pay</Text>
+      <Text style={styles.chromeTitle}>{TAP_TO_PAY_SHORT}</Text>
       <View style={styles.chromeRightSlot} />
     </View>
   );
@@ -256,7 +257,7 @@ export const TapToPaySaleScreen = ({
           <TapStatusView
             tone="bad"
             icon="tap"
-            title="Tap to pay isn't available here"
+            title={`${TAP_TO_PAY_SHORT} isn't available here`}
             body="This brand can't take taps. Use a pay code instead. It works on any phone."
             primary={{ label: "Use a pay code", onPress: () => void showPayCodeInstead(), loading: payCodeBusy }}
           />

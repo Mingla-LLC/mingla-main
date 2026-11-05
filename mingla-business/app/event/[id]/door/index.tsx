@@ -11,7 +11,7 @@
  * I-21: operator-side route. Uses useAuth.
  * I-29: door sales are read from server orders through React Query.
  *
- * issue #4271 — card money at the door (Buyer's phone, Tap to pay) shows a
+ * issue #4271 — card money at the door (Buyer's phone, Tap to Pay) shows a
  * Mingla fee line and is paid out with online sales; "Sell at door" opens the
  * sale sheet, also reopened with the last tickets by the pay code screen.
  *

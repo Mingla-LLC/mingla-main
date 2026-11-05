@@ -15,6 +15,7 @@
  * Per Cycle 9c spec §3.4.2 + §3.4.4 + §3.4.5.
  */
 
+import { TAP_TO_PAY_SHORT } from "../../../../src/constants/tapToPayCopy";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -95,12 +96,12 @@ const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   google_pay: "Google Pay",
   free: "Free",
   // Door methods. issue #4271 — card money taken at the door (Buyer's phone,
-  // Tap to pay) IS an online order and is refunded to the card from here.
+  // Tap to Pay) IS an online order and is refunded to the card from here.
   cash: "Cash",
   manual: "Manual",
   card_reader: "Card reader",
   pay_code: "Buyer's phone (door)",
-  tap_to_pay: "Tap to pay (door)",
+  tap_to_pay: `${TAP_TO_PAY_SHORT} (door)`,
 };
 
 const hashStringToHue = (s: string): number => {

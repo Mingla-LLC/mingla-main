@@ -27,6 +27,7 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import {
+  TAP_TO_PAY_SHORT,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
   tapToPaySetupButtonLabel,
@@ -249,7 +250,7 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
       <TapStatusView
         tone="bad"
         icon="tap"
-        title="Tap to pay isn't available here"
+        title={`${TAP_TO_PAY_SHORT} isn't available here`}
         body="This brand can't take taps. Use a pay code instead. It works on any phone."
         primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
       />

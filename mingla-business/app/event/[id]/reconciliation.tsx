@@ -28,6 +28,7 @@
  * Per Cycle 13 SPEC §4.3.2 + ORCH-0796 reframe (real expected-payout wiring).
  */
 
+import { TAP_TO_PAY_SHORT } from "../../../src/constants/tapToPayCopy";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -594,7 +595,7 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
         value={fmt(summary.revenueByMethod.cash)}
       />
       {/* issue #4271 — card money at the door rides the online rail, so its
-          fee is counted like online card. Tap to pay never appears in a market
+          fee is counted like online card. Tap to Pay never appears in a market
           where it can't work (Nigeria) unless it somehow holds money. */}
       <SectionRow
         label="Buyer's phone (door)"
@@ -602,7 +603,7 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
       />
       {currency !== "NGN" || summary.revenueByMethod.tap_to_pay > 0 ? (
         <SectionRow
-          label="Tap to pay (door)"
+          label={`${TAP_TO_PAY_SHORT} (door)`}
           value={fmt(summary.revenueByMethod.tap_to_pay)}
         />
       ) : null}

@@ -226,7 +226,7 @@ export async function fetchEventDoorSales(eventId: string): Promise<DoorSaleReco
     `)
     .eq("event_id", eventId)
     // issue #4271 — every sale taken at the door: cash/manual door orders and
-    // card money at the door (Buyer's phone, Tap to pay) on the online rail.
+    // card money at the door (Buyer's phone, Tap to Pay) on the online rail.
     .not("door_payment_method", "is", null)
     .order("created_at", { ascending: false });
   if (error !== null) throw new DoorSaleError(error.code ?? "door_sales_load_failed", error.message);

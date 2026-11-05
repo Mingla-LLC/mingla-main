@@ -1,5 +1,5 @@
 /**
- * #4271 — may this phone offer "Tap to pay" for this event's brand?
+ * #4271 — may this phone offer "Tap to Pay" for this event's brand?
  *
  * Returns {available, needsSetup, reason}. Tap to Pay is hidden (never shown
  * greyed out) unless every one of these holds:

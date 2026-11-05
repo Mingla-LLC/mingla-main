@@ -25,7 +25,7 @@ import type {
   DoorTapIntent,
 } from "./doorTapEdge";
 import { DoorTapError } from "./doorTapEdge";
-import { type TapReaderProblem } from "../../constants/tapToPayCopy";
+import { TAP_TO_PAY_SHORT, type TapReaderProblem } from "../../constants/tapToPayCopy";
 
 // ---- Minimal structural views of the SDK objects we read ----------------
 
@@ -232,7 +232,7 @@ const serverMessage = (error: unknown): string => {
       case "door_access_denied":
         return "You don't have permission to take payments at this door. Ask the brand owner.";
       case "tap_not_available":
-        return "Tap to pay isn't available for this brand. Use a pay code instead.";
+        return `${TAP_TO_PAY_SHORT} isn't available for this brand. Use a pay code instead.`;
       case "stripe_account_not_ready":
         return "Card payments aren't set up for this brand yet. Use cash or a pay code.";
       case "door_tax_added_at_checkout":

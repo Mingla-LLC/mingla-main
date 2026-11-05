@@ -162,7 +162,7 @@ export const paymentMethodFromRow = (
   doorMethod?: string | null,
 ): OrderRecord["paymentMethod"] => {
   // issue #4271 — card money taken at the door is an online-rail order; its
-  // door method (Buyer's phone / Tap to pay) is what the host recognises.
+  // door method (Buyer's phone / Tap to Pay) is what the host recognises.
   if (doorMethod === "pay_code" || doorMethod === "tap_to_pay") return doorMethod;
   if (method === "online_card") return "card";
   if (method === "apple_pay" || method === "google_pay" || method === "free") return method;

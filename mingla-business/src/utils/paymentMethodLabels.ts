@@ -7,6 +7,7 @@
  * issue #4271 — the door method set is cash, manual, card reader (disabled,
  * coming later), buyer's phone (pay code) and tap to pay. "NFC tap" is gone.
  */
+import { TAP_TO_PAY_SHORT } from "../constants/tapToPayCopy";
 
 import type { DoorPaymentMethod } from "../types/doorSales";
 
@@ -15,7 +16,7 @@ export const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
   manual: "Manual",
   card_reader: "Card reader",
   pay_code: "Buyer's phone",
-  tap_to_pay: "Tap to pay",
+  tap_to_pay: TAP_TO_PAY_SHORT,
 };
 
 /** issue #4271 — the short pill text shown on door sale rows. */

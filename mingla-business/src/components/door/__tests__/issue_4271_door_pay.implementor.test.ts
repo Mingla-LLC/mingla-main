@@ -14,6 +14,7 @@ import {
   buildDoorPaymentOptions,
   doorMethodCollectsBuyerDetails,
   doorSaleButtonLabel,
+  doorTapBlockReason,
   scannerDoorPaymentsCopy,
 } from "../doorPaymentOptions";
 import {
@@ -72,33 +73,34 @@ describe("#4271 door sale payment list", () => {
     );
   });
 
-  test("Tap to pay appears only when available, second, with setup copy when needed", () => {
+  test("Tap to Pay appears only when available, first, with setup copy when needed", () => {
     const ready = buildDoorPaymentOptions({
       eventCurrency: "USD",
       tapToPay: { available: true, needsSetup: false },
       platform: "ios",
     });
-    expect(ready.map((o) => o.id)).toEqual(["pay_code", "tap_to_pay", "cash", "manual", "card_reader"]);
-    expect(ready[1].sub).toBe("Take a card or phone on this iPhone.");
+    expect(ready.map((o) => o.id)).toEqual(["tap_to_pay", "pay_code", "cash", "manual", "card_reader"]);
+    expect(ready[0].sub).toBe("Take a card or phone on this iPhone.");
     const android = buildDoorPaymentOptions({
       eventCurrency: "GBP",
       tapToPay: { available: true, needsSetup: false },
       platform: "android",
     });
-    expect(android[1].sub).toBe("Take a card or phone on this phone.");
+    expect(android[0].sub).toBe("Take a card or phone on this phone.");
     const setup = buildDoorPaymentOptions({
       eventCurrency: "GBP",
       tapToPay: { available: true, needsSetup: true },
       platform: "ios",
     });
-    expect(setup[1].sub).toBe("Set up once on this phone. About 2 minutes.");
+    expect(setup[0].sub).toBe("Set up once on this phone. About 2 minutes.");
   });
 
   test("the button says what happens next; a pay code hides buyer details", () => {
-    expect(doorSaleButtonLabel("pay_code", "£30.00")).toBe("Show pay code");
-    expect(doorSaleButtonLabel("tap_to_pay", "£30.00")).toBe("Take £30.00");
-    expect(doorSaleButtonLabel("cash", "£30.00")).toBe("Complete sale");
-    expect(doorSaleButtonLabel("manual", "£30.00")).toBe("Complete sale");
+    expect(doorSaleButtonLabel("pay_code", "ios")).toBe("Show pay code");
+    expect(doorSaleButtonLabel("tap_to_pay", "ios")).toBe("Tap to Pay on iPhone");
+    expect(doorSaleButtonLabel("tap_to_pay", "android")).toBe("Tap to Pay");
+    expect(doorSaleButtonLabel("cash", "ios")).toBe("Complete sale");
+    expect(doorSaleButtonLabel("manual", "ios")).toBe("Complete sale");
     expect(doorMethodCollectsBuyerDetails("pay_code")).toBe(false);
     expect(doorMethodCollectsBuyerDetails("cash")).toBe(true);
   });
@@ -109,7 +111,7 @@ describe("#4271 door sale payment list", () => {
       manual: "Manual",
       card_reader: "Card reader",
       pay_code: "Buyer's phone",
-      tap_to_pay: "Tap to pay",
+      tap_to_pay: "Tap to Pay",
     });
     expect(PAYMENT_METHOD_PILLS).toEqual({
       cash: "CASH",
@@ -418,5 +420,58 @@ describe("#4271 card money at the door", () => {
     expect(summary.grossRevenue).toBe(71.35);
     expect(summary.doorCardMinglaFee).toBe(1.41);
     expect(Object.keys(summary.revenueByMethod)).not.toContain("nfc");
+  });
+});
+
+describe("#4271 B8 Tap to Pay on top, in Apple's words", () => {
+  const options = (platform: string) =>
+    buildDoorPaymentOptions({ eventCurrency: "GBP", tapToPay: { available: true, needsSetup: false }, platform });
+
+  test("first on both platforms, named for the platform exactly", () => {
+    expect(options("ios")[0]).toMatchObject({ id: "tap_to_pay", label: "Tap to Pay on iPhone" });
+    expect(options("android")[0]).toMatchObject({ id: "tap_to_pay", label: "Tap to Pay" });
+  });
+
+  test("the block reasons say what is missing, in order", () => {
+    const clear = {
+      hasLines: true,
+      dateMissing: false,
+      currencyMissing: false,
+      permissionLoading: false,
+      emailInvalid: false,
+      phoneInvalid: false,
+      notesInvalid: false,
+    };
+    expect(doorTapBlockReason(clear)).toBeNull();
+    expect(doorTapBlockReason({ ...clear, hasLines: false, dateMissing: true })).toBe("Pick at least one ticket first.");
+    expect(doorTapBlockReason({ ...clear, dateMissing: true })).toBe("Pick a date first.");
+    expect(doorTapBlockReason({ ...clear, permissionLoading: true })).toBe("Checking your door access…");
+  });
+
+  test("no door surface says Tap to pay with a small p", () => {
+    const root = path.join(__dirname, "..", "..", "..", "..");
+    const offenders: string[] = [];
+    const walk = (rel: string): void => {
+      const abs = path.join(root, rel);
+      if (!fs.existsSync(abs)) return;
+      if (fs.statSync(abs).isFile()) {
+        if (fs.readFileSync(abs, "utf8").includes("Tap to pay")) offenders.push(rel);
+        return;
+      }
+      for (const entry of fs.readdirSync(abs)) {
+        if (entry !== "__tests__") walk(path.join(rel, entry));
+      }
+    };
+    [
+      "src/components/door",
+      "src/services/terminal",
+      "src/constants/tapToPayCopy.ts",
+      "src/utils/paymentMethodLabels.ts",
+      "src/hooks/useTapToPayAvailability.ts",
+      "app/event/[id]/door",
+      "app/event/[id]/reconciliation.tsx",
+      "app/event/[id]/orders/[oid]/index.tsx",
+    ].forEach(walk);
+    expect(offenders).toEqual([]);
   });
 });

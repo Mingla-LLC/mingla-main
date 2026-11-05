@@ -512,3 +512,13 @@ describe("B7 progress from the SDK", () => {
     }
   });
 });
+
+describe("B8 the mark", () => {
+  test("iPhone uses Apple's SF Symbol only, loaded lazily, with no fallback art", () => {
+    const icon = fs.readFileSync(path.join(BIZ_ROOT, "src/components/door/tap/TapToPayIcon.tsx"), "utf8");
+    expect(icon).toContain('"wave.3.right.circle.fill"');
+    expect(icon).toContain('require("expo-symbols")');
+    expect(icon).not.toMatch(/^import .*expo-symbols/m);
+    expect(icon).toContain("if (SymbolView === null) return null;");
+  });
+});

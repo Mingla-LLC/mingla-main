@@ -96,7 +96,7 @@ export interface EventMoneySummary {
    */
   expectedPayoutMajor: number | null;
   /**
-   * issue #4271 — Mingla's fee on card door sales (Buyer's phone, Tap to pay)
+   * issue #4271 — Mingla's fee on card door sales (Buyer's phone, Tap to Pay)
    * in expected-currency major units. Cash and manual carry no fee. Card
    * money is paid out with online sales.
    */

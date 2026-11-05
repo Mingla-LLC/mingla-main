@@ -16,7 +16,7 @@
  * I-30 — door tier filter: `t.visibility !== "hidden" && t.availableAt !== "online"`.
  *
  * issue #4271 — payment methods, in order: Buyer's phone (pay code: the guest
- * scans a code and pays on their own phone), Tap to pay (only where it works,
+ * scans a code and pays on their own phone), Tap to Pay (only where it works,
  * see useTapToPayAvailability), Cash, Manual, and a disabled Card reader row
  * ("Card machines are coming later."). Card money rides the online payment
  * rail; cash and manual are recorded through biz_door_sale_record. The whole
@@ -65,6 +65,8 @@ import {
   useCreateDoorPayCode,
   useDoorPayCodeQuote,
 } from "../../hooks/useEventDoorSales";
+import { tapToPayName } from "../../constants/tapToPayCopy";
+import { TapToPayIcon } from "./tap/TapToPayIcon";
 import { getTapToPaySession } from "../../services/terminal/tapToPaySession";
 import { markDoorTapPress } from "../../services/terminal/tapTiming";
 import { useTapToPayAvailability } from "../../hooks/useTapToPayAvailability";
@@ -86,6 +88,8 @@ import {
   doorMethodCollectsBuyerDetails,
   doorPayCodeDockTotal,
   doorSaleButtonLabel,
+  doorTapBlockReason,
+  doorTapDockTotal,
   DOOR_PAY_CODE_BUYER_NOTE,
   DOOR_PAYMENTS_NOT_ALLOWED,
   DOOR_SALE_SUBHEAD,
@@ -192,6 +196,9 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const clientRequestId = useRef<string>(randomUuid());
+  // Tap to Pay is the default once it's known to be available, until the host
+  // has chosen. Availability can resolve after the sheet opens.
+  const hostChoseMethodRef = useRef<boolean>(false);
   const recordSale = useRecordDoorSale(event.id);
   const createPayCode = useCreateDoorPayCode(event.id);
   const permission = useCanTakeDoorPayment(visible ? event.id : null);
@@ -238,6 +245,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       });
       setLines(seeded);
       setPaymentMethod(initialMethodRef.current ?? "pay_code");
+      hostChoseMethodRef.current = initialMethodRef.current !== undefined;
       setBuyerName("");
       setBuyerEmail("");
       resetBuyerPhone();
@@ -248,6 +256,12 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       clientRequestId.current = randomUuid();
     }
   }, [event.currency, resetBuyerPhone, visible]);
+
+  useEffect(() => {
+    if (!visible || !tapToPay.available || hostChoseMethodRef.current) return;
+    hostChoseMethodRef.current = true;
+    setPaymentMethod("tap_to_pay");
+  }, [visible, tapToPay.available]);
 
   const total = useMemo<number>(
     () => lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0),
@@ -339,21 +353,29 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     else if (!doorDates.some(([id]) => id === doorDateId)) setDoorDateId(null);
   }, [doorDateId, doorDateNeeded, doorDates]);
 
-  // issue #4271 — the pay code's real total comes from the server, the same
-  // pricing the code is created with. Never estimated on the phone.
+  // issue #4271 — the card total comes from the server, the same pricing a pay
+  // code or a tap is created with. Never estimated on the phone.
+  const quotesServerTotal = paymentMethod === "pay_code" || paymentMethod === "tap_to_pay";
   const payCodeQuote = useDoorPayCodeQuote({
     eventId: event.id,
     eventDateId: doorDateId,
     lines,
     enabled:
       visible &&
-      paymentMethod === "pay_code" &&
+      quotesServerTotal &&
       permission.data === true &&
       (!doorDateNeeded || doorDateId !== null),
   });
-  const payCodeDock = doorPayCodeDockTotal(payCodeQuote.data, fmtDoorMoney(total), (cents, currency) =>
-    formatCurrency(cents, currency, true),
-  );
+  const formatQuoted = (cents: number, currency: string): string => formatCurrency(cents, currency, true);
+  const quotedDock =
+    paymentMethod === "tap_to_pay"
+      ? doorTapDockTotal(payCodeQuote.data, fmtDoorMoney(total), formatQuoted)
+      : doorPayCodeDockTotal(payCodeQuote.data, fmtDoorMoney(total), formatQuoted);
+  // Tax added at checkout: the server refuses door card money, so no amount shows.
+  const taxRefused =
+    quotesServerTotal &&
+    (payCodeQuote.error as { code?: unknown } | null | undefined)?.code === "door_tax_added_at_checkout";
+  const [tapBlockedMessage, setTapBlockedMessage] = useState<string | null>(null);
 
   const canSubmit =
     !submitting &&
@@ -368,7 +390,52 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     // currency; a sale must never freeze a fabricated GBP.
     eventCurrencyCode !== null;
 
+  const startTapSale = useCallback((): void => {
+    const blocked = taxRefused
+      ? DOOR_CARD_TAX_REFUSAL
+      : doorTapBlockReason({
+          hasLines: lines.length > 0,
+          dateMissing: doorDateNeeded && doorDateId === null,
+          currencyMissing: eventCurrencyCode === null,
+          permissionLoading: permission.data !== true,
+          emailInvalid: !isValidEmailOrEmpty(buyerEmail),
+          phoneInvalid: !buyerPhone.isEmpty && buyerPhone.e164 === null,
+          notesInvalid: !notesValid,
+        });
+    setTapBlockedMessage(blocked);
+    if (blocked !== null) return;
+    // The Tap to Pay route owns the card read; we only hand over the basket.
+    postHogService.capture("door_sale_tap_started", { ticket_count: totalQty });
+    markDoorTapPress(getTapToPaySession().readerReady);
+    onClose();
+    router.push(
+      doorTapNewSaleHref(event.id, {
+        lines: lines.map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
+        eventDateId: doorDateId,
+        buyerPhone: buyerPhone.e164,
+      }) as never,
+    );
+  }, [
+    taxRefused,
+    lines,
+    doorDateNeeded,
+    doorDateId,
+    eventCurrencyCode,
+    permission.data,
+    buyerEmail,
+    buyerPhone,
+    notesValid,
+    totalQty,
+    onClose,
+    router,
+    event.id,
+  ]);
+
   const handleConfirm = useCallback(async (): Promise<void> => {
+    if (paymentMethod === "tap_to_pay") {
+      startTapSale();
+      return;
+    }
     if (!canSubmit) return;
     // #962 G5 — narrow: guaranteed non-null by canSubmit, asserted here so the
     // frozen record currency is always the event's REAL code.
@@ -377,20 +444,6 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       ticketTypeId: l.ticketTypeId,
       quantity: l.quantity,
     }));
-    if (paymentMethod === "tap_to_pay") {
-      // The Tap to Pay route owns the card read; we only hand over the basket.
-      postHogService.capture("door_sale_tap_started", { ticket_count: totalQty });
-      markDoorTapPress(getTapToPaySession().readerReady);
-      onClose();
-      router.push(
-        doorTapNewSaleHref(event.id, {
-          lines: saleLines,
-          eventDateId: doorDateId,
-          buyerPhone: buyerPhone.e164,
-        }) as never,
-      );
-      return;
-    }
     setSubmitting(true);
     setSubmitError(null);
     if (paymentMethod === "pay_code") {
@@ -456,6 +509,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     }
   }, [
     canSubmit,
+    startTapSale,
     doorDateId,
     event.id,
     eventCurrencyCode,
@@ -633,8 +687,10 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                   key={opt.id}
                   onPress={() => {
                     if (opt.disabled || submitting) return;
+                    hostChoseMethodRef.current = true;
                     setPaymentMethod(opt.id);
                     setSubmitError(null);
+                    setTapBlockedMessage(null);
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{
@@ -652,6 +708,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                 >
                   <View style={styles.paymentCol}>
                     <View style={styles.paymentLabelRow}>
+                      {opt.id === "tap_to_pay" ? <TapToPayIcon size={18} /> : null}
                       <Text
                         style={[
                           styles.paymentLabel,
@@ -796,16 +853,27 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         {/* Sticky bottom bar — total + Record sale CTA */}
         <View style={styles.dock}>
           <View style={styles.dockTotalRow}>
-            <Text style={styles.dockTotalLabel}>
-              {paymentMethod === "pay_code" ? payCodeDock.label : "Total"}
-            </Text>
-            <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
-              {paymentMethod === "pay_code" ? payCodeDock.amount : fmtDoorMoney(total)}
-            </Text>
+            {taxRefused ? null : (
+              <>
+                <Text style={styles.dockTotalLabel}>
+                  {quotesServerTotal ? quotedDock.label : "Total"}
+                </Text>
+                <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
+                  {quotesServerTotal ? quotedDock.amount : fmtDoorMoney(total)}
+                </Text>
+              </>
+            )}
           </View>
-          {paymentMethod === "pay_code" && eventCurrencyCode !== null && !payCodeDock.quoted ? (
+          {taxRefused ? (
+            <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tax-refusal">
+              {DOOR_CARD_TAX_REFUSAL}
+            </Text>
+          ) : null}
+          {quotesServerTotal && !taxRefused && eventCurrencyCode !== null && !quotedDock.quoted ? (
             <Text style={styles.currencyGateHint}>
-              The pay code shows the final total, with any fees.
+              {paymentMethod === "tap_to_pay"
+                ? "The tap screen shows the final total, with any fees."
+                : "The pay code shows the final total, with any fees."}
             </Text>
           ) : null}
           {eventCurrencyCode === null ? (
@@ -823,17 +891,48 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               {submitError}
             </Text>
           ) : null}
-          <Button
-            label={doorSaleButtonLabel(paymentMethod, fmtDoorMoney(total))}
-            onPress={handleConfirm}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={submitting}
-            disabled={!canSubmit}
-            accessibilityLabel={doorSaleButtonLabel(paymentMethod, fmtDoorMoney(total))}
-            testID="door-sale-submit"
-          />
+          {tapBlockedMessage !== null ? (
+            <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tap-blocked">
+              {tapBlockedMessage}
+            </Text>
+          ) : null}
+          {tapToPay.available && paymentMethod !== "tap_to_pay" ? (
+            <View style={styles.tapDockRow}>
+              <TapToPayIcon size={22} />
+              <View style={styles.tapDockButton}>
+                <Button
+                  label={tapToPayName(Platform.OS)}
+                  onPress={() => {
+                    hostChoseMethodRef.current = true;
+                    setPaymentMethod("tap_to_pay");
+                    startTapSale();
+                  }}
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  disabled={submitting}
+                  accessibilityLabel={tapToPayName(Platform.OS)}
+                  testID="door-sale-tap-dock"
+                />
+              </View>
+            </View>
+          ) : null}
+          <View style={paymentMethod === "tap_to_pay" ? styles.tapDockRow : undefined}>
+            {paymentMethod === "tap_to_pay" ? <TapToPayIcon size={22} /> : null}
+            <View style={paymentMethod === "tap_to_pay" ? styles.tapDockButton : undefined}>
+              <Button
+                label={doorSaleButtonLabel(paymentMethod, Platform.OS)}
+                onPress={handleConfirm}
+                variant="primary"
+                size="lg"
+                fullWidth
+                loading={submitting}
+                disabled={paymentMethod === "tap_to_pay" ? submitting : !canSubmit}
+                accessibilityLabel={doorSaleButtonLabel(paymentMethod, Platform.OS)}
+                testID="door-sale-submit"
+              />
+            </View>
+          </View>
           <View style={styles.dockSpacer} />
           <Button
             label="Cancel"
@@ -855,6 +954,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
 // ---- Styles ---------------------------------------------------------
 
 const styles = StyleSheet.create({
+  tapDockRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xs },
+  tapDockButton: { flex: 1 },
   body: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
