@@ -10,12 +10,13 @@
 // and "a warm cache" fails.
 //
 // FAILS-ON-REVERT: remove the in-flight lookup from getSenderName and the 50-row cold
-// page makes 50 profile reads.
+// page makes 50 profile reads. Cache a failed read again and the healing test fails.
 
 type MockRow = Record<string, unknown>;
 const mockCounts = { profiles: 0, reads: 0 };
 let mockMessageRows: MockRow[] = [];
 let mockProfileFails = false;
+let mockProfileMissing = false;
 
 function mockThenable(result: unknown) {
   const query: Record<string, unknown> = {};
@@ -38,7 +39,9 @@ jest.mock("../supabase", () => ({
               single: () => {
                 mockCounts.profiles += 1;
                 return new Promise((resolve) => setTimeout(() => resolve(
-                  mockProfileFails
+                  mockProfileMissing
+                    ? { data: null, error: { code: "PGRST116", message: "no rows" } }
+                    : mockProfileFails
                     ? { data: null, error: { code: "57014", message: "statement timeout" } }
                     : { data: { display_name: "Other" }, error: null },
                 ), 1));
@@ -59,8 +62,6 @@ jest.mock("../supabase", () => ({
   trackedInvoke: jest.fn(),
 }));
 
-const REPRO_UNKNOWN_NAME = false;
-
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { messagingService } = require("../messagingService") as typeof import("../messagingService");
 
@@ -79,6 +80,9 @@ describe("#4275 tester: sender names in getMessages", () => {
   beforeEach(() => {
     mockCounts.profiles = 0;
     mockCounts.reads = 0;
+    mockProfileFails = false;
+    mockProfileMissing = false;
+    jest.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   it("a warm cache makes no profile read for a page with no snapshots", async () => {
@@ -98,33 +102,44 @@ describe("#4275 tester: sender names in getMessages", () => {
     expect(mockCounts.profiles).toBe(1);
   });
 
-  it("confirmed behaviour: a failed profile read paints the page Unknown, is cached, and retries cannot heal it", async () => {
-    const { mergeMessages } = require("../../utils/mergeMessages") as typeof import("../../utils/mergeMessages");
+  it("a failed profile read is not remembered: the page says Unknown, and the next read heals it", async () => {
     mockMessageRows = rowsWithoutSnapshot(50, "failing-sender");
     mockProfileFails = true;
     const first = await messagingService.getMessages("c1", "me");
     expect(first.error).toBeNull();
     expect(new Set(first.messages.map((m) => m.sender_name))).toEqual(new Set(["Unknown"]));
-    expect(mockCounts.profiles).toBe(1);
+    expect(mockCounts.profiles).toBe(1); // still one shared lookup for the page
 
-    // The database recovers. Every retry in the next 5 minutes still reads Unknown.
-    mockProfileFails = false;
-    const retry = await messagingService.getMessages("c1", "me");
-    expect(retry.messages[0].sender_name).toBe("Unknown");
-    expect(mockCounts.profiles).toBe(1);
-
-    // And a catch-up overwrites a good name already on screen.
-    const onScreen = { id: "m0", senderName: "Good Name", timestamp: "2026-01-01T00:00:00Z" };
-    const merged = mergeMessages([onScreen] as never[], [{ ...onScreen, senderName: "Unknown" }] as never[]) as Array<typeof onScreen>;
-    expect(merged[0].senderName).toBe("Unknown");
-  });
-
-  (REPRO_UNKNOWN_NAME ? it : it.skip)("DEFECT-3 a failed profile read is not remembered", async () => {
-    mockMessageRows = rowsWithoutSnapshot(1, "healing-sender");
-    mockProfileFails = true;
-    await messagingService.getMessages("c1", "me");
     mockProfileFails = false;
     const retry = await messagingService.getMessages("c1", "me");
     expect(retry.messages[0].sender_name).toBe("Other");
+    expect(mockCounts.profiles).toBe(2);
+
+    const after = await messagingService.getMessages("c1", "me");
+    expect(after.messages[0].sender_name).toBe("Other");
+    expect(mockCounts.profiles).toBe(2); // a good answer is cached as before
+  });
+
+  it("no profile row is an answer, and is remembered", async () => {
+    mockMessageRows = rowsWithoutSnapshot(1, "deleted-sender");
+    mockProfileMissing = true;
+    await messagingService.getMessages("c1", "me");
+    const again = await messagingService.getMessages("c1", "me");
+    expect(again.messages[0].sender_name).toBe("Unknown");
+    expect(mockCounts.profiles).toBe(1);
+  });
+
+  it("a failed read does not replace an expired good name with Unknown", async () => {
+    mockMessageRows = rowsWithoutSnapshot(1, "expired-sender");
+    await messagingService.getMessages("c1", "me");
+    const realNow = Date.now;
+    Date.now = () => realNow() + 6 * 60 * 1000;
+    try {
+      mockProfileFails = true;
+      const stale = await messagingService.getMessages("c1", "me");
+      expect(stale.messages[0].sender_name).toBe("Other");
+    } finally {
+      Date.now = realNow;
+    }
   });
 });

@@ -4,7 +4,8 @@
 // invariant: I-FEED-BATCHED-LOOKUPS — the curated function makes no per-category or
 // per-anchor RPC. Cards stay the same.
 //
-// FAILS-ON-REVERT: fetch near data one anchor at a time and T-C2 fails on the
+// FAILS-ON-REVERT: send all of a standard intent's lookups in one statement and T-C2
+// fails. Fetch near data one anchor at a time and T-C2 fails on the
 // request count. Put `photos` back in the hydrate columns and T-C6 fails. Remove the
 // PGRST202 branch and T-C4 fails. Remove the anchors-exhausted break and T-C5 fails.
 // Put the auth.getUser block back and "no auth call" fails.
@@ -96,21 +97,24 @@ Deno.test({ name: "T-C2 picnic limit 5 needs one near batch; limit 2 fetches onl
   assertEquals(two.batchSizes, [1, 4], "2 anchors x 2 categories");
 } });
 
-Deno.test({ name: "T-C2 a standard type is one batch and one hydrate", ...options, fn: async () => {
+Deno.test({ name: "T-C2 a standard type sends at most 4 lookups per statement and one hydrate", ...options, fn: async () => {
   const backend = createFakeBackend();
   await withBackend(backend, () => generate({ experienceType: "first-date", limit: 10000 }));
-  assertEquals(backend.counts.ranked_batch, 1);
-  assertEquals(backend.counts.hydrate_rpc, 1);
-  assertEquals(backend.batchSizes, [8]);
+  // Seth's decision on P2-4: at most 4 lookups per statement for a standard intent.
+  assertEquals(backend.counts.ranked_batch, 2);
+  assertEquals(backend.counts.hydrate_rpc, 1, "still one hydrate for the intent");
+  assertEquals(backend.batchSizes, [4, 4]);
   assertEquals(backend.counts.ranked_single, undefined);
 } });
 
-Deno.test({ name: "SC-C1 a six-intent set is 16 ranked and 16 hydrate requests, and no auth call", ...options, fn: async () => {
+Deno.test({ name: "SC-C1 a six-intent set is 19 ranked and 16 hydrate requests, and no auth call", ...options, fn: async () => {
   const backend = createFakeBackend();
   await withBackend(backend, async () => {
     for (const experienceType of SIX_TYPES) await generate({ experienceType, limit: 10000 });
   });
-  assertEquals(backend.counts.ranked_batch, 5 + 11);
+  // 2 + 2 + 1 + 2 + 1 standard (7, 8, 4, 7, 4 lookups at 4 each), plus Picnic's 11.
+  assertEquals(backend.counts.ranked_batch, 8 + 11);
+  assertEquals(Math.max(...backend.batchSizes.slice(0, 8)), 4);
   assertEquals(backend.counts.hydrate_rpc, 5 + 11);
   assertEquals(backend.counts.auth_get_user, undefined, "the unused auth.getUser is gone");
 } });
@@ -232,6 +236,55 @@ plainTest("T-C3 each request keeps its own exclusions, photo gate, reasoning sli
   // Exactly what the single path returns for the same requests.
   for (let i = 0; i < requests.length; i += 1) {
     assertEquals(await fetchSinglesForSignalRank(client, requests[i]), [one, two, three][i]);
+  }
+});
+
+plainTest("the group splits in series, keeps each result at its own index, and hydrates once", async () => {
+  // deno-lint-ignore no-explicit-any
+  const client = stubClient({ one: RANKED.one, two: RANKED.two }) as any;
+  let inFlight = 0;
+  let most = 0;
+  const realRpc = client.rpc.bind(client);
+  client.rpc = async (name: string, args: Row) => {
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    await Promise.resolve();
+    const result = await realRpc(name, args);
+    inFlight -= 1;
+    return result;
+  };
+  const requests = ["one", "two", "none", "one", "two"].map((filter, index) =>
+    params(filter, index % 2 === 0 ? "romantic" : "lively")
+  );
+  const split = await fetchSinglesForSignalRankBatch(client, requests, 2);
+  // deno-lint-ignore no-explicit-any
+  const whole = await fetchSinglesForSignalRankBatch(stubClient({ one: RANKED.one, two: RANKED.two }) as any, requests);
+  assertEquals(split, whole, "same results as one batch");
+  assertEquals(most, 1, "one statement at a time");
+  const names = client.calls.map((c: { name: string }) => c.name);
+  assertEquals(names.filter((n: string) => n === "fetch_local_signal_ranked_batch").length, 3);
+  assertEquals(names.filter((n: string) => n === "fetch_feed_places_by_ids").length, 1);
+  assertEquals(names[names.length - 1], "fetch_feed_places_by_ids", "the hydrate comes last");
+});
+
+plainTest("a failed split call stops the rest, and a missing function still falls back", async () => {
+  let calls = 0;
+  // deno-lint-ignore no-explicit-any
+  const failing = { rpc: () => { calls += 1; return Promise.resolve({ data: null, error: { code: "57014", message: "statement timeout" } }); } } as any;
+  await assertRejects(() => fetchSinglesForSignalRankBatch(failing, [params("a", "a"), params("b", "b"), params("c", "c")], 1), Error, "statement timeout");
+  assertEquals(calls, 1);
+  // deno-lint-ignore no-explicit-any
+  await assertRejects(() => fetchSinglesForSignalRankBatch(stubClient({}) as any, [params("a", "a")], 0), Error, "outside");
+
+  const realWarn = console.warn;
+  console.warn = () => {};
+  try {
+    // deno-lint-ignore no-explicit-any
+    const fallback = await fetchSinglesForSignalRankBatch(stubClient(RANKED, { batch: false, hydrate: true }) as any, [params("one", "romantic"), params("two", "lively")], 1);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(fallback, await fetchSinglesForSignalRankBatch(stubClient(RANKED) as any, [params("one", "romantic"), params("two", "lively")]));
+  } finally {
+    console.warn = realWarn;
   }
 });
 

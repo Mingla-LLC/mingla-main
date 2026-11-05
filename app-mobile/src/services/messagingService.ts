@@ -2042,11 +2042,19 @@ export class MessagingService {
     if (inFlight) return inFlight;
 
     const lookup = (async () => {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .select('display_name, username, first_name, last_name')
         .eq('id', senderId)
         .single();
+
+      // Issue #4275: a failed read says nothing about the person, so it is not
+      // remembered: the next page may succeed. No row (PGRST116) is an answer. There
+      // is no retry here; the next attempt is the next page read, sharing one lookup.
+      if (error && error.code !== 'PGRST116') {
+        console.warn('[messagingService] sender name read failed; not caching it', error);
+        return cached?.name ?? 'Unknown';
+      }
 
       const senderName = getDisplayName(profile, 'Unknown');
 

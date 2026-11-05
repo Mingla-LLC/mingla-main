@@ -313,8 +313,8 @@ export const SIGNAL_RANK_BATCH_MAX_REQUESTS = 12;
 export const SIGNAL_RANK_BATCH_MAX_ROWS = 1000;
 
 /**
- * Issue #4275: a group of lookups as ONE ranked request and ONE hydrate, instead
- * of two requests per lookup. Results are by input index. Each request keeps its
+ * Issue #4275: a group of lookups as few ranked requests (lookupsPerRankedCall in
+ * each) and ONE hydrate, instead of two requests per lookup. Results are by input index. Each request keeps its
  * own exclusions, reasoning slice, G3 photo gate, sort and limit through the
  * shared shaper, so a batch returns what the same lookups return one at a time.
  *
@@ -324,8 +324,12 @@ export const SIGNAL_RANK_BATCH_MAX_ROWS = 1000;
 export async function fetchSinglesForSignalRankBatch(
   supabaseAdmin: SupabaseClient,
   params: SignalRankParams[],
+  lookupsPerRankedCall: number = SIGNAL_RANK_BATCH_MAX_REQUESTS,
 ): Promise<SignalRankResult[][]> {
   if (params.length === 0) return [];
+  if (!Number.isInteger(lookupsPerRankedCall) || lookupsPerRankedCall < 1 || lookupsPerRankedCall > SIGNAL_RANK_BATCH_MAX_REQUESTS) {
+    throw new Error(`[fetchSinglesForSignalRankBatch] lookupsPerRankedCall ${lookupsPerRankedCall} is outside 1-${SIGNAL_RANK_BATCH_MAX_REQUESTS}`);
+  }
   const askedRows = params.reduce((sum, p) => sum + p.limit * 2, 0);
   if (params.length > SIGNAL_RANK_BATCH_MAX_REQUESTS || askedRows > SIGNAL_RANK_BATCH_MAX_ROWS) {
     throw new Error(
@@ -333,18 +337,22 @@ export async function fetchSinglesForSignalRankBatch(
     );
   }
 
-  const { data: rankedRows, error: rpcErr } = await supabaseAdmin.rpc(
-    'fetch_local_signal_ranked_batch',
-    { p_requests: params.map(signalRankRpcArgs) },
-  );
-  if (rpcErr) {
-    if (rpcErr.code === FUNCTION_NOT_FOUND_CODE) return fetchPerRequestUntilMigrated(supabaseAdmin, params, 'fetch_local_signal_ranked_batch');
-    throw new Error(`[fetchSinglesForSignalRankBatch] RPC fetch_local_signal_ranked_batch (${params.length} requests) failed: ${rpcErr.message}`);
-  }
-
+  // In series on purpose: each call holds one database connection for its whole
+  // statement, and a failure stops the rest, since a failed call fails the intent.
   const pairsByRequest: RankedPair[][] = params.map(() => []);
-  for (const row of ((rankedRows ?? []) as Array<RankedPair & { request_index: number }>)) {
-    pairsByRequest[row.request_index]?.push({ place_id: row.place_id, rank_score: row.rank_score });
+  for (let start = 0; start < params.length; start += lookupsPerRankedCall) {
+    const chunk = params.slice(start, start + lookupsPerRankedCall);
+    const { data: rankedRows, error: rpcErr } = await supabaseAdmin.rpc(
+      'fetch_local_signal_ranked_batch',
+      { p_requests: chunk.map(signalRankRpcArgs) },
+    );
+    if (rpcErr) {
+      if (rpcErr.code === FUNCTION_NOT_FOUND_CODE) return fetchPerRequestUntilMigrated(supabaseAdmin, params, 'fetch_local_signal_ranked_batch');
+      throw new Error(`[fetchSinglesForSignalRankBatch] RPC fetch_local_signal_ranked_batch (${chunk.length} requests) failed: ${rpcErr.message}`);
+    }
+    for (const row of ((rankedRows ?? []) as Array<RankedPair & { request_index: number }>)) {
+      pairsByRequest[start + row.request_index]?.push({ place_id: row.place_id, rank_score: row.rank_score });
+    }
   }
   const idsByRequest = params.map((p, index) => unexcludedRankedIds(pairsByRequest[index], p));
   const allIds = Array.from(new Set(idsByRequest.flat()));

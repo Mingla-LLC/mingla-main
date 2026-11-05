@@ -79,9 +79,12 @@ import { buildStopPrice, sumStopPrices } from '../_shared/curatedPrice.ts';
  * 6 experience types. Category configs from seedingCategories.ts.
  * ──────────────────────────────────────────────────────────────────────────── */
 
+// Issue #4275: lookups in one statement for a standard intent. Each statement runs
+// under the 8 s limit and fails as a unit, so fewer lookups means more margin, at the
+// cost of a request: 4 gives about twice the margin of one batch of 8.
+const STANDARD_INTENT_LOOKUPS_PER_BATCH = 4;
 // Issue #4275: anchors whose near data is fetched in one batch. With 2 categories
-// each, 5 anchors is 10 lookups in one statement. How many lookups share a statement
-// is the trade-off to tune: see also SIGNAL_RANK_BATCH_MAX_REQUESTS.
+// each, 5 anchors is 10 lookups in one statement.
 const NEAR_DATA_ANCHORS_PER_BATCH = 5;
 
 const corsHeaders = {
@@ -994,9 +997,9 @@ async function generateCardsForType(
   // Issue #4275: one batch call per group of lookups. Each entry is stored under
   // its own key; a slug with no signal stores [] without a lookup. Group size is
   // bounded by the callers: at most 8 categories, or 5 anchors x 2 categories.
-  const fetchCategoryGroup = async (group: Array<{ key: string; params: SignalRankParams | null }>): Promise<void> => {
+  const fetchCategoryGroup = async (group: Array<{ key: string; params: SignalRankParams | null }>, lookupsPerRankedCall?: number): Promise<void> => {
     const lookups = group.filter((entry): entry is { key: string; params: SignalRankParams } => entry.params !== null);
-    const results = await fetchSinglesForSignalRankBatch(supabaseAdmin as any, lookups.map((entry) => entry.params));
+    const results = await fetchSinglesForSignalRankBatch(supabaseAdmin as any, lookups.map((entry) => entry.params), lookupsPerRankedCall);
     for (const entry of group) categoryPlaces[entry.key] = [];
     lookups.forEach((entry, index) => {
       categoryPlaces[entry.key] = results[index];
@@ -1014,9 +1017,10 @@ async function generateCardsForType(
 
     // Other categories will be fetched per-card near the anchor
   } else {
-    // Standard: fetch all categories near user in one batch
+    // Standard: all categories near the user, split across statements, one hydrate
     await fetchCategoryGroup(
       [...allCategoryIds].map((catId) => ({ key: catId, params: comboFetchParams(catId, lat, lng, clampedRadius) })),
+      STANDARD_INTENT_LOOKUPS_PER_BATCH,
     );
     for (const catId of allCategoryIds) {
       console.log(`[generateCardsForType:${typeDef.id}] ${catId}: ${categoryPlaces[catId].length} places`);
