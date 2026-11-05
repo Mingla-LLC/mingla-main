@@ -3,19 +3,20 @@
 // online checkout (ticket-checkout-create with body.doorCode).
 //
 // verify_jwt = false at the gateway: `view` is public (the guest has no Mingla
-// account). `quote`, `create`, `cancel` and `text_link` verify the bearer in
-// code and require issue_4271_can_take_door_payment for the event.
+// account). `quote`, `create`, `cancel`, `settle` and `text_link` verify the
+// bearer in code and require issue_4271_can_take_door_payment for the event.
+// `sweep` is cron only and checks the service role key.
 //
 // A code is a pay link, never a ticket credential. The server always prices.
 //
-// Closing a code (cancel, expiry, "Show a new code") goes through
-// issue_4271_door_pay_code_revoke, which revokes every checkout session the
-// code opened on the #1930 revocation rail, then expires the guest's Stripe
-// Checkout page now on the brand's connected account (Stripe-Account header,
-// the same idempotency key the checkout-sale-revocation worker uses, so the
-// worker finishes the job if this call fails). Paystack has no page to
-// expire: a payment that still lands is refused at finalize and refunded in
-// full by the late-payment refund.
+// Closing a code (cancel, expiry, "Show a new code", the sweep) asks Stripe
+// first. Stripe expires the guest's Checkout page or says a payment has already
+// gone through; only then does issue_4271_door_pay_code_close close the code
+// and revoke its checkout sessions on the #1930 rail. A payment that went
+// through leaves the code open so finalize makes the sale ("payment_landing").
+// An answer we can't get leaves it open too ("checking"): nobody is told
+// nothing was charged on a guess. Paystack has no page to expire: a payment that
+// still lands is refused at finalize and refunded in full, fee included.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
@@ -50,6 +51,7 @@ export interface DoorPayCodeDeps {
   userIdFromAuthHeader: (req: Request) => Promise<string | null>;
   now: () => number;
   generateCode: () => string;
+  serviceRoleKey?: () => string | undefined;
   /** The ticket checkout Stripe client; only built when a page must expire. */
   // deno-lint-ignore no-explicit-any
   stripe?: () => any;
@@ -74,60 +76,139 @@ interface StripeExpire {
   idempotencyKey: string;
 }
 
+type ClosedStatus =
+  | "cancelled"
+  | "expired"
+  | "paid"
+  | "not_found"
+  | "payment_landing"
+  | "checking";
+
+type PageAnswer = "expired" | "complete" | "unconfirmed";
+
+const pageAnswerFromStatus = (status: unknown): PageAnswer =>
+  status === "expired" ? "expired" : status === "complete" ? "complete" : "unconfirmed";
+
 /**
- * Cancels or expires a code and closes every checkout it opened. Answers the
- * code's status afterwards ('cancelled', 'expired', 'paid' or 'not_found'),
- * or null when the database call failed.
+ * Asks Stripe to expire the page. Stripe refuses a page that is no longer open,
+ * so a refusal reads the page instead: `complete` means the guest's payment went
+ * through, and anything we can't read stays unconfirmed.
  */
-async function revokeDoorPayCode(
+async function expirePage(
+  // deno-lint-ignore no-explicit-any
+  stripe: any,
+  page: StripeExpire,
+): Promise<PageAnswer> {
+  try {
+    // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+    const expired = await stripe.checkout.sessions.expire(
+      page.checkoutSessionId,
+      {},
+      {
+        stripeAccount: page.stripeAccountId,
+        idempotencyKey: page.idempotencyKey,
+      },
+    );
+    return pageAnswerFromStatus(expired?.status);
+  } catch (expireError) {
+    console.warn(
+      "[door-pay-code] stripe refused the expiry; reading the page",
+      expireError instanceof Error ? expireError.message : "unknown",
+    );
+  }
+  try {
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only; Stripe retrievals do not accept idempotency keys
+    // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+    const read = await stripe.checkout.sessions.retrieve(
+      page.checkoutSessionId,
+      {},
+      { stripeAccount: page.stripeAccountId },
+    );
+    return pageAnswerFromStatus(read?.status);
+  } catch (readError) {
+    console.warn(
+      "[door-pay-code] stripe page read failed",
+      readError instanceof Error ? readError.message : "unknown",
+    );
+    return "unconfirmed";
+  }
+}
+
+/**
+ * Closes a code in the only safe order: Stripe first, then our row. Answers the
+ * code's state afterwards, or null when the database call failed.
+ */
+async function closeDoorPayCode(
   supabase: Client,
   deps: DoorPayCodeDeps,
   codeId: string,
   status: "cancelled" | "expired",
-): Promise<string | null> {
-  const { data, error } = await supabase.rpc("issue_4271_door_pay_code_revoke", {
-    p_code_id: codeId,
-    p_status: status,
-  });
-  if (error || data === null || typeof data !== "object") {
-    console.error("[door-pay-code] revoke failed", error?.message ?? "no_result");
+): Promise<ClosedStatus | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data: live, error: liveError } = await supabase.rpc(
+      "issue_4271_door_pay_code_live_pages",
+      { p_code_id: codeId },
+    );
+    if (liveError || live === null || typeof live !== "object") {
+      console.error("[door-pay-code] live page read failed", liveError?.message ?? "no_result");
+      return null;
+    }
+    if (live.status === "paid") return "paid";
+    if (live.status === "not_found") return "not_found";
+    const pages = Array.isArray(live.pages) ? (live.pages as StripeExpire[]) : [];
+    if (pages.length > 0) {
+      // deno-lint-ignore no-explicit-any
+      let stripe: any;
+      try {
+        stripe = (deps.stripe ?? stripeTicketCheckout)();
+      } catch (clientError) {
+        console.warn(
+          "[door-pay-code] stripe client unavailable; the code stays open",
+          clientError instanceof Error ? clientError.message : "unknown",
+        );
+        return "checking";
+      }
+      for (const page of pages) {
+        const answer = await expirePage(stripe, page);
+        if (answer === "complete") return "payment_landing";
+        if (answer === "unconfirmed") return "checking";
+      }
+    }
+    const { data, error } = await supabase.rpc("issue_4271_door_pay_code_close", {
+      p_code_id: codeId,
+      p_status: status,
+      p_confirmed_pages: pages.map((page) => page.checkoutSessionId),
+    });
+    if (error || data === null || typeof data !== "object") {
+      console.error("[door-pay-code] close failed", error?.message ?? "no_result");
+      return null;
+    }
+    const closed = (data as { status?: unknown }).status;
+    if (closed === "retry") continue; // A page opened meanwhile: ask Stripe again.
+    if (
+      closed === "cancelled" || closed === "expired" || closed === "paid" ||
+      closed === "not_found"
+    ) {
+      return closed;
+    }
     return null;
   }
-  const result = data as { status?: unknown; stripeExpire?: unknown };
-  const pages = Array.isArray(result.stripeExpire)
-    ? (result.stripeExpire as StripeExpire[])
-    : [];
-  if (pages.length > 0) {
-    try {
-      const stripe = (deps.stripe ?? stripeTicketCheckout)();
-      for (const page of pages) {
-        try {
-          // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
-          await stripe.checkout.sessions.expire(
-            page.checkoutSessionId,
-            {},
-            {
-              stripeAccount: page.stripeAccountId,
-              idempotencyKey: page.idempotencyKey,
-            },
-          );
-        } catch (expireError) {
-          // The session is already revoked locally and queued on the
-          // revocation outbox; the worker retries the expiry with this key.
-          console.warn(
-            "[door-pay-code] stripe checkout expire deferred to the revocation worker",
-            expireError instanceof Error ? expireError.message : "unknown",
-          );
-        }
-      }
-    } catch (clientError) {
-      console.warn(
-        "[door-pay-code] stripe client unavailable; the revocation worker expires the page",
-        clientError instanceof Error ? clientError.message : "unknown",
-      );
-    }
+  return "checking";
+}
+
+/** A late payment on a closed code, for the guest's page. Null when none. */
+async function readLatePayment(
+  supabase: Client,
+  codeId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase.rpc("issue_4271_door_pay_code_late_read", {
+    p_code_id: codeId,
+  });
+  if (error) {
+    console.error("[door-pay-code] late payment read failed", error.message);
+    return null;
   }
-  return typeof result.status === "string" ? result.status : null;
+  return data !== null && typeof data === "object" ? data as Record<string, unknown> : null;
 }
 
 async function handleQuote(
@@ -198,10 +279,10 @@ async function handleCreate(
     if (!previous || previous.event_id !== eventId) {
       return jsonResponse({ error: "not_found" }, 404);
     }
-    const closed = await revokeDoorPayCode(supabase, deps, previous.id, "expired");
+    const closed = await closeDoorPayCode(supabase, deps, previous.id, "expired");
     if (closed === null) return jsonResponse({ error: "server_error" }, 500);
-    if (closed === "paid") {
-      return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
+    if (closed === "paid" || closed === "payment_landing" || closed === "checking") {
+      return jsonResponse({ error: "door_code_unavailable", status: closed }, 409);
     }
   }
 
@@ -267,12 +348,13 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
   }
   if (!row) return jsonResponse({ error: "not_found" }, 404);
 
-  let status = effectiveDoorCodeStatus(row.status, row.expires_at, deps.now());
+  let status: string = effectiveDoorCodeStatus(row.status, row.expires_at, deps.now());
   if (status === "expired" && row.status !== "expired") {
-    // Persist the expiry and close the checkout it opened. A payment that
-    // landed meanwhile wins: the code then reads as paid.
-    const closed = await revokeDoorPayCode(supabase, deps, row.id, "expired");
-    if (closed === "paid") status = "paid";
+    // Past its time: the same Stripe-first close as everything else, so a
+    // guest's view can never kill a payment that is going through.
+    const closed = await closeDoorPayCode(supabase, deps, row.id, "expired");
+    status = closed ?? "checking";
+    if (status === "not_found") return jsonResponse({ error: "not_found" }, 404);
   } else if (status === "open") {
     const { data: flipped } = await supabase.from("door_pay_codes")
       .update({
@@ -286,6 +368,9 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
       .maybeSingle();
     if (flipped?.status === "opened") status = "opened";
   }
+  const latePayment = status === "expired" || status === "cancelled" || status === "failed"
+    ? await readLatePayment(supabase, String(row.id))
+    : null;
 
   const lineInput = Array.isArray(row.lines) ? row.lines : [];
   const ids = lineInput.map((l: { ticketTypeId: string }) => l.ticketTypeId);
@@ -334,6 +419,9 @@ async function handleView(body: Body, deps: DoorPayCodeDeps): Promise<Response> 
     totalCents: row.total_cents,
     currency: row.currency,
     expiresAt: row.expires_at,
+    // Only a closed code with money on it adds this: amount and refund state,
+    // never who paid.
+    ...(latePayment !== null ? { latePayment } : {}),
   });
 }
 
@@ -379,15 +467,54 @@ async function handleCancel(
   if (row.status === "paid") {
     return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
   }
-  // The host is told "Nothing was charged": the code and every checkout it
-  // opened close together, under the session + code locks.
-  const closed = await revokeDoorPayCode(supabase, deps, String(row.id), "cancelled");
+  const closed = await closeDoorPayCode(supabase, deps, String(row.id), "cancelled");
   if (closed === null) return jsonResponse({ error: "server_error" }, 500);
   if (closed === "paid") {
     return jsonResponse({ error: "door_code_unavailable", status: "paid" }, 409);
   }
   if (closed === "not_found") return jsonResponse({ error: "not_found" }, 404);
-  return jsonResponse({ status: "cancelled" });
+  // "payment_landing" and "checking" leave the code open and say so.
+  return jsonResponse({ status: closed });
+}
+
+// The host's clock passed expires_at. Only the server may say what that means.
+async function handleSettle(
+  req: Request,
+  body: Body,
+  deps: DoorPayCodeDeps,
+): Promise<Response> {
+  const loaded = await loadCodeForActor(req, body, deps);
+  if (!loaded.ok) return loaded.response;
+  const { supabase, row } = loaded;
+  const status = String(row.status);
+  if (effectiveDoorCodeStatus(status, String(row.expires_at), deps.now()) !== "expired" ||
+    status === "expired") {
+    return jsonResponse({ status });
+  }
+  const closed = await closeDoorPayCode(supabase, deps, String(row.id), "expired");
+  if (closed === null) return jsonResponse({ error: "server_error" }, 500);
+  if (closed === "not_found") return jsonResponse({ error: "not_found" }, 404);
+  return jsonResponse({ status: closed });
+}
+
+// Cron only: closes codes past their time with the same Stripe-first order.
+async function handleSweep(req: Request, deps: DoorPayCodeDeps): Promise<Response> {
+  const expected = (deps.serviceRoleKey ?? (() => Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")))();
+  if (!expected || req.headers.get("authorization") !== `Bearer ${expected}`) {
+    return jsonResponse({ error: "not_authorized" }, 401);
+  }
+  const supabase = deps.serviceClient();
+  const { data, error } = await supabase.rpc("issue_4271_door_pay_codes_due", { p_limit: 50 });
+  if (error) {
+    console.error("[door-pay-code] sweep read failed", error.message);
+    return jsonResponse({ error: "server_error" }, 500);
+  }
+  const tally: Record<string, number> = {};
+  for (const codeId of Array.isArray(data) ? data as string[] : []) {
+    const closed = await closeDoorPayCode(supabase, deps, codeId, "expired") ?? "failed";
+    tally[closed] = (tally[closed] ?? 0) + 1;
+  }
+  return jsonResponse({ swept: tally });
 }
 
 async function handleTextLink(
@@ -443,6 +570,10 @@ export const createDoorPayCodeHandler = (
         return await handleView(body, deps);
       case "cancel":
         return await handleCancel(req, body, deps);
+      case "settle":
+        return await handleSettle(req, body, deps);
+      case "sweep":
+        return await handleSweep(req, deps);
       case "text_link":
         return await handleTextLink(req, body, deps);
       default:

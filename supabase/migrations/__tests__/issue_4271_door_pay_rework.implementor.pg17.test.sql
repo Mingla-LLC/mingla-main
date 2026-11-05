@@ -387,4 +387,253 @@ BEGIN
 END;
 $test$;
 
+-- =============================================================================
+-- Retest fixes, on the real hosted Stripe money shape: session.total_cents is the
+-- ticket base (3000), buyer_total_cents is the charge (3135), and Mingla's fee is
+-- stripe_application_fee_amount_cents (135) with application_fee_amount_cents 0.
+--   R-REFUND  (T2) a door code's late refund returns the whole charge, reverses
+--             the fee, and the ledger allocations and the host's read agree. A
+--             session with no door code is refunded exactly as before.
+--   R-CLOSE   (T4) a close names the pages Stripe confirmed; any other live page
+--             answers retry and closes nothing.
+--   R-LANDING (T4) a code left open because a payment is landing finalizes past
+--             its time: the money is honoured as a sale.
+--   R-DUE     (T4) the sweep sees codes past their time, and no others.
+--   R-KEPT    (T4) an order a non-finalize writer stood on a closed code is told
+--             to the host, never "nothing charged".
+--   R-LOCKS   (T8) every writer that closes or links a code takes finalize's
+--             event and brand locks first.
+-- =============================================================================
+DO $retest$
+DECLARE
+  v_owner uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_brand_ps uuid := gen_random_uuid();
+  v_event uuid := gen_random_uuid();
+  v_event_ps uuid := gen_random_uuid();
+  v_tier uuid := gen_random_uuid();
+  v_tier_ps uuid := gen_random_uuid();
+  v_code uuid;
+  v_session uuid;
+  v_order uuid;
+  v_claim jsonb;
+  v_result jsonb;
+  v_row public.source_refunds%ROWTYPE;
+  v_pepper text := 'r4271-retest-pepper-0123456789-abcdef';
+  v_fn text;
+BEGIN
+  INSERT INTO auth.users (id, email) VALUES (v_owner, 'owner.t4271@example.test');
+  INSERT INTO public.creator_accounts (id, email, display_name) VALUES (v_owner, 'owner.t4271@example.test', 'Owner');
+  INSERT INTO public.brands (id, account_id, name, slug, default_currency, pricing_currency, payment_provider, payout_hold_cutover_at)
+  VALUES (v_brand, v_owner, 'T door', 't-door-'||v_brand, 'GBP', 'GBP', 'stripe', now() - interval '1 day'),
+         (v_brand_ps, v_owner, 'T ps', 't-ps-'||v_brand_ps, 'NGN', 'NGN', 'paystack', now() - interval '1 day');
+  INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at) VALUES
+    (v_brand, v_owner, 'brand_owner', now() - interval '9 days', now() - interval '9 days'),
+    (v_brand_ps, v_owner, 'brand_owner', now() - interval '9 days', now() - interval '9 days')
+  ON CONFLICT DO NOTHING;
+  INSERT INTO public.events (id, brand_id, title, slug, event_type, status, visibility, timezone, currency) VALUES
+    (v_event, v_brand, 'T night', 't-night-'||v_event, 'event', 'live', 'public', 'UTC', 'GBP'),
+    (v_event_ps, v_brand_ps, 'T lagos', 't-lagos-'||v_event_ps, 'event', 'live', 'public', 'UTC', 'NGN');
+  INSERT INTO public.event_dates (id, event_id, start_at, end_at, timezone, is_master, occurrence_key) VALUES
+    (gen_random_uuid(), v_event, now() - interval '1 hour', now() + interval '3 hours', 'UTC', true, 'one'),
+    (gen_random_uuid(), v_event_ps, now() - interval '1 hour', now() + interval '3 hours', 'UTC', true, 'one');
+  INSERT INTO public.ticket_types (id, event_id, name, price_cents, currency, quantity_total, is_unlimited, available_online, available_in_person, is_disabled, is_hidden) VALUES
+    (v_tier, v_event, 'General', 1500, 'GBP', 50, false, true, true, false, false),
+    (v_tier_ps, v_event_ps, 'General', 1500000, 'NGN', 50, false, true, true, false, false);
+
+
+  -- ---------------------------------------------------------------- R-REFUND
+  FOR v_result IN
+    SELECT jsonb_build_object('tag', tag, 'door', door, 'ps', ps)
+      FROM (VALUES ('stripe', true, false), ('paystack', true, true), ('online', false, false)) x(tag, door, ps)
+  LOOP
+    v_session := gen_random_uuid();
+    INSERT INTO public.ticket_checkout_sessions (
+      id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+      idempotency_key, expires_at, stripe_account_id, stripe_checkout_session_id, stripe_payment_intent_id,
+      stripe_application_fee_amount_cents, list_subtotal_cents, discount_cents, net_subtotal_cents,
+      buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source
+    ) VALUES (
+      v_session,
+      CASE WHEN (v_result->>'ps')::boolean THEN v_event_ps ELSE v_event END,
+      CASE WHEN (v_result->>'ps')::boolean THEN v_brand_ps ELSE v_brand END,
+      'Guest', 'guest.t4271@example.test', '+447700900123', 3000,
+      CASE WHEN (v_result->>'ps')::boolean THEN 'NGN' ELSE 'GBP' END,
+      'awaiting_web_redirect', 't4271-'||v_session, now() + interval '40 minutes',
+      CASE WHEN (v_result->>'ps')::boolean THEN NULL ELSE 'acct_t4271' END,
+      CASE WHEN (v_result->>'ps')::boolean THEN NULL ELSE 'cs_t'||replace(v_session::text,'-','') END,
+      CASE WHEN (v_result->>'ps')::boolean THEN NULL ELSE 'pi_t'||replace(v_session::text,'-','') END,
+      135, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout'
+    );
+    INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+    VALUES (v_session, CASE WHEN (v_result->>'ps')::boolean THEN v_tier_ps ELSE v_tier END, 'General', 2, 1500, 3000);
+    v_code := NULL;
+    IF (v_result->>'door')::boolean THEN
+      v_code := gen_random_uuid();
+      INSERT INTO public.door_pay_codes (id, brand_id, event_id, code, lines, currency, subtotal_cents, fee_cents, total_cents, provider, created_by)
+      VALUES (v_code,
+        CASE WHEN (v_result->>'ps')::boolean THEN v_brand_ps ELSE v_brand END,
+        CASE WHEN (v_result->>'ps')::boolean THEN v_event_ps ELSE v_event END,
+        CASE WHEN (v_result->>'ps')::boolean THEN 'TPSK2345' ELSE 'TSTR2345' END,
+        jsonb_build_array(jsonb_build_object('ticketTypeId', CASE WHEN (v_result->>'ps')::boolean THEN v_tier_ps ELSE v_tier END, 'quantity', 2)),
+        CASE WHEN (v_result->>'ps')::boolean THEN 'NGN' ELSE 'GBP' END, 3000, 135, 3135,
+        CASE WHEN (v_result->>'ps')::boolean THEN 'paystack' ELSE 'stripe' END, v_owner);
+      PERFORM public.issue_4271_door_pay_code_link_session(v_code, v_session);
+    END IF;
+    IF (v_result->>'ps')::boolean THEN
+      v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event_ps, 'paystack', 'paystack_redirect', 't4271-fp-'||v_session);
+      PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, NULL, 'psref'||replace(v_session::text,'-',''), 't4271-c-'||v_session);
+    ELSE
+      v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event, 'stripe', 'stripe_checkout', 't4271-fp-'||v_session);
+      PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_t'||replace(v_session::text,'-',''), 'pi_t'||replace(v_session::text,'-',''), 't4271-c-'||v_session);
+    END IF;
+
+    IF v_code IS NOT NULL THEN
+      PERFORM public.issue_4271_door_pay_code_revoke(v_code, 'cancelled');
+    END IF;
+    IF (v_result->>'ps')::boolean THEN
+      PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'paystack', 'psref'||replace(v_session::text,'-',''), '900123456', NULL);
+    ELSE
+      PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'stripe', 'pi_t'||replace(v_session::text,'-',''), NULL, 'ch_t'||replace(v_session::text,'-',''));
+    END IF;
+    SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
+    IF NOT FOUND THEN RAISE EXCEPTION 'R-REFUND % minted no refund', v_result; END IF;
+
+    IF NOT (v_result->>'door')::boolean THEN
+      -- Online checkout behaviour is unchanged (its base-amount refund is its
+      -- own to change, not this issue's).
+      IF v_row.buyer_refund_requested_cents <> 3000 OR v_row.fee_reversal_required_cents <> 0 THEN
+        RAISE EXCEPTION 'R-REFUND online refund changed: %', to_jsonb(v_row);
+      END IF;
+      CONTINUE;
+    END IF;
+    IF v_row.original_charge_cents <> 3135 OR v_row.buyer_refund_requested_cents <> 3135
+       OR v_row.original_application_fee_cents <> 135 OR v_row.fee_reversal_required_cents <> 135
+       OR v_row.fee_state <> 'queued' OR v_row.organizer_refund_liability_cents <> 3000
+       OR v_row.platform_fee_absorption_cents <> 135
+       OR v_row.fee_leg_kind <> (CASE WHEN (v_result->>'ps')::boolean THEN 'paystack_ledger_allocation' ELSE 'stripe_application_fee_refund' END) THEN
+      RAISE EXCEPTION 'R-REFUND % late refund must be the whole charge with the fee reversed: %', v_result->>'tag', to_jsonb(v_row);
+    END IF;
+    IF (SELECT jsonb_object_agg(allocation_type, amount_cents) FROM public.source_refund_ledger_allocations WHERE refund_id = v_row.id)
+       IS DISTINCT FROM jsonb_build_object('buyer_refund', 3135, 'organizer_refund_liability', 3000, 'platform_application_fee_reversal', 135) THEN
+      RAISE EXCEPTION 'R-REFUND % allocations disagree with the refund', v_result->>'tag';
+    END IF;
+    IF public.issue_4271_door_pay_code_late_read(v_code)
+       IS DISTINCT FROM jsonb_build_object('state', 'refunding', 'amountCents', 3135,
+         'currency', CASE WHEN (v_result->>'ps')::boolean THEN 'NGN' ELSE 'GBP' END) THEN
+      RAISE EXCEPTION 'R-REFUND % host read must name the full amount, got %', v_result->>'tag', public.issue_4271_door_pay_code_late_read(v_code);
+    END IF;
+  END LOOP;
+
+  -- ------------------------------------------------ R-CLOSE, R-LANDING, R-DUE
+  v_code := gen_random_uuid();
+  v_session := gen_random_uuid();
+  INSERT INTO public.door_pay_codes (id, brand_id, event_id, code, lines, currency, subtotal_cents, fee_cents, total_cents, provider, created_by)
+  VALUES (v_code, v_brand, v_event, 'TXND2345', jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier, 'quantity', 2)), 'GBP', 3000, 135, 3135, 'stripe', v_owner);
+  INSERT INTO public.ticket_checkout_sessions (
+    id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+    idempotency_key, expires_at, stripe_account_id, stripe_checkout_session_id, stripe_payment_intent_id,
+    stripe_application_fee_amount_cents, list_subtotal_cents, discount_cents, net_subtotal_cents,
+    buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source
+  ) VALUES (
+    v_session, v_event, v_brand, 'Guest', 'guest.t4271@example.test', '+447700900123', 3000, 'GBP',
+    'awaiting_web_redirect', 't4271-'||v_session, now() + interval '40 minutes', 'acct_t4271',
+    'cs_tland', 'pi_tland', 135, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout'
+  );
+  INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+  VALUES (v_session, v_tier, 'General', 2, 1500, 3000);
+  PERFORM public.issue_4271_door_pay_code_link_session(v_code, v_session);
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event, 'stripe', 'stripe_checkout', 't4271-fp-land');
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_tland', 'pi_tland', 't4271-c-land');
+
+  v_result := public.issue_4271_door_pay_code_live_pages(v_code);
+  IF v_result->>'status' <> 'opened' OR v_result->'pages'->0->>'checkoutSessionId' <> 'cs_tland'
+     OR v_result->'pages'->0->>'stripeAccountId' <> 'acct_t4271'
+     OR v_result->'pages'->0->>'idempotencyKey' NOT LIKE '%:expire' THEN
+    RAISE EXCEPTION 'R-CLOSE live pages wrong: %', v_result;
+  END IF;
+  -- A close that doesn't name the live page closes nothing.
+  v_result := public.issue_4271_door_pay_code_close(v_code, 'cancelled', ARRAY[]::text[]);
+  IF v_result->>'status' <> 'retry' THEN
+    RAISE EXCEPTION 'R-CLOSE a page Stripe was not asked about must answer retry, got %', v_result;
+  END IF;
+  IF (SELECT status FROM public.door_pay_codes WHERE id = v_code) <> 'opened'
+     OR (SELECT revoked_at FROM public.ticket_checkout_sessions WHERE id = v_session) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-CLOSE a refused close must change nothing';
+  END IF;
+
+  UPDATE public.door_pay_codes SET expires_at = now() - interval '1 minute' WHERE id = v_code;
+  IF NOT v_code = ANY(public.issue_4271_door_pay_codes_due(200)) THEN
+    RAISE EXCEPTION 'R-DUE a code past its time must be due';
+  END IF;
+  -- Stripe said complete, so the code was left open: the money is a sale.
+  v_result := public.biz_ticket_checkout_finalize(v_session, 'pi_tland', 'ch_tland', 'card', v_pepper);
+  IF v_result->>'outcome' <> 'finalized' THEN
+    RAISE EXCEPTION 'R-LANDING a landing payment past the code''s time must finalize, got %', v_result;
+  END IF;
+  IF (SELECT status FROM public.door_pay_codes WHERE id = v_code) <> 'paid' THEN
+    RAISE EXCEPTION 'R-LANDING the code must read paid';
+  END IF;
+  IF v_code = ANY(public.issue_4271_door_pay_codes_due(200)) THEN
+    RAISE EXCEPTION 'R-DUE a paid code must not be due';
+  END IF;
+  IF (public.issue_4271_door_pay_code_close(v_code, 'cancelled', ARRAY[]::text[]))->>'status' <> 'paid' THEN
+    RAISE EXCEPTION 'R-CLOSE a paid code stays paid';
+  END IF;
+
+  -- A confirmed page closes the code and its checkout.
+  v_code := gen_random_uuid();
+  v_session := gen_random_uuid();
+  INSERT INTO public.door_pay_codes (id, brand_id, event_id, code, lines, currency, subtotal_cents, fee_cents, total_cents, provider, created_by)
+  VALUES (v_code, v_brand, v_event, 'TCXS2345', jsonb_build_array(jsonb_build_object('ticketTypeId', v_tier, 'quantity', 2)), 'GBP', 3000, 135, 3135, 'stripe', v_owner);
+  INSERT INTO public.ticket_checkout_sessions (
+    id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+    idempotency_key, expires_at, stripe_account_id, stripe_checkout_session_id, stripe_payment_intent_id,
+    stripe_application_fee_amount_cents, list_subtotal_cents, discount_cents, net_subtotal_cents,
+    buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source
+  ) VALUES (
+    v_session, v_event, v_brand, 'Guest', 'guest.t4271@example.test', '+447700900123', 3000, 'GBP',
+    'awaiting_web_redirect', 't4271-'||v_session, now() + interval '40 minutes', 'acct_t4271',
+    'cs_tcls', 'pi_tcls', 135, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout'
+  );
+  PERFORM public.issue_4271_door_pay_code_link_session(v_code, v_session);
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event, 'stripe', 'stripe_checkout', 't4271-fp-cls');
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_tcls', 'pi_tcls', 't4271-c-cls');
+  v_result := public.issue_4271_door_pay_code_close(v_code, 'cancelled', ARRAY['cs_tcls']);
+  IF v_result->>'status' <> 'cancelled'
+     OR (SELECT revoked_at FROM public.ticket_checkout_sessions WHERE id = v_session) IS NULL THEN
+    RAISE EXCEPTION 'R-CLOSE a confirmed page must close the code and revoke its session: %', v_result;
+  END IF;
+  IF public.issue_4271_door_pay_code_late_read(v_code) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-CLOSE no payment landed, so no late read';
+  END IF;
+
+  -- ------------------------------------------------------------------ R-KEPT
+  v_order := gen_random_uuid();
+  INSERT INTO public.orders (id, event_id, buyer_name, buyer_email, buyer_phone, buyer_phone_e164, total_cents, list_subtotal_cents, discount_cents, net_subtotal_cents, buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source, currency, payment_method, payment_status, checkout_session_id, source, stripe_payment_intent_id, stripe_charge_id)
+  VALUES (v_order, v_event, 'G', 'g.t4271@example.test', '+447700900123', '+447700900123', 3000, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout', 'GBP', 'online_card', 'paid', v_session, 'online_checkout', 'pi_tcls', 'ch_tcls');
+  UPDATE public.ticket_checkout_sessions SET order_id = v_order WHERE id = v_session;
+  IF public.issue_4271_door_pay_code_late_read(v_code)
+     IS DISTINCT FROM jsonb_build_object('state', 'kept', 'amountCents', 3135, 'currency', 'GBP') THEN
+    RAISE EXCEPTION 'R-KEPT host must be told about an order on a closed code, got %', public.issue_4271_door_pay_code_late_read(v_code);
+  END IF;
+
+  -- ----------------------------------------------------------------- R-LOCKS
+  FOREACH v_fn IN ARRAY ARRAY[
+    'public.issue_4271_door_pay_code_revoke(uuid,text)',
+    'public.issue_4271_door_pay_code_close(uuid,text,text[])',
+    'public.issue_4271_door_pay_code_link_session(uuid,uuid)',
+    'public.issue_4271_door_pay_code_text_link(uuid,text,text)'
+  ] LOOP
+    IF position('issue_4271_door_lock_event_brand' IN pg_get_functiondef(v_fn::regprocedure)) = 0
+       OR position('issue_4271_door_lock_event_brand' IN pg_get_functiondef(v_fn::regprocedure))
+          > position('FROM public.door_pay_codes' IN pg_get_functiondef(v_fn::regprocedure)) THEN
+      RAISE EXCEPTION 'R-LOCKS % must take the event and brand locks before the code', v_fn;
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE '#4271 retest implementor: all checks passed';
+END;
+$retest$;
+
 ROLLBACK;

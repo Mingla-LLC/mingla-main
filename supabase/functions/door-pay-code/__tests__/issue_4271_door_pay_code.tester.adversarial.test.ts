@@ -76,9 +76,12 @@ function db(options: {
       if (name === "issue_4271_can_take_door_payment") {
         return { data: options.canTake ?? true, error: null };
       }
-      // Rework (#4271 D4): closing a code is one RPC that also revokes the
-      // checkout sessions it opened.
-      if (name === "issue_4271_door_pay_code_revoke") {
+      // Retest T4: a close reads the code's live Stripe pages first, then one
+      // RPC closes the code and revokes the checkout sessions it opened.
+      if (name === "issue_4271_door_pay_code_live_pages") {
+        return { data: { status: "opened", pages: [] }, error: null };
+      }
+      if (name === "issue_4271_door_pay_code_close") {
         return { data: { status: args.p_status, stripeExpire: [] }, error: null };
       }
       if (name === "issue_4271_door_quote_lines") {
@@ -272,7 +275,7 @@ Deno.test("#4271 tester DEFECT: cancelling an opened code closes the guest's in-
   assertEquals(res.status, 200);
   const closedSession = fake.ops.some((op) =>
     op.table === "ticket_checkout_sessions" && op.action === "update"
-  ) || fake.rpcs.some((r) => /revoke|expire|cancel/i.test(r.name) && r.name !== "issue_4271_can_take_door_payment");
+  ) || fake.rpcs.some((r) => /revoke|expire|cancel|close/i.test(r.name) && r.name !== "issue_4271_can_take_door_payment");
   assert(
     closedSession,
     "cancel left the linked checkout session payable: the guest can still be charged after the host is told nothing was charged",

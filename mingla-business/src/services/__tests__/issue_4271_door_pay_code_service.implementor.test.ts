@@ -208,6 +208,7 @@ describe("#4271 door pay code service", () => {
         event_date_id: null,
         code: "K7Q2M9XA",
         status: "paid",
+        provider: "stripe",
         lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
         currency: "GBP",
         subtotal_cents: 3000,

@@ -2,21 +2,42 @@
  * issue #4271 — what the host's "Scan to pay" screen and the guest's
  * `/pay/door/<code>` page show, as pure data (approved design H3–H5, B4–B5).
  *
- * "expired" is derived: an open or opened code past `expires_at` reads as
- * expired even before the server persists it. Every end state says whether
+ * Only the server says a code is over. The host's clock passing `expires_at`
+ * means "ask" (a payment may be going through); every end state says whether
  * money was taken.
  */
 
-import type { DoorPayCodeStatus } from "../../services/doorPayCodeService";
+import type {
+  DoorPayCodeStatus,
+  DoorPayLatePayment,
+  DoorPayLiveStatus,
+} from "../../services/doorPayCodeService";
 
-export const effectiveDoorPayStatus = (
+export const isDoorPayPastTime = (
   status: DoorPayCodeStatus,
   expiresAt: string,
   nowMs: number,
-): DoorPayCodeStatus => {
-  if (status !== "open" && status !== "opened") return status;
+): boolean => {
+  if (status !== "open" && status !== "opened") return false;
   const expiry = new Date(expiresAt).getTime();
-  return Number.isFinite(expiry) && nowMs > expiry ? "expired" : status;
+  return Number.isFinite(expiry) && nowMs > expiry;
+};
+
+/**
+ * What the host's screen shows. A server answer of payment_landing holds until
+ * the row turns paid. Past its time, the code reads "checking" until the server
+ * answers; if the server says the code is still live, the phone's clock was ahead.
+ */
+export const doorPayHostStatus = (
+  status: DoorPayCodeStatus,
+  expiresAt: string,
+  nowMs: number,
+  serverAnswer: DoorPayLiveStatus | null,
+): DoorPayLiveStatus => {
+  if (status !== "open" && status !== "opened") return status;
+  if (serverAnswer === "payment_landing") return "payment_landing";
+  if (!isDoorPayPastTime(status, expiresAt, nowMs)) return status;
+  return serverAnswer === "open" || serverAnswer === "opened" ? status : "checking";
 };
 
 /** "9:42" — whole seconds left, never negative. */
@@ -75,28 +96,45 @@ export type DoorPayLatePaymentRead =
   | { kind: "checking" }
   | { kind: "unknown" }
   | { kind: "none" }
-  | { kind: "payment"; state: "refunding" | "refunded"; amount: string };
+  | { kind: "payment"; state: DoorPayLatePayment["state"]; amount: string };
 
 /**
- * The end-state body. "Nothing was charged." only when the server confirmed
- * it: a payment that landed after the code closed is named with its refund,
- * and the copy never claims either way before the answer arrives.
+ * The end-state body. "Nothing was charged." only when the provider can take no
+ * more money and the server found none: Paystack has no way to close its page,
+ * so its copy says what happens if a payment still lands. A refund reads
+ * "refunded" only once the provider confirmed it; before that it may be queued
+ * and not sent (the refund worker's kill switch), so the copy says exactly that.
  */
 export const doorPayHostEndBody = (
   status: "expired" | "failed" | "cancelled",
   late: DoorPayLatePaymentRead,
+  provider: "stripe" | "paystack" = "stripe",
 ): string => {
   switch (late.kind) {
     case "none":
+      if (provider === "paystack" && status !== "failed") {
+        return status === "expired"
+          ? "No payment has come in. If one still lands, it's refunded in full. Show a new code to try again."
+          : "The code no longer works. No payment has come in. If one still lands, it's refunded in full.";
+      }
       return doorPayHostEndCopy(status).body;
     case "checking":
       return "Checking for a payment…";
     case "unknown":
       return "Couldn't check for a payment. Check your connection before charging them again.";
     case "payment":
-      return late.state === "refunded"
-        ? `A payment came in after this code closed. ${late.amount} was refunded to the guest.`
-        : `A payment came in after this code closed. We're refunding ${late.amount} to the guest automatically.`;
+      switch (late.state) {
+        case "refunded":
+          return `A payment came in after this code closed. ${late.amount} was refunded to the guest.`;
+        case "refunding":
+          return `A payment came in after this code closed. ${late.amount} is queued to go back to the guest. It hasn't reached them yet. Don't charge them again until it has.`;
+        case "kept":
+          return `A payment of ${late.amount} came in after this code closed. It stands as an online order, so you can refund it from Orders.`;
+        default: {
+          const exhaustive: never = late.state;
+          return exhaustive;
+        }
+      }
     default: {
       const exhaustive: never = late;
       return exhaustive;
@@ -152,6 +190,40 @@ export const doorPayGuestEndCopy = (
     }
   }
 };
+
+/** The guest's money on a closed code: never "you weren't charged" here. */
+export const doorPayGuestLateCopy = (
+  state: DoorPayLatePayment["state"],
+  amount: string,
+): DoorPayGuestEndCopy => {
+  switch (state) {
+    case "refunded":
+      return {
+        title: "Your payment was refunded",
+        body: `Your payment came in after this code closed. ${amount} was refunded to you. It can take a few days to show.`,
+      };
+    case "refunding":
+      return {
+        title: "Your payment is being refunded",
+        body: `Your payment came in after this code closed. ${amount} is queued to go back to you. It hasn't reached you yet. Ask the door to show a new code.`,
+      };
+    case "kept":
+      return {
+        title: "We have your payment",
+        body: `${amount} came in after this code closed. Show this screen at the door.`,
+      };
+    default: {
+      const exhaustive: never = state;
+      return exhaustive;
+    }
+  }
+};
+
+/** Coming back from the provider's page, the code alone can't say it's over. */
+export const doorPayGuestReturnSettled = (view: {
+  status: DoorPayLiveStatus;
+  latePayment: DoorPayLatePayment | null;
+}): boolean => view.status === "paid" || view.latePayment != null;
 
 /** "2× General admission" or "5 tickets". */
 export const summarizeDoorPayLines = (

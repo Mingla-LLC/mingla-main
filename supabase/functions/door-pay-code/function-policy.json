@@ -3,7 +3,7 @@
   "kind": "edge-function-policy",
   "name": "door-pay-code",
   "verify_jwt": false,
-  "gateway_reason": "The guest's browser views a pay code without a Mingla account; quote, create, cancel and text_link verify the bearer in code and require issue_4271_can_take_door_payment.",
+  "gateway_reason": "The guest's browser views a pay code without a Mingla account; quote, create, cancel, settle and text_link verify the bearer in code and require issue_4271_can_take_door_payment; the cron sweep checks the service role key in code.",
   "env": {
     "migration_fallback_top_level": [],
     "optional_top_level": [

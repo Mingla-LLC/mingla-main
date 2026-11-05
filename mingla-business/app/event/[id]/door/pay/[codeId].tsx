@@ -7,9 +7,8 @@
  * paying), paid, expired, cancelled, failed. Every end state says whether money
  * was taken, and recovery is one tap: a new code, or cash instead.
  *
- * Keep-awake and brightness: the Business app ships neither expo-keep-awake
- * nor expo-brightness as a dependency, and this build adds no native modules,
- * so the screen relies on the phone's own auto-lock settings.
+ * The phone's clock never ends a code: past its time the screen shows
+ * "Checking…" until the server has asked the provider.
  *
  * I-21: operator-side route (useAuth via the hooks below).
  */
@@ -35,9 +34,10 @@ import {
   doorPayGuestRowValue,
   doorPayHostEndBody,
   doorPayHostEndCopy,
+  doorPayHostStatus,
   doorPayTextLinkErrorMessage,
-  effectiveDoorPayStatus,
   formatDoorPayCountdown,
+  isDoorPayPastTime,
   openedAgoLabel,
   summarizeDoorPayLines,
   type DoorPayHostAction,
@@ -55,15 +55,18 @@ import {
   useDoorPayCode,
   useDoorPayGuestName,
   useDoorPayLatePayment,
+  useSettleDoorPayCode,
   useTextDoorPayLink,
 } from "../../../../../src/hooks/useEventDoorSales";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
-import { DoorPayCodeError } from "../../../../../src/services/doorPayCodeService";
+import { DoorPayCodeError, type DoorPayLiveStatus } from "../../../../../src/services/doorPayCodeService";
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { HapticFeedback } from "../../../../../src/utils/hapticFeedback";
 import { phoneStartCountryForCurrency } from "../../../../../src/utils/phoneStartCountryForCurrency";
 
 const QR_SIZE = 232;
+/** How often an unsettled code asks the server again. */
+const SETTLE_RETRY_MS = 5_000;
 
 const first = (value: string | string[] | undefined): string | null => {
   const v = Array.isArray(value) ? value[0] : value;
@@ -93,8 +96,30 @@ export default function DoorPayCodeRoute(): React.ReactElement {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const row = codeQuery.data ?? null;
-  const status = row === null ? null : effectiveDoorPayStatus(row.status, row.expiresAt, nowMs);
+  const [serverAnswer, setServerAnswer] = useState<{ status: DoorPayLiveStatus; atMs: number } | null>(null);
+  const status =
+    row === null ? null : doorPayHostStatus(row.status, row.expiresAt, nowMs, serverAnswer?.status ?? null);
   const closed = status === "expired" || status === "failed" || status === "cancelled";
+
+  // The phone's clock passed the code's time: ask the server, again every few
+  // seconds until it has an answer. Only the server can say nothing landed.
+  const settleCode = useSettleDoorPayCode(codeId);
+  const settleInFlight = useRef<boolean>(false);
+  const pastTime = row !== null && isDoorPayPastTime(row.status, row.expiresAt, nowMs);
+  const unsettled = row !== null && (row.status === "open" || row.status === "opened") &&
+    (pastTime || serverAnswer?.status === "payment_landing");
+  useEffect(() => {
+    if (!unsettled || settleInFlight.current) return;
+    if (serverAnswer !== null && nowMs - serverAnswer.atMs < SETTLE_RETRY_MS) return;
+    settleInFlight.current = true;
+    settleCode
+      .mutateAsync()
+      .then((answer) => setServerAnswer({ status: answer, atMs: Date.now() }))
+      .catch(() => setServerAnswer({ status: "checking", atMs: Date.now() }))
+      .finally(() => {
+        settleInFlight.current = false;
+      });
+  }, [nowMs, serverAnswer, settleCode, unsettled]);
 
   // "Nothing was charged" is only said once the server confirms it; a payment
   // that landed after the code closed is named with its refund.
@@ -162,7 +187,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
 
   // "Sell another" / "Take cash instead": same contract as the Tap to Pay
   // route — `/door?sellAnother=1&draft=<base64 json>` reopens the sheet.
-  const sellAnother = useCallback(
+  const openSheet = useCallback(
     (method: "pay_code" | "cash"): void => {
       if (eventId === null) return;
       router.replace(
@@ -174,6 +199,43 @@ export default function DoorPayCodeRoute(): React.ReactElement {
       );
     },
     [eventId, router, row?.eventDateId, row?.lines],
+  );
+
+  /**
+   * Cancels on the server. True only when the code is confirmed closed: a
+   * payment that landed shows paid instead of letting the host charge twice.
+   */
+  const closeCode = useCallback(async (): Promise<boolean> => {
+    try {
+      const answer = await cancelCode.mutateAsync();
+      if (answer === "cancelled") return true;
+      setServerAnswer({ status: answer, atMs: Date.now() });
+      setActionError(
+        answer === "checking"
+          ? "Couldn't reach the card provider to close this code. It's still open. Try again."
+          : null,
+      );
+      return false;
+    } catch (error) {
+      if (error instanceof DoorPayCodeError && error.status === 409) {
+        void codeQuery.refetch();
+        setActionError("This code was already paid, so it can't be cancelled.");
+      } else {
+        setActionError("Couldn't cancel the code. Check your connection and try again.");
+      }
+      return false;
+    }
+  }, [cancelCode, codeQuery]);
+
+  /** Opens the sale sheet only once nothing can still land on this code. */
+  const closeThenOpenSheet = useCallback(
+    async (method: "pay_code" | "cash"): Promise<void> => {
+      setActionError(null);
+      const live = row?.status === "open" || row?.status === "opened";
+      if (live && !(await closeCode())) return;
+      openSheet(method);
+    },
+    [closeCode, openSheet, row?.status],
   );
 
   const handleNewCode = useCallback(async (): Promise<void> => {
@@ -190,41 +252,36 @@ export default function DoorPayCodeRoute(): React.ReactElement {
       });
       router.replace(`/event/${eventId}/door/pay/${next.codeId}` as never);
     } catch (error) {
-      // The guest's payment beat the new code: show the paid screen instead.
+      // The guest's payment beat the new code: show it instead.
       if (error instanceof DoorPayCodeError && error.code === "door_code_unavailable") {
+        if (error.codeStatus === "payment_landing" || error.codeStatus === "checking") {
+          setServerAnswer({ status: error.codeStatus, atMs: Date.now() });
+        }
         void codeQuery.refetch();
         return;
       }
       // A dated ticket needs its date again: reopen the sheet with the tickets.
       if (error instanceof DoorPayCodeError && error.code === "ticket_not_valid_on_chosen_days") {
-        sellAnother("pay_code");
+        void closeThenOpenSheet("pay_code");
         return;
       }
-      setActionError("Couldn't make a new code. Nothing was charged. Try again.");
+      setActionError("Couldn't make a new code. Try again.");
     }
-  }, [codeQuery, createCode, eventId, router, row, sellAnother]);
+  }, [closeThenOpenSheet, codeQuery, createCode, eventId, router, row]);
 
   const handleAction = useCallback(
     (action: DoorPayHostAction): void => {
       if (action === "new_code") void handleNewCode();
-      else if (action === "cash_instead") sellAnother("cash");
+      else if (action === "cash_instead") void closeThenOpenSheet("cash");
       else goToDoor("");
     },
-    [goToDoor, handleNewCode, sellAnother],
+    [closeThenOpenSheet, goToDoor, handleNewCode],
   );
 
   const handleCancel = useCallback(async (): Promise<void> => {
     setActionError(null);
-    try {
-      await cancelCode.mutateAsync();
-    } catch (error) {
-      setActionError(
-        error instanceof DoorPayCodeError && error.status === 409
-          ? "This code was already paid, so it can't be cancelled."
-          : "Couldn't cancel the code. Check your connection and try again.",
-      );
-    }
-  }, [cancelCode]);
+    await closeCode();
+  }, [closeCode]);
 
   const handleClose = useCallback((): void => {
     goToDoor("");
@@ -283,7 +340,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
         <View style={styles.actions}>
           <Button
             label="Sell another"
-            onPress={() => sellAnother("pay_code")}
+            onPress={() => void closeThenOpenSheet("pay_code")}
             variant="primary"
             size="lg"
             fullWidth
@@ -291,6 +348,26 @@ export default function DoorPayCodeRoute(): React.ReactElement {
           />
           <Button label="Done" onPress={handleClose} variant="ghost" size="md" fullWidth />
         </View>
+      </View>
+    );
+  } else if (status === "checking") {
+    body = (
+      <View style={styles.center} testID="door-pay-checking" accessibilityLiveRegion="polite">
+        <ActivityIndicator color={accent.warm} />
+        <Text style={styles.endTitle}>Checking…</Text>
+        <Text style={styles.muted}>
+          We're asking the card provider whether a payment went through. Don't charge them again yet.
+        </Text>
+      </View>
+    );
+  } else if (status === "payment_landing") {
+    body = (
+      <View style={styles.center} testID="door-pay-landing" accessibilityLiveRegion="polite">
+        <ActivityIndicator color={semantic.success} />
+        <Text style={styles.endTitle}>Their payment went through</Text>
+        <Text style={styles.muted}>
+          This turns green in a moment. Don't charge them again and don't take cash.
+        </Text>
       </View>
     );
   } else if (status === "expired" || status === "failed" || status === "cancelled") {
@@ -302,7 +379,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
         </View>
         <Text style={styles.endTitle}>{copy.title}</Text>
         <Text style={styles.muted} testID="door-pay-end-body" accessibilityLiveRegion="polite">
-          {doorPayHostEndBody(status, latePayment)}
+          {doorPayHostEndBody(status, latePayment, row.provider)}
         </Text>
         <View style={styles.actions}>
           <Button

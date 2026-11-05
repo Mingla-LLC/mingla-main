@@ -8,8 +8,10 @@
  * (required, as online checkout requires) and is handed to the provider's page
  * exactly as online checkout does: Stripe's hosted page or Paystack.
  *
- * Returning with `?paid=1` polls the code until it reads paid. The paid page
- * shows no QR (#4063): the door has already checked them in.
+ * Returning with `?paid=1` polls the code until it reads paid or the server
+ * names a late refund. A guest coming back from the provider's page is never told
+ * they weren't charged: a closed code alone doesn't prove that. The paid page shows
+ * no QR (#4063): the door has already checked them in.
  *
  * Pre-purchase copy talks about the ticket, never the app (#4063).
  */
@@ -54,7 +56,11 @@ import {
   PURCHASE_TERMS_URL,
 } from "../../../src/constants/consentDisclosure";
 import { DOWNLOAD_PAGE_URL } from "../../../src/constants/storeLinks";
-import { doorPayGuestEndCopy } from "../../../src/components/door/doorPayCodeState";
+import {
+  doorPayGuestEndCopy,
+  doorPayGuestLateCopy,
+  doorPayGuestReturnSettled,
+} from "../../../src/components/door/doorPayCodeState";
 import { recordConsent } from "../../../src/services/consentService";
 import {
   createDoorCodeCheckout,
@@ -140,6 +146,8 @@ export default function DoorPayGuestPage(): React.ReactElement {
   const isReturning = first(params.paid) === "1";
   const [page, setPage] = useState<PageState>({ kind: "loading" });
   const lastView = useRef<DoorPayCodeView | null>(null);
+  // "Check again" on a returning guest polls again, never the plain load.
+  const [pollRound, setPollRound] = useState<number>(0);
 
   const load = useCallback(async (): Promise<void> => {
     setPage({ kind: "loading" });
@@ -171,12 +179,10 @@ export default function DoorPayGuestPage(): React.ReactElement {
         try {
           const view = await viewDoorPayCode(code);
           lastView.current = view;
-          if (view.status === "paid") {
-            if (!cancelled) setPage({ kind: "paid", view, justPaid: true });
-            return;
-          }
-          if (view.status !== "open" && view.status !== "opened") {
-            if (!cancelled) setPage({ kind: "ready", view });
+          if (doorPayGuestReturnSettled(view)) {
+            if (!cancelled) {
+              setPage(view.status === "paid" ? { kind: "paid", view, justPaid: true } : { kind: "ready", view });
+            }
             return;
           }
         } catch {
@@ -190,7 +196,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
     return (): void => {
       cancelled = true;
     };
-  }, [code, isReturning, load]);
+  }, [code, isReturning, load, pollRound]);
 
   let content: React.ReactNode;
   if (page.kind === "loading" || page.kind === "returning") {
@@ -205,7 +211,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
     content = (
       <StateCard
         title="We couldn't load this payment"
-        body="Check your connection and try again. You haven't been charged."
+        body="Check your connection and try again."
         action="Try again"
         onAction={() => void load()}
       />
@@ -223,7 +229,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
         title="We're still confirming your payment"
         body="This can take a minute. Show this screen at the door if you're asked. You won't be charged twice."
         action="Check again"
-        onAction={() => void load()}
+        onAction={() => setPollRound((round) => round + 1)}
       />
     );
   } else if (page.kind === "paid") {
@@ -234,10 +240,28 @@ export default function DoorPayGuestPage(): React.ReactElement {
     );
   } else {
     const view = page.view;
-    if (view.status === "open" || view.status === "opened") {
+    if (view.latePayment != null) {
+      content = (
+        <StateCard
+          {...doorPayGuestLateCopy(
+            view.latePayment.state,
+            money(view.latePayment.amountCents, view.latePayment.currency || view.currency),
+          )}
+        />
+      );
+    } else if (view.status === "open" || view.status === "opened") {
       content = <PayForm code={code} view={view} />;
     } else if (view.status === "paid") {
       content = <StateCard {...doorPayGuestEndCopy("paid")} />;
+    } else if (view.status === "payment_landing" || view.status === "checking") {
+      content = (
+        <StateCard
+          title="Checking this payment"
+          body="A payment on this code is being confirmed. If it was yours, you won't be charged twice."
+          action="Check again"
+          onAction={() => void load()}
+        />
+      );
     } else {
       content = <StateCard {...doorPayGuestEndCopy(view.status)} />;
     }
@@ -268,7 +292,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
   const [showErrors, setShowErrors] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [endStatus, setEndStatus] = useState<DoorPayCodeView["status"] | null>(null);
+  const [endStatus, setEndStatus] = useState<"expired" | "paid" | "cancelled" | "failed" | null>(null);
   const [codeInvalid, setCodeInvalid] = useState<boolean>(false);
   const phone = usePhoneEntry({ startCountries: [phoneStartCountryForCurrency(view.currency)] });
 
@@ -321,8 +345,15 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
       if (error instanceof DoorPayCodeError && error.code === "door_code_unavailable") {
         // 409 {status}: paid / expired / cancelled / failed, or "not_found"
         // (not a code status) when the code no longer matches this event.
-        if (error.codeStatus !== null) setEndStatus(error.codeStatus);
-        else setCodeInvalid(true);
+        if (error.codeStatus === null) setCodeInvalid(true);
+        else if (
+          error.codeStatus === "expired" || error.codeStatus === "paid" ||
+          error.codeStatus === "cancelled" || error.codeStatus === "failed"
+        ) {
+          setEndStatus(error.codeStatus);
+        } else {
+          setSubmitError("This code is still being checked. Try again in a moment.");
+        }
       } else if (error instanceof DoorPayCodeError && error.code === "purchase_terms_required") {
         setTermsAccepted(false);
         setSubmitError("Please agree to the terms to continue.");
@@ -344,7 +375,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
       />
     );
   }
-  if (endStatus !== null && endStatus !== "open" && endStatus !== "opened") {
+  if (endStatus !== null) {
     return <StateCard {...doorPayGuestEndCopy(endStatus)} />;
   }
 

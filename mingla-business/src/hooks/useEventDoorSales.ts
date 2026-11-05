@@ -12,6 +12,7 @@ import {
   fetchDoorPayLatePayment,
   mapDoorPayCodeRow,
   quoteDoorPayCode,
+  settleDoorPayCode,
   textDoorPayLink,
   type CreateDoorPayCodeInput,
   type DoorPayCodeCreated,
@@ -235,6 +236,19 @@ export function useCancelDoorPayCode(codeId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => cancelDoorPayCode(codeId as string),
+    onSuccess: () => {
+      if (codeId !== null) {
+        void queryClient.invalidateQueries({ queryKey: doorPayCodeKeys.detail(codeId) });
+      }
+    },
+  });
+}
+
+/** The server's answer once the host's clock passes the code's time. */
+export function useSettleDoorPayCode(codeId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => settleDoorPayCode(codeId as string),
     onSuccess: () => {
       if (codeId !== null) {
         void queryClient.invalidateQueries({ queryKey: doorPayCodeKeys.detail(codeId) });

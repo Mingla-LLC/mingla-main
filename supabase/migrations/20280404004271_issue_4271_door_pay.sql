@@ -703,8 +703,9 @@ GRANT EXECUTE ON FUNCTION public.biz_door_sale_record(
 --     the late-payment refund (issue_1930_mint_ticket_late_reversal ->
 --     source_refunds 'late_payment_no_value' -> source-refund-sweep).
 --
---     Lock order everywhere in this file: checkout sessions (by id), then the
---     code row. Finalize holds its session before this trigger takes the code.
+--     Lock order everywhere in this file is finalize's: event, brand, checkout
+--     sessions (by id), then the code row. Finalize holds event -> brand ->
+--     session before this trigger takes the code.
 -- =============================================================================
 
 -- True for a door order of any kind: cash/manual/card_reader door sales and
@@ -724,6 +725,36 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4271_is_door_order(text, text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4271_is_door_order(text, text)
+  TO service_role;
+
+-- Finalize's first two locks, for every writer that closes or links a code.
+-- Taking them first means a close racing a finalize waits instead of
+-- deadlocking (a close held the session and wanted the event's foreign key
+-- share while finalize held the event and wanted the session).
+CREATE OR REPLACE FUNCTION public.issue_4271_door_lock_event_brand(
+  p_code_id uuid
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_brand_id uuid;
+BEGIN
+  SELECT e.brand_id INTO v_brand_id
+    FROM public.door_pay_codes c
+    JOIN public.events e ON e.id = c.event_id
+   WHERE c.id = p_code_id
+   FOR UPDATE OF e;
+  IF FOUND THEN
+    PERFORM 1 FROM public.brands WHERE id = v_brand_id FOR UPDATE;
+  END IF;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_lock_event_brand(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_lock_event_brand(uuid)
   TO service_role;
 
 -- Revokes every still-open checkout session a code opened (except one), the
@@ -833,7 +864,8 @@ BEGIN
   IF p_status NOT IN ('cancelled', 'expired') THEN
     RAISE EXCEPTION 'invalid_request' USING ERRCODE = '22023';
   END IF;
-  -- Sessions first, then the code (the finalize order).
+  -- Event, brand, sessions, then the code (the finalize order).
+  PERFORM public.issue_4271_door_lock_event_brand(p_code_id);
   PERFORM 1 FROM public.ticket_checkout_sessions
     WHERE door_pay_code_id = p_code_id ORDER BY id FOR UPDATE;
   SELECT * INTO v_code FROM public.door_pay_codes WHERE id = p_code_id FOR UPDATE;
@@ -865,6 +897,120 @@ REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_revoke(uuid, text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_revoke(uuid, text)
   TO service_role;
+
+-- The Stripe Checkout pages this code still has open. The edge function asks
+-- Stripe to expire each one BEFORE any close: Stripe answers whether a payment
+-- has already gone through, and only that answer can make "no further payment
+-- can land" true. Reads the code's status so a paid code answers paid.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_live_pages(
+  p_code_id uuid
+) RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT jsonb_build_object(
+    'status', coalesce((SELECT c.status FROM public.door_pay_codes c WHERE c.id = p_code_id), 'not_found'),
+    'pages', coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+               'checkoutSessionId', a.provider_checkout_id,
+               'stripeAccountId', s.stripe_account_id,
+               'idempotencyKey', a.provider_idempotency_key || ':expire')
+             ORDER BY s.id)
+        FROM public.ticket_checkout_sessions s
+        JOIN public.ticket_checkout_provider_attempts a ON a.id = s.provider_attempt_id
+       WHERE s.door_pay_code_id = p_code_id
+         AND s.order_id IS NULL
+         AND s.revoked_at IS NULL
+         AND s.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect')
+         AND a.provider = 'stripe'
+         AND a.flow = 'stripe_checkout'
+         AND a.provider_checkout_id IS NOT NULL
+         AND s.stripe_account_id IS NOT NULL
+    ), '[]'::jsonb)
+  );
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_live_pages(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_live_pages(uuid)
+  TO service_role;
+
+-- Closes a code once Stripe has confirmed every page named in p_confirmed_pages
+-- is expired. A page that opened since the caller asked Stripe answers 'retry'
+-- and nothing closes, so a code is never closed over a page Stripe was not asked
+-- about. The locks make that check and the close one step.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_close(
+  p_code_id uuid,
+  p_status text,
+  p_confirmed_pages text[]
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_status text;
+BEGIN
+  IF p_status NOT IN ('cancelled', 'expired') THEN
+    RAISE EXCEPTION 'invalid_request' USING ERRCODE = '22023';
+  END IF;
+  PERFORM public.issue_4271_door_lock_event_brand(p_code_id);
+  PERFORM 1 FROM public.ticket_checkout_sessions
+    WHERE door_pay_code_id = p_code_id ORDER BY id FOR UPDATE;
+  SELECT status INTO v_status FROM public.door_pay_codes WHERE id = p_code_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found', 'stripeExpire', '[]'::jsonb);
+  END IF;
+  IF v_status = 'paid' THEN
+    RETURN jsonb_build_object('status', 'paid', 'stripeExpire', '[]'::jsonb);
+  END IF;
+  IF EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(
+        public.issue_4271_door_pay_code_live_pages(p_code_id) -> 'pages') page
+     WHERE NOT (page ->> 'checkoutSessionId') = ANY(coalesce(p_confirmed_pages, ARRAY[]::text[]))
+  ) THEN
+    RETURN jsonb_build_object('status', 'retry', 'stripeExpire', '[]'::jsonb);
+  END IF;
+  RETURN public.issue_4271_door_pay_code_revoke(p_code_id, p_status);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_close(uuid, text, text[])
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_close(uuid, text, text[])
+  TO service_role;
+
+-- Codes past their time that are still open: the sweep closes them in the
+-- same Stripe-first order, so a code nobody re-opens does not stay payable.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_codes_due(p_limit integer)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT coalesce(array_agg(due.id), ARRAY[]::uuid[])
+    FROM (
+      SELECT c.id
+        FROM public.door_pay_codes c
+       WHERE c.status IN ('open', 'opened')
+         AND c.expires_at <= now()
+       ORDER BY c.expires_at
+       LIMIT greatest(1, least(coalesce(p_limit, 50), 200))
+    ) due;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_pay_codes_due(integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_codes_due(integer)
+  TO service_role;
+
+CREATE INDEX IF NOT EXISTS door_pay_codes_due_idx
+  ON public.door_pay_codes(expires_at)
+  WHERE status IN ('open', 'opened');
 
 -- A door checkout session may be paid only while its code is open/opened.
 -- Time alone does not close a code mid-payment: the provider page lives at
@@ -1090,7 +1236,8 @@ AS $function$
 DECLARE
   v_code public.door_pay_codes%ROWTYPE;
 BEGIN
-  -- Sessions first, then the code (the finalize order).
+  -- Event, brand, sessions, then the code (the finalize order).
+  PERFORM public.issue_4271_door_lock_event_brand(p_code_id);
   PERFORM 1 FROM public.ticket_checkout_sessions
     WHERE id = p_checkout_session_id OR door_pay_code_id = p_code_id
     ORDER BY id FOR UPDATE;
@@ -1104,6 +1251,16 @@ BEGIN
   END IF;
   IF v_code.status NOT IN ('open', 'opened') THEN
     RETURN v_code.status;
+  END IF;
+  -- A session belongs to one code for life: moving it would leave a live
+  -- provider page paying a code the old code's host still shows.
+  IF EXISTS (
+    SELECT 1 FROM public.ticket_checkout_sessions
+     WHERE id = p_checkout_session_id
+       AND door_pay_code_id IS NOT NULL
+       AND door_pay_code_id <> p_code_id
+  ) THEN
+    RAISE EXCEPTION 'door_code_unavailable:session' USING ERRCODE = 'PT409';
   END IF;
   UPDATE public.ticket_checkout_sessions
      SET door_pay_code_id = p_code_id, updated_at = now()
@@ -1128,9 +1285,12 @@ REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_link_session(uuid, uuid)
 GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_link_session(uuid, uuid)
   TO service_role;
 
--- What a host sees on a closed code: did a late payment come in, and was it
--- refunded? NULL when nothing was charged.
-CREATE OR REPLACE FUNCTION public.biz_door_pay_code_late_payment(p_code_id uuid)
+-- Did a late payment come in on this closed code, and where is its refund?
+-- NULL when nothing was charged. 'refunded' only once the provider confirmed;
+-- 'refunding' covers a refund still queued (see SOURCE_REFUNDS_POST_DISABLED).
+-- 'kept' is the backstop: an order stood because a writer other than finalize
+-- stamped it, so no refund exists and the guest's money is in that order.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_pay_code_late_read(p_code_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -1138,13 +1298,8 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
 DECLARE
-  v_event_id uuid;
   v_result jsonb;
 BEGIN
-  SELECT event_id INTO v_event_id FROM public.door_pay_codes WHERE id = p_code_id;
-  IF v_event_id IS NULL OR NOT public.biz_can_take_door_payment(v_event_id) THEN
-    RAISE EXCEPTION 'door_access_denied' USING ERRCODE = '42501';
-  END IF;
   SELECT jsonb_build_object(
            'state', CASE
              WHEN bool_and(r.buyer_state = 'processed') THEN 'refunded'
@@ -1159,13 +1314,149 @@ BEGIN
      AND r.refund_kind = 'late_payment_no_value'
    WHERE s.door_pay_code_id = p_code_id
   HAVING count(*) > 0;
+  IF v_result IS NOT NULL THEN
+    RETURN v_result;
+  END IF;
+  SELECT jsonb_build_object(
+           'state', 'kept',
+           'amountCents', coalesce(o.buyer_total_cents, o.total_cents),
+           'currency', o.currency)
+    INTO v_result
+    FROM public.ticket_checkout_sessions s
+    JOIN public.orders o ON o.id = s.order_id
+   WHERE s.door_pay_code_id = p_code_id
+     AND o.metadata ->> 'door_pay_code_late_code_id' = p_code_id::text
+   ORDER BY o.created_at
+   LIMIT 1;
   RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_pay_code_late_read(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4271_door_pay_code_late_read(uuid)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.biz_door_pay_code_late_payment(p_code_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_event_id uuid;
+BEGIN
+  SELECT event_id INTO v_event_id FROM public.door_pay_codes WHERE id = p_code_id;
+  IF v_event_id IS NULL OR NOT public.biz_can_take_door_payment(v_event_id) THEN
+    RAISE EXCEPTION 'door_access_denied' USING ERRCODE = '42501';
+  END IF;
+  RETURN public.issue_4271_door_pay_code_late_read(p_code_id);
 END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.biz_door_pay_code_late_payment(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_door_pay_code_late_payment(uuid)
   TO authenticated, service_role;
+
+-- T2: a door code's late refund returns what the guest was charged. Every late
+-- refund for a ticket session is minted by #1930 / #2079 code that reads
+-- session.total_cents (the ticket base on a hosted session) and
+-- application_fee_amount_cents (0 there). Those functions and online checkout
+-- are untouched: this rewrites the row before it lands, only when the session
+-- carries a door code. The charge is buyer_total_cents; Mingla's fee is
+-- stripe_application_fee_amount_cents, reversed in full.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_late_refund_amounts()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_session public.ticket_checkout_sessions%ROWTYPE;
+  v_charged integer;
+  v_fee integer;
+BEGIN
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions WHERE id = NEW.source_id;
+  IF NOT FOUND OR v_session.door_pay_code_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  v_charged := coalesce(v_session.buyer_total_cents, v_session.total_cents);
+  v_fee := least(v_charged, greatest(
+    coalesce(v_session.stripe_application_fee_amount_cents, 0),
+    coalesce(v_session.application_fee_amount_cents, 0)));
+  NEW.original_charge_cents := v_charged;
+  NEW.buyer_refund_requested_cents := v_charged;
+  NEW.original_application_fee_cents := v_fee;
+  NEW.fee_reversal_required_cents := v_fee;
+  NEW.fee_state := CASE WHEN v_fee = 0 THEN 'not_required' ELSE 'queued' END;
+  NEW.fee_leg_kind := CASE
+    WHEN v_fee = 0 THEN 'not_required'
+    WHEN NEW.provider = 'stripe' THEN 'stripe_application_fee_refund'
+    ELSE 'paystack_ledger_allocation' END;
+  NEW.organizer_refund_liability_cents := v_charged - v_fee;
+  NEW.platform_fee_absorption_cents := v_fee;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_late_refund_amounts()
+  FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_source_refunds_4271_door_amounts ON public.source_refunds;
+CREATE TRIGGER trg_source_refunds_4271_door_amounts
+BEFORE INSERT ON public.source_refunds
+FOR EACH ROW
+WHEN (
+  NEW.source_type = 'ticket_checkout_session'
+  AND NEW.refund_kind = 'late_payment_no_value'
+)
+EXECUTE FUNCTION public.issue_4271_door_late_refund_amounts();
+
+-- The ledger allocations follow the same amounts. The minter inserts its own
+-- right after, with these same idempotency keys and ON CONFLICT DO NOTHING, so
+-- its base-amount rows never land for a door session.
+CREATE OR REPLACE FUNCTION public.issue_4271_door_late_refund_allocations()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ticket_checkout_sessions
+     WHERE id = NEW.source_id AND door_pay_code_id IS NOT NULL
+  ) THEN
+    RETURN NULL;
+  END IF;
+  INSERT INTO public.source_refund_ledger_allocations(
+    refund_id, allocation_type, amount_cents, currency, provider, state, idempotency_key
+  )
+  SELECT NEW.id, x.kind, x.amount, NEW.currency, NEW.provider, 'prepared',
+         'source-refund-allocation:' || x.key || ':' || NEW.id
+    FROM (VALUES
+      ('buyer_refund', NEW.buyer_refund_requested_cents, 'buyer'),
+      ('organizer_refund_liability', NEW.organizer_refund_liability_cents, 'organizer'),
+      ('platform_application_fee_reversal', NEW.fee_reversal_required_cents, 'platform')
+    ) x(kind, amount, key)
+   WHERE x.amount > 0
+  ON CONFLICT (idempotency_key) DO NOTHING;
+  RETURN NULL;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4271_door_late_refund_allocations()
+  FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_source_refunds_4271_door_allocations ON public.source_refunds;
+CREATE TRIGGER trg_source_refunds_4271_door_allocations
+AFTER INSERT ON public.source_refunds
+FOR EACH ROW
+WHEN (
+  NEW.source_type = 'ticket_checkout_session'
+  AND NEW.refund_kind = 'late_payment_no_value'
+)
+EXECUTE FUNCTION public.issue_4271_door_late_refund_allocations();
 
 -- The paid code's guest name for the host's paid screen. A scanner allowed to
 -- take payments reaches that screen but cannot read orders (RLS is buyer or
@@ -2187,6 +2478,7 @@ BEGIN
   IF p_phone_e164 IS NULL OR p_phone_e164 !~ '^\+[1-9][0-9]{1,14}$' THEN
     RAISE EXCEPTION 'buyer_phone_invalid' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.issue_4271_door_lock_event_brand(p_code_id);
   SELECT * INTO v_code FROM public.door_pay_codes WHERE id = p_code_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002';
@@ -2280,6 +2572,41 @@ $function$;
 REVOKE ALL ON FUNCTION public.biz_brand_team_members(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_brand_team_members(uuid)
   TO authenticated, service_role;
+
+-- =============================================================================
+-- §11. The sweep: every minute, close codes past their time. A code nobody
+--      re-opens would otherwise stay payable until the Stripe page's own end.
+-- =============================================================================
+DO $cron$
+DECLARE v_job_id bigint;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+     OR NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net') THEN
+    RAISE NOTICE 'Issue #4271: pg_cron/pg_net unavailable; door code sweep not scheduled.';
+    RETURN;
+  END IF;
+  SELECT jobid INTO v_job_id FROM cron.job
+  WHERE jobname = 'issue_4271_door_pay_code_sweep' LIMIT 1;
+  IF v_job_id IS NOT NULL THEN PERFORM cron.unschedule(v_job_id); END IF;
+  PERFORM cron.schedule(
+    'issue_4271_door_pay_code_sweep',
+    '* * * * *',
+    $command$
+      SELECT net.http_post(
+        url := (SELECT decrypted_secret FROM vault.decrypted_secrets
+                WHERE name='supabase_url' LIMIT 1) || '/functions/v1/door-pay-code',
+        headers := jsonb_build_object(
+          'Content-Type','application/json',
+          'Authorization','Bearer ' || (SELECT decrypted_secret
+            FROM vault.decrypted_secrets WHERE name='service_role_key' LIMIT 1)
+        ),
+        body := '{"action":"sweep"}'::jsonb,
+        timeout_milliseconds := 55000
+      );
+    $command$
+  );
+END
+$cron$;
 
 COMMENT ON TABLE public.door_pay_codes IS
   '#4271: a one-time pay link for one door sale; 10 minutes, pays once, never a ticket credential.';

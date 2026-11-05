@@ -23,6 +23,8 @@ const { act } = renderer;
 
 const mockReplace = jest.fn();
 const mockMutateAsync = jest.fn();
+const mockCancel = jest.fn();
+const mockSettle = jest.fn();
 const mockRefetch = jest.fn();
 let mockRow: Record<string, unknown> | null = null;
 let mockLate: Record<string, unknown> = {};
@@ -65,9 +67,13 @@ jest.mock("../../../hooks/useManagedEventRoute", () => ({
 jest.mock("../../../services/doorPayCodeService", () => {
   class DoorPayCodeError extends Error {
     code: string;
-    constructor(code: string) {
+    status: number | null;
+    codeStatus: string | null;
+    constructor(code: string, status: number | null = null, codeStatus: string | null = null) {
       super(code);
       this.code = code;
+      this.status = status;
+      this.codeStatus = codeStatus;
     }
   }
   return { DoorPayCodeError };
@@ -80,7 +86,8 @@ jest.mock("../../../hooks/useEventDoorSales", () => ({
     refetch: mockRefetch,
   }),
   useCreatedDoorPayCode: () => null,
-  useCancelDoorPayCode: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useCancelDoorPayCode: () => ({ mutateAsync: mockCancel, isPending: false }),
+  useSettleDoorPayCode: () => ({ mutateAsync: mockSettle, isPending: false }),
   useCreateDoorPayCode: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
   useTextDoorPayLink: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useDoorPayLatePayment: (...args: unknown[]) => {
@@ -100,6 +107,7 @@ const row = (status: string): Record<string, unknown> => ({
   id: "code-1",
   code: "K7Q2M9XA",
   status,
+  provider: "stripe",
   lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
   currency: "GBP",
   totalCents: 3135,
@@ -127,6 +135,8 @@ describe("#4271 host Scan to pay screen", () => {
     jest.useFakeTimers();
     mockReplace.mockReset();
     mockMutateAsync.mockReset();
+    mockCancel.mockReset();
+    mockSettle.mockReset();
     mockRefetch.mockReset();
     mockLateArgs.length = 0;
     mockGuestArgs.length = 0;
@@ -182,7 +192,9 @@ describe("#4271 host Scan to pay screen", () => {
     };
     let text = screenText(mount());
     expect(text).not.toContain("Nothing was charged.");
-    expect(text).toContain("We're refunding £31.35");
+    // T15: the refund may be queued and not sent, so the copy never says it's done.
+    expect(text).toContain("£31.35 is queued to go back to the guest");
+    expect(text).not.toContain("was refunded");
 
     mockLate = {
       isSuccess: true,
@@ -192,6 +204,90 @@ describe("#4271 host Scan to pay screen", () => {
     text = screenText(mount());
     expect(text).not.toContain("Nothing was charged.");
     expect(text).toContain("£31.35 was refunded");
+  });
+
+  test("Paystack: closed with no payment does not claim nothing can land", () => {
+    mockRow = { ...row("cancelled"), provider: "paystack" };
+    mockLate = { isSuccess: true, isError: false, data: null };
+    const text = screenText(mount());
+    expect(text).not.toContain("Nothing was charged.");
+    expect(text).toContain("If one still lands, it's refunded in full.");
+  });
+
+  test("T4: the phone's clock alone never says expired or nothing charged", async () => {
+    mockRow = { ...row("opened"), expiresAt: new Date(Date.now() - 1_000).toISOString() };
+    mockLate = { isSuccess: true, isError: false, data: null };
+    let resolveSettle: (status: string) => void = () => undefined;
+    mockSettle.mockImplementation(() => new Promise((resolve) => { resolveSettle = resolve; }));
+    const tree = mount();
+    let text = screenText(tree);
+    expect(text).toContain("Checking…");
+    expect(text).not.toContain("This code expired");
+    expect(text).not.toContain("Nothing was charged.");
+    expect(mockSettle).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveSettle("payment_landing");
+    });
+    text = screenText(tree);
+    expect(text).toContain("Their payment went through");
+    expect(text).not.toContain("Nothing was charged.");
+    // Only the row turning expired on the server ends the code.
+    mockRow = { ...row("expired") };
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(screenText(tree)).toContain("Nothing was charged.");
+  });
+
+  test("T4: a phone clock ahead of the server keeps showing the live code", async () => {
+    mockRow = { ...row("opened"), expiresAt: new Date(Date.now() - 1_000).toISOString() };
+    mockSettle.mockResolvedValue("opened");
+    const tree = mount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screenText(tree)).toContain("Guest is paying");
+  });
+
+  const pressByLabel = async (tree: ReactTestRenderer, label: string): Promise<void> => {
+    const button = tree.root.findAll(
+      (n) => typeof n.props.onPress === "function" && textOf(n) === label,
+    )[0];
+    await act(async () => {
+      await button.props.onPress();
+    });
+  };
+
+  test("T4: Cancel sale on a payment going through shows it instead of cancelling", async () => {
+    mockRow = row("opened");
+    mockCancel.mockResolvedValue("payment_landing");
+    const tree = mount();
+    await pressByLabel(tree, "Cancel sale");
+    expect(screenText(tree)).toContain("Their payment went through");
+    expect(screenText(tree)).toContain("don't take cash");
+  });
+
+  test("T4: Take cash instead on a confirmed-closed code opens the cash sheet without a cancel", async () => {
+    mockRow = row("expired");
+    const tree = mount();
+    await pressByLabel(tree, "Take cash instead");
+    expect(mockCancel).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(String(mockReplace.mock.calls[0][0])).toContain("sellAnother=1");
+  });
+
+  test("T4: Show a new code answered payment landing never opens a second sale", async () => {
+    const { DoorPayCodeError } = jest.requireMock("../../../services/doorPayCodeService") as {
+      DoorPayCodeError: new (code: string, status: number, codeStatus: string) => Error;
+    };
+    mockRow = { ...row("opened"), expiresAt: new Date(Date.now() + 600_000).toISOString() };
+    mockSettle.mockResolvedValue("payment_landing");
+    mockMutateAsync.mockRejectedValue(new DoorPayCodeError("door_code_unavailable", 409, "payment_landing"));
+    mockRow = row("expired");
+    const tree = mount();
+    await pressByLabel(tree, "Show a new code");
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockRefetch).toHaveBeenCalled();
   });
 
   test("Show a new code closes the old code on the server", async () => {

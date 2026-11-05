@@ -304,6 +304,7 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
     mockParams = { id: "event-1", saleId: "sale-1", code: "K7Q2M9XA" };
   });
 
+  // The one DEFECT left red after phase 1: APPLE_BUILD_CONTRACT.md (phase 2) owns the tap dock amount.
   test("DEFECT: Take <amount> names what door-tap-intent charges when guests pay fees", () => {
     mockTapAvailable = true;
     mockQuote = {
@@ -352,6 +353,49 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
     ];
     const text = textOf(mount(<DoorSaleDetailRoute />).root);
     expect(text).toMatch(/Net\s+£0\.00/);
+  });
+
+  const guestView = (over: Record<string, unknown>): Record<string, unknown> => ({
+    status: "cancelled",
+    latePayment: null,
+    eventId: "event-1",
+    eventName: "Night",
+    eventStartsAt: null,
+    venueLabel: null,
+    brandName: "Brand",
+    lines: [],
+    subtotalCents: 3000,
+    feeCents: 135,
+    totalCents: 3135,
+    currency: "GBP",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    ...over,
+  });
+
+  test("T3: a returning guest whose payment landed late is told the refund, with the full amount", async () => {
+    const service = jest.requireMock("../../../services/doorPayCodeService") as { viewDoorPayCode: jest.Mock };
+    mockParams = { code: "K7Q2M9XA", paid: "1" };
+    service.viewDoorPayCode.mockResolvedValueOnce(
+      guestView({ latePayment: { state: "refunding", amountCents: 3135, currency: "GBP" } }),
+    );
+    let tree: ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    const text = textOf((tree as ReactTestRenderer).root);
+    expect(text).toContain("£31.35 is queued to go back to you");
+    expect(text).not.toContain("weren't charged");
+  });
+
+  test("T3: a guest who never paid sees a closed code as not charged", async () => {
+    const service = jest.requireMock("../../../services/doorPayCodeService") as { viewDoorPayCode: jest.Mock };
+    mockParams = { code: "K7Q2M9XA" };
+    service.viewDoorPayCode.mockResolvedValueOnce(guestView({}));
+    let tree: ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    expect(textOf((tree as ReactTestRenderer).root)).toContain("You weren't charged.");
   });
 
   test("DEFECT: a guest returning from a paid provider page is never told they weren't charged", async () => {

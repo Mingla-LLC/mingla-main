@@ -7,7 +7,9 @@
  *   quote     (host)   → DoorPayCodeQuote (same pricing as create, no row)
  *   create    (host)   → DoorPayCodeCreated (replacesCodeId closes the old code first)
  *   view      (public) → DoorPayCodeView, 404 {error:"not_found"}
- *   cancel    (host)   → {status:"cancelled"}
+ *   cancel    (host)   → {status:"cancelled"|"payment_landing"|"checking"}
+ *   settle    (host)   → {status}: the server's answer once the host's clock
+ *                        passes expires_at
  *   text_link (host)   → {sent:true, last4}
  * Checkout: `ticket-checkout-create` with `doorCode` (basket comes from the
  * code; 409 {error:"door_code_unavailable", status} when it can't be paid).
@@ -31,6 +33,14 @@ export type DoorPayCodeStatus =
   | "expired"
   | "cancelled"
   | "failed";
+
+/**
+ * What the server says while a close can't finish. The code stays open:
+ * payment_landing means the provider took the money and finalize makes the sale;
+ * checking means the provider hasn't answered yet.
+ */
+export type DoorPayUnsettledStatus = "payment_landing" | "checking";
+export type DoorPayLiveStatus = DoorPayCodeStatus | DoorPayUnsettledStatus;
 
 const STATUSES: readonly DoorPayCodeStatus[] = [
   "open",
@@ -61,7 +71,9 @@ export interface DoorPayCodeCreated {
 }
 
 export interface DoorPayCodeView {
-  status: DoorPayCodeStatus;
+  status: DoorPayLiveStatus;
+  /** A payment that landed after this code closed, and its refund. */
+  latePayment: DoorPayLatePayment | null;
   /** Optional: forwarded to checkout when the server includes it. */
   eventId?: string;
   eventName: string;
@@ -83,6 +95,7 @@ export interface DoorPayCodeRow {
   eventDateId: string | null;
   code: string;
   status: DoorPayCodeStatus;
+  provider: "stripe" | "paystack";
   lines: { ticketTypeId: string; quantity: number }[];
   currency: string;
   subtotalCents: number;
@@ -98,9 +111,9 @@ export class DoorPayCodeError extends Error {
   readonly code: string;
   readonly status: number | null;
   /** The code's status, when a 409 reports why it can't be paid. */
-  readonly codeStatus: DoorPayCodeStatus | null;
+  readonly codeStatus: DoorPayLiveStatus | null;
 
-  constructor(code: string, status: number | null = null, codeStatus: DoorPayCodeStatus | null = null) {
+  constructor(code: string, status: number | null = null, codeStatus: DoorPayLiveStatus | null = null) {
     super(code);
     this.name = "DoorPayCodeError";
     this.code = code;
@@ -116,6 +129,9 @@ export const toDoorPayCodeStatus = (value: unknown): DoorPayCodeStatus | null =>
   typeof value === "string" && (STATUSES as readonly string[]).includes(value)
     ? (value as DoorPayCodeStatus)
     : null;
+
+export const toDoorPayLiveStatus = (value: unknown): DoorPayLiveStatus | null =>
+  value === "payment_landing" || value === "checking" ? value : toDoorPayCodeStatus(value);
 
 const num = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -149,7 +165,7 @@ const readDoorPayRefusal = async (error: unknown): Promise<DoorPayCodeError> => 
     try {
       const body: unknown = await (context.json as () => Promise<unknown>).call(context);
       if (isRecord(body) && typeof body.error === "string") {
-        return new DoorPayCodeError(body.error, status, toDoorPayCodeStatus(body.status));
+        return new DoorPayCodeError(body.error, status, toDoorPayLiveStatus(body.status));
       }
     } catch {
       // Body already consumed or not JSON: the HTTP status still stands.
@@ -183,10 +199,11 @@ export const parseDoorPayCodeCreated = (data: Record<string, unknown>): DoorPayC
 };
 
 export const parseDoorPayCodeView = (data: Record<string, unknown>): DoorPayCodeView => {
-  const status = toDoorPayCodeStatus(data.status);
+  const status = toDoorPayLiveStatus(data.status);
   if (status === null) throw new DoorPayCodeError("invalid_response");
   return {
     status,
+    latePayment: parseDoorPayLatePayment(data.latePayment),
     ...(typeof data.eventId === "string" && data.eventId.length > 0 ? { eventId: data.eventId } : {}),
     eventName: str(data.eventName) || "Event",
     eventStartsAt: strOrNull(data.eventStartsAt),
@@ -265,9 +282,22 @@ export const createDoorPayCode = async (
 export const viewDoorPayCode = async (code: string): Promise<DoorPayCodeView> =>
   parseDoorPayCodeView(await invokeDoorPayCode({ action: "view", code }));
 
-export const cancelDoorPayCode = async (codeId: string): Promise<void> => {
+export const cancelDoorPayCode = async (
+  codeId: string,
+): Promise<"cancelled" | DoorPayUnsettledStatus> => {
   const data = await invokeDoorPayCode({ action: "cancel", codeId });
-  if (data.status !== "cancelled") throw new DoorPayCodeError("cancel_failed");
+  if (data.status === "cancelled" || data.status === "payment_landing" || data.status === "checking") {
+    return data.status;
+  }
+  throw new DoorPayCodeError("cancel_failed");
+};
+
+/** The host's clock passed expires_at: only the server says what that means. */
+export const settleDoorPayCode = async (codeId: string): Promise<DoorPayLiveStatus> => {
+  const data = await invokeDoorPayCode({ action: "settle", codeId });
+  const status = toDoorPayLiveStatus(data.status);
+  if (status === null) throw new DoorPayCodeError("invalid_response");
+  return status;
 };
 
 export const textDoorPayLink = async (input: {
@@ -291,6 +321,7 @@ interface DoorPayCodeDbRow {
   event_date_id: string | null;
   code: string;
   status: string;
+  provider: string | null;
   lines: unknown;
   currency: string | null;
   subtotal_cents: number | null;
@@ -303,7 +334,7 @@ interface DoorPayCodeDbRow {
 }
 
 export const DOOR_PAY_CODE_COLUMNS =
-  "id,event_id,event_date_id,code,status,lines,currency,subtotal_cents,total_cents,expires_at,opened_at,paid_at,order_id,failure_reason";
+  "id,event_id,event_date_id,code,status,provider,lines,currency,subtotal_cents,total_cents,expires_at,opened_at,paid_at,order_id,failure_reason";
 
 export const mapDoorPayCodeRow = (row: DoorPayCodeDbRow): DoorPayCodeRow => ({
   id: row.id,
@@ -311,6 +342,7 @@ export const mapDoorPayCodeRow = (row: DoorPayCodeDbRow): DoorPayCodeRow => ({
   eventDateId: row.event_date_id ?? null,
   code: row.code,
   status: toDoorPayCodeStatus(row.status) ?? "failed",
+  provider: row.provider === "paystack" ? "paystack" : "stripe",
   lines: parseLines(row.lines).map(({ ticketTypeId, quantity }) => ({ ticketTypeId, quantity })),
   currency: row.currency ?? "",
   subtotalCents: row.subtotal_cents ?? 0,
@@ -333,18 +365,22 @@ export const fetchDoorPayCode = async (codeId: string): Promise<DoorPayCodeRow> 
 };
 
 /**
- * A payment that landed after the code closed is refunded in full
- * automatically. Null when nothing was charged.
+ * A payment that landed after the code closed is owed back in full: "refunding"
+ * until the provider confirms, "refunded" after. "kept" is the backstop: it stood
+ * as an online order, so no refund exists. Null when nothing was charged.
  */
 export interface DoorPayLatePayment {
-  state: "refunding" | "refunded";
+  state: "refunding" | "refunded" | "kept";
   amountCents: number;
   currency: string;
 }
 
 export const parseDoorPayLatePayment = (data: unknown): DoorPayLatePayment | null => {
   if (!isRecord(data)) return null;
-  const state = data.state === "refunded" ? "refunded" : data.state === "refunding" ? "refunding" : null;
+  const state =
+    data.state === "refunded" || data.state === "refunding" || data.state === "kept"
+      ? data.state
+      : null;
   if (state === null) return null;
   return { state, amountCents: num(data.amountCents), currency: str(data.currency) };
 };

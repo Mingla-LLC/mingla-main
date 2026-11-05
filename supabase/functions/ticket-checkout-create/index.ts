@@ -2075,7 +2075,7 @@ export const createTicketCheckoutCreateHandler = (
     // request for event B can no longer be answered with event A's session. All
     // 179 live sessions already satisfy that relationship, so nothing legitimate
     // changes.
-    const idempotencyKey = isCheckoutV2
+    const baseIdempotencyKey = isCheckoutV2
       ? checkoutV2IdempotencyKey({
         eventId,
         checkoutAttemptId: checkoutAttemptId!,
@@ -2095,6 +2095,11 @@ export const createTicketCheckoutCreateHandler = (
         partySize,
         discountCode,
       });
+    // Issue #4271 — a session belongs to one code: the same buyer and basket on
+    // another code is another session, never a replay of the first.
+    const idempotencyKey = doorPay !== null
+      ? `${baseIdempotencyKey}:door:${doorPay.codeId}`
+      : baseIdempotencyKey;
     const buyerStatusToken = randomBuyerStatusToken();
 
     const resolvedAttempt = isCheckoutV2
