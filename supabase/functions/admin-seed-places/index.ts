@@ -29,6 +29,7 @@ import {
 } from "../_shared/seedingGeometry.ts";
 import {
   applyCityBox,
+  citiesSearchStatus,
   citySearchStatus,
   generateTilesForCity,
   type GeocodeResult,
@@ -1662,6 +1663,8 @@ export async function dispatchAction(body: any, supabase: any): Promise<Response
       return json(await handleRunStatus(body, supabase));
     case "city_search_status":
       return json(await citySearchStatus(supabase, body));
+    case "cities_search_status":
+      return json(await citiesSearchStatus(supabase));
     case "preview_fill":
       return json(await previewFill(supabase, body));
     case "start_fill":

@@ -5,6 +5,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkStorageHeadroom } from "../_shared/storageHeadroomGuard.ts";
+import { unhealthyProviders } from "./gates.ts";
 import {
   approve,
   type CallResult,
@@ -112,6 +113,8 @@ export const httpHandler = async (req: Request): Promise<Response> => {
         return json(await rpcOrThrow(deps, "city_pipeline_blockers", { p_city_id: body.cityId }));
       case "spend":
         return json(await rpcOrThrow(deps, "city_pipeline_spend_ledger", { p_city_id: body.cityId, p_run_id: body.runId ?? null }));
+      case "health":
+        return json(await health(deps));
       case "gemini_cost_sample":
         return json(await rpcOrThrow(deps, "city_pipeline_gemini_cost_sample", {}));
       case "no_city_report":
@@ -129,6 +132,25 @@ export const httpHandler = async (req: Request): Promise<Response> => {
     return json({ error: err instanceof Error ? err.message : "Internal error" }, 500);
   }
 };
+
+/** U1: the Pipeline header. Providers, database, cached storage, the Serper rate and the
+ * materialized view refresh, read without starting anything. */
+async function health(deps: Deps) {
+  const gates = await rpcOrThrow(deps, "city_pipeline_gate_inputs", {});
+  const s = gates.settings ?? {};
+  return {
+    db_bytes: gates.db_bytes,
+    db_pause_bytes: s.db_pause_bytes,
+    storage_total_bytes: s.storage_total_bytes,
+    storage_ok: s.storage_ok,
+    storage_message: s.storage_message,
+    storage_measured_at: s.storage_measured_at,
+    serper_usd_per_request: s.serper_usd_per_request ?? null,
+    providers: gates.providers,
+    unhealthy: unhealthyProviders(gates, ["google_places", "gemini", "serper"], (deps.now ?? Date.now)()),
+    mv_refresh: await rpcOrThrow(deps, "city_pipeline_mv_refresh_health", {}),
+  };
+}
 
 async function rpcOrThrow(deps: Deps, name: string, args: Record<string, unknown>) {
   const { data, error } = await deps.db.rpc(name, args);

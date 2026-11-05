@@ -738,6 +738,40 @@ export async function citySearchStatus(db: Db, body: Record<string, unknown>) {
   };
 }
 
+/**
+ * U3: the Cities tab's search gaps for every city in one call, so readiness can say how
+ * many areas and searches are still unsearched. A city that fails to load is reported
+ * with its error rather than dropped, so no city reads as complete by omission.
+ */
+export async function citiesSearchStatus(db: Db) {
+  const { data: cities, error } = await db.from("seeding_cities").select("id, name").order("name");
+  if (error) throw new Error(`Cities could not be read: ${error.message}`);
+  const out: Record<string, unknown>[] = [];
+  for (const city of cities ?? []) {
+    try {
+      const s = await citySearchStatus(db, { cityId: city.id });
+      const last = s.last_completeness_check;
+      out.push({
+        cityId: city.id,
+        name: city.name,
+        uncoveredTiles: s.uncoveredTiles,
+        unfinishedSearches: s.unfinished?.total ?? null,
+        cappedOpen: s.capped_open ?? null,
+        unresolved: Array.isArray(s.unresolved) ? s.unresolved.length : null,
+        completenessCheck: last ? { status: last.status, missingShare: last.missing_share, at: last.created_at } : null,
+        droppedAtSeed: s.dropped_at_seed ?? null,
+        activeRun: s.active_run ?? null,
+        checks: s.checks,
+        complete: s.complete,
+        error: null,
+      });
+    } catch (e) {
+      out.push({ cityId: city.id, name: city.name, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { cities: out };
+}
+
 // ── B1 and B2: boxes ────────────────────────────────────────────────────────
 
 export interface GeocodeResult {
