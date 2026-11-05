@@ -256,6 +256,15 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     expect(screen).toMatch(
       /if \(!cartVisible \|\| !cartWasVisibleRef\.current\) \{\s*cartSeedQuantitiesRef\.current = onDayTicketQuantities;/,
     );
+    // Both refs are hooks: declared above the screen's first early return, so
+    // a loading render and a loaded one call the same hooks in the same order.
+    const firstEarlyReturn = screen.indexOf("\n    return (");
+    expect(firstEarlyReturn).toBeGreaterThan(0);
+    for (const ref of ["const cartSeedQuantitiesRef = useRef", "const cartWasVisibleRef = useRef"]) {
+      const at = screen.indexOf(ref);
+      expect(at).toBeGreaterThan(0);
+      expect(at).toBeLessThan(firstEarlyReturn);
+    }
     expect(screen).not.toMatch(/ticketQuantities=\{ticketQuantities\}/);
   });
 

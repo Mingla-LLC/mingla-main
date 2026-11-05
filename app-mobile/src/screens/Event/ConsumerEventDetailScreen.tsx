@@ -413,6 +413,11 @@ export default function ConsumerEventDetailScreen({
   const followerCountLabels = useFollowerCountLabels();
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
+  // issue #3281 — the cart's seed, frozen per opening (set further down, after
+  // the day-scope filter). Declared here, above every early return, so the
+  // hook order never changes between a loading render and a loaded one.
+  const cartSeedQuantitiesRef = useRef<Record<string, number>>({});
+  const cartWasVisibleRef = useRef<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
     null,
   );
@@ -1620,8 +1625,6 @@ export default function ConsumerEventDetailScreen({
   // days, and a changed seed re-seeds an open cart over the guest's edits, so
   // it is frozen at the render the cart opens in (which already holds the
   // quantities the tap that opened it set) and follows the page while closed.
-  const cartSeedQuantitiesRef = useRef(onDayTicketQuantities);
-  const cartWasVisibleRef = useRef(cartVisible);
   if (!cartVisible || !cartWasVisibleRef.current) {
     cartSeedQuantitiesRef.current = onDayTicketQuantities;
   }
