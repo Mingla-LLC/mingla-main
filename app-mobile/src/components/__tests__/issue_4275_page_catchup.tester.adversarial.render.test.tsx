@@ -122,7 +122,10 @@ jest.mock("../../services/pairingService", () => mockModule());
 jest.mock("../../hooks/useMessages", () => mockModule());
 jest.mock("react-native", () => {
   const actual = jest.requireActual("react-native");
-  return new Proxy(actual, { get: (target, key) => (key === "Modal" ? () => null : target[key]) });
+  // react-native-web's VirtualizedList re-arms a wheel-handler timer until it finds a
+  // DOM node, which never comes under the test renderer, so Jest would never exit.
+  const mockStub = new Set(["Modal", "FlatList", "SectionList", "VirtualizedList"]);
+  return new Proxy(actual, { get: (target, key) => (mockStub.has(key as string) ? () => null : target[key]) });
 });
 jest.mock("../../constants/countries", () => mockModule({ countryByCode: () => null, COUNTRIES: [], DEFAULT_COUNTRY: { code: "US" }, getCountryByCode: () => ({ code: "US", dialCode: "+1", flag: "" }) }));
 jest.mock("../../hooks/useOpenChatRecovery", () => ({
@@ -210,6 +213,8 @@ describe("#4275 tester: ConnectionsPage hands recovery the truth about a read", 
   });
   afterAll(async () => {
     await TestRenderer.act(async () => renderer?.unmount());
+    // The query cache's 5-minute garbage collection timer would hold Jest open.
+    client.clear();
     warn.mockRestore();
     log.mockRestore();
   });
