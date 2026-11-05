@@ -11,6 +11,9 @@
 // - "Added by {name}" for the creator, or the viewer not first as "You" → the
 //   voters-line case fails.
 // - leadingPlace ignoring votes or the original tie-break → the leader case fails.
+// - drop planQuote from planCommentSendFields or the optimistic bubble → the
+//   comment's bubble shows the generic reply block until the row returns; the
+//   plan-comment cases fail.
 // MINGLA-INVARIANT: I-4261-PLAN-TIMES-HERMES-SAFE | issue #4261 | Plan time labels never read the Intl parts API; each field comes from format() with a manual clock fallback, so no label reads "undefined".
 
 import {
@@ -30,6 +33,7 @@ import {
   parsePlanQuote,
   placeLinkTarget,
   planAddPlaceInput,
+  planCommentSendFields,
   planCreateInput,
   planErrorKey,
   planPhoto,
@@ -358,3 +362,80 @@ Deno.test("plan_lock / plan_cancel are literal rpc calls (gate #2305) and the lo
   const hooks = await Deno.readTextFile(new URL("../../../hooks/useChatPlans.ts", import.meta.url));
   assert(/placeOptionId: lockPlaceOptionId\(plan\)/.test(hooks), "useLockPlan passes the leading place");
 });
+
+// ── A plan comment's bubble quotes the plan from its first frame ─────────
+
+const quoteT = (key: string, params?: Record<string, unknown>): string =>
+  params ? `${key}:${JSON.stringify(params)}` : key;
+const picks = { title: "Dinner Saturday", votedStartsAt: ["2026-11-05T19:30:00Z"], rsvp: "going" as const, votedPlaces: ["Bar A"] };
+
+Deno.test("plan comment on a visible card: replies to it and carries the plan and my picks", () => {
+  const fields = planCommentSendFields({
+    messageId: "m-card",
+    plan: { planId: "p1", title: "Dinner Saturday", viaPlanId: false, quote: picks },
+  });
+  assertEquals(fields.replyToId, "m-card", "still a reply");
+  assertEquals(fields.planId, "p1", "the bubble's plan");
+  assertEquals(fields.planQuote, picks, "the bubble's quote");
+  // The one formatter: the same snapshot reads the same as the server's row will.
+  assertEquals(
+    planQuoteNote(fields.planQuote!, "en-US", "UTC", quoteT),
+    planQuoteNote({ ...picks }, "en-US", "UTC", quoteT),
+    "one formatter",
+  );
+});
+
+Deno.test("plan comment on a deck match: no message to reply to, names the plan", () => {
+  const fields = planCommentSendFields({
+    messageId: "",
+    plan: { planId: "p2", title: "Deck", viaPlanId: true, quote: picks },
+  });
+  assertEquals(fields.replyToId, undefined, "no reply target");
+  assertEquals(fields.planId, "p2", "sent with the plan");
+  assertEquals(fields.planQuote, picks, "quoted");
+});
+
+Deno.test("plan comment with no picks still carries a quote that reads as voting", () => {
+  const empty = { title: "Dinner Saturday", votedStartsAt: [], rsvp: null, votedPlaces: [] };
+  const fields = planCommentSendFields({
+    messageId: "m-card",
+    plan: { planId: "p1", title: "Dinner Saturday", viaPlanId: false, quote: empty },
+  });
+  assertEquals(fields.planQuote, empty, "an empty snapshot is still a quote");
+  assertEquals(planQuoteNote(fields.planQuote!, "en-US", "UTC", quoteT), "plan_quote_voting", "no blank note");
+});
+
+Deno.test("adversarial: a non-plan reply stays generic, and no reply carries nothing", () => {
+  const reply = planCommentSendFields({ messageId: "m-friend" });
+  assertEquals(reply.replyToId, "m-friend", "plain reply");
+  assertEquals(reply.planId, undefined, "no plan on a plain reply");
+  assertEquals(reply.planQuote, undefined, "no quote on a plain reply");
+  assertEquals(planCommentSendFields(null), { replyToId: undefined }, "no reply");
+});
+
+Deno.test("an unknown viewer has no quote to show: the bubble stays a plain reply", () => {
+  const fields = planCommentSendFields({
+    messageId: "m-card",
+    plan: { planId: "p1", title: "Dinner Saturday", viaPlanId: false, quote: null },
+  });
+  assertEquals(fields.planQuote, undefined, "no made-up picks");
+});
+
+Deno.test("wiring: optimistic bubble, retry, wire payload and the one renderer", async () => {
+  const page = await Deno.readTextFile(new URL("../../ConnectionsPage.tsx", import.meta.url));
+  const send = page.slice(page.indexOf("const handleSendMessage = async ("), page.indexOf("postOptimisticMessage(conversationId, optimisticMsg);\n    await deliverMessage"));
+  assert(/planId,\s*\/\/ [^\n]*\n\s*planQuote,\s*\};/.test(send), "the optimistic bubble carries the quote");
+  // Retry re-sends the failed bubble itself, so the quote and plan come with it.
+  const retry = page.slice(page.indexOf("const handleRetryMessage = "), page.indexOf("const handleLoadOlderMessages"));
+  assert(retry.includes("...failedMessage,"), "a retry keeps the bubble's fields");
+  // What goes to the server is unchanged: a reply to a plan card names no plan.
+  assert(page.includes("planId: current.replyToId ? null : current.planId ?? null,"), "wire payload");
+  const composer = await Deno.readTextFile(new URL("../../MessageInterface.tsx", import.meta.url));
+  assert(composer.includes("planCommentSendFields(replyingTo)"), "the composer sends through the helper");
+  assert(/plan: \{ planId: plan\.id, title: plan\.title, viaPlanId, quote \}/.test(composer), "the composer bar's snapshot is the one sent");
+  assert(/planQuote: message\.planId && message\.planQuote && message\.type !== 'plan' && !message\.isSystem/.test(composer), "the one render path");
+  assertEquals(composer.match(/planQuoteNote\(/g)?.length, 2, "no second formatter call: bar and bubble");
+  const bubble = await Deno.readTextFile(new URL("../MessageBubble.tsx", import.meta.url));
+  assert(/\{planQuote \? \(\s*<PlanQuoteBlock[\s\S]*?\) : replyTo && \(/.test(bubble), "the quote wins over the reply block");
+});
+

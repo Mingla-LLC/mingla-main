@@ -495,6 +495,33 @@ export function planQuoteFallbackKey(plan: Pick<ChatPlan, "whenMode" | "options"
   return !timePoll && (plan.places ?? []).length >= 2 ? "plan_quote_voting_place" : "plan_quote_voting";
 }
 
+/** The composer's "Replying to plan" state. */
+export interface PlanCommentReply {
+  planId: string;
+  title: string;
+  viaPlanId: boolean;
+  /** My picks when the reply started; null when the viewer is unknown. */
+  quote: PlanQuoteSnapshot | null;
+}
+
+/**
+ * What a send carries for the composer's reply. A plan comment's bubble gets the
+ * plan and my picks at once, so it renders the plan quote from its first frame;
+ * a plan with no visible card has no message to reply to. Any other reply stays
+ * a plain reply.
+ */
+export function planCommentSendFields(
+  reply: { messageId: string; plan?: PlanCommentReply } | null,
+): { replyToId?: string; planId?: string; planQuote?: PlanQuoteSnapshot } {
+  const plan = reply?.plan;
+  if (!plan) return { replyToId: reply?.messageId };
+  return {
+    replyToId: plan.viaPlanId ? undefined : reply?.messageId,
+    planId: plan.planId,
+    planQuote: plan.quote ?? undefined,
+  };
+}
+
 /** Reads `messages.plan_quote` defensively (old rows, partial realtime rows). */
 export function parsePlanQuote(value: unknown): PlanQuoteSnapshot | null {
   if (!value || typeof value !== "object") return null;

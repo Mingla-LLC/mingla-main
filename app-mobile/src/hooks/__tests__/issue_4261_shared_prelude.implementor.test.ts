@@ -117,7 +117,7 @@ Deno.test("#4261 C: ConnectionsPage carries plan fields both ways", async () => 
   if (!/cardTags: CardTagEntry\[\] = \[\],\s*planId\?: string,/.test(send)) throw new Error("handleSendMessage ignores the 7th planId argument");
   if (!/marketingCampaignId: null,\s*planId,/.test(send)) throw new Error("the optimistic bubble does not carry planId");
   const deliver = page.slice(page.indexOf("const deliverMessage = async ("), page.indexOf("const handleSendMessage = async ("));
-  if (!/planId:\s*current\.planId\s*\?\?\s*null/.test(deliver)) throw new Error("deliverMessage does not pass planId to sendMessage");
+  if (!/planId:\s*current\.replyToId\s*\?\s*null\s*:\s*current\.planId\s*\?\?\s*null/.test(deliver)) throw new Error("deliverMessage does not pass planId to sendMessage");
 });
 
 Deno.test("#4261 C: the chat list preview comes from chatPreviewText", async () => {

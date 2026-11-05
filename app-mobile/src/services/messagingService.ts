@@ -1804,7 +1804,9 @@ export class MessagingService {
         .from('messages')
         .select('id')
         .eq('conversation_id', conversationId)
-        .neq('sender_id', userId)
+        // Issue #4261: system lines have no sender and count as unread
+        // (applyUnreadFilters); a bare neq drops NULL, so they were never read.
+        .or(`sender_id.neq.${userId},sender_id.is.null`)
         .is('deleted_at', null);
       if (idsError) throw idsError;
       const ids = (rows ?? []).map((row: { id: string }) => row.id);

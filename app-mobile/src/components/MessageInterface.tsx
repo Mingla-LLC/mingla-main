@@ -185,9 +185,11 @@ import {
   placeLinkTarget,
   planHeaderInputs,
   planPlaceTarget,
+  planCommentSendFields,
   planQuoteFallbackKey,
   planQuoteNote,
   viewerQuoteSnapshot,
+  type PlanCommentReply,
 } from "./chat/planModel";
 import { PlanPlaceSuggestSheet } from "./chat/PlanPlaceSuggestSheet";
 import { toastManager } from "./ui/Toast";
@@ -398,8 +400,10 @@ interface MessageInterfaceProps {
     replyToId?: string,
     mentions?: MentionEntry[],
     cardTags?: CardTagEntry[],
-    /** Issue #4261: a comment on a plan with no visible plan message (a deck match). */
+    /** Issue #4261: the plan a comment is about (the bubble's quote; a deck match also sends it). */
     planId?: string,
+    /** Issue #4261: my picks, quoted on the bubble until the server's snapshot arrives. */
+    planQuote?: PlanQuoteSnapshot,
   ) => void;
   messages: Message[];
   /**
@@ -1093,7 +1097,7 @@ function MessageInterfaceInner({
      * to that message (the server derives the plan); otherwise the send names
      * the plan id (deck matches have no card message).
      */
-    plan?: { planId: string; title: string; viaPlanId: boolean };
+    plan?: PlanCommentReply;
   } | null>(null);
   // Issue #4261: plan dialogs and the card highlight after a jump.
   const [planLockTimeFor, setPlanLockTimeFor] = useState<ChatPlan | null>(null);
@@ -1299,8 +1303,7 @@ function MessageInterfaceInner({
     sendCoordinator.requestSend({
       read: chatController.readText,
       send: () => {
-        const planReply = replyingTo?.plan;
-        const replyToId = planReply?.viaPlanId ? undefined : replyingTo?.messageId;
+        const { replyToId, planId, planQuote } = planCommentSendFields(replyingTo);
         const { content, mentions, cardTags } = chatController.serializeForSend();
         // Clear first, synchronously, then send.
         clearComposerAfterSend();
@@ -1312,7 +1315,8 @@ function MessageInterfaceInner({
           replyToId,
           mentions,
           cardTags,
-          planReply?.viaPlanId ? planReply.planId : undefined,
+          planId,
+          planQuote,
         );
         stopTyping();
         HapticFeedback.light();
@@ -2518,9 +2522,10 @@ function MessageInterfaceInner({
   /** Reply on a plan: quote it in the composer bar with my current picks. */
   const startPlanReply = useCallback((plan: ChatPlan) => {
     const viaPlanId = !(plan.source === 'chat' && plan.messageId && plan.messageVisible);
-    const note = planViewerId
+    const quote = planViewerId ? viewerQuoteSnapshot(plan, planViewerId) : null;
+    const note = quote
       ? planQuoteNote(
-          viewerQuoteSnapshot(plan, planViewerId),
+          quote,
           i18n.language,
           undefined,
           (key, params) => t(`chat:${key}`, params),
@@ -2532,7 +2537,7 @@ function MessageInterfaceInner({
       senderName: plan.title,
       content: note,
       isMe: true,
-      plan: { planId: plan.id, title: plan.title, viaPlanId },
+      plan: { planId: plan.id, title: plan.title, viaPlanId, quote },
     });
     setTimeout(() => inputRef.current?.focus?.(), 50);
   }, [i18n.language, planViewerId, t]);
