@@ -7,6 +7,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizePlaceJudgingCaller } from '../_shared/placeJudgingAuth.ts';
 import { type PlaceForScoring, type SignalConfig } from '../_shared/signalScorer.ts';
 // ORCH-1066 — sticky-through-approval: shared admin-override marker predicates so
 // the scorer and its regression test agree on exactly one definition.
@@ -53,10 +54,14 @@ const IN_CHUNK = 100; // max UUIDs per PostgREST .in() URL — 500 blew the HTTP
 // the 15-min cron + approval re-score finish in ONE invocation.
 const SCORER_MAX_ROWS_PER_CALL = 500;
 
-serve(async (req: Request) => {
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // #4276: only the service role (conductor, rescore cron) or an active admin.
+  const caller = await authorizePlaceJudgingCaller(req);
+  if (caller instanceof Response) return caller;
 
   const t0 = Date.now();
 
@@ -377,4 +382,7 @@ serve(async (req: Request) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
-});
+};
+
+// Importing this file for tests must not start a server.
+if (import.meta.main) serve(handler);

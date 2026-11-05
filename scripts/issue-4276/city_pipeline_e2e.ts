@@ -212,9 +212,9 @@ await load("backfill-place-photos", "handler");
 await load("backfill-place-photo-thumbs", "handler");
 await load("run-place-intelligence-trial", "httpHandler");
 await load("run-city-pipeline", "httpHandler");
-await load("run-pre-photo-bouncer");
-await load("run-bouncer");
-await load("run-signal-scorer");
+await load("run-pre-photo-bouncer", "handler");
+await load("run-bouncer", "handler");
+await load("run-signal-scorer", "handler");
 
 async function callAdmin(action: string, body: Record<string, unknown> = {}, token = "admin-token") {
   const res = await handlers.get("run-city-pipeline")!(new Request(`${FUNCTIONS_URL}/functions/v1/run-city-pipeline`, {
