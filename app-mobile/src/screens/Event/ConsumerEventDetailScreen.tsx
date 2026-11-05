@@ -191,6 +191,10 @@ import {
   formatOccurrenceSummary,
 } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+import {
+  ticketDayScopeLabel,
+  ticketOffChosenDays,
+} from "../../components/expandedCard/ticketDayScope";
 
 const ACCENT = "#FF6B35";
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
@@ -1597,6 +1601,20 @@ export default function ConsumerEventDetailScreen({
           dateLine: seededPublicEvent.dateLine,
           dateSubline: occurrenceSummary,
           hideRemainingCount,
+          // issue #3281 — each listed ticket says which days it covers, and
+          // reads as off the guest's days when it covers none of them.
+          tickets: canonical.event.tickets.map((ticket) => ({
+            ...ticket,
+            dayScopeLabel: ticketDayScopeLabel(
+              ticket.validOccurrenceIds,
+              validOccurrences,
+              canonical.timezone,
+            ),
+            offChosenDays: ticketOffChosenDays(
+              ticket.validOccurrenceIds,
+              selectedEventDateIds,
+            ),
+          })),
         };
   const canonicalLifecycleReady =
     validatedDayCanonical !== null && !canonicalQuery.isError;

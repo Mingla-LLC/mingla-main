@@ -151,7 +151,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
 // #3281: register the door extras migration and test
-export const BOOTSTRAP_SHA256 = "54fca49b0c97a80731d68437e0bcd918cf89f6172a03ac58781c14a74928efd1";
+// #3281: register the private link dates migration and test
+export const BOOTSTRAP_SHA256 = "8be0c24a7764cb78952b6f58d50553519d1f7a6e53bc2c00a5aa65fea288ac38";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

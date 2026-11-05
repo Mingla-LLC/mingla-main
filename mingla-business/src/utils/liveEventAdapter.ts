@@ -106,6 +106,8 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   requireApproval: e.requireApproval,
   allowTransfers: e.allowTransfers,
   hideRemainingCount: e.hideRemainingCount,
+  // issue #3281 — the ticket sheet's capacity and price hints read it.
+  multiDatePricingMode: e.multiDatePricingMode,
   passwordProtected: e.passwordProtected,
   // #1022 C-3 — normalise so a never-themed event projects `null`, not
   // {null,null,null}. Without this the JSON.stringify deepEqual below sees

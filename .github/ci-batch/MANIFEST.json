@@ -17765,6 +17765,7 @@
         "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
         "supabase/migrations/20280404004273_issue_4273_invite_combined_sources_and_methods.sql",
         "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql",
+        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19468,6 +19469,7 @@
         "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
         "supabase/migrations/20280404004273_issue_4273_invite_combined_sources_and_methods.sql",
         "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql",
+        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -19907,6 +19909,8 @@
         "supabase/migrations/__tests__/issue_3281_live_edit_keeps_date_ids.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_many_dates_foundation.structural.test.ts",
         "supabase/migrations/__tests__/issue_3281_many_dates_foundation.structural.test.ts.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3281_private_link_ticket_dates.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_private_link_ticket_dates.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_production_order_repair.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_production_order_repair.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_production_order_repair.structural.test.ts",
@@ -24371,6 +24375,7 @@
         "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
         "supabase/migrations/20280404004273_issue_4273_invite_combined_sources_and_methods.sql",
         "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql",
+        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -24810,6 +24815,8 @@
         "supabase/migrations/__tests__/issue_3281_live_edit_keeps_date_ids.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_many_dates_foundation.structural.test.ts",
         "supabase/migrations/__tests__/issue_3281_many_dates_foundation.structural.test.ts.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3281_private_link_ticket_dates.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_private_link_ticket_dates.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_production_order_repair.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_production_order_repair.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_production_order_repair.structural.test.ts",
@@ -52885,5 +52892,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "ef3187659b525ef5ec2415e9681d145906ac3625306ccbf5e150550c028fe626"
+  "phase3eContractSha256": "ed4e3359b50ec16fb3a37a589c967c0f05ebc6ba5fce59b4cc8dfeed7d6fbeb8"
 }

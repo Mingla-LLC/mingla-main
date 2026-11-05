@@ -363,7 +363,8 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
 // #3281: register the door extras migration and test
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ef3187659b525ef5ec2415e9681d145906ac3625306ccbf5e150550c028fe626";
+// #3281: register the private link dates migration and test
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ed4e3359b50ec16fb3a37a589c967c0f05ebc6ba5fce59b4cc8dfeed7d6fbeb8";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
