@@ -114,9 +114,23 @@ export const handler = async (req: Request): Promise<Response> => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
-    if (!placeIds && !cityId && !allCities) {
+    // #4276: a city-wide score blends in every stored Intelligence result, including
+    // older results held back from live decks, so it would release them. Refused for
+    // every caller until the hold is lifted; scoring by place id is unchanged. A request
+    // with place_ids still drops city_id, as before.
+    const hasPlaceIds = !!(placeIds && placeIds.length > 0);
+    if (!hasPlaceIds && (cityId || allCities)) {
       return new Response(
-        JSON.stringify({ error: 'Provide place_ids, city_id, or all_cities=true' }),
+        JSON.stringify({
+          error: 'City-wide scoring is paused while older results are held (#4276). Score by place_ids instead.',
+          code: 'city_wide_scoring_paused',
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    if (!hasPlaceIds) {
+      return new Response(
+        JSON.stringify({ error: 'Provide place_ids' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
