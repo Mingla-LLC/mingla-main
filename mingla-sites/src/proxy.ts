@@ -32,6 +32,11 @@ export function isPrivatePreviewPath(pathname: string): boolean {
   return pathname === "/preview" || pathname.startsWith("/preview/");
 }
 
+/** #2830 — a preview's own asset: the address carries the key. */
+export function isPreviewKeyedAsset(pathname: string, search: URLSearchParams): boolean {
+  return search.has("k") && /^\/(media|om|map|fonts)\//.test(pathname);
+}
+
 export async function proxy(request: NextRequest) {
   const redirect = await siteRedirectFor(
     request.headers,
@@ -87,6 +92,9 @@ export async function proxy(request: NextRequest) {
     // team's carries the key) to a site a visitor follows a link to.
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
     response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+  }
+  if (isPreviewKeyedAsset(request.nextUrl.pathname, request.nextUrl.searchParams)) {
     response.headers.set("Referrer-Policy", "no-referrer");
   }
   return response;

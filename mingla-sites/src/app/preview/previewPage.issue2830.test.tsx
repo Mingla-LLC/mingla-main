@@ -137,6 +137,12 @@ describe("#2830 preview specifics", () => {
     expect(junk).not.toContain("evil.example");
   });
 
+  it("a search form stays in the preview, because a GET form drops the action's query", async () => {
+    const html = await team(asPreview(voyageSyntheticArtifact()), "trips");
+    expect(html).toMatch(/<form action="\/preview" method="get"[^>]*><input type="hidden" name="k" value="publications\//);
+    expect(html).toContain('<input type="hidden" name="path" value="trips"/>');
+  });
+
   it("the current page is marked from the preview's path, not /preview", async () => {
     const artifact = asPreview(voyageSyntheticArtifact());
     const page = sitePages(artifact).find((row) => row.enabled && row.path !== "");

@@ -116,6 +116,13 @@ describe("#2829 W10 private preview headers", () => {
     expect((await run("/about-us")).headers.get("content-security-policy")).not.toContain("video.cdn.example");
   });
 
+  it("#2830 a preview-keyed asset sends no referrer; the same asset without a key is unchanged", async () => {
+    for (const path of ["/media/x/1440.webp", "/om/x/c400", "/map/16/1/2", "/fonts/x"]) {
+      expect((await run(`${path}?k=key`)).headers.get("referrer-policy"), path).toBe("no-referrer");
+      expect((await run(path)).headers.get("referrer-policy"), path).toBeNull();
+    }
+  });
+
   it("nobody may frame a shared link", () => {
     expect(frameAncestorsFor(`/preview/share/${TOKEN}`, { localMode: true })).toBe("'none'");
   });

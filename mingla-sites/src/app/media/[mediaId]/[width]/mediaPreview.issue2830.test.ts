@@ -87,7 +87,6 @@ describe("#2830 /media with a preview key", () => {
     expect(response.status).toBe(200);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(PICTURE);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     expect(loadPublication).not.toHaveBeenCalled();
   });
@@ -179,7 +178,6 @@ describe("#2830 /media without a key is unchanged", () => {
     const response = await call(GET, MEDIA, "1440.webp");
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
-    expect(response.headers.get("referrer-policy")).toBeNull();
     expect(response.headers.get("x-robots-tag")).toBeNull();
     expect(resolveHostSite).not.toHaveBeenCalled();
   });

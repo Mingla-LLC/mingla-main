@@ -11,12 +11,12 @@ import type { SiteArtifact } from "./siteArtifact";
  * route already does, a preview's URLs carry its key: `?k=` is the capability,
  * re-checked on every route against the host the request arrived on by
  * `loadPreviewArtifact` (exact shape, `preview-` marker, this host's site, the
- * bytes' digest). A preview-keyed response is private: never in a shared cache,
- * and it sends no referrer.
+ * bytes' digest). A preview-keyed response is private: never in a shared cache.
+ * Its no-referrer policy is set in proxy.ts, because next.config's site-wide
+ * Referrer-Policy overrides one a route handler sets (seen on a real build).
  */
 export const PREVIEW_ASSET_HEADERS: Readonly<Record<string, string>> = Object.freeze({
   "cache-control": "private, no-store",
-  "referrer-policy": "no-referrer",
   "x-robots-tag": "noindex, nofollow",
 });
 
