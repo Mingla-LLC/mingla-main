@@ -1616,6 +1616,16 @@ export default function ConsumerEventDetailScreen({
       : Object.fromEntries(
           Object.entries(ticketQuantities).filter(([id]) => !offDayTicketIds.has(id)),
         );
+  // The cart is seeded once per opening. The filtered set changes with the
+  // days, and a changed seed re-seeds an open cart over the guest's edits, so
+  // it is frozen at the render the cart opens in (which already holds the
+  // quantities the tap that opened it set) and follows the page while closed.
+  const cartSeedQuantitiesRef = useRef(onDayTicketQuantities);
+  const cartWasVisibleRef = useRef(cartVisible);
+  if (!cartVisible || !cartWasVisibleRef.current) {
+    cartSeedQuantitiesRef.current = onDayTicketQuantities;
+  }
+  cartWasVisibleRef.current = cartVisible;
   // issue #3281 — each listed ticket says which days it covers, and reads as
   // off the guest's days when it covers none of them. Decorated after either
   // source is chosen, so a deck or chat arrival (warm, seeded) gets it too;
@@ -2003,7 +2013,7 @@ export default function ConsumerEventDetailScreen({
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
-        initialQuantities={onDayTicketQuantities}
+        initialQuantities={cartSeedQuantitiesRef.current}
         buyerName={explorerCheckoutContact.normalized.name}
         buyerEmail={explorerCheckoutContact.normalized.email}
         buyerPhone={explorerCheckoutContact.normalized.phone}

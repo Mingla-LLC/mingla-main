@@ -179,6 +179,35 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     expect(addOns()).toEqual([{ addOnId: DINNER, quantity: 1 }]);
   });
 
+  test("a day change while the cart is open keeps an edited surviving line", () => {
+    const onToggle = jest.fn();
+    const ALL = "ticket-all-dates";
+    const seed = { [baseTicket.id]: 2, [ALL]: 2 };
+    const props = makeTicketCartProps({
+      ...signedIn,
+      tickets: [
+        { ...baseTicket, validOccurrenceIds: [FRI] },
+        { ...baseTicket, id: ALL, name: "Day pass", validOccurrenceIds: null },
+      ] as never,
+      initialTicketTypeId: null as never,
+      initialQuantities: seed as never,
+      multiDaySelection: selection([FRI, SAT], onToggle),
+    });
+    const renderer = mountTicketCart(props);
+    // The guest raises the day pass to 5 in the cart.
+    TestRenderer.act(() => {
+      renderer.root
+        .findAllByType("QuantityRow" as never)
+        .find((row) => row.props.ticket.id === ALL)!
+        .props.onQuantityChange(5);
+    });
+    // Friday goes; the screen keeps the seed it opened with.
+    updateTicketCart(renderer, { ...props, multiDaySelection: selection([SAT], onToggle) });
+    const pass = (mockTicketQuote.input as { lines: Array<{ ticketTypeId: string; quantity: number }> })
+      .lines.find((line) => line.ticketTypeId === ALL);
+    expect(pass?.quantity).toBe(5);
+  });
+
   test("Undo is off while checkout is submitting", () => {
     const onToggle = jest.fn();
     const props = makeTicketCartProps({
@@ -221,7 +250,12 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     );
     // The ticket box, the floating bar and the cart all read the same filtered set.
     expect(screen.match(/ticketQuantities=\{onDayTicketQuantities\}/g)).toHaveLength(2);
-    expect(screen).toContain("initialQuantities={onDayTicketQuantities}");
+    // The cart is seeded from that set frozen at the opening render, so a day
+    // change while it is open can't re-seed over the guest's edits.
+    expect(screen).toContain("initialQuantities={cartSeedQuantitiesRef.current}");
+    expect(screen).toMatch(
+      /if \(!cartVisible \|\| !cartWasVisibleRef\.current\) \{\s*cartSeedQuantitiesRef\.current = onDayTicketQuantities;/,
+    );
     expect(screen).not.toMatch(/ticketQuantities=\{ticketQuantities\}/);
   });
 
