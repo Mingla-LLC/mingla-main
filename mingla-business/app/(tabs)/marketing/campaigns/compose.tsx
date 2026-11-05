@@ -2156,7 +2156,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           brandName={brandName}
           brandSlug={brandSlug}
           includeFollowCta={includeSmsFollowCta}
-          reachableSms={reach?.reachable_sms ?? null}
+          reachableSms={smsReachable}
           currencyCode={currentBrand?.defaultCurrency ?? "USD"}
           hasMedia={mmsMedia.length > 0}
           mediaUris={mmsPreviewUris}
