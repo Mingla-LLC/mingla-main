@@ -6,7 +6,14 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildCampaignGroupPreview } from "./campaignGroupPreview.ts";
-import { handleGroupPreview } from "./index.ts";
+import {
+  combinedHiddenSkips,
+  existingBookSendResponse,
+  handleGroupPreview,
+  hostVisibleSkipped,
+  isInterruptedSmsRow,
+  shouldSkipDispatchedRecipient,
+} from "./index.ts";
 import {
   buildMarketingBookQuote,
   publicMarketingBookQuote,
@@ -397,4 +404,47 @@ Deno.test("#4273 when every method is refused, the host gets the reason", async 
   );
   assertEquals(response.status, 409);
   assertEquals((await response.json()).error, "BOOK_BLAST_AUDIENCE_NOT_FOUND");
+});
+
+// ── The skipped count must not expose a contact match ───────────────────────
+Deno.test("#4273 a contact-matched difference never reaches the skipped count", () => {
+  // Sealed 5, sent 4, the one missing is a contact match: nothing to report.
+  assertEquals(hostVisibleSkipped(5, 4, 1), 0);
+  // A real skip beside it still shows, once.
+  assertEquals(hostVisibleSkipped(5, 3, 1), 1);
+  assertEquals(hostVisibleSkipped(2, 2, 0), 0);
+});
+
+Deno.test("#4273 an unreadable hidden figure withholds the difference rather than reveal it", async () => {
+  const failing = {
+    rpc: () => Promise.resolve({ data: null, error: { message: "down" } }),
+  };
+  const hidden = await combinedHiddenSkips(failing, "c");
+  assertEquals(hostVisibleSkipped(5, 4, hidden), 0);
+  const healthy = { rpc: () => Promise.resolve({ data: 2, error: null }) };
+  assertEquals(await combinedHiddenSkips(healthy, "c"), 2);
+});
+
+Deno.test("#4273 a replay answer stays within the sealed count once hidden skips are removed", () => {
+  const response = existingBookSendResponse({
+    executionId: "e", campaignId: "c", scheduledFor: "2026-11-05T00:00:00Z",
+    sendMode: "now", campaignStatus: "sent", campaignFailed: false,
+    sealedReachable: 4, delivered: 4, deferred: 0, recipientFailed: 0,
+    previewSkipped: 0, queued: 0, messageRows: 4,
+  });
+  assertEquals(
+    (response.dispatch as { skipped_after_confirm: number }).skipped_after_confirm,
+    0,
+  );
+});
+
+// ── A reclaimed pass cannot text twice ──────────────────────────────────────
+Deno.test("#4273 an SMS row left queued by a dead run is never texted again", () => {
+  const leftBehind = { status: "queued", provider_message_id: null };
+  assert(isInterruptedSmsRow(leftBehind));
+  assert(!isInterruptedSmsRow(null));
+  assert(!isInterruptedSmsRow({ status: "deferred", provider_message_id: null }));
+  // With a provider id the older guard already skips it.
+  assert(!isInterruptedSmsRow({ status: "queued", provider_message_id: "SM1" }));
+  assert(shouldSkipDispatchedRecipient({ status: "queued", provider_message_id: "SM1" }));
 });

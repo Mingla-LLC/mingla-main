@@ -172,15 +172,13 @@ async function loadWindowMessages(
     const ids = campaignIds.slice(offset, offset + CAMPAIGN_ID_CHUNK_SIZE);
     for (let from = 0; ; from += METRIC_PAGE_SIZE) {
       const { data, error } = await withTimeout(
-        supabase
-          .from("marketing_messages")
-          .select(
-            "id,status,delivered_at,opened_at,delivery_tracking_eligible_at,open_tracking_eligible_at",
-          )
-          .in("campaign_id", ids)
-          .gte("created_at", windowStartIso)
-          .order("id", { ascending: true })
-          .range(from, from + METRIC_PAGE_SIZE - 1),
+        // #4273 — circle rows stay in the totals, without their contact.
+        supabase.rpc("biz_marketing_campaign_messages_v1", {
+          p_campaign_ids: ids,
+          p_since: windowStartIso,
+          p_from: from,
+          p_limit: METRIC_PAGE_SIZE,
+        }),
         DATA_FETCH_TIMEOUT_MS,
         "getMarketingOverview:messages",
       );

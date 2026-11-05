@@ -356,7 +356,7 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the Invite step sources-and-methods migration and its proofs the same way.
 // #4273: register the Blast combined-audience migration and its proofs the same way.
 // #4273: register the tester adversarial proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "fae82f90e7bd97a4e3089ac49da85148f2418254cb1622a865ee440fe524b03e";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4c5441f309937e36922fd8cb29e679ac226a21e8d6d9638592805b9c9866f90a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

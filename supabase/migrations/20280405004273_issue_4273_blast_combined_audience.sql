@@ -6,19 +6,24 @@
 --                     list of source keys: book, followers, extended,
 --                     group:<uuid>, brand_buyers, event:<uuid>. One row per
 --                     distinct source set per brand.
---   identities        Every source row becomes a node; nodes that share a
---                     Mingla account, an email or a phone are one person, so
---                     each person counts once across every group and method.
---   candidates        One row per person per method, carrying the quote's
---                     delivery identity. Graph-only contact details stay in
---                     the service-only candidate list; the host sees names and
---                     totals.
---   decision          The strictest wins: any identity of a person that is
---                     opted out, muted or denied blocks that person on that
---                     method, whichever group brought them in.
---   confirm / send    biz_confirm_marketing_combined_send_v1 seals the same set
---                     the quote priced; biz_marketing_combined_send_audience_v1
---                     re-decides each sealed person at send time.
+--   identities        Every source row becomes a node. Nodes that share a Mingla
+--                     account are one person. A contact the brand itself holds
+--                     (Book or order) also joins nodes, except two Book rows,
+--                     which stay two people. A person known only through
+--                     followers or friends of followers joins by account alone:
+--                     everything the host can see is computed without their
+--                     contact details.
+--   candidates        One row per recipient per method, carrying the quote's
+--                     delivery identity. Service-only; the host sees totals.
+--   decision          The strictest wins: anything blocking any identity of a
+--                     person stops that method for them.
+--   confirm / send    biz_confirm_marketing_combined_send_v1 seals the set the
+--                     quote priced. biz_marketing_combined_send_audience_v1
+--                     re-decides at send, across every identity of each person
+--                     including contact matches the quote never looks at, and
+--                     sends once per address. The reachable count can therefore
+--                     sit slightly above what is sent, never below; anything
+--                     sealed and not sent is a recorded skip.
 --   push              biz_marketing_push_quote_candidates_v1 gains a combined
 --                     branch. A buyer list stays refused for push: the rule is
 --                     unchanged, it never silently pushes to a subset.
@@ -103,7 +108,7 @@ BEGIN
   FOR v_key IN SELECT DISTINCT x FROM jsonb_array_elements_text(p_sources) x ORDER BY x LOOP
     IF v_key IN ('book', 'followers', 'extended', 'brand_buyers') THEN
       v_keys := v_keys || v_key;
-    ELSIF v_key ~ '^group:[0-9a-f-]{36}$' THEN
+    ELSIF v_key ~ '^group:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
       v_id := substr(v_key, 7)::uuid;
       IF NOT EXISTS (SELECT 1 FROM public.marketing_audiences a
                       WHERE a.id = v_id AND a.brand_id = p_brand_id AND a.deleted_at IS NULL
@@ -112,7 +117,7 @@ BEGIN
         RAISE EXCEPTION 'book_blast_audience_not_found' USING ERRCODE = 'P0002';
       END IF;
       v_keys := v_keys || v_key;
-    ELSIF v_key ~ '^event:[0-9a-f-]{36}$' THEN
+    ELSIF v_key ~ '^event:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
       v_id := substr(v_key, 7)::uuid;
       IF NOT EXISTS (SELECT 1 FROM public.events e WHERE e.id = v_id AND e.brand_id = p_brand_id) THEN
         RAISE EXCEPTION 'book_blast_audience_not_found' USING ERRCODE = 'P0002';
@@ -177,18 +182,29 @@ WITH RECURSIVE keys AS MATERIALIZED (
 ), extended_scope AS MATERIALIZED (
   SELECT s.generation_id FROM public.issue_1777_brand_reach_scope_status(p_brand_id, 'extended') s
    WHERE EXISTS (SELECT 1 FROM keys WHERE k = 'extended') AND s.scope_state = 'ready'
+), brand_orders AS MATERIALIZED (
+  SELECT o.id, o.event_id, lower(btrim(o.buyer_email)) AS email, btrim(o.buyer_phone_e164) AS phone,
+    o.buyer_name, o.buyer_user_id, o.created_at
+    FROM public.orders o JOIN public.events e ON e.id = o.event_id
+   WHERE EXISTS (SELECT 1 FROM keys WHERE k = 'brand_buyers' OR k LIKE 'event:%')
+     AND e.brand_id = p_brand_id AND o.payment_status IN ('paid', 'partial_refund')
+     AND btrim(COALESCE(o.buyer_email, '')) <> ''
+), buyer_phone AS MATERIALIZED (
+  -- A buyer's phone is the newest usable one on any of their orders with this
+  -- brand, whichever list brought them in. Send accepts exactly what this sealed.
+  SELECT DISTINCT ON (o.email) o.email, o.phone FROM brand_orders o
+   WHERE o.phone ~ '^\+[1-9][0-9]{6,14}$'
+   ORDER BY o.email, o.created_at DESC, o.id
+), buyer_account AS MATERIALIZED (
+  SELECT DISTINCT ON (o.email) o.email, o.buyer_user_id AS user_id FROM brand_orders o
+   WHERE o.buyer_user_id IS NOT NULL
+   ORDER BY o.email, o.created_at DESC, o.id
 ), buyer_orders AS MATERIALIZED (
-  SELECT 'brand_buyers'::text AS source_key, o.buyer_email, o.buyer_phone_e164, o.buyer_name, o.buyer_user_id, o.created_at
-    FROM public.orders o JOIN public.events e ON e.id = o.event_id
+  SELECT 'brand_buyers'::text AS source_key, o.email, o.buyer_name, o.created_at, o.id FROM brand_orders o
    WHERE EXISTS (SELECT 1 FROM keys WHERE k = 'brand_buyers')
-     AND e.brand_id = p_brand_id AND o.payment_status IN ('paid', 'partial_refund')
-     AND btrim(COALESCE(o.buyer_email, '')) <> ''
   UNION ALL
-  SELECT 'event:' || o.event_id::text, o.buyer_email, o.buyer_phone_e164, o.buyer_name, o.buyer_user_id, o.created_at
-    FROM public.orders o JOIN public.events e ON e.id = o.event_id
+  SELECT 'event:' || o.event_id::text, o.email, o.buyer_name, o.created_at, o.id FROM brand_orders o
    WHERE ('event:' || o.event_id::text) IN (SELECT k FROM keys)
-     AND e.brand_id = p_brand_id AND o.payment_status IN ('paid', 'partial_refund')
-     AND btrim(COALESCE(o.buyer_email, '')) <> ''
 ), raw AS MATERIALIZED (
   SELECT 'book:' || bp.id::text AS node, 'book'::text AS source_key, 'book'::text AS subject,
     bp.id AS brand_person_id, bp.linked_user_id AS user_id, NULL::text AS ring, NULL::text AS buyer_key,
@@ -234,13 +250,15 @@ WITH RECURSIVE keys AS MATERIALIZED (
       ON rm.brand_id = p_brand_id AND rm.ring = 'extended' AND rm.generation_id = s.generation_id
   UNION ALL
   SELECT b.* FROM (
-    SELECT DISTINCT ON (o.source_key, lower(btrim(o.buyer_email)))
-      'buyer:' || encode(extensions.digest(convert_to(lower(btrim(o.buyer_email)), 'UTF8'), 'sha256'), 'hex') AS node,
-      o.source_key, 'buyer'::text AS subject, NULL::uuid AS brand_person_id, o.buyer_user_id AS user_id, NULL::text AS ring,
-      encode(extensions.digest(convert_to(lower(btrim(o.buyer_email)), 'UTF8'), 'sha256'), 'hex') AS buyer_key,
-      lower(btrim(o.buyer_email)) AS buyer_email, o.buyer_phone_e164 AS buyer_phone, o.buyer_name AS display_name
+    SELECT DISTINCT ON (o.source_key, o.email)
+      'buyer:' || encode(extensions.digest(convert_to(o.email, 'UTF8'), 'sha256'), 'hex') AS node,
+      o.source_key, 'buyer'::text AS subject, NULL::uuid AS brand_person_id, ba.user_id, NULL::text AS ring,
+      encode(extensions.digest(convert_to(o.email, 'UTF8'), 'sha256'), 'hex') AS buyer_key,
+      o.email AS buyer_email, bp.phone AS buyer_phone, o.buyer_name AS display_name
       FROM buyer_orders o
-     ORDER BY o.source_key, lower(btrim(o.buyer_email)), o.created_at DESC
+      LEFT JOIN buyer_phone bp ON bp.email = o.email
+      LEFT JOIN buyer_account ba ON ba.email = o.email
+     ORDER BY o.source_key, o.email, o.created_at DESC, o.id
   ) b
 ), nodes AS MATERIALIZED (
   SELECT DISTINCT r.node, r.brand_person_id, r.user_id, r.buyer_email, r.buyer_phone FROM raw r
@@ -256,13 +274,12 @@ WITH RECURSIVE keys AS MATERIALIZED (
     FROM nodes n JOIN public.brand_person_contact_methods m
       ON m.brand_person_id = n.brand_person_id AND m.brand_id = p_brand_id
    WHERE m.record_state = 'active' AND m.channel IN ('email', 'phone')
-  UNION
-  -- Stays inside this function: only the person_key leaves, never the contact.
-  SELECT n.node, CASE i.kind WHEN 'email' THEN 'e:' || lower(i.value) ELSE 'p:' || i.value END
-    FROM nodes n CROSS JOIN LATERAL public.verified_account_identifiers(n.user_id) i
-   WHERE n.user_id IS NOT NULL AND n.brand_person_id IS NULL AND i.kind IN ('email', 'phone')
 ), key_roots AS MATERIALIZED (
-  SELECT nk.key, min(nk.node) AS root FROM node_keys nk GROUP BY nk.key
+  -- An account always joins. A contact joins only when an order is involved: two
+  -- Book rows the host keeps apart stay two people, even on one family phone.
+  SELECT nk.key, min(nk.node) AS root FROM node_keys nk
+   GROUP BY nk.key
+  HAVING nk.key LIKE 'u:%' OR bool_or(nk.node NOT LIKE 'book:%')
 ), edges AS MATERIALIZED (
   SELECT DISTINCT nk.node AS a, kr.root AS b FROM node_keys nk JOIN key_roots kr USING (key) WHERE nk.node <> kr.root
   UNION
@@ -315,11 +332,16 @@ CREATE OR REPLACE FUNCTION public.issue_4273_assert_sources_allowed(
 ) RETURNS void
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
-DECLARE v_only_book boolean;
+DECLARE v_rank integer := public.biz_brand_effective_rank(p_brand_id, p_actor_id);
 BEGIN
-  v_only_book := NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(p_sources) k WHERE k <> 'book');
-  IF public.biz_brand_effective_rank(p_brand_id, p_actor_id) <
-     public.biz_role_rank(CASE WHEN v_only_book THEN 'event_manager' ELSE 'marketing_manager' END) THEN
+  -- Each source must be allowed for this role on its own. Adding a source never
+  -- widens what the role can reach.
+  IF v_rank IS NULL OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(p_sources) k
+     WHERE v_rank < public.biz_role_rank(
+       CASE WHEN k IN ('followers', 'extended') OR k LIKE 'group:%'
+            THEN 'marketing_manager' ELSE 'event_manager' END)
+  ) THEN
     RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE = '42501';
   END IF;
   IF NOT public.issue_1995_flags_enabled()
@@ -343,14 +365,37 @@ AS $fn$
     OR public.biz_brand_follow_channel_ok(p_user_id, p_brand_id, p_channel)
 $fn$;
 
--- A buyer known only from orders: same ledgers the buyer resolver reads, plus
--- can_send. A phone that is not E.164 cannot be priced or sent, so it is absent.
+-- Every opt-out ledger for one address on one method.
+CREATE OR REPLACE FUNCTION public.issue_4273_address_denied(
+  p_brand_id uuid, p_channel text, p_address text, p_user_id uuid
+) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM public.marketing_unsubscribes u
+       WHERE u.channel IN (p_channel, 'all')
+         AND ((p_channel = 'email' AND lower(u.contact_email) = lower(p_address))
+              OR (p_channel = 'sms' AND u.contact_phone = p_address))
+         AND (u.scope = 'global' OR (u.scope = 'brand' AND u.brand_id = p_brand_id)
+              OR (u.scope = 'account' AND p_user_id IS NOT NULL AND u.account_id = p_user_id))
+      UNION ALL
+      SELECT 1 FROM public.channel_suppressions s
+       WHERE s.channel = p_channel AND s.scope IN ('marketing', 'all')
+         AND (lower(s.contact) = lower(p_address) OR (p_user_id IS NOT NULL AND s.user_id = p_user_id))
+    ) THEN 'suppressed'
+    WHEN NOT public.can_send(p_user_id, 'marketing_blast', p_channel, p_address) THEN 'can_send_denied'
+  END
+$fn$;
+
+-- A buyer known only from orders. A phone that is not E.164 cannot be priced or
+-- sent, so it is absent. A STOP on any phone on their orders stops the SMS.
 CREATE OR REPLACE FUNCTION public.issue_4273_buyer_contact_decision(
   p_brand_id uuid, p_email text, p_phone text, p_channel text
 ) RETURNS TABLE(normalized_contact text, allowed boolean, reason text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
-DECLARE v_contact text; v_blocked boolean; v_can_send boolean;
+DECLARE v_contact text; v_denied text;
 BEGIN
   v_contact := CASE p_channel
     WHEN 'email' THEN lower(btrim(p_email))
@@ -359,26 +404,32 @@ BEGIN
   IF v_contact IS NULL OR v_contact = '' THEN
     RETURN QUERY SELECT NULL::text, false, 'channel_unavailable'::text; RETURN;
   END IF;
-  SELECT EXISTS (
+  v_denied := public.issue_4273_address_denied(p_brand_id, p_channel, v_contact, NULL);
+  IF v_denied IS NULL AND EXISTS (
     SELECT 1 FROM public.marketing_unsubscribes u
-     WHERE u.channel IN (p_channel, 'all')
-       AND (lower(u.contact_email) = lower(btrim(p_email))
-            OR (p_channel = 'sms' AND u.contact_phone = v_contact))
+     WHERE u.channel IN (p_channel, 'all') AND lower(u.contact_email) = lower(btrim(p_email))
        AND (u.scope = 'global' OR (u.scope = 'brand' AND u.brand_id = p_brand_id))
-    UNION ALL
-    SELECT 1 FROM public.channel_suppressions s
-     WHERE s.channel = p_channel AND s.scope IN ('marketing', 'all')
-       AND lower(s.contact) = lower(v_contact)
-  ) INTO v_blocked;
-  v_can_send := public.can_send(NULL::uuid, 'marketing_blast', p_channel, v_contact);
-  RETURN QUERY SELECT v_contact, NOT v_blocked AND v_can_send,
-    CASE WHEN v_blocked THEN 'suppressed' WHEN NOT v_can_send THEN 'can_send_denied' ELSE 'allowed' END;
+  ) THEN
+    v_denied := 'suppressed';
+  END IF;
+  IF v_denied IS NULL AND p_channel = 'sms' AND EXISTS (
+    SELECT 1 FROM public.orders o JOIN public.events e ON e.id = o.event_id
+     WHERE e.brand_id = p_brand_id AND lower(btrim(o.buyer_email)) = lower(btrim(p_email))
+       AND o.payment_status IN ('paid', 'partial_refund')
+       AND btrim(COALESCE(o.buyer_phone_e164, '')) <> '' AND btrim(o.buyer_phone_e164) <> v_contact
+       AND public.issue_4273_address_denied(p_brand_id, 'sms', btrim(o.buyer_phone_e164), NULL) = 'suppressed'
+  ) THEN
+    v_denied := 'suppressed';
+  END IF;
+  RETURN QUERY SELECT v_contact, v_denied IS NULL, COALESCE(v_denied, 'allowed');
 END;
 $fn$;
 
--- One row per person for one email or SMS method. The strictest identity wins:
--- a blocked identity blocks the person, otherwise Book contact, then account,
--- then buyer, so the host's own contact is used first.
+-- One row per recipient for one email or SMS method, for what the host can see.
+-- The strictest identity wins: a person with any blocked identity is one blocked
+-- row. Otherwise each Book row with a contact is its own recipient, then the
+-- account, then the buyer. Two brand-held rows on one address are one recipient.
+-- Graph-only people are never compared to a contact here; send does that.
 CREATE OR REPLACE FUNCTION public.issue_4273_decided_people(
   p_actor_id uuid, p_brand_id uuid, p_sources jsonb, p_channel text
 ) RETURNS TABLE(
@@ -392,15 +443,13 @@ AS $fn$
      ORDER BY i.node, i.source_key
   ), decided AS MATERIALIZED (
     SELECT i.person_key, i.node, i.subject, i.brand_person_id, i.user_id, i.ring, i.buyer_key,
-      d.contact_method_id, d.normalized_contact,
-      COALESCE(d.allowed, false)
-        AND public.issue_4273_follow_gate_ok(i.user_id, p_brand_id, p_channel) AS allowed,
-      CASE
-        WHEN d.normalized_contact IS NULL THEN 'channel_unavailable'
-        WHEN NOT public.issue_4273_follow_gate_ok(i.user_id, p_brand_id, p_channel) THEN 'suppressed'
-        WHEN d.reason IN ('allowed', 'suppressed', 'can_send_denied', 'channel_unavailable', 'delivery_denied') THEN d.reason
-        ELSE 'suppressed'
-      END AS reason
+      d.contact_method_id, d.normalized_contact, d.reason AS raw_reason,
+      public.issue_4273_follow_gate_ok(i.user_id, p_brand_id, p_channel) AS follow_ok,
+      COALESCE(d.allowed, false) AS contact_ok,
+      CASE WHEN i.subject = 'book' THEN 0 WHEN i.subject = 'circle' THEN 1 ELSE 2 END AS subject_rank,
+      i.user_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.blocked_users bu WHERE
+        (bu.blocker_id = p_actor_id AND bu.blocked_id = i.user_id) OR
+        (bu.blocker_id = i.user_id AND bu.blocked_id = p_actor_id)) AS blocked
     FROM identities i
     LEFT JOIN LATERAL (
       SELECT a.contact_method_id, a.normalized_contact, a.allowed, a.reason
@@ -415,20 +464,43 @@ AS $fn$
         FROM public.issue_4273_buyer_contact_decision(p_brand_id, i.buyer_email, i.buyer_phone, p_channel) b
        WHERE i.subject = 'buyer'
     ) d ON true
-    WHERE NOT EXISTS (SELECT 1 FROM public.blocked_users bu WHERE i.user_id IS NOT NULL AND
-      ((bu.blocker_id = p_actor_id AND bu.blocked_id = i.user_id) OR
-       (bu.blocker_id = i.user_id AND bu.blocked_id = p_actor_id)))
+  ), marked AS MATERIALIZED (
+    SELECT d.*,
+      (d.normalized_contact IS NOT NULL AND NOT d.contact_ok)
+        OR d.raw_reason = 'consent_missing' OR NOT d.follow_ok AS denied,
+      bool_or((d.normalized_contact IS NOT NULL AND NOT d.contact_ok)
+        OR d.raw_reason = 'consent_missing' OR NOT d.follow_ok) OVER w AS person_denied,
+      bool_or(d.blocked) OVER w AS person_blocked,
+      count(*) FILTER (WHERE d.subject = 'book' AND d.normalized_contact IS NOT NULL) OVER w AS book_contacts,
+      row_number() OVER (PARTITION BY d.person_key ORDER BY
+        (d.normalized_contact IS NOT NULL AND ((NOT d.contact_ok) OR NOT d.follow_ok)) DESC,
+        (d.normalized_contact IS NOT NULL) DESC, d.subject_rank, d.node) AS rn
+    FROM decided d
+    WINDOW w AS (PARTITION BY d.person_key)
+  ), recipients AS MATERIALIZED (
+    SELECT m.*, NOT m.person_denied AND m.contact_ok AND m.normalized_contact IS NOT NULL AS final_allowed
+      FROM marked m
+     WHERE NOT m.person_blocked
+       AND (CASE WHEN m.person_denied OR m.book_contacts = 0 THEN m.rn = 1
+                 ELSE m.subject = 'book' AND m.normalized_contact IS NOT NULL END)
   )
-  SELECT DISTINCT ON (d.person_key)
-    d.person_key, d.subject, d.brand_person_id, d.user_id, d.ring, d.buyer_key,
-    CASE WHEN d.normalized_contact IS NULL THEN NULL ELSE d.contact_method_id END,
-    d.normalized_contact, d.allowed, d.reason
-  FROM decided d
-  ORDER BY d.person_key,
-    (d.normalized_contact IS NOT NULL AND NOT d.allowed) DESC,
-    (d.normalized_contact IS NOT NULL) DESC,
-    CASE d.subject WHEN 'book' THEN 0 WHEN 'circle' THEN 1 ELSE 2 END,
-    d.node
+  SELECT DISTINCT ON (
+    CASE WHEN r.subject <> 'circle' AND r.normalized_contact IS NOT NULL
+         THEN 'a:' || lower(r.normalized_contact) ELSE 'n:' || r.node END)
+    r.person_key, r.subject, r.brand_person_id, r.user_id, r.ring, r.buyer_key,
+    CASE WHEN r.normalized_contact IS NULL THEN NULL ELSE r.contact_method_id END,
+    r.normalized_contact, r.final_allowed,
+    CASE
+      WHEN r.normalized_contact IS NULL THEN 'channel_unavailable'
+      WHEN r.final_allowed THEN 'allowed'
+      WHEN r.raw_reason IN ('suppressed', 'can_send_denied', 'delivery_denied') THEN r.raw_reason
+      ELSE 'suppressed'
+    END
+  FROM recipients r
+  ORDER BY
+    CASE WHEN r.subject <> 'circle' AND r.normalized_contact IS NOT NULL
+         THEN 'a:' || lower(r.normalized_contact) ELSE 'n:' || r.node END,
+    r.final_allowed, r.subject_rank, r.node
 $fn$;
 
 -- ── Host calls ──────────────────────────────────────────────────────────────
@@ -473,7 +545,7 @@ AS $fn$
 DECLARE v_sources jsonb; v_totals jsonb; v_followers integer; v_also integer;
 BEGIN
   IF auth.uid() IS DISTINCT FROM p_actor_id
-     OR public.biz_brand_effective_rank(p_brand_id, p_actor_id) < public.biz_role_rank('event_manager') THEN
+     OR COALESCE(public.biz_brand_effective_rank(p_brand_id, p_actor_id), -1) < public.biz_role_rank('marketing_manager') THEN
     RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE = '42501';
   END IF;
   IF jsonb_typeof(p_sources) = 'array' AND jsonb_array_length(p_sources) = 0 THEN
@@ -491,7 +563,7 @@ BEGIN
     END IF;
     v_totals := public.issue_4273_source_totals(p_brand_id, v_sources);
   END IF;
-  IF public.biz_brand_effective_rank(p_brand_id, p_actor_id) >= public.biz_role_rank('marketing_manager') THEN
+  BEGIN
     SELECT count(*)::integer,
       count(*) FILTER (WHERE EXISTS (
         SELECT 1 FROM public.brand_people bp
@@ -506,7 +578,7 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM public.brand_circle_exits bx
                         WHERE bx.brand_id = p_brand_id AND bx.user_id = bf.user_id
                           AND bx.visibility_exited_at IS NOT NULL);
-  END IF;
+  END;
   RETURN v_totals || jsonb_build_object('followersTotal', v_followers, 'followersAlsoInBook', v_also);
 END;
 $fn$;
@@ -566,7 +638,7 @@ BEGIN
       'normalizedContact', d.normalized_contact,
       'allowed', d.allowed,
       'safeReasonCode', d.reason
-    ) ORDER BY d.person_key), '[]'::jsonb)
+    ) ORDER BY d.person_key, d.brand_person_id, d.normalized_contact), '[]'::jsonb)
     INTO v_selected, v_rows
     FROM public.issue_4273_decided_people(p_actor_id, v_campaign.brand_id, v_sources, v_campaign.channel) d;
 
@@ -630,7 +702,8 @@ BEGIN
          'recipientUserId', x ->> 'recipientUserId', 'ring', x ->> 'ring',
          'buyerContactKey', x ->> 'buyerContactKey', 'contactMethodId', x ->> 'contactMethodId',
          'normalizedContact', x ->> 'normalizedContact', 'allowed', x ->> 'allowed',
-         'safeReasonCode', x ->> 'safeReasonCode') ORDER BY x ->> 'personKey')
+         'safeReasonCode', x ->> 'safeReasonCode')
+         ORDER BY x ->> 'personKey', x ->> 'targetBrandPersonId', x ->> 'normalizedContact')
        FROM jsonb_array_elements(v_live -> 'candidates') x
      ) IS DISTINCT FROM (
        SELECT jsonb_agg(jsonb_build_object(
@@ -638,7 +711,8 @@ BEGIN
          'recipientUserId', x ->> 'recipientUserId', 'ring', x ->> 'ring',
          'buyerContactKey', x ->> 'buyerContactKey', 'contactMethodId', x ->> 'contactMethodId',
          'normalizedContact', x ->> 'normalizedContact', 'allowed', x ->> 'allowed',
-         'safeReasonCode', x ->> 'safeReasonCode') ORDER BY x ->> 'personKey')
+         'safeReasonCode', x ->> 'safeReasonCode')
+         ORDER BY x ->> 'personKey', x ->> 'targetBrandPersonId', x ->> 'normalizedContact')
        FROM jsonb_array_elements(p_quote_snapshot -> 'candidates') x
      ) THEN
     RAISE EXCEPTION 'book_blast_preview_stale' USING ERRCODE = 'PT409';
@@ -713,84 +787,238 @@ END;
 $fn$;
 
 -- ── Send: re-decides each sealed person ─────────────────────────────────────
+-- Anything sealed and not sent is recorded here. host_visible = false marks a
+-- difference that exists only because a contact matched someone the host knows
+-- only through their circle, so it must never surface as a skipped count.
+CREATE TABLE public.marketing_combined_send_skips(
+  execution_id uuid NOT NULL REFERENCES public.marketing_book_send_executions(id) ON DELETE RESTRICT,
+  target_id uuid NOT NULL REFERENCES public.marketing_book_send_targets(id) ON DELETE RESTRICT,
+  reason text NOT NULL CHECK (reason IN (
+    'no_longer_eligible', 'identity_blocked', 'contact_match_blocked', 'address_duplicate')),
+  host_visible boolean NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (execution_id, target_id)
+);
+ALTER TABLE public.marketing_combined_send_skips ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.marketing_combined_send_skips FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.marketing_combined_send_skips TO service_role;
+
+-- Every account that has verified this address. Service-only.
+CREATE OR REPLACE FUNCTION public.issue_4273_accounts_holding(p_channel text, p_address text)
+RETURNS SETOF uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth, pg_temp
+AS $fn$
+  SELECT v.user_id FROM public.verified_phone_identities v
+   WHERE p_channel = 'sms' AND v.phone_e164 = p_address
+  UNION
+  SELECT u.id FROM auth.users u
+   WHERE p_channel = 'email' AND u.email = lower(btrim(p_address))
+     AND EXISTS (SELECT 1 FROM public.verified_account_identifiers(u.id) i
+                  WHERE i.kind = 'email' AND i.value = lower(btrim(p_address)))
+$fn$;
+
+-- The whole strictest rule, at send. Known identities first (this Book row, its
+-- linked account, this buyer's orders); then anyone matched only by contact.
+CREATE OR REPLACE FUNCTION public.issue_4273_send_verdict(
+  p_actor_id uuid, p_brand_id uuid, p_channel text, p_address text,
+  p_brand_person_id uuid, p_user_id uuid, p_buyer_email text
+) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_known uuid[]; v_matched uuid[]; v_contacts text[];
+  v_method text := CASE p_channel WHEN 'sms' THEN 'phone' ELSE 'email' END;
+BEGIN
+  SELECT COALESCE(array_agg(DISTINCT x) FILTER (WHERE x IS NOT NULL), '{}') INTO v_known FROM (
+    SELECT p_user_id AS x
+    UNION ALL
+    SELECT bp.linked_user_id FROM public.brand_people bp WHERE bp.id = p_brand_person_id
+    UNION ALL
+    SELECT o.buyer_user_id FROM public.orders o JOIN public.events e ON e.id = o.event_id
+     WHERE p_buyer_email IS NOT NULL AND e.brand_id = p_brand_id
+       AND lower(btrim(o.buyer_email)) = p_buyer_email
+  ) a;
+
+  -- Each contact, with the method it can identify someone on.
+  SELECT array_agg(DISTINCT a.c || '|' || a.v) INTO v_contacts FROM (
+    SELECT p_channel AS c, p_address AS v
+    UNION ALL
+    SELECT CASE m.channel WHEN 'phone' THEN 'sms' ELSE 'email' END, m.normalized_value
+      FROM public.brand_person_contact_methods m
+     WHERE m.brand_person_id = p_brand_person_id AND m.brand_id = p_brand_id
+       AND m.record_state = 'active' AND m.channel IN ('phone', 'email')
+    UNION ALL
+    SELECT 'email', p_buyer_email WHERE p_buyer_email IS NOT NULL
+    UNION ALL
+    SELECT 'sms', btrim(o.buyer_phone_e164)
+      FROM public.orders o JOIN public.events e ON e.id = o.event_id
+     WHERE p_buyer_email IS NOT NULL AND e.brand_id = p_brand_id
+       AND lower(btrim(o.buyer_email)) = p_buyer_email
+       AND btrim(COALESCE(o.buyer_phone_e164, '')) <> ''
+    UNION ALL
+    SELECT CASE i.kind WHEN 'phone' THEN 'sms' ELSE 'email' END, i.value
+      FROM unnest(v_known) ku CROSS JOIN LATERAL public.verified_account_identifiers(ku) i
+     WHERE i.kind IN ('phone', 'email')
+  ) a;
+
+  -- ── Known identities ──
+  IF EXISTS (SELECT 1 FROM public.blocked_users b, unnest(v_known) ku
+              WHERE (b.blocker_id = p_actor_id AND b.blocked_id = ku)
+                 OR (b.blocker_id = ku AND b.blocked_id = p_actor_id))
+     OR EXISTS (SELECT 1 FROM unnest(v_known) ku
+                 WHERE NOT public.issue_4273_follow_gate_ok(ku, p_brand_id, p_channel))
+     OR EXISTS (SELECT 1 FROM public.brand_person_contact_methods m
+                 WHERE m.brand_person_id = p_brand_person_id AND m.brand_id = p_brand_id
+                   AND m.channel = v_method AND m.record_state = 'active'
+                   AND m.marketing_consent_state = 'withheld')
+     OR EXISTS (SELECT 1 FROM public.brand_person_channel_suppressions s
+                 WHERE s.brand_person_id = p_brand_person_id AND s.channel = p_channel
+                   AND s.lifted_at IS NULL AND s.scope IN ('marketing', 'all'))
+     OR EXISTS (SELECT 1 FROM unnest(v_contacts) c
+                 CROSS JOIN unnest(CASE WHEN cardinality(v_known) = 0 THEN ARRAY[NULL::uuid] ELSE v_known END) ku
+                 WHERE split_part(c, '|', 1) = p_channel
+                   AND public.issue_4273_address_denied(p_brand_id, p_channel, split_part(c, '|', 2), ku) IS NOT NULL) THEN
+    RETURN 'identity_blocked';
+  END IF;
+
+  -- ── Anyone else holding one of these contacts ──
+  SELECT COALESCE(array_agg(DISTINCT x) FILTER (WHERE x IS NOT NULL AND NOT x = ANY(v_known)), '{}') INTO v_matched FROM (
+    SELECT h AS x FROM unnest(v_contacts) c
+      CROSS JOIN LATERAL public.issue_4273_accounts_holding(split_part(c, '|', 1), split_part(c, '|', 2)) h
+    UNION ALL
+    SELECT bp.linked_user_id FROM unnest(v_contacts) c
+      JOIN public.brand_person_contact_methods m ON m.brand_id = p_brand_id AND m.record_state = 'active'
+        AND m.channel = CASE split_part(c, '|', 1) WHEN 'sms' THEN 'phone' ELSE 'email' END
+        AND m.normalized_value = split_part(c, '|', 2)
+      JOIN public.brand_people bp ON bp.id = m.brand_person_id
+  ) a;
+  IF EXISTS (SELECT 1 FROM public.blocked_users b, unnest(v_matched) mu
+              WHERE (b.blocker_id = p_actor_id AND b.blocked_id = mu)
+                 OR (b.blocker_id = mu AND b.blocked_id = p_actor_id))
+     OR EXISTS (SELECT 1 FROM unnest(v_matched) mu
+                 WHERE NOT public.issue_4273_follow_gate_ok(mu, p_brand_id, p_channel))
+     OR EXISTS (SELECT 1 FROM unnest(v_matched) mu
+                 CROSS JOIN LATERAL public.verified_account_identifiers(mu) i
+                 WHERE i.kind = v_method
+                   AND public.issue_4273_address_denied(p_brand_id, p_channel, i.value, mu) IS NOT NULL)
+     OR EXISTS (SELECT 1 FROM public.brand_person_contact_methods m
+                 WHERE m.brand_id = p_brand_id AND m.channel = v_method AND m.record_state = 'active'
+                   AND m.normalized_value = p_address
+                   AND (m.marketing_consent_state = 'withheld' OR EXISTS (
+                     SELECT 1 FROM public.brand_person_channel_suppressions s
+                      WHERE s.brand_person_id = m.brand_person_id AND s.channel = p_channel
+                        AND s.lifted_at IS NULL AND s.scope IN ('marketing', 'all')))) THEN
+    RETURN 'contact_match_blocked';
+  END IF;
+  RETURN 'send';
+END;
+$fn$;
+
 CREATE OR REPLACE FUNCTION public.biz_marketing_combined_send_audience_v1(p_campaign_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions, pg_temp
 AS $fn$
-DECLARE v_campaign public.marketing_campaigns%ROWTYPE; v_actor uuid; v_rows jsonb;
+DECLARE v_campaign public.marketing_campaigns%ROWTYPE; v_actor uuid; v_execution uuid; v_rows jsonb;
 BEGIN
   SELECT * INTO v_campaign FROM public.marketing_campaigns WHERE id = p_campaign_id;
-  SELECT e.actor_id INTO v_actor FROM public.marketing_book_send_executions e WHERE e.campaign_id = p_campaign_id;
+  SELECT e.id, e.actor_id INTO v_execution, v_actor FROM public.marketing_book_send_executions e WHERE e.campaign_id = p_campaign_id;
   IF v_campaign.id IS NULL OR v_actor IS NULL THEN
     RAISE EXCEPTION 'book_blast_unconfirmed' USING ERRCODE = '42501';
   END IF;
 
+  DELETE FROM public.marketing_combined_send_skips s WHERE s.execution_id = v_execution;
+
   WITH sealed AS MATERIALIZED (
     SELECT t.* FROM public.marketing_book_send_targets t
-      JOIN public.marketing_book_send_executions e ON e.id = t.execution_id
-     WHERE e.campaign_id = p_campaign_id AND t.outcome = 'queued'
+     WHERE t.execution_id = v_execution AND t.outcome = 'queued'
   ), buyers AS MATERIALIZED (
     SELECT DISTINCT ON (lower(btrim(o.buyer_email)))
       encode(extensions.digest(convert_to(lower(btrim(o.buyer_email)), 'UTF8'), 'sha256'), 'hex') AS buyer_key,
-      lower(btrim(o.buyer_email)) AS email, o.buyer_phone_e164 AS phone, o.buyer_name, o.buyer_user_id,
+      lower(btrim(o.buyer_email)) AS email, o.buyer_name, o.buyer_user_id,
       o.event_id, e.title AS event_title
       FROM public.orders o JOIN public.events e ON e.id = o.event_id
      WHERE e.brand_id = v_campaign.brand_id AND o.payment_status IN ('paid', 'partial_refund')
        AND btrim(COALESCE(o.buyer_email, '')) <> ''
        AND EXISTS (SELECT 1 FROM sealed s WHERE s.buyer_contact_key IS NOT NULL)
-     ORDER BY lower(btrim(o.buyer_email)), o.created_at DESC
-  ), people AS (
-    SELECT t.brand_person_id::text AS contact_key, p.display_name AS name, a.normalized_contact,
-      NULL::uuid AS event_id, NULL::text AS event_title, 'added'::text AS receive_reason
+     ORDER BY lower(btrim(o.buyer_email)), o.created_at DESC, o.id
+  ), resolved AS MATERIALIZED (
+    SELECT t.id AS target_id, 0 AS subject_rank, t.brand_person_id::text AS contact_key, p.display_name AS name,
+      a.normalized_contact, NULL::uuid AS event_id, NULL::text AS event_title, 'added'::text AS receive_reason,
+      t.brand_person_id, p.linked_user_id AS user_id, NULL::text AS buyer_email
       FROM sealed t
       JOIN public.brand_people p ON p.id = t.brand_person_id
-      JOIN LATERAL public.biz_brand_person_authorized_contact_v2(
-        v_campaign.brand_id, t.brand_person_id, t.channel, 'marketing_blast'
-      ) a ON a.contact_method_id = t.contact_method_id AND a.allowed
+      LEFT JOIN LATERAL (
+        SELECT c.normalized_contact FROM public.biz_brand_person_authorized_contact_v2(
+          v_campaign.brand_id, t.brand_person_id, t.channel, 'marketing_blast') c
+         WHERE c.contact_method_id = t.contact_method_id AND c.allowed
+           AND t.contact_value_digest = encode(extensions.digest(convert_to(c.normalized_contact, 'UTF8'), 'sha256'), 'hex')
+      ) a ON true
      WHERE t.brand_person_id IS NOT NULL
-       AND t.contact_value_digest = encode(extensions.digest(convert_to(a.normalized_contact, 'UTF8'), 'sha256'), 'hex')
-       AND public.issue_4273_follow_gate_ok(p.linked_user_id, v_campaign.brand_id, t.channel)
-       AND NOT EXISTS (SELECT 1 FROM public.blocked_users b WHERE p.linked_user_id IS NOT NULL AND
-         ((b.blocker_id = v_actor AND b.blocked_id = p.linked_user_id) OR
-          (b.blocker_id = p.linked_user_id AND b.blocked_id = v_actor)))
     UNION ALL
-    SELECT t.recipient_user_id::text, COALESCE(NULLIF(btrim(pr.display_name), ''), NULLIF(btrim(pr.first_name), ''), 'Mingla member'),
+    SELECT t.id, 1, t.recipient_user_id::text, COALESCE(NULLIF(btrim(pr.display_name), ''), NULLIF(btrim(pr.first_name), ''), 'Mingla member'),
       a.normalized_contact, NULL, NULL,
-      CASE t.ring WHEN 'follower' THEN 'follows' ELSE 'friend_of_follower' END
+      CASE t.ring WHEN 'follower' THEN 'follows' ELSE 'friend_of_follower' END,
+      NULL, t.recipient_user_id, NULL
       FROM sealed t
-      JOIN public.profiles pr ON pr.id = t.recipient_user_id AND pr.active IS TRUE AND pr.explorer_deleted_at IS NULL
-      JOIN LATERAL public.issue_1778_circle_authorized_contact(
-        v_campaign.brand_id, t.recipient_user_id, t.channel
-      ) a ON a.allowed
+      LEFT JOIN public.profiles pr ON pr.id = t.recipient_user_id AND pr.active IS TRUE AND pr.explorer_deleted_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT c.normalized_contact FROM public.issue_1778_circle_authorized_contact(
+          v_campaign.brand_id, t.recipient_user_id, t.channel) c
+         WHERE c.allowed AND pr.id IS NOT NULL
+           AND t.contact_value_digest = encode(extensions.digest(convert_to(c.normalized_contact, 'UTF8'), 'sha256'), 'hex')
+           AND public.issue_1995_flags_enabled()
+           AND public.issue_1778_ring_channel_enabled(
+             CASE t.ring WHEN 'follower' THEN 'brand_followers' ELSE 'brand_circle_extended' END, t.channel)
+           AND (
+             (t.ring = 'follower' AND EXISTS (SELECT 1 FROM public.brand_follows bf
+                WHERE bf.brand_id = v_campaign.brand_id AND bf.user_id = t.recipient_user_id))
+             OR (t.ring = 'extended' AND private.issue_3682_extended_reach_live() AND EXISTS (
+               SELECT 1 FROM public.issue_1777_resolve_brand_circle_members(
+                 v_campaign.brand_id, 'extended', ARRAY[t.recipient_user_id]) r
+                WHERE r.user_id = t.recipient_user_id))
+           )
+      ) a ON true
      WHERE t.recipient_user_id IS NOT NULL
-       AND t.contact_value_digest = encode(extensions.digest(convert_to(a.normalized_contact, 'UTF8'), 'sha256'), 'hex')
-       AND public.issue_1995_flags_enabled()
-       AND public.issue_1778_ring_channel_enabled(
-         CASE t.ring WHEN 'follower' THEN 'brand_followers' ELSE 'brand_circle_extended' END, t.channel)
-       AND (
-         (t.ring = 'follower' AND EXISTS (SELECT 1 FROM public.brand_follows bf
-            WHERE bf.brand_id = v_campaign.brand_id AND bf.user_id = t.recipient_user_id))
-         OR (t.ring = 'extended' AND private.issue_3682_extended_reach_live() AND EXISTS (
-           SELECT 1 FROM public.issue_1777_resolve_brand_circle_members(
-             v_campaign.brand_id, 'extended', ARRAY[t.recipient_user_id]) r
-            WHERE r.user_id = t.recipient_user_id))
-       )
-       AND public.issue_4273_follow_gate_ok(t.recipient_user_id, v_campaign.brand_id, t.channel)
-       AND NOT EXISTS (SELECT 1 FROM public.blocked_users b WHERE
-         (b.blocker_id = v_actor AND b.blocked_id = t.recipient_user_id) OR
-         (b.blocker_id = t.recipient_user_id AND b.blocked_id = v_actor))
     UNION ALL
-    SELECT t.buyer_contact_key, b.buyer_name, d.normalized_contact, b.event_id, b.event_title, 'bought'
+    -- The sealed phone is the one on the orders whose digest matches, so seal and
+    -- send cannot disagree. If that order is gone, this is a recorded skip.
+    SELECT t.id, 2, t.buyer_contact_key, b.buyer_name, d.normalized_contact, b.event_id, b.event_title, 'bought',
+      NULL, b.buyer_user_id, b.email
       FROM sealed t
-      JOIN buyers b ON b.buyer_key = t.buyer_contact_key
-      JOIN LATERAL public.issue_4273_buyer_contact_decision(
-        v_campaign.brand_id, b.email, b.phone, t.channel
-      ) d ON d.allowed
-     WHERE t.contact_value_digest = encode(extensions.digest(convert_to(d.normalized_contact, 'UTF8'), 'sha256'), 'hex')
-       AND public.issue_4273_follow_gate_ok(b.buyer_user_id, v_campaign.brand_id, t.channel)
-       AND NOT EXISTS (SELECT 1 FROM public.blocked_users bu WHERE b.buyer_user_id IS NOT NULL AND
-         ((bu.blocker_id = v_actor AND bu.blocked_id = b.buyer_user_id) OR
-          (bu.blocker_id = b.buyer_user_id AND bu.blocked_id = v_actor)))
+      LEFT JOIN buyers b ON b.buyer_key = t.buyer_contact_key
+      LEFT JOIN LATERAL (
+        SELECT c.normalized_contact FROM public.issue_4273_buyer_contact_decision(
+          v_campaign.brand_id, b.email,
+          (SELECT btrim(o.buyer_phone_e164) FROM public.orders o JOIN public.events e ON e.id = o.event_id
+            WHERE t.channel = 'sms' AND e.brand_id = v_campaign.brand_id
+              AND o.payment_status IN ('paid', 'partial_refund')
+              AND lower(btrim(o.buyer_email)) = b.email
+              AND btrim(COALESCE(o.buyer_phone_e164, '')) <> ''
+              AND t.contact_value_digest = encode(extensions.digest(convert_to(btrim(o.buyer_phone_e164), 'UTF8'), 'sha256'), 'hex')
+            LIMIT 1),
+          t.channel) c
+         WHERE c.allowed
+           AND t.contact_value_digest = encode(extensions.digest(convert_to(c.normalized_contact, 'UTF8'), 'sha256'), 'hex')
+      ) d ON b.buyer_key IS NOT NULL
+     WHERE t.buyer_contact_key IS NOT NULL
+  ), judged AS MATERIALIZED (
+    SELECT r.*,
+      CASE WHEN r.normalized_contact IS NULL THEN 'no_longer_eligible'
+        ELSE public.issue_4273_send_verdict(v_actor, v_campaign.brand_id, v_campaign.channel,
+          r.normalized_contact, r.brand_person_id, r.user_id, r.buyer_email) END AS verdict
+    FROM resolved r
+  ), ranked AS MATERIALIZED (
+    SELECT j.*, CASE WHEN j.verdict = 'send' THEN
+        row_number() OVER (PARTITION BY j.verdict, lower(j.normalized_contact) ORDER BY j.subject_rank, j.target_id)
+      END AS address_rank
+    FROM judged j
+  ), recorded AS (
+    INSERT INTO public.marketing_combined_send_skips(execution_id, target_id, reason, host_visible)
+    SELECT v_execution, x.target_id,
+      CASE WHEN x.verdict = 'send' THEN 'address_duplicate' ELSE x.verdict END,
+      x.verdict IN ('no_longer_eligible', 'identity_blocked')
+    FROM ranked x WHERE x.verdict <> 'send' OR x.address_rank > 1
+    RETURNING 1
   )
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
     'contact_key', x.contact_key,
@@ -804,13 +1032,95 @@ BEGIN
     'sms_marketing_ok', v_campaign.channel = 'sms',
     'receive_reason', x.receive_reason
   ) ORDER BY x.contact_key), '[]'::jsonb) INTO v_rows
-  FROM people x;
+  FROM ranked x WHERE x.verdict = 'send' AND x.address_rank = 1;
 
   RETURN jsonb_build_object('rows', v_rows, 'brand_id', v_campaign.brand_id, 'reach', jsonb_build_object(
     'total', jsonb_array_length(v_rows),
     'reachable_email', CASE WHEN v_campaign.channel = 'email' THEN jsonb_array_length(v_rows) ELSE 0 END,
     'reachable_sms', CASE WHEN v_campaign.channel = 'sms' THEN jsonb_array_length(v_rows) ELSE 0 END));
 END;
+$fn$;
+
+-- How many sealed-and-unsent targets must stay out of the host's skipped count.
+CREATE OR REPLACE FUNCTION public.biz_marketing_combined_hidden_skips_v1(p_campaign_id uuid)
+RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  SELECT count(*)::integer FROM public.marketing_combined_send_skips s
+    JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
+   WHERE e.campaign_id = p_campaign_id AND NOT s.host_visible
+$fn$;
+
+-- ── What a host reads back ──────────────────────────────────────────────────
+-- A sealed campaign's message row shows its contact only when the brand itself
+-- held that contact: a sealed Book row or a sealed buyer. Everything else fails
+-- closed. A campaign with no sealed execution is a buyer list: brand-held.
+CREATE INDEX issue_4273_target_contact_digest
+  ON public.marketing_book_send_targets(execution_id, contact_value_digest)
+  WHERE brand_person_id IS NOT NULL OR buyer_contact_key IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.issue_4273_host_may_read_message_contact(
+  p_campaign_id uuid, p_phone text, p_email text
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, extensions, pg_temp
+AS $fn$
+  SELECT EXISTS (
+    SELECT 1 FROM public.marketing_campaigns c
+     WHERE c.id = p_campaign_id
+       AND (c.account_id = auth.uid() OR public.mkt_brand_min_rank(c.brand_id, 'brand_member'))
+  ) AND (
+    (p_phone IS NULL AND p_email IS NULL)
+    OR NOT EXISTS (SELECT 1 FROM public.marketing_book_send_executions e WHERE e.campaign_id = p_campaign_id)
+    OR EXISTS (
+      SELECT 1 FROM public.marketing_book_send_targets t
+        JOIN public.marketing_book_send_executions e ON e.id = t.execution_id
+       WHERE e.campaign_id = p_campaign_id
+         AND (t.brand_person_id IS NOT NULL OR t.buyer_contact_key IS NOT NULL)
+         AND t.contact_value_digest IN (
+           encode(extensions.digest(convert_to(p_phone, 'UTF8'), 'sha256'), 'hex'),
+           encode(extensions.digest(convert_to(lower(btrim(p_email)), 'UTF8'), 'sha256'), 'hex'))
+    )
+  )
+$fn$;
+
+-- [TRANSITIONAL] Older installed apps still read this table directly: they lose
+-- circle rows from their list and counts rather than break. Exit: when no
+-- supported build reads marketing_messages directly, revoke the read outright.
+DROP POLICY IF EXISTS marketing_messages_select ON public.marketing_messages;
+CREATE POLICY marketing_messages_select ON public.marketing_messages
+  FOR SELECT TO authenticated
+  USING (public.issue_4273_host_may_read_message_contact(campaign_id, recipient_phone, recipient_email));
+
+-- Every Host read of messages (Campaign detail, Overview): every row the campaign
+-- owner may see, so totals stay whole, with the contact and any provider text
+-- blanked on rows the brand did not hold.
+CREATE OR REPLACE FUNCTION public.biz_marketing_campaign_messages_v1(
+  p_campaign_ids uuid[], p_since timestamptz DEFAULT NULL, p_from integer DEFAULT 0,
+  p_limit integer DEFAULT 500, p_newest_first boolean DEFAULT false
+) RETURNS TABLE(
+  id uuid, recipient_email text, status text, sent_at timestamptz, click_count integer,
+  failure_reason text, delivered_at timestamptz, opened_at timestamptz,
+  delivery_tracking_eligible_at timestamptz, open_tracking_eligible_at timestamptz
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  SELECT m.id,
+    CASE WHEN v.ok THEN m.recipient_email END,
+    m.status::text, m.sent_at, m.click_count,
+    CASE WHEN v.ok OR m.failure_reason IS NULL THEN m.failure_reason ELSE 'not_delivered' END,
+    m.delivered_at, m.opened_at, m.delivery_tracking_eligible_at, m.open_tracking_eligible_at
+  FROM public.marketing_messages m
+  JOIN public.marketing_campaigns c ON c.id = m.campaign_id
+  CROSS JOIN LATERAL (SELECT public.issue_4273_host_may_read_message_contact(
+    m.campaign_id, m.recipient_phone, m.recipient_email) AS ok) v
+  WHERE m.campaign_id = ANY(p_campaign_ids)
+    AND (c.account_id = auth.uid() OR public.mkt_brand_min_rank(c.brand_id, 'brand_member'))
+    AND (p_since IS NULL OR m.created_at >= p_since)
+  ORDER BY
+    CASE WHEN p_newest_first THEN m.sent_at END DESC NULLS LAST,
+    m.id
+  OFFSET GREATEST(COALESCE(p_from, 0), 0)
+  LIMIT LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500)
 $fn$;
 
 -- ── Push: the 20280401043682 body + a combined branch ───────────────────────
@@ -997,18 +1307,28 @@ BEGIN
 END;
 $fn$;
 
--- ── Claim: a combined campaign is claimable only with a sealed execution ────
--- The 20270627001778 body + the new kind.
+-- ── Claim: #2509 reclaim + #1778 sealed gate + the new kind ──────────────────
+-- 20270627001778 replaced 20270525002509's body and lost the reclaim. All three
+-- rules live here now. The reclaim window is longer than the runtime's own
+-- ceiling and the dispatcher heartbeats updated_at, so a healthy run is never
+-- stolen from itself; resume skips every address already handled, and the sealed
+-- execution is never rewritten, so a reclaim cannot send or count anything twice.
 CREATE OR REPLACE FUNCTION public.mkt_claim_campaigns(p_limit integer DEFAULT 10,p_campaign_id uuid DEFAULT NULL)
 RETURNS TABLE(id uuid,account_id uuid,brand_id uuid,audience_id uuid,channel text,channel_payload jsonb,name text,scheduled_for timestamptz)
 LANGUAGE plpgsql SET search_path=public,pg_temp AS $function$
+DECLARE
+  -- 10 minutes: ~3x the observed ~196s death point (#2509).
+  v_stale interval := interval '10 minutes';
 BEGIN
   RETURN QUERY UPDATE public.marketing_campaigns mc SET status='sending',updated_at=now() WHERE mc.id IN(
-    SELECT c.id FROM public.marketing_campaigns c JOIN public.marketing_audiences a ON a.id=c.audience_id
-    WHERE c.status='scheduled' AND c.scheduled_for<=now() AND (p_campaign_id IS NULL OR c.id=p_campaign_id)
-      AND (a.query_definition->>'kind' NOT IN('all_brand_people','manual_group','brand_followers','brand_circle_extended','combined_sources')
-        OR EXISTS(SELECT 1 FROM public.marketing_book_send_executions e WHERE e.campaign_id=c.id))
-    ORDER BY c.scheduled_for LIMIT p_limit FOR UPDATE OF c SKIP LOCKED)
+    SELECT c.id FROM public.marketing_campaigns c
+    WHERE ((c.status='scheduled' AND c.scheduled_for<=now())
+           OR (c.status='sending' AND c.updated_at<now()-v_stale))
+      AND (p_campaign_id IS NULL OR c.id=p_campaign_id)
+      AND EXISTS(SELECT 1 FROM public.marketing_audiences a WHERE a.id=c.audience_id AND (
+        a.query_definition->>'kind' NOT IN('all_brand_people','manual_group','brand_followers','brand_circle_extended','combined_sources')
+        OR EXISTS(SELECT 1 FROM public.marketing_book_send_executions e WHERE e.campaign_id=c.id)))
+    ORDER BY c.scheduled_for ASC NULLS LAST LIMIT p_limit FOR UPDATE SKIP LOCKED)
   RETURNING mc.id,mc.account_id,mc.brand_id,mc.audience_id,mc.channel,mc.channel_payload,mc.name,mc.scheduled_for;
 END;
 $function$;
@@ -1042,8 +1362,12 @@ REVOKE ALL ON FUNCTION public.issue_4273_normalize_sources(uuid, jsonb),
   public.issue_4273_source_totals(uuid, jsonb),
   public.issue_4273_assert_sources_allowed(uuid, uuid, jsonb),
   public.issue_4273_follow_gate_ok(uuid, uuid, text),
+  public.issue_4273_address_denied(uuid, text, text, uuid),
   public.issue_4273_buyer_contact_decision(uuid, text, text, text),
   public.issue_4273_decided_people(uuid, uuid, jsonb, text),
+  public.issue_4273_accounts_holding(text, text),
+  public.issue_4273_send_verdict(uuid, uuid, text, text, uuid, uuid, text),
+  public.biz_marketing_combined_hidden_skips_v1(uuid),
   public.biz_marketing_combined_quote_candidates_v1(uuid, uuid),
   public.biz_confirm_marketing_combined_send_v1(uuid, uuid, uuid, jsonb, timestamptz),
   public.biz_marketing_combined_send_audience_v1(uuid),
@@ -1051,7 +1375,8 @@ REVOKE ALL ON FUNCTION public.issue_4273_normalize_sources(uuid, jsonb),
   public.biz_marketing_push_send_worklist_v1(uuid),
   public.mkt_claim_campaigns(integer, uuid)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_marketing_combined_quote_candidates_v1(uuid, uuid),
+GRANT EXECUTE ON FUNCTION public.biz_marketing_combined_hidden_skips_v1(uuid),
+  public.biz_marketing_combined_quote_candidates_v1(uuid, uuid),
   public.biz_confirm_marketing_combined_send_v1(uuid, uuid, uuid, jsonb, timestamptz),
   public.biz_marketing_combined_send_audience_v1(uuid),
   public.biz_marketing_push_quote_candidates_v1(uuid, uuid),
@@ -1059,10 +1384,14 @@ GRANT EXECUTE ON FUNCTION public.biz_marketing_combined_quote_candidates_v1(uuid
   public.mkt_claim_campaigns(integer, uuid)
   TO service_role;
 REVOKE ALL ON FUNCTION public.biz_get_or_create_marketing_combined_audience_v1(uuid, uuid, jsonb),
-  public.biz_marketing_combined_audience_summary_v1(uuid, uuid, jsonb)
+  public.biz_marketing_combined_audience_summary_v1(uuid, uuid, jsonb),
+  public.biz_marketing_campaign_messages_v1(uuid[], timestamptz, integer, integer, boolean),
+  public.issue_4273_host_may_read_message_contact(uuid, text, text)
   FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_get_or_create_marketing_combined_audience_v1(uuid, uuid, jsonb),
-  public.biz_marketing_combined_audience_summary_v1(uuid, uuid, jsonb)
+  public.biz_marketing_combined_audience_summary_v1(uuid, uuid, jsonb),
+  public.biz_marketing_campaign_messages_v1(uuid[], timestamptz, integer, integer, boolean),
+  public.issue_4273_host_may_read_message_contact(uuid, text, text)
   TO authenticated;
 
 ALTER FUNCTION public.biz_marketing_combined_quote_candidates_v1(uuid, uuid) OWNER TO postgres;

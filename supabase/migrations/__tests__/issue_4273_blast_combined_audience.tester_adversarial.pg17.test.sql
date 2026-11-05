@@ -7,7 +7,7 @@
 -- Every check runs and records; the suite fails at the end with the whole list,
 -- so one defect cannot hide the next.
 --
--- MINGLA-INVARIANT: I-4273-STRICTEST-IDENTITY-AT-SEND | issue #4273 | A person blocked by any identity at quote or at send time is not messaged by a combined Blast, whichever identity sealed them.
+-- MINGLA-INVARIANT: I-4273-STRICTEST-IDENTITY-AT-SEND | issue #4273 | A person blocked by any identity at send time is not messaged by a combined Blast, whichever identity sealed them.
 -- MINGLA-INVARIANT: I-4273-GRAPH-CONTACT-NEVER-REACHES-HOST | issue #4273 | No Host-callable read returns a contact the brand did not itself hold for a person reached only through followers or friends of followers.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -155,18 +155,6 @@ BEGIN
 
   PERFORM pg_temp.chk('A-01 muted follower stays blocked through a Book row with the same phone',
     v_env -> 'candidates' @> '[{"normalizedContact":"+12025557012","allowed":false}]'::jsonb, v_env::text);
-  PERFORM pg_temp.chk('A-02 a follower who blocked the host is not messaged through a Book row with the same phone',
-    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_env -> 'candidates') x
-                 WHERE x ->> 'normalizedContact' = '+12025557013' AND (x ->> 'allowed')::boolean),
-    (SELECT string_agg(x::text, ' ') FROM jsonb_array_elements(v_env -> 'candidates') x WHERE x ->> 'normalizedContact' = '+12025557013'));
-  PERFORM pg_temp.chk('A-03 a contact the Book marks consent-withheld is not messaged because the same number also follows',
-    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_env -> 'candidates') x
-                 WHERE x ->> 'normalizedContact' = '+12025557014' AND (x ->> 'allowed')::boolean),
-    (SELECT string_agg(x::text, ' ') FROM jsonb_array_elements(v_env -> 'candidates') x WHERE x ->> 'normalizedContact' = '+12025557014'));
-  PERFORM pg_temp.chk('A-04 each phone appears once',
-    (SELECT count(*) FROM jsonb_array_elements(v_env -> 'candidates') x WHERE x ->> 'normalizedContact' IS NOT NULL)
-    = (SELECT count(DISTINCT x ->> 'normalizedContact') FROM jsonb_array_elements(v_env -> 'candidates') x WHERE x ->> 'normalizedContact' IS NOT NULL), v_env::text);
-
   -- Two Book people sharing one phone are one person for an SMS, but each has
   -- their own email. An email Blast must still reach both.
   v_aud2 := (public.biz_get_or_create_marketing_combined_audience_v1(v_owner, v_brand, '["book","followers","extended"]'::jsonb) ->> 'audienceId')::uuid;
@@ -181,6 +169,16 @@ BEGIN
   PERFORM public.biz_confirm_marketing_combined_send_v1(v_owner, v_id,
     '4273a000-4000-4000-8000-000000000001', pg_temp.snap(v_env), now() + interval '1 hour');
   v_send := public.biz_marketing_combined_send_audience_v1(v_id);
+  -- Overridden by the #4273 privacy decision: a host-visible preview never
+  -- contact-matches a graph-only person, so A-02, A-03 and A-04 are pinned at send.
+  PERFORM pg_temp.chk('A-01b the muted follower gets nothing at send, by either identity',
+    NOT (v_send -> 'rows' @> '[{"raw_phone":"+12025557012"}]'::jsonb), v_send::text);
+  PERFORM pg_temp.chk('A-02 a follower who blocked the host is not messaged at send through a Book row with the same phone',
+    NOT (v_send -> 'rows' @> '[{"raw_phone":"+12025557013"}]'::jsonb), v_send::text);
+  PERFORM pg_temp.chk('A-03 a number the Book marks consent-withheld is not messaged at send because the same number also follows',
+    NOT (v_send -> 'rows' @> '[{"raw_phone":"+12025557014"}]'::jsonb), v_send::text);
+  PERFORM pg_temp.chk('A-04 each phone is sent to once',
+    jsonb_array_length(v_send -> 'rows') = (SELECT count(DISTINCT x ->> 'raw_phone') FROM jsonb_array_elements(v_send -> 'rows') x), v_send::text);
   PERFORM pg_temp.chk('A-06 fixture: the late muter is in the sealed send',
     v_send -> 'rows' @> '[{"raw_phone":"+12025557015"}]'::jsonb, v_send::text);
   UPDATE public.brand_follows SET muted_until = 'infinity'
@@ -211,10 +209,16 @@ BEGIN
   PERFORM public.biz_confirm_marketing_combined_send_v1(v_owner, v_id,
     '4273a000-4000-4000-8000-000000000002', pg_temp.snap(v_env), now() + interval '1 hour');
   v_send := public.biz_marketing_combined_send_audience_v1(v_id);
-  PERFORM pg_temp.chk('A-10 every queued sealed target is sent with nothing having changed (buyer with two phones)',
-    jsonb_array_length(v_send -> 'rows') = (SELECT count(*) FROM public.marketing_book_send_targets t
+  -- Overridden by the #4273 strictest-identity decision: Book rows here match
+  -- blocked followers, so "sealed = sent" becomes "sealed = sent + recorded skip".
+  PERFORM pg_temp.chk('A-10 every queued sealed target is sent or is a recorded skip (buyer with two phones)',
+    jsonb_array_length(v_send -> 'rows') + (SELECT count(*) FROM public.marketing_combined_send_skips s
+        JOIN public.marketing_book_send_executions e ON e.id = s.execution_id WHERE e.campaign_id = v_id)
+      = (SELECT count(*) FROM public.marketing_book_send_targets t
       JOIN public.marketing_book_send_executions e ON e.id = t.execution_id
-      WHERE e.campaign_id = v_id AND t.outcome = 'queued'),
+      WHERE e.campaign_id = v_id AND t.outcome = 'queued')
+    AND v_send -> 'rows' @> '[{"raw_phone":"+12025559003"}]'::jsonb
+    AND (v_send -> 'rows' @> '[{"raw_phone":"+12025559002"}]'::jsonb),
     'rows=' || jsonb_array_length(v_send -> 'rows') || ' phones=' ||
       (SELECT string_agg(x ->> 'raw_phone', ',') FROM jsonb_array_elements(v_send -> 'rows') x));
 

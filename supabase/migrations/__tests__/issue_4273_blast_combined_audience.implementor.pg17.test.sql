@@ -1,7 +1,7 @@
 -- #4273 wave B — one Blast, several groups, several methods.
 -- Runs on the fully applied migration chain.
 --
--- MINGLA-INVARIANT: I-4273-BLAST-PERSON-COUNTS-ONCE | issue #4273 | Across every picked group and every method of one Blast, a person (same account, email or phone) is one candidate, one sealed target and one message.
+-- MINGLA-INVARIANT: I-4273-BLAST-PERSON-COUNTS-ONCE | issue #4273 | Across every picked group, a person (same account, or a contact shared with an order) counts once in Host totals, and each method sends once per address; two Book rows the host keeps apart stay two people.
 -- MINGLA-INVARIANT: I-4273-BLAST-QUOTE-EQUALS-SEALED-SET | issue #4273 | What a combined Blast seals at confirm is exactly the set its 5-minute quote priced; any change is a stale preview (PT409), and send re-decides each sealed person.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -147,7 +147,7 @@ BEGIN
   VALUES (v_sms, v_owner, v_brand, (v_audience ->> 'audienceId')::uuid, 'SMS part', 'sms',
     '{"kind":"sms","body":"Doors at 9."}', 'draft');
 
-  -- C-04 SMS candidates: each person once. Mia is muted (her Book contact does
+  -- C-04 SMS candidates: each person once (no one here shares an address). Mia is muted (her Book contact does
   -- not bring her back), Fay said STOP, Gia's order phone said STOP (the
   -- strictest identity wins), Eve has no phone.
   v_env := public.biz_marketing_combined_quote_candidates_v1(v_owner, v_sms);

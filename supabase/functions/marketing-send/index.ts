@@ -325,6 +325,14 @@ export function shouldSkipDispatchedRecipient(
     existing.provider_message_id !== undefined;
 }
 
+/** #4273 — a pass only ever leaves a row `queued` by dying mid-recipient. */
+export function isInterruptedSmsRow(
+  existing: { status: string; provider_message_id?: string | null } | null,
+): boolean {
+  return existing !== null && existing.status === "queued" &&
+    (existing.provider_message_id ?? null) === null;
+}
+
 // ORCH-1270 — SMS dispatch disposition (SPEC §5.1). Pure, DB-free, unit-testable.
 export type SmsDisposition =
   | { action: "send" }
@@ -576,6 +584,7 @@ export async function handleMarketingSendRequest(
           body.expectedCostMinor ?? null,
           body.currency ?? null,
           body.scheduledFor ?? null,
+          body.action === "confirm_combined_v1",
         );
         if (existing !== null) {
           return jsonResponse(
@@ -714,6 +723,7 @@ export async function handleMarketingSendRequest(
           body.expectedCostMinor ?? null,
           body.currency ?? null,
           body.scheduledFor ?? null,
+          body.action === "confirm_combined_v1",
         );
         if (existing === null) throw new Error("book_blast_preview_stale");
         return jsonResponse(
@@ -752,7 +762,13 @@ export async function handleMarketingSendRequest(
       if (accounted > quote.reachableCount) {
         return jsonResponse({ error: "BOOK_BLAST_PREVIEW_STALE" }, 409);
       }
-      directDispatch.skipped_after_confirm = quote.reachableCount - accounted;
+      directDispatch.skipped_after_confirm = hostVisibleSkipped(
+        quote.reachableCount,
+        accounted,
+        body.action === "confirm_combined_v1"
+          ? await combinedHiddenSkips(supabase, body.campaign_id)
+          : 0,
+      );
     }
     return jsonResponse({
       ...(confirmed.data as Record<string, unknown>),
@@ -1308,6 +1324,39 @@ export function existingBookSendResponse(
   };
 }
 
+/**
+ * #4273 — sealed targets that went unsent only because their contact matched
+ * someone the host knows solely through their circle. They stay out of the
+ * host's skipped count, which would otherwise reveal the match. When the figure
+ * cannot be read the whole difference is withheld: a low skipped count is safe,
+ * a revealing one is not.
+ */
+export async function combinedHiddenSkips(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc(
+    "biz_marketing_combined_hidden_skips_v1",
+    { p_campaign_id: campaignId },
+  );
+  if (error || typeof data !== "number") {
+    console.error(
+      `[marketing-send] campaign ${campaignId} hidden skip read failed`,
+    );
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return data;
+}
+
+export function hostVisibleSkipped(
+  sealedReachable: number,
+  accounted: number,
+  hiddenSkips: number,
+): number {
+  return Math.max(sealedReachable - accounted - hiddenSkips, 0);
+}
+
 async function findExistingBookSend(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -1319,6 +1368,7 @@ async function findExistingBookSend(
   expectedCostMinor: number | null,
   currency: string | null,
   scheduledFor: string | null,
+  combined = false,
 ): Promise<ExistingBookResult | null> {
   const { data, error } = await supabase.rpc(
     "biz_marketing_book_existing_result_v1",
@@ -1334,7 +1384,17 @@ async function findExistingBookSend(
     },
   );
   if (error) throw new Error(error.message);
-  return data as ExistingBookResult | null;
+  const existing = data as ExistingBookResult | null;
+  if (existing === null || !combined) return existing;
+  // #4273 — the replay answer hides the same difference the first answer did.
+  return {
+    ...existing,
+    sealedReachable: Math.max(
+      existing.sealedReachable -
+        await combinedHiddenSkips(supabase, campaignId),
+      existing.messageRows,
+    ),
+  };
 }
 
 export async function dispatchConfirmedBookSend(
@@ -1732,7 +1792,11 @@ async function sendEmail(
       text: providerText,
       replyTo: brandReplyTo,
       unsubscribeUrl,
-      idempotencyKey: offeringProviderKey,
+      // #4273 — the provider's own guard for the one window resume cannot see:
+      // accepted by Resend, then killed before the row was written. A reclaimed
+      // pass repeating this request gets the first answer, not a second email.
+      idempotencyKey: offeringProviderKey ??
+        `campaign:${campaign.id}:${contact.raw_email.toLowerCase()}`,
       beforeProviderIo: inviteContext === null || offeringTokenId === null
         ? undefined
         : async () => {
@@ -2356,6 +2420,26 @@ async function sendSms(
         .maybeSingle();
       if (selErr) throw new Error(`message_select:${selErr.message}`);
       if (shouldSkipDispatchedRecipient(existing)) {
+        continue;
+      }
+      // #4273 — Twilio has no idempotency key. A row already `queued` when a pass
+      // starts was left by a run that died around the provider call, so it may
+      // have gone out. Reclaim must not text and charge twice: record it as
+      // unconfirmed and move on.
+      if (isInterruptedSmsRow(existing)) {
+        const { error: interruptedErr } = await supabase
+          .from("marketing_messages")
+          .update({
+            status: "failed",
+            failure_reason: "interrupted_send_unconfirmed",
+          })
+          .eq("campaign_id", campaign.id)
+          .eq("recipient_phone", phone)
+          .eq("status", "queued");
+        if (interruptedErr) {
+          throw new Error(`message_interrupted:${interruptedErr.message}`);
+        }
+        failed += 1;
         continue;
       }
 
