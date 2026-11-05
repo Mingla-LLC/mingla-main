@@ -205,6 +205,37 @@ Deno.test("AX-L3 a real empty answer is the only way to the empty state", async 
   assertEquals(rig.seen.at(-1), { conversations: [], loaded: true, loading: false, failed: false });
 });
 
+Deno.test("AX-L4 a cached empty list: a refresh that keeps failing holds its awaiter through every retry, and reads as empty meanwhile", async () => {
+  // Pinned because the page awaits this in pull-to-refresh and in accepting an invite,
+  // so with an empty list their spinners wait for all 5 attempts (about 130 s at worst).
+  const client = new QueryClient();
+  const key = ["chat-list", "u"];
+  client.setQueryData(key, { conversations: [], teamBrandIds: null });
+  let attempts = 0;
+  const views: Array<ReturnType<typeof chatListViewState>> = [];
+  const observer = new QueryObserver(client, {
+    queryKey: key,
+    queryFn: () => {
+      attempts += 1;
+      return Promise.reject(new ChatListTimeoutError());
+    },
+    retry: (count: number, error: unknown) => {
+      const rows = (client.getQueryData(key) as { conversations: unknown[] } | undefined)?.conversations.length ?? 0;
+      return shouldRetryChatList(count, error, rows > 0, false);
+    },
+    retryDelay: () => 1,
+    enabled: false,
+  });
+  const unsubscribe = observer.subscribe((result: Parameters<typeof chatListViewState>[0]) => {
+    views.push(chatListViewState(result));
+  });
+  await client.refetchQueries({ queryKey: key });
+  unsubscribe();
+  assertEquals(attempts, CHAT_LIST_FIRST_LOAD_RETRIES + 1, "the awaited promise settled only after every attempt");
+  assert(views.some((view) => view.loaded && !view.failed && view.conversations?.length === 0), "empty state showing during retries");
+  assertEquals(views.at(-1)?.failed, true, "and the error row once settled");
+});
+
 // ── Persistence, through real dehydrate and hydrate ──────────────────────
 
 function roundTrip(client: InstanceType<typeof QueryClient>) {
