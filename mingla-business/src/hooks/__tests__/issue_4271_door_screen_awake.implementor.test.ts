@@ -82,6 +82,20 @@ describe("#4271 the binary carries what the hook asks for", () => {
     expect(pkg.expo?.autolinking?.android?.exclude ?? []).not.toContain("expo-brightness");
   });
 
+  test("the screen's own brightness needs no permission, so WRITE_SETTINGS stays blocked", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("node:fs") as typeof import("node:fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("node:path") as typeof import("node:path");
+    const app = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "..", "app.json"), "utf8")) as {
+      expo: { android: { blockedPermissions: string[]; permissions: string[] } };
+    };
+    expect(app.expo.android.blockedPermissions).toContain("android.permission.WRITE_SETTINGS");
+    expect(app.expo.android.permissions).not.toContain("android.permission.WRITE_SETTINGS");
+    const source = fs.readFileSync(path.join(__dirname, "..", "useDoorScreenAwake.ts"), "utf8");
+    expect(source).not.toContain("setSystemBrightness");
+  });
+
   test("it is only ever required lazily, by native module name", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const source = require("node:fs").readFileSync(
