@@ -357,7 +357,7 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4276: register the place-pipeline migrations and their proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b710a505430502b0f57248b299c74af0041af2cbb2716c77ee4467a828dbbbe1";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "aea736b7c59bf675bfdf3b2166bc9d4b8f4f0a09394858851776191c7bd47fd2";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -145,7 +145,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
 // #4276: register the place-pipeline migrations and their proofs.
-export const BOOTSTRAP_SHA256 = "cef0740a2bce42a6eb3f177711e0fc1cca84ba13e1d3379410bcc8e8b7072178";
+export const BOOTSTRAP_SHA256 = "6739adfe09ed8a22f3c0fc2daf2c1ddcac27214a3c3d0925e572dd9542ab15a4";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
