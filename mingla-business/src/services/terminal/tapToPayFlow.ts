@@ -25,6 +25,7 @@ import type {
   DoorTapIntent,
 } from "./doorTapEdge";
 import { DoorTapError } from "./doorTapEdge";
+import { type TapReaderProblem } from "../../constants/tapToPayCopy";
 
 // ---- Minimal structural views of the SDK objects we read ----------------
 
@@ -57,7 +58,11 @@ export interface TerminalCallResult {
 
 /** What the flow needs from the Terminal SDK (wired from useStripeTerminal). */
 export interface TapToPayTerminalClient {
-  ensureReaderConnected(locationId: string): Promise<{ error?: TerminalErrorLike }>;
+  /** mayAcceptTerms is true only on the setup button's run (see #4271 B5). Absent means false. */
+  ensureReaderConnected(
+    locationId: string,
+    options?: { mayAcceptTerms?: boolean },
+  ): Promise<{ error?: TerminalErrorLike }>;
   retrievePaymentIntent(clientSecret: string): Promise<TerminalCallResult>;
   collectPaymentMethod(paymentIntent: TerminalPaymentIntentLike): Promise<TerminalCallResult>;
   confirmPaymentIntent(paymentIntent: TerminalPaymentIntentLike): Promise<TerminalCallResult>;
@@ -100,6 +105,8 @@ export type TapSaleState =
   | { kind: "cancelled"; amount: TapAmount }
   | { kind: "not_on_this_phone" }
   | { kind: "ios_update_required" }
+  | { kind: "needs_setup" }
+  | { kind: "reader_problem"; problem: TapReaderProblem }
   | { kind: "save_failed"; amount: TapAmount; message: string }
   | { kind: "failed"; message: string };
 
@@ -111,6 +118,8 @@ export type TerminalFailureKind =
   | "cancelled"
   | "not_on_this_phone"
   | "ios_update_required"
+  | "terms_not_accepted"
+  | TapReaderProblem
   | "failed";
 
 const PIN_MARKERS = ["offline_pin_required", "online_or_offline_pin_required"];
@@ -123,7 +132,6 @@ const DEVICE_CODES: ReadonlySet<string> = new Set([
   "TAP_TO_PAY_DEBUG_NOT_SUPPORTED",
   "TAP_TO_PAY_UNSUPPORTED_PROCESSOR",
   "TAP_TO_PAY_NFC_DISABLED",
-  "TAP_TO_PAY_READER_MERCHANT_BLOCKED",
   "UNSUPPORTED_SDK",
   "ANDROID_API_LEVEL_ERROR",
   "UNSUPPORTED_OPERATION",
@@ -145,7 +153,28 @@ const CANCEL_CODES: ReadonlySet<string> = new Set(["CANCELED", "TAP_TO_PAY_READE
 const NATIVE_KINDS: Readonly<Record<string, TerminalFailureKind>> = {
   // iOS version or capabilities. Apple wants an update message.
   "2910": "ios_update_required",
+  "3930": "terms_not_accepted",
+  "2960": "icloud_required",
+  "2970": "terms_cancelled",
+  "3940": "terms_failed",
+  "3910": "prepare_failed",
+  "3920": "device_banned",
+  "3950": "merchant_blocked",
+  "3960": "merchant_blocked",
+  "3970": "merchant_blocked",
 };
+
+const READER_PROBLEMS: ReadonlySet<string> = new Set<TapReaderProblem>([
+  "icloud_required",
+  "terms_cancelled",
+  "terms_failed",
+  "prepare_failed",
+  "device_banned",
+  "merchant_blocked",
+]);
+
+export const isTapReaderProblem = (kind: TerminalFailureKind): kind is TapReaderProblem =>
+  READER_PROBLEMS.has(kind);
 
 export const classifyTerminalError = (error: TerminalErrorLike): TerminalFailureKind => {
   const native = error.nativeErrorCode === undefined ? undefined : NATIVE_KINDS[String(error.nativeErrorCode)];
@@ -163,6 +192,7 @@ export const classifyTerminalError = (error: TerminalErrorLike): TerminalFailure
     .toLowerCase();
   if (PIN_MARKERS.some((marker) => haystack.includes(marker))) return "needs_pin";
   const code = error.code ?? "";
+  if (code === "TAP_TO_PAY_READER_MERCHANT_BLOCKED") return "merchant_blocked";
   if (CANCEL_CODES.has(code)) return "cancelled";
   if (DEVICE_CODES.has(code)) return "not_on_this_phone";
   if (DECLINE_CODES.has(code)) return "declined";
@@ -292,7 +322,10 @@ export class TapToPaySaleFlow {
           return;
         }
       }
-      const connected = await this.input.terminal.ensureReaderConnected(this.intent.locationId);
+      // A sale never accepts Apple's terms: terms-not-accepted goes to setup.
+      const connected = await this.input.terminal.ensureReaderConnected(this.intent.locationId, {
+        mayAcceptTerms: false,
+      });
       if (connected.error) {
         this.emitTerminalFailure(connected.error, "Couldn't start Tap to Pay on this phone. Try again.");
         return;
@@ -380,6 +413,14 @@ export class TapToPaySaleFlow {
     }
     if (kind === "ios_update_required") {
       this.emit({ kind: "ios_update_required" });
+      return;
+    }
+    if (kind === "terms_not_accepted") {
+      this.emit({ kind: "needs_setup" });
+      return;
+    }
+    if (isTapReaderProblem(kind)) {
+      this.emit({ kind: "reader_problem", problem: kind });
       return;
     }
     if (this.intent === null) {

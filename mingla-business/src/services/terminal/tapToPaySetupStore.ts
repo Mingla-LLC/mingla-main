@@ -1,40 +1,55 @@
 /**
- * #4271 — remembers, on this phone only, that Tap to Pay setup finished
- * (device check passed, the reader connected at the brand's Terminal Location,
- * which is where Apple shows its Tap to Pay terms, and Apple's "How to Tap"
- * education was shown).
+ * #4271 — a per-brand hint, on this phone only: "this brand set up Tap to Pay
+ * here, so it's worth warming the reader up."
  *
- * This is a per-device client preference, not server state. Apple's terms are
- * accepted per Stripe account during setup (tapToPaySetup.ts); this flag only decides whether the door sheet says
- * "Set up once on this phone" or "Take a card or phone on this iPhone".
+ * It is NOT status. Whether Apple's terms are accepted is Apple's answer, read by
+ * connecting (tapToPaySession `acceptance`), and an iPhone never decides it from
+ * this flag alone. Android has no Apple terms, so there this hint is also its
+ * setup-done flag.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const TAP_TO_PAY_SETUP_KEY = "mingla.tapToPay.setupComplete.v1";
+/** The old phone-wide flag: it could say a second brand was set up. Removed on read. */
+export const TAP_TO_PAY_LEGACY_SETUP_KEY = "mingla.tapToPay.setupComplete.v1";
 
-type Listener = (complete: boolean) => void;
+export const tapToPayWarmHintKey = (brandId: string): string =>
+  `mingla.tapToPay.warmHint.v2.${brandId}`;
+
+type Listener = (brandId: string, hint: boolean) => void;
 const listeners = new Set<Listener>();
-let cached: boolean | null = null;
+const cached = new Map<string, boolean>();
+let legacyRemoved = false;
 
-export const readTapToPaySetupComplete = async (): Promise<boolean> => {
-  if (cached !== null) return cached;
+const removeLegacyKey = (): void => {
+  if (legacyRemoved) return;
+  legacyRemoved = true;
+  void AsyncStorage.removeItem(TAP_TO_PAY_LEGACY_SETUP_KEY).catch((error: unknown) => {
+    if (__DEV__) console.warn("[#4271] could not remove the old Tap to Pay flag", error);
+  });
+};
+
+export const readTapToPayWarmHint = async (brandId: string): Promise<boolean> => {
+  removeLegacyKey();
+  const known = cached.get(brandId);
+  if (known !== undefined) return known;
+  let hint = false;
   try {
-    cached = (await AsyncStorage.getItem(TAP_TO_PAY_SETUP_KEY)) === "1";
+    hint = (await AsyncStorage.getItem(tapToPayWarmHintKey(brandId))) === "1";
   } catch (error) {
-    // Unreadable storage: ask for setup again (it is short and repeatable).
-    if (__DEV__) console.warn("[#4271] could not read Tap to Pay setup flag", error);
-    cached = false;
+    // Unreadable storage: no warm-up, and Android asks for setup again (short and repeatable).
+    if (__DEV__) console.warn("[#4271] could not read the Tap to Pay hint", error);
   }
-  return cached;
+  cached.set(brandId, hint);
+  return hint;
 };
 
-export const markTapToPaySetupComplete = async (): Promise<void> => {
-  cached = true;
-  listeners.forEach((listener) => listener(true));
-  await AsyncStorage.setItem(TAP_TO_PAY_SETUP_KEY, "1");
+export const markTapToPayWarmHint = async (brandId: string): Promise<void> => {
+  cached.set(brandId, true);
+  listeners.forEach((listener) => listener(brandId, true));
+  await AsyncStorage.setItem(tapToPayWarmHintKey(brandId), "1");
 };
 
-export const subscribeTapToPaySetup = (listener: Listener): (() => void) => {
+export const subscribeTapToPayWarmHint = (listener: Listener): (() => void) => {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -42,7 +57,8 @@ export const subscribeTapToPaySetup = (listener: Listener): (() => void) => {
 };
 
 /** Test seam. */
-export const resetTapToPaySetupCacheForTests = (): void => {
-  cached = null;
+export const resetTapToPayWarmHintForTests = (): void => {
+  cached.clear();
   listeners.clear();
+  legacyRemoved = false;
 };

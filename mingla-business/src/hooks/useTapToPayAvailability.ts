@@ -30,9 +30,14 @@ import { isBrandChargeReady } from "../utils/brandPayout";
 import { isTapToPayIphoneEntitled } from "../services/terminal/howToTap";
 import { isTerminalNativeModulePresent } from "../services/terminal/terminalSdk";
 import {
-  readTapToPaySetupComplete,
-  subscribeTapToPaySetup,
+  readTapToPayWarmHint,
+  subscribeTapToPayWarmHint,
 } from "../services/terminal/tapToPaySetupStore";
+import {
+  tapToPayAcceptanceFor,
+  useTapToPayTerminal,
+  type TapToPayAcceptance,
+} from "../services/terminal/tapToPaySession";
 import { useTapToPayRelease } from "./useTapToPayRelease";
 
 export type TapToPayUnavailableReason =
@@ -147,6 +152,18 @@ export const resolveTapToPayAvailability = (
   return { available: true, needsSetup: !setupComplete, reason: "ok" };
 };
 
+/**
+ * iPhone: Apple's answer decides. The hint only stands in until Apple has been
+ * asked, and it can never overrule "not accepted". Android has no Apple terms, so
+ * the hint is its setup-done flag.
+ */
+export const tapToPayNeedsSetup = (
+  os: string,
+  acceptance: TapToPayAcceptance,
+  hint: boolean,
+): boolean =>
+  os === "ios" ? acceptance === "not_accepted" || (acceptance === "unknown" && !hint) : !hint;
+
 export const currentTapToPayDevice = (): TapToPayDeviceFacts => ({
   os: Platform.OS,
   version: Platform.Version,
@@ -158,28 +175,35 @@ export const currentTapToPayDevice = (): TapToPayDeviceFacts => ({
 export const useTapToPayAvailability = (
   input: Omit<TapToPayAvailabilityInput, "released"> | null,
 ): TapToPayAvailability => {
-  const [setupComplete, setSetupComplete] = useState<boolean>(false);
+  const brandId = input?.brand?.id ?? null;
+  const [hint, setHint] = useState<boolean>(false);
 
   useEffect(() => {
+    setHint(false);
+    if (brandId === null) return undefined;
     let alive = true;
-    void readTapToPaySetupComplete().then((complete) => {
-      if (alive) setSetupComplete(complete);
+    void readTapToPayWarmHint(brandId).then((value) => {
+      if (alive) setHint(value);
     });
-    const unsubscribe = subscribeTapToPaySetup((complete) => {
-      if (alive) setSetupComplete(complete);
+    const unsubscribe = subscribeTapToPayWarmHint((changedBrandId, value) => {
+      if (alive && changedBrandId === brandId) setHint(value);
     });
     return () => {
       alive = false;
       unsubscribe();
     };
-  }, []);
+  }, [brandId]);
+
+  const session = useTapToPayTerminal();
+  const acceptance = tapToPayAcceptanceFor(session, brandId);
+  const needsSetup = tapToPayNeedsSetup(Platform.OS, acceptance, hint);
 
   const brand = input?.brand ?? null;
   const currency = input?.currency ?? null;
   const hasBrand = brand !== null;
   const { live } = useTapToPayRelease(brand?.id ?? null);
   return useMemo(
-    () => resolveTapToPayAvailability({ brand, currency, released: live }, currentTapToPayDevice(), setupComplete),
+    () => resolveTapToPayAvailability({ brand, currency, released: live }, currentTapToPayDevice(), !needsSetup),
     // Brand facts that matter are listed so a fresh brand object does not recompute needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -191,7 +215,7 @@ export const useTapToPayAvailability = (
       hasBrand,
       currency,
       live,
-      setupComplete,
+      needsSetup,
     ],
   );
 };

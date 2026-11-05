@@ -35,7 +35,7 @@ import {
 } from "../../../hooks/useTapToPayAvailability";
 import { createDoorPayCodeForLines, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
-import { markTapToPaySetupComplete } from "../../../services/terminal/tapToPaySetupStore";
+import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
@@ -137,9 +137,11 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
         os: Platform.OS,
         checkDeviceSupport: () => client.checkDeviceSupport(),
         fetchLocation: () => fetchDoorTapLocation({ brandId: route.brand?.id ?? null, eventId }),
-        ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId),
+        ensureReaderConnected: (locationId) => client.ensureReaderConnected(locationId, { mayAcceptTerms: true }),
         showHowToTap: showHowToTapEducation,
-        markComplete: markTapToPaySetupComplete,
+        markComplete: async () => {
+          if (route.brand?.id) await markTapToPayWarmHint(route.brand.id);
+        },
       });
       if (result.kind === "device_rejected") {
         setDeviceRejected(true);
@@ -151,6 +153,10 @@ export const TapToPaySetupScreen = ({ eventId, rawDraft }: TapToPaySetupScreenPr
       }
       if (result.kind === "not_available") {
         setBrandNotAvailable(true);
+        return;
+      }
+      if (result.kind === "terms_required") {
+        setError("Apple's terms need accepting before this phone can take taps.");
         return;
       }
       if (result.kind === "failed") {

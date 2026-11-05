@@ -18,3 +18,40 @@ export const TAP_UPDATE_IOS_COPY = {
   primary: "Open Settings",
   secondary: "Use a pay code",
 } as const;
+
+/** Reader failures Apple tells apart. "terms_not_accepted" routes to setup instead. */
+export type TapReaderProblem =
+  | "icloud_required"
+  | "terms_cancelled"
+  | "terms_failed"
+  | "prepare_failed"
+  | "device_banned"
+  | "merchant_blocked";
+
+/** Only a reader failure a retry can't fix drops "Try again". */
+export const tapReaderProblemCanRetry = (problem: TapReaderProblem): boolean =>
+  problem !== "device_banned" && problem !== "merchant_blocked";
+
+export const tapReaderProblemCopy = (problem: TapReaderProblem, os: string): string => {
+  const name = tapToPayName(os);
+  switch (problem) {
+    case "icloud_required":
+      return "Sign in to iCloud on this iPhone, then try again.";
+    case "terms_cancelled":
+      return `Apple's terms weren't accepted. ${name} stays off until they are.`;
+    case "terms_failed":
+      return "Apple couldn't save the terms with this Apple ID. Try again.";
+    case "prepare_failed":
+      return `Couldn't get ${name} ready. Try again.`;
+    case "device_banned":
+      return `Apple has blocked ${name} on this phone. Use a pay code.`;
+    case "merchant_blocked":
+      return `${name} is off for this brand. Contact Mingla support. Use a pay code for now.`;
+    default: {
+      const exhaustive: never = problem;
+      return exhaustive;
+    }
+  }
+};
+
+export const tapReaderProblemTitle = (os: string): string => `${tapToPayName(os)} didn't start`;

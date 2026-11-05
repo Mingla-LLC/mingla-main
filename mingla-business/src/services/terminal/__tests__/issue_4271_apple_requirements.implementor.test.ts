@@ -37,8 +37,12 @@ jest.mock("../../supabase", () => ({ supabase: { functions: { invoke: jest.fn() 
 jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ isAuthReady: true }) }));
 jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { tapReaderProblemCopy } from "../../../constants/tapToPayCopy";
 import {
   resolveTapToPayAvailability,
+  tapToPayNeedsSetup,
   type TapToPayBrandFacts,
   type TapToPayDeviceFacts,
 } from "../../../hooks/useTapToPayAvailability";
@@ -47,12 +51,21 @@ import { isTapToPayIphoneEntitled } from "../howToTap";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../doorTapEdge";
 import { supabase } from "../../supabase";
 import {
+  markTapToPayWarmHint,
+  readTapToPayWarmHint,
+  resetTapToPayWarmHintForTests,
+  TAP_TO_PAY_LEGACY_SETUP_KEY,
+  tapToPayWarmHintKey,
+} from "../tapToPaySetupStore";
+import {
   getTapToPaySession,
+  noteTapToPayConnectResult,
   resetTapToPaySessionForTests,
+  tapToPayAcceptanceFor,
   setTapToPayScope,
   subscribeTapToPaySession,
 } from "../tapToPaySession";
-import { classifyTerminalError, type TerminalErrorLike } from "../tapToPayFlow";
+import { classifyTerminalError, TapToPaySaleFlow, type TerminalErrorLike } from "../tapToPayFlow";
 import { runTapToPaySetup, type TapToPaySetupDeps } from "../tapToPaySetup";
 
 const BIZ_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -280,5 +293,120 @@ describe("B3 the Terminal session lives at the root", () => {
     expect(invoke).toHaveBeenLastCalledWith("door-tap-intent", {
       body: { action: "location", brandId: "b1", platform: "ios" },
     });
+  });
+});
+
+describe("B4 acceptance comes from Apple, and errors say what happened", () => {
+  test("the hint can't overrule Apple: hint true with 3930 needs setup", () => {
+    resetTapToPaySessionForTests();
+    noteTapToPayConnectResult("b1", { nativeErrorCode: "3930" });
+    const acceptance = tapToPayAcceptanceFor(getTapToPaySession(), "b1");
+    expect(acceptance).toBe("not_accepted");
+    expect(tapToPayNeedsSetup("ios", acceptance, true)).toBe(true);
+  });
+
+  test("hint false with a good connect needs no setup", () => {
+    resetTapToPaySessionForTests();
+    noteTapToPayConnectResult("b1", undefined);
+    const acceptance = tapToPayAcceptanceFor(getTapToPaySession(), "b1");
+    expect(acceptance).toBe("accepted");
+    expect(tapToPayNeedsSetup("ios", acceptance, false)).toBe(false);
+  });
+
+  test("unknown falls back to the hint; another error tells us nothing", () => {
+    resetTapToPaySessionForTests();
+    noteTapToPayConnectResult("b1", { nativeErrorCode: "2960" });
+    expect(getTapToPaySession().acceptance).toBe("unknown");
+    expect(tapToPayNeedsSetup("ios", "unknown", true)).toBe(false);
+    expect(tapToPayNeedsSetup("ios", "unknown", false)).toBe(true);
+  });
+
+  test("Android has no Apple terms: only the hint counts", () => {
+    expect(tapToPayNeedsSetup("android", "not_accepted", true)).toBe(false);
+    expect(tapToPayNeedsSetup("android", "accepted", false)).toBe(true);
+  });
+
+  test("a brand switch reads as unknown", () => {
+    resetTapToPaySessionForTests();
+    noteTapToPayConnectResult("b1", undefined);
+    expect(tapToPayAcceptanceFor(getTapToPaySession(), "b1")).toBe("accepted");
+    expect(tapToPayAcceptanceFor(getTapToPaySession(), "b2")).toBe("unknown");
+    expect(tapToPayAcceptanceFor(getTapToPaySession(), null)).toBe("unknown");
+  });
+
+  test("the hint is per brand and the old phone-wide flag goes away", async () => {
+    resetTapToPayWarmHintForTests();
+    await markTapToPayWarmHint("b1");
+    expect(await readTapToPayWarmHint("b1")).toBe(true);
+    expect(await readTapToPayWarmHint("b2")).toBe(false);
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(tapToPayWarmHintKey("b1"), "1");
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith(TAP_TO_PAY_LEGACY_SETUP_KEY);
+  });
+
+  test("the setup store is never read for iPhone status", () => {
+    const code = fs.readFileSync(path.join(BIZ_ROOT, "src/hooks/useTapToPayAvailability.ts"), "utf8");
+    expect(code).not.toContain("readTapToPaySetupComplete");
+    const pure = code.slice(code.indexOf("export const tapToPayNeedsSetup"), code.indexOf("export const currentTapToPayDevice"));
+    expect(pure).toContain('acceptance === "not_accepted" || (acceptance === "unknown" && !hint)');
+  });
+
+  test.each([
+    ["3930", "terms_not_accepted"],
+    ["2960", "icloud_required"],
+    ["2970", "terms_cancelled"],
+    ["3940", "terms_failed"],
+    ["3910", "prepare_failed"],
+    ["3920", "device_banned"],
+    ["3950", "merchant_blocked"],
+    ["3960", "merchant_blocked"],
+    ["3970", "merchant_blocked"],
+  ])("native %s classifies as %s, whatever the SDK's shared code says", (nativeErrorCode, kind) => {
+    for (const code of ["DECLINED_BY_STRIPE_API", "READER_SOFTWARE_UPDATE_FAILED", "UNSUPPORTED_OPERATION"]) {
+      expect(classifyTerminalError({ code, nativeErrorCode })).toBe(kind);
+    }
+  });
+
+  test("a blocked merchant is not a broken phone and not a declined card", () => {
+    expect(classifyTerminalError({ code: "TAP_TO_PAY_READER_MERCHANT_BLOCKED" })).toBe("merchant_blocked");
+    expect(classifyTerminalError({ code: "DECLINED_BY_STRIPE_API", nativeErrorCode: "3970" })).not.toBe("declined");
+  });
+
+  test("the sale goes to setup on 3930 and never asks for terms itself", async () => {
+    const ensure = jest.fn(async () => ({ error: { nativeErrorCode: "3930" } }));
+    const states: string[] = [];
+    const flow = new TapToPaySaleFlow({
+      eventId: "e1",
+      draft: { lines: [], eventDateId: null, buyerPhone: null, phoneCountryIso: null } as never,
+      clientRequestId: "r1",
+      terminal: {
+        ensureReaderConnected: ensure as never,
+        retrievePaymentIntent: jest.fn(async () => ({})),
+        collectPaymentMethod: jest.fn(async () => ({})),
+        confirmPaymentIntent: jest.fn(async () => ({})),
+        cancelCollectPaymentMethod: jest.fn(async () => ({})),
+      },
+      server: {
+        createIntent: async () =>
+          ({ paymentIntentId: "pi_1", clientSecret: "s", totalCents: 100, currency: "GBP", stripeAccountId: "a", locationId: "tml" }),
+        completeIntent: jest.fn() as never,
+        cancelIntent: jest.fn() as never,
+      },
+      onState: (state) => states.push(state.kind),
+    });
+    await flow.start();
+    expect(states[states.length - 1]).toBe("needs_setup");
+    expect(ensure).toHaveBeenCalledWith("tml", { mayAcceptTerms: false });
+  });
+
+  test("setup names each Apple problem, on the platform's own name", async () => {
+    const result = await runTapToPaySetup(
+      makeSetupDeps({ ensureReaderConnected: async () => ({ error: { nativeErrorCode: "3970" } }) }),
+    );
+    expect(result).toEqual({
+      kind: "failed",
+      message: "Tap to Pay on iPhone is off for this brand. Contact Mingla support. Use a pay code for now.",
+    });
+    expect(tapReaderProblemCopy("merchant_blocked", "android")).not.toContain("iPhone");
+    expect(tapReaderProblemCopy("prepare_failed", "android")).not.toContain("iPhone");
   });
 });

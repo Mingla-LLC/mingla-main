@@ -21,6 +21,11 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
+import {
+  tapReaderProblemCanRetry,
+  tapReaderProblemCopy,
+  tapReaderProblemTitle,
+} from "../../../constants/tapToPayCopy";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
 import { doorSaleKeys } from "../../../hooks/useEventDoorSales";
 import {
@@ -109,13 +114,13 @@ export const TapToPaySaleScreen = ({
 
   // Setup comes first, once per phone. The draft travels with it.
   useEffect(() => {
-    if (draft !== null && availability.available && availability.needsSetup) {
+    if (draft !== null && availability.available && (availability.needsSetup || state.kind === "needs_setup")) {
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(
         `/event/${eventId}/door/tap/setup?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
       );
     }
-  }, [draft, availability.available, availability.needsSetup, router, eventId]);
+  }, [draft, availability.available, availability.needsSetup, state.kind, router, eventId]);
 
   // Start the sale once the reader session is ready.
   useEffect(() => {
@@ -363,6 +368,29 @@ export const TapToPaySaleScreen = ({
         );
       case "ios_update_required":
         return updateIos;
+      case "needs_setup":
+        // The effect above is moving to setup with the draft.
+        return (
+          <View style={styles.waitHost}>
+            <Spinner size={36} />
+          </View>
+        );
+      case "reader_problem":
+        return (
+          <TapStatusView
+            tone="bad"
+            icon="close"
+            title={tapReaderProblemTitle(Platform.OS)}
+            body={tapReaderProblemCopy(state.problem, Platform.OS)}
+            primary={
+              tapReaderProblemCanRetry(state.problem)
+                ? { label: "Try again", onPress: () => void flowRef.current?.start() }
+                : payCodeAction
+            }
+            secondary={tapReaderProblemCanRetry(state.problem) ? payCodeAction : null}
+            testID="tap-state-reader_problem"
+          />
+        );
       case "not_on_this_phone":
         // Below iOS 17.6 a device-class failure is the iOS version until proven otherwise.
         return belowFloor ? (

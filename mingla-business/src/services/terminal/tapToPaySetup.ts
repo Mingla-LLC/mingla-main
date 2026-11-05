@@ -8,12 +8,13 @@
  *      Apple shows its Tap to Pay terms (tosAcceptancePermitted), so they are
  *      accepted during setup, not in front of a guest at the first sale.
  *   4. iPhone: Apple's "How to Tap" education.
- *   5. Remember on this phone that setup finished.
+ *   5. Remember on this phone that this brand is worth warming up.
  *
  * Nothing here charges anyone. Each failure says what to do next.
  */
 import { DoorTapError } from "./doorTapEdge";
-import { classifyTerminalError, type TerminalErrorLike } from "./tapToPayFlow";
+import { tapReaderProblemCopy } from "../../constants/tapToPayCopy";
+import { classifyTerminalError, isTapReaderProblem, type TerminalErrorLike } from "./tapToPayFlow";
 
 export interface TapToPaySetupDeps {
   os: string;
@@ -28,6 +29,7 @@ export type TapToPaySetupResult =
   | { kind: "done"; locationId: string }
   | { kind: "device_rejected" }
   | { kind: "ios_update_required" }
+  | { kind: "terms_required" }
   | { kind: "not_available" }
   | { kind: "failed"; message: string };
 
@@ -80,6 +82,8 @@ export const runTapToPaySetup = async (deps: TapToPaySetupDeps): Promise<TapToPa
     const kind = classifyTerminalError(connected.error);
     if (kind === "not_on_this_phone") return { kind: "device_rejected" };
     if (kind === "ios_update_required") return { kind: "ios_update_required" };
+    if (kind === "terms_not_accepted") return { kind: "terms_required" };
+    if (isTapReaderProblem(kind)) return { kind: "failed", message: tapReaderProblemCopy(kind, deps.os) };
     return {
       kind: "failed",
       message:

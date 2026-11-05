@@ -14,6 +14,13 @@ import { useSyncExternalStore } from "react";
 
 import type { TapToPayTerminalClient, TerminalErrorLike } from "./tapToPayFlow";
 
+/**
+ * Has Apple's Tap to Pay terms been accepted for this brand, as far as we can
+ * know? Stripe does not expose Apple's own check, so the answer is read by
+ * connecting. In memory only and never persisted.
+ */
+export type TapToPayAcceptance = "unknown" | "accepted" | "not_accepted";
+
 export type TapToPayTerminalStatus = "unavailable" | "initializing" | "ready" | "error";
 
 export interface TapToPaySessionClient extends TapToPayTerminalClient {
@@ -36,6 +43,9 @@ export interface TapToPaySessionState {
   retryInitialize: () => void;
   /** Set by a route while it is open; null means "the current brand". */
   scope: TapToPayScope | null;
+  acceptance: TapToPayAcceptance;
+  /** The brand `acceptance` is about. Another brand always reads as unknown. */
+  acceptanceBrandId: string | null;
 }
 
 const noop = (): void => undefined;
@@ -46,6 +56,8 @@ const INITIAL: TapToPaySessionState = {
   errorMessage: null,
   retryInitialize: noop,
   scope: null,
+  acceptance: "unknown",
+  acceptanceBrandId: null,
 };
 
 let state: TapToPaySessionState = INITIAL;
@@ -69,6 +81,30 @@ export const updateTapToPaySession = (patch: Partial<TapToPaySessionState>): voi
 /** A route says which brand and event the session serves while it is open. */
 export const setTapToPayScope = (scope: TapToPayScope | null): void => {
   updateTapToPaySession({ scope });
+};
+
+/** What this session knows about a brand's terms. */
+export const tapToPayAcceptanceFor = (
+  session: Pick<TapToPaySessionState, "acceptance" | "acceptanceBrandId">,
+  brandId: string | null | undefined,
+): TapToPayAcceptance =>
+  brandId !== null && brandId !== undefined && session.acceptanceBrandId === brandId
+    ? session.acceptance
+    : "unknown";
+
+/** Apple's "terms not accepted" (native 3930). */
+export const TERMS_NOT_ACCEPTED_NATIVE_CODE = "3930";
+
+/** Record what a connect attempt just told us about Apple's terms. */
+export const noteTapToPayConnectResult = (
+  brandId: string,
+  error: TerminalErrorLike | undefined,
+): void => {
+  if (error === undefined) {
+    updateTapToPaySession({ acceptance: "accepted", acceptanceBrandId: brandId });
+  } else if (String(error.nativeErrorCode) === TERMS_NOT_ACCEPTED_NATIVE_CODE) {
+    updateTapToPaySession({ acceptance: "not_accepted", acceptanceBrandId: brandId });
+  }
 };
 
 /** Same API the screens have always had. */

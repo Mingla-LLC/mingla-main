@@ -32,6 +32,7 @@ import type {
 } from "../../../services/terminal/tapToPayFlow";
 import {
   getTapToPaySession,
+  noteTapToPayConnectResult,
   updateTapToPaySession,
   useTapToPayTerminal,
   type TapToPaySessionClient,
@@ -48,6 +49,21 @@ const asTerminalError = (error: unknown): TerminalErrorLike => {
   if (typeof error === "object" && error !== null) return error as TerminalErrorLike;
   return { message: String(error) };
 };
+
+/** The only place Apple's terms can be allowed; every caller but the setup button passes false. */
+export const tapToPayConnectParams = (
+  locationId: string,
+  merchantDisplayName: string,
+  mayAcceptTerms: boolean,
+) =>
+  ({
+    discoveryMethod: "tapToPay",
+    simulated: isTerminalSimulated(),
+    locationId,
+    merchantDisplayName,
+    autoReconnectOnUnexpectedDisconnect: true,
+    tosAcceptancePermitted: mayAcceptTerms,
+  }) as const;
 
 interface BridgeProps {
   sdk: TerminalSdk;
@@ -102,7 +118,10 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
   }, [sdk, brandId, attempt]);
 
   const ensureReaderConnected = useCallback(
-    async (locationId: string): Promise<{ error?: TerminalErrorLike }> => {
+    async (
+      locationId: string,
+      options?: { mayAcceptTerms?: boolean },
+    ): Promise<{ error?: TerminalErrorLike }> => {
       const current = terminalRef.current;
       try {
         // Android asks here, when someone is connecting, never at app launch.
@@ -120,24 +139,25 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
           }
         }
         const connected: Reader.Type | null | undefined = await current.getConnectedReader();
-        if (connected && connectedLocationRef.current === locationId) return {};
+        if (connected && connectedLocationRef.current === locationId) {
+          noteTapToPayConnectResult(brandId, undefined);
+          return {};
+        }
         if (connected) await current.disconnectReader();
-        const result = await current.easyConnect({
-          discoveryMethod: "tapToPay",
-          simulated: isTerminalSimulated(),
-          locationId,
-          merchantDisplayName,
-          autoReconnectOnUnexpectedDisconnect: true,
-          tosAcceptancePermitted: true,
-        });
+        const result = await current.easyConnect(
+          tapToPayConnectParams(locationId, merchantDisplayName, options?.mayAcceptTerms === true),
+        );
+        noteTapToPayConnectResult(brandId, result.error);
         if (result.error) return { error: result.error };
         connectedLocationRef.current = locationId;
         return {};
       } catch (error) {
-        return { error: asTerminalError(error) };
+        const asError = asTerminalError(error);
+        noteTapToPayConnectResult(brandId, asError);
+        return { error: asError };
       }
     },
-    [merchantDisplayName, sdk],
+    [merchantDisplayName, sdk, brandId],
   );
 
   const client = useMemo<TapToPaySessionClient>(
