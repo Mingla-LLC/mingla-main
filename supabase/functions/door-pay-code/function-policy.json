@@ -3,12 +3,14 @@
   "kind": "edge-function-policy",
   "name": "door-pay-code",
   "verify_jwt": false,
-  "gateway_reason": "The guest's browser views a pay code without a Mingla account; create, cancel and text_link verify the bearer in code and require issue_4271_can_take_door_payment.",
+  "gateway_reason": "The guest's browser views a pay code without a Mingla account; quote, create, cancel and text_link verify the bearer in code and require issue_4271_can_take_door_payment.",
   "env": {
     "migration_fallback_top_level": [],
     "optional_top_level": [
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
       "SENTRY_DSN",
       "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY",
       "app.qr_token_pepper"
     ],
     "required_bundle_fields": {},

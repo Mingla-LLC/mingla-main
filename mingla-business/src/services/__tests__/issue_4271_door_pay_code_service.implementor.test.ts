@@ -256,6 +256,39 @@ describe("#4271 door pay code service", () => {
     expect(sale).toMatchObject({ paymentMethod: "pay_code", totalAtSale: 31.35, minglaFeeAmount: 1.41 });
   });
 
+  it("a fully refunded card door sale reads as refunded in the sale detail", async () => {
+    const query = { select: jest.fn(), eq: jest.fn(), not: jest.fn(), order: jest.fn() } as Record<string, jest.Mock>;
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    query.not.mockReturnValue(query);
+    query.order.mockResolvedValue({
+      data: [{
+        id: "order-code-2",
+        event_id: "event-1",
+        buyer_name: "Ada Okafor",
+        buyer_email: "ada@example.com",
+        buyer_phone_e164: "+447700900123",
+        door_payment_method: "pay_code",
+        stripe_application_fee_amount_cents: 141,
+        buyer_total_cents: 3135,
+        total_cents: 3135,
+        currency: "GBP",
+        created_by_scanner_id: null,
+        created_at: "2026-11-04T20:02:00.000Z",
+        payment_status: "refunded",
+        refunded_amount_cents: 3135,
+        metadata: null,
+        events: { brand_id: "brand-1" },
+        order_line_items: [],
+        refunds: [],
+      }],
+      error: null,
+    });
+    mockFrom.mockReturnValue(query);
+    const [sale] = await fetchEventDoorSales("event-1");
+    expect(sale).toMatchObject({ status: "refunded_full", refundedAmount: 31.35 });
+  });
+
   it("quotes a basket through the server without making a code", async () => {
     mockInvoke.mockResolvedValueOnce({
       data: { subtotalCents: 3000, feeCents: 135, totalCents: 3135, currency: "GBP" },
