@@ -6,11 +6,14 @@ const LANGUAGES = "ar bin bn de el en es fr ha he hi id ig it ja ko ms nl pl pt 
 const STRUCTURAL_SHARED = new Set([
   "media.subtitle", "media.subtitle_panel", "media.file_row_meta",
   "media.month_year", "format.kb", "format.mb",
+  "plan.by_mingla", "plan.more",
 ]);
 const VALID_COGNATES = new Set([
   "id:chat.media", "id:media.title", "it:chat.media", "it:media.title",
   "it:media.count_files_one", "ms:chat.media", "ms:media.title",
   "nl:chat.media", "nl:media.title",
+  "de:plan.pill", "es:plan.pill", "fr:plan.pill", "nl:plan.pill", "ro:plan.pill", "pl:plan.pill", "sv:plan.pill", "tr:plan.pill",
+  "de:plan.kind_event", "fr:plan.date", "it:plan.kind_post", "pl:plan.kind_post", "ro:plan.seg_calendar",
 ]);
 
 function flatten(value: Record<string, unknown>, prefix = "", out: Record<string, string> = {}): Record<string, string> {
