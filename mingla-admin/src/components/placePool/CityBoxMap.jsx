@@ -63,7 +63,8 @@ export function CityBoxMap({ stored, google, proposed, tiles, uncovered }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="h-[320px] overflow-hidden rounded-lg border border-[var(--color-border)]" role="img"
+      {/* isolate: Leaflet panes use z-index 400+, which would draw over dialogs. */}
+      <div className="relative isolate z-0 h-[320px] overflow-hidden rounded-lg border border-[var(--color-border)]" role="img"
         aria-label={`Geo box map: ${counts.searched} tiles searched, ${counts.unfinished} unfinished, ${counts.never_searched} never searched, ${(uncovered ?? []).length} areas no tile reaches`}>
         <MapContainer bounds={bounds} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
