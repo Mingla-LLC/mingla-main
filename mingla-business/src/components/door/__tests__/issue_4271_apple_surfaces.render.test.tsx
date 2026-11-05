@@ -580,6 +580,11 @@ describe("B9 Settings entry and the guide", () => {
 describe("B10 onboarding and awareness", () => {
   const STRIPE = { id: "brand-1", paymentProvider: "stripe", defaultCurrency: "GBP" };
   const ASSETS = { hero: 1, title: "Toolkit title", body: "Toolkit body" };
+  beforeEach(() => {
+    // Forget any one-shot answer a test before this one left unused.
+    (AsyncStorage.getItem as jest.Mock).mockReset();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+  });
 
   test("the onboarding card shows when live and eligible, and opens setup", () => {
     mockLive = true;
@@ -612,7 +617,7 @@ describe("B10 onboarding and awareness", () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.setItem as jest.Mock).mockClear();
     const { root } = mount(<TapToPayAwarenessModal assets={ASSETS} />);
-    for (let i = 0; i < 20 && !textOf(root).includes("Toolkit title"); i += 1) await settleSale();
+    await settleSale();
     expect(textOf(root)).toContain("Toolkit title");
     act(() => {
       byTestId(root, "tap-awareness-not-now").props.onPress();

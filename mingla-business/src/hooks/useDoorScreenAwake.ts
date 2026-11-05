@@ -3,9 +3,10 @@
  * full brightness so a guest can scan it; leaving restores the phone's settings.
  *
  * Only what the installed binary has: each native module is asked for by name and
- * a binary without it just goes without. expo-keep-awake ships inside `expo`, so
- * every current build has it. expo-brightness is not installed, so brightness does
- * nothing until a build includes it. On web the browser's wake lock does the job.
+ * a binary without it just goes without. expo-keep-awake ships inside `expo`, and
+ * expo-brightness is a declared dependency, so a binary built from this tree has
+ * both; an older binary that receives this code over the air keeps the screen as
+ * it was. On web the browser's wake lock does the job.
  */
 import { useEffect } from "react";
 import { Platform } from "react-native";

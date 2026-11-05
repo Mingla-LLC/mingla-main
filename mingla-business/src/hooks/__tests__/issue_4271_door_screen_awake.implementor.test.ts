@@ -67,3 +67,29 @@ describe("#4271 useDoorScreenAwake", () => {
     expect(keepAwake.activate).not.toHaveBeenCalled();
   });
 });
+
+describe("#4271 the binary carries what the hook asks for", () => {
+  const pkg = JSON.parse(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "..", "..", "package.json"), "utf8"),
+  ) as {
+    dependencies: Record<string, string>;
+    expo?: { autolinking?: { android?: { exclude?: string[] } } };
+  };
+
+  test("expo-brightness is a dependency and is not excluded from Android autolinking", () => {
+    expect(pkg.dependencies["expo-brightness"]).toMatch(/^~14\./);
+    expect(pkg.expo?.autolinking?.android?.exclude ?? []).not.toContain("expo-brightness");
+  });
+
+  test("it is only ever required lazily, by native module name", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const source = require("node:fs").readFileSync(
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("node:path").join(__dirname, "..", "useDoorScreenAwake.ts"),
+      "utf8",
+    ) as string;
+    expect(source).not.toMatch(/from "expo-brightness"/);
+    expect(source).toContain('optionalModule<BrightnessModule>("ExpoBrightness")');
+  });
+});

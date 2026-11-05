@@ -848,11 +848,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #4271] Re-banked after Host declared the exact-pinned
 // Stripe Terminal SDK (@stripe/stripe-terminal-react-native) for Tap to Pay at
 // the door, and its lockfile entries. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #4271] Re-banked after Host declared expo-brightness, so the
+// door pay code screen can reach full brightness. app-mobile is unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
   "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
-  "mingla-business/package.json": "11307aa5211e44d347dfbd13c7411c7ac3b470c6cd84a77d8fcc2a3d8f63f65a",
-  "mingla-business/package-lock.json": "6d4b652920370a249d1319966ede2e8d876195d3a1b1543e79a53504dc7d6af8",
+  "mingla-business/package.json": "908439c00e8d25bc67db9cd181cfae5848ac6b7ee6f167057304b86a6a8c561a",
+  "mingla-business/package-lock.json": "8341e8aca8d2f6b17de51e57dd837ec45ec155fb8b4a1f3177a61d19c3b6b891",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
