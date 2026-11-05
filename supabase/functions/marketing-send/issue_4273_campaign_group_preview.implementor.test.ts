@@ -448,3 +448,11 @@ Deno.test("#4273 an SMS row left queued by a dead run is never texted again", ()
   assert(!isInterruptedSmsRow({ status: "queued", provider_message_id: "SM1" }));
   assert(shouldSkipDispatchedRecipient({ status: "queued", provider_message_id: "SM1" }));
 });
+
+// ── Ari reports the same totals the Host's screens do ───────────────────────
+Deno.test("#4273 Ari's campaign report counts circle rows through the masked read", async () => {
+  const source = await Deno.readTextFile(new URL("../_shared/agentDomainTools.ts", import.meta.url));
+  const tool = source.slice(source.indexOf('"get_campaign_report",'), source.indexOf('"get_campaign_draft",'));
+  assert(tool.includes('"biz_marketing_campaign_messages_v1"'));
+  assert(!tool.includes('.from("marketing_messages")'));
+});

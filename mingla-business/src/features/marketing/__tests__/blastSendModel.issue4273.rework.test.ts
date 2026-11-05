@@ -90,6 +90,19 @@ describe("#4273 removing a token leaves good punctuation", () => {
   });
 });
 
+describe("#4273 a blank brand name leaves no raw token", () => {
+  it.each([[null], [""], ["   "], ["\u00A0"], ["\u200B"], ["\uFEFF \u200D"]])("brand %j", (brand) => {
+    const out = [
+      stripUnsupportedTokens("From {brand_name}!", brand),
+      prefillSmsFromEmail({ subject: "{brand_name} night", bodyHtml: "{brand_name}", brandName: brand }, measure),
+      prefillPushFromEmail({ bodyHtml: "Hi {brand_name}", brandName: brand }),
+      pushTitleFromSubject("{brand_name} night", brand),
+    ].join("|");
+    expect(out).not.toContain("{");
+    expect(out).not.toMatch(/[\u200B\u200D\uFEFF]/);
+  });
+});
+
 describe("#4273 save never rewrites what the host typed", () => {
   it.each([
     "See you there :)",
@@ -170,8 +183,8 @@ describe("#4273 the composer's wiring", () => {
     expect(compose).toContain("reachableSms={smsReachable}");
     expect(compose).not.toContain("reachableSms={reach?.reachable_sms ?? null}");
   });
-  it("a phone browser lays the cards in the page, not in a box of their own", () => {
-    expect(compose).toContain('const methodCardsFlow = Platform.OS === "web" && !isWideDesktop;');
+  it("a browser at any width lays the cards in the page, not in a box of their own", () => {
+    expect(compose).toContain('const methodCardsFlow = Platform.OS === "web";');
     expect(compose).toContain("<MethodCardsHost");
   });
 });

@@ -237,6 +237,12 @@ export function audienceSourceDetail(source: {
 const REMOVABLE_TOKEN =
   /\{\{event:[^}]*\}\}|\{(?:first_name|event_name|event_date|event_date_short|event_time|doors_open|ends_at|event_url|spots_left|previous_event_name|next_event_name|event_id|brand_name)\}/;
 
+/** A name of only spaces or invisible characters is no name. */
+function visibleBrandName(name: string | null): string {
+  const trimmed = name?.trim() ?? "";
+  return trimmed.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, "").length > 0 ? trimmed : "";
+}
+
 /**
  * SMS and push have no personalization step on the way out (only email's send
  * loop substitutes), so a token would reach the guest as raw "{first_name}".
@@ -247,8 +253,9 @@ const REMOVABLE_TOKEN =
  * lists, "...", "!!!", line breaks, comes back exactly as written.
  */
 export function stripUnsupportedTokens(text: string, brandName: string | null): string {
-  const brand = brandName?.trim() ?? "";
-  let out = text.split("{brand_name}").join(brand.length > 0 ? brand : "{brand_name}");
+  const brand = visibleBrandName(brandName);
+  // A blank name falls through to the removal below; a token never goes out raw.
+  let out = brand.length > 0 ? text.split("{brand_name}").join(brand) : text;
   for (;;) {
     const match = REMOVABLE_TOKEN.exec(out);
     if (match === null) return out;
@@ -399,7 +406,7 @@ export function prefillSmsFromEmail(
   if (subject.length === 0 && body.length === 0) return "";
   const headline = subject.length === 0 || /[.!?:]$/.test(subject) ? subject : `${subject}.`;
   const words = [headline, body].filter((part) => part.length > 0).join(" ");
-  const brand = input.brandName?.trim() ?? "";
+  const brand = visibleBrandName(input.brandName);
   const full = brand.length > 0 ? `${brand}: ${words}` : words;
   const folded = measure.sanitizeGsm7(full);
   return measure.isGsm7(folded)

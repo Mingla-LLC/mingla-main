@@ -823,18 +823,34 @@ ALTER TABLE public.marketing_combined_send_skips ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.marketing_combined_send_skips FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.marketing_combined_send_skips TO service_role;
 
--- Every account that has verified this address. Service-only.
+-- Every account that has verified this address. Service-only. An email is matched
+-- on the account's main email and on any verified identity email, the same rule
+-- verified_account_identifiers applies; auth.identities is GoTrue's and is dynamic
+-- for the reason written there.
 CREATE OR REPLACE FUNCTION public.issue_4273_accounts_holding(p_channel text, p_address text)
 RETURNS SETOF uuid
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth, pg_temp
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, auth, pg_temp
 AS $fn$
-  SELECT v.user_id FROM public.verified_phone_identities v
-   WHERE p_channel = 'sms' AND v.phone_e164 = p_address
-  UNION
-  SELECT u.id FROM auth.users u
-   WHERE p_channel = 'email' AND u.email = lower(btrim(p_address))
-     AND EXISTS (SELECT 1 FROM public.verified_account_identifiers(u.id) i
-                  WHERE i.kind = 'email' AND i.value = lower(btrim(p_address)))
+DECLARE v_email text := lower(btrim(p_address));
+BEGIN
+  IF p_channel = 'sms' THEN
+    RETURN QUERY SELECT v.user_id FROM public.verified_phone_identities v WHERE v.phone_e164 = p_address;
+    RETURN;
+  END IF;
+  RETURN QUERY
+    SELECT u.id FROM auth.users u
+     WHERE u.email = v_email
+       AND EXISTS (SELECT 1 FROM public.verified_account_identifiers(u.id) i
+                    WHERE i.kind = 'email' AND i.value = v_email);
+  IF to_regclass('auth.identities') IS NOT NULL THEN
+    RETURN QUERY EXECUTE $sql$
+      SELECT i.user_id FROM auth.identities i
+       WHERE lower(btrim(i.identity_data->>'email')) = $1
+         AND (i.provider = 'email'
+              OR lower(coalesce(i.identity_data->>'email_verified', '')) IN ('true', 't'))
+    $sql$ USING v_email;
+  END IF;
+END;
 $fn$;
 
 -- The whole strictest rule, at send. Known identities first (this Book row, its
@@ -1182,6 +1198,12 @@ AS $fn$
   )
 $fn$;
 
+-- Measured at 500 opt-outs by 500 orders: a scan of orders per row became a bitmap
+-- lookup, 270ms to 79ms. Exactly the two expressions the check above compares.
+CREATE INDEX issue_4273_orders_buyer_email_norm ON public.orders (lower(btrim(buyer_email)));
+CREATE INDEX issue_4273_orders_buyer_phone_digits
+  ON public.orders (regexp_replace(COALESCE(buyer_phone_e164, buyer_phone, ''), '[^0-9]', '', 'g'));
+
 DROP POLICY IF EXISTS marketing_unsubscribes_select ON public.marketing_unsubscribes;
 CREATE POLICY marketing_unsubscribes_select ON public.marketing_unsubscribes
   FOR SELECT TO authenticated
@@ -1384,15 +1406,26 @@ DECLARE
   -- 10 minutes: ~3x the observed ~196s death point (#2509).
   v_stale interval := interval '10 minutes';
 BEGIN
-  RETURN QUERY UPDATE public.marketing_campaigns mc SET status='sending',updated_at=now() WHERE mc.id IN(
-    SELECT c.id FROM public.marketing_campaigns c
+  -- A reclaimed run's in-flight row may already be with the provider, and only some
+  -- edge versions know to leave it. Fencing it here makes a repeat impossible from
+  -- any edge: at most once per recipient, in the same statement as the claim.
+  RETURN QUERY WITH picked AS MATERIALIZED (
+    SELECT c.id, c.status AS was FROM public.marketing_campaigns c
     WHERE ((c.status='scheduled' AND c.scheduled_for<=now())
            OR (c.status='sending' AND c.updated_at<now()-v_stale))
       AND (p_campaign_id IS NULL OR c.id=p_campaign_id)
       AND EXISTS(SELECT 1 FROM public.marketing_audiences a WHERE a.id=c.audience_id AND (
         a.query_definition->>'kind' NOT IN('all_brand_people','manual_group','brand_followers','brand_circle_extended','combined_sources')
         OR EXISTS(SELECT 1 FROM public.marketing_book_send_executions e WHERE e.campaign_id=c.id)))
-    ORDER BY c.scheduled_for ASC NULLS LAST LIMIT p_limit FOR UPDATE SKIP LOCKED)
+    ORDER BY c.scheduled_for ASC NULLS LAST LIMIT p_limit FOR UPDATE SKIP LOCKED
+  ), fenced AS (
+    UPDATE public.marketing_messages m SET status='failed',failure_reason='interrupted_send_unconfirmed'
+     WHERE m.campaign_id IN (SELECT p.id FROM picked p WHERE p.was='sending')
+       AND m.status='queued' AND m.provider_message_id IS NULL AND m.channel IN('email','sms')
+    RETURNING 1
+  )
+  UPDATE public.marketing_campaigns mc SET status='sending',updated_at=now()
+    FROM picked p WHERE mc.id=p.id
   RETURNING mc.id,mc.account_id,mc.brand_id,mc.audience_id,mc.channel,mc.channel_payload,mc.name,mc.scheduled_for;
 END;
 $function$;

@@ -222,9 +222,18 @@ BEGIN
   PERFORM pg_temp.chk('C-02 a healthy run is not stolen from itself', NOT EXISTS (SELECT 1 FROM public.mkt_claim_campaigns(50, c1)), '');
   INSERT INTO public.marketing_messages(id, campaign_id, recipient_phone, channel, status, sent_at)
   VALUES ('42730000-5000-4000-8000-000000000001', c1, '+12025556011', 'sms', 'sent', now());
+  INSERT INTO public.marketing_messages(id, campaign_id, recipient_phone, channel, status, provider_message_id) VALUES
+    ('42730000-5000-4000-8000-000000000011', c1, '+12025556099', 'sms', 'queued', NULL),
+    ('42730000-5000-4000-8000-000000000012', c1, '+12025556098', 'sms', 'queued', 'SMheld');
   UPDATE public.marketing_campaigns SET updated_at = now() - interval '11 minutes' WHERE id = c1;
   PERFORM pg_temp.chk('C-03 a run silent for over 10 minutes is reclaimed', EXISTS (SELECT 1 FROM public.mkt_claim_campaigns(50, c1)), '');
   PERFORM pg_temp.chk('C-04 the reclaim is a heartbeat: not claimable twice', NOT EXISTS (SELECT 1 FROM public.mkt_claim_campaigns(50, c1)), '');
+  PERFORM pg_temp.chk('C-08 the in-flight row of a reclaimed run is fenced, for any edge version',
+    (SELECT status || ':' || failure_reason FROM public.marketing_messages WHERE id = '42730000-5000-4000-8000-000000000011') = 'failed:interrupted_send_unconfirmed',
+    (SELECT status FROM public.marketing_messages WHERE id = '42730000-5000-4000-8000-000000000011'));
+  PERFORM pg_temp.chk('C-09 sent rows and provider-held rows are untouched',
+    (SELECT status FROM public.marketing_messages WHERE id = '42730000-5000-4000-8000-000000000001') = 'sent'
+    AND (SELECT status FROM public.marketing_messages WHERE id = '42730000-5000-4000-8000-000000000012') = 'queued', '');
   PERFORM pg_temp.chk('C-05 a reclaim re-seals nothing and counts nothing again',
     (SELECT count(*) FROM public.marketing_book_send_executions WHERE campaign_id = c1) = 1
     AND (public.biz_brand_blast_usage_v1(o1, b1) ->> 'smsUsed')::int = 4, '');
@@ -362,7 +371,7 @@ BEGIN
     NOT EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.id = '42730000-5000-4000-8000-000000000002'), '');
   SELECT jsonb_agg(to_jsonb(r)) INTO v_rows FROM public.biz_marketing_campaign_messages_v1(ARRAY[c1]) r;
   PERFORM pg_temp.chk('H-03 the Host read keeps the row, with no contact and no provider text',
-    jsonb_array_length(v_rows) = 2 AND v_rows @> '[{"recipient_email":null,"failure_reason":"not_delivered"}]'::jsonb
+    jsonb_array_length(v_rows) = 4 AND v_rows @> '[{"recipient_email":null,"failure_reason":"not_delivered"}]'::jsonb
     AND v_rows::text !~ 'follower-only', v_rows::text);
   PERFORM pg_temp.chk('U-02 the Host cannot read a follower''s opt-out by email',
     NOT EXISTS (SELECT 1 FROM public.marketing_unsubscribes u WHERE u.contact_email = 'follower-only@example.test'), '');
