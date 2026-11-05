@@ -14,7 +14,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -38,6 +37,9 @@ import {
 import type { RsvpPassCredential } from "@mingla/offering-rendering";
 import { useAppStore } from "../../store/appStore";
 import { toastManager } from "../ui/Toast";
+// #4261: the online event link opens in Mingla's in-app browser, through a
+// provider mounted inside this sheet's own RN Modal window.
+import { InAppBrowserProvider, useOpenInMingla } from "../InAppBrowserProvider";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 // ORCH-0877 — centralized consumer-side date formatter.
@@ -64,6 +66,23 @@ const RSVP_PASS_BACKGROUND_STYLE: ViewStyle = {
   borderTopLeftRadius: 28,
   borderTopRightRadius: 28,
 };
+
+/** #4261: "Open link" for an online event; reads this sheet's own provider. */
+function OnlineLinkButton({ url, title }: { url: string; title: string }): React.ReactElement {
+  const { open } = useOpenInMingla();
+  return (
+    <Pressable
+      style={styles.venueAction}
+      onPress={() => open(url, title)}
+      accessibilityRole="button"
+      accessibilityLabel="Open online event link"
+      hitSlop={8}
+    >
+      <Icon name="open-outline" size={14} color="#eb7825" />
+      <Text style={styles.venueActionLabel}>Open link</Text>
+    </Pressable>
+  );
+}
 
 export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
   visible,
@@ -155,11 +174,6 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       { onUnavailable: () => toastManager.show("Couldn't open maps", "error") },
     );
   }, [row.venue.locationText]);
-
-  const handleOpenOnlineLink = useCallback((): void => {
-    if (!row.venue.onlineUrl) return;
-    void Linking.openURL(row.venue.onlineUrl).catch(() => undefined);
-  }, [row.venue.onlineUrl]);
 
   // Change/cancel: the primary submits not_going (drops the whole party) via the
   // same public-submit-rsvp path, then we refresh the consumer Calendar.
@@ -253,16 +267,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
             <Text style={styles.venueText}>Online event</Text>
           </View>
           {row.venue.onlineUrl ? (
-            <Pressable
-              style={styles.venueAction}
-              onPress={handleOpenOnlineLink}
-              accessibilityRole="button"
-              accessibilityLabel="Open online event link"
-              hitSlop={8}
-            >
-              <Icon name="open-outline" size={14} color="#eb7825" />
-              <Text style={styles.venueActionLabel}>Open link</Text>
-            </Pressable>
+            <OnlineLinkButton url={row.venue.onlineUrl} title={row.eventTitle} />
           ) : null}
         </View>
       );
@@ -305,6 +310,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       scrollMode="scroll"
       accessibilityLabel={`RSVP pass for ${row.eventTitle}`}
     >
+      <InAppBrowserProvider>
       <View style={styles.card}>
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -455,6 +461,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
           </Pressable>
         )}
       </View>
+      </InAppBrowserProvider>
     </BaseBottomSheet>
   );
 };

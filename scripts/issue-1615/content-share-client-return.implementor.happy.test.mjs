@@ -166,9 +166,15 @@ test('C8 native receiver is 4:5 and validates every external action', () => {
   const route = read('app-mobile/app/s/[code].tsx');
   assert.match(route, /hero:\s*\{[^}]*aspectRatio:\s*4\s*\/\s*5/);
   assert.match(route, /validatedPublicActionUrl[\s\S]*cleanHttpsUrl[\s\S]*digits\.length\s*<\s*7[\s\S]*digits\.length\s*>\s*15/);
-  assert.match(route, /const url = validatedPublicActionUrl\(kind, value\)[\s\S]*if \(url === null\)[\s\S]*Linking\.openURL\(url\)/);
+  // #4261: outside links open inside Mingla. Validation still comes first, a
+  // refused value returns before anything opens, and nothing here reaches the
+  // system browser directly (the provider is the only caller of Linking.openURL).
+  assert.match(route, /import \{ useOpenInMingla \} from '\.\.\/\.\.\/src\/components\/InAppBrowserProvider'/);
+  assert.match(route, /const \{ open: openInMingla \} = useOpenInMingla\(\)/);
+  assert.match(route, /const url = validatedPublicActionUrl\(kind, value\);\s*if \(url === null\) \{[^}]*\{[^}]*\}\);\s*return;\s*\}[\s\S]*openInMingla\(url, label\)/);
+  assert.doesNotMatch(route, /Linking\.openURL/);
   assert.match(route, /share\.media\s*===\s*null\s*\?\s*null\s*:\s*buildSharePortraitUrl\(share\.shortCode, share\.version\)/);
-  assert.match(route, /share_destination_action[\s\S]*short_code:\s*share\.shortCode[\s\S]*outcome:\s*'pressed'[\s\S]*Linking\.openURL\(url\)/);
+  assert.match(route, /share_destination_action[\s\S]*short_code:\s*share\.shortCode[\s\S]*outcome:\s*'pressed'[\s\S]*openInMingla\(url, label\)/);
 });
 
 test('C9 Business retains the full binding state machine and exact portrait preview', () => {

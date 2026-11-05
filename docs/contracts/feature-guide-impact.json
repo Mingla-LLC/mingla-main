@@ -191,6 +191,7 @@
         "app-mobile/src/components/expandedCard/LocalReviewsSection.tsx",
         "app-mobile/src/components/local/localWords.ts",
         "app-mobile/src/components/profile/CreatorProgramsSection.tsx",
+        "app-mobile/src/components/profile/PublicCreatorSection.tsx",
         "app-mobile/src/components/programs/CreatorMediaPlayerModal.tsx",
         "app-mobile/src/services/creatorGigsService.ts",
         "app-mobile/src/services/creatorProgramService.ts",
@@ -320,29 +321,61 @@
         "app-mobile/src/components/EventGuestListSheet.tsx",
         "app-mobile/src/components/MessageInterface.tsx",
         "app-mobile/src/components/chat/ChatAttachSheet.tsx",
+        "app-mobile/src/components/chat/ChatHeader.tsx",
+        "app-mobile/src/components/chat/CollabSessionChatBanners.tsx",
         "app-mobile/src/components/chat/GroupInfoSheet.tsx",
+        "app-mobile/src/components/chat/MessageBubble.tsx",
+        "app-mobile/src/components/chat/PlanCardBubble.tsx",
+        "app-mobile/src/components/chat/PlanCommentsSheet.tsx",
+        "app-mobile/src/components/chat/PlanEditSheet.tsx",
+        "app-mobile/src/components/chat/PlanFormSheet.tsx",
+        "app-mobile/src/components/chat/PlanLinkRow.tsx",
+        "app-mobile/src/components/chat/PlanMatchesSheet.tsx",
+        "app-mobile/src/components/chat/PlanPlaceOptions.tsx",
+        "app-mobile/src/components/chat/PlanPlacePicker.tsx",
+        "app-mobile/src/components/chat/PlanPlaceSuggestSheet.tsx",
+        "app-mobile/src/components/chat/PlanQuoteBlock.tsx",
+        "app-mobile/src/components/chat/PlanTimePickerSheet.tsx",
+        "app-mobile/src/components/chat/PlansSheet.tsx",
+        "app-mobile/src/components/chat/ReplyPreviewBar.tsx",
+        "app-mobile/src/components/chat/chatHeaderModel.ts",
+        "app-mobile/src/components/chat/planModel.ts",
         "app-mobile/src/components/connections/ChatListItem.tsx",
         "app-mobile/src/components/connections/chatListLoad.ts",
         "app-mobile/src/components/connections/chatListModel.ts",
         "app-mobile/src/components/discover/BusinessEventCard.tsx",
+        "app-mobile/src/constants/chatTokens.ts",
         "app-mobile/src/hooks/useBrandBySlug.ts",
         "app-mobile/src/hooks/useChatList.ts",
+        "app-mobile/src/utils/threadModel.ts",
+        "app-mobile/src/hooks/useChatPlans.ts",
         "app-mobile/src/hooks/useMessages.ts",
+        "app-mobile/src/hooks/usePlanPlaceSearch.ts",
         "app-mobile/src/hooks/useSessionCreationGate.ts",
         "app-mobile/src/hooks/useSessionDiscussion.ts",
         "app-mobile/src/hooks/useSessionManagement.ts",
         "app-mobile/src/i18n/locales/en/chat.json",
         "app-mobile/src/services/chatListRefresh.ts",
+        "app-mobile/src/services/chatPlansService.ts",
         "app-mobile/src/services/collaborationInviteService.ts",
         "app-mobile/src/services/connectionsService.ts",
         "app-mobile/src/services/messagingService.ts",
+        "app-mobile/src/services/planPlaceSearchService.ts",
         "app-mobile/src/services/publicEventSeedService.ts",
+        "app-mobile/src/services/realtimeService.ts",
+        "app-mobile/src/types/chatPlans.ts",
         "app-mobile/src/types/mergedDiscover.ts",
         "app-mobile/src/utils/chatComposerGeometry.ts",
         "app-mobile/src/utils/eventDateDisplay.ts",
         "supabase/functions/notify-message/index.ts",
         "supabase/functions/notify-message/messageKeys.ts",
-        "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql"
+        "supabase/functions/plan-link-preview/function-policy.json",
+        "supabase/functions/plan-link-preview/index.ts",
+        "supabase/functions/plan-link-preview/linkPreview.ts",
+        "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql",
+        "supabase/migrations/20280403044261_issue_4261_chat_plans.sql",
+        "supabase/migrations/20280403054261_issue_4261_plan_places_and_link_previews.sql",
+        "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql"
       ]
     },
     {
@@ -383,13 +416,34 @@
       "capability_key": "social-friends",
       "paths": [
         "app-mobile/src/components/ConnectionsPage.tsx",
-        "app-mobile/src/hooks/useFriendsQuery.ts"
+        "app-mobile/src/components/board/BoardSettingsDropdown.tsx",
+        "app-mobile/src/components/chat/AddGroupPeopleSheet.tsx",
+        "app-mobile/src/components/chat/GroupJoinRequestCard.tsx",
+        "app-mobile/src/components/chat/GroupLinkSection.tsx",
+        "app-mobile/src/components/connections/AddFriendView.tsx",
+        "app-mobile/src/components/connections/RequestsView.tsx",
+        "app-mobile/src/components/onboarding/OnboardingFriendsAndPairingStep.tsx",
+        "app-mobile/src/hooks/useFriendShareLink.ts",
+        "app-mobile/src/hooks/useFriendsQuery.ts",
+        "app-mobile/src/hooks/useGroupLink.ts",
+        "app-mobile/src/i18n/locales/en/connections.json",
+        "app-mobile/src/services/friendShareLinkService.ts",
+        "app-mobile/src/services/groupLinkService.ts",
+        "app-mobile/src/services/oneLinkResolver.ts",
+        "app-mobile/src/services/pendingFriendInvite.ts",
+        "app-mobile/src/services/pendingGroupInvite.ts",
+        "app-mobile/src/utils/friendShareLink.ts",
+        "supabase/functions/send-friend-accepted-notification/acceptedCopy.ts",
+        "supabase/functions/send-friend-accepted-notification/index.ts",
+        "supabase/migrations/20280403034261_issue_4261_friend_share_and_group_links.sql",
+        "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql"
       ]
     },
     {
       "capability_key": "social-referrals",
       "paths": [
-        "app-mobile/src/components/ConnectionsPage.tsx"
+        "app-mobile/src/components/ConnectionsPage.tsx",
+        "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql"
       ]
     },
     {
@@ -1115,11 +1169,28 @@
     {
       "capability_key": "social-share",
       "paths": [
+        "app-mobile/app/s/[code].tsx",
         "app-mobile/src/components/share/UnifiedShareProvider.tsx",
         "app-mobile/src/components/share/shareRecipientsModel.ts",
         "app-mobile/src/components/share/shareSheetPerf.ts",
         "app-mobile/src/components/ui/BaseBottomSheet.tsx",
         "app-mobile/src/services/contentShareDeliveryService.ts"
+      ]
+    },
+    {
+      "capability_key": "rsvp-passes",
+      "paths": [
+        "app-mobile/src/components/activity/RsvpPassSheet.tsx"
+      ]
+    },
+    {
+      "capability_key": "discover-place-details",
+      "paths": [
+        "app-mobile/src/components/InAppBrowserProvider.tsx",
+        "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
+        "app-mobile/src/components/expandedCard/SpineParts.tsx",
+        "app-mobile/src/i18n/locales/en/common.json",
+        "app-mobile/src/utils/inAppLink.ts"
       ]
     }
   ]

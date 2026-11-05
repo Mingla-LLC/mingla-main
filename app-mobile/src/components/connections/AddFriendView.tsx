@@ -18,7 +18,7 @@
  * Proven pattern: AccountSettings.tsx:638-683.
  */
 import React, { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
@@ -26,6 +26,7 @@ import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { CountryData } from "../../types/onboarding";
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
 import { useSendPairRequest } from "../../hooks/usePairings";
+import { useFriendShareLink, useResetFriendShareLink, useSharePersonalInvite } from "../../hooks/useFriendShareLink";
 import { COUNTRIES } from "../../constants/countries";
 import { glass } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -104,20 +105,39 @@ export function AddFriendView({
     [digits.length, phoneE164, debouncedPhoneE164, lookup.isLoading, lookup.isError, lookup.data, currentUserId, pendingUserIds],
   );
 
+  // Issue #4261 — "Share an invite" carries MY personal link (never the bare
+  // install link); "Joined and connected N" and Reset sit under it.
+  const personalLink = useFriendShareLink();
+  const resetLink = useResetFriendShareLink();
+  const { share: sharePersonalInvite, busy: sharingPersonal } = useSharePersonalInvite();
+  const joinedCount = personalLink.data?.joinedCount ?? 0;
+
   const shareInvite = useCallback(
     async (link: string | null) => {
+      // The phone invite's own link when the server returned one; otherwise my
+      // personal link (#4261: never the bare install link).
+      if (!link) {
+        await sharePersonalInvite();
+        return;
+      }
       try {
         // SHARE-NON-CONTENT:invite
-        await Share.share({
-          message: t("connections:af_share_message", { link: link ?? "https://go.usemingla.com/w36m" }),
-        });
+        await Share.share({ message: t("connections:af_share_message", { link }) });
       } catch (error) {
         // The share sheet being dismissed is not an error; anything else is logged.
         console.warn("[AddFriendView] share failed:", error);
       }
     },
-    [t],
+    [sharePersonalInvite, t],
   );
+
+  const confirmResetLink = useCallback(() => {
+    if (resetLink.isPending) return;
+    Alert.alert(t("connections:af_reset_link"), t("connections:af_reset_link_confirm"), [
+      { text: t("common:cancel"), style: "cancel" },
+      { text: t("connections:af_reset_link"), style: "destructive", onPress: () => resetLink.mutate() },
+    ]);
+  }, [resetLink, t]);
 
   const handleSend = useCallback(async () => {
     const body = addFriendRequestBody(card, debouncedPhoneE164);
@@ -263,17 +283,41 @@ export function AddFriendView({
 
       <Text style={styles.label}>{t("connections:af_or")}</Text>
       <Pressable
-        onPress={() => void shareInvite(null)}
+        onPress={() => void sharePersonalInvite()}
+        disabled={sharingPersonal}
         accessibilityRole="button"
         accessibilityLabel={`${t("connections:af_share_invite")}, ${t("connections:af_share_invite_sub")}`}
+        accessibilityState={{ busy: sharingPersonal }}
         style={({ pressed }) => [styles.shareRow, pressed ? styles.pressed : null]}
       >
         <View style={styles.shareIcon}>
-          <Icon name="share-outline" size={19} color={ink.accent} />
+          {sharingPersonal ? (
+            <ActivityIndicator size="small" color={ink.accent} />
+          ) : (
+            <Icon name="share-outline" size={19} color={ink.accent} />
+          )}
         </View>
         <Text style={styles.shareTitle}>{t("connections:af_share_invite")}</Text>
         <Text style={styles.shareSub}>{t("connections:af_share_invite_sub")}</Text>
       </Pressable>
+      <View style={styles.inviteMetaRow}>
+        <Text style={styles.inviteMetaText} numberOfLines={1}>
+          {joinedCount > 0 ? t("connections:af_invite_joined", { count: joinedCount }) : ""}
+        </Text>
+        {personalLink.data ? (
+          <Pressable
+            onPress={confirmResetLink}
+            disabled={resetLink.isPending}
+            accessibilityRole="button"
+            accessibilityLabel={t("connections:af_reset_link")}
+            accessibilityState={{ busy: resetLink.isPending }}
+            hitSlop={8}
+            style={({ pressed }) => [styles.resetLinkButton, pressed || resetLink.isPending ? styles.pressed : null]}
+          >
+            <Text style={styles.resetLinkText}>{t("connections:af_reset_link")}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -554,6 +598,28 @@ const styles = StyleSheet.create({
   shareSub: {
     color: ink.faint,
     fontSize: 12,
+  },
+  inviteMetaRow: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  inviteMetaText: {
+    flex: 1,
+    color: ink.faint,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  resetLinkButton: {
+    minHeight: 32,
+    justifyContent: "center",
+  },
+  resetLinkText: {
+    color: ink.accent,
+    fontSize: 13,
+    fontWeight: "600",
   },
   statusCard: {
     borderRadius: 16,

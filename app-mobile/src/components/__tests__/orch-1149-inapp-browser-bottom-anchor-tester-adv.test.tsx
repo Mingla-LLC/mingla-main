@@ -172,6 +172,8 @@ function runOrch1149TesterAdversarial() {
     'src/components/ProfilePage.tsx',
     'src/components/CustomPaywallScreen.tsx',
     'src/components/OnboardingFlow.tsx',
+    // #4261 amendment 1: the chat's link browser lives in the one provider.
+    'src/components/InAppBrowserProvider.tsx',
   ];
   for (const rel of mountSites) {
     const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');

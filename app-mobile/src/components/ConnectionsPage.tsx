@@ -24,7 +24,7 @@ import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE } from "../services/messagingService";
-import { sendFailureFeedback, toggleReactionRows } from "../utils/threadModel";
+import { openChatRowTurnedUnread, sendFailureFeedback, toggleReactionRows } from "../utils/threadModel";
 import {
   mergeMessages,
   isLocalMessage,
@@ -185,6 +185,7 @@ import {
 } from "./connections/chatListLoad";
 import { useChatList } from "../hooks/useChatList";
 import { chatListKeys } from "../hooks/queryKeys";
+import type { PlanQuoteSnapshot } from "../types/chatPlans";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
 import type { GatedFeature } from "../hooks/useFeatureGate";
@@ -1578,13 +1579,14 @@ function ConnectionsPageRefactored({
   // ── Unread count reporting ───────────────────────────────
   useEffect(() => {
     // Issue #4114: host chats (run in the Host app) never count in Explorer.
+    // Issue #4261: the chat on screen is being read; it never adds to the badge.
     const totalUnread = explorerUnreadTotal(
-      conversations as ChatListItemConversation[],
+      conversations.filter((conv) => conv.id !== currentConversationId) as ChatListItemConversation[],
       teamBrandIds,
       (conv) => conv.participants?.some((p) => mutedUserIds.includes(p.id)) === true,
     );
     onUnreadCountChange?.(totalUnread);
-  }, [conversations, onUnreadCountChange, mutedUserIds, teamBrandIds]);
+  }, [conversations, currentConversationId, onUnreadCountChange, mutedUserIds, teamBrandIds]);
 
   // ORCH-0600: handleInvitePress + link-outline button deleted (dead weight per
   // user directive). Clipboard import removed. mixpanelService.trackReferralLinkShared
@@ -1694,6 +1696,10 @@ function ConnectionsPageRefactored({
       mediaHeight: typeof msg.media_height === "number" ? msg.media_height : undefined,
       mediaAlbumId: msg.media_album_id ?? undefined,
       mediaExpired: msg.media_expired_at ? true : undefined,
+      // Issue #4261: the plan a message belongs to (its card, or a comment on
+      // it) and the sender's picks when the comment was sent.
+      planId: msg.plan_id ?? undefined,
+      planQuote: msg.plan_quote ?? null,
     }),
     []
   );
@@ -2579,6 +2585,27 @@ function ConnectionsPageRefactored({
     []
   );
 
+  // Issue #4261: my action in an open chat posts a system line and refreshes the
+  // list at once; that refresh can land before the read receipt saves and count
+  // the line against me. No extra list read: only a list answer can trigger this,
+  // and it clears the row and saves the read through the one mark-read path.
+  const openChatUnread = currentConversationId
+    ? conversations.find((conv) => conv.id === currentConversationId)?.unread_count ?? 0
+    : 0;
+  const openChatRowRef = useRef({ conversationId: currentConversationId, unread: openChatUnread, turnedUnread: false });
+  useEffect(() => {
+    const previous = openChatRowRef.current;
+    const next = { conversationId: currentConversationId, unread: openChatUnread };
+    const turnedUnread = openChatRowTurnedUnread(previous, next);
+    openChatRowRef.current = {
+      ...next,
+      turnedUnread: turnedUnread || (previous.turnedUnread && previous.conversationId === next.conversationId),
+    };
+    if (turnedUnread && currentConversationId && user?.id) {
+      markConversationAsRead(currentConversationId, user.id, EMPTY_MESSAGES);
+    }
+  }, [currentConversationId, openChatUnread, user?.id, markConversationAsRead]);
+
   // ── Auto-persist messagesCache to AsyncStorage (debounced) ──
   // Catches ALL mutation paths: send, receive, realtime, background refresh.
   // 2-second debounce batches rapid mutations (send + confirm + reply)
@@ -2958,9 +2985,19 @@ function ConnectionsPageRefactored({
 
     // Refresh conversations to get updated unread counts
     if (user?.id) {
-      fetchConversations(user.id);
+      const userId = user.id;
+      // Issue #4261: leaving while my action's list refresh or read is still
+      // running closes the channel that would have read its line. Save the read
+      // first, so this refresh (it replaces one in flight) cannot count it.
+      const readPending = currentConversationId
+        && (openChatRowRef.current.turnedUnread || queryClient.isFetching({ queryKey: chatListKeyRef.current }) > 0);
+      if (readPending) {
+        void messagingService.markConversationRead(currentConversationId, userId).then(() => fetchConversations(userId));
+      } else {
+        fetchConversations(userId);
+      }
     }
-  }, [currentConversationId, user?.id, fetchConversations]);
+  }, [currentConversationId, user?.id, fetchConversations, queryClient]);
 
   const handleGroupSessionNameUpdated = useCallback((sessionId: string, newName: string) => {
     setActiveChat((prev) =>
@@ -3089,6 +3126,9 @@ function ConnectionsPageRefactored({
             width: current.mediaWidth ?? null,
             height: current.mediaHeight ?? null,
             albumId: current.mediaAlbumId ?? null,
+            // Issue #4261: a deck-match comment (carried on the bubble so a retry
+            // keeps it). A reply to a plan card names no plan: the server derives it.
+            planId: current.replyToId ? null : current.planId ?? null,
           },
         );
 
@@ -3125,6 +3165,9 @@ function ConnectionsPageRefactored({
           return conv;
         })
       );
+      // Issue #4261: a plan comment also changes the plan's thread; refetch the
+      // Chats list (factory key) so its preview reads the server row.
+      if (current.planId) void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
 
       // Add real ID to broadcast seen set so postgres_changes backup won't dupe
       broadcastSeenIds.current.add(sentMessage.id);
@@ -3383,6 +3426,8 @@ function ConnectionsPageRefactored({
     replyToId?: string,
     mentions: MentionEntry[] = [],
     cardTags: CardTagEntry[] = [],
+    planId?: string,
+    planQuote?: PlanQuoteSnapshot,
   ) => {
     if (!activeChat || !user?.id) return;
     // Photos, videos and files go through handleSendMedia (the attach sheet).
@@ -3412,6 +3457,9 @@ function ConnectionsPageRefactored({
       mentions,
       cardTags,
       marketingCampaignId: null,
+      planId,
+      // Issue #4261: shown until the server's own snapshot replaces this bubble.
+      planQuote,
     };
     postOptimisticMessage(conversationId, optimisticMsg);
     await deliverMessage(conversationId, optimisticMsg);

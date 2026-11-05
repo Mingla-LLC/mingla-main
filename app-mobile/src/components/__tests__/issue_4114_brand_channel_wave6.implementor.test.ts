@@ -88,7 +88,8 @@ Deno.test("W6 a send goes to exactly one event chat (D10)", async () => {
 Deno.test("W6 the thread draws markers, the Next up card, the chip and per-event guests", async () => {
   const chat = strip(await read("components/MessageInterface.tsx"));
   assert(/<BrandChannelEventMarker/.test(chat), "event markers render");
-  assert((chat.match(/\{eventMarker\}/g) ?? []).length === 3, "every row kind can carry a marker");
+  // Issue #4261 adds three row kinds (plan card, join request, plan / group row).
+  assert((chat.match(/\{eventMarker\}/g) ?? []).length === 6, "every row kind can carry a marker");
   assert(/eventMarker: brandChannel && eventMarkerIds\?\.has\(message\.id\)/.test(chat), "markers come from the run starts");
   assert(/\{brandChannel && showSendChip && sendTargetEvent \? \(\s*<BrandChannelSendChip/.test(chat), "the chip shows only when showSendTargetChip says so");
   assert(/replyToConversationId: replyingTo\?\.conversationId \?\? null/.test(chat), "the chip names the reply's event");
@@ -107,8 +108,8 @@ Deno.test("W6 no false Broadcast label and no placeholder preview", async () => 
   assert(!row.includes("preview_event_ready") && row.includes("connections:preview_no_messages"), "empty event preview reads No messages yet");
   const banner = strip(await read("components/chat/TripCountdownBanner.tsx"));
   assert(!/days out|View details|your trip/.test(banner), "the countdown banner is translated");
-  const plans = strip(await read("components/chat/CollabSessionChatBanners.tsx"));
-  assert(/title=\{t\("chat:plansTitle"\)\}/.test(plans) && !plans.includes("No locked-in plans yet."), "the Plans sheet is translated");
+  const plans = strip(await read("components/chat/PlansSheet.tsx"));
+  assert(/t\("chat:plansTitle"\)/.test(plans) && !plans.includes("No locked-in plans yet."), "the Plans sheet is translated");
 });
 
 const LOCALES = ["ar", "bin", "bn", "de", "el", "en", "es", "fr", "ha", "he", "hi", "id", "ig", "it", "ja", "ko", "ms", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "yo", "zh"];

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/hooks/__tests__/issue_4261_chat_list_refresh.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4261-chat-list-refresh",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

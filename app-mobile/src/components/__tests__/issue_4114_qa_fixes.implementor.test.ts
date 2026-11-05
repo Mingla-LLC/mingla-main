@@ -125,7 +125,7 @@ Deno.test("QA5 opening a chat reads the whole chat, and an older page is read to
   assert(JSON.stringify(ids) === '["b","c"]', `only unread ids, once: ${JSON.stringify(ids)}`);
   const service = strip(await read("services/messagingService.ts"));
   const mark = body(service, /async markConversationRead\(conversationId: string, userId: string\): Promise<\{ error: string \| null \}>/);
-  assert(/\.eq\('conversation_id', conversationId\)\s*\.neq\('sender_id', userId\)/.test(mark), "every message from others in the chat");
+  assert(/\.eq\('conversation_id', conversationId\)\s*\.or\(`sender_id\.neq\.\$\{userId\},sender_id\.is\.null`\)/.test(mark), "every message from others in the chat, system lines included");
   assert(/idsStillUnread\(ids, readIds\)/.test(mark) && /\.from\('message_reads'\)\s*\.upsert\(/.test(mark), "upserts the missing reads");
   const page = strip(await read("components/ConnectionsPage.tsx"));
   const onOpen = body(page, /const markConversationAsRead = useCallback\(/);

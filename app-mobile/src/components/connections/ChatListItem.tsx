@@ -44,6 +44,9 @@ import {
   CHAT_SEPARATOR_INSET,
   chatAvatarSpec,
   chatKind,
+  chatPreviewLine,
+  chatPreviewText,
+  type ChatPreviewLineMessage,
   formatChatListTime,
   formatUpcomingEventTag,
   isUnreadChat,
@@ -159,34 +162,21 @@ function ChatListItemImpl({
   );
 
   const preview = useMemo(() => {
-    let text = '';
-    if (lastMessage) {
-      if (lastMessage.message_type === 'image') text = t('chat:photoPreview');
-      else if (lastMessage.message_type === 'file') text = t('chat:filePreview');
-      else if (lastMessage.message_type === 'video') text = t('chat:videoPreview');
-      else text = (lastMessage.content || '').replace(/\s+/g, ' ').trim();
-    }
-    if (text && lastMessage && isBrandChannel) {
-      // "{event} · {last message}" (the event the newest message came from).
-      const line = lastMessage.sender_id && lastMessage.sender_id === currentUserId
-        ? t('connections:preview_you', { text })
-        : text;
-      const eventTitle = conversation.brandChannelLastEventTitle?.trim();
-      return eventTitle ? `${eventTitle} · ${line}` : line;
-    }
+    const text = chatPreviewText(lastMessage, t);
     if (text && lastMessage) {
-      if (lastMessage.sender_id && lastMessage.sender_id === currentUserId) {
-        return t('connections:preview_you', { text });
-      }
-      if (isGroup && lastMessage.sender_name) {
-        const brandName = conversation.eventBrandName?.trim();
-        const fromBrand = isEvent && brandName && (
-          (lastMessage as { marketing_campaign_id?: string | null }).marketing_campaign_id ||
-          (conversation.eventBrandAccountId && lastMessage.sender_id === conversation.eventBrandAccountId)
-        );
-        return `${fromBrand ? brandName : lastMessage.sender_name}: ${text}`;
-      }
-      return text;
+      // Issue #4261 amendment 1 (B-3): one display rule; system rows get no sender prefix.
+      return chatPreviewLine({
+        message: lastMessage as ChatPreviewLineMessage,
+        text,
+        isGroup,
+        isEvent,
+        isBrandChannel,
+        currentUserId,
+        eventTitle: conversation.brandChannelLastEventTitle,
+        eventBrandName: conversation.eventBrandName,
+        eventBrandAccountId: conversation.eventBrandAccountId,
+        t,
+      });
     }
     // Issue #4114 Wave 6: an event chat with nothing in it says so (it used to
     // read "Event chat ready", or "Event broadcast ready" in older builds).
