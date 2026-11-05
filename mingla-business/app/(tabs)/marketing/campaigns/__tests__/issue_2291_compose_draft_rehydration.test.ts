@@ -65,9 +65,11 @@ describe("#2291 T-10 — draft rehydration is null-safe (source)", () => {
     );
   });
 
-  it("setSmsBody falls back to an empty string", () => {
+  // #4273 — a draft with no SMS text keeps following the email, so an absent body
+  // leaves the pre-fill alone rather than writing "" over it. Still null-safe.
+  it("setSmsBody only runs with a body in hand", () => {
     expect(source).toMatch(
-      /setSmsBody\s*\(\s*row\.channel_payload\.body\s*\?\?\s*""\s*\)/,
+      /if \(row\.channel_payload\.body\) setSmsBody\(row\.channel_payload\.body\);/,
     );
   });
 
@@ -76,7 +78,7 @@ describe("#2291 T-10 — draft rehydration is null-safe (source)", () => {
     // key stops this matching the fixed `?? ""` form.
     expect(source).not.toMatch(/setSubject\s*\(\s*row\.channel_payload\.subject\s*\)/);
     expect(source).not.toMatch(/setBody\s*\(\s*row\.channel_payload\.body_html\s*\)/);
-    expect(source).not.toMatch(/setSmsBody\s*\(\s*row\.channel_payload\.body\s*\)/);
+    expect(source).not.toMatch(/(?<!if \(row\.channel_payload\.body\) )setSmsBody\s*\(\s*row\.channel_payload\.body\s*\)/);
   });
 
   it("a payload that fails the contract raises the existing banner, and does not block editing", () => {

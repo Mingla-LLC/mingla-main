@@ -80,6 +80,19 @@ export interface MarketingBookCandidate {
   normalizedContact: string | null;
   allowed: boolean;
   safeReasonCode: string;
+  /** #4273 — the one person this row is, across groups and methods. Service-only. */
+  personKey?: string;
+  /** #4273 — the sealed Book subject of a combined row (null for account or buyer). */
+  targetBrandPersonId?: string | null;
+  /** #4273 — a buyer known only from orders (digest of their email). Service-only. */
+  buyerContactKey?: string | null;
+}
+/** #4273 — one picked group: its name and totals, never a person. */
+export interface MarketingAudienceSourceTotal {
+  key: string;
+  name: string;
+  count: number;
+  alsoInBookCount: number;
 }
 export interface MarketingBookCandidateResponse {
   brandId: string;
@@ -92,9 +105,11 @@ export interface MarketingBookCandidateResponse {
     | "all_brand_people"
     | "manual_group"
     | "brand_followers"
-    | "brand_circle_extended";
+    | "brand_circle_extended"
+    | "combined_sources";
   audienceVersion?: number;
   audienceName?: string;
+  audienceSources?: MarketingAudienceSourceTotal[];
 }
 export function parseBookQuotedAt(
   value: unknown,
@@ -163,6 +178,8 @@ export async function buildMarketingBookQuote(
   const hasDeliveryIdentity = (candidate: MarketingBookCandidate): boolean =>
     candidate.contactMethodId !== null ||
     (typeof candidate.recipientUserId === "string" &&
+      candidate.normalizedContact !== null) ||
+    (typeof candidate.buyerContactKey === "string" &&
       candidate.normalizedContact !== null);
   const reachable = candidates.filter((candidate) =>
     candidate.allowed && hasDeliveryIdentity(candidate)
@@ -187,7 +204,7 @@ export async function buildMarketingBookQuote(
         return {
           key: `${candidate.brandPersonId}:${
             candidate.contactMethodId ?? candidate.recipientUserId ??
-              "unavailable"
+              candidate.buyerContactKey ?? "unavailable"
           }`,
           normalizedPhone: candidate.normalizedContact,
           segments,
@@ -227,6 +244,9 @@ export async function buildMarketingBookQuote(
     audienceKind: input.audienceKind ?? null,
     audienceVersion: input.audienceVersion ?? null,
     audienceName: input.audienceName ?? null,
+    ...(input.audienceSources === undefined
+      ? {}
+      : { audienceSources: input.audienceSources }),
     reachableCount: reachable.length,
     suppressedCount,
     unavailableCount,

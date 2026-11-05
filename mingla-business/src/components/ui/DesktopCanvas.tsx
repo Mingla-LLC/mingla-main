@@ -111,16 +111,25 @@ export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth
   // returned boolean, not on whether the hook ran. Per SPEC §3.
   const { isWideDesktop } = useResponsiveLayout();
 
-  if (!isWideDesktop) {
+  // Native never crosses the breakpoint and stays a passthrough.
+  if (Platform.OS !== "web") {
     return <>{children}</>;
   }
 
+  // #4273 — one tree on both sides of the breakpoint. Swapping a Fragment for two
+  // Views remounted every route under this canvas, so resizing a browser or
+  // turning a tablet threw away an open composer: its text, ticks and picker.
+  //
   // Desktop web gets the full usable workspace to the right of the fixed
   // rail, with a compact bezel margin. The CSS radial gradients sit on
   // the canvas View itself — no separate layer.
   return (
-    <View style={[styles.canvas, gradientBackgroundStyle]}>
-      <View style={[styles.column, maxWidth !== undefined ? { maxWidth } : null]}>
+    <View style={isWideDesktop ? [styles.canvas, gradientBackgroundStyle] : styles.narrow}>
+      <View
+        style={isWideDesktop
+          ? [styles.column, maxWidth !== undefined ? { maxWidth } : null]
+          : styles.narrow}
+      >
         {children}
       </View>
     </View>
@@ -128,6 +137,7 @@ export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth
 };
 
 const styles = StyleSheet.create({
+  narrow: { flex: 1 },
   canvas: {
     flex: 1,
     backgroundColor: CANVAS_BASE_COLOR,

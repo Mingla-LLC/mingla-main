@@ -44,6 +44,13 @@ import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
 import { supabase } from "../../services/supabase";
 import { getOrCreateMarketingBookAudience } from "../../services/marketing/marketingCampaignService";
+import { getCombinedAudienceSummary } from "../../services/marketing/marketingCombinedAudienceService";
+import {
+  followerRowStatus,
+  pickerDoneLabel,
+  sourceKeyForOption,
+  type PickerCountState,
+} from "../../features/marketing/blastSendModel";
 import {
   accent,
   glass,
@@ -77,6 +84,8 @@ export interface AudienceOption {
   status_label?: string;
   privacy_label?: string;
   show_count?: boolean;
+  /** #4273 — replaces the count line, e.g. "1 follower · also in Your Book". */
+  count_label?: string;
 }
 
 export interface CircleAudiencePickerState {
@@ -107,6 +116,14 @@ export interface AudiencePickerSheetProps {
   circleAudienceEnabled?: boolean;
   circleReach?: CircleAudiencePickerState;
   onRetryCircleReach?: () => void;
+  /**
+   * #4273 — tick several groups. The sheet stays open and "Done" hands back the
+   * ticked rows. Absent keeps the legacy one-tap pick (feature off).
+   */
+  multiSelect?: {
+    selectedKeys: readonly string[];
+    onDone: (options: AudienceOption[]) => void;
+  };
 }
 
 interface OrderJoinRow {
@@ -136,7 +153,42 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   circleAudienceEnabled,
   circleReach,
   onRetryCircleReach,
+  multiSelect,
 }) => {
+  const isMulti = multiSelect !== undefined;
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
+  const [peopleCount, setPeopleCount] = useState<PickerCountState>({ state: "none" });
+  const [followerTruth, setFollowerTruth] = useState<{
+    total: number | null;
+    alsoInBook: number | null;
+  }>({ total: null, alsoInBook: null });
+  const multiKeys = multiSelect?.selectedKeys;
+
+  // A fresh pick each time the sheet opens, from what the composer holds.
+  useEffect(() => {
+    if (visible && multiKeys !== undefined) setPicked(new Set(multiKeys));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on open
+  }, [visible]);
+
+  // The follower truth behind "{n} followers · also in Your Book".
+  useEffect(() => {
+    if (!visible || !isMulti || brandId === null || actorId == null) return;
+    let cancelled = false;
+    void getCombinedAudienceSummary({ actor_id: actorId, brand_id: brandId, sources: [] })
+      .then((summary) => {
+        if (!cancelled) {
+          setFollowerTruth({ total: summary.followersTotal, alsoInBook: summary.followersAlsoInBook });
+        }
+      })
+      .catch(() => {
+        // The row keeps today's reach line; the review still shows server totals.
+        if (!cancelled) setFollowerTruth({ total: null, alsoInBook: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, isMulti, brandId, actorId]);
+
   const [options, setOptions] = useState<AudienceOption[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -261,6 +313,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
               disabled:
                 !followerReady || circleReach?.followers.enabled !== true ||
                 (circleReach?.followers.count ?? 0) === 0,
+              // Set from the follower truth when the row renders (#4273).
               status_label: followerReady
                 ? (circleReach?.followers.count ?? 0) === 0
                   ? "No followers yet"
@@ -358,8 +411,101 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     circleReach,
   ]);
 
-  const renderOption = (option: AudienceOption): React.ReactElement => {
-    const isSelected = option.existing_audience_id !== null && option.existing_audience_id === selectedAudienceId;
+  /**
+   * #4273 — a row's final state in the tick-box sheet. The server's follower
+   * truth turns "No followers yet" into "{n} followers · also in Your Book", and
+   * an empty group says why it is empty instead of offering a tick that adds no one.
+   */
+  const withEmptyStates = (option: AudienceOption): AudienceOption => {
+    if (!isMulti) return option;
+    if (option.kind === "brand_followers") {
+      const truth = circleReach?.followers.state === "ready" && circleReach.followers.enabled
+        ? followerRowStatus({
+            reachCount: option.buyer_count,
+            followersTotal: followerTruth.total,
+            followersAlsoInBook: followerTruth.alsoInBook,
+          })
+        : null;
+      return truth === null
+        ? option
+        : { ...option, count_label: truth.countLabel, status_label: undefined, disabled: !truth.pickable };
+    }
+    if (option.kind === "brand_circle_extended") {
+      return circleReach?.extended.state === "ready" && circleReach.extended.enabled && option.buyer_count === 0
+        ? { ...option, disabled: true, count_label: "0 so far · grows as guests opt in", status_label: undefined }
+        : option;
+    }
+    if (option.kind === "manual_group" && option.buyer_count === 0) {
+      return { ...option, disabled: true, status_label: "No one in this group yet" };
+    }
+    if (option.kind === "all_brand_people" && option.buyer_count === 0) {
+      return { ...option, disabled: true };
+    }
+    return option;
+  };
+
+  // #4273 — a tick on a row that has since gone unavailable (a group emptied, reach
+  // went stale) is not picked: it adds no one to the count and is not handed back.
+  // It stays in `picked`, so the row is ticked again if it comes back.
+  const liveOptions = (options ?? [])
+    .map(withEmptyStates)
+    .filter((option) => option.disabled !== true);
+  const liveKeys = new Set(liveOptions.map(sourceKeyForOption));
+  const livePicked = [...picked].filter((key) => liveKeys.has(key));
+  // A row still checking its reach may yet come back: the count waits for it.
+  const pickedRowLoading = (picked.has("followers") && circleReach?.followers.state === "loading") ||
+    (picked.has("extended") && circleReach?.extended.state === "loading");
+  const countWaiting = options === null || isLoading || pickedRowLoading;
+
+  // "Done · {n} people" is the server's de-duplicated total, never a sum of rows.
+  const pickedKey = [...livePicked].sort().join("|");
+  useEffect(() => {
+    if (!visible || !isMulti) return;
+    if (countWaiting) {
+      setPeopleCount({ state: picked.size === 0 ? "none" : "counting" });
+      return;
+    }
+    if (livePicked.length === 0) {
+      setPeopleCount({ state: "none" });
+      return;
+    }
+    if (brandId === null || actorId == null) {
+      setPeopleCount({ state: "unavailable" });
+      return;
+    }
+    let cancelled = false;
+    setPeopleCount({ state: "counting" });
+    const timer = setTimeout(() => {
+      void getCombinedAudienceSummary({ actor_id: actorId, brand_id: brandId, sources: livePicked })
+        .then((summary) => {
+          if (!cancelled) setPeopleCount({ state: "ready", people: summary.peopleCount });
+        })
+        .catch(() => {
+          if (!cancelled) setPeopleCount({ state: "unavailable" });
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pickedKey stands for livePicked
+  }, [visible, isMulti, pickedKey, brandId, actorId, countWaiting]);
+
+  const togglePicked = (key: string): void => {
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const renderOption = (rawOption: AudienceOption): React.ReactElement => {
+    const option = withEmptyStates(rawOption);
+    const optionKey = sourceKeyForOption(option);
+    const isSelected = isMulti
+      ? picked.has(optionKey) && option.disabled !== true
+      : option.existing_audience_id !== null && option.existing_audience_id === selectedAudienceId;
     const peopleAudience = option.kind === "manual_group" || option.kind === "all_brand_people" || option.kind === "brand_followers" || option.kind === "brand_circle_extended";
     const Icon = option.kind === "all_brand_people"
       ? BookOpen
@@ -377,26 +523,32 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         : option.kind === "manual_group"
           ? "Saved group"
           : "Automatic buyer group";
-    const countLabel = `${option.buyer_count} ${peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}`;
+    const countLabel = option.count_label ?? `${option.buyer_count} ${peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}`;
     const showCount = option.show_count !== false;
-    const spokenMeta = [showCount ? countLabel : null, option.status_label]
+    const spokenMeta = [showCount || option.count_label !== undefined ? countLabel : null, option.status_label]
       .filter(Boolean)
       .join(". ");
-    return <Pressable key={option.key} disabled={option.disabled} onPress={() => { onSelect(option); onClose(); }} accessibilityRole="button"
+    return <Pressable key={option.key} disabled={option.disabled} onPress={() => {
+        if (isMulti) { togglePicked(optionKey); return; }
+        onSelect(option); onClose();
+      }} accessibilityRole={isMulti ? "checkbox" : "button"}
       accessibilityLabel={`Pick audience ${option.name}. ${spokenMeta}. ${audienceMeaning}.${option.privacy_label ? ` ${option.privacy_label}.` : ""}${option.disabled ? " Unavailable." : ""}`}
-      accessibilityState={{ selected: isSelected, disabled: option.disabled === true }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, option.disabled ? styles.rowDisabled : null, pressed ? styles.rowPressed : null]}>
+      accessibilityState={isMulti
+        ? { checked: isSelected, disabled: option.disabled === true }
+        : { selected: isSelected, disabled: option.disabled === true }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, option.disabled ? styles.rowDisabled : null, pressed ? styles.rowPressed : null]}>
+      {isMulti ? <TickBox on={isSelected} /> : null}
       <View style={styles.rowIcon}><Icon size={20} color={isSelected ? accent.warm : textTokens.secondary} strokeWidth={2} /></View>
       <View style={styles.rowCopy}>
         <View style={styles.rowTitleLine}>
           <Text style={styles.rowName} numberOfLines={1}>{option.name}</Text>
           {option.privacy_label ? <Text style={styles.privacyPill}>{option.privacy_label}</Text> : null}
         </View>
-        {showCount ? (
+        {showCount || option.count_label !== undefined ? (
           <Text style={styles.rowMeta}>{option.kind === "all_brand_people" && option.buyer_count === 0 ? "No saved people yet" : countLabel}</Text>
         ) : null}
         {option.status_label ? <Text style={styles.rowStatus}>{option.status_label}</Text> : null}
       </View>
-      {isSelected ? <Check size={20} color={accent.warm} strokeWidth={2.5} /> : null}
+      {isSelected && !isMulti ? <Check size={20} color={accent.warm} strokeWidth={2.5} /> : null}
     </Pressable>;
   };
 
@@ -435,12 +587,29 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     );
   };
 
+  // #4273 — "Select all" means every group that has people.
+  const selectableOptions = liveOptions;
+  const allPicked = selectableOptions.length > 0 &&
+    selectableOptions.every((option) => picked.has(sourceKeyForOption(option)));
+  const toggleAll = (): void => {
+    setPicked(allPicked ? new Set() : new Set(selectableOptions.map(sourceKeyForOption)));
+  };
+  const handleDone = (): void => {
+    if (multiSelect === undefined) return;
+    multiSelect.onDone(
+      liveOptions.filter((option) => picked.has(sourceKeyForOption(option))),
+    );
+    onClose();
+  };
+  const doneDisabled = peopleCount.state === "none" || peopleCount.state === "counting";
+
   // SC-13 deliberately does not render the intermediate rework copy
   // "Choose Your Book or an Automatic buyer group." while the feature is OFF;
   // OFF preserves the exact origin/main copy and row semantics below.
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    // #4273 — tick boxes need room: half a phone left the rows about 110pt.
+    <Sheet visible={visible} onClose={onClose} snapPoint={isMulti ? "full" : "half"}>
       <View style={styles.host}>
         <Text style={styles.title}>{circleAudienceEnabled === true ? "Choose who gets this" : "Pick an audience"}</Text>
         <Text style={styles.subtitle}>
@@ -475,6 +644,23 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
           >
+            {isMulti ? (
+              <Pressable
+                onPress={toggleAll}
+                disabled={selectableOptions.length === 0}
+                accessibilityRole="checkbox"
+                accessibilityLabel="Select all. Every group that has people."
+                accessibilityState={{ checked: allPicked, disabled: selectableOptions.length === 0 }}
+                testID="audience-picker-select-all"
+                style={({ pressed }) => [styles.row, allPicked ? styles.rowSelected : null, pressed ? styles.rowPressed : null]}
+              >
+                <TickBox on={allPicked} />
+                <View style={styles.rowCopy}>
+                  <Text style={styles.rowName}>Select all</Text>
+                  <Text style={styles.rowMeta}>Every group that has people</Text>
+                </View>
+              </Pressable>
+            ) : null}
             {circleAudienceEnabled === true ? [
               { title: "Your brand", data: options.filter((option) => option.kind === "all_brand_people") },
               { title: "Mingla reach", data: options.filter((option) => option.kind === "brand_followers" || option.kind === "brand_circle_extended") },
@@ -514,12 +700,61 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             Mingla keeps follower contact details hidden. You see names and reach totals only.
           </Text>
         ) : null}
+        {isMulti ? (
+          <Pressable
+            onPress={handleDone}
+            disabled={doneDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={pickerDoneLabel(peopleCount)}
+            accessibilityState={{ disabled: doneDisabled }}
+            testID="audience-picker-done"
+            style={({ pressed }) => [
+              styles.doneButton,
+              doneDisabled ? styles.doneButtonDisabled : null,
+              pressed && !doneDisabled ? styles.rowPressed : null,
+            ]}
+          >
+            <Text style={[styles.doneLabel, doneDisabled ? styles.doneLabelDisabled : null]}>
+              {pickerDoneLabel(peopleCount)}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </Sheet>
   );
 };
 
+const TickBox: React.FC<{ on: boolean }> = ({ on }) => (
+  <View style={[styles.tickBox, on ? styles.tickBoxOn : null]}>
+    {on ? <Check size={14} color="#1A0C02" strokeWidth={3} /> : null}
+  </View>
+);
+
 const styles = StyleSheet.create({
+  tickBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.34)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tickBoxOn: { borderColor: accent.warm, backgroundColor: accent.warm },
+  doneButton: {
+    minHeight: 52,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: accent.warm,
+  },
+  doneButtonDisabled: {
+    backgroundColor: Platform.OS === "android" ? "#16181B" : glass.tint.profileBase,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+  },
+  doneLabel: { ...typography.body, color: "#1A0C02", fontWeight: "700" },
+  doneLabelDisabled: { color: textTokens.tertiary },
   host: {
     flex: 1,
     padding: spacing.md,

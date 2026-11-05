@@ -270,6 +270,8 @@ export interface DoorGuest {
   cameWithName: string | null;
   viaLinkLabel: string | null;
   tickets: DoorGuestTicket[];
+  /** issue #3281 — extras still owed on this order; absent when none. */
+  extras?: unknown;
 }
 
 export const searchDoorGuests = (input: {
