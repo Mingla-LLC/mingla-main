@@ -13,6 +13,7 @@ import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224
 import { SEEDING_CATEGORIES, SEEDING_CATEGORY_MAP } from "../../_shared/seedingCategories.ts";
 import { COST_PER_NEARBY_SEARCH, SEARCH_RESULT_CAP } from "../../_shared/seedingGeometry.ts";
 import { applyPostFetchFilters, dispatchAction, resolveBatchConfig } from "../index.ts";
+import { buildSeedMergeUpdate } from "../../_shared/placeGoogleMerge.ts";
 import {
   applyCityBox,
   type CappedSearch,
@@ -51,6 +52,28 @@ function world(over: Partial<World> = {}): World {
     rpcCalls: [],
   };
 }
+
+// #4276 C3: the claim and finish are single database statements now, proved on the real
+// schema in issue_4276_city_pipeline.implementor.pg17.test.sql. These stand in for them.
+const claimRpcs = (w: World): Record<string, (args: Row) => unknown> => ({
+  seeding_claim_next_batch: () => {
+    const b = w.tables.seeding_batches.find((r) => r.status === "pending");
+    if (!b) return [];
+    Object.assign(b, { status: "running", claim_token: "t" });
+    return [b];
+  },
+  seeding_claim_retry_batch: (a) => {
+    const b = w.tables.seeding_batches.find((r) => r.id === a.p_batch_id && r.status === "failed");
+    if (!b) return [];
+    Object.assign(b, { status: "running", claim_token: "t", retry_count: 1 });
+    return [b];
+  },
+  seeding_finish_batch: (a) => {
+    const b = w.tables.seeding_batches.find((r) => r.id === a.p_batch_id)!;
+    Object.assign(b, { status: a.p_status });
+    return { applied: true, run_status: "completed", has_pending: false, completed_batches: 1, failed_batches: 0 };
+  },
+});
 
 const quietStatus = { tiles: {}, unfinished: { total: 0 }, levels: [], capped_open: 0, unresolved: [], active_run: null };
 
@@ -228,6 +251,7 @@ const runRow = {
 
 Deno.test({ name: "run_next_batch searches the config the batch records, not the category's first", ...opts, fn: async () => {
   const w = world({ tables: { seeding_runs: [{ ...runRow }], seeding_batches: [batchRow({})] } as Record<string, Row[]> });
+  w.rpcs = claimRpcs(w);
   const g = stubGoogle(() => Response.json({ places: [] }));
   try {
     const res = await dispatchAction({ action: "run_next_batch", runId: "r1" }, fakeDb(w));
@@ -247,6 +271,7 @@ Deno.test({ name: "run_next_batch searches the config the batch records, not the
 Deno.test({ name: "retry_batch shares it, and a split search sends only its own types", ...opts, fn: async () => {
   const failed = batchRow({ status: "failed", search_config_id: "live_performance", seeding_category: "movies_theatre", included_types_override: ["concert_hall", "opera_house"] });
   const w = world({ tables: { seeding_runs: [{ ...runRow, status: "paused", failed_batches: 1 }], seeding_batches: [failed] } as Record<string, Row[]> });
+  w.rpcs = claimRpcs(w);
   const g = stubGoogle(() => Response.json({ places: [] }));
   try {
     const res = await dispatchAction({ action: "retry_batch", runId: "r1", batchId: failed.id }, fakeDb(w));
@@ -265,6 +290,7 @@ Deno.test("a recorded config that no longer exists fails, instead of searching s
 
 Deno.test({ name: "T7: what the filters drop is kept per city, and the search still succeeds", ...opts, fn: async () => {
   const w = world({ tables: { seeding_runs: [{ ...runRow }], seeding_batches: [batchRow({})] } as Record<string, Row[]> });
+  w.rpcs = claimRpcs(w);
   const g = stubGoogle(() => Response.json({
     places: [
       { id: "no-pic", displayName: { text: "No Pic" }, primaryType: "park", photos: [] },
@@ -571,12 +597,51 @@ Deno.test({ name: "T8: 20 unfiltered searches at 300 m, compared by google_place
 
 Deno.test({ name: "T8: a failed search means a failed check, not a flattering one", ...opts, fn: async () => {
   const w = world();
-  const g = stubGoogle((_b, c) => c === 5 ? new Response("nope", { status: 429 }) : Response.json({ places: [] }));
+  // Was a 429. A rate limit now waits and tries again (C8), so a failure that sticks is
+  // what this check has to see.
+  const g = stubGoogle((_b, c) => c === 5 ? new Response("nope", { status: 500 }) : Response.json({ places: [] }));
   try {
     const row = await runCompletenessCheck(fakeDb(w), { cityId: CITY, confirm: true }, { googleApiKey: "k" });
     assertEquals(row.status, "failed");
     assertEquals(row.searches_failed, 1);
-    assert(String(row.error_message).includes("429"));
+    assert(String(row.error_message).includes("500"));
+  } finally { g.restore(); }
+}});
+
+Deno.test({ name: "T8, C8: a passing rate limit doesn't spoil the sample", ...opts, fn: async () => {
+  const w = world();
+  const g = stubGoogle((_b, c) => c === 5 ? new Response("slow down", { status: 429, headers: { "retry-after": "0" } }) : Response.json({ places: [] }));
+  try {
+    const row = await runCompletenessCheck(fakeDb(w), { cityId: CITY, confirm: true }, { googleApiKey: "k" });
+    assertEquals(row.status, "completed");
+    assertEquals(row.searches_failed, 0);
+  } finally { g.restore(); }
+}});
+
+Deno.test({ name: "C8: a search that stays rate limited is recorded as failed, with the 429", ...opts, fn: async () => {
+  const w = world({ tables: { seeding_runs: [{ ...runRow }], seeding_batches: [batchRow({})] } as Record<string, Row[]> });
+  w.rpcs = claimRpcs(w);
+  const g = stubGoogle(() => new Response("slow down", { status: 429, headers: { "retry-after": "0" } }));
+  try {
+    const res = await dispatchAction({ action: "run_next_batch", runId: "r1" }, fakeDb(w));
+    const body = await res.json();
+    assertEquals(body.status, "failed");
+    assert(String(body.result.error).startsWith("Google API 429"));
+    assertEquals(g.bodies.length, 4, "it tried, waited, and tried again");
+  } finally { g.restore(); }
+}});
+
+Deno.test({ name: "C7: a new place is inserted held, and the merge update can't hold an existing one", ...opts, fn: async () => {
+  const w = world({ tables: { seeding_runs: [{ ...runRow }], seeding_batches: [batchRow({})] } as Record<string, Row[]> });
+  w.rpcs = claimRpcs(w);
+  const g = stubGoogle(() => Response.json({
+    places: [{ id: "new-1", displayName: { text: "New" }, primaryType: "park", types: ["park"], location: { latitude: 10, longitude: 10 }, photos: [{ name: "p" }] }],
+  }));
+  try {
+    await dispatchAction({ action: "run_next_batch", runId: "r1" }, fakeDb(w));
+    const row = w.tables.place_pool.find((r) => r.google_place_id === "new-1");
+    assertEquals(row?.serving_hold, true);
+    assertEquals(buildSeedMergeUpdate({ google_place_id: "x", serving_hold: true, name: "x" }, undefined).serving_hold, undefined);
   } finally { g.restore(); }
 }});
 

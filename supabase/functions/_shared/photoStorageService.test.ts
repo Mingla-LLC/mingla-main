@@ -190,7 +190,11 @@ Deno.test("downloadAndStorePhotosWithDiagnostics does not refresh on retryable p
     assertEquals(result.failures[0].code, "PHOTO_MEDIA_RATE_LIMIT");
     assertEquals(result.failures[0].retryable, true);
     assertEquals(mock.updates.length, 0);
-    assertEquals(calls, ["https://places.googleapis.com/v1/places/abc/photos/1/media?maxWidthPx=800&key=api-key"]);
+    // #4276 C8: the media call gets one short retry. Still no details refresh.
+    assertEquals(calls, [
+      "https://places.googleapis.com/v1/places/abc/photos/1/media?maxWidthPx=800&key=api-key",
+      "https://places.googleapis.com/v1/places/abc/photos/1/media?maxWidthPx=800&key=api-key",
+    ]);
   } finally {
     globalThis.fetch = priorFetch;
   }

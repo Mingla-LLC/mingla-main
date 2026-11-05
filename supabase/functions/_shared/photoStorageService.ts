@@ -9,6 +9,9 @@
 import { fetchWithGoogleBackoff } from './googleBackoff.ts';
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// #4276 C8: a batch holds many photos inside one 150-second function.
+const PHOTO_BACKOFF = { maxAttempts: 2, baseMs: 500, maxWaitMs: 2_000 };
+
 const BUCKET = 'place-photos';
 
 const DEFAULT_PLACEHOLDER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
@@ -274,14 +277,16 @@ export async function fetchFreshPlacePhotos(
 
   try {
     // #4276 C8: a rate limit waits and tries again.
-    const response = await fetchWithGoogleBackoff(() =>
-      fetchImpl(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': 'id,photos',
-        },
-      })
+    const response = await fetchWithGoogleBackoff(
+      () =>
+        fetchImpl(url, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': 'id,photos',
+          },
+        }),
+      PHOTO_BACKOFF,
     );
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
@@ -367,11 +372,15 @@ async function attemptStorePhotos(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
 
-      const response = await fetchWithGoogleBackoff(() =>
-        options.fetchImpl(googleUrl, {
-          signal: controller.signal,
-          headers: { 'Accept': 'image/jpeg, image/png, image/webp, */*' },
-        })
+      // One short retry: a batch holds many photos inside one 150-second function, and
+      // a photo that stays rate limited comes back through retry_batch.
+      const response = await fetchWithGoogleBackoff(
+        () =>
+          options.fetchImpl(googleUrl, {
+            signal: controller.signal,
+            headers: { 'Accept': 'image/jpeg, image/png, image/webp, */*' },
+          }),
+        PHOTO_BACKOFF,
       );
       clearTimeout(timeoutId);
 
