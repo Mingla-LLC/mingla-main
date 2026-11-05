@@ -124,6 +124,19 @@ describe("#4275 useOpenChatRecovery", () => {
     expect(props.catchUp).toHaveBeenCalledTimes(1);
   });
 
+  it("iOS inactive does not park work, because nothing would re-arm it; background does", async () => {
+    await mount();
+    Object.defineProperty(AppState, "currentState", { configurable: true, value: "inactive" });
+    chatChannelBus.emit({ kind: "status", source: "changes", conversationId: "chat-1", status: "CLOSED" });
+    await tick(1300);
+    expect(props.rebuildChanges).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(AppState, "currentState", { configurable: true, value: "background" });
+    chatChannelBus.emit({ kind: "status", source: "changes", conversationId: "chat-1", status: "CLOSED" });
+    await tick(600_000);
+    expect(props.rebuildChanges).toHaveBeenCalledTimes(1);
+  });
+
   it("a later timer calls the latest callbacks, not the ones from when the chat opened", async () => {
     await mount();
     const newer = jest.fn(() => Promise.resolve());

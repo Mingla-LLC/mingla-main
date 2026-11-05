@@ -53,7 +53,9 @@ export function useOpenChatRecovery(options: UseOpenChatRecoveryOptions): void {
       },
       channelState: (source: ChatChannelSource) =>
         source === 'changes' ? latest.current.getChangesChannelState() : broadcastStateRef.current,
-      isActive: () => AppState.currentState === 'active',
+      // Not `=== 'active'`: iOS passes through `inactive` for Control Center, and
+      // inactive to active is not a resume, so work parked there would never re-arm.
+      isActive: () => AppState.currentState !== 'background',
       isOnline: () => !latest.current.isOffline,
       setTimer: (callback, ms) => setTimeout(callback, ms),
       clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
