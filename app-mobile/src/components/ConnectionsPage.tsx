@@ -181,6 +181,12 @@ import {
   type ChatListProfile,
   type RawChatConversation,
 } from "./connections/chatListLoad";
+import {
+  classifyPeerAccountRead,
+  classifyPeerFriendshipRead,
+  isPeerGoneFromDirectChat,
+  settleChatPeerRead,
+} from "./connections/chatPeerState";
 import { useChatList } from "../hooks/useChatList";
 import { chatListKeys } from "../hooks/queryKeys";
 import type { PlanQuoteSnapshot } from "../types/chatPlans";
@@ -2058,7 +2064,10 @@ function ConnectionsPageRefactored({
     // Background bidirectional check — fire-and-forget, guarded against stale results.
     // If the user switches chats before this resolves, the result is discarded.
     const capturedFriendId = friend.id;
-    if (!isGroupConversation) {
+    if (isPeerGoneFromDirectChat({ isGroupConversation, otherParticipantId: otherParticipant?.id })) {
+      // Issue #4275: they left no participant row, so there is no id to read.
+      setActiveChatIsDeletedAccount(true);
+    } else if (!isGroupConversation) {
       blockService.hasBlockBetween(friend.id)
         .then((hasBlock) => {
           if (latestSelectedChatRef.current === capturedFriendId && hasBlock !== isBlockedByMe) {
@@ -2068,36 +2077,44 @@ function ConnectionsPageRefactored({
         .catch(() => {}); // Server enforces at send time via RLS
 
       // Background check: is the other user's account deleted/inactive? (ORCH-0357)
-      Promise.resolve(
-        supabase
+      // Issue #4275: a failed read answers nothing, so the flag stays as it is
+      // and the message box stays.
+      void settleChatPeerRead({
+        label: 'profile',
+        read: () => supabase
           .from('profiles')
           .select('active')
-          .eq('id', friend.id)
-          .single()
-      ).then(({ data: otherProfile }) => {
-        if (latestSelectedChatRef.current === capturedFriendId) {
-          setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
+          .eq('id', capturedFriendId)
+          .single(),
+        classify: classifyPeerAccountRead,
+        isCurrent: () => latestSelectedChatRef.current === capturedFriendId,
+      }).then((state) => {
+        if (state === 'deleted' || state === 'active') {
+          setActiveChatIsDeletedAccount(state === 'deleted');
         }
-      }).catch(() => {}); // Fail silently — input area defaults to visible
+      });
 
       // Background friendship re-check (ORCH-0360) — handles re-friended users.
       // The synchronous check above uses the cached friends list which may be stale.
       // This server query catches cases where friendship was restored after unfriending.
-      Promise.resolve(
-        supabase
+      void settleChatPeerRead({
+        label: 'friendship',
+        read: () => supabase
           .from('friends')
           .select('id')
-          .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
+          .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${capturedFriendId}),and(user_id.eq.${capturedFriendId},friend_user_id.eq.${user!.id})`)
           .eq('status', 'accepted')
-          .limit(1)
-      ).then(({ data: friendshipData }) => {
-        if (latestSelectedChatRef.current === capturedFriendId) {
-          const isFriendNow = friendshipData && friendshipData.length > 0;
-          // Server is the single source of truth for unfriended state (ORCH-0360 rework).
-          // Set true only when server confirms NOT friends and NOT blocked.
-          setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
+          .limit(1),
+        classify: classifyPeerFriendshipRead,
+        isCurrent: () => latestSelectedChatRef.current === capturedFriendId,
+      }).then((state) => {
+        // Server is the single source of truth for unfriended state (ORCH-0360 rework).
+        // Set true only when server confirms NOT friends and NOT blocked (issue #4275:
+        // a failed read confirms nothing).
+        if (state === 'friends' || state === 'not_friends') {
+          setActiveChatIsUnfriended(state === 'not_friends' && !isBlockedByMe);
         }
-      }).catch(() => {}); // Fail silently — optimistic false stays
+      });
     }
 
     setCurrentConversationId(conversation.id);
