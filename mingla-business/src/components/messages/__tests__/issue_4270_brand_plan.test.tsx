@@ -1,0 +1,349 @@
+// MINGLA-INVARIANT: I-4270-PLAN-SHEET-ABOVE-KEYBOARD | issue #4270 | the Add to plan form scrolls in the SmartScrollView wrapper with its own flex:1 bound, inside Sheet, with no react-native ScrollView and no keyboard listener, so the focused field and the buttons can clear the keyboard's Done bar. Runtime proof on devices belongs to the tester.
+import fs from "node:fs";
+import path from "node:path";
+import React from "react";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const mockNetwork: { value: { isConnected: boolean | null } | null } = { value: null };
+const mockQuery: Record<string, unknown> = {};
+const mockAdd = jest.fn();
+const mockUpdate = jest.fn();
+const mockRemove = jest.fn();
+const mockPending = { add: false };
+const mockOpenURL = jest.fn(() => Promise.resolve());
+
+jest.mock("react-native", () => {
+  const base = jest.requireActual("react-native");
+  return { ...base, Linking: { openURL: mockOpenURL } };
+});
+jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 34, left: 0, right: 0 }) }));
+jest.mock("../../../services/supabase", () => ({ supabase: { rpc: jest.fn() } }));
+jest.mock("../../../lib/netinfoSafe", () => ({ useNetInfoSafe: () => mockNetwork.value }));
+jest.mock("../../../i18n", () => ({
+  useBusinessMediaTranslation: () => ({ t: (key: string) => key, language: "en" }),
+}));
+jest.mock("../../../hooks/useBrandPlan", () => ({
+  useBrandPlan: () => mockQuery,
+  useBrandPlanWrites: () => ({
+    add: { mutateAsync: mockAdd, isPending: mockPending.add },
+    update: { mutateAsync: mockUpdate, isPending: false },
+    remove: { mutateAsync: mockRemove, isPending: false },
+  }),
+}));
+function mockProbe(name: string) {
+  return (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement(name, props, props.children as React.ReactNode);
+}
+jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: mockProbe("SmartScroll") }));
+jest.mock("../../ui/Sheet", () => ({ Sheet: (props: Record<string, unknown>) => props.visible
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ? require("react").createElement("SheetProbe", props, props.children as React.ReactNode) : null }));
+jest.mock("../../ui/Toast", () => ({ Toast: mockProbe("ToastProbe") }));
+jest.mock("../../ui/Icon", () => ({ Icon: mockProbe("IconProbe") }));
+jest.mock("../../ui/Button", () => ({ Button: mockProbe("ButtonProbe") }));
+jest.mock("../../ui/Input", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require("react");
+  return { Input: R.forwardRef((props: Record<string, unknown>, ref: unknown) => R.createElement("InputProbe", { ...props, ref: undefined, inputRef: ref })) };
+});
+jest.mock("../../ui/DateField", () => ({ DateField: mockProbe("DateProbe") }));
+jest.mock("../../ui/OptionCard", () => ({ OptionCard: mockProbe("OptionProbe") }));
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as {
+  create: (node: React.ReactElement) => { root: TestNode; unmount: () => void };
+  act: (work: () => void | Promise<void>) => Promise<void>;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const service = require("../../../services/brandPlanService") as typeof import("../../../services/brandPlanService");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { BrandPlanAddSheet } = require("../BrandPlanAddSheet") as typeof import("../BrandPlanAddSheet");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { BrandPlanPanel } = require("../BrandPlanPanel") as typeof import("../BrandPlanPanel");
+
+interface TestNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  children: (TestNode | string)[];
+  findAll: (predicate: (node: TestNode) => boolean) => TestNode[];
+}
+
+const TODAY = "2026-11-05";
+const here = path.resolve(__dirname, "..");
+const read = (rel: string): string => fs.readFileSync(path.resolve(here, rel), "utf8");
+const byId = (root: TestNode, id: string): TestNode | undefined => root.findAll((node) => node.props.testID === id && typeof node.type === "string")[0];
+const textOf = (root: TestNode): string => root.findAll((node) => node.type === "Text").map((node) => node.children.filter((c) => typeof c === "string").join("")).join(" | ");
+
+function item(overrides: Partial<import("../../../services/brandPlanService").BrandPlanItem> = {}): import("../../../services/brandPlanService").BrandPlanItem {
+  return { kind: "post", id: "i1", title: "Our new menu", on: "2026-11-06", at: null, state: "planned", state_words: "Planned", link: null, by: "host", mine: true, can_edit: true, revision: 1, ...overrides };
+}
+
+async function mountForm(extra: Record<string, unknown> = {}): Promise<{ root: TestNode; done: jest.Mock }> {
+  const done = jest.fn();
+  let renderer!: { root: TestNode };
+  await TestRenderer.act(async () => {
+    renderer = TestRenderer.create(<BrandPlanAddSheet visible brandId="b1" today={TODAY} onClose={jest.fn()} onDone={done} {...extra} />);
+  });
+  return { root: renderer.root, done };
+}
+async function press(node: TestNode | undefined): Promise<void> {
+  if (!node) throw new Error("no node to press");
+  await TestRenderer.act(async () => { await (node.props.onPress as () => unknown)(); });
+}
+async function type(root: TestNode, id: string, value: string): Promise<void> {
+  await TestRenderer.act(async () => { (byId(root, id)?.props.onChangeText as (v: string) => void)(value); });
+}
+async function mountPanel(plan: unknown, query: Record<string, unknown> = {}): Promise<TestNode> {
+  Object.assign(mockQuery, { data: plan, isLoading: false, isError: false, error: null, refetch: jest.fn() }, query);
+  let renderer!: { root: TestNode };
+  await TestRenderer.act(async () => { renderer = TestRenderer.create(<BrandPlanPanel brandId="b1" onBack={jest.fn()} />); });
+  return renderer.root;
+}
+const plan = (items: unknown[], canAdd = true) => ({ brand: { id: "b1", name: "Palm" }, today: TODAY, from: TODAY, to: TODAY, can_add: canAdd, items });
+
+beforeEach(() => {
+  mockNetwork.value = null;
+  mockPending.add = false;
+  mockAdd.mockReset();
+  mockUpdate.mockReset();
+  mockRemove.mockReset();
+  mockOpenURL.mockClear();
+  for (const key of Object.keys(mockQuery)) delete mockQuery[key];
+});
+
+describe("errors are mapped by code, never by HTTP status", () => {
+  it("not_found arrives as a 500 and is still not_found", () => {
+    expect(service.mapBrandPlanError({ code: "P0002", status: 500, message: "not_found: This plan is not here." }).code).toBe("not_found");
+    expect(service.mapBrandPlanError({ code: "P0002", status: 500, message: "anything" }).code).toBe("not_found");
+  });
+  it("each token has its code, and transport trouble is never offline", () => {
+    const cases: [unknown, string][] = [
+      [{ code: "22023", message: "locked: Mingla is already working on this post." }, "locked"],
+      [{ code: "42501", message: "read_only: You can see this plan." }, "read_only"],
+      [{ code: "22023", message: "too_many: You've added a lot today." }, "too_many"],
+      [{ code: "22023", message: "no_host_card: Mingla hasn't set up your brand yet." }, "no_host_card"],
+      [{ code: "PT409", message: "stale_write: This changed." }, "stale_write"],
+      [{ code: "23505", message: "duplicate_title: Something with this name." }, "invalid"],
+      [{ code: "22023", message: "invalid_link: Links start with https://" }, "invalid"],
+      [{ code: "PT409", message: "try_again: The first request did not finish." }, "failed"],
+      [{ code: "", message: "TypeError: Network request failed" }, "network"],
+      [{ code: "42501", message: "permission denied for function" }, "failed"],
+      [new Error("boom"), "failed"],
+    ];
+    for (const [raw, code] of cases) expect(service.mapBrandPlanError(raw).code).toBe(code);
+  });
+  it("too_many picks the words for adds and for changes", () => {
+    expect(service.brandPlanErrorKey(service.mapBrandPlanError({ code: "22023", message: "too_many: You've added a lot today. Try again tomorrow." }), "add_failed")).toBe("err_too_many");
+    expect(service.brandPlanErrorKey(service.mapBrandPlanError({ code: "22023", message: "too_many: You've made a lot of changes just now. Try again in an hour." }), "save_failed")).toBe("err_changes");
+  });
+});
+
+describe("the link check agrees with the server", () => {
+  it("refuses what the server refuses", () => {
+    for (const bad of ["http://x.com/a", "HTTPS://X.COM", "javascript:alert(1)", "https://", "https://a b.com", "https://canva.com:x@evil.example", "https://canva.com@evil.example/", "https://canva.com" + String.fromCharCode(92) + "@evil.example",
+      "https://canva.com" + String.fromCharCode(0x202e) + "moc", "https://canva.com" + String.fromCharCode(0x200b), "https://canva.com/" + String.fromCharCode(7), "https://canva.com" + String.fromCharCode(0xa0) + "/x", "https://canva.com/" + String.fromCodePoint(0xe0001), `https://${"a".repeat(1993)}`]) {
+      expect(service.isBrandPlanLink(bad)).toBe(false);
+    }
+    expect(service.isBrandPlanLink("https://canva.com/@tobi/x")).toBe(true);
+  });
+});
+
+describe("weeks and months", () => {
+  it("groups by Monday, always has this week, and places Today", () => {
+    const weeks = service.brandPlanWeeks([item({ id: "a", on: "2026-11-03" }), item({ id: "b", on: "2026-11-06" }), item({ id: "c", on: "2026-11-10" }), item({ id: "d", on: "2026-11-20" })], TODAY);
+    expect(weeks.map((w) => [w.key, w.label, w.todayIndex])).toEqual([["2026-11-02", "this", 1], ["2026-11-09", "next", -1], ["2026-11-16", "later", -1]]);
+    expect(service.brandPlanWeeks([], TODAY).map((w) => w.label)).toEqual(["this"]);
+  });
+  it("a month grid is whole weeks, Monday first, and stays inside the 120-day window", () => {
+    const grid = service.brandPlanMonthGrid("2026-11");
+    expect(grid[0]).toBe("2026-10-26");
+    expect(grid.length % 7).toBe(0);
+    expect(grid[grid.length - 1]).toBe("2026-12-06");
+    expect(grid.length).toBeLessThanOrEqual(42);
+  });
+});
+
+describe("the Add to plan form", () => {
+  it("checks in the spec's words and moves focus to the field", async () => {
+    const { root } = await mountForm();
+    const focus = jest.fn();
+    const what = byId(root, "brand-plan-what");
+    (what?.props.inputRef as { current: unknown }).current = { focus };
+    await press(byId(root, "brand-plan-submit"));
+    expect(byId(root, "brand-plan-what")?.props.error).toBe("plan.err_title");
+    expect(focus).toHaveBeenCalled();
+    expect(mockAdd).not.toHaveBeenCalled();
+    await type(root, "brand-plan-what", "Menu");
+    await type(root, "brand-plan-link", "http://x.com");
+    await press(byId(root, "brand-plan-submit"));
+    expect(byId(root, "brand-plan-link")?.props.error).toBe("plan.err_link");
+    expect(mockAdd).not.toHaveBeenCalled();
+    expect(service.brandPlanFormProblems({ type: "post", title: "x", on: "", link: "", note: "" }, TODAY)).toEqual([{ field: "on", key: "err_date" }]);
+    expect(service.brandPlanFormProblems({ type: "post", title: "x", on: "2026-11-04", link: "", note: "" }, TODAY)).toEqual([{ field: "on", key: "err_date_past" }]);
+    expect(service.brandPlanFormProblems({ type: "task", title: "ab", on: TODAY, link: "", note: "" }, TODAY)).toEqual([{ field: "title", key: "err_title_length" }]);
+  });
+  it("sends only the keys the server accepts", async () => {
+    mockAdd.mockResolvedValue({ status: "added" });
+    const { root, done } = await mountForm();
+    await type(root, "brand-plan-what", "  Menu  ");
+    await press(byId(root, "brand-plan-submit"));
+    expect(mockAdd.mock.calls[0][0].item).toEqual({ type: "post", title: "Menu", on: TODAY });
+    expect(mockAdd.mock.calls[0][0].requestKey).toMatch(/^[A-Za-z0-9_-]{8,80}$/);
+    expect(done).toHaveBeenCalledWith("added_post");
+  });
+  it("Adding… disables the button, so no double tap", async () => {
+    mockPending.add = true;
+    const { root } = await mountForm();
+    const submit = byId(root, "brand-plan-submit");
+    expect(submit?.props.label).toBe("plan.adding");
+    expect(submit?.props.disabled).toBe(true);
+  });
+  it("a failed add keeps what was typed, says so, and retries with the same key", async () => {
+    mockAdd.mockRejectedValue(new service.BrandPlanError("failed", "", "boom"));
+    const { root, done } = await mountForm();
+    await type(root, "brand-plan-what", "Menu");
+    await press(byId(root, "brand-plan-submit"));
+    expect(textOf(byId(root, "brand-plan-failed") as TestNode) + String((byId(root, "brand-plan-failed") as TestNode).children)).toContain("plan.add_failed");
+    expect(byId(root, "brand-plan-what")?.props.value).toBe("Menu");
+    expect(done).not.toHaveBeenCalled();
+    await press(byId(root, "brand-plan-submit"));
+    expect(mockAdd.mock.calls[1][0].requestKey).toBe(mockAdd.mock.calls[0][0].requestKey);
+  });
+  it("a network failure of unknown state is a failure, never offline", async () => {
+    mockNetwork.value = null;
+    mockAdd.mockRejectedValue(new service.BrandPlanError("network", "", "Network request failed"));
+    const { root } = await mountForm();
+    await type(root, "brand-plan-what", "Menu");
+    await press(byId(root, "brand-plan-submit"));
+    expect(byId(root, "brand-plan-offline")).toBeUndefined();
+    expect(byId(root, "brand-plan-failed")).toBeDefined();
+  });
+  it("offline shows only when NetInfo says false, and then the button is off", async () => {
+    for (const value of [null, { isConnected: null }, { isConnected: true }]) {
+      mockNetwork.value = value;
+      const { root } = await mountForm();
+      expect(byId(root, "brand-plan-offline")).toBeUndefined();
+      expect(byId(root, "brand-plan-submit")?.props.disabled).toBe(false);
+    }
+    mockNetwork.value = { isConnected: false };
+    const { root } = await mountForm();
+    expect(byId(root, "brand-plan-offline")).toBeDefined();
+    expect(byId(root, "brand-plan-submit")?.props.disabled).toBe(true);
+  });
+  it("the counter shows from 140 characters", async () => {
+    const { root } = await mountForm();
+    expect(byId(root, "brand-plan-counter")).toBeUndefined();
+    await type(root, "brand-plan-what", "x".repeat(140));
+    expect(byId(root, "brand-plan-counter")).toBeDefined();
+  });
+  it("a change the plan has moved past closes the form with the words", async () => {
+    mockUpdate.mockRejectedValue(new service.BrandPlanError("stale_write", "stale_write", "This changed."));
+    const onStale = jest.fn();
+    const { root } = await mountForm({ edit: { field: "date", item: item() }, onStale });
+    await press(byId(root, "brand-plan-submit"));
+    expect(mockUpdate.mock.calls[0][0].changes).toEqual({ on: "2026-11-06" });
+    expect(onStale).toHaveBeenCalledWith("stale");
+  });
+});
+
+describe("the plan panel", () => {
+  it("loading, empty, error with retry, and not available with no retry", async () => {
+    let root = await mountPanel(undefined, { isLoading: true });
+    expect(byId(root, "brand-plan-loading")).toBeDefined();
+    root = await mountPanel(plan([]));
+    expect(byId(root, "brand-plan-empty")).toBeDefined();
+    root = await mountPanel(undefined, { isLoading: false, isError: true, error: new service.BrandPlanError("failed", "", "x") });
+    expect(byId(root, "brand-plan-error")).toBeDefined();
+    expect(root.findAll((n) => n.props.testID === "brand-plan-retry").length).toBeGreaterThan(0);
+    root = await mountPanel(undefined, { isLoading: false, isError: true, error: new service.BrandPlanError("not_found", "not_found", "x") });
+    expect(byId(root, "brand-plan-not-available")).toBeDefined();
+    expect(root.findAll((n) => n.props.testID === "brand-plan-retry")).toHaveLength(0);
+  });
+  it("only someone who can add sees Add; the menu shows only with can_edit (D7)", async () => {
+    let root = await mountPanel(plan([item({ id: "own" }), item({ id: "theirs", mine: false, can_edit: false, by: "mingla" })]));
+    expect(byId(root, "brand-plan-add")).toBeDefined();
+    expect(byId(root, "brand-plan-menu-own")).toBeDefined();
+    expect(byId(root, "brand-plan-menu-theirs")).toBeUndefined();
+    root = await mountPanel(plan([item({ can_edit: false })], false));
+    expect(byId(root, "brand-plan-add")).toBeUndefined();
+    expect(byId(root, "brand-plan-menu-i1")).toBeUndefined();
+  });
+  it("Add hides while the sheet is open", async () => {
+    const root = await mountPanel(plan([]));
+    await press(byId(root, "brand-plan-add"));
+    expect(byId(root, "brand-plan-add")).toBeUndefined();
+    expect(root.findAll((n) => n.type === "SheetProbe").length).toBeGreaterThan(0);
+  });
+  it("hosts see Mingla, never a staff name; a link opens only when it passes the check", async () => {
+    const root = await mountPanel(plan([
+      item({ id: "m", mine: false, can_edit: false, by: "mingla", link: { url: "https://canva.com/x", site: "canva.com" } }),
+      item({ id: "bad", link: { url: "http://evil.example", site: "evil.example" } }),
+    ]));
+    expect(textOf(root)).toContain("plan.by_mingla");
+    await press(byId(root, "brand-plan-open-m"));
+    expect(mockOpenURL).toHaveBeenCalledWith("https://canva.com/x");
+    mockOpenURL.mockClear();
+    await press(byId(root, "brand-plan-open-bad"));
+    expect(mockOpenURL).not.toHaveBeenCalled();
+  });
+  it("Remove asks first, without Alert (which does nothing on web)", async () => {
+    mockRemove.mockResolvedValue({ removed: true });
+    const root = await mountPanel(plan([item()]));
+    await press(byId(root, "brand-plan-menu-i1"));
+    expect(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")).toHaveLength(0);
+    await press(root.findAll((n) => n.props.testID === "brand-plan-remove")[0]);
+    await press(root.findAll((n) => n.props.testID === "brand-plan-remove-confirm")[0]);
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+    expect(read("BrandPlanPanel.tsx")).not.toContain("Alert.alert");
+  });
+  it("a day in the month grid lists its items or says it is empty", async () => {
+    const root = await mountPanel(plan([item()]));
+    await press(byId(root, "brand-plan-seg-calendar"));
+    await press(byId(root, "brand-plan-day-2026-11-07"));
+    expect(byId(root, "brand-plan-day-empty")).toBeDefined();
+    await press(byId(root, "brand-plan-day-2026-11-06"));
+    expect(byId(root, "brand-plan-item-i1")).toBeDefined();
+  });
+});
+
+describe("source contracts", () => {
+  const chat = read("../../../app/messages/[conversationId].tsx");
+  const sheet = read("BrandPlanAddSheet.tsx");
+  const panel = read("BrandPlanPanel.tsx");
+  it("I-4270-PLAN-SHEET-ABOVE-KEYBOARD: Sheet + SmartScrollView, bounded, no listeners", () => {
+    expect(sheet).toContain('import { ScrollView } from "../../wrappers/SmartScrollView"');
+    expect(sheet).toContain("style={styles.scrollFlex}");
+    expect(sheet).toMatch(/scrollFlex:\s*\{ flex: 1 \}/);
+    expect(sheet).toContain("<Sheet ");
+    for (const source of [sheet, panel]) {
+      expect(source).not.toMatch(/import \{[^}]*\b(ScrollView|Keyboard)\b[^}]*\} from "react-native"/);
+      expect(source).not.toContain("Keyboard.addListener");
+    }
+  });
+  it("the pill is only for the brand's own team on a phone, and the rail order is People, Plan, Media", () => {
+    expect(chat).toContain('const planBrandId = canBrand && group ? group.brand_id : null;');
+    expect(chat).toContain("{!isWideDesktop && planBrandId ? (");
+    expect(chat).toContain('testID="brand-plan-pill"');
+    const rail = chat.slice(chat.indexOf('testID="brand-group-rail-tabs"'));
+    const people = rail.indexOf("People ·");
+    const planTab = rail.indexOf('t("plan.pill")');
+    const media = rail.indexOf('t("chat.media")');
+    expect(people).toBeGreaterThan(-1);
+    expect(people).toBeLessThan(planTab);
+    expect(planTab).toBeLessThan(media);
+    expect(chat).toContain('requestedGallery === "1" ? "media" : "plan"');
+    expect(chat).toContain('desktopDetailTab === "plan" && !planBrandId ? "people"');
+  });
+  it("a system line is a centred line with no Reply or Select, and it refreshes the plan", () => {
+    const start = chat.indexOf('if (message.message_type === "system")');
+    expect(start).toBeGreaterThan(-1);
+    const block = chat.slice(start, chat.indexOf('if (message.message_type === "brand_enquiry_card")'));
+    expect(block).toContain("styles.systemLine");
+    expect(block).not.toContain("Reply");
+    expect(block).not.toContain("Select");
+    expect(chat).toContain('payload.new?.message_type === "system"');
+    expect(chat).toContain("brandPlanKeys.brand(planBrandId)");
+  });
+});
