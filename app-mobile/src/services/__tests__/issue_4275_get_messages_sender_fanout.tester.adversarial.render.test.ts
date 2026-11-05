@@ -142,4 +142,49 @@ describe("#4275 tester: sender names in getMessages", () => {
       Date.now = realNow;
     }
   });
+
+  it("load: failed reads cost one lookup per sender per page read, not per row, and a page's bounded reads stay bounded", async () => {
+    const rows = Array.from({ length: 50 }, (_, index) => ({
+      ...rowsWithoutSnapshot(1, `group-sender-${index % 5}`)[0],
+      id: `g${index}`,
+    }));
+    mockMessageRows = rows;
+    mockProfileFails = true;
+    try {
+      const start = mockCounts.profiles;
+      await messagingService.getMessages("c1", "me");
+      expect(mockCounts.profiles - start).toBe(5);
+      // One recovery episode's worth of page reads: the first plus 8 retries.
+      for (let read = 0; read < 8; read += 1) await messagingService.getMessages("c1", "me");
+      expect(mockCounts.profiles - start).toBe(45);
+    } finally {
+      mockProfileFails = false;
+    }
+  });
+
+  it("a page whose names failed still counts as a good read, so recovery does not retry it", async () => {
+    mockMessageRows = rowsWithoutSnapshot(3, "unhealed-sender");
+    mockProfileFails = true;
+    try {
+      const { error, messages } = await messagingService.getMessages("c1", "me");
+      expect(error).toBeNull();
+      expect(messages[0].sender_name).toBe("Unknown");
+    } finally {
+      mockProfileFails = false;
+    }
+  });
+
+  it("reachable today: a stored good name with an empty name cache is replaced by Unknown, until the next good read", async () => {
+    const { mergeMessages } = require("../../utils/mergeMessages") as typeof import("../../utils/mergeMessages");
+    mockMessageRows = rowsWithoutSnapshot(1, "stored-only-sender");
+    const onScreen = { id: "m0", senderName: "Stored Name", timestamp: "2026-01-01T00:00:00Z" };
+    mockProfileFails = true;
+    const failed = await messagingService.getMessages("c1", "me");
+    mockProfileFails = false;
+    const afterFail = mergeMessages([onScreen] as never[], [{ ...onScreen, senderName: failed.messages[0].sender_name }] as never[]) as Array<typeof onScreen>;
+    expect(afterFail[0].senderName).toBe("Unknown");
+    const healed = await messagingService.getMessages("c1", "me");
+    const afterGood = mergeMessages(afterFail as never[], [{ ...onScreen, senderName: healed.messages[0].sender_name }] as never[]) as Array<typeof onScreen>;
+    expect(afterGood[0].senderName).toBe("Other");
+  });
 });
