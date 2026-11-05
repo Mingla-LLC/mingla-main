@@ -356,7 +356,8 @@ export function phase3dContractDigest(manifest) {
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7957ba99390299dc410822ed7b40d40b9a7e94dcbd6f016272dc5ea7562c0bcf";
+// #4276: register the place-pipeline migrations and their proofs.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4ee31106ec8fa63d71b07f4a870b5931e91f4c2e3fed14296738cf958d3d6072";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1242,7 +1243,9 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
-    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
+    // #4276: the path list passed Node's default 1 MiB buffer, which failed every
+    // validation with a misleading "requires a git worktree".
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
