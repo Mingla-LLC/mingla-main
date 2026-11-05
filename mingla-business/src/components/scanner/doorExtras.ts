@@ -1,9 +1,9 @@
 /**
  * issue #3281 — Extras at the door. An extra is a count on the order, never a
  * seat (#3283 §2.5), so the door is told the count still owed: "Extras:
- * Friday dinner × 2 · Tote bag × 1". When the scan knows the day it admitted,
- * an extra for other days only says so, so nobody is handed Friday's dinner
- * on Saturday.
+ * Friday dinner × 2 · Tote bag × 1". When the day admitted is known, an extra
+ * for other days says "(another day)", so nobody is handed Friday's dinner on
+ * Saturday; before that, a date-limited extra says "(some days only)".
  */
 
 export interface DoorExtra {
@@ -46,11 +46,16 @@ export const doorExtrasLine = (
 ): string | null => {
   if (extras.length === 0) return null;
   const parts = extras.map((extra) => {
-    const otherDay =
-      admittedDateId !== null &&
-      extra.eventDateIds !== null &&
-      !extra.eventDateIds.includes(admittedDateId);
-    return `${extra.name} × ${extra.quantity}${otherDay ? " (another day)" : ""}`;
+    // Before admission the day isn't known: a date-limited extra says so.
+    const note =
+      extra.eventDateIds === null
+        ? ""
+        : admittedDateId === null
+          ? " (some days only)"
+          : extra.eventDateIds.includes(admittedDateId)
+            ? ""
+            : " (another day)";
+    return `${extra.name} × ${extra.quantity}${note}`;
   });
   return `Extras: ${parts.join(" · ")}`;
 };

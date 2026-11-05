@@ -15,7 +15,10 @@ describe("#3281 door extras", () => {
       { name: "Friday dinner", quantity: 2, eventDateIds: [FRI] },
       { name: "Tote bag", quantity: 1, eventDateIds: null },
     ]);
-    expect(doorExtrasLine(extras)).toBe("Extras: Friday dinner × 2 · Tote bag × 1");
+    // Before admission the day isn't known: a date-limited extra says so.
+    expect(doorExtrasLine(extras)).toBe(
+      "Extras: Friday dinner × 2 (some days only) · Tote bag × 1",
+    );
   });
 
   test("an extra for other days says so on the day admitted", () => {

@@ -572,3 +572,53 @@ Deno.test("#3281 door search names each order's extras, read through the door's 
     p_order_ids: [ORDER],
   });
 });
+
+// issue #3281 — the extras read is optional: a refused or stalled read leaves
+// the door search answer as it was.
+const extrasSearch = (extrasRpc: () => unknown) =>
+  harness({
+    rpc: (fn) =>
+      (fn === "pg_venue_order_rate_limit_hit"
+        ? { data: { allowed: true }, error: null }
+        : fn === "biz_door_guest_search"
+        ? {
+          data: {
+            truncated: false,
+            orders: [{
+              orderId: ORDER,
+              displayName: "Ana",
+              maskedEmail: null,
+              isGuestList: false,
+              cameWithName: null,
+              tickets: [],
+            }],
+          },
+          error: null,
+        }
+        : fn === "biz_ticket_link_order_labels"
+        ? { data: {}, error: null }
+        : extrasRpc()) as never,
+  });
+
+Deno.test("#3281 a rejected extras read still answers the door search", async () => {
+  const h = extrasSearch(() => {
+    throw new Error("connection reset");
+  });
+  const res = await h.handler(post({ operation: "search", eventId: EVENT, query: "an" }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.orders[0].displayName, "Ana");
+  assertEquals("extras" in body.orders[0], false);
+});
+
+Deno.test("#3281 a stalled extras read gives up at the deadline", async () => {
+  const h = extrasSearch(() => new Promise(() => {}));
+  const started = Date.now();
+  const res = await h.handler(post({ operation: "search", eventId: EVENT, query: "an" }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.orders[0].displayName, "Ana");
+  assertEquals("extras" in body.orders[0], false);
+  // It waited for the deadline, not forever.
+  assertEquals(Date.now() - started < 5000, true);
+});

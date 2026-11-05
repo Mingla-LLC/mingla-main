@@ -116,6 +116,8 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   const [debounced, setDebounced] = useState<string>("");
   const [admitting, setAdmitting] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ScanResultCopy | null>(null);
+  // issue #3281 — the admitted guest's extras, marked for the day admitted.
+  const [lastExtras, setLastExtras] = useState<string | null>(null);
   const [admitError, setAdmitError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -140,6 +142,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
       try {
         let copy: ScanResultCopy | null = null;
         let admitted = 0;
+        let admittedDateId: string | null = null;
         for (const ticket of tickets) {
           const res = await (await loadGuestList()).admitTicket({ eventId, ticketId: ticket.ticketId });
           copy = describeScanResult(
@@ -148,12 +151,14 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
             noun,
           );
           if (res.result === "success") admitted += 1;
+          if (typeof res.eventDateId === "string") admittedDateId = res.eventDateId;
           onAdmitted?.(copy, res);
         }
         if (copy !== null && tickets.length > 1 && admitted > 1) {
           copy = { ...copy, message: `${guest.displayName}: ${admitted} checked in` };
         }
         setLastResult(copy);
+        setLastExtras(doorExtrasLine(readDoorExtras(guest.extras), admittedDateId));
       } catch (error) {
         setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
       } finally {
@@ -183,6 +188,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           onChangeText={(next) => {
             setText(next);
             setLastResult(null);
+            setLastExtras(null);
             setAdmitError(null);
           }}
           placeholder="Search name or email"
@@ -214,6 +220,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         >
           <Text style={styles.resultMessage}>{lastResult.message}</Text>
           {lastResult.detail !== undefined ? <Text style={styles.resultDetail}>{lastResult.detail}</Text> : null}
+          {lastExtras !== null ? (
+            <Text style={styles.resultDetail} testID="door-admit-extras">{lastExtras}</Text>
+          ) : null}
         </View>
       ) : null}
       {admitError !== null ? (
