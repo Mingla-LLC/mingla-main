@@ -100,12 +100,20 @@ export function linkSite(url) {
 const LINK_HIDDEN = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
 
 // The same site rule as the server (brand_plan_link_host): there must be a site,
-// short enough to be an address, that stays one site once a browser folds it.
+// short enough to be an address, that a person can read as what it opens. Refused:
+// "www." with nothing after it, anything that folds into a character that breaks a
+// site name or into an extra full stop, % (a browser decodes it into another site)
+// and an IP address in any spelling.
 function hasPlanSite(value) {
   const raw = /^https:\/\/([^/?#:]+)/.exec(value)?.[1];
   if (!raw || [...raw].length > 253) return false;
-  const host = raw.toLowerCase().normalize("NFKC").toLowerCase().replace(/\u3002/g, ".");
-  return !/[/?#@:\\\s]/.test(host) && /[^.]/.test(host);
+  const stops = raw.replace(/[\u3002\uFF0E\uFF61]/g, ".");
+  const host = stops.toLowerCase().normalize("NFKC").toLowerCase();
+  const lastLabel = host.replace(/\.$/, "").split(".").pop() ?? "";
+  return !/[/?#@:\\\s%<>^|[\]]/.test(host)
+    && /[^.]/.test(host.replace(/^www\./, ""))
+    && host.split(".").length === stops.split(".").length
+    && !/^(\d+|0x[0-9a-f]*)$/.test(lastLabel);
 }
 
 /**

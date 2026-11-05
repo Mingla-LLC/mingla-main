@@ -60,10 +60,7 @@ ALTER TABLE public.content_calendar_items ADD COLUMN brand_plan_source text;
 -- D29: the title the brand's hosts see, when the stored title carries more than
 -- that (" · {brand}"). Null means the stored title is the one they see.
 ALTER TABLE public.content_calendar_items ADD COLUMN plan_title text;
-ALTER TABLE public.ops_work_cards ADD COLUMN plan_title text;
 ALTER TABLE public.content_calendar_items ADD CONSTRAINT content_calendar_plan_title_check
-  CHECK (plan_title IS NULL OR char_length(plan_title) BETWEEN 1 AND 160);
-ALTER TABLE public.ops_work_cards ADD CONSTRAINT ops_work_cards_plan_title_check
   CHECK (plan_title IS NULL OR char_length(plan_title) BETWEEN 1 AND 160);
 ALTER TABLE public.content_calendar_items ADD CONSTRAINT content_calendar_plan_link_check
   CHECK (plan_link_url IS NULL OR (char_length(plan_link_url) BETWEEN 9 AND 2000 AND plan_link_url ~ '^https://[^[:space:]]+$'));
@@ -82,8 +79,6 @@ COMMENT ON COLUMN public.content_calendar_items.plan_link_url IS
 COMMENT ON COLUMN public.content_calendar_items.brand_plan_author_id IS
   'Issue #4270. The host user who added this post from the Host app. Only with brand_plan_source host_app.';
 COMMENT ON COLUMN public.content_calendar_items.plan_title IS
-  'Issue #4270. The title the brand''s hosts see when the stored title carries more than that. Null: the stored title.';
-COMMENT ON COLUMN public.ops_work_cards.plan_title IS
   'Issue #4270. The title the brand''s hosts see when the stored title carries more than that. Null: the stored title.';
 COMMENT ON COLUMN public.content_calendar_items.brand_plan_source IS
   'Issue #4270. Where a plan post came from: host_card (staff) or host_app (a host).';
@@ -121,29 +116,8 @@ AS $$
   END
 $$;
 
--- Rework (W4 test P2-1, P3-1): the site a link opens, as a browser reads it:
--- lower case, compatibility forms folded, every full stop a plain one. Null when
--- there is no site at all, when it could not be one (too long for an address),
--- or when folding turns part of it into a character that ends a site name.
-CREATE FUNCTION public.brand_plan_link_host(p_url text) RETURNS text
-LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
-AS $$
-  SELECT CASE WHEN char_length(n.raw) <= 253 AND n.host !~ '[/?#@:\\[:space:]]' AND n.host ~ '[^.]' THEN n.host END
-    FROM (SELECT r.raw, replace(lower(normalize(lower(r.raw), NFKC)), U&'\3002', '.') AS host
-            FROM (SELECT substring(p_url FROM '^https://([^/?#:]+)') AS raw) r) n
-$$;
-
--- Rework (W3 test P3-2, W4 test P2-1): a link with a control character, an
--- invisible formatting character (zero-width, bidirectional and the like), an
--- unusual space, anything before the site name, or no site name at all is
--- refused, so the site name on its button always reads as the site it opens.
-CREATE FUNCTION public.brand_plan_link_hidden(p_url text) RETURNS boolean
-LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
-AS $$
-  SELECT p_url ~ '[[:cntrl:]\u0080-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
-      OR p_url ~ '^https://[^/?#]*[@\\]'
-      OR public.brand_plan_link_host(p_url) IS NULL
-$$;
+-- The link rule itself (brand_plan_link_host, brand_plan_link_hidden) sits with the
+-- Files link in 20280411014270: a card and the plan refuse the same links.
 
 -- Rework (W4 test P3-1, D30): one label of a site name as its real address, the
 -- punycode a browser opens (RFC 3492, section 6.3), with the "xn--" a browser
@@ -378,6 +352,10 @@ AS $$
 DECLARE v_tail text;
 BEGIN
   IF NEW.title IS NOT DISTINCT FROM OLD.title OR OLD.plan_title IS NULL OR NEW.plan_title IS DISTINCT FROM OLD.plan_title THEN
+    RETURN NEW;
+  END IF;
+  -- The same words with a new tail (the brand's new name, or a number): hosts' words stand.
+  IF left(NEW.title, char_length(OLD.plan_title) + 3) = OLD.plan_title || ' · ' THEN
     RETURN NEW;
   END IF;
   IF left(OLD.title, char_length(OLD.plan_title)) = OLD.plan_title THEN
@@ -1452,8 +1430,6 @@ REVOKE ALL ON FUNCTION public.brand_plan_free_title(text, text, text, uuid) FROM
 REVOKE ALL ON FUNCTION public.brand_plan_line(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_post_item(public.content_calendar_items, boolean, uuid, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_card_item(public.ops_work_cards, boolean, uuid, boolean) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.brand_plan_link_hidden(text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.brand_plan_link_host(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_label_ascii(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_link_site(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_can_read(uuid, uuid) FROM PUBLIC, anon, authenticated;

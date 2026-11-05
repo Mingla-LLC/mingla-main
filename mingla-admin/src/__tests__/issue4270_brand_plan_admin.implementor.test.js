@@ -198,6 +198,17 @@ describe("B-4 services and the quiet line", () => {
     assert.equal(filesHost("https://саnvа.com/x"), "xn--nv-6kcc5f.com");
     assert.equal(filesUrlProblem("https://drive.google.com/x"), "");
   });
+  it("W4 retest: plan and Files links both refuse www with nothing after it, % in a site, IP addresses and dead stops", () => {
+    for (const bad of ["https://www./x", "https://canva.com%2eevil.example/", "https://%d1%81anva.example/", "https://134744072/", "https://8.8.8.8/", "https://0x8.0x8.0x8.0x8/",
+      "https://[2606:4700:4700::1111]/", "https://canva\u2024com/", "https://a\u24881com/", "https://a|b.example/", "https://user@evil.example/", "https://canva.com\u200B.evil.example/"]) {
+      assert.equal(planLinkProblem(bad), "Links start with https://", bad);
+      assert.equal(filesUrlProblem(bad), "Links start with https://", bad);
+    }
+    for (const good of ["https://www.canva.com/x", "https://canva\u3002com/x", "https://canva.com/50%25-off", "https://1password.com/"]) {
+      assert.equal(planLinkProblem(good), "", good);
+      assert.equal(filesUrlProblem(good), "", good);
+    }
+  });
 });
 
 // Rework after the Wave 3 test: P1-1, P3-2, P3-7, P3-9.

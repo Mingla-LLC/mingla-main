@@ -1,6 +1,8 @@
 // Issue #3980 — pure words and shapes for the Work board, the Agent log and
 // To review. No React and no Supabase here, so every rule is testable alone.
 
+import { planLinkProblem } from "./brandPlan.js";
+
 // #4270: three statuses. "Needs a person" is no longer a status: it is a
 // Send, Spend or Publish tag (person_reason) on a To do or In progress card.
 export const WORK_STATUSES = [
@@ -18,12 +20,10 @@ export const TAG_LABELS = {
 };
 export const PERSON_REASONS = TAG_LABELS;
 
-/** #4270: a Files link is one https link of up to 2,000 characters, no spaces. */
+/** #4270: a Files link is one https link of up to 2,000 characters, on the plan link's rules. */
 export function filesUrlProblem(value) {
-  const v = String(value || "").trim();
-  if (!v) return "";
-  if (v.length > 2000 || !/^https:\/\/\S+$/.test(v) || !/^https:\/\/[^/?#:@\\]/.test(v)) return "Links start with https://";
-  return "";
+  // The same rule as the plan link, so a card and the host's plan always agree.
+  return planLinkProblem(value);
 }
 
 /** The host of a Files link, for its button: "drive.google.com". */

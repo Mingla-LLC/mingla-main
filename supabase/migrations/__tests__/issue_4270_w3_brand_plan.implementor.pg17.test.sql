@@ -737,6 +737,70 @@ begin
 end;
 $r4$;
 
+-- The W4 retest fixes: the site rule on every door and on the Files link, and
+-- hosts' words after a staff undo and after a same-title save.
+do $r5$
+declare v jsonb; v_t text; v_on text := pg_temp.tp_day(13)::text; v_bad text; v_i integer := 0; v_id uuid; v_card uuid; v_rev bigint; v_event uuid;
+  A constant text := '42730000-0000-4000-b0f0-000000000001';
+  HR constant text := '42730000-0000-4000-c0f0-000000000001';
+begin
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R5 link door','on',%L), 'r5-link-door')::text$q$, A, v_on)));
+  v_id := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick',true,'title','R5 files card','owners',jsonb_build_array('gia.p4270@test.local'),'due_on',%L)), 'r5-files-card')::text$q$, v_on)));
+  v_card := (v #>> '{results,0,card,id}')::uuid;
+  foreach v_bad in array ARRAY['https://www./x', 'https://WWW./x', 'https://www../x',
+    'https://canva.com%2eevil.example/', 'https://canva%2ecom/', 'https://%d1%81anva.example/', 'https://canva' || U&'\FF05' || 'com/',
+    'https://134744072/', 'https://8.8.8.8/', 'https://8.8.8.8./', 'https://0x8.0x8.0x8.0x8/', 'https://0x/', 'https://' || U&'\FF11\FF12\FF13' || '/', 'https://[2606:4700:4700::1111]/', 'https://canva' || U&'\FF3B' || 'com/',
+    'https://canva' || U&'\2024' || 'com/', 'https://canva' || U&'\2025' || 'com/', 'https://canva' || U&'\2026' || 'com/', 'https://a' || U&'\2488' || '1com/', 'https://a' || U&'\33C2' || 'com/', 'https://canva' || U&'\FE52' || 'com/', 'https://canva' || U&'\+01F100' || 'com/',
+    'https://a<b.example/', 'https://a>b.example/', 'https://a^b.example/', 'https://a|b.example/', 'https://a' || U&'\FF1C' || 'b.example/']
+  loop
+    v_i := v_i + 1;
+    perform pg_temp.tp_check('P-R5-LINK', 'the rule refuses ' || v_bad, public.brand_plan_link_host(v_bad), null);
+    perform pg_temp.tp_check('P-R5-LINK', 'never shown ' || v_bad, public.brand_plan_link_json(v_bad)::text, null);
+    perform pg_temp.tp_like('P-R5-LINK', 'host add refuses ' || v_bad,
+      pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R5 bad link','on',%L,'link',%L), %L)::text$q$, A, v_on, v_bad, 'r5-bad-' || v_i)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_like('P-R5-LINK', 'staff set_link refuses ' || v_bad,
+      pg_temp.tp_person('growth', format($q$select public.ops_brand_plan_set_link('post', %L, %L, %s)::text$q$, v_id, v_bad, v_rev)), 'ERR:22023:invalid_link:%');
+    perform pg_temp.tp_like('P-R5-FILES', 'a card refuses ' || v_bad,
+      pg_temp.tp_person('growth', format($q$select public.ops_work_update(%L, jsonb_build_object('files_url',%L), %s, %L)::text$q$, v_card, v_bad, (select revision from public.ops_work_cards where id = v_card), 'r5-files-' || v_i)), '%Links start with https://%');
+  end loop;
+  perform pg_temp.tp_check('P-R5-FILES', 'nothing was saved on the card', (select coalesce(files_url, '<none>') from public.ops_work_cards where id = v_card), '<none>');
+  foreach v_bad in array ARRAY['https://user@evil.example/', 'https://canva.com' || U&'\200B' || '.evil.example/'] loop
+    v_i := v_i + 1;
+    perform pg_temp.tp_like('P-R5-FILES', 'a card refuses what the plan drops: ' || v_bad,
+      pg_temp.tp_person('growth', format($q$select public.ops_work_update(%L, jsonb_build_object('files_url',%L), %s, %L)::text$q$, v_card, v_bad, (select revision from public.ops_work_cards where id = v_card), 'r5-files-' || v_i)), '%Links start with https://%');
+  end loop;
+  foreach v_bad in array ARRAY['https://www.canva.com/x', 'https://www/x', 'https://canva.com./x', 'https://canva' || U&'\3002' || 'com/x', 'https://canva' || U&'\FF0E' || 'com/x', 'https://canva' || U&'\FF61' || 'com/x',
+    'https://canva.com/50%25-off', 'https://canva.com/8.8.8.8', 'https://1password.com/', 'https://a1.b2/', 'https://0xcafe.example/']
+  loop
+    perform pg_temp.tp_check('P-R5-LINK', 'still allowed ' || v_bad, (public.brand_plan_link_json(v_bad)->>'url'), v_bad);
+  end loop;
+  perform pg_temp.tp_like('P-R5-FILES', 'a card takes a good link',
+    pg_temp.tp_person('growth', format($q$select public.ops_work_update(%L, jsonb_build_object('files_url','https://drive.google.com/x'), %s, 'r5-files-good')::text$q$, v_card, (select revision from public.ops_work_cards where id = v_card))), '%drive.google.com%');
+
+  -- Staff undo of a rename: hosts read their own words again, not the stored form.
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','task','title','R5 undo me','on',%L), 'r5-undo-task')::text$q$, A, v_on)));
+  v_id := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
+  v_t := pg_temp.tp_person('growth', format($q$select public.ops_work_update(%L, '{"title":"R5 staff words"}'::jsonb, %s, 'r5-undo-rename')::text$q$, v_id, v_rev));
+  perform pg_temp.tp_check('P-R5-UNDO', 'a rename that drops the tail shows the new words', (select coalesce(plan_title, '<null>') from public.ops_work_cards where id = v_id), '<null>');
+  select id into v_event from public.ops_work_events where card_id = v_id and action = 'updated' order by at desc limit 1;
+  v_t := pg_temp.tp_person('growth', format($q$select public.ops_work_undo(%L)::text$q$, v_event));
+  perform pg_temp.tp_check('P-R5-UNDO', 'undo brings back the stored title and the words hosts saw',
+    (select title || '|' || coalesce(plan_title, '<null>') from public.ops_work_cards where id = v_id), 'R5 undo me · P4270 Palm Brand|R5 undo me');
+
+  -- The same words with a new tail (a new brand name or a number, as a host's
+  -- same-title save writes them): hosts keep their words.
+  v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R5 same words','on',%L), 'r5-same-post')::text$q$, A, v_on)));
+  v_id := (v #>> '{item,id}')::uuid;
+  update public.content_calendar_items set title = 'R5 same words · P4270 Palm Renamed (2)' where id = v_id;
+  perform pg_temp.tp_check('P-R5-SAME', 'a new tail keeps the words hosts see',
+    (select coalesce(plan_title, '<null>') from public.content_calendar_items where id = v_id), 'R5 same words');
+  update public.content_calendar_items set title = 'R5 other words · P4270 Palm Renamed (2)' where id = v_id;
+  perform pg_temp.tp_check('P-R5-SAME', 'new words with the same tail still follow',
+    (select coalesce(plan_title, '<null>') from public.content_calendar_items where id = v_id), 'R5 other words');
+end;
+$r5$;
+
 select count(*) as tp_total, count(*) filter (where not ok) as tp_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as tp_failures
   from tp_results \gset

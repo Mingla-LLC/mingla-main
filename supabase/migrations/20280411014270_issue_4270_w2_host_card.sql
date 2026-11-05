@@ -67,6 +67,52 @@ AS $$
     FROM (SELECT public.crm_display_name(p_email) AS n) s
 $$;
 
+ALTER TABLE public.ops_work_cards ADD COLUMN plan_title text;
+ALTER TABLE public.ops_work_cards ADD CONSTRAINT ops_work_cards_plan_title_check
+  CHECK (plan_title IS NULL OR char_length(plan_title) BETWEEN 1 AND 160);
+COMMENT ON COLUMN public.ops_work_cards.plan_title IS
+  'Issue #4270. The title the brand''s hosts see when the stored title carries more than that. Null: the stored title.';
+
+-- ---------------------------------------------------------------------------
+-- 1b. The link rule, shared by the Files link here and the plan link (next
+--     migration). Rework (W4 tests P2-1, P3-1; retest P2-B and P3 1 to 3, 5).
+-- ---------------------------------------------------------------------------
+-- The site a link opens, as a browser reads it: lower case, compatibility forms
+-- folded, every real full stop a plain one. Null when a person could not read the
+-- label as what it opens, or a browser would not open it:
+--   * no site at all, including "www." with nothing after it; too long for an address
+--   * folding turns a character into one that ends or breaks a site name, or into
+--     an extra full stop (a one-dot leader reads "canva.com" and opens nothing)
+--   * % in the site, which a browser decodes into a different site
+--   * an IP address in any spelling: brackets, or a last label that is a number
+CREATE FUNCTION public.brand_plan_link_host(p_url text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE WHEN char_length(n.raw) <= 253
+               AND n.host !~ '[/?#@:\\%<>^|\[\][:space:]]'
+               AND regexp_replace(n.host, '^www\.', '') ~ '[^.]'
+               AND char_length(n.host) - char_length(replace(n.host, '.', '')) = char_length(n.stops) - char_length(replace(n.stops, '.', ''))
+               AND substring(regexp_replace(n.host, '\.$', '') FROM '[^.]*$') !~ '^([0-9]+|0x[0-9a-f]*)$'
+              THEN n.host END
+    FROM (SELECT s.raw, s.stops, lower(normalize(lower(s.stops), NFKC)) AS host
+            FROM (SELECT r.raw, regexp_replace(r.raw, U&'[\3002\FF0E\FF61]', '.', 'g') AS stops
+                    FROM (SELECT substring(p_url FROM '^https://([^/?#:]+)') AS raw) r) s) n
+$$;
+
+-- A link with a control character, an invisible formatting character (zero-width,
+-- bidirectional and the like), an unusual space, anything before the site name, or
+-- a site that fails the rule above is refused, so the site name on its button
+-- always reads as the site it opens.
+CREATE FUNCTION public.brand_plan_link_hidden(p_url text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT p_url ~ '[[:cntrl:]\u0080-\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890\u0891\u08E2\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
+      OR p_url ~ '^https://[^/?#]*[@\\]'
+      OR public.brand_plan_link_host(p_url) IS NULL
+$$;
+REVOKE ALL ON FUNCTION public.brand_plan_link_host(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_link_hidden(text) FROM PUBLIC, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 2-5. Readers and writers (bodies copied from their latest definitions;
 --      only the #4270 W2 lines change).
@@ -232,7 +278,7 @@ BEGIN
     v_files := CASE WHEN jsonb_typeof(p_item->'files_url') = 'string' THEN btrim(p_item->>'files_url') END;
     IF v_files = '' THEN v_files := NULL;
     ELSIF v_files IS NULL OR char_length(v_files) NOT BETWEEN 9 AND 2000 OR v_files !~ '^https://[^[:space:]]+$'
-          OR v_files !~ '^https://[^/?#:@\\]' OR public.ops_has_control(v_files) THEN
+          OR v_files !~ '^https://[^/?#:@\\]' OR public.brand_plan_link_hidden(v_files) THEN
       v_fixes := v_fixes || jsonb_build_array(jsonb_build_object('field', 'files_url', 'message', 'Links start with https:// and stay under 2,000 characters.'));
       v_files := NULL;
     END IF;
@@ -1228,6 +1274,8 @@ BEGIN
       -- #4270 W2 rework (P3-5): Undo puts back Host can see this. Undo is a
       -- person's (an agent never undoes), so D15 still holds.
       on_brand_plan = r.on_brand_plan,
+      -- The words hosts saw go back with the stored title (W4 retest P3 4).
+      plan_title = r.plan_title,
       blocked = r.blocked, blocked_kind = r.blocked_kind, blocked_reason = r.blocked_reason, person_reason = r.person_reason,
       anchor_kind = r.anchor_kind, anchor_id = r.anchor_id, due_on = r.due_on, due_source = r.due_source, sprint_id = r.sprint_id,
       plan = r.plan, result = r.result, proof = r.proof, close_kind = r.close_kind, close_reason = r.close_reason,
