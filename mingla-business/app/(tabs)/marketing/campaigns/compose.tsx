@@ -81,7 +81,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -222,6 +221,7 @@ import {
   getOrCreateCombinedAudience,
 } from "../../../../src/services/marketing/marketingCombinedAudienceService";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
+import { ComposerMethodCards } from "../../../../src/components/marketing/ComposerMethodCards";
 import { SmsComposeCard } from "../../../../src/components/marketing/SmsComposeCard";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import type {
@@ -344,7 +344,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // of fixed height. Sharing the height squeezed the editor under the cards. Native
   // keeps its own region: the editor's WebView stays out of any ScrollView (F.7).
   const methodCardsFlow = Platform.OS === "web";
-  const MethodCardsHost: React.ElementType = methodCardsFlow ? View : ScrollView;
   const params = useLocalSearchParams<{
     audience?: string;
     draft?: string;
@@ -2341,14 +2340,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   </View>
                 )}
                 {sendChannels.has("sms") || sendChannels.has("push") ? (
-                  <MethodCardsHost
+                  <ComposerMethodCards
+                    inFlow={methodCardsFlow}
                     style={methodCardsFlow
                       ? styles.methodCardsInFlow
                       : [
                           styles.methodCards,
                           sendChannels.has("email") ? styles.methodCardsUnderEditor : null,
                         ]}
-                    {...(methodCardsFlow ? {} : { keyboardShouldPersistTaps: "handled" as const })}
                     testID="composer-method-cards"
                   >
                     {sendChannels.has("sms") ? (
@@ -2394,7 +2393,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                         reason={pushAudienceReason}
                       />
                     ) : null}
-                  </MethodCardsHost>
+                  </ComposerMethodCards>
                 ) : null}
               </View>
 

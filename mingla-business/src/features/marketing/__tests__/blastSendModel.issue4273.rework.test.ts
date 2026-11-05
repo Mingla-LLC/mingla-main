@@ -184,6 +184,6 @@ describe("#4273 the composer's wiring", () => {
   });
   it("a browser at any width lays the cards in the page, not in a box of their own", () => {
     expect(compose).toContain('const methodCardsFlow = Platform.OS === "web";');
-    expect(compose).toContain("<MethodCardsHost");
+    expect(compose).toContain("inFlow={methodCardsFlow}");
   });
 });

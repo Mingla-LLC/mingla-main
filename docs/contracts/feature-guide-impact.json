@@ -830,6 +830,7 @@
         "mingla-business/src/components/marketing/AudiencePickerSheet.tsx",
         "mingla-business/src/components/marketing/CampaignChannelSelector.tsx",
         "mingla-business/src/components/marketing/ChannelTabs.tsx",
+        "mingla-business/src/components/marketing/ComposerMethodCards.tsx",
         "mingla-business/src/components/marketing/ComposerPreviewTabs.tsx",
         "mingla-business/src/components/marketing/ComposerReviewSheet.tsx",
         "mingla-business/src/components/marketing/ComposerSentConfirmation.tsx",

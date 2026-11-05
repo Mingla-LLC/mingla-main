@@ -327,7 +327,7 @@ if (process.argv.includes("--self-test")) {
   good.webhook =
     'data === "campaign_unmatched" data === "campaign_unmatched_stale" status: 500 correlationHash';
   good.overviewService =
-    'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0 .in("campaign_id", ids) .in("campaign_id", ids)';
+    'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0 .in("campaign_id", ids) p_campaign_ids: ids';
   good.reportService =
     'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0 hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0';
   good.overview =
