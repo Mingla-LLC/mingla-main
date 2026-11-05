@@ -384,6 +384,12 @@ function enclosingFunction(clean, index) {
   return best;
 }
 
+/** What a function's own definition head is rewritten to before calls are counted. */
+const DEFN_MARKER = " DEFN( ";
+/** Statements that name a function without calling it. */
+const FUNCTION_DDL_RE =
+  /(?:DROP\s+FUNCTION|GRANT|REVOKE|COMMENT\s+ON\s+FUNCTION|ALTER\s+FUNCTION)[^;]*;/gi;
+
 /** Analyse readers, advancers and advancer reachability for every lifecycle table. */
 export function analyze(migrations, callerSources) {
   const tables = findLifecycleTables(migrations);
@@ -392,6 +398,32 @@ export function analyze(migrations, callerSources) {
   }));
   const allClean = cleanByFile.map((c) => c.clean).join("\n");
   const allCallers = callerSources.join("\n");
+
+  // #4261: stripping every migration's literals used to run once per advancer,
+  // a 5.5 s pass repeated for every UPDATE found. The stripped text depends only
+  // on the file, so it is taken once; each function's answer is then the same
+  // for every UPDATE it holds.
+  const literalFreeByFile = cleanByFile.map((c) => stripSqlLiterals(c.clean));
+  const reachabilityByFn = new Map();
+  const isCalled = (fn) => {
+    if (reachabilityByFn.has(fn)) return reachabilityByFn.get(fn);
+    const callRe = new RegExp(`(?:public\\.)?\\b${fn}\\s*\\(`);
+    const rpcRe = new RegExp(`\\brpc\\(\\s*["'\`]${fn}["'\`]`);
+    const defnRe = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, "gi");
+    let called = false;
+    for (const literalFree of literalFreeByFile) {
+      // The two replaces below only remove text or insert DEFN_MARKER, so a file
+      // that never spells the name cannot produce a call, unless the name is
+      // itself part of the marker.
+      if (!literalFree.includes(fn) && !DEFN_MARKER.includes(fn)) continue;
+      // Calls inside the function's OWN definition line do not count.
+      const stripped = literalFree.replace(defnRe, DEFN_MARKER).replace(FUNCTION_DDL_RE, " ");
+      if (callRe.test(stripped)) { called = true; break; }
+    }
+    if (!called) called = callRe.test(allCallers) || rpcRe.test(allCallers);
+    reachabilityByFn.set(fn, called);
+    return called;
+  };
 
   const results = [];
   for (const info of tables.values()) {
@@ -434,21 +466,7 @@ export function analyze(migrations, callerSources) {
     const unreachableFns = [];
     for (const a of advancers) {
       if (a.fn === null) { reachableAdvancer = true; continue; }
-      const callRe = new RegExp(`(?:public\\.)?\\b${a.fn}\\s*\\(`, "g");
-      const rpcRe = new RegExp(`\\brpc\\(\\s*["'\`]${a.fn}["'\`]`, "g");
-      // Calls inside the function's OWN definition line do not count.
-      let migCalls = 0;
-      for (const { clean } of cleanByFile) {
-        const stripped = stripSqlLiterals(clean).replace(
-          new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${a.fn}\\s*\\(`, "gi"),
-          " DEFN( ",
-        ).replace(new RegExp(`(?:DROP\\s+FUNCTION|GRANT|REVOKE|COMMENT\\s+ON\\s+FUNCTION|ALTER\\s+FUNCTION)[^;]*;`, "gi"), " ");
-        migCalls += (stripped.match(callRe) || []).length;
-        callRe.lastIndex = 0;
-      }
-      const appCalls = (allCallers.match(callRe) || []).length
-        + (allCallers.match(rpcRe) || []).length;
-      if (migCalls > 0 || appCalls > 0) reachableAdvancer = true;
+      if (isCalled(a.fn)) reachableAdvancer = true;
       else unreachableFns.push(a.fn);
     }
 
