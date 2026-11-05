@@ -1624,7 +1624,9 @@ export function buildWebsiteSetupPresentation(
     };
   }
   const plan = object(planRead.result);
-  const status = object(plan.status);
+  // #2830 — the one status, the same numbers the setup screen shows. The old
+  // tick is only for the deploy window before the migration.
+  const status = plan.setup_status ? object(plan.setup_status) : object(plan.status);
   const completeness = object(plan.completeness);
   const parts = Array.isArray(status.parts) ? status.parts.map(object) : [];
   const doneParts = parts.filter((part) => part.done === true).map((part) =>

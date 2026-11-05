@@ -53,8 +53,8 @@ BEGIN
     OR has_function_privilege('authenticated','public.ari_flow_brand_run_get(uuid,uuid,text)','EXECUTE')
     OR has_function_privilege('authenticated','public.ari_flow_run_displacement_get(uuid,uuid)','EXECUTE')
     OR has_function_privilege('authenticated','public.ari_flow_run_displacement_mark(uuid,uuid)','EXECUTE')
-    OR has_function_privilege('authenticated','public.ari_brand_research_claim(uuid,uuid)','EXECUTE')
-    OR has_function_privilege('authenticated','public.ari_brand_research_finish(uuid,text,jsonb)','EXECUTE')
+    OR has_function_privilege('authenticated','public.ari_brand_research_claim(uuid,uuid,text)','EXECUTE')
+    OR has_function_privilege('authenticated','public.ari_brand_research_finish(uuid,text,jsonb,text)','EXECUTE')
     OR has_table_privilege('authenticated','public.ari_flow_run_takeovers','SELECT')
     OR has_table_privilege('authenticated','public.ari_brand_setup_research','SELECT') THEN
     RAISE EXCEPTION 'T-TAKE-14: takeover and research must be service-role only';
@@ -387,6 +387,39 @@ BEGIN
   IF (v_r->>'allowed')::boolean IS NOT FALSE OR v_r->>'status' <> 'found'
     OR v_r->'candidates'->'contact_email'->0->>'value' <> 'a@b.co' THEN
     RAISE EXCEPTION 'research cache hit: %', v_r;
+  END IF;
+  -- A rename: the old result is cleared, an unconfirmed finding goes, one new search.
+  UPDATE public.ari_brand_setup_research SET identity = 'lantern room|lagos' WHERE brand_id = v_brand;
+  INSERT INTO public.brand_context_field_evidence(brand_id,field_key,disposition,source_type,source_ref,source_url,evidence_candidates)
+  VALUES (v_brand,'contact_phone','stale','public_research','research:x','https://x.example/','[]');
+  v_r := public.ari_brand_research_claim(v_owner,v_brand,'lantern room|lagos');
+  IF (v_r->>'allowed')::boolean IS NOT FALSE OR v_r->>'status' <> 'found' THEN RAISE EXCEPTION 'same identity is a cache hit: %', v_r; END IF;
+  v_r := public.ari_brand_research_claim(v_owner,v_brand,'new name|lagos');
+  IF (v_r->>'allowed')::boolean IS NOT TRUE OR (v_r->>'cleared')::boolean IS NOT TRUE OR v_r->'candidates' <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'a rename must clear and search again: %', v_r;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.brand_context_field_evidence WHERE brand_id = v_brand AND field_key = 'contact_phone') THEN
+    RAISE EXCEPTION 'a rename must drop unconfirmed findings';
+  END IF;
+  -- A search that finishes for the old name is dropped.
+  IF public.ari_brand_research_finish(v_brand,'found','{"contact_email":[{"value":"old@b.co"}]}','lantern room|lagos') THEN
+    RAISE EXCEPTION 'a late result for the old name was kept';
+  END IF;
+  -- At most 3 renames search; after that, cleared and no search.
+  UPDATE public.ari_brand_setup_research SET identity_resets = 3 WHERE brand_id = v_brand;
+  v_r := public.ari_brand_research_claim(v_owner,v_brand,'third name|lagos');
+  IF (v_r->>'allowed')::boolean IS NOT FALSE OR (v_r->>'cleared')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'rename cap: %', v_r;
+  END IF;
+  -- One person, 25 searches a day across brands.
+  DELETE FROM public.ari_brand_setup_research WHERE brand_id = v_brand;
+  INSERT INTO public.brands(id,account_id,name,slug,default_currency)
+  SELECT gen_random_uuid(),v_other_owner,'Cap '||g,'cap-2830-'||g,'GBP' FROM generate_series(1,25) g;
+  INSERT INTO public.ari_brand_setup_research(brand_id,status,started_by)
+  SELECT id,'nothing',v_owner FROM public.brands WHERE slug LIKE 'cap-2830-%';
+  v_r := public.ari_brand_research_claim(v_owner,v_brand);
+  IF (v_r->>'allowed')::boolean IS NOT FALSE OR v_r->>'status' <> 'capped' THEN
+    RAISE EXCEPTION 'daily cap: %', v_r;
   END IF;
   -- Public values stay untouched by all of that.
   IF (SELECT contact_email FROM public.brands WHERE id = v_brand) IS NOT NULL THEN

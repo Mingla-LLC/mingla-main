@@ -25,6 +25,7 @@ export const FLOW_TAKE_OVER_CONFLICTS: ReadonlySet<string> = new Set([
   "flow_run_terminal",
   "flow_revision_conflict",
   "flow_brand_paused",
+  "flow_form_locked",
 ]);
 
 type Result = { status: number; body: Record<string, unknown> };

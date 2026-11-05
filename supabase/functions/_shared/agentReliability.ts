@@ -37,6 +37,7 @@ export type AriErrorCode =
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "FLOW_TAKEN_OVER"
   | "PROPOSAL_EXPIRED"
   | "CONFLICT"
   | "RATE_LIMITED"
@@ -157,6 +158,16 @@ export const ARI_ERROR_REGISTRY: Readonly<
     operationState: "pending",
     userMessage:
       "This proposal changed. Review the latest version before confirming.",
+  },
+  // #2830 — a teammate took this Website setup over, so this card can't save.
+  // SC-8: the person is told why, in the approved words.
+  FLOW_TAKEN_OVER: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "pending",
+    userMessage:
+      "A teammate took over Website setup, so that didn't save. Everything you answered before is still there.",
   },
   // #2830 — an Ari approval that timed out. Terminal and explicit: nothing was
   // saved, and the owner is told so instead of the card silently vanishing.
@@ -402,16 +413,26 @@ export function successEnvelope<T>(
 export function errorEnvelope(
   context: AriEnvelopeContext,
   code: AriErrorCode,
-  options: { userMessage?: string; retryAfterSeconds?: number } = {},
+  options: {
+    userMessage?: string;
+    retryAfterSeconds?: number;
+    /** #2830 — FLOW_TAKEN_OVER only: who took over. Fills a fixed sentence. */
+    takenOverBy?: string;
+  } = {},
 ): { status: number; body: AriErrorEnvelope } {
   const definition = ARI_ERROR_REGISTRY[code];
+  const takenOverBy = code === "FLOW_TAKEN_OVER"
+    ? options.takenOverBy?.replace(/\s+/g, " ").trim().slice(0, 80)
+    : undefined;
   const body: AriErrorEnvelope = {
     ...envelopeBase(context, {
       kind: "error",
       code,
       // Error copy is registry-owned. The compatibility option is intentionally
       // ignored so a widened caller cannot echo an exception/provider string.
-      user_message: definition.userMessage,
+      user_message: takenOverBy
+        ? definition.userMessage.replace("A teammate", takenOverBy)
+        : definition.userMessage,
       retryability: definition.retryability,
       safe_to_retry: definition.safeToRetry,
       operation_state: definition.operationState,

@@ -80,7 +80,7 @@ import {
   liveFlowRunFor,
   websiteSetupNextAfterConfirm,
 } from "./confirmNext.ts";
-import { type FlowStateView, takenOverText } from "../_shared/ariFlows/edge.ts";
+import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -716,7 +716,7 @@ async function handleConfirmAction(args: {
     pending.status === "superseded" &&
     pending.failure_reason === "flow_taken_over"
   ) {
-    let name = "A teammate";
+    let name: string | undefined;
     try {
       const { data } = await pendingStateClient.rpc(
         "ari_flow_run_displacement_get",
@@ -729,7 +729,7 @@ async function handleConfirmAction(args: {
     } catch {
       // The name is a courtesy; the refusal stands either way.
     }
-    return errorResponse(409, "FLOW_TAKEN_OVER", takenOverText(name));
+    return ariErrorResponse(409, "FLOW_TAKEN_OVER", "", { taken_over_by: name });
   }
   // #3355 P1: a newer proposal in this chat replaced this one. Nothing ran;
   // the owner reviews the newest card instead.

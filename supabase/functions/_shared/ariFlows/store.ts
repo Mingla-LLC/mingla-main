@@ -250,6 +250,7 @@ function failure(
       "flow_run_busy",
       "flow_brand_paused",
       "flow_takeover_invalid",
+      "flow_form_locked",
     ]
   ) {
     if (message.includes(code)) return new FlowConflict(code);

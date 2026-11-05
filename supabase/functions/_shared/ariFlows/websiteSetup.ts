@@ -591,6 +591,10 @@ async function withResearch(
   } catch (_error) {
     research = null;
   }
+  // An empty answer means the brand changed since this was found: don't offer it.
+  if (research && Object.keys(research).length === 0) {
+    return { field: { ...field, evidence_candidates: [] }, found: null };
+  }
   const existing = singleFound(field);
   if (existing) return { field, found: existing };
   if (!isResearchField(key) || field.state !== "missing") {

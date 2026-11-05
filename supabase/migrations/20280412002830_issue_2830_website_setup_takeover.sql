@@ -370,8 +370,22 @@ BEGIN
       WHERE a.conversation_id = v_run.conversation_id
         AND a.user_id = v_run.started_by
         AND a.status = 'executing'
+        -- The #3355 rule: an executing row past its 2-minute lease blocks nothing.
+        AND COALESCE(a.executing_started_at, a.execution_attested_at, a.created_at)
+          > now() - interval '2 minutes'
     )) THEN
     RAISE EXCEPTION 'flow_run_busy' USING ERRCODE = 'PT409';
+  END IF;
+  -- "Continue" carries no warning, so it can't take a third person's live form.
+  -- "Take over" warned them first.
+  IF p_mode = 'continue' AND EXISTS (
+    SELECT 1 FROM public.brand_site_plans plan
+    WHERE plan.brand_id = v_run.brand_id
+      AND plan.lock_holder IS NOT NULL
+      AND plan.lock_holder NOT IN (p_user_id, v_run.started_by)
+      AND plan.lock_expires_at > now()
+  ) THEN
+    RAISE EXCEPTION 'flow_form_locked' USING ERRCODE = 'PT409';
   END IF;
   IF p_conversation_id IS NOT NULL THEN
     IF NOT EXISTS (
@@ -760,6 +774,9 @@ CREATE TABLE IF NOT EXISTS public.ari_brand_setup_research (
   candidates jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (
     jsonb_typeof(candidates) = 'object' AND octet_length(candidates::text) <= 20000
   ),
+  -- Who the search was for. A rename or a move makes the result someone else's.
+  identity text NULL CHECK (identity IS NULL OR length(identity) <= 400),
+  identity_resets smallint NOT NULL DEFAULT 0 CHECK (identity_resets BETWEEN 0 AND 3),
   started_by uuid NOT NULL,
   started_at timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz NULL,
@@ -773,33 +790,81 @@ COMMENT ON TABLE public.ari_brand_setup_research IS
   '#2830: the one public search (plus one retry) Ari runs for a brand''s setup, and its same-brand candidates, cached so re-entering setup does not pay again.';
 
 -- allowed=true means the caller may spend one search now. Anything else is the
--- cached answer, or "not again".
-CREATE OR REPLACE FUNCTION public.ari_brand_research_claim(p_user_id uuid, p_brand_id uuid)
-RETURNS jsonb
+-- cached answer, or "not again". Cached results never expire, but they belong to
+-- the identity they were found for: a rename clears them and any unconfirmed
+-- finding, and may search again, at most 3 times per brand. One person can start
+-- at most 25 searches a day across brands.
+CREATE OR REPLACE FUNCTION public.ari_brand_research_claim(
+  p_user_id uuid,
+  p_brand_id uuid,
+  p_identity text DEFAULT NULL
+) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_row public.ari_brand_setup_research%ROWTYPE;
+  v_cleared boolean := false;
+  v_over_cap boolean;
 BEGIN
   IF p_user_id IS NULL OR COALESCE(public.biz_brand_effective_rank(p_brand_id, p_user_id), 0) < 50 THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
-  INSERT INTO public.ari_brand_setup_research(brand_id, status, attempts, started_by)
-  VALUES (p_brand_id, 'running', 1, p_user_id)
-  ON CONFLICT (brand_id) DO NOTHING
-  RETURNING * INTO v_row;
-  IF FOUND THEN
-    RETURN jsonb_build_object('allowed', true, 'status', 'running', 'attempts', 1, 'candidates', '{}'::jsonb);
-  END IF;
+  v_over_cap := (
+    SELECT count(*) FROM public.ari_brand_setup_research r
+    WHERE r.started_by = p_user_id AND r.brand_id <> p_brand_id
+      AND r.started_at > now() - interval '1 day'
+  ) >= 25;
   SELECT * INTO v_row FROM public.ari_brand_setup_research WHERE brand_id = p_brand_id FOR UPDATE;
+  IF NOT FOUND THEN
+    IF v_over_cap THEN
+      RETURN jsonb_build_object('allowed', false, 'status', 'capped', 'attempts', 0, 'candidates', '{}'::jsonb);
+    END IF;
+    INSERT INTO public.ari_brand_setup_research(brand_id, status, attempts, started_by, identity)
+    VALUES (p_brand_id, 'running', 1, p_user_id, p_identity)
+    ON CONFLICT (brand_id) DO NOTHING
+    RETURNING * INTO v_row;
+    IF FOUND THEN
+      RETURN jsonb_build_object('allowed', true, 'status', 'running', 'attempts', 1, 'candidates', '{}'::jsonb);
+    END IF;
+    SELECT * INTO v_row FROM public.ari_brand_setup_research WHERE brand_id = p_brand_id FOR UPDATE;
+  END IF;
+
+  IF p_identity IS NOT NULL AND p_identity IS DISTINCT FROM v_row.identity THEN
+    IF v_row.identity IS NOT NULL THEN
+      v_cleared := true;
+      DELETE FROM public.brand_context_field_evidence e
+      WHERE e.brand_id = p_brand_id
+        AND e.field_key IN ('city_country','contact_email','contact_phone','address','social_links')
+        AND e.source_type = 'public_research'
+        AND e.disposition = 'stale'
+        AND e.owner_confirmed_at IS NULL;
+      IF v_row.identity_resets >= 3 OR v_over_cap THEN
+        UPDATE public.ari_brand_setup_research
+        SET identity = p_identity, candidates = '{}'::jsonb, status = 'nothing',
+          finished_at = now(), updated_at = now()
+        WHERE brand_id = p_brand_id;
+        RETURN jsonb_build_object('allowed', false, 'status', 'nothing',
+          'attempts', v_row.attempts, 'candidates', '{}'::jsonb, 'cleared', true);
+      END IF;
+      UPDATE public.ari_brand_setup_research
+      SET identity = p_identity, candidates = '{}'::jsonb, status = 'running', attempts = 1,
+        identity_resets = identity_resets + 1, started_by = p_user_id,
+        started_at = now(), finished_at = NULL, updated_at = now()
+      WHERE brand_id = p_brand_id;
+      RETURN jsonb_build_object('allowed', true, 'status', 'running',
+        'attempts', 1, 'candidates', '{}'::jsonb, 'cleared', true);
+    END IF;
+    UPDATE public.ari_brand_setup_research SET identity = p_identity WHERE brand_id = p_brand_id;
+  END IF;
+
   IF v_row.status IN ('found','nothing')
     OR (v_row.status = 'running' AND v_row.started_at > now() - interval '2 minutes') THEN
     RETURN jsonb_build_object('allowed', false, 'status', v_row.status,
       'attempts', v_row.attempts, 'candidates', v_row.candidates);
   END IF;
   -- Unavailable, or a search that died: one retry, then never again.
-  IF v_row.attempts >= 2 THEN
+  IF v_row.attempts >= 2 OR v_over_cap THEN
     IF v_row.status = 'running' THEN
       UPDATE public.ari_brand_setup_research
       SET status = 'unavailable', finished_at = now(), updated_at = now()
@@ -818,13 +883,15 @@ BEGIN
     'attempts', v_row.attempts, 'candidates', '{}'::jsonb);
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.ari_brand_research_claim(uuid,uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.ari_brand_research_claim(uuid,uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.ari_brand_research_claim(uuid,uuid,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ari_brand_research_claim(uuid,uuid,text) TO service_role;
 
+-- A search that finishes after a rename belongs to the old identity: dropped.
 CREATE OR REPLACE FUNCTION public.ari_brand_research_finish(
   p_brand_id uuid,
   p_status text,
-  p_candidates jsonb DEFAULT '{}'::jsonb
+  p_candidates jsonb DEFAULT '{}'::jsonb,
+  p_identity text DEFAULT NULL
 ) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
@@ -836,9 +903,10 @@ BEGIN
   END IF;
   UPDATE public.ari_brand_setup_research
   SET status = p_status, candidates = p_candidates, finished_at = now(), updated_at = now()
-  WHERE brand_id = p_brand_id AND status = 'running';
+  WHERE brand_id = p_brand_id AND status = 'running'
+    AND (p_identity IS NULL OR identity IS NOT DISTINCT FROM p_identity);
   RETURN FOUND;
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.ari_brand_research_finish(uuid,text,jsonb) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.ari_brand_research_finish(uuid,text,jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.ari_brand_research_finish(uuid,text,jsonb,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ari_brand_research_finish(uuid,text,jsonb,text) TO service_role;

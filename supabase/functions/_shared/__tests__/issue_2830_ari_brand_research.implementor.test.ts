@@ -18,6 +18,7 @@ import {
   extractCandidates,
   mergeCandidates,
   pageBelongsToBrand,
+  pageTitle,
   prepareBrandResearch,
   type ResearchPage,
   type ResearchRunDeps,
@@ -156,11 +157,11 @@ Deno.test("same-brand evidence: owned domain, saved handle, or exact name plus c
     handles: [{ host: "instagram.com", handle: "lanternroom" }],
   };
   assertEquals(
-    pageBelongsToBrand(handle, page("https://other.example/", "Anything", `<a href="https://www.instagram.com/lanternroom/">ig</a>`)),
+    pageBelongsToBrand(handle, page("https://other.example/", "Lantern Room", `<a href="https://www.instagram.com/lanternroom/">ig</a>`)),
     "handle",
   );
   assertEquals(
-    pageBelongsToBrand(handle, page("https://other.example/", "Anything", `<a href="https://www.instagram.com/someoneelse/">ig</a>`)),
+    pageBelongsToBrand(handle, page("https://other.example/", "Lantern Room", `<a href="https://www.instagram.com/someoneelse/">ig</a>`)),
     null,
   );
   assertEquals(pageBelongsToBrand(IDENTITY, OWN), "name_city");
@@ -353,6 +354,30 @@ Deno.test("never slows the question: a slow claim gives up, and a saved field or
     null,
   );
   assertEquals(service.calls, []);
+});
+
+Deno.test("a rename clears: nothing old is offered, and the identity travels with the claim and the result", async () => {
+  const service = fakeService(() => ({ allowed: false, status: "nothing", cleared: true, candidates: {} }));
+  const answer = await prepareBrandResearch({
+    // deno-lint-ignore no-explicit-any
+    service: service.client as any,
+    userId: USER,
+    brandId: BRAND,
+    plan: planWith(),
+    schedule: () => assert(false, "must not schedule"),
+  });
+  assertEquals(answer, {});
+  assertEquals(service.calls[0].args.p_identity, "lantern room|lagos");
+});
+
+Deno.test("hostile pages at the full fetch size stay linear; the title reader too", () => {
+  for (const html of ["<a ".repeat(230_000), "<".repeat(700_000), "<script ".repeat(80_000), "a".repeat(700_000) + "@", "<!--".repeat(170_000)]) {
+    const candidate = { url: "https://lanternroom.example/", title: pageTitle(html), html };
+    const started = performance.now();
+    pageBelongsToBrand({ ...IDENTITY, ownedHosts: ["lanternroom.example"] }, candidate);
+    extractCandidates({ page: candidate, basis: "owned_domain", observedAt: "t" });
+    assert(performance.now() - started < 1_000, html.slice(0, 12));
+  }
 });
 
 Deno.test("the source line is plain words", () => {

@@ -41,6 +41,10 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "This chat belongs to a different brand. Start a new chat for this brand.",
   STALE_PROPOSAL:
     "That request is out of date. Nothing was changed; ask Ari again.",
+  // #2830 — the screen shows the server's sentence, which names who; this is the
+  // same words for a reply that has no name in it.
+  FLOW_TAKEN_OVER:
+    "A teammate took over Website setup, so that didn't save. Everything you answered before is still there.",
   // #2830 — an approval that timed out. The registry's own sentence, verbatim.
   PROPOSAL_EXPIRED: ARI_PROPOSAL_EXPIRED_COPY,
   CONFLICT:

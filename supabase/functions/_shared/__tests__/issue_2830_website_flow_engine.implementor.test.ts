@@ -55,6 +55,7 @@ import {
   flowTakeOver,
 } from "../../agent-turn-control/flowSetup.ts";
 import { FlowConflict } from "../ariFlows/store.ts";
+import { errorEnvelope } from "../agentReliability.ts";
 import { buildProposalPresentation } from "../ariPresentation/registry.ts";
 import { verifiedProposalArgs } from "../agentTicketPricing.ts";
 import { flowNextAfterConfirm } from "../../agent-confirm-action/confirmNext.ts";
@@ -2303,6 +2304,26 @@ Deno.test("#2830 T-EDGE-7: confirming a card from a taken-over run names the per
   const at = source.indexOf('pending.failure_reason === "flow_taken_over"');
   const generic = source.indexOf('"A newer version of this change is waiting for you."');
   assert(at > 0 && at < generic, "the taken-over check must run first");
-  assertMatch(source, /errorResponse\(409, "FLOW_TAKEN_OVER", takenOverText\(name\)\)/);
+  assertMatch(source, /ariErrorResponse\(409, "FLOW_TAKEN_OVER", "", \{ taken_over_by: name \}\)/);
   assertMatch(source, /select\(\s*"id, conversation_id, tool_name, tool_args, status, failure_reason/);
+});
+
+Deno.test("#2830 SC-8: the displaced person's envelope carries the approved words, never retry", () => {
+  const context = {
+    requestId: "11111111-1111-4111-8111-111111111111",
+    release: { release_sha: "a".repeat(40), function_version: "x" },
+  };
+  // deno-lint-ignore no-explicit-any
+  const named = errorEnvelope(context as any, "FLOW_TAKEN_OVER", { takenOverBy: "Ama" });
+  assertEquals(named.status, 409);
+  assertEquals(named.body.code, "FLOW_TAKEN_OVER");
+  assertEquals(named.body.user_message, TAKEN);
+  assertEquals(named.body.safe_to_retry, false);
+  // deno-lint-ignore no-explicit-any
+  const unnamed = errorEnvelope(context as any, "FLOW_TAKEN_OVER");
+  assertMatch(unnamed.body.user_message, /^A teammate took over Website setup/);
+  // No other code can be given words this way.
+  // deno-lint-ignore no-explicit-any
+  const other = errorEnvelope(context as any, "CONFLICT", { takenOverBy: "Ama" });
+  assertNotMatch(other.body.user_message, /Ama/);
 });

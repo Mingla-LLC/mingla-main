@@ -77,6 +77,7 @@ export type AriErrorCode =
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "FLOW_TAKEN_OVER"
   | "PROPOSAL_EXPIRED"
   | "CONFLICT"
   | "RATE_LIMITED"
@@ -139,6 +140,12 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     operationState: "none",
   },
   STALE_PROPOSAL: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "pending",
+  },
+  // #2830 — a teammate took this Website setup over; nothing was saved.
+  FLOW_TAKEN_OVER: {
     retryability: "never",
     safeToRetry: false,
     operationState: "pending",

@@ -126,7 +126,7 @@ export function brandIdentityFromPlan(
     const host = hostOf(url);
     if (!host) continue;
     if (key === "website") {
-      if (!NOT_A_SOURCE.test(host)) ownedHosts.push(host);
+      if (!NOT_A_SOURCE.test(host) && !isSharedHost(host)) ownedHosts.push(host);
       continue;
     }
     if (!SOCIAL_HOSTS[host]) continue;
@@ -140,6 +140,13 @@ export function brandIdentityFromPlan(
   }
   if (!city && ownedHosts.length === 0 && handles.length === 0) return null;
   return { brandId, name, city, ownedHosts, handles };
+}
+
+/** Who a search was for: a rename or a move makes its result someone else's. */
+export function researchIdentity(identity: BrandIdentity): string {
+  return `${normalizeWords(identity.name)}|${
+    normalizeWords(identity.city ?? "")
+  }`.slice(0, 400);
 }
 
 export function researchQuery(identity: BrandIdentity): string {
@@ -156,23 +163,147 @@ export interface ResearchPage {
   html: string;
 }
 
-/** Visible words only; scripts, styles and comments are not the page speaking. */
-function visibleText(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+/**
+ * Hard limit on what is ever parsed. Everything below scans once, with no regex
+ * that can backtrack across the page: a hostile page costs linear time, bounded
+ * by this, and never blocks the worker.
+ */
+export const PARSE_MAX_CHARS = 200_000;
+const TAG_MAX_CHARS = 4_096;
+const MAX_LINKS = 2_000;
+const MAX_JSON_LD = 20;
+const JSON_LD_MAX_CHARS = 100_000;
+
+interface Scan {
+  html: string;
+  lower: string;
 }
 
-function hrefs(html: string): string[] {
-  return [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)]
-    .map((match) => match[1].replace(/&amp;/gi, "&").trim());
+function scanOf(html: string): Scan {
+  const bounded = html.length > PARSE_MAX_CHARS
+    ? html.slice(0, PARSE_MAX_CHARS)
+    : html;
+  return { html: bounded, lower: bounded.toLowerCase() };
+}
+
+/** Next `>` at or after `from`, remembered so runs of `<` stay linear. */
+function closer(scan: Scan): (from: number) => number {
+  let cached = -2;
+  return (from) => {
+    if (cached === -1 || cached >= from) return cached;
+    cached = scan.lower.indexOf(">", from);
+    return cached;
+  };
+}
+
+const SKIPPED_ELEMENTS = ["script", "style", "noscript"];
+
+/** Visible words only; scripts, styles and comments are not the page speaking. */
+function visibleText(source: string): string {
+  const scan = scanOf(source);
+  const { html, lower } = scan;
+  const nextClose = closer(scan);
+  const out: string[] = [];
+  let at = 0;
+  while (at < html.length) {
+    const open = lower.indexOf("<", at);
+    if (open < 0) {
+      out.push(html.slice(at));
+      break;
+    }
+    out.push(html.slice(at, open), " ");
+    if (lower.startsWith("<!--", open)) {
+      const end = lower.indexOf("-->", open + 4);
+      if (end < 0) break;
+      at = end + 3;
+      continue;
+    }
+    const element = SKIPPED_ELEMENTS.find((name) =>
+      lower.startsWith(name, open + 1)
+    );
+    if (element) {
+      const end = lower.indexOf(`</${element}`, open + 1);
+      if (end < 0) break;
+      at = end + element.length + 2;
+      continue;
+    }
+    const close = nextClose(open);
+    // A bare `<`, or no real tag here: step over this one character.
+    at = close >= 0 && close - open <= TAG_MAX_CHARS ? close + 1 : open + 1;
+  }
+  return out.join("").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ").trim();
+}
+
+function hrefs(source: string): string[] {
+  const scan = scanOf(source);
+  const { html, lower } = scan;
+  const nextClose = closer(scan);
+  const out: string[] = [];
+  let at = 0;
+  while (out.length < MAX_LINKS) {
+    const open = lower.indexOf("<a", at);
+    if (open < 0) break;
+    at = open + 2;
+    const after = lower.charCodeAt(open + 2);
+    if (after !== 32 && after !== 9 && after !== 10 && after !== 13) continue;
+    const close = nextClose(open);
+    if (close < 0) break;
+    if (close - open > TAG_MAX_CHARS) continue;
+    const tag = html.slice(open, close);
+    const match = /\shref\s{0,8}=\s{0,8}(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    const value = match?.[1] ?? match?.[2];
+    if (value) out.push(value.replace(/&amp;/gi, "&").trim());
+    at = close + 1;
+  }
+  return out;
+}
+
+/** The body of each `<script type="application/ld+json">`, bounded. */
+function jsonLdBodies(source: string): string[] {
+  const scan = scanOf(source);
+  const { html, lower } = scan;
+  const out: string[] = [];
+  let at = 0;
+  while (out.length < MAX_JSON_LD) {
+    const open = lower.indexOf("<script", at);
+    if (open < 0) break;
+    const close = lower.indexOf(">", open);
+    if (close < 0) break;
+    const end = lower.indexOf("</script", close);
+    if (end < 0) break;
+    at = end + 8;
+    if (close - open > TAG_MAX_CHARS || end - close > JSON_LD_MAX_CHARS) continue;
+    if (lower.slice(open, close).includes("application/ld+json")) {
+      out.push(html.slice(close + 1, end));
+    }
+  }
+  return out;
+}
+
+function safeDecode(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+/** Hosts where anyone can have a page: never evidence of owning a domain. */
+const SHARED_HOSTS = [
+  "linktr.ee", "beacons.ai", "bio.site", "bio.link", "lnk.bio", "taplink.cc",
+  "solo.to", "campsite.bio", "milkshake.app", "carrd.co", "wixsite.com",
+  "wix.com", "weebly.com", "webflow.io", "framer.website", "framer.app",
+  "notion.site", "sites.google.com", "github.io", "gitlab.io", "netlify.app",
+  "vercel.app", "pages.dev", "web.app", "firebaseapp.com", "wordpress.com",
+  "blogspot.com", "tumblr.com", "substack.com", "myshopify.com",
+  "squarespace.com", "godaddysites.com", "canva.site", "my.canva.site",
+];
+
+export function isSharedHost(host: string): boolean {
+  return SHARED_HOSTS.some((shared) =>
+    host === shared || host.endsWith(`.${shared}`)
+  );
 }
 
 export type SameBrandBasis = "owned_domain" | "handle" | "name_city";
@@ -187,16 +318,25 @@ export function pageBelongsToBrand(
 ): SameBrandBasis | null {
   const host = hostOf(page.url);
   if (!host || NOT_A_SOURCE.test(host)) return null;
+  const shared = isSharedHost(host);
   if (
-    identity.ownedHosts.some((owned) =>
-      host === owned || host.endsWith(`.${owned}`)
+    !shared && identity.ownedHosts.some((owned) =>
+      !isSharedHost(owned) && (host === owned || host.endsWith(`.${owned}`))
     )
   ) return "owned_domain";
+  const name = normalizeWords(identity.name);
+  const segments = page.title.split(/\s[|–—:·-]\s|\s[|–—·]|[|–—·]\s/)
+    .map(normalizeWords).filter(Boolean);
+  const hostLabel = shared ? "" : host.split(".")[0].replace(/[^a-z0-9]/g, "");
+  const nameMatches = segments.includes(name) ||
+    hostLabel === name.replace(/\s+/g, "");
+  // Anyone can link to a brand or print its name. Neither alone says the page is
+  // the brand's: a blog that links to the handle has an editor's email on it.
+  if (!nameMatches) return null;
   const links = hrefs(page.html);
   for (const { host: socialHost, handle } of identity.handles) {
     const linked = links.some((link) => {
-      const linkHost = hostOf(link);
-      if (linkHost !== socialHost) return false;
+      if (hostOf(link) !== socialHost) return false;
       try {
         return new URL(link).pathname.split("/").filter(Boolean)[0]
           ?.replace(/^@/, "").toLowerCase() === handle;
@@ -207,33 +347,33 @@ export function pageBelongsToBrand(
     if (linked) return "handle";
   }
   if (!identity.city) return null;
-  const name = normalizeWords(identity.name);
-  const segments = page.title.split(/\s[|–—:·-]\s|\s[|–—·]|[|–—·]\s/)
-    .map(normalizeWords).filter(Boolean);
-  const hostLabel = host.split(".")[0].replace(/[^a-z0-9]/g, "");
-  const nameMatches = segments.includes(name) ||
-    hostLabel === name.replace(/\s+/g, "");
-  if (!nameMatches) return null;
-  return hasWholePhrase(visibleText(page.html), identity.city)
-    ? "name_city"
-    : null;
+  // One common word needs more than a passing mention of the city ("we ship to
+  // London, Paris and Lagos"): it must be where the page says it is.
+  if (name.includes(" ")) {
+    return hasWholePhrase(visibleText(page.html), identity.city)
+      ? "name_city"
+      : null;
+  }
+  const located = jsonLdObjects(page.html).some((row) => {
+    const locality = text(object(row.address).addressLocality);
+    return locality !== null && hasWholePhrase(locality, identity.city!);
+  }) || segments.some((segment) => hasWholePhrase(segment, identity.city!));
+  return located ? "name_city" : null;
 }
 
 function jsonLdObjects(html: string): Json[] {
   const found: Json[] = [];
-  for (
-    const match of html.matchAll(
-      /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
-    )
-  ) {
+  for (const body of jsonLdBodies(html)) {
     try {
-      const parsed = JSON.parse(match[1]);
+      const parsed = JSON.parse(body);
       const list = Array.isArray(parsed) ? parsed : [parsed];
-      for (const entry of list) {
+      for (const entry of list.slice(0, 50)) {
         const row = object(entry);
         found.push(row);
         if (Array.isArray(row["@graph"])) {
-          for (const inner of row["@graph"]) found.push(object(inner));
+          for (const inner of row["@graph"].slice(0, 50)) {
+            found.push(object(inner));
+          }
         }
       }
     } catch {
@@ -244,35 +384,64 @@ function jsonLdObjects(html: string): Json[] {
 }
 
 const EMAIL = /^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/i;
-const EMAIL_IN_TEXT = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const NOT_A_CONTACT =
   /^(no-?reply|do-?not-?reply|postmaster|abuse|webmaster|privacy|legal|sentry)@|\.(png|jpe?g|gif|webp|svg)$|@(sentry\.|example\.|wixpress\.)/i;
 
 function cleanValue(value: string): string {
-  return sanitizeAriPublicText(value).text.replace(/\s+/g, " ").trim();
+  return sanitizeAriPublicText(value.slice(0, 1_000)).text.replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Words a page wrote at Ari, not a fact about a brand. Offered as nothing. */
+const INSTRUCTION_LIKE =
+  /\b(?:ignore|disregard|instructions?|prompt|system|assistant|save this|bank account|password|approve|publish)\b/i;
+
+const EMAIL_LOCAL = /[a-z0-9._%+-]/i;
+const EMAIL_DOMAIN = /[a-z0-9.-]/i;
+
+/** Addresses in loose text, by walking out from each `@`. Linear, bounded. */
+function emailsInText(words: string): string[] {
+  const out: string[] = [];
+  let at = words.indexOf("@");
+  while (at >= 0 && out.length < 200) {
+    let start = at;
+    while (start > 0 && at - start < 64 && EMAIL_LOCAL.test(words[start - 1])) start -= 1;
+    let end = at + 1;
+    while (end < words.length && end - at < 255 && EMAIL_DOMAIN.test(words[end])) end += 1;
+    const value = words.slice(start, end).replace(/\.+$/, "").toLowerCase();
+    if (EMAIL.test(value)) out.push(value);
+    at = words.indexOf("@", end);
+  }
+  return out;
 }
 
 function emailsOf(
   html: string,
   pageHost: string,
   structured: Json[],
+  basis: SameBrandBasis,
 ): string[] {
+  const onDomain = (value: string) => {
+    const domain = value.split("@")[1] ?? "";
+    return pageHost === domain || pageHost.endsWith(`.${domain}`);
+  };
   const out = new Set<string>();
   for (const href of hrefs(html)) {
     if (!/^mailto:/i.test(href)) continue;
-    const value = decodeURIComponent(href.slice(7).split("?")[0]).trim();
-    if (EMAIL.test(value)) out.add(value.toLowerCase());
+    const value = safeDecode(href.slice(7).split("?")[0])?.trim();
+    if (!value || !EMAIL.test(value)) continue;
+    // A mail link off the page's domain is believed only on a page proven to be
+    // the brand's; a name and a city are not proof enough for someone's gmail.
+    if (basis === "name_city" && !onDomain(value.toLowerCase())) continue;
+    out.add(value.toLowerCase());
   }
+  // Structured data and loose words anyone can plant: the page's own domain only.
   for (const row of structured) {
-    const value = text(row.email)?.replace(/^mailto:/i, "");
-    if (value && EMAIL.test(value)) out.add(value.toLowerCase());
+    const value = text(row.email)?.replace(/^mailto:/i, "")?.toLowerCase();
+    if (value && EMAIL.test(value) && onDomain(value)) out.add(value);
   }
-  // Loose text only counts on the page's own domain: this is what stops an
-  // address planted in a page's wording from being offered at all.
-  for (const match of visibleText(html).matchAll(EMAIL_IN_TEXT)) {
-    const value = match[0].toLowerCase();
-    const domain = value.split("@")[1];
-    if (pageHost === domain || pageHost.endsWith(`.${domain}`)) out.add(value);
+  for (const value of emailsInText(visibleText(html))) {
+    if (onDomain(value)) out.add(value);
   }
   return [...out].filter((value) => !NOT_A_CONTACT.test(value));
 }
@@ -286,7 +455,7 @@ function phonesOf(html: string, structured: Json[]): string[] {
     if (parsePhoneEntry(compact, { mode: "any" }).ok) out.add(compact);
   };
   for (const href of hrefs(html)) {
-    if (/^tel:/i.test(href)) add(decodeURIComponent(href.slice(4)));
+    if (/^tel:/i.test(href)) add(safeDecode(href.slice(4)));
   }
   for (const row of structured) add(text(row.telephone));
   return [...out];
@@ -360,10 +529,13 @@ export function extractCandidates(args: {
   const { street, city } = addressesOf(structured);
   const out: ResearchCandidates = {};
   const set = (key: ResearchFieldKey, values: string[]) => {
-    const list = values.map(candidate).filter((row) => row.value.length > 0);
+    const list = values.map(candidate).filter((row) =>
+      row.value.length > 0 && row.value.length <= 240 &&
+      !INSTRUCTION_LIKE.test(row.value)
+    );
     if (list.length > 0) out[key] = list;
   };
-  set("contact_email", emailsOf(page.html, pageHost, structured));
+  set("contact_email", emailsOf(page.html, pageHost, structured, basis));
   set("contact_phone", phonesOf(page.html, structured));
   set("address", street);
   set("city_country", city);
@@ -400,6 +572,8 @@ const PAGE_TIMEOUT_MS = 6_000;
 const PAGE_MAX_BYTES = 700_000;
 const SEARCH_TIMEOUT_MS = 20_000;
 const MAX_PAGES = 4;
+/** After the search: no new page is read past this. A page is 6 s at most. */
+const RUN_MAX_MS = 30_000;
 
 async function fetchResearchPage(rawUrl: string): Promise<ResearchPage | null> {
   const signal = AbortSignal.timeout(PAGE_TIMEOUT_MS);
@@ -418,10 +592,19 @@ async function fetchResearchPage(rawUrl: string): Promise<ResearchPage | null> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > PAGE_MAX_BYTES) return null;
   const html = new TextDecoder().decode(bytes);
-  const title = cleanValue(
-    /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? "",
-  ).slice(0, 180);
-  return { url: url.toString(), title, html };
+  return { url: url.toString(), title: pageTitle(html), html };
+}
+
+/** The first `<title>`, found by scanning, never a regex across the page. */
+export function pageTitle(html: string): string {
+  const { html: bounded, lower } = scanOf(html);
+  const open = lower.indexOf("<title");
+  if (open < 0) return "";
+  const start = lower.indexOf(">", open);
+  const end = start < 0 ? -1 : lower.indexOf("</title", start);
+  if (end < 0) return "";
+  return cleanValue(bounded.slice(start + 1, Math.min(end, start + 1_000)))
+    .slice(0, 180);
 }
 
 export type ResearchStatus = "found" | "nothing" | "unavailable";
@@ -486,7 +669,8 @@ export async function runBrandResearch(
   let pagesRead = 0;
   const queue = urls.slice(0, MAX_PAGES);
   const seen = new Set<string>();
-  while (queue.length > 0 && pagesRead < MAX_PAGES) {
+  const deadline = Date.now() + RUN_MAX_MS;
+  while (queue.length > 0 && pagesRead < MAX_PAGES && Date.now() < deadline) {
     const next = queue.shift()!;
     if (seen.has(next)) continue;
     seen.add(next);
@@ -498,22 +682,23 @@ export async function runBrandResearch(
     }
     pagesRead += 1;
     if (!page) continue;
-    const basis = pageBelongsToBrand(identity, page);
-    if (!basis) continue;
-    found.push(extractCandidates({ page, basis, observedAt: deps.now() }));
-    // Contact details usually sit one click away, on the brand's own host.
-    const contact = hrefs(page.html).find((href) =>
-      /^(\/|https:\/\/)/.test(href) && /\/(contact|about)\b/i.test(href)
-    );
-    if (contact && pagesRead < MAX_PAGES) {
-      try {
+    // One bad page or value costs that page, never the run.
+    try {
+      const basis = pageBelongsToBrand(identity, page);
+      if (!basis) continue;
+      found.push(extractCandidates({ page, basis, observedAt: deps.now() }));
+      // Contact details usually sit one click away, on the brand's own host.
+      const contact = hrefs(page.html).find((href) =>
+        /^(\/|https:\/\/)/.test(href) && /\/(contact|about)\b/i.test(href)
+      );
+      if (contact && pagesRead < MAX_PAGES) {
         const absolute = new URL(contact, page.url);
         if (hostOf(absolute.toString()) === hostOf(page.url)) {
           queue.unshift(absolute.toString());
         }
-      } catch {
-        // A malformed link is skipped.
       }
+    } catch (_error) {
+      continue;
     }
   }
   const candidates = mergeCandidates(found);
@@ -565,12 +750,14 @@ export async function prepareBrandResearch(
   if (!open) return null;
   const identity = brandIdentityFromPlan(args.brandId, args.plan);
   if (!identity) return null;
+  const fingerprint = researchIdentity(identity);
   let claim: Json | null = null;
   try {
     const answer = await withTimeout(
       Promise.resolve(args.service.rpc("ari_brand_research_claim", {
         p_user_id: args.userId,
         p_brand_id: args.brandId,
+        p_identity: fingerprint,
       })),
       args.claimTimeoutMs ?? 800,
     ) as { data: unknown; error: unknown };
@@ -601,6 +788,7 @@ export async function prepareBrandResearch(
         p_brand_id: args.brandId,
         p_status: result.status,
         p_candidates: result.candidates,
+        p_identity: fingerprint,
       });
     })().catch((error) => {
       structuredLog("warn", "ari_setup_research_failed", {
@@ -613,11 +801,14 @@ export async function prepareBrandResearch(
         p_brand_id: args.brandId,
         p_status: "unavailable",
         p_candidates: {},
+        p_identity: fingerprint,
       });
     });
     (args.schedule ?? inBackground)(work);
-    return null;
+    // Empty, not null: what the old name found must not be offered this time.
+    return claim.cleared === true ? {} : null;
   }
+  if (claim.cleared === true) return {};
   return claim.status === "found"
     ? object(claim.candidates) as ResearchCandidates
     : null;
