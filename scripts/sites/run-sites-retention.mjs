@@ -36,12 +36,30 @@ function canonical(value) {
   ].join("\n");
 }
 
+/**
+ * #2830 — the sites to sweep, pilot first. The workflow passes the sites the
+ * snapshot it just verified covers, so nothing is swept that this run did not
+ * back up. Unset is the single-site call; an empty or malformed list is a
+ * broken hand-off and is refused rather than read as "pilot only", which would
+ * silently stop sweeping every other brand.
+ */
+export function retentionSiteIds(env) {
+  const pilot = requireUuid(requiredEnv(env, "SITES_PILOT_SITE_ID"));
+  if (env.SITES_RETENTION_SITE_IDS === undefined) return [pilot];
+  const ids = String(env.SITES_RETENTION_SITE_IDS).split(",")
+    .map((id) => requireUuid(id, "RETENTION_SITE_LIST_INVALID"));
+  if (new Set(ids).size !== ids.length || !ids.includes(pilot)) {
+    fail("RETENTION_SITE_LIST_INVALID");
+  }
+  return [pilot, ...ids.filter((id) => id !== pilot)];
+}
+
 export function retentionEnvelope(env, {
   now = new Date(),
   operationId = randomUUID(),
   nonce = randomUUID(),
+  siteId = requireUuid(requiredEnv(env, "SITES_PILOT_SITE_ID")),
 } = {}) {
-  const siteId = requireUuid(requiredEnv(env, "SITES_PILOT_SITE_ID"));
   const origin = requiredEnv(env, "SITES_CMS_ORIGIN");
   if (origin !== CMS_ORIGIN) fail("CMS_ORIGIN_MISMATCH");
   const kid = requiredEnv(env, "MINGLA_CORE_TO_CMS_CURRENT_KID");
@@ -154,11 +172,13 @@ export async function runSitesRetention({
   now = new Date(),
   operationId = randomUUID(),
   nonce = randomUUID(),
+  siteId,
 } = {}) {
   const { body, envelope } = retentionEnvelope(env, {
     now,
     operationId,
     nonce,
+    ...(siteId === undefined ? {} : { siteId }),
   });
   const response = await fetchImpl(`${CMS_ORIGIN}${PATH}`, {
     method: "POST",
@@ -212,8 +232,40 @@ export async function runSitesRetention({
   return data;
 }
 
+/**
+ * #2830 — sweep every site in turn. Each site gets its own freshly dated
+ * envelope (they live 60 seconds and one sweep can outlast that) and its own
+ * outcome: one brand's failure does not stop the next brand's sweep, and it is
+ * still raised at the end so the housekeeping alert fires. Sites are logged by
+ * position, never by id.
+ */
+export async function runAllSitesRetention({
+  env = process.env,
+  fetchImpl = fetch,
+  clock = () => new Date(),
+} = {}) {
+  const siteIds = retentionSiteIds(env);
+  const failures = [];
+  for (const [index, siteId] of siteIds.entries()) {
+    try {
+      await runSitesRetention({ env, fetchImpl, now: clock(), siteId });
+    } catch (error) {
+      failures.push(error);
+      process.stderr.write(
+        `SITES_RETENTION_SITE_FAILED position=${index + 1} code=${retentionFailureCode(error)}\n`,
+      );
+    }
+  }
+  if (siteIds.length > 1) {
+    process.stdout.write(
+      `SITES_RETENTION_SITES total=${siteIds.length} failed=${failures.length}\n`,
+    );
+  }
+  if (failures.length > 0) throw failures[0];
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runSitesRetention().catch((error) => {
+  runAllSitesRetention().catch((error) => {
     const code = error?.code || error?.message || "RETENTION_SWEEP_FAILED";
     process.stderr.write(`${JSON.stringify({ ok: false, error: code })}\n`);
     // #2830 — this entrypoint used to exit 1 having written no classification,

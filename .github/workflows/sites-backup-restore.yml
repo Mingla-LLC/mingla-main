@@ -52,6 +52,13 @@ name: "Mingla Sites · Backup and restore"
 # reached Studio's database and nothing said so. Housekeeping by the same rule:
 # it reads only, cannot red the run or reach `deactivate`, and speaks through
 # `cms_migrations_alert`.
+#
+# [WORKFLOW-MOD-APPROVED #2830] Backup, restore and retention cover every brand.
+#
+# Studio holds one tenant per brand. `SITES_PILOT_SITE_ID` is the site these jobs
+# sign for and which must exist; it is no longer the only site. The bundle holds
+# every tenant, the drill checks each tenant came back, and `retention` sweeps
+# the sites the snapshot verified in this same run, read from `bundle.site_ids`.
 on:
   schedule:
     - cron: "23 7 * * *"
@@ -108,6 +115,8 @@ jobs:
           scripts/sites/__tests__/issue_2830_cms_migrations_guard.test.mjs
           scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs
+          scripts/sites/__tests__/issue_2830_multi_tenant_recovery.test.mjs
+          scripts/sites/__tests__/issue_2830_multi_tenant_restore.pg17.test.mjs
           scripts/sites/__tests__/issue_2829_local_mode_ops.test.mjs
           scripts/sites/__tests__/issue_2829_local_stack_scripts.test.mjs
           scripts/sites/__tests__/issue_2829_no_single_tenant_pins.test.mjs
@@ -131,6 +140,7 @@ jobs:
     outputs:
       recovery_deactivate: ${{ steps.classify.outputs.deactivate }}
       recovery_failure_code: ${{ steps.classify.outputs.code }}
+      backup_site_ids: ${{ steps.bundle.outputs.site_ids }}
     # #3606 — the hourly watchdog cron must never take a snapshot. Exclusion, not
     # inclusion: an expression that stops matching runs the backup anyway.
     if: >-
@@ -203,7 +213,9 @@ jobs:
           const value = JSON.parse(readFileSync(process.env.SITES_BACKUP_RESULT_PATH, "utf8"));
           if (!/^mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/.test(value.bundle_name)) process.exit(1);
           if (!/^[0-9a-f]{64}$/.test(value.bundle_sha256)) process.exit(1);
-          appendFileSync(process.env.GITHUB_OUTPUT, `name=${value.bundle_name}\nsha256=${value.bundle_sha256}\n`);
+          const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (!Array.isArray(value.site_ids) || value.site_ids.length < 1 || !value.site_ids.every((id) => uuid.test(id))) process.exit(1);
+          appendFileSync(process.env.GITHUB_OUTPUT, `name=${value.bundle_name}\nsha256=${value.bundle_sha256}\nsite_ids=${value.site_ids.join(",")}\n`);
           NODE
 
       - name: Upload immutable encrypted bundle to private Blob
@@ -448,6 +460,7 @@ jobs:
         continue-on-error: true
         env:
           SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_RETENTION_SITE_IDS: ${{ needs.backup_restore.outputs.backup_site_ids }}
           SITES_CMS_ORIGIN: https://studio.sites.usemingla.com
           MINGLA_CORE_TO_CMS_CURRENT_KID: ${{ vars.MINGLA_CORE_TO_CMS_CURRENT_KID }}
           MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: ${{ secrets.MINGLA_CORE_TO_CMS_CURRENT_KEY_B64 }}
