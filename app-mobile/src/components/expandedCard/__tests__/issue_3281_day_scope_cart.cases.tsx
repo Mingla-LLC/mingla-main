@@ -149,6 +149,36 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     });
   });
 
+  test("Undo brings back the extras the guest picked", () => {
+    const onToggle = jest.fn();
+    const DINNER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const props = makeTicketCartProps({
+      ...signedIn,
+      tickets: fridayOnly({
+        buyerExtras: [{
+          id: DINNER, name: "Dinner", description: null, priceCents: 1500,
+          priceAllInCents: 1500, maxPerTicket: 1, isUnlimited: true,
+          validOccurrenceIds: [FRI], remaining: null,
+        }],
+      }),
+      multiDaySelection: selection([FRI, SAT], onToggle),
+    });
+    const renderer = mountTicketCart(props);
+    TestRenderer.act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Add one Dinner to Weekend pass" }).props.onPress();
+    });
+    const addOns = () =>
+      ((mockTicketQuote.input as { lines: Array<{ addOns?: unknown }> }).lines[0] ?? {}).addOns;
+    expect(addOns()).toEqual([{ addOnId: DINNER, quantity: 1 }]);
+
+    updateTicketCart(renderer, { ...props, multiDaySelection: selection([SAT], onToggle) });
+    TestRenderer.act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Undo" }).props.onPress();
+    });
+    updateTicketCart(renderer, { ...props, multiDaySelection: selection([FRI, SAT], onToggle) });
+    expect(addOns()).toEqual([{ addOnId: DINNER, quantity: 1 }]);
+  });
+
   test("Undo is off while checkout is submitting", () => {
     const onToggle = jest.fn();
     const props = makeTicketCartProps({
@@ -180,6 +210,19 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
     expect(screen).toMatch(
       /const publicEventForBody: PublicEventProps = \{\s*\.\.\.sourcedPublicEvent,\s*tickets: sourcedPublicEvent\.tickets\.map/,
     );
+  });
+
+  test("the event page counts and carries only tickets on the guest's days", () => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const screen = readFileSync(
+      join(__dirname, "../../../screens/Event/ConsumerEventDetailScreen.tsx"),
+      "utf8",
+    );
+    // The ticket box, the floating bar and the cart all read the same filtered set.
+    expect(screen.match(/ticketQuantities=\{onDayTicketQuantities\}/g)).toHaveLength(2);
+    expect(screen).toContain("initialQuantities={onDayTicketQuantities}");
+    expect(screen).not.toMatch(/ticketQuantities=\{ticketQuantities\}/);
   });
 
   test("the helpers say nothing for an All dates ticket", () => {

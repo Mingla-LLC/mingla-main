@@ -1602,6 +1602,20 @@ export default function ConsumerEventDetailScreen({
           dateSubline: occurrenceSummary,
           hideRemainingCount,
         };
+  // issue #3281 — a ticket the guest's days leave out isn't counted on the page
+  // or carried into the cart. Its quantity is kept, so it comes back if the
+  // days do (the cart's Undo, or picking the day again).
+  const offDayTicketIds = new Set(
+    sourcedPublicEvent.tickets
+      .filter((ticket) => ticketOffChosenDays(ticket.validOccurrenceIds, selectedEventDateIds))
+      .map((ticket) => ticket.id),
+  );
+  const onDayTicketQuantities: Record<string, number> =
+    offDayTicketIds.size === 0
+      ? ticketQuantities
+      : Object.fromEntries(
+          Object.entries(ticketQuantities).filter(([id]) => !offDayTicketIds.has(id)),
+        );
   // issue #3281 — each listed ticket says which days it covers, and reads as
   // off the guest's days when it covers none of them. Decorated after either
   // source is chosen, so a deck or chat arrival (warm, seeded) gets it too;
@@ -1835,7 +1849,7 @@ export default function ConsumerEventDetailScreen({
                 bookable
                 palette={palette}
                 theme={theme}
-                ticketQuantities={ticketQuantities}
+                ticketQuantities={onDayTicketQuantities}
                 onChangeTicketQuantity={handleChangeTicketQuantity}
                 onProceedToCart={handleProceedToCart}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
@@ -1966,7 +1980,7 @@ export default function ConsumerEventDetailScreen({
               bookable
               palette={palette}
               theme={theme}
-              ticketQuantities={ticketQuantities}
+              ticketQuantities={onDayTicketQuantities}
               onProceedToCart={handleProceedToCart}
               submitting={checkoutInFlight || !canonicalLifecycleReady}
               purchaseReady={canonicalLifecycleReady}
@@ -1989,7 +2003,7 @@ export default function ConsumerEventDetailScreen({
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
-        initialQuantities={ticketQuantities}
+        initialQuantities={onDayTicketQuantities}
         buyerName={explorerCheckoutContact.normalized.name}
         buyerEmail={explorerCheckoutContact.normalized.email}
         buyerPhone={explorerCheckoutContact.normalized.phone}

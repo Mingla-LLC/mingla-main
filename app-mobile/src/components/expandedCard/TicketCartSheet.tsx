@@ -565,12 +565,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     quantities: Record<string, number>;
     byDate: Record<string, ByDateMap>;
     sameTicketsForEveryDate: boolean;
+    addOns: Record<string, CheckoutAddOnRequest[] | undefined>;
   } | null>(null);
   const pendingDayRestoreRef = React.useRef<{
     days: readonly string[];
     quantities: Record<string, number>;
     byDate: Record<string, ByDateMap>;
     sameTicketsForEveryDate: boolean;
+    addOns: Record<string, CheckoutAddOnRequest[] | undefined>;
   } | null>(null);
   // issue #3281 — the extras the guest asked for, by ticket. The quote lines
   // below fit them to each line, so a lowered ticket count never over-asks.
@@ -1556,12 +1558,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         extras={extras}
         selected={line.addOns}
         caps={caps}
-        onChange={(addOnId: string, quantity: number) =>
+        onChange={(addOnId: string, quantity: number) => {
+          // A later choice ends the day notice, so Undo can't overwrite it.
+          setDayNotice(null);
           setAddOnsByTicket((current) => ({
             ...current,
             [ticket.id]: withExtraQuantity(line.addOns, addOnId, quantity),
-          }))
-        }
+          }));
+        }}
         formatMoney={(cents: number) => formatMajorCurrency(cents / 100, currency)}
         dateCaption={(extra: PublicTicketExtra) => {
           const dates = extraDatesOnLine(extra, lineDates);
@@ -1695,6 +1699,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       ),
       byDate: { ...byDateByTicket },
       sameTicketsForEveryDate,
+      // The extras too: the fitting below trims date-limited ones off lines.
+      addOns: { ...addOnsByTicket },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, quoteEventDateIds, visibleTickets]);
@@ -1706,6 +1712,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     pendingDayRestoreRef.current = null;
     setSameTicketsForEveryDate(pending.sameTicketsForEveryDate);
     setByDateByTicket(pending.byDate);
+    setAddOnsByTicket(pending.addOns);
     for (const [id, quantity] of Object.entries(pending.quantities)) {
       const ticket = visibleTickets.find((t) => t.id === id);
       if (ticket !== undefined) setLineQuantity(seedForTicket(ticket), quantity);

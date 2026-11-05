@@ -29,3 +29,18 @@ test("#3281 an All dates private ticket, or an older resolver, reads as every da
   expect(resolved({ validOccurrenceIds: null })?.validOccurrenceIds).toBeNull();
   expect(resolved({})?.validOccurrenceIds).toBeNull();
 });
+
+test("#3281 the cart's same-tickets switch reads an unlocked private ticket's dates", () => {
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const { join } = require("node:path") as typeof import("node:path");
+  const cart = readFileSync(
+    join(__dirname, "../../../app/checkout/[eventId]/index.tsx"),
+    "utf8",
+  );
+  const handler = cart.slice(
+    cart.indexOf("const handleSameTicketsForEveryDate"),
+    cart.indexOf("// issue #2135 — seed the chosen occurrence"),
+  );
+  expect(handler).toContain("ticketLink.ticket?.id === line.ticketTypeId ? ticketLink.ticket : undefined");
+  expect(handler).toMatch(/\[eventDateIds, lines, publicEventQuery\.data, setLineQuantity, ticketLink\.ticket\]/);
+});
