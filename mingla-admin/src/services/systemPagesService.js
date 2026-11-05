@@ -1,6 +1,7 @@
-// Issue #4130 (Wave 4b) — the server calls behind Place pool, Feature flags,
+// Issue #4130 (Wave 4b) — the server calls behind Feature flags,
 // Settings' danger zone and Team and roles' "last active". Each throws an Error
 // carrying the server's message and code; pages show it, never a 0.
+// (#4276: Place pool reads through services/cityPipelineService.js.)
 import { supabase } from "../lib/supabase";
 
 async function call(name, params) {
@@ -11,11 +12,6 @@ async function call(name, params) {
     throw err;
   }
   return data;
-}
-
-/** The place funnel (active, checked, visible, with_photos, cities[]). */
-export function fetchPlaceFunnel({ countryCode = null, cityId = null } = {}) {
-  return call("admin_place_pool_funnel", { p_country_code: countryCode, p_city_id: cityId });
 }
 
 /** Every feature flag with its issue, last change, who and why. */
@@ -51,24 +47,4 @@ export function systemErrorWords(error) {
   if (/not_authorized/.test(msg)) return "You don't have access to this.";
   if (/not_found/.test(msg)) return "That flag no longer exists. Refresh the list.";
   return msg || "Something went wrong. Try again.";
-}
-
-/** Re-counts the admin place view now (it also refreshes every 10 minutes). */
-export function refreshPlacePoolStats() {
-  return call("admin_refresh_place_pool_mv");
-}
-
-/** The Intelligence Trial's last 200 runs, read-only (the trial is retired). */
-export async function fetchTrialRunHistory() {
-  const { data, error } = await supabase
-    .from("place_intelligence_trial_runs")
-    .select("*, place:place_pool!place_pool_id(id, name, primary_type)")
-    .order("created_at", { ascending: false })
-    .limit(200);
-  if (error) {
-    const err = new Error(error.message || "Couldn't load the trial history.");
-    err.code = error.code;
-    throw err;
-  }
-  return data || [];
 }

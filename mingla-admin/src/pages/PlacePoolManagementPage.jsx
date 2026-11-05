@@ -51,7 +51,6 @@ import {
   buildAdminDiscoveryRangeUpdate,
 } from "../lib/deckCardPreviewRules";
 import { PageHeader } from "../components/ui/PageHeader";
-import { SignalLibraryPage } from "./SignalLibraryPage";
 import { PlaceScoreOverride } from "../components/placePool/PlaceScoreOverride";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -2925,23 +2924,21 @@ function ExcludedTab({ scope, onRefresh }) {
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
-// #4130 (Wave 4b): Place pool shows this page in three of its tabs, each with
-// only its own tools. Pipeline: seeding, refresh, photos, thumbnails and
-// scoring (the old Signal Library). Browse and map: the list and the map; a
-// place opens with its score override (the old Deck tuner). Excluded: the
-// places Bouncer left out, with the reason.
+// #4130 (Wave 4b), #4276: Place pool shows this page in several places, each with
+// only its own tools. Pipeline's hand tools: seeding chosen categories, refresh,
+// photos and thumbnails (scoring moved to the pipeline's Scoring tools, with no
+// city-wide score). Browse: the list; a place opens with its score override (the old
+// Deck tuner). Map: the map. Excluded: the places the checks left out, with the reason.
 const SECTION_TABS = {
   pipeline: [
     { id: "seeding", label: "Seeding" },
     { id: "refresh", label: "Refresh" },
     { id: "photos", label: "Photos" },
     { id: "thumbnails", label: "Thumbnails" },
-    { id: "scoring", label: "Bouncer and scoring" },
   ],
-  browse: [
-    { id: "browse", label: "List" },
-    { id: "map", label: "Map" },
-  ],
+  // #4276: Browse and Map are their own Place pool tabs.
+  browse: [{ id: "browse", label: "List" }],
+  map: [{ id: "map", label: "Map" }],
   excluded: [{ id: "excluded", label: "Excluded by Bouncer" }],
 };
 
@@ -3140,7 +3137,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
         {activeTab === "excluded" && (
           <ExcludedTab scope={scope} onRefresh={refresh} />
         )}
-        {activeTab === "scoring" && <SignalLibraryPage />}
       </div>
 
       <AddCityModal open={addCityOpen} onClose={() => setAddCityOpen(false)} onSave={handleAddCity} />

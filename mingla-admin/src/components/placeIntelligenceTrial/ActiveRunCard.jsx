@@ -289,12 +289,12 @@ export function ActiveRunCard({ run, onCancelled, onViewRun }) {
               <span>Queued — waiting for a free slot</span>
             </div>
           )}
-          {isTerminal && (
+          {isTerminal && onViewRun && (
             <Button
               variant="ghost"
               size="sm"
               iconRight={ArrowRight}
-              onClick={() => onViewRun?.(run.id)}
+              onClick={() => onViewRun(run.id)}
             >
               View
             </Button>

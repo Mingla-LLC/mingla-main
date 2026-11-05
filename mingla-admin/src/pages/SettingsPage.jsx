@@ -18,9 +18,8 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useHashTab } from "../hooks/useHashTab";
 import { COMPETITOR_WATCH_FROM, RESTART_WORD, SETTINGS_SECTIONS, appConfigLock, appConfigRow, canRestartTour, sectionFor } from "../lib/systemPages";
-import { fetchTrialRunHistory, restartTourForEveryone, systemErrorWords } from "../services/systemPagesService";
+import { restartTourForEveryone, systemErrorWords } from "../services/systemPagesService";
 import { TeamAutomationSettings } from "../components/ops/TeamSettingsPanels";
-import { RunHistoryGroups } from "../components/placeIntelligenceTrial/RunHistoryGroups";
 import { CompetitorOpsPanel } from "./ToolLeadsPage";
 import { canOpenOwnPage } from "../lib/access";
 
@@ -371,47 +370,10 @@ function DangerZone() {
   );
 }
 
-// ─── Intelligence Trial history (read-only) ─────────────────────────────────
-// The trial is retired (last run in June). Its runs stay readable here; nothing
-// can be started, retried or cancelled.
-
-function TrialHistory() {
-  const [rows, setRows] = useState(null);
-  const [error, setError] = useState("");
-  const [open, setOpen] = useState(false);
-  const load = useCallback(async () => {
-    setError("");
-    try {
-      setRows(await fetchTrialRunHistory());
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
-  return (
-    <SectionCard
-      title="Intelligence Trial history"
-      subtitle="Retired research tool. Its past runs, read-only."
-      action={!open ? <Button size="sm" variant="secondary" onClick={() => { setOpen(true); void load(); }}>Show runs</Button> : null}
-    >
-      {!open ? (
-        <p className="text-sm text-[var(--color-text-tertiary)]">Hidden until you ask, so Settings opens fast.</p>
-      ) : error ? (
-        <LoadError title="Couldn't load the trial history" message={error} onRetry={load} />
-      ) : rows === null ? (
-        <div className="flex justify-center py-6"><Spinner /></div>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-[var(--color-text-tertiary)]">No runs were recorded.</p>
-      ) : (
-        <RunHistoryGroups allRows={rows} onFilterByRun={() => {}} retryFailedDisabled />
-      )}
-    </SectionCard>
-  );
-}
-
 // ─── Main Settings Page ─────────────────────────────────────────────────────
 // #4130 (Wave 4b): one page of sections instead of tabs. Feature flags have
-// their own page; the empty Integrations tab is gone. Old addresses
-// (#/place-intelligence-trial -> tab=intelligence-trial) scroll to their section.
+// their own page; the empty Integrations tab is gone. Old addresses with a tab
+// scroll to their section. (#4276: Intelligence moved to Place pool's pipeline.)
 
 function Section({ id, title, children }) {
   return (
@@ -469,10 +431,6 @@ export function SettingsPage() {
           <CompetitorOpsPanel addToast={addToast} />
         </Section>
       )}
-
-      <Section id="intelligence-trial" title="Research history">
-        <TrialHistory />
-      </Section>
 
       {isOwner && (
         <Section id="danger-zone" title="Danger zone">

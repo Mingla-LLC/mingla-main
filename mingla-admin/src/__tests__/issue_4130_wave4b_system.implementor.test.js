@@ -27,51 +27,59 @@ import {
   TEAM_TABS,
   canChangeFlag,
   canRestartTour,
-  cityReadiness,
   flagChange,
   flagIssue,
   isMissingFunctionError,
   lastActiveLabel,
-  placeFunnelSteps,
   placePoolTabFor,
   platformProblems,
   providerBalance,
   providerStatus,
   sectionFor,
   sortProviders,
-  stageShare,
   stripeModeVerdict,
   tabFor,
   teamGroups,
 } from "../lib/systemPages.js";
 import { redirectHash, RETIRED_PAGE_REDIRECTS } from "../lib/adminRoutes.js";
+import { cityReadinessWithGaps, pipelineFunnelSteps } from "../lib/cityPipeline.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 const stripComments = (code) => code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-describe("#4130 W4b-1: Place pool", () => {
-  it("every funnel share is of active places, as production measured it", () => {
-    const steps = placeFunnelSteps({ active: 88364, checked: 62663, visible: 35250, with_photos: 40133 });
+// #4276 (wave 4) changed the truth this block pinned. The funnel now has every stage
+// (pre-check, photos, reviews, Intelligence, final score) and is counted straight from
+// place_pool by admin_place_pipeline_funnel; readiness counts the gaps; the Signal
+// Library page and its stage shares are retired.
+describe("#4130 W4b-1, #4276: Place pool", () => {
+  it("every funnel share is of active places, through every stage", () => {
+    const steps = pipelineFunnelSteps({
+      active: 88364, pre_passed: 70000, with_photos: 40133, servable: 35250,
+      reviews: 20000, intelligence: 30000, scored: 34000,
+    });
     assert.deepEqual(
       steps.map((s) => [s.label, s.count, s.share]),
       [
         ["Active places", 88364, 100],
-        ["Checked by Bouncer", 62663, 71],
-        ["Explorers can see", 35250, 40],
+        ["Passed the pre-check", 70000, 79],
         ["Have stored photos", 40133, 45],
+        ["Explorers can see", 35250, 40],
+        ["Have reviews", 20000, 23],
+        ["Have Intelligence", 30000, 34],
+        ["Have a final score", 34000, 38],
       ]
     );
   });
   it("a funnel that did not load is not zeros", () => {
-    assert.equal(placeFunnelSteps(null), null);
-    assert.equal(placeFunnelSteps({ error: "x" }), null);
+    assert.equal(pipelineFunnelSteps(null), null);
+    assert.equal(pipelineFunnelSteps({ error: "x" }), null);
     const page = read("pages/PlacePoolPage.jsx");
     assert.ok(page.includes('<LoadError title="Couldn\'t load the place counts"'));
   });
   it("the place counts come from the server aggregate, never a client count", () => {
-    const service = read("services/systemPagesService.js");
-    assert.ok(service.includes('call("admin_place_pool_funnel"'));
+    const service = read("services/cityPipelineService.js");
+    assert.ok(service.includes('rpc("admin_place_pipeline_funnel"'));
     const page = stripComments(read("pages/PlacePoolPage.jsx"));
     assert.equal(/supabase|from\(|\.rpc\(/.test(page), false, "the page goes through the service");
     assert.equal(/render\/image/.test(page + service), false, "no image transformations");
@@ -80,20 +88,13 @@ describe("#4130 W4b-1: Place pool", () => {
     const old = stripComments(read("pages/PlacePoolManagementPage.jsx"));
     assert.equal(/Bouncer Judged|label="Photo Coverage"|function OverviewTab/.test(old), false);
   });
-  it('"Scored" never goes over 100%; the extra is said, not shown as a share', () => {
-    const lagos = stageShare(1140, 1000);
-    assert.equal(lagos.pct, 100);
-    assert.equal(lagos.done, 1000);
-    assert.equal(lagos.extra, 140);
-    assert.match(lagos.label, /^1,000 \/ 1,000 \(100%\) · 140 more no longer visible$/);
-    assert.equal(stageShare(500, 1000).pct, 50);
-    assert.ok(read("pages/SignalLibraryPage.jsx").includes("const { pct, label } = stageShare(done, total);"));
-  });
-  it("each city says where it stands", () => {
-    assert.equal(cityReadiness({ is_live_for_consumers: true, is_servable_places: 900 }).label, "Live");
-    assert.equal(cityReadiness({ is_live_for_consumers: false, is_servable_places: 1205, total_active_places: 3000 }).label, "Ready to launch");
-    assert.equal(cityReadiness({ is_live_for_consumers: false, is_servable_places: 0, total_active_places: 40 }).key, "checking");
-    assert.equal(cityReadiness({ is_live_for_consumers: false, is_servable_places: 0, total_active_places: 0 }).label, "Not seeded");
+  it("each city says where it stands, and Ready means no gap", () => {
+    const none = { missingIntelligence: 0, missingReviews: 0, unsearchedAreas: 0, unfinishedSearches: 0, searchUnknown: false, outsideBox: 0 };
+    assert.equal(cityReadinessWithGaps({ is_live_for_consumers: true, is_servable_places: 900 }, none).label, "Live");
+    assert.equal(cityReadinessWithGaps({ is_live_for_consumers: false, is_servable_places: 1205, total_active_places: 3000 }, none).label, "Ready to launch");
+    assert.equal(cityReadinessWithGaps({ is_live_for_consumers: false, is_servable_places: 1205, total_active_places: 3000 }, { ...none, missingIntelligence: 1204 }).key, "gaps");
+    assert.equal(cityReadinessWithGaps({ is_live_for_consumers: false, is_servable_places: 0, total_active_places: 40 }, none).key, "checking");
+    assert.equal(cityReadinessWithGaps({ is_live_for_consumers: false, is_servable_places: 0, total_active_places: 0 }, none).label, "Not seeded");
   });
   it("going live asks first: the switch opens a confirmation, which makes the change", () => {
     const page = read("pages/LaunchCitiesPage.jsx");
@@ -234,7 +235,8 @@ describe("#4130 W4b-5: Ads", () => {
 describe("#4130 W4b-6: old addresses land on their page and tab", () => {
   it("each redirect into these pages names a tab or section that exists", () => {
     const pages = {
-      placepool: (t) => PLACE_POOL_TABS.some((x) => x.id === placePoolTabFor(t)) && placePoolTabFor(t) !== "overview",
+      // #4276: "pipeline" is the address of the section above every tab (it opens Overview).
+      placepool: (t) => t === "pipeline" || (PLACE_POOL_TABS.some((x) => x.id === placePoolTabFor(t)) && placePoolTabFor(t) !== "overview"),
       "platform-health": (t) => sectionFor(PLATFORM_HEALTH_SECTIONS, t) === t,
       settings: (t) => sectionFor(SETTINGS_SECTIONS, t) === t,
       admin: (t) => tabFor(TEAM_TABS, t) === t,
