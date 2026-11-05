@@ -30,6 +30,7 @@ import {
 import {
   applyCityBox,
   citiesSearchStatus,
+  cityTileMap,
   citySearchStatus,
   generateTilesForCity,
   type GeocodeResult,
@@ -995,6 +996,18 @@ async function executeBatchSearch(
   };
 }
 
+/**
+ * #4276: what one search is charged in the spend ledger. A search Google refused
+ * (an HTTP error answer, so no result came back) is not billed, so it costs nothing.
+ * Everything else is charged: a search that answered, and a timeout or network error,
+ * because the request may have reached Google and been billed before the answer was
+ * lost. Over-counting a timeout is the safe side for a spend limit.
+ */
+// deno-lint-ignore no-explicit-any
+export function billedSearchCostUsd(errorDetails: any): number {
+  return typeof errorDetails?.http_status === "number" ? 0 : COST_PER_NEARBY_SEARCH;
+}
+
 // ── Finishing a search ───────────────────────────────────────────────────────
 
 // #4276 C4: a search still running after this long lost its worker. A Nearby Search
@@ -1160,7 +1173,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
     cityCountryCode,
   });
 
-  const costUsd = COST_PER_NEARBY_SEARCH; // Always 1 API call per batch
+  const costUsd = billedSearchCostUsd(errorDetails); // one API call per batch; refused ones are free
 
   // #4276 C3: the search and its run's counters change together, or not at all if
   // this claim timed out and another worker now holds the search.
@@ -1342,7 +1355,7 @@ async function handleRetryBatch(body: any, supabase: any) {
     cityCountryCode,
   });
 
-  const costUsd = COST_PER_NEARBY_SEARCH;
+  const costUsd = billedSearchCostUsd(errorDetails);
 
   // #4276 C3: replaces what the failed attempt counted, in one transaction.
   await finishBatch(supabase, batch, {
@@ -1663,6 +1676,8 @@ export async function dispatchAction(body: any, supabase: any): Promise<Response
       return json(await handleRunStatus(body, supabase));
     case "city_search_status":
       return json(await citySearchStatus(supabase, body));
+    case "city_tile_map":
+      return json(await cityTileMap(supabase, body));
     case "cities_search_status":
       return json(await citiesSearchStatus(supabase));
     case "preview_fill":

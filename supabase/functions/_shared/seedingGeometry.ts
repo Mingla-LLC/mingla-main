@@ -19,6 +19,9 @@ export const COVERAGE_TOLERANCE_M = 1;
 export const SEARCH_RESULT_CAP = 20;
 export const COST_PER_NEARBY_SEARCH = 0.032;
 export const COST_PER_PHOTO = 0.007;
+/** One Google Geocoding request at list price ($5 per 1,000). Planning a box is one;
+ * applying it geocodes again, so a box step is two. */
+export const COST_PER_GEOCODE = 0.005;
 export const EXPECTED_UNIQUE_PLACES_PER_TILE = 10;
 export const PHOTOS_PER_PLACE = 5;
 /** Above this a person confirms before anything is spent. */

@@ -43,7 +43,8 @@ globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
 }) as typeof fetch;
 
 const conductor = await import("../index.ts");
-const { citiesSearchStatus } = await import("../../admin-seed-places/searchPipeline.ts");
+const { citiesSearchStatus, cityTileMap } = await import("../../admin-seed-places/searchPipeline.ts");
+const { SEEDING_CATEGORIES } = await import("../../_shared/seedingCategories.ts");
 
 const opts = { sanitizeOps: false, sanitizeResources: false };
 
@@ -110,6 +111,33 @@ Deno.test({ name: "cities_search_status: every city, and a failing one is report
   assertEquals(alpha.error, null);
   const beta = cities.find((c) => c.cityId === "c2")!;
   assert(String(beta.error).includes("timeout"), JSON.stringify(beta));
+} });
+
+// #4276 rework (B1 map): each tile says whether its searches ran.
+Deno.test({ name: "city_tile_map: searched, unfinished and never-searched tiles", ...opts, fn: async () => {
+  const tile = (id: string, lng: number) => ({ id, center_lat: 10.005, center_lng: lng, radius_m: 600, kind: "grid", tile_index: 0, row_idx: 0, col_idx: 0, level: 0 });
+  const owedAll = SEEDING_CATEGORIES.map((c) => ({ tile_id: "never", search_config_id: c.id, level: 0, reason: "never_searched" }));
+  // deno-lint-ignore no-explicit-any
+  const db: any = {
+    from: () => {
+      // deno-lint-ignore no-explicit-any
+      const chain: any = {
+        select: () => chain, eq: () => chain,
+        single: () => Promise.resolve({ data: { id: "c1", name: "C", tile_radius_m: 600, center_lat: 10.005, center_lng: 10.005, bbox_sw_lat: 10, bbox_sw_lng: 10, bbox_ne_lat: 10.01, bbox_ne_lng: 10.01 }, error: null }),
+      };
+      return chain;
+    },
+    rpc: (fn: string) => Promise.resolve(
+      fn === "seeding_active_tiles"
+        ? { data: [tile("done", 10.002), tile("some", 10.005), tile("never", 10.008)], error: null }
+        : { data: [...owedAll, { tile_id: "some", search_config_id: SEEDING_CATEGORIES[0].id, level: 0, reason: "failed" }], error: null },
+    ),
+  };
+  const map = await cityTileMap(db, { cityId: "c1" });
+  const by = Object.fromEntries(map.tiles.map((t: { id: string; state: string }) => [t.id, t.state]));
+  assertEquals(by, { done: "searched", some: "unfinished", never: "never_searched" });
+  assertEquals(map.tiles.find((t: { id: string }) => t.id === "some").failedSearches, 1);
+  assertEquals(map.box, { swLat: 10, swLng: 10, neLat: 10.01, neLng: 10.01 });
 } });
 
 addEventListener("unload", () => {

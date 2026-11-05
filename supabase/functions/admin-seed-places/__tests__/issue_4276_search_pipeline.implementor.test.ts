@@ -12,11 +12,12 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { SEEDING_CATEGORIES, SEEDING_CATEGORY_MAP } from "../../_shared/seedingCategories.ts";
 import { COST_PER_NEARBY_SEARCH, SEARCH_RESULT_CAP } from "../../_shared/seedingGeometry.ts";
-import { applyPostFetchFilters, dispatchAction, resolveBatchConfig } from "../index.ts";
+import { applyPostFetchFilters, billedSearchCostUsd, dispatchAction, resolveBatchConfig } from "../index.ts";
 import { buildSeedMergeUpdate } from "../../_shared/placeGoogleMerge.ts";
 import {
   applyCityBox,
   type CappedSearch,
+  COMPLETENESS_FAILURE_STREAK,
   COMPLETENESS_RADIUS_M,
   COMPLETENESS_SEARCH_COUNT,
   type GeocodeResult,
@@ -765,4 +766,38 @@ Deno.test("B1: a hand-adjusted box needs a person and a valid box", async () => 
   });
   assertEquals(r.source, "manual");
   assertEquals(w.tables.seeding_cities[0].bbox_sw_lat, 9);
+});
+
+// ── #4276 rework: outages cost little and refused searches cost nothing ──────
+// FAILS-ON-REVERT: drop the failure streak and the outage test sees all 20 searches;
+// charge refused searches and both cost tests fail.
+
+Deno.test({ name: "T8: three failed searches in a row end the check, recorded as failed, refused ones free", ...opts, fn: async () => {
+  const w = world();
+  // A refused key: not retried, so each body is one search.
+  const g = stubGoogle(() => new Response("denied", { status: 403 }));
+  try {
+    const row = await runCompletenessCheck(fakeDb(w), { cityId: CITY, confirm: true }, { googleApiKey: "k" });
+    assertEquals(row.status, "failed");
+    assert(g.bodies.length < COMPLETENESS_SEARCH_COUNT, `it kept going: ${g.bodies.length} searches`);
+    assert(g.bodies.length >= COMPLETENESS_FAILURE_STREAK);
+    assert(String(row.error_message).startsWith(`Stopped after ${COMPLETENESS_FAILURE_STREAK} failed searches in a row`));
+    assertEquals(row.cost_usd, 0, "Google refused every search, so nothing was billed");
+  } finally { g.restore(); }
+}});
+
+Deno.test({ name: "T8: a timeout may have been billed, so it is charged", ...opts, fn: async () => {
+  const w = world();
+  const g = stubGoogle((_b, c) => { if (c === 2) throw new Error("timed out"); return Response.json({ places: [] }); });
+  try {
+    const row = await runCompletenessCheck(fakeDb(w), { cityId: CITY, confirm: true }, { googleApiKey: "k" });
+    assertEquals(row.status, "failed");
+    assertEquals(row.cost_usd, Math.round(COMPLETENESS_SEARCH_COUNT * COST_PER_NEARBY_SEARCH * 1000) / 1000);
+  } finally { g.restore(); }
+}});
+
+Deno.test("spend: a search Google refused costs nothing; a timeout or an answer is charged", () => {
+  assertEquals(billedSearchCostUsd({ http_status: 403, response_body: "denied" }), 0);
+  assertEquals(billedSearchCostUsd({ error_type: "timeout" }), COST_PER_NEARBY_SEARCH);
+  assertEquals(billedSearchCostUsd(null), COST_PER_NEARBY_SEARCH);
 });

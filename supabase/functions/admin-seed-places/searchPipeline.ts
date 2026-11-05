@@ -14,6 +14,7 @@ import {
 import {
   type Box,
   type Circle,
+  COST_PER_GEOCODE,
   COST_PER_NEARBY_SEARCH,
   COST_PER_PHOTO,
   countGridTiles,
@@ -50,6 +51,8 @@ type Db = any;
 
 export const SAMPLE_TILE_LIMIT = 10;
 export const COMPLETENESS_SEARCH_COUNT = 20;
+/** Failed searches in a row that end a completeness check early. */
+export const COMPLETENESS_FAILURE_STREAK = 3;
 export const COMPLETENESS_RADIUS_M = 300;
 const COMPLETENESS_CONCURRENCY = 4;
 const COMPLETENESS_FIELD_MASK =
@@ -649,9 +652,21 @@ export async function runCompletenessCheck(
   const errors: string[] = [];
   let capped = 0;
   let next = 0;
+  // #4276: three failures in a row (Google down, key refused) end the check early, so
+  // an outage costs a few searches, not all twenty. It is recorded as failed.
+  let failStreak = 0;
+  let stoppedEarly = false;
+  let attempted = 0;
+  let refused = 0;
+  const failed = (message: string) => {
+    errors.push(message);
+    failStreak += 1;
+    if (failStreak >= COMPLETENESS_FAILURE_STREAK) stoppedEarly = true;
+  };
   const worker = async () => {
-    while (next < points.length) {
+    while (next < points.length && !stoppedEarly) {
       const point = points[next++];
+      attempted += 1;
       try {
         // #4276 C8: a rate limit waits instead of spoiling the whole sample.
         const res = await fetchWithGoogleBackoff(() =>
@@ -672,14 +687,16 @@ export async function runCompletenessCheck(
           })
         );
         if (!res.ok) {
-          errors.push(`Google ${res.status}: ${(await res.text()).slice(0, 200)}`);
+          refused += 1;
+          failed(`Google ${res.status}: ${(await res.text()).slice(0, 200)}`);
           continue;
         }
         const found = ((await res.json()).places ?? []) as CheckPlace[];
         if (found.length >= SEARCH_RESULT_CAP) capped++;
         places.push(...found);
+        failStreak = 0;
       } catch (err) {
-        errors.push(err instanceof Error ? err.message : String(err));
+        failed(err instanceof Error ? err.message : String(err));
       }
     }
   };
@@ -703,8 +720,11 @@ export async function runCompletenessCheck(
     radius_m: COMPLETENESS_RADIUS_M,
     ...summary,
     points,
-    error_message: errors.length ? errors.slice(0, 3).join(" | ") : null,
-    cost_usd: Math.round(points.length * COST_PER_NEARBY_SEARCH * 1000) / 1000,
+    error_message: errors.length
+      ? `${stoppedEarly ? `Stopped after ${COMPLETENESS_FAILURE_STREAK} failed searches in a row (${attempted} of ${points.length} tried). ` : ""}${errors.slice(0, 3).join(" | ")}`
+      : null,
+    // Searches Google refused were not billed; a timeout may have been, so it counts.
+    cost_usd: Math.round((attempted - refused) * COST_PER_NEARBY_SEARCH * 1000) / 1000,
   };
   const { data, error } = await db.from("seeding_completeness_checks").insert(row).select("*").single();
   if (error) throw new Error(`Completeness check could not be saved: ${error.message}`);
@@ -735,6 +755,55 @@ export async function citySearchStatus(db: Db, body: Record<string, unknown>) {
     ...status,
     checks,
     complete: Object.values(checks).every(Boolean),
+    // What asking Google for the box costs, so the screen can say it before asking.
+    geocodeCostUsd: COST_PER_GEOCODE,
+    completenessSearches: COMPLETENESS_SEARCH_COUNT,
+    completenessCostUsd: Math.round(COMPLETENESS_SEARCH_COUNT * COST_PER_NEARBY_SEARCH * 1000) / 1000,
+  };
+}
+
+/**
+ * B1 box panel map: every active tile with whether its searches ran. A grid or fill
+ * tile owes one finished search per config; "never_searched" means none of them ran,
+ * "unfinished" that some are still owed (never run or failed), "searched" that none are.
+ * Also the area no tile reaches, as the fill would add it.
+ */
+export async function cityTileMap(db: Db, body: Record<string, unknown>) {
+  const city = await loadCity(db, body.cityId);
+  const box = cityBox(city);
+  const tiles = await activeTiles(db, city.id);
+  const unfinished = (await rpc(db, "seeding_unfinished_searches_json", {
+    p_city_id: city.id,
+    p_configs: configsPayload(),
+  })) as UnfinishedSearch[];
+  const owed = new Map<string, { never: number; failed: number }>();
+  for (const u of unfinished) {
+    const o = owed.get(u.tile_id) ?? { never: 0, failed: 0 };
+    if (u.reason === "failed") o.failed += 1;
+    else o.never += 1;
+    owed.set(u.tile_id, o);
+  }
+  const perTile = SEEDING_CATEGORIES.length;
+  const out = tiles.map((t) => {
+    const o = owed.get(t.id) ?? { never: 0, failed: 0 };
+    const total = o.never + o.failed;
+    const state = total === 0
+      ? "searched"
+      : t.kind !== "split" && o.never >= perTile && o.failed === 0
+      ? "never_searched"
+      : "unfinished";
+    return {
+      id: t.id, kind: t.kind, level: t.level, lat: t.center_lat, lng: t.center_lng, radiusM: t.radius_m,
+      state, owedSearches: total, failedSearches: o.failed,
+    };
+  });
+  const uncovered = box ? findUncoveredGridTiles(box, baseCircles(tiles), city.tile_radius_m) : [];
+  return {
+    cityId: city.id,
+    box,
+    center: { lat: city.center_lat, lng: city.center_lng },
+    tiles: out,
+    uncovered: uncovered.map((t) => ({ lat: t.center_lat, lng: t.center_lng, radiusM: t.radius_m })),
   };
 }
 

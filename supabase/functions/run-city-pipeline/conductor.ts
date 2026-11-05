@@ -14,7 +14,7 @@ import {
   storageGate,
   unhealthyProviders,
 } from "./gates.ts";
-import { COST_PER_NEARBY_SEARCH, HIGH_COST_USD } from "../_shared/seedingGeometry.ts";
+import { COST_PER_GEOCODE, COST_PER_NEARBY_SEARCH, HIGH_COST_USD } from "../_shared/seedingGeometry.ts";
 
 // deno-lint-ignore no-explicit-any
 export type Db = any;
@@ -236,6 +236,10 @@ async function fillRound(ctx: Ctx): Promise<Outcome | null> {
 
 async function stageBox(ctx: Ctx): Promise<Outcome> {
   if (!ctx.stage.cursor?.box_done) {
+    // #4276: planning and applying the box each geocode with Google, so the step goes
+    // through the same spend and provider gate as any other paid step.
+    const blocked = await paidStepBlocked(ctx, googleSearch, 2 * COST_PER_GEOCODE);
+    if (blocked) return blocked;
     const plan = must(
       await ctx.deps.call("admin-seed-places", { action: "plan_city_box", cityId: ctx.run.city_id }),
       "plan_city_box",

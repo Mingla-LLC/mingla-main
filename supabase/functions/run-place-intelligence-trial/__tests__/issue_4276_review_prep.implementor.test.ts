@@ -30,6 +30,7 @@ interface World {
   reviewUpserts: Array<Record<string, unknown>>;
   counters: Array<Record<string, unknown>>;
   place: Record<string, unknown>;
+  serperHealthy?: boolean;
 }
 
 async function world(over: Partial<World> = {}): Promise<World> {
@@ -105,6 +106,8 @@ function fakeDb(w: World): any {
     from,
     rpc: (fn: string, args: Record<string, unknown>) => {
       if (fn === "increment_run_counters") w.counters.push(args);
+      // #4276: prep checks Serper's latest health check first.
+      if (fn === "place_intel_provider_healthy") return Promise.resolve({ data: w.serperHealthy !== false, error: null });
       return Promise.resolve({ data: null, error: null });
     },
   };
@@ -291,3 +294,19 @@ Deno.test("resume only moves a paused run, and goes through the queue", async ()
   assertEquals(refused.status, 409);
   assertEquals(running.run.status, "running");
 });
+
+// #4276 rework: an outage costs nothing. FAILS-ON-REVERT: drop the health check at the
+// top of runPrepIteration and Serper is called and the place is claimed.
+Deno.test({ name: "an unhealthy Serper pauses the run before any place is claimed or fetched", ...opts, fn: async () => {
+  const w = await world({ serperHealthy: false });
+  const s = stubSerper(() => Response.json({ reviews: [] }));
+  try {
+    const r = await prep(w);
+    assertEquals(r.paused_by_provider, true);
+    assertEquals(r.prepped + r.prep_failed, 0);
+    assertEquals(s.calls.length, 0, "no Serper request");
+    assertEquals(w.row.status, "pending", "the place was not claimed");
+    assertEquals(w.run.status, "paused");
+    assertEquals(w.run.error_reason, "review_provider_out_of_credits");
+  } finally { s.restore(); }
+}});

@@ -109,6 +109,7 @@ function memoryDb(): { db: any; tables: Record<string, Row[]> } {
   const rpc = (fn: string, args: Row) => {
     const run = tables.place_intelligence_runs.find((r) => r.id === args.p_run_id);
     if (fn === "lock_run_for_chunk") return Promise.resolve({ data: run ?? null, error: null });
+    if (fn === "place_intel_provider_healthy") return Promise.resolve({ data: true, error: null });
     if (fn === "increment_run_counters" && run) {
       run.processed_count = Number(run.processed_count ?? 0) + Number(args.p_processed);
       run.succeeded_count = Number(run.succeeded_count ?? 0) + Number(args.p_succeeded);

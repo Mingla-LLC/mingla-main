@@ -381,3 +381,20 @@ Deno.test("M3: the refresh warns at half its cron interval", async () => {
   assertEquals(mvRefreshNearLimit({ max_seconds: 300, interval_seconds: 600 }), true);
   assertEquals(mvRefreshNearLimit({ max_seconds: null, interval_seconds: 600 }), false);
 });
+
+// #4276 rework: asking Google for the box is a paid geocode, so it waits behind the
+// same gate. FAILS-ON-REVERT: drop the paidStepBlocked call in stageBox and these see
+// plan_city_box go out.
+Deno.test("the box step's geocode waits behind the spend limit", async () => {
+  const w = world("box", () => ok(), { spent: 100 });
+  assertEquals((await tick(deps(w))).ended, "spend_limit");
+  assertEquals(w.calls.filter((c) => c.action === "plan_city_box" || c.action === "apply_city_box"), []);
+});
+
+Deno.test("the box step's geocode waits for a healthy Google", async () => {
+  const w = world("box", () => ok(), {
+    providers: { google_places: { status: "down", checked_at: RECENT }, gemini: healthy, serper: healthy },
+  });
+  assertEquals((await tick(deps(w))).ended, "provider_unhealthy");
+  assertEquals(w.calls.filter((c) => c.action === "plan_city_box"), []);
+});

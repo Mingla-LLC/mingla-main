@@ -4028,6 +4028,28 @@ export async function runPrepIteration(args: {
   if (parentRunErr) throw new Error(`prep run read failed: ${parentRunErr.message}`);
   const forceRefreshReviews = parentRun?.force_refresh_reviews === true;
 
+  // #4276: check Serper before claiming a prep batch, so an outage costs nothing: no
+  // collage, no review fetch, no place marked failed. Same pause and reason as running
+  // out of credits mid-batch, so the existing resume (manual, or automatic for system
+  // runs once a newer health check is healthy) picks it up.
+  const { data: serperHealthy, error: healthErr } = await db.rpc("place_intel_provider_healthy", {
+    p_service_key: "serper",
+  });
+  if (healthErr) throw new Error(`Serper health read failed: ${healthErr.message}`);
+  if (serperHealthy !== true) {
+    const { error: pauseErr } = await db.from("place_intelligence_runs")
+      .update({
+        status: "paused",
+        error_reason: "review_provider_out_of_credits",
+        paused_since: new Date().toISOString(),
+      })
+      .eq("id", runId)
+      .eq("status", "running");
+    if (pauseErr) throw new Error(`run could not be paused: ${pauseErr.message}`);
+    console.error(`[v6 prep] run ${runId} paused before prep: Serper's latest health check is not healthy`);
+    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: true };
+  }
+
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
     .select("id, place_pool_id, status, started_at")
