@@ -419,7 +419,7 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-3197 H9 FAIL: the reconcile job is not scheduled every minute with its literal command';
   END IF;
   IF (SELECT count(*) FROM cron.job WHERE jobname='issue_3197_public_search_converged' AND active
-        AND schedule='*/10 * * * *' AND command='SELECT public.issue_3197_assert_public_search_converged();')<>1 THEN
+        AND schedule='4,14,24,34,44,54 * * * *' AND command='SELECT public.issue_3197_assert_public_search_converged();')<>1 THEN
     RAISE EXCEPTION 'ISSUE-3197 H9 FAIL: the convergence job is not scheduled with its literal command';
   END IF;
   FOREACH v_fn IN ARRAY ARRAY[
