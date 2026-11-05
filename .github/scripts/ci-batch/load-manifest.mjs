@@ -140,7 +140,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
-export const BOOTSTRAP_SHA256 = "074083e51bb2ce3694946630627ebeecd7a6f15258defa422587031a0ebb1a4d";
+// #4273: register the Invite step sources-and-methods migration and its proofs the same way.
+export const BOOTSTRAP_SHA256 = "3d107d5a0f29dc891450e1ba28fa6f390d86892b60429d6154045babde6a9c52";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
