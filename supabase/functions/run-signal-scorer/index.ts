@@ -79,6 +79,12 @@ serve(async (req: Request) => {
     const afterId: string | null =
       typeof body.after_id === 'string' && body.after_id.length > 0 ? body.after_id : null;
 
+    // #4276 C7: a place held for its first final score has a passing verdict parked
+    // while is_servable stays false. Only ever by id: a city-wide score would release
+    // held AI results into live decks. A score on a held place serves nobody until the
+    // place is released.
+    const includeHeld: boolean = body.include_held === true;
+
     if (!signalId) {
       return new Response(
         JSON.stringify({ error: 'signal_id is required' }),
@@ -88,6 +94,12 @@ serve(async (req: Request) => {
     if (placeIds && placeIds.length > 1000) {
       return new Response(
         JSON.stringify({ error: 'place_ids length > 1000' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    if (includeHeld && !(placeIds && placeIds.length > 0)) {
+      return new Response(
+        JSON.stringify({ error: 'include_held needs place_ids' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
@@ -171,9 +183,11 @@ serve(async (req: Request) => {
             .from('place_pool')
             .select(SELECT_FIELDS)
             .eq('is_active', true)
-            .eq('is_servable', true)
             .order('id')
             .limit(size);
+          q = includeHeld
+            ? q.or('is_servable.eq.true,held_final_check_passed.eq.true')
+            : q.eq('is_servable', true);
           if (!isPerPlace && cityId) q = q.eq('city_id', cityId);
           if (cursor) q = q.gt('id', cursor);
           return q;

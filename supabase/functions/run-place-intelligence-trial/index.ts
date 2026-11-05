@@ -699,6 +699,14 @@ const Q2_TOOL = {
 // 49 of the 194 deployed edge functions already ship with exactly this guard
 // (including backfill-place-photo-thumbs at version 328), so the runtime does
 // treat index.ts as the main module.
+const CONDUCTOR_ACTIONS: ReadonlySet<string> = new Set([
+  "start_run",
+  "retry_failed_run",
+  "resume_run",
+  "pause_run",
+  "cancel_trial",
+]);
+
 export const httpHandler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -757,17 +765,41 @@ export const httpHandler = async (req: Request): Promise<Response> => {
       return json({ error: "Missing authorization" }, 401);
     }
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(
-      token,
-    );
-    if (authErr || !user) return json({ error: "Invalid token" }, 401);
-    const { data: adminRow } = await supabaseAdmin
-      .from("admin_users")
-      .select("id")
-      .eq("email", user.email)
-      .eq("status", "active")
-      .maybeSingle();
-    if (!adminRow) return json({ error: "Admin access required" }, 403);
+
+    // #4276: the conductor calls in with the service key, acting for the admin who
+    // started its run. Only these actions, and only with that admin named. Every other
+    // caller still goes through the user check below.
+    let adminRow: { id: string } | null = null;
+    if (
+      supabaseServiceKey && token === supabaseServiceKey &&
+      CONDUCTOR_ACTIONS.has(body.action)
+    ) {
+      const { data: namedAdmin } = typeof body.admin_id === "string"
+        ? await supabaseAdmin
+          .from("admin_users")
+          .select("id")
+          .eq("id", body.admin_id)
+          .eq("status", "active")
+          .maybeSingle()
+        : { data: null };
+      if (!namedAdmin) {
+        return json({ error: "admin_id must name an active admin" }, 403);
+      }
+      adminRow = namedAdmin;
+    } else {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(
+        token,
+      );
+      if (authErr || !user) return json({ error: "Invalid token" }, 401);
+      const { data: userAdmin } = await supabaseAdmin
+        .from("admin_users")
+        .select("id")
+        .eq("email", user.email)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!userAdmin) return json({ error: "Admin access required" }, 403);
+      adminRow = userAdmin;
+    }
 
     switch (body.action) {
       case "preview_run":
@@ -791,6 +823,8 @@ export const httpHandler = async (req: Request): Promise<Response> => {
         return await handleCancelTrial(supabaseAdmin, body, adminRow.id);
       case "resume_run":
         return await handleResumeRun(supabaseAdmin, body);
+      case "pause_run":
+        return await handlePauseRun(supabaseAdmin, body);
       case "list_active_runs":
         return await handleListActiveRuns(supabaseAdmin);
       case "city_coverage":
@@ -1062,6 +1096,7 @@ export async function fetchReviewsForPlace(
   placePoolId: string,
   forceRefresh: boolean,
   serperKey: string,
+  onSerperRequest?: () => void,
 ): Promise<ReviewFetchOutcome> {
   // Idempotency check
   if (!forceRefresh) {
@@ -1158,6 +1193,8 @@ export async function fetchReviewsForPlace(
     let serperRes: Response;
     const _serperT0 = Date.now();
     try {
+      // #4276 M1: every request counts, including one that fails.
+      onSerperRequest?.();
       serperRes = await fetch(SERPER_REVIEWS_URL, {
         method: "POST",
         headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
@@ -1550,14 +1587,36 @@ async function handleStartRun(
     return json({ error: "city_id does not exist in seeding_cities" }, 400);
   }
 
-  // Load all servable place IDs for the city, ranked by review_count desc
-  const { data: pool, error: poolErr } = await db
-    .from("place_pool")
-    .select("id, review_count")
-    .eq("is_servable", true)
-    .eq("city_id", cityId)
-    .order("review_count", { ascending: false, nullsFirst: false });
-  if (poolErr) return json({ error: poolErr.message }, 500);
+  // Load all servable place IDs for the city, ranked by review_count desc.
+  // #4276 C6, C7: the conductor's new-only run takes exactly the places held for their
+  // first evaluation, and its whole-city run adds them to the servable ones. Neither
+  // can reach a place a person hasn't chosen.
+  const placeScope = body.place_scope ?? "servable";
+  if (placeScope !== "servable" && placeScope !== "held" && placeScope !== "servable_and_held") {
+    return json({ error: "place_scope must be 'servable' | 'held' | 'servable_and_held'" }, 400);
+  }
+  // Paged: the server caps one read at 1000 rows, and a large city is many times that.
+  const poolFetch = await fetchAllPages<{ id: string; review_count: number | null }>(
+    async (from, to) => {
+      let q = db
+        .from("place_pool")
+        .select("id, review_count")
+        .eq("city_id", cityId)
+        .order("review_count", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (placeScope === "held") {
+        q = q.eq("serving_hold", true).eq("held_final_check_passed", true);
+      } else if (placeScope === "servable_and_held") {
+        q = q.or("is_servable.eq.true,held_final_check_passed.eq.true");
+      } else {
+        q = q.eq("is_servable", true);
+      }
+      return await q;
+    },
+  );
+  if (poolFetch.error) return json({ error: poolFetch.error }, 500);
+  const pool = poolFetch.rows;
   if (!pool || pool.length === 0) {
     return json({ error: "No servable places in city" }, 400);
   }
@@ -1575,14 +1634,19 @@ async function handleStartRun(
   if (mode === "full_city") {
     sampledIds = pool.map((p) => p.id);
   } else if (mode === "remainder") {
-    const { data: completedRows, error: completedErr } = await db
-      .from("place_intelligence_trial_runs")
-      .select("place_pool_id")
-      .eq("city_id", cityId)
-      .eq("status", "completed");
-    if (completedErr) return json({ error: completedErr.message }, 500);
+    const completedFetch = await fetchAllPages<{ place_pool_id: string }>(
+      async (from, to) =>
+        await db
+          .from("place_intelligence_trial_runs")
+          .select("place_pool_id")
+          .eq("city_id", cityId)
+          .eq("status", "completed")
+          .order("id", { ascending: true })
+          .range(from, to),
+    );
+    if (completedFetch.error) return json({ error: completedFetch.error }, 500);
     const evaluatedSet = new Set(
-      (completedRows ?? []).map((r) => r.place_pool_id as string),
+      completedFetch.rows.map((r) => r.place_pool_id),
     );
     sampledIds = pool.map((p) => p.id).filter((id) => !evaluatedSet.has(id));
     if (sampledIds.length === 0) {
@@ -1625,6 +1689,17 @@ async function handleStartRun(
   // full_city + remainder modes: require confirm_high_cost=true body field for
   // cost > $5 (admin UI surfaces a double-confirm dialog before sending this).
   // ORCH-1008: remainder mirrors full_city semantics.
+  // #4276 C9: the conductor checks its limits with the real number before any spend.
+  if (body.estimate_only === true) {
+    return json({
+      estimate_only: true,
+      totalPlaces: effectiveCount,
+      estimatedCostUsd: estCost,
+      exceedsCostGuard: estCost > COST_GUARD_USD,
+      costGuardUsd: COST_GUARD_USD,
+    });
+  }
+
   if (estCost > COST_GUARD_USD) {
     if (mode === "sample") {
       return json({
@@ -3359,6 +3434,29 @@ async function handleCancelTrial(
 // Serper is still out of credits, the first prep batch simply pauses it again.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// #4276 C9: the conductor stops a running or queued run when one of its gates trips.
+// The worker checks between iterations, so what is in flight finishes and is counted.
+export async function handlePauseRun(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const runId = body.run_id as string;
+  if (!runId) return json({ error: "run_id required" }, 400);
+  const { data: run, error } = await db
+    .from("place_intelligence_runs")
+    .update({
+      status: "paused",
+      error_reason: typeof body.reason === "string" ? body.reason : "paused",
+      paused_at: new Date().toISOString(),
+    })
+    .eq("id", runId)
+    .in("status", ["queued", "running"])
+    .select("id, status")
+    .maybeSingle();
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, run_id: runId, paused: !!run });
+}
+
 export async function handleResumeRun(
   db: SupabaseClient,
   body: Record<string, unknown>,
@@ -3368,7 +3466,7 @@ export async function handleResumeRun(
 
   const { data: run, error } = await db
     .from("place_intelligence_runs")
-    .update({ status: "queued", error_reason: null })
+    .update({ status: "queued", error_reason: null, paused_at: null })
     .eq("id", runId)
     .eq("status", "paused")
     .select("id, status")
@@ -3646,6 +3744,11 @@ export async function handleProcessChunk(
         scored: totalScored,
         prepped: totalPrepped,
       });
+    }
+    // #4276 C9: paused between iterations. Nothing more goes out.
+    if (liveRun.status !== "running") {
+      exitReason = `status_${liveRun.status}`;
+      break;
     }
     if (liveRun.processed_count >= liveRun.total_count) {
       const counterReconcile = await reconcileAndFinalizeParentFromChildren(
@@ -4080,6 +4183,7 @@ export async function runPrepIteration(args: {
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
+  let serperRequests = 0;
   const batchStartedAtPerf = performance.now();
   const batchStartedAtIso = new Date().toISOString();
   const batchContext: BatchContext = {
@@ -4129,6 +4233,9 @@ export async function runPrepIteration(args: {
         row.place_pool_id,
         forceRefreshReviews,
         serperKey,
+        () => {
+          serperRequests++;
+        },
       );
       reviewsFetchMs = elapsedMs(reviewsStarted);
       // #4276 S4: this result used to be ignored, so a failed fetch went on to
@@ -4295,6 +4402,19 @@ export async function runPrepIteration(args: {
     worker_elapsed_ms_at_batch_end: workerElapsedEnd,
   });
 
+  // #4276 M1: a lost count understates spend, so it is reported, not swallowed.
+  if (serperRequests > 0) {
+    const { error: serperCountErr } = await db.rpc("increment_run_serper_requests", {
+      p_run_id: runId,
+      p_requests: serperRequests,
+    });
+    if (serperCountErr) {
+      console.error(
+        `[v6 prep] run ${runId}: ${serperRequests} Serper requests not counted: ${serperCountErr.message}`,
+      );
+    }
+  }
+
   // Failed-prep rows count toward processed (terminal). Successful preps do NOT
   // count yet — they need to flow through score iteration.
   if (prepFailedCount > 0) {
@@ -4315,6 +4435,7 @@ export async function runPrepIteration(args: {
       .update({
         status: "paused",
         error_reason: "review_provider_out_of_credits",
+        paused_at: new Date().toISOString(),
       })
       .eq("id", runId)
       .eq("status", "running");

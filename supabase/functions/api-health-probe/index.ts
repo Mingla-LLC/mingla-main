@@ -58,6 +58,7 @@ import {
   indicatorToStatus,
   matchClassBDepletion,
   type ProbeResult,
+  mvRefreshNearLimit,
   serperErrorDetail,
   STATUS_PAGE_URLS,
   tallyDeliveryRows,
@@ -1006,10 +1007,19 @@ serve(async (req) => {
           });
         } else {
           const verdict = evaluateCronJobHealth((data ?? []) as CronJobHealthRow[]);
+          // #4276 M3: warn before the refresh outgrows its cron, through the same tile
+          // and alert. A failed read is reported in the detail, not read as fine.
+          const { data: mvHealth, error: mvErr } = await serviceClient.rpc("city_pipeline_mv_refresh_health");
+          const mvNearLimit = !mvErr && mvRefreshNearLimit(mvHealth);
           checkRows.push({
-            service_key: "pg_cron", layer: "passive", status: verdict.status,
+            service_key: "pg_cron", layer: "passive",
+            status: mvNearLimit && verdict.status === "healthy" ? "degraded" : verdict.status,
             latency_ms: Date.now() - t0, mode: null, http_status: null,
-            detail: verdict.detail,
+            detail: {
+              ...verdict.detail,
+              mv_refresh: mvErr ? { error: mvErr.message } : mvHealth,
+              mv_refresh_near_limit: mvNearLimit,
+            },
           });
         }
       } catch (e) {

@@ -15,7 +15,7 @@ type RecordLike = Record<string, any>;
 type QueryClient = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any };
 
 /** Exact deployed public.place_pool columns consumed by the V1 share mapper. */
-export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,country_code,primary_type_display_name,primary_type,rating,review_count,price_level,price_min,price_max,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,lat,lng,is_active,is_servable";
+export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,country_code,primary_type_display_name,primary_type,rating,review_count,price_level,price_min,price_max,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,lat,lng,is_active,is_servable,serving_hold";
 
 const clean = (value: unknown, max = 160): string =>
   typeof value === "string"
@@ -329,7 +329,7 @@ const priceFields = (source: RecordLike): RecordLike => compact({
 const NATIVE_PLACE_SOURCE_KEYS = [
   "id","google_place_id","name","address","city","country_code","primary_type_display_name","primary_type","rating","review_count",
   "price_level","price_min","price_max","utc_offset_minutes","editorial_summary","generative_summary","opening_hours","stored_photo_urls",
-  "google_maps_uri","national_phone_number","website","lat","lng","is_active","is_servable",
+  "google_maps_uri","national_phone_number","website","lat","lng","is_active","is_servable","serving_hold",
   "placeId","googlePlaceId","placePoolId","place_pool_id","experience_id","title","category","categoryIcon","image","images","description","fullDescription",
   "reviewCount","priceRange","priceRangeStatus","sourceMinMinor","sourceMaxMinor","sourceCurrencyCode","sourceMinorUnitExponent",
   "displayMinMinor","displayMaxMinor","displayCurrencyCode","displayMinorUnitExponent","priceIsApproximate","fxSnapshotId","fxProvider",
@@ -821,7 +821,7 @@ export async function loadAuthoritativeContentShare(
     const { data: row, error } = await query.maybeSingle();
     if (error) throw new Error("db_error");
     if (!row) throw new Error("gone");
-    if (row.is_active !== true || row.is_servable === false) throw new Error("not_public");
+    if (row.is_active !== true || row.is_servable === false || row.serving_hold === true) throw new Error("not_public");
     if (sourceCardRow) {
       assertNativeSourceIdentity("place", sourceCardRow, row);
     }

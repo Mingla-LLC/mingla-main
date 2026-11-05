@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+import { fetchWithGoogleBackoff } from "../_shared/googleBackoff.ts";
 import {
   SEEDING_CATEGORIES,
   SEEDING_CATEGORY_MAP,
@@ -335,6 +336,10 @@ function transformGooglePlaceForSeed(
 
     raw_google_data: gPlace,
     fetched_via: "nearby_search",
+    // #4276 C7: a new place stays hidden until it has finished. This row is only ever
+    // inserted (ignoreDuplicates), and the merge update below is an allowlist without
+    // this column, so a place that already exists can't become held.
+    serving_hold: true,
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
@@ -842,16 +847,19 @@ async function executeBatchSearch(
       rankPreference: "POPULARITY",
     };
 
-    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      body: JSON.stringify(requestBody),
-      timeoutMs: API_TIMEOUT_MS,
-    });
+    // #4276 C8: a rate limit waits and tries again rather than failing the search.
+    const response = await fetchWithGoogleBackoff(() =>
+      timeoutFetch(NEARBY_SEARCH_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY,
+          "X-Goog-FieldMask": FIELD_MASK,
+        },
+        body: JSON.stringify(requestBody),
+        timeoutMs: API_TIMEOUT_MS,
+      })
+    );
 
     if (!response.ok) {
       const respBody = await response.text();
@@ -986,6 +994,48 @@ async function executeBatchSearch(
   };
 }
 
+// ── Finishing a search ───────────────────────────────────────────────────────
+
+// #4276 C4: a search still running after this long lost its worker. A Nearby Search
+// takes seconds, even with every backoff in fetchWithGoogleBackoff.
+const STALE_BATCH_SECONDS = 300;
+
+// deno-lint-ignore no-explicit-any
+async function finishBatch(supabase: any, batch: any, r: {
+  status: string;
+  apiCalls?: number;
+  costUsd?: number;
+  placesReturned?: number;
+  rejectedNoPhotos?: number;
+  rejectedClosed?: number;
+  rejectedExcludedType?: number;
+  newInserted?: number;
+  duplicateSkipped?: number;
+  error?: string | null;
+  errorDetails?: unknown;
+}) {
+  const { data, error } = await supabase.rpc("seeding_finish_batch", {
+    p_batch_id: batch.id,
+    p_claim_token: batch.claim_token,
+    p_status: r.status,
+    p_api_calls: r.apiCalls ?? 0,
+    p_cost_usd: r.costUsd ?? 0,
+    p_places_returned: r.placesReturned ?? 0,
+    p_rejected_no_photos: r.rejectedNoPhotos ?? 0,
+    p_rejected_closed: r.rejectedClosed ?? 0,
+    p_rejected_excluded_type: r.rejectedExcludedType ?? 0,
+    p_new_inserted: r.newInserted ?? 0,
+    p_duplicate_skipped: r.duplicateSkipped ?? 0,
+    p_error_message: r.error ?? null,
+    p_error_details: r.errorDetails ?? null,
+  });
+  if (error) throw new Error(`Search ${batch.id} could not be recorded: ${error.message}`);
+  if (data?.applied !== true) {
+    console.warn(`[admin-seed-places] search ${batch.id} finished after its claim timed out; not counted`);
+  }
+  return data ?? {};
+}
+
 // ── Action: run_next_batch ───────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
@@ -1005,18 +1055,26 @@ async function handleRunNextBatch(body: any, supabase: any) {
     throw new Error(`Run status is '${run.status}' — cannot execute batches. Run must be in 'ready', 'running', or 'paused' state.`);
   }
 
-  // Find next pending batch
-  const { data: nextBatches, error: nextErr } = await supabase
-    .from("seeding_batches")
-    .select("*")
-    .eq("run_id", runId)
-    .eq("status", "pending")
-    .order("batch_index")
-    .limit(1);
+  // #4276 C3, C4: one statement claims one search, so two callers can't take the same
+  // one. A search left running past the timeout comes back here without being recounted.
+  const { data: claimed, error: claimErr } = await supabase.rpc("seeding_claim_next_batch", {
+    p_run_id: runId,
+    p_stale_after_seconds: STALE_BATCH_SECONDS,
+  });
+  if (claimErr) throw new Error(`Failed to claim next batch: ${claimErr.message}`);
 
-  if (nextErr) throw new Error(`Failed to find next batch: ${nextErr.message}`);
+  if (!claimed || claimed.length === 0) {
+    const { data: stillRunning, error: runningErr } = await supabase
+      .from("seeding_batches")
+      .select("id")
+      .eq("run_id", runId)
+      .eq("status", "running")
+      .limit(1);
+    if (runningErr) throw new Error(`Failed to read running batches: ${runningErr.message}`);
+    if (stillRunning && stillRunning.length > 0) {
+      return { done: false, runId, waiting: true, message: "Another search is still running" };
+    }
 
-  if (!nextBatches || nextBatches.length === 0) {
     // All done — mark run completed
     await supabase
       .from("seeding_runs")
@@ -1030,15 +1088,10 @@ async function handleRunNextBatch(body: any, supabase: any) {
     return { done: true, runId, message: "All batches completed" };
   }
 
-  const batch = nextBatches[0];
+  const batch = claimed[0];
 
-  // Mark batch as running, mark run as running
+  // Mark run as running
   const now = new Date().toISOString();
-  await supabase
-    .from("seeding_batches")
-    .update({ status: "running", started_at: now })
-    .eq("id", batch.id);
-
   await supabase
     .from("seeding_runs")
     .update({
@@ -1063,23 +1116,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
 
   if (!tile) {
     // Tile missing — mark batch failed
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: "Tile not found",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batch.id);
-
-    await supabase
-      .from("seeding_runs")
-      .update({
-        status: "paused",
-        failed_batches: run.failed_batches + 1,
-      })
-      .eq("id", runId);
-
+    await finishBatch(supabase, batch, { status: "failed", error: "Tile not found" });
     return {
       done: false,
       batchId: batch.id,
@@ -1091,29 +1128,14 @@ async function handleRunNextBatch(body: any, supabase: any) {
 
   const config = resolveBatchConfig(batch);
   if (!config) {
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: `Unknown category: ${batch.seeding_category}`,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batch.id);
-
-    await supabase
-      .from("seeding_runs")
-      .update({
-        status: "paused",
-        failed_batches: run.failed_batches + 1,
-      })
-      .eq("id", runId);
-
+    const error = `Unknown category: ${batch.seeding_category}`;
+    await finishBatch(supabase, batch, { status: "failed", error });
     return {
       done: false,
       batchId: batch.id,
       batchIndex: batch.batch_index,
       status: "failed",
-      error: `Unknown category: ${batch.seeding_category}`,
+      error,
     };
   }
 
@@ -1137,79 +1159,26 @@ async function handleRunNextBatch(body: any, supabase: any) {
     cityCountryCode,
   });
 
-  const completedAt = new Date().toISOString();
   const costUsd = COST_PER_NEARBY_SEARCH; // Always 1 API call per batch
 
-  // Update batch record
-  await supabase
-    .from("seeding_batches")
-    .update({
-      status: batchStatus,
-      google_api_calls: 1,
-      places_returned: placesReturned,
-      places_rejected_no_photos: rejectedNoPhotos,
-      places_rejected_closed: rejectedClosed,
-      places_rejected_excluded_type: rejectedExcludedType,
-      places_new_inserted: newInserted,
-      places_duplicate_skipped: duplicateSkipped,
-      estimated_cost_usd: costUsd,
-      error_message: errorMessage,
-      error_details: errorDetails,
-      completed_at: completedAt,
-    })
-    .eq("id", batch.id);
-
-  // Update run aggregates
-  const updateData: Record<string, unknown> = {
-    status: "paused",
-    total_api_calls: run.total_api_calls + 1,
-    total_places_new: run.total_places_new + newInserted,
-    total_places_duped: run.total_places_duped + duplicateSkipped,
-    total_cost_usd: run.total_cost_usd + costUsd,
-  };
-
-  if (batchStatus === "completed") {
-    updateData.completed_batches = run.completed_batches + 1;
-  } else {
-    updateData.failed_batches = run.failed_batches + 1;
-  }
-
-  // Check if there are remaining pending batches
-  const { data: remainingBatches } = await supabase
-    .from("seeding_batches")
-    .select("id")
-    .eq("run_id", runId)
-    .eq("status", "pending")
-    .limit(1);
-
-  const noPending = !remainingBatches || remainingBatches.length === 0;
-
-  if (noPending) {
-    // Also check for failed batches — don't auto-complete if retryable batches remain
-    const { data: failedBatches } = await supabase
-      .from("seeding_batches")
-      .select("id")
-      .eq("run_id", runId)
-      .eq("status", "failed")
-      .limit(1);
-
-    const noFailed = !failedBatches || failedBatches.length === 0;
-
-    if (noFailed) {
-      // All batches are completed/skipped — run is done
-      updateData.status = "completed";
-      updateData.current_batch_index = null;
-      updateData.completed_at = completedAt;
-    }
-    // else: no pending but failed batches exist — stay paused for retry
-  }
-
-  await supabase
-    .from("seeding_runs")
-    .update(updateData)
-    .eq("id", runId);
+  // #4276 C3: the search and its run's counters change together, or not at all if
+  // this claim timed out and another worker now holds the search.
+  const finished = await finishBatch(supabase, batch, {
+    status: batchStatus,
+    apiCalls: 1,
+    costUsd,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+    error: errorMessage,
+    errorDetails,
+  });
 
   // Get next batch preview
+  const noPending = finished.has_pending !== true;
   let nextPreview = null;
   if (!noPending) {
     const { data: nextBatch } = await supabase
@@ -1232,7 +1201,8 @@ async function handleRunNextBatch(body: any, supabase: any) {
   }
 
   return {
-    done: updateData.status === "completed",
+    done: finished.run_status === "completed",
+    superseded: finished.applied !== true,
     batchId: batch.id,
     batchIndex: batch.batch_index,
     tileIndex: batch.tile_index,
@@ -1251,12 +1221,12 @@ async function handleRunNextBatch(body: any, supabase: any) {
     },
     nextBatch: nextPreview,
     runProgress: {
-      completedBatches: (updateData.completed_batches as number) ?? run.completed_batches,
-      failedBatches: (updateData.failed_batches as number) ?? run.failed_batches,
+      completedBatches: finished.completed_batches ?? run.completed_batches,
+      failedBatches: finished.failed_batches ?? run.failed_batches,
       totalBatches: run.total_batches,
-      totalPlacesNew: run.total_places_new + newInserted,
-      totalPlacesDuped: run.total_places_duped + duplicateSkipped,
-      totalCostUsd: Math.round((run.total_cost_usd + costUsd) * 1000) / 1000,
+      totalPlacesNew: finished.total_places_new ?? run.total_places_new,
+      totalPlacesDuped: finished.total_places_duped ?? run.total_places_duped,
+      totalCostUsd: Math.round((finished.total_cost_usd ?? run.total_cost_usd) * 1000) / 1000,
     },
   };
 }
@@ -1281,48 +1251,29 @@ async function handleRetryBatch(body: any, supabase: any) {
   }
 
   // Load batch — must be failed AND belong to this run
-  const { data: batch, error: batchErr } = await supabase
+  const { data: existingBatch, error: batchErr } = await supabase
     .from("seeding_batches")
-    .select("*")
+    .select("id, status")
     .eq("id", batchId)
     .eq("run_id", runId)
     .single();
 
-  if (batchErr || !batch) throw new Error("Batch not found");
-  if (batch.status !== "failed") {
-    throw new Error(`Batch status is '${batch.status}' — can only retry failed batches`);
+  if (batchErr || !existingBatch) throw new Error("Batch not found");
+  if (existingBatch.status !== "failed") {
+    throw new Error(`Batch status is '${existingBatch.status}' — can only retry failed batches`);
   }
 
-  // One-at-a-time guard: no other batch should be running
-  const { data: runningBatches } = await supabase
-    .from("seeding_batches")
-    .select("id")
-    .eq("run_id", runId)
-    .eq("status", "running")
-    .limit(1);
-
-  if (runningBatches && runningBatches.length > 0) {
+  // #4276 C3: one statement checks it is still failed, that nothing else is running in
+  // this run, and takes it.
+  const { data: claimedRetry, error: claimRetryErr } = await supabase.rpc("seeding_claim_retry_batch", {
+    p_run_id: runId,
+    p_batch_id: batchId,
+  });
+  if (claimRetryErr) throw new Error(`Failed to claim retry: ${claimRetryErr.message}`);
+  if (!claimedRetry || claimedRetry.length === 0) {
     throw new Error("Another batch is already running. Wait for it to complete.");
   }
-
-  // Save old batch contribution to run aggregates (for correction)
-  const oldNewInserted = batch.places_new_inserted || 0;
-  const oldDuped = batch.places_duplicate_skipped || 0;
-
-  // Mark batch as running, increment retry_count
-  const now = new Date().toISOString();
-  await supabase
-    .from("seeding_batches")
-    .update({
-      status: "running",
-      started_at: now,
-      completed_at: null,
-      retry_count: (batch.retry_count || 0) + 1,
-      // Clear old results — will be overwritten
-      error_message: null,
-      error_details: null,
-    })
-    .eq("id", batchId);
+  const batch = claimedRetry[0];
 
   // Mark run as running
   await supabase
@@ -1347,20 +1298,7 @@ async function handleRetryBatch(body: any, supabase: any) {
   const tile = await loadSearchCircle(supabase, batch);
 
   if (!tile) {
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: "Tile not found",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batchId);
-
-    await supabase
-      .from("seeding_runs")
-      .update({ status: "paused" })
-      .eq("id", runId);
-
+    await finishBatch(supabase, batch, { status: "failed", error: "Tile not found" });
     return {
       retried: true,
       batchId,
@@ -1372,26 +1310,14 @@ async function handleRetryBatch(body: any, supabase: any) {
 
   const config = resolveBatchConfig(batch);
   if (!config) {
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: `Unknown category: ${batch.seeding_category}`,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batchId);
-
-    await supabase
-      .from("seeding_runs")
-      .update({ status: "paused" })
-      .eq("id", runId);
-
+    const error = `Unknown category: ${batch.seeding_category}`;
+    await finishBatch(supabase, batch, { status: "failed", error });
     return {
       retried: true,
       batchId,
       batchIndex: batch.batch_index,
       status: "failed",
-      error: `Unknown category: ${batch.seeding_category}`,
+      error,
     };
   }
 
@@ -1415,72 +1341,22 @@ async function handleRetryBatch(body: any, supabase: any) {
     cityCountryCode,
   });
 
-  const completedAt = new Date().toISOString();
   const costUsd = COST_PER_NEARBY_SEARCH;
 
-  // Update batch record with new results
-  await supabase
-    .from("seeding_batches")
-    .update({
-      status: batchStatus,
-      google_api_calls: (batch.google_api_calls || 0) + 1,
-      places_returned: placesReturned,
-      places_rejected_no_photos: rejectedNoPhotos,
-      places_rejected_closed: rejectedClosed,
-      places_rejected_excluded_type: rejectedExcludedType,
-      places_new_inserted: newInserted,
-      places_duplicate_skipped: duplicateSkipped,
-      estimated_cost_usd: (batch.estimated_cost_usd || 0) + costUsd,
-      error_message: errorMessage,
-      error_details: errorDetails,
-      completed_at: completedAt,
-    })
-    .eq("id", batchId);
-
-  // Correct run aggregates:
-  // - Always add the new API call and cost
-  // - Adjust place counts: subtract old batch contribution, add new
-  // - Adjust status counters: if retry succeeded, move from failed to completed
-  const runUpdate: Record<string, unknown> = {
-    status: "paused",
-    total_api_calls: run.total_api_calls + 1,
-    total_cost_usd: run.total_cost_usd + costUsd,
-    total_places_new: run.total_places_new - oldNewInserted + newInserted,
-    total_places_duped: run.total_places_duped - oldDuped + duplicateSkipped,
-  };
-
-  if (batchStatus === "completed") {
-    // Batch moved from failed → completed
-    runUpdate.failed_batches = run.failed_batches - 1;
-    runUpdate.completed_batches = run.completed_batches + 1;
-
-    // Check if run should now auto-complete (no pending, no failed remaining)
-    const { data: pendingLeft } = await supabase
-      .from("seeding_batches")
-      .select("id")
-      .eq("run_id", runId)
-      .eq("status", "pending")
-      .limit(1);
-
-    const { data: failedLeft } = await supabase
-      .from("seeding_batches")
-      .select("id")
-      .eq("run_id", runId)
-      .eq("status", "failed")
-      .limit(1);
-
-    if ((!pendingLeft || pendingLeft.length === 0) && (!failedLeft || failedLeft.length === 0)) {
-      runUpdate.status = "completed";
-      runUpdate.current_batch_index = null;
-      runUpdate.completed_at = completedAt;
-    }
-  }
-  // If retry failed again, counters stay the same (batch was already counted as failed)
-
-  await supabase
-    .from("seeding_runs")
-    .update(runUpdate)
-    .eq("id", runId);
+  // #4276 C3: replaces what the failed attempt counted, in one transaction.
+  await finishBatch(supabase, batch, {
+    status: batchStatus,
+    apiCalls: 1,
+    costUsd,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+    error: errorMessage,
+    errorDetails,
+  });
 
   return {
     retried: true,
@@ -1490,7 +1366,7 @@ async function handleRetryBatch(body: any, supabase: any) {
     category: batch.seeding_category,
     categoryLabel: config.label,
     status: batchStatus,
-    retryCount: (batch.retry_count || 0) + 1,
+    retryCount: batch.retry_count,
     result: {
       placesReturned,
       rejectedNoPhotos,

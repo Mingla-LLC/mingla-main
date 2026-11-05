@@ -1,3 +1,4 @@
+import { fetchWithGoogleBackoff } from "../_shared/googleBackoff.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { derivePoolCategory, googleTypesForCategory } from "../_shared/derivePoolCategory.ts";
@@ -137,14 +138,17 @@ async function refreshPlace(
   googlePlaceId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch(
-      `https://places.googleapis.com/v1/places/${googlePlaceId}?languageCode=en`,
-      {
-        headers: {
-          "X-Goog-Api-Key": GOOGLE_API_KEY,
-          "X-Goog-FieldMask": DETAIL_FIELD_MASK,
+    // #4276 C8: a rate limit waits and tries again.
+    const response = await fetchWithGoogleBackoff(() =>
+      fetch(
+        `https://places.googleapis.com/v1/places/${googlePlaceId}?languageCode=en`,
+        {
+          headers: {
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
+            "X-Goog-FieldMask": DETAIL_FIELD_MASK,
+          },
         },
-      },
+      )
     );
 
     if (!response.ok) {

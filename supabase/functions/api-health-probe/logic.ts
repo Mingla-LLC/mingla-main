@@ -1005,3 +1005,16 @@ export function serperErrorDetail(
     not_enough_credits: /not enough credits/i.test(body),
   };
 }
+
+// ── issue #4276 M3 — the materialized view refresh against its 10-minute cron (pure) ──
+// Half the interval is the warning: it gives time to act before refreshes overlap.
+export const MV_REFRESH_WARN_FRACTION = 0.5;
+
+export function mvRefreshNearLimit(
+  health: { max_seconds?: number | null; interval_seconds?: number | null } | null,
+): boolean {
+  if (typeof health?.max_seconds !== "number" || typeof health?.interval_seconds !== "number") {
+    return false;
+  }
+  return health.max_seconds >= health.interval_seconds * MV_REFRESH_WARN_FRACTION;
+}

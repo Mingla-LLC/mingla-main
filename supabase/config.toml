@@ -118,6 +118,10 @@ verify_jwt = true
 [functions.run-place-intelligence-trial]
 verify_jwt = true
 
+# #4276: the conductor. tick takes the service key; everything else a signed-in admin.
+[functions.run-city-pipeline]
+verify_jwt = true
+
 # ORCH-0777 live-fire 2026-05-11: Stripe webhooks have no Supabase JWT.
 # Signature is verified inside the function via STRIPE_WEBHOOK_SECRET.
 [functions.stripe-webhook]

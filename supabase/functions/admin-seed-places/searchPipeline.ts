@@ -5,6 +5,7 @@
 // a preview first. Writing many rows is left to SQL functions, so a plan either lands
 // whole or not at all.
 
+import { fetchWithGoogleBackoff } from "../_shared/googleBackoff.ts";
 import {
   SEEDING_CATEGORIES,
   SEEDING_CATEGORY_MAP,
@@ -652,21 +653,24 @@ export async function runCompletenessCheck(
     while (next < points.length) {
       const point = points[next++];
       try {
-        const res = await fetch(NEARBY_SEARCH_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": deps.googleApiKey,
-            "X-Goog-FieldMask": COMPLETENESS_FIELD_MASK,
-          },
-          body: JSON.stringify({
-            maxResultCount: SEARCH_RESULT_CAP,
-            locationRestriction: {
-              circle: { center: { latitude: point.lat, longitude: point.lng }, radius: COMPLETENESS_RADIUS_M },
+        // #4276 C8: a rate limit waits instead of spoiling the whole sample.
+        const res = await fetchWithGoogleBackoff(() =>
+          fetch(NEARBY_SEARCH_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": deps.googleApiKey,
+              "X-Goog-FieldMask": COMPLETENESS_FIELD_MASK,
             },
-            rankPreference: "POPULARITY",
-          }),
-        });
+            body: JSON.stringify({
+              maxResultCount: SEARCH_RESULT_CAP,
+              locationRestriction: {
+                circle: { center: { latitude: point.lat, longitude: point.lng }, radius: COMPLETENESS_RADIUS_M },
+              },
+              rankPreference: "POPULARITY",
+            }),
+          })
+        );
         if (!res.ok) {
           errors.push(`Google ${res.status}: ${(await res.text()).slice(0, 200)}`);
           continue;
