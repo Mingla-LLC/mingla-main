@@ -244,6 +244,22 @@ BEGIN
     RAISE EXCEPTION 'R-LATE the host must see the refund on the code, got %', v_result;
   END IF;
   v_late_code := v_code;
+  -- A session that reached the code after it closed (never revoked, because it
+  -- did not exist yet) still cannot be paid: the code's own status decides.
+  v_session2 := gen_random_uuid();
+  INSERT INTO public.ticket_checkout_sessions (
+    id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, status, idempotency_key, expires_at, door_pay_code_id
+  ) VALUES (
+    v_session2, v_event, v_brand, 'Racing tab', 'race.r4271@example.test', '+12025550163',
+    4180, 'USD', 'awaiting_web_redirect', 'r4271-race-'||v_session2, now() + interval '15 minutes', v_code
+  );
+  IF public.issue_4271_door_session_payable(v_session2) THEN
+    RAISE EXCEPTION 'R-LATE a session on a cancelled code reads as payable';
+  END IF;
+  IF public.issue_1930_ticket_session_authorized(v_session2, v_event) THEN
+    RAISE EXCEPTION 'R-LATE a session that raced a cancelled code is still authorised';
+  END IF;
 
   -- Another tab is closed once the code is paid.
   v_code := gen_random_uuid();
