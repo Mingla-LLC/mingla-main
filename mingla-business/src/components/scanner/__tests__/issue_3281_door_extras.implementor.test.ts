@@ -32,6 +32,17 @@ describe("#3281 door extras", () => {
     expect(doorExtrasLine(extras, FRI)).toBe("Extras: Friday dinner × 2 · Tote bag × 1");
   });
 
+  test("after admitting on several days, an extra for any of them is due", () => {
+    const extras = readDoorExtras([
+      { name: "Friday dinner", quantity: 1, eventDateIds: [FRI] },
+      { name: "Saturday brunch", quantity: 1, eventDateIds: [SAT] },
+    ]);
+    expect(doorExtrasLine(extras, [FRI, SAT])).toBe("Extras: Friday dinner × 1 · Saturday brunch × 1");
+    expect(doorExtrasLine(extras, [SAT])).toBe(
+      "Extras: Friday dinner × 1 (another day) · Saturday brunch × 1",
+    );
+  });
+
   test("no extras, or a malformed answer, adds no line", () => {
     expect(doorExtrasLine(readDoorExtras(undefined))).toBeNull();
     expect(

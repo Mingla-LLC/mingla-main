@@ -42,17 +42,20 @@ export const readDoorExtras = (value: unknown): DoorExtra[] =>
 /** "Extras: Friday dinner × 2 · Tote bag × 1", or null when there are none. */
 export const doorExtrasLine = (
   extras: readonly DoorExtra[],
-  admittedDateId: string | null = null,
+  /** The day (or, after "Admit all", the days) admitted; null before admission. */
+  admitted: string | readonly string[] | null = null,
 ): string | null => {
   if (extras.length === 0) return null;
+  const admittedDateIds =
+    admitted === null ? [] : typeof admitted === "string" ? [admitted] : admitted;
   const parts = extras.map((extra) => {
     // Before admission the day isn't known: a date-limited extra says so.
     const note =
       extra.eventDateIds === null
         ? ""
-        : admittedDateId === null
+        : admittedDateIds.length === 0
           ? " (some days only)"
-          : extra.eventDateIds.includes(admittedDateId)
+          : admittedDateIds.some((id) => extra.eventDateIds!.includes(id))
             ? ""
             : " (another day)";
     return `${extra.name} × ${extra.quantity}${note}`;

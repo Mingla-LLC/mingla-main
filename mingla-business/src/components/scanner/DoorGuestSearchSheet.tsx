@@ -120,7 +120,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   // The line itself is read from the refreshed search answer below, so a
   // refund between search and admission never tells the door to hand it over.
   const [lastAdmitted, setLastAdmitted] = useState<
-    { orderId: string; admittedDateId: string | null; at: number } | null
+    { orderId: string; admittedDateIds: string[]; at: number } | null
   >(null);
   const [admitError, setAdmitError] = useState<string | null>(null);
 
@@ -146,7 +146,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
       try {
         let copy: ScanResultCopy | null = null;
         let admitted = 0;
-        let admittedDateId: string | null = null;
+        // Every day a ticket was actually admitted for: "Admit all" can cover
+        // more than one when scan windows overlap.
+        const admittedDateIds: string[] = [];
         for (const ticket of tickets) {
           const res = await (await loadGuestList()).admitTicket({ eventId, ticketId: ticket.ticketId });
           copy = describeScanResult(
@@ -156,8 +158,12 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           );
           if (res.result === "success") admitted += 1;
           // The day a ticket was actually admitted; a refusal names no such day.
-          if (res.result === "success" && typeof res.eventDateId === "string") {
-            admittedDateId = res.eventDateId;
+          if (
+            res.result === "success" &&
+            typeof res.eventDateId === "string" &&
+            !admittedDateIds.includes(res.eventDateId)
+          ) {
+            admittedDateIds.push(res.eventDateId);
           }
           onAdmitted?.(copy, res);
         }
@@ -165,7 +171,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           copy = { ...copy, message: `${guest.displayName}: ${admitted} checked in` };
         }
         setLastResult(copy);
-        setLastAdmitted({ orderId: guest.orderId, admittedDateId, at: Date.now() });
+        setLastAdmitted({ orderId: guest.orderId, admittedDateIds, at: Date.now() });
       } catch (error) {
         setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
       } finally {
@@ -199,7 +205,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   const lastExtras =
     admittedGuest === undefined || lastAdmitted === null
       ? null
-      : doorExtrasLine(readDoorExtras(admittedGuest.extras), lastAdmitted.admittedDateId);
+      : doorExtrasLine(readDoorExtras(admittedGuest.extras), lastAdmitted.admittedDateIds);
 
   return (
     <View style={styles.panel}>

@@ -287,6 +287,39 @@ describe("issue #3827 — door Find by name", () => {
     expect(text(line)).toBe("Extras: Friday dinner × 1");
   });
 
+  test("issue #3281 — an Admit all across two dates matches extras to either day", async () => {
+    mockSearch.mockResolvedValue({
+      orders: [{
+        ...LOLADE,
+        extras: [
+          { name: "Friday dinner", quantity: 1, eventDateIds: ["day-fri"] },
+          { name: "Saturday brunch", quantity: 1, eventDateIds: ["day-sat"] },
+          { name: "Sunday lunch", quantity: 1, eventDateIds: ["day-sun"] },
+        ],
+      }],
+      truncated: false,
+    });
+    // Overlapping scan windows: one ticket admits Friday, the other Saturday.
+    mockAdmit
+      .mockResolvedValueOnce({
+        result: "success", ticketId: "tk-b", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-fri",
+      })
+      .mockResolvedValue({
+        result: "success", ticketId: "tk-c", orderId: "o-lolade", buyerName: "Lolade Smith",
+        ticketName: "GA", nextStartAt: null, lastEndAt: null, eventDateId: "day-sat",
+      });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [all] = r.root.findAll((n) => n.type === "ButtonProbe" && typeof n.props.label === "string" && n.props.label.startsWith("Admit all"));
+    await act(async () => { (all.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(text(line)).toBe(
+      "Extras: Friday dinner × 1 · Saturday brunch × 1 · Sunday lunch × 1 (another day)",
+    );
+  });
+
   test("issue #3281 — the scan card shows extras on their own unclipped line, through the day label", () => {
     const src = fs.readFileSync(
       path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),
