@@ -73,6 +73,7 @@ import {
 } from "../../../../packages/phone-input/phoneNumber.ts";
 import { COUNTRY_DIRECTORY } from "../../../../packages/phone-input/countryDirectory.ts";
 import { itemHandoff } from "./brandGate.ts";
+import { isResearchField, researchSourceLine } from "../ariBrandResearchCopy.ts";
 import type {
   AnswerOutcome,
   AskSpec,
@@ -543,6 +544,75 @@ function canSetAside(field: Json): boolean {
 const AUDIENCE =
   "This is shown on your public Website, and I'll show you the exact change before saving anything.";
 
+// #2830 — "Use this" / "Use another" on a value found on a public page.
+const USE_FOUND = "use_found";
+const USE_ANOTHER = "use_another";
+const FOUND_QUESTION: Readonly<Record<string, string>> = Object.freeze({
+  contact_email: "Should people use this email?",
+  contact_phone: "Should people use this number?",
+  address: "Is this your address?",
+  city_country: "Is this where you are?",
+  social_links: "Is this your page?",
+});
+
+/** One value, one source: anything else is not a clean "Use this". */
+function singleFound(field: Json): Json | null {
+  const rows = Array.isArray(field.evidence_candidates)
+    ? field.evidence_candidates.map(object)
+    : [];
+  return rows.length === 1 && str(rows[0].value) &&
+      rows[0].source_type === "public_research"
+    ? rows[0]
+    : null;
+}
+
+/**
+ * #2830 — Ari's research for this field, if any, as this question's evidence.
+ * Research is started by the brand step and never holds the question up. A
+ * candidate becomes evidence here, not when the search finished, so it can't
+ * move the context revision under a proposal the owner is looking at. Only a
+ * field with no value takes a finding; a saved value is never put in question.
+ */
+async function withResearch(
+  ctx: FlowContext,
+  plan: Json,
+  key: string,
+  field: Json,
+  declined: boolean,
+): Promise<{ field: Json; found: Json | null }> {
+  // The owner said "Use another": the plain question, without the candidate.
+  if (declined) {
+    return { field: { ...field, evidence_candidates: [] }, found: null };
+  }
+  let research: Record<string, Record<string, unknown>[] | undefined> | null =
+    null;
+  try {
+    research = await ctx.deps.brandResearch?.(plan) ?? null;
+  } catch (_error) {
+    research = null;
+  }
+  const existing = singleFound(field);
+  if (existing) return { field, found: existing };
+  if (!isResearchField(key) || field.state !== "missing") {
+    return { field, found: null };
+  }
+  const candidates = research?.[key];
+  if (!candidates || candidates.length !== 1 || !ctx.deps.recordFinding) {
+    return { field, found: null };
+  }
+  let recorded = false;
+  try {
+    recorded = await ctx.deps.recordFinding(key, candidates);
+  } catch (_error) {
+    recorded = false;
+  }
+  if (!recorded) return { field, found: null };
+  return {
+    field: { ...field, state: "stale", evidence_candidates: candidates },
+    found: object(candidates[0]),
+  };
+}
+
 function formAsk(args: {
   ctx: FlowContext;
   part: PlanPartKey;
@@ -554,20 +624,35 @@ function formAsk(args: {
   extraOptions?: { id: string; label: string }[];
   /** What the owner gave last time, shown again after a refusal. */
   draft?: FlowAnswerValues | null;
+  /** #2830 — one value Ari found on a public page, for the owner to decide. */
+  found?: Json | null;
 }): AskSpec {
   const { field, fieldKey } = args;
   const label = websiteSetupFieldLabel(field, fieldKey);
-  const question = websiteSetupQuestion(fieldKey, field);
+  const found = args.found && !args.problem ? args.found : null;
+  const foundValue = found ? str(found.value) : null;
+  const foundLine = found ? researchSourceLine(found) : null;
+  const foundQuestion = FOUND_QUESTION[fieldKey] ??
+    "Should people use this one?";
+  const question = foundValue
+    ? `${foundLine}. ${foundQuestion}`
+    : websiteSetupQuestion(fieldKey, field);
   return {
     kind: "question",
     answer_mode: "form",
-    reuse_key: `website:${fieldKey}:${
-      String(field.state ?? "missing")
-    }:${args.attempt}`,
+    reuse_key: foundValue
+      ? `website:${fieldKey}:found:${args.attempt}`
+      : `website:${fieldKey}:${String(field.state ?? "missing")}:${args.attempt}`,
     title: label,
     text: [args.problem, question, args.problem ? "" : AUDIENCE].filter(Boolean)
       .join(" "),
     options: [
+      ...(foundValue
+        ? [
+          { id: USE_FOUND, label: "Use this" },
+          { id: USE_ANOTHER, label: "Use another" },
+        ]
+        : []),
       ...(args.extraOptions ?? []),
       ...(canSetAside(field)
         ? [{ id: "not_now", label: "Not now, keep going" }]
@@ -583,6 +668,13 @@ function formAsk(args: {
       partLabel: partLabel(args.part),
       problem: args.problem,
       draft: args.problem ? args.draft ?? null : null,
+      found: foundValue
+        ? {
+          source_line: foundLine ?? "From a public page",
+          value: foundValue,
+          question: foundQuestion,
+        }
+        : null,
     }) as unknown as Record<string, unknown>,
     record: { data: { field_key: fieldKey, attempt: args.attempt } },
   };
@@ -690,6 +782,8 @@ function fieldStep(args: {
   fieldKeys: readonly string[];
   depends_on: string[];
   extra?: (field: string) => { id: string; label: string }[];
+  /** #2830 — Ari looks for this step's open fields on the public web. */
+  research?: boolean;
 }): StepDefinition {
   const step: StepDefinition = {
     key: args.part,
@@ -726,12 +820,12 @@ function fieldStep(args: {
           }),
         };
       }
-      const { key, field } = open[0];
+      const { key, field: openField } = open[0];
       if (websiteSetupUploadHandoff(key)) {
         return {
           done: false,
           note: back.note,
-          ask: uploadAsk(ctx, key, field),
+          ask: uploadAsk(ctx, key, openField),
         };
       }
       const data = ctx.state?.data ?? {};
@@ -739,6 +833,16 @@ function fieldStep(args: {
       const attempt = sameField && typeof data.attempt === "number"
         ? data.attempt
         : 0;
+      const researched = args.research
+        ? await withResearch(
+          ctx,
+          plan,
+          key,
+          openField,
+          sameField && data.found_declined === true,
+        )
+        : { field: openField, found: null };
+      const field = researched.field;
       return {
         done: false,
         note: back.note,
@@ -748,6 +852,7 @@ function fieldStep(args: {
           fieldKey: key,
           field,
           plan,
+          found: researched.found,
           problem: sameField ? str(data.problem) : null,
           attempt,
           extraOptions: args.extra?.(key),
@@ -781,6 +886,64 @@ function fieldStep(args: {
           ],
           ack:
             `Okay, I'll leave your ${label} for now. It stays on your Website to-do list; your pages can't be built until it's added or marked as not applying, and I'll remind you then.`,
+        };
+      }
+      if (choiceId === USE_ANOTHER) {
+        return {
+          record: {
+            state: "asked",
+            data: {
+              field_key: fieldKey,
+              attempt: attempt + 1,
+              found_declined: true,
+            },
+          },
+        };
+      }
+      if (choiceId === USE_FOUND) {
+        const plan = await readPlan(ctx);
+        const found = plan ? singleFound(fieldOf(plan, fieldKey)) : null;
+        const value = found ? str(found.value) : null;
+        const resolved: Resolution | null = plan && value
+          ? resolveWebsiteFormAnswer({
+            brandId: ctx.run.brand_id,
+            fieldKey,
+            plan,
+            values: { choices: [], country: null, response: value },
+          })
+          : null;
+        if (!found || !resolved || resolved.kind !== "propose") {
+          // The candidate is gone or no longer valid: nothing saved, plain ask.
+          return {
+            record: {
+              state: "asked",
+              data: {
+                field_key: fieldKey,
+                attempt: attempt + 1,
+                found_declined: true,
+              },
+            },
+          };
+        }
+        // Where it came from stays on the record; the owner's yes is the save.
+        return {
+          record: { state: "awaiting_approval", data: { field_key: fieldKey } },
+          propose: {
+            tool_name: resolved.tool_name,
+            tool_args: {
+              ...resolved.tool_args,
+              evidence: {
+                source_type: "public_research",
+                source_ref: str(found.source_ref) ?? "research",
+                source_url: str(found.source_url),
+                observed_at: str(found.observed_at),
+              },
+              why: `The owner chose this ${
+                lowerFirst(websiteSetupFieldLabel(fieldOf(plan!, fieldKey), fieldKey))
+              } from a public page Ari found.`.slice(0, 300),
+              cites: [{ kind: "owner_words", quote: "Use this" }],
+            },
+          },
         };
       }
       if (choiceId === "use_default" && fieldKey === "design_key") {
@@ -900,6 +1063,7 @@ const brandStep = fieldStep({
   title: "Your brand details",
   fieldKeys: WEBSITE_BRAND_FIELD_ORDER,
   depends_on: ["offer"],
+  research: true,
 });
 
 const lookStep = fieldStep({

@@ -4,6 +4,7 @@
 
 import type { AgentLoopObservation, AgentLoopToolCall } from "./agentLoop.ts";
 import type { AriRenditionV2 } from "./ariRendition.ts";
+import { researchSourceLine } from "./ariBrandResearchCopy.ts";
 import { DESIGN_KEYS, DESIGNS } from "./siteContracts/designs.ts";
 import {
   PLAN_OFFERING_OPTIONS,
@@ -227,13 +228,16 @@ function evidenceOptions(field: JsonObject): Record<string, unknown>[] {
     const value = text(candidate.label) ?? text(candidate.value) ??
       text(candidate.name) ?? text(candidate.url);
     if (!value) return [];
-    const source = text(candidate.source_label) ??
-      text(candidate.source_type) ??
-      text(candidate.source);
+    // #2830: the page and the day, never a raw source type.
+    const detail = text(candidate.source_url)
+      ? researchSourceLine(candidate)
+      : text(candidate.source_label)
+      ? `Found in ${text(candidate.source_label)}`
+      : null;
     return [{
       id: `evidence-${index + 1}`,
       label: value.slice(0, 100),
-      ...(source ? { detail: `Found in ${source}`.slice(0, 200) } : {}),
+      ...(detail ? { detail: detail.slice(0, 200) } : {}),
     }];
   });
 }
@@ -2075,11 +2079,26 @@ export function buildWebsiteSetupFlowRendition(args: {
     country: string | null;
     response: string;
   } | null;
+  /**
+   * #2830 — a value Ari found on a public page. The card shows it with where it
+   * came from; the choices beside it are "Use this" and "Use another".
+   */
+  found?: { source_line: string; value: string; question: string } | null;
 }): AriRenditionV2 {
   const { fieldKey, field, completeness, brandId } = args;
-  const question = setupQuestion(fieldKey, field);
+  const found = args.found ?? null;
+  const question = found?.question ?? setupQuestion(fieldKey, field);
   const label = fieldLabel(field, fieldKey);
-  const interaction = fieldInteraction(fieldKey, field, completeness);
+  const interaction = found
+    ? [{
+      type: "callout",
+      version: 1,
+      id: "research-found",
+      tone: "default",
+      title: found.source_line,
+      body: found.value,
+    }]
+    : fieldInteraction(fieldKey, field, completeness);
   const draft = args.draft ?? null;
   const blocks = draft
     ? interaction.map((block) => withDraft(block, draft))
@@ -2109,7 +2128,8 @@ export function buildWebsiteSetupFlowRendition(args: {
         : []),
       ...blocks,
     ],
-    actions: [
+    // #2830: a found value is answered by "Use this" / "Use another" beside it.
+    actions: found ? [] : [
       {
         id: "continue-with-ari",
         label: "Continue with Ari",

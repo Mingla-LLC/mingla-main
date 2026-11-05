@@ -28,6 +28,12 @@ export interface AriResearchResult {
   >;
   sources: AriResearchSource[];
   fresh_at: string;
+  /** #2830 — the provider's token counts, when it reports them. A spend signal. */
+  usage?: {
+    prompt_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+  };
 }
 
 const MAX_REDIRECTS = 3;
@@ -729,6 +735,11 @@ export async function searchPublicWeb(
         groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
       };
     }>;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
   };
   const candidate = payload.candidates?.[0];
   const answer = sanitizeAriPublicText(
@@ -757,5 +768,10 @@ export async function searchPublicWeb(
     claims,
     sources,
     fresh_at: new Date().toISOString(),
+    usage: {
+      prompt_tokens: payload.usageMetadata?.promptTokenCount ?? null,
+      output_tokens: payload.usageMetadata?.candidatesTokenCount ?? null,
+      total_tokens: payload.usageMetadata?.totalTokenCount ?? null,
+    },
   };
 }
