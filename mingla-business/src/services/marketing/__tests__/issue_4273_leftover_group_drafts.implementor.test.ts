@@ -109,3 +109,33 @@ describe("#4273 leftover group drafts", () => {
     );
   });
 });
+
+// ── P2-1: the composer's lead can be a sibling reopened from Drafts ─────────
+describe("#4273 the group head is never discarded", () => {
+  const HEAD = "42730000-0000-4000-8000-0000000000a1";
+  const SIB = "42730000-0000-4000-8000-0000000000a2";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    deleteDraft.mockResolvedValue(undefined);
+  });
+
+  it("a sibling lead sending alone leaves the head draft in place", async () => {
+    listGroupDrafts.mockResolvedValue([{ id: HEAD, channel: "email", isHead: true }]);
+    previewMarketingCampaignGroup.mockResolvedValue({
+      ...preview([{ campaignId: SIB, channel: "sms" }]),
+      // An old server still reports the head as unlisted.
+      unlistedDraftIds: [HEAD],
+    });
+    await prepareCampaignGroupPreview({ ...base, leadCampaignId: SIB, leadChannel: "sms", extras: [] });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(deleteDraft).not.toHaveBeenCalledWith(HEAD);
+    expect(previewMarketingCampaignGroup).toHaveBeenCalledWith(SIB, [SIB]);
+  });
+
+  it("the head on the lead's own method is kept, not deleted", async () => {
+    listGroupDrafts.mockResolvedValue([{ id: HEAD, channel: "sms", isHead: true }]);
+    await settleLeftoverGroupDrafts({ leadCampaignId: SIB, leadChannel: "sms", extras: [] });
+    expect(deleteDraft).not.toHaveBeenCalled();
+  });
+});

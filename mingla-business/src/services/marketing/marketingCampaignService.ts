@@ -309,20 +309,37 @@ export async function cancelScheduled(
  * #4273 — the other drafts in a campaign's group (not the lead). A tab that
  * closed with the review open leaves its sibling drafts behind; the composer
  * reads them so it can adopt or discard them instead of colliding with them.
+ *
+ * The group is COALESCE(campaign_group_id, id) of the lead, the same rule the
+ * server uses: a sibling reopened from Drafts belongs to its head's group, and
+ * the head comes back flagged `isHead` so it is never discarded.
  * RLS (`marketing_campaigns_select`) admits the owner or a brand member.
  */
 export async function listGroupDrafts(
   leadCampaignId: string,
-): Promise<Array<{ id: string; channel: "email" | "sms" | "push" }>> {
+): Promise<Array<{ id: string; channel: "email" | "sms" | "push"; isHead: boolean }>> {
   assertUuid(leadCampaignId, "listGroupDrafts.lead_campaign_id");
+  const lead = await supabase
+    .from("marketing_campaigns")
+    .select("id, campaign_group_id")
+    .eq("id", leadCampaignId)
+    .maybeSingle();
+  if (lead.error) throw lead.error;
+  if (lead.data === null) throw new Error("listGroupDrafts: campaign not found");
+  const row = lead.data as { id: string; campaign_group_id: string | null };
+  const group = row.campaign_group_id ?? row.id;
+  assertUuid(group, "listGroupDrafts.group_id");
   const { data, error } = await supabase
     .from("marketing_campaigns")
     .select("id, channel")
-    .eq("campaign_group_id", leadCampaignId)
+    .or(`campaign_group_id.eq.${group},id.eq.${group}`)
     .eq("status", "draft")
     .neq("id", leadCampaignId);
   if (error) throw error;
-  return (data ?? []) as Array<{ id: string; channel: "email" | "sms" | "push" }>;
+  return ((data ?? []) as Array<{ id: string; channel: "email" | "sms" | "push" }>).map((draft) => ({
+    ...draft,
+    isHead: draft.id === group,
+  }));
 }
 
 export async function deleteDraft(campaignId: string): Promise<void> {

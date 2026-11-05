@@ -198,6 +198,9 @@ function groupClient(options: {
     client: {
       from: (table: string) => ({
         select: () => ({
+          or: () => ({
+            eq: () => Promise.resolve({ data: options.drafts, error: null }),
+          }),
           eq: (column: string) =>
             table === "brands"
               ? {
@@ -264,6 +267,49 @@ Deno.test("#4273 T-11 a leftover SMS draft the client did not name is never pric
     rows: [{ id: LEAD, channel: "email" }],
     unlisted: [],
   });
+});
+
+Deno.test("#4273 the group head is never handed back for discarding when the lead is a sibling", async () => {
+  // H is the host's original campaign (group head); S is a sibling the host
+  // reopened from Drafts and now sends alone. S names only itself.
+  const H = "33333333-3333-4333-8333-333333333333";
+  const out = selectGroupDrafts(
+    [{ id: H, channel: "email" }, { id: SMS_ID, channel: "sms" }],
+    [SMS_ID],
+    H,
+  );
+  assertEquals(out.rows, [{ id: SMS_ID, channel: "sms" }]);
+  assertEquals(out.unlisted, []);
+  // Through the handler: the lead S belongs to group H.
+  const client = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () =>
+            Promise.resolve({ data: { id: SMS_ID, campaign_group_id: H }, error: null }),
+        }),
+        or: (filter: string) => {
+          assert(filter.includes(`id.eq.${H}`), filter);
+          return {
+            eq: () =>
+              Promise.resolve({
+                data: [{ id: H, channel: "email" }, { id: SMS_ID, channel: "sms" }],
+                error: null,
+              }),
+          };
+        },
+      }),
+    }),
+    rpc: (name: string) =>
+      Promise.resolve(
+        name === "biz_brand_blast_usage_v1"
+          ? { data: {}, error: null }
+          : { data: EMAIL, error: null },
+      ),
+  };
+  const response = await handleGroupPreview(client, "actor", SMS_ID, NOW, [SMS_ID]);
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).unlistedDraftIds, []);
 });
 
 Deno.test("#4273 T-12 campaign_ids is validated; a named id that is not a group draft is stale", async () => {

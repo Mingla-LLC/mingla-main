@@ -944,10 +944,11 @@ export async function handleGroupPreview(
           if (lead.data === null) throw new Error("book_blast_audience_not_found");
           const group = lead.data.campaign_group_id ?? lead.data.id;
           const rows = await supabase.from("marketing_campaigns")
-            .select("id, channel").eq("campaign_group_id", group).eq("status", "draft");
+            .select("id, channel").or(`campaign_group_id.eq.${group},id.eq.${group}`)
+            .eq("status", "draft");
           if (rows.error) throw new Error(rows.error.message);
           const drafts = rows.data as Array<{ id: string; channel: "email" | "sms" | "push" }>;
-          return selectGroupDrafts(drafts, only);
+          return selectGroupDrafts(drafts, only, group);
         },
         candidates: async (campaignId, channel) => {
           const result = await supabase.rpc(
@@ -1102,6 +1103,8 @@ export function parseGroupCampaignIds(
 export function selectGroupDrafts(
   drafts: Array<{ id: string; channel: "email" | "sms" | "push" }>,
   only: readonly string[] | undefined,
+  /** The group's head, COALESCE(campaign_group_id, id): never reported unlisted. */
+  headId?: string,
 ): GroupRows {
   if (only === undefined) return { rows: drafts, unlisted: [] };
   const named = new Set(only.map((id) => id.toLowerCase()));
@@ -1111,8 +1114,13 @@ export function selectGroupDrafts(
   }
   return {
     rows: drafts.filter((row) => named.has(row.id.toLowerCase())),
-    unlisted: drafts.filter((row) => !named.has(row.id.toLowerCase()))
-      .map((row) => row.id),
+    // The head is the host's original campaign. When the composer's lead is a
+    // sibling opened from Drafts, the head is not named, but it must never be
+    // handed back for discarding: it is skipped (not priced), not deleted.
+    unlisted: drafts.filter((row) =>
+      !named.has(row.id.toLowerCase()) &&
+      row.id.toLowerCase() !== headId?.toLowerCase()
+    ).map((row) => row.id),
   };
 }
 

@@ -166,7 +166,7 @@ export async function prepareCampaignGroupPreview(input: {
   // A tab that closed with the review open leaves sibling drafts in the group.
   // Adopt one for a method the host ticked again (a second draft for the same
   // method would hit the one-per-method index); drop the rest.
-  const adopted = await settleLeftoverGroupDrafts({
+  const { adopt: adopted, keep } = await settleLeftoverGroupDraftsDetailed({
     leadCampaignId: input.leadCampaignId,
     leadChannel: input.leadChannel,
     extras: input.extras,
@@ -199,8 +199,10 @@ export async function prepareCampaignGroupPreview(input: {
     input.leadCampaignId,
     ...drafts.map((draft) => draft.campaignId),
   ]);
-  if ((preview.unlistedDraftIds ?? []).length > 0) {
-    void discardSiblingDrafts(preview.unlistedDraftIds ?? []);
+  // Never the group head: it is the host's original campaign (#4273 P2-1).
+  const unlisted = (preview.unlistedDraftIds ?? []).filter((id) => !keep.has(id));
+  if (unlisted.length > 0) {
+    void discardSiblingDrafts(unlisted);
   }
   const lead = preview.methods.find((method) => method.channel === input.leadChannel);
   return {
@@ -283,7 +285,20 @@ export async function settleLeftoverGroupDrafts(input: {
   leadChannel: CampaignChannel;
   extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
 }): Promise<Map<CampaignChannel, string>> {
+  return (await settleLeftoverGroupDraftsDetailed(input)).adopt;
+}
+
+/**
+ * Same as settleLeftoverGroupDrafts, and also returns the ids that must never
+ * be discarded (the group head when the lead is a sibling reopened from Drafts).
+ */
+async function settleLeftoverGroupDraftsDetailed(input: {
+  leadCampaignId: string;
+  leadChannel: CampaignChannel;
+  extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
+}): Promise<{ adopt: Map<CampaignChannel, string>; keep: Set<string> }> {
   const leftovers = await listGroupDrafts(input.leadCampaignId);
+  const keep = new Set(leftovers.filter((draft) => draft.isHead).map((draft) => draft.id));
   const known = new Set(
     input.extras.flatMap((extra) => (extra.existingCampaignId === null ? [] : [extra.existingCampaignId])),
   );
@@ -299,12 +314,13 @@ export async function settleLeftoverGroupDrafts(input: {
       !adopt.has(draft.channel)
     ) {
       adopt.set(draft.channel, draft.id);
-    } else {
+    } else if (!draft.isHead) {
+      // The head is the host's original campaign: skipped, never deleted.
       discard.push(draft.id);
     }
   }
   if (discard.length > 0) await discardSiblingDrafts(discard);
-  return adopt;
+  return { adopt, keep };
 }
 
 /** Drop sibling drafts the host backed out of (they never sent). */

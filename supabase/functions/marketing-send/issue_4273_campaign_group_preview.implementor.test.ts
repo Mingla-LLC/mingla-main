@@ -357,6 +357,13 @@ Deno.test("#4273 the subject feeds the push title; no title keeps the brand name
 
 function groupClient(rpc: (name: string) => unknown) {
   const select = () => ({
+    or: () => ({
+      eq: () =>
+        Promise.resolve({
+          data: [{ id: "lead", channel: "push" }],
+          error: null,
+        }),
+    }),
     eq: (column: string) =>
       column === "id"
         ? {
