@@ -14,12 +14,28 @@ interface ReactTestInstance {
 }
 interface ReactTestRenderer {
   root: ReactTestInstance;
+  unmount: () => void;
 }
 const renderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => ReactTestRenderer;
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
 const { act } = renderer;
+
+// Every tree a test mounts is unmounted after it, so no screen keeps polling or
+// ticking once Jest tears the environment down (the lane must exit 0).
+const mountedTrees: ReactTestRenderer[] = [];
+const createTree = renderer.create;
+renderer.create = (element: React.ReactElement): ReactTestRenderer => {
+  const created = createTree(element);
+  mountedTrees.push(created);
+  return created;
+};
+afterEach(() => {
+  act(() => {
+    for (let tree = mountedTrees.pop(); tree; tree = mountedTrees.pop()) tree.unmount();
+  });
+});
 
 let mockQuote: Record<string, unknown> = {};
 const mockQuoteArgs: Array<Record<string, unknown>> = [];
