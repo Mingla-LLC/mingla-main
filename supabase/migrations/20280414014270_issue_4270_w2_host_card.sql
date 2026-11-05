@@ -32,7 +32,7 @@
 --
 -- Static SQL only (no EXECUTE of built strings); write conflicts keep PT409.
 -- CREATE OR REPLACE keeps every owner and grant. Do not auto-apply. Release
--- through the governed migration lane, after 20280411004270.
+-- through the governed migration lane, after 20280414004270.
 
 BEGIN;
 
@@ -1248,7 +1248,7 @@ GRANT EXECUTE ON FUNCTION public.ops_host_on_mingla(uuid, date, text) TO authent
 COMMENT ON FUNCTION public.ops_host_on_mingla(uuid, date, text) IS
   'Issue #3980 / #4270. The host card read: the brand, its events, experiences and trips with their kind and Live now, past events, promised dates, To do across the brand''s host records, done since Monday in the viewer''s zone, and the brand team by name.';
 
--- Rework (P3-5): from 20280411004270; only the on_brand_plan line is new.
+-- Rework (P3-5): from 20280414004270; only the on_brand_plan line is new.
 CREATE OR REPLACE FUNCTION public.ops_work_undo(p_event_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$

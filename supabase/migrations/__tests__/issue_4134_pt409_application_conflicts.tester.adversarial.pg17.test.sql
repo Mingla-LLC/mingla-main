@@ -383,10 +383,10 @@ $fn$;
 -- section B of the migration, and the later definitions are restored and
 -- md5-checked once T4 is done. A target superseded by a further migration is
 -- added to this list the same way. #4270 W1
--- (20280411004270_issue_4270_w1_work_board_three_columns.sql) re-defines
+-- (20280414004270_issue_4270_w1_work_board_three_columns.sql) re-defines
 -- ops_work_add and ops_work_update (the Send, Spend or Publish tag), so they
 -- are put back and restored the same way. #4270 W3
--- (20280411024270_issue_4270_w3_brand_plan.sql) re-defines
+-- (20280414024270_issue_4270_w3_brand_plan.sql) re-defines
 -- content_calendar_update (a post's brand, collaborator and plan link), so it
 -- is put back and restored the same way.
 -------------------------------------------------------------------------------

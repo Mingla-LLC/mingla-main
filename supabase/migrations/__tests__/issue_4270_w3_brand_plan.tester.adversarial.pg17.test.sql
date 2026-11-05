@@ -1,5 +1,5 @@
 -- Issue #4270 (Wave 3) -- tester adversarial suite for
--- 20280411024270_issue_4270_w3_brand_plan.sql, on the fully replayed PG17
+-- 20280414024270_issue_4270_w3_brand_plan.sql, on the fully replayed PG17
 -- schema. Different angles from the implementor's happy path:
 --
 --   T-ANON    the anon role cannot run any of the four host functions, and

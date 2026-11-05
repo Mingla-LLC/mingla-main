@@ -10,7 +10,7 @@
       "mingla-business/app/**",
       "mingla-business/jest.config.cjs",
       "packages/offering-rendering/**",
-      "supabase/migrations/20280411024270_issue_4270_w3_brand_plan.sql"
+      "supabase/migrations/20280414024270_issue_4270_w3_brand_plan.sql"
     ],
     "steps": [
       {

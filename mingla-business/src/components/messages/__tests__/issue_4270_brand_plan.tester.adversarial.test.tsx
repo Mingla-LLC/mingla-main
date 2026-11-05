@@ -29,7 +29,7 @@ const hooks = require("../../../hooks/useBrandPlan") as typeof import("../../../
 const service = require("../../../services/brandPlanService") as typeof import("../../../services/brandPlanService");
 
 const ROOT = path.resolve(__dirname, "../../../../..");
-const MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280411024270_issue_4270_w3_brand_plan.sql"), "utf8");
+const MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280414024270_issue_4270_w3_brand_plan.sql"), "utf8");
 const LOCALES = path.join(ROOT, "mingla-business/src/i18n/locales");
 const en = JSON.parse(fs.readFileSync(path.join(LOCALES, "en/brandGroupMedia.json"), "utf8")).plan as Record<string, string>;
 const PANEL = fs.readFileSync(path.join(ROOT, "mingla-business/src/components/messages/BrandPlanPanel.tsx"), "utf8");
