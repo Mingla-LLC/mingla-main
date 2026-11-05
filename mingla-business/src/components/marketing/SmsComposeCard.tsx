@@ -360,7 +360,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     overflow: "hidden",
   },
-  hostStacked: { flex: 0, flexShrink: 0, minHeight: composerSheetMinHeight },
+  // Sized by its content: a zero basis clipped the Follow link row off the bottom.
+  hostStacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", minHeight: composerSheetMinHeight },
   autoFill: { color: accent.warm, fontSize: 11, fontWeight: "700" },
   headerRow: {
     flexDirection: "row",
