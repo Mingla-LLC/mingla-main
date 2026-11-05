@@ -583,6 +583,26 @@ BEGIN
 END;
 $fn$;
 
+-- How many of these groups one method can reach, for the composer's card. A server
+-- total computed the way the preview is: no graph-only contact is compared.
+CREATE OR REPLACE FUNCTION public.biz_marketing_combined_audience_reach_v1(
+  p_actor_id uuid, p_brand_id uuid, p_sources jsonb, p_channel text
+) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth, pg_temp
+AS $fn$
+DECLARE v_sources jsonb; v_reachable integer;
+BEGIN
+  IF auth.uid() IS DISTINCT FROM p_actor_id OR p_channel NOT IN ('email', 'sms') THEN
+    RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE = '42501';
+  END IF;
+  v_sources := public.issue_4273_normalize_sources(p_brand_id, p_sources);
+  PERFORM public.issue_4273_assert_sources_allowed(p_actor_id, p_brand_id, v_sources);
+  SELECT count(*) FILTER (WHERE d.allowed AND d.normalized_contact IS NOT NULL)::integer INTO v_reachable
+    FROM public.issue_4273_decided_people(p_actor_id, p_brand_id, v_sources, p_channel) d;
+  RETURN v_reachable;
+END;
+$fn$;
+
 -- ── Quote candidates ────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.biz_marketing_combined_quote_candidates_v1(
   p_actor_id uuid, p_campaign_id uuid
@@ -1385,11 +1405,13 @@ GRANT EXECUTE ON FUNCTION public.biz_marketing_combined_hidden_skips_v1(uuid),
   TO service_role;
 REVOKE ALL ON FUNCTION public.biz_get_or_create_marketing_combined_audience_v1(uuid, uuid, jsonb),
   public.biz_marketing_combined_audience_summary_v1(uuid, uuid, jsonb),
+  public.biz_marketing_combined_audience_reach_v1(uuid, uuid, jsonb, text),
   public.biz_marketing_campaign_messages_v1(uuid[], timestamptz, integer, integer, boolean),
   public.issue_4273_host_may_read_message_contact(uuid, text, text)
   FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_get_or_create_marketing_combined_audience_v1(uuid, uuid, jsonb),
   public.biz_marketing_combined_audience_summary_v1(uuid, uuid, jsonb),
+  public.biz_marketing_combined_audience_reach_v1(uuid, uuid, jsonb, text),
   public.biz_marketing_campaign_messages_v1(uuid[], timestamptz, integer, integer, boolean),
   public.issue_4273_host_may_read_message_contact(uuid, text, text)
   TO authenticated;

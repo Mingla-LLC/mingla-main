@@ -72,6 +72,16 @@ describe("#4273 Send by", () => {
   });
 });
 
+describe("#4273 a method taken away is said out loud", () => {
+  it("shows the sentence, not only the chip note", () => {
+    const sentence = "Push can't reach a buyer list, so this will go by Email instead.";
+    const renderer = mount(
+      <ChannelTabs selected={new Set(["email"])} onToggle={jest.fn()} fallbackSentence={sentence} />,
+    );
+    expect(treeText(renderer.toJSON())).toContain(sentence);
+  });
+});
+
 describe("#4273 cards and previews", () => {
   it("the push card says where its text came from, and the subject is the title", () => {
     const renderer = mount(

@@ -39,3 +39,23 @@ export async function getCombinedAudienceSummary(input: {
   if (error) throw error;
   return data as CombinedAudienceSummary;
 }
+
+/** How many of these groups one method can reach. Host-safe: a server total. */
+export async function getCombinedAudienceReach(input: {
+  actor_id: string;
+  brand_id: string;
+  sources: readonly string[];
+  channel: "email" | "sms";
+}): Promise<number> {
+  const { data, error } = await supabase.rpc(
+    "biz_marketing_combined_audience_reach_v1",
+    {
+      p_actor_id: input.actor_id,
+      p_brand_id: input.brand_id,
+      p_sources: input.sources,
+      p_channel: input.channel,
+    },
+  );
+  if (error) throw error;
+  return data as number;
+}

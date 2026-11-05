@@ -37,6 +37,8 @@ export interface ChannelTabsProps {
   onToggle: (kind: MarketingChannelKind) => void;
   /** Why a chip cannot be ticked right now (e.g. the audience has no accounts). */
   unavailable?: Partial<Record<MarketingChannelKind, string>>;
+  /** A method the host ticked went away: said in a plain sentence. */
+  fallbackSentence?: string | null;
 }
 
 interface TabSpec {
@@ -59,6 +61,7 @@ export const ChannelTabs: React.FC<ChannelTabsProps> = ({
   selected,
   onToggle,
   unavailable = {},
+  fallbackSentence = null,
 }) => {
   const onCount = TABS.filter(
     (tab) => selected.has(tab.kind) && unavailable[tab.kind] === undefined,
@@ -104,6 +107,11 @@ export const ChannelTabs: React.FC<ChannelTabsProps> = ({
           );
         })}
       </View>
+      {fallbackSentence !== null ? (
+        <Text accessibilityRole="alert" style={styles.fallback} testID="composer-send-by-fallback">
+          {fallbackSentence}
+        </Text>
+      ) : null}
       {notes.map((note) => <Text key={note} style={styles.note}>{note}</Text>)}
     </View>
   );
@@ -128,4 +136,5 @@ const styles = StyleSheet.create({
   chipText: { color: textTokens.secondary, fontSize: 13, fontWeight: "700" },
   chipTextOn: { color: textTokens.primary },
   note: { color: textTokens.tertiary, fontSize: 12 },
+  fallback: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
 });

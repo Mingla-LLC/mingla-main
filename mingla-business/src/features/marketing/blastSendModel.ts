@@ -234,54 +234,141 @@ export function audienceSourceDetail(source: {
 
 // ── Pre-fill: one message, written once ─────────────────────────────────────
 
-const PERSONAL_TOKEN =
-  /\{(first_name|event_name|event_date|event_date_short|event_time|doors_open|ends_at|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
-const EVENT_TOKEN = /\{\{event:[^}]*\}\}/g;
+const REMOVABLE_TOKEN =
+  /\{\{event:[^}]*\}\}|\{(?:first_name|event_name|event_date|event_date_short|event_time|doors_open|ends_at|event_url|spots_left|previous_event_name|next_event_name|event_id|brand_name)\}/;
 
 /**
  * SMS and push have no personalization step on the way out (only email's send
  * loop substitutes), so a token would reach the guest as raw "{first_name}".
  * The brand name is known here and is written in; the rest are removed.
+ *
+ * This runs on what the host typed, so it touches ONLY the spot a token held:
+ * the space and punctuation a removal would strand. Everything else, emoticons,
+ * lists, "...", "!!!", line breaks, comes back exactly as written.
  */
 export function stripUnsupportedTokens(text: string, brandName: string | null): string {
+  const brand = brandName?.trim() ?? "";
+  let out = text.split("{brand_name}").join(brand.length > 0 ? brand : "{brand_name}");
+  for (;;) {
+    const match = REMOVABLE_TOKEN.exec(out);
+    if (match === null) return out;
+    out = removeTokenAt(out, match.index, match[0].length);
+  }
+}
+
+function removeTokenAt(text: string, start: number, length: number): string {
+  let before = text.slice(0, start);
+  let after = text.slice(start + length);
+  const spaceBefore = /[ \t]+$/.test(before);
+  const spaceAfter = /^[ \t]+/.test(after);
+  before = before.replace(/[ \t]+$/, "");
+  after = after.replace(/^[ \t]+/, "");
+  const lineStart = before.length === 0 || before.endsWith("\n");
+  const closing = /^[,.!?;:]+/.exec(after)?.[0] ?? "";
+  if (lineStart) {
+    // Nothing is left for the punctuation to close.
+    return before + after.slice(closing.length).replace(/^[ \t]+/, "");
+  }
+  if (closing.length > 0) {
+    // "Friday, {first_name}." reads "Friday.", never "Friday,."
+    return before.replace(/[,;:]$/, "") + after;
+  }
+  if (after.length === 0 || after.startsWith("\n")) return before + after;
+  return `${before}${spaceBefore || spaceAfter ? " " : ""}${after}`;
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
+  rsquo: "\u2019", lsquo: "\u2018", rdquo: "\u201D", ldquo: "\u201C",
+  sbquo: "\u201A", bdquo: "\u201E", prime: "\u2032", Prime: "\u2033",
+  mdash: "\u2014", ndash: "\u2013", hellip: "\u2026", bull: "\u2022", middot: "\u00B7",
+  copy: "\u00A9", reg: "\u00AE", trade: "\u2122", deg: "\u00B0", para: "\u00B6", sect: "\u00A7",
+  euro: "\u20AC", pound: "\u00A3", yen: "\u00A5", cent: "\u00A2", curren: "\u00A4",
+  times: "\u00D7", divide: "\u00F7", plusmn: "\u00B1", frac12: "\u00BD", frac14: "\u00BC", frac34: "\u00BE",
+  iexcl: "\u00A1", iquest: "\u00BF", laquo: "\u00AB", raquo: "\u00BB", shy: "", zwj: "\u200D", zwnj: "\u200C",
+  aacute: "\u00E1", agrave: "\u00E0", acirc: "\u00E2", atilde: "\u00E3", auml: "\u00E4", aring: "\u00E5", aelig: "\u00E6",
+  ccedil: "\u00E7", eacute: "\u00E9", egrave: "\u00E8", ecirc: "\u00EA", euml: "\u00EB",
+  iacute: "\u00ED", igrave: "\u00EC", icirc: "\u00EE", iuml: "\u00EF", ntilde: "\u00F1",
+  oacute: "\u00F3", ograve: "\u00F2", ocirc: "\u00F4", otilde: "\u00F5", ouml: "\u00F6", oslash: "\u00F8",
+  uacute: "\u00FA", ugrave: "\u00F9", ucirc: "\u00FB", uuml: "\u00FC", yacute: "\u00FD", yuml: "\u00FF", szlig: "\u00DF",
+  Aacute: "\u00C1", Agrave: "\u00C0", Auml: "\u00C4", Eacute: "\u00C9", Egrave: "\u00C8", Ntilde: "\u00D1", Ouml: "\u00D6", Uuml: "\u00DC",
+};
+
+/** One pass only, so "&amp;lt;" reads "&lt;" as the author wrote it. */
+function decodeEntities(text: string): string {
+  return text.replace(/&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{0,31});/g, (whole, code: string) => {
+    if (code.startsWith("#")) {
+      const value = /^#[xX]/.test(code)
+        ? Number.parseInt(code.slice(2), 16)
+        : Number.parseInt(code.slice(1), 10);
+      const valid = value > 0 && value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff);
+      return valid ? String.fromCodePoint(value) : " ";
+    }
+    // An unknown name is markup, not words: it never reaches a guest as text.
+    return NAMED_ENTITIES[code] ?? (/^[a-zA-Z]+[0-9]*$/.test(code) ? " " : whole);
+  });
+}
+
+/** The email body as one line of plain words: no HTML, no event cards. */
+export function emailBodyToPlainText(bodyHtml: string): string {
+  return decodeEntities(
+    bodyHtml
+      .replace(/\{\{event:[^}]*\}\}/g, " ")
+      .replace(/<\s*(style|script)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Filled-in text is ours to tidy; what the host typed never comes through here. */
+function tidyFilledText(text: string): string {
   return text
-    .replace(EVENT_TOKEN, " ")
-    .replace(/\{brand_name\}/g, brandName ?? "")
-    .replace(PERSONAL_TOKEN, "")
     .replace(/[ \t]+([,.!?;:])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/^[ \t,.;:!?-]+/, "")
     .trim();
 }
 
-const ENTITIES: Record<string, string> = {
-  "&nbsp;": " ",
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#39;": "'",
-  "&apos;": "'",
-};
+/** Marks that attach to the character before them, so a cut cannot land there. */
+const ATTACHES_TO_PREVIOUS = /^[\u0300-\u036F\u200D\uFE0E\uFE0F\u20E3]|^\uD83C[\uDFFB-\uDFFF]|^\uDB40[\uDC20-\uDC7F]/;
 
-/** The email body as one line of plain words: no HTML, no event cards. */
-export function emailBodyToPlainText(bodyHtml: string): string {
-  return bodyHtml
-    .replace(EVENT_TOKEN, " ")
-    .replace(/<\s*(style|script)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/g, (entity) => ENTITIES[entity] ?? " ")
-    .replace(/\s+/g, " ")
-    .trim();
+/** The longest whole-character prefix within `units`. Never half an emoji. */
+function cutAtCharacter(text: string, units: number): string {
+  let end = Math.min(units, text.length);
+  for (;;) {
+    if (end <= 0) return "";
+    const last = text.charCodeAt(end - 1);
+    const isHalfPair = last >= 0xd800 && last <= 0xdbff;
+    const rest = text.slice(end);
+    if (!isHalfPair && !ATTACHES_TO_PREVIOUS.test(rest) && last !== 0x200d) {
+      return text.slice(0, end);
+    }
+    end -= 1;
+  }
 }
 
-function fitToLength(text: string, max: number): string {
-  if (text.length <= max) return text;
-  const room = max - 3;
-  const cut = text.slice(0, room);
+const GSM_EXTENDED = "^{}\\[~]|\u20AC";
+
+/** What a carrier counts: each GSM extended character costs two septets. */
+export function gsmSeptets(text: string): number {
+  let total = 0;
+  for (const character of text) total += GSM_EXTENDED.includes(character) ? 2 : 1;
+  return total;
+}
+
+function fitToLength(
+  text: string,
+  max: number,
+  measure: (value: string) => number = (value) => value.length,
+): string {
+  if (measure(text) <= max) return text;
+  const room = max - measure("...");
+  let cut = cutAtCharacter(text, room);
+  while (measure(cut) > room) cut = cutAtCharacter(cut, cut.length - 1);
   const lastSpace = cut.lastIndexOf(" ");
   // Back up to a whole word unless that would throw away most of the room.
-  const end = lastSpace >= room * 0.6 ? lastSpace : room;
+  const end = lastSpace >= cut.length * 0.6 ? lastSpace : cut.length;
   return `${cut.slice(0, end).replace(/[\s,.;:!?-]+$/, "")}...`;
 }
 
@@ -307,23 +394,80 @@ export function prefillSmsFromEmail(
   input: { subject: string; bodyHtml: string; brandName: string | null },
   measure: SmsMeasure,
 ): string {
-  const subject = stripUnsupportedTokens(input.subject, input.brandName);
-  const body = stripUnsupportedTokens(emailBodyToPlainText(input.bodyHtml), input.brandName);
+  const subject = tidyFilledText(stripUnsupportedTokens(input.subject, input.brandName));
+  const body = tidyFilledText(stripUnsupportedTokens(emailBodyToPlainText(input.bodyHtml), input.brandName));
   if (subject.length === 0 && body.length === 0) return "";
   const headline = subject.length === 0 || /[.!?:]$/.test(subject) ? subject : `${subject}.`;
   const words = [headline, body].filter((part) => part.length > 0).join(" ");
   const brand = input.brandName?.trim() ?? "";
   const full = brand.length > 0 ? `${brand}: ${words}` : words;
   const folded = measure.sanitizeGsm7(full);
-  return fitToLength(folded, measure.isGsm7(folded) ? SMS_PREFILL_MAX_GSM : SMS_PREFILL_MAX_UCS2);
+  return measure.isGsm7(folded)
+    ? fitToLength(folded, SMS_PREFILL_MAX_GSM, gsmSeptets)
+    : fitToLength(folded, SMS_PREFILL_MAX_UCS2);
 }
 
 export function prefillPushFromEmail(input: { bodyHtml: string; brandName: string | null }): string {
-  const body = stripUnsupportedTokens(emailBodyToPlainText(input.bodyHtml), input.brandName);
+  const body = tidyFilledText(stripUnsupportedTokens(emailBodyToPlainText(input.bodyHtml), input.brandName));
   return fitToLength(body, PUSH_PREFILL_MAX);
 }
 
 /** The email subject feeds the push title. */
 export function pushTitleFromSubject(subject: string, brandName: string | null): string {
-  return fitToLength(stripUnsupportedTokens(subject, brandName), PUSH_TITLE_MAX);
+  return fitToLength(tidyFilledText(stripUnsupportedTokens(subject, brandName)), PUSH_TITLE_MAX);
+}
+
+// ── Plain sentences for choices made on the host's behalf ───────────────────
+
+const METHOD_NAME: Record<BlastChannel, string> = { email: "Email", sms: "SMS", push: "Push" };
+
+/**
+ * A method the host ticked went away because of the groups they picked. Says so
+ * in a sentence, because a chip going grey is easy to miss when the Blast then
+ * goes out by a method they never chose.
+ */
+export function blastFallbackSentence(
+  before: readonly BlastChannel[],
+  after: readonly BlastChannel[],
+  sourceKeys: readonly string[],
+): string | null {
+  const dropped = before.filter((channel) => !after.includes(channel));
+  if (dropped.length === 0 || after.length === 0) return null;
+  const names = dropped.map((channel) => METHOD_NAME[channel]).join(" and ");
+  const who = dropped.includes("push") && sourceKeys.some(isBuyerSourceKey)
+    ? "a buyer list"
+    : "these groups";
+  const replacement = after.filter((channel) => !before.includes(channel));
+  const method = (replacement.length > 0 ? replacement : after)
+    .map((channel) => METHOD_NAME[channel]).join(" and ");
+  return replacement.length > 0
+    ? `${names} can't reach ${who}, so this will go by ${method} instead.`
+    : `${names} can't reach ${who}, so this will go by ${method} only.`;
+}
+
+/**
+ * A method nobody can receive on must not hold back the others: when the lead
+ * reaches no one and another method reaches someone, the lead steps aside.
+ */
+export function leadStepsAside(
+  leadReachable: number | null,
+  siblingReachable: readonly (number | null)[],
+): boolean {
+  return leadReachable === 0 && siblingReachable.some((count) => (count ?? 0) > 0);
+}
+
+/** The SMS card's reach line when there is no number yet. */
+export function smsReachNote(state: "none_picked" | "loading" | "unavailable"): string {
+  switch (state) {
+    case "none_picked":
+      return "Pick who gets this to see reach";
+    case "loading":
+      return "Loading reach…";
+    case "unavailable":
+      return "Reach shows on review";
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
 }

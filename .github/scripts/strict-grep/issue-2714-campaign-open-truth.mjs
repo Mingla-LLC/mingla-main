@@ -209,7 +209,14 @@ function check(sources, migrationEntries, migrationSha) {
     "overview-brand-scoped-whitelists",
     sources.overviewService,
     '.in("campaign_id", ids)',
-    2,
+    1,
+  );
+  // #4273 — the message read moved to the masked RPC, still scoped by these ids.
+  requireExactCount(
+    "overview-brand-scoped-message-read",
+    sources.overviewService,
+    "p_campaign_ids: ids",
+    1,
   );
   requireAll("report-independent-coverage-formulas", compact.reportService, [
     "hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0",

@@ -140,6 +140,10 @@ BEGIN
   c2 := pg_temp.draft('42730000-3000-4000-8000-000000000002', o2, b2, a2, 'sms');
   e2 := public.biz_marketing_combined_quote_candidates_v1(o2, c2);
   v1 := pg_temp.host_view(e1, s1); v2 := pg_temp.host_view(e2, s2);
+  PERFORM set_config('request.jwt.claim.sub', o1::text, true);
+  v1 := v1 || jsonb_build_object('smsReach', public.biz_marketing_combined_audience_reach_v1(o1, b1, '["book","followers"]'::jsonb, 'sms'));
+  PERFORM set_config('request.jwt.claim.sub', o2::text, true);
+  v2 := v2 || jsonb_build_object('smsReach', public.biz_marketing_combined_audience_reach_v1(o2, b2, '["book","followers"]'::jsonb, 'sms'));
   PERFORM pg_temp.chk('P-01 the probe preview equals the control preview', v1 = v2, v1::text || ' vs ' || v2::text);
   PERFORM pg_temp.chk('P-02 fixture: three followers and three Book rows, six people, five candidates',
     (v1 ->> 'people')::int = 6 AND (v1 ->> 'reachable')::int = 4 AND (v1 ->> 'suppressed')::int = 1, v1::text);

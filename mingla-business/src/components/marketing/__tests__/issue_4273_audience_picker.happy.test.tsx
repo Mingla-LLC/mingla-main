@@ -74,7 +74,7 @@ afterEach(async () => {
   });
 });
 
-async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest.fn(), selectedKeys: string[] = []) {
+async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest.fn(), selectedKeys: string[] = [], reach: unknown = REACH) {
   let tree: any;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
@@ -89,7 +89,7 @@ async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest
         bookBlastEnabled
         manualGroupsEnabled
         circleAudienceEnabled
-        circleReach={REACH}
+        circleReach={reach as typeof REACH}
         multiSelect={{ selectedKeys, onDone }}
       />,
     );
@@ -179,6 +179,33 @@ describe("#4273 audience picker", () => {
     expect(out).toMatch(/\bDone\b/);
     expect(out).not.toMatch(/Done · \d/);
     expect(done(tree).props.accessibilityState.disabled).toBe(false);
+  });
+
+  it("a tick on a row that went unavailable is not counted and not handed back", async () => {
+    const onDone = jest.fn();
+    const tree = await mount(onDone, jest.fn(), ["followers", "group:g1"], {
+      ...REACH,
+      followers: { count: 2, state: "unavailable", enabled: true, reason: "Refreshing" },
+    });
+    expect(row(tree, "Followers").props.accessibilityState.checked).toBe(false);
+    const counted = mockSummary.mock.calls.map(([input]) => input.sources).filter((keys) => keys.length > 0);
+    expect(counted.at(-1)).toEqual(["group:g1"]);
+    await TestRenderer.act(async () => done(tree).props.onPress());
+    expect(onDone.mock.calls[0][0].map((option: AudienceOption) => option.name)).toEqual(["VIP"]);
+  });
+
+  it("a picked row still checking its reach holds Done rather than dropping it", async () => {
+    const tree = await mount(jest.fn(), jest.fn(), ["followers", "group:g1"], {
+      ...REACH,
+      followers: { count: null, state: "loading", enabled: true },
+    });
+    expect(done(tree).props.accessibilityState.disabled).toBe(true);
+    expect(text(tree.toJSON())).toContain("Counting…");
+  });
+
+  it("the tick-box sheet takes the tall snap so the rows have room", async () => {
+    const tree = await mount(jest.fn());
+    expect(tree.root.findAll((node: any) => node.props.snapPoint === "full").length).toBeGreaterThan(0);
   });
 
   it("reopens with what the composer already holds", async () => {

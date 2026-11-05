@@ -32,6 +32,7 @@ module.exports = {
     "**/__tests__/issue_4273_send_by.render.test.tsx",
     "**/__tests__/blastSendModel.issue4273.test.ts",
     "**/__tests__/blastSendModel.issue4273.tester_adversarial.test.ts",
+    "**/__tests__/blastSendModel.issue4273.rework.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",

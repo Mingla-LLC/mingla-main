@@ -74,6 +74,8 @@ export interface SmsComposeCardProps {
   onChangeText: (text: string) => void;
   /** Truthful SMS reach from the audience resolver; null while loading. */
   reachableSms: number | null;
+  /** #4273 — what to say when there is no number yet. */
+  reachNote?: string;
   /** Brand default currency (ISO 4217) for the cost estimate display. */
   currencyCode: string;
   editable?: boolean;
@@ -104,6 +106,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   value,
   onChangeText,
   reachableSms,
+  reachNote,
   currencyCode,
   editable = true,
   includeFollowCta = false,
@@ -136,7 +139,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
 
   const hasBody = value.trim().length > 0;
   const reachLabel = reachableSms === null
-    ? "Loading reach…"
+    ? reachNote ?? "Loading reach…"
     : `${reachableSms} reachable on SMS`;
   const isMms = estimate.encoding === "MMS";
   const perRecipientUnit = isMms

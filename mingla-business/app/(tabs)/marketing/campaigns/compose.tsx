@@ -192,8 +192,12 @@ import {
   combinedCountCaption,
   leadBlastChannel,
   needsCombinedLane,
+  blastFallbackSentence,
+  isBuyerSourceKey,
+  leadStepsAside,
   prefillPushFromEmail,
   prefillSmsFromEmail,
+  smsReachNote,
   pushTitleFromSubject,
   reconcileBlastChannels,
   sendByUnavailable,
@@ -213,6 +217,7 @@ import {
   type SiblingChannelState,
 } from "../../../../src/services/marketing/campaignChannelGroupService";
 import {
+  getCombinedAudienceReach,
   getCombinedAudienceSummary,
   getOrCreateCombinedAudience,
 } from "../../../../src/services/marketing/marketingCombinedAudienceService";
@@ -334,6 +339,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
   const { isWideDesktop, isShort } = useResponsiveLayout();
+  // #4273 — on a phone browser Band B is the page scroller (WEB_FLEX_REGION_RECOVERY),
+  // so the method cards lie in it in flow rather than in a box of their own. Native
+  // keeps its own region: the editor's WebView stays out of any ScrollView (F.7).
+  const methodCardsFlow = Platform.OS === "web" && !isWideDesktop;
+  const MethodCardsHost: React.ElementType = methodCardsFlow ? View : ScrollView;
   const params = useLocalSearchParams<{
     audience?: string;
     draft?: string;
@@ -1201,6 +1211,37 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     if (campaignId === null) return;
     if (isBookAudience) {
       if (bookQuote === null || bookRequestId === null) return;
+      // #4273 — a method nobody can receive on must not hold back the others.
+      // Its draft stays in Campaigns; the host is told in one line.
+      if (leadStepsAside(bookQuote.reachableCount, siblings.map((row) => row.quote?.reachableCount ?? null))) {
+        const scheduledFor = sendMode === "now" ? null : new Date(scheduledForIso).toISOString();
+        setSiblingsPending(true);
+        void confirmSiblingChannels({
+          siblings,
+          audienceKind: sealedAudienceKind ?? "all_brand_people",
+          scheduledFor,
+        }).then((sent) => {
+          setSiblingsPending(false);
+          setSiblings([]);
+          setShowReview(false);
+          const failures = sent.filter((row) => !row.ok);
+          const notes = [
+            `${CHANNEL_LABEL[channel]}: no one in this audience can receive it, so it was not sent.`,
+            ...failures.map((row) => row.message ?? `${CHANNEL_LABEL[row.channel]}: not sent.`),
+            ...sent.flatMap((row) => (row.ok && row.message !== null ? [row.message] : [])),
+          ];
+          setErrorBanner(notes.join(" "));
+          if (sent.some((row) => row.ok)) {
+            setIsSendNowConfirmation(scheduledFor === null);
+            setBookDeferredConfirmationCount(0);
+            setBookSkippedConfirmationCount(0);
+            setBookDeliveredConfirmationCount(sent.reduce((sum, row) => sum + row.delivered, 0));
+            setBookFailedConfirmationCount(sent.reduce((sum, row) => sum + row.failed, 0));
+            setShowSentConfirmation(true);
+          }
+        });
+        return;
+      }
       bookConfirmMutation.mutate(
         {
           campaign_id: campaignId,
@@ -1341,7 +1382,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     needsCombinedLane(pickedKeys, sortBlastChannels(sendChannels), followersAlsoInBook);
   const combinedKey = usesCombinedLane ? pickedKeys.slice().sort().join("|") : null;
   useEffect(() => {
-    if (combinedKey === null || accountId === null || brandId === null) return;
+    // Unticking back to one lane cancels the request in flight below, and its
+    // finally no longer runs: this is what clears the wait in that case.
+    if (combinedKey === null || accountId === null || brandId === null) {
+      setAudiencePending(false);
+      return;
+    }
     let cancelled = false;
     setAudiencePending(true);
     void (async () => {
@@ -1594,11 +1640,24 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the two maps are read from flags
     [bookBlastEnabled, channel, isBookAudience, pickedKeys, followerEmailFlag.data, followerSmsFlag.data, circleRosterFlag.data, extendedEmailFlag.data, extendedSmsFlag.data, extendedPushFlag.data],
   );
+  const [fallbackSentence, setFallbackSentence] = useState<string | null>(null);
   useEffect(() => {
     const current = sortBlastChannels(sendChannels);
     const next = reconcileBlastChannels(current, channelUnavailable);
-    if (next.join() !== current.join()) setSendChannels(new Set(next));
-  }, [channelUnavailable, sendChannels]);
+    if (next.join() !== current.join()) {
+      setFallbackSentence(blastFallbackSentence(current, next, pickedKeys));
+      setSendChannels(new Set(next));
+    }
+  }, [channelUnavailable, pickedKeys, sendChannels]);
+  // The sentence belongs to the picks that caused it.
+  const fallbackKey = pickedKeys.slice().sort().join("|");
+  const lastFallbackKey = useRef(fallbackKey);
+  useEffect(() => {
+    if (lastFallbackKey.current === fallbackKey) return;
+    lastFallbackKey.current = fallbackKey;
+    if (!pickedKeys.some(isBuyerSourceKey)) setFallbackSentence(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fallbackKey stands for pickedKeys
+  }, [fallbackKey]);
 
   // ORCH-1282 / ORCH-1289 — pick + upload up to MMS_MAX_MEDIA photos. Mirrors
   // ExperienceStopPhotoSheet.pickFromLibrary cross-platform acquisition (native
@@ -1749,10 +1808,55 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     [mmsMedia],
   );
 
+  // #4273 — reach for what was picked in the sheet. The URL-param read above only
+  // knows the audience the composer opened with, so without this the SMS card sat
+  // on "Loading reach…" for every pick. Server totals, computed for the host.
+  const [pickedSmsReach, setPickedSmsReach] = useState<
+    { key: string; state: "loading" | "unavailable" } | { key: string; state: "ready"; count: number } | null
+  >(null);
+  const smsReachKey = bookBlastEnabled && sendChannels.has("sms") && pickedKeys.length > 0
+    ? pickedKeys.slice().sort().join("|")
+    : null;
+  useEffect(() => {
+    if (smsReachKey === null || accountId === null || brandId === null) {
+      setPickedSmsReach(null);
+      return;
+    }
+    let cancelled = false;
+    setPickedSmsReach({ key: smsReachKey, state: "loading" });
+    void getCombinedAudienceReach({
+      actor_id: accountId,
+      brand_id: brandId,
+      sources: pickedKeys,
+      channel: "sms",
+    })
+      .then((count) => {
+        if (!cancelled) setPickedSmsReach({ key: smsReachKey, state: "ready", count });
+      })
+      .catch(() => {
+        // The review sheet still prices the real set; the card says so.
+        if (!cancelled) setPickedSmsReach({ key: smsReachKey, state: "unavailable" });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- smsReachKey stands for pickedKeys
+  }, [accountId, brandId, smsReachKey]);
+  const smsReachable = pickedSmsReach?.state === "ready"
+    ? pickedSmsReach.count
+    : (reach?.reachable_sms ?? null);
+  const smsReachCaption = smsReachable !== null
+    ? undefined
+    : pickedKeys.length === 0
+      ? smsReachNote("none_picked")
+      : pickedSmsReach?.state === "unavailable"
+        ? smsReachNote("unavailable")
+        : smsReachNote("loading");
+
   // Reachability shown in the Who row + review sheet depends on the channel.
   const channelReachable =
     channel === "sms"
-      ? (reach?.reachable_sms ?? null)
+      ? smsReachable
       : channel === "push"
         ? null
         : (reach?.reachable_email ?? null);
@@ -2186,25 +2290,33 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       selected={sendChannels}
                       onToggle={handleToggleChannel}
                       unavailable={channelUnavailable}
+                      fallbackSentence={fallbackSentence}
                     />
                   </View>
                 </View>
 
                 {sendChannels.has("email") ? (
-                  <ComposerV2Editor
-                    ref={editorHandleRef}
-                    initialBodyHtml={body}
-                    subject={subject}
-                    onSubjectChange={onSubjectChange}
-                    onBodyChange={onBodyChange}
-                    editable={!scheduleMutation.isPending}
-                    brandEvents={brandEvents}
-                    templates={templates}
-                    previewVariables={previewVariables}
-                    brandName={brandName}
-                    currentDraftIsDirty={isDirty}
-                    onErrorToast={(msg) => setErrorBanner(msg)}
-                  />
+                  <View
+                    style={[
+                      styles.editorSlot,
+                      methodCardsFlow ? styles.editorSlotInFlow : null,
+                    ]}
+                  >
+                    <ComposerV2Editor
+                      ref={editorHandleRef}
+                      initialBodyHtml={body}
+                      subject={subject}
+                      onSubjectChange={onSubjectChange}
+                      onBodyChange={onBodyChange}
+                      editable={!scheduleMutation.isPending}
+                      brandEvents={brandEvents}
+                      templates={templates}
+                      previewVariables={previewVariables}
+                      brandName={brandName}
+                      currentDraftIsDirty={isDirty}
+                      onErrorToast={(msg) => setErrorBanner(msg)}
+                    />
+                  </View>
                 ) : (
                   /* Email off: the same one message, without the email toolbar. */
                   <View style={styles.plainMessage} testID="composer-plain-message">
@@ -2228,12 +2340,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   </View>
                 )}
                 {sendChannels.has("sms") || sendChannels.has("push") ? (
-                  <ScrollView
-                    style={[
-                      styles.methodCards,
-                      sendChannels.has("email") ? styles.methodCardsUnderEditor : null,
-                    ]}
-                    keyboardShouldPersistTaps="handled"
+                  <MethodCardsHost
+                    style={methodCardsFlow
+                      ? styles.methodCardsInFlow
+                      : [
+                          styles.methodCards,
+                          sendChannels.has("email") ? styles.methodCardsUnderEditor : null,
+                        ]}
+                    {...(methodCardsFlow ? {} : { keyboardShouldPersistTaps: "handled" as const })}
                     testID="composer-method-cards"
                   >
                     {sendChannels.has("sms") ? (
@@ -2245,7 +2359,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                           setSmsBody(text);
                           setIsDirty(true);
                         }}
-                        reachableSms={reach?.reachable_sms ?? null}
+                        reachableSms={smsReachable}
+                        reachNote={smsReachCaption}
                         currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                         editable={!scheduleMutation.isPending}
                         includeFollowCta={includeSmsFollowCta}
@@ -2278,7 +2393,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                         reason={pushAudienceReason}
                       />
                     ) : null}
-                  </ScrollView>
+                  </MethodCardsHost>
                 ) : null}
               </View>
 
@@ -2605,7 +2720,11 @@ const styles = StyleSheet.create({
    * bounded. Under the editor they share the height; alone they take all of it.
    */
   methodCards: { flex: 1, minHeight: 0 },
-  methodCardsUnderEditor: { flex: 0, flexBasis: "42%", flexShrink: 1 },
+  methodCardsUnderEditor: { flex: 0, flexBasis: "50%", flexShrink: 1 },
+  methodCardsInFlow: { flexShrink: 0 },
+  editorSlot: { flex: 1, minHeight: 0 },
+  // In flow the editor needs a height of its own, or the page scroller lends it none.
+  editorSlotInFlow: { flex: 0, flexShrink: 0, height: 400 },
   plainMessage: {
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,

@@ -189,36 +189,6 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     };
   }, [visible, isMulti, brandId, actorId]);
 
-  // "Done · {n} people" is the server's de-duplicated total, never a sum of rows.
-  const pickedKey = [...picked].sort().join("|");
-  useEffect(() => {
-    if (!visible || !isMulti) return;
-    if (picked.size === 0) {
-      setPeopleCount({ state: "none" });
-      return;
-    }
-    if (brandId === null || actorId == null) {
-      setPeopleCount({ state: "unavailable" });
-      return;
-    }
-    let cancelled = false;
-    setPeopleCount({ state: "counting" });
-    const timer = setTimeout(() => {
-      void getCombinedAudienceSummary({ actor_id: actorId, brand_id: brandId, sources: [...picked] })
-        .then((summary) => {
-          if (!cancelled) setPeopleCount({ state: "ready", people: summary.peopleCount });
-        })
-        .catch(() => {
-          if (!cancelled) setPeopleCount({ state: "unavailable" });
-        });
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pickedKey stands for picked
-  }, [visible, isMulti, pickedKey, brandId, actorId]);
-
   const [options, setOptions] = useState<AudienceOption[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -474,6 +444,53 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     return option;
   };
 
+  // #4273 — a tick on a row that has since gone unavailable (a group emptied, reach
+  // went stale) is not picked: it adds no one to the count and is not handed back.
+  // It stays in `picked`, so the row is ticked again if it comes back.
+  const liveOptions = (options ?? [])
+    .map(withEmptyStates)
+    .filter((option) => option.disabled !== true);
+  const liveKeys = new Set(liveOptions.map(sourceKeyForOption));
+  const livePicked = [...picked].filter((key) => liveKeys.has(key));
+  // A row still checking its reach may yet come back: the count waits for it.
+  const pickedRowLoading = (picked.has("followers") && circleReach?.followers.state === "loading") ||
+    (picked.has("extended") && circleReach?.extended.state === "loading");
+  const countWaiting = options === null || isLoading || pickedRowLoading;
+
+  // "Done · {n} people" is the server's de-duplicated total, never a sum of rows.
+  const pickedKey = [...livePicked].sort().join("|");
+  useEffect(() => {
+    if (!visible || !isMulti) return;
+    if (countWaiting) {
+      setPeopleCount({ state: picked.size === 0 ? "none" : "counting" });
+      return;
+    }
+    if (livePicked.length === 0) {
+      setPeopleCount({ state: "none" });
+      return;
+    }
+    if (brandId === null || actorId == null) {
+      setPeopleCount({ state: "unavailable" });
+      return;
+    }
+    let cancelled = false;
+    setPeopleCount({ state: "counting" });
+    const timer = setTimeout(() => {
+      void getCombinedAudienceSummary({ actor_id: actorId, brand_id: brandId, sources: livePicked })
+        .then((summary) => {
+          if (!cancelled) setPeopleCount({ state: "ready", people: summary.peopleCount });
+        })
+        .catch(() => {
+          if (!cancelled) setPeopleCount({ state: "unavailable" });
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pickedKey stands for livePicked
+  }, [visible, isMulti, pickedKey, brandId, actorId, countWaiting]);
+
   const togglePicked = (key: string): void => {
     setPicked((current) => {
       const next = new Set(current);
@@ -571,9 +588,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   };
 
   // #4273 — "Select all" means every group that has people.
-  const selectableOptions = (options ?? [])
-    .map(withEmptyStates)
-    .filter((option) => option.disabled !== true);
+  const selectableOptions = liveOptions;
   const allPicked = selectableOptions.length > 0 &&
     selectableOptions.every((option) => picked.has(sourceKeyForOption(option)));
   const toggleAll = (): void => {
@@ -582,7 +597,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   const handleDone = (): void => {
     if (multiSelect === undefined) return;
     multiSelect.onDone(
-      (options ?? []).filter((option) => picked.has(sourceKeyForOption(option))),
+      liveOptions.filter((option) => picked.has(sourceKeyForOption(option))),
     );
     onClose();
   };
@@ -593,7 +608,8 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   // OFF preserves the exact origin/main copy and row semantics below.
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    // #4273 — tick boxes need room: half a phone left the rows about 110pt.
+    <Sheet visible={visible} onClose={onClose} snapPoint={isMulti ? "full" : "half"}>
       <View style={styles.host}>
         <Text style={styles.title}>{circleAudienceEnabled === true ? "Choose who gets this" : "Pick an audience"}</Text>
         <Text style={styles.subtitle}>

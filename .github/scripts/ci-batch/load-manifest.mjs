@@ -143,7 +143,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273: register the Invite step sources-and-methods migration and its proofs the same way.
 // #4273: register the Blast combined-audience migration and its proofs the same way.
 // #4273: register the tester adversarial proofs the same way.
-export const BOOTSTRAP_SHA256 = "50934722693c4d06ed4d9efa917844aa90d1c981e3445a2cf785b84b935b3329";
+// #4273: register the rework proofs the same way.
+export const BOOTSTRAP_SHA256 = "c838997d0e282a0d65717e4be160d89dff56e831be1e92fc30f6770bbc083f24";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
