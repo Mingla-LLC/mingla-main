@@ -355,6 +355,15 @@ export async function handler(req: Request): Promise<Response> {
       const mapped = mapRpcError(rpcErr.code, rpcErr.message) ??
         mapRpcMessage(rpcErr.message);
       if (mapped) {
+        if (mapped.error === "invite_membership_conflict") {
+          // #4283 — a 23505 is a server-side fault, not an expected refusal.
+          // Keep the log line that proved the bug in production.
+          console.error(
+            "[accept-brand-invitation] rpc failed",
+            rpcErr.code,
+            rpcErr.message,
+          );
+        }
         if (mapped.error === "invite_currency_mismatch") {
           // ORCH-1052: surface the partner-gate payload (brand_currency,
           // partner_currencies, reason) so the client can render a useful
