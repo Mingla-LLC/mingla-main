@@ -116,8 +116,12 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   const [debounced, setDebounced] = useState<string>("");
   const [admitting, setAdmitting] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ScanResultCopy | null>(null);
-  // issue #3281 — the admitted guest's extras, marked for the day admitted.
-  const [lastExtras, setLastExtras] = useState<string | null>(null);
+  // issue #3281 — whose extras the result banner shows, and the day admitted.
+  // The line itself is read from the refreshed search answer below, so a
+  // refund between search and admission never tells the door to hand it over.
+  const [lastAdmitted, setLastAdmitted] = useState<
+    { orderId: string; admittedDateId: string | null } | null
+  >(null);
   const [admitError, setAdmitError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -158,7 +162,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           copy = { ...copy, message: `${guest.displayName}: ${admitted} checked in` };
         }
         setLastResult(copy);
-        setLastExtras(doorExtrasLine(readDoorExtras(guest.extras), admittedDateId));
+        setLastAdmitted({ orderId: guest.orderId, admittedDateId });
       } catch (error) {
         setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
       } finally {
@@ -179,6 +183,16 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
       : null;
 
   const results = query.data?.orders ?? [];
+  // issue #3281 — the admitted guest's extras from the current answer, marked
+  // for the day admitted; nothing while that answer is being refreshed.
+  const admittedGuest =
+    lastAdmitted === null || query.isFetching
+      ? undefined
+      : results.find((guest) => guest.orderId === lastAdmitted.orderId);
+  const lastExtras =
+    admittedGuest === undefined || lastAdmitted === null
+      ? null
+      : doorExtrasLine(readDoorExtras(admittedGuest.extras), lastAdmitted.admittedDateId);
 
   return (
     <View style={styles.panel}>
@@ -188,7 +202,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           onChangeText={(next) => {
             setText(next);
             setLastResult(null);
-            setLastExtras(null);
+            setLastAdmitted(null);
             setAdmitError(null);
           }}
           placeholder="Search name or email"

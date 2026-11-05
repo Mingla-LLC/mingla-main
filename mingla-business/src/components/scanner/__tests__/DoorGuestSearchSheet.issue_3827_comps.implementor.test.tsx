@@ -206,6 +206,38 @@ describe("issue #3827 — door Find by name", () => {
     expect(text(line)).toBe("Extras: Friday dinner × 2 (another day) · Tote bag × 1");
   });
 
+  test("issue #3281 — a refund between search and admission leaves the banner without that extra", async () => {
+    const withDinner = {
+      ...LOLU,
+      extras: [
+        { name: "Friday dinner", quantity: 2, eventDateIds: null },
+        { name: "Tote bag", quantity: 1, eventDateIds: null },
+      ],
+    };
+    // The search shows the dinner; the dinner is refunded before admission,
+    // so the refreshed answer after admission no longer owes it.
+    mockSearch
+      .mockResolvedValueOnce({ orders: [withDinner], truncated: false })
+      .mockResolvedValue({
+        orders: [{ ...withDinner, extras: [{ name: "Tote bag", quantity: 1, eventDateIds: null }] }],
+        truncated: false,
+      });
+    mockAdmit.mockResolvedValue({
+      result: "success", ticketId: "tk-l1", orderId: "o-lolu", buyerName: "Lolu Ade",
+      ticketName: "Guest list", nextStartAt: null, lastEndAt: null, eventDateId: null,
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    expect(text(r.root)).toContain("Friday dinner × 2");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Lolu Ade, Guest list");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
+    expect(line).toBeDefined();
+    expect(text(line)).toBe("Extras: Tote bag × 1");
+    expect(text(r.root)).not.toContain("Friday dinner");
+  });
+
   test("issue #3281 — the scan card shows extras on their own unclipped line, through the day label", () => {
     const src = fs.readFileSync(
       path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),
