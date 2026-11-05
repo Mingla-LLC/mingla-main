@@ -154,7 +154,7 @@ scripts/ci/issue-2062-expo-config-node20.mjs 9abac62742457bce556e2c3fbb21d512cd7
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8
 scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 93bbb32f57c49489d64bc12237e40631cf26c730968bfea0547eb1a469683725
 scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 24909501d087c1df2b5455fedd8f0e9f52ee165768d73d0d508a811675c2770d
-scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb8934df9435b1de1ce1daf8cb0fe8cf8abe8d481ce7ab734ea2e62807e
+scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 77a2d8b08e3555f342783e6078a55c36ae7b6cde80ce71d69efc6462398d28c3
 .github/workflows/issue-2393-valid-marketing-test-fixtures.yml 466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e
 `);
 

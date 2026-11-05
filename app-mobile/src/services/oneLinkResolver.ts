@@ -10,7 +10,7 @@
  *
  * Payload contract (SPEC §B.1):
  *   deep_link_value ∈ {brand, event, trip, experience, referral, internal, follow_invite,
- *                      friend_invite}
+ *                      friend_invite, friend_share, group_invite}
  *   deep_link_sub1  = primary slug (brandSlug for entities; referral_code for
  *                     `referral`; a `mingla://` path for `internal`)
  *   deep_link_sub2  = secondary slug (eventSlug/tripSlug/experienceSlug)
@@ -55,6 +55,17 @@ export type OneLinkDestination =
    * token rides in deep_link_sub1; the inviter's referral code in af_sub1.
    */
   | { kind: 'friend_invite'; token: string; referralCode?: string }
+  /**
+   * Issue #4261 — a person's reusable invite link (friend_share_links.token in
+   * deep_link_sub1, their referral code in af_sub1).
+   */
+  | { kind: 'friend_share'; token: string; referralCode?: string }
+  /**
+   * Issue #4261 — a group chat's link (group_invite_links.token in
+   * deep_link_sub1) and, optionally, the sharer's friend_share token in
+   * deep_link_sub2 so the joiner is connected to whoever shared it.
+   */
+  | { kind: 'group_invite'; groupToken: string; shareToken?: string; referralCode?: string }
   | null;
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
@@ -62,6 +73,8 @@ const CONTENT_SHARE_CODE_RE = /^[0-9A-Za-z]{16}$/;
 const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
 const CLAIM_CODE_RE = /^[0-9A-Za-z]{10}$/;
 const FRIEND_INVITE_TOKEN_RE = /^[0-9a-f]{32,64}$/;
+// Issue #4261 — friend_share_links / group_invite_links tokens (16 random bytes, hex).
+const LINK_TOKEN_RE = /^[0-9a-f]{32}$/;
 export const isOpaqueShareId = (value: unknown): value is string =>
   typeof value === 'string' && OPAQUE_SHARE_ID_RE.test(value);
 export const isContentShareCode = (value: unknown): value is string =>
@@ -155,6 +168,28 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
         return referralCode
           ? { kind: 'friend_invite', token, referralCode }
           : { kind: 'friend_invite', token };
+      }
+
+      case 'friend_share': {
+        // Issue #4261 — never a half-formed share: exactly the server token.
+        const token = sub1.toLowerCase();
+        if (!LINK_TOKEN_RE.test(token)) return null;
+        return referralCode
+          ? { kind: 'friend_share', token, referralCode }
+          : { kind: 'friend_share', token };
+      }
+
+      case 'group_invite': {
+        // Issue #4261 — the group token is required; a present but malformed
+        // share token kills the link (never a half-formed payload).
+        const groupToken = sub1.toLowerCase();
+        if (!LINK_TOKEN_RE.test(groupToken)) return null;
+        const shareToken = sub2.toLowerCase();
+        if (shareToken && !LINK_TOKEN_RE.test(shareToken)) return null;
+        const dest: Extract<OneLinkDestination, { kind: 'group_invite' }> = { kind: 'group_invite', groupToken };
+        if (shareToken) dest.shareToken = shareToken;
+        if (referralCode) dest.referralCode = referralCode;
+        return dest;
       }
 
       case 'claim':

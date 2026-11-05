@@ -8,7 +8,6 @@ import {
   FlatList,
   Alert,
   Platform,
-  Linking,
   Dimensions,
   ActivityIndicator,
   useWindowDimensions,
@@ -17,7 +16,6 @@ import {
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -50,16 +48,20 @@ import {
 } from "./connections/brandChannelModel";
 import { getDisplayName } from "../utils/getDisplayName";
 import {
-  SavedToSessionCardsSheet,
-  ScheduleSheet,
   useCollabPlanCard,
   useSessionSavedCardsForSheet,
 } from "./chat/CollabSessionChatBanners";
+import { PlanMatchesSheet } from "./chat/PlanMatchesSheet";
+import { PlansSheet } from "./chat/PlansSheet";
+import { useQueryClient } from "@tanstack/react-query";
+import { chatKeys, planKeys } from "../hooks/queryKeys";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
 import {
   buildCollabHeaderStrip,
+  groupJoinEventKey,
   headerAvatarStack,
+  liveGroupMembers,
   matchKey,
   memberFirstNames,
   planSavedCardIdFromPayload,
@@ -80,7 +82,8 @@ import { ChatActionList } from "./chat/ChatActionList";
 import { GroupInfoSheet } from "./chat/GroupInfoSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import { ChatAttachSheet } from "./chat/ChatAttachSheet";
-import InAppBrowserModal from "./InAppBrowserModal";
+import { InAppBrowserProvider, useOpenInMingla } from "./InAppBrowserProvider";
+import { mapsWebUrl } from "../utils/inAppLink";
 import { copyAddressText } from "../utils/copyAddressText";
 import { withSelfMentionCandidate } from "../utils/messageTextTokens";
 import { ChatVideoPlayerModal } from "./chat/ChatVideoPlayerModal";
@@ -137,6 +140,7 @@ import { prepareContentShare } from "../services/contentShareAdapter";
 import { clearContentShareOperationId, sendContentShareToRecipients } from "../services/contentShareDeliveryService";
 import { nativeContentCardSnapshotService } from "../services/nativeContentCardSnapshotService";
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
+import { expansionTargetFromSavedPayload } from "../utils/expansionTargetFromSavedPayload";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useSessionScheduledCards } from "../hooks/useSessionScheduledCards";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -166,6 +170,29 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptorV1 } from '@mingla/sharing';
 import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
+import type { ChatPlan, ChatPlanPlaceOption, GroupEventPayload, PlanEventPayload, PlanQuoteSnapshot } from "../types/chatPlans";
+import { PlanCardBubble } from "./chat/PlanCardBubble";
+import { PlanFormSheet } from "./chat/PlanFormSheet";
+import { PlanCommentsSheet } from "./chat/PlanCommentsSheet";
+import { PlanTimePickerSheet } from "./chat/PlanTimePickerSheet";
+import { PlanActionsMenu, PlanEditSheet } from "./chat/PlanEditSheet";
+import { GroupJoinRequestCard } from "./chat/GroupJoinRequestCard";
+import { useCancelPlan, useChatPlans, useChatPlansRealtime, useLockPlan, useUpdatePlan } from "../hooks/useChatPlans";
+import {
+  chatPlanKindOf,
+  formatPlanTime,
+  placeExpansionPayload,
+  placeLinkTarget,
+  planHeaderInputs,
+  planPlaceTarget,
+  planCommentSendFields,
+  planQuoteFallbackKey,
+  planQuoteNote,
+  viewerQuoteSnapshot,
+  type PlanCommentReply,
+} from "./chat/planModel";
+import { PlanPlaceSuggestSheet } from "./chat/PlanPlaceSuggestSheet";
+import { toastManager } from "./ui/Toast";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -223,7 +250,7 @@ interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: "text" | "image" | "video" | "file" | "card" | "system";
+  type: "text" | "image" | "video" | "file" | "card" | "system" | "plan";
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
@@ -241,6 +268,10 @@ interface Message {
   isRead?: boolean;
   replyToId?: string;
   marketingCampaignId?: string | null;
+  /** Issue #4261: the plan this message is about (its card, or a comment on it). */
+  planId?: string;
+  /** Issue #4261: the sender's picks on that plan when the comment was sent. */
+  planQuote?: PlanQuoteSnapshot | null;
   isSystem?: boolean;
   systemPayload?: CollabDeadEndBannerPayload;  // ORCH-1058B
   /** Issue #4114 Wave 3: direct_message_reactions rows for this message. */
@@ -291,6 +322,8 @@ interface ThreadRow {
   /** Issue #4114 Wave 7: space under and above the row (media cards get 14pt). */
   bottomGap: number;
   topGap: number;
+  /** Issue #4261: a comment on a plan quotes the plan and the sender's picks. */
+  planQuote: { planId: string; title: string; note: string } | null;
 }
 
 const EMPTY_EMOJIS: string[] = [];
@@ -367,6 +400,10 @@ interface MessageInterfaceProps {
     replyToId?: string,
     mentions?: MentionEntry[],
     cardTags?: CardTagEntry[],
+    /** Issue #4261: the plan a comment is about (the bubble's quote; a deck match also sends it). */
+    planId?: string,
+    /** Issue #4261: my picks, quoted on the bubble until the server's snapshot arrives. */
+    planQuote?: PlanQuoteSnapshot,
   ) => void;
   messages: Message[];
   /**
@@ -479,7 +516,20 @@ interface MessageInterfaceProps {
   onDmCollabChanged?: () => void;
 }
 
-export default function MessageInterface({
+/**
+ * Issue #4261 amendment 1 (6.4): every link in the chat (message links, plan
+ * links, place links, maps, documents) opens through the one in-app browser
+ * provider this wrapper mounts.
+ */
+export default function MessageInterface(props: MessageInterfaceProps): React.ReactElement {
+  return (
+    <InAppBrowserProvider>
+      <MessageInterfaceInner {...props} />
+    </InAppBrowserProvider>
+  );
+}
+
+function MessageInterfaceInner({
   friend,
   onBack,
   onSendMessage,
@@ -574,12 +624,38 @@ export default function MessageInterface({
     : isDmCollabActive
       ? dmCollabSession?.id ?? null
       : null;
+  // Issue #4261: chats that hold plans (1:1, collab groups, plain groups).
+  const chatPlanKind = chatPlanKindOf({
+    isGroupChat,
+    linkedEntityType: friend.linkedEntityType ?? null,
+    sessionId: friend.sessionId ?? null,
+    programKind: friend.programKind ?? null,
+    isBrandChannel: brandChannel !== null,
+    isBlocked,
+    isUnfriended,
+    isDeletedAccount,
+  });
+  const isPlanChat = chatPlanKind !== null && Boolean(conversationId);
+  const planConversationId = isPlanChat ? conversationId : null;
+  const chatPlansQuery = useChatPlans(planConversationId, isPlanChat);
+  useChatPlansRealtime(planConversationId, isPlanChat);
+  const chatPlansPayload = chatPlansQuery.data ?? null;
+  const planViewerId = chatPlansPayload?.viewerId ?? currentUserId ?? null;
   // The starter sets their vibes while the invite is still out, so the prefs
   // sheet follows the live session even before it is active.
   const prefsSessionId: string | null = collabSessionId ?? (isDirectChat ? dmCollabSession?.id ?? null : null);
   const headerTitle = cleanName(friend.name);
-  const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
-  const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
+  // Issue #4261 amendment 1 (B-4): one owner for who is in the chat now, the
+  // live participants query; the chat-open snapshot only until it loads.
+  const participantsQuery = useConversationParticipants(conversationId, currentUserId);
+  const liveParticipants = isGroupChat ? participantsQuery.data : undefined;
+  const headerParticipants = useMemo(
+    () => liveGroupMembers(friend.participants ?? [], liveParticipants, currentUserId),
+    [currentUserId, friend.participants, liveParticipants],
+  );
+  const headerParticipantCount = liveParticipants !== undefined
+    ? headerParticipants.length
+    : friend.participantCount ?? headerParticipants.length;
   // Issue #4114 QA (P3): the avatar stack shows the other members, never you.
   const headerStack = useMemo(
     () => headerAvatarStack(headerParticipants, headerParticipantCount, currentUserId),
@@ -667,8 +743,8 @@ export default function MessageInterface({
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [viewOncePhotoUrl, setViewOncePhotoUrl] = useState<string | null>(null);
   const [activeViewOnceMessage, setActiveViewOnceMessage] = useState<Message | null>(null);
-  // Issue #4114 QA run 2: a link tapped in a text bubble opens here.
-  const [linkBrowserUrl, setLinkBrowserUrl] = useState<string | null>(null);
+  // Issue #4261 amendment 1: links open in Mingla's in-app browser (the wrapper's provider).
+  const browser = useOpenInMingla();
   const [viewOnceVideoUrl, setViewOnceVideoUrl] = useState<string | null>(null);
   const [openedViewOnce, setOpenedViewOnce] = useState<Record<string, true>>({});
   const openingViewOnceRef = useRef<string | null>(null);
@@ -706,7 +782,6 @@ export default function MessageInterface({
   const [isSavingSharedCard, setIsSavingSharedCard] = useState(false);
   const [sharedCardIsSaved, setSharedCardIsSaved] = useState(false);
   const savedCardsQuery = useSavedCards(currentUserId ?? undefined);
-  const participantsQuery = useConversationParticipants(conversationId, currentUserId);
   const chatCardTagSource = useChatCardTagSource({
     conversationType: isGroupChat ? "group" : "direct",
     sessionId: friend.sessionId ?? null,
@@ -731,7 +806,7 @@ export default function MessageInterface({
   // Stable for the thread's renderItem and bubble handlers.
   const openCollabPlanCardRef = useRef(openCollabPlanCard);
   openCollabPlanCardRef.current = openCollabPlanCard;
-  const { session: collabSession, isAdmin: isCollabSessionAdmin } = useBoardSession(
+  const { session: collabSession } = useBoardSession(
     collabSessionId ?? undefined,
   );
   const groupSettingsParticipants = useMemo(() => {
@@ -764,59 +839,55 @@ export default function MessageInterface({
     headerParticipants,
     isCollabSessionGroupChat,
   ]);
-  const {
-    savedCards: matchedSessionCards,
-    isLoading: matchedSessionCardsLoading,
-  } = useSessionSavedCardsForSheet(
-    collabSessionId,
-    // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
-    { onMatchPromoted: HapticFeedback.light },
+  const queryClient = useQueryClient();
+  // Amendment 1 (B-4): a "joined" / "added" group row arriving refetches who is in the chat.
+  const groupJoinKey = useMemo(() => (isGroupChat ? groupJoinEventKey(messages) : ""), [isGroupChat, messages]);
+  useEffect(() => {
+    if (!conversationId || !groupJoinKey) return;
+    void queryClient.invalidateQueries({ queryKey: chatKeys.participants(conversationId) });
+  }, [conversationId, groupJoinKey, queryClient]);
+  // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
+  // Issue #4261: it also refreshes the plan list (a deck match is a plan).
+  const handleMatchPromoted = useCallback(() => {
+    HapticFeedback.light();
+    if (planConversationId) void queryClient.invalidateQueries({ queryKey: planKeys.conversation(planConversationId) });
+  }, [planConversationId, queryClient]);
+  useSessionSavedCardsForSheet(collabSessionId, { onMatchPromoted: handleMatchPromoted });
+  // Issue #4261: the header strip reads the chat's plan list — Matches are the
+  // plans still being decided ("{n} to vote" waits on you), Plans the
+  // locked-in ones. Shown in every plan chat, only once there is something.
+  const planStripInputs = useMemo(
+    () => planHeaderInputs(chatPlansPayload?.plans ?? [], planViewerId ?? ""),
+    [chatPlansPayload?.plans, planViewerId],
   );
   const collabHeaderActions = useMemo(
     () =>
-      isCollabChat
+      isPlanChat
         ? getCollabChatHeaderActions({
-            matchesCount: matchedSessionCards.length,
-            scheduledCount: scheduledCardsQuery.rows.length,
-            matchesLoading: matchedSessionCardsLoading,
-            scheduledLoading: scheduledCardsQuery.isLoading,
+            matchesCount: planStripInputs.matches.length,
+            scheduledCount: planStripInputs.scheduled.length,
+            matchesLoading: chatPlansQuery.isLoading,
+            scheduledLoading: chatPlansQuery.isLoading,
           })
         : [],
-    [
-      isCollabChat,
-      matchedSessionCards.length,
-      matchedSessionCardsLoading,
-      scheduledCardsQuery.isLoading,
-      scheduledCardsQuery.rows.length,
-    ],
+    [chatPlansQuery.isLoading, isPlanChat, planStripInputs],
   );
-  // Issue #4114 Wave 3 (D9): the header strip — matched places and the next
-  // plan — from the two hooks above. No new queries.
-  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(collabSessionId);
+  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(planConversationId);
   const collabHeaderStrip = useMemo(
     () =>
-      isCollabChat
+      isPlanChat
         ? buildCollabHeaderStrip({
             actionIds: collabHeaderActions.map((action) => action.id),
-            matches: matchedSessionCards,
-            matchesLoading: matchedSessionCardsLoading,
-            plans: scheduledCardsQuery.rows,
-            plansLoading: scheduledCardsQuery.isLoading,
+            matches: planStripInputs.matches,
+            matchesLoading: chatPlansQuery.isLoading,
+            plans: planStripInputs.scheduled,
+            plansLoading: chatPlansQuery.isLoading,
             seenMatchIds,
             now: Date.now(),
             untitled: t('chat:planUntitled'),
           })
         : null,
-    [
-      collabHeaderActions,
-      isCollabChat,
-      matchedSessionCards,
-      matchedSessionCardsLoading,
-      scheduledCardsQuery.isLoading,
-      scheduledCardsQuery.rows,
-      seenMatchIds,
-      t,
-    ],
+    [chatPlansQuery.isLoading, collabHeaderActions, isPlanChat, planStripInputs, seenMatchIds, t],
   );
   const collabHeaderStripLabels = useMemo<ChatHeaderStripLabels>(
     () => ({
@@ -829,6 +900,7 @@ export default function MessageInterface({
       openMatches: t('chat:a11yOpenMatches'),
       openPlans: t('chat:a11yOpenPlans'),
       openPlan: (title: string, time: string) => t('chat:a11yOpenPlan', { title, time }),
+      toVote: (count: number) => t('chat:strip_to_vote', { count }),
     }),
     [t],
   );
@@ -854,8 +926,6 @@ export default function MessageInterface({
       : isGroupChat
         ? t('chat:peopleInChat', { count: headerParticipantCount })
         : null;
-  const collabParticipantCount =
-    (collabSession?.participants as any[] | undefined)?.length || headerParticipantCount;
   const inputRef = useRef<TextInput>(null);
   const chatController = useChatInputController({
     participants: participantsQuery.data ?? [],
@@ -1022,7 +1092,19 @@ export default function MessageInterface({
     isMe: boolean;
     /** Issue #4114 Wave 6: the quoted message's event chat (a reply goes there). */
     conversationId?: string;
+    /**
+     * Issue #4261: replying to a plan. A chat plan whose card is visible replies
+     * to that message (the server derives the plan); otherwise the send names
+     * the plan id (deck matches have no card message).
+     */
+    plan?: PlanCommentReply;
   } | null>(null);
+  // Issue #4261: plan dialogs and the card highlight after a jump.
+  const [planLockTimeFor, setPlanLockTimeFor] = useState<ChatPlan | null>(null);
+  const [planMenuFor, setPlanMenuFor] = useState<ChatPlan | null>(null);
+  const [planEditFor, setPlanEditFor] = useState<ChatPlan | null>(null);
+  const [highlightPlanId, setHighlightPlanId] = useState<string | null>(null);
+  const [showPlanForm, setShowPlanForm] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const safeInsets = useSafeAreaInsets();
@@ -1221,12 +1303,21 @@ export default function MessageInterface({
     sendCoordinator.requestSend({
       read: chatController.readText,
       send: () => {
-        const replyToId = replyingTo?.messageId;
+        const { replyToId, planId, planQuote } = planCommentSendFields(replyingTo);
         const { content, mentions, cardTags } = chatController.serializeForSend();
         // Clear first, synchronously, then send.
         clearComposerAfterSend();
         setReplyingTo(null); // Clear reply state immediately
-        onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
+        onSendMessage(
+          content,
+          "text",
+          undefined,
+          replyToId,
+          mentions,
+          cardTags,
+          planId,
+          planQuote,
+        );
         stopTyping();
         HapticFeedback.light();
       },
@@ -1459,21 +1550,8 @@ export default function MessageInterface({
         Alert.alert(t('social:error'), t('chat:errorDocumentUrl'));
         return;
       }
-      try {
-        await WebBrowser.openBrowserAsync(url, {
-          showTitle: true,
-          toolbarColor: "#eb7825",
-          enableBarCollapsing: false,
-        });
-      } catch (error) {
-        console.warn("In-app browser failed for a document, trying the system:", error);
-        const canOpen = await Linking.canOpenURL(url);
-        if (canOpen) {
-          await Linking.openURL(url);
-        } else {
-          Alert.alert(t('social:error'), t('chat:errorOpenDocument'));
-        }
-      }
+      // Amendment 1: the in-app overlay (no fallback that leaves Mingla; the provider toasts on failure).
+      browser.openDocument(url);
     } catch (error) {
       console.error("Error opening document:", error);
       Alert.alert(t('social:error'), t('chat:errorOpenDocumentGeneric'));
@@ -1586,9 +1664,9 @@ export default function MessageInterface({
     ),
     [currentUserId, currentUserName, participantsQuery.data],
   );
-  const handleLinkPress = useCallback((url: string) => {
-    setLinkBrowserUrl(url);
-  }, []);
+  const handleLinkPress = useCallback((url: string, title?: string) => {
+    browser.open(url, title);
+  }, [browser]);
   const handleLinkLongPress = useCallback((url: string) => {
     HapticFeedback.light();
     copyAddressText(url)
@@ -2171,7 +2249,7 @@ export default function MessageInterface({
   };
 
   const handleCollabStripPress = (view: "matches" | "plans") => {
-    if (view === "matches") markMatchesSeen(matchedSessionCards.map(matchKey));
+    if (view === "matches") markMatchesSeen(planStripInputs.matches.map(matchKey));
     handleOpenCollabDeckView(view);
   };
 
@@ -2266,7 +2344,7 @@ export default function MessageInterface({
           senderName,
           content: message.content,
           timestamp: message.timestamp,
-          type: message.type === 'system' ? 'text' : message.type,
+          type: message.type === 'system' || message.type === 'plan' ? 'text' : message.type,
           fileUrl: message.fileUrl,
           fileName: message.fileName,
           fileSize: message.fileSize,
@@ -2333,6 +2411,13 @@ export default function MessageInterface({
             : { senderName: '', content: '', isDeleted: true, messageId: message.replyToId }
           : undefined,
         isRead: message.isMe && !message.id.startsWith("temp-") && (message.isRead === true),
+        planQuote: message.planId && message.planQuote && message.type !== 'plan' && !message.isSystem
+          ? {
+              planId: message.planId,
+              title: message.planQuote.title,
+              note: planQuoteNote(message.planQuote, i18n.language, undefined, (key, params) => t(`chat:${key}`, params)),
+            }
+          : null,
         dayLabel,
         showNewDivider: message.id === newDividerMessageId,
         eventMarker: brandChannel && eventMarkerIds?.has(message.id)
@@ -2374,6 +2459,143 @@ export default function MessageInterface({
       conversationId: row.message.conversationId,
     });
   }, []);
+
+  // ── Issue #4261: plans in the thread ─────────────────────────
+  /** A chat member's name, or null when this phone does not know them yet. */
+  const resolveMemberName = useCallback((userId: string | null | undefined): string | null => {
+    if (!userId) return null;
+    if (userId === currentUserId) return currentUserName?.trim() || t('chat:you');
+    const fromParticipants = participantsQuery.data?.find((participant) => participant.userId === userId)?.displayName;
+    if (fromParticipants) return cleanName(fromParticipants);
+    const fromHeader = headerParticipants.find((participant) => participant.id === userId);
+    return fromHeader ? getHeaderParticipantName(fromHeader) : null;
+    // cleanName / getHeaderParticipantName are pure helpers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, currentUserName, headerParticipants, participantsQuery.data, t]);
+  const planNameOf = useCallback(
+    (userId: string | null): string => resolveMemberName(userId) ?? t('chat:planSetBySomeone'),
+    [resolveMemberName, t],
+  );
+  const [planCommentsFor, setPlanCommentsFor] = useState<ChatPlan | null>(null);
+
+  /**
+   * Issue #4261 (spec 5.5 #9): a plan / group system row in local time from its
+   * payload; anything this phone cannot name falls back to the server's prose.
+   */
+  const planSystemRowText = useCallback((payload: PlanEventPayload | GroupEventPayload, fallback: string): string => {
+    if (payload.kind === 'plan_event') {
+      const title = chatPlansPayload?.plans.find((plan) => plan.id === payload.planId)?.title;
+      const name = resolveMemberName(payload.actorId);
+      if (!title || !name) return fallback;
+      if (payload.event === 'time_added' && payload.startsAt) {
+        return t('chat:plan_event_time_added', { name, time: formatPlanTime(payload.startsAt, i18n.language), title });
+      }
+      if (payload.event === 'place_added' && payload.placeName) {
+        return t('chat:plan_event_place_added', { name, place: payload.placeName, title });
+      }
+      if (payload.event === 'locked' && payload.scheduledAt) {
+        const time = formatPlanTime(payload.scheduledAt, i18n.language);
+        if (payload.placeVoted && payload.placeName) {
+          return t('chat:plan_event_locked_at_place', { name, time, place: payload.placeName, title });
+        }
+        return t('chat:plan_event_locked', { name, time, title });
+      }
+      if (payload.event === 'cancelled') return t('chat:plan_event_cancelled', { name, title });
+      return fallback;
+    }
+    if (payload.event === 'joined_by_link') {
+      const name = resolveMemberName(payload.userId);
+      const sharer = resolveMemberName(payload.sharerId);
+      return name && sharer ? t('chat:group_event_joined', { name, sharer }) : fallback;
+    }
+    if (payload.event === 'members_added') {
+      const actor = resolveMemberName(payload.actorId);
+      const names = (payload.userIds ?? []).map((id) => resolveMemberName(id));
+      if (!actor || names.length === 0 || names.some((name) => !name)) return fallback;
+      const list = names as string[];
+      const joined = list.length === 1 ? list[0] : t('chat:plan_quote_and', { list: list.slice(0, -1).join(', '), last: list[list.length - 1] });
+      return t('chat:group_event_members_added', { actor, names: joined });
+    }
+    return fallback;
+  }, [chatPlansPayload?.plans, i18n.language, resolveMemberName, t]);
+
+  /** Reply on a plan: quote it in the composer bar with my current picks. */
+  const startPlanReply = useCallback((plan: ChatPlan) => {
+    const viaPlanId = !(plan.source === 'chat' && plan.messageId && plan.messageVisible);
+    const quote = planViewerId ? viewerQuoteSnapshot(plan, planViewerId) : null;
+    const note = quote
+      ? planQuoteNote(
+          quote,
+          i18n.language,
+          undefined,
+          (key, params) => t(`chat:${key}`, params),
+          t(`chat:${planQuoteFallbackKey(plan)}`),
+        )
+      : '';
+    setReplyingTo({
+      messageId: viaPlanId ? '' : (plan.messageId as string),
+      senderName: plan.title,
+      content: note,
+      isMe: true,
+      plan: { planId: plan.id, title: plan.title, viaPlanId, quote },
+    });
+    setTimeout(() => inputRef.current?.focus?.(), 50);
+  }, [i18n.language, planViewerId, t]);
+
+  /** Scroll the thread to a plan's card and outline it for a second. */
+  const jumpToPlanCard = useCallback((planId: string): boolean => {
+    const index = threadRowsRef.current.findIndex(
+      (row) => (row.message.cardPayload as { kind?: string; planId?: string } | undefined)?.kind === 'plan'
+        && (row.message.cardPayload as { planId?: string }).planId === planId,
+    );
+    if (index < 0) return false;
+    flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    setHighlightPlanId(planId);
+    setTimeout(() => setHighlightPlanId((current) => (current === planId ? null : current)), 1000);
+    return true;
+  }, []);
+
+  /** A Mingla place opens its expanded card; returns false when it cannot. */
+  const openPoolPlaceCard = useCallback((card: Record<string, unknown> | null): boolean => {
+    if (!card) return false;
+    const target = expansionTargetFromSavedPayload(card);
+    if (target?.kind !== 'nightOut') return false;
+    setExpandedCardFromChat(target.data);
+    setShowExpandedCardFromChat(true);
+    return true;
+  }, []);
+
+  /**
+   * Amendment 1: a plan's place. A Mingla place opens its card; a place not on
+   * Mingla opens its own link, else the map, inside Mingla (never the maps app).
+   */
+  const openPlanPlace = useCallback((plan: ChatPlan) => {
+    const place = plan.place;
+    if (!place) return;
+    if (place.poolId && openPoolPlaceCard(placeExpansionPayload(place, plan.title))) return;
+    const target = planPlaceTarget({ ...plan, place: { ...place, poolId: null } }, mapsWebUrl);
+    if (!target || target.kind === 'mingla') {
+      toastManager.error(t('common:link_open_failed'));
+      return;
+    }
+    browser.open(target.url, target.kind === 'link' ? target.label : place.name ?? undefined);
+  }, [browser, openPoolPlaceCard, t]);
+
+  /** A place on a plan's place vote (same rule as the plan's own place). */
+  const openPlanPlaceOption = useCallback((plan: ChatPlan, option: ChatPlanPlaceOption) => {
+    if (option.poolId && openPoolPlaceCard(placeExpansionPayload(option, plan.title))) return;
+    const target = placeLinkTarget({ ...option, poolId: null }, mapsWebUrl);
+    if (!target || target.kind === 'mingla') {
+      toastManager.error(t('common:link_open_failed'));
+      return;
+    }
+    browser.open(target.url, target.kind === 'link' ? target.label : option.name ?? undefined);
+  }, [browser, openPoolPlaceCard, t]);
+  const [planSuggestFor, setPlanSuggestFor] = useState<ChatPlan | null>(null);
+
+  const planLockMutation = useLockPlan(planConversationId ?? '', planViewerId);
+  const planUpdateMutation = useUpdatePlan(planConversationId ?? '');
+  const planCancelMutation = useCancelPlan(planConversationId ?? '', planViewerId);
 
   // Reactions: awaited, and a failure is never silent (ConnectionsPage rolls
   // the pill back and toasts; anything thrown here toasts too).
@@ -2622,7 +2844,84 @@ export default function MessageInterface({
       </View>
     ) : null;
 
+    // Issue #4261: a plan card, full width, read from the chat's plan list.
+    const planCardPayload = item.message.cardPayload as { kind?: string; planId?: string } | undefined;
+    if (planConversationId && planCardPayload?.kind === 'plan' && typeof planCardPayload.planId === 'string') {
+      const cardPlanId = planCardPayload.planId;
+      return (
+        <>
+          <PlanCardBubble
+            planId={cardPlanId}
+            conversationId={planConversationId}
+            fallbackContent={item.message.content}
+            senderName={item.senderName}
+            isMe={item.message.isMe}
+            nameOf={planNameOf}
+            onReply={startPlanReply}
+            onOpenComments={setPlanCommentsFor}
+            onOpenPlace={openPlanPlace}
+            onOpenPlaceOption={openPlanPlaceOption}
+            onOpenLink={handleLinkPress}
+            onSuggestPlace={setPlanSuggestFor}
+            onRequestLockTime={setPlanLockTimeFor}
+            onLongPress={setPlanMenuFor}
+            highlighted={highlightPlanId === cardPlanId}
+          />
+          {eventMarker}
+          {newDivider}
+          {daySeparator}
+        </>
+      );
+    }
+
     if (item.message.isSystem) {
+      // Issue #4261: plan and group rows (spec 5.5 #9). Unknown kinds keep the
+      // existing content rendering below.
+      const planEventPayload = item.message.cardPayload as unknown as PlanEventPayload | GroupEventPayload | undefined;
+      if (
+        planEventPayload?.kind === 'group_event' &&
+        planEventPayload.event === 'join_request' &&
+        planEventPayload.requestId &&
+        conversationId
+      ) {
+        return (
+          <>
+            <GroupJoinRequestCard
+              conversationId={conversationId}
+              requestId={planEventPayload.requestId}
+              groupName={headerTitle}
+              fallbackText={item.message.content}
+            />
+            {eventMarker}
+            {newDivider}
+            {daySeparator}
+          </>
+        );
+      }
+      if (planEventPayload?.kind === 'plan_event' || planEventPayload?.kind === 'group_event') {
+        const rowText = planSystemRowText(planEventPayload, item.message.content);
+        const jumpPlanId = planEventPayload.kind === 'plan_event' && planEventPayload.event !== 'cancelled'
+          ? planEventPayload.planId
+          : null;
+        return (
+          <>
+            <MessageBubble
+              message={{ ...item.bubble, content: rowText }}
+              onSystemTokenPress={handleSystemTokenPress}
+              onPlanRowPress={jumpPlanId ? () => {
+                if (!jumpToPlanCard(jumpPlanId)) showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+              } : undefined}
+              isMe={item.message.isMe}
+              groupPosition={item.groupPosition}
+              showTimestamp={false}
+              isRead={false}
+            />
+            {eventMarker}
+            {newDivider}
+            {daySeparator}
+          </>
+        );
+      }
       // Issue #4114 Wave 5: the collab rows of a 1:1 chat (started / joined / ended).
       const dmCollabPayload = item.message.cardPayload as unknown;
       if (isDmCollabEventPayload(dmCollabPayload)) {
@@ -2705,6 +3004,11 @@ export default function MessageInterface({
               isRead={item.isRead}
               replyTo={item.replyTo}
               onScrollToMessage={handleScrollToMessage}
+              planQuote={item.planQuote}
+              onPlanQuotePress={item.planQuote ? () => {
+                const quoted = chatPlansPayload?.plans.find((plan) => plan.id === item.planQuote?.planId);
+                if (quoted) setPlanCommentsFor(quoted);
+              } : undefined}
               showSenderName={item.showSenderName}
               reactions={item.reactions}
               onReactionPress={onToggleReaction ? toggleReaction : undefined}
@@ -2756,6 +3060,17 @@ export default function MessageInterface({
     startReply,
     t,
     toggleReaction,
+    planConversationId,
+    planNameOf,
+    startPlanReply,
+    openPlanPlace,
+    highlightPlanId,
+    planSystemRowText,
+    jumpToPlanCard,
+    chatPlansPayload?.plans,
+    conversationId,
+    headerTitle,
+    showNotification,
   ]);
 
   // ── Issue #4114 Wave 3: Android back ─────────────────────────
@@ -2923,6 +3238,10 @@ export default function MessageInterface({
         stripLabels={collabHeaderStripLabels}
         onStripPress={handleCollabStripPress}
         onPlanPress={handleCollabPlanPress}
+        onChatPlanPress={(planId) => {
+          HapticFeedback.medium();
+          if (!jumpToPlanCard(planId)) setShowCollabPlansSheet(true);
+        }}
         locale={i18n.language}
       />
 
@@ -3146,12 +3465,60 @@ export default function MessageInterface({
         onBlock={canBlockActiveViewOnceSender ? blockActiveViewOnceSender : undefined}
         viewOnce
       />
-      <InAppBrowserModal
-        visible={linkBrowserUrl !== null}
-        url={linkBrowserUrl ?? ''}
-        title={linkBrowserUrl ?? ''}
-        onClose={() => setLinkBrowserUrl(null)}
-      />
+      {/* Issue #4261: the plan form, a plan's long-press menu, its edit dialog and "Lock it in" with no time vote. */}
+      {planConversationId ? (
+        <>
+          <PlanPlaceSuggestSheet
+            visible={planSuggestFor !== null}
+            onClose={() => setPlanSuggestFor(null)}
+            conversationId={planConversationId}
+            plan={planSuggestFor}
+            viewerId={planViewerId}
+          />
+          <PlanCommentsSheet
+            plan={planCommentsFor}
+            onClose={() => setPlanCommentsFor(null)}
+            nameOf={planNameOf}
+            viewerId={planViewerId}
+            onReply={startPlanReply}
+          />
+          <PlanFormSheet
+            visible={showPlanForm}
+            onClose={() => setShowPlanForm(false)}
+            conversationId={planConversationId}
+            senderId={currentUserId}
+            chatName={headerTitle}
+          />
+          <PlanActionsMenu
+            plan={planMenuFor}
+            onClose={() => setPlanMenuFor(null)}
+            onReply={startPlanReply}
+            onEdit={setPlanEditFor}
+            onCancelPlan={(plan) => planCancelMutation.mutate({ plan })}
+          />
+          <PlanEditSheet
+            plan={planEditFor}
+            busy={planUpdateMutation.isPending}
+            onClose={() => setPlanEditFor(null)}
+            onSave={(plan, title, note) =>
+              planUpdateMutation.mutate({ plan, title, note }, { onSuccess: () => setPlanEditFor(null) })
+            }
+          />
+          <PlanTimePickerSheet
+            visible={planLockTimeFor !== null}
+            onClose={() => setPlanLockTimeFor(null)}
+            planTitle={planLockTimeFor?.title ?? ''}
+            busy={planLockMutation.isPending}
+            onConfirm={(scheduledAt) => {
+              if (!planLockTimeFor) return;
+              planLockMutation.mutate(
+                { plan: planLockTimeFor, scheduledAt },
+                { onSuccess: () => setPlanLockTimeFor(null) },
+              );
+            }}
+          />
+        </>
+      ) : null}
       <ViewOncePhotoViewer
         url={viewOncePhotoUrl}
         onClose={closeViewOnceViewer}
@@ -3248,6 +3615,14 @@ export default function MessageInterface({
               setPendingMedia((prev) => prev.filter((_, i) => i !== index));
             }}
             onSend={handleSendPickedMedia}
+            onAddPlan={planConversationId ? () => {
+              setShowAttachmentMenu(false);
+              setShowPlanForm(true);
+            } : undefined}
+            onPickFromDeck={isCollabChat && collabSessionId ? () => {
+              setShowAttachmentMenu(false);
+              handleOpenCollabDeckView("swipe");
+            } : undefined}
           />
         )}
         {/* Issue #4114 Wave 6 (D10): "Sending to {event}" — only with two or
@@ -3270,6 +3645,7 @@ export default function MessageInterface({
               onClose={() => setReplyingTo(null)}
               theme="dark"
               closeLabel={t('chat:a11yCancelReply')}
+              planHeading={replyingTo.plan ? t('chat:plan_replying_to', { title: replyingTo.plan.title }) : undefined}
             />
           </View>
         )}
@@ -3377,7 +3753,11 @@ export default function MessageInterface({
               onBlur={stopTyping}
               accessibilityLabel={t('chat:a11yMessageInput')}
               placeholder={
-                pendingMedia.length > 0 ? t('chat:addCaption') : t('chat:typeMessage')
+                pendingMedia.length > 0
+                  ? t('chat:addCaption')
+                  : replyingTo?.plan
+                    ? t('chat:plan_composer_placeholder', { title: replyingTo.plan.title })
+                    : t('chat:typeMessage')
               }
               placeholderTextColor="rgba(255, 255, 255, 0.4)"
               style={[
@@ -3651,26 +4031,44 @@ export default function MessageInterface({
         />
       ) : null}
 
-      {isCollabChat && collabSessionId ? (
+      {/* Issue #4261: Matches and Plans read the chat's plan list (deck matches and chat plans). */}
+      {planConversationId ? (
         <>
-          <SavedToSessionCardsSheet
+          <PlanMatchesSheet
             visible={showCollabMatchesSheet}
             onClose={() => setShowCollabMatchesSheet(false)}
-            sessionId={collabSessionId}
-            currentUserId={currentUserId}
-            savedCards={matchedSessionCards}
-            savedCardsLoading={matchedSessionCardsLoading}
-            participantCount={collabParticipantCount}
+            conversationId={planConversationId}
+            payload={chatPlansPayload}
+            isLoading={chatPlansQuery.isLoading}
+            isError={chatPlansQuery.isError}
+            onRetry={() => void chatPlansQuery.refetch()}
+            nameOf={planNameOf}
+            onComment={(plan) => {
+              setShowCollabMatchesSheet(false);
+              startPlanReply(plan);
+            }}
+            onSeeInChat={(plan) => {
+              setShowCollabMatchesSheet(false);
+              if (!jumpToPlanCard(plan.id)) showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+            }}
             accountPreferences={accountPreferences}
-            isAdmin={isCollabSessionAdmin}
           />
-          <ScheduleSheet
+          <PlansSheet
             visible={showCollabPlansSheet}
             onClose={() => setShowCollabPlansSheet(false)}
-            sessionId={collabSessionId}
-            currentUserId={currentUserId}
-            accountPreferences={accountPreferences}
+            payload={chatPlansPayload}
+            isLoading={chatPlansQuery.isLoading}
+            isError={chatPlansQuery.isError}
+            onRetry={() => void chatPlansQuery.refetch()}
+            nameOf={planNameOf}
+            onOpenChatPlan={(plan) => {
+              setShowCollabPlansSheet(false);
+              if (!plan.messageVisible || !jumpToPlanCard(plan.id)) {
+                showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+              }
+            }}
             planCard={collabPlanCard}
+            accountPreferences={accountPreferences}
           />
         </>
       ) : null}
@@ -3681,6 +4079,8 @@ export default function MessageInterface({
         onClose={() => setShowMoreOptionsMenu(false)}
         sessionId={friend.sessionId ?? ""}
         sessionName={headerTitle}
+        // Issue #4261: the group link section (Wave B1) reads the chat id.
+        conversationId={conversationId ?? undefined}
         sessionCreatorId={friend.sessionCreatorId ?? undefined}
         currentUserId={currentUserId ?? undefined}
         isAdmin={friend.isSessionAdmin ?? (!!currentUserId && friend.sessionCreatorId === currentUserId)}

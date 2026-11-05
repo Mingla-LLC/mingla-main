@@ -109,9 +109,15 @@ const EXPECTED_PLAN = Object.freeze({
   // executions moved from the host batch:A lane into CI-batch suites.
   // [TEST-MOD-APPROVED #3645] Re-derived after the three locally declared
   // installment gates added six batch:A executions (self-test and plain).
-  executions: 1049,
-  loadsSeconds: [157.1, 157.0, 157.0],
-  counts: [345, 348, 356],
+  // [TEST-MOD-APPROVED #4261] Re-derived after the locally declared
+  // links-open-in-mingla gate added two batch:A executions (self-test and plain).
+  // [TEST-MOD-APPROVED #4261] Re-derived after refreshing the cost table with the
+  // reviewed tool from seven 2026-11 class-a-shard-aggregate artifacts. The old
+  // table understated the heaviest rows by up to seven times, so shard 3 reached
+  // 544 s against the 540 s ceiling while shard 1 ran about 300 s.
+  executions: 1051,
+  loadsSeconds: [385.3, 385.4, 385.4],
+  counts: [349, 351, 351],
 });
 
 const tempDir = (label) =>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -11,6 +11,8 @@ import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localSt
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
 import { Icon } from '../../src/components/ui/Icon';
+// #4261: the agreement document opens in Mingla's in-app document overlay.
+import { useOpenInMingla } from '../../src/components/InAppBrowserProvider';
 
 export default function LocalScreen(): React.ReactElement {
   const queryClient = useQueryClient();
@@ -127,6 +129,7 @@ function LocalAgreementSign({ landing, refreshing, onRefresh }: { landing: Local
     ?? landing.applications.find((item) => item.status === 'accepted' && item.city_id === landing.local?.city_id)
     ?? landing.applications[0];
   const agreement = landing.agreement;
+  const { openDocument } = useOpenInMingla();
   const [signatureName, setSignatureName] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -161,7 +164,7 @@ function LocalAgreementSign({ landing, refreshing, onRefresh }: { landing: Local
       <ProgramCard>
         <ProgramRow title="Local agreement" subtitle={`Version ${agreement.version}`} value="Read first" chevron={false} isLast />
       </ProgramCard>
-      <ProgramButton label="Read the full agreement" variant="secondary" icon="document-text" onPress={() => void Linking.openURL(agreement.document_url)} />
+      <ProgramButton label="Read the full agreement" variant="secondary" icon="document-text" onPress={() => openDocument(agreement.document_url)} />
       <ProgramField label="Full legal name" value={signatureName} onChangeText={(value) => { setSignatureName(value); setError(null); }}
         placeholder="Type your name exactly as you sign" autoCapitalize="words" autoCorrect={false} textContentType="name" />
       <CheckRow checked={agreed} onToggle={() => { setAgreed((value) => !value); setError(null); }}

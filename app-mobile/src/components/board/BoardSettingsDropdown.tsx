@@ -25,6 +25,8 @@ import { inviteByPhone } from "../../services/sessionInviteService";
 import { showInviteNotTextedAlert } from "../../utils/inviteNotTextedAlert";
 import { setSessionMute } from "../../services/sessionMuteService";
 import { InlineInviteFriendsList } from "./InlineInviteFriendsList";
+// Issue #4261: the session group chat's shareable link.
+import { GroupLinkSection } from "../chat/GroupLinkSection";
 // ORCH-0520 v2: reuse existing phone-lookup hook for live warm/cold visual
 // (same pattern as AddFriendView.tsx:121)
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
@@ -78,6 +80,8 @@ interface BoardSettingsDropdownProps {
   onParticipantsChange?: () => void;
   /** Issue #4114 QA: "dark" on the dark chat screen; SessionViewModal keeps light. */
   theme?: "light" | "dark";
+  /** Issue #4261: the session's group chat; when set, its GROUP LINK card shows above Members. */
+  conversationId?: string;
 }
 
 export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
@@ -95,6 +99,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   onSessionNameUpdated,
   onParticipantsChange,
   theme = "light",
+  conversationId,
 }) => {
   const { t } = useTranslation(["board", "common"]);
   const dark = theme === "dark";
@@ -888,6 +893,13 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 {/* Divider */}
                 <View style={st.menuDivider} />
 
+                {/* Issue #4261: GROUP LINK (share, approve new joiners, reset) */}
+                {conversationId ? (
+                  <View style={st.groupLinkSection}>
+                    <GroupLinkSection conversationId={conversationId} groupName={sessionName} />
+                  </View>
+                ) : null}
+
                 {/* Members Section */}
                 <View style={st.membersSection}>
                   <Text style={st.membersSectionTitle}>
@@ -1156,6 +1168,12 @@ const makeStyles = (p: SettingsPalette) => StyleSheet.create({
     backgroundColor: p.divider,
     marginVertical: 6,
     marginHorizontal: 20,
+  },
+
+  // --- Group link (#4261) ---
+  groupLinkSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
 
   // --- Members ---

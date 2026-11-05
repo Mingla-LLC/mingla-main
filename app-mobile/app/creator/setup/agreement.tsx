@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Linking, Text } from 'react-native';
+import { Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -9,6 +9,8 @@ import { isAdult, latestAdultBirthDate } from '../../../src/utils/programFormat'
 import { goToNextStep, stepTitle } from '../../../src/components/creator/setupNav';
 import { ProgramButton, ProgramCard, ProgramNotice, ProgramRow, ProgramScreen, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { CheckRow, DateField } from '../../../src/components/programs/ProgramPickers';
+// #4261: the agreement document opens in Mingla's in-app document overlay.
+import { useOpenInMingla } from '../../../src/components/InAppBrowserProvider';
 
 const CREATOR_TAX_LINE = 'You’re responsible for reporting and paying tax on what you earn.';
 
@@ -25,6 +27,7 @@ const KEY_POINTS = [
 export default function CreatorAgreementStep(): React.ReactElement {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { openDocument } = useOpenInMingla();
   const own = useQuery({ queryKey: ['creator', 'own-profile'], queryFn: () => creatorProgramService.ownProfile() });
   const agreement = useQuery({ queryKey: ['creator', 'agreement'], queryFn: () => creatorProgramService.currentAgreement() });
   const [dob, setDob] = useState<string | null>(null);
@@ -57,7 +60,7 @@ export default function CreatorAgreementStep(): React.ReactElement {
     <ProgramCard>
       {KEY_POINTS.map((p, i) => <ProgramRow key={p.title} title={p.title} subtitle={p.text} isLast={i === KEY_POINTS.length - 1} />)}
     </ProgramCard>
-    {fullTextUrl ? <ProgramButton label="Read the full agreement" variant="secondary" icon="document-text" onPress={() => void Linking.openURL(fullTextUrl)} /> : null}
+    {fullTextUrl ? <ProgramButton label="Read the full agreement" variant="secondary" icon="document-text" onPress={() => openDocument(fullTextUrl)} /> : null}
 
     <ProgramNotice text={CREATOR_TAX_LINE} />
     <CheckRow checked={agreed} onToggle={() => setAgreed((v) => !v)} label="I’ve read and agree to the Mingla Creator agreement" />

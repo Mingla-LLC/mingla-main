@@ -238,3 +238,20 @@ export function sendFailureFeedback(sendError: string | null | undefined): SendF
   const text = sendError ?? "";
   return /Cannot|blocked|policy/.test(text) ? "toast_not_allowed" : "inline_retry";
 }
+
+/**
+ * Issue #4261: the open chat's list row, between two renders. A list refresh
+ * can land before the open chat's read receipt saves and count a line I just
+ * caused. Only a row that was clear and turned unread while the same chat stayed
+ * open qualifies: opening a chat keeps its own read flow (and its new-messages
+ * divider), and a chat that is not open keeps its unread count.
+ */
+export function openChatRowTurnedUnread(
+  previous: { conversationId: string | null; unread: number },
+  next: { conversationId: string | null; unread: number },
+): boolean {
+  return next.conversationId !== null
+    && previous.conversationId === next.conversationId
+    && previous.unread === 0
+    && next.unread > 0;
+}

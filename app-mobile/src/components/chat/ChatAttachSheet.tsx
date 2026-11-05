@@ -40,6 +40,10 @@ interface ChatAttachSheetProps {
   onFile: () => void;
   onRemoveItem: (index: number) => void;
   onSend: () => void;
+  /** Issue #4261: plan chats get "Add a plan" as the first row. */
+  onAddPlan?: () => void;
+  /** Issue #4261: collab chats get "Pick from the deck" (opens the swipe deck). */
+  onPickFromDeck?: () => void;
 }
 
 /**
@@ -105,6 +109,8 @@ export function ChatAttachSheet({
   onFile,
   onRemoveItem,
   onSend,
+  onAddPlan,
+  onPickFromDeck,
 }: ChatAttachSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat"]);
   const full = items.length >= MAX_CHAT_MEDIA_ITEMS;
@@ -141,6 +147,45 @@ export function ChatAttachSheet({
           ))}
         </ScrollView>
       ) : null}
+
+      {onAddPlan && items.length === 0 ? (
+        <TouchableOpacity
+          onPress={onAddPlan}
+          style={styles.planRow}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("chat:plan_add_title")}. ${t("chat:plan_add_sub")}`}
+          testID="chat-attach-add-plan"
+        >
+          <View style={styles.planIcon}>
+            <Icon name="calendar-outline" size={20} color={chatTokens.textPrimary} />
+          </View>
+          <View style={styles.rowText}>
+            <Text style={styles.planTitle}>{t("chat:plan_add_title")}</Text>
+            <Text style={styles.planSub} numberOfLines={1}>{t("chat:plan_add_sub")}</Text>
+          </View>
+          <View style={styles.newChip}>
+            <Text style={styles.newChipText}>{t("chat:plan_new_badge")}</Text>
+          </View>
+        </TouchableOpacity>
+      ) : null}
+      {onPickFromDeck && items.length === 0 ? (
+        <TouchableOpacity
+          onPress={onPickFromDeck}
+          style={styles.deckRow}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("chat:plan_from_deck_title")}. ${t("chat:plan_from_deck_sub")}`}
+          testID="chat-attach-from-deck"
+        >
+          <View style={styles.deckIcon}>
+            <Icon name="albums-outline" size={20} color={chatTokens.textPrimary} />
+          </View>
+          <View style={styles.rowText}>
+            <Text style={styles.deckTitle}>{t("chat:plan_from_deck_title")}</Text>
+            <Text style={styles.rowSubtitle} numberOfLines={1}>{t("chat:plan_from_deck_sub")}</Text>
+          </View>
+        </TouchableOpacity>
+      ) : null}
+      {(onAddPlan || onPickFromDeck) && items.length === 0 ? <View style={styles.divider} /> : null}
 
       {rows.map((row) => (
         <TouchableOpacity
@@ -290,6 +335,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: chatTokens.textSoft,
   },
+  // Issue #4261: "Add a plan" (64pt, accent at 45% border) and "Pick from the deck".
+  planRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: chatTokens.accentBorder,
+    backgroundColor: chatTokens.accentSoft,
+    marginBottom: 4,
+  },
+  planIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: chatTokens.accent,
+  },
+  planTitle: { fontSize: 16, fontWeight: "700", color: chatTokens.textPrimary },
+  planSub: { fontSize: 13, color: chatTokens.textSecondary },
+  newChip: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: chatTokens.tagDeck },
+  newChipText: { fontSize: 11, fontWeight: "800", color: chatTokens.tagText },
+  deckRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 56,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+  deckIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: chatTokens.strip,
+  },
+  deckTitle: { fontSize: 15, fontWeight: "600", color: chatTokens.textPrimary },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: chatTokens.hairline,
