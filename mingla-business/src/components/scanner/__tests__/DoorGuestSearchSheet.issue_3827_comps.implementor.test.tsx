@@ -238,6 +238,25 @@ describe("issue #3827 — door Find by name", () => {
     expect(text(r.root)).not.toContain("Friday dinner");
   });
 
+  test("issue #3281 — a failed refresh after admission shows no extras line", async () => {
+    mockSearch
+      .mockResolvedValueOnce({
+        orders: [{ ...LOLU, extras: [{ name: "Friday dinner", quantity: 2, eventDateIds: null }] }],
+        truncated: false,
+      })
+      .mockRejectedValue(new Error("network down"));
+    mockAdmit.mockResolvedValue({
+      result: "success", ticketId: "tk-l1", orderId: "o-lolu", buyerName: "Lolu Ade",
+      ticketName: "Guest list", nextStartAt: null, lastEndAt: null, eventDateId: null,
+    });
+    const r = await mount();
+    await typeAndWait(r, "lol");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Lolu Ade, Guest list");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(r.root.findAll((n) => n.props.testID === "door-admit-extras")).toHaveLength(0);
+  });
+
   test("issue #3281 — the scan card shows extras on their own unclipped line, through the day label", () => {
     const src = fs.readFileSync(
       path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),

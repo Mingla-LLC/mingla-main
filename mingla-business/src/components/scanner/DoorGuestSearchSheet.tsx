@@ -120,7 +120,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   // The line itself is read from the refreshed search answer below, so a
   // refund between search and admission never tells the door to hand it over.
   const [lastAdmitted, setLastAdmitted] = useState<
-    { orderId: string; admittedDateId: string | null } | null
+    { orderId: string; admittedDateId: string | null; at: number } | null
   >(null);
   const [admitError, setAdmitError] = useState<string | null>(null);
 
@@ -162,7 +162,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           copy = { ...copy, message: `${guest.displayName}: ${admitted} checked in` };
         }
         setLastResult(copy);
-        setLastAdmitted({ orderId: guest.orderId, admittedDateId });
+        setLastAdmitted({ orderId: guest.orderId, admittedDateId, at: Date.now() });
       } catch (error) {
         setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
       } finally {
@@ -183,10 +183,14 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
       : null;
 
   const results = query.data?.orders ?? [];
-  // issue #3281 — the admitted guest's extras from the current answer, marked
-  // for the day admitted; nothing while that answer is being refreshed.
+  // issue #3281 — the admitted guest's extras from an answer read after the
+  // admission, marked for the day admitted. Nothing while it is refreshing,
+  // and nothing if that refresh failed: an older answer may owe a refunded one.
   const admittedGuest =
-    lastAdmitted === null || query.isFetching
+    lastAdmitted === null ||
+    query.isFetching ||
+    query.isError ||
+    query.dataUpdatedAt < lastAdmitted.at
       ? undefined
       : results.find((guest) => guest.orderId === lastAdmitted.orderId);
   const lastExtras =
