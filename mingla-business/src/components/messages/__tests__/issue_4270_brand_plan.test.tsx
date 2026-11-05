@@ -464,6 +464,29 @@ describe("one native modal at a time: nothing opens until the sheet before it ha
   });
 });
 
+describe("the plan's English words load with the plan (bundle budget)", () => {
+  it("only the pill's words are in the copy every screen loads; the rest come with the plan and are registered", () => {
+    const eager = JSON.parse(read("../../i18n/locales/en/brandGroupMedia.json")) as { plan: Record<string, string> };
+    const lazy = JSON.parse(read("../../i18n/locales/en/brandPlan.json")) as { plan: Record<string, string> };
+    expect(Object.keys(eager.plan).sort()).toEqual(["pill", "pill_a11y"]);
+    expect(Object.keys(lazy.plan).length).toBeGreaterThan(70);
+    for (const file of ["BrandPlanPanel.tsx", "BrandPlanAddSheet.tsx"]) {
+      expect(read(file)).toMatch(/import \{ addPlanEnglish \} from "\.\.\/\.\.\/i18n\/brandPlanEnglish";[\s\S]*\naddPlanEnglish\(\);\n/);
+    }
+  });
+  it("registering the words makes them readable, and keeps the pill", async () => {
+    const real = jest.requireActual("../../../i18n") as typeof import("../../../i18n");
+    const { addPlanEnglish } = jest.requireActual("../../../i18n/brandPlanEnglish") as typeof import("../../../i18n/brandPlanEnglish");
+    expect(real.useBusinessMediaTranslation).toBeDefined();
+    addPlanEnglish();
+    let t: (key: string) => string = (key) => key;
+    function Probe(): null { t = real.useBusinessMediaTranslation().t; return null; }
+    await TestRenderer.act(async () => { TestRenderer.create(<Probe />); });
+    expect(t("plan.saved")).toBe("Saved. Your plan is up to date.");
+    expect(t("plan.pill")).toBe("Plan");
+  });
+});
+
 describe("a sheet reports when it has really gone (useSheetGone)", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const RN = require("react-native") as { Platform: { OS: string } };

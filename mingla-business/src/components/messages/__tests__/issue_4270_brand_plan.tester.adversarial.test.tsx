@@ -33,7 +33,12 @@ const MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/202804140
 // W5: the link rule moved to the host card migration, where the Files link uses it too.
 const LINK_RULE_MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280414014270_issue_4270_w2_host_card.sql"), "utf8");
 const LOCALES = path.join(ROOT, "mingla-business/src/i18n/locales");
-const en = JSON.parse(fs.readFileSync(path.join(LOCALES, "en/brandGroupMedia.json"), "utf8")).plan as Record<string, string>;
+// W5: the plan's English words moved to their own file, loaded with the plan.
+const en = {
+  ...JSON.parse(fs.readFileSync(path.join(LOCALES, "en/brandGroupMedia.json"), "utf8")).plan,
+  ...JSON.parse(fs.readFileSync(path.join(LOCALES, "en/brandPlan.json"), "utf8")).plan,
+} as Record<string, string>;
+const planCopy = (lang: string): Record<string, string> => (lang === "en" ? en : JSON.parse(fs.readFileSync(path.join(LOCALES, lang, "brandGroupMedia.json"), "utf8")).plan);
 const PANEL = fs.readFileSync(path.join(ROOT, "mingla-business/src/components/messages/BrandPlanPanel.tsx"), "utf8");
 
 const PLAN = { brand: { id: "b", name: "Palm" }, today: "2026-11-05", from: "2026-10-29", to: "2027-02-03", can_add: true, items: [] };
@@ -308,7 +313,7 @@ describe("all 29 languages", () => {
   });
 
   it.each(languages)("%s has every plan string, none blank, none naming the wrong thing", (language) => {
-    const copy = JSON.parse(fs.readFileSync(path.join(LOCALES, language, "brandGroupMedia.json"), "utf8")).plan as Record<string, string>;
+    const copy = planCopy(language);
     expect(Object.keys(copy).sort()).toEqual(Object.keys(en).sort());
     for (const [key, value] of Object.entries(copy)) {
       expect({ key, blank: value.trim() === "" }).toEqual({ key, blank: false });
@@ -343,7 +348,7 @@ describe("the title limit and the site name, against what the server refuses", (
 
   it("every language says the limit", () => {
     for (const lang of fs.readdirSync(LOCALES)) {
-      const plan = JSON.parse(fs.readFileSync(path.join(LOCALES, lang, "brandGroupMedia.json"), "utf8")).plan as Record<string, string>;
+      const plan = planCopy(lang);
       expect(`${lang}:${plan.err_title_long.includes("{{max}}")}`).toBe(`${lang}:true`);
     }
   });

@@ -7,6 +7,7 @@ import { Keyboard, StyleSheet, Text, View, type TextInput } from "react-native";
 
 import { glass, spacing, text as textTokens } from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
+import { addPlanEnglish } from "../../i18n/brandPlanEnglish";
 import { useBrandPlanWrites } from "../../hooks/useBrandPlan";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import {
@@ -29,6 +30,9 @@ import { DateField } from "../ui/DateField";
 import { Input } from "../ui/Input";
 import { OptionCard } from "../ui/OptionCard";
 import { Sheet } from "../ui/Sheet";
+
+// The plan's English words load with the plan, not with every screen.
+addPlanEnglish();
 
 export type BrandPlanEdit = { field: "date" | "link"; item: BrandPlanItem };
 

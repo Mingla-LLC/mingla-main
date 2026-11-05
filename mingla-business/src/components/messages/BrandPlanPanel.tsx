@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
 import { useBrandPlan, useBrandPlanWrites } from "../../hooks/useBrandPlan";
 import { useBusinessMediaTranslation } from "../../i18n";
+import { addPlanEnglish } from "../../i18n/brandPlanEnglish";
 import {
   addIsoDays,
   addMonths,
@@ -28,6 +29,9 @@ import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 import { BrandPlanAddSheet, type BrandPlanEdit } from "./BrandPlanAddSheet";
+
+// The plan's English words load with the plan, not with every screen.
+addPlanEnglish();
 
 interface Props {
   brandId: string;

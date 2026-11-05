@@ -34,13 +34,17 @@ function localePath(language: string): string {
 }
 
 describe("#3988 Host brand-group media translations", () => {
-  const english = flatten(JSON.parse(fs.readFileSync(localePath("en"), "utf8")) as Record<string, unknown>);
+  // #4270: the plan's English words live in their own file, loaded with the plan.
+  const englishTree = JSON.parse(fs.readFileSync(localePath("en"), "utf8")) as Record<string, Record<string, unknown>>;
+  const planEnglish = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../locales/en/brandPlan.json"), "utf8")) as Record<string, Record<string, unknown>>;
+  englishTree.plan = { ...englishTree.plan, ...planEnglish.plan };
+  const english = flatten(englishTree as Record<string, unknown>);
   const fixedEnglishKeys = Object.keys(english).filter((key) => !/^media\.count_(photos_videos|files)_/.test(key)).sort();
 
   test("all 29 locales are complete, translated, and placeholder-safe", () => {
     expect(LANGUAGES).toHaveLength(29);
     for (const language of LANGUAGES) {
-      const copy = flatten(JSON.parse(fs.readFileSync(localePath(language), "utf8")) as Record<string, unknown>);
+      const copy = language === "en" ? english : flatten(JSON.parse(fs.readFileSync(localePath(language), "utf8")) as Record<string, unknown>);
       const fixedKeys = Object.keys(copy).filter((key) => !/^media\.count_(photos_videos|files)_/.test(key)).sort();
       expect(fixedKeys).toEqual(fixedEnglishKeys);
       for (const key of fixedEnglishKeys) {
