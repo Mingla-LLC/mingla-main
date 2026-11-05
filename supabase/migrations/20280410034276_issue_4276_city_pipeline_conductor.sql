@@ -90,6 +90,84 @@ CREATE TRIGGER place_pool_serving_hold
   BEFORE INSERT OR UPDATE OF is_servable, serving_hold ON public.place_pool
   FOR EACH ROW EXECUTE FUNCTION public.tg_place_pool_serving_hold();
 
+-- Two paths treat a never-judged place as usable, and a held place can be never-judged.
+-- These are the existing bodies with one added condition each.
+CREATE OR REPLACE FUNCTION public.local_place_candidates(p_query text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_actor uuid:=auth.uid(); v_local public.locals;
+BEGIN
+  IF NOT EXISTS(SELECT 1 FROM public.feature_flags WHERE flag_key='mingla_locals_enabled' AND is_enabled) THEN
+    RAISE EXCEPTION 'locals_not_open' USING ERRCODE='55000';
+  END IF;
+  SELECT * INTO v_local FROM public.locals WHERE user_id=v_actor AND status='active';
+  IF NOT FOUND THEN RAISE EXCEPTION 'active_local_required' USING ERRCODE='42501'; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+      'id',q.id,'name',q.name,'address',q.address,'primary_type',q.primary_type_display_name,
+      'eligible',q.code IS NULL,'reason_code',q.code,
+      'reason',CASE q.code
+        WHEN 'city_place_recently_reviewed' THEN 'Reviewed by a Local in the last 12 months'
+        WHEN 'local_already_reviewed_place' THEN 'You already reviewed this place'
+        WHEN 'paid_relationship_conflict' THEN 'Recent paid relationship with this place'
+        WHEN 'place_not_eligible' THEN 'This place can’t be picked right now'
+        ELSE NULL END
+    ) ORDER BY q.name)
+    FROM (
+      SELECT p.id,p.name,p.address,p.primary_type_display_name,public.issue_3872_local_place_conflict(v_local.id,p.id) AS code
+      FROM public.place_pool p
+      WHERE p.city_id=v_local.city_id AND p.is_active AND coalesce(p.is_servable,true) AND NOT p.serving_hold
+        AND (nullif(btrim(p_query),'') IS NULL OR p.name ILIKE '%'||btrim(p_query)||'%')
+      ORDER BY p.name
+      LIMIT 40
+    ) q
+  ),'[]'::jsonb);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.issue_3872_local_place_conflict(p_local_id uuid, p_place_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_local public.locals; v_place public.place_pool; v_month date:=date_trunc('month',current_date)::date;
+BEGIN
+  SELECT * INTO v_local FROM public.locals WHERE id=p_local_id;
+  SELECT * INTO v_place FROM public.place_pool WHERE id=p_place_id;
+  IF v_local.id IS NULL OR v_place.id IS NULL OR v_place.city_id IS DISTINCT FROM v_local.city_id
+     OR NOT v_place.is_active OR NOT coalesce(v_place.is_servable,true) OR v_place.serving_hold THEN
+    RETURN 'place_not_eligible';
+  END IF;
+  -- 12 months: one Local review per place per city per year.
+  IF EXISTS(SELECT 1 FROM public.local_months m JOIN public.locals l ON l.id=m.local_id
+      WHERE m.place_id=p_place_id AND l.city_id=v_local.city_id AND m.month>=v_month-interval '12 months' AND m.status NOT IN ('void','missed')) THEN
+    RETURN 'city_place_recently_reviewed';
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.local_months m WHERE m.local_id=v_local.id AND m.place_id=p_place_id AND m.status NOT IN ('void','missed')) THEN
+    RETURN 'local_already_reviewed_place';
+  END IF;
+  -- 180 days: no paid relationship with any brand tied to the place, whether
+  -- it authored the place or holds a verified claim on it. The picker used
+  -- the first source and the pick used the second, so they disagreed.
+  IF EXISTS(
+    SELECT 1 FROM (
+      SELECT v_place.business_author_brand_id AS brand_id
+      UNION SELECT vl.brand_id FROM public.venue_listings vl WHERE vl.place_pool_id=p_place_id AND vl.claim_status='verified'
+    ) b
+    WHERE b.brand_id IS NOT NULL AND (
+      EXISTS(SELECT 1 FROM public.gig_contracts gc WHERE gc.brand_id=b.brand_id AND gc.creator_account_id=v_local.user_id AND gc.created_at>=now()-interval '180 days')
+      OR EXISTS(SELECT 1 FROM public.payee_shares ps WHERE ps.brand_id=b.brand_id AND ps.payee_user_id=v_local.user_id AND ps.created_at>=now()-interval '180 days'))
+  ) THEN
+    RETURN 'paid_relationship_conflict';
+  END IF;
+  RETURN NULL;
+END;
+$function$;
+
 -- ── C1: runs and stages ─────────────────────────────────────────────────────
 CREATE TABLE public.city_pipeline_settings (
   id boolean PRIMARY KEY DEFAULT true CHECK (id),
