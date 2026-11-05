@@ -1041,6 +1041,41 @@ EXCEPTION WHEN unique_violation THEN
 END;
 $$;
 
+-- Rework (#4270 W3 test, P2-1): the date an event, experience or trip is on
+-- now or next. A date that is on right now (live), else the next one to
+-- start, else the last one; cancelled dates never count. A weekly event
+-- between two dates is not live and sits on its next date; a course that
+-- started weeks ago and is still running is live. start_on is that date's
+-- day in the event's own zone (UTC when the zone is unknown).
+CREATE FUNCTION public.ops_event_when(p_event_id uuid, OUT starts_at timestamptz, OUT ends_at timestamptz,
+                                      OUT live boolean, OUT start_on date)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_tz text;
+BEGIN
+  live := false;
+  SELECT ed.start_at, COALESCE(ed.end_at, ed.start_at), (ed.start_at <= now() AND COALESCE(ed.end_at, ed.start_at) > now())
+    INTO starts_at, ends_at, live
+    FROM public.event_dates ed
+   WHERE ed.event_id = p_event_id AND COALESCE(ed.status, 'scheduled') <> 'cancelled' AND ed.start_at IS NOT NULL
+   ORDER BY (ed.start_at <= now() AND COALESCE(ed.end_at, ed.start_at) > now()) DESC,
+            (ed.start_at > now()) DESC,
+            CASE WHEN ed.start_at > now() THEN ed.start_at END ASC NULLS LAST,
+            ed.start_at DESC
+   LIMIT 1;
+  IF starts_at IS NULL THEN live := false; RETURN; END IF;
+  SELECT NULLIF(btrim(e.timezone), '') INTO v_tz FROM public.events e WHERE e.id = p_event_id;
+  BEGIN
+    start_on := (starts_at AT TIME ZONE COALESCE(v_tz, 'UTC'))::date;
+  EXCEPTION WHEN others THEN
+    start_on := (starts_at AT TIME ZONE 'UTC')::date;
+  END;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ops_event_when(uuid) FROM PUBLIC, anon, authenticated;
+COMMENT ON FUNCTION public.ops_event_when(uuid) IS
+  'Issue #4270. The date an event is on now or next: a date on right now (live), else the next to start, else the last. Cancelled dates never count.';
+
 -- Rework (P3-1): the read takes the viewer's time zone, so "done this week"
 -- starts at 00:00 on Monday there, the same week as the Work board.
 DROP FUNCTION public.ops_host_on_mingla(uuid, date);
@@ -1084,27 +1119,26 @@ BEGIN
                                                          'say', 'It is on now, until ' || public.ops_day_long((s.ends_at AT TIME ZONE 'UTC')::date) || '.')
                                        ELSE public.ops_plain_state(s.a, v_today) END)
                        ORDER BY s.a->>'start_at', s.a->>'title')
-        FROM (SELECT y.a, d.ends_at, (d.starts_at <= now() AND d.ends_at > now()) AS live FROM public.events e
+        -- Rework (W3 test P2-1): each item sits on the date it is on now or
+        -- next (ops_event_when), not its first-ever date; live means that
+        -- date is on right now.
+        FROM (SELECT y.a || jsonb_build_object('start_at', w.starts_at, 'start_on', w.start_on) AS a, w.ends_at, w.live
+                FROM public.events e
                 CROSS JOIN LATERAL (SELECT public.ops_anchor('event', e.id, v_today) AS a) y
-                LEFT JOIN LATERAL (SELECT min(ed.start_at) AS starts_at, max(COALESCE(ed.end_at, ed.start_at)) AS ends_at
-                                     FROM public.event_dates ed
-                                    WHERE ed.event_id = e.id AND COALESCE(ed.status, 'scheduled') <> 'cancelled') d ON true
+                CROSS JOIN LATERAL public.ops_event_when(e.id) w
                WHERE e.brand_id = r.brand_id AND e.deleted_at IS NULL AND y.a IS NOT NULL
-                 AND y.a->>'start_on' IS NOT NULL
-                 AND ((y.a->>'start_on')::date >= v_today - 30 OR (d.starts_at <= now() AND d.ends_at > now()))
-               ORDER BY y.a->>'start_at' LIMIT 50) s), '[]'::jsonb) END,
+                 AND w.starts_at IS NOT NULL
+                 AND (w.start_on >= v_today - 30 OR w.live)
+               ORDER BY w.starts_at LIMIT 50) s), '[]'::jsonb) END,
     'past', CASE WHEN r.brand_id IS NULL THEN '[]'::jsonb ELSE COALESCE((
       SELECT jsonb_agg(jsonb_build_object('id', p.id, 'title', p.title, 'start_on', p.on_day) ORDER BY p.on_day DESC)
-        FROM (SELECT e.id, e.title, (s.st AT TIME ZONE 'UTC')::date AS on_day FROM public.events e
-                JOIN LATERAL (SELECT public.ops_event_first_start(e.id) AS st) s ON true
+        -- Rework (P1-1, W3 test P2-1): past means nothing is on now and no
+        -- date is still to come; it shows its last date.
+        FROM (SELECT e.id, e.title, w.start_on AS on_day, w.starts_at AS st FROM public.events e
+                CROSS JOIN LATERAL public.ops_event_when(e.id) w
                WHERE e.brand_id = r.brand_id AND e.deleted_at IS NULL AND public.ops_event_in_scope(e.id)
-                 AND s.st IS NOT NULL AND (s.st AT TIME ZONE 'UTC')::date < v_today
-                 -- Rework (P1-1): what is on right now is not a past event.
-                 AND NOT EXISTS (SELECT 1 FROM public.event_dates ed
-                                  WHERE ed.event_id = e.id AND COALESCE(ed.status, 'scheduled') <> 'cancelled'
-                                  GROUP BY ed.event_id
-                                 HAVING min(ed.start_at) <= now() AND max(COALESCE(ed.end_at, ed.start_at)) > now())
-               ORDER BY s.st DESC LIMIT 5) p), '[]'::jsonb) END,
+                 AND w.starts_at IS NOT NULL AND NOT w.live AND w.starts_at <= now() AND w.start_on < v_today
+               ORDER BY w.starts_at DESC LIMIT 5) p), '[]'::jsonb) END,
     'expected', COALESCE((SELECT jsonb_agg(public.ops_expected_json(x, v_today) ORDER BY (x.status <> 'open'), x.expected_on)
                             FROM public.ops_expected_events x
                            WHERE x.record_id = r.id
@@ -1265,7 +1299,9 @@ BEGIN
   -- a live item is Live now and not a past event.
   IF pg_catalog.pg_get_functiondef('public.ops_work_undo(uuid)'::regprocedure) NOT LIKE '%on_brand_plan = r.on_brand_plan%'
      OR public.ops_name('_x.w4270@example.test') <> 'A teammate'
-     OR pg_catalog.pg_get_functiondef('public.ops_host_on_mingla(uuid,date,text)'::regprocedure) NOT LIKE '%''k'', ''live''%' THEN
+     OR pg_catalog.pg_get_functiondef('public.ops_host_on_mingla(uuid,date,text)'::regprocedure) NOT LIKE '%''k'', ''live''%'
+     OR pg_catalog.pg_get_functiondef('public.ops_host_on_mingla(uuid,date,text)'::regprocedure) NOT LIKE '%ops_event_when(e.id)%'
+     OR has_function_privilege('authenticated', 'public.ops_event_when(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'issue 4270 wave 2 self-check: the rework is not in place';
   END IF;
   FOR r IN SELECT p.oid, p.oid::regprocedure::text AS sig FROM pg_catalog.pg_proc p

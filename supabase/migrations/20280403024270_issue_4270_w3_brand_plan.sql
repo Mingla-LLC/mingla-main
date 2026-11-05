@@ -106,11 +106,20 @@ AS $$
   END
 $$;
 
+-- Rework (W3 test P3-2): a link with a control character or an invisible
+-- formatting character (zero-width, bidirectional and the like) is refused,
+-- so the site name on its button always reads as the site it opens.
+CREATE FUNCTION public.brand_plan_link_hidden(p_url text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT p_url ~ '[[:cntrl:]\u0080-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB]'
+$$;
+
 -- {url, site} for a plan link ("canva.com"), or null.
 CREATE FUNCTION public.brand_plan_link_json(p_url text) RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT CASE WHEN p_url IS NULL OR p_url !~ '^https://[^[:space:]]+$' THEN NULL
+  SELECT CASE WHEN p_url IS NULL OR p_url !~ '^https://[^[:space:]]+$' OR public.brand_plan_link_hidden(p_url) THEN NULL
     ELSE jsonb_build_object('url', p_url,
       'site', regexp_replace(lower(substring(p_url FROM '^https://([^/?#:]+)')), '^www\.', '')) END
 $$;
@@ -132,7 +141,7 @@ BEGIN
   END IF;
   v := btrim(p_value #>> '{}');
   IF v = '' THEN RETURN NULL; END IF;
-  IF char_length(v) NOT BETWEEN 9 AND 2000 OR v !~ '^https://[^[:space:]]+$' THEN
+  IF char_length(v) NOT BETWEEN 9 AND 2000 OR v !~ '^https://[^[:space:]]+$' OR public.brand_plan_link_hidden(v) THEN
     RAISE EXCEPTION 'invalid_link: Links start with https://' USING ERRCODE = '22023';
   END IF;
   RETURN v;
@@ -173,6 +182,65 @@ AS $$
   SELECT c.id FROM public.crm_records c
    WHERE c.brand_id = p_brand_id AND c.deleted_at IS NULL AND c.pipeline = 'hosts'
    ORDER BY c.created_at, c.id LIMIT 1
+$$;
+
+-- Rework (W3 test P3-6, D14): who may read a brand's plan in the Host app:
+-- anyone who can read its Brand group. That is every accepted, not removed
+-- member of the team (venue staff included, rank -1) and anyone with a read
+-- rank on the brand, while the brand is not deleted.
+CREATE FUNCTION public.brand_plan_can_read(p_brand_id uuid, p_uid uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT p_uid IS NOT NULL AND p_brand_id IS NOT NULL
+     AND EXISTS (SELECT 1 FROM public.brands b WHERE b.id = p_brand_id AND b.deleted_at IS NULL)
+     AND (public.biz_is_brand_member_for_read(p_brand_id, p_uid)
+          OR EXISTS (SELECT 1 FROM public.brand_team_members m
+                      WHERE m.brand_id = p_brand_id AND m.user_id = p_uid
+                        AND m.accepted_at IS NOT NULL AND m.removed_at IS NULL))
+$$;
+
+-- Who may add to it and change their own items: marketing managers and up.
+CREATE FUNCTION public.brand_plan_can_write(p_brand_id uuid, p_uid uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT public.brand_plan_can_read(p_brand_id, p_uid)
+     AND public.biz_brand_effective_rank(p_brand_id, p_uid) >= public.biz_role_rank('marketing_manager')
+$$;
+
+-- A title as the brand's plan shows it: without the " · {brand}" that
+-- host-added items always carry on the Calendar and the Work board.
+CREATE FUNCTION public.brand_plan_title_words(p_title text, p_brand_id uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE WHEN s.suffix IS NOT NULL AND char_length(p_title) > char_length(s.suffix)
+                   AND right(p_title, char_length(s.suffix)) = s.suffix
+              THEN left(p_title, char_length(p_title) - char_length(s.suffix)) ELSE p_title END
+    FROM (SELECT (SELECT ' · ' || b.name FROM public.brands b WHERE b.id = p_brand_id) AS suffix) s
+$$;
+
+-- Rework (W3 test P3-3, D24): a host-added item is always stored as
+-- "{title} · {brand}", so what a host is told never depends on titles they
+-- cannot see. Null when that title is taken too.
+CREATE FUNCTION public.brand_plan_host_title(p_kind text, p_title text, p_brand_id uuid, p_except uuid) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_suffix text; v_try text;
+BEGIN
+  SELECT ' · ' || b.name INTO v_suffix FROM public.brands b WHERE b.id = p_brand_id;
+  v_try := public.brand_plan_title_words(p_title, p_brand_id);
+  v_try := left(v_try, GREATEST(1, 160 - char_length(COALESCE(v_suffix, '')))) || COALESCE(v_suffix, '');
+  IF p_kind = 'post' AND NOT EXISTS (SELECT 1 FROM public.content_calendar_items i
+                                       WHERE i.deleted_at IS NULL AND i.title_key = public.crm_name_key(v_try)
+                                         AND i.id IS DISTINCT FROM p_except) THEN
+    RETURN v_try;
+  END IF;
+  IF p_kind = 'task' AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards w
+                                       WHERE w.archived_at IS NULL AND w.status <> 'done' AND w.title_key = public.crm_name_key(v_try)
+                                         AND w.id IS DISTINCT FROM p_except) THEN
+    RETURN v_try;
+  END IF;
+  RETURN NULL;
+END;
 $$;
 
 -- A from/to window of at most 120 days.
@@ -236,12 +304,22 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 5. Plan items, as staff and as the brand's hosts see them.
 -- ---------------------------------------------------------------------------
--- A post on the plan.
-CREATE FUNCTION public.brand_plan_post_item(i public.content_calendar_items, p_for_host boolean, p_uid uuid) RETURNS jsonb
+-- The brand of a card on the plan (through its host link), or null.
+CREATE FUNCTION public.brand_plan_card_brand(p_card_id uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT r.brand_id FROM public.ops_work_links l JOIN public.crm_records r ON r.id = l.target_id
+   WHERE l.card_id = p_card_id AND l.kind = 'host' AND r.pipeline = 'hosts' AND r.deleted_at IS NULL AND r.brand_id IS NOT NULL
+   ORDER BY r.created_at, r.id LIMIT 1
+$$;
+
+-- A post on the plan. Rework (W3 test P3-5): for a host, can_edit also needs
+-- write rank now (p_can_write), not only being the author.
+CREATE FUNCTION public.brand_plan_post_item(i public.content_calendar_items, p_for_host boolean, p_uid uuid, p_can_write boolean) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT CASE WHEN p_for_host THEN
-    jsonb_build_object('kind', 'post', 'id', i.id, 'title', i.title,
+    jsonb_build_object('kind', 'post', 'id', i.id, 'title', public.brand_plan_title_words(i.title, i.brand_id),
       'on', (i.publish_at AT TIME ZONE 'UTC')::date,
       'at', CASE WHEN i.stage IN ('scheduled','published') THEN i.publish_at END,
       'state', public.brand_plan_post_state(i.stage, i.publish_at),
@@ -250,7 +328,7 @@ AS $$
       'live_url', CASE WHEN i.stage = 'published' THEN i.live_url END,
       'by', CASE WHEN i.brand_plan_source = 'host_app' THEN 'host' ELSE 'mingla' END,
       'mine', i.brand_plan_author_id IS NOT DISTINCT FROM p_uid AND p_uid IS NOT NULL,
-      'can_edit', i.brand_plan_author_id IS NOT DISTINCT FROM p_uid AND p_uid IS NOT NULL AND i.stage = 'idea',
+      'can_edit', i.brand_plan_author_id IS NOT DISTINCT FROM p_uid AND p_uid IS NOT NULL AND i.stage = 'idea' AND COALESCE(p_can_write, false),
       'revision', i.revision)
   ELSE
     jsonb_build_object('kind', 'post', 'id', i.id, 'title', i.title,
@@ -266,16 +344,17 @@ AS $$
 $$;
 
 -- A Work card on the plan.
-CREATE FUNCTION public.brand_plan_card_item(c public.ops_work_cards, p_for_host boolean, p_uid uuid) RETURNS jsonb
+CREATE FUNCTION public.brand_plan_card_item(c public.ops_work_cards, p_for_host boolean, p_uid uuid, p_can_write boolean) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT CASE WHEN p_for_host THEN
-    jsonb_build_object('kind', 'task', 'id', c.id, 'title', c.title, 'on', c.due_on, 'at', NULL,
+    jsonb_build_object('kind', 'task', 'id', c.id, 'title', public.brand_plan_title_words(c.title, public.brand_plan_card_brand(c.id)),
+      'on', c.due_on, 'at', NULL,
       'state', c.status, 'state_words', public.brand_plan_state_words(c.status),
       'link', public.brand_plan_link_json(c.files_url),
       'by', CASE WHEN c.brand_plan_source = 'host_app' THEN 'host' ELSE 'mingla' END,
       'mine', c.brand_plan_author_id IS NOT DISTINCT FROM p_uid AND p_uid IS NOT NULL,
-      'can_edit', c.brand_plan_author_id IS NOT DISTINCT FROM p_uid AND p_uid IS NOT NULL AND c.status = 'todo',
+      'can_edit', c.brand_plan_author_id IS NOT DISTINCT FROM p_uid AND p_uid IS NOT NULL AND c.status = 'todo' AND COALESCE(p_can_write, false),
       'revision', c.revision)
   ELSE
     jsonb_build_object('kind', 'task', 'id', c.id, 'number', c.number, 'title', c.title, 'on', c.due_on, 'at', NULL,
@@ -298,15 +377,6 @@ AS $$
                   WHERE l.card_id = c.id AND l.kind = 'host' AND r.pipeline = 'hosts' AND r.deleted_at IS NULL AND r.brand_id = p_brand_id)
 $$;
 
--- The brand of a card on the plan (through its host link), or null.
-CREATE FUNCTION public.brand_plan_card_brand(p_card_id uuid) RETURNS uuid
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
-AS $$
-  SELECT r.brand_id FROM public.ops_work_links l JOIN public.crm_records r ON r.id = l.target_id
-   WHERE l.card_id = p_card_id AND l.kind = 'host' AND r.pipeline = 'hosts' AND r.deleted_at IS NULL AND r.brand_id IS NOT NULL
-   ORDER BY r.created_at, r.id LIMIT 1
-$$;
-
 -- An event, experience or trip of the brand on the plan.
 CREATE FUNCTION public.brand_plan_event_item(e public.events, p_on date, p_live boolean, p_today date) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -324,6 +394,7 @@ CREATE FUNCTION public.ops_brand_plan(p_record_id uuid, p_from date, p_to date, 
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v record; v_today date := public.ops_today(p_today); r public.crm_records; b public.brands; v_items jsonb;
+  v_owners text[]; v_watchers text[];
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   SELECT * INTO r FROM public.crm_records c WHERE c.id = p_record_id AND c.deleted_at IS NULL AND c.pipeline = 'hosts';
@@ -331,25 +402,32 @@ BEGIN
   PERFORM public.brand_plan_window_check(p_from, p_to);
   SELECT * INTO b FROM public.brands x WHERE x.id = r.brand_id AND x.deleted_at IS NULL;
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('brand', NULL, 'record_id', r.id, 'today', v_today, 'from', p_from, 'to', p_to, 'items', '[]'::jsonb);
+    RETURN jsonb_build_object('brand', NULL, 'record_id', r.id, 'today', v_today, 'from', p_from, 'to', p_to, 'items', '[]'::jsonb,
+      'task_defaults', jsonb_build_object('owners', '[]'::jsonb, 'watchers', '[]'::jsonb));
   END IF;
+  -- Rework (W3 test P3-9): who owns and watches a task added here unless the
+  -- form changes it (D6, D21), so the form shows exactly what will be saved.
+  v_owners := ARRAY(SELECT o.owner_email FROM public.crm_record_owners o WHERE o.record_id = r.id ORDER BY o.added_at, o.owner_email);
+  v_watchers := ARRAY(SELECT DISTINCT o.owner_email FROM public.crm_record_owners o JOIN public.crm_records x ON x.id = o.record_id
+                       WHERE x.brand_id = b.id AND x.pipeline = 'hosts' AND x.deleted_at IS NULL AND x.id <> r.id
+                         AND NOT (o.owner_email = ANY (v_owners)) ORDER BY 1);
   SELECT COALESCE(jsonb_agg(x.j ORDER BY x.j->>'on', x.j->>'kind', x.j->>'title'), '[]'::jsonb) INTO v_items FROM (
-    SELECT public.brand_plan_post_item(i, false, NULL) AS j FROM public.content_calendar_items i
+    SELECT public.brand_plan_post_item(i, false, NULL, false) AS j FROM public.content_calendar_items i
      WHERE i.deleted_at IS NULL AND i.brand_id = b.id AND i.publish_at IS NOT NULL
        AND (i.publish_at AT TIME ZONE 'UTC')::date BETWEEN p_from AND p_to
     UNION ALL
-    SELECT public.brand_plan_card_item(c, false, NULL) FROM public.brand_plan_cards(b.id, p_from, p_to) c
+    SELECT public.brand_plan_card_item(c, false, NULL, false) FROM public.brand_plan_cards(b.id, p_from, p_to) c
     UNION ALL
     -- The brand's events, experiences and trips Mingla promotes (the host
-    -- card's scope: private and hidden ones stay off).
-    SELECT public.brand_plan_event_item(e, (y.a->>'start_on')::date, COALESCE(d.starts_at <= now() AND d.ends_at > now(), false), v_today)
+    -- card's scope: private and hidden ones stay off). Rework (W3 test
+    -- P2-1): each sits on the date it is on now or next; one on right now is
+    -- Live now on today.
+    SELECT public.brand_plan_event_item(e, CASE WHEN w.live THEN GREATEST(w.start_on, v_today) ELSE w.start_on END, w.live, v_today)
       FROM public.events e
-     CROSS JOIN LATERAL (SELECT public.ops_anchor('event', e.id, v_today) AS a) y
-      LEFT JOIN LATERAL (SELECT min(ed.start_at) AS starts_at, max(COALESCE(ed.end_at, ed.start_at)) AS ends_at
-                           FROM public.event_dates ed
-                          WHERE ed.event_id = e.id AND COALESCE(ed.status, 'scheduled') <> 'cancelled') d ON true
-     WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND y.a IS NOT NULL AND y.a->>'start_on' IS NOT NULL
-       AND (y.a->>'start_on')::date BETWEEN p_from AND p_to
+     CROSS JOIN LATERAL public.ops_event_when(e.id) w
+     WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND w.starts_at IS NOT NULL
+       AND public.ops_event_in_scope(e.id)
+       AND CASE WHEN w.live THEN GREATEST(w.start_on, v_today) ELSE w.start_on END BETWEEN p_from AND p_to
     UNION ALL
     -- D22: promised events, on the staff plan only.
     SELECT jsonb_build_object('kind', 'promised', 'id', z.id, 'title', z.title, 'on', z.expected_on, 'at', NULL,
@@ -359,44 +437,46 @@ BEGIN
        AND z.expected_on BETWEEN p_from AND p_to
   ) x;
   RETURN jsonb_build_object('brand', jsonb_build_object('id', b.id, 'name', b.name), 'record_id', r.id,
-    'today', v_today, 'from', p_from, 'to', p_to, 'items', v_items);
+    'today', v_today, 'from', p_from, 'to', p_to, 'items', v_items,
+    'task_defaults', jsonb_build_object('owners', to_jsonb(v_owners), 'watchers', to_jsonb(v_watchers)));
 END;
 $$;
 
--- The plan as the brand's own team sees it in the Host app.
+-- The plan as the brand's own team sees it in the Host app. The team's own
+-- private and hidden events are on it: the team already reads them in the
+-- Host app (the staff plan keeps them off).
 CREATE FUNCTION public.brand_plan_for_host(p_brand_id uuid, p_from date, p_to date) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v_uid uuid := auth.uid(); b public.brands; v_today date; v_items jsonb; v_rank integer;
+DECLARE v_uid uuid := auth.uid(); b public.brands; v_today date; v_items jsonb; v_can_write boolean;
 BEGIN
-  IF v_uid IS NULL OR NOT public.biz_is_brand_member_for_read(p_brand_id, v_uid) THEN
+  IF v_uid IS NULL OR NOT public.brand_plan_can_read(p_brand_id, v_uid) THEN
     RAISE EXCEPTION 'not_found: This plan is not here.' USING ERRCODE = 'P0002';
   END IF;
   SELECT * INTO STRICT b FROM public.brands x WHERE x.id = p_brand_id;
   PERFORM public.brand_plan_window_check(p_from, p_to);
   v_today := (now() AT TIME ZONE COALESCE(NULLIF(b.default_timezone, ''), 'UTC'))::date;
-  v_rank := public.biz_brand_effective_rank(p_brand_id, v_uid);
+  v_can_write := public.brand_plan_can_write(p_brand_id, v_uid);
   SELECT COALESCE(jsonb_agg(x.j ORDER BY x.j->>'on', x.j->>'kind', x.j->>'title'), '[]'::jsonb) INTO v_items FROM (
-    SELECT public.brand_plan_post_item(i, true, v_uid) AS j FROM public.content_calendar_items i
+    SELECT public.brand_plan_post_item(i, true, v_uid, v_can_write) AS j FROM public.content_calendar_items i
      WHERE i.deleted_at IS NULL AND i.brand_id = b.id AND i.publish_at IS NOT NULL
        AND public.brand_plan_post_state(i.stage, i.publish_at) IS NOT NULL
        AND (i.publish_at AT TIME ZONE 'UTC')::date BETWEEN p_from AND p_to
     UNION ALL
-    SELECT public.brand_plan_card_item(c, true, v_uid) FROM public.brand_plan_cards(b.id, p_from, p_to) c
+    SELECT public.brand_plan_card_item(c, true, v_uid, v_can_write) FROM public.brand_plan_cards(b.id, p_from, p_to) c
     UNION ALL
     -- The brand's own events, experiences and trips (the team sees them all
     -- in the Host app already): not deleted, not cancelled, with a date.
-    SELECT public.brand_plan_event_item(e, (d.starts_at AT TIME ZONE COALESCE(NULLIF(e.timezone, ''), 'UTC'))::date,
-             d.starts_at <= now() AND d.ends_at > now(), v_today)
+    -- Rework (W3 test P2-1): on the date they are on now or next; one on
+    -- right now is Live now on today.
+    SELECT public.brand_plan_event_item(e, CASE WHEN w.live THEN GREATEST(w.start_on, v_today) ELSE w.start_on END, w.live, v_today)
       FROM public.events e
-      JOIN LATERAL (SELECT min(ed.start_at) AS starts_at, max(COALESCE(ed.end_at, ed.start_at)) AS ends_at
-                      FROM public.event_dates ed
-                     WHERE ed.event_id = e.id AND COALESCE(ed.status, 'scheduled') <> 'cancelled') d ON d.starts_at IS NOT NULL
-     WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND e.status <> 'cancelled'
-       AND (d.starts_at AT TIME ZONE COALESCE(NULLIF(e.timezone, ''), 'UTC'))::date BETWEEN p_from AND p_to
+     CROSS JOIN LATERAL public.ops_event_when(e.id) w
+     WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND e.status <> 'cancelled' AND w.starts_at IS NOT NULL
+       AND CASE WHEN w.live THEN GREATEST(w.start_on, v_today) ELSE w.start_on END BETWEEN p_from AND p_to
   ) x;
   RETURN jsonb_build_object('brand', jsonb_build_object('id', b.id, 'name', b.name), 'today', v_today,
-    'from', p_from, 'to', p_to, 'can_add', v_rank >= public.biz_role_rank('marketing_manager'), 'items', v_items);
+    'from', p_from, 'to', p_to, 'can_add', v_can_write, 'items', v_items);
 END;
 $$;
 
@@ -502,6 +582,8 @@ BEGIN
   END IF;
   IF p_item ? 'watchers' AND jsonb_typeof(p_item->'watchers') <> 'null' THEN
     IF jsonb_typeof(p_item->'watchers') <> 'array' THEN RAISE EXCEPTION 'invalid_watchers: Pick watchers from the team.' USING ERRCODE = '22023'; END IF;
+    -- Rework (W3 test P3-9): a list sent is the list saved; [] means nobody.
+    v_watchers := ARRAY[]::text[];
     FOR v_email IN SELECT jsonb_array_elements_text(p_item->'watchers') LOOP
       IF public.ops_team_email(v_email) IS NULL THEN RAISE EXCEPTION 'invalid_watchers: Pick watchers from the team.' USING ERRCODE = '22023'; END IF;
       v_watchers := array_append(v_watchers, public.ops_team_email(v_email));
@@ -520,9 +602,10 @@ BEGIN
     PERFORM public.content_calendar_audit_write(i.id, v.actor_email, NULL, 'content.created',
       jsonb_build_object('to_revision', i.revision, 'source', 'host_card',
         'changed_fields', jsonb_build_array('title','owners','stage','publish_at','brand_id','plan_link_url')));
-    PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_who, i.title, public.brand_plan_day_words(v_on)));
+    PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_who,
+      public.brand_plan_title_words(i.title, b.id), public.brand_plan_day_words(v_on)));
     v_out := jsonb_build_object('kind', 'post', 'status', 'added', 'title_changed', i.title <> (cl->>'title'),
-      'item', public.brand_plan_post_item(i, false, NULL));
+      'item', public.brand_plan_post_item(i, false, NULL, false));
   ELSE
     v_title := public.brand_plan_free_title('task', v_title, b.name, NULL);
     IF v_title IS NULL THEN
@@ -550,9 +633,10 @@ BEGIN
     v_row := v_res->'results'->0;
     IF v_row->>'status' = 'added' THEN
       SELECT * INTO c FROM public.ops_work_cards w WHERE w.id = (v_row #>> '{card,id}')::uuid;
-      PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_who, c.title, public.brand_plan_day_words(v_on)));
+      PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_who,
+        public.brand_plan_title_words(c.title, b.id), public.brand_plan_day_words(v_on)));
       v_out := jsonb_build_object('kind', 'task', 'status', 'added', 'title_changed', c.title <> (cl->>'title'),
-        'item', public.brand_plan_card_item(c, false, NULL), 'card', v_row->'card');
+        'item', public.brand_plan_card_item(c, false, NULL, false), 'card', v_row->'card');
     ELSE
       v_out := jsonb_build_object('kind', 'task', 'status', COALESCE(v_row->>'status', 'refused'),
         'fixes', COALESCE(v_row->'fixes', '[]'::jsonb), 'message', v_row->'message');
@@ -560,6 +644,10 @@ BEGIN
   END IF;
   PERFORM public.ops_request_finish(v.actor_email, p_request_key || '-plan', 'brand_plan_add', v_out);
   RETURN v_out;
+-- Rework (W3 test P3-8): two adds of the same title at once: the second is
+-- told in the D24 words, never the raw constraint.
+EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
 END;
 $$;
 
@@ -582,16 +670,16 @@ BEGIN
     -- content_calendar_update checks the revision and posts the plan line.
     PERFORM public.content_calendar_update(p_id, jsonb_build_object('plan_link_url', v_link), p_expected_revision, NULL);
     SELECT * INTO i FROM public.content_calendar_items x WHERE x.id = p_id;
-    RETURN jsonb_build_object('kind', 'post', 'item', public.brand_plan_post_item(i, false, NULL));
+    RETURN jsonb_build_object('kind', 'post', 'item', public.brand_plan_post_item(i, false, NULL, false));
   ELSIF p_kind = 'task' THEN
     SELECT * INTO c FROM public.ops_work_cards x WHERE x.id = p_id AND x.archived_at IS NULL AND x.on_brand_plan;
     v_brand := CASE WHEN FOUND THEN public.brand_plan_card_brand(c.id) END;
     IF v_brand IS NULL THEN RAISE EXCEPTION 'not_found: That item is no longer on the plan.' USING ERRCODE = 'P0002'; END IF;
-    v_words := public.brand_plan_link_words(public.brand_plan_staff_first(v.actor_email), c.title, c.files_url, v_link);
+    v_words := public.brand_plan_link_words(public.brand_plan_staff_first(v.actor_email), public.brand_plan_title_words(c.title, v_brand), c.files_url, v_link);
     PERFORM public.ops_work_update(p_id, jsonb_build_object('files_url', v_link), p_expected_revision, NULL);
     PERFORM public.brand_plan_line(v_brand, v_words);
     SELECT * INTO c FROM public.ops_work_cards x WHERE x.id = p_id;
-    RETURN jsonb_build_object('kind', 'task', 'item', public.brand_plan_card_item(c, false, NULL));
+    RETURN jsonb_build_object('kind', 'task', 'item', public.brand_plan_card_item(c, false, NULL, false));
   END IF;
   RAISE EXCEPTION 'invalid_kind: A plan link goes on a post or a task.' USING ERRCODE = '22023';
 END;
@@ -604,13 +692,13 @@ CREATE FUNCTION public.brand_plan_host_add(p_brand_id uuid, p_item jsonb, p_requ
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_uid uuid := auth.uid(); b public.brands; v_actor text; v_name text; v_today date; v_replay jsonb; v_out jsonb;
-  cl jsonb; v_title text; v_on date; v_record uuid; v_record_name text; v_owners text[]; v_watchers text[];
+  cl jsonb; v_title text; v_shown text; v_on date; v_record uuid; v_record_name text; v_owners text[]; v_watchers text[];
   i public.content_calendar_items; c public.ops_work_cards; v_event uuid; v_n integer;
 BEGIN
-  IF v_uid IS NULL OR NOT public.biz_is_brand_member_for_read(p_brand_id, v_uid) THEN
+  IF v_uid IS NULL OR NOT public.brand_plan_can_read(p_brand_id, v_uid) THEN
     RAISE EXCEPTION 'not_found: This plan is not here.' USING ERRCODE = 'P0002';
   END IF;
-  IF public.biz_brand_effective_rank(p_brand_id, v_uid) < public.biz_role_rank('marketing_manager') THEN
+  IF NOT public.brand_plan_can_write(p_brand_id, v_uid) THEN
     RAISE EXCEPTION 'read_only: You can see this plan. Ask your brand admin to let you add to it.' USING ERRCODE = '42501';
   END IF;
   SELECT * INTO STRICT b FROM public.brands x WHERE x.id = p_brand_id;
@@ -638,7 +726,8 @@ BEGIN
   v_owners := ARRAY(SELECT o.owner_email FROM public.crm_record_owners o WHERE o.record_id = v_record ORDER BY o.added_at, o.owner_email);
 
   IF cl->>'type' = 'post' THEN
-    v_title := public.brand_plan_free_title('post', v_title, b.name, NULL);
+    -- D24 (rework, P3-3): always "{title} · {brand}" on the Calendar.
+    v_title := public.brand_plan_host_title('post', v_title, b.id, NULL);
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
@@ -651,9 +740,10 @@ BEGIN
     PERFORM public.content_calendar_audit_write(i.id, v_actor, NULL, 'content.created',
       jsonb_build_object('to_revision', i.revision, 'source', 'host_app',
         'changed_fields', jsonb_build_array('title','owners','stage','publish_at','brand_id','plan_link_url')));
-    PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_name, i.title, public.brand_plan_day_words(v_on)));
-    v_out := jsonb_build_object('kind', 'post', 'status', 'added', 'title_changed', i.title <> (cl->>'title'),
-      'item', public.brand_plan_post_item(i, true, v_uid));
+    v_shown := public.brand_plan_title_words(i.title, b.id);
+    PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_name, v_shown, public.brand_plan_day_words(v_on)));
+    v_out := jsonb_build_object('kind', 'post', 'status', 'added', 'title_changed', v_shown <> (cl->>'title'),
+      'item', public.brand_plan_post_item(i, true, v_uid, true));
   ELSE
     IF v_record IS NULL THEN
       RAISE EXCEPTION 'no_host_card: Mingla hasn''t set up your brand yet. Message the Brand group instead.' USING ERRCODE = '22023';
@@ -661,7 +751,7 @@ BEGIN
     IF char_length(v_title) < 3 THEN
       RAISE EXCEPTION 'invalid_title: Say what it is in 3 to 160 characters.' USING ERRCODE = '22023';
     END IF;
-    v_title := public.brand_plan_free_title('task', v_title, b.name, NULL);
+    v_title := public.brand_plan_host_title('task', v_title, b.id, NULL);
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
@@ -684,12 +774,39 @@ BEGIN
     PERFORM public.ops_notify_people(c.id, v_event, v_watchers, v_actor, format('%s added a task on the %s plan: %s', v_name, b.name, c.title));
     PERFORM public.ops_log_write(v_actor, NULL, 'card_added', 'ok', c.id, 'work_card', c.id,
       format('Added Card %s from the Host app: %s', c.number, c.title), jsonb_build_object('source', 'host_app', 'owners', cardinality(v_owners)));
-    PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_name, c.title, public.brand_plan_day_words(v_on)));
-    v_out := jsonb_build_object('kind', 'task', 'status', 'added', 'title_changed', c.title <> (cl->>'title'),
-      'item', public.brand_plan_card_item(c, true, v_uid));
+    v_shown := public.brand_plan_title_words(c.title, b.id);
+    PERFORM public.brand_plan_line(b.id, format('%s added “%s” to the plan for %s.', v_name, v_shown, public.brand_plan_day_words(v_on)));
+    v_out := jsonb_build_object('kind', 'task', 'status', 'added', 'title_changed', v_shown <> (cl->>'title'),
+      'item', public.brand_plan_card_item(c, true, v_uid, true));
   END IF;
   PERFORM public.ops_request_finish(v_actor, p_request_key, 'brand_plan_host_add', v_out);
   RETURN v_out;
+-- Rework (W3 test P3-8): a same-title race gets the D24 words, never the raw
+-- constraint.
+EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
+END;
+$$;
+
+-- Rework (W3 test P3-4): at most 12 changes an hour for one person on one
+-- brand's plan, so repeated renames cannot flood the Brand group with lines.
+CREATE FUNCTION public.brand_plan_host_change_check(p_brand_id uuid, p_uid uuid, p_actor text) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_n integer;
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('brand_plan_host_change:' || p_uid::text || ':' || p_brand_id::text, 0));
+  SELECT (SELECT count(*) FROM public.content_calendar_audit a JOIN public.content_calendar_items x ON x.id = a.item_id
+           WHERE a.actor_email = p_actor AND a.metadata->>'source' = 'host_app'
+             AND a.action IN ('content.updated', 'content.rescheduled') AND a.created_at > now() - interval '1 hour'
+             AND x.brand_id = p_brand_id AND x.brand_plan_author_id = p_uid)
+       + (SELECT count(*) FROM public.ops_work_events e JOIN public.ops_work_cards w ON w.id = e.card_id
+           WHERE e.actor_email = p_actor AND e.action = 'updated' AND e.body = 'Changed from the Host app.'
+             AND e.at > now() - interval '1 hour' AND w.brand_plan_author_id = p_uid
+             AND public.brand_plan_card_brand(w.id) = p_brand_id) INTO v_n;
+  IF v_n >= 12 THEN
+    RAISE EXCEPTION 'too_many: You''ve made a lot of changes just now. Try again in an hour.' USING ERRCODE = '22023';
+  END IF;
 END;
 $$;
 
@@ -698,22 +815,25 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_uid uuid := auth.uid(); v_brand uuid; b public.brands; v_actor text; v_name text; v_today date; cl jsonb;
   i public.content_calendar_items; n public.content_calendar_items; c public.ops_work_cards; w public.ops_work_cards;
-  v_title text; v_on date; v_link text; v_before jsonb; v_fields text[] := ARRAY[]::text[]; v_words text;
+  v_title text; v_on date; v_link text; v_before jsonb; v_fields text[] := ARRAY[]::text[]; v_old_shown text; v_shown text;
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not_found: This item is not on your plan.' USING ERRCODE = 'P0002'; END IF;
+  -- Only the caller's own item that is on the plan now: a post with its
+  -- brand and a date, a card staff still let the host see (rework, P3-1).
   IF p_kind = 'post' THEN
     SELECT * INTO i FROM public.content_calendar_items x
-     WHERE x.id = p_id AND x.deleted_at IS NULL AND x.brand_plan_author_id = v_uid FOR UPDATE;
+     WHERE x.id = p_id AND x.deleted_at IS NULL AND x.brand_plan_author_id = v_uid
+       AND x.brand_id IS NOT NULL AND x.publish_at IS NOT NULL FOR UPDATE;
     v_brand := CASE WHEN FOUND THEN i.brand_id END;
   ELSIF p_kind = 'task' THEN
     SELECT * INTO c FROM public.ops_work_cards x
-     WHERE x.id = p_id AND x.archived_at IS NULL AND x.brand_plan_author_id = v_uid FOR UPDATE;
+     WHERE x.id = p_id AND x.archived_at IS NULL AND x.brand_plan_author_id = v_uid AND x.on_brand_plan FOR UPDATE;
     v_brand := CASE WHEN FOUND THEN public.brand_plan_card_brand(c.id) END;
   END IF;
-  IF v_brand IS NULL OR NOT public.biz_is_brand_member_for_read(v_brand, v_uid) THEN
+  IF v_brand IS NULL OR NOT public.brand_plan_can_read(v_brand, v_uid) THEN
     RAISE EXCEPTION 'not_found: This item is not on your plan.' USING ERRCODE = 'P0002';
   END IF;
-  IF public.biz_brand_effective_rank(v_brand, v_uid) < public.biz_role_rank('marketing_manager') THEN
+  IF NOT public.brand_plan_can_write(v_brand, v_uid) THEN
     RAISE EXCEPTION 'read_only: You can see this plan. Ask your brand admin to let you change it.' USING ERRCODE = '42501';
   END IF;
   SELECT * INTO STRICT b FROM public.brands x WHERE x.id = v_brand;
@@ -732,13 +852,13 @@ BEGIN
     IF p_expected_revision IS NULL OR i.revision <> p_expected_revision THEN
       RAISE EXCEPTION 'stale_write: This changed. Showing the latest.' USING ERRCODE = 'PT409';
     END IF;
+    PERFORM public.brand_plan_host_change_check(v_brand, v_uid, v_actor);
     v_title := i.title;
-    IF (cl->>'has_title')::boolean AND public.crm_name_key(cl->>'title') <> i.title_key THEN
-      v_title := public.brand_plan_free_title('post', cl->>'title', b.name, i.id);
+    IF (cl->>'has_title')::boolean THEN
+      v_title := public.brand_plan_host_title('post', cl->>'title', b.id, i.id);
       IF v_title IS NULL THEN
         RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
       END IF;
-    ELSIF (cl->>'has_title')::boolean THEN v_title := cl->>'title';
     END IF;
     v_on := CASE WHEN (cl->>'has_on')::boolean THEN (cl->>'on')::date ELSE (i.publish_at AT TIME ZONE 'UTC')::date END;
     v_link := CASE WHEN (cl->>'has_link')::boolean THEN cl->>'link' ELSE i.plan_link_url END;
@@ -755,14 +875,16 @@ BEGIN
     PERFORM public.content_calendar_audit_write(n.id, v_actor, NULL,
       CASE WHEN v_fields = ARRAY['publish_at'] THEN 'content.rescheduled' ELSE 'content.updated' END,
       jsonb_build_object('changed_fields', to_jsonb(v_fields), 'from_revision', i.revision, 'to_revision', n.revision, 'source', 'host_app'));
+    v_old_shown := public.brand_plan_title_words(i.title, v_brand);
+    v_shown := public.brand_plan_title_words(n.title, v_brand);
     IF n.publish_at IS DISTINCT FROM i.publish_at THEN
-      PERFORM public.brand_plan_line(v_brand, format('%s moved “%s” to %s.', v_name, n.title, public.brand_plan_day_words(v_on)));
+      PERFORM public.brand_plan_line(v_brand, format('%s moved “%s” to %s.', v_name, v_shown, public.brand_plan_day_words(v_on)));
     END IF;
     IF n.title IS DISTINCT FROM i.title THEN
-      PERFORM public.brand_plan_line(v_brand, format('%s renamed “%s” to “%s”.', v_name, i.title, n.title));
+      PERFORM public.brand_plan_line(v_brand, format('%s renamed “%s” to “%s”.', v_name, v_old_shown, v_shown));
     END IF;
-    PERFORM public.brand_plan_line(v_brand, public.brand_plan_link_words(v_name, n.title, i.plan_link_url, n.plan_link_url));
-    RETURN jsonb_build_object('kind', 'post', 'item', public.brand_plan_post_item(n, true, v_uid));
+    PERFORM public.brand_plan_line(v_brand, public.brand_plan_link_words(v_name, v_shown, i.plan_link_url, n.plan_link_url));
+    RETURN jsonb_build_object('kind', 'post', 'item', public.brand_plan_post_item(n, true, v_uid, true));
   END IF;
 
   IF c.status <> 'todo' THEN
@@ -771,16 +893,16 @@ BEGIN
   IF p_expected_revision IS NULL OR c.revision <> p_expected_revision THEN
     RAISE EXCEPTION 'stale_write: This changed. Showing the latest.' USING ERRCODE = 'PT409';
   END IF;
+  PERFORM public.brand_plan_host_change_check(v_brand, v_uid, v_actor);
   v_title := c.title;
-  IF (cl->>'has_title')::boolean AND public.crm_name_key(cl->>'title') <> c.title_key THEN
+  IF (cl->>'has_title')::boolean THEN
     IF char_length(cl->>'title') < 3 THEN
       RAISE EXCEPTION 'invalid_title: Say what it is in 3 to 160 characters.' USING ERRCODE = '22023';
     END IF;
-    v_title := public.brand_plan_free_title('task', cl->>'title', b.name, c.id);
+    v_title := public.brand_plan_host_title('task', cl->>'title', b.id, c.id);
     IF v_title IS NULL THEN
       RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
     END IF;
-  ELSIF (cl->>'has_title')::boolean THEN v_title := cl->>'title';
   END IF;
   v_before := public.ops_card_snapshot(c.id);
   UPDATE public.ops_work_cards SET title = v_title,
@@ -790,14 +912,16 @@ BEGIN
     revision = revision + 1, updated_by = v_actor, updated_via = NULL, updated_at = now()
    WHERE id = c.id RETURNING * INTO w;
   PERFORM public.ops_card_event(w.id, v_actor, NULL, 'updated', 'Changed from the Host app.', v_before, public.ops_card_snapshot(w.id), c.revision, w.revision);
+  v_old_shown := public.brand_plan_title_words(c.title, v_brand);
+  v_shown := public.brand_plan_title_words(w.title, v_brand);
   IF w.due_on IS DISTINCT FROM c.due_on THEN
-    PERFORM public.brand_plan_line(v_brand, format('%s moved “%s” to %s.', v_name, w.title, public.brand_plan_day_words(w.due_on)));
+    PERFORM public.brand_plan_line(v_brand, format('%s moved “%s” to %s.', v_name, v_shown, public.brand_plan_day_words(w.due_on)));
   END IF;
   IF w.title IS DISTINCT FROM c.title THEN
-    PERFORM public.brand_plan_line(v_brand, format('%s renamed “%s” to “%s”.', v_name, c.title, w.title));
+    PERFORM public.brand_plan_line(v_brand, format('%s renamed “%s” to “%s”.', v_name, v_old_shown, v_shown));
   END IF;
-  PERFORM public.brand_plan_line(v_brand, public.brand_plan_link_words(v_name, w.title, c.files_url, w.files_url));
-  RETURN jsonb_build_object('kind', 'task', 'item', public.brand_plan_card_item(w, true, v_uid));
+  PERFORM public.brand_plan_line(v_brand, public.brand_plan_link_words(v_name, v_shown, c.files_url, w.files_url));
+  RETURN jsonb_build_object('kind', 'task', 'item', public.brand_plan_card_item(w, true, v_uid, true));
 EXCEPTION WHEN unique_violation THEN
   RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
 END;
@@ -810,19 +934,21 @@ DECLARE v_uid uuid := auth.uid(); v_brand uuid; v_actor text; v_name text;
   i public.content_calendar_items; n public.content_calendar_items; c public.ops_work_cards; w public.ops_work_cards; v_before jsonb;
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not_found: This item is not on your plan.' USING ERRCODE = 'P0002'; END IF;
+  -- Only the caller's own item that is on the plan now (rework, P3-1).
   IF p_kind = 'post' THEN
     SELECT * INTO i FROM public.content_calendar_items x
-     WHERE x.id = p_id AND x.deleted_at IS NULL AND x.brand_plan_author_id = v_uid FOR UPDATE;
+     WHERE x.id = p_id AND x.deleted_at IS NULL AND x.brand_plan_author_id = v_uid
+       AND x.brand_id IS NOT NULL AND x.publish_at IS NOT NULL FOR UPDATE;
     v_brand := CASE WHEN FOUND THEN i.brand_id END;
   ELSIF p_kind = 'task' THEN
     SELECT * INTO c FROM public.ops_work_cards x
-     WHERE x.id = p_id AND x.archived_at IS NULL AND x.brand_plan_author_id = v_uid FOR UPDATE;
+     WHERE x.id = p_id AND x.archived_at IS NULL AND x.brand_plan_author_id = v_uid AND x.on_brand_plan FOR UPDATE;
     v_brand := CASE WHEN FOUND THEN public.brand_plan_card_brand(c.id) END;
   END IF;
-  IF v_brand IS NULL OR NOT public.biz_is_brand_member_for_read(v_brand, v_uid) THEN
+  IF v_brand IS NULL OR NOT public.brand_plan_can_read(v_brand, v_uid) THEN
     RAISE EXCEPTION 'not_found: This item is not on your plan.' USING ERRCODE = 'P0002';
   END IF;
-  IF public.biz_brand_effective_rank(v_brand, v_uid) < public.biz_role_rank('marketing_manager') THEN
+  IF NOT public.brand_plan_can_write(v_brand, v_uid) THEN
     RAISE EXCEPTION 'read_only: You can see this plan. Ask your brand admin to let you change it.' USING ERRCODE = '42501';
   END IF;
   v_actor := public.brand_plan_host_actor(v_uid);
@@ -838,7 +964,7 @@ BEGIN
      WHERE id = i.id RETURNING * INTO n;
     PERFORM public.content_calendar_audit_write(n.id, v_actor, NULL, 'content.deleted',
       jsonb_build_object('from_revision', i.revision, 'to_revision', n.revision, 'changed_fields', jsonb_build_array('deleted_at'), 'source', 'host_app'));
-    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, i.title));
+    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, public.brand_plan_title_words(i.title, v_brand)));
     RETURN jsonb_build_object('kind', 'post', 'id', i.id, 'removed', true);
   END IF;
   IF c.status <> 'todo' THEN
@@ -852,10 +978,35 @@ BEGIN
     revision = revision + 1, updated_by = v_actor, updated_via = NULL, updated_at = now()
    WHERE id = c.id RETURNING * INTO w;
   PERFORM public.ops_card_event(w.id, v_actor, NULL, 'archived', 'Removed by the host in the Host app.', v_before, public.ops_card_snapshot(w.id), c.revision, w.revision);
-  PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, c.title));
+  PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_name, public.brand_plan_title_words(c.title, v_brand)));
   RETURN jsonb_build_object('kind', 'task', 'id', c.id, 'removed', true);
 END;
 $$;
+
+-- Rework (W3 test P4): switching "Host can see this" on or off posts a plan
+-- line, so the host knows a card joined or left their plan.
+CREATE FUNCTION public.brand_plan_flag_line() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_brand uuid; v_who text;
+BEGIN
+  IF NEW.archived_at IS NOT NULL OR NEW.status = 'done' THEN RETURN NEW; END IF;
+  v_brand := public.brand_plan_card_brand(NEW.id);
+  IF v_brand IS NULL THEN RETURN NEW; END IF;
+  v_who := public.brand_plan_staff_first(NEW.updated_by);
+  IF NEW.on_brand_plan THEN
+    PERFORM public.brand_plan_line(v_brand, format('%s added “%s” to the plan for %s.', v_who,
+      public.brand_plan_title_words(NEW.title, v_brand), public.brand_plan_day_words(NEW.due_on)));
+  ELSE
+    PERFORM public.brand_plan_line(v_brand, format('%s removed “%s” from the plan.', v_who, public.brand_plan_title_words(NEW.title, v_brand)));
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER ops_work_cards_brand_plan_flag_line
+  AFTER UPDATE OF on_brand_plan ON public.ops_work_cards
+  FOR EACH ROW WHEN (OLD.on_brand_plan IS DISTINCT FROM NEW.on_brand_plan)
+  EXECUTE FUNCTION public.brand_plan_flag_line();
 
 -- ---------------------------------------------------------------------------
 -- 3-4. The Calendar knows a post's brand.
@@ -1033,20 +1184,20 @@ BEGIN
   v_old_state := CASE WHEN v_old.brand_id IS NOT NULL THEN public.brand_plan_post_state(v_old.stage, v_old.publish_at) END;
   v_new_state := CASE WHEN v_item.brand_id IS NOT NULL THEN public.brand_plan_post_state(v_item.stage, v_item.publish_at) END;
   IF v_old_state IS NOT NULL AND (v_new_state IS NULL OR v_old.brand_id IS DISTINCT FROM v_item.brand_id) THEN
-    PERFORM public.brand_plan_line(v_old.brand_id, format('%s removed “%s” from the plan.', v_who, v_old.title));
+    PERFORM public.brand_plan_line(v_old.brand_id, format('%s removed “%s” from the plan.', v_who, public.brand_plan_title_words(v_old.title, v_old.brand_id)));
   END IF;
   IF v_new_state IS NOT NULL AND (v_old_state IS NULL OR v_old.brand_id IS DISTINCT FROM v_item.brand_id) THEN
-    PERFORM public.brand_plan_line(v_item.brand_id, format('%s added “%s” to the plan for %s.', v_who, v_item.title,
+    PERFORM public.brand_plan_line(v_item.brand_id, format('%s added “%s” to the plan for %s.', v_who, public.brand_plan_title_words(v_item.title, v_item.brand_id),
       public.brand_plan_day_words((v_item.publish_at AT TIME ZONE 'UTC')::date)));
   ELSIF v_new_state IS NOT NULL THEN
     IF (v_old.publish_at AT TIME ZONE 'UTC')::date IS DISTINCT FROM (v_item.publish_at AT TIME ZONE 'UTC')::date THEN
-      PERFORM public.brand_plan_line(v_item.brand_id, format('%s moved “%s” to %s.', v_who, v_item.title,
+      PERFORM public.brand_plan_line(v_item.brand_id, format('%s moved “%s” to %s.', v_who, public.brand_plan_title_words(v_item.title, v_item.brand_id),
         public.brand_plan_day_words((v_item.publish_at AT TIME ZONE 'UTC')::date)));
     END IF;
     IF v_old.title IS DISTINCT FROM v_item.title THEN
-      PERFORM public.brand_plan_line(v_item.brand_id, format('%s renamed “%s” to “%s”.', v_who, v_old.title, v_item.title));
+      PERFORM public.brand_plan_line(v_item.brand_id, format('%s renamed “%s” to “%s”.', v_who, public.brand_plan_title_words(v_old.title, v_item.brand_id), public.brand_plan_title_words(v_item.title, v_item.brand_id)));
     END IF;
-    PERFORM public.brand_plan_line(v_item.brand_id, public.brand_plan_link_words(v_who, v_item.title, v_old.plan_link_url, v_item.plan_link_url));
+    PERFORM public.brand_plan_line(v_item.brand_id, public.brand_plan_link_words(v_who, public.brand_plan_title_words(v_item.title, v_item.brand_id), v_old.plan_link_url, v_item.plan_link_url));
   END IF;
   v_out := jsonb_build_object('item', v_after, 'audit_id', v_audit);
   PERFORM public.content_calendar_request_finish(v.actor_email, p_request_key, 'update', v_out);
@@ -1131,8 +1282,15 @@ REVOKE ALL ON FUNCTION public.brand_plan_host_record(uuid) FROM PUBLIC, anon, au
 REVOKE ALL ON FUNCTION public.brand_plan_window_check(date, date) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_free_title(text, text, text, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_line(uuid, text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.brand_plan_post_item(public.content_calendar_items, boolean, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.brand_plan_card_item(public.ops_work_cards, boolean, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_post_item(public.content_calendar_items, boolean, uuid, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_card_item(public.ops_work_cards, boolean, uuid, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_link_hidden(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_can_read(uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_can_write(uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_title_words(text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_host_title(text, text, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_host_change_check(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_plan_flag_line() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_cards(uuid, date, date) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_card_brand(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_plan_event_item(public.events, date, boolean, date) FROM PUBLIC, anon, authenticated;
@@ -1178,7 +1336,9 @@ COMMENT ON FUNCTION public.brand_plan_line(uuid, text) IS
 -- Self-check. The apply stops here if anything above is not as stated.
 -- ---------------------------------------------------------------------------
 DO $check4270w3$
-DECLARE r record; v_src text;
+DECLARE r record; v_src text; v_first text;
+  c_host constant text[] := ARRAY['brand_plan_for_host(uuid,date,date)', 'brand_plan_host_add(uuid,jsonb,text)',
+                                  'brand_plan_host_update(text,uuid,jsonb,bigint)', 'brand_plan_host_remove(text,uuid,bigint)'];
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid = 'public.content_calendar_items'::regclass AND conname = 'content_calendar_plan_link_check')
      OR pg_catalog.pg_get_constraintdef((SELECT oid FROM pg_catalog.pg_constraint WHERE conrelid = 'public.content_calendar_audit'::regclass
@@ -1189,34 +1349,78 @@ BEGIN
      OR public.brand_plan_post_state('design', now()) <> 'being_made' OR public.brand_plan_post_state('published', now()) <> 'posted' THEN
     RAISE EXCEPTION 'issue 4270 wave 3 self-check: the host state mapping is wrong';
   END IF;
-  -- Every host function is SECURITY DEFINER with a pinned search_path,
-  -- signed-in users only, and starts with its sign-in check.
-  FOR r IN SELECT p.oid, p.oid::regprocedure::text AS sig, p.prosecdef, p.proconfig, p.prosrc FROM pg_catalog.pg_proc p
-            WHERE p.oid IN ('public.brand_plan_for_host(uuid,date,date)'::regprocedure,
-                            'public.brand_plan_host_add(uuid,jsonb,text)'::regprocedure,
-                            'public.brand_plan_host_update(text,uuid,jsonb,bigint)'::regprocedure,
-                            'public.brand_plan_host_remove(text,uuid,bigint)'::regprocedure) LOOP
+  -- Links: https only, and no hidden characters.
+  IF public.brand_plan_link_json('https://canva.com/x') IS NULL OR public.brand_plan_link_json('http://canva.com') IS NOT NULL
+     OR public.brand_plan_link_json('https://canva.com' || chr(8238) || 'moc.evil') IS NOT NULL
+     OR public.brand_plan_link_json('https://canva.com' || chr(7) || 'x') IS NOT NULL THEN
+    RAISE EXCEPTION 'issue 4270 wave 3 self-check: plan links are not checked as stated';
+  END IF;
+  -- Who reads and who writes (D14): the read rule names the Brand group's
+  -- team rule and the read rank; the write rule needs marketing manager.
+  FOR r IN SELECT p.oid::regprocedure::text AS sig, p.prosecdef, p.proconfig, p.prosrc FROM pg_catalog.pg_proc p
+            WHERE p.oid IN ('public.brand_plan_can_read(uuid,uuid)'::regprocedure, 'public.brand_plan_can_write(uuid,uuid)'::regprocedure) LOOP
     IF NOT r.prosecdef OR NOT (r.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']) THEN
       RAISE EXCEPTION 'issue 4270 wave 3 self-check: % is not pinned', r.sig;
     END IF;
-    IF has_function_privilege('anon', r.oid, 'EXECUTE') OR NOT has_function_privilege('authenticated', r.oid, 'EXECUTE') THEN
+  END LOOP;
+  IF (SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid = 'public.brand_plan_can_read(uuid,uuid)'::regprocedure)
+       NOT LIKE '%p_uid IS NOT NULL%b.deleted_at IS NULL%biz_is_brand_member_for_read(p_brand_id, p_uid)%m.accepted_at IS NOT NULL AND m.removed_at IS NULL%'
+     OR (SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid = 'public.brand_plan_can_write(uuid,uuid)'::regprocedure)
+       NOT LIKE '%brand_plan_can_read(p_brand_id, p_uid)%AND public.biz_brand_effective_rank(p_brand_id, p_uid) >= public.biz_role_rank(''marketing_manager'')%' THEN
+    RAISE EXCEPTION 'issue 4270 wave 3 self-check: the read or write rule is not as stated';
+  END IF;
+  -- Every host function is SECURITY DEFINER with a pinned search_path,
+  -- signed-in users only, and its first statement is its door: the
+  -- membership check for the read and add, the sign-in check for update and
+  -- remove (which then find only the caller's own item on the plan and check
+  -- membership before anything else).
+  FOR r IN SELECT p.oid, p.proname, p.oid::regprocedure::text AS sig, p.prosecdef, p.proconfig, p.prosrc FROM pg_catalog.pg_proc p
+            WHERE p.oid IN (SELECT ('public.' || x)::regprocedure FROM unnest(c_host) x) LOOP
+    IF NOT r.prosecdef OR NOT (r.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']) THEN
+      RAISE EXCEPTION 'issue 4270 wave 3 self-check: % is not pinned', r.sig;
+    END IF;
+    IF has_function_privilege('anon', r.oid, 'EXECUTE') OR has_function_privilege('service_role', r.oid, 'EXECUTE')
+       OR NOT has_function_privilege('authenticated', r.oid, 'EXECUTE') THEN
       RAISE EXCEPTION 'issue 4270 wave 3 self-check: % has the wrong grants', r.sig;
     END IF;
+    IF position('v_uid uuid := auth.uid();' IN substring(r.prosrc FOR position('BEGIN' IN r.prosrc))) = 0 THEN
+      RAISE EXCEPTION 'issue 4270 wave 3 self-check: % does not take the caller from auth.uid()', r.sig;
+    END IF;
     v_src := regexp_replace(substring(r.prosrc FROM position('BEGIN' IN r.prosrc) + 5), '^[[:space:]]+', '');
-    IF v_src NOT LIKE 'IF v_uid IS NULL%' THEN
-      RAISE EXCEPTION 'issue 4270 wave 3 self-check: % does not start with its sign-in check', r.sig;
+    v_first := substring(v_src FOR position('END IF;' IN v_src));
+    IF r.proname IN ('brand_plan_for_host', 'brand_plan_host_add') THEN
+      IF v_first NOT LIKE 'IF v_uid IS NULL OR NOT public.brand_plan_can_read(p_brand_id, v_uid) THEN%RAISE EXCEPTION ''not_found: This plan is not here.'' USING ERRCODE = ''P0002'';%' THEN
+        RAISE EXCEPTION 'issue 4270 wave 3 self-check: % does not start with its membership check', r.sig;
+      END IF;
+    ELSE
+      IF v_first NOT LIKE 'IF v_uid IS NULL THEN RAISE EXCEPTION ''not_found: This item is not on your plan.'' USING ERRCODE = ''P0002'';%'
+         OR (length(r.prosrc) - length(replace(r.prosrc, 'x.brand_plan_author_id = v_uid', ''))) / length('x.brand_plan_author_id = v_uid') <> 2
+         OR r.prosrc NOT LIKE '%x.brand_plan_author_id = v_uid AND x.on_brand_plan FOR UPDATE%'
+         OR r.prosrc NOT LIKE '%IF v_brand IS NULL OR NOT public.brand_plan_can_read(v_brand, v_uid) THEN%' THEN
+        RAISE EXCEPTION 'issue 4270 wave 3 self-check: % does not check the caller''s own item and membership first', r.sig;
+      END IF;
+    END IF;
+    IF r.proname <> 'brand_plan_for_host' AND r.prosrc NOT LIKE '%IF NOT public.brand_plan_can_write(%' THEN
+      RAISE EXCEPTION 'issue 4270 wave 3 self-check: % does not check the write rank', r.sig;
     END IF;
   END LOOP;
-  FOR r IN SELECT p.oid, p.oid::regprocedure::text AS sig FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-            WHERE n.nspname = 'public' AND (p.proname LIKE 'brand_plan%' OR p.proname LIKE 'ops_brand_plan%') LOOP
+  -- Nothing of the plan is runnable by anon; every internal helper is closed
+  -- to signed-in users too (only the four host functions and the staff ops_
+  -- functions are callable).
+  FOR r IN SELECT p.oid, p.proname, p.oid::regprocedure::text AS sig FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public'
+              AND (p.proname LIKE 'brand\_plan%' OR p.proname LIKE 'ops\_brand\_plan%' OR p.proname = 'ops_event_when') LOOP
     IF has_function_privilege('anon', r.oid, 'EXECUTE') THEN
       RAISE EXCEPTION 'issue 4270 wave 3 self-check: anon can run %', r.sig;
     END IF;
+    IF r.proname LIKE 'brand\_plan%' AND NOT (replace(r.sig, 'public.', '') = ANY (c_host))
+       AND has_function_privilege('authenticated', r.oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'issue 4270 wave 3 self-check: the internal helper % is callable', r.sig;
+    END IF;
+    IF r.proname = 'ops_event_when' AND has_function_privilege('authenticated', r.oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'issue 4270 wave 3 self-check: the internal helper % is callable', r.sig;
+    END IF;
   END LOOP;
-  IF has_function_privilege('authenticated', 'public.brand_plan_line(uuid,text)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.brand_plan_cards(uuid,date,date)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'issue 4270 wave 3 self-check: an internal helper is callable';
-  END IF;
   IF pg_catalog.pg_get_functiondef('public.content_calendar_update(uuid,jsonb,bigint,text)'::regprocedure) NOT LIKE '%brand_plan_line%' THEN
     RAISE EXCEPTION 'issue 4270 wave 3 self-check: Calendar edits do not post plan lines';
   END IF;
