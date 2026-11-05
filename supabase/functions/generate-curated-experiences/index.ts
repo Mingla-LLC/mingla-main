@@ -52,7 +52,8 @@ import { haversineKm, estimateTravelMinutes, radiusKmForConstraint } from '../_s
 // ORCH-0707: signal-rank helper + maps moved to _shared/signalRankFetch.ts
 // (single source of truth shared with stopAlternatives.ts).
 import {
-  fetchSinglesForSignalRank,
+  fetchSinglesForSignalRankBatch,
+  type SignalRankParams,
   COMBO_SLUG_TO_FILTER_SIGNAL,
   COMBO_SLUG_TYPE_FILTER,
   COMBO_SLUG_FILTER_MIN,
@@ -956,11 +957,11 @@ async function generateCardsForType(
   // (see COMBO_SLUG_FILTER_MIN below) — the legacy curated-big-store-list
   // exception is gone; the v1.3.0 flowers signal is the sole gate.
   const signalOverride = EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeDef.id];
-  const fetchForCombo = async (catId: string, fetchLat: number, fetchLng: number, fetchRadius: number, fetchLimit?: number): Promise<any[]> => {
+  const comboFetchParams = (catId: string, fetchLat: number, fetchLng: number, fetchRadius: number, fetchLimit?: number): SignalRankParams | null => {
     const filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL[catId];
     if (!filterSignal) {
       console.warn(`[generate-curated] Unknown combo slug "${catId}" — no COMBO_SLUG_TO_FILTER_SIGNAL entry. Returning [] (no card_pool fallback).`);
-      return [];
+      return null;
     }
     const rankOverride = signalOverride?.[catId];
     const typeFilter = COMBO_SLUG_TYPE_FILTER[catId];
@@ -970,9 +971,7 @@ async function generateCardsForType(
     const primaryTypeGate = resolvePrimaryTypeGate(catId);
     const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
     const rankSignal = rankOverride ?? filterSignal; // no override → rank by filter signal itself
-    // ORCH-0707: helper moved to _shared/signalRankFetch.ts; pass supabaseAdmin
-    // as first arg + a SignalRankParams object instead of positional arguments.
-    return fetchSinglesForSignalRank(supabaseAdmin, {
+    return {
       filterSignal,
       filterMin,
       rankSignal,
@@ -984,6 +983,18 @@ async function generateCardsForType(
       primaryTypeRequired: primaryTypeGate?.primaryTypes,
       groceryFloralTag: primaryTypeGate?.groceryFloralTag,
       excludePlaceIds: excludePlacePoolIds,
+    };
+  };
+
+  // Issue #4275: one batch call per group of lookups. Each entry is stored under
+  // its own key; a slug with no signal stores [] without a lookup. Group size is
+  // bounded by the callers: at most 8 categories, or 5 anchors x 2 categories.
+  const fetchCategoryGroup = async (group: Array<{ key: string; params: SignalRankParams | null }>): Promise<void> => {
+    const lookups = group.filter((entry): entry is { key: string; params: SignalRankParams } => entry.params !== null);
+    const results = await fetchSinglesForSignalRankBatch(supabaseAdmin as any, lookups.map((entry) => entry.params));
+    for (const entry of group) categoryPlaces[entry.key] = [];
+    lookups.forEach((entry, index) => {
+      categoryPlaces[entry.key] = results[index];
     });
   };
 
@@ -993,18 +1004,18 @@ async function generateCardsForType(
     const anchorCategoryId = typeDef.combos[0][anchorStopIdx];
 
     // Fetch anchor places near user
-    categoryPlaces[anchorCategoryId] = await fetchForCombo(anchorCategoryId, lat, lng, clampedRadius);
+    await fetchCategoryGroup([{ key: anchorCategoryId, params: comboFetchParams(anchorCategoryId, lat, lng, clampedRadius) }]);
     console.log(`[generateCardsForType:${typeDef.id}] anchor(${anchorCategoryId}): ${categoryPlaces[anchorCategoryId].length} places`);
 
     // Other categories will be fetched per-card near the anchor
   } else {
-    // Standard: fetch all categories near user in parallel
-    await Promise.all(
-      [...allCategoryIds].map(async (catId) => {
-        categoryPlaces[catId] = await fetchForCombo(catId, lat, lng, clampedRadius);
-        console.log(`[generateCardsForType:${typeDef.id}] ${catId}: ${categoryPlaces[catId].length} places`);
-      })
+    // Standard: fetch all categories near user in one batch
+    await fetchCategoryGroup(
+      [...allCategoryIds].map((catId) => ({ key: catId, params: comboFetchParams(catId, lat, lng, clampedRadius) })),
     );
+    for (const catId of allCategoryIds) {
+      console.log(`[generateCardsForType:${typeDef.id}] ${catId}: ${categoryPlaces[catId].length} places`);
+    }
   }
 
   // ORCH-1061 PART 1B: deterministic combo ordering that rotates the intent's
@@ -1069,27 +1080,37 @@ async function generateCardsForType(
         return !comboUsedIds.has(p.google_place_id)
           && !failedAnchorIds.has(p.google_place_id);
       });
+      // Issue #4275: the filter only ever shrinks (used and failed anchors stay
+      // out), so an empty list stays empty. Without this break the loop spun
+      // through up to 20,000 remaining combos doing nothing.
       if (anchorPlaces.length === 0) {
-        // No remaining anchor candidates (either none ever existed, or all
-        // viable anchors have been marked failed in prior iterations).
-        // Loop will exit on the next iteration since cards.length stays 0
-        // and the comboList eventually exhausts.
-        valid = false;
-      }
-      else {
+        break;
+      } else {
         const anchor = anchorPlaces[0];
         currentAnchorId = anchor.google_place_id;   // ORCH-0677: for post-anchor gates
         comboUsedIds.add(anchor.google_place_id);
 
-        // Fetch non-anchor categories near anchor (3km radius)
-        const anchorLat = anchor.lat ?? 0;
-        const anchorLng = anchor.lng ?? 0;
-        for (let i = 0; i < combo.length; i++) {
-          if (i === anchorStopIdx) continue;
-          const catId = combo[i];
-          if (!categoryPlaces[`${catId}_near_${anchor.google_place_id}`]) {
-            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await fetchForCombo(catId, anchorLat, anchorLng, 3000, 20);
-          }
+        // Fetch non-anchor categories near anchor (3km radius). Issue #4275:
+        // when this anchor has no near data, batch it with the next unfetched
+        // anchors in the same order (as many as cards are still needed, at most
+        // 5). Near data depends only on category and anchor position, so a
+        // later iteration reads what an earlier one fetched and the same cards
+        // result, in 11 requests rather than 101 for 50 anchors.
+        const nearKey = (catId: string, anchorPlace: any) => `${catId}_near_${anchorPlace.google_place_id}`;
+        const nearCategories = combo.filter((_, i) => i !== anchorStopIdx);
+        const anchorIsMissingNearData = (anchorPlace: any) =>
+          nearCategories.some((catId) => !categoryPlaces[nearKey(catId, anchorPlace)]);
+        if (anchorIsMissingNearData(anchor)) {
+          const batchSize = Math.min(5, Math.max(limit - cards.length, 1));
+          const nextAnchors = anchorPlaces.filter(anchorIsMissingNearData).slice(0, batchSize);
+          await fetchCategoryGroup(nextAnchors.flatMap((anchorPlace) =>
+            nearCategories
+              .filter((catId) => !categoryPlaces[nearKey(catId, anchorPlace)])
+              .map((catId) => ({
+                key: nearKey(catId, anchorPlace),
+                params: comboFetchParams(catId, anchorPlace.lat ?? 0, anchorPlace.lng ?? 0, 3000, 20),
+              })),
+          ));
         }
 
         // Now build stops in order
@@ -1107,8 +1128,7 @@ async function generateCardsForType(
             prevLat = anchor.lat;
             prevLng = anchor.lng;
           } else {
-            const nearKey = `${catId}_near_${anchor.google_place_id}`;
-            const available = (categoryPlaces[nearKey] || []).filter(p => {
+            const available = (categoryPlaces[nearKey(catId, anchor)] || []).filter(p => {
               if (comboUsedIds.has(p.google_place_id)) return false;
               if (!stopDef.optional && p.price_min > perStopBudget) return false;
               return true;
@@ -1798,20 +1818,6 @@ export const handler = async (req: Request): Promise<Response> => {
       ? createClient(poolSupabaseUrl, poolServiceRoleKey)
       : null;
 
-    let poolUserId = 'anonymous';
-    if (poolAdmin) {
-      const authHeader = req.headers.get('Authorization');
-      if (authHeader) {
-        try {
-          const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
-          const authClient = createClient(poolSupabaseUrl!, anonKey);
-          const token = authHeader.replace('Bearer ', '');
-          const { data: { user } } = await authClient.auth.getUser(token);
-          if (user?.id) poolUserId = user.id;
-        } catch {}
-      }
-    }
-
     // Compute radius
     // ORCH-0903 (2026-05-21): curated path uses unified TRAVEL_CONFIG via
     // radiusKmForConstraint(generosity=1.0). See _shared/distanceMath.ts.
@@ -1823,7 +1829,10 @@ export const handler = async (req: Request): Promise<Response> => {
     // generateCardsForType() which composes stops from place_pool via the
     // signal system (ORCH-0634 rewire).
 
-    console.log(`[curated-v2] Generating ${experienceType} cards (limit: ${limit})`);
+    // Issue #4275: which caller started this burst. Allowlisted shape, and nothing
+    // else from the body is ever logged.
+    const logSource = typeof body.source === 'string' && /^[a-z_]{1,24}$/.test(body.source) ? body.source : 'unknown';
+    console.log(`[curated-v2] Generating ${experienceType} cards (limit: ${limit}, source: ${logSource})`);
 
     const generateLimit = warmPool ? Math.min(limit, 15) : limit;
     // ORCH-0677: generateCardsForType now returns { cards, summary? }; summary

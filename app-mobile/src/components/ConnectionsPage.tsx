@@ -90,6 +90,8 @@ import { useA11yPreferences } from "../hooks/useA11yPreferences";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNetworkMonitor } from "../services/networkMonitor";
 import { withTimeout } from "../utils/withTimeout";
+import { chatChannelBus } from "../utils/chatChannelRecovery";
+import { useOpenChatRecovery } from "../hooks/useOpenChatRecovery";
 import { useToast } from "./ToastManager";
 import { showMutationError } from "../utils/showMutationError";
 import { getDisplayName } from "../utils/getDisplayName";
@@ -744,10 +746,9 @@ function ConnectionsPageRefactored({
     () => explorerConversations(conversations as ChatListItemConversation[], teamBrandIds) as Conversation[],
     [conversations, teamBrandIds],
   );
-  // First-ever load only: a cached list never shows the skeleton. A timeout is
-  // expected recovery after the app was in the background, not a failure: the
-  // cached list (or the empty state) stays, no error row.
-  const conversationsLoading = chatListView.loading;
+  // A cached list never shows the skeleton or, on a timeout, an error row: the
+  // timeout is expected recovery after the app was in the background.
+  // Issue #4275: with no list, a settled failure (timeouts too) is the error row.
   const error = chatListView.failed ? t('connections:failed_load') : null;
 
   // ── Archive state (ORCH-0435) ───────────────────────────
@@ -2593,6 +2594,30 @@ function ConnectionsPageRefactored({
     return () => clearTimeout(timeout);
   }, [messagesCache, currentConversationId, activeBrandChannel, brandChannelMemberIds, persistMessages]);
 
+  // Issue #4275: the newest page of an open chat, merged in. Used by the reconnect
+  // refresh below and by recovery; merge-only, so a pending send survives it.
+  const refreshOpenConversation = useCallback(async (conversationId: string, userId: string): Promise<void> => {
+    try {
+      const { messages: freshMsgs, error: msgError, hasMore } =
+        await withTimeout(messagingService.getMessages(conversationId, userId), 8000, 'getMessages');
+      if (msgError) {
+        console.warn("[ConnectionsPage] Open chat refresh failed:", msgError);
+        return;
+      }
+      if (freshMsgs) {
+        const transformed = freshMsgs.map((m) => transformMessage(m, userId));
+        // Issue #4114: merge, never replace — pending sends survive the refresh.
+        writeConversationMessages(conversationId, transformed, { snapshot: { complete: !hasMore } });
+        noteNewestPageLoaded(conversationId, hasMore);
+        if (subscribedConversationIdRef.current === conversationId) {
+          markConversationAsRead(conversationId, userId, transformed);
+        }
+      }
+    } catch (e) {
+      console.warn("[ConnectionsPage] Open chat refresh failed:", e);
+    }
+  }, [transformMessage, writeConversationMessages, noteNewestPageLoaded, markConversationAsRead]);
+
   // ── Auto-refresh messages when network reconnects ───────
   const prevIsOfflineRef = useRef(isOffline);
   useEffect(() => {
@@ -2610,30 +2635,12 @@ function ConnectionsPageRefactored({
       // Re-establish realtime subscription (may have died or never been set up)
       setupRealtimeSubscription(currentConversationId, user.id);
 
-      (async () => {
-        try {
-          const { messages: freshMsgs, error: msgError, hasMore } =
-            await messagingService.getMessages(currentConversationId, user.id);
-          if (msgError) {
-            console.warn("[ConnectionsPage] Reconnection refresh failed:", msgError);
-            return;
-          }
-          if (freshMsgs) {
-            const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
-            // Issue #4114: merge, never replace — pending sends survive the refresh.
-            writeConversationMessages(currentConversationId, transformed, { snapshot: { complete: !hasMore } });
-            noteNewestPageLoaded(currentConversationId, hasMore);
-            markConversationAsRead(currentConversationId, user.id, transformed);
-          }
-        } catch (e) {
-          console.warn("[ConnectionsPage] Reconnection refresh failed:", e);
-        }
-      })();
+      void refreshOpenConversation(currentConversationId, user.id);
 
       // Also refresh the conversations list
       fetchConversations(user.id);
     }
-  }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations, writeConversationMessages, noteNewestPageLoaded]);
+  }, [isOffline, currentConversationId, user?.id, refreshOpenConversation, fetchConversations]);
 
   /**
    * ORCH-0664 (I-DEDUP-AFTER-DELIVERY): single owner for incoming-message UI
@@ -2713,9 +2720,10 @@ function ConnectionsPageRefactored({
     // Issue #4114: release the conversation that is ACTUALLY subscribed (it used
     // to unsubscribe `conversationId`, the one being opened, which left the
     // previous chat's channel running).
+    const realtimeKey = conversationChannelKey(conversationIds);
     conversationChannelRef.current = switchConversationSubscription(
       subscribedConversationIdRef,
-      conversationChannelKey(conversationIds),
+      realtimeKey,
       messagingService,
       () => messagingService.subscribeToConversation(
       conversationIds,
@@ -2764,9 +2772,52 @@ function ConnectionsPageRefactored({
             return next;
           });
         },
+
+        // Issue #4275: the recovery controller decides what a status means.
+        onStatus: (status: string) => {
+          chatChannelBus.emit({ kind: 'status', source: 'changes', conversationId: realtimeKey, status });
+        },
+        onSystemError: () => {
+          chatChannelBus.emit({ kind: 'system_error', source: 'changes', conversationId: realtimeKey });
+        },
       }
     ));
   };
+
+  // Issue #4275: an open chat reads what it missed after any realtime gap and
+  // rebuilds only the channels the library has given up on. A brand channel is
+  // one changes channel on several ids, so it recovers as one; each row goes to
+  // its own conversation's store. Rebuild goes through setupRealtimeSubscription,
+  // so there is one channel slot and no duplicates.
+  useOpenChatRecovery({
+    channelKey: showMessageInterface
+      ? (activeBrandChannel ? conversationChannelKey(brandChannelMemberIds) : currentConversationId)
+      : null,
+    conversationId: currentConversationId,
+    isOffline,
+    catchUp: async () => {
+      if (!user?.id) return;
+      const brandChannel = activeBrandChannelRef.current;
+      if (brandChannel) {
+        await loadBrandChannelNewest(brandChannel, user.id);
+      } else if (currentConversationId) {
+        await refreshOpenConversation(currentConversationId, user.id);
+      }
+    },
+    rebuildChanges: () => {
+      if (!user?.id) return;
+      const brandChannel = activeBrandChannelRef.current;
+      if (brandChannel) {
+        setupRealtimeSubscription(brandChannel.events.map((event) => event.conversationId), user.id);
+      } else if (currentConversationId) {
+        setupRealtimeSubscription(currentConversationId, user.id);
+      }
+    },
+    getChangesChannelState: () => {
+      const state: unknown = conversationChannelRef.current?.state;
+      return typeof state === 'string' ? state : null;
+    },
+  });
 
   const handleCancelPendingCollabChat = useCallback(async () => {
     if (!user?.id || !pendingCollabChat) return;
@@ -4152,10 +4203,12 @@ function ConnectionsPageRefactored({
     </Pressable>
   ) : null;
 
-  const showSkeleton = conversationsLoading && conversations.length === 0 && !error;
+  // Issue #4275: "no chats" is a statement about a loaded list. Until there is
+  // one, it is the skeleton (loading, retries waiting, offline) or the error row.
+  const showSkeleton = !chatListView.loaded && !error;
   const listEmpty = showSkeleton ? (
     <ChatListSkeleton />
-  ) : searchActive ? (
+  ) : error && !chatListView.loaded ? null : searchActive ? (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
     </View>
@@ -4163,7 +4216,7 @@ function ConnectionsPageRefactored({
     <View style={styles.emptyContainer}>
       <Text style={styles.emptySubtitle}>{t(`connections:filter_empty_${chatFilter}`)}</Text>
     </View>
-  ) : error ? null : (
+  ) : (
     <View style={styles.emptyContainer}>
       <Icon name="chatbubbles-outline" size={56} color={tokens.faint} />
       <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>

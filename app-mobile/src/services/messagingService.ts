@@ -1070,10 +1070,15 @@ export class MessagingService {
 
       if (error) throw error;
 
-      // Enrich messages with sender names and read status
-      const enrichedMessages = await Promise.all(
-        (data || []).map(msg => this.enrichMessage(msg, userId))
+      // Issue #4275: sender names per row, read status in ONE read for the page.
+      // It used to be one `.single()` per message, up to 50 requests a page, each
+      // answering 406 when there was no read row. Recovery reads this on every
+      // reconnect, so it must be cheap.
+      const senderEnriched = await Promise.all(
+        (data || []).map(msg => this.enrichMessageRealtime(msg))
       );
+      const readIds = await this.getReadMessageIds(senderEnriched.map((msg) => msg.id), userId);
+      const enrichedMessages = senderEnriched.map((msg) => ({ ...msg, is_read: readIds.has(msg.id) }));
       // Issue #4114 Wave 3: one reactions read for the whole page.
       const reactionsByMessage = await this.getReactionsForMessages(enrichedMessages.map((msg) => msg.id));
       // Issue #4114 Wave 4: one read of who opened the page's view-once messages.
@@ -1091,6 +1096,25 @@ export class MessagingService {
       console.error('Error getting messages:', error);
       return { messages: [], error: error.message, hasMore: false };
     }
+  }
+
+  /**
+   * Issue #4275: which of a page of messages this user has read, in one query.
+   * A read failure warns and treats them all as unread, the same outcome each
+   * per-message read had on failure.
+   */
+  private async getReadMessageIds(messageIds: string[], userId: string): Promise<Set<string>> {
+    if (messageIds.length === 0) return new Set();
+    const { data, error } = await supabase
+      .from('message_reads')
+      .select('message_id')
+      .eq('user_id', userId)
+      .in('message_id', messageIds);
+    if (error) {
+      console.warn('[messagingService] read status read failed; page shows as unread', error);
+      return new Set();
+    }
+    return new Set((data ?? []).map((row: { message_id: string }) => row.message_id));
   }
 
   /**
@@ -1843,6 +1867,13 @@ export class MessagingService {
        * is matched against the chat's own reaction ids by the caller.
        */
       onLiveChange?: (change: ChatLiveChange) => void;
+      /**
+       * Issue #4275: every channel status while this channel is the current one.
+       * The recovery controller owns what happens next (chatChannelRecovery.ts).
+       */
+      onStatus?: (status: string) => void;
+      /** Issue #4275: a `system` error on postgres_changes. The library reports no status for it. */
+      onSystemError?: () => void;
     }
   ): RealtimeChannel {
     // Issue #4114 Wave 6: one channel for one chat, or for all of a brand
@@ -1859,6 +1890,15 @@ export class MessagingService {
 
     const channel = supabase
       .channel(channelName)
+      .on('system', {}, (payload: { extension?: string; status?: string }) => {
+        if (
+          payload?.extension === 'postgres_changes' &&
+          payload?.status === 'error' &&
+          this.channels.get(channelName) === channel
+        ) {
+          callbacks.onSystemError?.();
+        }
+      })
       .on(
         'postgres_changes',
         {
@@ -1942,6 +1982,9 @@ export class MessagingService {
         if (status === 'SUBSCRIBED') {
           console.log(`Subscribed to conversation: ${channelKey}`);
         }
+        if (this.channels.get(channelName) === channel) {
+          callbacks.onStatus?.(status);
+        }
       });
 
     this.channels.set(channelName, channel);
@@ -1955,8 +1998,12 @@ export class MessagingService {
     const channelName = `conversation:${conversationId}`;
     const channel = this.channels.get(channelName);
     if (channel) {
-      supabase.removeChannel(channel);
+      // Issue #4275: forget it BEFORE removing it. removeChannel fires CLOSED
+      // synchronously inside the call, and onStatus forwards only for the channel
+      // in this map, so the old order reported a deliberate leave as a failure
+      // and started a rebuild of the chat being left.
       this.channels.delete(channelName);
+      supabase.removeChannel(channel);
     }
   }
 

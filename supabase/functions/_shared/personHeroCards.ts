@@ -663,6 +663,7 @@ export async function planComboForHoliday(args: {
       body: JSON.stringify({
         categories: displayCategories,
         experienceTypes: [args.composition.experienceType],
+        source: "hero",
         location: { lat: args.location.latitude, lng: args.location.longitude },
         travelMode: "driving",
         travelConstraintValue: targetMinutes,
