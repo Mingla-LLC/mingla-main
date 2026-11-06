@@ -26,7 +26,7 @@ jest.mock("../../services/supabase", () => ({ supabase: { functions: { invoke: j
 import { WEBSITE_TODO_PART_LABELS, websiteTodoFor } from "../websiteTodo";
 import { normalizeSitePlan, type SitePlanState } from "../sitePlanState";
 import { approvedPlanFrom, untickedWithLiveItems } from "../planScreens";
-import { firstOfferingRoute, planPartRoute } from "../planRoutes";
+import { firstOfferingRoute } from "../planRoutes";
 import { buildBusinessTodos, type BusinessTodoInput } from "../../utils/businessTodos";
 import { SiteOfferingsView, type SiteOfferingsViewProps } from "../../components/sites/SiteOfferingsView";
 import { SiteStoryView } from "../../components/sites/SiteStoryView";
@@ -68,12 +68,12 @@ function byTestId(tree: ReturnType<typeof create>, id: string) {
 
 describe("#2829 W9a Home to-do row", () => {
   it("an empty brand (no plan, no site): Build your website, for admins and owners", () => {
-    expect(websiteTodoFor(BRAND, answer())).toEqual({ variant: "build", route: `/brand/${BRAND}/website/plan` });
+    expect(websiteTodoFor(BRAND, answer())).toEqual({ variant: "build", route: `/brand/${BRAND}/website/setup` });
   });
 
   it("once started: Finish your website with Core's count and next part", () => {
     const started = answer({ plan: { revision: 3 }, status: { parts: PARTS_RAW, done_count: 3, next_part: "look" } });
-    expect(websiteTodoFor(BRAND, started)).toEqual({ variant: "finish", route: `/brand/${BRAND}/website/plan`, done: 3, nextLabel: "Choose your design" });
+    expect(websiteTodoFor(BRAND, started)).toEqual({ variant: "finish", route: `/brand/${BRAND}/website/setup`, done: 3, nextLabel: "Choose your design" });
   });
 
   it("marketing and event managers before a site: ask an admin; finance, scanners, revoked, paused, published: nothing", () => {
@@ -114,11 +114,7 @@ describe("#2829 W9a Home to-do row", () => {
 
 describe("#2829 W9a plan routes", () => {
   // #2829 W9r: the plan screen moved into the Website section (websiteBehaviours suite).
-  it("routes each part's 'Do it myself' to its screen", () => {
-    expect(planPartRoute(BRAND, "offer")).toBe(`/brand/${BRAND}/website/plan?part=offer`);
-    expect(planPartRoute(BRAND, "brand")).toBe(`/brand/${BRAND}/edit`);
-    expect(planPartRoute(BRAND, "approve")).toBe(`/brand/${BRAND}/website/plan?part=approve`);
-    expect(planPartRoute(BRAND, "publish")).toBe(`/brand/${BRAND}/website`);
+  it("the first offering opens the creator for the first ticked kind with nothing live", () => {
     const ticked = normalizeSitePlan(BRAND, answer({ plan: { offerings_selected: ["trips", "events"] }, live_counts: { trips: 1, events: 0, experiences: 0 } }));
     expect(firstOfferingRoute(ticked)).toBe("/event/create");
     expect(firstOfferingRoute(normalizeSitePlan(BRAND, answer({ plan: { offerings_selected: ["venue_play"] } })))).toBeNull();
@@ -240,7 +236,7 @@ describe("#2829 W9a story and the plan to approve", () => {
         <SiteStoryView step="approve" isLoading={false} loadError={null} readOnly={false} questions={storyQuestions([])} chips={[]}
           story={{}} summary={{ pages: "Home · About · Contact" }} approved={false}
           approveBlocked="Your plan needs your brand's name and one line about it." isSaving={false} notice={null}
-          onChange={jest.fn()} onSaveAnswers={jest.fn()} onApprove={jest.fn()} onEditBrand={jest.fn()} onRetry={jest.fn()} />,
+          onChange={jest.fn()} onSaveAnswers={jest.fn()} onApprove={jest.fn()} onEditBrand={jest.fn()} onChangeSomething={jest.fn()} onRetry={jest.fn()} />,
       );
     });
     expect(textOf(tree)).toContain("one line about it");

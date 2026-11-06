@@ -86,7 +86,6 @@ import { OverviewSection } from "../sections/OverviewSection";
 import { SettingsSection } from "../sections/SettingsSection";
 import { AddressesSection } from "../sections/AddressesSection";
 import { DesignSection } from "../sections/DesignSection";
-import { PlanSection, startedByLine } from "../sections/PlanSection";
 import { LockBanner } from "../LockBanner";
 import { EXPORT_MEDIA_LINKS_NOTE } from "../../../../sites/exportCopy";
 import { BrandSitesError } from "../../../../services/brandSitesService";
@@ -412,163 +411,7 @@ describe("A8 / W7 Website design shows what the design draws", () => {
   });
 });
 
-describe("W9a Setup plan", () => {
-  const plan = (canManage: boolean, over: Partial<SitePlanState> = {}): SitePlanState => ({
-    canManage,
-    doneCount: 3,
-    parts: [
-      { key: "offer", done: true, skipped: false, optional: false },
-      { key: "brand", done: true, skipped: false, optional: false },
-      { key: "look", done: true, skipped: false, optional: false },
-      { key: "story", done: false, skipped: false, optional: false },
-      { key: "approve", done: false, skipped: false, optional: false },
-      { key: "build", done: false, skipped: false, optional: false },
-      { key: "first_offering", done: false, skipped: false, optional: true },
-      { key: "publish", done: false, skipped: false, optional: false },
-    ],
-    plan: { revision: 7, skippedParts: [] },
-    site: null,
-    ...over,
-  } as unknown as SitePlanState);
-
-  it("shows Core's ticks; owner parts ask an admin for a marketing manager", () => {
-    const { root } = render(<PlanSection part={null} planState={plan(false)} />, { canPublish: false });
-    expect(textOf(root)).toContain("3 of 8 done");
-    for (const key of ["approve", "build", "publish"]) {
-      press(root, `plan-ask-${key}`);
-    }
-    expect(mockAsk).toHaveBeenCalledWith("plan");
-    expect(has(root, "plan-ari-approve")).toBe(false);
-    expect(has(root, "plan-ari-story")).toBe(true);
-  });
-
-  it("part 7 is marked optional; while someone else holds the lock, or Mingla paused the site, nothing can be changed", () => {
-    const open = render(<PlanSection part={null} planState={plan(true)} />);
-    expect(textOf(open.root)).toContain("Optional");
-    expect(has(open.root, "plan-self-story")).toBe(true);
-    const locked = context();
-    (locked.lock as { heldByOther: boolean }).heldByOther = true;
-    let tree!: ReturnType<typeof create>;
-    act(() => { tree = create(<QueryClientProvider client={new QueryClient()}><WebsiteProvider value={locked}><PlanSection part={null} planState={plan(true)} /></WebsiteProvider></QueryClientProvider>); });
-    mounted.push(tree);
-    expect(has(tree.root, "plan-self-story")).toBe(false);
-    expect(has(tree.root, "plan-ari-story")).toBe(false);
-    const paused = render(<PlanSection part={null} planState={plan(true, { site: { id: "s", status: "suspended", designKey: null, published: false, paused: true } } as Partial<SitePlanState>)} />);
-    expect(textOf(paused.root)).toContain("Mingla has paused your website, so the plan is paused too.");
-    expect(has(paused.root, "plan-self-story")).toBe(false);
-  });
-
-  it("With Ari saves active_part at Core's revision, then opens Ari; a refusal says why and opens nothing", async () => {
-    mockPlanSave.mockResolvedValueOnce({});
-    const { root, value } = render(<PlanSection part={null} planState={plan(true)} />);
-    await act(async () => { (pressable(root, "plan-ari-story")!.props.onPress as () => void)(); });
-    expect(mockPlanSave).toHaveBeenCalledWith({ revision: 7, patch: { active_part: "story" } });
-    expect(mockPush).toHaveBeenCalledWith("/brand/b/website/ari?intent=setup&part=story");
-    mockPush.mockClear();
-    mockPlanSave.mockRejectedValueOnce(new BrandSitesError("REVISION_CONFLICT", "Someone else changed the plan. Here is the latest.", false));
-    await act(async () => { (pressable(root, "plan-ari-build")!.props.onPress as () => void)(); });
-    expect(mockPush).not.toHaveBeenCalled();
-    expect(value.toast).toHaveBeenCalledWith("Someone else changed the plan. Here is the latest.", "error");
-  });
-
-  it("shows field-level gaps with both Ari-owned and self-service paths", async () => {
-    mockPlanSave.mockResolvedValueOnce({});
-    const state = plan(true, {
-      completeness: {
-        revision: 7,
-        designKey: "voyage",
-        fields: [
-          { key: "contact_phone", label: "Contact phone", group: "Contact", requirement: "recommended", state: "invalid", value: "555", sourceType: "owner", sourceRef: null, sourceUrl: null, observedAt: null, ownerConfirmedAt: null, exceptionReason: null, humanActionRequired: false },
-          { key: "cover_media", label: "Cover media", group: "Media", requirement: "recommended", state: "missing", value: null, sourceType: null, sourceRef: null, sourceUrl: null, observedAt: null, ownerConfirmedAt: null, exceptionReason: null, humanActionRequired: true },
-        ],
-        requiredGapCount: 0,
-        recommendedGapCount: 2,
-        gapCount: 2,
-        verifiedCount: 15,
-        exceptionCount: 0,
-        minimumComplete: true,
-        contextComplete: false,
-        checkedAt: "2026-10-30T22:00:00Z",
-      },
-    });
-    const { root } = render(<PlanSection part={null} planState={state} />);
-    expect(has(root, "plan-context-gaps")).toBe(true);
-    expect(has(root, "plan-gaps-ari")).toBe(true);
-    expect(has(root, "plan-gaps-self")).toBe(true);
-    press(root, "plan-see-gaps");
-    expect(textOf(root)).toContain("needs your upload");
-    press(root, "plan-gaps-self");
-    expect(mockPush).toHaveBeenCalledWith("/brand/b/edit");
-    await act(async () => { (pressable(root, "plan-gaps-ari")!.props.onPress as () => void)(); });
-    expect(mockPlanSave).toHaveBeenCalledWith({ revision: 7, patch: { active_part: "brand" } });
-    expect(mockPush).toHaveBeenCalledWith("/brand/b/website/ari?intent=setup&part=brand");
-  });
-
-  it("chooses a design in the shared plan before any site exists", () => {
-    const state = plan(true, {
-      doneCount: 2,
-      plan: { revision: 7, designKey: null, skippedParts: [] } as unknown as SitePlanState["plan"],
-      site: null,
-    });
-    const { root } = render(<PlanSection part="look" planState={state} />);
-    expect(has(root, "plan-design-part")).toBe(true);
-    expect(textOf(root)).toContain("No draft yet");
-    press(root, "plan-design-voyage");
-    press(root, "plan-design-save");
-    expect(mockDesignSave).toHaveBeenCalledWith(
-      { revision: 7, designKey: "voyage" },
-      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
-    );
-  });
-});
-
-describe("#2829 W11 one plan per brand: who started it, who is working on it", () => {
-  const planBy = (over: Record<string, unknown>, canManage = true): SitePlanState => ({
-    canManage,
-    doneCount: 3,
-    parts: [
-      { key: "offer", done: true, skipped: false, optional: false },
-      { key: "brand", done: true, skipped: false, optional: false },
-      { key: "look", done: true, skipped: false, optional: false },
-      { key: "story", done: false, skipped: false, optional: false },
-      { key: "approve", done: false, skipped: false, optional: false },
-      { key: "build", done: false, skipped: false, optional: false },
-      { key: "first_offering", done: false, skipped: false, optional: true },
-      { key: "publish", done: false, skipped: false, optional: false },
-    ],
-    plan: { revision: 7, skippedParts: [], startedAt: "2026-10-03T09:00:00Z", startedByMe: false, startedByName: "Ama", ...over },
-    site: null,
-  } as unknown as SitePlanState);
-
-  it("another admin opening the plan sees who started it and when, and continues at the next part", () => {
-    const { root, value } = render(<PlanSection part={null} planState={planBy({})} />);
-    expect(textOf(root)).toContain("Ama started this on 3 Oct. Continue?");
-    expect(textOf(root)).toContain("Next: Your story");
-    press(root, "plan-started-continue");
-    expect(value.go).toHaveBeenCalledWith({ kind: "section", section: "plan", planPart: "story" });
-  });
-
-  it("says nothing to the person who started it, on a live site, or once every part is done", () => {
-    expect(startedByLine(planBy({ startedByMe: true }), false)).toBeNull();
-    expect(startedByLine(planBy({}), true)).toBeNull();
-    const done = planBy({});
-    (done as { doneCount: number }).doneCount = 8;
-    expect(startedByLine(done, false)).toBeNull();
-    expect(has(render(<PlanSection part={null} planState={planBy({ startedByMe: true })} />).root, "plan-started-by")).toBe(false);
-  });
-
-  it("a starter with no name on file (Core sends null) reads as A teammate, never a blank", () => {
-    expect(startedByLine(planBy({ startedByName: null }), false)).toBe("A teammate started this on 3 Oct. Continue?");
-  });
-
-  it("a marketing manager sees who started it but no Continue into an owner part", () => {
-    const owners = planBy({}, false);
-    (owners as { parts: { key: string; done: boolean }[] }).parts = owners.parts.map((part) => ({ ...part, done: part.key !== "approve" && part.key !== "build" && part.key !== "publish" }));
-    const { root } = render(<PlanSection part={null} planState={owners} />, { canPublish: false });
-    expect(has(root, "plan-started-by")).toBe(true);
-    expect(has(root, "plan-started-continue")).toBe(false);
-  });
-
+describe("#2829 W11 who is working on it", () => {
   it("two admins at once: the second sees who is working right now, with Take over", () => {
     const value = context();
     const takeOver = jest.fn();
@@ -592,6 +435,32 @@ describe("#2829 W11 one plan per brand: who started it, who is working on it", (
     expect(textOf(tree.root)).toContain("until they finish or you take over");
     expect(textOf(tree.root)).toContain("Only admins can take over");
     expect(has(tree.root, "lock-takeover")).toBe(false);
+  });
+});
+
+describe("#2830 a site with no built pages is not a ready draft", () => {
+  const planWith = (done: boolean) => ({
+    parts: [{ key: "build", done, skipped: false, optional: false }],
+    setupStatus: { doneCount: 0, nextPart: "build", total: 8, parts: [{ key: "build", done, skipped: false, fieldCount: 0, openFields: [] }] },
+  });
+  it("provisioned, compose never ran: says so, not 'Draft ready'", () => {
+    const value = context();
+    Object.assign(value, { plan: planWith(false) });
+    Object.assign(value.controller.site, { data: { ...value.controller.site.data, status: "draft", active_publication_id: null } });
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(<QueryClientProvider client={new QueryClient()}><WebsiteProvider value={value}><OverviewSection /></WebsiteProvider></QueryClientProvider>); });
+    mounted.push(tree);
+    expect(textOf(tree.root)).toContain("Draft not finished");
+    expect(textOf(tree.root)).not.toContain("Draft ready");
+  });
+  it("the build tick is what makes it ready", () => {
+    const value = context();
+    Object.assign(value, { plan: planWith(true) });
+    Object.assign(value.controller.site, { data: { ...value.controller.site.data, status: "draft", active_publication_id: null } });
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(<QueryClientProvider client={new QueryClient()}><WebsiteProvider value={value}><OverviewSection /></WebsiteProvider></QueryClientProvider>); });
+    mounted.push(tree);
+    expect(textOf(tree.root)).toContain("Draft ready");
   });
 });
 

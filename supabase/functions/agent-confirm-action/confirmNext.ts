@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { findTool } from "../_shared/agentTools.ts";
+import { prepareBrandResearch } from "../_shared/ariBrandResearch.ts";
 import {
   buildWebsiteSetupPresentation,
   websiteSetupApprovedWriteFollowup,
@@ -218,6 +219,10 @@ export async function flowNextAfterConfirm(args: {
     ...(args.failed ? { failed: args.failed } : {}),
     ...(args.store ? { store: args.store } : {}),
     ...(args.probes ? { probes: args.probes } : {}),
+    // #2830 — the next brand-details question may carry what Ari found.
+    research: ({ userId, brandId, plan }) =>
+      prepareBrandResearch({ service: args.service, userId, brandId, plan }) as
+        Promise<Record<string, Record<string, unknown>[] | undefined> | null>,
   });
   const state = flowStateOf(run);
   if (

@@ -41,6 +41,10 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "This chat belongs to a different brand. Start a new chat for this brand.",
   STALE_PROPOSAL:
     "That request is out of date. Nothing was changed; ask Ari again.",
+  // #2830 — the screen shows the server's sentence, which names who; this is the
+  // same words for a reply that has no name in it.
+  FLOW_TAKEN_OVER:
+    "A teammate took over Website setup, so that didn't save. Everything you answered before is still there.",
   // #2830 — an approval that timed out. The registry's own sentence, verbatim.
   PROPOSAL_EXPIRED: ARI_PROPOSAL_EXPIRED_COPY,
   CONFLICT:
@@ -127,6 +131,19 @@ export function ariChatErrorCopy(code: string): string {
  * an envelope this app refused, an unclassified edge error, or any code with
  * no copy of its own.
  */
+/**
+ * #2830 — FLOW_TAKEN_OVER's words, with the teammate's name the server filled
+ * in. Only the registry sentence is accepted; anything else the server sent
+ * becomes the registry sentence as is, so raw server text never shows.
+ */
+export function flowTakenOverCopy(serverMessage: string): string {
+  const fixed = ariChatErrorCopy("FLOW_TAKEN_OVER");
+  const tail = fixed.slice("A teammate".length);
+  if (!serverMessage.endsWith(tail)) return fixed;
+  const name = serverMessage.slice(0, -tail.length).trim();
+  return name.length > 0 && name.length <= 80 && !/[\n<>]/.test(name) ? `${name}${tail}` : fixed;
+}
+
 export function shouldReportAriChatError(code: string): boolean {
   if (code === "ENVELOPE_INVALID" || code === "EDGE_ERROR") return true;
   return ownCopy(REGISTRY_COPY, code) === undefined &&

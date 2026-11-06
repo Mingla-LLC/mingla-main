@@ -59,7 +59,8 @@ describe("#3184 T-I6 Ari chat error copy never blames the connection for a refus
     // key sets and passes at 24/24). Every other assertion here is untouched.
     // #2830 adds PROPOSAL_EXPIRED on both sides (25/25).
     // #3355 adds PAYOUT_NOT_READY on both sides; merged registry 26/26.
-    expect(REGISTRY_CODES).toHaveLength(26);
+    // #2830 adds FLOW_TAKEN_OVER on both sides (27/27), with its approved words.
+    expect(REGISTRY_CODES).toHaveLength(27);
     expect(REGISTRY_CODES).toContain("TRANSPORT_UNAVAILABLE");
   });
 
@@ -145,5 +146,18 @@ describe("#3184 T-I7 a real transport failure gets its own code", () => {
     expect(result.code).toBe("TRANSPORT_UNAVAILABLE");
     expect(ariChatErrorCopy(result.code)).toBe(ARI_CHAT_CONNECTION_COPY);
     expect(shouldReportAriChatError(result.code)).toBe(false);
+  });
+});
+
+describe("#2830 FLOW_TAKEN_OVER shows only the registry sentence", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { flowTakenOverCopy } = require("../ariChatErrorCopy") as { flowTakenOverCopy: (m: string) => string };
+  const fixed = ariChatErrorCopy("FLOW_TAKEN_OVER");
+  it("keeps the teammate's name in the approved words", () => {
+    expect(flowTakenOverCopy(fixed.replace("A teammate", "Ama"))).toBe(fixed.replace("A teammate", "Ama"));
+  });
+  it("never shows other server text", () => {
+    expect(flowTakenOverCopy("relation ari_flow_runs violates check")).toBe(fixed);
+    expect(flowTakenOverCopy("")).toBe(fixed);
   });
 });

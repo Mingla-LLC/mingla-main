@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEACTIVATING_RECOVERY_CODES,
   SITES_BUCKETS,
+  TENANT_DOCUMENTS_SQL,
   callCore,
   coreConfigFromEnv,
   encryptBundle,
@@ -27,6 +28,7 @@ import {
   postgresEnvFromUrl,
   requireUuid,
   requiredEnv,
+  resolveObjectOwner,
   safeCliFailure,
   sha256Bytes,
   stableJson,
@@ -48,16 +50,18 @@ const INVENTORY_SQL = String.raw`
 SELECT json_build_object(
   'tenants', COALESCE((
     SELECT json_agg(json_build_object(
-      'tenant_id', id,
-      'site_id', core_site_id
-    ) ORDER BY id)
-    FROM sites_cms.tenants
+      'tenant_id', tenant.id,
+      'site_id', tenant.core_site_id,
+      'documents', ${TENANT_DOCUMENTS_SQL}
+    ) ORDER BY tenant.id)
+    FROM sites_cms.tenants tenant
   ), '[]'::json),
   'media', COALESCE((
     SELECT json_agg(json_build_object(
       'tenant_id', tenant_id,
       'media_id', id,
       'state', state,
+      'kind', kind,
       'quarantine_key', quarantine_key,
       'approved_master_key', approved_master_key,
       'rendition_manifest', rendition_manifest
@@ -84,6 +88,8 @@ SELECT json_build_object(
       (SELECT count(*) FROM sites_cms.publication_jobs)
   )
 );`;
+
+const BUNDLE_SIZE_WARNING_BYTES = 1.5 * 1024 * 1024 * 1024;
 
 function runCommand(command, args, env, spawn = spawnSync) {
   const result = spawn(command, args, {
@@ -127,18 +133,44 @@ function readDatabaseInventory(env, spawn) {
   ) fail("DATABASE_INVENTORY_INVALID");
   value.counts.tenants = Number(value.counts.tenants);
   value.counts.documents = Number(value.counts.documents);
+  for (const tenant of value.tenants) {
+    tenant.documents = Number(tenant?.documents);
+    if (!Number.isSafeInteger(tenant.documents) || tenant.documents < 0) {
+      fail("DATABASE_INVENTORY_INVALID");
+    }
+  }
   return value;
 }
 
+/*
+ * #2830 — the database holds every brand's tenant. Each tenant must carry its
+ * own valid, unique site id, and `siteId` (the site this job signs for) must be
+ * one of them. Every row and every key is then checked against ITS OWN tenant,
+ * so a row in an unknown tenant or a key under another tenant still fails closed.
+ */
 export function buildReferenceMap(inventory, siteId) {
-  if (
-    inventory.tenants.length !== 1 ||
-    inventory.tenants[0]?.site_id !== siteId ||
-    !/^[0-9a-f-]{36}$/i.test(String(inventory.tenants[0]?.tenant_id || ""))
-  ) fail("DATABASE_SITE_SCOPE_MISMATCH");
-  const tenantId = String(inventory.tenants[0].tenant_id);
+  const tenantsById = new Map();
+  const siteIds = new Set();
+  for (const row of inventory.tenants) {
+    const tenantId = requireUuid(row?.tenant_id, "DATABASE_SITE_SCOPE_MISMATCH");
+    const rowSiteId = requireUuid(row?.site_id, "DATABASE_SITE_SCOPE_MISMATCH");
+    if (tenantsById.has(tenantId) || siteIds.has(rowSiteId)) {
+      fail("DATABASE_SITE_SCOPE_MISMATCH");
+    }
+    siteIds.add(rowSiteId);
+    tenantsById.set(tenantId, { ...row, tenant_id: tenantId, site_id: rowSiteId });
+  }
+  const tenants = [...tenantsById.values()];
+  const signingTenant = tenants.find((tenant) => tenant.site_id === siteId);
+  if (!signingTenant) fail("DATABASE_PILOT_TENANT_MISSING");
+  const ownerOf = (row) => {
+    const owner = tenantsById.get(String(row.tenant_id));
+    if (!owner) fail("DATABASE_SITE_SCOPE_MISMATCH");
+    return owner;
+  };
   const references = new Map();
   const add = (
+    owner,
     bucket,
     key,
     state,
@@ -155,7 +187,7 @@ export function buildReferenceMap(inventory, siteId) {
       expectedBytes !== null &&
       (!Number.isSafeInteger(expectedBytes) || expectedBytes < 1)
     ) fail("DATABASE_INVENTORY_INVALID");
-    validateObjectIdentity(bucket, key, siteId, tenantId);
+    validateObjectIdentity(bucket, key, owner.site_id, owner.tenant_id);
     const identity = `${bucket}/${key}`;
     const previous = references.get(identity);
     if (
@@ -175,10 +207,11 @@ export function buildReferenceMap(inventory, siteId) {
     });
   };
   for (const media of inventory.media) {
-    if (String(media.tenant_id) !== tenantId) fail("DATABASE_SITE_SCOPE_MISMATCH");
-    const mediaId = requireUuid(String(media.media_id), "DATABASE_INVENTORY_INVALID");
+    const owner = ownerOf(media);
+    requireUuid(String(media.media_id), "DATABASE_INVENTORY_INVALID");
     const state = String(media.state || "UNKNOWN").slice(0, 32);
     add(
+      owner,
       "sites-media-quarantine",
       media.quarantine_key,
       `media:${state}`,
@@ -187,6 +220,14 @@ export function buildReferenceMap(inventory, siteId) {
       state === "UPLOADING",
     );
     const manifest = media.rendition_manifest;
+    // #2830 — a stream video lives on the stream service: READY with nothing
+    // in Sites storage is its normal state. It must also hold no object here.
+    if (media.kind === "stream_video") {
+      if (manifest !== null && manifest !== undefined || media.approved_master_key) {
+        fail("DATABASE_INVENTORY_INVALID");
+      }
+      continue;
+    }
     if (
       ["READY", "TOMBSTONED"].includes(state) &&
       (!manifest || typeof manifest !== "object" || Array.isArray(manifest))
@@ -200,6 +241,7 @@ export function buildReferenceMap(inventory, siteId) {
         manifest.master.key !== media.approved_master_key
       ) fail("DATABASE_INVENTORY_INVALID");
       add(
+        owner,
         "sites-media-approved",
         manifest.master.key,
         `media:${state}`,
@@ -208,8 +250,9 @@ export function buildReferenceMap(inventory, siteId) {
       );
       if (state === "TOMBSTONED") {
         add(
+          owner,
           "sites-media-recovery",
-          `recovery/${tenantId}/${manifest.master.key.slice("approved/".length)}`,
+          `recovery/${owner.tenant_id}/${manifest.master.key.slice("approved/".length)}`,
           `media:${state}`,
           manifest.master.digest,
           manifest.master.bytes,
@@ -220,6 +263,7 @@ export function buildReferenceMap(inventory, siteId) {
       }
       for (const rendition of manifest.renditions || []) {
         add(
+          owner,
           "sites-media-approved",
           rendition?.key,
           `media:${state}`,
@@ -228,8 +272,9 @@ export function buildReferenceMap(inventory, siteId) {
         );
         if (state === "TOMBSTONED") {
           add(
+            owner,
             "sites-media-recovery",
-            `recovery/${tenantId}/${String(rendition?.key || "").slice("approved/".length)}`,
+            `recovery/${owner.tenant_id}/${String(rendition?.key || "").slice("approved/".length)}`,
             `media:${state}`,
             rendition?.digest,
             rendition?.bytes,
@@ -241,19 +286,20 @@ export function buildReferenceMap(inventory, siteId) {
     }
   }
   for (const publication of inventory.publications) {
-    if (String(publication.tenant_id) !== tenantId) fail("DATABASE_SITE_SCOPE_MISMATCH");
+    const owner = ownerOf(publication);
     if (
       String(publication.status) === "published" &&
       (!publication.artifact_key || !publication.artifact_digest)
     ) fail("DATABASE_INVENTORY_INVALID");
     add(
+      owner,
       "sites-publication-artifacts",
       publication.artifact_key,
       `publication:${String(publication.status || "unknown").slice(0, 32)}`,
       publication.artifact_digest || null,
     );
   }
-  return { references, tenantId };
+  return { references, tenantId: signingTenant.tenant_id, tenants };
 }
 
 export function assertReferenceIntegrity(references, downloaded) {
@@ -471,9 +517,16 @@ export async function runBackup({
       managementProject,
     );
     if (managementBackup.region !== managementProject.region) fail("BACKUP_REGION_MISMATCH");
-    const protection = await readProtection(coreConfig, siteId, fetchImpl, now);
     const before = readDatabaseInventory(env, spawn);
-    const { references, tenantId } = buildReferenceMap(before, siteId);
+    const { references, tenantId, tenants } = buildReferenceMap(before, siteId);
+    // A draft-only site has no publications, so Core answers with an empty list.
+    const protection = new Map();
+    for (const tenant of tenants) {
+      protection.set(
+        tenant.site_id,
+        await readProtection(coreConfig, tenant.site_id, fetchImpl, now),
+      );
+    }
 
     const databasePath = join(temporary, "database.dump");
     runCommand(
@@ -502,7 +555,7 @@ export async function runBackup({
     let index = 0;
     for (const bucket of SITES_BUCKETS) {
       for (const listed of firstListings.get(bucket)) {
-        validateObjectIdentity(bucket, listed.key, siteId, tenantId);
+        const owner = resolveObjectOwner(bucket, listed.key, tenants);
         const bytes = await getObject(storageConfig, bucket, listed.key, fetchImpl);
         if (bytes.byteLength !== listed.bytes) fail("OBJECT_SIZE_MISMATCH");
         const path = join(temporary, `object-${String(index).padStart(8, "0")}.bin`);
@@ -510,6 +563,7 @@ export async function runBackup({
         downloaded.set(`${bucket}/${listed.key}`, {
           bucket,
           key: listed.key,
+          owner,
           path,
           bytes: bytes.byteLength,
           sha256: sha256Bytes(bytes),
@@ -527,7 +581,10 @@ export async function runBackup({
     const after = readDatabaseInventory(env, spawn);
     if (stableJson(before) !== stableJson(after)) fail("DATABASE_CHANGED_DURING_BACKUP");
     assertReferenceIntegrity(references, downloaded);
-    const protectedMedia = protectedMediaIds(protection, downloaded, siteId);
+    const protectedMedia = new Map(tenants.map((tenant) => [
+      tenant.site_id,
+      protectedMediaIds(protection.get(tenant.site_id), downloaded, tenant.site_id),
+    ]));
     const generatedAt = now.toISOString();
     const databaseBackupVerifiedAt = managementBackup.state === "pending_first_backup"
       ? generatedAt
@@ -539,22 +596,32 @@ export async function runBackup({
         key: object.key,
         bytes: object.bytes,
         sha256: object.sha256,
-        site_id: siteId,
+        site_id: object.owner.site_id,
         reference_state:
           references.get(`${object.bucket}/${object.key}`)?.state || "unreferenced",
         protected: isProtected(
           object.bucket,
           object.key,
-          protection,
-          protectedMedia,
-          siteId,
+          protection.get(object.owner.site_id),
+          protectedMedia.get(object.owner.site_id),
+          object.owner.site_id,
         ),
         path: object.path,
       }));
     const manifest = {
-      schema_version: 1,
+      schema_version: 2,
       site_id: siteId,
       tenant_id: tenantId,
+      tenants: tenants.map((tenant) => {
+        const owned = objects.filter((object) => object.site_id === tenant.site_id);
+        return {
+          tenant_id: tenant.tenant_id,
+          site_id: tenant.site_id,
+          documents: tenant.documents,
+          objects: owned.length,
+          object_bytes: owned.reduce((total, object) => total + object.bytes, 0),
+        };
+      }),
       generated_at: generatedAt,
       database: {
         format: "pg_dump-custom",
@@ -593,11 +660,19 @@ export async function runBackup({
       object_manifest_verified_at: generatedAt,
       object_count: manifest.counts.objects,
       object_bytes: manifest.counts.object_bytes,
+      // #2830 — the sites this verified snapshot covers; the retention job
+      // sweeps exactly these.
+      site_ids: tenants.map((tenant) => tenant.site_id),
     };
     writeSafeResult(resultPath, result);
     process.stdout.write(
-      `SITES_BACKUP_OK objects=${result.object_count} bytes=${result.object_bytes}\n`,
+      `SITES_BACKUP_OK tenants=${tenants.length} objects=${result.object_count} bytes=${result.object_bytes}\n`,
     );
+    // decryptBundle and the restore drill read the whole bundle at once, and
+    // Node refuses a file over 2 GiB. Say so while there is still room.
+    if (encrypted.bytes > BUNDLE_SIZE_WARNING_BYTES) {
+      process.stdout.write(`::warning::SITES_BACKUP_NEAR_SIZE_LIMIT bytes=${encrypted.bytes}\n`);
+    }
     return result;
   } finally {
     rmSync(temporary, { recursive: true, force: true });
@@ -627,7 +702,7 @@ export async function recordBackupEvidence({
   const expectedKeys = [
     "bundle_name", "bundle_path", "bundle_sha256", "code",
     "database_backup_verified_at", "managed_backup_state", "manifest_digest", "object_bytes",
-    "object_count", "object_manifest_verified_at", "ok",
+    "object_count", "object_manifest_verified_at", "ok", "site_ids",
   ];
   if (
     !result || JSON.stringify(Object.keys(result).sort()) !== JSON.stringify(expectedKeys.sort()) ||
@@ -638,7 +713,8 @@ export async function recordBackupEvidence({
       result.managed_backup_state,
     ) ||
     !Number.isSafeInteger(result.object_count) || result.object_count < 0 ||
-    !Number.isSafeInteger(result.object_bytes) || result.object_bytes < 0
+    !Number.isSafeInteger(result.object_bytes) || result.object_bytes < 0 ||
+    !Array.isArray(result.site_ids) || !result.site_ids.includes(siteId)
   ) fail("BACKUP_RESULT_INVALID");
   if (
     env.SITES_BACKUP_INDEPENDENT_READBACK_SHA256 !== result.bundle_sha256 ||
@@ -668,7 +744,7 @@ export async function recordBackupEvidence({
     restore.ok !== true || restore.code !== "SITES_RESTORE_DRILL_COMPLETE" ||
     restore.object_count !== result.object_count ||
     restore.object_bytes !== result.object_bytes ||
-    !Number.isSafeInteger(restore.tenant_count) || restore.tenant_count < 1 ||
+    restore.tenant_count !== result.site_ids.length ||
     !Number.isSafeInteger(restore.document_count) || restore.document_count < 1 ||
     !/^[0-9a-f]{64}$/.test(restore.restore_drill_evidence_digest) ||
     !Number.isFinite(restoredAt) || restoredAt > now.getTime() + 5 * 60 * 1000 ||

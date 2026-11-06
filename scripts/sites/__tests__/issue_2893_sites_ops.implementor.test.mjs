@@ -538,7 +538,11 @@ test("#2893 restore drill proves counts and digests before signed Core evidence"
       if (String(sql).includes("pg_namespace")) return { status: 0, stdout: "0\n", stderr: "" };
       return {
         status: 0,
-        stdout: `${JSON.stringify({ tenants: 1, documents: 6, site_ids: [SITE_ID] })}\n`,
+        stdout: `${JSON.stringify({
+          tenants: 1,
+          documents: 6,
+          tenant_rows: [{ tenant_id: TENANT_ID, site_id: SITE_ID, documents: 6 }],
+        })}\n`,
         stderr: "",
       };
     };
@@ -723,6 +727,7 @@ test("#2893 Core backup readiness is recorded only after exact private readback"
       object_manifest_verified_at: NOW.toISOString(),
       object_count: 1,
       object_bytes: 5,
+      site_ids: [SITE_ID],
     };
     writeFileSync(resultPath, stableJson(result));
     writeFileSync(restoreResultPath, stableJson({

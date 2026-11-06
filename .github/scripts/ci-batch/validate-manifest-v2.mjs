@@ -369,7 +369,7 @@ export function phase3dContractDigest(manifest) {
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
 // #4283: register the accept single-member-row migration and its proofs
 // #4276: register the place-pipeline migrations and their proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "57a7e5b210bb9e604b939449b7caf4d77dbb05976f3e362ee5725e99f7ec3ffa";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "797de082d23636a71296c91eaac71a08331efac331a8e019d342db3284964622";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1271,6 +1271,7 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
+    // The list of tracked paths has passed Node's default 1 MiB output limit.
     listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")

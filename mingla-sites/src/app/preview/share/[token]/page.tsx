@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { SitePageView } from "../../../../components/SitePageView";
-import { SharedPreviewLinks } from "../../../../components/SharedPreviewLinks";
+import { PreviewLinkScope } from "../../../../components/PreviewLinks";
+import { withPreviewMediaKey, withPreviewOfferingKey } from "../../../../lib/previewMedia";
 import { wantsLessData } from "../../../../lib/siteVideo";
 import { resolveSitePath } from "../../../../lib/pageRouting";
 import { normalizeRequestSegments } from "../../../../contracts/generated/routes.ts";
@@ -48,7 +49,9 @@ export default async function SharedPreviewPage({
   } catch {
     notFound();
   }
-  const { artifact, key } = shared;
+  const { key } = shared;
+  // #2830 — this page's pictures and videos come through the key, not the publication.
+  const artifact = withPreviewMediaKey(shared.artifact, key);
   const resolved = resolveSitePath(artifact, previewPath);
   if (resolved.kind !== "page" && resolved.kind !== "entry") notFound();
   const entry = resolved.kind === "entry" ? resolved.entry : undefined;
@@ -61,13 +64,15 @@ export default async function SharedPreviewPage({
     preview: true,
     shared: true,
   });
+  const incoming = await headers();
   return (
     <div data-preview="1" data-shared-preview="1" data-page={resolved.page.key}>
       <p className="preview-banner" role="status">
         Private preview — not live yet. Only people with this link can see it.
       </p>
-      <SitePageView artifact={artifact} page={resolved.page} previewKey={key} live={live} forms={forms} entry={entry} saveData={wantsLessData(await headers())} />
-      <SharedPreviewLinks token={token} />
+      <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: key }}>
+        <SitePageView artifact={artifact} page={resolved.page} previewKey={key} live={withPreviewOfferingKey(live, key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
+      </PreviewLinkScope>
     </div>
   );
 }

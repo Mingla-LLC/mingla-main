@@ -8,7 +8,7 @@ import { accent, canvas } from "../../../../src/constants/designSystem";
 /*
  * #2829 W9r — /brand/<id>/website/<section>[/<entry|new>] and
  * /website/preview, plus the old addresses (look, domains, plan?part=…),
- * which the Website app redirects. Same lazy chunk as website.tsx.
+ * which the Website app redirects. /website/setup is #2830's one screen. Same lazy chunk as website.tsx.
  */
 const LazyWebsiteApp = React.lazy(() => import("../../../../src/components/sites/website/WebsiteApp"));
 
@@ -22,6 +22,11 @@ export default function BrandWebsiteSectionRoute(): React.ReactElement {
     device?: string | string[];
     orientation?: string | string[];
     studioResult?: string | string[];
+    step?: string | string[];
+    ari?: string | string[];
+    added?: string | string[];
+    addedId?: string | string[];
+    returnTo?: string | string[];
   }>();
   const brandId = first(params.id);
   const segments = Array.isArray(params.path) ? params.path : typeof params.path === "string" ? params.path.split("/") : [];
@@ -30,7 +35,7 @@ export default function BrandWebsiteSectionRoute(): React.ReactElement {
       <LazyWebsiteApp
         brandId={typeof brandId === "string" ? brandId : ""}
         segments={segments}
-        search={{ part: first(params.part), device: first(params.device), orientation: first(params.orientation), studioResult: first(params.studioResult) }}
+        search={{ part: first(params.part), device: first(params.device), orientation: first(params.orientation), studioResult: first(params.studioResult), step: first(params.step), ari: first(params.ari), added: first(params.added), addedId: first(params.addedId), returnTo: first(params.returnTo) }}
       />
     </React.Suspense>
   );

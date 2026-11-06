@@ -36,6 +36,8 @@ const mockBack = jest.fn();
 const mockInvalidate = jest.fn();
 
 jest.mock("expo-router", () => ({
+  // #2830: the route now reads `returnTo`; none here, so today's exits apply.
+  useLocalSearchParams: () => ({}),
   useRouter: () => ({
     replace: mockReplace,
     back: mockBack,

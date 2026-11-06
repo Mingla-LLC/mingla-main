@@ -1,6 +1,6 @@
 /**
  * #2829 W9a — the website plan's service calls and hooks. Imported ONLY by
- * the Website section (website/sections/PlanSection.tsx), so Metro keeps it, the
+ * the Website section (WebsiteApp and setup/), so Metro keeps it, the
  * plan screens and site-contracts' plan vocabulary in that one route chunk:
  * nothing here is shared with — or hoisted into — the boot payload (#3493).
  */
@@ -74,6 +74,8 @@ export async function saveBrandSitePlanDesign(input: {
   brandId: string;
   revision: number;
   designKey: "atelier" | "voyage";
+  /** #2830 — "mingla" when the owner took Mingla's default design. */
+  sourceType?: "owner" | "mingla";
 }): Promise<SitePlanState> {
   const { data, error } = await supabase.functions.invoke<{ ok: boolean; data?: unknown }>(
     "brand-site-control",
@@ -83,7 +85,7 @@ export async function saveBrandSitePlanDesign(input: {
         method: "POST",
         revision: input.revision,
         design_key: input.designKey,
-        source_type: "owner",
+        source_type: input.sourceType ?? "owner",
       },
     },
   );
@@ -158,7 +160,7 @@ export function useSaveBrandSitePlan(brandId: string) {
 export function useSaveBrandSitePlanDesign(brandId: string) {
   const apply = useApplyPlan(brandId);
   return useMutation({
-    mutationFn: (input: { revision: number; designKey: "atelier" | "voyage" }) =>
+    mutationFn: (input: { revision: number; designKey: "atelier" | "voyage"; sourceType?: "owner" | "mingla" }) =>
       saveBrandSitePlanDesign({ brandId, ...input }),
     onSuccess: apply,
   });
