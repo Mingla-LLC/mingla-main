@@ -762,8 +762,10 @@ describe("#3314 S — the remaining hosts wire the same rule", () => {
       /const hideRemainingCount =\s*bundleHideRemainingCount === true \|\|\s*socialProofQuery\.data\?\.hideRemainingCount === true \|\|\s*\(bundleHideRemainingCount !== false &&\s*socialProofQuery\.data\?\.hideRemainingCount !== false\);/,
     );
     // Both branches of the body's event (deck seed and direct bundle) carry it.
+    // [TEST-MOD-APPROVED #3281] the two branches are now `sourcedPublicEvent`;
+    // `publicEventForBody` adds the day-scope fields to whichever was chosen.
     const bodyEvent = code.slice(
-      code.indexOf("const publicEventForBody"),
+      code.indexOf("const sourcedPublicEvent"),
       code.indexOf("const canonicalLifecycleReady"),
     );
     expect(bodyEvent.match(/hideRemainingCount,/g)).toHaveLength(2);

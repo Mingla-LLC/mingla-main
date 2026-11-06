@@ -1,0 +1,585 @@
+{
+  "issue": 4273,
+  "comment": "Hand-derived from Twilio's encoder (140 octets; 6-octet header when multipart; escape and surrogate pairs kept whole). Each part is [text, repeat]. Read by the Deno and Jest suites.",
+  "cases": [
+    {
+      "id": "empty",
+      "parts": [],
+      "encoding": "GSM-7",
+      "segments": 0,
+      "segmentsBeforeThisFix": 0
+    },
+    {
+      "id": "plain-160",
+      "parts": [
+        [
+          "a",
+          160
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 1,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "plain-161",
+      "parts": [
+        [
+          "a",
+          161
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "plain-306",
+      "parts": [
+        [
+          "a",
+          306
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "plain-307",
+      "parts": [
+        [
+          "a",
+          307
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 3,
+      "segmentsBeforeThisFix": 3
+    },
+    {
+      "id": "plain-459",
+      "parts": [
+        [
+          "a",
+          459
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 3,
+      "segmentsBeforeThisFix": 3
+    },
+    {
+      "id": "plain-460",
+      "parts": [
+        [
+          "a",
+          460
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 4,
+      "segmentsBeforeThisFix": 4
+    },
+    {
+      "id": "extended-160-septets",
+      "parts": [
+        [
+          "a",
+          158
+        ],
+        [
+          "€",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 1,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "extended-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "€",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-euro-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "€",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-open-bracket-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "[",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-close-bracket-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "]",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-open-brace-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "{",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-close-brace-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "}",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-pipe-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "|",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-caret-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "^",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-tilde-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "~",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "each-backslash-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "\\",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "form-feed-at-160-septets",
+      "parts": [
+        [
+          "a",
+          158
+        ],
+        [
+          "\f",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 1,
+      "segmentsBeforeThisFix": 3
+    },
+    {
+      "id": "form-feed-at-161-septets",
+      "parts": [
+        [
+          "a",
+          159
+        ],
+        [
+          "\f",
+          1
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 3
+    },
+    {
+      "id": "all-extended-80",
+      "parts": [
+        [
+          "€",
+          80
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 1,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "all-extended-81",
+      "parts": [
+        [
+          "€",
+          81
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "all-extended-152",
+      "parts": [
+        [
+          "€",
+          152
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "all-extended-153",
+      "parts": [
+        [
+          "€",
+          153
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 3,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "multipart-306-pair-clear-of-boundary",
+      "parts": [
+        [
+          "a",
+          151
+        ],
+        [
+          "€",
+          1
+        ],
+        [
+          "a",
+          153
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "pair-straddles-153-moves-whole",
+      "parts": [
+        [
+          "a",
+          152
+        ],
+        [
+          "€",
+          1
+        ],
+        [
+          "a",
+          151
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "pair-straddles-153-costs-a-segment",
+      "parts": [
+        [
+          "a",
+          152
+        ],
+        [
+          "€",
+          1
+        ],
+        [
+          "a",
+          152
+        ]
+      ],
+      "encoding": "GSM-7",
+      "segments": 3,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-70",
+      "parts": [
+        [
+          "ж",
+          70
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 1,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "ucs2-71",
+      "parts": [
+        [
+          "ж",
+          71
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-134",
+      "parts": [
+        [
+          "ж",
+          134
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-135",
+      "parts": [
+        [
+          "ж",
+          135
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 3,
+      "segmentsBeforeThisFix": 3
+    },
+    {
+      "id": "ucs2-extended-not-doubled-70",
+      "parts": [
+        [
+          "ж",
+          1
+        ],
+        [
+          "€",
+          69
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 1,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "ucs2-extended-not-doubled-71",
+      "parts": [
+        [
+          "ж",
+          1
+        ],
+        [
+          "€",
+          70
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-extended-not-doubled-134",
+      "parts": [
+        [
+          "ж",
+          1
+        ],
+        [
+          "€",
+          133
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-emoji-35",
+      "parts": [
+        [
+          "🎉",
+          35
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 1,
+      "segmentsBeforeThisFix": 1
+    },
+    {
+      "id": "ucs2-emoji-36",
+      "parts": [
+        [
+          "🎉",
+          36
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-emoji-66",
+      "parts": [
+        [
+          "🎉",
+          66
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-emoji-67",
+      "parts": [
+        [
+          "🎉",
+          67
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 3,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-surrogate-straddles-67",
+      "parts": [
+        [
+          "ж",
+          66
+        ],
+        [
+          "🎉",
+          1
+        ],
+        [
+          "ж",
+          66
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 3,
+      "segmentsBeforeThisFix": 2
+    },
+    {
+      "id": "ucs2-surrogate-straddles-moves-whole",
+      "parts": [
+        [
+          "ж",
+          66
+        ],
+        [
+          "🎉",
+          1
+        ],
+        [
+          "ж",
+          65
+        ]
+      ],
+      "encoding": "UCS-2",
+      "segments": 2,
+      "segmentsBeforeThisFix": 2
+    }
+  ]
+}

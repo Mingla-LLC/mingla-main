@@ -75,6 +75,7 @@ import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
+import { doorExtrasLine, readDoorExtras } from "../../../../src/components/scanner/doorExtras";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -144,6 +145,8 @@ interface ResultOverlayState {
   kind: ScanResult;
   message: string;
   detail?: string;
+  /** issue #3281 — what the guest is still owed; never clipped. */
+  extras?: string;
 }
 
 interface ResultOverlaySpec {
@@ -397,11 +400,18 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // haptics on optional day-label enrichment (ticket already consumed).
           const admittedId =
             typeof result.eventDateId === "string" ? result.eventDateId : null;
+          // issue #3281 — what this guest is still owed, under the ticket.
+          const extrasLine =
+            kind === "success" || kind === "duplicate"
+              ? doorExtrasLine(readDoorExtras(result.extras), admittedId)
+              : null;
+          const extras = extrasLine ?? undefined;
           if (kind === "success") {
             showResult({
               kind,
               message: `${result.buyerName ?? "Guest"} checked in`,
               detail: result.ticketName ?? "Ticket",
+              extras,
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -428,7 +438,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             } else {
               message = "Ticket not found";
             }
-            showResult({ kind, message, detail });
+            showResult({ kind, message, detail, extras });
             void Haptics.notificationAsync(
               kind === "duplicate" ||
                 kind === "not_yet_open" ||
@@ -558,6 +568,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
               kind: copy.kind,
               message: copy.message,
               detail: copy.detail,
+              extras,
             });
           } catch {
             // Keep the authoritative base overlay.
@@ -791,7 +802,13 @@ export default function ScannerCameraRoute(): React.ReactElement {
               onPress={dismissOverlay}
               style={styles.overlayCard}
               accessibilityRole="button"
-              accessibilityLabel="Dismiss scan result"
+              // issue #3281 — a screen reader hears the result, the ticket and
+              // what the guest is still owed, not only how to dismiss it.
+              accessibilityLabel={[overlay.message, overlay.detail, overlay.extras]
+                .filter((part): part is string => typeof part === "string" && part.length > 0)
+                .join(". ")}
+              accessibilityHint="Dismisses the scan result"
+              accessibilityLiveRegion="polite"
             >
               <View
                 style={[
@@ -811,6 +828,13 @@ export default function ScannerCameraRoute(): React.ReactElement {
               {overlay.detail !== undefined ? (
                 <Text style={styles.overlayDetail} numberOfLines={2}>
                   {overlay.detail}
+                </Text>
+              ) : null}
+              {overlay.extras !== undefined ? (
+                // issue #3281 — its own line, unclipped: a long ticket or day
+                // label must not hide a count or an "(another day)".
+                <Text style={styles.overlayDetail} testID="scan-result-extras">
+                  {overlay.extras}
                 </Text>
               ) : null}
             </Pressable>

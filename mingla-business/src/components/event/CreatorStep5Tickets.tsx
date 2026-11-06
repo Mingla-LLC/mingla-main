@@ -506,7 +506,8 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
               : undefined
           }
           dayScopeEntries={dayEntries}
-          // Undefined on the edit screen, which does not carry the mode yet.
+          // On the edit screen it comes from the live event; undefined only when
+          // it wasn't read, which hides the hints that depend on it.
           dayScopePricingMode={draft.multiDatePricingMode}
           soldByDay={
             editingTicket === null || editMode === undefined

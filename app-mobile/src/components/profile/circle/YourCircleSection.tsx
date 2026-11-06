@@ -6,8 +6,8 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import * as Sentry from '@sentry/react-native';
 import { colors, fontWeights } from '../../../constants/designSystem';
+import { reportNonFatal } from '../../../diagnostics/reportNonFatal';
 import { useAppStore } from '../../../store/appStore';
 import { useUserCircle } from '../../../hooks/useUserCircle';
 import type { CirclePerson } from '../../../types/circle';
@@ -36,7 +36,8 @@ export const YourCircleSection: React.FC<YourCircleSectionProps> = ({
 
   useEffect(() => {
     if (error && people.length > 0) {
-      Sentry.captureException(error);
+      // Issue #4275: a restored error can be a plain `{}`; this reports only real Errors.
+      reportNonFatal('yourCircle.loadMore', error, { peopleCount: people.length });
     }
   }, [error, people.length]);
 

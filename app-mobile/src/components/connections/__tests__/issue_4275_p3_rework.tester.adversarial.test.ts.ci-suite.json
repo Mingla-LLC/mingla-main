@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/connections/__tests__/issue_4275_p3_rework.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-p3-rework-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["net", "read", "env"]
+}

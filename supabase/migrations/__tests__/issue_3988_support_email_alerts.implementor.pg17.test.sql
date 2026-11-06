@@ -413,7 +413,7 @@ BEGIN
   IF pg_temp.t3988a_as('lead', '(SELECT count(*) FROM public.issue_3988_support_roster())') NOT LIKE 'ERR:42501:%' THEN
     RAISE EXCEPTION 'authenticated_called_roster';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'issue_3988_support_overdue_sweep' AND schedule = '*/15 * * * *') THEN
+  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'issue_3988_support_overdue_sweep' AND schedule = '6,21,36,51 * * * *') THEN
     RAISE EXCEPTION 'overdue_cron_not_scheduled';
   END IF;
 END;

@@ -63,10 +63,21 @@ function timeOf(message: MergeableMessage): number {
   return Date.parse(message.timestamp);
 }
 
+/** The name shown when a sender's name could not be read (messagingService, ConnectionsPage). */
+export const UNKNOWN_SENDER_NAME = 'Unknown';
+
+function isKnownName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '' && value !== UNKNOWN_SENDER_NAME;
+}
+
 /** Copies only the fields `next` actually defines, so a sparse update never erases data. */
 function overlay<T extends MergeableMessage>(base: T, next: T): T {
   const merged: Record<string, unknown> = { ...(base as unknown as Record<string, unknown>) };
   for (const [key, value] of Object.entries(next as unknown as Record<string, unknown>)) {
+    // Issue #4275: a failed name read gives "Unknown" or nothing. It never replaces
+    // a name already known for this message, whether that came from memory or from
+    // the persisted chat cache.
+    if (key === 'senderName' && !isKnownName(value) && isKnownName(merged[key])) continue;
     if (value !== undefined) merged[key] = value;
   }
   return merged as unknown as T;
