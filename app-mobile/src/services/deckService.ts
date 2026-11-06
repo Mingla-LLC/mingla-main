@@ -842,6 +842,7 @@ export class DeckService {
               selectedCategories: categoryFilters.length > 0 ? categoryFilters : undefined,
               limit: curatedLimit,
               skipDescriptions: true,
+              source: 'deck',
             });
             if (__DEV__) {
               console.log(
