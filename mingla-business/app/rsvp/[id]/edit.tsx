@@ -80,7 +80,7 @@ import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 // Unlisted RSVP invite link — a private RSVP lands on its dashboard, not on a
 // public page nobody can open without an invite.
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
-import { isSetupReturn, setupReturnTarget, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
+import { isSetupReturn, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
 import {
   RSVP_CHIP_IN_SAVE_REFUSED_COPY,
   isRsvpChipInBankRefusal,
@@ -628,7 +628,7 @@ export default function RsvpEditRoute(): React.ReactElement {
         }
         if (setupReturn) {
           router.replace(
-            (mode === "discarded" ? setupReturn : setupReturnTarget(setupReturn, effectiveDraftId)) as never,
+            (mode === "discarded" ? setupReturn : setupReturnWith(setupReturn, "event", effectiveDraftId)) as never,
           );
           return;
         }
@@ -1048,7 +1048,7 @@ export default function RsvpEditRoute(): React.ReactElement {
     <>
       {setupReturn ? (
         <React.Suspense fallback={null}>
-          <LazyCreatorReturnBar onBack={() => router.replace(setupReturnTarget(setupReturn, effectiveDraftId) as never)} />
+          <LazyCreatorReturnBar onBack={() => router.replace(setupReturnWith(setupReturn, "event", effectiveDraftId) as never)} />
         </React.Suspense>
       ) : null}
       <RsvpCreatorWizard

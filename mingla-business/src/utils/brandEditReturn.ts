@@ -30,19 +30,13 @@ export function isSetupReturn(value: unknown): boolean {
     /^\/brand\/[A-Za-z0-9_-]+\/website\/setup(\?[\w=&%-]*)?$/.test(value as string);
 }
 
-/** Adds what the setup screen shows on return (state 12). */
-export function setupReturnWith(returnTo: string, kind: "event" | "trip" | "experience", id: string): string {
-  const separator = returnTo.includes("?") ? "&" : "?";
-  return `${returnTo}${separator}added=${kind}&addedId=${encodeURIComponent(id)}`;
-}
-
 /**
- * A draft that has a server id comes back named; one that never reached the
- * server (a `d_` id) just comes back.
+ * Adds what the setup screen shows on return (state 12). Only an id the server
+ * knows is named: a draft that never reached it (a `d_` id) just comes back.
  */
-export function setupReturnTarget(returnTo: string, draftId: unknown): string {
-  return typeof draftId === "string" && draftId.length > 0 && !draftId.startsWith("d_")
-    ? setupReturnWith(returnTo, "event", draftId)
+export function setupReturnWith(returnTo: string, kind: "event" | "trip" | "experience", id: unknown): string {
+  return typeof id === "string" && id && !id.startsWith("d_")
+    ? `${returnTo}${returnTo.includes("?") ? "&" : "?"}added=${kind}&addedId=${encodeURIComponent(id)}`
     : returnTo;
 }
 

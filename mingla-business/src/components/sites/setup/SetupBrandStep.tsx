@@ -9,7 +9,6 @@ import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { useMarkNotApplicable } from "../../../sites/setupApi";
 import type { BrandContextField, SitePlanState } from "../../../sites/sitePlanState";
 import type { Brand } from "../../../store/currentBrandStore";
-import { validateBrandContactEmail } from "../../../utils/brandContactEmail";
 import type { BrandAddressPatch } from "../../../utils/brandAddressPatch";
 import { parsePhoneEntry } from "../../../../../packages/phone-input/phoneNumber";
 import { ThemeControlRow } from "../../theme/ThemeControlRow";
@@ -17,6 +16,17 @@ import { ThemeSheet } from "../../theme/ThemeSheet";
 import { Input, PHONE_COUNTRIES } from "../../ui/Input";
 import type { AriFlowUploadCopy, AriFlowUploadKind } from "../../ari/ariFlowCards";
 import { Chip, Field, Hint, WButton, ui } from "../website/ui";
+
+/**
+ * The brand contact email rule, word for word from `utils/brandContactEmail`
+ * (its owner; a test pins the two together). Kept here so this lazy screen does
+ * not pull that module, which the brand edit screen also loads, into the shared
+ * web bundle every visitor downloads.
+ */
+export const SETUP_CONTACT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const SETUP_CONTACT_EMAIL_INVALID = "That doesn't look like an email address. Fix it or clear it to save.";
+const validateSetupEmail = (value: string): string | null =>
+  value.trim().length === 0 || SETUP_CONTACT_EMAIL_RE.test(value.trim()) ? null : SETUP_CONTACT_EMAIL_INVALID;
 
 /*
  * Brand details in place (#2830 §4.2). Writes through the same useUpdateBrand
@@ -232,7 +242,7 @@ function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, pro
     case "description":
       return <TextFieldEditor field={field} multiline initial={joinBrandDescription(brand.tagline, brand.bio) ?? ""} max={500} hot={hot} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onFocus={onFocus} commit={(value) => onSave({ tagline: "", bio: value })} />;
     case "contact_email":
-      return <TextFieldEditor field={field} initial={brand.contact?.email ?? ""} placeholder="hello@yourbrand.com" keyboardType="email-address" hot={hot} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onFocus={onFocus} validate={validateBrandContactEmail} commit={(value) => onSave({ contact: { ...brand.contact, email: value } })} />;
+      return <TextFieldEditor field={field} initial={brand.contact?.email ?? ""} placeholder="hello@yourbrand.com" keyboardType="email-address" hot={hot} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onFocus={onFocus} validate={validateSetupEmail} commit={(value) => onSave({ contact: { ...brand.contact, email: value } })} />;
     case "contact_phone":
       return <PhoneEditor field={field} brand={brand} readOnly={readOnly} problem={problem} registerFlush={registerFlush} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
     case "address":

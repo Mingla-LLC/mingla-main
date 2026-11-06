@@ -102,7 +102,7 @@ import {
   type SectionKey,
 } from "../../../src/components/event/editPublishedSections";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
-import { isSetupReturn, setupReturnTarget, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
+import { isSetupReturn, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -647,7 +647,7 @@ export default function EventEditRoute(): React.ReactElement {
         }
         if (setupReturn) {
           router.replace(
-            (mode === "discarded" ? setupReturn : setupReturnTarget(setupReturn, effectiveDraftId)) as never,
+            (mode === "discarded" ? setupReturn : setupReturnWith(setupReturn, "event", effectiveDraftId)) as never,
           );
           return;
         }
@@ -1035,7 +1035,7 @@ export default function EventEditRoute(): React.ReactElement {
     <>
       {setupReturn ? (
         <React.Suspense fallback={null}>
-          <LazyCreatorReturnBar onBack={() => router.replace(setupReturnTarget(setupReturn, effectiveDraftId) as never)} />
+          <LazyCreatorReturnBar onBack={() => router.replace(setupReturnWith(setupReturn, "event", effectiveDraftId) as never)} />
         </React.Suspense>
       ) : null}
       <EventCreatorWizard

@@ -20,7 +20,7 @@ import {
   type SetupFlowView,
 } from "../setupStatus";
 import { websiteTodoFor } from "../websiteTodo";
-import { isSetupReturn, safeReturnTo, setupReturnTarget, setupReturnWith } from "../../utils/brandEditReturn";
+import { isSetupReturn, safeReturnTo, setupReturnWith } from "../../utils/brandEditReturn";
 import { setupStepFromRoute } from "../../screens/ari/setupFlowRoute";
 import type { BrandContextField } from "../sitePlanState";
 
@@ -192,9 +192,9 @@ describe("T-RET-1 the creators' way back", () => {
   });
   it("names what came back; a draft that never reached the server just comes back", () => {
     expect(setupReturnWith("/s?step=first_offering", "trip", "t 1")).toBe("/s?step=first_offering&added=trip&addedId=t%201");
-    expect(setupReturnTarget("/s", "real-id")).toBe("/s?added=event&addedId=real-id");
-    expect(setupReturnTarget("/s", "d_abc")).toBe("/s");
-    expect(setupReturnTarget("/s", null)).toBe("/s");
+    expect(setupReturnWith("/s", "event", "real-id")).toBe("/s?added=event&addedId=real-id");
+    expect(setupReturnWith("/s", "event", "d_abc")).toBe("/s");
+    expect(setupReturnWith("/s", "event", null)).toBe("/s");
   });
   it("a card's route is a step on the same screen, or a real page", () => {
     expect(setupStepFromRoute("/brand/b/edit?section=contact", "b")).toBe("brand");
@@ -216,5 +216,21 @@ describe("#2830 setup has no tab bar to clear", () => {
     expect(screen).toContain("const BOTTOM_NAV_CLEARANCE_PX = websiteSetup ? 0 : TAB_BAR_CLEARANCE_PX;");
     // No second, module-level 80 that a use could silently fall back to.
     expect(screen).not.toMatch(/^const BOTTOM_NAV_CLEARANCE_PX/m);
+  });
+});
+
+describe("#2830 the setup email rule is the brand contact email rule", () => {
+  it("same pattern and same words as utils/brandContactEmail", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const owner = require("../../utils/brandContactEmail") as typeof import("../../utils/brandContactEmail");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as typeof import("path");
+    const step = fs.readFileSync(path.resolve(__dirname, "../../components/sites/setup/SetupBrandStep.tsx"), "utf8");
+    expect(step).toContain(`SETUP_CONTACT_EMAIL_RE = ${owner.BRAND_CONTACT_EMAIL_RE.toString()};`);
+    expect(step).toContain(`SETUP_CONTACT_EMAIL_INVALID = ${JSON.stringify(owner.BRAND_CONTACT_EMAIL_INVALID)};`);
+    // The shared web bundle stays lean: this screen does not import the owner module.
+    expect(step).not.toMatch(/from "[^"]*brandContactEmail"/);
   });
 });
