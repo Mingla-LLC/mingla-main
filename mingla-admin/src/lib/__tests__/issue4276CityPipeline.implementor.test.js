@@ -275,7 +275,7 @@ test("the gaps table: All gaps totals, the Show filter and a city's status line"
   const redo = { reviews_eligible: 50, reviews_held: 0, redo_eligible: 50, redo_held: 0 };
   const rows = [live, seeded, draft].map((c) => matrixCells(c, { uncoveredTiles: 1, unfinishedSearches: 2, cappedOpen: 3 }, { outside_active: c === live ? 5 : 0 }, c === live ? redo : { reviews_eligible: 0, reviews_held: 0, redo_eligible: 0, redo_held: 0 }));
   const totals = Object.fromEntries(pipelineLib.matrixTotals(rows).map((t) => [t.id, t]));
-  assert.equal(totals.unsearched.text, "9");
+  assert.equal(totals.unsearched.text, "48", "three rows of 1 new tile x 14 + 2 searches");
   assert.equal(totals.capped.text, "9");
   assert.equal(totals.box.text, "5");
   assert.equal(totals.seed.text, "1 city");
@@ -567,10 +567,47 @@ test("below 1400 px a pick shows a bar that takes you to the run plan", async ()
 test("a held count is one short line, with the full wording in its tooltip", () => {
   const f = { active: 10, pre_checked: 10, pre_passed: 10, with_photos: 10, final_checked: 10, servable: 10, scored: 10, no_reviews: 6585, intelligence_without_reviews: 6585 };
   const by = Object.fromEntries(matrixCells(f, null, null, { reviews_eligible: 0, reviews_held: 6585, redo_eligible: 0, redo_held: 6585 }).map((c) => [c.id, c]));
-  assert.equal(by.reviews.heldText, "6,585 held");
-  assert.ok(by.reviews.heldText.length <= 12);
+  assert.equal(by.reviews.heldText, "6.6k held");
+  assert.ok(by.reviews.heldText.length <= 9, "fits a 47 px column at 10 px");
   assert.match(by.reviews.heldTitle, /^Held: 6,585 \(backlog paused\)\./);
   const section = read("components/placePool/PipelineSection.jsx");
   const heldLine = section.slice(section.indexOf("function HeldLine("), section.indexOf("function GapCell("));
-  assert.ok(heldLine.includes(" truncate "), "one line, never wrapped");
+  assert.ok(heldLine.includes(" whitespace-nowrap ") && !heldLine.includes(" truncate "), "one line, never cut off with an ellipsis");
+});
+
+
+// ── #4276 round 8 ───────────────────────────────────────────────────────────
+
+// FAILS-ON-REVERT: put back uncoveredTiles + unfinishedSearches and London reads 781
+// "searches" when 13 new tiles x 14 configs + 768 = 950 are owed.
+test("Unsearched counts searches: each new tile owes one search per config", () => {
+  const R = pipelineLib.PIPELINE_RATES;
+  const f = { active: 15551, pre_checked: 15551, pre_passed: 1, with_photos: 1, final_checked: 15551, servable: 1, scored: 1, is_live: true };
+  const london = Object.fromEntries(matrixCells(f, { uncoveredTiles: 13, unfinishedSearches: 768, cappedOpen: 0 }, { outside_active: 0 }, null).map((c) => [c.id, c]));
+  assert.equal(london.unsearched.value, 13 * R.SEARCHES_PER_TILE + 768);
+  assert.equal(london.unsearched.text, "950");
+  assert.equal(london.unsearched.title, "950 searches, incl. 13 new tiles (14 searches each)");
+  // The cost line already priced 950 searches plus the new tiles' photos: estimateFillCostUsd(950, 13).
+  assert.equal(pipelineLib.cellCost(london.unsearched).text, "$34.95");
+  const abuja = Object.fromEntries(matrixCells({}, { uncoveredTiles: 144, unfinishedSearches: 0, cappedOpen: 0 }, null, null).map((c) => [c.id, c]));
+  assert.equal(abuja.unsearched.text, "2,016", "the server's preview_fill: 2,016 searches");
+  assert.equal(pipelineLib.cellCost(abuja.unsearched).text, "$114.91");
+  const durham = Object.fromEntries(matrixCells({ active: 1 }, { uncoveredTiles: 16, unfinishedSearches: 2306, cappedOpen: 0 }, null, null).map((c) => [c.id, c]));
+  assert.equal(durham.unsearched.value, 2530);
+  assert.equal(pipelineLib.cellCost(durham.unsearched).text, "$86.56");
+  const totals = Object.fromEntries(pipelineLib.matrixTotals([Object.values(london), Object.values(abuja), Object.values(durham)]).map((c) => [c.id, c]));
+  assert.equal(totals.unsearched.text, "5,496", "950 + 2,016 + 2,530");
+  const cols = Object.fromEntries(pipelineLib.MATRIX_COLUMNS.map((c) => [c.id, c]));
+  assert.match(cols.unsearched.sub, /searches/i);
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes('label="Searches never run"'), "the tile says searches too");
+  assert.ok(section.includes("unsearchedSearches(r)"), "and counts them the same way");
+});
+
+test("compact counts fit a narrow cell", () => {
+  assert.equal(pipelineLib.compactCount(950), "950");
+  assert.equal(pipelineLib.compactCount(6585), "6.6k");
+  assert.equal(pipelineLib.compactCount(9883), "9.9k");
+  assert.equal(pipelineLib.compactCount(12345), "12k");
+  assert.equal(pipelineLib.compactCount(1000), "1k");
 });

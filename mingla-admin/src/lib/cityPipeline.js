@@ -324,7 +324,7 @@ export function cityReadinessWithGaps(row, gaps) {
 export const MATRIX_COLUMNS = Object.freeze([
   Object.freeze({ id: "box", label: "Geo box", sub: "Places outside", kind: "check" }),
   Object.freeze({ id: "seed", label: "Seed", sub: "Find places", kind: "missing" }),
-  Object.freeze({ id: "unsearched", label: "Unsearched", sub: "Never run", kind: "missing" }),
+  Object.freeze({ id: "unsearched", label: "Unsearched", sub: "Searches never run", kind: "missing" }),
   Object.freeze({ id: "capped", label: "Capped", sub: "Hit 20, split", kind: "missing" }),
   Object.freeze({ id: "pre_check", label: "Pre-check", sub: "Free rules", kind: "missing" }),
   Object.freeze({ id: "photos", label: "Photos", sub: "Download", kind: "missing" }),
@@ -343,6 +343,20 @@ export function neverSeeded(funnelRow) {
 export const HELD_BACKLOG_NOTE =
   "Held in the score backlog: AI results from before 5 Nov 2026 stay off live decks until Seth releases them, so no run re-judges or rescores these places.";
 
+/** Searches a city still owes: uncovered tiles x configs per tile, plus unfinished ones. */
+export function unsearchedSearches(searchRow) {
+  const n = (v) => num(v) ?? 0;
+  return n(searchRow?.uncoveredTiles) * PIPELINE_RATES.SEARCHES_PER_TILE + n(searchRow?.unfinishedSearches);
+}
+
+/** 6585 -> "6.6k", 12345 -> "12k", 950 -> "950". */
+export function compactCount(v) {
+  const x = num(v) ?? 0;
+  if (Math.abs(x) < 1000) return count(x);
+  const k = x / 1000;
+  return `${k < 10 ? (Math.round(k * 10) / 10).toString() : Math.round(k).toString()}k`;
+}
+
 /**
  * One row's cells. A cell is a gap when its count is above zero; null is unknown.
  * redoRow (admin_place_pipeline_redo_counts) splits the no-review places: Reviews and
@@ -353,7 +367,10 @@ export function matrixCells(funnelRow, searchRow, outsideRow, redoRow) {
   const n = (v) => num(v) ?? 0;
   const f = funnelRow ?? {};
   const unknownSearch = !searchRow || !!searchRow.error;
-  const unsearched = unknownSearch ? null : n(searchRow.uncoveredTiles) + n(searchRow.unfinishedSearches);
+  // Searches owed: every tile no search has reached owes one search per config, plus
+  // the searches not done on existing tiles. (Not tiles + searches: London is 13 tiles
+  // and 768 searches, 950 searches, not 781.)
+  const unsearched = unknownSearch ? null : unsearchedSearches(searchRow);
   const fresh = neverSeeded(f);
   const values = {
     box: outsideRow ? n(outsideRow.outside_active) : null,
@@ -384,10 +401,13 @@ export function matrixCells(funnelRow, searchRow, outsideRow, redoRow) {
     const held = c.id === "reviews" ? n(redoRow?.reviews_held) : c.id === "redo" ? n(redoRow?.redo_held) : 0;
     // Nothing a run may reach, only held places: "–", not a gap and not pickable.
     if ((c.id === "reviews" || c.id === "redo") && v === 0 && held > 0) text = "–";
+    const tiles = c.id === "unsearched" ? parts.unsearched?.tiles ?? 0 : 0;
     return {
       id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0, parts: parts[c.id] ?? null,
+      title: tiles > 0 ? `${count(v)} searches, incl. ${plural(tiles, "new tile")} (${PIPELINE_RATES.SEARCHES_PER_TILE} searches each)` : "",
       // One short line under the count; the full wording is the line's tooltip.
-      held, heldText: held > 0 ? `${count(held)} held` : "",
+      // Compact in the cell ("6.6k held") so it fits a 47 px column; exact in the tooltip.
+      held, heldText: held > 0 ? `${compactCount(held)} held` : "",
       heldTitle: held > 0 ? `Held: ${count(held)} (backlog paused). ${HELD_BACKLOG_NOTE}` : "",
       total: c.id === "reviews" ? n(f.no_reviews) : c.id === "redo" ? n(f.intelligence_without_reviews) : v,
     };

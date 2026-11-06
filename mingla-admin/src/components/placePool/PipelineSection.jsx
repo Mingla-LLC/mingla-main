@@ -52,6 +52,8 @@ import {
   neededFirst,
   pickable,
   planLines,
+  PIPELINE_RATES,
+  unsearchedSearches,
   wholeRow,
   plural,
   formatGb,
@@ -281,7 +283,7 @@ function boxCell(cell, size) {
 function HeldLine({ cell }) {
   if (!cell.heldText) return null;
   return (
-    <span className="mt-0.5 block w-full min-w-0 cursor-help truncate text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={cell.heldTitle || HELD_BACKLOG_NOTE}>
+    <span className="mt-0.5 block w-full min-w-0 cursor-help whitespace-nowrap text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={cell.heldTitle || HELD_BACKLOG_NOTE}>
       {cell.heldText}
     </span>
   );
@@ -323,10 +325,10 @@ function GapCell({ cell, cost, state, onToggle, cityName, label }) {
   );
   const held = cell.heldText ? <HeldLine cell={cell} /> : null;
   const cls = `flex min-h-11 w-full min-w-0 flex-col justify-center overflow-hidden rounded-md border ${CELL_PAD} text-left ${tone}`;
-  if (!onToggle) return <span className="block"><span className={cls}>{body}</span>{held}</span>;
+  if (!onToggle) return <span className="block"><span className={cls} title={cell.title || undefined}>{body}</span>{held}</span>;
   return (
     <span className="block">
-      <button type="button" className={`${cls} cursor-pointer hover:brightness-95`} aria-pressed={state === "picked"}
+      <button type="button" className={`${cls} cursor-pointer hover:brightness-95`} aria-pressed={state === "picked"} title={cell.title || undefined}
         aria-label={`${cityName}, ${label}: ${cell.text}${cost?.text ? `, ${cost.text}` : ""}${state === "needed" ? ", needed first" : ""}`}
         onClick={onToggle}>
         {body}
@@ -501,7 +503,7 @@ export function PipelineSection() {
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   };
   const capped = sum("cappedOpen");
-  const unsearched = searchError || !search ? null : (sum("uncoveredTiles") ?? 0) + (sum("unfinishedSearches") ?? 0);
+  const unsearched = searchError || !search ? null : Object.values(search).reduce((a, r) => a + (r && !r.error ? unsearchedSearches(r) : 0), 0);
   // Intelligence coverage waits for the health card and the gaps table (fix d).
   const tableSettled = (funnel !== null || funnelError !== null) && (health !== null || healthError !== null);
 
@@ -521,7 +523,7 @@ export function PipelineSection() {
         <StatTile label="Servable, no Intelligence" value={loadedCount(t?.rules_only, tableState)} note="Scored by rules only." />
         <StatTile label="Intelligence ran with no reviews" value={loadedCount(t?.intelligence_without_reviews, tableState)} note="Can be redone once Serper works. Changes live decks." />
         <StatTile label="Searches at Google's 20 cap" value={searchError ? "?" : capped === null ? "–" : count(capped)} note="Each repeats as 4 smaller searches, with your OK." />
-        <StatTile label="Areas and searches never run" value={searchError ? "?" : unsearched === null ? "–" : count(unsearched)} note="Inside a box, never searched or failed." />
+        <StatTile label="Searches never run" value={searchError ? "?" : unsearched === null ? "–" : count(unsearched)} note={`Inside a box, never run or failed; ${PIPELINE_RATES.SEARCHES_PER_TILE} for each area no tile reaches.`} />
       </div>
 
       <div className="grid min-w-0 grid-cols-1 items-start gap-6 min-[1400px]:grid-cols-[minmax(0,1fr)_300px]">
