@@ -1396,8 +1396,14 @@ async function runPayoutReleaseSweepAuthenticated(
     }, 409);
   }
 
+  // #3645 rail isolation: a Stripe-phase failure (for example a missing live
+  // key, 2026-10-22) used to return before the Paystack phase and stop every
+  // Nigerian payout. The rails share no money, so the Paystack phase still
+  // runs; the sweep still answers 500 `stripe_execution_failed` so the job
+  // alerts exactly as before.
   let stripeExecution;
   let newAlertDelivery;
+  let stripeExecutionFailed = false;
   try {
     stripeExecution = await executeClaimedStripeReleases(
       admin as never,
@@ -1408,12 +1414,12 @@ async function runPayoutReleaseSweepAuthenticated(
       deps,
     );
   } catch (executionError) {
+    stripeExecutionFailed = true;
     console.error("[payout-release-sweep] Stripe execution phase failed", {
       message: executionError instanceof Error
         ? executionError.message
         : String(executionError),
     });
-    return json({ error: "stripe_execution_failed" }, 500);
   }
 
   // Issue #1177 — Paystack organiser Transfer execution (Nigerian rail), between
@@ -1433,10 +1439,18 @@ async function runPayoutReleaseSweepAuthenticated(
 
   // Only organiser releases already accepted by their provider can unlock
   // partner rows. The claim RPC repeats that check under database truth.
-  const { data: releasedRows, error: releasedError } = await admin
+  // #3645 rail isolation: after a Stripe failure only Paystack releases go
+  // through partner release (Paystack splits need no Stripe client and are
+  // paid by the Paystack partner retry sweep); Stripe releases wait for the
+  // next healthy run, still eligible.
+  let releasedQuery = admin
     .from("brand_payout_releases")
     .select("id")
-    .eq("status", "released")
+    .eq("status", "released");
+  if (stripeExecutionFailed) {
+    releasedQuery = releasedQuery.eq("provider", "paystack");
+  }
+  const { data: releasedRows, error: releasedError } = await releasedQuery
     .order("released_at", { ascending: true })
     .limit(100);
   if (releasedError) {
@@ -1454,19 +1468,28 @@ async function runPayoutReleaseSweepAuthenticated(
     blockedStripe: 0,
   };
   const releasableRows = (releasedRows ?? []) as Array<{ id: string }>;
-  if (releasableRows.length > 0) {
-    const stripe = stripeWebhook();
-    for (const row of releasableRows) {
-      const released = await releasePartnerSplitsForOrganiserRelease(
-        admin,
-        stripe,
-        row.id,
-      );
-      totals.releasedStripe += released.releasedStripe;
-      totals.pendingPaystack += released.pendingPaystack;
-      totals.retryableStripe += released.retryableStripe;
-      totals.blockedStripe += released.blockedStripe;
-    }
+  for (const row of releasableRows) {
+    // The Stripe client is built only when a Stripe split needs it.
+    const released = await releasePartnerSplitsForOrganiserRelease(
+      admin,
+      stripeWebhook,
+      row.id,
+    );
+    totals.releasedStripe += released.releasedStripe;
+    totals.pendingPaystack += released.pendingPaystack;
+    totals.retryableStripe += released.retryableStripe;
+    totals.blockedStripe += released.blockedStripe;
+  }
+
+  // The job still alerts on a Stripe failure; the body shows what the
+  // Paystack rail did meanwhile.
+  if (stripeExecutionFailed || newAlertDelivery === undefined) {
+    return json({
+      error: "stripe_execution_failed",
+      paystackExecution: paystackExecution ?? {},
+      paystackFloatForecast,
+      partnerRelease: totals,
+    }, 500);
   }
 
   // #1345 drain runs in the authenticated finally (after this return), so

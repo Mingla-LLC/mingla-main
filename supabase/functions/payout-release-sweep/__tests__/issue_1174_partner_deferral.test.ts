@@ -334,6 +334,93 @@ Deno.test("released occurrence triggers one plain Stripe platform transfer and o
   );
 });
 
+Deno.test("#3645 Paystack-only partner release never builds a Stripe client", async () => {
+  const { client } = fakeSupabase([
+    {
+      id: "00000000-0000-0000-0000-000000000003",
+      provider: "paystack",
+      stripe_application_fee_id: "paystack:ref-3645",
+      order_id: "order-3645",
+      brand_id: "brand-1",
+      partner_account_id: "partner-2",
+      partner_share_cents: 5_000,
+      transfer_currency: "ngn",
+    },
+  ]);
+  let built = 0;
+  const result = await releasePartnerSplitsForOrganiserRelease(
+    client as never,
+    () => {
+      built++;
+      throw new Error("STRIPE_RAK_PAYOUT_RELEASE_LIVE is not set");
+    },
+    "release-3645",
+  );
+  assertEquals(built, 0, "a Stripe outage must not block Paystack partner release");
+  assertEquals(result, {
+    releasedStripe: 0,
+    pendingPaystack: 1,
+    retryableStripe: 0,
+    blockedStripe: 0,
+  });
+});
+
+Deno.test("#3645 a Stripe split builds the client once, lazily, from a getter", async () => {
+  const { client } = fakeSupabase([
+    {
+      id: "00000000-0000-0000-0000-000000000004",
+      provider: "stripe",
+      stripe_application_fee_id: "fee-3645",
+      order_id: "order-3645-s",
+      brand_id: "brand-1",
+      partner_account_id: "partner-1",
+      partner_share_cents: 100,
+      transfer_currency: "usd",
+    },
+  ]);
+  const { stripe, calls } = fakeStripe();
+  let built = 0;
+  const result = await releasePartnerSplitsForOrganiserRelease(
+    client as never,
+    () => {
+      built++;
+      return stripe as never;
+    },
+    "release-3645-s",
+  );
+  assertEquals(built, 1);
+  assertEquals(calls.length, 1);
+  assertEquals(result.releasedStripe, 1);
+});
+
+Deno.test("#3645 a Stripe client that cannot be built surfaces instead of becoming a silent retry", async () => {
+  const { client } = fakeSupabase([
+    {
+      id: "00000000-0000-0000-0000-000000000005",
+      provider: "stripe",
+      stripe_application_fee_id: "fee-3645-x",
+      order_id: "order-3645-x",
+      brand_id: "brand-1",
+      partner_account_id: "partner-1",
+      partner_share_cents: 100,
+      transfer_currency: "usd",
+    },
+  ]);
+  let threw = false;
+  try {
+    await releasePartnerSplitsForOrganiserRelease(
+      client as never,
+      () => {
+        throw new Error("stripe_key_missing");
+      },
+      "release-3645-x",
+    );
+  } catch (error) {
+    threw = (error as Error).message === "stripe_key_missing";
+  }
+  assert(threw, "a configuration failure must propagate to the sweep");
+});
+
 Deno.test("Paystack partner movement fee reduces organiser cash without reducing partner principal", () => {
   assertStringIncludes(
     migration,

@@ -195,6 +195,8 @@ type Scenario = {
 
 function harness(scenario: Scenario) {
   const rpcOrder: string[] = [];
+  const tableReads: string[] = [];
+  const releasedFilters: Array<Array<[string, unknown]>> = [];
   const balanceReads: number[] = [];
   const notified: Array<
     { kind: string; key: string | null | undefined; message: string }
@@ -292,16 +294,20 @@ function harness(scenario: Scenario) {
       }
     },
     from: (table: string) => {
+      tableReads.push(table);
       if (table === "brand_payout_releases") {
-        return {
-          select: () => ({
-            eq: () => ({
-              order: () => ({
-                limit: () => Promise.resolve({ data: [], error: null }),
-              }),
-            }),
+        const filters: Array<[string, unknown]> = [];
+        releasedFilters.push(filters);
+        const chain = {
+          eq: (column: string, value: unknown) => {
+            filters.push([column, value]);
+            return chain;
+          },
+          order: () => ({
+            limit: () => Promise.resolve({ data: [], error: null }),
           }),
         };
+        return { select: () => chain };
       }
       throw new Error(`unexpected table ${table}`);
     },
@@ -366,6 +372,8 @@ function harness(scenario: Scenario) {
         deps as never,
       ),
     rpcOrder,
+    tableReads,
+    releasedFilters,
     balanceReads,
     notified,
     raiseArgs: () => raiseArgs,
@@ -456,7 +464,8 @@ Deno.test("#1840 RETEST the forecast survives a Stripe-phase 500", async () => {
     balanceKobo: 0,
   });
   const response = await h.run();
-  // The Stripe phase still hard-fails the sweep, unchanged.
+  // The Stripe phase still answers 500 so the job alerts (#3645 rail isolation
+  // keeps the status; only the Paystack phase now runs before it returns).
   assertEquals(response.status, 500);
   assertEquals((await response.json()).error, "stripe_execution_failed");
   // But the alert was already raised and is durable in the outbox — the whole
@@ -471,6 +480,56 @@ Deno.test("#1840 RETEST the forecast survives a Stripe-phase 500", async () => {
   );
   assertEquals(h.balanceReads.length, 1);
   assertEquals(h.raiseArgs()?.p_balance_kobo, 0);
+});
+
+// ── #3645 rail isolation: a Stripe failure no longer stops Paystack ────────
+
+Deno.test("#3645 a Stripe-phase failure still runs the Paystack phase and still answers 500", async () => {
+  const h = harness({ stripeClaimFails: true, obligationKobo: 0, balanceKobo: 0 });
+  const response = await h.run();
+  assertEquals(response.status, 500);
+  const body = await response.json();
+  assertEquals(body.error, "stripe_execution_failed");
+  const stripeAt = h.rpcOrder.indexOf("claim_stripe_payout_releases");
+  const paystackAt = h.rpcOrder.indexOf("claim_paystack_payout_releases");
+  assert(stripeAt >= 0, "the Stripe phase must have been attempted");
+  assert(
+    paystackAt > stripeAt,
+    "the Paystack phase must run after a failed Stripe phase (2026-10-22 outage)",
+  );
+  // The response reports what the Paystack phase did (empty claim here; the
+  // real-outage tests below prove a claimed release is executed).
+  assertEquals(body.paystackExecution.claimed, 0);
+  assertEquals(body.paystackFloatForecast.status, "ok");
+});
+
+Deno.test("#3645 after a Stripe-phase failure partner release still runs, for Paystack releases only", async () => {
+  const failed = harness({ stripeClaimFails: true });
+  const failedResponse = await failed.run();
+  assertEquals(failedResponse.status, 500);
+  const failedBody = await failedResponse.json();
+  assertEquals(failedBody.error, "stripe_execution_failed");
+  assertEquals(failedBody.partnerRelease.pendingPaystack, 0);
+  assertEquals(failed.releasedFilters.length, 1, "partner release must still read released rows");
+  assertEquals(failed.releasedFilters[0], [
+    ["status", "released"],
+    ["provider", "paystack"],
+  ]);
+
+  const healthy = harness({});
+  const response = await healthy.run();
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).ok, true);
+  assertEquals(healthy.releasedFilters.length, 1);
+  assertEquals(
+    healthy.releasedFilters[0],
+    [["status", "released"]],
+    "a healthy run still releases partners on both rails",
+  );
+  assert(
+    healthy.rpcOrder.indexOf("claim_paystack_payout_releases") >
+      healthy.rpcOrder.indexOf("claim_stripe_payout_releases"),
+  );
 });
 
 // ── D6: where the forecast still cannot run, stated precisely ──────────────
@@ -648,4 +707,152 @@ Deno.test("#1840 RETEST the migration self-assert is INSIDE the transaction, so 
   for (const kind of ["paystack_balance_blocked", "paystack_float_shortfall"]) {
     assertStringIncludes(block, `'${kind}'`);
   }
+});
+
+// ── #3645 rail isolation, real outage shapes ───────────────────────────────
+// A claim-RPC error, a missing live key after a non-empty Stripe claim, and a
+// failed attempt-cap alert drain all leave Stripe broken; each must still
+// execute a claimed Paystack release end to end (transfer initiated, leg
+// outcome recorded) and release Paystack partner splits.
+
+type RailMode = "healthy" | "claim_error" | "missing_key" | "alert_drain_error";
+
+function railHarness(mode: RailMode, opts: { paystackClaimFails?: boolean; releasedRows?: Array<{ id: string }>; splitProvider?: string } = {}) {
+  const releasedFilters: Array<Array<[string, unknown]>> = [];
+  const rpc: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const tables: string[] = [];
+  const initiated: Array<Record<string, unknown>> = [];
+  let legsPlanned = false;
+  let alertClaims = 0;
+  const createAdmin = (() => ({
+    rpc: (name: string, args: Record<string, unknown>) => {
+      rpc.push({ name, args });
+      const ok = (data: unknown) => Promise.resolve({ data, error: null });
+      switch (name) {
+        case "list_missing_payout_source_fees": return ok([]);
+        case "run_payout_release_dark_sweep": return ok({ executed: 0 });
+        case "claim_payout_release_alerts":
+          alertClaims++;
+          if (mode === "alert_drain_error" && alertClaims === 2) {
+            return Promise.resolve({ data: null, error: { message: "drain_down" } });
+          }
+          return ok([]);
+        case "plan_pending_payout_partner_legs": return ok({ blocked_partner_attributions: 0 });
+        case "claim_stripe_payout_releases":
+          if (mode === "claim_error") return Promise.resolve({ data: null, error: { message: "stripe_claim_down" } });
+          if (mode === "missing_key") {
+            return ok([{ release_id: "s-1", claim_id: "sc-1", brand_id: "b-us", net_release_cents: 5000, maturity_recredit_cents: 0, stripe_account_id: "acct_x", currency: "usd" }]);
+          }
+          return ok([]);
+        case "claim_paystack_payout_releases":
+          if (opts.paystackClaimFails) return Promise.resolve({ data: null, error: { message: "ps_down" } });
+          return ok([{ release_id: "p-1", brand_id: "b-ng", recipient_code: "RCP_1", currency: "ngn", net_release_cents: 500_000, maturity_recredit_cents: 0, attempt_count: 0, claim_id: "pc-1" }]);
+        case "record_paystack_leg_plan": legsPlanned = true; return ok(null);
+        case "authorize_paystack_payout_execution": return ok(true);
+        case "record_paystack_transfer_leg_outcome": return ok(null);
+        case "reconcile_paystack_transfer_leg_fee": return ok(null);
+        case "paystack_payout_float_obligation": return ok({ horizon_days: 7, release_count: 0, obligation_kobo: 0 });
+        case "raise_paystack_float_shortfall_alert": return ok({ alert: "none" });
+        case "surface_payout_releases_waiting_for_bank":
+        case "claim_brand_payout_pause_notices":
+        case "claim_brand_payout_outcome_notices":
+        case "claim_reservation_slot_unavailable_alerts":
+          return ok([]);
+        case "release_partner_splits_for_organiser_release":
+          return ok([{ id: "split-1", provider: opts.splitProvider ?? "paystack", stripe_application_fee_id: "paystack:ref", order_id: "o-1", brand_id: "b-ng", partner_account_id: "pa-1", partner_share_cents: 5000, transfer_currency: "ngn" }]);
+        default: throw new Error(`unexpected RPC ${name}`);
+      }
+    },
+    from: (table: string) => {
+      tables.push(table);
+      if (table === "brand_payout_releases") {
+        const filters: Array<[string, unknown]> = [];
+        releasedFilters.push(filters);
+        const chain: Record<string, unknown> = {
+          eq: (c: string, v: unknown) => { filters.push([c, v]); return chain; },
+          order: () => ({ limit: () => Promise.resolve({ data: opts.releasedRows ?? [], error: null }) }),
+        };
+        return { select: () => chain };
+      }
+      if (table === "payout_transfer_legs") {
+        const chain: Record<string, unknown> = {};
+        let kind = "";
+        chain.select = () => chain;
+        chain.eq = (col: string, val: string) => { if (col === "kind") kind = val; return chain; };
+        chain.order = () => Promise.resolve({
+          data: kind === "organiser" && legsPlanned
+            ? [{ id: "leg-1", chunk_index: 0, principal_cents: 495_000, estimated_fee_cents: 5000, stamp_duty_cents: 0, status: "planned", provider_reference: null, provider_transfer_code: null, attempt_count: 0 }]
+            : [],
+          error: null,
+        });
+        // partner ceiling read awaits after .eq("kind","partner")
+        chain.then = (res: (v: unknown) => unknown) => res({ data: [], error: null });
+        return chain;
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  })) as never;
+  const deps = {
+    env: (k: string) => ({ SUPABASE_URL: "https://example.test", SUPABASE_SERVICE_ROLE_KEY: "service-secret", PAYOUT_RELEASE_EXECUTE: "true" } as Record<string, string>)[k],
+    createAdmin,
+    resolveProviderFee: () => { throw new Error("none expected"); },
+    notifyAttemptCap: () => Promise.resolve("provider_accepted" as const),
+    createStripeReleaseClient: () => {
+      throw new Error("STRIPE_RAK_PAYOUT_RELEASE_LIVE is not set");
+    },
+    createPaystackReleaseClient: () => ({
+      getBalance: () => Promise.resolve([{ currency: "NGN", balance: 100_000_000 }]),
+      fetchTransfer: () => { throw new Error("no reconcile expected"); },
+      verifyTransferByReference: () => { throw new Error("no reconcile expected"); },
+      initiateTransfer: (input: Record<string, unknown>) => {
+        initiated.push(input);
+        return Promise.resolve({ status: "success", transfer_code: "TRF_1", fee: 5000 });
+      },
+    }),
+  };
+  return {
+    run: () => handlePayoutReleaseSweep(new Request("https://example.test", { method: "POST", headers: { authorization: "Bearer service-secret" } }), deps as never),
+    rpc, tables, initiated, releasedFilters,
+  };
+}
+
+for (const mode of ["claim_error", "missing_key", "alert_drain_error"] as const) {
+  Deno.test(`#3645 a Stripe-phase failure (${mode}) still executes a claimed Paystack release`, async () => {
+    const h = railHarness(mode);
+    const res = await h.run();
+    const body = await res.json();
+    assertEquals(res.status, 500);
+    assertEquals(body.error, "stripe_execution_failed");
+    assertEquals(h.initiated.length, 1, "Paystack initiateTransfer must run once");
+    assertEquals(h.initiated[0].recipientCode, "RCP_1");
+    const outcome = h.rpc.find((c) => c.name === "record_paystack_transfer_leg_outcome");
+    assertEquals(outcome?.args.p_outcome, "succeeded");
+    assertEquals(body.paystackExecution.claimed, 1);
+    assertEquals(body.paystackExecution.initiated, 1);
+    assertEquals(h.releasedFilters[0], [["status", "released"], ["provider", "paystack"]]);
+    if (mode === "missing_key") {
+      assert(!h.rpc.some((c) => c.name === "record_stripe_payout_execution"), "no Stripe outcome recorded");
+    }
+  });
+}
+
+Deno.test("#3645 a healthy run executes Paystack and reaches partner release on both rails", async () => {
+  const h = railHarness("healthy");
+  const res = await h.run();
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.ok, true);
+  assertEquals(h.initiated.length, 1);
+  assertEquals(body.paystackExecution.initiated, 1);
+  assert(h.tables.includes("brand_payout_releases"));
+});
+
+Deno.test("#3645 after a Stripe failure a released Paystack release still moves its Paystack partner split", async () => {
+  const h = railHarness("missing_key", { releasedRows: [{ id: "p-released" }] });
+  const res = await h.run();
+  const body = await res.json();
+  assertEquals(res.status, 500);
+  assertEquals(body.error, "stripe_execution_failed");
+  assertEquals(body.partnerRelease.pendingPaystack, 1);
+  assert(h.rpc.some((c) => c.name === "release_partner_splits_for_organiser_release" && c.args.p_release_id === "p-released"));
 });
