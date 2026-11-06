@@ -483,10 +483,11 @@ test("held backlog places are shown apart and can't be picked; Reviews is never 
   assert.equal(allHeld.reviews.text, "–");
   assert.equal(allHeld.reviews.gap, false);
   assert.equal(pipelineLib.pickable(allHeld.reviews), false);
-  assert.equal(allHeld.reviews.heldText, "Held: 40 (backlog paused)");
+  assert.equal(allHeld.reviews.heldText, "40 held");
+  assert.ok(allHeld.reviews.heldTitle.startsWith("Held: 40 (backlog paused). Held in the score backlog"));
   assert.equal(allHeld.redo.text, "–");
   assert.equal(pipelineLib.pickable(allHeld.redo), false);
-  assert.equal(allHeld.redo.heldText, "Held: 36 (backlog paused)");
+  assert.equal(allHeld.redo.heldText, "36 held");
   assert.equal(pipelineLib.wholeRow(Object.values(allHeld)).includes("reviews"), false, "a whole-row pick skips held places");
 
   const some = Object.fromEntries(matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 0 },
@@ -502,7 +503,7 @@ test("held backlog places are shown apart and can't be picked; Reviews is never 
 
   const section = read("components/placePool/PipelineSection.jsx");
   assert.ok(section.includes("fetchRedoCounts(),"), "the gaps table reads the held split");
-  assert.ok(section.includes("title={HELD_BACKLOG_NOTE}"), "held places carry a note on the hold");
+  assert.ok(section.includes("title={cell.heldTitle || HELD_BACKLOG_NOTE}"), "held places carry a note on the hold");
   const run = read("components/placePool/CityRunPanel.jsx");
   assert.ok(run.includes("(never places held in the score backlog)"), "the confirmation states the scope");
   assert.ok(run.includes("setTimeout(() => {") && run.includes("clearTimeout(timer)"), "one preview per settled plan");
@@ -541,4 +542,35 @@ test("gaps cells keep their padding, wrap long words and leave a gap to the next
   assert.ok(section.includes("whitespace-normal break-words"), "Never seeded wraps inside its cell");
   assert.ok(section.includes("min-[1400px]:grid-cols-[minmax(0,1fr)_300px]"), "the run plan sits beside the table only when both fit");
   assert.ok(section.includes('Unsearched: "Un\\u00ADsearched"'), "long header words break with a hyphen");
+});
+
+
+// ── #4276 round 7 ───────────────────────────────────────────────────────────
+
+// FAILS-ON-REVERT: drop PlanJumpBar (or its render) and, below 1400 px, a pick gives no
+// sign that the run plan is under the table.
+test("below 1400 px a pick shows a bar that takes you to the run plan", async () => {
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes('const PLAN_BESIDE_TABLE = "(min-width: 1400px)";'), "the bar uses the same width as the layout");
+  assert.ok(section.includes("{picks && planHidden && ("), "shown only once a cell is picked and the plan is out of sight");
+  assert.ok(section.includes("<aside ref={setPlanEl}"), "the plan is what the bar watches and scrolls to");
+  assert.ok(section.includes('planEl?.scrollIntoView({ behavior: "smooth", block: "start" })'));
+  assert.ok(section.includes("fixed inset-x-0 bottom-4 z-30"), "fixed to the window, so the city panel can't cover it");
+  assert.ok(section.includes("return createPortal(") && section.includes("document.body,"), "in a portal, so no transformed ancestor pins it");
+  assert.match(section, /\{n\} picked · \{totalText\}/);
+  assert.match(section, /Review plan <ArrowDown/);
+  assert.ok(section.includes("setInView(r.top < window.innerHeight - 48 && r.bottom > 0)"), "it goes once the plan is on screen");
+  assert.ok(section.includes('window.addEventListener("scroll", check, { capture: true, passive: true })'), "any scroller counts");
+});
+
+// FAILS-ON-REVERT: put "Held: N (backlog paused)" back under the count and the rows double in height.
+test("a held count is one short line, with the full wording in its tooltip", () => {
+  const f = { active: 10, pre_checked: 10, pre_passed: 10, with_photos: 10, final_checked: 10, servable: 10, scored: 10, no_reviews: 6585, intelligence_without_reviews: 6585 };
+  const by = Object.fromEntries(matrixCells(f, null, null, { reviews_eligible: 0, reviews_held: 6585, redo_eligible: 0, redo_held: 6585 }).map((c) => [c.id, c]));
+  assert.equal(by.reviews.heldText, "6,585 held");
+  assert.ok(by.reviews.heldText.length <= 12);
+  assert.match(by.reviews.heldTitle, /^Held: 6,585 \(backlog paused\)\./);
+  const section = read("components/placePool/PipelineSection.jsx");
+  const heldLine = section.slice(section.indexOf("function HeldLine("), section.indexOf("function GapCell("));
+  assert.ok(heldLine.includes(" truncate "), "one line, never wrapped");
 });

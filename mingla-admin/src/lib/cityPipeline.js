@@ -386,7 +386,9 @@ export function matrixCells(funnelRow, searchRow, outsideRow, redoRow) {
     if ((c.id === "reviews" || c.id === "redo") && v === 0 && held > 0) text = "–";
     return {
       id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0, parts: parts[c.id] ?? null,
-      held, heldText: held > 0 ? `Held: ${count(held)} (backlog paused)` : "",
+      // One short line under the count; the full wording is the line's tooltip.
+      held, heldText: held > 0 ? `${count(held)} held` : "",
+      heldTitle: held > 0 ? `Held: ${count(held)} (backlog paused). ${HELD_BACKLOG_NOTE}` : "",
       total: c.id === "reviews" ? n(f.no_reviews) : c.id === "redo" ? n(f.intelligence_without_reviews) : v,
     };
   });

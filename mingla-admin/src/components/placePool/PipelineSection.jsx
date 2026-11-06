@@ -19,7 +19,8 @@
 // and its first read is retried once (fix d): it used to start with them and time out.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowDown, Plus, RefreshCw, X } from "lucide-react";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
@@ -280,7 +281,7 @@ function boxCell(cell, size) {
 function HeldLine({ cell }) {
   if (!cell.heldText) return null;
   return (
-    <span className="mt-0.5 block w-full min-w-0 cursor-help whitespace-normal break-words text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={HELD_BACKLOG_NOTE}>
+    <span className="mt-0.5 block w-full min-w-0 cursor-help truncate text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={cell.heldTitle || HELD_BACKLOG_NOTE}>
       {cell.heldText}
     </span>
   );
@@ -333,6 +334,56 @@ function GapCell({ cell, cost, state, onToggle, cityName, label }) {
       {held}
     </span>
   );
+}
+
+// Below 1400 px the run plan sits under the table. Once a cell is picked and the plan is
+// out of sight, a small bar at the foot of the window says what is picked and takes you
+// to the plan. It is fixed to the window, so the city panel opening under a row can't
+// cover it, and it goes away as soon as the plan is on screen.
+const PLAN_BESIDE_TABLE = "(min-width: 1400px)";
+
+export function PlanJumpBar({ count: n, totalText, onReview }) {
+  // In a portal on <body>: a transformed ancestor would otherwise pin "fixed" to itself.
+  return createPortal(
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4" role="region" aria-label="Picked for the run">
+      <button type="button" onClick={onReview}
+        className="pointer-events-auto flex min-h-11 items-center gap-2 rounded-full border border-[var(--color-brand-600)] bg-[var(--color-brand-500)] px-4 text-[13px] font-medium text-white shadow-lg hover:brightness-95">
+        <span className="tabular-nums">{n} picked · {totalText}</span>
+        <span aria-hidden="true" className="opacity-60">·</span>
+        <span className="flex items-center gap-1">Review plan <ArrowDown size={14} aria-hidden="true" /></span>
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+function usePlanOutOfSight(el, layoutKey) {
+  const [beside, setBeside] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(PLAN_BESIDE_TABLE).matches);
+  const [inView, setInView] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia?.(PLAN_BESIDE_TABLE);
+    if (!mq) return undefined;
+    const on = () => setBeside(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  // Measured on every scroll (any scroller, so capture) and resize, and whenever the
+  // picks change the layout: the plan counts as seen once its top is on screen.
+  useEffect(() => {
+    if (!el) return undefined;
+    const check = () => {
+      const r = el.getBoundingClientRect();
+      setInView(r.top < window.innerHeight - 48 && r.bottom > 0);
+    };
+    check();
+    window.addEventListener("scroll", check, { capture: true, passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("scroll", check, { capture: true });
+      window.removeEventListener("resize", check);
+    };
+  }, [el, layoutKey]);
+  return !beside && !inView;
 }
 
 export function PipelineSection() {
@@ -424,6 +475,9 @@ export function PipelineSection() {
   const selectedRow = rows.find((r) => r.city.city_id === selectedId) ?? null;
   const needed = selectedRow ? neededFirst(picked, selectedRow.cells) : new Set();
   const picks = selectedRow && picked.length ? planLines(selectedRow.cells, picked, rates) : null;
+  // The plan element, held in state so the watcher starts once it is on the page.
+  const [planEl, setPlanEl] = useState(null);
+  const planHidden = usePlanOutOfSight(planEl, `${selectedId}:${picked.join(",")}`);
   // The table's state for counts that depend on it: loading, failed or answered.
   const tableState = { loading: !funnel && !funnelError, error: funnelError };
 
@@ -603,7 +657,7 @@ export function PipelineSection() {
           )}
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4 min-[1400px]:sticky min-[1400px]:top-4" aria-label="Run plan">
+        <aside ref={setPlanEl} className="flex min-w-0 scroll-mt-4 flex-col gap-4 min-[1400px]:sticky min-[1400px]:top-4" aria-label="Run plan">
           {selected ? (
             <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load} picks={picks}
               footer={<SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />} />
@@ -616,6 +670,10 @@ export function PipelineSection() {
             </SectionCard>
           )}
         </aside>
+        {picks && planHidden && (
+          <PlanJumpBar count={picked.length} totalText={picks.totalText}
+            onReview={() => planEl?.scrollIntoView({ behavior: "smooth", block: "start" })} />
+        )}
       </div>
 
       <ScoringTools cityId={selected?.city_id ?? null} cityName={selected?.city_name ?? null} />
