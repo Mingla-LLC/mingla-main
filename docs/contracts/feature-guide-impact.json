@@ -1253,6 +1253,13 @@
       "paths": [
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql"
       ]
+    },
+    {
+      "capability_key": "payouts-timing",
+      "paths": [
+        "supabase/functions/payout-release-sweep/partnerRelease.ts",
+        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql"
+      ]
     }
   ]
 }
