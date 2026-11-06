@@ -596,18 +596,22 @@ export function placeTypeLabel(place) {
  * Where one place stands, stage by stage, for the Browse side panel. Each stage is
  * { id, label, state: "done" | "failed" | "waiting" | "not_run", text }.
  */
+function failedBecause(stored) {
+  return stored ? `Failed: ${reasonWords(stored)}` : "Failed";
+}
+
 export function placeStages(place) {
   if (!place) return [];
   const photos = Array.isArray(place.stored_photo_urls) ? place.stored_photo_urls.length : 0;
   const stage = (id, label, state, text) => ({ id, label, state, text });
   const pre = place.passes_pre_photo_check === true ? stage("pre_check", "Pre-check", "done", "Passed")
-    : place.passes_pre_photo_check === false ? stage("pre_check", "Pre-check", "failed", reasonWords(place.pre_photo_bouncer_reason))
+    : place.passes_pre_photo_check === false ? stage("pre_check", "Pre-check", "failed", failedBecause(place.pre_photo_bouncer_reason))
     : stage("pre_check", "Pre-check", "not_run", "Not run");
   const pic = photos > 0 ? stage("photos", "Photos", "done", `${photos} saved`)
     : place.passes_pre_photo_check === false ? stage("photos", "Photos", "not_run", "Not needed: failed the pre-check")
     : stage("photos", "Photos", "not_run", "Not downloaded");
   const fin = place.is_servable === true ? stage("final_check", "Final check", "done", "Passed: Explorers can see it")
-    : place.is_servable === false ? stage("final_check", "Final check", "failed", reasonWords(place.bouncer_reason))
+    : place.is_servable === false ? stage("final_check", "Final check", "failed", failedBecause(place.bouncer_reason))
     : stage("final_check", "Final check", "not_run", "Not run");
   const scores = place.is_servable !== true ? stage("scores", "Scores", "not_run", "Only for places that pass the final check")
     : place.ai_signal_scores ? stage("scores", "Scores", "done", "Scored")

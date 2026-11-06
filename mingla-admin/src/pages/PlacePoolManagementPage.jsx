@@ -1190,14 +1190,6 @@ function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list"
   useEffect(() => { fetchPlaces(); }, [fetchPlaces]);
   useEffect(() => { setPage(0); }, [selectedCountry, selectedCity]);
 
-  const relativeTime = (dateStr) => {
-    if (!dateStr) return "—";
-    const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
-    if (days === 0) return "Today";
-    if (days < 30) return `${days}d ago`;
-    return `${Math.floor(days / 30)}mo ago`;
-  };
-
   const columns = [
     { key: "name", label: "Place", render: (_, r) => (
       <button type="button" aria-pressed={picked?.id === r.id} className="flex min-h-11 cursor-pointer flex-col items-start justify-center text-left" onClick={() => setPicked(r)}>
@@ -1206,8 +1198,7 @@ function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list"
       </button>
     ) },
     { key: "city", label: "City", render: (_, r) => r.city || "—" },
-    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (CATEGORY_LABELS[r.mingla_category] || r.mingla_category) : <span className="text-[var(--color-text-tertiary)]">—</span> },
-    { key: "rating", label: "Rating", render: (_, r) => r.rating ? Number(r.rating).toFixed(1) : "—" },
+    { key: "rating", label: "Rating", width: "64px", render: (_, r) => r.rating ? Number(r.rating).toFixed(1) : "—" },
     { key: "passes_pre_photo_check", label: "Pre-check", render: (_, r) => stageWord(r.passes_pre_photo_check, "Passed", "Failed") },
     { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;
@@ -1217,15 +1208,7 @@ function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list"
     { key: "is_servable", label: "Final", render: (_, r) => stageWord(r.is_servable, "Passed", "Failed") },
     { key: "ai_signal_scores", label: "Scores", render: (_, r) => r.is_servable !== true ? <span className="text-[var(--color-text-tertiary)]">Not run</span>
       : r.ai_signal_scores ? <span className="font-medium text-[var(--color-success-700)]">Scored</span> : <span className="font-medium text-[var(--color-error-700)]">Missing</span> },
-    { key: "price_tiers", label: "Price", render: (_, r) => {
-      const range = r.place_discovery_price_ranges;
-      if (range?.status === "legacy_unresolved") return <Badge variant="warning">Needs review</Badge>;
-      if (range?.status !== "active") return "—";
-      return `${range.source_min_minor}–${range.source_max_minor ?? "open"} minor · ${range.source_currency_code}`;
-    }},
-    { key: "last_detail_refresh", label: "Refreshed", render: (_, r) => relativeTime(r.last_detail_refresh) },
-    { key: "is_active", label: "Status", render: (_, r) => r.is_active ? <span className="text-[var(--color-text-secondary)]">Active</span> : <Badge variant="error">Inactive</Badge> },
-    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} aria-label={`Change ${r.name}`} onClick={() => setDetailPlace(r)} /> },
+    { key: "actions", label: "", width: "48px", className: "!px-1", cellClassName: "!px-1", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} aria-label={`Change ${r.name}`} onClick={() => setDetailPlace(r)} /> },
   ];
 
   const setFilter = (key, value) => { setFilters((f) => ({ ...f, [key]: value })); setPage(0); };
@@ -1387,7 +1370,17 @@ export function PlaceSidePanel({ place, onEdit, onClose }) {
               </div>
             ))}
           </dl>
-          {place.address && <p className="text-xs text-[var(--color-text-tertiary)]">{place.address}</p>}
+          <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12px]">
+            <dt className="text-[var(--color-text-secondary)]">Category</dt>
+            <dd>{place.mingla_category ? (CATEGORY_LABELS[place.mingla_category] || place.mingla_category) : "None"}</dd>
+            <dt className="text-[var(--color-text-secondary)]">Price</dt>
+            <dd>{place.place_discovery_price_ranges?.status === "active"
+              ? `${place.place_discovery_price_ranges.source_min_minor}–${place.place_discovery_price_ranges.source_max_minor ?? "open"} minor · ${place.place_discovery_price_ranges.source_currency_code}`
+              : place.place_discovery_price_ranges?.status === "legacy_unresolved" ? "Needs review" : "Not set"}</dd>
+            <dt className="text-[var(--color-text-secondary)]">Refreshed</dt>
+            <dd>{place.last_detail_refresh ? new Date(place.last_detail_refresh).toLocaleDateString() : "Never"}</dd>
+            {place.address && <><dt className="text-[var(--color-text-secondary)]">Address</dt><dd className="break-words">{place.address}</dd></>}
+          </dl>
           <Button variant="secondary" icon={Edit3} onClick={onEdit}>Edit place and scores</Button>
         </>
       )}

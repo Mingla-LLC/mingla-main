@@ -420,5 +420,6 @@ test("Browse: sentence-case headings, the Google type under the name, and a side
   assert.ok(page.includes("<PlaceSidePanel place={picked} onEdit={() => setDetailPlace(picked)}"));
   const stages = pipelineLib.placeStages({ passes_pre_photo_check: false, pre_photo_bouncer_reason: "B4:no_website", stored_photo_urls: [], is_servable: null });
   assert.deepEqual(stages.map((x) => [x.id, x.state]), [["pre_check", "failed"], ["photos", "not_run"], ["final_check", "not_run"], ["scores", "not_run"]]);
-  assert.equal(stages[0].text, "No website");
+  assert.equal(stages[0].text, "Failed: No website");
+  assert.equal(pipelineLib.placeStages({ is_servable: false })[2].text, "Failed");
 });

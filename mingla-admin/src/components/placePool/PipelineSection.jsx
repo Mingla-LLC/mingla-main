@@ -471,7 +471,7 @@ export function PipelineSection() {
               <div ref={scrollRef} className="overflow-x-auto border-t border-[var(--gray-200)]">
                 <table className="w-full table-fixed border-collapse text-sm" aria-label="Pipeline gaps by city and stage">
                   <colgroup>
-                    <col style={{ width: "112px" }} />
+                    <col style={{ width: "96px" }} />
                     {MATRIX_COLUMNS.map((c) => <col key={c.id} />)}
                   </colgroup>
                   <thead>
@@ -479,7 +479,7 @@ export function PipelineSection() {
                       <th scope="col" className="sticky left-0 z-[1] bg-[var(--color-background-primary)] px-2 py-2 text-[11px] font-medium text-[var(--color-text-secondary)]">City</th>
                       {MATRIX_COLUMNS.map((c) => (
                         <th key={c.id} scope="col" className="px-0.5 py-2 align-bottom">
-                          <span className="block text-[11px] font-semibold leading-[13px] text-[var(--color-text-primary)]">{c.label}</span>
+                          <span className="block text-[10.5px] font-semibold leading-[13px] tracking-[-0.01em] text-[var(--color-text-primary)]">{c.label}</span>
                           <span className="block text-[10px] font-normal leading-[12px] text-[var(--color-text-tertiary)]">{c.sub}</span>
                         </th>
                       ))}
@@ -507,7 +507,7 @@ export function PipelineSection() {
                             <th scope="row" className={`sticky left-0 z-[1] px-1 py-1 text-left font-normal ${isSel ? "bg-[var(--color-brand-50)]" : "bg-[var(--color-background-primary)]"}`}>
                               <button type="button" className="flex min-h-11 w-full min-w-0 cursor-pointer flex-col items-start justify-center rounded-lg px-1 text-left hover:bg-[var(--gray-50)]"
                                 aria-expanded={isSel} onClick={() => pickCity(row)}>
-                                <b className="block w-full truncate text-[12px] font-semibold text-[var(--color-text-primary)]">{c.city_name}</b>
+                                <b className="block w-full break-words text-[12px] font-semibold leading-[15px] text-[var(--color-text-primary)]">{c.city_name}</b>
                                 <span className="text-[10.5px] leading-[13px] text-[var(--color-text-secondary)]">{status}{word ? ` · run ${word.label.toLowerCase()}` : ""}</span>
                               </button>
                             </th>
