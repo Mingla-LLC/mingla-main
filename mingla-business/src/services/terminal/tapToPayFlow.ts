@@ -313,6 +313,9 @@ export interface TapToPaySaleFlowInput {
  */
 export const TAP_READY_LIMIT_MS = 10 * 60 * 1000;
 
+/** A stale intent's cancel didn't land: its state is unconfirmed, so no "nothing was charged". */
+export const TAP_REPLACE_FAILED_MESSAGE = "Couldn't start a new payment. Check your connection and try again.";
+
 /** A clock that wall-clock changes don't move (falls back to Date.now). */
 const monotonicNow = (): number => {
   const perf = (globalThis as { performance?: { now?: () => number } }).performance;
@@ -367,6 +370,8 @@ export class TapToPaySaleFlow {
   private closed = false;
   /** closeSale only: the screen is gone, so a late payment is reported via onPaidAfterClose. */
   private hostLeft = false;
+  /** Stripe reported the current intent canceled (the sweep, or a cancel elsewhere): the next try replaces it. */
+  private intentCanceled = false;
 
   constructor(input: TapToPaySaleFlowInput) {
     this.input = input;
@@ -387,7 +392,7 @@ export class TapToPaySaleFlow {
    */
   private async replaceStaleIntent(): Promise<boolean> {
     const intent = this.intent;
-    if (intent === null || this.readyTimeLeftMs() > 0) return true;
+    if (intent === null || (this.readyTimeLeftMs() > 0 && !this.intentCanceled)) return true;
     this.emit({ kind: "starting" });
     try {
       await this.input.server.cancelIntent({
@@ -404,7 +409,8 @@ export class TapToPaySaleFlow {
         payment_intent_id: intent.paymentIntentId,
         code: error instanceof DoorTapError ? error.code : null,
       });
-      this.emit({ kind: "failed", message: "Couldn't start the payment. Nothing was charged. Try again." });
+      // The old intent's state is unconfirmed, so this never says nothing was charged.
+      this.emit({ kind: "failed", message: TAP_REPLACE_FAILED_MESSAGE });
       return false;
     }
     this.forgetIntent();
@@ -418,6 +424,18 @@ export class TapToPaySaleFlow {
     this.collectedPaymentIntent = null;
     this.clientRequestId = randomUuid();
     this.intentClockStart = null;
+    this.intentCanceled = false;
+  }
+
+  /**
+   * Stripe says the intent is canceled: no money can move on it, so the host is
+   * shown the tap as cancelled (not an unknown result), and "Try again" starts a
+   * fresh intent.
+   */
+  private emitIntentCanceled(): void {
+    this.intentCanceled = true;
+    this.collectedPaymentIntent = null;
+    this.emit({ kind: "cancelled", amount: this.amount() });
   }
 
   /**
@@ -514,6 +532,10 @@ export class TapToPaySaleFlow {
           return;
         }
         this.paymentIntent = retrieved.paymentIntent;
+        if (retrieved.paymentIntent.status === "canceled") {
+          this.emitIntentCanceled();
+          return;
+        }
       }
       await this.collectAndConfirm();
     } finally {
@@ -567,7 +589,7 @@ export class TapToPaySaleFlow {
       return;
     }
     if (this.busy) return;
-    if (this.readyTimeLeftMs() <= 0) {
+    if (this.readyTimeLeftMs() <= 0 || this.intentCanceled) {
       await this.start();
       return;
     }
@@ -684,6 +706,10 @@ export class TapToPaySaleFlow {
     const collected = await this.input.terminal.collectPaymentMethod(current);
     if (collected.error || collected.paymentIntent === undefined) {
       if (collected.error?.paymentIntent !== undefined) this.paymentIntent = collected.error.paymentIntent;
+      if (collected.error?.paymentIntent?.status === "canceled") {
+        this.emitIntentCanceled();
+        return;
+      }
       this.emitTerminalFailure(collected.error ?? {}, "The card couldn't be read. Nothing was charged. Try again.");
       return;
     }
@@ -707,6 +733,10 @@ export class TapToPaySaleFlow {
         await this.recordSucceeded(after);
         return;
       }
+      if (after?.status === "canceled") {
+        this.emitIntentCanceled();
+        return;
+      }
       // Stripe: with no PaymentIntent back, or a timed-out request, the status is
       // unknown and the answer is to confirm the same intent again. "Nothing was
       // charged" is only true when Stripe says it needs a new card, so anything
@@ -724,6 +754,10 @@ export class TapToPaySaleFlow {
       return;
     }
     this.paymentIntent = confirmed.paymentIntent;
+    if (confirmed.paymentIntent.status === "canceled") {
+      this.emitIntentCanceled();
+      return;
+    }
     if (confirmed.paymentIntent.status === "requires_payment_method") {
       this.collectedPaymentIntent = null;
       this.emit({ kind: "declined", amount, cardLabel: cardLabelFor(confirmed.paymentIntent) });

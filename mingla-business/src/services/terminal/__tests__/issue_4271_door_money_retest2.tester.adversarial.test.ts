@@ -224,7 +224,10 @@ const toldNothingCharged = (states: TapSaleState[]): boolean =>
   );
 
 describe("#4271 retest 2 T1: an unsettled PaymentIntent is never a decline", () => {
-  const UNSETTLED = ["processing", "requires_capture", "requires_confirmation", "requires_action", "canceled", "some_future_status"];
+  // "canceled" left this list in retest 3 P4-6: a canceled PaymentIntent is Stripe's
+  // confirmed "no money moved", so it now reads cancelled and a retry makes a fresh
+  // intent (pinned in issue_4271_tap_to_pay_flow.implementor.test.ts).
+  const UNSETTLED = ["processing", "requires_capture", "requires_confirmation", "requires_action", "some_future_status"];
 
   test.each(UNSETTLED)("confirm answers %s with no error -> unknown; Try again confirms the same intent, no second tap", async (status) => {
     const h = harness({ confirm: [{ paymentIntent: { id: "pi_r2", status } }, { paymentIntent: PI_SUCCEEDED }] });

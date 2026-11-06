@@ -18,6 +18,7 @@ import * as path from "path";
 
 import {
   TAP_READY_LIMIT_MS,
+  TAP_REPLACE_FAILED_MESSAGE,
   TapToPaySaleFlow,
   cardLabelFor,
   classifyTerminalError,
@@ -899,5 +900,60 @@ describe("retest 3 P3-1/P3-2: the intent's age counts sleep and late creates", (
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe("retest 3 P4: honest copy when a replacement can't cancel, and a swept intent reads cancelled", () => {
+  test("a stale intent whose cancel failed never tells the host nothing was charged", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = makeHarness({ collect: [{ error: { code: "CANCELED" } }] });
+      const states: TapSaleState[] = [];
+      const flow = new TapToPaySaleFlow({
+        eventId: "evt_1",
+        draft: DRAFT,
+        clientRequestId: "req-1",
+        terminal: h.terminal,
+        server: {
+          createIntent: h.createIntent,
+          completeIntent: h.completeIntent,
+          cancelIntent: jest.fn(async () => {
+            throw new DoorTapError("network_error", "offline");
+          }),
+        },
+        onState: (state) => states.push(state),
+      });
+      await flow.start();
+      expect(flow.getState().kind).toBe("cancelled");
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await flow.tryAnotherCard();
+      const state = flow.getState();
+      expect(state).toEqual({ kind: "failed", message: TAP_REPLACE_FAILED_MESSAGE });
+      expect(TAP_REPLACE_FAILED_MESSAGE).not.toMatch(/nothing was charged/i);
+      expect(h.createIntent).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("Stripe says the intent was canceled at confirm: cancelled, not unknown; Try again makes a fresh intent", async () => {
+    const h = makeHarness({
+      confirm: [{ error: { code: "UNEXPECTED_SDK_ERROR", paymentIntent: { id: "pi_123", status: "canceled" } } }],
+    });
+    await h.flow.start();
+    expect(h.flow.getState().kind).toBe("cancelled");
+    await h.flow.tryAnotherCard();
+    expect(h.createIntent).toHaveBeenCalledTimes(2);
+    const ids = h.createIntent.mock.calls.map(([input]) => input.clientRequestId);
+    expect(ids[0]).toBe("req-1");
+    expect(ids[1]).not.toBe("req-1");
+    expect(h.flow.getState().kind).toBe("approved");
+  });
+
+  test("a confirm that answers with a canceled intent reads cancelled too", async () => {
+    const h = makeHarness({ confirm: [{ paymentIntent: { id: "pi_123", status: "canceled" } }] });
+    await h.flow.start();
+    expect(h.flow.getState().kind).toBe("cancelled");
+    expect(h.completeIntent).not.toHaveBeenCalled();
   });
 });
