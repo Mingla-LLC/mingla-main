@@ -83,13 +83,22 @@ const deps = (
 
 // ── States ─────────────────────────────────────────────────────────────────
 Deno.test("found: each open field gets one value with its source and date, straight off the page", async () => {
-  const result = await runBrandResearch(IDENTITY, deps({ pages: { [OWN.url]: OWN } }));
+  const result = await runBrandResearch(
+    IDENTITY,
+    deps({ pages: { [OWN.url]: OWN } }),
+  );
   assertEquals(result.status, "found");
-  assertEquals(result.candidates.contact_email?.[0].value, "hello@lanternroom.example");
+  assertEquals(
+    result.candidates.contact_email?.[0].value,
+    "hello@lanternroom.example",
+  );
   assertEquals(result.candidates.contact_phone?.[0].value, "+2348012345678");
   assertEquals(result.candidates.address?.[0].value, "12 Awolowo Road, Lagos");
   assertEquals(result.candidates.city_country?.[0].value, "Lagos, Nigeria");
-  assertEquals(result.candidates.social_links?.[0].value, "https://instagram.com/lanternroom");
+  assertEquals(
+    result.candidates.social_links?.[0].value,
+    "https://instagram.com/lanternroom",
+  );
   const row = result.candidates.contact_email![0];
   assertEquals(row.source_type, "public_research");
   assertEquals(row.source_url, OWN.url);
@@ -99,27 +108,49 @@ Deno.test("found: each open field gets one value with its source and date, strai
 });
 
 Deno.test("nothing found: a same-brand page with no details, or no sources at all, is nothing", async () => {
-  const bare = page("https://lanternroom.example/", "Lantern Room", "Suppers in Lagos.");
-  const one = await runBrandResearch(IDENTITY, deps({ pages: { [bare.url]: bare } }));
+  const bare = page(
+    "https://lanternroom.example/",
+    "Lantern Room",
+    "Suppers in Lagos.",
+  );
+  const one = await runBrandResearch(
+    IDENTITY,
+    deps({ pages: { [bare.url]: bare } }),
+  );
   assertEquals(one.status, "nothing");
   assertEquals(one.candidates, {});
-  const none = await runBrandResearch(IDENTITY, deps({
-    search: () => Promise.reject(new Error("RESEARCH_UNGROUNDED")),
-  }));
+  const none = await runBrandResearch(
+    IDENTITY,
+    deps({
+      search: () => Promise.reject(new Error("RESEARCH_UNGROUNDED")),
+    }),
+  );
   assertEquals(none.status, "nothing");
 });
 
 Deno.test("provider down: unavailable, so one retry is allowed; a page that fails is just not evidence", async () => {
-  for (const code of ["RESEARCH_HTTP_503", "RESEARCH_NOT_CONFIGURED", "RESEARCH_TIMEOUT"]) {
-    const down = await runBrandResearch(IDENTITY, deps({
-      search: () => Promise.reject(new Error(code)),
-    }));
+  for (
+    const code of [
+      "RESEARCH_HTTP_503",
+      "RESEARCH_NOT_CONFIGURED",
+      "RESEARCH_TIMEOUT",
+    ]
+  ) {
+    const down = await runBrandResearch(
+      IDENTITY,
+      deps({
+        search: () => Promise.reject(new Error(code)),
+      }),
+    );
     assertEquals(down.status, "unavailable", code);
   }
-  const pageDown = await runBrandResearch(IDENTITY, deps({
-    search: search(["https://lanternroom.example/"]),
-    fetchPage: () => Promise.reject(new Error("PUBLIC_URL_HTTP_500")),
-  }));
+  const pageDown = await runBrandResearch(
+    IDENTITY,
+    deps({
+      search: search(["https://lanternroom.example/"]),
+      fetchPage: () => Promise.reject(new Error("PUBLIC_URL_HTTP_500")),
+    }),
+  );
   assertEquals(pageDown.status, "nothing");
 });
 
@@ -127,15 +158,39 @@ Deno.test("provider down: unavailable, so one retry is allowed; a page that fail
 Deno.test("wrong-brand lookalikes get nothing", async () => {
   const lookalikes: ResearchPage[] = [
     // A longer name is another business.
-    page("https://lanterncafe.example/", "Lantern Room Cafe | Lagos", `Lagos <a href="mailto:x@lanterncafe.example">x</a>`),
-    page("https://therooms.example/", "The Lantern Rooms", `Lagos <a href="mailto:x@therooms.example">x</a>`),
+    page(
+      "https://lanterncafe.example/",
+      "Lantern Room Cafe | Lagos",
+      `Lagos <a href="mailto:x@lanterncafe.example">x</a>`,
+    ),
+    page(
+      "https://therooms.example/",
+      "The Lantern Rooms",
+      `Lagos <a href="mailto:x@therooms.example">x</a>`,
+    ),
     // Right name, other city.
-    page("https://lanternroom-accra.example/", "Lantern Room", `Accra <a href="mailto:x@lanternroom-accra.example">x</a>`),
+    page(
+      "https://lanternroom-accra.example/",
+      "Lantern Room",
+      `Accra <a href="mailto:x@lanternroom-accra.example">x</a>`,
+    ),
     // Name only in the body.
-    page("https://reviews.example/", "Best suppers in Lagos", `Lantern Room is great. <a href="mailto:x@reviews.example">x</a>`),
+    page(
+      "https://reviews.example/",
+      "Best suppers in Lagos",
+      `Lantern Room is great. <a href="mailto:x@reviews.example">x</a>`,
+    ),
     // Directories and networks are never a source, however exact.
-    page("https://www.yelp.com/biz/lantern-room", "Lantern Room", `Lagos <a href="mailto:x@yelp.com">x</a>`),
-    page("https://instagram.com/lanternroom", "Lantern Room", `Lagos <a href="mailto:x@instagram.com">x</a>`),
+    page(
+      "https://www.yelp.com/biz/lantern-room",
+      "Lantern Room",
+      `Lagos <a href="mailto:x@yelp.com">x</a>`,
+    ),
+    page(
+      "https://instagram.com/lanternroom",
+      "Lantern Room",
+      `Lagos <a href="mailto:x@instagram.com">x</a>`,
+    ),
   ];
   for (const candidate of lookalikes) {
     assertEquals(pageBelongsToBrand(IDENTITY, candidate), null, candidate.url);
@@ -147,9 +202,16 @@ Deno.test("wrong-brand lookalikes get nothing", async () => {
 });
 
 Deno.test("same-brand evidence: owned domain, saved handle, or exact name plus city", () => {
-  const owned = { ...IDENTITY, city: null, ownedHosts: ["lanternroom.example"] };
+  const owned = {
+    ...IDENTITY,
+    city: null,
+    ownedHosts: ["lanternroom.example"],
+  };
   assertEquals(
-    pageBelongsToBrand(owned, page("https://www.lanternroom.example/contact", "Contact", "Hi")),
+    pageBelongsToBrand(
+      owned,
+      page("https://www.lanternroom.example/contact", "Contact", "Hi"),
+    ),
     "owned_domain",
   );
   const handle = {
@@ -158,11 +220,25 @@ Deno.test("same-brand evidence: owned domain, saved handle, or exact name plus c
     handles: [{ host: "instagram.com", handle: "lanternroom" }],
   };
   assertEquals(
-    pageBelongsToBrand(handle, page("https://other.example/", "Lantern Room", `<a href="https://www.instagram.com/lanternroom/">ig</a>`)),
+    pageBelongsToBrand(
+      handle,
+      page(
+        "https://other.example/",
+        "Lantern Room",
+        `<a href="https://www.instagram.com/lanternroom/">ig</a>`,
+      ),
+    ),
     "handle",
   );
   assertEquals(
-    pageBelongsToBrand(handle, page("https://other.example/", "Lantern Room", `<a href="https://www.instagram.com/someoneelse/">ig</a>`)),
+    pageBelongsToBrand(
+      handle,
+      page(
+        "https://other.example/",
+        "Lantern Room",
+        `<a href="https://www.instagram.com/someoneelse/">ig</a>`,
+      ),
+    ),
     null,
   );
   assertEquals(pageBelongsToBrand(IDENTITY, OWN), "name_city");
@@ -176,9 +252,17 @@ Deno.test("same-brand evidence: owned domain, saved handle, or exact name plus c
 });
 
 Deno.test("two different values for a field is unsure: neither is offered", () => {
-  const a = extractCandidates({ page: OWN, basis: "name_city", observedAt: "t" });
+  const a = extractCandidates({
+    page: OWN,
+    basis: "name_city",
+    observedAt: "t",
+  });
   const b = extractCandidates({
-    page: page("https://lanternroom.example/about", "About", `<a href="mailto:other@lanternroom.example">x</a>`),
+    page: page(
+      "https://lanternroom.example/about",
+      "About",
+      `<a href="mailto:other@lanternroom.example">x</a>`,
+    ),
     basis: "name_city",
     observedAt: "t",
   });
@@ -186,7 +270,11 @@ Deno.test("two different values for a field is unsure: neither is offered", () =
   assertEquals(merged.contact_email, undefined);
   assert(merged.contact_phone?.length === 1);
   const twice = extractCandidates({
-    page: page("https://lanternroom.example/", "Lantern Room", `<a href="mailto:a@lanternroom.example">a</a><a href="mailto:b@lanternroom.example">b</a>`),
+    page: page(
+      "https://lanternroom.example/",
+      "Lantern Room",
+      `<a href="mailto:a@lanternroom.example">a</a><a href="mailto:b@lanternroom.example">b</a>`,
+    ),
     basis: "name_city",
     observedAt: "t",
   });
@@ -203,11 +291,17 @@ Deno.test("injected instructions in a page are data: they change nothing and no 
      <script>var a = "script@evil.example";</script>
      <a href="mailto:hello@lanternroom.example">Email</a>`,
   );
-  const result = await runBrandResearch(IDENTITY, deps({ pages: { [hostile.url]: hostile } }));
+  const result = await runBrandResearch(
+    IDENTITY,
+    deps({ pages: { [hostile.url]: hostile } }),
+  );
   const emails = result.candidates.contact_email?.map((row) => row.value) ?? [];
   assertEquals(emails, ["hello@lanternroom.example"]);
   const text = JSON.stringify(result.candidates);
-  assertNotMatch(text, /evil\.example|ignore previous|approve the plan|publish/i);
+  assertNotMatch(
+    text,
+    /evil\.example|ignore previous|approve the plan|publish/i,
+  );
 });
 
 // ── prepareBrandResearch: limit, cache, permission, never blocking ─────────
@@ -216,9 +310,24 @@ function planWith(canManage = true, extra: Record<string, unknown>[] = []) {
     can_manage: canManage,
     completeness: {
       fields: [
-        { key: "name", value: "Lantern Room", requirement: "required", state: "verified" },
-        { key: "city_country", value: { city: "Lagos", country_code: "NG" }, requirement: "recommended", state: "verified" },
-        { key: "contact_email", value: null, requirement: "recommended", state: "missing" },
+        {
+          key: "name",
+          value: "Lantern Room",
+          requirement: "required",
+          state: "verified",
+        },
+        {
+          key: "city_country",
+          value: { city: "Lagos", country_code: "NG" },
+          requirement: "recommended",
+          state: "verified",
+        },
+        {
+          key: "contact_email",
+          value: null,
+          requirement: "recommended",
+          state: "missing",
+        },
         ...extra,
       ],
     },
@@ -235,7 +344,10 @@ function fakeService(claim: () => unknown | Promise<unknown>) {
         if (fn === "ari_brand_research_claim") {
           const answer = await claim();
           if (answer instanceof Error) {
-            return { data: null, error: { code: "42501", message: answer.message } };
+            return {
+              data: null,
+              error: { code: "42501", message: answer.message },
+            };
           }
           return { data: answer, error: null };
         }
@@ -247,7 +359,11 @@ function fakeService(claim: () => unknown | Promise<unknown>) {
 
 Deno.test("one-search limit: a search runs only when the claim allows it, and finishes with its result", async () => {
   let searches = 0;
-  const service = fakeService(() => ({ allowed: true, attempts: 1, status: "running" }));
+  const service = fakeService(() => ({
+    allowed: true,
+    attempts: 1,
+    status: "running",
+  }));
   const scheduled: Promise<unknown>[] = [];
   const answer = await prepareBrandResearch({
     // deno-lint-ignore no-explicit-any
@@ -267,13 +383,22 @@ Deno.test("one-search limit: a search runs only when the claim allows it, and fi
   assertEquals(answer, null); // The question is plain now; candidates come later.
   await Promise.all(scheduled);
   assertEquals(searches, 1);
-  const finish = service.calls.find((call) => call.fn === "ari_brand_research_finish")!;
+  const finish = service.calls.find((call) =>
+    call.fn === "ari_brand_research_finish"
+  )!;
   assertEquals(finish.args.p_status, "found");
   // Nothing in this path writes the brand or evidence.
-  assertEquals(service.calls.map((call) => call.fn), ["ari_brand_research_claim", "ari_brand_research_finish"]);
+  assertEquals(service.calls.map((call) => call.fn), [
+    "ari_brand_research_claim",
+    "ari_brand_research_finish",
+  ]);
 
   // A second visit, not allowed: no search.
-  const again = fakeService(() => ({ allowed: false, attempts: 2, status: "unavailable" }));
+  const again = fakeService(() => ({
+    allowed: false,
+    attempts: 2,
+    status: "unavailable",
+  }));
   searches = 0;
   const second = await prepareBrandResearch({
     // deno-lint-ignore no-explicit-any
@@ -281,7 +406,12 @@ Deno.test("one-search limit: a search runs only when the claim allows it, and fi
     userId: USER,
     brandId: BRAND,
     plan: planWith(),
-    deps: deps({ search: (q) => { searches += 1; return search([])(q); } }),
+    deps: deps({
+      search: (q) => {
+        searches += 1;
+        return search([])(q);
+      },
+    }),
     schedule: () => assert(false, "must not schedule"),
   });
   assertEquals(second, null);
@@ -290,14 +420,22 @@ Deno.test("one-search limit: a search runs only when the claim allows it, and fi
 
 Deno.test("cache hit: found candidates come back with no search", async () => {
   const cached = { contact_email: [{ value: "hello@lanternroom.example" }] };
-  const service = fakeService(() => ({ allowed: false, status: "found", candidates: cached }));
+  const service = fakeService(() => ({
+    allowed: false,
+    status: "found",
+    candidates: cached,
+  }));
   const answer = await prepareBrandResearch({
     // deno-lint-ignore no-explicit-any
     service: service.client as any,
     userId: USER,
     brandId: BRAND,
     plan: planWith(),
-    deps: deps({ search: () => { throw new Error("must not search"); } }),
+    deps: deps({
+      search: () => {
+        throw new Error("must not search");
+      },
+    }),
     schedule: () => assert(false, "must not schedule"),
   });
   assertEquals(answer as unknown, cached);
@@ -311,7 +449,11 @@ Deno.test("permission refusal: no edit rights means no claim and no search, and 
     userId: USER,
     brandId: BRAND,
     plan: planWith(false),
-    deps: deps({ search: () => { throw new Error("must not search"); } }),
+    deps: deps({
+      search: () => {
+        throw new Error("must not search");
+      },
+    }),
     schedule: () => assert(false, "must not schedule"),
   });
   assertEquals(refused, null);
@@ -331,7 +473,11 @@ Deno.test("permission refusal: no edit rights means no claim and no search, and 
 });
 
 Deno.test("never slows the question: a slow claim gives up, and a saved field or no anchor never claims", async () => {
-  const slow = fakeService(() => new Promise((resolve) => setTimeout(() => resolve({ allowed: true }), 2_000)));
+  const slow = fakeService(() =>
+    new Promise((resolve) =>
+      setTimeout(() => resolve({ allowed: true }), 2_000)
+    )
+  );
   const started = Date.now();
   const answer = await prepareBrandResearch({
     // deno-lint-ignore no-explicit-any
@@ -348,17 +494,28 @@ Deno.test("never slows the question: a slow claim gives up, and a saved field or
 
   const service = fakeService(() => ({ allowed: true }));
   const settled = planWith();
-  (settled.completeness.fields[2] as Record<string, unknown>).state = "verified";
+  (settled.completeness.fields[2] as Record<string, unknown>).state =
+    "verified";
   assertEquals(
     // deno-lint-ignore no-explicit-any
-    await prepareBrandResearch({ service: service.client as any, userId: USER, brandId: BRAND, plan: settled }),
+    await prepareBrandResearch({
+      service: service.client as any,
+      userId: USER,
+      brandId: BRAND,
+      plan: settled,
+    }),
     null,
   );
   assertEquals(service.calls, []);
 });
 
 Deno.test("a rename clears: nothing old is offered, and the identity travels with the claim and the result", async () => {
-  const service = fakeService(() => ({ allowed: false, status: "nothing", cleared: true, candidates: {} }));
+  const service = fakeService(() => ({
+    allowed: false,
+    status: "nothing",
+    cleared: true,
+    candidates: {},
+  }));
   const answer = await prepareBrandResearch({
     // deno-lint-ignore no-explicit-any
     service: service.client as any,
@@ -372,11 +529,30 @@ Deno.test("a rename clears: nothing old is offered, and the identity travels wit
 });
 
 Deno.test("hostile pages at the full fetch size stay linear; the title reader too", () => {
-  for (const html of ["<a ".repeat(230_000), "<".repeat(700_000), "<script ".repeat(80_000), "a".repeat(700_000) + "@", "<!--".repeat(170_000)]) {
-    const candidate = { url: "https://lanternroom.example/", title: pageTitle(html), html };
+  for (
+    const html of [
+      "<a ".repeat(230_000),
+      "<".repeat(700_000),
+      "<script ".repeat(80_000),
+      "a".repeat(700_000) + "@",
+      "<!--".repeat(170_000),
+    ]
+  ) {
+    const candidate = {
+      url: "https://lanternroom.example/",
+      title: pageTitle(html),
+      html,
+    };
     const started = performance.now();
-    pageBelongsToBrand({ ...IDENTITY, ownedHosts: ["lanternroom.example"] }, candidate);
-    extractCandidates({ page: candidate, basis: "owned_domain", observedAt: "t" });
+    pageBelongsToBrand(
+      { ...IDENTITY, ownedHosts: ["lanternroom.example"] },
+      candidate,
+    );
+    extractCandidates({
+      page: candidate,
+      basis: "owned_domain",
+      observedAt: "t",
+    });
     // Quadratic work on 700k characters takes minutes; 3 s leaves room for a loaded runner.
     assert(performance.now() - started < 3_000, html.slice(0, 12));
   }
@@ -385,11 +561,17 @@ Deno.test("hostile pages at the full fetch size stay linear; the title reader to
 Deno.test("the source line is plain words", () => {
   const now = new Date("2026-11-05T12:00:00Z");
   assertEquals(
-    researchSourceLine({ source_url: "https://www.lanternroom.example/c", observed_at: "2026-11-05T08:00:00Z" }, now),
+    researchSourceLine({
+      source_url: "https://www.lanternroom.example/c",
+      observed_at: "2026-11-05T08:00:00Z",
+    }, now),
     "From lanternroom.example, checked today",
   );
   assertMatch(
-    researchSourceLine({ source_url: "https://lanternroom.example/", observed_at: "2026-10-01T08:00:00Z" }, now),
+    researchSourceLine({
+      source_url: "https://lanternroom.example/",
+      observed_at: "2026-10-01T08:00:00Z",
+    }, now),
     /^From lanternroom\.example, checked on 1 Oct 2026$/,
   );
 });
@@ -398,12 +580,20 @@ Deno.test("a run stops parsing once its parse budget is spent, and keeps what it
   // Each parse "costs" 1 s on this clock: the second page uses up the budget.
   let t = 0;
   const pages: Record<string, ResearchPage> = {};
-  const urls = ["https://a.example/", "https://b.example/", "https://c.example/", "https://d.example/"];
+  const urls = [
+    "https://a.example/",
+    "https://b.example/",
+    "https://c.example/",
+    "https://d.example/",
+  ];
   for (const url of urls) pages[url] = { ...OWN, url };
   const fetched: string[] = [];
   const result = await runBrandResearch(IDENTITY, {
     ...deps({ pages }),
-    fetchPage: (url) => { fetched.push(url); return Promise.resolve(pages[url] ?? null); },
+    fetchPage: (url) => {
+      fetched.push(url);
+      return Promise.resolve(pages[url] ?? null);
+    },
     clock: () => (t += 1_000),
   });
   assertEquals(fetched.length, 2);

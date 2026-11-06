@@ -73,7 +73,10 @@ import {
 } from "../../../../packages/phone-input/phoneNumber.ts";
 import { COUNTRY_DIRECTORY } from "../../../../packages/phone-input/countryDirectory.ts";
 import { itemHandoff } from "./brandGate.ts";
-import { isResearchField, researchSourceLine } from "../ariBrandResearchCopy.ts";
+import {
+  isResearchField,
+  researchSourceLine,
+} from "../ariBrandResearchCopy.ts";
 import type {
   AnswerOutcome,
   AskSpec,
@@ -646,7 +649,9 @@ function formAsk(args: {
     answer_mode: "form",
     reuse_key: foundValue
       ? `website:${fieldKey}:found:${args.attempt}`
-      : `website:${fieldKey}:${String(field.state ?? "missing")}:${args.attempt}`,
+      : `website:${fieldKey}:${
+        String(field.state ?? "missing")
+      }:${args.attempt}`,
     title: label,
     text: [args.problem, question, args.problem ? "" : AUDIENCE].filter(Boolean)
       .join(" "),
@@ -943,7 +948,9 @@ function fieldStep(args: {
                 observed_at: str(found.observed_at),
               },
               why: `The owner chose this ${
-                lowerFirst(websiteSetupFieldLabel(fieldOf(plan!, fieldKey), fieldKey))
+                lowerFirst(
+                  websiteSetupFieldLabel(fieldOf(plan!, fieldKey), fieldKey),
+                )
               } from a public page Ari found.`.slice(0, 300),
               cites: [{ kind: "owner_words", quote: "Use this" }],
             },

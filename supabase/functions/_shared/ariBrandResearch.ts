@@ -25,8 +25,8 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
-  assertSafePublicUrl,
   type AriResearchResult,
+  assertSafePublicUrl,
   fetchPublicUrl,
   searchPublicWeb,
 } from "./agentWebResearch.ts";
@@ -96,13 +96,17 @@ function hostOf(url: string): string | null {
 }
 
 function normalizeWords(value: string): string {
-  return value.toLowerCase().replace(/[’']/g, "").replace(/[^\p{L}\p{N}]+/gu, " ")
+  return value.toLowerCase().replace(/[’']/g, "").replace(
+    /[^\p{L}\p{N}]+/gu,
+    " ",
+  )
     .trim();
 }
 
 function hasWholePhrase(haystack: string, phrase: string): boolean {
   const words = normalizeWords(phrase);
-  return words.length > 0 && ` ${normalizeWords(haystack)} `.includes(` ${words} `);
+  return words.length > 0 &&
+    ` ${normalizeWords(haystack)} `.includes(` ${words} `);
 }
 
 /** Who this brand is, from what Mingla already holds. Null: nothing to anchor on. */
@@ -126,7 +130,9 @@ export function brandIdentityFromPlan(
     const host = hostOf(url);
     if (!host) continue;
     if (key === "website") {
-      if (!NOT_A_SOURCE.test(host) && !isSharedHost(host)) ownedHosts.push(host);
+      if (!NOT_A_SOURCE.test(host) && !isSharedHost(host)) {
+        ownedHosts.push(host);
+      }
       continue;
     }
     if (!SOCIAL_HOSTS[host]) continue;
@@ -273,7 +279,9 @@ function jsonLdBodies(source: string): string[] {
     const end = lower.indexOf("</script", close);
     if (end < 0) break;
     at = end + 8;
-    if (close - open > TAG_MAX_CHARS || end - close > JSON_LD_MAX_CHARS) continue;
+    if (close - open > TAG_MAX_CHARS || end - close > JSON_LD_MAX_CHARS) {
+      continue;
+    }
     if (lower.slice(open, close).includes("application/ld+json")) {
       out.push(html.slice(close + 1, end));
     }
@@ -291,13 +299,40 @@ function safeDecode(value: string): string | null {
 
 /** Hosts where anyone can have a page: never evidence of owning a domain. */
 const SHARED_HOSTS = [
-  "linktr.ee", "beacons.ai", "bio.site", "bio.link", "lnk.bio", "taplink.cc",
-  "solo.to", "campsite.bio", "milkshake.app", "carrd.co", "wixsite.com",
-  "wix.com", "weebly.com", "webflow.io", "framer.website", "framer.app",
-  "notion.site", "sites.google.com", "github.io", "gitlab.io", "netlify.app",
-  "vercel.app", "pages.dev", "web.app", "firebaseapp.com", "wordpress.com",
-  "blogspot.com", "tumblr.com", "substack.com", "myshopify.com",
-  "squarespace.com", "godaddysites.com", "canva.site", "my.canva.site",
+  "linktr.ee",
+  "beacons.ai",
+  "bio.site",
+  "bio.link",
+  "lnk.bio",
+  "taplink.cc",
+  "solo.to",
+  "campsite.bio",
+  "milkshake.app",
+  "carrd.co",
+  "wixsite.com",
+  "wix.com",
+  "weebly.com",
+  "webflow.io",
+  "framer.website",
+  "framer.app",
+  "notion.site",
+  "sites.google.com",
+  "github.io",
+  "gitlab.io",
+  "netlify.app",
+  "vercel.app",
+  "pages.dev",
+  "web.app",
+  "firebaseapp.com",
+  "wordpress.com",
+  "blogspot.com",
+  "tumblr.com",
+  "substack.com",
+  "myshopify.com",
+  "squarespace.com",
+  "godaddysites.com",
+  "canva.site",
+  "my.canva.site",
 ];
 
 export function isSharedHost(host: string): boolean {
@@ -320,7 +355,8 @@ export function pageBelongsToBrand(
   if (!host || NOT_A_SOURCE.test(host)) return null;
   const shared = isSharedHost(host);
   if (
-    !shared && identity.ownedHosts.some((owned) =>
+    !shared &&
+    identity.ownedHosts.some((owned) =>
       !isSharedHost(owned) && (host === owned || host.endsWith(`.${owned}`))
     )
   ) return "owned_domain";
@@ -405,9 +441,13 @@ function emailsInText(words: string): string[] {
   let at = words.indexOf("@");
   while (at >= 0 && out.length < 200) {
     let start = at;
-    while (start > 0 && at - start < 64 && EMAIL_LOCAL.test(words[start - 1])) start -= 1;
+    while (start > 0 && at - start < 64 && EMAIL_LOCAL.test(words[start - 1])) {
+      start -= 1;
+    }
     let end = at + 1;
-    while (end < words.length && end - at < 255 && EMAIL_DOMAIN.test(words[end])) end += 1;
+    while (
+      end < words.length && end - at < 255 && EMAIL_DOMAIN.test(words[end])
+    ) end += 1;
     const value = words.slice(start, end).replace(/\.+$/, "").toLowerCase();
     if (EMAIL.test(value)) out.push(value);
     at = words.indexOf("@", end);

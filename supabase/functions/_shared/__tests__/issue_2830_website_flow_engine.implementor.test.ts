@@ -2024,7 +2024,9 @@ function researchProbes(
     recordFinding(key, candidates) {
       if (log.failRecord) return Promise.resolve(false);
       log.recorded.push(key);
-      const field = w.fields.get(key)! as Field & { evidence_candidates?: unknown };
+      const field = w.fields.get(key)! as Field & {
+        evidence_candidates?: unknown;
+      };
       field.state = "stale";
       field.evidence_candidates = candidates;
       return Promise.resolve(true);
@@ -2043,14 +2045,27 @@ async function researchWorld() {
 Deno.test("#2830 research: found shows the value with its source; 'Use this' is one protected proposal carrying the evidence; nothing saves before it", async () => {
   const { w, store, run } = await researchWorld();
   const log = { recorded: [] as string[], researchCalls: 0 };
-  const deps = { store, probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log) };
-  const out = await runFlowStep(deps, { run, trigger: "turn", brandName: "Lantern" });
+  const deps = {
+    store,
+    probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log),
+  };
+  const out = await runFlowStep(deps, {
+    run,
+    trigger: "turn",
+    brandName: "Lantern",
+  });
   assertEquals(out.kind, "artefact");
   const card = (out as Extract<RunnerOutcome, { kind: "artefact" }>).artefact;
   assertEquals(card.step_key, "brand");
   assertMatch(card.text, /From lantern\.test, checked/);
-  assert(card.options.some((o) => o.id === "use_found" && o.label === "Use this"));
-  assert(card.options.some((o) => o.id === "use_another" && o.label === "Use another"));
+  assert(
+    card.options.some((o) => o.id === "use_found" && o.label === "Use this"),
+  );
+  assert(
+    card.options.some((o) =>
+      o.id === "use_another" && o.label === "Use another"
+    ),
+  );
   const shown = JSON.stringify(card.rendition);
   assertMatch(shown, /hello@lantern\.test/);
   assertEquals(log.recorded, ["contact_email"]);
@@ -2058,11 +2073,18 @@ Deno.test("#2830 research: found shows the value with its source; 'Use this' is 
   assertEquals(w.fields.get("contact_email")!.value, null);
 
   const again = await current(store);
-  const proposed = await runFlowStep(deps, { run: again, ...choose(again, "use_found"), brandName: "Lantern" });
+  const proposed = await runFlowStep(deps, {
+    run: again,
+    ...choose(again, "use_found"),
+    brandName: "Lantern",
+  });
   assertEquals(proposed.kind, "propose");
   const proposal = proposed as Extract<RunnerOutcome, { kind: "propose" }>;
   assertEquals(proposal.tool_name, "update_brand_context");
-  assertEquals((proposal.tool_args.patch as Record<string, unknown>).contact_email, "hello@lantern.test");
+  assertEquals(
+    (proposal.tool_args.patch as Record<string, unknown>).contact_email,
+    "hello@lantern.test",
+  );
   const evidence = proposal.tool_args.evidence as Record<string, unknown>;
   assertEquals(evidence.source_type, "public_research");
   assertEquals(evidence.source_url, "https://lantern.test/contact");
@@ -2073,10 +2095,17 @@ Deno.test("#2830 research: found shows the value with its source; 'Use this' is 
 Deno.test("#2830 research: 'Use another' asks the plain question and saves nothing", async () => {
   const { w, store, run } = await researchWorld();
   const log = { recorded: [] as string[], researchCalls: 0 };
-  const deps = { store, probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log) };
+  const deps = {
+    store,
+    probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log),
+  };
   await runFlowStep(deps, { run, trigger: "turn", brandName: "Lantern" });
   const again = await current(store);
-  const out = await runFlowStep(deps, { run: again, ...choose(again, "use_another"), brandName: "Lantern" });
+  const out = await runFlowStep(deps, {
+    run: again,
+    ...choose(again, "use_another"),
+    brandName: "Lantern",
+  });
   assertEquals(out.kind, "artefact");
   const card = (out as Extract<RunnerOutcome, { kind: "artefact" }>).artefact;
   assertEquals(card.options.some((o) => o.id === "use_found"), false);
@@ -2087,12 +2116,21 @@ Deno.test("#2830 research: 'Use another' asks the plain question and saves nothi
 
 Deno.test("#2830 research: nothing found, unavailable, or a failed finding all ask the plain question", async () => {
   for (
-    const [found, failRecord] of [[null, false], [{}, false], [{ contact_email: [FOUND_ROW] }, true]] as const
+    const [found, failRecord] of [[null, false], [{}, false], [{
+      contact_email: [FOUND_ROW],
+    }, true]] as const
   ) {
     const { w, store, run } = await researchWorld();
     const log = { recorded: [] as string[], researchCalls: 0, failRecord };
     const out = await runFlowStep(
-      { store, probes: researchProbes(w, found as Record<string, Record<string, unknown>[]> | null, log) },
+      {
+        store,
+        probes: researchProbes(
+          w,
+          found as Record<string, Record<string, unknown>[]> | null,
+          log,
+        ),
+      },
       { run, trigger: "turn", brandName: "Lantern" },
     );
     const card = (out as Extract<RunnerOutcome, { kind: "artefact" }>).artefact;
@@ -2119,14 +2157,26 @@ Deno.test("#2830 research: a saved field is never put in question, and research 
   const store2 = new MemoryStore(OWNER);
   const run2 = await startRun(store2);
   const thrown = await runFlowStep(
-    { store: store2, probes: { ...probes(w2), brandResearch: () => Promise.reject(new Error("boom")) } },
+    {
+      store: store2,
+      probes: {
+        ...probes(w2),
+        brandResearch: () => Promise.reject(new Error("boom")),
+      },
+    },
     { run: run2, trigger: "turn", brandName: "Lantern" },
   );
-  assertMatch((thrown as Extract<RunnerOutcome, { kind: "artefact" }>).artefact.text, /What public contact email/);
+  assertMatch(
+    (thrown as Extract<RunnerOutcome, { kind: "artefact" }>).artefact.text,
+    /What public contact email/,
+  );
 });
 
 // ── #2830: takeover at the edge ────────────────────────────────────────────
-function displacedStore(notifiedAt: string | null, missingRpc = false): FlowStore & { marked: string[] } {
+function displacedStore(
+  notifiedAt: string | null,
+  missingRpc = false,
+): FlowStore & { marked: string[] } {
   const marked: string[] = [];
   return {
     marked,
@@ -2135,7 +2185,13 @@ function displacedStore(notifiedAt: string | null, missingRpc = false): FlowStor
     displacement: () =>
       missingRpc
         ? Promise.reject(new FlowEngineUnavailable())
-        : Promise.resolve({ id: "t1", run_id: "r1", to_name: "Ama", created_at: "x", notified_at: notifiedAt }),
+        : Promise.resolve({
+          id: "t1",
+          run_id: "r1",
+          to_name: "Ama",
+          created_at: "x",
+          notified_at: notifiedAt,
+        }),
     markDisplacementNotified: (id: string) => {
       marked.push(id);
       return Promise.resolve();
@@ -2163,8 +2219,15 @@ function turnArgs(store: FlowStore, flowAnswer: unknown) {
   };
 }
 
-const OLD_ANSWER = { run_id: "r1", step_key: "brand", question_id: "q1", choice_id: "answer", display_text: "x" };
-const TAKEN = "Ama took over Website setup, so that didn't save. Everything you answered before is still there.";
+const OLD_ANSWER = {
+  run_id: "r1",
+  step_key: "brand",
+  question_id: "q1",
+  choice_id: "answer",
+  display_text: "x",
+};
+const TAKEN =
+  "Ama took over Website setup, so that didn't save. Everything you answered before is still there.";
 
 Deno.test("#2830 T-EDGE-1: a displaced flow answer gets the words, saves nothing, and is marked", async () => {
   const store = displacedStore(null);
@@ -2180,9 +2243,13 @@ Deno.test("#2830 T-EDGE-1: a displaced flow answer gets the words, saves nothing
 Deno.test("#2830 T-EDGE-1: the first plain turn is told once; after that a plain turn is left alone, an old card never", async () => {
   const plain = await decideFlowTurn(turnArgs(displacedStore(null), null));
   assertEquals((plain as { text?: string }).text, TAKEN);
-  const told = await decideFlowTurn(turnArgs(displacedStore("2026-11-05"), null));
+  const told = await decideFlowTurn(
+    turnArgs(displacedStore("2026-11-05"), null),
+  );
   assertEquals(told.kind, "none");
-  const card = await decideFlowTurn(turnArgs(displacedStore("2026-11-05"), OLD_ANSWER));
+  const card = await decideFlowTurn(
+    turnArgs(displacedStore("2026-11-05"), OLD_ANSWER),
+  );
   assertEquals((card as { text?: string }).text, TAKEN);
 });
 
@@ -2198,7 +2265,9 @@ Deno.test("#2830 T-EDGE-2: the pre-claim stale check returns the taken-over word
 });
 
 Deno.test("#2830 T-EDGE-3: a missing displacement RPC behaves exactly as today", async () => {
-  const decision = await decideFlowTurn(turnArgs(displacedStore(null, true), OLD_ANSWER));
+  const decision = await decideFlowTurn(
+    turnArgs(displacedStore(null, true), OLD_ANSWER),
+  );
   assertEquals(decision.kind, "stale");
   const stale = await staleFlowAnswer({
     store: displacedStore(null, true),
@@ -2227,7 +2296,8 @@ function brandRunStore(overrides: Partial<FlowStore> = {}) {
     current_artefact: { text: "private card" },
   } as unknown as FlowRun;
   return {
-    brandRun: () => Promise.resolve({ run, can_take_over: true, last_takeover: null }),
+    brandRun: () =>
+      Promise.resolve({ run, can_take_over: true, last_takeover: null }),
     ...overrides,
   } as unknown as FlowStore;
 }
@@ -2249,15 +2319,29 @@ Deno.test("#2830 T-EDGE-4: a teammate's view has no answers, step states, card o
   const text = JSON.stringify(state.body);
   assertNotMatch(text, /private|answers|step_states|current_artefact/);
   // Engine off, or the RPC not there yet: no flow, not an error.
-  assertEquals((await flowSetupState({
-    // deno-lint-ignore no-explicit-any
-    service: {} as any, userId: MATE, brandId: BRAND, enabled: false,
-  })).body, { flow: null });
-  assertEquals((await flowSetupState({
-    // deno-lint-ignore no-explicit-any
-    service: {} as any, userId: MATE, brandId: BRAND, enabled: true,
-    store: brandRunStore({ brandRun: () => Promise.reject(new FlowEngineUnavailable()) }),
-  })).body, { flow: null });
+  assertEquals(
+    (await flowSetupState({
+      // deno-lint-ignore no-explicit-any
+      service: {} as any,
+      userId: MATE,
+      brandId: BRAND,
+      enabled: false,
+    })).body,
+    { flow: null },
+  );
+  assertEquals(
+    (await flowSetupState({
+      // deno-lint-ignore no-explicit-any
+      service: {} as any,
+      userId: MATE,
+      brandId: BRAND,
+      enabled: true,
+      store: brandRunStore({
+        brandRun: () => Promise.reject(new FlowEngineUnavailable()),
+      }),
+    })).body,
+    { flow: null },
+  );
 });
 
 Deno.test("#2830 T-EDGE-5: flow_take_over maps every refusal", async () => {
@@ -2292,7 +2376,10 @@ Deno.test("#2830 T-EDGE-6: a teammate's Website setup is no dead end; other flow
   const out = await step(w, mate, viewed, {});
   assertEquals(out.kind, "busy");
   const busy = out as Extract<RunnerOutcome, { kind: "busy" }>;
-  assertMatch(busy.text, /is on Website setup right now\. Open Website setup to watch, or to carry on if you're a brand admin\./);
+  assertMatch(
+    busy.text,
+    /is on Website setup right now\. Open Website setup to watch, or to carry on if you're a brand admin\./,
+  );
   assertNotMatch(busy.text, /only they can answer/);
   assertEquals(busy.open_route, `/brand/${BRAND}/website/setup`);
 });
@@ -2302,10 +2389,18 @@ Deno.test("#2830 T-EDGE-7: confirming a card from a taken-over run names the per
     new URL("supabase/functions/agent-confirm-action/index.ts", ROOT),
   );
   const at = source.indexOf('pending.failure_reason === "flow_taken_over"');
-  const generic = source.indexOf('"A newer version of this change is waiting for you."');
+  const generic = source.indexOf(
+    '"A newer version of this change is waiting for you."',
+  );
   assert(at > 0 && at < generic, "the taken-over check must run first");
-  assertMatch(source, /ariErrorResponse\(409, "FLOW_TAKEN_OVER", "", \{ taken_over_by: name \}\)/);
-  assertMatch(source, /select\(\s*"id, conversation_id, tool_name, tool_args, status, failure_reason/);
+  assertMatch(
+    source,
+    /ariErrorResponse\(409, "FLOW_TAKEN_OVER", "", \{ taken_over_by: name \}\)/,
+  );
+  assertMatch(
+    source,
+    /select\(\s*"id, conversation_id, tool_name, tool_args, status, failure_reason/,
+  );
 });
 
 Deno.test("#2830 SC-8: the displaced person's envelope carries the approved words, never retry", () => {
@@ -2314,7 +2409,9 @@ Deno.test("#2830 SC-8: the displaced person's envelope carries the approved word
     release: { release_sha: "a".repeat(40), function_version: "x" },
   };
   // deno-lint-ignore no-explicit-any
-  const named = errorEnvelope(context as any, "FLOW_TAKEN_OVER", { takenOverBy: "Ama" });
+  const named = errorEnvelope(context as any, "FLOW_TAKEN_OVER", {
+    takenOverBy: "Ama",
+  });
   assertEquals(named.status, 409);
   assertEquals(named.body.code, "FLOW_TAKEN_OVER");
   assertEquals(named.body.user_message, TAKEN);
@@ -2324,6 +2421,8 @@ Deno.test("#2830 SC-8: the displaced person's envelope carries the approved word
   assertMatch(unnamed.body.user_message, /^A teammate took over Website setup/);
   // No other code can be given words this way.
   // deno-lint-ignore no-explicit-any
-  const other = errorEnvelope(context as any, "CONFLICT", { takenOverBy: "Ama" });
+  const other = errorEnvelope(context as any, "CONFLICT", {
+    takenOverBy: "Ama",
+  });
   assertNotMatch(other.body.user_message, /Ama/);
 });
