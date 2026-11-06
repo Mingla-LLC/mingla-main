@@ -369,7 +369,7 @@ export function phase3dContractDigest(manifest) {
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
 // #4283: register the accept single-member-row migration and its proofs
 // #4276: register the place-pipeline migrations and their proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9c81db526c999c4e8ebd3cd36e8fbae29771decdea58e30b7c8a05f3dfd4e1e7";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c86e2251e7949dc9aa26ac27be881ba661502cc0e1df6df1060902be07df6010";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

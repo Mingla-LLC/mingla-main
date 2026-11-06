@@ -361,8 +361,11 @@ export function matrixCells(funnelRow, searchRow, outsideRow, redoRow) {
     unsearched,
     capped: unknownSearch ? null : n(searchRow.cappedOpen),
     pre_check: Math.max(0, n(f.active) - n(f.pre_checked)),
-    photos: Math.max(0, n(f.pre_passed) - n(f.with_photos)),
-    final_check: Math.max(0, n(f.with_photos) - n(f.final_checked)),
+    // #4276 round 6: the places each stage would take, counted place by place by the
+    // funnel (photos_needed, final_check_needed). A difference of two totals hid places
+    // with photos that never passed the pre-check, or with only a failed-download marker.
+    photos: f.photos_needed != null ? n(f.photos_needed) : Math.max(0, n(f.pre_passed) - n(f.with_photos)),
+    final_check: f.final_check_needed != null ? n(f.final_check_needed) : Math.max(0, n(f.with_photos) - n(f.final_checked)),
     reviews: redoRow ? n(redoRow.reviews_eligible) : null,
     intelligence: n(f.rules_only),
     redo: redoRow ? n(redoRow.redo_eligible) : null,

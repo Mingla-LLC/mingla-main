@@ -507,3 +507,38 @@ test("held backlog places are shown apart and can't be picked; Reviews is never 
   assert.ok(run.includes("(never places held in the score backlog)"), "the confirmation states the scope");
   assert.ok(run.includes("setTimeout(() => {") && run.includes("clearTimeout(timer)"), "one preview per settled plan");
 });
+
+// ── #4276 round 6: the gaps table's numbers and cells ───────────────────────
+
+// FAILS-ON-REVERT: derive Photos and Final check from pre_passed - with_photos and
+// with_photos - final_checked again. Miami showed 3,638 photos to fetch, really 3,688;
+// London, Paris and Brussels showed Done with 6, 12 and 9 places waiting.
+test("Photos and Final check count the places each stage would take, not a difference of totals", () => {
+  const miami = { active: 6111, pre_checked: 6111, pre_passed: 3721, with_photos: 83, final_checked: 11, servable: 0, scored: 0,
+    photos_needed: 3688, final_check_needed: 83 };
+  const by = Object.fromEntries(matrixCells(miami, null, null, null).map((c) => [c.id, c]));
+  assert.equal(by.photos.value, 3688);
+  assert.equal(by.final_check.value, 83);
+  const london = { active: 15551, pre_checked: 15551, pre_passed: 10711, with_photos: 11773, final_checked: 15551, servable: 10706, scored: 10706,
+    photos_needed: 6, final_check_needed: 0 };
+  const ldn = Object.fromEntries(matrixCells(london, null, null, null).map((c) => [c.id, c]));
+  assert.equal(ldn.photos.value, 6, "pre_passed - with_photos is negative here and hid six places");
+  assert.equal(ldn.photos.gap, true);
+  // An older funnel without the fields still reads as before.
+  const old = Object.fromEntries(matrixCells({ active: 10, pre_checked: 10, pre_passed: 8, with_photos: 5, final_checked: 2 }, null, null, null).map((c) => [c.id, c]));
+  assert.equal(old.photos.value, 3);
+  assert.equal(old.final_check.value, 3);
+});
+
+// FAILS-ON-REVERT: put items-start back on the cell (children shrink to their text and
+// spill into the next cell), or drop the gap between cells.
+test("gaps cells keep their padding, wrap long words and leave a gap to the next cell", () => {
+  const section = read("components/placePool/PipelineSection.jsx");
+  const gapCell = section.slice(section.indexOf("function GapCell("), section.indexOf("export function PipelineSection("));
+  assert.equal(gapCell.includes("items-start"), false, "children stretch to the cell's width");
+  assert.ok(gapCell.includes("${CELL_PAD}") && section.includes('const CELL_PAD = "px-1.5 py-1";'));
+  assert.ok(section.includes('<td key={cell.id} className="px-[3px] py-[3px] align-top">'), "a 6 px gap between cells");
+  assert.ok(section.includes("whitespace-normal break-words"), "Never seeded wraps inside its cell");
+  assert.ok(section.includes("min-[1400px]:grid-cols-[minmax(0,1fr)_300px]"), "the run plan sits beside the table only when both fit");
+  assert.ok(section.includes('Unsearched: "Un\\u00ADsearched"'), "long header words break with a hyphen");
+});

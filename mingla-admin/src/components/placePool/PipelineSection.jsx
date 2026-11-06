@@ -280,17 +280,34 @@ function boxCell(cell, size) {
 function HeldLine({ cell }) {
   if (!cell.heldText) return null;
   return (
-    <span className="block w-full cursor-help whitespace-normal break-words text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={HELD_BACKLOG_NOTE}>
+    <span className="mt-0.5 block w-full min-w-0 cursor-help whitespace-normal break-words text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={HELD_BACKLOG_NOTE}>
       {cell.heldText}
     </span>
   );
 }
 
+// Every cell keeps the same inner padding (CELL_PAD) and its words wrap inside it; the
+// table cell around it leaves a small gap to the next one. Children stretch to the
+// cell's width, so a long word wraps or a cost line truncates, never spills over.
+const CELL_PAD = "px-1.5 py-1";
+const CELL_WORDS = "block min-w-0 whitespace-normal break-words [hyphens:manual]";
+
+// Where a long header word may break, with a hyphen, when its column is narrow (1440 px
+// with the run plan beside the table). Soft hyphens show only when the word breaks.
+const SOFT_BREAKS = Object.freeze({
+  Unsearched: "Un\u00ADsearched",
+  Intelligence: "Intel\u00ADligence",
+  Download: "Down\u00ADload",
+  "Servable?": "Serv\u00ADable?",
+  "Pre-check": "Pre-\u200Bcheck",
+});
+const softBreak = (word) => SOFT_BREAKS[word] ?? word;
+
 function GapCell({ cell, cost, state, onToggle, cityName, label }) {
   if (!cell.gap) {
     return (
-      <span className="flex min-h-11 w-full min-w-0 flex-col items-start justify-center px-1 text-[12px] text-[var(--color-text-tertiary)]">
-        <span>{cell.text}</span>
+      <span className={`flex min-h-11 w-full min-w-0 flex-col justify-center ${CELL_PAD} text-[12px] leading-[15px] text-[var(--color-text-tertiary)]`}>
+        <span className={CELL_WORDS}>{cell.text}</span>
         <HeldLine cell={cell} />
       </span>
     );
@@ -298,13 +315,13 @@ function GapCell({ cell, cost, state, onToggle, cityName, label }) {
   const tone = CELL_TONE[state] ?? CELL_TONE[cell.kind] ?? CELL_TONE.missing;
   const body = (
     <>
-      <span className="block truncate text-[12px] font-semibold tabular-nums">{cell.text}</span>
-      {cell.sub && <span className="block truncate text-[10.5px] font-normal">{cell.sub}</span>}
-      {cost?.text && <span className="block truncate text-[10.5px] font-normal tabular-nums opacity-90">{cost.text}</span>}
+      <span className={`${CELL_WORDS} text-[12px] font-semibold leading-[15px] tabular-nums`}>{cell.text}</span>
+      {cell.sub && <span className={`${CELL_WORDS} text-[10.5px] font-normal leading-[13px]`}>{cell.sub}</span>}
+      {cost?.text && <span className="block min-w-0 truncate text-[10.5px] font-normal leading-[13px] tabular-nums opacity-90" title={cost.text}>{cost.text}</span>}
     </>
   );
   const held = cell.heldText ? <HeldLine cell={cell} /> : null;
-  const cls = `flex min-h-11 w-full min-w-0 flex-col items-start justify-center rounded-md border px-1.5 py-1 text-left ${tone}`;
+  const cls = `flex min-h-11 w-full min-w-0 flex-col justify-center overflow-hidden rounded-md border ${CELL_PAD} text-left ${tone}`;
   if (!onToggle) return <span className="block"><span className={cls}>{body}</span>{held}</span>;
   return (
     <span className="block">
@@ -453,7 +470,7 @@ export function PipelineSection() {
         <StatTile label="Areas and searches never run" value={searchError ? "?" : unsearched === null ? "–" : count(unsearched)} note="Inside a box, never searched or failed." />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-6 min-[1400px]:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
           <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
             <div className="min-w-0 flex-1">
@@ -505,18 +522,18 @@ export function PipelineSection() {
                     <tr className="text-left align-bottom">
                       <th scope="col" className="sticky left-0 z-[1] bg-[var(--color-background-primary)] px-2 py-2 text-[11px] font-medium text-[var(--color-text-secondary)]">City</th>
                       {MATRIX_COLUMNS.map((c) => (
-                        <th key={c.id} scope="col" className="px-0.5 py-2 align-bottom">
-                          <span className="block text-[10.5px] font-semibold leading-[13px] tracking-[-0.01em] text-[var(--color-text-primary)]">{c.label}</span>
-                          <span className="block text-[10px] font-normal leading-[12px] text-[var(--color-text-tertiary)]">{c.sub}</span>
+                        <th key={c.id} scope="col" className="px-[3px] py-2 align-bottom">
+                          <span className={`${CELL_WORDS} px-1 text-[10.5px] font-semibold leading-[13px] tracking-[-0.01em] text-[var(--color-text-primary)]`}>{softBreak(c.label)}</span>
+                          <span className={`${CELL_WORDS} px-1 text-[10px] font-normal leading-[12px] text-[var(--color-text-tertiary)]`}>{softBreak(c.sub)}</span>
                         </th>
                       ))}
                     </tr>
                     <tr className="border-y border-[var(--gray-200)] bg-[var(--gray-50)] align-top">
                       <th scope="row" className="sticky left-0 z-[1] bg-[var(--gray-50)] px-2 py-2 text-left text-[12px] font-semibold">All gaps</th>
                       {totals.map((c, i) => (
-                        <td key={c.id} className="px-0.5 py-2 tabular-nums">
-                          <span className={`block truncate text-[12px] ${c.gap ? "font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-tertiary)]"}`}>{c.text}</span>
-                          {totalCosts[i].text && <span className="block truncate text-[10.5px] text-[var(--color-text-secondary)]">{totalCosts[i].text}</span>}
+                        <td key={c.id} className="px-[3px] py-2 tabular-nums">
+                          <span className={`block truncate px-1.5 text-[12px] ${c.gap ? "font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-tertiary)]"}`}>{c.text}</span>
+                          {totalCosts[i].text && <span className="block whitespace-normal px-1.5 text-[10px] leading-[12px] tracking-[-0.02em] text-[var(--color-text-secondary)] [overflow-wrap:anywhere]" title={totalCosts[i].text}>{totalCosts[i].text}</span>}
                         </td>
                       ))}
                     </tr>
@@ -542,7 +559,7 @@ export function PipelineSection() {
                               const shownCell = cell.id === "box" ? boxCell(cell, size) : cell;
                               const state = isSel && picked.includes(cell.id) ? "picked" : isSel && needed.has(cell.id) ? "needed" : null;
                               return (
-                                <td key={cell.id} className="px-0.5 py-1">
+                                <td key={cell.id} className="px-[3px] py-[3px] align-top">
                                   <GapCell cell={shownCell} cost={cellCost(cell, rates)} state={state}
                                     cityName={c.city_name} label={MATRIX_COLUMNS[i].label}
                                     onToggle={pickable(cell) ? () => toggleCell(c.city_id, cell.id) : null} />
@@ -586,7 +603,7 @@ export function PipelineSection() {
           )}
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-4" aria-label="Run plan">
+        <aside className="flex min-w-0 flex-col gap-4 min-[1400px]:sticky min-[1400px]:top-4" aria-label="Run plan">
           {selected ? (
             <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load} picks={picks}
               footer={<SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />} />
