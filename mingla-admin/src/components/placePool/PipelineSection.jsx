@@ -280,7 +280,7 @@ function boxCell(cell, size) {
 function HeldLine({ cell }) {
   if (!cell.heldText) return null;
   return (
-    <span className="block cursor-help truncate text-[10.5px] font-normal text-[var(--color-text-secondary)]" title={HELD_BACKLOG_NOTE}>
+    <span className="block w-full cursor-help whitespace-normal break-words text-[10px] font-normal leading-[12px] text-[var(--color-text-secondary)]" title={HELD_BACKLOG_NOTE}>
       {cell.heldText}
     </span>
   );
@@ -289,7 +289,7 @@ function HeldLine({ cell }) {
 function GapCell({ cell, cost, state, onToggle, cityName, label }) {
   if (!cell.gap) {
     return (
-      <span className="flex min-h-11 flex-col items-start justify-center px-1 text-[12px] text-[var(--color-text-tertiary)]">
+      <span className="flex min-h-11 w-full min-w-0 flex-col items-start justify-center px-1 text-[12px] text-[var(--color-text-tertiary)]">
         <span>{cell.text}</span>
         <HeldLine cell={cell} />
       </span>
