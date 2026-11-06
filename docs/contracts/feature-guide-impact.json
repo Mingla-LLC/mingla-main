@@ -23,7 +23,8 @@
         "app-mobile/src/services/attendanceClaimService.ts",
         "app-mobile/src/services/emailOtpService.ts",
         "app-mobile/src/utils/explorerProfileAuthRest.ts",
-        "app-mobile/src/utils/explorerReactivation.ts"
+        "app-mobile/src/utils/explorerReactivation.ts",
+        "app-mobile/src/utils/authCleanup.ts"
       ]
     },
     {
@@ -381,7 +382,11 @@
         "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql",
         "supabase/migrations/20280403044261_issue_4261_chat_plans.sql",
         "supabase/migrations/20280403054261_issue_4261_plan_places_and_link_previews.sql",
-        "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql"
+        "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql",
+        "app-mobile/src/hooks/useBroadcastReceiver.ts",
+        "app-mobile/src/hooks/useOpenChatRecovery.ts",
+        "app-mobile/src/utils/chatChannelRecovery.ts",
+        "app-mobile/src/utils/mergeMessages.ts"
       ]
     },
     {
@@ -442,7 +447,8 @@
         "supabase/functions/send-friend-accepted-notification/acceptedCopy.ts",
         "supabase/functions/send-friend-accepted-notification/index.ts",
         "supabase/migrations/20280403034261_issue_4261_friend_share_and_group_links.sql",
-        "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql"
+        "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql",
+        "app-mobile/src/components/profile/circle/YourCircleSection.tsx"
       ]
     },
     {
@@ -1199,7 +1205,12 @@
         "app-mobile/src/utils/mutateCuratedCard.ts",
         "supabase/functions/_shared/curatedPrice.ts",
         "supabase/functions/_shared/stopAlternatives.ts",
-        "supabase/functions/generate-curated-experiences/index.ts"
+        "supabase/functions/generate-curated-experiences/index.ts",
+        "app-mobile/src/services/curatedExperiencesService.ts",
+        "app-mobile/src/services/curatedRequestGate.ts",
+        "supabase/functions/_shared/personHeroCards.ts",
+        "supabase/functions/_shared/signalRankFetch.ts",
+        "supabase/migrations/20280406004275_issue_4275_signal_rank_batch.sql"
       ]
     },
     {
@@ -1227,6 +1238,20 @@
         "app-mobile/src/components/expandedCard/SpineParts.tsx",
         "app-mobile/src/i18n/locales/en/common.json",
         "app-mobile/src/utils/inAppLink.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-places-cities",
+      "paths": [
+        "mingla-admin/src/pages/PlacePoolPage.jsx",
+        "mingla-admin/src/services/systemPagesService.js",
+        "supabase/migrations/20280406014275_issue_4275_cron_stagger.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-health",
+      "paths": [
+        "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql"
       ]
     }
   ]

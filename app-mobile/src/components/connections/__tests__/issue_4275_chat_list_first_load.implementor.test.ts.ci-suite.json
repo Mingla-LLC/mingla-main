@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/connections/__tests__/issue_4275_chat_list_first_load.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-chat-list-first-load-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

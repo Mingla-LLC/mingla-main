@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4275_cron_cadence.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-cron-cadence-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

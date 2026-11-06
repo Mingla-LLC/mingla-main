@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4275_gate_list_persist.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-gate-list-persist-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["net", "read", "env"]
+}

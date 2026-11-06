@@ -32,9 +32,9 @@ Deno.test("#4265 ConnectionsPage reads the list from one React Query entry and w
   const page = strip(read("components/ConnectionsPage.tsx"));
   assert(!/useState<Conversation\[\]>/.test(page), "no local conversations state (one owner, Constitution #2)");
   assert(/const chatListQuery = useChatList\(user\?\.id \?\? null, chatListDeps\);/.test(page), "the list is useChatList");
-  assert(/const chatListView = chatListViewState\(chatListQuery\);/.test(page) &&
-    /const conversationsLoading = chatListView\.loading;/.test(page), "the skeleton follows chatListViewState");
-  assert(/const showSkeleton = conversationsLoading && conversations\.length === 0 && !error;/.test(page), "skeleton only with no rows");
+  assert(/const chatListView = chatListViewState\(chatListQuery\);/.test(page), "the skeleton follows chatListViewState");
+  // #4275: the skeleton holds until a list has loaded, so a failure cannot read as "no chats".
+  assert(/const showSkeleton = !chatListView\.loaded && !error;/.test(page), "skeleton only with no list");
   assert(/updateChatListConversations<Conversation>\(queryClient, chatListKeyRef\.current, updater\)/.test(page),
     "local changes write into the query cache");
   assert(/chatListKeyRef\.current = chatListKeys\.list\(user\?\.id \?\? 'none'\);/.test(page), "the key comes from the factory");

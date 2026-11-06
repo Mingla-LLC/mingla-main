@@ -1272,7 +1272,7 @@ begin
       (select count(*)::text || '/' || min(schedule) || '/' || min(btrim(command)) from cron.job where jobname = 'team_agent_housekeeping'),
       '1/17 3 * * */SELECT public.team_agent_housekeeping()');
     perform pg_temp.t3802k_check('K-11', 'the Live job is still there, unchanged',
-      (select count(*)::text || '/' || min(schedule) from cron.job where jobname = 'crm_reconcile_live'), '1/*/10 * * * *');
+      (select count(*)::text || '/' || min(schedule) from cron.job where jobname = 'crm_reconcile_live'), '1/6,16,26,36,46,56 * * * *');
   end if;
 end;
 $k11$;

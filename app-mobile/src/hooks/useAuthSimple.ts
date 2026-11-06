@@ -19,9 +19,6 @@ import { mixpanelService } from "../services/mixpanelService";
 // the native sign-in catch blocks. Mirrors mingla-business's helper.
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { queryClient } from "../config/queryClient";
-import { deckService, DeckResponse } from "../services/deckService";
-import { buildDeckQueryKey } from "./useDeckCards";
-import { normalizeCategoryArray } from "../utils/categoryUtils";
 // ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
 import { PreferencesService } from "../services/preferencesService";
 import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPrivateCleanup } from "../utils/authCleanup";
@@ -314,67 +311,20 @@ export const useAuthSimple = () => {
           // takes 5-10s instead of 1-2s. See ORCH-0342.
           supabase.functions.invoke('keep-warm').catch(() => {});
 
-          // ── Deck prefetch for returning users (ORCH-0391) ─────────────
-          // Fetch preferences + last-known GPS, then pre-seed deck cache.
-          // Runs in parallel with profile loading. Fire-and-forget.
-          // Skips new users (empty prefs → handled by ORCH-0386 onboarding).
+          // Pre-seed the preferences cache (saves ~200ms re-fetch post-transition).
+          // Issue #4275: the deck prefetch that lived here is gone. It wrote under
+          // a key the live deck hook never reads (no mode, display currency or FX
+          // snapshot), so every cold open fetched the whole deck twice. The cold
+          // start snapshot (utils/deckSnapshot.ts) is what makes the deck instant.
+          // invariant: I-FEED-ONE-SET-PER-LOAD — a cold open fetches the deck once.
+          // Enforced by issue_4275_no_auth_deck_prefetch.implementor.test.ts.
           (async () => {
             try {
               const prefs = await PreferencesService.getUserPreferences(session.user.id);
               if (!prefs || !prefs.categories?.length) return; // New user or empty — skip
-
-              // Pre-seed preferences cache (saves ~200ms re-fetch post-transition)
               queryClient.setQueryData(['userPreferences', session.user.id], prefs);
-
-              // Get last-known GPS (fast — reads cached position, no new fix)
-              const Location = await import('expo-location');
-              const loc = await Location.getLastKnownPositionAsync();
-              if (!loc) return; // No GPS cache — can't build deck key
-
-              const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-              const normalizedCategories = normalizeCategoryArray(prefs.categories);
-              const normalizedIntents = prefs.intents ?? [];
-
-              const deckQueryKey = buildDeckQueryKey({
-                lat: coords.lat,
-                lng: coords.lng,
-                categories: normalizedCategories,
-                intents: normalizedIntents,
-                travelMode: prefs.travel_mode ?? 'walking',
-                travelConstraintType: 'time',
-                travelConstraintValue: prefs.travel_constraint_value ?? 30,
-                datetimePref: prefs.datetime_pref ?? undefined,
-                dateOption: prefs.date_option ?? 'today',
-                batchSeed: 0,
-                excludeCardIds: [],
-              });
-
-              const result = await deckService.fetchDeck({
-                location: coords,
-                categories: normalizedCategories,
-                intents: normalizedIntents,
-                travelMode: prefs.travel_mode ?? 'walking',
-                travelConstraintType: 'time' as const,
-                travelConstraintValue: prefs.travel_constraint_value ?? 30,
-                datetimePref: prefs.datetime_pref ?? undefined,
-                dateOption: prefs.date_option ?? 'today',
-                batchSeed: 0,
-                limit: 200,
-                excludeCardIds: [],
-              });
-
-              // Guard: don't cache empty results — likely auth failure, not genuine empty pool.
-              // The normal post-transition useDeckCards flow will retry with valid token. ORCH-0387.
-              if (result.cards.length === 0) {
-                if (__DEV__) console.warn('[Auth] Deck prefetch returned 0 cards — skipping cache (possible auth failure)');
-              } else {
-                queryClient.setQueryData(deckQueryKey, result);
-                if (__DEV__) {
-                  console.log(`[Auth] Deck prefetch complete: ${result.cards.length} cards cached`);
-                }
-              }
             } catch (err) {
-              if (__DEV__) console.warn('[Auth] Deck prefetch failed (will use normal path):', err);
+              if (__DEV__) console.warn('[Auth] Preferences pre-seed failed (will use normal path):', err);
             }
           })();
 
