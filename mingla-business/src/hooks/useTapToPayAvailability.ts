@@ -8,8 +8,10 @@
  *     update on an older binary has no module: hidden, never crashes)
  *   - the release gate: iPhone needs an entitled binary AND the server's yes;
  *     Android needs the server's yes (useTapToPayRelease). __DEV__ does not
- *     bypass this. A development build passes only because it is entitled and
- *     its brand is listed in the server's test brands.
+ *     bypass this. A local Xcode development build made with
+ *     MINGLA_TAP_TO_PAY_ENTITLEMENT=1 passes only because it is entitled and
+ *     its brand is listed in the server's test brands (EAS builds never carry
+ *     the entitlement; see app.config.js).
  *   - a phone that can take taps: iPhone on iOS 17+ (iOS 17 runs only on
  *     iPhone XS / XR and newer) or Android 13+; never an iPad
  *   - a Stripe brand (Paystack / Nigeria has no Stripe Terminal)

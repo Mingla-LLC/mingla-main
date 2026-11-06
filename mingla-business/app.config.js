@@ -123,10 +123,19 @@ const iosUrlScheme = iosClientId
 //
 // Apple's `com.apple.developer.proximity-reader.payment.acceptance` entitlement
 // must be GRANTED to the team (development first, then distribution) before a
-// build that declares it can be signed. Declaring it before Apple grants it
-// makes every EAS iOS build fail at provisioning. So the entitlement is added
-// ONLY when the build environment sets MINGLA_TAP_TO_PAY_ENTITLEMENT=1 (set it on
-// the EAS profile once Apple has granted the matching entitlement).
+// build that declares it can be signed. So the entitlement is added ONLY when
+// the build environment sets MINGLA_TAP_TO_PAY_ENTITLEMENT=1.
+//
+// The switch is for LOCAL Xcode development builds only:
+//   MINGLA_TAP_TO_PAY_ENTITLEMENT=1 npx expo prebuild -p ios
+//   npx expo run:ios --device <udid>   (automatic development signing)
+// No eas.json profile may set it. EAS signs `distribution: internal` iOS builds
+// with an ad hoc profile, and Apple only allows the development Tap to Pay
+// entitlement in development-signed apps, so an EAS internal build that sets it
+// fails at Xcode signing ("AdHoc ... doesn't include the ... entitlement").
+// Store builds (preview / production) need Apple's publishing (distribution)
+// approval first; until then they must not set it either.
+// issue_4271_apple_requirements.implementor.test.ts pins "no eas.json profile".
 //
 // The same switch writes MinglaTapToPayEntitled into Info.plist. That value lives
 // in the binary, so an over-the-air update can't change it, and it is the binary

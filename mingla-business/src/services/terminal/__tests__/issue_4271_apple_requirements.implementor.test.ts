@@ -166,14 +166,18 @@ describe("B1 release gate", () => {
     expect(isTapToPayIphoneEntitled()).toBe(false);
   });
 
-  test("eas.json sets the entitlement on development and on no other profile", () => {
+  // EAS signs `distribution: internal` iOS builds ad hoc, and Apple allows the
+  // development Tap to Pay entitlement only in development-signed apps, so any
+  // EAS profile that sets the switch fails Xcode signing. Entitled phone builds
+  // are local (`expo prebuild` + `expo run:ios --device`) only.
+  test("no eas.json profile sets MINGLA_TAP_TO_PAY_ENTITLEMENT", () => {
     const eas = JSON.parse(fs.readFileSync(path.join(BIZ_ROOT, "eas.json"), "utf8")) as {
       build: Record<string, { env?: Record<string, string> }>;
     };
-    expect(eas.build.development?.env?.MINGLA_TAP_TO_PAY_ENTITLEMENT).toBe("1");
-    expect(Object.keys(eas.build)).toEqual(expect.arrayContaining(["production", "preview"]));
+    expect(Object.keys(eas.build)).toEqual(
+      expect.arrayContaining(["development", "production", "preview"]),
+    );
     for (const [name, profile] of Object.entries(eas.build)) {
-      if (name === "development") continue;
       expect([name, profile.env?.MINGLA_TAP_TO_PAY_ENTITLEMENT]).toEqual([name, undefined]);
     }
   });
