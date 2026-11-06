@@ -813,15 +813,30 @@ export function validateObjectIdentity(bucket, key, siteId, tenantId = null) {
 }
 
 /**
+ * #2830 — a stored object every brand shares, so no tenant owns it. Today that
+ * is only the font pipeline's content-addressed files (#2829 AD-3:
+ * `fonts/<sha256>.woff2`, plus the `.ttf` specimen) in the approved-media
+ * bucket. Anything else under `fonts/` is not shared and fails as unknown.
+ */
+const SHARED_FONT_KEY = /^fonts\/[0-9a-f]{64}\.(woff2|ttf)$/;
+
+export function isSharedObject(bucket, key) {
+  return bucket === "sites-media-approved" && typeof key === "string" &&
+    SHARED_FONT_KEY.test(key);
+}
+
+/**
  * #2830 — which known tenant owns this stored object, read from its key alone.
  * A bucket holds every brand's objects, so an object is valid only if its key
  * names exactly one tenant in `tenants` and is well formed for that tenant. An
  * unknown owner fails closed; a key pairing one tenant with another tenant's
- * site is refused by validateObjectIdentity.
+ * site is refused by validateObjectIdentity. A shared object (isSharedObject)
+ * returns null: it belongs to every tenant, so to none.
  */
 export function resolveObjectOwner(bucket, key, tenants) {
   if (!SITES_BUCKETS.includes(bucket)) fail("UNEXPECTED_BUCKET");
   if (typeof key !== "string") fail("OBJECT_SITE_PREFIX_MISMATCH");
+  if (isSharedObject(bucket, key)) return null;
   const segment = key.split("/")[1];
   const owner = tenants.find((tenant) =>
     (bucket === "sites-media-recovery" ? tenant.tenant_id : tenant.site_id) === segment);
@@ -934,8 +949,13 @@ export function validateManifest(manifest, now = new Date()) {
     const owner = version === 1
       ? tenants[0]
       : resolveObjectOwner(object.bucket, object.key, tenants);
-    if (object.site_id !== owner.site_id) fail("OBJECT_SITE_PREFIX_MISMATCH");
-    validateObjectIdentity(object.bucket, object.key, owner.site_id, owner.tenant_id);
+    if (owner === null) {
+      // A shared font is listed once, with no site, and counts only in the totals.
+      if (object.site_id !== null) fail("OBJECT_SITE_PREFIX_MISMATCH");
+    } else {
+      if (object.site_id !== owner.site_id) fail("OBJECT_SITE_PREFIX_MISMATCH");
+      validateObjectIdentity(object.bucket, object.key, owner.site_id, owner.tenant_id);
+    }
     if (
       !Number.isSafeInteger(object.bytes) || object.bytes < 0 ||
       typeof object.protected !== "boolean" ||
@@ -946,6 +966,7 @@ export function validateManifest(manifest, now = new Date()) {
     if (identities.has(identity)) fail("MANIFEST_MISMATCH");
     identities.add(identity);
     objectBytes += object.bytes;
+    if (owner === null) continue;
     const tally = perTenant.get(owner.tenant_id);
     tally.objects += 1;
     tally.bytes += object.bytes;
