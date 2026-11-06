@@ -89,7 +89,7 @@ import {
 import { isAriProposalExpired } from "./ariProposalExpiry";
 import {
   claimWebsiteSetupAutoAudit,
-  websiteSetupAutoAuditKey,
+  websiteSetupKickoffKey,
 } from "./websiteSetupAutoAudit";
 import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 import { submitAriMessageFeedback } from "../../services/ariFeedbackService";
@@ -264,6 +264,8 @@ export interface AriChatScreenProps {
     step: string | null;
     /** The run's chat, when the run is this person's. */
     conversationId: string | null;
+    /** Whether the run's state has answered yet; nothing is sent before. */
+    runKnown?: boolean;
     onOpenStep: (step: string) => void;
     onClose: () => void;
     /** The field the open card asks about, for the form beside it. */
@@ -852,8 +854,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       !online
     )
       return;
-    // #2830 — claimed at module scope so a remount cannot re-send it.
-    const auditKey = websiteSetupAutoAuditKey(sitesBrandId, setupPart);
+    // #2830 — claimed at module scope so a remount cannot re-send it, once
+    // per brand (a move to another part is not a new start), and never over
+    // a live run of this person's: that run's chat is opened and resumed.
+    const auditKey = websiteSetupKickoffKey({
+      brandId: sitesBrandId,
+      part: setupPart ?? null,
+      runKnown: setup?.runKnown !== false,
+      liveRunConversationId: setup?.conversationId ?? null,
+    });
+    if (auditKey === null) return;
     if (!claimWebsiteSetupAutoAudit(auditKey)) return;
     // #2830 P4 — a structured request, never a scripted message in the
     // owner's name: the bubble reads "Set up my Website", the server builds
@@ -883,6 +893,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     disclosureNeeded,
     online,
     selectedBrandId,
+    setup?.conversationId,
+    setup?.runKnown,
     setupPart,
     sitesBrandId,
     websiteSetup,

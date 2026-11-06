@@ -386,6 +386,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
             brandId,
             step: activeStep,
             conversationId: flowView?.mine ? flowView.conversationId : null,
+            runKnown: presenceKnown,
             onOpenStep: (next: string) => goStep(next as PlanPartKey, false),
             onClose: () => setAriOpen(false),
             onFlowField: setHotField,
