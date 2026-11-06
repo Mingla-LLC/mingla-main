@@ -18,6 +18,7 @@ import {
   classifyRecoveryFailure,
   decryptBundle,
   extractPlainBundle,
+  isSharedObject,
   resolveObjectOwner,
   validateManifest,
 } from "../lib/sites-ops.mjs";
@@ -440,6 +441,87 @@ test("#2830 a stored object of an unknown tenant fails the whole backup, loudly"
   });
   try {
     await assert.rejects(() => runBackup({ env, fetchImpl, spawn, now: NOW }), /OBJECT_UNKNOWN_TENANT/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The 2026-11-06 backup failure: the font pipeline (#2829 AD-3) keeps every
+// brand's font files once, at `fonts/<sha256>.woff2` in the approved bucket.
+// They belong to no single site, and the first backup after a second brand
+// stopped with OBJECT_UNKNOWN_TENANT.
+const FONT_WOFF2 = `fonts/${"b".repeat(64)}.woff2`;
+const FONT_TTF = `fonts/${"c".repeat(64)}.ttf`;
+
+test("#2830 a shared font file belongs to no tenant; nothing else under fonts/ does", () => {
+  const tenants = [PILOT, DRAFT];
+  assert.equal(resolveObjectOwner("sites-media-approved", FONT_WOFF2, tenants), null);
+  assert.equal(resolveObjectOwner("sites-media-approved", FONT_TTF, tenants), null);
+  assert.equal(isSharedObject("sites-media-approved", FONT_WOFF2), true);
+  for (const [bucket, key] of [
+    ["sites-media-approved", `fonts/${"b".repeat(63)}.woff2`],
+    ["sites-media-approved", `fonts/${"b".repeat(64)}.otf`],
+    ["sites-media-approved", `fonts/${DRAFT.site_id}/${"b".repeat(64)}.woff2`],
+    ["sites-media-approved", `fonts/../${"b".repeat(64)}.woff2`],
+    ["sites-media-approved", `fonts/${"B".repeat(64)}.woff2`],
+    ["sites-media-quarantine", FONT_WOFF2],
+    ["sites-publication-artifacts", FONT_WOFF2],
+    ["sites-media-recovery", FONT_WOFF2],
+  ]) {
+    assert.equal(isSharedObject(bucket, key), false, `${bucket}/${key}`);
+    assert.throws(() => resolveObjectOwner(bucket, key, tenants), /OBJECT_|INVALID_TENANT_ID/, `${bucket}/${key}`);
+  }
+});
+
+test("#2830 shared fonts are backed up once, with no site, kept, and outside every tenant's count", async () => {
+  const fontBytes = Buffer.from("woff2-bytes");
+  const ttfBytes = Buffer.from("ttf-bytes");
+  const scenario = await backupScenario({
+    tweak: ({ objects }) => {
+      objects.buckets["sites-media-approved"].set(FONT_WOFF2, fontBytes);
+      objects.buckets["sites-media-approved"].set(FONT_TTF, ttfBytes);
+    },
+  });
+  const { root, env, spawn, fetchImpl, encryptionKey } = scenario;
+  try {
+    const result = await runBackup({ env, fetchImpl, spawn, now: NOW });
+    const plain = join(root, "plain");
+    await decryptBundle(result.bundle_path, plain, Buffer.from(encryptionKey, "base64"));
+    const { manifest, objects } = extractPlainBundle(plain, join(root, "extracted"), NOW);
+    const fonts = manifest.objects.filter((object) => object.key.startsWith("fonts/"));
+    assert.deepEqual(fonts.map((object) => [object.key, object.site_id, object.protected]), [
+      [FONT_WOFF2, null, true],
+      [FONT_TTF, null, true],
+    ].sort((left, right) => left[0].localeCompare(right[0])));
+    assert.deepEqual(manifest.tenants.map((tenant) => [tenant.site_id, tenant.objects]), [
+      [PILOT.site_id, 2],
+      [DRAFT.site_id, 1],
+      [EMPTY.site_id, 0],
+    ]);
+    assert.equal(manifest.counts.objects, 5);
+    assert.equal(objects.length, 5, "the font bytes are in the bundle, not just listed");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("#2830 a manifest cannot pin a shared font on a site, or drop a brand object's site", async () => {
+  const { root, env, spawn, fetchImpl, encryptionKey } = await backupScenario({
+    tweak: ({ objects }) => {
+      objects.buckets["sites-media-approved"].set(FONT_WOFF2, Buffer.from("woff2-bytes"));
+    },
+  });
+  try {
+    const result = await runBackup({ env, fetchImpl, spawn, now: NOW });
+    const plain = join(root, "plain");
+    await decryptBundle(result.bundle_path, plain, Buffer.from(encryptionKey, "base64"));
+    const { manifest } = extractPlainBundle(plain, join(root, "extracted"), NOW);
+    const pinned = structuredClone(manifest);
+    pinned.objects.find((object) => object.key === FONT_WOFF2).site_id = PILOT.site_id;
+    assert.throws(() => validateManifest(pinned, NOW), /OBJECT_SITE_PREFIX_MISMATCH/);
+    const dropped = structuredClone(manifest);
+    dropped.objects.find((object) => object.site_id === DRAFT.site_id).site_id = null;
+    assert.throws(() => validateManifest(dropped, NOW), /OBJECT_SITE_PREFIX_MISMATCH/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
