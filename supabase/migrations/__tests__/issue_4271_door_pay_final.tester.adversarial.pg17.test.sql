@@ -345,4 +345,173 @@ BEGIN
 END;
 $final$;
 
+-- ===========================================================================
+-- Retest 2 (after 63ac7e962b): a late refund that falls back to the stored
+-- webhook amount. Different angles from the implementor's O8-WEBHOOK cases:
+--   W-CUR     a stored event for the same payment in another currency is never
+--             used (Stripe and Paystack): the refund keeps the session's total.
+--   W-OTHER   another payment's events (another PaymentIntent id, a Checkout
+--             completion pointing at another PaymentIntent, another Paystack
+--             reference) are never used, however large.
+--   W-ZERO    a zero or negative stored amount is ignored.
+--   W-LOWREC  a recorded provider total wins over a stored event, also when the
+--             event says LESS than the recorded total.
+--   W-CAP     the refund is the provider's own amount, never more: a charge
+--             smaller than Mingla's fee refunds the charge, reverses at most the
+--             charge, and leaves the organiser no negative liability.
+--   W-NEWEST  two stored events for the same payment: the newest one is used.
+--
+-- FAILS-ON-REVERT (verified by retest 2 at 63ac7e962b): drop the currency
+-- filters in issue_4271_ticket_late_refund_amounts -> W-CUR fails; match by
+-- event type only (drop the reference filter) -> W-OTHER fails; drop the
+-- `<= 0` guard -> W-ZERO fails; drop the provider_reconciled skip -> W-LOWREC
+-- fails; use `buyer_total_cents` before the stored amount (63ac7e962b^ body)
+-- -> W-CAP and W-NEWEST fail.
+-- ===========================================================================
+DO $retest2$
+DECLARE
+  v_fail text[] := ARRAY[]::text[];
+  v_owner uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_brand_ps uuid := gen_random_uuid();
+  v_event uuid := gen_random_uuid();
+  v_event_ps uuid := gen_random_uuid();
+  v_tier uuid := gen_random_uuid();
+  v_tier_ps uuid := gen_random_uuid();
+  v_session uuid;
+  v_key text;
+  v_pi text;
+  v_ref text;
+  v_claim jsonb;
+  v_case jsonb;
+  v_row public.source_refunds%ROWTYPE;
+  v_src text;
+BEGIN
+  INSERT INTO auth.users (id, email) VALUES (v_owner, 'owner.r2@example.test');
+  INSERT INTO public.creator_accounts (id, email, display_name) VALUES (v_owner, 'owner.r2@example.test', 'Owner');
+  INSERT INTO public.brands (id, account_id, name, slug, default_currency, pricing_currency, payment_provider, payout_hold_cutover_at) VALUES
+    (v_brand, v_owner, 'R2 door', 'r2-door-'||v_brand, 'GBP', 'GBP', 'stripe', now() - interval '1 day'),
+    (v_brand_ps, v_owner, 'R2 ps', 'r2-ps-'||v_brand_ps, 'NGN', 'NGN', 'paystack', now() - interval '1 day');
+  INSERT INTO public.events (id, brand_id, title, slug, event_type, status, visibility, timezone, currency) VALUES
+    (v_event, v_brand, 'R2 night', 'r2-night-'||v_event, 'event', 'scheduled', 'public', 'UTC', 'GBP'),
+    (v_event_ps, v_brand_ps, 'R2 lagos', 'r2-lagos-'||v_event_ps, 'event', 'scheduled', 'public', 'UTC', 'NGN');
+  INSERT INTO public.ticket_types (id, event_id, name, price_cents, currency, is_free, quantity_total, min_purchase_qty, available_online, available_in_person, display_order) VALUES
+    (v_tier, v_event, 'General', 1500, 'GBP', false, 50, 1, true, false, 0),
+    (v_tier_ps, v_event_ps, 'General', 1500000, 'NGN', false, 50, 1, true, false, 0);
+
+  -- Stripe cases. Each: a session with a computed (not provider-reconciled)
+  -- total of 3135 on a 3000 base, Mingla fee 135; stored events as listed;
+  -- the expected refund and fee reversal.
+  FOR v_case IN SELECT * FROM jsonb_array_elements(jsonb_build_array(
+    jsonb_build_object('tag','W-CUR', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',9999,'currency','usd','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',8888,'currency','eur','age',0))),
+    jsonb_build_object('tag','W-OTHER', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','OTHER','amount',9999,'currency','gbp','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','OTHER','amount',8888,'currency','gbp','age',0),
+      jsonb_build_object('type','charge.succeeded','pi','SELF','amount',7777,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-ZERO', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',0,'currency','gbp','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',-5,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-LOWREC', 'reconcile',3135, 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',1000,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-CAP', 'expect',100, 'fee',100, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',100,'currency','GBP','age',0))),
+    jsonb_build_object('tag','W-NEWEST', 'expect',3385, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3200,'currency','gbp','age',60),
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3385,'currency','gbp','age',0)))
+  )) LOOP
+    v_session := gen_random_uuid();
+    v_key := replace(v_session::text, '-', '');
+    v_pi := 'pi_r2'||v_key;
+    INSERT INTO public.ticket_checkout_sessions (
+      id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+      idempotency_key, expires_at, stripe_account_id, stripe_checkout_session_id, stripe_payment_intent_id,
+      stripe_application_fee_amount_cents, list_subtotal_cents, discount_cents, net_subtotal_cents,
+      buyer_fees_cents, tax_cents, buyer_total_cents, pricing_source
+    ) VALUES (
+      v_session, v_event, v_brand, 'Guest', 'guest.r2@example.test', '+447700900123', 3000, 'GBP',
+      'awaiting_web_redirect', 'r2-'||v_session, now() + interval '40 minutes', 'acct_r2',
+      'cs_r2'||v_key, v_pi, 135, 3000, 0, 3000, 135, 0, 3135, 'computed_at_checkout'
+    );
+    INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+    VALUES (v_session, v_tier, 'General', 2, 1500, 3000);
+    INSERT INTO public.payment_webhook_events(stripe_event_id, type, payload, provider, provider_event_type, created_at)
+    SELECT 'evt_r2'||v_key||'_'||ord, e->>'type',
+      CASE WHEN e->>'type' = 'checkout.session.completed'
+        THEN jsonb_build_object('data', jsonb_build_object('object', jsonb_build_object(
+          'id', 'cs_r2x'||ord||v_key,
+          'payment_intent', CASE WHEN e->>'pi' = 'SELF' THEN v_pi ELSE 'pi_other'||ord||v_key END,
+          'amount_total', (e->>'amount')::integer, 'currency', e->>'currency')))
+        ELSE jsonb_build_object('data', jsonb_build_object('object', jsonb_build_object(
+          'id', CASE WHEN e->>'pi' = 'SELF' THEN v_pi ELSE 'pi_other'||ord||v_key END,
+          'amount_received', (e->>'amount')::integer, 'amount', (e->>'amount')::integer,
+          'payment_intent', v_pi, 'currency', e->>'currency')))
+      END,
+      'stripe', e->>'type', now() - make_interval(secs => (e->>'age')::integer)
+    FROM jsonb_array_elements(v_case->'events') WITH ORDINALITY AS x(e, ord);
+    v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event, 'stripe', 'stripe_checkout', 'r2-fp-'||v_session);
+    PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, 'cs_r2'||v_key, NULL, 'r2-cont-'||v_session);
+    IF v_case ? 'reconcile' THEN
+      PERFORM public.issue_3872_record_ticket_provider_total(v_session, 'stripe', (v_case->>'reconcile')::bigint, 0);
+      SELECT pricing_source INTO v_src FROM public.ticket_checkout_sessions WHERE id = v_session;
+      IF v_src IS DISTINCT FROM 'provider_reconciled' THEN
+        v_fail := v_fail || format('%s precondition: pricing_source %s', v_case->>'tag', v_src);
+      END IF;
+    END IF;
+    PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'stripe', v_pi, NULL, 'ch_r2'||v_key);
+    SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
+    IF NOT FOUND THEN
+      v_fail := v_fail || format('%s no late refund minted', v_case->>'tag');
+    ELSIF v_row.buyer_refund_requested_cents <> (v_case->>'expect')::integer
+       OR v_row.original_charge_cents <> (v_case->>'expect')::integer
+       OR v_row.fee_reversal_required_cents <> (v_case->>'fee')::integer
+       OR v_row.organizer_refund_liability_cents <> (v_case->>'expect')::integer - (v_case->>'fee')::integer
+       OR v_row.organizer_refund_liability_cents < 0
+       OR v_row.fee_reversal_required_cents > v_row.original_charge_cents
+       OR v_row.buyer_refund_requested_cents > v_row.original_charge_cents THEN
+      v_fail := v_fail || format('%s expected refund %s fee %s, got charge %s refund %s fee %s organiser %s',
+        v_case->>'tag', v_case->>'expect', v_case->>'fee', v_row.original_charge_cents,
+        v_row.buyer_refund_requested_cents, v_row.fee_reversal_required_cents, v_row.organizer_refund_liability_cents);
+    END IF;
+  END LOOP;
+
+  -- Paystack: a charge.success in another currency, and one for another
+  -- reference, are never used; with no usable event the refund is total_cents.
+  v_session := gen_random_uuid();
+  v_key := replace(v_session::text, '-', '');
+  v_ref := 'psr2'||v_key;
+  INSERT INTO public.ticket_checkout_sessions (
+    id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+    idempotency_key, expires_at, application_fee_amount_cents
+  ) VALUES (
+    v_session, v_event_ps, v_brand_ps, 'Guest', 'guest.r2@example.test', '+2348012345678', 1567500, 'NGN',
+    'awaiting_web_redirect', 'r2-'||v_session, now() + interval '40 minutes', 67500
+  );
+  INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+  VALUES (v_session, v_tier_ps, 'General', 1, 1500000, 1500000);
+  INSERT INTO public.payment_webhook_events(stripe_event_id, type, payload, provider, provider_event_type) VALUES
+    ('paystack:r2cur'||v_key, 'charge.success', jsonb_build_object('event','charge.success','data',
+      jsonb_build_object('reference', v_ref, 'amount', 99999999, 'currency', 'USD')), 'paystack', 'charge.success'),
+    ('paystack:r2oth'||v_key, 'charge.success', jsonb_build_object('event','charge.success','data',
+      jsonb_build_object('reference', v_ref||'x', 'amount', 88888888, 'currency', 'NGN')), 'paystack', 'charge.success'),
+    ('paystack:r2fail'||v_key, 'charge.failed', jsonb_build_object('event','charge.failed','data',
+      jsonb_build_object('reference', v_ref, 'amount', 77777777, 'currency', 'NGN')), 'paystack', 'charge.failed');
+  v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event_ps, 'paystack', 'paystack_redirect', 'r2-fp-'||v_session);
+  PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, NULL, v_ref, 'r2-cont-'||v_session);
+  PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'paystack', v_ref, '900323457', NULL);
+  SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
+  IF NOT FOUND OR v_row.buyer_refund_requested_cents <> 1567500 OR v_row.original_charge_cents <> 1567500
+     OR v_row.fee_reversal_required_cents <> 67500 THEN
+    v_fail := v_fail || format('W-PS a foreign-currency or foreign-reference charge.success was used: %s', to_jsonb(v_row));
+  END IF;
+
+  IF array_length(v_fail, 1) > 0 THEN
+    RAISE EXCEPTION E'#4271 retest 2 tester adversarial: % failure(s)\n  - %',
+      array_length(v_fail, 1), array_to_string(v_fail, E'\n  - ');
+  END IF;
+  RAISE NOTICE '#4271 retest 2 tester adversarial: all checks passed';
+END;
+$retest2$;
+
 ROLLBACK;
