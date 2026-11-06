@@ -1,27 +1,25 @@
 -- Issue #4276 round 6: the gaps table counts the work each stage would really do.
 --
--- An audit of every gaps-table number against production found three columns that
--- disagreed with the work the stages do:
+-- An audit of every gaps-table number against production found two columns that
+-- disagreed with the work their stages do:
 --
 --   Photos       was pre_passed - with_photos. with_photos also counts places that have
 --                photos without passing the pre-check, and places holding only the
 --                '__backfill_failed__' marker, so Miami showed 3,638 instead of 3,688
 --                and London, Paris and Brussels showed Done with 6, 12 and 9 waiting.
 --   Final check  was with_photos - final_checked, two totals over different places
---                (Miami 72 instead of the 83 places with photos waiting).
---   Unsearched   legacy searches were attributed to their slug's first config
---                ('first_config'), so every tile looked unsearched for the slug's other
---                configs: London 768, Lagos 600, Cary 216 and Washington 396 searches a
---                fill would have paid for again.
+--                (Miami 72 instead of the 53 places with real photos waiting).
 --
 -- admin_place_pipeline_funnel adds photos_needed and final_check_needed, counted place
--- by place (the old fields stay for every other reader). seeding_unfinished_searches
--- counts k legacy searches of a slug on a tile as its first k configs. Both are STABLE
--- reads; nothing is written. Static SQL only.
+-- by place (the old fields stay for every other reader). It is a STABLE read; nothing is
+-- written. Static SQL only.
 --
--- Rollback: re-run the two function definitions from
--- 20280413004276_issue_4276_admin_pipeline_screens.sql and
--- 20280410024276_issue_4276_tile_completeness.sql.
+-- Unsearched is NOT changed here. seeding_unfinished_searches is right as it is: a
+-- search recorded 'first_config' is a repeat of the first config (the repeated-search
+-- bug in 20280410024276), so the slug's other configs were never searched and stay owed.
+--
+-- Rollback: re-run admin_place_pipeline_funnel from
+-- 20280413004276_issue_4276_admin_pipeline_screens.sql.
 
 BEGIN;
 
@@ -153,78 +151,5 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.admin_place_pipeline_funnel(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_place_pipeline_funnel(uuid) TO authenticated, service_role;
-
-CREATE OR REPLACE FUNCTION public.seeding_unfinished_searches(p_city_id uuid, p_configs jsonb)
-RETURNS TABLE (
-  tile_id uuid,
-  search_config_id text,
-  included_types_override text[],
-  level integer,
-  reason text
-)
-LANGUAGE sql
-STABLE
-SET search_path = public
-AS $$
-  WITH configs AS (
-    -- slug_pos: the config's place among its slug's configs, in the order given.
-    SELECT e.cfg ->> 'id' AS id, e.cfg ->> 'slug' AS slug,
-           row_number() OVER (PARTITION BY e.cfg ->> 'slug' ORDER BY e.ord) AS slug_pos
-      FROM jsonb_array_elements(p_configs) WITH ORDINALITY AS e (cfg, ord)
-  ),
-  active AS (
-    SELECT t.id, t.kind FROM public.seeding_tiles t
-     WHERE t.city_id = p_city_id AND t.retired_at IS NULL
-  )
-  -- Every grid and fill tile owes every config one finished search.
-  SELECT a.id, c.id, NULL::text[], 0,
-         CASE WHEN EXISTS (
-           SELECT 1 FROM public.seeding_batches b
-            WHERE b.tile_id = a.id AND b.search_config_id = c.id AND b.level = 0
-              AND b.google_api_calls > 0
-         ) THEN 'failed' ELSE 'never_searched' END
-  FROM active a CROSS JOIN configs c
-  WHERE a.kind IN ('grid', 'fill')
-    AND NOT EXISTS (
-      SELECT 1 FROM public.seeding_batches b
-       WHERE b.tile_id = a.id
-         AND b.status = 'completed'
-         AND b.included_types_override IS NULL
-         AND (b.search_config_id = c.id
-              OR (b.search_config_id IS NULL AND b.seeding_category = c.slug))
-    )
-    -- #4276 round 6: legacy searches. seeding_attribute_legacy_batches gave every legacy
-    -- search of a slug its FIRST config ('first_config'), so a tile searched for all
-    -- three casual-eats configs shows three casual_eats searches and none for the other
-    -- two. k such searches on a tile cover the slug's first k configs.
-    AND c.slug_pos > (
-      SELECT count(*) FROM public.seeding_batches b
-       WHERE b.tile_id = a.id
-         AND b.status = 'completed'
-         AND b.level = 0
-         AND b.included_types_override IS NULL
-         AND b.config_attribution = 'first_config'
-         AND b.seeding_category = c.slug
-    )
-  UNION ALL
-  -- A split search owes what was asked of it, and nothing more.
-  SELECT DISTINCT b.tile_id, b.search_config_id, b.included_types_override, b.level,
-         CASE WHEN b.status = 'failed' THEN 'failed' ELSE 'never_searched' END
-  FROM public.seeding_batches b
-  JOIN active a ON a.id = b.tile_id
-  WHERE b.city_id = p_city_id
-    AND b.level > 0
-    AND b.status <> 'completed'
-    AND NOT EXISTS (
-      SELECT 1 FROM public.seeding_batches done
-       WHERE done.tile_id = b.tile_id
-         AND done.search_config_id IS NOT DISTINCT FROM b.search_config_id
-         AND done.included_types_override IS NOT DISTINCT FROM b.included_types_override
-         AND done.status = 'completed'
-    );
-$$;
-
-REVOKE ALL ON FUNCTION public.seeding_unfinished_searches(uuid, jsonb) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.seeding_unfinished_searches(uuid, jsonb) TO service_role;
 
 COMMIT;

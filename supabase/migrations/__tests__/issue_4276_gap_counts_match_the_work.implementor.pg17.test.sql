@@ -8,15 +8,17 @@
 --              to cancel one that is (Miami: 3,638 shown, 3,688 waiting)
 --   G-FINAL    final_check_needed counts places with real photos the final check has
 --              not judged (is_servable null)
---   G-LEGACY   three legacy casual-eats searches on a tile, all attributed to
---              casual_eats ('first_config'), cover all three casual-eats configs; one
---              legacy nature search covers nature_views but not picnic_park (London
---              showed 768 unsearched, really 0)
---   G-ORDER    a search recorded under its own config still counts only for that one
+--   G-LEGACY   THE REPEATED-SEARCH BUG STAYS VISIBLE. Three casual_eats searches on a
+--              tile recorded 'first_config' are the first config run three times (from
+--              2026-04-16 the worker resolved every category to its first config), so
+--              casual_eats_world and casual_eats_extended are still owed; two
+--              nature_views repeats leave picnic_park owed. A repeated first config never
+--              counts as any other config done (London owes 768, not 0)
+--   G-ORDER    a search recorded under its own config counts only for that one
 --
 -- FAILS-ON-REVERT: re-run the 20280413004276 funnel and G-PHOTOS and G-FINAL fail (no
--- such fields); re-run the 20280410024276 seeding_unfinished_searches and G-LEGACY
--- fails with casual_eats_world, casual_eats_extended and picnic_park owed.
+-- such fields). Count k 'first_config' repeats as the slug's first k configs (the
+-- round-6 rule) and G-LEGACY fails with tile 1 owing nothing.
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -74,6 +76,7 @@ values
   ('a4276700-0000-4000-e000-000000000001', 'a4276700-0000-4000-a000-000000000001', 'a4276700-0000-4000-d000-000000000001', 0, 'brunch_lunch_casual', 'x', 1, 'completed', 'casual_eats', 'first_config', 1),
   ('a4276700-0000-4000-e000-000000000001', 'a4276700-0000-4000-a000-000000000001', 'a4276700-0000-4000-d000-000000000001', 0, 'brunch_lunch_casual', 'x', 2, 'completed', 'casual_eats', 'first_config', 1),
   ('a4276700-0000-4000-e000-000000000001', 'a4276700-0000-4000-a000-000000000001', 'a4276700-0000-4000-d000-000000000001', 0, 'nature', 'x', 3, 'completed', 'nature_views', 'first_config', 1),
+  ('a4276700-0000-4000-e000-000000000001', 'a4276700-0000-4000-a000-000000000001', 'a4276700-0000-4000-d000-000000000001', 0, 'nature', 'x', 5, 'completed', 'nature_views', 'first_config', 1),
   ('a4276700-0000-4000-e000-000000000001', 'a4276700-0000-4000-a000-000000000001', 'a4276700-0000-4000-d000-000000000002', 1, 'brunch_lunch_casual', 'x', 4, 'completed', 'casual_eats_world', 'batch_order', 1);
 
 do $$
@@ -85,7 +88,9 @@ begin
   select array_agg(u.search_config_id order by u.search_config_id) into t1
     from public.seeding_unfinished_searches('a4276700-0000-4000-a000-000000000001', cfg) u
    where u.tile_id = 'a4276700-0000-4000-d000-000000000001';
-  if t1 is distinct from array['picnic_park'] then raise exception 'G-LEGACY: tile 1 owes %', t1; end if;
+  if t1 is distinct from array['casual_eats_extended', 'casual_eats_world', 'picnic_park'] then
+    raise exception 'G-LEGACY: repeats of the first config were counted as other configs; tile 1 owes %', t1;
+  end if;
   select array_agg(u.search_config_id order by u.search_config_id) into t2
     from public.seeding_unfinished_searches('a4276700-0000-4000-a000-000000000001', cfg) u
    where u.tile_id = 'a4276700-0000-4000-d000-000000000002';
