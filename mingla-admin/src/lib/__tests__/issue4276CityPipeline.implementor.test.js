@@ -366,6 +366,11 @@ test("the run rates mirror the server's own constants", () => {
   assert.match(geo, new RegExp(`COST_PER_NEARBY_SEARCH = ${R.SEARCH_USD};`));
   assert.match(geo, new RegExp(`COST_PER_PHOTO = ${R.PHOTO_USD};`));
   assert.match(geo, new RegExp(`PHOTOS_PER_PLACE = ${R.PHOTOS_PER_PLACE};`));
+  assert.match(geo, new RegExp(`EXPECTED_UNIQUE_PLACES_PER_TILE = ${R.EXPECTED_PLACES_PER_TILE};`));
+  // Round 5: the server's fill estimate is the shared formula the cell mirrors (the
+  // Deno test issue_4276_picked_stages compares the two numerically).
+  const search = readFileSync(join(SRC, "../../supabase/functions/admin-seed-places/searchPipeline.ts"), "utf8");
+  assert.ok(search.includes("const estimatedCostUsd = estimateFillCostUsd(batches.length, newTiles.length);"));
   assert.match(conductor, new RegExp(`REVIEW_MAX_PAGES = ${R.REVIEW_MAX_PAGES};`));
   assert.equal((configs.match(/^\s+id: ['"]/gm) ?? []).length, R.SEARCHES_PER_TILE);
 });
@@ -374,7 +379,7 @@ test("cells cost what a run would spend, and Serper or Gemini say so until price
   const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
   const cells = matrixCells(f, { uncoveredTiles: 2, unfinishedSearches: 10, cappedOpen: 3 }, { outside_active: 0 }, { reviews_eligible: 6, reviews_held: 0, redo_eligible: 2, redo_held: 0 });
   const by = Object.fromEntries(cells.map((c) => [c.id, c]));
-  assert.equal(pipelineLib.cellCost(by.unsearched).text, "$1.22"); // (2 x 14 + 10) x $0.032
+  assert.equal(pipelineLib.cellCost(by.unsearched).text, "$1.92"); // (2 x 14 + 10) x $0.032 + 2 x 10 x 5 x $0.007
   assert.equal(pipelineLib.cellCost(by.capped).text, "$0.38"); // 3 x 4 x $0.032
   assert.equal(pipelineLib.cellCost(by.photos).text, "$0.70"); // 20 x 5 x $0.007
   assert.equal(pipelineLib.cellCost(by.pre_check).text, "Free");

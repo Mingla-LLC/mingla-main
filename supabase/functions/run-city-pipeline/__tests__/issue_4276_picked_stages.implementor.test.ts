@@ -19,6 +19,11 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { type CallResult, type Deps, intelligenceArgs, preview, Refusal, start, tick } from "../conductor.ts";
 import { planFromBody } from "../plan.ts";
+import { COST_PER_NEARBY_SEARCH, estimateFillCostUsd } from "../../_shared/seedingGeometry.ts";
+import { SEEDING_CATEGORIES } from "../../_shared/seedingCategories.ts";
+// The admin gaps table's own pricing, a plain module with no imports.
+// @ts-ignore: plain JavaScript module from the admin app
+import { cellCost, matrixCells } from "../../../../mingla-admin/src/lib/cityPipeline.js";
 
 type Row = Record<string, unknown>;
 const NOW = Date.parse("2026-11-05T12:00:00Z");
@@ -169,6 +174,13 @@ Deno.test("P-REDO: a redo asks first, then reaches servable places with no revie
   assertEquals(started!.body.include_no_reviews, true);
   assertEquals(started!.body.force_refresh_reviews, true);
   assertEquals(started!.body.place_scope, "servable_and_held");
+  assertEquals(started!.body.respect_score_hold, true);
+
+  // Round 5: a plain Intelligence (or Reviews) pick never reaches the held backlog either,
+  // and its estimate, which the preview prices from, asks for the same list.
+  // FAILS-ON-REVERT: drop respect_score_hold from intelligenceArgs.
+  assertEquals(intelligenceArgs("c", "a", "new_only", { planned: true, redo: false }),
+    { action: "start_run", city_id: "c", mode: "remainder", place_scope: "servable_and_held", admin_id: "a", respect_score_hold: true });
 
   // An unplanned run asks for exactly what it always did.
   assertEquals(intelligenceArgs("c", "a", "new_only", { planned: false, redo: false }),
@@ -235,4 +247,30 @@ Deno.test("P-PRICE: the preview prices exactly the planned stages", async () => 
   // Unplanned previews carry no plan.
   const w2 = world("box", () => ok({ searches: 0, estimatedCostUsd: 0 }));
   assertEquals((await preview(deps(w2), { cityId: "city-1" }, "admin-1")).plan, null);
+});
+
+// Round 5: the cell and the server price the same plan the same. The tester saw London's
+// "Unsearched" cell at $114.24 while preview_fill said $203.49 for the same 3,570
+// searches: the server adds the photos the 255 new tiles are expected to bring, and the
+// cell left them out. Both now use one formula (estimateFillCostUsd).
+// FAILS-ON-REVERT: drop the photo term from the cell (cellCost "unsearched") and the
+// London fixture reads $114.24 against $203.49.
+Deno.test("P-CELL-PRICE: the gaps cell and the server's fill and split estimates agree", () => {
+  const funnel = { active: 1, pre_checked: 1, pre_passed: 1, with_photos: 1, final_checked: 1, servable: 1, scored: 1, no_reviews: 0, rules_only: 0, intelligence_without_reviews: 0 };
+  const redo = { reviews_eligible: 0, reviews_held: 0, redo_eligible: 0, redo_held: 0 };
+  for (const [tiles, unfinished, capped] of [[255, 0, 0], [2, 10, 3], [0, 37, 1], [1, 0, 12]]) {
+    const cells = matrixCells(funnel, { uncoveredTiles: tiles, unfinishedSearches: unfinished, cappedOpen: capped }, { outside_active: 0 }, redo);
+    // deno-lint-ignore no-explicit-any
+    const by = Object.fromEntries(cells.map((c: any) => [c.id, c]));
+    // preview_fill: one search per unfinished search plus one per category per new tile.
+    const searches = unfinished + tiles * SEEDING_CATEGORIES.length;
+    if (searches > 0) assertEquals(cellCost(by.unsearched).usd, estimateFillCostUsd(searches, tiles), `fill ${tiles}/${unfinished}`);
+    // preview_split_level: each capped search is searched again in its four children.
+    if (capped > 0) {
+      assertEquals(Math.round(cellCost(by.capped).usd * 100) / 100, Math.round(capped * 4 * COST_PER_NEARBY_SEARCH * 100) / 100, `split ${capped}`);
+    }
+  }
+  const london = matrixCells(funnel, { uncoveredTiles: 255, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 0 }, redo);
+  // deno-lint-ignore no-explicit-any
+  assertEquals(cellCost(london.find((c: any) => c.id === "unsearched")).text, "$203.49");
 });

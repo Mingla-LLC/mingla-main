@@ -17,13 +17,20 @@
 --   R-SAME     a place evaluated after the hold with no review fetch since is not in it
 --              (no second Gemini bill); one with a fetch after its evaluation is
 --   R-NEW      a place never evaluated is in it
+--   P-PLAN     THE BACKLOG STAYS HELD ON EVERY PLANNED PICK: place_intel_planned_place_ids,
+--              the one list a planned Intelligence run prices and queues, never has a
+--              servable place with a slice from before the hold, even one with no trial
+--              row (Baltimore 992a5d60...), with or without a redo; it has places never
+--              evaluated, and the redo set only when asked
 --   R-COUNTS   admin_place_pipeline_redo_counts counts eligible and held per city, for
 --              admins only
 --   G-GRANTS   both functions belong to the service role only
 --
 -- FAILS-ON-REVERT: without the migration neither function exists. Drop the skipped
 -- update and S-PLAN fails; drop the cursor update and S-REDO fails; restore the round-3
--- place_intel_places_without_reviews (no hold check) and R-HOLD and R-SAME fail.
+-- place_intel_places_without_reviews (no hold check) and R-HOLD and R-SAME fail. Drop the
+-- place_intel_score_held filter from place_intel_planned_place_ids (the round-4
+-- remainder rule: not evaluated in the city) and P-PLAN fails on places 7 and b.
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -110,6 +117,7 @@ end $$;
 --   8 evaluated before the hold, no AI slice kept         held (R-HOLD)
 --   9 evaluated after the hold, no fetch since            current (R-SAME)
 --  10 evaluated after the hold, reviews fetched since     eligible (R-SAME)
+--  11 (b) has reviews, slice from before the hold, no trial row     held (P-PLAN)
 insert into public.place_pool (id, google_place_id, name, lat, lng, types, primary_type, is_active, city_id, fetched_via, is_servable, ai_signal_scores)
 values
   ('a4276600-0000-4000-b000-000000000001', 'gp-plan4276-1', 'Never evaluated', 1, 1, array['cafe'], 'cafe', true, 'a4276600-0000-4000-a000-000000000001', 'nearby_search', true, null),
@@ -124,9 +132,12 @@ values
   ('a4276600-0000-4000-b000-000000000009', 'gp-plan4276-9', 'Judged after the hold', 1, 1, array['cafe'], 'cafe', true, 'a4276600-0000-4000-a000-000000000001', 'nearby_search', true,
    jsonb_build_object('sig', jsonb_build_object('score', 60, 'evaluated_at', '2026-11-10T00:00:00Z'))),
   ('a4276600-0000-4000-b000-00000000000a', 'gp-plan4276-a', 'Judged, then fetched', 1, 1, array['cafe'], 'cafe', true, 'a4276600-0000-4000-a000-000000000001', 'nearby_search', true,
-   jsonb_build_object('sig', jsonb_build_object('score', 60, 'evaluated_at', '2026-11-10T00:00:00Z')));
+   jsonb_build_object('sig', jsonb_build_object('score', 60, 'evaluated_at', '2026-11-10T00:00:00Z'))),
+  ('a4276600-0000-4000-b000-00000000000b', 'gp-plan4276-b', 'Backlog, never trialled', 1, 1, array['cafe'], 'cafe', true, 'a4276600-0000-4000-a000-000000000001', 'nearby_search', true,
+   jsonb_build_object('sig', jsonb_build_object('score', 70, 'evaluated_at', '2026-05-05T00:00:00Z')));
 insert into public.place_external_reviews (place_pool_id, source, source_review_id, review_text, rating)
-values ('a4276600-0000-4000-b000-000000000002', 'serper', 'r-plan4276-2', 'Lovely', 5);
+values ('a4276600-0000-4000-b000-000000000002', 'serper', 'r-plan4276-2', 'Lovely', 5),
+       ('a4276600-0000-4000-b000-00000000000b', 'serper', 'r-plan4276-b', 'Lovely', 5);
 insert into public.place_review_fetch_state (place_id, outcome, review_count, last_checked_at)
 values ('a4276600-0000-4000-b000-000000000003', 'none_on_google', 0, now()),
        ('a4276600-0000-4000-b000-000000000006', 'failed', 0, now()),
@@ -167,6 +178,35 @@ begin
   end if;
 end $$;
 
+-- P-PLAN
+do $$
+declare
+  c constant uuid := 'a4276600-0000-4000-a000-000000000001';
+  v uuid[] := public.place_intel_planned_place_ids(c, false);
+  v_redo uuid[] := public.place_intel_planned_place_ids(c, true);
+begin
+  if 'a4276600-0000-4000-b000-000000000007'::uuid = any (v) or 'a4276600-0000-4000-b000-00000000000b'::uuid = any (v) then
+    raise exception 'P-PLAN: a plain Intelligence pick reaches a backlog place: %', v;
+  end if;
+  if 'a4276600-0000-4000-b000-000000000007'::uuid = any (v_redo) or 'a4276600-0000-4000-b000-00000000000b'::uuid = any (v_redo)
+     or 'a4276600-0000-4000-b000-000000000008'::uuid = any (v_redo) then
+    raise exception 'P-PLAN: a redo reaches a backlog place: %', v_redo;
+  end if;
+  if v is distinct from array['a4276600-0000-4000-b000-000000000001', 'a4276600-0000-4000-b000-000000000002',
+                              'a4276600-0000-4000-b000-000000000003', 'a4276600-0000-4000-b000-000000000006']::uuid[] then
+    raise exception 'P-PLAN: plain pick got %', v;
+  end if;
+  if v_redo is distinct from v || 'a4276600-0000-4000-b000-00000000000a'::uuid then
+    raise exception 'P-PLAN: redo got %', v_redo;
+  end if;
+  if not public.place_intel_score_held(jsonb_build_object('s', jsonb_build_object('evaluated_at', '2026-05-05T00:00:00Z')), null)
+     or not public.place_intel_score_held(null, '2026-09-01T00:00:00Z')
+     or public.place_intel_score_held(null, null)
+     or public.place_intel_score_held(jsonb_build_object('s', jsonb_build_object('evaluated_at', '2026-11-10T00:00:00Z')), '2026-11-10T00:00:00Z') then
+    raise exception 'P-PLAN: place_intel_score_held is wrong';
+  end if;
+end $$;
+
 -- R-COUNTS
 insert into auth.users (id, email, aud, role)
 values ('a4276600-0000-4000-c000-000000000002', 'admin.plan4276@test.local', 'authenticated', 'authenticated'),
@@ -199,6 +239,9 @@ begin
      or not has_function_privilege('service_role', 'public.city_pipeline_start_plan(uuid,uuid,text,numeric,text[],boolean,boolean)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.place_intel_places_without_reviews(uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.place_intel_redo_state(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.place_intel_planned_place_ids(uuid,boolean)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.place_intel_planned_place_ids(uuid,boolean)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.place_intel_score_held(jsonb,timestamptz)', 'EXECUTE')
      or has_function_privilege('anon', 'public.admin_place_pipeline_redo_counts()', 'EXECUTE') then
     raise exception 'G-GRANTS: wrong grants';
   end if;

@@ -650,6 +650,7 @@ export const PIPELINE_RATES = Object.freeze({
   PHOTO_USD: 0.007,
   PHOTOS_PER_PLACE: 5,
   SEARCHES_PER_TILE: 14,
+  EXPECTED_PLACES_PER_TILE: 10,
   SPLIT_SEARCHES: 4,
   REVIEW_MAX_PAGES: 5,
 });
@@ -672,8 +673,12 @@ export function cellCost(cell, rates = {}) {
   const priced = (usd) => ({ usd, text: money(usd) });
   switch (cell.id) {
     case "unsearched": {
+      // The server's fill estimate (estimateFillCostUsd): every search, plus the photos the
+      // new tiles are expected to bring.
       const p = cell.parts ?? { tiles: 0, searches: v };
-      return priced((p.tiles * r.SEARCHES_PER_TILE + p.searches) * r.SEARCH_USD);
+      const searches = p.tiles * r.SEARCHES_PER_TILE + p.searches;
+      const photos = p.tiles * r.EXPECTED_PLACES_PER_TILE * r.PHOTOS_PER_PLACE * r.PHOTO_USD;
+      return priced(Math.round((searches * r.SEARCH_USD + photos) * 100) / 100);
     }
     case "capped":
       return priced(v * r.SPLIT_SEARCHES * r.SEARCH_USD);

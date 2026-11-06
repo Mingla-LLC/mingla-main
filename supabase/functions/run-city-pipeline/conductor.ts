@@ -581,8 +581,9 @@ async function stageIntelligence(ctx: Ctx): Promise<Outcome> {
  * What the Intelligence stage asks run-place-intelligence-trial for. An unplanned run
  * takes the places held for their first evaluation (new_only) or those plus every
  * servable place (whole_city). A planned run was asked for Intelligence on the city's
- * gaps, which are servable places, so it takes servable and held. A redo adds the
- * servable places with no reviews on record and fetches their reviews afresh.
+ * gaps, which are servable places, so it takes servable and held, never a place held in
+ * the score backlog. A redo adds the servable places with no reviews on record and
+ * fetches their reviews afresh.
  */
 export function intelligenceArgs(
   cityId: string,
@@ -596,6 +597,9 @@ export function intelligenceArgs(
     mode: "remainder",
     place_scope: opts.planned || scope !== "new_only" ? "servable_and_held" : "held",
     admin_id: adminId,
+    // #4276: a planned run never judges a place held in the score backlog, redo or not.
+    // The trial function then takes place_intel_planned_place_ids and checks every id.
+    ...(opts.planned ? { respect_score_hold: true } : {}),
     ...(opts.redo ? { include_no_reviews: true, force_refresh_reviews: true } : {}),
   };
 }

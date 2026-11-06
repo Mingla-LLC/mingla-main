@@ -27,7 +27,8 @@
 -- Static SQL only. Rollback: DROP FUNCTION public.city_pipeline_start_plan(uuid, uuid,
 -- text, numeric, text[], boolean, boolean); DROP FUNCTION
 -- public.place_intel_places_without_reviews(uuid), public.admin_place_pipeline_redo_counts(),
--- public.place_intel_redo_state(uuid).
+-- public.place_intel_redo_state(uuid), public.place_intel_planned_place_ids(uuid, boolean),
+-- public.place_intel_score_held(jsonb, timestamptz).
 
 BEGIN;
 
@@ -93,6 +94,28 @@ COMMENT ON FUNCTION public.city_pipeline_start_plan(uuid, uuid, text, numeric, t
   'Issue #4276: starts a run that does only the given stages (the rest are skipped) and, '
   'with p_redo_intelligence, redoes Intelligence for servable places with no reviews.';
 
+-- THE ONE HOLD RULE. A place is held in the score backlog when any of its AI slices was
+-- evaluated before ai_score_hold_since() (ai_slices_predate_hold), or when its latest
+-- completed evaluation is from before the hold. Seth keeps the backlog held, so no
+-- planned run judges a held place again: the redo set, the planned Intelligence set and
+-- the price shown before a run all use this one function.
+CREATE OR REPLACE FUNCTION public.place_intel_score_held(p_ai_signal_scores jsonb, p_last_eval timestamptz)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT public.ai_slices_predate_hold(p_ai_signal_scores) IS TRUE
+      OR (p_last_eval IS NOT NULL AND p_last_eval < public.ai_score_hold_since());
+$$;
+
+REVOKE ALL ON FUNCTION public.place_intel_score_held(jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.place_intel_score_held(jsonb, timestamptz) TO service_role;
+
+COMMENT ON FUNCTION public.place_intel_score_held(jsonb, timestamptz) IS
+  'Issue #4276: true when a place is held in the score backlog (an AI slice or its latest '
+  'completed evaluation predates ai_score_hold_since()). No planned run re-judges it.';
+
 -- Which servable places with no reviews a redo may re-judge, and which it never may.
 -- Rows only for active places Explorers can see (or held after passing) that have no
 -- review on record, by the funnel's rule (no stored review, and the last fetch did not
@@ -133,8 +156,7 @@ AS $$
   SELECT c.id,
          c.city_id,
          CASE
-           WHEN public.ai_slices_predate_hold(c.ai_signal_scores)
-             OR (e.last_eval IS NOT NULL AND e.last_eval < public.ai_score_hold_since())
+           WHEN public.place_intel_score_held(c.ai_signal_scores, e.last_eval)
              THEN 'held'
            WHEN e.last_eval IS NOT NULL
              AND NOT EXISTS (
@@ -176,6 +198,55 @@ GRANT EXECUTE ON FUNCTION public.place_intel_places_without_reviews(uuid) TO ser
 COMMENT ON FUNCTION public.place_intel_places_without_reviews(uuid) IS
   'Issue #4276: the servable places with no reviews that a redo may re-judge: never ones '
   'held in the score backlog, never ones unchanged since a post-hold evaluation.';
+
+-- The places a planned Intelligence run judges, in the order it takes them (most reviews
+-- first): servable places, and places held for their first evaluation that passed the
+-- final check, in the city, that are
+--   * never held in the score backlog (place_intel_score_held), and
+--   * not yet evaluated in this city, or, with p_include_redo, in the redo set
+--     (place_intel_places_without_reviews).
+-- run-place-intelligence-trial takes exactly this list for a planned run, both to price
+-- it (estimate_only, which the run's preview and limits read) and to queue it, then
+-- checks the slices of every id again before it queues anything.
+CREATE OR REPLACE FUNCTION public.place_intel_planned_place_ids(p_city_id uuid, p_include_redo boolean DEFAULT false)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  WITH pool AS (
+    SELECT pp.id, pp.review_count, pp.ai_signal_scores
+      FROM public.place_pool pp
+     WHERE pp.city_id = p_city_id
+       AND (pp.is_servable IS TRUE OR pp.held_final_check_passed IS TRUE)
+  ),
+  evaluated AS (
+    SELECT t.place_pool_id,
+           max(t.completed_at) AS last_eval,
+           bool_or(t.city_id = p_city_id) AS in_city
+      FROM public.place_intelligence_trial_runs t
+      JOIN pool p ON p.id = t.place_pool_id
+     WHERE t.status = 'completed'
+     GROUP BY t.place_pool_id
+  ),
+  redo AS (
+    SELECT unnest(public.place_intel_places_without_reviews(p_city_id)) AS id
+     WHERE p_include_redo
+  )
+  SELECT COALESCE(array_agg(p.id ORDER BY p.review_count DESC NULLS LAST, p.id), ARRAY[]::uuid[])
+    FROM pool p
+    LEFT JOIN evaluated e ON e.place_pool_id = p.id
+   WHERE NOT public.place_intel_score_held(p.ai_signal_scores, e.last_eval)
+     AND (e.in_city IS NOT TRUE OR p.id IN (SELECT r.id FROM redo r));
+$$;
+
+REVOKE ALL ON FUNCTION public.place_intel_planned_place_ids(uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.place_intel_planned_place_ids(uuid, boolean) TO service_role;
+
+COMMENT ON FUNCTION public.place_intel_planned_place_ids(uuid, boolean) IS
+  'Issue #4276: the places a planned Intelligence run judges and prices: servable or '
+  'held-passed places in the city not yet evaluated there (or in the redo set), never '
+  'places held in the score backlog.';
 
 -- Per city, for the Pipeline gaps table: how many no-review places a pick may reach and
 -- how many sit in the held backlog. Admins only.

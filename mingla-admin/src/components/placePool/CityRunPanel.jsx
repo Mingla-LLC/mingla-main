@@ -285,7 +285,7 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
       </ConfirmModal>
       <ConfirmModal
         open={confirmPlan && !!plan}
-        title={`Run ${plan ? plan.stages.length : ""} stages for ${city.city_name}?`}
+        title={`Run ${plan ? `${plan.stages.length} ${plan.stages.length === 1 ? "stage" : "stages"}` : "these stages"} for ${city.city_name}?`}
         confirmLabel={`Start, ${plan ? planPriceText(plan, serperRate) : ""}`}
         busy={starting}
         onConfirm={start}
