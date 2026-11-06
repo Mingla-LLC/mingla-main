@@ -29,6 +29,9 @@ import {
   fetchIntelligenceCoverage,
 } from "../../services/intelligenceCoverageService";
 import { timeAgo } from "../../lib/formatters";
+// #4276 (fix d): the first coverage read can time out cold and answer on a second
+// try, so it is retried once before any error shows.
+import { withOneRetry } from "../../lib/cityPipeline";
 import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 // ORCH-1013 Finding B — bulk launch ("Run remainder on all").
 import { RunRemainderOnAllConfirmModal } from "./RunRemainderOnAllConfirmModal";
@@ -207,7 +210,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
     setError(null);
     try {
       const { rows: coverageRows, costModel: serverCostModel } =
-        await fetchIntelligenceCoverage();
+        await withOneRetry(() => fetchIntelligenceCoverage());
       setRows(coverageRows);
       setCostModel(serverCostModel);
     } catch (err) {

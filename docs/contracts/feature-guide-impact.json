@@ -1298,7 +1298,13 @@
         "supabase/migrations/20280415004276_issue_4276_pause_quarterly_all_cities_scoring.sql",
         "supabase/migrations/20280416004276_issue_4276_score_hold_and_release_only_path.sql",
         "supabase/migrations/20280417004276_issue_4276_unparseable_ai_date_is_held.sql",
-        "supabase/migrations/20280418004276_issue_4276_mv_refresh_slot_from_cron.sql"
+        "supabase/migrations/20280418004276_issue_4276_mv_refresh_slot_from_cron.sql",
+        "mingla-admin/src/components/placePool/PoolUi.jsx",
+        "mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx",
+        "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
+        "supabase/migrations/20280419004276_issue_4276_fast_place_category.sql",
+        "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
+        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql"
       ]
     },
     {

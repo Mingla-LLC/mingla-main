@@ -19,10 +19,9 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Rocket, MapPinned } from "lucide-react";
+import { Rocket } from "lucide-react";
 import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
@@ -32,25 +31,9 @@ import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { supabase } from "../lib/supabase";
 import { PageHeader } from "../components/ui/PageHeader";
-import { cityGaps, cityReadinessWithGaps } from "../lib/cityPipeline";
+import { CITY_FILTERS, boxSizeText, cityFilterMatch, cityGaps, cityLaunchState } from "../lib/cityPipeline";
 import { fetchPipelineFunnel, seeding } from "../services/cityPipelineService";
-
-// ─── Local presentational helper: summary metric chip (DESIGN §4) ────────────
-function SummaryChip({ icon: Icon, label, value, accent = "muted" }) {
-  const bubbleBg = accent === "brand" ? "bg-[var(--color-brand-50)]" : "bg-[var(--gray-100)]";
-  const iconColor = accent === "brand" ? "text-[var(--color-brand-500)]" : "text-[var(--gray-500)]";
-  return (
-    <div className="inline-flex items-center gap-2.5 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-4 py-3 shadow-[var(--shadow-sm)]">
-      <span className={`flex h-9 w-9 items-center justify-center rounded-full ${bubbleBg}`}>
-        {Icon && <Icon className={`h-[18px] w-[18px] ${iconColor}`} />}
-      </span>
-      <div className="leading-tight">
-        <p className="text-[20px] font-bold tabular-nums text-[var(--color-text-primary)]">{value}</p>
-        <p className="text-xs text-[var(--color-text-secondary)]">{label}</p>
-      </div>
-    </div>
-  );
-}
+import { ChipGroup, StatTile } from "../components/placePool/PoolUi";
 
 // ─── Leaflet helper: fit the map to the given bounds when they change ─────────
 // #4276 (B1): the boundary modal that wrote Google's viewport straight over the box is
@@ -70,7 +53,8 @@ export function LaunchCitiesPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [togglingIds, setTogglingIds] = useState(new Set());
-  const [filter, setFilter] = useState("all"); // "all" | "live"
+  const [filter, setFilter] = useState("all"); // CITY_FILTERS
+  const [boxes, setBoxes] = useState({});
   // #4276 U3: what keeps each city from being ready, counted on the server. Null while
   // loading; a failed read is said in the readiness cell, never read as "no gaps".
   const [gaps, setGaps] = useState(null);
@@ -93,6 +77,14 @@ export function LaunchCitiesPage() {
   }, []);
 
   useEffect(() => { fetchCities(); }, [fetchCities]);
+
+  // The box size beside each city (read only; boxes change in the Pipeline tab).
+  useEffect(() => {
+    supabase.from("seeding_cities").select("id, bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng")
+      .then(({ data, error }) => {
+        if (!error && mountedRef.current) setBoxes(Object.fromEntries((data ?? []).map((c) => [c.id, c])));
+      });
+  }, []);
 
   const fetchGaps = useCallback(async () => {
     setGapsError(null);
@@ -138,8 +130,8 @@ export function LaunchCitiesPage() {
       addToast({
         variant: "success",
         title: next
-          ? `${row.city_name} is now live for consumers.`
-          : `${row.city_name} is hidden from consumers.`,
+          ? `${row.city_name} is now live for Explorers.`
+          : `${row.city_name} is hidden from Explorers.`,
       });
     } catch (err) {
       // 2. ROLLBACK — visible, never silent. Error toast is manual-dismiss (red).
@@ -154,129 +146,110 @@ export function LaunchCitiesPage() {
     }
   }, [addToast]);
 
-  const liveCount = useMemo(() => rows.filter((r) => r.is_live_for_consumers).length, [rows]);
-  const totalCount = rows.length;
+  // Each city's readiness in the design's words, or null while gaps are counted.
+  const states = useMemo(() => {
+    if (!gaps) return null;
+    return Object.fromEntries(rows.map((row) => [row.city_id, cityLaunchState(row, gaps[row.city_id] ?? null)]));
+  }, [rows, gaps]);
+  const countOf = (key) => (states ? Object.values(states).filter((st) => st.key === key).length : null);
   const visibleRows = useMemo(
-    () => filter === "live" ? rows.filter((r) => r.is_live_for_consumers) : rows,
-    [rows, filter],
+    () => (filter === "all" || !states ? rows : rows.filter((r) => cityFilterMatch(states[r.city_id]?.key, filter))),
+    [rows, filter, states],
   );
+  const openBox = () => { window.location.hash = "#/placepool?tab=pipeline"; };
 
   const columns = useMemo(() => [
     {
       key: "city_name",
       label: "City",
-      sortable: true,
       render: (_v, row) => (
         <div className="min-w-0">
-          <p className="font-semibold text-[var(--color-text-primary)] truncate">{row.city_name}</p>
-          <p className="text-xs text-[var(--color-text-tertiary)] truncate">{row.country_name}</p>
+          <p className="truncate font-semibold text-[var(--color-text-primary)]">{row.city_name}</p>
+          <p className="truncate text-xs text-[var(--color-text-tertiary)]">{row.country_name}</p>
         </div>
       ),
     },
     {
-      key: "country_name",
-      label: "Country",
-      sortable: true,
-      width: "160px",
-      render: (_v, row) => (
-        <span className="text-[var(--color-text-secondary)]">
-          {row.country_name}
-          {row.country_code && (
-            <span className="ml-1.5 text-xs font-medium text-[var(--color-text-muted)] uppercase tabular-nums">
-              {row.country_code}
-            </span>
-          )}
-        </span>
-      ),
+      key: "_readiness",
+      label: "Readiness",
+      width: "150px",
+      render: (_v, row) => {
+        if (gapsError) return <Badge variant="default">Unknown</Badge>;
+        if (!states) return <Skeleton width={96} height={20} rounded="full" />;
+        const st = states[row.city_id];
+        return <Badge variant={st.variant}>{st.label}</Badge>;
+      },
+    },
+    {
+      key: "_why",
+      label: "What's in the way",
+      render: (_v, row) => {
+        // A failed gap count is said, never read as "nothing in the way".
+        if (gapsError) return <span className="text-xs text-[var(--color-error-700)]">Gaps couldn't be counted: {gapsError}</span>;
+        if (!states) return <Skeleton width={220} height={14} />;
+        return <span className="whitespace-normal break-words text-[13px] text-[var(--color-text-primary)]">{states[row.city_id].why}</span>;
+      },
     },
     {
       key: "is_servable_places",
-      label: "Servable",
-      sortable: true,
-      width: "170px",
+      label: "Explorers can see",
+      width: "140px",
       cellClassName: "tabular-nums",
       render: (_v, row) => {
         const servable = Number(row.is_servable_places ?? 0);
         const active = Number(row.total_active_places ?? 0);
-        return (
-          <div className="leading-tight flex items-center gap-2">
-            <span>
-              <span className={`font-semibold tabular-nums ${servable === 0 ? "text-[var(--color-warning-600)]" : "text-[var(--color-text-primary)]"}`}>
-                {servable.toLocaleString()}
-              </span>
-              <span className="ml-1 text-xs text-[var(--color-text-tertiary)] tabular-nums">
-                / {active.toLocaleString()} active
-              </span>
-            </span>
-            {servable === 0 && <Badge variant="warning">0 servable</Badge>}
-          </div>
-        );
-      },
-    },
-    {
-      key: "_readiness",
-      label: "Readiness",
-      width: "260px",
-      render: (_v, row) => {
-        if (gapsError) {
-          return <span className="text-xs text-[var(--color-error-700)]">Gaps couldn't be counted: {gapsError}</span>;
-        }
-        if (!gaps) return <Skeleton width={120} height={20} rounded="full" />;
-        const readiness = cityReadinessWithGaps(row, gaps[row.city_id] ?? null);
-        return (
-          <div className="flex min-w-0 flex-col items-start gap-1">
-            <Badge variant={readiness.variant} dot>{readiness.label}</Badge>
-            {readiness.gaps.length > 0 && (
-              <span className="whitespace-normal break-words text-xs text-[var(--color-text-secondary)]">{readiness.gaps.join(" · ")}</span>
-            )}
-          </div>
-        );
+        return servable > 0
+          ? <span title={`${active.toLocaleString()} active`}>{servable.toLocaleString()}</span>
+          : <span className="text-[var(--color-text-tertiary)]">–</span>;
       },
     },
     {
       key: "has_bbox",
       label: "Geo box",
-      width: "150px",
+      width: "120px",
       render: (_v, row) => {
-        if (!row.has_bbox) return <Badge variant="warning" dot>No box</Badge>;
+        if (!row.has_bbox) return <Badge variant="warning">No box</Badge>;
         const outside = gaps?.[row.city_id]?.outsideBox ?? 0;
-        return outside > 0
-          ? <Badge variant="error" dot>{`${outside.toLocaleString()} ${outside === 1 ? "place" : "places"} outside`}</Badge>
-          : <Badge variant="success" dot>Box set</Badge>;
+        const size = boxSizeText(boxes[row.city_id]) || "Box set";
+        return (
+          <Button variant="link" className={`min-h-11 tabular-nums underline ${outside > 0 ? "!text-[var(--color-error-700)]" : "!text-[var(--color-text-primary)]"}`}
+            onClick={openBox} title={outside > 0 ? `${outside.toLocaleString()} active ${outside === 1 ? "place sits" : "places sit"} outside it. Change it in Pipeline.` : "Change it in Pipeline"}>
+            {size}
+          </Button>
+        );
       },
     },
     {
       key: "is_live_for_consumers",
-      label: "Live",
-      width: "130px",
-      render: (_v, row) => (
-        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
-          <Toggle
-            checked={!!row.is_live_for_consumers}
-            onChange={() => setConfirmCity(row)}
-            disabled={togglingIds.has(row.city_id)}
-          />
-          {togglingIds.has(row.city_id) && <Spinner size="sm" />}
-        </div>
-      ),
+      label: "Live for Explorers",
+      width: "170px",
+      render: (_v, row) => {
+        const live = !!row.is_live_for_consumers;
+        if (!live && Number(row.is_servable_places ?? 0) === 0) {
+          return <span className="text-xs text-[var(--color-text-secondary)]">Needs servable places</span>;
+        }
+        return (
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
+            <Button
+              variant={live ? "secondary" : "primary"}
+              className="min-h-11 w-[120px] justify-center"
+              onClick={() => setConfirmCity(row)}
+              disabled={togglingIds.has(row.city_id)}
+            >
+              {live ? "Hide" : "Go live"}
+            </Button>
+            {togglingIds.has(row.city_id) && <Spinner size="sm" />}
+          </div>
+        );
+      },
     },
-  ], [togglingIds, gaps, gapsError]);
+  ], [togglingIds, gaps, gapsError, states, boxes]);
+
+  const tile = (n) => (loading || n === null ? "–" : String(n));
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Launch Cities"
-        description="Flip a city live to let people there start onboarding."
-        actions={
-          loading ? (
-            <Skeleton width={56} height={22} rounded="full" className="shrink-0" />
-          ) : (
-            <Badge variant={liveCount > 0 ? "success" : "outline"} dot className="shrink-0">
-              {liveCount} live
-            </Badge>
-          )
-        }
-      />
+      <PageHeader title="Launch Cities" description="Which cities Explorers can use." />
 
       {/* Load error */}
       {loadError && (
@@ -289,72 +262,33 @@ export function LaunchCitiesPage() {
         </AlertCard>
       )}
 
-      {/* Summary strip */}
-      {loading ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <Skeleton width={160} height={62} style={{ borderRadius: 12 }} />
-          <Skeleton width={160} height={62} style={{ borderRadius: 12 }} />
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <SummaryChip icon={Rocket} label="Live for consumers" value={liveCount} accent="brand" />
-          <SummaryChip icon={MapPinned} label="Cities mapped" value={totalCount} accent="muted" />
-        </div>
-      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Live for Explorers" value={tile(states ? countOf("live") + countOf("live_gaps") : null)} />
+        <StatTile label="Live, with gaps" value={tile(countOf("live_gaps"))} />
+        <StatTile label="Seeded, not live" value={tile(states ? countOf("ready") + countOf("needs_work") : null)} />
+        <StatTile label="Drafts, never seeded" value={tile(countOf("draft"))} />
+      </div>
 
-      {/* First-time info banner: cities exist but none live yet */}
-      {!loading && !loadError && totalCount > 0 && liveCount === 0 && (
-        <AlertCard variant="info" title="No cities are live yet">
-          Flip one on when its places are ready.
-        </AlertCard>
-      )}
-
-      {/* Filter row — only with rows */}
-      {!loading && rows.length > 0 && (
-        <div className="flex items-center justify-between">
-          <div role="tablist" aria-label="Filter cities" className="inline-flex rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-secondary)] p-1">
-            {[["all", "All"], ["live", "Live only"]].map(([id, label]) => {
-              const active = filter === id;
-              return (
-                <button
-                  key={id}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setFilter(id)}
-                  className={[
-                    "h-9 px-4 text-xs font-semibold rounded-md transition-colors duration-150 cursor-pointer",
-                    active
-                      ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-[var(--shadow-sm)]"
-                      : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
-                  ].join(" ")}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <span className="text-xs text-[var(--color-text-tertiary)] tabular-nums">
-            {visibleRows.length} {visibleRows.length === 1 ? "city" : "cities"}
-          </span>
+      <SectionCard
+        title="Which cities Explorers can use"
+        subtitle="Going live is a separate choice, so finishing a pipeline run never shows a city to Explorers by accident. Geo boxes and seeding change in Pipeline."
+        noPadding
+      >
+        <div className="px-4 pt-4 sm:px-5">
+          <ChipGroup label="Filter cities" options={CITY_FILTERS.map((f) => ({ ...f }))} value={filter} onChange={setFilter} />
         </div>
-      )}
-
-      {/* List */}
-      <SectionCard title="Seeding cities" subtitle={`${totalCount} total`} noPadding>
         <DataTable
           columns={columns}
           rows={visibleRows}
           loading={loading}
-          striped
           emptyIcon={Rocket}
-          emptyMessage="No cities to launch yet."
+          emptyMessage={rows.length ? "No cities in this view." : "No cities to launch yet."}
           emptyAction={
             <Button variant="link" onClick={() => { window.location.hash = "#/placepool?tab=pipeline"; }}>
               Add a city in Pipeline
             </Button>
           }
           getRowId={(r) => r.city_id}
-          rowClassName={(r) => r.is_live_for_consumers ? "bg-[var(--color-success-50)]/40" : ""}
         />
       </SectionCard>
 

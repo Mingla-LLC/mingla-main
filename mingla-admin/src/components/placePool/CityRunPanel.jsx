@@ -162,7 +162,7 @@ function RunPlan({ city, serperRate, onStarted }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-3">
         <Field label="Spend limit, USD" hint="Required. The run pauses when it reaches this.">
           <input className={inputClass} aria-label="Spend limit, USD" inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="e.g. 50" aria-invalid={limit !== "" && !limitOk} />
         </Field>
@@ -321,7 +321,7 @@ function RunStatus({ runId, serperRate, onChanged }) {
       {active && (
         <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-3">
           {run.status === "paused" && (
-            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,220px)_auto]">
+            <div className="flex flex-col items-start gap-3">
               <Field label="New spend limit, USD (optional)">
                 <input className={inputClass} inputMode="decimal" value={newLimit} onChange={(e) => setNewLimit(e.target.value)} placeholder={String(run.spend_limit_usd)} aria-invalid={!newLimitOk} />
               </Field>
@@ -368,7 +368,7 @@ function RunStatus({ runId, serperRate, onChanged }) {
   );
 }
 
-export function CityRunPanel({ city, latestRun, serperRate, onChanged }) {
+export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = null }) {
   const [runId, setRunId] = useState(latestRun?.id ?? null);
   const [planning, setPlanning] = useState(false);
   // A server read; its state changes happen when it answers.
@@ -380,7 +380,7 @@ export function CityRunPanel({ city, latestRun, serperRate, onChanged }) {
 
   return (
     <SectionCard
-      title={`Run ${city.city_name}`}
+      title={`Run plan: ${city.city_name}`}
       subtitle="Box to final score on the server. It keeps going if you close this page."
       action={runId && !activeRun && !planning ? <Button size="sm" variant="secondary" onClick={() => setPlanning(true)}>Plan a new run</Button> : null}
     >
@@ -389,6 +389,7 @@ export function CityRunPanel({ city, latestRun, serperRate, onChanged }) {
       ) : (
         <RunStatus runId={runId} serperRate={serperRate} onChanged={onChanged} />
       )}
+      {footer && <div className="mt-4">{footer}</div>}
     </SectionCard>
   );
 }

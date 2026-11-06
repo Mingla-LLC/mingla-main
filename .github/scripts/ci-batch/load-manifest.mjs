@@ -159,7 +159,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4276: register the place-pipeline migrations and their proofs.
 // #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
 // (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
-export const BOOTSTRAP_SHA256 = "d0d637fbae58bb57e8516e1e1c5cda0e316557b111052566efe4786c0435821d";
+export const BOOTSTRAP_SHA256 = "3f17c96e1004a35ec6fd24ad06562355adde6532f6473bc116408f850986703d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -1,64 +1,94 @@
-// Issue #4276 U1: the pipeline, at the top of Place pool.
+// Issue #4276 U1: the Pipeline tab of Place pool, laid out as the approved design
+// (pipeline-design/project/Main.dc.html), in the admin's tokens.
 //
-//   Health      providers, database against its 7 GB pause line, storage against its
-//               85 GB guard, the Serper rate (unknown until set) and the view refresh.
-//   Gaps        what each city is missing, stage by stage, counted on the server.
-//   City        a picked city's run (plan, approve, pause, resume, cancel), its geo
-//               box and whether we are missing places there.
-//   Intelligence  the Intelligence runs and per-city coverage, reachable again (#4130
-//               had left them unrouted).
-//   Scoring     share of Explorers and top places per signal. No city-wide scoring.
-//   No city     active places outside every city, and assigning them by location.
-//   Hand tools  the existing seeding, refresh, photo and thumbnail tools.
+//   Health      providers as pills, database against its 7 GB pause line and storage
+//               against its 85 GB guard; the place list refresh under them.
+//   Spend       recorded spend to date, by provider. Serper stays unpriced until a
+//               rate is set (the rate lives in the Run plan).
+//   Tiles       what is still missing, in five numbers.
+//   Gaps        what each city is missing, stage by stage, counted on the server, with
+//               a Show filter, a legend and an "All gaps" row. Picking a city opens its
+//               setup under its own row (geo box, completeness) and its run on the
+//               right.
+//   Run plan    the picked city's run (plan, cost, limits, start, progress, pause,
+//               resume, cancel) and the Serper rate, beside the table.
+//   Thumbnails, no-city places, Scoring tools (collapsed), Intelligence coverage and
+//   the hand tools follow under the table.
+//
+// Intelligence coverage loads after the health card and the gaps table have answered,
+// and its first read is retried once (fix d): it used to start with them and time out.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, RefreshCw, X } from "lucide-react";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
-import { Badge } from "../ui/Badge";
 import { Spinner } from "../ui/Spinner";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import { EmbeddedPageContext } from "../layout/embeddedPage";
+import { supabase } from "../../lib/supabase";
 import {
   fetchPipelineFunnel,
   fetchPipelineRuns,
+  fetchSpendTotals,
   pipeline,
   seeding,
 } from "../../services/cityPipelineService";
 import {
   MATRIX_COLUMNS,
+  MATRIX_FILTERS,
+  boxSizeText,
+  cityStatusLine,
   count,
   plural,
   formatGb,
   matrixCells,
+  matrixFilter,
+  matrixTotals,
   perThousand,
   ratePerRequestFrom,
   runStatusWord,
   sharePct,
+  spendTotalsLine,
 } from "../../lib/cityPipeline";
 import { CityRunPanel } from "./CityRunPanel";
 import { CityBoxPanel } from "./CityBoxPanel";
 import { ScoringTools } from "./ScoringTools";
+import { ChipGroup, StatTile } from "./PoolUi";
 import { ActiveRunsControlTower } from "../placeIntelligenceTrial/ActiveRunsControlTower";
 import { IntelligenceOverviewTab } from "../placeIntelligenceTrial/IntelligenceOverviewTab";
-import { PlacePoolManagementPage } from "../../pages/PlacePoolManagementPage";
+import { AddCityModal, PlacePoolManagementPage } from "../../pages/PlacePoolManagementPage";
 
 const STORAGE_GUARD_BYTES = 85 * 1024 ** 3;
 const PLAN_DB_BYTES = 8 * 1024 ** 3;
 const PLAN_STORAGE_BYTES = 100 * 1024 ** 3;
 
+// The legend's colours, from the theme tokens.
+const CELL_TONE = {
+  missing: "border-[var(--color-warning-100)] bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
+  check: "border-[var(--color-error-100)] bg-[var(--color-error-50)] text-[var(--color-error-700)]",
+  redo: "border-[var(--color-info-100)] bg-[var(--color-info-50)] text-[var(--color-info-700)]",
+  follows: "border-dashed border-[var(--gray-400)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)]",
+};
+
+const LEGEND = [
+  { kind: "missing", label: "Missing" },
+  { kind: "redo", label: "Optional redo" },
+  { kind: "check", label: "Check this box" },
+  { kind: "follows", label: "Follows automatically" },
+];
+
 function Meter({ label, value, limit, pauseAt, pauseLabel }) {
   const pct = sharePct(value, limit);
   const over = value != null && pauseAt != null && Number(value) >= Number(pauseAt);
   return (
-    <div className="flex min-w-[170px] max-w-[280px] flex-1 flex-col gap-1">
-      <div className="flex justify-between text-[13px] tabular-nums">
+    <div className="flex min-w-[180px] flex-1 flex-col gap-1.5">
+      <div className="flex justify-between gap-3 text-[13px] tabular-nums text-[var(--color-text-primary)]">
         <span>{label}</span>
         <span>{formatGb(value)} of {formatGb(limit)}</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[var(--gray-100)]" aria-hidden="true">
-        <div className={`h-full rounded-full ${over ? "bg-[var(--color-error-500,#ef4444)]" : "bg-[var(--color-brand-500)]"}`} style={{ width: `${pct ?? 0}%` }} />
+      <div className="h-2 overflow-hidden rounded-full bg-[var(--gray-100)]" role="img" aria-label={`${label}: ${formatGb(value)} of ${formatGb(limit)}`}>
+        <div className={`h-full rounded-full ${over ? "bg-[var(--color-error-500)]" : "bg-[var(--color-brand-500)]"}`} style={{ width: `${pct ?? 0}%` }} />
       </div>
       <span className="text-[11px] text-[var(--color-text-tertiary)]">{pauseLabel}</span>
     </div>
@@ -67,14 +97,80 @@ function Meter({ label, value, limit, pauseAt, pauseLabel }) {
 
 const PROVIDER_LABEL = { google_places: "Google", gemini: "Gemini", serper: "Serper" };
 
-function HealthStrip({ health, error, onReload, onRateSaved }) {
+function Pill({ tone, children }) {
+  const tones = {
+    ok: "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
+    bad: "bg-[var(--color-error-50)] text-[var(--color-error-700)]",
+    unknown: "bg-[var(--gray-100)] text-[var(--color-text-secondary)]",
+  };
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[13px] font-medium ${tones[tone]}`}>{children}</span>;
+}
+
+function refreshLine(mv) {
+  if (mv.max_seconds == null) return "Place list refresh: no run recorded in the last day";
+  if (mv.interval_seconds == null) return `Place list refresh: longest ${mv.max_seconds} s in the last day; its schedule couldn't be read, so its slot is unknown`;
+  const near = Number(mv.max_seconds) > Number(mv.interval_seconds) * 0.5;
+  return `Place list refresh: longest ${mv.max_seconds} s of its ${mv.interval_seconds} s slot in the last day${near ? ", over half" : ""}`;
+}
+
+function HealthCard({ health, error, onReload }) {
+  if (error) return <AlertCard variant="error" title="Couldn't read provider and space health" action={<Button size="sm" variant="secondary" onClick={onReload}>Try again</Button>}>{error}</AlertCard>;
+  if (!health) return <div className="flex justify-center rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] py-5"><Spinner /></div>;
+  const unhealthy = new Set((health.unhealthy ?? []).map((u) => u.provider));
+  const mv = health.mv_refresh ?? {};
+  const mvNear = mv.max_seconds != null && mv.interval_seconds && Number(mv.max_seconds) > Number(mv.interval_seconds) * 0.5;
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-5 py-4 shadow-[var(--shadow-sm)]">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {["google_places", "gemini", "serper"].map((p) => {
+            const st = health.providers?.[p]?.status ?? "unknown";
+            const bad = unhealthy.has(p);
+            const http = health.providers?.[p]?.http_status;
+            return (
+              <Pill key={p} tone={bad ? "bad" : st === "unknown" ? "unknown" : "ok"}>
+                {PROVIDER_LABEL[p]} {bad ? `failing${http ? ` (HTTP ${http})` : ""}` : st === "unknown" ? "not checked" : "working"}
+              </Pill>
+            );
+          })}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-6">
+          <Meter label="Database" value={health.db_bytes} limit={PLAN_DB_BYTES} pauseAt={health.db_pause_bytes} pauseLabel={`Runs pause at ${formatGb(health.db_pause_bytes)}`} />
+          <Meter label="Storage" value={health.storage_total_bytes} limit={PLAN_STORAGE_BYTES} pauseAt={STORAGE_GUARD_BYTES}
+            pauseLabel={health.storage_measured_at ? `Runs pause at 85 GB · measured ${new Date(health.storage_measured_at).toLocaleString()}` : "Runs pause at 85 GB · not measured yet"} />
+        </div>
+      </div>
+      <p className={`text-xs ${mvNear ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-tertiary)]"}`}>{refreshLine(mv)}</p>
+    </div>
+  );
+}
+
+function SpendStrip({ spend, error }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-5 py-3 text-[13px] shadow-[var(--shadow-sm)]">
+      <b className="font-semibold text-[var(--color-text-primary)]">Recorded spend to date</b>
+      {error ? (
+        <span className="text-[var(--color-error-700)]">Couldn't read spend: {error}</span>
+      ) : !spend ? (
+        <Spinner size="sm" />
+      ) : (
+        <>
+          <span className="tabular-nums text-[var(--color-text-secondary)]">{spendTotalsLine(spend)}</span>
+          {spend.serper_usd_per_request == null && <span className="text-[var(--color-error-700)]">Serper not priced: set its rate in the Run plan</span>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SerperRate({ health, onSaved }) {
   const { addToast } = useToast();
   const [rate, setRate] = useState("");
   const [saving, setSaving] = useState(false);
   // A server read; its state changes happen when it answers.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setRate(perThousand(health?.serper_usd_per_request)); }, [health?.serper_usd_per_request]);
-
+  if (!health) return null;
   const saveRate = async () => {
     const parsed = ratePerRequestFrom(rate);
     if (!parsed.ok) { addToast({ variant: "error", title: parsed.error }); return; }
@@ -82,62 +178,31 @@ function HealthStrip({ health, error, onReload, onRateSaved }) {
     try {
       await pipeline("settings", { serperUsdPerRequest: parsed.value });
       addToast({ variant: "success", title: parsed.value === null ? "Serper rate cleared: cost shows as unknown" : "Serper rate saved" });
-      onRateSaved();
+      onSaved();
     } catch (err) {
       addToast({ variant: "error", title: "The rate was not saved", description: err.message });
     } finally {
       setSaving(false);
     }
   };
-
-  if (error) return <AlertCard variant="error" title="Couldn't read provider and space health" action={<Button size="sm" variant="secondary" onClick={onReload}>Try again</Button>}>{error}</AlertCard>;
-  if (!health) return <div className="flex justify-center py-4"><Spinner /></div>;
-
-  const unhealthy = new Set((health.unhealthy ?? []).map((u) => u.provider));
-  const mv = health.mv_refresh ?? {};
-  const mvNear = mv.max_seconds != null && mv.interval_seconds && Number(mv.max_seconds) > Number(mv.interval_seconds) * 0.5;
-
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-background-primary)] px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {["google_places", "gemini", "serper"].map((p) => {
-          const st = health.providers?.[p]?.status ?? "unknown";
-          const bad = unhealthy.has(p);
-          return (
-            <Badge key={p} variant={bad ? "error" : st === "unknown" ? "default" : "success"}>
-              {PROVIDER_LABEL[p]}: {bad ? `failing${health.providers?.[p]?.http_status ? ` (HTTP ${health.providers[p].http_status})` : ""}` : st === "unknown" ? "not checked" : "working"}
-            </Badge>
-          );
-        })}
-      </div>
-      <div className="flex flex-1 flex-wrap justify-end gap-5">
-        <Meter label="Database" value={health.db_bytes} limit={PLAN_DB_BYTES} pauseAt={health.db_pause_bytes} pauseLabel={`Runs pause at ${formatGb(health.db_pause_bytes)}`} />
-        <Meter label="Storage" value={health.storage_total_bytes} limit={PLAN_STORAGE_BYTES} pauseAt={STORAGE_GUARD_BYTES}
-          pauseLabel={health.storage_measured_at ? `Runs pause at 85 GB · measured ${new Date(health.storage_measured_at).toLocaleString()}` : "Runs pause at 85 GB · not measured yet"} />
-      </div>
-      <div className="flex w-full flex-wrap items-end gap-3 border-t border-[var(--color-border)] pt-3 text-sm">
-        <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-text-secondary)]">
-          Serper, USD per 1,000 requests
-          <input className="h-10 w-40 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm tabular-nums text-[var(--color-text-primary)]"
+    <div className="flex flex-col gap-2 border-t border-[var(--gray-200)] pt-4">
+      <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-text-secondary)]">
+        Serper, USD per 1,000 requests
+        <span className="flex gap-2">
+          <input className="h-11 w-full min-w-0 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm tabular-nums text-[var(--color-text-primary)]"
             inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Not set" />
-        </label>
-        <Button size="sm" variant="secondary" onClick={saveRate} loading={saving} disabled={rate === perThousand(health.serper_usd_per_request)}>Save rate</Button>
-        <span className="text-xs text-[var(--color-text-tertiary)]">
-          {health.serper_usd_per_request == null ? "Serper is counted by request; its cost shows as unknown until a rate is set." : "Serper cost is priced from this rate."}
+          <Button variant="secondary" onClick={saveRate} loading={saving} disabled={rate === perThousand(health.serper_usd_per_request)}>Save rate</Button>
         </span>
-        <span className={`ml-auto text-xs ${mvNear ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-tertiary)]"}`}>
-          {mv.max_seconds == null
-            ? "Place list refresh: no run recorded in the last day"
-            : mv.interval_seconds == null
-              ? `Place list refresh: longest ${mv.max_seconds} s in the last day; its schedule couldn't be read, so its slot is unknown`
-              : `Place list refresh: longest ${mv.max_seconds} s of its ${mv.interval_seconds} s slot in the last day${mvNear ? ", over half" : ""}`}
-        </span>
-      </div>
+      </label>
+      <span className="text-xs text-[var(--color-text-tertiary)]">
+        {health.serper_usd_per_request == null ? "Serper is counted by request; its cost shows as unknown until a rate is set." : "Serper cost is priced from this rate."}
+      </span>
     </div>
   );
 }
 
-function NoCityPanel({ onAssigned }) {
+function NoCityRow({ noCity, onAssigned }) {
   const { addToast } = useToast();
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
@@ -166,58 +231,78 @@ function NoCityPanel({ onAssigned }) {
     }
   };
 
+  const active = Number(noCity?.active ?? 0);
   return (
-    <SectionCard title="Places with no city" subtitle="City runs can't see these. A place inside exactly one city's box can be given that city.">
-      {error ? <AlertCard variant="error" title="Couldn't read places with no city">{error}</AlertCard>
-        : !report ? <div className="flex justify-center py-4"><Spinner /></div>
-        : (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="tabular-nums">{plural(report.total, "place")} ({count(report.active)} active, {count(report.unjudged)} never checked): {count(report.in_one_box)} inside one city's box, {count(report.in_several_boxes)} inside several, {count(report.in_no_box)} inside none.</p>
-            {report.by_city?.length > 0 && (
-              <p className="text-xs text-[var(--color-text-secondary)]">{report.by_city.map((c) => `${c.name} ${count(c.places)}`).join(" · ")}</p>
-            )}
-            <div>
-              <Button size="sm" variant="secondary" disabled={!report.in_one_box} onClick={() => setConfirm(true)}>{Number(report.in_one_box) === 1 ? "Give 1 place its city" : `Give ${count(report.in_one_box)} places their city`}</Button>
-            </div>
-          </div>
-        )}
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 text-xs text-[var(--color-text-secondary)]">
+      <span className="min-w-0 flex-1">
+        {plural(active, "active place")} {active === 1 ? "has" : "have"} no city and {active === 1 ? "sits" : "sit"} outside this table.
+        {error ? ` Couldn't read where they are: ${error}`
+          : report ? ` ${count(report.in_one_box)} inside one city's box, ${count(report.in_several_boxes)} inside several, ${count(report.in_no_box)} inside none.` : ""}
+      </span>
+      {report && Number(report.in_one_box) > 0 && (
+        <Button size="sm" variant="secondary" onClick={() => setConfirm(true)}>{Number(report.in_one_box) === 1 ? "Give 1 place its city" : `Give ${count(report.in_one_box)} places their city`}</Button>
+      )}
       <Modal open={confirm} onClose={busy ? () => {} : () => setConfirm(false)} title="Give these places a city?">
         <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)]">Only places inside exactly one city's box are assigned. The rest stay on this report. Assigning doesn't show them to Explorers; they still need the checks.</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">Only places inside exactly one city's box are assigned. The rest stay outside the table. Assigning doesn't show them to Explorers; they still need the checks.</p>
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setConfirm(false)} disabled={busy}>Keep as is</Button>
           <Button onClick={assign} loading={busy}>Assign</Button>
         </ModalFooter>
       </Modal>
-    </SectionCard>
+    </div>
+  );
+}
+
+function GapCell({ cell }) {
+  if (!cell.gap) {
+    return <span className="inline-flex min-h-11 items-center px-2 text-[13px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
+  }
+  return (
+    <span className={`inline-flex min-h-11 min-w-[72px] items-center rounded-lg border px-2.5 text-[13px] font-semibold tabular-nums ${CELL_TONE[cell.kind] ?? CELL_TONE.missing}`}>
+      {cell.text}
+    </span>
   );
 }
 
 export function PipelineSection() {
+  const { addToast } = useToast();
   const [funnel, setFunnel] = useState(null);
   const [funnelError, setFunnelError] = useState(null);
   const [search, setSearch] = useState({});
   const [searchError, setSearchError] = useState(null);
   const [outside, setOutside] = useState(null);
+  const [boxes, setBoxes] = useState({});
   const [runs, setRuns] = useState({});
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
+  const [spend, setSpend] = useState(null);
+  const [spendError, setSpendError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const loadHealth = useCallback(async () => {
     setHealthError(null);
     try { setHealth(await pipeline("health")); } catch (err) { setHealthError(err.message); }
   }, []);
 
+  const loadSpend = useCallback(async () => {
+    setSpendError(null);
+    try { setSpend(await fetchSpendTotals()); } catch (err) { setSpendError(err.message); }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const [f, s, o, r] = await Promise.allSettled([
+    const [f, s, o, r, b] = await Promise.allSettled([
       fetchPipelineFunnel(null),
       seeding("cities_search_status"),
       seeding("places_outside_box"),
       fetchPipelineRuns(),
+      supabase.from("seeding_cities").select("id, bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng"),
     ]);
     if (f.status === "fulfilled") { setFunnel(f.value); setFunnelError(null); } else setFunnelError(f.reason.message);
     if (s.status === "fulfilled") {
@@ -226,115 +311,210 @@ export function PipelineSection() {
     } else setSearchError(s.reason.message);
     setOutside(o.status === "fulfilled" ? Object.fromEntries((o.value.report ?? []).map((c) => [c.city_id, c])) : null);
     if (r.status === "fulfilled") setRuns(r.value);
+    if (b.status === "fulfilled" && !b.value.error) setBoxes(Object.fromEntries((b.value.data ?? []).map((c) => [c.id, c])));
     setLoading(false);
   }, []);
 
-  // A server read; its state changes happen when it answers.
+  // Server reads; their state changes happen when they answer.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load(); loadHealth(); }, [load, loadHealth]);
+  useEffect(() => { load(); loadHealth(); loadSpend(); }, [load, loadHealth, loadSpend]);
 
-  const cities = useMemo(() => (funnel?.cities ?? []).filter((c) => c.city_id), [funnel]);
+  const allCities = useMemo(() => (funnel?.cities ?? []).filter((c) => c.city_id), [funnel]);
   const noCity = useMemo(() => (funnel?.cities ?? []).find((c) => !c.city_id), [funnel]);
-  const selected = cities.find((c) => c.city_id === selectedId) ?? null;
+  const rows = useMemo(() => allCities.map((c) => {
+    const cells = matrixCells(c, search[c.city_id], outside ? outside[c.city_id] ?? { outside_active: 0 } : null);
+    return { city: c, cells, status: cityStatusLine(c, cells) };
+  }), [allCities, search, outside]);
+  const shown = useMemo(() => rows.filter((r) => matrixFilter(r.city, filter)), [rows, filter]);
+  const totals = useMemo(() => matrixTotals(shown.map((r) => r.cells)), [shown]);
+  const filterCounts = useMemo(() => Object.fromEntries(MATRIX_FILTERS.map((f) => [f.id, rows.filter((r) => matrixFilter(r.city, f.id)).length])), [rows]);
+  const selected = allCities.find((c) => c.city_id === selectedId) ?? null;
+  const t = funnel?.totals;
+
+  const unfinishedCities = rows.filter((r) => r.cells.some((c) => c.gap && c.kind === "missing")).length;
+  const sum = (key) => {
+    const vals = Object.values(search).filter((v) => !v.error).map((v) => Number(v[key] ?? 0));
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  };
+  const capped = sum("cappedOpen");
+  const unsearched = searchError ? null : (sum("uncoveredTiles") ?? 0) + (sum("unfinishedSearches") ?? 0);
+  // Intelligence coverage waits for the health card and the gaps table (fix d).
+  const tableSettled = (funnel !== null || funnelError !== null) && (health !== null || healthError !== null);
+
+  const filterOptions = MATRIX_FILTERS.map((f) => ({ ...f, count: filterCounts[f.id] }));
+  const reloadAll = () => { load(); loadHealth(); loadSpend(); };
 
   return (
-    <section aria-labelledby="pipeline-heading" className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="pipeline-heading" className="text-lg font-semibold text-[var(--color-text-primary)]">Pipeline</h2>
-        <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => { load(); loadHealth(); }} loading={loading}>Update</Button>
+    <section aria-label="Pipeline" className="flex min-w-0 flex-col gap-6">
+      <HealthCard health={health} error={healthError} onReload={loadHealth} />
+      <SpendStrip spend={spend} error={spendError} />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatTile label="Cities not finished" value={funnel ? count(unfinishedCities) : "–"} note={funnel ? `${count(filterCounts.drafts)} draft, ${count(rows.filter((r) => r.status.endsWith("Not started")).length)} not started` : "Counting…"} />
+        <StatTile label="Servable, no Intelligence" value={t ? count(t.rules_only) : "–"} note="Scored by rules only." />
+        <StatTile label="Intelligence ran with no reviews" value={t ? count(t.intelligence_without_reviews) : "–"} note="Can be redone once Serper works. Changes live decks." />
+        <StatTile label="Searches at Google's 20 cap" value={searchError ? "?" : capped === null ? "–" : count(capped)} note="Each repeats as 4 smaller searches, with your OK." />
+        <StatTile label="Areas and searches never run" value={searchError ? "?" : unsearched === null ? "–" : count(unsearched)} note="Inside a box, never searched or failed." />
       </div>
 
-      <HealthStrip health={health} error={healthError} onReload={loadHealth} onRateSaved={loadHealth} />
-
-      <SectionCard
-        title="What each city is missing"
-        subtitle="Counted on the server. Pick a city to plan or follow its run, check its geo box and see what is still unsearched."
-        noPadding
-      >
-        {funnelError ? (
-          <div className="p-4"><AlertCard variant="error" title="Couldn't count the pipeline" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>{funnelError}</AlertCard></div>
-        ) : !funnel ? (
-          <div className="flex justify-center py-8"><Spinner /></div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {searchError && <div className="px-4 pt-3"><AlertCard variant="warning" title="Search gaps couldn't be read">{searchError} Unsearched and capped show "?".</AlertCard></div>}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] border-collapse text-sm" aria-label="Pipeline gaps by city and stage">
-                <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left align-bottom">
-                    <th scope="col" className="px-3 py-2 text-xs font-medium text-[var(--color-text-tertiary)]">City</th>
-                    {MATRIX_COLUMNS.map((c) => (
-                      <th key={c.id} scope="col" className="px-2 py-2">
-                        <span className="block text-[13px] font-semibold text-[var(--color-text-primary)]">{c.label}</span>
-                        <span className="block text-[11px] font-normal text-[var(--color-text-tertiary)]">{c.sub}</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {cities.map((c) => {
-                    const cells = matrixCells(c, search[c.city_id], outside ? outside[c.city_id] ?? { outside_active: 0 } : null);
-                    const run = runs[c.city_id];
-                    const word = run ? runStatusWord(run.status) : null;
-                    const isSel = c.city_id === selectedId;
-                    return (
-                      <tr key={c.city_id} className={`border-b border-[var(--color-border)] ${isSel ? "bg-[var(--color-brand-50)]" : ""}`}>
-                        <th scope="row" className="px-3 py-2 text-left font-normal">
-                          <button type="button" className="flex min-h-11 w-full flex-col items-start justify-center rounded-lg px-1 text-left hover:bg-[var(--gray-50)]"
-                            aria-pressed={isSel} onClick={() => setSelectedId(isSel ? null : c.city_id)}>
-                            <b className="text-sm font-semibold">{c.city_name}</b>
-                            <span className="text-[11px] text-[var(--color-text-secondary)]">
-                              {c.is_live ? "Live" : c.status ?? "draft"} · {count(c.active)} active{word ? ` · run ${word.label.toLowerCase()}` : ""}
-                            </span>
-                          </button>
-                        </th>
-                        {cells.map((cell) => (
-                          <td key={cell.id} className="px-2 py-2">
-                            <span className={`inline-flex min-h-9 min-w-16 items-center rounded-lg px-2 tabular-nums ${cell.gap ? "border border-[#fde68a] bg-[#fffbeb] font-semibold text-[#92400e]" : "text-[var(--color-text-tertiary)]"}`}>
-                              {cell.text}
-                            </span>
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+          <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[17px] font-semibold text-[var(--color-text-primary)]">What each city is missing</h2>
+              <p className="mt-1 max-w-[80ch] text-[13px] leading-5 text-[var(--color-text-secondary)]">
+                Counted on the server. Pick a city to see its geo box and whether we are missing places there; its run opens in the Run plan.
+              </p>
             </div>
-            <p className="px-4 pb-3 text-xs text-[var(--color-text-secondary)]">
-              {noCity ? `${plural(noCity.active, "active place")} ${Number(noCity.active) === 1 ? "has" : "have"} no city and ${Number(noCity.active) === 1 ? "sits" : "sit"} outside this table. ` : ""}
-              Counted {funnel.counted_at ? new Date(funnel.counted_at).toLocaleTimeString() : "just now"}.
-            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" icon={RefreshCw} onClick={reloadAll} loading={loading} aria-label="Count again" />
+              <Button icon={Plus} onClick={() => setAddOpen(true)}>Add a city</Button>
+            </div>
           </div>
-        )}
-      </SectionCard>
 
-      {selected && (
-        <div className="flex flex-col gap-4" aria-label={`${selected.city_name} pipeline`}>
-          <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load} />
-          <CityBoxPanel city={selected} onChanged={load} />
-        </div>
-      )}
+          <div className="flex flex-col gap-3 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">Show</span>
+              <ChipGroup label="Show cities" options={filterOptions} value={filter} onChange={setFilter} />
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-text-secondary)]" aria-label="Legend">
+              {LEGEND.map((l) => (
+                <span key={l.kind} className="inline-flex items-center gap-1.5">
+                  <i aria-hidden="true" className={`inline-block h-3 w-3 rounded-[3px] border ${CELL_TONE[l.kind]}`} />{l.label}
+                </span>
+              ))}
+            </div>
+            {searchError && <AlertCard variant="warning" title="Search gaps couldn't be read">{searchError} Unsearched and capped show "?".</AlertCard>}
+          </div>
 
-      <SectionCard title="Intelligence" subtitle="Reviews and Gemini per city. Runs here score their own places; nothing releases older held scores.">
-        <div className="flex flex-col gap-4">
-          <ActiveRunsControlTower />
-          <IntelligenceOverviewTab />
+          {funnelError ? (
+            <div className="px-5 pb-5"><AlertCard variant="error" title="Couldn't count the pipeline" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>{funnelError}</AlertCard></div>
+          ) : !funnel ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : (
+            <>
+              <div className="overflow-x-auto border-t border-[var(--gray-200)]">
+                <table className="w-full min-w-[1240px] border-collapse text-sm" aria-label="Pipeline gaps by city and stage">
+                  <thead>
+                    <tr className="text-left align-bottom">
+                      <th scope="col" className="sticky left-0 z-[1] bg-[var(--color-background-primary)] px-4 py-2.5 text-xs font-medium text-[var(--color-text-secondary)]">City</th>
+                      {MATRIX_COLUMNS.map((c) => (
+                        <th key={c.id} scope="col" className="px-1.5 py-2.5 align-bottom">
+                          <span className="block text-[13px] font-semibold text-[var(--color-text-primary)]">{c.label}</span>
+                          <span className="block text-[11px] font-normal leading-[14px] text-[var(--color-text-tertiary)]">{c.sub}</span>
+                        </th>
+                      ))}
+                    </tr>
+                    <tr className="border-y border-[var(--gray-200)] bg-[var(--gray-50)]">
+                      <th scope="row" className="sticky left-0 z-[1] bg-[var(--gray-50)] px-4 py-2.5 text-left text-[13px] font-semibold">All gaps</th>
+                      {totals.map((c) => (
+                        <td key={c.id} className={`px-1.5 py-2.5 text-[13px] tabular-nums ${c.gap ? "font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-tertiary)]"}`}>{c.text}</td>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map(({ city: c, cells, status }) => {
+                      const run = runs[c.city_id];
+                      const word = run ? runStatusWord(run.status) : null;
+                      const isSel = c.city_id === selectedId;
+                      const size = boxSizeText(boxes[c.city_id]);
+                      return (
+                        <Fragment key={c.city_id}>
+                          <tr className={`border-b border-[var(--gray-100)] ${isSel ? "bg-[var(--color-brand-50)]" : ""}`}>
+                            <th scope="row" className={`sticky left-0 z-[1] px-2 py-1 text-left font-normal ${isSel ? "bg-[var(--color-brand-50)]" : "bg-[var(--color-background-primary)]"}`}>
+                              <button type="button" className="flex min-h-11 w-full min-w-[150px] cursor-pointer flex-col items-start justify-center rounded-lg px-2 text-left hover:bg-[var(--gray-50)]"
+                                aria-expanded={isSel} onClick={() => setSelectedId(isSel ? null : c.city_id)}>
+                                <b className="text-[13px] font-semibold text-[var(--color-text-primary)]">{c.city_name}</b>
+                                <span className="text-[11px] leading-[14px] text-[var(--color-text-secondary)]">{status}{word ? ` · run ${word.label.toLowerCase()}` : ""}</span>
+                              </button>
+                            </th>
+                            {cells.map((cell) => (
+                              <td key={cell.id} className="px-1.5 py-1">
+                                <GapCell cell={cell} />
+                                {cell.id === "box" && size && <span className="block px-1 text-[11px] text-[var(--color-text-tertiary)]">{size}</span>}
+                              </td>
+                            ))}
+                          </tr>
+                          {isSel && (
+                            <tr className="border-b border-[var(--gray-200)] bg-[var(--gray-50)]">
+                              <td colSpan={MATRIX_COLUMNS.length + 1} className="p-0">
+                                <div className="sticky left-0 flex w-[min(100%,1080px)] flex-col gap-3 p-4" aria-label={`${c.city_name} setup`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{c.city_name}: geo box and coverage</h3>
+                                    <Button size="sm" variant="ghost" icon={X} onClick={() => setSelectedId(null)}>Close</Button>
+                                  </div>
+                                  <CityBoxPanel city={c} onChanged={load} />
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                    {shown.length === 0 && (
+                      <tr><td colSpan={MATRIX_COLUMNS.length + 1} className="px-5 py-6 text-sm text-[var(--color-text-secondary)]">No cities in this view.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-[var(--gray-200)]">
+                <NoCityRow noCity={noCity} onAssigned={load} />
+              </div>
+              <div className="flex flex-wrap items-center gap-3 border-t border-[var(--gray-200)] px-5 py-3 text-[13px] text-[var(--color-text-secondary)]">
+                <span className="min-w-0 flex-1"><b className="font-semibold text-[var(--color-text-primary)]">Thumbnails</b> run on their own after the final check, because they only cover servable places. A run makes them for its own places.</span>
+                <Button size="sm" variant="secondary" onClick={() => setToolsOpen(true)}>Open thumbnail tools</Button>
+              </div>
+              <div className="border-t border-[var(--gray-200)] px-5 py-1.5 text-[11px] text-[var(--color-text-tertiary)]">
+                Counted {funnel.counted_at ? new Date(funnel.counted_at).toLocaleTimeString() : "just now"}.
+              </div>
+            </>
+          )}
         </div>
-      </SectionCard>
+
+        <aside className="flex min-w-0 flex-col gap-4 2xl:sticky 2xl:top-4" aria-label="Run plan">
+          {selected ? (
+            <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load}
+              footer={<SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />} />
+          ) : (
+            <SectionCard title="Run plan">
+              <div className="flex flex-col gap-4">
+                <p className="text-sm text-[var(--color-text-secondary)]">Pick a city on the left. You will see what a run would do, its cost and its limits here before anything starts.</p>
+                <SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />
+              </div>
+            </SectionCard>
+          )}
+        </aside>
+      </div>
 
       <ScoringTools cityId={selected?.city_id ?? null} cityName={selected?.city_name ?? null} />
 
-      <NoCityPanel onAssigned={load} />
+      <SectionCard title="Intelligence" subtitle="Reviews and Gemini per city. Runs here score their own places; nothing releases older held scores.">
+        {tableSettled ? (
+          <div className="flex flex-col gap-4">
+            <ActiveRunsControlTower />
+            <IntelligenceOverviewTab />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]"><Spinner size="sm" /> Waiting for the gaps table first…</div>
+        )}
+      </SectionCard>
 
-      <details className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background-primary)] p-4">
-        <summary className="cursor-pointer text-sm font-semibold">Hand tools: seed chosen categories, refresh, photos, thumbnails</summary>
-        <div className="mt-4">
-          <EmbeddedPageContext.Provider value={true}>
-            <PlacePoolManagementPage key="pipeline" section="pipeline" />
-          </EmbeddedPageContext.Provider>
-        </div>
+      <details open={toolsOpen} onToggle={(e) => setToolsOpen(e.currentTarget.open)} className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
+        <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">Hand tools: seed chosen categories, refresh, photos, thumbnails</summary>
+        {toolsOpen && (
+          <div className="mt-4">
+            <EmbeddedPageContext.Provider value={true}>
+              <PlacePoolManagementPage key="pipeline" section="pipeline" />
+            </EmbeddedPageContext.Provider>
+          </div>
+        )}
       </details>
+
+      <AddCityModal open={addOpen} onClose={() => setAddOpen(false)} onSave={(city) => {
+        setAddOpen(false);
+        addToast({ variant: "success", title: `${city?.name ?? "City"} added`, description: "It stays hidden from Explorers until you switch it live on Cities." });
+        reloadAll();
+      }} />
     </section>
   );
 }
