@@ -28,6 +28,7 @@ import { Button } from "../components/ui/Button";
 import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { Drawer } from "../components/ui/Drawer";
 import { Input, Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { Breadcrumbs } from "../components/ui/Breadcrumbs";
@@ -376,8 +377,15 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={place.name || "Place Detail"} size="lg">
-      <ModalBody>
+    // #4276 design pass: a place opens in a side panel beside the list, as the design draws it.
+    <Drawer open={open} onClose={onClose} title={place.name || "Place"}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={saving} onClick={handleSave}>Save</Button>
+        </div>
+      )}>
+
         <div className="space-y-6">
           {/* Identity */}
           <div>
@@ -716,12 +724,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
         </div>
         {/* #4130 (Wave 4b): the old Deck tuner, now on the place itself. */}
         <PlaceScoreOverride place={place} />
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} onClick={handleSave}>Save</Button>
-      </ModalFooter>
-    </Modal>
+    </Drawer>
   );
 }
 
