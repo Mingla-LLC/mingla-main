@@ -1460,11 +1460,12 @@ export function existingBookSendResponse(
 }
 
 /**
- * #4273 — sealed targets that went unsent only because their contact matched
- * someone the host knows solely through their circle. They stay out of the
- * host's skipped count, which would otherwise reveal the match. When the figure
- * cannot be read the whole difference is withheld: a low skipped count is safe,
- * a revealing one is not.
+ * #4273 — sealed targets that got the text through another target on the same
+ * address (biz_marketing_combined_hidden_skips_v1, redefined by migration
+ * 20280422014273). They were reached, so they stay out of the host's skipped
+ * count; every other sealed-and-unsent target is in it and reads as "couldn't
+ * be reached", with no reason. When the figure cannot be read the whole
+ * difference is withheld: a low skipped count is safe, a revealing one is not.
  */
 export async function combinedHiddenSkips(
   // deno-lint-ignore no-explicit-any

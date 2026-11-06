@@ -49,7 +49,8 @@ describe("ORCH-1270 F-1 ComposerReviewSheet — SMS timing info note", () => {
   it("uses the EXACT approved informational title + body copy", () => {
     expect(SRC).toContain("How SMS timing works");
     expect(SRC).toContain(
-      "Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for ",
+      // #4273: the window is derived from SMS_QUIET_HOURS, never hard-coded.
+      "Texts only send during each recipient's local hours (${formatSmsSendWindows()}). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for ",
     );
   });
 
