@@ -12,10 +12,6 @@
 --     on canAcceptPayments (fixes the unenforced switch, finding F6).
 --   * The brand team screen gets readable names and emails.
 --
--- MINGLA-INVARIANT: I-4271-DOOR-CODE-PAYS-ONCE | issue #4271 | a door pay code links at most one paid order; the finalize trigger locks the code row and never re-points a paid code.
--- MINGLA-INVARIANT: I-4271-DOOR-PAYMENT-PERMISSION | issue #4271 | every door money write (cash, manual, pay code, tap) passes issue_4271_can_take_door_payment.
--- MINGLA-INVARIANT: I-4271-DOOR-CARD-ON-RAIL | issue #4271 | pay_code and tap_to_pay orders are never source='door_sale'; cash/manual/card_reader are only ever door_sale.
---
 -- Static SQL only (no dynamic EXECUTE). Conflicts raise PT409, never 40001.
 
 BEGIN;
