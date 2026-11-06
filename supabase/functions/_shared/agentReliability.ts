@@ -420,19 +420,24 @@ export function errorEnvelope(
     takenOverBy?: string;
   } = {},
 ): { status: number; body: AriErrorEnvelope } {
-  const definition = ARI_ERROR_REGISTRY[code];
   const takenOverBy = code === "FLOW_TAKEN_OVER"
     ? options.takenOverBy?.replace(/\s+/g, " ").trim().slice(0, 80)
     : undefined;
+  // #2830 — the only fill-in: FLOW_TAKEN_OVER names who took over inside its
+  // fixed registry sentence. Every other code is the registry text unchanged.
+  const definition = takenOverBy
+    ? {
+      ...ARI_ERROR_REGISTRY[code],
+      userMessage: ARI_ERROR_REGISTRY[code].userMessage.replace("A teammate", takenOverBy),
+    }
+    : ARI_ERROR_REGISTRY[code];
   const body: AriErrorEnvelope = {
     ...envelopeBase(context, {
       kind: "error",
       code,
       // Error copy is registry-owned. The compatibility option is intentionally
       // ignored so a widened caller cannot echo an exception/provider string.
-      user_message: takenOverBy
-        ? definition.userMessage.replace("A teammate", takenOverBy)
-        : definition.userMessage,
+      user_message: definition.userMessage,
       retryability: definition.retryability,
       safe_to_retry: definition.safeToRetry,
       operation_state: definition.operationState,
