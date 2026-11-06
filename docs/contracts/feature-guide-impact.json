@@ -690,7 +690,13 @@
         "supabase/functions/agent-turn-control/function-policy.issue-3355.patch.json",
         "supabase/migrations/20280316003355_issue_3355_ari_flow_engine_flag.sql",
         "supabase/functions/agent-chat/function-policy.issue-4238.patch.json",
-        "supabase/functions/agent-confirm-action/function-policy.issue-4238.patch.json"
+        "supabase/functions/agent-confirm-action/function-policy.issue-4238.patch.json",
+        "mingla-business/app/(tabs)/ari.tsx",
+        "mingla-business/src/screens/ari/setupFlowRoute.ts",
+        "supabase/functions/_shared/agentReliabilityHttp.ts",
+        "supabase/functions/_shared/ariBrandResearch.ts",
+        "supabase/functions/_shared/ariBrandResearchCopy.ts",
+        "supabase/functions/agent-turn-control/flowSetup.ts"
       ]
     },
     {
@@ -715,7 +721,62 @@
         "mingla-sites/src/components/v2/LiveOfferingGrid.tsx",
         "mingla-sites/src/designs/atelier/AtelierPage.tsx",
         "mingla-sites/src/lib/venueFacts.ts",
-        "supabase/migrations/20280309002830_issue_2830_local_media_url_validity.sql"
+        "supabase/migrations/20280309002830_issue_2830_local_media_url_validity.sql",
+        "mingla-business/app/brand/[id]/website/[...path].tsx",
+        "mingla-business/src/components/ari/AriWebsiteSetupPane.tsx",
+        "mingla-business/src/components/sites/SiteBuildView.tsx",
+        "mingla-business/src/components/sites/SiteStoryView.tsx",
+        "mingla-business/src/components/sites/plan/BuildPart.tsx",
+        "mingla-business/src/components/sites/plan/OfferingsPart.tsx",
+        "mingla-business/src/components/sites/plan/StoryPart.tsx",
+        "mingla-business/src/components/sites/setup/CreatorReturnBar.tsx",
+        "mingla-business/src/components/sites/setup/SetupBrandStep.tsx",
+        "mingla-business/src/components/sites/setup/SetupDraftStep.tsx",
+        "mingla-business/src/components/sites/setup/SetupLive.tsx",
+        "mingla-business/src/components/sites/setup/SetupPresenceCard.tsx",
+        "mingla-business/src/components/sites/setup/SetupStart.tsx",
+        "mingla-business/src/components/sites/setup/SetupStepList.tsx",
+        "mingla-business/src/components/sites/website/WebsiteApp.tsx",
+        "mingla-business/src/components/sites/website/sections/PlanSection.tsx",
+        "mingla-business/src/components/sites/website/sections/PublishSection.tsx",
+        "mingla-business/src/hooks/useBrandSite.ts",
+        "mingla-business/src/sites/brandWebsiteEntry.ts",
+        "mingla-business/src/sites/planRoutes.ts",
+        "mingla-business/src/sites/planScreens.ts",
+        "mingla-business/src/sites/setupApi.ts",
+        "mingla-business/src/sites/setupStatus.ts",
+        "mingla-business/src/sites/websiteNav.ts",
+        "mingla-business/src/sites/websiteTodo.ts",
+        "mingla-business/src/utils/brandEditReturn.ts",
+        "mingla-sites/src/app/map/[z]/[x]/[y]/route.ts",
+        "mingla-sites/src/app/media/[mediaId]/[width]/route.ts",
+        "mingla-sites/src/app/om/[token]/[variant]/route.ts",
+        "mingla-sites/src/app/preview/page.tsx",
+        "mingla-sites/src/app/preview/share/[token]/page.tsx",
+        "mingla-sites/src/components/ConsentControl.tsx",
+        "mingla-sites/src/components/HeaderCart.tsx",
+        "mingla-sites/src/components/MapEmbed.tsx",
+        "mingla-sites/src/components/PreviewLinks.tsx",
+        "mingla-sites/src/components/SharedPreviewLinks.tsx",
+        "mingla-sites/src/components/SiteNav.tsx",
+        "mingla-sites/src/components/SiteRuntimeClient.tsx",
+        "mingla-sites/src/components/TrackedLink.tsx",
+        "mingla-sites/src/components/v2/RichText.tsx",
+        "mingla-sites/src/components/v2/neutral/CollectionBlocks.tsx",
+        "mingla-sites/src/components/v2/neutral/RestaurantNeutral.tsx",
+        "mingla-sites/src/designs/voyage/VoyageHeader.tsx",
+        "mingla-sites/src/designs/voyage/blocks/DestinationGridBadgeTile.tsx",
+        "mingla-sites/src/designs/voyage/blocks/OfferingHistoryLedger.tsx",
+        "mingla-sites/src/designs/voyage/blocks/PageHeader.tsx",
+        "mingla-sites/src/designs/voyage/blocks/StoryGridCard.tsx",
+        "mingla-sites/src/designs/voyage/blocks/TripFilters.tsx",
+        "mingla-sites/src/designs/voyage/parts.tsx",
+        "mingla-sites/src/lib/clientAnalytics.ts",
+        "mingla-sites/src/lib/previewMedia.ts",
+        "mingla-sites/src/lib/sharedPreviewHref.ts",
+        "mingla-sites/src/lib/siteVideo.ts",
+        "mingla-sites/src/proxy.ts",
+        "supabase/migrations/20280421002830_issue_2830_website_setup_takeover.sql"
       ]
     },
     {
@@ -1305,6 +1366,27 @@
       "paths": [
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
         "supabase/functions/api-health-probe/logic.ts"
+      ]
+    },
+    {
+      "capability_key": "events-create",
+      "paths": [
+        "mingla-business/app/event/[id]/edit.tsx",
+        "mingla-business/app/event/create.tsx",
+        "mingla-business/app/rsvp/[id]/edit.tsx"
+      ]
+    },
+    {
+      "capability_key": "experiences-create",
+      "paths": [
+        "mingla-business/app/experience/create.tsx"
+      ]
+    },
+    {
+      "capability_key": "trips-create",
+      "paths": [
+        "mingla-business/app/trip/[id]/edit.tsx",
+        "mingla-business/app/trip/create.tsx"
       ]
     }
   ]

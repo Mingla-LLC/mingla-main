@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-PROPOSED-2830-MULTI-TENANT-RECOVERY | issue #2830 | The Sites backup, restore drill and retention sweep cover every tenant; adding a brand never fails them, and every object and row must still belong to exactly one known tenant.
+// Proves I-PROPOSED-2830-MULTI-TENANT-RECOVERY (declared in issue_2830_multi_tenant_recovery.test.mjs) against a real PG17 database.
 /*
  * #2830 — real pg_dump, real pg_restore and the real inventory SQL against the
  * pinned PostgreSQL 17 image the workflow uses: three tenants, one with a live

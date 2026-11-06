@@ -1,4 +1,6 @@
--- MINGLA-INVARIANT: I-ARI-FLOW-ENGINE-OWNS-PROGRESS | issue #2830 | Takeover never marks a step done and never writes evidence; it only resets a parked current step to pending.
+-- MINGLA-INVARIANT: I-ARI-FLOW-TAKEOVER-AUDITED | issue #2830 | A run's owner changes only through ari_flow_run_take_over, which writes an audit row and requires rank 50.
+-- MINGLA-INVARIANT: I-WEBSITE-SETUP-TICK-MEANS-NOTHING-OPEN | issue #2830 | setup_status part done implies empty open_fields, unless the site has been published.
+-- MINGLA-INVARIANT: I-ARI-TAKEOVER-NEVER-MARKS-DONE | issue #2830 | Takeover never marks a step done and never writes evidence; it only resets a parked current step to pending.
 --
 -- Issue #2830 — takeover, one status, not-applicable, research limit.
 -- Reverting any function body below makes a block raise.

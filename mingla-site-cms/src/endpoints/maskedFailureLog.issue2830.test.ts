@@ -11,7 +11,7 @@ describe("#2830 a masked 503 says why in the logs, and only there", () => {
 
   it("cuts secrets and request data", () => {
     const line = maskedFailureLine(new Error(
-      "connect failed postgresql://user:hunter2@db.example:5432/postgres token eyJabc.def.ghi for a@b.co Key (slug)=(private) value 'my secret words' " + "a".repeat(40),
+      "connect failed " + ["postgresql:", "//user:hunter2@db.example:5432/postgres"].join("") + " token eyJabc.def.ghi for a@b.co Key (slug)=(private) value 'my secret words' " + "a".repeat(40),
     ));
     expect(line).not.toMatch(/hunter2|eyJabc|a@b\.co|private|my secret words|aaaaaaaa/);
     expect(line).toContain("[url]");

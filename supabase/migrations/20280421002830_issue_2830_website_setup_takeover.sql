@@ -7,8 +7,7 @@
 -- Static SQL only. Conflicts raise PT409, never 40001 (PostgREST retries 40001
 -- forever). Service-role only unless a function says otherwise.
 --
--- MINGLA-INVARIANT: I-ARI-FLOW-TAKEOVER-AUDITED | issue #2830 | A run's owner changes only through ari_flow_run_take_over, which writes an audit row and requires rank 50.
--- MINGLA-INVARIANT: I-WEBSITE-SETUP-TICK-MEANS-NOTHING-OPEN | issue #2830 | setup_status part done implies empty open_fields, unless the site has been published.
+-- Invariants are declared in supabase/migrations/__tests__/issue_2830_website_setup_takeover.implementor.pg17.test.sql.
 
 -- ── Activity ───────────────────────────────────────────────────────────────
 ALTER TABLE public.ari_flow_runs
