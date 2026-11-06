@@ -37,6 +37,7 @@ import {
   ensureTerminalLocation,
   loadBrandTapContext,
   loadTapContext,
+  tapContextStatus,
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
 import { doorErrorFromDb, isUuid } from "../_shared/doorPay.ts";
@@ -89,7 +90,7 @@ async function handleCreate(
     return jsonResponse({ error: "door_access_denied" }, 400);
   }
   const tap = await loadTapContext(supabase, eventId);
-  if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+  if (!tap.ok) return jsonResponse({ error: tap.error }, tapContextStatus(tap.error));
   if (!(await tapToPayReleased(supabase, tap.brandId, body.platform))) {
     return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
   }
@@ -243,7 +244,7 @@ async function handleLocation(
       return jsonResponse({ error: "door_access_denied" }, 400);
     }
     const tap = await loadBrandTapContext(supabase, brandId);
-    if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+    if (!tap.ok) return jsonResponse({ error: tap.error }, tapContextStatus(tap.error));
     if (!(await tapToPayReleased(supabase, tap.brandId, body.platform))) {
       return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
     }
@@ -258,7 +259,7 @@ async function handleLocation(
     return jsonResponse({ error: "door_access_denied" }, 400);
   }
   const tap = await loadTapContext(supabase, eventId);
-  if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+  if (!tap.ok) return jsonResponse({ error: tap.error }, tapContextStatus(tap.error));
   if (!(await tapToPayReleased(supabase, tap.brandId, body.platform))) {
     return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
   }

@@ -51,9 +51,13 @@ function makeDb(options: {
   storedLocation?: string | null;
   intentRow?: Record<string, unknown> | null;
   existing?: Record<string, unknown> | null;
+  eventsReadFails?: boolean;
 } = {}) {
   return new FakeDb(
     (op: DbOp) => {
+      if (op.table === "events" && options.eventsReadFails) {
+        return { data: null, error: { message: "canceling statement due to statement timeout" } };
+      }
       if (op.table === "events") {
         const row = brandRow(options.provider ?? "stripe");
         return {
@@ -339,4 +343,39 @@ Deno.test("#4271 retest T12: a declined card notes the door code and never break
   const router = await Deno.readTextFile(new URL("../../_shared/stripeWebhookRouter.ts", import.meta.url));
   const hook = router.indexOf("await recordDoorCodeDecline(supabase, event);");
   assert(hook > 0 && hook < router.indexOf("brandId = await handleTicketCheckoutPaymentIntent(supabase, event);", hook));
+});
+
+Deno.test("#4271 retest 4 P3-D: a failed brand read is a retryable server error, never tap_not_available", async () => {
+  const db = makeDb({ eventsReadFails: true });
+  const stripe = fakeStripe();
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
+  })(post({
+    action: "create", platform: "ios", eventId: EVENT, clientRequestId: REQ,
+    lines: [{ ticketTypeId: TIER, quantity: 1 }],
+  }));
+  assertEquals(res.status, 500);
+  assertEquals((await res.json()).error, "server_error");
+  assertEquals(stripe.calls.length, 0);
+  // The same read failing for the connection token is retryable too.
+  const token = await createTerminalConnectionTokenHandler({
+    serviceClient: () => makeDb({ eventsReadFails: true }), userIdFromAuthHeader: auth, stripe: () => fakeStripe().client,
+  })(post({ eventId: EVENT, platform: "ios" }));
+  assertEquals(token.status, 500);
+  assertEquals((await token.json()).error, "server_error");
+});
+
+Deno.test("#4271 retest 4 P3-D: an event that isn't there is still tap_not_available", async () => {
+  const db = new FakeDb(
+    (op: DbOp) => (op.table === "events" ? { data: null, error: null } : { data: null, error: null }),
+    (name) => (name === "issue_4271_can_take_door_payment" ? { data: true, error: null } : { data: null, error: null }),
+  );
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => fakeStripe().client,
+  })(post({
+    action: "create", platform: "ios", eventId: EVENT, clientRequestId: REQ,
+    lines: [{ ticketTypeId: TIER, quantity: 1 }],
+  }));
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).error, "tap_not_available");
 });

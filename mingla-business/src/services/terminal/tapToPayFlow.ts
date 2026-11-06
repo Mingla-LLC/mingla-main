@@ -383,6 +383,8 @@ export class TapToPaySaleFlow {
   private closed = false;
   /** closeSale only: the screen is gone, so a late payment is reported via onPaidAfterClose. */
   private hostLeft = false;
+  /** Request ids for which an intent may exist on the server (see createIntent). */
+  private readonly intentMayExist = new Set<string>();
   /** reopen() arrived while a step was running: applied when it ends (endStep). */
   private reopenPending = false;
   /** Stripe reported the current intent canceled (the sweep, or a cancel elsewhere): the next try replaces it. */
@@ -576,10 +578,15 @@ export class TapToPaySaleFlow {
         phoneCountryIso: this.input.draft.phoneCountryIso,
       });
     } catch (error) {
-      // The server refused outright, so no intent was made for this id: a later
-      // retry starts a fresh clock. An unclear failure (lost answer, server
-      // error) may have made one, so its clock keeps running.
-      if (error instanceof DoorTapError && !UNCLEAR_CREATE_FAILURES.has(error.code)) {
+      // An unclear failure (lost answer, server error) may have made an intent
+      // for this id, so its clock keeps running from then on, whatever a later
+      // call says: the server checks access, release and the brand before it
+      // looks for a replay, so a later refusal can't prove no intent exists.
+      // Only a refusal for an id that never had an unclear answer (and never
+      // got an intent back) starts the next try on a fresh clock.
+      if (!(error instanceof DoorTapError) || UNCLEAR_CREATE_FAILURES.has(error.code)) {
+        this.intentMayExist.add(clientRequestId);
+      } else if (!this.intentMayExist.has(clientRequestId)) {
         this.intentClockStart = null;
       }
       if (this.closed) return false;
@@ -590,6 +597,7 @@ export class TapToPaySaleFlow {
       this.emit({ kind: "failed", message: serverMessage(error) });
       return false;
     }
+    this.intentMayExist.add(clientRequestId);
     if (this.closed) {
       await this.settleIntentAfterClose(created, clientRequestId);
       return false;

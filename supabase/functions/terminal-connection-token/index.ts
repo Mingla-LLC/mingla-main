@@ -27,6 +27,7 @@ import {
   ensureTerminalLocation,
   loadBrandTapContext,
   loadTapContext,
+  tapContextStatus,
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
 import { isUuid } from "../_shared/doorPay.ts";
@@ -69,7 +70,7 @@ export const createTerminalConnectionTokenHandler = (
         return jsonResponse({ error: "door_access_denied" }, 400);
       }
       const brandTap = await loadBrandTapContext(supabase, brandId);
-      if (!brandTap.ok) return jsonResponse({ error: brandTap.error }, 400);
+      if (!brandTap.ok) return jsonResponse({ error: brandTap.error }, tapContextStatus(brandTap.error));
       if (!(await tapToPayReleased(supabase, brandTap.brandId, body.platform))) {
         return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
       }
@@ -91,7 +92,7 @@ export const createTerminalConnectionTokenHandler = (
       return jsonResponse({ error: "door_access_denied" }, 400);
     }
     const tap = await loadTapContext(supabase, eventId);
-    if (!tap.ok) return jsonResponse({ error: tap.error }, 400);
+    if (!tap.ok) return jsonResponse({ error: tap.error }, tapContextStatus(tap.error));
     if (!(await tapToPayReleased(supabase, tap.brandId, body.platform))) {
       return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
     }

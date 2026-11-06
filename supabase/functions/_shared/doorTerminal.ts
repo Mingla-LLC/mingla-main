@@ -118,7 +118,12 @@ export type TapContext =
     country: string;
     stripeAccountId: string;
   }
-  | { ok: false; error: "tap_not_available" | "stripe_account_not_ready" };
+  | { ok: false; error: "tap_not_available" | "stripe_account_not_ready" | "server_error" };
+
+/** HTTP status for a refusal: a database read that failed is retryable (500), not a "no". */
+export function tapContextStatus(error: "tap_not_available" | "stripe_account_not_ready" | "server_error"): number {
+  return error === "server_error" ? 500 : 400;
+}
 
 const TAP_BRAND_COLUMNS =
   "id, name, address, city, country_code, payment_country, payment_provider, stripe_connect_id, stripe_charges_enabled";
@@ -135,7 +140,10 @@ export async function loadTapContext(
     )
     .eq("id", eventId)
     .maybeSingle();
-  if (error || !data) return { ok: false, error: "tap_not_available" };
+  // A failed read is a transient server error the app retries (its clock keeps
+  // running), never "Tap to Pay isn't available" (#4271 retest 4 P3-D).
+  if (error) return { ok: false, error: "server_error" };
+  if (!data) return { ok: false, error: "tap_not_available" };
   const rel = (data as { brands?: unknown }).brands;
   const brand = (Array.isArray(rel) ? rel[0] : rel) as Record<string, unknown>;
   return tapContextFromBrand(brand);
@@ -151,7 +159,8 @@ export async function loadBrandTapContext(
     .select(TAP_BRAND_COLUMNS)
     .eq("id", brandId)
     .maybeSingle();
-  if (error || !data) return { ok: false, error: "tap_not_available" };
+  if (error) return { ok: false, error: "server_error" };
+  if (!data) return { ok: false, error: "tap_not_available" };
   return tapContextFromBrand(data as Record<string, unknown>);
 }
 
