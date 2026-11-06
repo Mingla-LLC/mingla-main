@@ -156,7 +156,7 @@ export function CityBoxPanel({ city, onChanged }) {
   const last = status?.last_completeness_check;
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <SectionCard title="Geo box" subtitle="Google's box applies on its own unless it needs a person.">
         <div className="flex flex-col gap-3">
           {outside === undefined ? (

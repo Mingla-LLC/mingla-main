@@ -18,7 +18,7 @@
 // Intelligence coverage loads after the health card and the gaps table have answered,
 // and its first read is retried once (fix d): it used to start with them and time out.
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, RefreshCw, X } from "lucide-react";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -192,7 +192,7 @@ function SerperRate({ health, onSaved }) {
         <span className="flex gap-2">
           <input className="h-11 w-full min-w-0 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm tabular-nums text-[var(--color-text-primary)]"
             inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Not set" />
-          <Button variant="secondary" onClick={saveRate} loading={saving} disabled={rate === perThousand(health.serper_usd_per_request)}>Save rate</Button>
+          <Button variant="secondary" className="shrink-0 whitespace-nowrap" onClick={saveRate} loading={saving} disabled={rate === perThousand(health.serper_usd_per_request)}>Save rate</Button>
         </span>
       </label>
       <span className="text-xs text-[var(--color-text-tertiary)]">
@@ -255,13 +255,20 @@ function NoCityRow({ noCity, onAssigned }) {
   );
 }
 
+// The geo box cell says the box's size, and how many places sit outside it when any do.
+function boxCell(cell, size) {
+  if (cell.gap) return { ...cell, text: `${cell.text} outside`, sub: size };
+  return { ...cell, text: size || cell.text };
+}
+
 function GapCell({ cell }) {
   if (!cell.gap) {
-    return <span className="inline-flex min-h-11 items-center px-2 text-[13px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
+    return <span className="inline-flex min-h-11 items-center whitespace-nowrap px-2 text-[13px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
   }
   return (
-    <span className={`inline-flex min-h-11 min-w-[72px] items-center rounded-lg border px-2.5 text-[13px] font-semibold tabular-nums ${CELL_TONE[cell.kind] ?? CELL_TONE.missing}`}>
+    <span className={`inline-flex min-h-11 min-w-[72px] flex-col items-start justify-center rounded-lg border px-2.5 text-[13px] font-semibold tabular-nums ${CELL_TONE[cell.kind] ?? CELL_TONE.missing}`}>
       {cell.text}
+      {cell.sub && <span className="text-[11px] font-normal">{cell.sub}</span>}
     </span>
   );
 }
@@ -270,7 +277,7 @@ export function PipelineSection() {
   const { addToast } = useToast();
   const [funnel, setFunnel] = useState(null);
   const [funnelError, setFunnelError] = useState(null);
-  const [search, setSearch] = useState({});
+  const [search, setSearch] = useState(null);
   const [searchError, setSearchError] = useState(null);
   const [outside, setOutside] = useState(null);
   const [boxes, setBoxes] = useState({});
@@ -284,6 +291,17 @@ export function PipelineSection() {
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // The city setup opens under its row but is as wide as the visible part of the table,
+  // so its two panels are never cut off by the table's sideways scroll.
+  const scrollRef = useRef(null);
+  const [visibleWidth, setVisibleWidth] = useState(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(() => setVisibleWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [funnel]);
 
   const loadHealth = useCallback(async () => {
     setHealthError(null);
@@ -322,7 +340,7 @@ export function PipelineSection() {
   const allCities = useMemo(() => (funnel?.cities ?? []).filter((c) => c.city_id), [funnel]);
   const noCity = useMemo(() => (funnel?.cities ?? []).find((c) => !c.city_id), [funnel]);
   const rows = useMemo(() => allCities.map((c) => {
-    const cells = matrixCells(c, search[c.city_id], outside ? outside[c.city_id] ?? { outside_active: 0 } : null);
+    const cells = matrixCells(c, search?.[c.city_id], outside ? outside[c.city_id] ?? { outside_active: 0 } : null);
     return { city: c, cells, status: cityStatusLine(c, cells) };
   }), [allCities, search, outside]);
   const shown = useMemo(() => rows.filter((r) => matrixFilter(r.city, filter)), [rows, filter]);
@@ -332,12 +350,14 @@ export function PipelineSection() {
   const t = funnel?.totals;
 
   const unfinishedCities = rows.filter((r) => r.cells.some((c) => c.gap && c.kind === "missing")).length;
+  // Null until the search status has answered, so a count still loading never reads 0.
   const sum = (key) => {
+    if (!search) return null;
     const vals = Object.values(search).filter((v) => !v.error).map((v) => Number(v[key] ?? 0));
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   };
   const capped = sum("cappedOpen");
-  const unsearched = searchError ? null : (sum("uncoveredTiles") ?? 0) + (sum("unfinishedSearches") ?? 0);
+  const unsearched = searchError || !search ? null : (sum("uncoveredTiles") ?? 0) + (sum("unfinishedSearches") ?? 0);
   // Intelligence coverage waits for the health card and the gaps table (fix d).
   const tableSettled = (funnel !== null || funnelError !== null) && (health !== null || healthError !== null);
 
@@ -357,7 +377,7 @@ export function PipelineSection() {
         <StatTile label="Areas and searches never run" value={searchError ? "?" : unsearched === null ? "–" : count(unsearched)} note="Inside a box, never searched or failed." />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
           <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
             <div className="min-w-0 flex-1">
@@ -393,7 +413,7 @@ export function PipelineSection() {
             <div className="flex justify-center py-10"><Spinner /></div>
           ) : (
             <>
-              <div className="overflow-x-auto border-t border-[var(--gray-200)]">
+              <div ref={scrollRef} className="overflow-x-auto border-t border-[var(--gray-200)]">
                 <table className="w-full min-w-[1240px] border-collapse text-sm" aria-label="Pipeline gaps by city and stage">
                   <thead>
                     <tr className="text-left align-bottom">
@@ -430,15 +450,14 @@ export function PipelineSection() {
                             </th>
                             {cells.map((cell) => (
                               <td key={cell.id} className="px-1.5 py-1">
-                                <GapCell cell={cell} />
-                                {cell.id === "box" && size && <span className="block px-1 text-[11px] text-[var(--color-text-tertiary)]">{size}</span>}
+                                <GapCell cell={cell.id === "box" ? boxCell(cell, size) : cell} />
                               </td>
                             ))}
                           </tr>
                           {isSel && (
                             <tr className="border-b border-[var(--gray-200)] bg-[var(--gray-50)]">
                               <td colSpan={MATRIX_COLUMNS.length + 1} className="p-0">
-                                <div className="sticky left-0 flex w-[min(100%,1080px)] flex-col gap-3 p-4" aria-label={`${c.city_name} setup`}>
+                                <div className="sticky left-0 flex flex-col gap-3 p-4" style={{ width: visibleWidth ?? undefined }} aria-label={`${c.city_name} setup`}>
                                   <div className="flex items-center justify-between gap-2">
                                     <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{c.city_name}: geo box and coverage</h3>
                                     <Button size="sm" variant="ghost" icon={X} onClick={() => setSelectedId(null)}>Close</Button>
@@ -471,7 +490,7 @@ export function PipelineSection() {
           )}
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4 2xl:sticky 2xl:top-4" aria-label="Run plan">
+        <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-4" aria-label="Run plan">
           {selected ? (
             <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load}
               footer={<SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />} />
