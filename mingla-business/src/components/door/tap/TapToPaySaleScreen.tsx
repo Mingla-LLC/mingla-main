@@ -255,6 +255,7 @@ export const TapToPaySaleScreen = ({
         paymentIntentId: facts?.paymentIntentId ?? null,
       });
       try {
+        // SHARE-NON-CONTENT:receipt
         await Share.share({ message });
       } catch (error) {
         reportNonFatal("door-tap.receipt", error);

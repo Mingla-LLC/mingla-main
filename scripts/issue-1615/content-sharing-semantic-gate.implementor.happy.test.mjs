@@ -42,3 +42,20 @@ Share.share({message: 'raw ' + buildShortShareUrl(code)});`;
   const findings = findUnauthorizedConstructs(source, 'packages/share-adapter/index.ts');
   assert.equal(findings.filter(({ signature }) => signature === 'react_native_share').length, 1);
 });
+
+// #4271: a door sale receipt is a transactional record, not shared content.
+// FAILS-ON-REVERT: dropping `receipt` from NON_CONTENT_CLASSIFICATION makes the
+// tagged receipt call a finding again.
+test('#4271 a receipt classification passes only on its own call; untagged and unknown classes still fail', () => {
+  const receipt = '// SHARE-NON-CONTENT:receipt\nawait Share.share({ message });';
+  assert.deepEqual(findUnauthorizedConstructs(receipt, 'mingla-business/src/components/door/tap/Receipt.tsx'), []);
+  const untagged = findUnauthorizedConstructs('await Share.share({ message });', 'mingla-business/src/components/door/tap/Receipt.tsx');
+  assert.deepEqual(untagged.map(({ signature }) => signature), ['react_native_share']);
+  assert.throws(() => assertSemanticInventory(untagged), /react_native_share@mingla-business\/src\/components\/door\/tap\/Receipt\.tsx:1/);
+  for (const unknown of ['receipts', 'receipt-content', 'Receipt', 'content']) {
+    const source = `// SHARE-NON-CONTENT:${unknown}\nawait Share.share({ message });`;
+    assert.equal(findUnauthorizedConstructs(source, 'arbitrary/Unknown.ts').length, 1, unknown);
+  }
+  const distant = '// SHARE-NON-CONTENT:receipt\nconst a = 1;\nconst b = 2;\nawait Share.share({ message });';
+  assert.equal(findUnauthorizedConstructs(distant, 'arbitrary/Distant.ts').length, 1);
+});
