@@ -1,7 +1,8 @@
+// MINGLA-INVARIANT: I-SITES-CMS-MIGRATIONS-NOT-BEHIND | issue #2830 | Twice a day, after a verified backup, what the CMS code expects is compared with what its database has applied. Behind, or unable to check, alerts on #2830; it never reds the run and never deactivates the pilot.
 /**
  * Issue #2830 — Studio's migrations cannot silently lag its code again.
  *
- * MINGLA-INVARIANT: I-SITES-CMS-MIGRATIONS-NOT-BEHIND | issue #2830 | Twice a day, after a verified backup, what the CMS code expects is compared with what its database has applied. Behind, or unable to check, alerts on #2830; it never reds the run and never deactivates the pilot.
+ * Invariant I-SITES-CMS-MIGRATIONS-NOT-BEHIND (declared on line 1).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

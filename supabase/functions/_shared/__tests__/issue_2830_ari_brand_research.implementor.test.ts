@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-ARI-RESEARCH-SAME-BRAND-ONLY | issue #2830 | A research candidate is offered only with evidence the page belongs to this brand, and never saves without the owner's explicit answer.
 // Issue #2830 — Ari's public research for brand details.
 //
 // Found, nothing found, provider down, wrong-brand lookalike, injected

@@ -20,7 +20,7 @@
  *     (or its host is the name) and the page names the brand's city.
  * Directories and social networks are never sources.
  *
- * MINGLA-INVARIANT: I-ARI-RESEARCH-SAME-BRAND-ONLY | issue #2830 | A research candidate is offered only with evidence the page belongs to this brand, and never saves without the owner's explicit answer. Pinned by supabase/functions/_shared/__tests__/issue_2830_ari_brand_research.implementor.test.ts.
+ * Invariant I-ARI-RESEARCH-SAME-BRAND-ONLY, declared in __tests__/issue_2830_ari_brand_research.implementor.test.ts.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // MINGLA-INVARIANT: I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY | issue #2830 | Sites serves only exact-host immutable digest-verified publications while Core retains identity, commerce, rank, and last-good authority.
+// MINGLA-INVARIANT: I-ARI-CHAT-ONE-CHUNK | issue #2830 | AriChatScreen is reached only through lazy import() targets, never a static import, so Metro keeps it out of the __common boot payload.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
@@ -1077,7 +1078,7 @@ export function violations(files) {
   ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
   /*
    * #2830 — AriChatScreen is one on-demand chunk.
-   * MINGLA-INVARIANT: I-ARI-CHAT-ONE-CHUNK
+   * Invariant I-ARI-CHAT-ONE-CHUNK (declared at the top of this file).
    *
    * Metro makes each `import()` target one async chunk and moves anything that
    * sits in two chunks into `__common`, the payload every Business user
