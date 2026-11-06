@@ -22,6 +22,7 @@ import {
   plural,
   formatGb,
   matrixCells,
+  outsideBoxRow,
   pendingApproval,
   pipelineFunnelSteps,
   ratePerRequestFrom,
@@ -196,4 +197,18 @@ test("run-plan checkboxes and box edges have names", () => {
   const panel = read("components/placePool/CityBoxPanel.jsx");
   for (const edge of ["South edge", "West edge", "North edge", "East edge"]) assert.ok(panel.includes(`"${edge}"`), edge);
   assert.ok(panel.includes("aria-label={label}"));
+});
+
+// #4276 final round (P3-a): a city with no places has no row in the report, which is 0 outside.
+test("a city with no places reads as 0 places outside the box, not as a failed count", () => {
+  const cityId = "42760000-0000-4000-a000-0000000000aa";
+  const empty = outsideBoxRow([], cityId);
+  assert.equal(empty.outside_active, 0);
+  assert.equal(empty.places_total, 0);
+  const other = outsideBoxRow([{ city_id: "x", outside_active: 9 }], cityId);
+  assert.equal(other.outside_active, 0);
+  assert.equal(outsideBoxRow([{ city_id: cityId, outside_active: 3 }], cityId).outside_active, 3);
+  assert.equal(outsideBoxRow(null, cityId), null, "only a report that did not load is unknown");
+  const panel = read("components/placePool/CityBoxPanel.jsx");
+  assert.ok(panel.includes('outsideBoxRow(o.value.report ?? [], cityId)'));
 });

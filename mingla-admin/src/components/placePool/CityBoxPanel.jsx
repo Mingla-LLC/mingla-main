@@ -15,7 +15,7 @@ import { Spinner } from "../ui/Spinner";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import { seeding } from "../../services/cityPipelineService";
-import { completenessSummary, count, plural, usd } from "../../lib/cityPipeline";
+import { completenessSummary, count, outsideBoxRow, plural, usd } from "../../lib/cityPipeline";
 import { CityBoxMap } from "./CityBoxMap";
 
 const ASK_REASON_TEXT = {
@@ -78,7 +78,7 @@ export function CityBoxPanel({ city, onChanged }) {
     ]);
     setTileMap(m.status === "fulfilled" ? m.value : { error: m.reason.message });
     if (s.status === "fulfilled") setStatus(s.value); else setStatusError(s.reason.message);
-    setOutside(o.status === "fulfilled" ? (o.value.report ?? []).find((r) => r.city_id === cityId) ?? null : null);
+    setOutside(o.status === "fulfilled" ? outsideBoxRow(o.value.report ?? [], cityId) : null);
     setHistory(h.status === "fulfilled" ? h.value.history ?? [] : []);
   }, [cityId]);
 

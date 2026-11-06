@@ -252,6 +252,17 @@ export function cityGaps(funnelRow, searchRow, outsideRow) {
   };
 }
 
+/**
+ * One city's row from the places-outside-box report. The report has no row for a city
+ * with no places, so a city missing from a report that did load has 0 outside. Only a
+ * report that failed to load is unknown (null).
+ */
+export function outsideBoxRow(report, cityId) {
+  if (!Array.isArray(report)) return null;
+  return report.find((r) => r?.city_id === cityId)
+    ?? { city_id: cityId, places_total: 0, outside_total: 0, outside_active: 0, outside_servable: 0 };
+}
+
 /** Plain-English list of a city's gaps. "Couldn't check" is said, not skipped. */
 export function gapLines(gaps) {
   if (!gaps) return [];
