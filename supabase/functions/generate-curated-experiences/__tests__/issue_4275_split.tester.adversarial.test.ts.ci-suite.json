@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/generate-curated-experiences/__tests__/issue_4275_split.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-split-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read", "env", "net"]
+}

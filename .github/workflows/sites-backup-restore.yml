@@ -46,6 +46,19 @@ name: "Mingla Sites · Backup and restore"
 # `retention` job itself concludes success so the run's colour means exactly
 # one thing: recovery evidence was refreshed. A failed sweep is reported by
 # `housekeeping_alert` instead.
+#
+# [WORKFLOW-MOD-APPROVED #2830] `cms_migrations` compares what the CMS code
+# expects with what its database has applied, because #4148's migrations never
+# reached Studio's database and nothing said so. Housekeeping by the same rule:
+# it reads only, cannot red the run or reach `deactivate`, and speaks through
+# `cms_migrations_alert`.
+#
+# [WORKFLOW-MOD-APPROVED #2830] Backup, restore and retention cover every brand.
+#
+# Studio holds one tenant per brand. `SITES_PILOT_SITE_ID` is the site these jobs
+# sign for and which must exist; it is no longer the only site. The bundle holds
+# every tenant, the drill checks each tenant came back, and `retention` sweeps
+# the sites the snapshot verified in this same run, read from `bundle.site_ids`.
 on:
   schedule:
     - cron: "23 7 * * *"
@@ -99,8 +112,11 @@ jobs:
           scripts/sites/__tests__/issue_2830_s3_object_read_retry.implementor.test.mjs
           scripts/sites/__tests__/issue_2830_s3_object_read_retry.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs
+          scripts/sites/__tests__/issue_2830_cms_migrations_guard.test.mjs
           scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs
+          scripts/sites/__tests__/issue_2830_multi_tenant_recovery.test.mjs
+          scripts/sites/__tests__/issue_2830_multi_tenant_restore.pg17.test.mjs
           scripts/sites/__tests__/issue_2829_local_mode_ops.test.mjs
           scripts/sites/__tests__/issue_2829_local_stack_scripts.test.mjs
           scripts/sites/__tests__/issue_2829_no_single_tenant_pins.test.mjs
@@ -124,6 +140,7 @@ jobs:
     outputs:
       recovery_deactivate: ${{ steps.classify.outputs.deactivate }}
       recovery_failure_code: ${{ steps.classify.outputs.code }}
+      backup_site_ids: ${{ steps.bundle.outputs.site_ids }}
     # #3606 — the hourly watchdog cron must never take a snapshot. Exclusion, not
     # inclusion: an expression that stops matching runs the backup anyway.
     if: >-
@@ -196,7 +213,9 @@ jobs:
           const value = JSON.parse(readFileSync(process.env.SITES_BACKUP_RESULT_PATH, "utf8"));
           if (!/^mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/.test(value.bundle_name)) process.exit(1);
           if (!/^[0-9a-f]{64}$/.test(value.bundle_sha256)) process.exit(1);
-          appendFileSync(process.env.GITHUB_OUTPUT, `name=${value.bundle_name}\nsha256=${value.bundle_sha256}\n`);
+          const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (!Array.isArray(value.site_ids) || value.site_ids.length < 1 || !value.site_ids.every((id) => uuid.test(id))) process.exit(1);
+          appendFileSync(process.env.GITHUB_OUTPUT, `name=${value.bundle_name}\nsha256=${value.bundle_sha256}\nsite_ids=${value.site_ids.join(",")}\n`);
           NODE
 
       - name: Upload immutable encrypted bundle to private Blob
@@ -441,6 +460,7 @@ jobs:
         continue-on-error: true
         env:
           SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_RETENTION_SITE_IDS: ${{ needs.backup_restore.outputs.backup_site_ids }}
           SITES_CMS_ORIGIN: https://studio.sites.usemingla.com
           MINGLA_CORE_TO_CMS_CURRENT_KID: ${{ vars.MINGLA_CORE_TO_CMS_CURRENT_KID }}
           MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: ${{ secrets.MINGLA_CORE_TO_CMS_CURRENT_KEY_B64 }}
@@ -528,6 +548,101 @@ jobs:
           # The backup and restore in this same run succeeded, which is the only
           # reason this job can run at all: the public site is unaffected.
           body="SITES_HOUSEKEEPING_ALERT kind=RETENTION_FAILED code=${code} outcome=PILOT_UNAFFECTED recovery_evidence_fresh run_url=${run_url}"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
+            -f body="$body" >/dev/null
+
+  cms_migrations:
+    name: "Studio migrations are not behind (housekeeping)"
+    needs: [backup_restore]
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
+      needs.backup_restore.result == 'success'
+    outputs:
+      code: ${{ steps.report.outputs.code }}
+      missing: ${{ steps.report.outputs.missing }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: mingla-sites-production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Expose the pinned PostgreSQL 17 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sites-pg17-bin"
+          ln -s "$GITHUB_WORKSPACE/scripts/sites/pg17-client.sh" "$RUNNER_TEMP/sites-pg17-bin/psql"
+          echo "$RUNNER_TEMP/sites-pg17-bin" >> "$GITHUB_PATH"
+      # Step-level `continue-on-error`, as for the sweep: the run's colour means
+      # only that recovery evidence was refreshed.
+      - name: Compare Studio's applied migrations with what the code expects
+        id: check
+        continue-on-error: true
+        env:
+          SITES_CMS_DATABASE_URL: ${{ secrets.SITES_CMS_MIGRATOR_DATABASE_URL }}
+          SITES_PG17_MOUNT_ROOT: ${{ runner.temp }}
+          SITES_CMS_MIGRATIONS_RESULT_PATH: ${{ runner.temp }}/sites-cms-migrations.json
+        run: node scripts/sites/check-cms-migrations.mjs
+      - name: Publish the result for the alert
+        id: report
+        env:
+          SITES_CMS_MIGRATIONS_RESULT_PATH: ${{ runner.temp }}/sites-cms-migrations.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          let code = "CMS_MIGRATIONS_CHECK_UNAVAILABLE";
+          let missing = "none";
+          try {
+            const raw = JSON.parse(readFileSync(process.env.SITES_CMS_MIGRATIONS_RESULT_PATH, "utf8"));
+            if (["CMS_MIGRATIONS_CURRENT", "CMS_MIGRATIONS_BEHIND", "CMS_MIGRATIONS_CHECK_UNAVAILABLE"].includes(raw?.code)) code = raw.code;
+            if (Array.isArray(raw?.missing) && raw.missing.length > 0) {
+              missing = raw.missing.filter((name) => /^[\w-]+$/.test(name)).join(",").slice(0, 900);
+            }
+          } catch {
+            // The check died before it could say: unavailable, and said out loud.
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `code=${code}\nmissing=${missing}\n`);
+          NODE
+
+  cms_migrations_alert:
+    name: "Studio migrations alert"
+    needs: [cms_migrations]
+    # Holds no environment and no production secret. `cms_migrations` not
+    # reporting at all counts as unable to check; `skipped` means the backup did
+    # not succeed, which belongs to `alert`.
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
+      needs.cms_migrations.result != 'skipped' &&
+      needs.cms_migrations.outputs.code != 'CMS_MIGRATIONS_CURRENT'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Comment the gap and run URL on #2830
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ needs.cms_migrations.outputs.code }}
+          MISSING: ${{ needs.cms_migrations.outputs.missing }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="SITES_HOUSEKEEPING_ALERT kind=CMS_MIGRATIONS code=${CODE:-CMS_MIGRATIONS_CHECK_UNAVAILABLE} missing=${MISSING:-none} outcome=PILOT_UNAFFECTED run_url=${run_url}"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
             -f body="$body" >/dev/null

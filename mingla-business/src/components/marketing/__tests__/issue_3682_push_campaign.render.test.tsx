@@ -12,7 +12,6 @@ jest.mock("../../ui/Sheet", () => {
   return { Sheet: (props: Record<string, unknown>) => ReactModule.createElement("sheet", props, props.children) };
 });
 
-import { CampaignChannelSelector } from "../CampaignChannelSelector";
 import { ChannelTabs } from "../ChannelTabs";
 import { ComposerReviewSheet } from "../ComposerReviewSheet";
 import { PushComposeCard, pushBodyIssue, pushReasonLine } from "../PushComposeCard";
@@ -28,15 +27,15 @@ const treeText = (value: unknown): string => {
 };
 
 describe("#3682 push campaign channel", () => {
-  it("offers Push as a third channel tab", () => {
+  it("offers Push as a third method", () => {
     let renderer: any;
-    const onChange = jest.fn();
-    act(() => { renderer = TestRenderer.create(<ChannelTabs active="email" onChange={onChange} />); });
-    const tabs = renderer.root.findAll((node: any) => node.props.accessibilityRole === "tab" && node.props.onPress);
-    const labels = tabs.map((node: any) => node.props.accessibilityLabel);
-    expect(labels).toEqual(["Email channel", "SMS channel", "Push channel"]);
-    act(() => tabs[2].props.onPress());
-    expect(onChange).toHaveBeenCalledWith("push");
+    const onToggle = jest.fn();
+    act(() => { renderer = TestRenderer.create(<ChannelTabs selected={new Set(["email"])} onToggle={onToggle} />); });
+    const chips = renderer.root.findAll((node: any) => node.props.accessibilityRole === "checkbox" && node.props.onPress);
+    const labels = chips.map((node: any) => node.props.accessibilityLabel);
+    expect(labels).toEqual(["Send by Email. At least one method stays on.", "Send by SMS", "Send by Push"]);
+    act(() => chips[2].props.onPress());
+    expect(onToggle).toHaveBeenCalledWith("push");
   });
 
   it("previews the push with the brand name and the true reason", () => {
@@ -62,15 +61,16 @@ describe("#3682 push campaign channel", () => {
     let renderer: any;
     act(() => {
       renderer = TestRenderer.create(
-        <CampaignChannelSelector lead="email" selected={new Set(["push"])} onToggle={onToggle} />,
+        <ChannelTabs selected={new Set(["email", "push"])} onToggle={onToggle} />,
       );
     });
     const chips = renderer.root.findAll((node: any) => node.props.accessibilityRole === "checkbox" && node.props.onPress);
     expect(chips.map((node: any) => node.props.accessibilityLabel)).toEqual([
-      "Also send by SMS", "Also send by Push",
+      "Send by Email", "Send by SMS", "Send by Push",
     ]);
-    expect(chips[1].props.accessibilityState).toEqual({ checked: true, disabled: false });
-    act(() => chips[0].props.onPress());
+    expect(chips[2].props.accessibilityState).toEqual({ checked: true, disabled: false });
+    expect(treeText(renderer.toJSON())).toContain("✓ Push · free");
+    act(() => chips[1].props.onPress());
     expect(onToggle).toHaveBeenCalledWith("sms");
   });
 
@@ -79,25 +79,25 @@ describe("#3682 push campaign channel", () => {
     let renderer: any;
     act(() => {
       renderer = TestRenderer.create(
-        <CampaignChannelSelector lead="email" selected={new Set()} onToggle={onToggle}
+        <ChannelTabs selected={new Set(["email"])} onToggle={onToggle}
           unavailable={{ push: "pick Your Book, Followers or a saved group" }} />,
       );
     });
-    const push = renderer.root.findAll((node: any) => node.props.accessibilityLabel === "Also send by Push" && node.props.onPress)[0];
+    const push = renderer.root.findAll((node: any) => node.props.accessibilityLabel === "Send by Push" && node.props.onPress)[0];
     expect(push.props.disabled).toBe(true);
     act(() => push.props.onPress());
     expect(onToggle).not.toHaveBeenCalled();
     expect(treeText(renderer.toJSON())).toContain("Push: pick Your Book, Followers or a saved group");
   });
 
-  it("the review shows each extra channel's reach, cost and allowance, counted once", () => {
+  it("the review shows each method's reach, cost and allowance, counted once", () => {
     let renderer: any;
     act(() => {
       renderer = TestRenderer.create(
         <ComposerReviewSheet visible audienceName="Followers" recipientCount={4} subject="Hi"
           scheduledLabel="Now" isSendNow submitting={false} onBack={jest.fn()} onClose={jest.fn()}
           onConfirm={jest.fn()} channelKind="email"
-          additionalChannels={[
+          sendingBy={[
             { key: "push", label: "Push", reachLabel: "3 reachable", costLabel: "Free" },
             { key: "sms", label: "SMS", reachLabel: "2 reachable", costLabel: "USD 0.04 estimated",
               allowanceLabel: "98 of 100 texts left this month" },
@@ -105,7 +105,7 @@ describe("#3682 push campaign channel", () => {
       );
     });
     const text = treeText(renderer.toJSON());
-    expect(text).toContain("ALSO SENDING BY");
+    expect(text).toContain("SENDING BY");
     expect(text).toContain("3 reachable · Free");
     expect(text).toContain("98 of 100 texts left this month");
     expect(text).toContain("counts once toward your weekly blasts");

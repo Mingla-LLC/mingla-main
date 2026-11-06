@@ -173,15 +173,17 @@ Deno.test("#3355 bug 19: messages sent as the owner's own bubble are plain and s
     "owner bubbles",
   );
   assertEquals(detectWebsiteSetupIntent(WEBSITE_SETUP_FIX_ALL_MESSAGE), "fix_all");
-  // The Host's "Fix all gaps with Ari" button sends the same words.
+  // #2830: the pane and its two scripted buttons are gone; setup is one screen
+  // and Ari's kickoff is structured. Anything the chat still scripts stays plain.
   const screen = Deno.readTextFileSync(
     new URL("mingla-business/src/screens/ari/AriChatScreen.tsx", ROOT),
   );
-  assert(screen.includes(JSON.stringify(WEBSITE_SETUP_FIX_ALL_MESSAGE)));
   const handleSends = [...screen.matchAll(/handleSend\(\s*(?:\/\/[^\n]*\n\s*)*"([^"]+)"/g)]
     .map((match) => match[1]);
-  assert(handleSends.length >= 2, "the setup pane's two buttons");
-  assertPlain(handleSends, "Ari screen owner bubbles");
+  // With the pane gone the chat scripts no owner bubble today; any it adds stays plain.
+  for (const text of handleSends) {
+    assert(!INTERNAL_WORDING.test(text), `Ari screen owner bubbles: internal wording in "${text}"`);
+  }
 });
 
 Deno.test("#3355 bug 19: a key with no label reads as words", () => {

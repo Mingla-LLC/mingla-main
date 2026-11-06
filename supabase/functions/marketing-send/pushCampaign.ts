@@ -22,6 +22,8 @@ export interface PushCandidate {
   reason: "follower" | "extended" | "book";
   allowed: boolean;
   safeReasonCode: string;
+  /** #4273 — the one person this account is across groups. Service-only. */
+  personKey?: string;
 }
 
 export interface PushCandidatesEnvelope {
@@ -35,6 +37,13 @@ export interface PushCandidatesEnvelope {
   audienceVersion: number;
   audienceName: string;
   campaignGroupId: string;
+  /** #4273 — each picked group's name and totals. */
+  audienceSources?: Array<{
+    key: string;
+    name: string;
+    count: number;
+    alsoInBookCount: number;
+  }>;
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -42,8 +51,10 @@ async function sha256Hex(value: string): Promise<string> {
     "SHA-256",
     new TextEncoder().encode(value),
   );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 /** Canonical JSON (sorted keys) so the hash never depends on key order. */
@@ -102,6 +113,9 @@ export async function buildPushQuote(
     audienceId: envelope.audienceId,
     audienceKind: envelope.audienceKind,
     audienceVersion: envelope.audienceVersion,
+    ...(envelope.audienceSources === undefined
+      ? {}
+      : { audienceSources: envelope.audienceSources }),
     candidates: envelope.candidates,
   };
 }
@@ -138,6 +152,8 @@ interface PushWorklist {
   brandSlug: string | null;
   eventSlug: string | null;
   body: string | null;
+  /** #4273 — the push title (the email subject); absent keeps the brand name. */
+  title?: string | null;
   work: Array<{
     messageId: string;
     userId: string;
@@ -159,7 +175,9 @@ export function campaignPushLink(
   const slug = /^[a-z0-9][a-z0-9-]{0,119}$/i;
   if (!brandSlug || !slug.test(brandSlug)) return null;
   return eventSlug && slug.test(eventSlug)
-    ? `${origin}/e/${encodeURIComponent(brandSlug)}/${encodeURIComponent(eventSlug)}`
+    ? `${origin}/e/${encodeURIComponent(brandSlug)}/${
+      encodeURIComponent(eventSlug)
+    }`
     : `${origin}/b/${encodeURIComponent(brandSlug)}`;
 }
 
@@ -174,7 +192,12 @@ export async function sendPushCampaign(
   campaign: { id: string; brand_id: string },
   dispatchOverride?: PushDispatch,
 ): Promise<
-  { delivered: number; deferred: number; failed: number; preview_skipped: number }
+  {
+    delivered: number;
+    deferred: number;
+    failed: number;
+    preview_skipped: number;
+  }
 > {
   const dispatch: PushDispatch = dispatchOverride ??
     (await import("../_shared/notifyV2.ts")).dispatchV2;
@@ -200,6 +223,9 @@ export async function sendPushCampaign(
         payload: {
           brand_name: list.brandName ?? "Mingla",
           body,
+          ...(typeof list.title === "string" && list.title.trim().length > 0
+            ? { title: list.title.trim() }
+            : {}),
           reason: item.reason,
           brand_slug: list.brandSlug,
           event_slug: list.eventSlug,
@@ -211,11 +237,14 @@ export async function sendPushCampaign(
       });
       notificationId = result.notificationId ?? null;
       const push = result.deliveries?.find((row) => row.channel === "push");
-      if (result.success && push && ["sent", "delivered"].includes(push.status)) {
+      if (
+        result.success && push && ["sent", "delivered"].includes(push.status)
+      ) {
         status = "sent";
         reason = null;
       } else if (
-        result.success && push && ["suppressed", "skipped"].includes(push.status)
+        result.success && push &&
+        ["suppressed", "skipped"].includes(push.status)
       ) {
         status = "skipped";
         reason = push.status === "suppressed" ? "can_send_denied" : "no_device";

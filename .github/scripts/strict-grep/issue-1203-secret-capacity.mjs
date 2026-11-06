@@ -430,6 +430,7 @@ function trackedClientFiles() {
   const paths = execFileSync("git", ["ls-files", ...CLIENT_ROOTS], {
     cwd: REPO_ROOT,
     encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
   }).split("\n").filter(Boolean);
   return paths.filter((path) => /\.(?:ts|tsx|js|jsx|json|mjs|cjs)$/.test(path)).map((path) => ({
     path,
@@ -441,6 +442,7 @@ function trackedBackendFiles() {
   const paths = execFileSync("git", ["ls-files", BACKEND_ROOT], {
     cwd: REPO_ROOT,
     encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
   }).split("\n").filter(Boolean);
   return paths.filter((path) => /\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(path)).map((path) => ({
     path,

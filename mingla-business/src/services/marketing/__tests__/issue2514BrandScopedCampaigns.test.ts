@@ -76,7 +76,8 @@ describe("#2514 getMarketingOverview", () => {
       OVERVIEW_SVC.indexOf("async function loadClickedMessageIds"),
       OVERVIEW_SVC.indexOf("export interface GetMarketingOverviewInput"),
     );
-    expect(messageLoader).toContain('.in("campaign_id", ids)');
+    // #4273 — the message read is the masked RPC, still scoped by these ids.
+    expect(messageLoader).toContain("p_campaign_ids: ids");
     expect(clickLoader).toContain('.in("campaign_id", ids)');
   });
 

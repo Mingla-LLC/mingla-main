@@ -23,6 +23,42 @@
 export const CHAT_LIST_STALE_TIME_MS = 30_000;
 /** The conversations read gives up after this long (background-suspended sockets can hang). */
 export const CHAT_LIST_TIMEOUT_MS = 10_000;
+/**
+ * The same read with no list to show. Incident reads took 14-18 s, so a 10 s
+ * attempt could never win; 20 s matches the global fetch timeout.
+ */
+export const CHAT_LIST_FIRST_LOAD_TIMEOUT_MS = 20_000;
+/** Retries, after the first attempt, while there is no list to show. */
+export const CHAT_LIST_FIRST_LOAD_RETRIES = 4;
+const CHAT_LIST_RETRY_DELAYS_MS: readonly number[] = [2000, 4000, 8000, 16000];
+const CHAT_LIST_RETRY_JITTER = 0.2;
+
+/** How long this attempt may wait for the conversations read. */
+export function chatListAttemptTimeoutMs(hasCachedList: boolean): number {
+  return hasCachedList ? CHAT_LIST_TIMEOUT_MS : CHAT_LIST_FIRST_LOAD_TIMEOUT_MS;
+}
+
+/** 2, 4, 8, 16 s with +/-20% jitter, for loads with no cached list. */
+export function chatListRetryDelayMs(attempt: number, random: () => number = Math.random): number {
+  const base = CHAT_LIST_RETRY_DELAYS_MS[Math.min(Math.max(attempt, 0), CHAT_LIST_RETRY_DELAYS_MS.length - 1)];
+  return base * (1 - CHAT_LIST_RETRY_JITTER + random() * CHAT_LIST_RETRY_JITTER * 2);
+}
+
+/**
+ * With no list to show, keep trying, timeouts included: a failure here would
+ * otherwise leave the person with nothing. With a cached list on screen a
+ * timeout already waited 10 s and the next visit or pull-to-refresh retries.
+ */
+export function shouldRetryChatList(
+  failureCount: number,
+  error: unknown,
+  hasCachedList: boolean,
+  isFatal: boolean,
+): boolean {
+  if (isFatal) return false;
+  if (!hasCachedList) return failureCount < CHAT_LIST_FIRST_LOAD_RETRIES;
+  return !isChatListTimeout(error) && failureCount < 1;
+}
 
 // ── Unread counts ────────────────────────────────────────────────────────
 //
@@ -616,22 +652,69 @@ export type ChatListQueryState = {
   isFetching: boolean;
   isError: boolean;
   error: unknown;
+  /** Failed attempts of the fetch in progress; React Query resets it when a fetch starts. */
+  failureCount?: number;
 };
 
 /**
  * Cached rows render at once, also while a background refresh runs; the
  * skeleton shows only when there is no list yet (the first-ever visit). A
- * failed refresh shows the error row only once it has settled, and never for
- * a timeout (expected after the app was in the background).
+ * failed refresh shows the error row only once it has settled. A timeout over
+ * cached rows stays silent (expected after the app was in the background); a
+ * timeout with no rows is a failure, because nothing else is on screen and a cached
+ * empty list cannot say the person has no chats right now.
+ *
+ * invariant: I-CHAT-LIST-EMPTY-MEANS-SERVER-EMPTY — the empty state requires a
+ * loaded list. Enforced by issue_4275_chat_list_first_load.implementor.test.ts.
  */
 export function chatListViewState(query: ChatListQueryState): {
   conversations: ChatListConversation[] | null;
+  loaded: boolean;
   loading: boolean;
   failed: boolean;
 } {
+  const loaded = query.data !== undefined;
+  const hasRows = (query.data?.conversations.length ?? 0) > 0;
   return {
     conversations: query.data?.conversations ?? null,
-    loading: !query.data && (query.isPending || query.isFetching),
-    failed: query.isError && !query.isFetching && !isChatListTimeout(query.error),
+    loaded,
+    loading: !loaded && (query.isPending || query.isFetching),
+    failed: (query.isError && !query.isFetching && (!hasRows || !isChatListTimeout(query.error)))
+      // Issue #4275: over a cached empty list a refresh retries for up to about
+      // 130 s. Once an attempt has failed, that is the error row, not "no chats".
+      || (loaded && !hasRows && (query.failureCount ?? 0) > 0),
   };
+}
+
+// ── Awaiting a refresh ──────────────────────────────────────────────────
+
+const failedAttemptWaiters = new Map<string, Set<() => void>>();
+
+/** useChatList's query function calls this when an attempt fails. */
+export function noteChatListAttemptFailed(userId: string): void {
+  const waiters = failedAttemptWaiters.get(userId);
+  if (!waiters) return;
+  failedAttemptWaiters.delete(userId);
+  for (const wake of waiters) wake();
+}
+
+/**
+ * Issue #4275: a refresh that the person is waiting on (pull to refresh, accepting
+ * an invite) settles when it succeeds or at its first failed attempt. React Query
+ * keeps retrying in the background; the list shows the error row meanwhile
+ * (chatListViewState). Before, the awaiter held through every retry, about 130 s
+ * over a cached empty list. Never rejects, like the refetch it wraps.
+ */
+export function refreshUntilFirstFailure(userId: string, refetch: () => Promise<unknown>): Promise<void> {
+  let wake: () => void = () => {};
+  const failedOnce = new Promise<void>((resolve) => {
+    wake = resolve;
+  });
+  const waiters = failedAttemptWaiters.get(userId) ?? new Set<() => void>();
+  waiters.add(wake);
+  failedAttemptWaiters.set(userId, waiters);
+  const settled = refetch().then(() => undefined, () => undefined);
+  return Promise.race([failedOnce, settled]).finally(() => {
+    failedAttemptWaiters.get(userId)?.delete(wake);
+  });
 }

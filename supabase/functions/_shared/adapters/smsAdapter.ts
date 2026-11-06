@@ -190,7 +190,7 @@ export function sanitizeGsm7(input: string): string {
 // https://en.wikipedia.org/wiki/GSM_03.38
 const GSM7_BASIC =
   "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ ÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-const GSM7_EXT = "^{}\\[~]|€";
+const GSM7_EXT = "^{}\\[~]|€\f";
 
 function isGsm7(text: string): boolean {
   for (const ch of text) {
@@ -201,16 +201,42 @@ function isGsm7(text: string): boolean {
   return true;
 }
 
-// Segment count: GSM-7 = 160 single / 153 concatenated; UCS-2 = 70 / 67.
-// Extended GSM-7 chars count as 2; we approximate by length (the dispatcher only
-// needs cost observability, not billing precision).
+/**
+ * #4273 — what the provider's encoder does, not `length / 153`. Greedy packing:
+ *   GSM-7: 160 septets alone, else 153 per segment. Each extended character is
+ *     an escape plus the character (2 septets) and the pair is never split, so a
+ *     segment can end at 152 septets.
+ *   UCS-2: 70 units alone, else 67 per segment. A surrogate pair is never split,
+ *     so a segment can end at 66 units. Extended characters are one unit here.
+ * Source: Twilio's published calculator (TwilioDevEd/message-segment-calculator,
+ * Segment.ts + EncodedChar.ts). It also keeps a multi-codepoint emoji whole;
+ * Twilio's docs do not state that, and grapheme splitting is not available in
+ * every runtime here, so this stops at the code point.
+ *
+ * Client and server hold one copy each. They are pinned to one table of cases
+ * by supabase/functions/__tests__/issue_4273_sms_segments.implementor.test.ts.
+ */
 export function computeSegments(text: string): number {
+  if (text.length === 0) return 0;
   const gsm7 = isGsm7(text);
-  const len = text.length;
-  if (gsm7) {
-    return len <= 160 ? 1 : Math.ceil(len / 153);
+  const single = gsm7 ? 160 : 70;
+  const perSegment = gsm7 ? 153 : 67;
+  const size = (ch: string): number =>
+    gsm7 ? (GSM7_EXT.indexOf(ch) !== -1 ? 2 : 1) : ch.length;
+  let total = 0;
+  for (const ch of text) total += size(ch);
+  if (total <= single) return 1;
+  let segments = 1;
+  let used = 0;
+  for (const ch of text) {
+    const cost = size(ch);
+    if (used + cost > perSegment) {
+      segments += 1;
+      used = 0;
+    }
+    used += cost;
   }
-  return len <= 70 ? 1 : Math.ceil(len / 67);
+  return segments;
 }
 
 const STOP_FOOTER = "Reply STOP to opt out.";

@@ -253,6 +253,10 @@ const mapRpcTicket = (raw: unknown, fallbackCurrency: string): PublicTicketProps
     id: String(t.id ?? ""),
     // issue #3281 — extras, parsed by the cart that offers them.
     buyerExtras: t.extras,
+    // issue #3281 — listed dates this ticket has sold out, for the day picker.
+    soldOutOccurrenceIds: Array.isArray(t.soldOutOccurrenceIds)
+      ? t.soldOutOccurrenceIds.filter((id): id is string => typeof id === "string")
+      : [],
     // issue #3281 — the dates a listed ticket covers. Absent means All dates.
     validOccurrenceIds: Array.isArray(t.validOccurrenceIds)
       ? t.validOccurrenceIds.filter((id): id is string => typeof id === "string")

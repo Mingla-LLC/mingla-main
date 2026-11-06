@@ -10,6 +10,7 @@
  */
 import type {
   CampaignChannelPayload,
+  CampaignGroupFigures,
   MarketingBookQuote,
   SealedMarketingAudienceKind,
 } from "../../types/marketing";
@@ -21,7 +22,9 @@ import {
 } from "./marketingCampaignService";
 import {
   confirmMarketingBook,
+  listGroupDrafts,
   previewMarketingBook,
+  previewMarketingCampaignGroup,
 } from "./marketingBookSendService";
 import { partialSendLine } from "./campaignSendCopy";
 
@@ -64,7 +67,7 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
   }
   if (code.includes("AUDIENCE_NOT_FOUND")) {
     return channel === "push"
-      ? "Push reaches Mingla accounts only: pick Your Book, Followers, Friends of followers or a saved group."
+      ? "Push reaches Mingla accounts only, so it can't go to a buyer list."
       : `${label} isn't available for this audience.`;
   }
   if (code.includes("FLAG_DISABLED")) return `${label} isn't switched on for this audience yet.`;
@@ -137,6 +140,92 @@ export async function prepareSiblingChannel(
   }
 }
 
+/**
+ * #4273 — write every extra method as a sibling draft, then take ONE locked
+ * preview of the whole campaign. Each method keeps its own quote to confirm;
+ * `group` holds the figures that count each person once. All server figures.
+ */
+export async function prepareCampaignGroupPreview(input: {
+  leadCampaignId: string;
+  leadChannel: CampaignChannel;
+  accountId: string;
+  brandId: string;
+  audienceId: string;
+  name: string;
+  extras: Array<{
+    channel: CampaignChannel;
+    payload: CampaignChannelPayload;
+    existingCampaignId: string | null;
+  }>;
+}): Promise<{
+  lead: MarketingBookQuote | null;
+  leadError: string | null;
+  group: CampaignGroupFigures | null;
+  siblings: SiblingChannelState[];
+}> {
+  // A tab that closed with the review open leaves sibling drafts in the group.
+  // Adopt one for a method the host ticked again (a second draft for the same
+  // method would hit the one-per-method index); drop the rest.
+  const { adopt: adopted, keep, groupId } = await settleLeftoverGroupDraftsDetailed({
+    leadCampaignId: input.leadCampaignId,
+    leadChannel: input.leadChannel,
+    extras: input.extras,
+  });
+  const drafts: Array<{ channel: CampaignChannel; campaignId: string }> = [];
+  for (const extra of input.extras) {
+    let campaignId = extra.existingCampaignId ?? adopted.get(extra.channel) ?? null;
+    if (campaignId === null) {
+      const row = await createDraft({
+        account_id: input.accountId,
+        brand_id: input.brandId,
+        audience_id: input.audienceId,
+        name: input.name,
+        channel_payload: extra.payload,
+        // The real group, COALESCE(campaign_group_id, id): a sibling reopened
+        // from Drafts is not a group of its own (#4273).
+        campaign_group_id: groupId,
+      });
+      campaignId = row.id;
+    } else {
+      await updateDraft({
+        campaign_id: campaignId,
+        name: input.name,
+        audience_id: input.audienceId,
+        channel_payload: extra.payload,
+      });
+    }
+    drafts.push({ channel: extra.channel, campaignId });
+  }
+  // Name exactly the drafts being sent, so nothing else in the group is priced.
+  const preview = await previewMarketingCampaignGroup(input.leadCampaignId, [
+    input.leadCampaignId,
+    ...drafts.map((draft) => draft.campaignId),
+  ]);
+  // Never the group head: it is the host's original campaign (#4273 P2-1).
+  const unlisted = (preview.unlistedDraftIds ?? []).filter((id) => !keep.has(id));
+  if (unlisted.length > 0) {
+    void discardSiblingDrafts(unlisted);
+  }
+  const lead = preview.methods.find((method) => method.channel === input.leadChannel);
+  return {
+    lead: lead?.quote ?? null,
+    leadError: lead?.error ?? (lead === undefined ? "BOOK_BLAST_FAILED" : null),
+    group: preview.group,
+    siblings: drafts.map((draft) => {
+      const method = preview.methods.find((row) => row.campaignId === draft.campaignId);
+      return {
+        channel: draft.channel,
+        campaignId: draft.campaignId,
+        quote: method?.quote ?? null,
+        requestId: newSiblingRequestId(),
+        error: method?.quote
+          ? null
+          : siblingErrorMessage(draft.channel, new Error(method?.error ?? "FAILED")),
+      };
+    }),
+  };
+}
+
 export interface SiblingSendResult {
   channel: CampaignChannel;
   ok: boolean;
@@ -185,6 +274,98 @@ export async function confirmSiblingChannels(input: {
     }
   }
   return results;
+}
+
+/**
+ * #4273 — leftover sibling drafts in a group. A draft on the lead's method, or
+ * on a method the host did not tick, is deleted (it would collide with the lead
+ * or be counted for a method nobody picked). A draft on a ticked method that
+ * has no draft in memory is returned to be reused. Returns method → draft id.
+ */
+export async function settleLeftoverGroupDrafts(input: {
+  leadCampaignId: string;
+  leadChannel: CampaignChannel;
+  extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
+}): Promise<Map<CampaignChannel, string>> {
+  return (await settleLeftoverGroupDraftsDetailed(input)).adopt;
+}
+
+/**
+ * Same as settleLeftoverGroupDrafts, and also returns the ids that must never
+ * be discarded (the group head when the lead is a sibling reopened from Drafts).
+ */
+async function settleLeftoverGroupDraftsDetailed(input: {
+  leadCampaignId: string;
+  leadChannel: CampaignChannel;
+  extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
+}): Promise<{ adopt: Map<CampaignChannel, string>; keep: Set<string>; groupId: string }> {
+  const { groupId, drafts: leftovers } = await listGroupDrafts(input.leadCampaignId);
+  const keep = new Set(leftovers.filter((draft) => draft.isHead).map((draft) => draft.id));
+  // The head is the host's original campaign. It is never reused, overwritten
+  // or deleted from a sibling's composer: if this composer wants the head's
+  // method, say so plainly instead.
+  for (const head of leftovers.filter((draft) => draft.isHead)) {
+    const wanted = head.channel === input.leadChannel ||
+      input.extras.some((extra) => extra.channel === head.channel && extra.existingCampaignId !== head.id);
+    if (wanted) throw new GroupHeadMethodTakenError(head.channel);
+  }
+  const known = new Set(
+    input.extras.flatMap((extra) => (extra.existingCampaignId === null ? [] : [extra.existingCampaignId])),
+  );
+  const adopt = new Map<CampaignChannel, string>();
+  const discard: string[] = [];
+  for (const draft of leftovers) {
+    if (known.has(draft.id)) continue;
+    const extra = input.extras.find((row) => row.channel === draft.channel);
+    if (
+      !draft.isHead &&
+      draft.channel !== input.leadChannel &&
+      extra !== undefined &&
+      extra.existingCampaignId === null &&
+      !adopt.has(draft.channel)
+    ) {
+      adopt.set(draft.channel, draft.id);
+    } else if (!draft.isHead) {
+      // The head is the host's original campaign: skipped, never deleted.
+      discard.push(draft.id);
+    }
+  }
+  if (discard.length > 0) await discardSiblingDrafts(discard);
+  return { adopt, keep, groupId };
+}
+
+const METHOD_LABEL: Record<CampaignChannel, string> = { email: "Email", sms: "SMS", push: "Push" };
+
+/** #4273 — a sibling's composer asked for the method its original campaign uses. */
+export class GroupHeadMethodTakenError extends Error {
+  constructor(public readonly channel: CampaignChannel) {
+    const label = METHOD_LABEL[channel];
+    super(
+      `Your original campaign already sends by ${label}. Open it from Drafts to send by ${label}, or untick ${label} here.`,
+    );
+    this.name = "GroupHeadMethodTakenError";
+  }
+}
+
+/**
+ * #4273 — a draft save the database refused, in plain words. Never the raw
+ * database text: hosts saw "duplicate key value violates unique constraint …".
+ */
+export function draftSaveErrorMessage(error: unknown): string {
+  const text = error instanceof Error
+    ? error.message
+    : typeof (error as { message?: unknown } | null)?.message === "string"
+      ? (error as { message: string }).message
+      : "";
+  const code = (error as { code?: unknown } | null)?.code;
+  if (text.includes("issue_3682_one_channel_per_campaign_group") || code === "23505") {
+    return "Another draft of this campaign already sends by this method. Open it from Drafts, or pick a different method here.";
+  }
+  if (text.includes("campaign_group_invalid")) {
+    return "This draft can't join that campaign. Start a new campaign from Blast and try again.";
+  }
+  // Anything else keeps today's wording (already plain, e.g. the brand check).
+  return error instanceof Error ? error.message : "Couldn't save draft. Tap Save draft to retry.";
 }
 
 /** Drop sibling drafts the host backed out of (they never sent). */

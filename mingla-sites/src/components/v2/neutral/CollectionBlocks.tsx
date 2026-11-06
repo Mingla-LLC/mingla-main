@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- site media is served first-party and immutable from /media. */
-import Link from "next/link";
+import { SiteAnchor, SiteRouteLink as Link } from "../../PreviewLinks";
 import { isManuallyOrdered, type ArtifactV2 } from "../../../contracts/generated/artifactV2.ts";
 import {
   formatCalendarDay,
@@ -45,7 +45,7 @@ function BlockCta({ block }: { block: Block }) {
   const label = text(block.cta_label);
   const href = text(block.cta_href);
   if (!label || !href) return null;
-  return <p className="site-block-cta"><a className="button ghost" href={href}>{label}</a></p>;
+  return <p className="site-block-cta"><SiteAnchor className="button ghost" href={href}>{label}</SiteAnchor></p>;
 }
 
 export function DestinationGrid({ block, artifact }: { block: Block; artifact: ArtifactV2 }) {
@@ -127,7 +127,7 @@ export function TestimonialWall({ block, artifact, live }: { block: Block; artif
                 <span className="site-review-name">{review.reviewer}</span>
                 <span className="site-review-meta">
                   <time dateTime={review.review_date}>{formatCalendarDay(review.review_date, artifact.language)}</time>
-                  {trip ? <> · {linked ? <a href={linked.public_url}>{trip}</a> : trip}</> : null}
+                  {trip ? <> · {linked ? <SiteAnchor href={linked.public_url}>{trip}</SiteAnchor> : trip}</> : null}
                 </span>
               </footer>
             </blockquote>
@@ -142,7 +142,7 @@ export function TestimonialWall({ block, artifact, live }: { block: Block; artif
 function Departure({ departure, language, showPlace }: { departure: LedgerDeparture; language: string; showPlace: boolean }) {
   return (
     <>
-      <a href={departure.href}>{departure.title}</a>
+      <SiteAnchor href={departure.href}>{departure.title}</SiteAnchor>
       {departure.date ? <> <time dateTime={departure.date}>{formatCalendarDay(departure.date, language)}</time></> : null}
       {showPlace && departure.place ? <span className="site-ledger-place"> · {departure.place}</span> : null}
     </>
@@ -203,7 +203,7 @@ export function RelatedOfferings({ ids, live, language }: { ids: readonly string
           const card = live.cards.get(offering.id);
           return (
             <li key={offering.id}>
-              <a href={offering.public_url}>{offering.title}</a>
+              <SiteAnchor href={offering.public_url}>{offering.title}</SiteAnchor>
               {formatOfferingDates(offering, language) ? <> · {formatOfferingDates(offering, language)}</> : null}
               {card?.state.badge ? <> · {card.state.badge}</> : null}
             </li>

@@ -1,4 +1,5 @@
 import type { OfferingFilters } from "../../../contracts/generated/offerings.ts";
+import { SiteSearchForm } from "../../../components/PreviewLinks";
 import { SiteLink } from "../parts";
 
 /*
@@ -15,9 +16,8 @@ export function TripFilters({ variant, action, filters }: { variant: "hero" | "p
   const prefix = hero ? "hero-" : "panel-";
   return (
     <>
-      <form
+      <SiteSearchForm
         action={action}
-        method="get"
         role="search"
         aria-label="Find a trip"
         className={hero ? "search-bar on-light hero-enter v-search v-search--hero" : "card card--raised on-light v-search v-search--panel"}
@@ -44,7 +44,7 @@ export function TripFilters({ variant, action, filters }: { variant: "hero" | "p
           </svg>
           <span className={hero ? "v-search-submit__label" : undefined}>Search</span>
         </button>
-      </form>
+      </SiteSearchForm>
       {hasQuery ? (
         <p className="v-clear-search"><SiteLink href={action} className="link v-semibold">Clear search</SiteLink></p>
       ) : null}

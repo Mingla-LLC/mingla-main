@@ -56,7 +56,7 @@ export function utf8ByteLength(value: string): number {
 export interface PersistedQueryLike {
   queryKey: unknown;
   queryHash?: string;
-  state: { data?: unknown; dataUpdatedAt?: number };
+  state: { data?: unknown; dataUpdatedAt?: number; status?: string };
 }
 
 export interface PersistedClientLike {
@@ -108,7 +108,13 @@ function dataToJson(data: unknown, updatedAt: unknown): string {
 export function serializePersistedQuery(query: PersistedQueryLike): string {
   const data = query.state.data;
   if (data === undefined) return JSON.stringify(query);
-  const head = JSON.stringify({ ...query, state: { ...query.state, data: DATA_TOKEN } });
+  // Issue #4275: a query whose last refresh failed still has good data. Keep the
+  // data and forget the failure: JSON.stringify(new Error('x')) is `{}`, and that
+  // `{}` restored as a real-looking `error` on the next launch.
+  const state = query.state.status === "error"
+    ? { ...query.state, status: "success", error: null, fetchFailureReason: null, fetchFailureCount: 0 }
+    : query.state;
+  const head = JSON.stringify({ ...query, state: { ...state, data: DATA_TOKEN } });
   const at = head.lastIndexOf(QUOTED_DATA_TOKEN);
   if (at === -1) return JSON.stringify(query);
   return head.slice(0, at) + dataToJson(data, query.state.dataUpdatedAt) + head.slice(at + QUOTED_DATA_TOKEN.length);

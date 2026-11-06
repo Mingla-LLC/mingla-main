@@ -1,5 +1,5 @@
 // ORCH-1013 ADVERSARIAL — RunRemainderOnAllConfirmModal + ActiveRunsControlTower
-// + TrialResultsTab banner-deletion verification.
+// + the retired Trial Results tab staying retired (#4276).
 //
 // Goes beyond grep: tests boundary conditions on cost gating, dedupe semantics
 // in candidateCities, and asserts the OLD in-tab banner is GONE from
@@ -159,45 +159,12 @@ describe("ORCH-1013 ADVERSARIAL — ActiveRunsControlTower zero-renders", () => 
   });
 });
 
-describe("ORCH-1013 ADVERSARIAL — TrialResultsTab in-tab banner DELETED", () => {
-  const src = fs.readFileSync(RESULTS_TAB, "utf8");
-  // Strip comments before identifier-deletion checks (implementor left
-  // tombstone comments referencing the deleted names for traceability;
-  // those are intentional and should not trip the regression).
-  const stripped = src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
-
-  it("no longer renders the 'Cancel run' banner (SPEC §3 B.8 deletion)", () => {
-    // The deleted block used these idioms — assert they're gone in CODE
-    // (comments tombstoning the deletion are OK).
-    assert.ok(
-      !stripped.includes("bannerDismissed"),
-      "bannerDismissed state must be DELETED per SPEC §3 B.8",
-    );
-    assert.ok(
-      !/handleCancelActiveRunConfirmed\s*\(/.test(stripped),
-      "handleCancelActiveRunConfirmed CALLABLE must be DELETED (tombstone comment ok)",
-    );
-    assert.ok(
-      !/handleResumeFromN\s*\(/.test(stripped),
-      "handleResumeFromN CALLABLE must be DELETED (deferred per SPEC §6)",
-    );
-  });
-
-  it("CancelRunConfirmModal no longer mounted from TrialResultsTab", () => {
-    assert.ok(
-      !src.includes("<CancelRunConfirmModal"),
-      "CancelRunConfirmModal must only mount from ActiveRunCard now",
-    );
-  });
-
-  it("Cross-session hydration effect for activeRunId is DELETED (SPEC §7-D3)", () => {
-    // The hydration that orphaned activeRun state with no UI consumer was deleted.
-    assert.ok(
-      !src.includes("list_active_runs"),
-      "TrialResultsTab no longer polls list_active_runs — control tower owns it",
-    );
+// #4276 (D9): the Trial Results tab, its sample mode and its results explorer are
+// retired, so the banner-deletion checks that read it are gone with it. The cancel
+// lives on ActiveRunCard alone.
+describe("#4276 — the retired Trial Results tab stays retired", () => {
+  it("TrialResultsTab no longer exists, so no second cancel path can return", () => {
+    assert.equal(fs.existsSync(RESULTS_TAB), false);
   });
 });
 

@@ -48,6 +48,8 @@ import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 // the call sites and autocapture share one instance).
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
 import { UnifiedShareProvider } from "../src/components/share/UnifiedShareProvider";
+// #4261: every web link opens in Mingla's in-app browser (useOpenInMingla).
+import { InAppBrowserProvider } from "../src/components/InAppBrowserProvider";
 import { MandatoryUpdateGate } from "../src/components/MandatoryUpdateGate";
 // #2107 — blocking JavaScript-update acknowledgement. Mounted INSIDE
 // MandatoryUpdateGate so the native store screen always wins: a build below the
@@ -203,7 +205,11 @@ function RootLayout() {
                     absent / on web (no-op). */}
                 <PostHogAnalyticsProvider>
                   <UnifiedShareProvider>
-                    <Stack screenOptions={{ headerShown: false }} />
+                    {/* #4261: the root in-app browser for every route. Screens
+                        inside their own RN Modal mount their own provider. */}
+                    <InAppBrowserProvider>
+                      <Stack screenOptions={{ headerShown: false }} />
+                    </InAppBrowserProvider>
                   </UnifiedShareProvider>
                 </PostHogAnalyticsProvider>
               </PersistQueryClientProvider>

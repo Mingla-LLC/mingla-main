@@ -56,6 +56,12 @@ export interface AudienceQueryAllBrandPeople {
 export interface AudienceQueryManualGroup {
   kind: "manual_group";
 }
+/** #4273 — several sources, resolved by the database into one sealed set. */
+export interface AudienceQueryCombinedSources {
+  kind: "combined_sources";
+  brand_id: string;
+  sources: ReadonlyArray<string>;
+}
 export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
@@ -64,7 +70,8 @@ export type AudienceQueryDefinition =
   | AudienceQueryCustomSegment
   | AudienceQueryOfferingSendGroup
   | AudienceQueryAllBrandPeople
-  | AudienceQueryManualGroup;
+  | AudienceQueryManualGroup
+  | AudienceQueryCombinedSources;
 
 export interface ResolvedContact {
   contact_key: string;
@@ -325,6 +332,24 @@ export async function resolveAudience(
       if (result === null || !Array.isArray(result.rows)) {
         throw new Error("manual_group_audience_invalid_response");
       }
+      return result as ResolveResult;
+    }
+    case "combined_sources": {
+      if (campaignId === undefined) {
+        throw new Error("combined_audience_campaign_context_required");
+      }
+      const { data, error } = await client.rpc(
+        "biz_marketing_combined_send_audience_v1",
+        { p_campaign_id: campaignId },
+      );
+      if (error) {
+        throw new Error(`combined_audience_failed:${error.message}`);
+      }
+      const result = data as Partial<ResolveResult> | null;
+      if (
+        result === null || result.brand_id !== query.brand_id ||
+        !Array.isArray(result.rows)
+      ) throw new Error("combined_audience_invalid_response");
       return result as ResolveResult;
     }
     default: {

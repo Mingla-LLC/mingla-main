@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { analyticsAllowed, sendSiteEvent, type SiteEventContext } from "../lib/clientAnalytics";
+import { analyticsAllowed, isPreviewPublication, sendSiteEvent, type SiteEventContext } from "../lib/clientAnalytics";
 
 export function TrackedLink({
   href,
@@ -26,7 +26,9 @@ export function TrackedLink({
       event.ctrlKey ||
       event.shiftKey ||
       event.altKey ||
-      !analyticsAllowed()
+      !analyticsAllowed() ||
+      // #2830 — a preview starts no attribution; the link just opens.
+      isPreviewPublication(context.publicationId)
     ) return;
     event.preventDefault();
     const target = new URL(href);

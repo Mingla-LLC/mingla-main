@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/run-place-intelligence-trial/__tests__/issue_4276_reeval_modes_complete.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-reeval-modes-complete",
+  "profile": "deno-2-unit"
+}

@@ -1,10 +1,12 @@
 import React from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import { creatorProgramService } from '../../services/creatorProgramService';
 import { nicheLabel } from '../../utils/programFormat';
 import { Icon } from '../ui/Icon';
+// #4261: the promoted page opens in Mingla's in-app browser.
+import { useOpenInMingla } from '../InAppBrowserProvider';
 import { VideoTile, playPublicVideo } from '../programs/VideoTile';
 
 /**
@@ -21,6 +23,7 @@ export function PublicCreatorSection({ userId, embedded = false }: { userId: str
     staleTime: 5 * 60_000,
     retry: 1,
   });
+  const { open: openInMingla } = useOpenInMingla();
   const creator = query.data;
   if (!creator || !creator.id) return null;
   const showcase = creator.showcase.slice(0, 2);
@@ -56,7 +59,7 @@ export function PublicCreatorSection({ userId, embedded = false }: { userId: str
         </View>
       ) : null}
       {promoting ? (
-        <Pressable accessibilityRole={promoting.url ? 'link' : undefined} disabled={!promoting.url} onPress={() => { if (promoting.url) void Linking.openURL(promoting.url); }} style={styles.promoting}>
+        <Pressable accessibilityRole={promoting.url ? 'link' : undefined} disabled={!promoting.url} onPress={() => { if (promoting.url) openInMingla(promoting.url, promoting.title); }} style={styles.promoting}>
           <Text style={styles.promotingLabel}>Promoting now</Text>
           <Text style={styles.promotingValue} numberOfLines={1}>{promoting.title}</Text>
           {promoting.url ? <Icon name="chevron-forward" size={14} color="rgba(255, 255, 255, 0.52)" /> : null}

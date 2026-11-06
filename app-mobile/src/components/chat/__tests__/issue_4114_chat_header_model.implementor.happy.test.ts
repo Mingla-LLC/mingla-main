@@ -127,14 +127,15 @@ Deno.test("D9 wiring: MessageInterface renders ChatHeader and the pill rows are 
   const chat = strip(await Deno.readTextFile(new URL("components/MessageInterface.tsx", root)));
   assert(/<ChatHeader\b/.test(chat), "MessageInterface renders the shared ChatHeader");
   assert(!/collabHeaderPill|collabHeaderActionRow/.test(chat), "the 124pt pill header is gone");
-  assert(/buildCollabHeaderStrip\(/.test(chat), "the strip is built from the loaded hooks");
+  assert(/buildCollabHeaderStrip\(/.test(chat), "the strip is built from the chat's plan list");
   assert(/onStripPress=\{handleCollabStripPress\}/.test(chat), "strip taps route through the existing deck views");
   const header = strip(await Deno.readTextFile(new URL("components/chat/ChatHeader.tsx", root)));
   assert(/height: M\.titleRow/.test(header) && /height: M\.strip/.test(header), "ChatHeader sizes from CHAT_HEADER_METRICS");
   assert(/duration: STRIP_MOTION_MS/.test(header) && /STRIP_MOTION_MS = 240/.test(header), "strip opens in 240ms");
   assert(/isReduceMotionEnabled/.test(header), "no motion under Reduce Motion");
-  const banners = strip(await Deno.readTextFile(new URL("components/chat/CollabSessionChatBanners.tsx", root)));
-  assert(/groupPlans\(rows/.test(banners) && /chat:plansUpcoming/.test(banners) && /chat:plansPast/.test(banners),
+  // Issue #4261: the chat's Plans sheet is PlansSheet.
+  const plans = strip(await Deno.readTextFile(new URL("components/chat/PlansSheet.tsx", root)));
+  assert(/groupPlans\(rows/.test(plans) && /chat:plansUpcoming/.test(plans) && /chat:plansPast/.test(plans),
     "the Plans sheet groups Upcoming and Past");
-  assert(/chat:planSetBy/.test(banners), "each plan says who set it");
+  assert(/chat:planSetBy/.test(plans), "each deck plan says who set it");
 });

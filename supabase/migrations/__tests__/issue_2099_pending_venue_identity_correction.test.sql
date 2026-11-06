@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-4261-PLAN-PENDING-VENUE-FENCE | issue #4261 | A group-chat plan or suggested place on a pending venue's pool row remains a disallowed pending-venue dependency, and only the reviewed empty schema shape advances the correction RPC pin.
 -- MINGLA-INVARIANT: I-4188-STAY-PENDING-VENUE-FENCE | issue #4188 | Stay operational rows remain disallowed pending-venue dependencies, and only the reviewed empty schema shape advances the correction RPC pin.
 \set ON_ERROR_STOP on
 
@@ -82,8 +83,7 @@ BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
   IF p->>'ok'<>'true' OR NOT COALESCE(
     p->>'schema_fingerprint' IN (
-      '91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415',
-      '0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711'
+      '957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a'
     ),
     false
   ) THEN
@@ -157,6 +157,47 @@ DO $$ BEGIN
     RAISE EXCEPTION '#2099 owner audit truncate unexpectedly succeeded';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
+-- #4261: a group-chat plan (chat_plans) or a suggested place
+-- (chat_plan_place_options) on the pending venue's pool row is a disallowed
+-- dependency: each blocks the correction on its own, and nothing else changes.
+SAVEPOINT issue_4261_plan_lanes;
+DO $$ DECLARE v_conv uuid; BEGIN
+  INSERT INTO public.conversations(type,linked_entity_type,name,created_by)
+  VALUES('group','direct','Issue 4261 seal','20990000-0000-0000-0000-000000000001') RETURNING id INTO v_conv;
+  INSERT INTO public.chat_plans(id,conversation_id,source,title,where_kind,place_name,place_pool_id,when_mode,created_by)
+  VALUES('20990000-0000-0000-0000-000000004261',v_conv,'chat','Issue 4261 plan','place','Old venue',
+    '20990000-0000-0000-0000-000000000010','none','20990000-0000-0000-0000-000000000001');
+END $$;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','20990000-0000-0000-0000-000000000001',true);
+DO $$ DECLARE p jsonb; BEGIN
+  p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
+  IF p->>'ok'<>'false' OR p->>'code'<>'DEPENDENCY_NOT_EMPTY'
+     OR COALESCE((SELECT sum((lane->>'count')::bigint) FROM jsonb_array_elements(p->'dependency_counts') lane
+                  WHERE lane->>'classification'='disallowed'),0)<>1 THEN
+    RAISE EXCEPTION '#4261 chat_plans lane is not a disallowed dependency: %',p;
+  END IF;
+END $$;
+RESET ROLE;
+DO $$ BEGIN
+  UPDATE public.chat_plans SET where_kind='none',place_name=NULL,place_pool_id=NULL
+   WHERE id='20990000-0000-0000-0000-000000004261';
+  INSERT INTO public.chat_plan_place_options(plan_id,kind,identity_key,place_name,place_pool_id)
+  VALUES('20990000-0000-0000-0000-000000004261','place','pool:20990000-0000-0000-0000-000000000010','Old venue',
+    '20990000-0000-0000-0000-000000000010');
+END $$;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','20990000-0000-0000-0000-000000000001',true);
+DO $$ DECLARE p jsonb; BEGIN
+  p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
+  IF p->>'ok'<>'false' OR p->>'code'<>'DEPENDENCY_NOT_EMPTY'
+     OR COALESCE((SELECT sum((lane->>'count')::bigint) FROM jsonb_array_elements(p->'dependency_counts') lane
+                  WHERE lane->>'classification'='disallowed'),0)<>1 THEN
+    RAISE EXCEPTION '#4261 chat_plan_place_options lane is not a disallowed dependency: %',p;
+  END IF;
+END $$;
+RESET ROLE;
+ROLLBACK TO SAVEPOINT issue_4261_plan_lanes;
 -- #2855_TESTER_ADVERSARIAL_INCLUDE
 UPDATE public.place_pool SET ai_signal_scores='{"private":"must-not-leak"}' WHERE id='20990000-0000-0000-0000-000000000010';
 SET LOCAL ROLE authenticated;

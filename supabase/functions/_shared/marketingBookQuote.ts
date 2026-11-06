@@ -2,6 +2,12 @@ import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { smsBlastBodyWithFollow } from "./marketingBlastFollow.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
 import type { SmsRateV1 } from "./smsPriceBook.ts";
+import {
+  SMS_FX_PROVIDER,
+  SMS_FX_UNAVAILABLE,
+  type SmsFxConverted,
+  type SmsFxConverter,
+} from "./marketingSmsFx.ts";
 
 const HEX = /^[0-9a-f]{64}$/;
 const QUOTE_TRACKING_ID = "00000000-0000-4000-8000-000000000000";
@@ -80,6 +86,19 @@ export interface MarketingBookCandidate {
   normalizedContact: string | null;
   allowed: boolean;
   safeReasonCode: string;
+  /** #4273 — the one person this row is, across groups and methods. Service-only. */
+  personKey?: string;
+  /** #4273 — the sealed Book subject of a combined row (null for account or buyer). */
+  targetBrandPersonId?: string | null;
+  /** #4273 — a buyer known only from orders (digest of their email). Service-only. */
+  buyerContactKey?: string | null;
+}
+/** #4273 — one picked group: its name and totals, never a person. */
+export interface MarketingAudienceSourceTotal {
+  key: string;
+  name: string;
+  count: number;
+  alsoInBookCount: number;
 }
 export interface MarketingBookCandidateResponse {
   brandId: string;
@@ -92,9 +111,11 @@ export interface MarketingBookCandidateResponse {
     | "all_brand_people"
     | "manual_group"
     | "brand_followers"
-    | "brand_circle_extended";
+    | "brand_circle_extended"
+    | "combined_sources";
   audienceVersion?: number;
   audienceName?: string;
+  audienceSources?: MarketingAudienceSourceTotal[];
 }
 export function parseBookQuotedAt(
   value: unknown,
@@ -140,6 +161,10 @@ export async function buildMarketingBookQuote(
     smsRates?: SmsRateV1[];
     /** #3682 — same Follow line dispatch appends; required for SMS segment parity. */
     followBrand?: { name: string; slug: string } | null;
+    /** #4273 — the brand's pricing currency; a mixed-currency SMS total is shown in it. */
+    costCurrency?: string | null;
+    /** #4273 — converts per-currency subtotals with the snapshot as of quotedAt. */
+    fx?: SmsFxConverter;
   } = {},
 ) {
   now = new Date(Math.floor(now.getTime() / 1000) * 1000);
@@ -163,11 +188,15 @@ export async function buildMarketingBookQuote(
   const hasDeliveryIdentity = (candidate: MarketingBookCandidate): boolean =>
     candidate.contactMethodId !== null ||
     (typeof candidate.recipientUserId === "string" &&
+      candidate.normalizedContact !== null) ||
+    (typeof candidate.buyerContactKey === "string" &&
       candidate.normalizedContact !== null);
   const reachable = candidates.filter((candidate) =>
     candidate.allowed && hasDeliveryIdentity(candidate)
   );
   let estimatedCostMinor: number | null = null, currency: string | null = null;
+  let costBreakdown: SmsFxConverted[] = [];
+  let fxSnapshotId: string | null = null;
   if (input.channel === "sms" && reachable.length > 0) {
     const authorBody = smsBlastBodyWithFollow(
       String(input.content.body ?? ""),
@@ -187,7 +216,7 @@ export async function buildMarketingBookQuote(
         return {
           key: `${candidate.brandPersonId}:${
             candidate.contactMethodId ?? candidate.recipientUserId ??
-              "unavailable"
+              candidate.buyerContactKey ?? "unavailable"
           }`,
           normalizedPhone: candidate.normalizedContact,
           segments,
@@ -197,13 +226,101 @@ export async function buildMarketingBookQuote(
       now,
       options.smsRates,
     );
-    estimatedCostMinor = priced.estimatedCostMinor;
-    currency = priced.currency;
     for (const allocation of priced.allocations) {
       allocation.target.segments = allocation.segments;
       allocation.target.allocatedCostMinor = allocation.allocatedCostMinor;
       allocation.target.rateId = allocation.rate.rateId;
       allocation.target.sourceReference = allocation.rate.sourceReference;
+    }
+    if (priced.subtotals.length <= 1) {
+      // One provider currency: exactly the numbers a quote always had.
+      estimatedCostMinor = priced.estimatedCostMinor;
+      currency = priced.currency;
+      costBreakdown = priced.subtotals.map((subtotal) => ({
+        currency: subtotal.currency,
+        providerCostMinor: subtotal.estimatedCostMinor,
+        convertedCostMinor: subtotal.estimatedCostMinor,
+      }));
+    } else {
+      // Several provider currencies: one total in the brand's currency,
+      // converted with the snapshot as of quotedAt and sealed in the hash.
+      const costCurrency = typeof options.costCurrency === "string"
+        ? options.costCurrency
+        : "";
+      if (!/^[A-Z]{3}$/.test(costCurrency) || options.fx === undefined) {
+        throw new Error(SMS_FX_UNAVAILABLE);
+      }
+      const conversion = await options.fx.convert({
+        subtotals: priced.subtotals,
+        targetCurrency: costCurrency,
+        at: now,
+      });
+      const byCurrency = new Map(
+        conversion.converted.map((row) => [row.currency, row]),
+      );
+      if (
+        typeof conversion.snapshotId !== "string" ||
+        conversion.snapshotId.length === 0 ||
+        conversion.converted.length !== priced.subtotals.length ||
+        priced.subtotals.some((subtotal) =>
+          byCurrency.get(subtotal.currency)?.providerCostMinor !==
+            subtotal.estimatedCostMinor ||
+          !Number.isSafeInteger(
+            byCurrency.get(subtotal.currency)?.convertedCostMinor,
+          ) ||
+          (byCurrency.get(subtotal.currency)?.convertedCostMinor ?? -1) < 0
+        )
+      ) throw new Error(SMS_FX_UNAVAILABLE);
+      // Re-allocate each person's share INTO the brand currency: within each
+      // provider currency, that currency's converted total is split by largest
+      // remainder weighted by the person's native share (tie by key), so the
+      // per-person figures still sum exactly to the total.
+      for (const subtotal of priced.subtotals) {
+        const convertedTotal = BigInt(
+          (byCurrency.get(subtotal.currency) as SmsFxConverted)
+            .convertedCostMinor,
+        );
+        const native = BigInt(subtotal.estimatedCostMinor);
+        const group = priced.allocations.filter((allocation) =>
+          allocation.rate.currency === subtotal.currency
+        );
+        const shares = group.map((allocation) => {
+          const weighted = convertedTotal *
+            BigInt(allocation.allocatedCostMinor);
+          return {
+            allocation,
+            floor: weighted / native,
+            remainder: weighted % native,
+          };
+        });
+        let left = convertedTotal -
+          shares.reduce((sum, share) => sum + share.floor, 0n);
+        for (const share of shares) {
+          share.allocation.target.allocatedCostMinor = Number(share.floor);
+        }
+        [...shares].sort((a, b) =>
+          a.remainder === b.remainder
+            ? a.allocation.key.localeCompare(b.allocation.key)
+            : a.remainder > b.remainder
+            ? -1
+            : 1
+        ).forEach((share) => {
+          if (left > 0n) {
+            share.allocation.target.allocatedCostMinor =
+              (share.allocation.target.allocatedCostMinor ?? 0) + 1;
+            left -= 1n;
+          }
+        });
+      }
+      currency = costCurrency;
+      costBreakdown = [...conversion.converted].sort((a, b) =>
+        a.currency.localeCompare(b.currency)
+      );
+      estimatedCostMinor = costBreakdown.reduce(
+        (sum, row) => sum + row.convertedCostMinor,
+        0,
+      );
+      fxSnapshotId = conversion.snapshotId;
     }
   }
   const suppressedCount =
@@ -227,6 +344,9 @@ export async function buildMarketingBookQuote(
     audienceKind: input.audienceKind ?? null,
     audienceVersion: input.audienceVersion ?? null,
     audienceName: input.audienceName ?? null,
+    ...(input.audienceSources === undefined
+      ? {}
+      : { audienceSources: input.audienceSources }),
     reachableCount: reachable.length,
     suppressedCount,
     unavailableCount,
@@ -237,6 +357,10 @@ export async function buildMarketingBookQuote(
     costKind: input.channel === "sms" ? "provider_estimate" : "not_metered",
     estimatedCostMinor: input.channel === "sms" ? estimatedCostMinor : null,
     currency: input.channel === "sms" ? currency : null,
+    // #4273 — the per-currency parts of the total (public), and the FX
+    // snapshot that joined them (server-only). Both are inside quoteHash.
+    costBreakdown: input.channel === "sms" ? costBreakdown : [],
+    fxSnapshotId: input.channel === "sms" ? fxSnapshotId : null,
     rateIds: [
       ...new Set(
         candidates.flatMap((candidate) =>
@@ -248,6 +372,10 @@ export async function buildMarketingBookQuote(
       ...new Set(
         candidates.flatMap((candidate) =>
           candidate.sourceReference === null ? [] : [candidate.sourceReference]
+        ).concat(
+          fxSnapshotId === null
+            ? []
+            : [`fx:${SMS_FX_PROVIDER}:${fxSnapshotId}`],
         ),
       ),
     ].sort(),
@@ -276,6 +404,7 @@ export function publicMarketingBookQuote(
     rateIds: _rateIds,
     sourceReferences: _sources,
     audienceName: _audienceName,
+    fxSnapshotId: _fxSnapshotId,
     audienceId,
     audienceKind,
     audienceVersion,

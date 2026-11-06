@@ -66,7 +66,8 @@ Deno.test("QA run 2: the bubble renders tokens with link handlers and the link t
   assert(/linkReceived: \{\s*color: receivedBubbleTokens\.link,/.test(bubble), "dark bubble link token");
   const chat = strip(await read("components/MessageInterface.tsx"));
   assert(/mentionCandidates=\{mentionCandidates\}\s*onLinkPress=\{handleLinkPress\}\s*onLinkLongPress=\{handleLinkLongPress\}/.test(chat), "thread wires them");
-  assert(/<InAppBrowserModal\s+visible=\{linkBrowserUrl !== null\}/.test(chat), "in-app browser");
+  // #4261 amendment 1: the in-app browser moved to the one provider (useOpenInMingla).
+  assert(/<InAppBrowserProvider>/.test(chat) && /const browser = useOpenInMingla\(\)/.test(chat) && !/linkBrowserUrl/.test(chat), "in-app browser");
   assert(/copyAddressText\(url\)/.test(chat), "long-press copies the url");
 });
 

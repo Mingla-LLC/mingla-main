@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4261_fetch_public_url.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4261-fetch-public-url",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

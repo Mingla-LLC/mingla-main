@@ -405,6 +405,13 @@ export function errorCopyFor(code: string): { title: string; body: string } {
         title: "Connect your bank first",
         body: "Connect your bank to accept this brand.",
       };
+    // #4283 — the accept RPC hit a team-membership clash (edge fn 409). Not a
+    // retry case: the owner needs to send a new invite.
+    case "invite_membership_conflict":
+      return {
+        title: "Couldn't add you to this brand",
+        body: "We couldn't add you to this brand. Ask the owner to send a new invite.",
+      };
     case "validation":
       return {
         title: "Invalid link",

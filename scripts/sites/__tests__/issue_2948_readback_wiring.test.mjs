@@ -53,6 +53,7 @@ function harness(readiness) {
     object_manifest_verified_at: NOW.toISOString(),
     object_count: 1,
     object_bytes: 5,
+    site_ids: [SITE_ID],
   };
   writeFileSync(resultPath, stableJson(result));
   writeFileSync(restoreResultPath, stableJson({

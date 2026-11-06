@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/generate-curated-experiences/__tests__/issue_4275_curated_fan_out.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-curated-fan-out-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["env", "net", "read"]
+}

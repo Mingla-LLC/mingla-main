@@ -38,6 +38,11 @@ export interface EventDayChooserProps {
   retryDisabled?: boolean;
   onToggle: (eventDateId: string) => void;
   onRetry: () => void;
+  /**
+   * issue #3281 — "Sold out" or "No tickets" by event_dates id, from
+   * dayChooserCaptions. Absent on events without a day-limited ticket.
+   */
+  captions?: Readonly<Record<string, string>>;
 }
 
 const statusCopy = (
@@ -89,6 +94,7 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
   retryDisabled = false,
   onToggle,
   onRetry,
+  captions,
 }) => {
   const allDaysPass = allDaysPassProp === true || pricingMode === "all_days";
   const schedule = useMemo(
@@ -192,7 +198,13 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
               const label =
                 formatOccurrenceLine(row.occurrence, timezone) ??
                 "Date to be confirmed";
-              const detail = [row.title, row.location, row.placesLeftLabel]
+              const detail = [
+                row.title,
+                row.location,
+                row.placesLeftLabel,
+                // issue #3281 — what the tickets leave on this date, as on web.
+                captions?.[row.occurrence.id] ?? null,
+              ]
                 .filter((part): part is string => part !== null)
                 .join(" · ");
               return (

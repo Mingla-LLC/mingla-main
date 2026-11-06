@@ -80,6 +80,7 @@ import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 // Unlisted RSVP invite link — a private RSVP lands on its dashboard, not on a
 // public page nobody can open without an invite.
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
+import { isSetupReturn, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
 import {
   RSVP_CHIP_IN_SAVE_REFUSED_COPY,
   isRsvpChipInBankRefusal,
@@ -102,6 +103,11 @@ const MISSING_DRAFT_TIMEOUT_MS = 6000;
 const savedToastForGuests = (notice: unknown): string | null =>
   rsvpSavedToast(notice);
 
+// #2830 — the way back to Website setup: one on-demand chunk, nothing hoisted.
+const LazyCreatorReturnBar = React.lazy(() =>
+  import("../../../src/components/sites/setup/CreatorReturnBar"),
+);
+
 export default function RsvpEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -110,10 +116,14 @@ export default function RsvpEditRoute(): React.ReactElement {
     id: string | string[];
     step?: string | string[];
     mode?: string | string[];
+    returnTo?: string | string[];
   }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
   const modeParam = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  // #2830 — Website setup's way back. Anything else behaves as if absent.
+  const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
   // Cycle 9b-2: when ?mode=edit-published, render the focused
   // EditPublishedScreen instead of the create wizard. The id refers to
   // a LIVE event, not a draft.
@@ -600,11 +610,14 @@ export default function RsvpEditRoute(): React.ReactElement {
         const publishedEventId = landing?.eventId ?? null;
         if (publishedEventId !== null && publishedEventId.length > 0) {
           markJustPublished(publishedEventId);
-          router.replace(
-            `/rsvp/${encodeURIComponent(publishedEventId)}` as never,
-          );
+          // #2830 — an event can turn RSVP mid-way; the way back holds.
+          if (setupReturn) {
+            router.replace(setupReturnWith(setupReturn, "event", publishedEventId) as never);
+            return;
+          }
+          router.replace(`/rsvp/${encodeURIComponent(publishedEventId)}` as never);
         } else {
-          router.replace(safeEventsExitRoute() as never);
+          router.replace((setupReturn ?? safeEventsExitRoute()) as never);
         }
       } else {
         // Discarded / abandoned (chrome X close) — route to Events tab
@@ -613,10 +626,16 @@ export default function RsvpEditRoute(): React.ReactElement {
         if (mode === "discarded") {
           setToast({ visible: true, message: "Draft discarded." });
         }
+        if (setupReturn) {
+          router.replace(
+            (mode === "discarded" ? setupReturn : setupReturnWith(setupReturn, "event", effectiveDraftId)) as never,
+          );
+          return;
+        }
         router.replace(safeEventsExitRoute() as never);
       }
     },
-    [router],
+    [effectiveDraftId, router, setupReturn],
   );
 
   const handleOpenPreview = React.useCallback((): void => {
@@ -1027,6 +1046,11 @@ export default function RsvpEditRoute(): React.ReactElement {
 
   return (
     <>
+      {setupReturn ? (
+        <React.Suspense fallback={null}>
+          <LazyCreatorReturnBar onBack={() => router.replace(setupReturnWith(setupReturn, "event", effectiveDraftId) as never)} />
+        </React.Suspense>
+      ) : null}
       <RsvpCreatorWizard
         draft={renderDraft}
         brand={brand}

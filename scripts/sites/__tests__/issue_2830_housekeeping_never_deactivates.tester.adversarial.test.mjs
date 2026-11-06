@@ -396,10 +396,11 @@ function brokenCopy(change) {
 const EXCLUSIONS = "github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && " +
   "github.event.schedule != '37 * * * *' && github.event.inputs.mode != 'freshness-check'";
 
-test("#2830 tester: the reader sees the six jobs and their real conditions", () => {
+test("#2830 tester: the reader sees every job and their real conditions", () => {
   assert.deepEqual(WORKFLOW.order, [
     "contracts", "backup_restore", "deactivate", "alert",
-    "retention", "housekeeping_alert", "recovery_freshness",
+    "retention", "housekeeping_alert", "cms_migrations", "cms_migrations_alert",
+    "recovery_freshness",
   ]);
   assert.deepEqual(WORKFLOW.jobs.deactivate.needs, ["contracts", "backup_restore"]);
   assert.deepEqual(WORKFLOW.jobs.alert.needs, ["contracts", "backup_restore", "deactivate"]);
@@ -826,6 +827,8 @@ test("#2830 tester: end to end — real CLI failure, real outcome step, real gra
       alert: "skipped",
       retention: "success",
       housekeeping_alert: "success",
+      cms_migrations: "success",
+      cms_migrations_alert: "success",
       recovery_freshness: "skipped",
     }, event.label);
     assert.equal(runConclusion(result), "success", `${event.label}: the run is green`);

@@ -17,6 +17,7 @@ on:
       - "mingla-business/app/(tabs)/marketing/_layout.tsx"
       - "mingla-business/src/components/marketing/ComposerCommitBar.tsx"
       - "mingla-business/src/components/marketing/ComposerHeader.tsx"
+      - "mingla-business/src/components/marketing/ComposerMethodCards.tsx"
       - "mingla-business/src/components/marketing/ComposerStepWho.tsx"
       - "mingla-business/src/components/marketing/SmsComposeCard.tsx"
       - "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx"

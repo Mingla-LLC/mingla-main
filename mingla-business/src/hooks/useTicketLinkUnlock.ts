@@ -31,6 +31,11 @@ export const privateTicketFromLink = (
   return {
     id: tier.id,
     name: tier.name,
+    // issue #3281 — the dates a listed private ticket covers; absent from a
+    // resolver older than 20280406003281, which reads as All dates.
+    validOccurrenceIds: Array.isArray(tier.validOccurrenceIds)
+      ? tier.validOccurrenceIds.filter((id): id is string => typeof id === "string")
+      : null,
     description: tier.description ?? null,
     priceGbp: (tier.priceCents ?? 0) / 100,
     priceAllInGbp: (tier.allInCents ?? tier.priceCents ?? 0) / 100,

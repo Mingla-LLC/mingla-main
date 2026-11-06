@@ -9,9 +9,12 @@
  *   6 top + 48 title row + 6 gap + 40 strip + 8 bottom = 108pt
  *
  * Everything here is pure and dependency-free (no React Native) so it runs
- * under Deno. The strip reads only data the chat already loads
- * (`useSessionSavedCardsForSheet` and `useSessionScheduledCards`) and keeps the
- * show-only-if-non-empty rules of `getCollabChatHeaderActions`.
+ * under Deno. Issue #4261: the strip reads the chat's plan list
+ * (`chat_plans_for_conversation`, through `planHeaderInputs` in planModel):
+ * matches are the plans still being decided (deck matches and chat plans),
+ * "{n} to vote" counts the ones waiting on you, and the plan cell is the next
+ * locked-in plan. It keeps the show-only-if-non-empty rules of
+ * `getCollabChatHeaderActions`.
  */
 
 export const CHAT_HEADER_METRICS = {
@@ -36,20 +39,27 @@ export function chatHeaderHeight(showStrip: boolean): number {
 
 export type CollabHeaderActionId = "matches" | "swipe" | "plans";
 
-/** A matched (not yet locked) card, as `useSessionSavedCardsForSheet` returns it. */
+/** Issue #4261: which plan a strip cell or Plans row opens. */
+export type HeaderPlanRef = { kind: "chat"; planId: string } | { kind: "deck"; savedCardId: string };
+
+/** A plan still being decided (a deck match or a chat plan). */
 export interface HeaderMatchInput {
   id: string;
   saved_card_id?: string;
   card_data?: unknown;
   experience_data?: unknown;
+  /** Issue #4261: waiting on the viewer's vote (planModel.needsMyVote). */
+  needsVote?: boolean;
 }
 
-/** A locked plan, as `useSessionScheduledCards` returns it. */
+/** A locked-in plan. */
 export interface HeaderPlanInput {
   savedCardId: string;
   cardData: Record<string, unknown> | null;
   scheduledAt: string;
   lockedByDisplayName?: string;
+  /** Issue #4261: the plan to open (a chat plan has no saved card). */
+  planRef?: HeaderPlanRef;
 }
 
 export interface MatchesCellModel {
@@ -60,6 +70,8 @@ export interface MatchesCellModel {
   names: string;
   /** True when a match exists that this phone has not opened yet. */
   hasUnseen: boolean;
+  /** Issue #4261: matches waiting on the viewer's vote ("{n} to vote"). */
+  toVote: number;
   loading: boolean;
 }
 
@@ -73,6 +85,8 @@ export interface PlanCellModel {
   loading: boolean;
   /** The saved card of the plan shown, so tapping it opens that plan's card. */
   savedCardId: string;
+  /** Issue #4261: the plan shown (chat plans open their card in the thread). */
+  planRef: HeaderPlanRef | null;
 }
 
 export interface CollabHeaderStripModel {
@@ -179,6 +193,7 @@ export function buildCollabHeaderStrip(input: {
       photos,
       names: names.join(", "),
       hasUnseen: hasUnseenMatches(input.matches.map(matchKey), input.seenMatchIds),
+      toVote: input.matches.filter((match) => match.needsVote === true).length,
       loading: input.matchesLoading && input.matches.length === 0,
     };
   }
@@ -194,6 +209,7 @@ export function buildCollabHeaderStrip(input: {
       moreCount: upcoming.length > 0 ? upcoming.length - 1 : 0,
       loading: input.plansLoading && input.plans.length === 0,
       savedCardId: shown?.savedCardId ?? "",
+      planRef: shown?.planRef ?? (shown?.savedCardId ? { kind: "deck", savedCardId: shown.savedCardId } : null),
     };
   }
 
@@ -204,9 +220,16 @@ export function buildCollabHeaderStrip(input: {
  * Issue #4114: what a tap on the strip's plan cell does. The plan itself (date
  * tile and name) opens THAT plan's card; "+N more" opens the Plans sheet.
  */
-export type PlanStripTap = { kind: "card"; savedCardId: string } | { kind: "sheet" };
+export type PlanStripTap =
+  | { kind: "card"; savedCardId: string }
+  | { kind: "chatPlan"; planId: string }
+  | { kind: "sheet" };
 
-export function planStripTap(plan: Pick<PlanCellModel, "savedCardId"> | null, part: "plan" | "more"): PlanStripTap {
+export function planStripTap(
+  plan: (Pick<PlanCellModel, "savedCardId"> & { planRef?: HeaderPlanRef | null }) | null,
+  part: "plan" | "more",
+): PlanStripTap {
+  if (part === "plan" && plan?.planRef?.kind === "chat") return { kind: "chatPlan", planId: plan.planRef.planId };
   if (part === "plan" && plan?.savedCardId) return { kind: "card", savedCardId: plan.savedCardId };
   return { kind: "sheet" };
 }
@@ -271,4 +294,69 @@ export function headerAvatarStack<T extends { id: string }>(
   const total = participantCount ?? participants.length;
   const removedSelf = others.length < participants.length ? 1 : 0;
   return { participants: others, participantCount: Math.max(others.length, total - removedSelf) };
+}
+
+/** One member of the header / Group info lists (the chat-open snapshot's shape). */
+export interface GroupMemberLike {
+  id: string;
+  name?: string;
+  username?: string;
+  avatar_url?: string;
+  is_online?: boolean;
+}
+
+/** A row of the live participants query (everyone except me). */
+export interface LiveParticipantLike {
+  userId: string;
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+}
+
+/**
+ * Issue #4261 amendment 1 (B-4): who is in this chat now. The live
+ * participants query is the one owner; until it has loaded, the snapshot taken
+ * when the chat opened. Live rows are mapped to the snapshot's member shape
+ * (keeping a member's online flag from the snapshot) and I am added from the
+ * snapshot (the live query leaves me out on purpose).
+ */
+export function liveGroupMembers<T extends GroupMemberLike>(
+  snapshot: readonly T[],
+  live: readonly LiveParticipantLike[] | undefined,
+  currentUserId: string | null | undefined,
+): GroupMemberLike[] {
+  if (live === undefined) return [...snapshot];
+  const byId = new Map(snapshot.map((member) => [member.id, member]));
+  const me = currentUserId ? byId.get(currentUserId) ?? { id: currentUserId } : null;
+  const others = live
+    .filter((row) => row.userId !== currentUserId)
+    .map((row) => {
+      const before = byId.get(row.userId);
+      return {
+        id: row.userId,
+        name: row.displayName,
+        username: row.username ?? undefined,
+        avatar_url: row.avatarUrl ?? undefined,
+        ...(before?.is_online !== undefined ? { is_online: before.is_online } : {}),
+      };
+    });
+  return me ? [me, ...others] : others;
+}
+
+/**
+ * The ids of the open chat's "joined" / "added" group rows. When this key
+ * changes, someone came in, so the live member list is refetched.
+ */
+export function groupJoinEventKey(
+  messages: readonly { id: string; isSystem?: boolean; cardPayload?: unknown }[],
+): string {
+  const ids: string[] = [];
+  for (const message of messages) {
+    if (!message.isSystem) continue;
+    const payload = message.cardPayload as { kind?: unknown; event?: unknown } | undefined;
+    if (payload?.kind === "group_event" && (payload.event === "joined_by_link" || payload.event === "members_added")) {
+      ids.push(message.id);
+    }
+  }
+  return ids.sort().join(",");
 }

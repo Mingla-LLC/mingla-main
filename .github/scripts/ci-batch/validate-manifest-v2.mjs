@@ -349,17 +349,34 @@ export function phase3dContractDigest(manifest) {
 // #4255: register the admin access and Work closed-range migrations the same way.
 // #3281: register the fast Explorer listing rule migration and its proof the same way.
 // #3281: register the per-date Explorer listing rule migration and its proof the same way.
+// #4261: register the friend-share, plan, place-vote, referral and repin migrations.
+// #4261: register the friend-request decline fix migration and its proof the same way.
 // #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
+// #4273: register the Invite step sources-and-methods migration and its proofs the same way.
+// #4273: register the Blast combined-audience migration and its proofs the same way.
+// #4273: register the tester adversarial proofs the same way.
+// #4273: register the rework proofs the same way.
+// #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
+// #4273: register the tester retest proofs the same way.
+// #4273: register the segment-count proofs the same way.
+// #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
 // #4271: the door pay migration and its proof join the preserved inventories, and the
 // migration joins the pre-#1931 replay's exact-file exclusion (#2492).
 // #4271: register the tester adversarial PostgreSQL proof the same way.
 // #4271: register the rework implementor PostgreSQL proof the same way.
 // #4271: register the Apple build PostgreSQL proof the same way.
 // #4271: register the final tester PostgreSQL proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c90baf41d80d3df7e07d2e1fba713c81a7890bdfe283420e358769bc309deb41";
+// #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "af0f3088a08b47075b7339b0aed7603159f891da40e5b36f05775b71cd41d6ca";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1217,7 +1234,7 @@ export function trackedFilesCalls() {
 }
 
 export function withTrackedFilesScope(root, fn) {
-  const scope = { root: path.resolve(root), cache: new Map() };
+  const scope = { root: path.resolve(root), cache: new Map(), observations: new Map() };
   trackedFilesScopeStack.push(scope);
   try {
     return fn();
@@ -1232,6 +1249,22 @@ function trackedFilesScopeFor(key) {
     if (trackedFilesScopeStack[index].root === key) return trackedFilesScopeStack[index];
   }
   return null;
+}
+
+// [#4261] One read of the tree per scope, for what validation only observes. A
+// scope already promises the tree and index do not move while it is open, so a
+// repeated walk or read can only return what the first one returned. A validation
+// that pays for these per suite costs 10 s, and the gates that validate per attack
+// repeat that dozens of times. Outside a scope this computes every time. Only
+// tree observations belong here: a verdict over a manifest is never cached, or a
+// mutated manifest would inherit the verdict of the one before it. Callers must
+// treat the returned value as read-only.
+function observeOnce(root, kind, key, compute) {
+  const scope = trackedFilesScopeFor(path.resolve(root));
+  if (!scope) return compute();
+  const slot = `${kind}\0${key}`;
+  if (!scope.observations.has(slot)) scope.observations.set(slot, compute());
+  return scope.observations.get(slot);
 }
 
 // [#2439 SC-15.4] Exported so the post-cutover retired-reference inventory can
@@ -1250,11 +1283,13 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
+    // The list of tracked paths has passed Node's default 1 MiB output limit.
     listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOBUFS") throw new Error("registry validation: git ls-files output exceeded maxBuffer");
     throw new Error("registry validation requires a git worktree");
   }
   if (!scope) return listed;
@@ -1312,6 +1347,11 @@ function configPathsFromCommand(command) {
 }
 
 function filesSelectedByJestConfig(configRelative, cwd, root, commandTestMatch = []) {
+  return observeOnce(root, "jest-selection", JSON.stringify([configRelative, cwd, commandTestMatch]),
+    () => selectFilesByJestConfig(configRelative, cwd, root, commandTestMatch));
+}
+
+function selectFilesByJestConfig(configRelative, cwd, root, commandTestMatch) {
   const configAbsolute = path.resolve(root, cwd, configRelative);
   const repositoryRelative = path.relative(root, configAbsolute);
   if (repositoryRelative.startsWith("..") || path.isAbsolute(repositoryRelative) || !fs.statSync(configAbsolute).isFile()) {
@@ -1458,6 +1498,10 @@ const workflowInspectionCache = new Map();
 
 export function inspectWorkflows(root = DEFAULT_ROOT, workflowNames = discoverLiveOrigins(root)) {
   const names = [...new Set(workflowNames)].sort();
+  return observeOnce(root, "workflow-inspection", names.join("\0"), () => inspectNamedWorkflows(root, names));
+}
+
+function inspectNamedWorkflows(root, names) {
   const sources = Object.fromEntries(names.map((name) => {
     const source = fs.readFileSync(path.join(root, ".github/workflows", name), "utf8");
     return [name, canonicalizeShadowWrapperSource(name, source)];
@@ -1580,12 +1624,19 @@ output = {
 STDOUT.write(JSON.generate(output))
 `;
 
+// [#4261] The inspector's output depends only on the text it is given, so the same
+// text never needs a second Ruby process. Each caller still parses its own copy.
+const batchInspectionCache = new Map();
+
 export function inspectBatchWorkflow(source) {
-  return JSON.parse(execFileSync("ruby", ["-e", RUBY_BATCH_INSPECTOR], {
-    input: source,
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-  }));
+  if (!batchInspectionCache.has(source)) {
+    batchInspectionCache.set(source, execFileSync("ruby", ["-e", RUBY_BATCH_INSPECTOR], {
+      input: source,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    }));
+  }
+  return JSON.parse(batchInspectionCache.get(source));
 }
 
 export function validatePhase2Contract(manifestOrOptions, matrixSource) {
@@ -1843,9 +1894,35 @@ function setupExecutable(executable, argv) {
   return !new Set(["node", "npx", "python3", "grep", "echo", "printf", "true", "false", "exit", "test", "["]).has(executable);
 }
 
+// Every regular file under a suite cwd, skipping node_modules and dot entries, for
+// the Jest name-pattern tokens below.
+function filesUnderSuiteCwd(root, cwd) {
+  return observeOnce(root, "cwd-files", cwd, () => {
+    const files = [];
+    const pending = [path.join(root, cwd)];
+    while (pending.length) {
+      const directory = pending.pop();
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const absolute = path.join(directory, entry.name);
+        if (entry.isDirectory()) pending.push(absolute);
+        else if (entry.isFile()) files.push({ absolute, lowerName: entry.name.toLowerCase() });
+      }
+    }
+    return files;
+  });
+}
+
+function trackedFilesMatchingGlob(root, repositoryFiles, glob) {
+  return observeOnce(root, "tracked-glob", glob, () => {
+    const matcher = globToRegExp(glob);
+    return [...repositoryFiles].filter((tracked) => matcher.test(tracked.replaceAll(path.sep, "/")));
+  });
+}
+
 export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
   const found = new Set();
-  const repositoryFiles = new Set(trackedFiles(root));
+  const repositoryFiles = observeOnce(root, "tracked-set", "", () => new Set(trackedFiles(root)));
   for (const step of suite.steps || []) {
     // Compound shell blocks are executed through their typed leaves. Derive
     // provenance from those real leaf cwd/invocations, never from the inert
@@ -1872,8 +1949,7 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
     for (const match of command.matchAll(/\bfind\s+([A-Za-z0-9_.\/-]+)[^\n]*?(?:\\\n[^\n]*)*?\s-name\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+))/g)) {
       const directory = path.normalize(path.join(cwd, match[1])).replaceAll(path.sep, "/");
       const pattern = match[2] || match[3] || match[4];
-      const matcher = globToRegExp(`${directory}/${pattern}`);
-      for (const tracked of repositoryFiles) if (matcher.test(tracked)) found.add(tracked);
+      for (const tracked of trackedFilesMatchingGlob(root, repositoryFiles, `${directory}/${pattern}`)) found.add(tracked);
     }
     for (const config of configPathsFromCommand(command)) {
       for (const selected of filesSelectedByJestConfig(config, cwd, root, commandTestMatch)) found.add(selected);
@@ -1890,10 +1966,7 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
         // wildcard expansion so newly migrated files cannot disappear.
         if (!PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle)) continue;
         const relativePattern = path.normalize(path.join(cwd, token)).replaceAll(path.sep, "/");
-        const matcher = globToRegExp(relativePattern);
-        for (const tracked of trackedFiles(root)) {
-          if (matcher.test(tracked.replaceAll(path.sep, "/"))) found.add(tracked);
-        }
+        for (const tracked of trackedFilesMatchingGlob(root, repositoryFiles, relativePattern)) found.add(tracked);
         continue;
       }
       for (const relative of [path.normalize(path.join(cwd, token)), path.normalize(token)]) {
@@ -1911,18 +1984,9 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
       // Resolve that pattern against the real suite cwd so the registry cannot
       // silently omit a file that the preserved command actually selects.
       if (/^(?:issue|orch|meta)[_-]\d+/i.test(token) && !token.includes("/")) {
-        const base = path.join(root, cwd);
-        const pending = [base];
-        while (pending.length) {
-          const directory = pending.pop();
-          for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-            if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-            const absolute = path.join(directory, entry.name);
-            if (entry.isDirectory()) pending.push(absolute);
-            else if (entry.isFile() && entry.name.toLowerCase().includes(token.toLowerCase())) {
-              found.add(path.relative(root, absolute));
-            }
-          }
+        const needle = token.toLowerCase();
+        for (const { absolute, lowerName } of filesUnderSuiteCwd(root, cwd)) {
+          if (lowerName.includes(needle)) found.add(path.relative(root, absolute));
         }
       }
     }
@@ -2126,10 +2190,10 @@ function validateRegistryInTrackedFilesScope(
   // registry rather than the class in hand.
   errors.push(...validateOriginPathShapes(rawManifest));
   errors.push(...validateOriginPathLiveness(manifest, trackedFiles(root)));
-  const workflowSources = Object.fromEntries(fs
+  const workflowSources = observeOnce(root, "workflow-sources", "", () => Object.fromEntries(fs
     .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
-    .map((entry) => [entry.name, fs.readFileSync(path.join(root, ".github/workflows", entry.name), "utf8")]));
+    .map((entry) => [entry.name, fs.readFileSync(path.join(root, ".github/workflows", entry.name), "utf8")])));
   // [#2439 SC-16.7] ONE workflow inspection per validateRegistry call.
   // inspectWorkflow() re-derives its cache key by reading and hashing all 165
   // workflow sources, so calling it once per shadow suite paid that 29 times per

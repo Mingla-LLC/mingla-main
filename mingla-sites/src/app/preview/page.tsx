@@ -13,6 +13,9 @@ import { requestHost, resolveHostSite } from "../../lib/publication";
 import { loadPageExtras } from "../../lib/pageExtras";
 import { PreviewTokenBridge } from "../../components/PreviewTokenBridge";
 import { runtimeConfig } from "../../lib/config";
+import { PreviewLinkScope, type PreviewScope } from "../../components/PreviewLinks";
+import { withPreviewMediaKey, withPreviewOfferingKey } from "../../lib/previewMedia";
+import { businessPreviewFrameAncestor } from "../../lib/origins";
 
 /** Local mode only when the runtime config says so (any doubt: production rules). */
 function previewLocalMode(): boolean {
@@ -28,6 +31,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Private preview — not live",
   robots: { index: false, follow: false },
+  referrer: "no-referrer",
 };
 
 /**
@@ -65,6 +69,8 @@ export default async function PreviewPage({
   } catch {
     notFound();
   }
+  // #2830 — this page's pictures and videos come through the key, not the publication.
+  artifact = withPreviewMediaKey(artifact, parsed.key);
   const resolved = resolveSitePath(artifact, previewPath);
   if (resolved.kind !== "page" && resolved.kind !== "entry") notFound();
   const entry = resolved.kind === "entry" ? resolved.entry : undefined;
@@ -79,12 +85,24 @@ export default async function PreviewPage({
     search: params,
     preview: true,
   });
+  const incoming = await headers();
+  const scope: PreviewScope = {
+    target: {
+      key: parsed.key,
+      // A frame on a Business preview deployment must survive the next page too.
+      frameAncestor: businessPreviewFrameAncestor(Array.isArray(params.fa) ? params.fa[0] : params.fa),
+    },
+    path: previewPath,
+    assetKey: parsed.key,
+  };
   return (
     <div data-preview="1" data-artifact-digest={parsed.digest} data-page={resolved.page.key}>
       <p className="preview-banner" role="status">
         Private preview — not live. Publishing is always a separate confirmation.
       </p>
-      <SitePageView artifact={artifact} page={resolved.page} previewKey={parsed.key} live={live} forms={forms} entry={entry} saveData={wantsLessData(await headers())} />
+      <PreviewLinkScope scope={scope}>
+        <SitePageView artifact={artifact} page={resolved.page} previewKey={parsed.key} live={withPreviewOfferingKey(live, parsed.key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
+      </PreviewLinkScope>
       {/* #2829 W9r — unsaved colours/shape/motion from the Business app's Website design. */}
       <PreviewTokenBridge localMode={previewLocalMode()} />
     </div>

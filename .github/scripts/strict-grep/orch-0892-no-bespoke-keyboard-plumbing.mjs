@@ -334,6 +334,15 @@ const RE_INPUT_LEAF = /<(TextInput|textarea|input)[\s/>]|contentEditable/;
  */
 const BOUNDARY_TAGS = ["Modal", "Sheet"];
 
+/**
+ * #4273 — files whose scroll container hosts fields arriving as `children`. The
+ * import graph cannot see through a prop, so these are named: a bare container
+ * in one of them is a violation with no field in sight.
+ */
+export const CHILDREN_INPUT_HOSTS = new Set([
+  "mingla-business/src/components/marketing/ComposerMethodCards.tsx",
+]);
+
 // ---------------------------------------------------------------------------
 // Line helpers
 // ---------------------------------------------------------------------------
@@ -996,7 +1005,7 @@ export function scanKeyboardPlumbing({
           // invisible, which is precisely hole H1's other half. The span
           // therefore always spans the props too.
           const body = containerFlow.slice(span.start, span.end);
-          let hosts = RE_INPUT_LEAF.test(body);
+          let hosts = CHILDREN_INPUT_HOSTS.has(relPath) || RE_INPUT_LEAF.test(body);
           if (!hosts) {
             for (const child of renderedComponentsIn(body)) {
               const target = map.get(child);
@@ -1103,6 +1112,20 @@ export const Input = (props) => <TextInput {...props} />;
  * unrelated one still firing.
  */
 const BAD_FIXTURES = [
+  {
+    id: "G-4273",
+    why: "#4273 — a named children host holds its fields through a prop, so a bare container there must fire with no field in the file",
+    expect: /bare react-native container/,
+    files: {
+      ...GOOD_FIXTURE,
+      [`${FIXTURE_ROOT}/src/components/marketing/ComposerMethodCards.tsx`]: `
+import React from "react";
+import { ScrollView } from "react-native";
+
+export const ComposerMethodCards = ({ children }) => <ScrollView>{children}</ScrollView>;
+`,
+    },
+  },
   {
     id: "G-15",
     why: "issue #2011 — an input-bearing child returned by a local renderer function must not disappear behind `{renderWorkspace()}`",
@@ -1325,6 +1348,18 @@ export const NamespaceContainer = () => (
 ];
 
 const NEGATIVE_FIXTURES = [
+  {
+    id: "G-4273-OK",
+    why: "#4273 — the same children host through the wrapper is the correct shape",
+    files: {
+      [`${FIXTURE_ROOT}/src/components/marketing/ComposerMethodCards.tsx`]: `
+import React from "react";
+import { ScrollView } from "../../wrappers/SmartScrollView";
+
+export const ComposerMethodCards = ({ children }) => <ScrollView>{children}</ScrollView>;
+`,
+    },
+  },
   {
     id: "G-8",
     why: "B1-6 — a type-only ScrollView import is not a container; the CORRECT migration keeps one for its scroll handle",

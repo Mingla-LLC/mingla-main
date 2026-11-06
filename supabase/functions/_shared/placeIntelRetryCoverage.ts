@@ -3,6 +3,7 @@ export type RetryFailureClass =
   | "malformed_function_call"
   | "transient_infra_or_db"
   | "prep_prerequisites_missing"
+  | "review_fetch_failed"
   | "structural_or_data"
   | "permission_or_config"
   | "other";
@@ -104,6 +105,11 @@ export function classifyPlaceIntelFailure(
 
   if (includesAny(value, INFRA_PATTERNS)) {
     return { failureClass: "transient_infra_or_db", retryable: true };
+  }
+
+  // #4276 S4: the place is fine; the fetch didn't work. A redo should pick it up.
+  if (value.includes("review_fetch_failed")) {
+    return { failureClass: "review_fetch_failed", retryable: true };
   }
 
   if (value.includes("prerequisites_missing")) {

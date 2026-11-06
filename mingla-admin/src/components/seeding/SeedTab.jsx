@@ -553,7 +553,7 @@ export function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange 
         <>
           {/* Category Pills with Coverage */}
           <SectionCard title="Categories"
-            subtitle={coverage ? `${coverage.categoriesWithGaps} of 13 categories have gaps (<10 places)` : null}
+            subtitle={coverage ? `${coverage.categoriesWithGaps} of ${coverage.coverage.length} categories have gaps (<10 places)` : null}
             action={coverage?.categoriesWithGaps > 0 && (
               <Button size="sm" variant="secondary" icon={AlertTriangle} onClick={selectOnlyGaps}>
                 Select Only Gaps

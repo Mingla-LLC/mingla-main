@@ -18,6 +18,7 @@ import { useBrandSiteDomains } from "../../../../hooks/useBrandSite";
 import { plannedPagesFor } from "../../../../../../packages/site-contracts/src/sitePlan.ts";
 import { PLANNED_PAGE_LABELS } from "../../../../../../packages/site-contracts/src/emptyStates.ts";
 import type { WebsiteSection } from "../../../../sites/websiteNav";
+import { partLabel, planBuildDone } from "../../../../sites/sitePlanState";
 
 /**
  * #2829 W9r (DESIGN_SPEC §1.6 Overview) — status first, the one decision
@@ -73,12 +74,19 @@ function StatusCard({ published, offline, host }: { published: boolean; offline:
   const changes = useDraftChanges(site.id);
   const count = changes.data?.changes.length ?? 0;
   const publishedAt = changes.data?.published_at ?? null;
+  // #2830 — a provisioned site is not a built draft: one empty Home page must
+  // not read as ready. Only the server's build tick says it is.
+  const unfinished = !published && ctx.plan !== null && !planBuildDone(ctx.plan);
   const title = offline
     ? `Offline since ${formatWebsiteDateTime(site.owner_offline_at)}`
-    : !published
+    : unfinished
+      ? "Draft not finished"
+      : !published
       ? "Draft ready · not published yet"
       : `Live · published ${formatWebsiteDateTime(publishedAt ?? site.updated_at)}`;
-  const hint = !published
+  const hint = unfinished
+    ? "Finish it in Website setup. Your answers are saved"
+    : !published
     ? "Add content, then publish when you're happy"
     : count > 0
       ? `${count} ${count === 1 ? "change" : "changes"} in your draft that visitors can't see yet`
@@ -276,9 +284,9 @@ function NoSiteOverview(): React.ReactElement {
   const ctx = useWebsite();
   const { plan, phone, headingRef, controller } = ctx;
   const router = useRouter();
-  const done = plan?.doneCount ?? 0;
+  const done = plan?.setupStatus?.doneCount ?? plan?.doneCount ?? 0;
   const total = plan?.parts.length || 8;
-  const next = plan?.parts.find((part) => !part.done);
+  const nextKey = plan?.setupStatus?.nextPart ?? plan?.nextPart ?? null;
   const pages = plannedPagesFor(ctx.offerings).map((key) => PLANNED_PAGE_LABELS[key].menu);
   const pageWords = ["Home", ...pages.filter((name) => name !== "Home"), "About", "Contact"];
   const uniquePages = [...new Set(pageWords)];
@@ -288,8 +296,8 @@ function NoSiteOverview(): React.ReactElement {
       <Card>
         <View style={styles.statusRow}>
           <View style={styles.grow}>
-            <CardTitle>{`Setup plan · ${done} of ${total} done`}</CardTitle>
-            {next ? <Hint>{`Next: ${partName(next.key)}`}</Hint> : null}
+            <CardTitle>{`Website setup · ${done} of ${total} done`}</CardTitle>
+            {nextKey ? <Hint>{`Next: ${partLabel(nextKey)}`}</Hint> : null}
           </View>
           <Chip label="Private until you publish" />
         </View>
@@ -298,7 +306,7 @@ function NoSiteOverview(): React.ReactElement {
         </View>
         <View style={styles.actions}>
           <WButton label="Continue with Ari" icon="spark" variant="primary" onPress={() => router.push(`/brand/${ctx.brandId}/website/ari?intent=setup` as never)} testID="nosite-ari" />
-          <WButton label="See the plan" onPress={() => ctx.go({ kind: "section", section: "plan" })} testID="nosite-plan" />
+          <WButton label="Open Website setup" onPress={() => ctx.go({ kind: "setup", step: null })} testID="nosite-plan" />
         </View>
       </Card>
       <Card>
@@ -313,20 +321,6 @@ function NoSiteOverview(): React.ReactElement {
       {controller.capabilities.canCreate ? null : <Hint>Only a brand admin or the owner can create the website draft.</Hint>}
     </View>
   );
-}
-
-export function partName(key: string): string {
-  const names: Record<string, string> = {
-    offer: "What you'll offer",
-    brand: "Your brand details",
-    look: "Choose your design",
-    story: "Your story",
-    approve: "Approve the plan",
-    build: "Build your pages",
-    first_offering: "Add your first trip or event",
-    publish: "Check and publish",
-  };
-  return names[key] ?? key;
 }
 
 const styles = StyleSheet.create({

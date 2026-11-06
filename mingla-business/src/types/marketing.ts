@@ -117,7 +117,16 @@ export type SealedMarketingAudienceKind =
   | "all_brand_people"
   | "manual_group"
   | "brand_followers"
-  | "brand_circle_extended";
+  | "brand_circle_extended"
+  | "combined_sources";
+
+/** #4273 — one picked group: its name and totals, never a person. */
+export interface MarketingAudienceSourceTotal {
+  key: string;
+  name: string;
+  count: number;
+  alsoInBookCount: number;
+}
 
 /** #3682 Wave 2.7 — additive usage snapshot from preview (not in quote hash). */
 export interface MarketingBookAllowance {
@@ -147,7 +156,48 @@ export interface MarketingBookQuote {
   audienceId?: string;
   audienceKind?: SealedMarketingAudienceKind;
   audienceVersion?: number;
+  /** #4273 — each picked group of a combined audience. */
+  audienceSources?: MarketingAudienceSourceTotal[];
+  /**
+   * #4273 — the SMS total's per-currency parts. Two or more rows mean the
+   * total was converted into `currency` (the brand's) at quote time.
+   */
+  costBreakdown?: SmsCostBreakdownRow[];
   allowance?: MarketingBookAllowance;
+}
+
+/** #4273 — one provider currency's part of an SMS total. */
+export interface SmsCostBreakdownRow {
+  currency: string;
+  providerCostMinor: number;
+  convertedCostMinor: number;
+}
+
+/** #4273 — one campaign across methods: the figures that count each person once. */
+export interface CampaignGroupFigures {
+  selectedCount: number;
+  reachableCount: number;
+  skippedCount: number;
+  estimatedCostMinor: number | null;
+  currency: string | null;
+  costKind: "provider_estimate" | "not_metered";
+  /** #4273 — the SMS total's per-currency parts. */
+  costBreakdown?: SmsCostBreakdownRow[];
+  audienceSources: MarketingAudienceSourceTotal[];
+  quotedAt: string;
+  expiresAt: string;
+}
+
+export interface CampaignGroupPreview {
+  group: CampaignGroupFigures | null;
+  methods: Array<{
+    campaignId: string;
+    channel: "email" | "sms" | "push";
+    quote: MarketingBookQuote | null;
+    error: string | null;
+  }>;
+  /** #4273 — group drafts the client did not name; the client discards them. */
+  unlistedDraftIds?: string[];
 }
 export type MarketingBookPreviewState =
   | { kind: "idle" }
@@ -195,6 +245,8 @@ export interface ChannelPayloadPush {
   body: string;
   /** Optional offering in this brand that the push opens. */
   event_id?: string;
+  /** #4273 — the notification's title (the email subject); absent keeps the brand name. */
+  title?: string;
 }
 
 export type CampaignChannelPayload =

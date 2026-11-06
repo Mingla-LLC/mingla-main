@@ -191,6 +191,10 @@ import {
   formatOccurrenceSummary,
 } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+import {
+  ticketDayScopeLabel,
+  ticketOffChosenDays,
+} from "../../components/expandedCard/ticketDayScope";
 
 const ACCENT = "#FF6B35";
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
@@ -409,6 +413,11 @@ export default function ConsumerEventDetailScreen({
   const followerCountLabels = useFollowerCountLabels();
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
+  // issue #3281 — the cart's seed, frozen per opening (set further down, after
+  // the day-scope filter). Declared here, above every early return, so the
+  // hook order never changes between a loading render and a loaded one.
+  const cartSeedQuantitiesRef = useRef<Record<string, number>>({});
+  const cartWasVisibleRef = useRef<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
     null,
   );
@@ -1579,7 +1588,7 @@ export default function ConsumerEventDetailScreen({
     socialProofQuery.data?.hideRemainingCount === true ||
     (bundleHideRemainingCount !== false &&
       socialProofQuery.data?.hideRemainingCount !== false);
-  const publicEventForBody: PublicEventProps =
+  const sourcedPublicEvent: PublicEventProps =
     canonical === null
       ? {
           ...seededPublicEvent,
@@ -1598,6 +1607,47 @@ export default function ConsumerEventDetailScreen({
           dateSubline: occurrenceSummary,
           hideRemainingCount,
         };
+  // issue #3281 — a ticket the guest's days leave out isn't counted on the page
+  // or carried into the cart. Its quantity is kept, so it comes back if the
+  // days do (the cart's Undo, or picking the day again).
+  const offDayTicketIds = new Set(
+    sourcedPublicEvent.tickets
+      .filter((ticket) => ticketOffChosenDays(ticket.validOccurrenceIds, selectedEventDateIds))
+      .map((ticket) => ticket.id),
+  );
+  const onDayTicketQuantities: Record<string, number> =
+    offDayTicketIds.size === 0
+      ? ticketQuantities
+      : Object.fromEntries(
+          Object.entries(ticketQuantities).filter(([id]) => !offDayTicketIds.has(id)),
+        );
+  // The cart is seeded once per opening. The filtered set changes with the
+  // days, and a changed seed re-seeds an open cart over the guest's edits, so
+  // it is frozen at the render the cart opens in (which already holds the
+  // quantities the tap that opened it set) and follows the page while closed.
+  if (!cartVisible || !cartWasVisibleRef.current) {
+    cartSeedQuantitiesRef.current = onDayTicketQuantities;
+  }
+  cartWasVisibleRef.current = cartVisible;
+  // issue #3281 — each listed ticket says which days it covers, and reads as
+  // off the guest's days when it covers none of them. Decorated after either
+  // source is chosen, so a deck or chat arrival (warm, seeded) gets it too;
+  // each source keeps its own tickets.
+  const publicEventForBody: PublicEventProps = {
+    ...sourcedPublicEvent,
+    tickets: sourcedPublicEvent.tickets.map((ticket) => ({
+      ...ticket,
+      dayScopeLabel: ticketDayScopeLabel(
+        ticket.validOccurrenceIds,
+        validOccurrences,
+        validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
+      ),
+      offChosenDays: ticketOffChosenDays(
+        ticket.validOccurrenceIds,
+        selectedEventDateIds,
+      ),
+    })),
+  };
   const canonicalLifecycleReady =
     validatedDayCanonical !== null && !canonicalQuery.isError;
   const canonicalLifecycleBlockedLabel = canonicalQuery.isError
@@ -1812,7 +1862,7 @@ export default function ConsumerEventDetailScreen({
                 bookable
                 palette={palette}
                 theme={theme}
-                ticketQuantities={ticketQuantities}
+                ticketQuantities={onDayTicketQuantities}
                 onChangeTicketQuantity={handleChangeTicketQuantity}
                 onProceedToCart={handleProceedToCart}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
@@ -1943,7 +1993,7 @@ export default function ConsumerEventDetailScreen({
               bookable
               palette={palette}
               theme={theme}
-              ticketQuantities={ticketQuantities}
+              ticketQuantities={onDayTicketQuantities}
               onProceedToCart={handleProceedToCart}
               submitting={checkoutInFlight || !canonicalLifecycleReady}
               purchaseReady={canonicalLifecycleReady}
@@ -1966,7 +2016,7 @@ export default function ConsumerEventDetailScreen({
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
-        initialQuantities={ticketQuantities}
+        initialQuantities={cartSeedQuantitiesRef.current}
         buyerName={explorerCheckoutContact.normalized.name}
         buyerEmail={explorerCheckoutContact.normalized.email}
         buyerPhone={explorerCheckoutContact.normalized.phone}

@@ -27,7 +27,8 @@ function entryContext(site: EntrySite): string {
   if (site.status === "provisioning") return "Setting up…";
   // #2829 — the owner/admin took it offline; say so before anything "live".
   if (site.owner_offline_at) return "Offline";
-  if (site.status === "draft") return "Draft ready";
+  // #2830 — "draft" only says the site exists, not that its pages were built.
+  if (site.status === "draft") return "Draft";
   if (site.status === "publishing") return "Publishing…";
   if (site.status === "error") return "Publish needs attention";
   const host = site.brand_site_hosts?.find(

@@ -22,6 +22,7 @@ import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
 import { supabase } from '../../services/supabase'
 import { LinearGradient } from 'expo-linear-gradient'
 import { claimPendingFriendInvite } from '../../services/pendingFriendInvite'
+import { fetchPersonName } from '../../services/friendShareLinkService'
 import { runCombinedAccept } from '../connections/friendsSheetModel'
 import { AddedFriend, OnboardingPairAction } from '../../types/onboarding'
 import { FriendRequest } from '../../services/friendsService'
@@ -158,12 +159,23 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   const { data: hiddenPairRequests = [], refetch: refetchHiddenPairRequests } = useIncomingHiddenPairRequests(userId)
   const [inviterId, setInviterId] = useState<string | null>(null)
   const [inviteCardState, setInviteCardState] = useState<'open' | 'accepting' | 'paired' | 'friends' | 'dismissed'>('open')
+  const [acceptedInviterName, setAcceptedInviterName] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     void claimPendingFriendInvite()
       .then(async (claim) => {
         if (cancelled || claim.status !== 'claimed') return
         setInviterId(claim.inviterId)
+        // Issue #4261: a personal invite link connects straight away (no
+        // request to accept), so the card opens already in its friends state.
+        if (claim.kind === 'share') {
+          const name = await fetchPersonName(claim.inviterId)
+          if (cancelled) return
+          if (name) {
+            setAcceptedInviterName(name)
+            setInviteCardState('friends')
+          }
+        }
         await onRefreshRequests?.()
         refetchHiddenPairRequests()
       })
@@ -465,7 +477,6 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   }, [processingPairRequestId, declinePairMutation])
 
   // ─── Issue #4114: the inviter card ───
-  const [acceptedInviterName, setAcceptedInviterName] = useState<string | null>(null)
   const inviteRequest = React.useMemo(() => {
     if (inviteCardState === 'dismissed') return null
     const hiddenByFriendRequest = new Map(

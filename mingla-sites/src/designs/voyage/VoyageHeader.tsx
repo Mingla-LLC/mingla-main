@@ -1,8 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- the logo is the site's own first-party, immutable media. */
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useSitePathname, SiteRouteLink as Link } from "../../components/PreviewLinks";
 import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 
 /*
@@ -342,7 +341,7 @@ export function VoyageHeader({ items, logo, siteName, cta }: {
   siteName: string;
   cta: { label: string; href: string } | null;
 }) {
-  const pathname = usePathname() ?? "/";
+  const pathname = useSitePathname();
   const [stuck, setStuck] = useState(false);
 
   useEffect(() => {

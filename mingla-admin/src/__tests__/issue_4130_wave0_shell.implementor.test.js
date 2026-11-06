@@ -83,7 +83,9 @@ const REDIRECTS = {
   signals: ["placepool", "pipeline"],
   // #4130 (Wave 4b): the Deck tuner is an action on a place in Browse and map.
   "deck-tuner": ["placepool", "browse"],
-  "place-intelligence-trial": ["settings", "intelligence-trial"],
+  // #4276: Intelligence is part of the Place pool pipeline again, not a retired
+  // research tool parked in Settings.
+  "place-intelligence-trial": ["placepool", "pipeline"],
   "stripe-mode": ["platform-health", "stripe"],
   "api-health": ["platform-health", "providers"],
   "queue-health": ["platform-health", "queue"],
