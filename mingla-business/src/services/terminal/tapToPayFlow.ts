@@ -22,6 +22,7 @@ import type { TapToPayDraft } from "./tapToPayDraft";
 import type {
   CreateDoorTapIntentInput,
   DoorTapCompleteResult,
+  DoorTapErrorCode,
   DoorTapIntent,
 } from "./doorTapEdge";
 import { DoorTapError } from "./doorTapEdge";
@@ -318,6 +319,14 @@ const monotonicNow = (): number => {
   return typeof perf?.now === "function" ? perf.now() : Date.now();
 };
 
+/** Create failures after which the server may still have made the intent. */
+const UNCLEAR_CREATE_FAILURES: ReadonlySet<DoorTapErrorCode> = new Set<DoorTapErrorCode>([
+  "network_error",
+  "server_error",
+  "invalid_response",
+  "unknown",
+]);
+
 /** When an intent's clock started, on both clocks. */
 interface IntentClock {
   monotonic: number;
@@ -476,7 +485,16 @@ export class TapToPaySaleFlow {
       if (this.closed) return;
       if (!(await this.replaceStaleIntent())) return;
       this.emit({ kind: "starting" });
-      if (this.intent === null && !(await this.createIntent())) return;
+      if (this.intent === null) {
+        if (!(await this.createIntent())) return;
+        // A replayed create (its first answer was lost) hands back the intent the
+        // first call made, which can already be past the limit: replace it before
+        // any ready screen or Apple's sheet.
+        if (this.readyTimeLeftMs() <= 0) {
+          if (!(await this.replaceStaleIntent())) return;
+          if (!(await this.createIntent())) return;
+        }
+      }
       const intent = this.intent;
       if (intent === null || this.closed) return;
       // A sale never accepts Apple's terms: terms-not-accepted goes to setup.
@@ -519,6 +537,12 @@ export class TapToPaySaleFlow {
         phoneCountryIso: this.input.draft.phoneCountryIso,
       });
     } catch (error) {
+      // The server refused outright, so no intent was made for this id: a later
+      // retry starts a fresh clock. An unclear failure (lost answer, server
+      // error) may have made one, so its clock keeps running.
+      if (error instanceof DoorTapError && !UNCLEAR_CREATE_FAILURES.has(error.code)) {
+        this.intentClockStart = null;
+      }
       if (this.closed) return false;
       if (error instanceof DoorTapError && error.code === "tap_not_available") {
         this.emit({ kind: "not_on_this_phone" });

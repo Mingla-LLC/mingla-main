@@ -750,7 +750,7 @@ describe("retest 3 P2-1: nothing collects after the sale is closed", () => {
   });
 });
 
-describe("retest 3 P3-1: the intent's age counts sleep", () => {
+describe("retest 3 P3-1/P3-2: the intent's age counts sleep and late creates", () => {
   const MIN = 60 * 1000;
   const flush = async (): Promise<void> => {
     for (let i = 0; i < 40; i += 1) await Promise.resolve();
@@ -856,6 +856,46 @@ describe("retest 3 P3-1: the intent's age counts sleep", () => {
       jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
       await flush();
       expect(h.flow.getState().kind).toBe("cancelled");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("P3-2 a create whose answer was lost, retried at 11 minutes: no ready on the stale intent, one collect on a fresh one", async () => {
+    jest.useFakeTimers();
+    try {
+      // The first call makes pi_1 on the server but its answer is lost.
+      const h = ageHarness({ createFails: (n) => (n === 1 ? new DoorTapError("network_error", "lost") : undefined), replayFirst: true });
+      void h.flow.start();
+      await flush();
+      expect(h.flow.getState().kind).toBe("failed");
+      jest.advanceTimersByTime(11 * MIN);
+      void h.flow.start();
+      await flush();
+      // The replay handed back pi_1 (11 minutes old): replaced before any ready or collect.
+      expect(h.log).toEqual(["create:pi_1", "cancel:pi_1", "create:pi_2", "collect:pi_2"]);
+      expect(h.readyAges).toEqual([{ pi: "pi_2", age: 0 }]);
+      expect(h.flow.getState().kind).toBe("ready");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("P3-2 a create the server refused, retried 12 minutes later: the new intent gets its own window, no false cancel", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = ageHarness({ createFails: (n) => (n === 1 ? new DoorTapError("buyer_phone_invalid", "bad phone") : undefined) });
+      void h.flow.start();
+      await flush();
+      expect(h.flow.getState().kind).toBe("failed");
+      jest.advanceTimersByTime(12 * MIN);
+      void h.flow.start();
+      await flush();
+      expect(h.log).toEqual(["create:pi_1", "collect:pi_1"]);
+      expect(h.cancelIntent).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS - 1);
+      await flush();
+      expect(h.flow.getState().kind).toBe("ready");
     } finally {
       jest.useRealTimers();
     }
