@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- the cover photograph is the site's own first-party, immutable media. */
-import Link from "next/link";
+import { SiteRouteLink as Link } from "../../../components/PreviewLinks";
 import type { ReactNode } from "react";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
 import { hrefForPage, sitePages, type ArtifactPage } from "../../../lib/pageRouting";

@@ -26,9 +26,13 @@ import {
 export function PlanDesignPart({
   brandId,
   planState,
+  onDone,
+  readOnly: forcedReadOnly = false,
 }: {
   brandId: string;
   planState: SitePlanState;
+  onDone: () => void;
+  readOnly?: boolean;
 }): React.ReactElement {
   const ctx = useWebsite();
   const save = useSaveBrandSitePlanDesign(brandId);
@@ -36,16 +40,16 @@ export function PlanDesignPart({
   const [choice, setChoice] = useState<DesignKey | null>(
     stored === "atelier" || stored === "voyage" ? stored : null,
   );
-  const readOnly = ctx.lock.heldByOther || planState.site?.paused === true;
+  const readOnly = forcedReadOnly || ctx.lock.heldByOther || planState.site?.paused === true;
 
-  const onSave = () => {
-    if (!choice || !planState.plan) return;
+  const persist = (designKey: DesignKey, sourceType: "owner" | "mingla") => {
+    if (!planState.plan) return;
     save.mutate(
-      { revision: planState.plan.revision, designKey: choice },
+      { revision: planState.plan.revision, designKey, sourceType },
       {
         onSuccess: () => {
           ctx.toast("Design saved to your setup plan. No draft was created.", "success");
-          ctx.go({ kind: "section", section: "plan" });
+          onDone();
         },
         onError: (error) =>
           ctx.toast(
@@ -56,6 +60,10 @@ export function PlanDesignPart({
           ),
       },
     );
+  };
+
+  const onSave = () => {
+    if (choice) persist(choice, "owner");
   };
 
   return (
@@ -108,10 +116,14 @@ export function PlanDesignPart({
         </Hint>
       </Card>
       <View style={styles.actions}>
+        {/* Skip is not offered: a design is required before a draft. This is
+            the server's own default (WEBSITE_DEFAULT_DESIGN), and it can change. */}
         <WButton
-          label="Back to setup plan"
+          label="Use Mingla's default design"
           variant="secondary"
-          onPress={() => ctx.go({ kind: "section", section: "plan" })}
+          disabled={readOnly || save.isPending}
+          onPress={() => persist("atelier", "mingla")}
+          testID="plan-design-default"
         />
         <WButton
           label="Save design"

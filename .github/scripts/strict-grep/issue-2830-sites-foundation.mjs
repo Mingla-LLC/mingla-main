@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // MINGLA-INVARIANT: I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY | issue #2830 | Sites serves only exact-host immutable digest-verified publications while Core retains identity, commerce, rank, and last-good authority.
+// MINGLA-INVARIANT: I-ARI-CHAT-ONE-CHUNK | issue #2830 | AriChatScreen is reached only through lazy import() targets, never a static import, so Metro keeps it out of the __common boot payload.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
@@ -1076,47 +1077,145 @@ export function violations(files) {
     "Publishing is always a separate confirmation.",
   ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
   /*
-   * #2830 — ONLY the Ari tab may import AriChatScreen.
+   * #2830 — AriChatScreen is one on-demand chunk.
+   * Invariant I-ARI-CHAT-ONE-CHUNK (declared at the top of this file).
    *
-   * A second importer gives Metro two chunks to serve the module from, and it
-   * hoists anything shared into the payload every Business user downloads
-   * before anything renders. Measured when the Website split view imported it
-   * directly: 2,436,294 B to 2,569,912 B, a 133KB regression on the boot path
-   * for people who may never open Ari. `React.lazy` does not help — sharing is
-   * what hoists, not eagerness.
+   * Metro makes each `import()` target one async chunk and moves anything that
+   * sits in two chunks into `__common`, the payload every Business user
+   * downloads before anything renders. A STATIC importer next to a lazy one
+   * duplicates the whole graph. Measured when the Website split view imported
+   * it directly: 2,436,294 B to 2,569,912 B, a 133KB regression on the boot
+   * path. Two dynamic importers of the same module resolve to ONE chunk and
+   * hoist nothing (measured on #2830), so that is the only allowed shape: no
+   * static importer anywhere under app/ or src/components/sites/, and dynamic
+   * importers are only the Ari tab and Website setup.
    *
    * This lives here rather than in a jest file because it is a STRUCTURAL rule
    * about the module graph, which is exactly what I-PROPOSED-1047 says belongs
    * in an additive gate rather than a source-text pin.
    */
   {
-    const ariImporters = [
+    const ALLOWED_DYNAMIC = new Set([
       "mingla-business/app/(tabs)/ari.tsx",
-      "mingla-business/app/brand/[id]/website/ari.tsx",
-      "mingla-business/app/brand/[id]/website.tsx",
-      // #2829 W9r — the Website section's shell is lazy-loaded by that route.
-      "mingla-business/src/components/sites/website/WebsiteApp.tsx",
-    ].filter((file) => {
-      let body = "";
+      "mingla-business/src/components/sites/setup/WebsiteSetupScreen.tsx",
+    ]);
+    const walk = (dir) => {
+      const found = [];
+      let entries = [];
       try {
-        body = fs.readFileSync(path.join(ROOT, file), "utf8");
+        entries = fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true });
       } catch {
-        return false;
+        return found;
       }
-      // Strip block comments: this gate's own docblock names the module, and a
-      // substring match would flag the file that deliberately does not import it.
-      body = body.replace(/\/\*[\s\S]*?\*\//g, "");
-      return /from\s+"[^"]*AriChatScreen"/.test(body);
-    });
-    if (
-      ariImporters.length !== 1 ||
-      ariImporters[0] !== "mingla-business/app/(tabs)/ari.tsx"
-    ) {
-      failures.push(
-        `AriChatScreen import boundary: must have exactly one importer ` +
-          `(app/(tabs)/ari.tsx); found: ${ariImporters.join(", ") || "none"}. ` +
-          `A second importer puts ~133KB on every Business user's boot path.`,
-      );
+      for (const entry of entries) {
+        const child = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (entry.name !== "__tests__") found.push(...walk(child));
+        } else if (/\.tsx?$/.test(entry.name)) found.push(child);
+      }
+      return found;
+    };
+    const dynamicImporters = [];
+    for (const file of [...walk("mingla-business/app"), ...walk("mingla-business/src/components/sites")]) {
+      // Strip comments: docblocks name the module on purpose.
+      const body = fs.readFileSync(path.join(ROOT, file), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      if (/from\s+"[^"]*AriChatScreen"/.test(body)) {
+        failures.push(
+          `AriChatScreen import boundary: static import in ${file}. ` +
+            `It must load through an inline React.lazy; a static importer puts ~133KB on every Business user's boot path.`,
+        );
+      }
+      if (/import\(\s*"[^"]*AriChatScreen"\s*\)/.test(body)) dynamicImporters.push(file);
+    }
+    for (const file of dynamicImporters) {
+      if (!ALLOWED_DYNAMIC.has(file)) {
+        failures.push(
+          `AriChatScreen import boundary: dynamic importer ${file} is not one of ` +
+            `${[...ALLOWED_DYNAMIC].join(", ")}.`,
+        );
+      }
+    }
+    if (!dynamicImporters.includes("mingla-business/app/(tabs)/ari.tsx")) {
+      failures.push("AriChatScreen import boundary: the Ari tab must load AriChatScreen with an inline dynamic import.");
+    }
+  }
+
+  /*
+   * #2830 — Website setup's structure. T-STAT-5: the migration's field map must
+   * equal the Ari steps, or a tick and a question disagree about what is open.
+   * T-RET-2/3: every creator route honours Website setup's way back, and only
+   * behind the check, so every other entry keeps today's exits exactly.
+   */
+  {
+    const read = (file) => {
+      try {
+        return fs.readFileSync(path.join(ROOT, file), "utf8");
+      } catch {
+        failures.push(`Website setup: ${file} is missing`);
+        return "";
+      }
+    };
+    const listAfter = (text, marker) => {
+      const at = text.indexOf(marker);
+      if (at < 0) return null;
+      const end = text.indexOf("]", at + marker.length);
+      return [...text.slice(at + marker.length, end).matchAll(/["']([a-z_.]+)["']/g)].map((m) => m[1]);
+    };
+    const flow = read("supabase/functions/_shared/ariFlows/websiteSetup.ts");
+    const migration = fs.readdirSync(path.join(ROOT, "supabase/migrations"))
+      .find((name) => name.endsWith("_issue_2830_website_setup_takeover.sql"));
+    const sql = migration ? read(`supabase/migrations/${migration}`) : "";
+    const fieldsOf = (part) => listAfter(flow.slice(flow.indexOf(`part: "${part}"`)), "fieldKeys: [");
+    const pairs = [
+      ["brand", listAfter(flow, "WEBSITE_BRAND_FIELD_ORDER: readonly string[] = Object.freeze([")],
+      ["offer", fieldsOf("offer")],
+      ["look", fieldsOf("look")],
+      ["story", fieldsOf("story")],
+    ];
+    for (const [part, expected] of pairs) {
+      const actual = listAfter(sql, `WHEN '${part}' THEN ARRAY[`);
+      if (!expected || !actual || JSON.stringify(actual) !== JSON.stringify(expected)) {
+        failures.push(`Website setup: setup_status fields for ${part} differ from the Ari step: ${actual} vs ${expected}`);
+      }
+    }
+    for (const file of [
+      "mingla-business/app/event/[id]/edit.tsx",
+      "mingla-business/app/rsvp/[id]/edit.tsx",
+      "mingla-business/app/trip/[id]/edit.tsx",
+      "mingla-business/app/experience/create.tsx",
+    ]) {
+      const body = read(file);
+      for (const token of ["isSetupReturn(rawReturnTo)", "LazyCreatorReturnBar", "setupReturnWith(setupReturn,"]) {
+        need(body, token, `Website setup way back in ${file}`, failures);
+      }
+      if (/from\s+"[^"]*CreatorReturnBar"/.test(body)) {
+        failures.push(`Website setup: ${file} must load CreatorReturnBar lazily`);
+      }
+    }
+    for (const file of ["mingla-business/app/event/create.tsx", "mingla-business/app/trip/create.tsx"]) {
+      need(read(file), "withReturnTo(", `Website setup way back carried by ${file}`, failures);
+    }
+    const eventEdit = read("mingla-business/app/event/[id]/edit.tsx");
+    for (const swap of eventEdit.match(/router\.setParams\(\{[\s\S]*?\}\)/g) ?? []) {
+      if (swap.includes("returnTo")) failures.push("Website setup: setParams merges; it must not rewrite returnTo");
+    }
+    need(eventEdit, "withReturnTo(rsvpRoute, setupReturn)", "RSVP redirect keeps the way back", failures);
+    need(read("mingla-business/app/trip/[id]/edit.tsx"), "withReturnTo(`/trip/${trip.id}/edit`, setupReturn)", "trip id swap keeps the way back", failures);
+    const chat = read("mingla-business/src/screens/ari/AriChatScreen.tsx");
+    for (const token of ['result.code === "FLOW_TAKEN_OVER"', "brandSiteKeys.plan(setupBrand)", "setup.onOpenStep(step)"]) {
+      need(chat, token, "Ari beside the setup form", failures);
+    }
+    if (chat.indexOf('result.code === "FLOW_TAKEN_OVER"') > chat.indexOf("isAlreadyResolvedError(result.message)")) {
+      failures.push("Website setup: the taken-over words must come before the quiet already-resolved path");
+    }
+    if (/from\s+"[^"]*agentChatService"/.test(read("mingla-business/src/sites/setupApi.ts"))) {
+      failures.push("Website setup: setupApi must not import agentChatService (it would hoist)");
+    }
+    const brandStep = read("mingla-business/src/components/sites/setup/SetupBrandStep.tsx");
+    for (const hoists of [/from\s+"[^"]*brandContactPhoneRules"/, /from\s+"[^"]*BrandEditAddressField"/]) {
+      if (hoists.test(brandStep)) failures.push(`Website setup: ${hoists} would hoist into __common`);
     }
   }
 

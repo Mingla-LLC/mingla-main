@@ -41,10 +41,11 @@ export function websiteTodoFor(brandId: string, answer: unknown): WebsiteTodo | 
   if (raw.entitled !== true) return null;
   const site = raw.site ? obj(raw.site) : null;
   if (site && (site.published === true || site.paused === true)) return null;
-  const route = `/brand/${brandId}/website/plan`;
+  const route = `/brand/${brandId}/website/setup`;
   if (raw.can_manage === true) {
     if (!raw.plan && !site) return { variant: "build", route };
-    const status = obj(raw.status);
+    // #2830: the same numbers the setup screen shows, once the migration is on.
+    const status = raw.setup_status ? obj(raw.setup_status) : obj(raw.status);
     const done = typeof status.done_count === "number" ? status.done_count : 0;
     const next = typeof status.next_part === "string" ? WEBSITE_TODO_PART_LABELS[status.next_part] ?? null : null;
     return { variant: "finish", route, done, nextLabel: next };

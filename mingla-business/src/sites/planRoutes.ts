@@ -1,33 +1,8 @@
 /**
- * #2829 W9a — where each plan part's "Do it myself" goes (design contract
- * W9: native part screens; brand details reuse Brand edit, the first
- * offering reuses the existing creators, publishing the Website screen).
+ * #2829 W9a / #2830 — the first offering is the one setup step that opens on
+ * top of setup: it reuses the existing creators.
  */
-import type { PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
 import type { SitePlanState } from "./sitePlanState";
-
-export function planPartRoute(brandId: string, part: Exclude<PlanPartKey, "first_offering">): string {
-  switch (part) {
-    case "offer":
-      return `/brand/${brandId}/website/plan?part=offer`;
-    case "brand":
-      return `/brand/${brandId}/edit`;
-    case "look":
-      return `/brand/${brandId}/website/design`;
-    case "story":
-      return `/brand/${brandId}/website/plan?part=story`;
-    case "approve":
-      return `/brand/${brandId}/website/plan?part=approve`;
-    case "build":
-      return `/brand/${brandId}/website/plan?part=build`;
-    case "publish":
-      return `/brand/${brandId}/website`;
-    default: {
-      const never: never = part;
-      return never;
-    }
-  }
-}
 
 const CREATOR: ReadonlyArray<[kind: "trips" | "events" | "experiences", route: string]> = [
   ["trips", "/trip/create"],

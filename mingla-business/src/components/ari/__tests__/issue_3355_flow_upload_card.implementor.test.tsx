@@ -153,17 +153,10 @@ describe("#3355 in-chat upload card", () => {
     renderer.unmount();
   });
 
-  test("bug 15: the setup pane's key sits under the plan key and comes from the factory", () => {
+  test("bug 15: who is on setup refreshes with the plan; the key comes from the factory", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { brandSiteKeys } = require("../../../sites/brandSiteKeys") as typeof import("../../../sites/brandSiteKeys");
-    expect(brandSiteKeys.ariSetup("b1").slice(0, 3)).toEqual([...brandSiteKeys.plan("b1")]);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs") as typeof import("fs");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require("path") as typeof import("path");
-    const pane = fs.readFileSync(path.join(__dirname, "..", "AriWebsiteSetupPane.tsx"), "utf8");
-    expect(pane).toMatch(/queryKey: brandSiteKeys\.ariSetup\(brandId\)/);
-    expect(pane).not.toMatch(/queryKey:\s*\[/);
+    expect(brandSiteKeys.flowState("b1").slice(0, 3)).toEqual([...brandSiteKeys.plan("b1")]);
   });
 
   test("logo: the owner opens the Brand details avatar picker; its save asks Ari to check", async () => {

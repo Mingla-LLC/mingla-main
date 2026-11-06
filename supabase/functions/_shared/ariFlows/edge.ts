@@ -41,6 +41,7 @@ import {
   type RunnerTrigger,
 } from "./runner.ts";
 import {
+  type FlowDisplacement,
   createFlowStore,
   FlowConflict,
   FlowEngineUnavailable,
@@ -215,6 +216,8 @@ export interface FlowStateView {
   /** Who started the run (shown to teammates who can only follow along). */
   owner_name: string;
   view_only: boolean;
+  /** #2830 — the field the open card asks about; the setup form highlights it. */
+  current_field_key: string | null;
 }
 
 export function flowStateOf(run: FlowRun | null): FlowStateView | null {
@@ -233,6 +236,12 @@ export function flowStateOf(run: FlowRun | null): FlowStateView | null {
       : null,
     owner_name: run.started_by_name,
     view_only: !run.started_by_me,
+    current_field_key: (() => {
+      const key = run.current_step_key
+        ? run.step_states[run.current_step_key]?.data?.field_key
+        : null;
+      return typeof key === "string" ? key : null;
+    })(),
   };
 }
 
@@ -719,11 +728,22 @@ export async function contactImportStatus(
 }
 
 /** Canonical reads the runner makes for one brand, memoised per request. */
+/**
+ * #2830 — passed in by the functions that may search (agent-chat,
+ * agent-confirm-action). Without it the question is simply plain.
+ */
+export type FlowResearch = (args: {
+  userId: string;
+  brandId: string;
+  plan: Record<string, unknown>;
+}) => Promise<Record<string, Record<string, unknown>[] | undefined> | null>;
+
 export function buildFlowProbeDeps(
   userClient: SupabaseClient,
   brandId: string,
   userId?: string,
   conversationId?: string,
+  research?: FlowResearch,
 ): FlowProbeDeps {
   const cache = new Map<string, Promise<BrandReadiness>>();
   const reads = new Map<string, Promise<unknown>>();
@@ -749,6 +769,25 @@ export function buildFlowProbeDeps(
         reads.set(key, pending);
       }
       return pending;
+    },
+    // #2830 — Ari's public research for brand details. Never holds the question
+    // up; candidates become evidence only when the field is asked.
+    async brandResearch(plan: Record<string, unknown>) {
+      if (!research || !userId) return null;
+      return await research({ userId, brandId, plan });
+    },
+    async recordFinding(fieldKey, candidates) {
+      // As the caller: the RPC refuses anyone who can't edit the brand.
+      const { error } = await userClient.rpc(
+        "ari_record_brand_context_finding",
+        {
+          p_brand_id: brandId,
+          p_field_key: fieldKey,
+          p_disposition: "stale",
+          p_candidates: candidates,
+        },
+      );
+      return !error;
     },
     async hasOpenProposal() {
       if (!userId || !conversationId) return false;
@@ -960,6 +999,7 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
         text: outcome.text,
         artefact: null,
         state,
+        ...(outcome.open_route ? { handoff_route: outcome.open_route } : {}),
         classification: "flow_engine_busy",
       };
     case "cancelled":
@@ -998,6 +1038,8 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
 
 export interface FlowTurnArgs {
   service: SupabaseClient;
+  /** #2830 — see FlowResearch. */
+  research?: FlowResearch;
   userClient: SupabaseClient;
   userId: string;
   brand: { id: string; name: string } | null;
@@ -1179,11 +1221,22 @@ export async function decideFlowTurn(
       args.brand.id,
       args.userId,
       args.conversationId,
+      args.research,
     ),
   };
   try {
     let run = await store.getForConversation(args.conversationId);
     const live = run && LIVE_FLOW_STATUSES.has(run.status) ? run : null;
+    if (!live) {
+      // #2830 — the run left this chat because a teammate took it over: say so
+      // once on a plain turn, and always when an old card is answered.
+      const taken = await takenOverReply({
+        store,
+        conversationId: args.conversationId,
+        force: args.flowAnswer !== undefined && args.flowAnswer !== null,
+      });
+      if (taken) return taken;
+    }
     if (args.flowAnswer) {
       if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
       return decisionFromOutcome(
@@ -1428,12 +1481,52 @@ export function resumeWebsiteReply(run: FlowRun): FlowTurnDecision {
   };
 }
 
+/** #2830 — the words a displaced person reads. Seth approved these. */
+export function takenOverText(name: string): string {
+  return `${name} took over Website setup, so that didn't save. Everything you answered before is still there.`;
+}
+
+/** #2830 — null when nothing was taken from this chat, or it was already said. */
+async function takenOverReply(args: {
+  store: FlowStore;
+  conversationId: string;
+  force: boolean;
+}): Promise<FlowTurnDecision | null> {
+  if (!args.store.displacement) return null;
+  let displaced: FlowDisplacement | null = null;
+  try {
+    displaced = await args.store.displacement(args.conversationId);
+  } catch (error) {
+    // Migration not applied yet: carry on as today.
+    if (error instanceof FlowEngineUnavailable) return null;
+    throw error;
+  }
+  if (!displaced || (!args.force && displaced.notified_at !== null)) return null;
+  if (displaced.notified_at === null) {
+    await args.store.markDisplacementNotified?.(displaced.id);
+  }
+  const run = await args.store.getById(displaced.run_id).catch(() => null);
+  return {
+    kind: "reply",
+    text: takenOverText(displaced.to_name),
+    artefact: null,
+    state: flowStateOf(run),
+    classification: "flow_engine_taken_over",
+  };
+}
+
 /** Pre-claim check: a structured answer to a card that is no longer current. */
 export async function staleFlowAnswer(args: {
   store: FlowStore;
   conversationId: string;
   answer: FlowAnswer;
-}): Promise<{ next: FlowArtefact | null; state: FlowStateView | null } | null> {
+}): Promise<
+  {
+    next: FlowArtefact | null;
+    state: FlowStateView | null;
+    taken_over_text?: string;
+  } | null
+> {
   try {
     const run = await args.store.getForConversation(args.conversationId);
     if (
@@ -1442,6 +1535,16 @@ export async function staleFlowAnswer(args: {
       run.current_question_id === args.answer.question_id &&
       run.current_step_key === args.answer.step_key
     ) return null;
+    if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
+      const taken = await takenOverReply({
+        store: args.store,
+        conversationId: args.conversationId,
+        force: true,
+      });
+      if (taken?.kind === "reply") {
+        return { next: null, state: taken.state, taken_over_text: taken.text };
+      }
+    }
     return {
       next: run && LIVE_FLOW_STATUSES.has(run.status)
         ? run.current_artefact
@@ -1473,6 +1576,8 @@ export async function runFlowForConversation(args: {
   store?: FlowStore;
   /** Test seam: the canonical reads. */
   probes?: FlowProbeDeps;
+  /** #2830 — see FlowResearch. */
+  research?: FlowResearch;
 }): Promise<{ outcome: RunnerOutcome | null; run: FlowRun | null }> {
   const store = args.store ?? createFlowStore(args.service, args.userId);
   try {
@@ -1487,6 +1592,7 @@ export async function runFlowForConversation(args: {
         args.brand.id,
         args.userId,
         args.conversationId,
+        args.research,
       ),
     }, {
       run,

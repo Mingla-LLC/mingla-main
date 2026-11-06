@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { SiteRouteLink as Link } from "./PreviewLinks";
 
 import { useCart } from "./CartScope";
 

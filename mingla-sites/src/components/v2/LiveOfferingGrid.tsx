@@ -2,6 +2,7 @@
 import { selectGridOfferings, type OfferingGridConfig } from "../../contracts/generated/offerings.ts";
 import type { SiteEventContext } from "../../lib/clientAnalytics";
 import type { LiveOfferings, OfferingCard } from "../../lib/offeringCards";
+import { SiteAnchor, SiteSearchForm } from "../PreviewLinks";
 import { TrackedLink } from "../TrackedLink";
 
 /*
@@ -70,17 +71,17 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
       {eyebrow}
       {heading ? <h2>{heading}</h2> : null}
       {block.show_filters === true ? (
-        <form className="offering-filters" method="get" role="search" aria-label={`Search ${noun}`}>
+        <SiteSearchForm className="offering-filters" role="search" aria-label={`Search ${noun}`}>
           <label>Where<input type="text" name="where" maxLength={80} defaultValue={filters?.where ?? ""} /></label>
           <label>From<input type="date" name="from" defaultValue={filters?.from ?? ""} /></label>
           <label>To<input type="date" name="to" defaultValue={filters?.to ?? ""} /></label>
           <button type="submit" className="button accent">Search</button>
-        </form>
+        </SiteSearchForm>
       ) : null}
       {result.kind === "check_dates" ? (
-        <p className="offering-grid-message" role="status">Check your dates: the end comes before the start. <a href={clearHref}>Clear search</a></p>
+        <p className="offering-grid-message" role="status">Check your dates: the end comes before the start. <SiteAnchor href={clearHref}>Clear search</SiteAnchor></p>
       ) : result.kind === "no_match" ? (
-        <p className="offering-grid-message" role="status">No {noun} match those dates. <a href={clearHref}>Clear search</a></p>
+        <p className="offering-grid-message" role="status">No {noun} match those dates. <SiteAnchor href={clearHref}>Clear search</SiteAnchor></p>
       ) : result.kind === "empty" ? (
         <p className="offering-grid-message">{text(block.empty_text) || `No ${noun} to show right now.`}</p>
       ) : (

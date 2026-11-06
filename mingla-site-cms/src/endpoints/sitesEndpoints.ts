@@ -79,6 +79,32 @@ async function objectBody(
     throw new Error("VALIDATION_FAILED");
   return value as Record<string, unknown>;
 }
+/**
+ * #2830 — Studio's 503 hid its cause: its database lagged 10 migrations and the
+ * only signal was "Website tools are temporarily unavailable". Every masked
+ * failure now logs its class and a safe message. Connection strings, secrets and
+ * values are cut, and nothing from the request is logged. The customer's
+ * response does not change.
+ */
+export function maskedFailureLine(error: unknown): string {
+  const name = error instanceof Error ? error.name : typeof error;
+  const raw = error instanceof Error ? error.message : "";
+  const safe = raw
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+    .replace(/\b(?:eyJ|sk_|pk_|sb_|whsec_)[\w.-]+/g, "[secret]")
+    .replace(/\b[0-9a-f]{32,}\b/gi, "[hex]")
+    .replace(/\bKey \(.*?\)=\(.*?\)/g, "[row]")
+    .replace(/(['"]).*?\1/g, (quoted) => (/^["'][\w.]{1,63}["']$/.test(quoted) ? quoted : "[value]"))
+    .replace(/\s+/g, " ")
+    .slice(0, 300);
+  return JSON.stringify({ event: "sites_masked_failure", error_class: name.slice(0, 80), message: safe });
+}
+
+function logMaskedFailure(error: unknown): void {
+  console.error(maskedFailureLine(error));
+}
+
 function safeFailure(error: unknown, returnUrl?: string) {
   // #2829 W2 — Studio's field-level refusals (e.g. the page tree) are a
   // validation failure to every caller that is not Studio's own form.
@@ -110,6 +136,7 @@ function safeFailure(error: unknown, returnUrl?: string) {
     ].includes(error.message)
       ? error.message
       : "SERVICE_TEMPORARILY_UNAVAILABLE";
+  if (code === "SERVICE_TEMPORARILY_UNAVAILABLE") logMaskedFailure(error);
   return json(
     {
       ok: false,

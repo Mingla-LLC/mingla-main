@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 
 import { planStaticMap } from "../lib/staticMap";
+import { usePreviewAssetKey } from "./PreviewLinks";
 
 /**
  * #3149 — a map that contacts NOBODY until a visitor asks for one.
@@ -77,6 +78,7 @@ function StaticMap(
     label: string;
   },
 ) {
+  const previewKey = usePreviewAssetKey();
   const plan = planStaticMap(latitude, longitude);
   if (!plan || plan.tiles.length === 0) return null;
   return (
@@ -96,7 +98,7 @@ function StaticMap(
           // eslint-disable-next-line @next/next/no-img-element -- a map tile is a fixed 256px square served by this app's own route; the framework optimiser would re-encode it and add a second hop for nothing.
           <img
             key={tile.path}
-            src={tile.path}
+            src={previewKey ? `${tile.path}?k=${encodeURIComponent(previewKey)}` : tile.path}
             alt=""
             width={256}
             height={256}

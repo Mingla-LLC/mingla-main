@@ -8,8 +8,15 @@ import {
 } from "../_shared/agentTurnSweep.ts";
 import { isDeterministicTurnRefusal } from "../_shared/ariTurnRetry.ts";
 import { resumeFlowForHost } from "./flowResume.ts";
+import { flowSetupState, flowTakeOver } from "./flowSetup.ts";
 
-type TurnAction = "status" | "cancel" | "retry" | "flow_resume";
+type TurnAction =
+  | "status"
+  | "cancel"
+  | "retry"
+  | "flow_resume"
+  | "flow_setup_state"
+  | "flow_take_over";
 interface RequestBody {
   action?: TurnAction;
   client_turn_id?: string;
@@ -17,6 +24,12 @@ interface RequestBody {
   conversation_id?: string;
   /** #3355 P3 flow_resume: why the Host is asking (reload or back from a handoff). */
   trigger?: "resume" | "handoff_return";
+  /** #2830 flow_setup_state: the brand whose Website setup to read. */
+  brand_id?: string;
+  /** #2830 flow_take_over. */
+  run_id?: string;
+  expected_revision?: number;
+  mode?: "continue" | "take_over";
 }
 
 const UUID_PATTERN =
@@ -92,6 +105,39 @@ Deno.serve(async (request) => {
       trigger: body.trigger ?? "resume",
     });
     return response(resumed.status, resumed.body);
+  }
+  // #2830: who is on Website setup, and taking it over. Like flow_resume these
+  // are not turns: no attempt row, no rate limit.
+  if (body.action === "flow_setup_state") {
+    if (!body.brand_id || !UUID_PATTERN.test(body.brand_id)) {
+      return response(400, { code: "BAD_REQUEST" });
+    }
+    const state = await flowSetupState({
+      service: admin,
+      userId,
+      brandId: body.brand_id,
+    });
+    return response(state.status, state.body);
+  }
+  if (body.action === "flow_take_over") {
+    if (
+      !body.run_id || !UUID_PATTERN.test(body.run_id) ||
+      !Number.isInteger(body.expected_revision) ||
+      (body.mode !== "continue" && body.mode !== "take_over") ||
+      (body.conversation_id !== undefined && body.conversation_id !== null &&
+        !UUID_PATTERN.test(body.conversation_id))
+    ) {
+      return response(400, { code: "BAD_REQUEST" });
+    }
+    const taken = await flowTakeOver({
+      service: admin,
+      userId,
+      runId: body.run_id,
+      expectedRevision: body.expected_revision as number,
+      mode: body.mode,
+      conversationId: body.conversation_id ?? null,
+    });
+    return response(taken.status, taken.body);
   }
   if (
     !body.action || !body.client_turn_id ||
