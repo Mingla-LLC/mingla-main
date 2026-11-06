@@ -23,11 +23,13 @@ const TOWER = path.join(
   "placeIntelligenceTrial",
   "ActiveRunsControlTower.jsx",
 );
+// #4276: the Intelligence page is retired; the tower mounts in Place pool's pipeline.
 const PAGE = path.join(
   ADMIN_ROOT,
   "src",
-  "pages",
-  "PlaceIntelligenceTrialPage.jsx",
+  "components",
+  "placePool",
+  "PipelineSection.jsx",
 );
 
 describe("ORCH-1013 Finding B — ActiveRunsControlTower surface", () => {
@@ -78,31 +80,25 @@ describe("ORCH-1013 Finding B — ActiveRunsControlTower surface", () => {
   });
 });
 
-describe("ORCH-1013 Finding B — PlaceIntelligenceTrialPage mounts the control tower", () => {
+describe("ORCH-1013 Finding B, #4276 — Place pool's pipeline mounts the control tower", () => {
   const src = fs.readFileSync(PAGE, "utf8");
 
   it("imports ActiveRunsControlTower", () => {
     assert.ok(
       src.includes("ActiveRunsControlTower"),
-      "page must import the control tower",
+      "the pipeline must import the control tower",
     );
   });
 
-  it("mounts <ActiveRunsControlTower /> above the Tabs", () => {
+  it("mounts <ActiveRunsControlTower /> above the per-city Intelligence coverage", () => {
     const towerIdx = src.indexOf("<ActiveRunsControlTower");
-    const tabsIdx = src.indexOf("<Tabs ");
+    const overviewIdx = src.indexOf("<IntelligenceOverviewTab");
     assert.ok(towerIdx > 0, "must mount ActiveRunsControlTower");
-    assert.ok(tabsIdx > 0, "must have Tabs row");
-    assert.ok(
-      towerIdx < tabsIdx,
-      "ActiveRunsControlTower must mount before the Tabs row in JSX",
-    );
+    assert.ok(overviewIdx > 0, "must mount the per-city coverage");
+    assert.ok(towerIdx < overviewIdx, "the control tower comes first");
   });
 
-  it("control tower deep-links 'View' to the Results tab", () => {
-    assert.ok(
-      src.includes('setActiveTab("results")'),
-      "onViewRun must switch the page to the Results tab",
-    );
+  it("passes no results deep-link: the results explorer is retired (D9)", () => {
+    assert.ok(!src.includes("onViewRun"), "no View link to a tab that no longer exists");
   });
 });

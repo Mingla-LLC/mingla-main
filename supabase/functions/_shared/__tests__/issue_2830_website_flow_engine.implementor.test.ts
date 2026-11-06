@@ -47,7 +47,15 @@ import {
   flowSideFailureText,
   isWebsiteSetupRequest,
   parseFlowAnswer,
+  staleFlowAnswer,
 } from "../ariFlows/edge.ts";
+import {
+  FLOW_TAKE_OVER_CONFLICTS,
+  flowSetupState,
+  flowTakeOver,
+} from "../../agent-turn-control/flowSetup.ts";
+import { FlowConflict } from "../ariFlows/store.ts";
+import { errorEnvelope } from "../agentReliability.ts";
 import { buildProposalPresentation } from "../ariPresentation/registry.ts";
 import { verifiedProposalArgs } from "../agentTicketPricing.ts";
 import { flowNextAfterConfirm } from "../../agent-confirm-action/confirmNext.ts";
@@ -1990,4 +1998,431 @@ Deno.test("cert2 D6: the logo handoff offers the in-chat upload first and Brand 
   assertEquals(open?.label, "Open Brand details");
   assertEquals(open?.route, `/brand/${BRAND}/edit?section=photo`);
   assert(card.artefact.options.some((o) => o.id === "check"));
+});
+
+// ── #2830: research inside the brand step ──────────────────────────────────
+const FOUND_ROW = {
+  value: "hello@lantern.test",
+  source_type: "public_research",
+  source_ref: "research:name_city:lantern.test",
+  source_url: "https://lantern.test/contact",
+  observed_at: "2026-11-05T10:00:00.000Z",
+  confidence: 0.7,
+};
+
+function researchProbes(
+  w: World,
+  found: Record<string, Record<string, unknown>[]> | null,
+  log: { recorded: string[]; researchCalls: number; failRecord?: boolean },
+): FlowProbeDeps {
+  return {
+    ...probes(w),
+    brandResearch() {
+      log.researchCalls += 1;
+      return Promise.resolve(found);
+    },
+    recordFinding(key, candidates) {
+      if (log.failRecord) return Promise.resolve(false);
+      log.recorded.push(key);
+      const field = w.fields.get(key)! as Field & {
+        evidence_candidates?: unknown;
+      };
+      field.state = "stale";
+      field.evidence_candidates = candidates;
+      return Promise.resolve(true);
+    },
+  };
+}
+
+async function researchWorld() {
+  const w = world(["contact_email", "contact_phone"]);
+  w.approved = false;
+  const store = new MemoryStore(OWNER);
+  const run = await startRun(store);
+  return { w, store, run };
+}
+
+Deno.test("#2830 research: found shows the value with its source; 'Use this' is one protected proposal carrying the evidence; nothing saves before it", async () => {
+  const { w, store, run } = await researchWorld();
+  const log = { recorded: [] as string[], researchCalls: 0 };
+  const deps = {
+    store,
+    probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log),
+  };
+  const out = await runFlowStep(deps, {
+    run,
+    trigger: "turn",
+    brandName: "Lantern",
+  });
+  assertEquals(out.kind, "artefact");
+  const card = (out as Extract<RunnerOutcome, { kind: "artefact" }>).artefact;
+  assertEquals(card.step_key, "brand");
+  assertMatch(card.text, /From lantern\.test, checked/);
+  assert(
+    card.options.some((o) => o.id === "use_found" && o.label === "Use this"),
+  );
+  assert(
+    card.options.some((o) =>
+      o.id === "use_another" && o.label === "Use another"
+    ),
+  );
+  const shown = JSON.stringify(card.rendition);
+  assertMatch(shown, /hello@lantern\.test/);
+  assertEquals(log.recorded, ["contact_email"]);
+  // The public value is untouched: only evidence moved.
+  assertEquals(w.fields.get("contact_email")!.value, null);
+
+  const again = await current(store);
+  const proposed = await runFlowStep(deps, {
+    run: again,
+    ...choose(again, "use_found"),
+    brandName: "Lantern",
+  });
+  assertEquals(proposed.kind, "propose");
+  const proposal = proposed as Extract<RunnerOutcome, { kind: "propose" }>;
+  assertEquals(proposal.tool_name, "update_brand_context");
+  assertEquals(
+    (proposal.tool_args.patch as Record<string, unknown>).contact_email,
+    "hello@lantern.test",
+  );
+  const evidence = proposal.tool_args.evidence as Record<string, unknown>;
+  assertEquals(evidence.source_type, "public_research");
+  assertEquals(evidence.source_url, "https://lantern.test/contact");
+  assertEquals(evidence.observed_at, "2026-11-05T10:00:00.000Z");
+  assertEquals(w.fields.get("contact_email")!.value, null);
+});
+
+Deno.test("#2830 research: 'Use another' asks the plain question and saves nothing", async () => {
+  const { w, store, run } = await researchWorld();
+  const log = { recorded: [] as string[], researchCalls: 0 };
+  const deps = {
+    store,
+    probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log),
+  };
+  await runFlowStep(deps, { run, trigger: "turn", brandName: "Lantern" });
+  const again = await current(store);
+  const out = await runFlowStep(deps, {
+    run: again,
+    ...choose(again, "use_another"),
+    brandName: "Lantern",
+  });
+  assertEquals(out.kind, "artefact");
+  const card = (out as Extract<RunnerOutcome, { kind: "artefact" }>).artefact;
+  assertEquals(card.options.some((o) => o.id === "use_found"), false);
+  assertMatch(card.text, /What public contact email/);
+  assertNotMatch(JSON.stringify(card.rendition), /hello@lantern\.test/);
+  assertEquals(w.fields.get("contact_email")!.value, null);
+});
+
+Deno.test("#2830 research: nothing found, unavailable, or a failed finding all ask the plain question", async () => {
+  for (
+    const [found, failRecord] of [[null, false], [{}, false], [{
+      contact_email: [FOUND_ROW],
+    }, true]] as const
+  ) {
+    const { w, store, run } = await researchWorld();
+    const log = { recorded: [] as string[], researchCalls: 0, failRecord };
+    const out = await runFlowStep(
+      {
+        store,
+        probes: researchProbes(
+          w,
+          found as Record<string, Record<string, unknown>[]> | null,
+          log,
+        ),
+      },
+      { run, trigger: "turn", brandName: "Lantern" },
+    );
+    const card = (out as Extract<RunnerOutcome, { kind: "artefact" }>).artefact;
+    assertMatch(card.text, /What public contact email/);
+    assertEquals(card.options.some((o) => o.id === "use_found"), false);
+    assertEquals(w.fields.get("contact_email")!.state, "missing");
+  }
+});
+
+Deno.test("#2830 research: a saved field is never put in question, and research that throws is a plain question", async () => {
+  const w = world(["contact_phone"]);
+  const store = new MemoryStore(OWNER);
+  const run = await startRun(store);
+  const log = { recorded: [] as string[], researchCalls: 0 };
+  const out = await runFlowStep(
+    { store, probes: researchProbes(w, { contact_email: [FOUND_ROW] }, log) },
+    { run, trigger: "turn", brandName: "Lantern" },
+  );
+  assertEquals(out.kind, "artefact");
+  assertEquals(log.recorded, []);
+  assertEquals(w.fields.get("contact_email")!.state, "verified");
+
+  const w2 = world(["contact_email"]);
+  const store2 = new MemoryStore(OWNER);
+  const run2 = await startRun(store2);
+  const thrown = await runFlowStep(
+    {
+      store: store2,
+      probes: {
+        ...probes(w2),
+        brandResearch: () => Promise.reject(new Error("boom")),
+      },
+    },
+    { run: run2, trigger: "turn", brandName: "Lantern" },
+  );
+  assertMatch(
+    (thrown as Extract<RunnerOutcome, { kind: "artefact" }>).artefact.text,
+    /What public contact email/,
+  );
+});
+
+// ── #2830: takeover at the edge ────────────────────────────────────────────
+function displacedStore(
+  notifiedAt: string | null,
+  missingRpc = false,
+): FlowStore & { marked: string[] } {
+  const marked: string[] = [];
+  return {
+    marked,
+    getForConversation: () => Promise.resolve(null),
+    getById: () => Promise.resolve(null),
+    displacement: () =>
+      missingRpc
+        ? Promise.reject(new FlowEngineUnavailable())
+        : Promise.resolve({
+          id: "t1",
+          run_id: "r1",
+          to_name: "Ama",
+          created_at: "x",
+          notified_at: notifiedAt,
+        }),
+    markDisplacementNotified: (id: string) => {
+      marked.push(id);
+      return Promise.resolve();
+    },
+  } as unknown as FlowStore & { marked: string[] };
+}
+
+function turnArgs(store: FlowStore, flowAnswer: unknown) {
+  return {
+    // deno-lint-ignore no-explicit-any
+    service: {} as any,
+    // deno-lint-ignore no-explicit-any
+    userClient: {} as any,
+    userId: MATE,
+    brand: { id: BRAND, name: "Lantern" },
+    conversationId: CHAT,
+    message: "hello",
+    // deno-lint-ignore no-explicit-any
+    flowAnswer: flowAnswer as any,
+    engineEnabled: true,
+    otherLaneActive: true,
+    websiteSetup: false,
+    store,
+    probes: probes(world()),
+  };
+}
+
+const OLD_ANSWER = {
+  run_id: "r1",
+  step_key: "brand",
+  question_id: "q1",
+  choice_id: "answer",
+  display_text: "x",
+};
+const TAKEN =
+  "Ama took over Website setup, so that didn't save. Everything you answered before is still there.";
+
+Deno.test("#2830 T-EDGE-1: a displaced flow answer gets the words, saves nothing, and is marked", async () => {
+  const store = displacedStore(null);
+  const decision = await decideFlowTurn(turnArgs(store, OLD_ANSWER));
+  assertEquals(decision.kind, "reply");
+  const reply = decision as Extract<typeof decision, { kind: "reply" }>;
+  assertEquals(reply.text, TAKEN);
+  assertEquals(reply.artefact, null);
+  assertEquals(reply.classification, "flow_engine_taken_over");
+  assertEquals(store.marked, ["t1"]);
+});
+
+Deno.test("#2830 T-EDGE-1: the first plain turn is told once; after that a plain turn is left alone, an old card never", async () => {
+  const plain = await decideFlowTurn(turnArgs(displacedStore(null), null));
+  assertEquals((plain as { text?: string }).text, TAKEN);
+  const told = await decideFlowTurn(
+    turnArgs(displacedStore("2026-11-05"), null),
+  );
+  assertEquals(told.kind, "none");
+  const card = await decideFlowTurn(
+    turnArgs(displacedStore("2026-11-05"), OLD_ANSWER),
+  );
+  assertEquals((card as { text?: string }).text, TAKEN);
+});
+
+Deno.test("#2830 T-EDGE-2: the pre-claim stale check returns the taken-over words", async () => {
+  const stale = await staleFlowAnswer({
+    store: displacedStore(null),
+    conversationId: CHAT,
+    // deno-lint-ignore no-explicit-any
+    answer: OLD_ANSWER as any,
+  });
+  assertEquals(stale?.taken_over_text, TAKEN);
+  assertEquals(stale?.next, null);
+});
+
+Deno.test("#2830 T-EDGE-3: a missing displacement RPC behaves exactly as today", async () => {
+  const decision = await decideFlowTurn(
+    turnArgs(displacedStore(null, true), OLD_ANSWER),
+  );
+  assertEquals(decision.kind, "stale");
+  const stale = await staleFlowAnswer({
+    store: displacedStore(null, true),
+    conversationId: CHAT,
+    // deno-lint-ignore no-explicit-any
+    answer: OLD_ANSWER as any,
+  });
+  assertEquals(stale?.taken_over_text, undefined);
+});
+
+function brandRunStore(overrides: Partial<FlowStore> = {}) {
+  const run = {
+    id: "r1",
+    brand_id: BRAND,
+    status: "awaiting_owner",
+    current_step_key: "brand",
+    revision: 4,
+    started_by_me: false,
+    started_by_name: "Sam Mate",
+    stopped: true,
+    owner_since: "2026-11-04",
+    last_activity_at: "2026-11-04",
+    conversation_id: CHAT,
+    answers: { secret: { value: "private", source: "owner" } },
+    step_states: { brand: { state: "asked" } },
+    current_artefact: { text: "private card" },
+  } as unknown as FlowRun;
+  return {
+    brandRun: () =>
+      Promise.resolve({ run, can_take_over: true, last_takeover: null }),
+    ...overrides,
+  } as unknown as FlowStore;
+}
+
+Deno.test("#2830 T-EDGE-4: a teammate's view has no answers, step states, card or chat id", async () => {
+  const state = await flowSetupState({
+    // deno-lint-ignore no-explicit-any
+    service: {} as any,
+    userId: MATE,
+    brandId: BRAND,
+    enabled: true,
+    store: brandRunStore(),
+  });
+  assertEquals(state.status, 200);
+  const flow = state.body.flow as Record<string, unknown>;
+  assertEquals(flow.owner_name, "Sam Mate");
+  assertEquals(flow.stopped, true);
+  assertEquals(flow.conversation_id, null);
+  const text = JSON.stringify(state.body);
+  assertNotMatch(text, /private|answers|step_states|current_artefact/);
+  // Engine off, or the RPC not there yet: no flow, not an error.
+  assertEquals(
+    (await flowSetupState({
+      // deno-lint-ignore no-explicit-any
+      service: {} as any,
+      userId: MATE,
+      brandId: BRAND,
+      enabled: false,
+    })).body,
+    { flow: null },
+  );
+  assertEquals(
+    (await flowSetupState({
+      // deno-lint-ignore no-explicit-any
+      service: {} as any,
+      userId: MATE,
+      brandId: BRAND,
+      enabled: true,
+      store: brandRunStore({
+        brandRun: () => Promise.reject(new FlowEngineUnavailable()),
+      }),
+    })).body,
+    { flow: null },
+  );
+});
+
+Deno.test("#2830 T-EDGE-5: flow_take_over maps every refusal", async () => {
+  const take = (error: Error) =>
+    flowTakeOver({
+      // deno-lint-ignore no-explicit-any
+      service: {} as any,
+      userId: OWNER,
+      runId: "r1",
+      expectedRevision: 1,
+      mode: "take_over",
+      conversationId: null,
+      store: brandRunStore({ takeOver: () => Promise.reject(error) }),
+    });
+  for (const code of FLOW_TAKE_OVER_CONFLICTS) {
+    const out = await take(new FlowConflict(code));
+    assertEquals(out.status, 409, code);
+    assertEquals(out.body.code, code);
+  }
+  assertEquals((await take(new FlowConflict("forbidden"))).status, 403);
+  const missing = await take(new FlowEngineUnavailable());
+  assertEquals(missing.status, 503);
+  assertEquals(missing.body.code, "TAKEOVER_UNAVAILABLE");
+});
+
+Deno.test("#2830 T-EDGE-6: a teammate's Website setup is no dead end; other flows keep their words", async () => {
+  const w = world(["contact_email"]);
+  const owner = new MemoryStore(OWNER);
+  await startRun(owner);
+  const mate = new MemoryStore(MATE, owner);
+  const viewed = (await mate.getById([...owner.runs.keys()][0]))!;
+  const out = await step(w, mate, viewed, {});
+  assertEquals(out.kind, "busy");
+  const busy = out as Extract<RunnerOutcome, { kind: "busy" }>;
+  assertMatch(
+    busy.text,
+    /is on Website setup right now\. Open Website setup to watch, or to carry on if you're a brand admin\./,
+  );
+  assertNotMatch(busy.text, /only they can answer/);
+  assertEquals(busy.open_route, `/brand/${BRAND}/website/setup`);
+});
+
+Deno.test("#2830 T-EDGE-7: confirming a card from a taken-over run names the person, not a status", () => {
+  const source = Deno.readTextFileSync(
+    new URL("supabase/functions/agent-confirm-action/index.ts", ROOT),
+  );
+  const at = source.indexOf('pending.failure_reason === "flow_taken_over"');
+  const generic = source.indexOf(
+    '"A newer version of this change is waiting for you."',
+  );
+  assert(at > 0 && at < generic, "the taken-over check must run first");
+  assertMatch(
+    source,
+    /ariErrorResponse\(409, "FLOW_TAKEN_OVER", "", \{\s*taken_over_by: name,?\s*\}\)/,
+  );
+  assertMatch(
+    source,
+    /select\(\s*"id, conversation_id, tool_name, tool_args, status, failure_reason/,
+  );
+});
+
+Deno.test("#2830 SC-8: the displaced person's envelope carries the approved words, never retry", () => {
+  const context = {
+    requestId: "11111111-1111-4111-8111-111111111111",
+    release: { release_sha: "a".repeat(40), function_version: "x" },
+  };
+  // deno-lint-ignore no-explicit-any
+  const named = errorEnvelope(context as any, "FLOW_TAKEN_OVER", {
+    takenOverBy: "Ama",
+  });
+  assertEquals(named.status, 409);
+  assertEquals(named.body.code, "FLOW_TAKEN_OVER");
+  assertEquals(named.body.user_message, TAKEN);
+  assertEquals(named.body.safe_to_retry, false);
+  // deno-lint-ignore no-explicit-any
+  const unnamed = errorEnvelope(context as any, "FLOW_TAKEN_OVER");
+  assertMatch(unnamed.body.user_message, /^A teammate took over Website setup/);
+  // No other code can be given words this way.
+  // deno-lint-ignore no-explicit-any
+  const other = errorEnvelope(context as any, "CONFLICT", {
+    takenOverBy: "Ama",
+  });
+  assertNotMatch(other.body.user_message, /Ama/);
 });

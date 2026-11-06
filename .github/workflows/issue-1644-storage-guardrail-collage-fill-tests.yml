@@ -252,7 +252,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start a clean PostgreSQL 17 and apply EVERY migration except Stage 2's
+      # TRUE ORDER. The chain stops just before Stage 2's migration, the contract is
+      # proved to fail there, Stage 2 is applied, and the rest of the chain follows in
+      # order. Applying Stage 2 last instead would leave its place_pool foreign key
+      # missing at every later migration that fingerprints the place_pool dependency
+      # lanes (#2099's pending-venue schema pin and its repins refuse that schema).
+      - name: Start a clean PostgreSQL 17 and apply every migration before Stage 2's
         run: |
           set -euo pipefail
           issue1644_pw="$(openssl rand -hex 24)"
@@ -270,8 +275,9 @@ jobs:
           done
           [ "$state" = "healthy" ]
           for migration in supabase/migrations/*.sql; do
+            # ours and everything after it — applied after the non-vacuity proof
             case "$(basename "$migration")" in
-              20270221001644_*) continue ;;   # ours — applied after the non-vacuity proof
+              20270221001644_*) break ;;
             esac
             docker exec -i issue1644-stage2-pg \
               psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" > /dev/null
@@ -295,6 +301,20 @@ jobs:
           docker exec -i issue1644-stage2-pg \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/20270221001644_issue_1644_collage_reencode_jobs.sql
+
+      - name: Apply every migration after Stage 2's, in order
+        run: |
+          set -euo pipefail
+          after_stage2=false
+          for migration in supabase/migrations/*.sql; do
+            if [ "$after_stage2" = true ]; then
+              docker exec -i issue1644-stage2-pg \
+                psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" > /dev/null
+            fi
+            case "$(basename "$migration")" in
+              20270221001644_*) after_stage2=true ;;
+            esac
+          done
 
       - name: Prove the manifest, the format-only commit, the skips and the rollback
         run: |

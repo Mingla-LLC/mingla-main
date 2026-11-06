@@ -149,6 +149,10 @@ export function parseFlowRun(value: unknown): FlowRun | null {
     lease_held: raw.lease_held === true,
     lease_held_by_me: raw.lease_held_by_me === true,
     lease_owner_name: str(raw.lease_owner_name),
+    // #2830: absent during the deploy window (edge before migration).
+    stopped: raw.stopped === true,
+    last_activity_at: str(raw.last_activity_at),
+    owner_since: str(raw.owner_since),
   };
 }
 
@@ -164,6 +168,27 @@ export interface FlowLeaseResult {
   reason: "busy" | "owned_by_other" | "terminal" | null;
   owner_display_name: string | null;
   run: FlowRun;
+}
+
+/** #2830 — the brand's live run, as the setup screen sees it. */
+export interface FlowBrandRun {
+  run: FlowRun;
+  can_take_over: boolean;
+  last_takeover: {
+    to_name: string;
+    from_name: string;
+    kind: string;
+    created_at: string;
+  } | null;
+}
+
+/** #2830 — this chat's run was taken from this person. */
+export interface FlowDisplacement {
+  id: string;
+  run_id: string;
+  to_name: string;
+  created_at: string | null;
+  notified_at: string | null;
 }
 
 export interface FlowStore {
@@ -188,6 +213,17 @@ export interface FlowStore {
   release(runId: string, token: string): Promise<void>;
   getForConversation(conversationId: string): Promise<FlowRun | null>;
   getById(runId: string): Promise<FlowRun | null>;
+  // #2830 — optional so an older in-memory store keeps working; the real store
+  // always has them.
+  brandRun?(brandId: string, flowKey: string): Promise<FlowBrandRun | null>;
+  takeOver?(args: {
+    runId: string;
+    conversationId: string | null;
+    expectedRevision: number;
+    mode: "continue" | "take_over";
+  }): Promise<{ changed: boolean; kind: string | null; run: FlowRun }>;
+  displacement?(conversationId: string): Promise<FlowDisplacement | null>;
+  markDisplacementNotified?(id: string): Promise<void>;
 }
 
 function isMissing(error: { code?: unknown; message?: unknown }): boolean {
@@ -210,6 +246,11 @@ function failure(
       "flow_lease_not_held",
       "flow_run_terminal",
       "flow_run_conflict",
+      "flow_run_active",
+      "flow_run_busy",
+      "flow_brand_paused",
+      "flow_takeover_invalid",
+      "flow_form_locked",
     ]
   ) {
     if (message.includes(code)) return new FlowConflict(code);
@@ -335,6 +376,79 @@ export function createFlowStore(
         }),
       );
       return data === null ? null : parseFlowRun(data);
+    },
+    async brandRun(brandId, flowKey) {
+      const data = record(
+        settle(
+          "ari_flow_brand_run_get",
+          await service.rpc("ari_flow_brand_run_get", {
+            p_user_id: userId,
+            p_brand_id: brandId,
+            p_flow_key: flowKey,
+          }),
+        ),
+      );
+      if (!data) return null;
+      const last = record(data.last_takeover);
+      return {
+        run: runOrThrow(data.run, "ari_flow_brand_run_get"),
+        can_take_over: data.can_take_over === true,
+        last_takeover: last
+          ? {
+            to_name: str(last.to_name) ?? "A teammate",
+            from_name: str(last.from_name) ?? "A teammate",
+            kind: str(last.kind) ?? "took_over_active",
+            created_at: str(last.created_at) ?? "",
+          }
+          : null,
+      };
+    },
+    async takeOver(args) {
+      const data = record(
+        settle(
+          "ari_flow_run_take_over",
+          await service.rpc("ari_flow_run_take_over", {
+            p_user_id: userId,
+            p_run_id: args.runId,
+            p_conversation_id: args.conversationId,
+            p_expected_revision: args.expectedRevision,
+            p_mode: args.mode,
+          }),
+        ),
+      );
+      return {
+        changed: data?.changed === true,
+        kind: str(data?.kind),
+        run: runOrThrow(data?.run, "ari_flow_run_take_over"),
+      };
+    },
+    async displacement(conversationId) {
+      const data = record(
+        settle(
+          "ari_flow_run_displacement_get",
+          await service.rpc("ari_flow_run_displacement_get", {
+            p_user_id: userId,
+            p_conversation_id: conversationId,
+          }),
+        ),
+      );
+      if (!data || !str(data.id)) return null;
+      return {
+        id: data.id as string,
+        run_id: str(data.run_id) ?? "",
+        to_name: str(data.to_name) ?? "A teammate",
+        created_at: str(data.created_at),
+        notified_at: str(data.notified_at),
+      };
+    },
+    async markDisplacementNotified(id) {
+      settle(
+        "ari_flow_run_displacement_mark",
+        await service.rpc("ari_flow_run_displacement_mark", {
+          p_id: id,
+          p_user_id: userId,
+        }),
+      );
     },
   };
 }

@@ -45,6 +45,8 @@ export interface PublicTicketProps {
   name: string;
   /** issue #3281 — this ticket's dates by `event_dates.id`, null for All dates. */
   validOccurrenceIds?: readonly string[] | null;
+  /** issue #3281 — listed dates this ticket has sold out; absent on All dates. */
+  soldOutOccurrenceIds?: readonly string[];
   /**
    * issue #3281 — the reader's raw `extras`, unparsed; carts read it with
    * `parsePublicTicketExtras` (ticketExtrasCart.ts).

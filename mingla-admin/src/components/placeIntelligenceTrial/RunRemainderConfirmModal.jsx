@@ -181,7 +181,7 @@ export function RunRemainderConfirmModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Review and confirm — Remainder trial for ${cityName}`}
+      title={`Review and confirm — Intelligence for the rest of ${cityName}`}
       size="md"
     >
       <ModalBody>
@@ -350,7 +350,7 @@ export function RunRemainderConfirmModal({
                   : undefined
           }
         >
-          Run trial
+          Run Intelligence
         </Button>
       </ModalFooter>
     </Modal>

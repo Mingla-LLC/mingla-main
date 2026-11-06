@@ -31,7 +31,11 @@ const DIGEST = "a".repeat(64);
 
 function inventory({ media, publications = [] }) {
   return {
-    tenants: [{ tenant_id: TENANT_ID, site_id: SITE_ID }],
+    tenants: [{
+      tenant_id: TENANT_ID,
+      site_id: SITE_ID,
+      documents: media.length + publications.length,
+    }],
     media,
     publications,
     counts: { tenants: 1, documents: media.length + publications.length },

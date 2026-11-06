@@ -38,6 +38,7 @@ interface UploadCall {
   path: string;
   bytes: number;
   options: Record<string, unknown>;
+  head: Uint8Array;
 }
 
 interface FakeState {
@@ -46,6 +47,9 @@ interface FakeState {
   rpcCalls: string[];
   storageTotalBytes: number;
   place: Record<string, unknown>;
+  removed: string[];
+  order: string[];
+  failUpload?: boolean;
 }
 
 /**
@@ -70,7 +74,10 @@ function makeFakeDb(state: FakeState): any {
       select: () => chain,
       update: (patch: Record<string, unknown>) => {
         op = "update";
-        if (table === "place_pool") state.poolUpdates.push(patch);
+        if (table === "place_pool") {
+          state.poolUpdates.push(patch);
+          state.order.push("pool_update");
+        }
         return chain;
       },
       eq: () => chain,
@@ -93,8 +100,15 @@ function makeFakeDb(state: FakeState): any {
     storage: {
       from: () => ({
         upload: (path: string, bytes: Uint8Array, options: Record<string, unknown>) => {
-          state.uploads.push({ path, bytes: bytes.length, options });
+          state.order.push("upload");
+          state.uploads.push({ path, bytes: bytes.length, options, head: bytes.subarray(0, 12) });
+          if (state.failUpload) return Promise.resolve({ data: null, error: { message: "upload refused" } });
           return Promise.resolve({ data: { path }, error: null });
+        },
+        remove: (paths: string[]) => {
+          state.order.push("remove");
+          state.removed.push(...paths);
+          return Promise.resolve({ data: paths, error: null });
         },
         getPublicUrl: (path: string) => ({
           data: { publicUrl: `https://x.supabase.co/storage/v1/object/public/place-collages/${path}` },
@@ -142,6 +156,8 @@ async function startPhotoServer(): Promise<{ base: string; stop: () => Promise<v
 function baseState(base: string, overrides: Partial<FakeState> = {}): FakeState {
   return {
     uploads: [],
+    removed: [],
+    order: [],
     poolUpdates: [],
     rpcCalls: [],
     storageTotalBytes: 10 * 1024 * 1024 * 1024, // 10 GiB — comfortably under the 85 GiB ceiling
@@ -158,7 +174,7 @@ function baseState(base: string, overrides: Partial<FakeState> = {}): FakeState 
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-Deno.test("collage upload carries a one-year cache-control and image/png", async () => {
+Deno.test("collage upload carries a one-year cache-control and image/webp", async () => {
   resetStorageHeadroomCache();
   const srv = await startPhotoServer();
   try {
@@ -175,14 +191,16 @@ Deno.test("collage upload carries a one-year cache-control and image/png", async
       "collage keys are content fingerprints — they must be served immutable, not on a 1-hour TTL",
     );
     assertEquals(up.options.cacheControl, "31536000");
-    assertEquals(up.options.contentType, "image/png");
+    assertEquals(up.options.contentType, "image/webp");
+    assertEquals(new TextDecoder().decode(up.head.subarray(0, 4)), "RIFF", "the bytes must really be WebP");
+    assertEquals(new TextDecoder().decode(up.head.subarray(8, 12)), "WEBP", "the bytes must really be WebP");
     assertEquals(up.options.upsert, true);
     assert(up.bytes > 0, "a zero-byte collage must never be uploaded");
 
     // The key must stay content-addressed — the long TTL is only safe because of it.
     assert(
-      /^[0-9a-f-]{36}\/[0-9a-f]{12}\.png$/.test(up.path),
-      `collage key must remain <placeId>/<12-hex fingerprint>.png, got ${up.path}`,
+      /^[0-9a-f-]{36}\/[0-9a-f]{12}\.webp$/.test(up.path),
+      `collage key must be <placeId>/<12-hex fingerprint>.webp, got ${up.path}`,
     );
     assertEquals(up.path.split("/")[0], PLACE_ID);
 
@@ -243,6 +261,63 @@ Deno.test("an idempotent cache hit stays free — no storage measurement, no upl
       "a cache hit must not pay for a full seq scan of storage.objects — the guard is " +
         "deliberately placed AFTER the fingerprint check",
     );
+  } finally {
+    await srv.stop();
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Issue #4276 R4: a redo leaves one collage, and the old one outlives any failure.
+const OLD_URL = `https://x.supabase.co/storage/v1/object/public/place-collages/${PLACE_ID}/aaaaaaaaaaaa.webp`;
+
+Deno.test("#4276 the superseded collage is removed only after the new one is saved", async () => {
+  resetStorageHeadroomCache();
+  const srv = await startPhotoServer();
+  try {
+    const state = baseState(srv.base);
+    state.place.photo_collage_url = OLD_URL;
+    state.place.photo_collage_fingerprint = "old-fingerprint";
+    const res = await handleComposeCollage(makeFakeDb(state), { place_pool_id: PLACE_ID });
+    assertEquals(res.status, 200, await res.clone().text());
+    assertEquals(state.removed, [`${PLACE_ID}/aaaaaaaaaaaa.webp`]);
+    assertEquals(state.order, ["upload", "pool_update", "remove"]);
+  } finally {
+    await srv.stop();
+  }
+});
+
+Deno.test("#4276 a failed upload keeps the old collage", async () => {
+  resetStorageHeadroomCache();
+  const srv = await startPhotoServer();
+  try {
+    const state = baseState(srv.base, { failUpload: true });
+    state.place.photo_collage_url = OLD_URL;
+    state.place.photo_collage_fingerprint = "old-fingerprint";
+    const res = await handleComposeCollage(makeFakeDb(state), { place_pool_id: PLACE_ID });
+    assertEquals(res.status, 500);
+    assertEquals(state.removed, [], "nothing replaced the old collage, so it must stay");
+    assertEquals(state.poolUpdates.length, 0);
+  } finally {
+    await srv.stop();
+  }
+});
+
+Deno.test("#4276 another place's object, or a foreign URL, is never removed", async () => {
+  resetStorageHeadroomCache();
+  const srv = await startPhotoServer();
+  try {
+    for (const url of [
+      "https://x.supabase.co/storage/v1/object/public/place-collages/11111111-9d54-426f-b8e8-d358bef6ef1e/bbbbbbbbbbbb.webp",
+      "https://elsewhere.example/whatever.webp",
+    ]) {
+      resetStorageHeadroomCache();
+      const state = baseState(srv.base);
+      state.place.photo_collage_url = url;
+      state.place.photo_collage_fingerprint = "old-fingerprint";
+      const res = await handleComposeCollage(makeFakeDb(state), { place_pool_id: PLACE_ID });
+      assertEquals(res.status, 200, await res.clone().text());
+      assertEquals(state.removed, []);
+    }
   } finally {
     await srv.stop();
   }

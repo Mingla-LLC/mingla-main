@@ -1,7 +1,7 @@
 /*
  * #2829 W9r (DESIGN_SPEC §1.2–§1.7, §3, §7) — the redesigned Website
  * section's rules, as pure functions:
- *  - the navigation offers only what exists (no site: Overview + Setup plan;
+ *  - the navigation offers only what exists (no site: Overview + Website setup;
  *    collections only when the design has a page for them or entries exist;
  *    Past trips only when the brand offers trips), with the right meta;
  *  - old addresses redirect (look → design, domains → addresses, plan?part=);
@@ -64,7 +64,7 @@ describe("#2829 W9r Website navigation", () => {
     expect(routeToRender({ kind: "preview" }, true)).toEqual({ kind: "preview" });
   });
 
-  it("offers only Overview and Setup plan before a site exists", () => {
+  it("offers only Overview and Website setup before a site exists", () => {
     expect(keys(nav({ hasSite: false, plan: { done: 3, total: 8 } }))).toEqual(["overview", "plan"]);
     expect(websiteNavGroups(nav({ hasSite: false, plan: { done: 3, total: 8 } }))[0]!.items[1]!.meta).toBe("3 of 8");
   });
@@ -98,13 +98,17 @@ describe("#2829 W9r Website navigation", () => {
     expect(parseWebsitePath(BRAND, [])).toEqual({ kind: "section", section: "overview" });
     expect(parseWebsitePath(BRAND, ["look"])).toEqual({ kind: "redirect", to: `/brand/${BRAND}/website/design` });
     expect(parseWebsitePath(BRAND, ["domains"])).toEqual({ kind: "redirect", to: `/brand/${BRAND}/website/addresses` });
-    expect(parseWebsitePath(BRAND, ["plan"], { part: "story" })).toEqual({ kind: "section", section: "plan", planPart: "story" });
+    expect(parseWebsitePath(BRAND, ["plan"], { part: "story" })).toEqual({ kind: "redirect", to: `/brand/${BRAND}/website/setup?step=story` });
+    expect(parseWebsitePath(BRAND, ["plan"])).toEqual({ kind: "redirect", to: `/brand/${BRAND}/website/setup` });
+    expect(parseWebsitePath(BRAND, ["setup"], { step: "brand" })).toEqual({ kind: "setup", step: "brand" });
+    expect(parseWebsitePath(BRAND, ["setup"], { step: "nope" })).toEqual({ kind: "setup", step: null });
     expect(parseWebsitePath(BRAND, ["destinations", "new"])).toEqual({ kind: "editor", section: "destinations", entryId: "new" });
     expect(parseWebsitePath(BRAND, ["reviews", "abc-123"])).toEqual({ kind: "editor", section: "reviews", entryId: "abc-123" });
     expect(parseWebsitePath(BRAND, ["preview"])).toEqual({ kind: "preview" });
     expect(parseWebsitePath(BRAND, ["nope"])).toEqual({ kind: "section", section: "overview" });
     expect(parseWebsitePath(BRAND, ["pages", "x"])).toEqual({ kind: "section", section: "overview" });
-    expect(websitePath(BRAND, { kind: "section", section: "plan", planPart: "build" })).toBe(`/brand/${BRAND}/website/plan?part=build`);
+    expect(websitePath(BRAND, { kind: "setup", step: "build" })).toBe(`/brand/${BRAND}/website/setup?step=build`);
+    expect(websitePath(BRAND, { kind: "section", section: "plan" })).toBe(`/brand/${BRAND}/website/setup`);
     expect(websitePath(BRAND, { kind: "section", section: "overview" })).toBe(`/brand/${BRAND}/website`);
   });
 });

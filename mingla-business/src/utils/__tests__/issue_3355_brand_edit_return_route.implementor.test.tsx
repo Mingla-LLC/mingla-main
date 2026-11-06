@@ -99,8 +99,6 @@ jest.mock("@tanstack/react-query", () => ({
 const BrandEditRoute = (
   require("../../../app/brand/[id]/edit") as { default: React.FC }
 ).default;
-const { AriWebsiteSetupPane } =
-  require("../../components/ari/AriWebsiteSetupPane") as typeof import("../../components/ari/AriWebsiteSetupPane");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 function mountRoute() {
@@ -161,36 +159,6 @@ describe("#3355 Brand Edit route — where a save returns", () => {
     TestRenderer.act(() => (view.props.onCancel as () => void)());
     expect(router.back).toHaveBeenCalledTimes(2);
     expect(router.replace).not.toHaveBeenCalled();
-    TestRenderer.act(() => r.unmount());
-  });
-});
-
-describe("#3355 Ari's Website setup pane passes returnTo", () => {
-  test("'Add it myself' opens Brand Edit with Ari's own path to come back to", () => {
-    let r!: ReturnType<typeof TestRenderer.create>;
-    TestRenderer.act(() => {
-      r = TestRenderer.create(
-        <AriWebsiteSetupPane
-          brandId="b1"
-          compact={false}
-          activePart="brand"
-          onFixAll={() => undefined}
-          onReviewGaps={() => undefined}
-          fixing={false}
-        />,
-      );
-    });
-    const [self] = r.root.findAll(
-      (n) => n.type === "pressable" && n.props.testID === "ari-setup-self",
-    );
-    TestRenderer.act(() => (self.props.onPress as () => void)());
-    expect(router.push).toHaveBeenCalledTimes(1);
-    const href = String(router.push.mock.calls[0][0]);
-    expect(href.startsWith("/brand/b1/edit?")).toBe(true);
-    const query = new URLSearchParams(href.split("?")[1]);
-    expect(query.get("returnTo")).toBe(
-      "/(tabs)/ari?brandId=b1&sitesIntent=setup&setupPart=brand",
-    );
     TestRenderer.act(() => r.unmount());
   });
 });

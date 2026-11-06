@@ -65,6 +65,15 @@ export async function requestStreamVideoHosts(headers: Headers): Promise<string[
   }
 }
 
+/**
+ * #2830 — the policy of a private preview: every allowed host. Its draft is not
+ * the active publication (there may be none), and the hosts are the runtime's
+ * own allowlist, so nothing from the request or the draft widens them.
+ */
+export function previewStreamVideoHosts(): readonly string[] {
+  return configuredHosts();
+}
+
 /** #2829 W6 — the visitor asked for less data (`Save-Data: on`): poster only. */
 export function wantsLessData(headers: Headers): boolean {
   return (headers.get("save-data") ?? "").trim().toLowerCase() === "on";

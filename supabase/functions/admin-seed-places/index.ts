@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+import { fetchWithGoogleBackoff } from "../_shared/googleBackoff.ts";
 import {
   SEEDING_CATEGORIES,
   SEEDING_CATEGORY_MAP,
@@ -9,13 +10,46 @@ import {
   resolveSeedingCategory,
   type SeedingCategoryConfig,
 } from "../_shared/seedingCategories.ts";
+import {
+  adminEditsByGooglePlaceId,
+  buildSeedMergeUpdate,
+  COVERAGE_PAGE_SIZE,
+  loadAllCoverageRows,
+} from "../_shared/placeGoogleMerge.ts";
 import { derivePoolCategory } from "../_shared/derivePoolCategory.ts";
+import {
+  COST_PER_NEARBY_SEARCH,
+  COST_PER_PHOTO,
+  countGridTiles,
+  EXPECTED_UNIQUE_PLACES_PER_TILE,
+  HIGH_COST_USD,
+  metersPerDegreeLng,
+  METERS_PER_DEGREE_LAT,
+  PHOTOS_PER_PLACE,
+} from "../_shared/seedingGeometry.ts";
+import {
+  applyCityBox,
+  citiesSearchStatus,
+  cityTileMap,
+  citySearchStatus,
+  generateTilesForCity,
+  type GeocodeResult,
+  PipelineRefusal,
+  placesOutsideBox,
+  planCityBox,
+  previewFill,
+  previewSplitLevel,
+  retiredTileHistory,
+  runCompletenessCheck,
+  startFill,
+  startSplitLevel,
+} from "./searchPipeline.ts";
 // Phase 2: type exclusion imports removed — AI is the sole quality gate
 // import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 import { seedCountryFields } from "./countryLogic.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
-// Ten actions:
+// Actions:
 //   Setup:
 //     1. generate_tiles  — compute tile grid from city bounding box
 //     2. preview_cost    — calculate cost estimate
@@ -29,6 +63,10 @@ import { seedCountryFields } from "./countryLogic.ts";
 //     9. run_status      — load full run state for UI hydration on page load
 //   City registration:
 //    10. geocode_city    — geocode a city name → returns center + viewport bbox + tile estimates
+//   One pipeline (#4276, see searchPipeline.ts):
+//    preview_fill, start_fill, preview_split_level, start_split_level,
+//    run_completeness_check, city_search_status, plan_city_box, apply_city_box,
+//    places_outside_box, retired_tile_history
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -120,11 +158,7 @@ const FIELD_MASK = [
   "places.paymentOptions",
 ].join(",");
 
-const COST_PER_NEARBY_SEARCH = 0.032;
-const COST_PER_PHOTO = 0.007;
-const HARD_CAP_USD = 500;
-const EXPECTED_UNIQUE_PLACES_PER_TILE = 10; // conservative estimate for photo cost
-const PHOTOS_PER_PLACE = 5;
+const HARD_CAP_USD = HIGH_COST_USD;
 const API_TIMEOUT_MS = 10000;
 
 // RELIABILITY: These ranges MUST match app-mobile/src/constants/priceTiers.ts
@@ -153,88 +187,18 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// ── Tile Grid Generation ────────────────────────────────────────────────────
-
-interface TileData {
-  tile_index: number;
-  center_lat: number;
-  center_lng: number;
-  radius_m: number;
-  row_idx: number;
-  col_idx: number;
-}
-
-// BBOX MODEL (2026-04): Cities are defined by their Google Geocoding viewport
-// bounding box, NOT by a center point + radius. The bbox_sw/ne columns on
-// seeding_cities are the source of truth. coverage_radius_km is deprecated.
-// See: outputs/SPEC_CITY_SEEDING_BOUNDING_BOX.md
-function generateTileGrid(
-  swLat: number,
-  swLng: number,
-  neLat: number,
-  neLng: number,
-  tileRadiusM: number,
-): TileData[] {
-  const spacingM = tileRadiusM * 1.4;
-
-  // Convert to degrees (approximate, using center latitude)
-  const metersPerDegreeLat = 111320;
-  const centerLat = (swLat + neLat) / 2;
-  const metersPerDegreeLng =
-    111320 * Math.cos((centerLat * Math.PI) / 180);
-
-  const spacingLat = spacingM / metersPerDegreeLat;
-  const spacingLng = spacingM / metersPerDegreeLng;
-
-  const tiles: TileData[] = [];
-  let tileIndex = 0;
-  let rowIdx = 0;
-
-  for (let lat = swLat; lat <= neLat; lat += spacingLat) {
-    let colIdx = 0;
-    for (let lng = swLng; lng <= neLng; lng += spacingLng) {
-      tiles.push({
-        tile_index: tileIndex++,
-        center_lat: lat,
-        center_lng: lng,
-        radius_m: tileRadiusM,
-        row_idx: rowIdx,
-        col_idx: colIdx,
-      });
-      colIdx++;
-    }
-    rowIdx++;
-  }
-
-  return tiles;
-}
-
 // ── Tile Estimate Calculator (pure math, no DB) ────────────────────────────
 
 function calculateTileEstimates(
   swLat: number, swLng: number, neLat: number, neLng: number,
 ) {
-  const metersPerDegreeLat = 111320;
-  const centerLat = (swLat + neLat) / 2;
-  const metersPerDegreeLng = 111320 * Math.cos((centerLat * Math.PI) / 180);
-
-  const extentLatKm = (neLat - swLat) * metersPerDegreeLat / 1000;
-  const extentLngKm = (neLng - swLng) * metersPerDegreeLng / 1000;
-  const areaKm2 = extentLatKm * extentLngKm;
+  const box = { swLat, swLng, neLat, neLng };
+  const extentLatKm = (neLat - swLat) * METERS_PER_DEGREE_LAT / 1000;
+  const extentLngKm = (neLng - swLng) * metersPerDegreeLng((swLat + neLat) / 2) / 1000;
 
   function countTiles(tileRadiusM: number): { tiles: number; apiCalls: number; searchCostUsd: number } {
-    const spacingM = tileRadiusM * 1.4;
-    const spacingLat = spacingM / metersPerDegreeLat;
-    const spacingLng = spacingM / metersPerDegreeLng;
-
-    let tiles = 0;
-    for (let lat = swLat; lat <= neLat; lat += spacingLat) {
-      for (let lng = swLng; lng <= neLng; lng += spacingLng) {
-        tiles++;
-      }
-    }
-
-    const apiCalls = tiles * ALL_SEEDING_CATEGORY_IDS.length;
+    const tiles = countGridTiles(box, tileRadiusM);
+    const apiCalls = tiles * SEEDING_CATEGORIES.length;
     const searchCostUsd = Math.round(apiCalls * COST_PER_NEARBY_SEARCH * 100) / 100;
     return { tiles, apiCalls, searchCostUsd };
   }
@@ -245,7 +209,7 @@ function calculateTileEstimates(
     atRadius2500: countTiles(2500),
     extentLatKm: Math.round(extentLatKm * 10) / 10,
     extentLngKm: Math.round(extentLngKm * 10) / 10,
-    areaKm2: Math.round(areaKm2),
+    areaKm2: Math.round(extentLatKm * extentLngKm),
   };
 }
 
@@ -374,6 +338,10 @@ function transformGooglePlaceForSeed(
 
     raw_google_data: gPlace,
     fetched_via: "nearby_search",
+    // #4276 C7: a new place stays hidden until it has finished. This row is only ever
+    // inserted (ignoreDuplicates), and the merge update below is an allowlist without
+    // this column, so a place that already exists can't become held.
+    serving_hold: true,
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
@@ -387,38 +355,60 @@ function transformGooglePlaceForSeed(
 
 // ── Post-fetch filters ──────────────────────────────────────────────────────
 
+interface DroppedResult {
+  google_place_id: string;
+  reason: "no_photos" | "closed_permanently";
+  name: string | null;
+  primary_type: string | null;
+}
+
 interface FilterResult {
   // deno-lint-ignore no-explicit-any
   passed: any[];
+  dropped: DroppedResult[];
   rejectedNoPhotos: number;
   rejectedClosed: number;
   rejectedExcludedType: number;
 }
 
 // deno-lint-ignore no-explicit-any
-function applyPostFetchFilters(places: any[], _categoryId: string): FilterResult {
+export function applyPostFetchFilters(places: any[], _categoryId: string): FilterResult {
   let rejectedNoPhotos = 0;
   let rejectedClosed = 0;
+  const dropped: DroppedResult[] = [];
 
   // Phase 2: Type exclusions removed — AI is the sole quality gate.
   // All place types now enter the pool. AI validates quality post-seeding.
 
   // deno-lint-ignore no-explicit-any
+  const drop = (p: any, reason: DroppedResult["reason"]) => {
+    if (p.id) {
+      dropped.push({
+        google_place_id: p.id,
+        reason,
+        name: p.displayName?.text ?? null,
+        primary_type: p.primaryType ?? null,
+      });
+    }
+  };
+  // deno-lint-ignore no-explicit-any
   const passed = places.filter((p: any) => {
     // Reject permanently closed
     if (p.businessStatus === "CLOSED_PERMANENTLY") {
       rejectedClosed++;
+      drop(p, "closed_permanently");
       return false;
     }
     // Reject no photos
     if (!p.photos || p.photos.length === 0) {
       rejectedNoPhotos++;
+      drop(p, "no_photos");
       return false;
     }
     return true;
   });
 
-  return { passed, rejectedNoPhotos, rejectedClosed, rejectedExcludedType: 0 };
+  return { passed, dropped, rejectedNoPhotos, rejectedClosed, rejectedExcludedType: 0 };
 }
 
 // ── Country ─────────────────────────────────────────────────────────────────
@@ -460,69 +450,33 @@ function parseCity(gPlace: any, fallback: string): string {
   return fallback;
 }
 
-// ── Action: generate_tiles ──────────────────────────────────────────────────
+// #4276: every page. A larger box can pass the server's row cap, and a capped read
+// here would silently leave part of the city unsearched and under-priced.
+const TILE_PAGE_SIZE = 1000;
 
-// deno-lint-ignore no-explicit-any
-async function handleGenerateTiles(body: any, supabase: any) {
-  const { cityId } = body;
-  if (!cityId) throw new Error("cityId is required");
-
-  // Load city
-  const { data: city, error: cityErr } = await supabase
-    .from("seeding_cities")
-    .select("*")
-    .eq("id", cityId)
-    .single();
-  if (cityErr || !city) throw new Error(`City not found: ${cityId}`);
-
-  // Use bounding box (bbox model)
-  if (!city.bbox_sw_lat || !city.bbox_ne_lat) {
-    throw new Error("City has no bounding box. Re-register with geocoding.");
-  }
-
-  const tiles = generateTileGrid(
-    city.bbox_sw_lat,
-    city.bbox_sw_lng,
-    city.bbox_ne_lat,
-    city.bbox_ne_lng,
-    city.tile_radius_m,
-  );
-
-  // Delete existing tiles for regeneration
-  await supabase.from("seeding_tiles").delete().eq("city_id", cityId);
-
-  // Insert new tiles — chunk if >500 rows (large cities)
-  const CHUNK_SIZE = 500;
-  const allInserted: Record<string, unknown>[] = [];
-
-  for (let i = 0; i < tiles.length; i += CHUNK_SIZE) {
-    const chunk = tiles.slice(i, i + CHUNK_SIZE).map((t) => ({
-      city_id: cityId,
-      ...t,
-    }));
-
-    const { data: inserted, error: insertErr } = await supabase
+async function loadBaseTiles(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  cityId: string,
+  tileIds?: string[],
+) {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let from = 0;; from += TILE_PAGE_SIZE) {
+    let query = supabase
       .from("seeding_tiles")
-      .insert(chunk)
-      .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx");
-
-    if (insertErr) throw new Error(`Failed to insert tiles (chunk ${Math.floor(i / CHUNK_SIZE) + 1}): ${insertErr.message}`);
-    allInserted.push(...(inserted || []));
+      .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx")
+      .eq("city_id", cityId)
+      .is("retired_at", null)
+      .in("kind", ["grid", "fill"]);
+    if (tileIds && tileIds.length > 0) query = query.in("id", tileIds);
+    const { data, error } = await query
+      .order("tile_index")
+      .range(from, from + TILE_PAGE_SIZE - 1);
+    if (error) throw new Error(`Failed to load tiles: ${error.message}`);
+    out.push(...(data ?? []));
+    if ((data ?? []).length < TILE_PAGE_SIZE) return out;
   }
-
-  return {
-    cityId,
-    tileCount: allInserted.length,
-    tiles: allInserted.map((t) => ({
-      id: t.id,
-      tileIndex: t.tile_index,
-      centerLat: t.center_lat,
-      centerLng: t.center_lng,
-      radiusM: t.radius_m,
-      row: t.row_idx,
-      col: t.col_idx,
-    })),
-  };
 }
 
 // ── Action: preview_cost ────────────────────────────────────────────────────
@@ -556,15 +510,7 @@ async function handlePreviewCost(body: any, supabase: any) {
   const categoryIds = validConfigs.map(c => c.id);
 
   // Load tiles
-  let tileQuery = supabase
-    .from("seeding_tiles")
-    .select("id")
-    .eq("city_id", cityId);
-  if (tileIds && tileIds.length > 0) {
-    tileQuery = tileQuery.in("id", tileIds);
-  }
-  const { data: tiles, error: tileErr } = await tileQuery;
-  if (tileErr) throw new Error(`Failed to load tiles: ${tileErr.message}`);
+  const tiles = await loadBaseTiles(supabase, cityId, tileIds);
 
   const tileCount = tiles?.length ?? 0;
   const categoryCount = categoryIds.length;
@@ -606,19 +552,25 @@ async function handleCoverageCheck(body: any, supabase: any) {
 
   // ORCH-0700 Phase 3: count places per Mingla category, derived client-side from
   // primary_type + types (place_pool.seeding_category column dropped in Migration 6).
-  // Must override Supabase default 1000-row limit to get accurate counts.
-  const { data: rows, error } = await supabase
-    .from("place_pool")
-    .select("primary_type, types")
-    .eq("city_id", cityId)
-    .eq("is_active", true)
-    .limit(10000);
-
-  if (error) throw new Error(`Coverage check failed: ${error.message}`);
+  // #4276 U5: page through every row. A fixed limit undercounted large cities, and
+  // a server row cap can return fewer rows than any limit asks for.
+  const rows = await loadAllCoverageRows(async (afterId) => {
+    let page = supabase
+      .from("place_pool")
+      .select("id, primary_type, types")
+      .eq("city_id", cityId)
+      .eq("is_active", true)
+      .order("id")
+      .limit(COVERAGE_PAGE_SIZE);
+    if (afterId) page = page.gt("id", afterId);
+    const { data, error } = await page;
+    if (error) throw new Error(`Coverage check failed: ${error.message}`);
+    return data ?? [];
+  });
 
   // Tally per derived category (matches the SQL helper byte-for-byte).
   const counts: Record<string, number> = {};
-  for (const r of (rows || []) as Array<{ primary_type: string | null; types: string[] | null }>) {
+  for (const r of rows) {
     const cat = derivePoolCategory(r.primary_type, r.types) ?? "unknown";
     counts[cat] = (counts[cat] || 0) + 1;
   }
@@ -679,12 +631,7 @@ async function handleCreateRun(body: any, supabase: any) {
   const categoryIds = validConfigs.map((c) => c.appCategorySlug);
 
   // Load tiles ordered by tile_index
-  const { data: tiles, error: tileErr } = await supabase
-    .from("seeding_tiles")
-    .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx")
-    .eq("city_id", cityId)
-    .order("tile_index");
-  if (tileErr) throw new Error(`Failed to load tiles: ${tileErr.message}`);
+  const tiles = await loadBaseTiles(supabase, cityId);
   if (!tiles || tiles.length === 0) {
     throw new Error("No tiles found. Generate tiles first.");
   }
@@ -737,6 +684,11 @@ async function handleCreateRun(body: any, supabase: any) {
         tile_index: tile.tile_index,
         seeding_category: config.appCategorySlug,
         app_category: config.appCategory,
+        // #4276: the category alone can't say which of its configs this search is.
+        search_config_id: config.id,
+        center_lat: tile.center_lat,
+        center_lng: tile.center_lng,
+        radius_m: tile.radius_m,
         batch_index: batchIndex++,
         status: "pending",
       });
@@ -806,7 +758,7 @@ async function handleCreateRun(body: any, supabase: any) {
     batchIndex: b.batch_index,
     tileIndex: b.tile_index,
     category: b.seeding_category,
-    categoryLabel: resolveSeedingCategory(b.seeding_category)?.label ?? b.seeding_category,
+    categoryLabel: SEEDING_CATEGORY_MAP[b.search_config_id]?.label ?? b.seeding_category,
   }));
 
   return {
@@ -820,146 +772,58 @@ async function handleCreateRun(body: any, supabase: any) {
   };
 }
 
-// ── Action: run_next_batch ───────────────────────────────────────────────────
+// ── One search, shared by run_next_batch and retry_batch ─────────────────────
 
+interface SearchCircle {
+  center_lat: number;
+  center_lng: number;
+  radius_m: number;
+}
+
+// #4276 T1: a search keeps its own centre and radius. Older rows fall back to the tile.
 // deno-lint-ignore no-explicit-any
-async function handleRunNextBatch(body: any, supabase: any) {
-  const { runId } = body;
-  if (!runId) throw new Error("runId is required");
-
-  // Load run
-  const { data: run, error: runErr } = await supabase
-    .from("seeding_runs")
-    .select("*")
-    .eq("id", runId)
-    .single();
-  if (runErr || !run) throw new Error(`Run not found: ${runId}`);
-
-  if (!["ready", "running", "paused"].includes(run.status)) {
-    throw new Error(`Run status is '${run.status}' — cannot execute batches. Run must be in 'ready', 'running', or 'paused' state.`);
+async function loadSearchCircle(supabase: any, batch: any): Promise<SearchCircle | null> {
+  if (batch.center_lat != null && batch.center_lng != null && batch.radius_m != null) {
+    return { center_lat: batch.center_lat, center_lng: batch.center_lng, radius_m: batch.radius_m };
   }
-
-  // Find next pending batch
-  const { data: nextBatches, error: nextErr } = await supabase
-    .from("seeding_batches")
-    .select("*")
-    .eq("run_id", runId)
-    .eq("status", "pending")
-    .order("batch_index")
-    .limit(1);
-
-  if (nextErr) throw new Error(`Failed to find next batch: ${nextErr.message}`);
-
-  if (!nextBatches || nextBatches.length === 0) {
-    // All done — mark run completed
-    await supabase
-      .from("seeding_runs")
-      .update({
-        status: "completed",
-        current_batch_index: null,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", runId);
-
-    return { done: true, runId, message: "All batches completed" };
-  }
-
-  const batch = nextBatches[0];
-
-  // Mark batch as running, mark run as running
-  const now = new Date().toISOString();
-  await supabase
-    .from("seeding_batches")
-    .update({ status: "running", started_at: now })
-    .eq("id", batch.id);
-
-  await supabase
-    .from("seeding_runs")
-    .update({
-      status: "running",
-      current_batch_index: batch.batch_index,
-      ...(run.status === "ready" ? { started_at: now } : {}),
-    })
-    .eq("id", runId);
-
-  // Load city for name/country
-  const { data: city } = await supabase
-    .from("seeding_cities")
-    .select("name, country, country_code")
-    .eq("id", batch.city_id)
-    .single();
-  const cityName = city?.name ?? "Unknown";
-  // #1704 — both fields from the seeded city row. No address is consulted.
-  const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
-
-  // Load tile
-  const { data: tile } = await supabase
+  if (!batch.tile_id) return null;
+  const { data } = await supabase
     .from("seeding_tiles")
-    .select("id, tile_index, center_lat, center_lng, radius_m")
+    .select("center_lat, center_lng, radius_m")
     .eq("id", batch.tile_id)
     .single();
+  return data ?? null;
+}
 
-  if (!tile) {
-    // Tile missing — mark batch failed
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: "Tile not found",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batch.id);
+// #4276: a category can have several configs, and resolving it picks only the first,
+// which ran the first config repeatedly and never ran the others. Rows that record
+// their config run exactly that one. A recorded config that no longer exists fails
+// the batch rather than quietly searching something else.
+// deno-lint-ignore no-explicit-any
+export function resolveBatchConfig(batch: any): SeedingCategoryConfig | undefined {
+  if (batch.search_config_id) return SEEDING_CATEGORY_MAP[batch.search_config_id];
+  // Handles both old seeding IDs and new app slugs (ORCH-0434)
+  return resolveSeedingCategory(batch.seeding_category);
+}
 
-    await supabase
-      .from("seeding_runs")
-      .update({
-        status: "paused",
-        failed_batches: run.failed_batches + 1,
-      })
-      .eq("id", runId);
-
-    return {
-      done: false,
-      batchId: batch.id,
-      batchIndex: batch.batch_index,
-      status: "failed",
-      error: "Tile not found",
-    };
-  }
-
-  // Get category config — handles both old seeding IDs and new app slugs (ORCH-0434)
-  const config = resolveSeedingCategory(batch.seeding_category);
-  if (!config) {
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: `Unknown category: ${batch.seeding_category}`,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batch.id);
-
-    await supabase
-      .from("seeding_runs")
-      .update({
-        status: "paused",
-        failed_batches: run.failed_batches + 1,
-      })
-      .eq("id", runId);
-
-    return {
-      done: false,
-      batchId: batch.id,
-      batchIndex: batch.batch_index,
-      status: "failed",
-      error: `Unknown category: ${batch.seeding_category}`,
-    };
-  }
-
-  // Execute ONE Google Nearby Search
+async function executeBatchSearch(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  args: {
+    // deno-lint-ignore no-explicit-any
+    batch: any;
+    tile: SearchCircle;
+    config: SeedingCategoryConfig;
+    cityName: string;
+    cityCountry: string;
+    cityCountryCode: string | null;
+  },
+) {
+  const { batch, tile, config, cityName, cityCountry, cityCountryCode } = args;
   let batchStatus = "completed";
   let errorMessage: string | null = null;
-  let errorDetails: unknown = null;
+  // deno-lint-ignore no-explicit-any
+  let errorDetails: any = null;
   let placesReturned = 0;
   let rejectedNoPhotos = 0;
   let rejectedClosed = 0;
@@ -969,7 +833,8 @@ async function handleRunNextBatch(body: any, supabase: any) {
 
   try {
     const requestBody = {
-      includedTypes: config.includedTypes,
+      // #4276 T5: at the minimum radius a capped search repeats on part of its types.
+      includedTypes: batch.included_types_override ?? config.includedTypes,
       excludedPrimaryTypes: config.excludedPrimaryTypes,
       maxResultCount: 20,
       locationRestriction: {
@@ -984,16 +849,19 @@ async function handleRunNextBatch(body: any, supabase: any) {
       rankPreference: "POPULARITY",
     };
 
-    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      body: JSON.stringify(requestBody),
-      timeoutMs: API_TIMEOUT_MS,
-    });
+    // #4276 C8: a rate limit waits and tries again rather than failing the search.
+    const response = await fetchWithGoogleBackoff(() =>
+      timeoutFetch(NEARBY_SEARCH_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY,
+          "X-Goog-FieldMask": FIELD_MASK,
+        },
+        body: JSON.stringify(requestBody),
+        timeoutMs: API_TIMEOUT_MS,
+      })
+    );
 
     if (!response.ok) {
       const respBody = await response.text();
@@ -1010,6 +878,22 @@ async function handleRunNextBatch(body: any, supabase: any) {
       rejectedNoPhotos = filterResult.rejectedNoPhotos;
       rejectedClosed = filterResult.rejectedClosed;
       rejectedExcludedType = filterResult.rejectedExcludedType;
+
+      // #4276 T7: keep which places were dropped. The search itself succeeded, so a
+      // failure here is reported on the batch rather than failing it.
+      if (filterResult.dropped.length > 0) {
+        const seenAt = new Date().toISOString();
+        const { error: droppedErr } = await supabase
+          .from("seeding_filtered_results")
+          .upsert(
+            filterResult.dropped.map((d) => ({ ...d, city_id: batch.city_id, last_seen_at: seenAt })),
+            { onConflict: "city_id,google_place_id,reason" },
+          );
+        if (droppedErr) {
+          console.error(`[admin-seed-places] dropped results not recorded: ${droppedErr.message}`);
+          errorDetails = { filtered_results_error: droppedErr.message };
+        }
+      }
 
       // Deduplicate by google_place_id
       // deno-lint-ignore no-explicit-any
@@ -1055,85 +939,33 @@ async function handleRunNextBatch(body: any, supabase: any) {
         // batch=failed and error_details contains the real PostgREST message.
         for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
           const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
+          // #4276 S3: read the admin markers for this batch, and stop rather than risk
+          // writing over an admin's edit if they can't be read.
+          const { data: markerRows, error: markerErr } = await supabase
+            .from("place_pool_admin_edits")
+            .select("google_place_id, edited_fields")
+            .in("google_place_id", updateBatch.map((r) => r.google_place_id));
+          if (markerErr) {
+            throw new Error(`admin marker read failed: ${markerErr.message}`);
+          }
+          const adminEdits = adminEditsByGooglePlaceId(markerRows);
           const results = await Promise.all(
             updateBatch.map((row) =>
               supabase
                 .from("place_pool")
-                .update({
-                  // ORCH-0550.1 — re-seed must write every new column so a repeat
-                  // tile pass cannot degrade a previously-enriched row
-                  // (I-REFRESH-NEVER-DEGRADES).
-                  //
-                  // I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data
-                  // is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively
-                  // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
-                  // The fingerprint check inside the scorer detects photo rotation and
-                  // re-scores automatically when stored_photo_urls change.
-                  //
-                  // I-COLLAGE-SOLE-OWNER (ORCH-0712): photo_collage_url +
-                  // photo_collage_fingerprint are INTENTIONALLY EXCLUDED. Owned exclusively
-                  // by run-place-intelligence-trial compose_collage action. A re-seed must
-                  // NOT clobber the cached collage. Fingerprint detects rotation.
-                  name: row.name,
-                  address: row.address,
-                  lat: row.lat,
-                  lng: row.lng,
-                  types: row.types,
-                  primary_type: row.primary_type,
-                  primary_type_display_name: row.primary_type_display_name,
-                  rating: row.rating,
-                  review_count: row.review_count,
-                  price_level: row.price_level,
-                  price_range_currency: row.price_range_currency,
-                  price_range_start_cents: row.price_range_start_cents,
-                  price_range_end_cents: row.price_range_end_cents,
-                  opening_hours: row.opening_hours,
-                  secondary_opening_hours: row.secondary_opening_hours,
-                  photos: row.photos,
-                  website: row.website,
-                  google_maps_uri: row.google_maps_uri,
-                  national_phone_number: row.national_phone_number,
-                  business_status: row.business_status,
-                  editorial_summary: row.editorial_summary,
-                  generative_summary: row.generative_summary,
-                  reviews: row.reviews,
-                  utc_offset_minutes: row.utc_offset_minutes,
-                  serves_brunch: row.serves_brunch,
-                  serves_lunch: row.serves_lunch,
-                  serves_dinner: row.serves_dinner,
-                  serves_breakfast: row.serves_breakfast,
-                  serves_beer: row.serves_beer,
-                  serves_wine: row.serves_wine,
-                  serves_cocktails: row.serves_cocktails,
-                  serves_coffee: row.serves_coffee,
-                  serves_dessert: row.serves_dessert,
-                  serves_vegetarian_food: row.serves_vegetarian_food,
-                  outdoor_seating: row.outdoor_seating,
-                  live_music: row.live_music,
-                  good_for_groups: row.good_for_groups,
-                  good_for_children: row.good_for_children,
-                  good_for_watching_sports: row.good_for_watching_sports,
-                  allows_dogs: row.allows_dogs,
-                  has_restroom: row.has_restroom,
-                  reservable: row.reservable,
-                  menu_for_children: row.menu_for_children,
-                  dine_in: row.dine_in,
-                  takeout: row.takeout,
-                  delivery: row.delivery,
-                  curbside_pickup: row.curbside_pickup,
-                  accessibility_options: row.accessibility_options,
-                  parking_options: row.parking_options,
-                  payment_options: row.payment_options,
-                  raw_google_data: row.raw_google_data,
-                  last_detail_refresh: row.last_detail_refresh,
-                  refresh_failures: 0,
-                })
+                // I-REFRESH-NEVER-DEGRADES: a merge, never a blind overwrite. The columns
+                // are an allowlist, which also keeps photo_aesthetic_data
+                // (I-PHOTO-AESTHETIC-DATA-SOLE-OWNER) and photo_collage_url + fingerprint
+                // (I-COLLAGE-SOLE-OWNER) out of a re-seed.
+                .update(buildSeedMergeUpdate(row, adminEdits.get(row.google_place_id)))
                 .eq("google_place_id", row.google_place_id)
                 .select("google_place_id")
             )
           );
+          // deno-lint-ignore no-explicit-any
           const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
           if (failed.length > 0) {
+            // deno-lint-ignore no-explicit-any
             const sample = failed.slice(0, 3).map((r: any, idx: number) => {
               const row = updateBatch[results.indexOf(r)];
               return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
@@ -1151,79 +983,216 @@ async function handleRunNextBatch(body: any, supabase: any) {
     errorDetails = { error_type: isTimeout ? "timeout" : "unknown", error_stack: err instanceof Error ? err.stack : undefined };
   }
 
-  const completedAt = new Date().toISOString();
-  const costUsd = COST_PER_NEARBY_SEARCH; // Always 1 API call per batch
-
-  // Update batch record
-  await supabase
-    .from("seeding_batches")
-    .update({
-      status: batchStatus,
-      google_api_calls: 1,
-      places_returned: placesReturned,
-      places_rejected_no_photos: rejectedNoPhotos,
-      places_rejected_closed: rejectedClosed,
-      places_rejected_excluded_type: rejectedExcludedType,
-      places_new_inserted: newInserted,
-      places_duplicate_skipped: duplicateSkipped,
-      estimated_cost_usd: costUsd,
-      error_message: errorMessage,
-      error_details: errorDetails,
-      completed_at: completedAt,
-    })
-    .eq("id", batch.id);
-
-  // Update run aggregates
-  const updateData: Record<string, unknown> = {
-    status: "paused",
-    total_api_calls: run.total_api_calls + 1,
-    total_places_new: run.total_places_new + newInserted,
-    total_places_duped: run.total_places_duped + duplicateSkipped,
-    total_cost_usd: run.total_cost_usd + costUsd,
+  return {
+    batchStatus,
+    errorMessage,
+    errorDetails,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
   };
+}
 
-  if (batchStatus === "completed") {
-    updateData.completed_batches = run.completed_batches + 1;
-  } else {
-    updateData.failed_batches = run.failed_batches + 1;
+/**
+ * #4276: what one search is charged in the spend ledger. A search Google refused
+ * (an HTTP error answer, so no result came back) is not billed, so it costs nothing.
+ * Everything else is charged: a search that answered, and a timeout or network error,
+ * because the request may have reached Google and been billed before the answer was
+ * lost. Over-counting a timeout is the safe side for a spend limit.
+ */
+// deno-lint-ignore no-explicit-any
+export function billedSearchCostUsd(errorDetails: any): number {
+  return typeof errorDetails?.http_status === "number" ? 0 : COST_PER_NEARBY_SEARCH;
+}
+
+// ── Finishing a search ───────────────────────────────────────────────────────
+
+// #4276 C4: a search still running after this long lost its worker. A Nearby Search
+// takes seconds, even with every backoff in fetchWithGoogleBackoff.
+const STALE_BATCH_SECONDS = 300;
+
+// deno-lint-ignore no-explicit-any
+async function finishBatch(supabase: any, batch: any, r: {
+  status: string;
+  apiCalls?: number;
+  costUsd?: number;
+  placesReturned?: number;
+  rejectedNoPhotos?: number;
+  rejectedClosed?: number;
+  rejectedExcludedType?: number;
+  newInserted?: number;
+  duplicateSkipped?: number;
+  error?: string | null;
+  errorDetails?: unknown;
+}) {
+  const { data, error } = await supabase.rpc("seeding_finish_batch", {
+    p_batch_id: batch.id,
+    p_claim_token: batch.claim_token,
+    p_status: r.status,
+    p_api_calls: r.apiCalls ?? 0,
+    p_cost_usd: r.costUsd ?? 0,
+    p_places_returned: r.placesReturned ?? 0,
+    p_rejected_no_photos: r.rejectedNoPhotos ?? 0,
+    p_rejected_closed: r.rejectedClosed ?? 0,
+    p_rejected_excluded_type: r.rejectedExcludedType ?? 0,
+    p_new_inserted: r.newInserted ?? 0,
+    p_duplicate_skipped: r.duplicateSkipped ?? 0,
+    p_error_message: r.error ?? null,
+    p_error_details: r.errorDetails ?? null,
+  });
+  if (error) throw new Error(`Search ${batch.id} could not be recorded: ${error.message}`);
+  if (data?.applied !== true) {
+    console.warn(`[admin-seed-places] search ${batch.id} finished after its claim timed out; not counted`);
+  }
+  return data ?? {};
+}
+
+// ── Action: run_next_batch ───────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleRunNextBatch(body: any, supabase: any) {
+  const { runId } = body;
+  if (!runId) throw new Error("runId is required");
+
+  // Load run
+  const { data: run, error: runErr } = await supabase
+    .from("seeding_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+  if (runErr || !run) throw new Error(`Run not found: ${runId}`);
+
+  if (!["ready", "running", "paused"].includes(run.status)) {
+    throw new Error(`Run status is '${run.status}' — cannot execute batches. Run must be in 'ready', 'running', or 'paused' state.`);
   }
 
-  // Check if there are remaining pending batches
-  const { data: remainingBatches } = await supabase
-    .from("seeding_batches")
-    .select("id")
-    .eq("run_id", runId)
-    .eq("status", "pending")
-    .limit(1);
+  // #4276 C3, C4: one statement claims one search, so two callers can't take the same
+  // one. A search left running past the timeout comes back here without being recounted.
+  const { data: claimed, error: claimErr } = await supabase.rpc("seeding_claim_next_batch", {
+    p_run_id: runId,
+    p_stale_after_seconds: STALE_BATCH_SECONDS,
+  });
+  if (claimErr) throw new Error(`Failed to claim next batch: ${claimErr.message}`);
 
-  const noPending = !remainingBatches || remainingBatches.length === 0;
-
-  if (noPending) {
-    // Also check for failed batches — don't auto-complete if retryable batches remain
-    const { data: failedBatches } = await supabase
+  if (!claimed || claimed.length === 0) {
+    const { data: stillRunning, error: runningErr } = await supabase
       .from("seeding_batches")
       .select("id")
       .eq("run_id", runId)
-      .eq("status", "failed")
+      .eq("status", "running")
       .limit(1);
-
-    const noFailed = !failedBatches || failedBatches.length === 0;
-
-    if (noFailed) {
-      // All batches are completed/skipped — run is done
-      updateData.status = "completed";
-      updateData.current_batch_index = null;
-      updateData.completed_at = completedAt;
+    if (runningErr) throw new Error(`Failed to read running batches: ${runningErr.message}`);
+    if (stillRunning && stillRunning.length > 0) {
+      return { done: false, runId, waiting: true, message: "Another search is still running" };
     }
-    // else: no pending but failed batches exist — stay paused for retry
+
+    // All done — mark run completed
+    await supabase
+      .from("seeding_runs")
+      .update({
+        status: "completed",
+        current_batch_index: null,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+
+    return { done: true, runId, message: "All batches completed" };
   }
 
+  const batch = claimed[0];
+
+  // Mark run as running
+  const now = new Date().toISOString();
   await supabase
     .from("seeding_runs")
-    .update(updateData)
+    .update({
+      status: "running",
+      current_batch_index: batch.batch_index,
+      ...(run.status === "ready" ? { started_at: now } : {}),
+    })
     .eq("id", runId);
 
+  // Load city for name/country
+  const { data: city } = await supabase
+    .from("seeding_cities")
+    .select("name, country, country_code")
+    .eq("id", batch.city_id)
+    .single();
+  const cityName = city?.name ?? "Unknown";
+  // #1704 — both fields from the seeded city row. No address is consulted.
+  const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
+
+  // Load where this search looks
+  const tile = await loadSearchCircle(supabase, batch);
+
+  if (!tile) {
+    // Tile missing — mark batch failed
+    await finishBatch(supabase, batch, { status: "failed", error: "Tile not found" });
+    return {
+      done: false,
+      batchId: batch.id,
+      batchIndex: batch.batch_index,
+      status: "failed",
+      error: "Tile not found",
+    };
+  }
+
+  const config = resolveBatchConfig(batch);
+  if (!config) {
+    const error = `Unknown category: ${batch.seeding_category}`;
+    await finishBatch(supabase, batch, { status: "failed", error });
+    return {
+      done: false,
+      batchId: batch.id,
+      batchIndex: batch.batch_index,
+      status: "failed",
+      error,
+    };
+  }
+
+  // Execute ONE Google Nearby Search
+  const {
+    batchStatus,
+    errorMessage,
+    errorDetails,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+  } = await executeBatchSearch(supabase, {
+    batch,
+    tile,
+    config,
+    cityName,
+    cityCountry,
+    cityCountryCode,
+  });
+
+  const costUsd = billedSearchCostUsd(errorDetails); // one API call per batch; refused ones are free
+
+  // #4276 C3: the search and its run's counters change together, or not at all if
+  // this claim timed out and another worker now holds the search.
+  const finished = await finishBatch(supabase, batch, {
+    status: batchStatus,
+    apiCalls: 1,
+    costUsd,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+    error: errorMessage,
+    errorDetails,
+  });
+
   // Get next batch preview
+  const noPending = finished.has_pending !== true;
   let nextPreview = null;
   if (!noPending) {
     const { data: nextBatch } = await supabase
@@ -1246,7 +1215,8 @@ async function handleRunNextBatch(body: any, supabase: any) {
   }
 
   return {
-    done: updateData.status === "completed",
+    done: finished.run_status === "completed",
+    superseded: finished.applied !== true,
     batchId: batch.id,
     batchIndex: batch.batch_index,
     tileIndex: batch.tile_index,
@@ -1265,12 +1235,12 @@ async function handleRunNextBatch(body: any, supabase: any) {
     },
     nextBatch: nextPreview,
     runProgress: {
-      completedBatches: (updateData.completed_batches as number) ?? run.completed_batches,
-      failedBatches: (updateData.failed_batches as number) ?? run.failed_batches,
+      completedBatches: finished.completed_batches ?? run.completed_batches,
+      failedBatches: finished.failed_batches ?? run.failed_batches,
       totalBatches: run.total_batches,
-      totalPlacesNew: run.total_places_new + newInserted,
-      totalPlacesDuped: run.total_places_duped + duplicateSkipped,
-      totalCostUsd: Math.round((run.total_cost_usd + costUsd) * 1000) / 1000,
+      totalPlacesNew: finished.total_places_new ?? run.total_places_new,
+      totalPlacesDuped: finished.total_places_duped ?? run.total_places_duped,
+      totalCostUsd: Math.round((finished.total_cost_usd ?? run.total_cost_usd) * 1000) / 1000,
     },
   };
 }
@@ -1295,48 +1265,29 @@ async function handleRetryBatch(body: any, supabase: any) {
   }
 
   // Load batch — must be failed AND belong to this run
-  const { data: batch, error: batchErr } = await supabase
+  const { data: existingBatch, error: batchErr } = await supabase
     .from("seeding_batches")
-    .select("*")
+    .select("id, status")
     .eq("id", batchId)
     .eq("run_id", runId)
     .single();
 
-  if (batchErr || !batch) throw new Error("Batch not found");
-  if (batch.status !== "failed") {
-    throw new Error(`Batch status is '${batch.status}' — can only retry failed batches`);
+  if (batchErr || !existingBatch) throw new Error("Batch not found");
+  if (existingBatch.status !== "failed") {
+    throw new Error(`Batch status is '${existingBatch.status}' — can only retry failed batches`);
   }
 
-  // One-at-a-time guard: no other batch should be running
-  const { data: runningBatches } = await supabase
-    .from("seeding_batches")
-    .select("id")
-    .eq("run_id", runId)
-    .eq("status", "running")
-    .limit(1);
-
-  if (runningBatches && runningBatches.length > 0) {
+  // #4276 C3: one statement checks it is still failed, that nothing else is running in
+  // this run, and takes it.
+  const { data: claimedRetry, error: claimRetryErr } = await supabase.rpc("seeding_claim_retry_batch", {
+    p_run_id: runId,
+    p_batch_id: batchId,
+  });
+  if (claimRetryErr) throw new Error(`Failed to claim retry: ${claimRetryErr.message}`);
+  if (!claimedRetry || claimedRetry.length === 0) {
     throw new Error("Another batch is already running. Wait for it to complete.");
   }
-
-  // Save old batch contribution to run aggregates (for correction)
-  const oldNewInserted = batch.places_new_inserted || 0;
-  const oldDuped = batch.places_duplicate_skipped || 0;
-
-  // Mark batch as running, increment retry_count
-  const now = new Date().toISOString();
-  await supabase
-    .from("seeding_batches")
-    .update({
-      status: "running",
-      started_at: now,
-      completed_at: null,
-      retry_count: (batch.retry_count || 0) + 1,
-      // Clear old results — will be overwritten
-      error_message: null,
-      error_details: null,
-    })
-    .eq("id", batchId);
+  const batch = claimedRetry[0];
 
   // Mark run as running
   await supabase
@@ -1357,28 +1308,11 @@ async function handleRetryBatch(body: any, supabase: any) {
   // #1704 — both fields from the seeded city row. No address is consulted.
   const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
 
-  // Load tile
-  const { data: tile } = await supabase
-    .from("seeding_tiles")
-    .select("id, tile_index, center_lat, center_lng, radius_m")
-    .eq("id", batch.tile_id)
-    .single();
+  // Load where this search looks
+  const tile = await loadSearchCircle(supabase, batch);
 
   if (!tile) {
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: "Tile not found",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batchId);
-
-    await supabase
-      .from("seeding_runs")
-      .update({ status: "paused" })
-      .eq("id", runId);
-
+    await finishBatch(supabase, batch, { status: "failed", error: "Tile not found" });
     return {
       retried: true,
       batchId,
@@ -1388,284 +1322,55 @@ async function handleRetryBatch(body: any, supabase: any) {
     };
   }
 
-  const config = resolveSeedingCategory(batch.seeding_category);
+  const config = resolveBatchConfig(batch);
   if (!config) {
-    await supabase
-      .from("seeding_batches")
-      .update({
-        status: "failed",
-        error_message: `Unknown category: ${batch.seeding_category}`,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", batchId);
-
-    await supabase
-      .from("seeding_runs")
-      .update({ status: "paused" })
-      .eq("id", runId);
-
+    const error = `Unknown category: ${batch.seeding_category}`;
+    await finishBatch(supabase, batch, { status: "failed", error });
     return {
       retried: true,
       batchId,
       batchIndex: batch.batch_index,
       status: "failed",
-      error: `Unknown category: ${batch.seeding_category}`,
+      error,
     };
   }
 
-  // Execute ONE Google Nearby Search (identical logic to run_next_batch)
-  let batchStatus = "completed";
-  let errorMessage: string | null = null;
-  let errorDetails: unknown = null;
-  let placesReturned = 0;
-  let rejectedNoPhotos = 0;
-  let rejectedClosed = 0;
-  let rejectedExcludedType = 0;
-  let newInserted = 0;
-  let duplicateSkipped = 0;
+  // Execute ONE Google Nearby Search
+  const {
+    batchStatus,
+    errorMessage,
+    errorDetails,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+  } = await executeBatchSearch(supabase, {
+    batch,
+    tile,
+    config,
+    cityName,
+    cityCountry,
+    cityCountryCode,
+  });
 
-  try {
-    const requestBody = {
-      includedTypes: config.includedTypes,
-      excludedPrimaryTypes: config.excludedPrimaryTypes,
-      maxResultCount: 20,
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: tile.center_lat,
-            longitude: tile.center_lng,
-          },
-          radius: tile.radius_m,
-        },
-      },
-      rankPreference: "POPULARITY",
-    };
+  const costUsd = billedSearchCostUsd(errorDetails);
 
-    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      body: JSON.stringify(requestBody),
-      timeoutMs: API_TIMEOUT_MS,
-    });
-
-    if (!response.ok) {
-      const respBody = await response.text();
-      batchStatus = "failed";
-      errorMessage = `Google API ${response.status}: ${respBody.substring(0, 200)}`;
-      errorDetails = { http_status: response.status, response_body: respBody.substring(0, 500) };
-    } else {
-      const data = await response.json();
-      const places = data.places || [];
-      placesReturned = places.length;
-
-      const filterResult = applyPostFetchFilters(places, config.id);
-      rejectedNoPhotos = filterResult.rejectedNoPhotos;
-      rejectedClosed = filterResult.rejectedClosed;
-      rejectedExcludedType = filterResult.rejectedExcludedType;
-
-      // deno-lint-ignore no-explicit-any
-      const uniquePlaces = new Map<string, any>();
-      for (const p of filterResult.passed) {
-        if (p.id && !uniquePlaces.has(p.id)) {
-          uniquePlaces.set(p.id, p);
-        }
-      }
-
-      if (uniquePlaces.size > 0) {
-        const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, cityCountry, parseCity(p, cityName), cityCountryCode)
-        );
-
-        // Step 1: Insert new places only
-        const { data: insertedData, error: insertErr } = await supabase
-          .from("place_pool")
-          .upsert(rows, { onConflict: "google_place_id", ignoreDuplicates: true })
-          .select("google_place_id");
-
-        if (insertErr) {
-          errorMessage = `Upsert error: ${insertErr.message}`;
-          errorDetails = { upsert_error: insertErr.message };
-        }
-
-        const insertedIds = new Set(
-          (insertedData ?? []).map((r: { google_place_id: string }) => r.google_place_id)
-        );
-        newInserted = insertedIds.size;
-
-        // Step 2: Update existing places (batched in groups of 10)
-        const existingRows = rows.filter((r) => !insertedIds.has(r.google_place_id));
-        duplicateSkipped = existingRows.length;
-        const UPDATE_BATCH_SIZE = 10;
-
-        // ORCH-0598.11.B-002 — surface per-row update errors (see first handler for rationale).
-        for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
-          const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
-          const results = await Promise.all(
-            updateBatch.map((row) =>
-              supabase
-                .from("place_pool")
-                .update({
-                  // ORCH-0550.1 — re-seed must write every new column so a repeat
-                  // tile pass cannot degrade a previously-enriched row
-                  // (I-REFRESH-NEVER-DEGRADES).
-                  //
-                  // I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data
-                  // is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively
-                  // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
-                  // The fingerprint check inside the scorer detects photo rotation and
-                  // re-scores automatically when stored_photo_urls change.
-                  //
-                  // I-COLLAGE-SOLE-OWNER (ORCH-0712): photo_collage_url +
-                  // photo_collage_fingerprint are INTENTIONALLY EXCLUDED. Owned exclusively
-                  // by run-place-intelligence-trial compose_collage action. A re-seed must
-                  // NOT clobber the cached collage. Fingerprint detects rotation.
-                  name: row.name,
-                  address: row.address,
-                  lat: row.lat,
-                  lng: row.lng,
-                  types: row.types,
-                  primary_type: row.primary_type,
-                  primary_type_display_name: row.primary_type_display_name,
-                  rating: row.rating,
-                  review_count: row.review_count,
-                  price_level: row.price_level,
-                  price_range_currency: row.price_range_currency,
-                  price_range_start_cents: row.price_range_start_cents,
-                  price_range_end_cents: row.price_range_end_cents,
-                  opening_hours: row.opening_hours,
-                  secondary_opening_hours: row.secondary_opening_hours,
-                  photos: row.photos,
-                  website: row.website,
-                  google_maps_uri: row.google_maps_uri,
-                  national_phone_number: row.national_phone_number,
-                  business_status: row.business_status,
-                  editorial_summary: row.editorial_summary,
-                  generative_summary: row.generative_summary,
-                  reviews: row.reviews,
-                  utc_offset_minutes: row.utc_offset_minutes,
-                  serves_brunch: row.serves_brunch,
-                  serves_lunch: row.serves_lunch,
-                  serves_dinner: row.serves_dinner,
-                  serves_breakfast: row.serves_breakfast,
-                  serves_beer: row.serves_beer,
-                  serves_wine: row.serves_wine,
-                  serves_cocktails: row.serves_cocktails,
-                  serves_coffee: row.serves_coffee,
-                  serves_dessert: row.serves_dessert,
-                  serves_vegetarian_food: row.serves_vegetarian_food,
-                  outdoor_seating: row.outdoor_seating,
-                  live_music: row.live_music,
-                  good_for_groups: row.good_for_groups,
-                  good_for_children: row.good_for_children,
-                  good_for_watching_sports: row.good_for_watching_sports,
-                  allows_dogs: row.allows_dogs,
-                  has_restroom: row.has_restroom,
-                  reservable: row.reservable,
-                  menu_for_children: row.menu_for_children,
-                  dine_in: row.dine_in,
-                  takeout: row.takeout,
-                  delivery: row.delivery,
-                  curbside_pickup: row.curbside_pickup,
-                  accessibility_options: row.accessibility_options,
-                  parking_options: row.parking_options,
-                  payment_options: row.payment_options,
-                  raw_google_data: row.raw_google_data,
-                  last_detail_refresh: row.last_detail_refresh,
-                  refresh_failures: 0,
-                })
-                .eq("google_place_id", row.google_place_id)
-                .select("google_place_id")
-            )
-          );
-          const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
-          if (failed.length > 0) {
-            const sample = failed.slice(0, 3).map((r: any, idx: number) => {
-              const row = updateBatch[results.indexOf(r)];
-              return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
-            }).join(' | ');
-            console.error(`[admin-seed-places retry] Update failed on ${failed.length}/${updateBatch.length} rows. Sample: ${sample}`);
-            throw new Error(`duplicate-update-path (retry): ${failed.length}/${updateBatch.length} rows failed. First: ${sample}`);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    batchStatus = "failed";
-    const isTimeout = err instanceof DOMException && err.name === "AbortError";
-    errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
-    errorDetails = { error_type: isTimeout ? "timeout" : "unknown" };
-  }
-
-  const completedAt = new Date().toISOString();
-  const costUsd = COST_PER_NEARBY_SEARCH;
-
-  // Update batch record with new results
-  await supabase
-    .from("seeding_batches")
-    .update({
-      status: batchStatus,
-      google_api_calls: (batch.google_api_calls || 0) + 1,
-      places_returned: placesReturned,
-      places_rejected_no_photos: rejectedNoPhotos,
-      places_rejected_closed: rejectedClosed,
-      places_rejected_excluded_type: rejectedExcludedType,
-      places_new_inserted: newInserted,
-      places_duplicate_skipped: duplicateSkipped,
-      estimated_cost_usd: (batch.estimated_cost_usd || 0) + costUsd,
-      error_message: errorMessage,
-      error_details: errorDetails,
-      completed_at: completedAt,
-    })
-    .eq("id", batchId);
-
-  // Correct run aggregates:
-  // - Always add the new API call and cost
-  // - Adjust place counts: subtract old batch contribution, add new
-  // - Adjust status counters: if retry succeeded, move from failed to completed
-  const runUpdate: Record<string, unknown> = {
-    status: "paused",
-    total_api_calls: run.total_api_calls + 1,
-    total_cost_usd: run.total_cost_usd + costUsd,
-    total_places_new: run.total_places_new - oldNewInserted + newInserted,
-    total_places_duped: run.total_places_duped - oldDuped + duplicateSkipped,
-  };
-
-  if (batchStatus === "completed") {
-    // Batch moved from failed → completed
-    runUpdate.failed_batches = run.failed_batches - 1;
-    runUpdate.completed_batches = run.completed_batches + 1;
-
-    // Check if run should now auto-complete (no pending, no failed remaining)
-    const { data: pendingLeft } = await supabase
-      .from("seeding_batches")
-      .select("id")
-      .eq("run_id", runId)
-      .eq("status", "pending")
-      .limit(1);
-
-    const { data: failedLeft } = await supabase
-      .from("seeding_batches")
-      .select("id")
-      .eq("run_id", runId)
-      .eq("status", "failed")
-      .limit(1);
-
-    if ((!pendingLeft || pendingLeft.length === 0) && (!failedLeft || failedLeft.length === 0)) {
-      runUpdate.status = "completed";
-      runUpdate.current_batch_index = null;
-      runUpdate.completed_at = completedAt;
-    }
-  }
-  // If retry failed again, counters stay the same (batch was already counted as failed)
-
-  await supabase
-    .from("seeding_runs")
-    .update(runUpdate)
-    .eq("id", runId);
+  // #4276 C3: replaces what the failed attempt counted, in one transaction.
+  await finishBatch(supabase, batch, {
+    status: batchStatus,
+    apiCalls: 1,
+    costUsd,
+    placesReturned,
+    rejectedNoPhotos,
+    rejectedClosed,
+    rejectedExcludedType,
+    newInserted,
+    duplicateSkipped,
+    error: errorMessage,
+    errorDetails,
+  });
 
   return {
     retried: true,
@@ -1675,7 +1380,7 @@ async function handleRetryBatch(body: any, supabase: any) {
     category: batch.seeding_category,
     categoryLabel: config.label,
     status: batchStatus,
-    retryCount: (batch.retry_count || 0) + 1,
+    retryCount: batch.retry_count,
     result: {
       placesReturned,
       rejectedNoPhotos,
@@ -1844,7 +1549,7 @@ async function handleRunStatus(body: any, supabase: any) {
     .eq("run_id", runId)
     .order("batch_index");
 
-  // Load city + tiles for context
+  // Load city for context
   const { data: city } = await supabase
     .from("seeding_cities")
     .select("name, country, center_lat, center_lng")
@@ -1913,6 +1618,8 @@ async function handleGeocodeCity(body: any) {
     country,
     countryCode,
     formattedAddress: result.formatted_address || "",
+    // #4276 B1: tells a city from a state or region.
+    resultTypes: Array.isArray(result.types) ? result.types : [],
     center: {
       lat: geo.location.lat,
       lng: geo.location.lng,
@@ -1934,7 +1641,69 @@ async function handleGeocodeCity(body: any) {
 
 // ── Main Handler ────────────────────────────────────────────────────────────
 
-serve(async (req) => {
+const geocodeForPipeline = async (query: string): Promise<GeocodeResult> => {
+  const r = await handleGeocodeCity({ query });
+  return {
+    center: r.center,
+    viewport: r.viewport,
+    resultTypes: r.resultTypes,
+    formattedAddress: r.formattedAddress,
+  };
+};
+
+// deno-lint-ignore no-explicit-any
+export async function dispatchAction(body: any, supabase: any): Promise<Response> {
+  switch (body.action) {
+    case "geocode_city":
+      return json(await handleGeocodeCity(body));
+    case "generate_tiles":
+      return json(await generateTilesForCity(supabase, body.cityId));
+    case "preview_cost":
+      return json(await handlePreviewCost(body, supabase));
+    case "coverage_check":
+      return json(await handleCoverageCheck(body, supabase));
+    case "create_run":
+      return json(await handleCreateRun(body, supabase));
+    case "run_next_batch":
+      return json(await handleRunNextBatch(body, supabase));
+    case "retry_batch":
+      return json(await handleRetryBatch(body, supabase));
+    case "skip_batch":
+      return json(await handleSkipBatch(body, supabase));
+    case "cancel_run":
+      return json(await handleCancelRun(body, supabase));
+    case "run_status":
+      return json(await handleRunStatus(body, supabase));
+    case "city_search_status":
+      return json(await citySearchStatus(supabase, body));
+    case "city_tile_map":
+      return json(await cityTileMap(supabase, body));
+    case "cities_search_status":
+      return json(await citiesSearchStatus(supabase));
+    case "preview_fill":
+      return json(await previewFill(supabase, body));
+    case "start_fill":
+      return json(await startFill(supabase, body));
+    case "preview_split_level":
+      return json(await previewSplitLevel(supabase, body));
+    case "start_split_level":
+      return json(await startSplitLevel(supabase, body));
+    case "run_completeness_check":
+      return json(await runCompletenessCheck(supabase, body, { googleApiKey: GOOGLE_API_KEY }));
+    case "plan_city_box":
+      return json(await planCityBox(supabase, body, geocodeForPipeline));
+    case "apply_city_box":
+      return json(await applyCityBox(supabase, body, geocodeForPipeline));
+    case "places_outside_box":
+      return json(await placesOutsideBox(supabase, body));
+    case "retired_tile_history":
+      return json(await retiredTileHistory(supabase, body));
+    default:
+      return json({ error: `Unknown action: ${body.action}` }, 400);
+  }
+}
+
+export const httpHandler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -1948,56 +1717,45 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
 
-    if (authError || !user) {
-      return json({ error: "Unauthorized" }, 401);
-    }
+    // #4276: the server-driven conductor calls in with the service key. Everyone else
+    // is a signed-in, active admin.
+    if (token !== SUPABASE_SERVICE_ROLE_KEY) {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token);
 
-    // Admin check
-    const { data: adminRow } = await supabase
-      .from("admin_users")
-      .select("id")
-      .eq("email", user.email)
-      .eq("status", "active")
-      .maybeSingle();
+      if (authError || !user) {
+        return json({ error: "Unauthorized" }, 401);
+      }
 
-    if (!adminRow) {
-      return json({ error: "Forbidden: admin access required" }, 403);
+      // Admin check
+      const { data: adminRow } = await supabase
+        .from("admin_users")
+        .select("id")
+        .eq("email", user.email)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!adminRow) {
+        return json({ error: "Forbidden: admin access required" }, 403);
+      }
     }
 
     const body = await req.json();
-
-    switch (body.action) {
-      case "geocode_city":
-        return json(await handleGeocodeCity(body));
-      case "generate_tiles":
-        return json(await handleGenerateTiles(body, supabase));
-      case "preview_cost":
-        return json(await handlePreviewCost(body, supabase));
-      case "coverage_check":
-        return json(await handleCoverageCheck(body, supabase));
-      case "create_run":
-        return json(await handleCreateRun(body, supabase));
-      case "run_next_batch":
-        return json(await handleRunNextBatch(body, supabase));
-      case "retry_batch":
-        return json(await handleRetryBatch(body, supabase));
-      case "skip_batch":
-        return json(await handleSkipBatch(body, supabase));
-      case "cancel_run":
-        return json(await handleCancelRun(body, supabase));
-      case "run_status":
-        return json(await handleRunStatus(body, supabase));
-      default:
-        return json({ error: `Unknown action: ${body.action}` }, 400);
-    }
+    return await dispatchAction(body, supabase);
   } catch (e: unknown) {
+    if (e instanceof PipelineRefusal) {
+      return json({ error: e.message, code: e.code, ...e.detail }, e.status);
+    }
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[admin-seed-places] FATAL:", msg, e instanceof Error ? e.stack : "");
     return json({ error: msg }, 500);
   }
-});
+};
+
+// Importing this file for tests must not start a server.
+if (import.meta.main) {
+  serve(httpHandler);
+}

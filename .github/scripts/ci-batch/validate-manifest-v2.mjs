@@ -363,8 +363,14 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
 // #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
 // #4270: register the brand plan migrations (20280414004270-20280414024270) and their proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "cf8adefd777f861917f64aa5995613b591e22dd603d7a95b60dcf7a98079b6fd";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "17a159902cc82fa419ac3229df629001d2257ecce3f955b7cfeb1e3b7e8681c7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1266,11 +1272,13 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
+    // The list of tracked paths has passed Node's default 1 MiB output limit.
     listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOBUFS") throw new Error("registry validation: git ls-files output exceeded maxBuffer");
     throw new Error("registry validation requires a git worktree");
   }
   if (!scope) return listed;

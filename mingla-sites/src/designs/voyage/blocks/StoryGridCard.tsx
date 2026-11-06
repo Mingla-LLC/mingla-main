@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- site media is served first-party and immutable from /media. */
-import Link from "next/link";
+import { SiteRouteLink as Link } from "../../../components/PreviewLinks";
 import { formatCalendarDay, storiesNewestFirst } from "../../../contracts/generated/collections.ts";
 import { isManuallyOrdered } from "../../../contracts/generated/artifactV2.ts";
 import { storyHref } from "../../../lib/siteCollections";

@@ -36,7 +36,7 @@ describe("ORCH-1013 Finding B — ActiveRunCard soft-cancel", () => {
     );
     assert.ok(
       !/import\s*{[^}]*\bSquare\b[^}]*}\s*from\s*"lucide-react"/.test(src),
-      "must NOT import Square — Square stays in TrialResultsTab for hard sample-mode cancel only",
+      "must NOT import Square (the hard sample-mode cancel was retired with sample mode, #4276)",
     );
   });
 
@@ -80,15 +80,15 @@ describe("ORCH-1013 Finding B — ActiveRunCard soft-cancel", () => {
     );
   });
 
-  it("terminal status (complete/cancelled/failed) shows View button", () => {
+  it("terminal status (complete/cancelled/failed) shows View only when there is somewhere to go", () => {
     assert.ok(
       src.includes('["complete", "cancelled", "failed"]'),
       "terminal-state guard must include all 3 terminal statuses",
     );
-    assert.ok(
-      src.includes("onViewRun?.(run.id)"),
-      "View button must invoke onViewRun(run.id) for deep-link",
-    );
+    // #4276: with the results explorer retired, a View button with no handler would
+    // be a dead tap, so it is drawn only when the page passes onViewRun.
+    assert.ok(src.includes("{isTerminal && onViewRun && ("), "View is gated on a handler");
+    assert.ok(src.includes("onClick={() => onViewRun(run.id)}"), "View invokes onViewRun(run.id)");
   });
 
   // issue #3526 P0-1 — this used to require a hardcoded

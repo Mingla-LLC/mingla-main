@@ -152,6 +152,10 @@ export interface FlowRun {
   lease_held: boolean;
   lease_held_by_me: boolean;
   lease_owner_name: string | null;
+  /** #2830 — live, with no activity for ari_flow_stopped_after() (database clock). */
+  stopped: boolean;
+  last_activity_at: string | null;
+  owner_since: string | null;
 }
 
 /** The structured answer a Host card submits (I-ARI-BOUND-ANSWERS). */
@@ -325,6 +329,22 @@ export interface FlowProbeDeps {
    * not confirmed or cancelled? (A step waiting on it issues no new card.)
    */
   hasOpenProposal?(): Promise<boolean>;
+  /**
+   * #2830 — public research for brand details: candidates already found, or
+   * null (ask the plain question). Starts the one search in the background.
+   * Never holds the question up.
+   */
+  brandResearch?(plan: Record<string, unknown>): Promise<
+    Record<string, Record<string, unknown>[] | undefined> | null
+  >;
+  /**
+   * #2830 — one field's research candidates become evidence, through the one
+   * existing path. Public values are untouched. False: ask the plain question.
+   */
+  recordFinding?(
+    fieldKey: string,
+    candidates: Record<string, unknown>[],
+  ): Promise<boolean>;
   /** #3355 P7 — the brand's own time zone, country and currency. */
   brandFacts?(): Promise<{
     default_timezone: string | null;

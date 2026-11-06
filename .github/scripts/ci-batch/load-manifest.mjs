@@ -151,8 +151,17 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
 // #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
+// #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
+// (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
+// #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
 // #4270: register the brand plan migrations (20280414004270-20280414024270) and their proofs the same way.
-export const BOOTSTRAP_SHA256 = "9f63d453e3f8851079107c62b3061fdc9a680ca794a9d9e2bff7bd759c21e51c";
+export const BOOTSTRAP_SHA256 = "bde7a348af02ba06995e52e55b1f217a27b240d8bb0774db3d4aff5f6c69f68d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

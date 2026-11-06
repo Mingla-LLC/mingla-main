@@ -40,6 +40,15 @@ export const PLAINTEXT_MAGIC = Buffer.from("MINGLA-SITES-BACKUP-V1\n", "utf8");
 export const MAX_BACKUP_AGE_MS = 26 * 60 * 60 * 1000;
 export const MAX_RESTORE_AGE_MS = 100 * 24 * 60 * 60 * 1000;
 export const REQUIRED_BACKUP_RETENTION_DAYS = 7;
+// #2830 — both recovery scripts count one tenant's documents the same way, so
+// the restore drill compares like with like. `tenant` is the outer alias.
+export const TENANT_DOCUMENTS_SQL = String.raw`
+    (SELECT count(*) FROM sites_cms.pages row WHERE row.tenant_id = tenant.id) +
+    (SELECT count(*) FROM sites_cms.media row WHERE row.tenant_id = tenant.id) +
+    (SELECT count(*) FROM sites_cms.navigation row WHERE row.tenant_id = tenant.id) +
+    (SELECT count(*) FROM sites_cms.footer row WHERE row.tenant_id = tenant.id) +
+    (SELECT count(*) FROM sites_cms.site_settings row WHERE row.tenant_id = tenant.id) +
+    (SELECT count(*) FROM sites_cms.publication_jobs row WHERE row.tenant_id = tenant.id)`;
 
 const EMPTY_SHA256 =
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -786,7 +795,9 @@ export function validateObjectIdentity(bucket, key, siteId, tenantId = null) {
     const recoveryPattern = new RegExp(
       `^recovery/${exactTenantId}/${exactSiteId}/` +
       "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/" +
-      "[0-9a-f]{64}/(master|320|640|960|1440|1920|c400|c768|w1600)\\.webp$",
+      // #2830 — `master.mp4`: a removed file video keeps its one MP4 here
+      // (mediaStorageObjects in the Studio), and this pattern refused it.
+      "[0-9a-f]{64}/((master|320|640|960|1440|1920|c400|c768|w1600)\\.webp|master\\.mp4)$",
       "i",
     );
     if (
@@ -801,12 +812,97 @@ export function validateObjectIdentity(bucket, key, siteId, tenantId = null) {
   }
 }
 
+/**
+ * #2830 — a stored object every brand shares, so no tenant owns it. Today that
+ * is only the font pipeline's content-addressed files (#2829 AD-3:
+ * `fonts/<sha256>.woff2`, plus the `.ttf` specimen) in the approved-media
+ * bucket. Anything else under `fonts/` is not shared and fails as unknown.
+ */
+const SHARED_FONT_KEY = /^fonts\/[0-9a-f]{64}\.(woff2|ttf)$/;
+
+export function isSharedObject(bucket, key) {
+  return bucket === "sites-media-approved" && typeof key === "string" &&
+    SHARED_FONT_KEY.test(key);
+}
+
+/**
+ * #2830 — which known tenant owns this stored object, read from its key alone.
+ * A bucket holds every brand's objects, so an object is valid only if its key
+ * names exactly one tenant in `tenants` and is well formed for that tenant. An
+ * unknown owner fails closed; a key pairing one tenant with another tenant's
+ * site is refused by validateObjectIdentity. A shared object (isSharedObject)
+ * returns null: it belongs to every tenant, so to none.
+ */
+export function resolveObjectOwner(bucket, key, tenants) {
+  if (!SITES_BUCKETS.includes(bucket)) fail("UNEXPECTED_BUCKET");
+  if (typeof key !== "string") fail("OBJECT_SITE_PREFIX_MISMATCH");
+  if (isSharedObject(bucket, key)) return null;
+  const segment = key.split("/")[1];
+  const owner = tenants.find((tenant) =>
+    (bucket === "sites-media-recovery" ? tenant.tenant_id : tenant.site_id) === segment);
+  if (!owner) fail("OBJECT_UNKNOWN_TENANT");
+  validateObjectIdentity(bucket, key, owner.site_id, owner.tenant_id);
+  return owner;
+}
+
+/**
+ * #2830 — every tenant a manifest covers. A version 1 manifest was written when
+ * a bundle held exactly one tenant, so it still reads as one; those bundles
+ * stay restorable.
+ */
+export function manifestTenants(manifest) {
+  if (manifest.schema_version === 1) {
+    return [{
+      tenant_id: manifest.tenant_id,
+      site_id: manifest.site_id,
+      documents: manifest.counts.documents,
+      objects: manifest.counts.objects,
+      object_bytes: manifest.counts.object_bytes,
+    }];
+  }
+  return manifest.tenants;
+}
+
+function validateManifestTenants(manifest) {
+  const { tenants, counts } = manifest;
+  if (!Array.isArray(tenants) || tenants.length < 1 || tenants.length !== counts.tenants) {
+    fail("MANIFEST_SCHEMA_INVALID");
+  }
+  let documents = 0;
+  for (const tenant of tenants) {
+    exactKeys(tenant, [
+      "documents", "object_bytes", "objects", "site_id", "tenant_id",
+    ], "MANIFEST_SCHEMA_INVALID");
+    requireUuid(tenant.site_id, "MANIFEST_SCHEMA_INVALID");
+    requireUuid(tenant.tenant_id, "MANIFEST_SCHEMA_INVALID");
+    for (const name of ["documents", "object_bytes", "objects"]) {
+      if (!Number.isSafeInteger(tenant[name]) || tenant[name] < 0) {
+        fail("MANIFEST_SCHEMA_INVALID");
+      }
+    }
+    documents += tenant.documents;
+  }
+  if (
+    new Set(tenants.map((tenant) => tenant.site_id)).size !== tenants.length ||
+    new Set(tenants.map((tenant) => tenant.tenant_id)).size !== tenants.length ||
+    documents > counts.documents
+  ) fail("MANIFEST_MISMATCH");
+  if (!tenants.some((tenant) =>
+    tenant.site_id === manifest.site_id && tenant.tenant_id === manifest.tenant_id)) {
+    fail("MANIFEST_SCHEMA_INVALID");
+  }
+}
+
 export function validateManifest(manifest, now = new Date()) {
+  // #2830 — `site_id` and `tenant_id` name the site this job signs for (it must
+  // exist); `tenants` lists every tenant the bundle holds.
+  const version = manifest?.schema_version;
+  if (version !== 1 && version !== 2) fail("MANIFEST_SCHEMA_INVALID");
   exactKeys(manifest, [
     "backup", "counts", "database", "generated_at", "objects", "schema_version", "site_id",
     "tenant_id",
+    ...(version === 2 ? ["tenants"] : []),
   ], "MANIFEST_SCHEMA_INVALID");
-  if (manifest.schema_version !== 1) fail("MANIFEST_SCHEMA_INVALID");
   requireUuid(manifest.site_id);
   requireUuid(manifest.tenant_id, "INVALID_TENANT_ID");
   const generated = Date.parse(manifest.generated_at);
@@ -838,22 +934,28 @@ export function validateManifest(manifest, now = new Date()) {
   for (const value of Object.values(manifest.counts)) {
     if (!Number.isSafeInteger(value) || value < 0) fail("MANIFEST_SCHEMA_INVALID");
   }
+  if (version === 2) validateManifestTenants(manifest);
   if (!Array.isArray(manifest.objects) || manifest.objects.length !== manifest.counts.objects) {
     fail("MANIFEST_MISMATCH");
   }
+  const tenants = manifestTenants(manifest);
+  const perTenant = new Map(tenants.map((tenant) => [tenant.tenant_id, { objects: 0, bytes: 0 }]));
   let objectBytes = 0;
   const identities = new Set();
   for (const object of manifest.objects) {
     exactKeys(object, [
       "bucket", "bytes", "key", "protected", "reference_state", "sha256", "site_id",
     ], "MANIFEST_SCHEMA_INVALID");
-    if (object.site_id !== manifest.site_id) fail("OBJECT_SITE_PREFIX_MISMATCH");
-    validateObjectIdentity(
-      object.bucket,
-      object.key,
-      manifest.site_id,
-      manifest.tenant_id,
-    );
+    const owner = version === 1
+      ? tenants[0]
+      : resolveObjectOwner(object.bucket, object.key, tenants);
+    if (owner === null) {
+      // A shared font is listed once, with no site, and counts only in the totals.
+      if (object.site_id !== null) fail("OBJECT_SITE_PREFIX_MISMATCH");
+    } else {
+      if (object.site_id !== owner.site_id) fail("OBJECT_SITE_PREFIX_MISMATCH");
+      validateObjectIdentity(object.bucket, object.key, owner.site_id, owner.tenant_id);
+    }
     if (
       !Number.isSafeInteger(object.bytes) || object.bytes < 0 ||
       typeof object.protected !== "boolean" ||
@@ -864,8 +966,18 @@ export function validateManifest(manifest, now = new Date()) {
     if (identities.has(identity)) fail("MANIFEST_MISMATCH");
     identities.add(identity);
     objectBytes += object.bytes;
+    if (owner === null) continue;
+    const tally = perTenant.get(owner.tenant_id);
+    tally.objects += 1;
+    tally.bytes += object.bytes;
   }
   if (objectBytes !== manifest.counts.object_bytes) fail("MANIFEST_MISMATCH");
+  for (const tenant of tenants) {
+    const tally = perTenant.get(tenant.tenant_id);
+    if (tally.objects !== tenant.objects || tally.bytes !== tenant.object_bytes) {
+      fail("MANIFEST_MISMATCH");
+    }
+  }
   return manifest;
 }
 

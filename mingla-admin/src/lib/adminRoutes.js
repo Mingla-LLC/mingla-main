@@ -39,7 +39,9 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   signals: Object.freeze({ page: "placepool", tab: "pipeline" }),
   // #4130 (Wave 4b): the Deck tuner is now an action on a place in Browse and map.
   "deck-tuner": Object.freeze({ page: "placepool", tab: "browse" }),
-  "place-intelligence-trial": Object.freeze({ page: "settings", tab: "intelligence-trial" }),
+  // #4276: Intelligence runs are part of the Place pool pipeline again (it was
+  // wrongly treated as a retired research tool and parked read-only in Settings).
+  "place-intelligence-trial": Object.freeze({ page: "placepool", tab: "pipeline" }),
   "stripe-mode": Object.freeze({ page: "platform-health", tab: "stripe" }),
   "api-health": Object.freeze({ page: "platform-health", tab: "providers" }),
   "queue-health": Object.freeze({ page: "platform-health", tab: "queue" }),

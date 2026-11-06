@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { sha256 } from "../../../../lib/crypto";
 import { runtimeConfig } from "../../../../lib/config";
 import { loadPublication, requestHost } from "../../../../lib/publication";
+import { PREVIEW_ASSET_HEADERS, previewArtifactForAsset } from "../../../../lib/previewMedia";
 import { readPrivateObject, readPrivateObjectRange } from "../../../../lib/storageReader";
 import { emitPublicObservation } from "../../../../lib/observability";
 import {
@@ -20,15 +21,20 @@ const notFound = () => new NextResponse(null, { status: 404, headers: { "cache-c
 
 type Params = { params: Promise<{ mediaId: string; width: string }> };
 
-/** The media record this host's publication carries for the URL, or null. */
-async function resolveReference(context: Params): Promise<{ reference: MediaReference; isVideo: boolean; siteId: string } | null> {
+/** The media record this host's publication (or, with `?k=`, its own private preview) carries for the URL, or null. */
+async function resolveReference(request: Request, context: Params): Promise<{ reference: MediaReference; isVideo: boolean; siteId: string; preview: boolean } | null> {
   const { mediaId, width } = await context.params;
   // #2830 — one media door. `video.mp4` joins the width renditions rather than
   // getting its own route, so lookup, tenancy and headers stay in one place.
   const isVideo = width === "video.mp4";
   const variantName = /^(c400|c768|w1600)\.webp$/.exec(width)?.[1] ?? null;
   if (!/^[0-9a-f-]{36}$/i.test(mediaId) || (!isVideo && !variantName && !/^(320|640|960|1440|1920)\.webp$/.test(width))) return null;
-  const { artifact } = await loadPublication(requestHost(await headers()));
+  const host = requestHost(await headers());
+  // #2830 — a key never falls back to the publication: a bad key is a 404.
+  const previewKey = new URL(request.url).searchParams.get("k");
+  const artifact = previewKey !== null
+    ? await previewArtifactForAsset(previewKey, host)
+    : (await loadPublication(host)).artifact;
   const media = artifact.media as MediaReference[];
   // #2829 W7b — a picture's extra rendition is served from ITS OWN record
   // (own key, own digest) inside the picture's media entry.
@@ -46,7 +52,7 @@ async function resolveReference(context: Params): Promise<{ reference: MediaRefe
     !reference.object_key.startsWith(`approved/${artifact.site_id}/${mediaId}/`) ||
     !reference.object_key.endsWith(isVideo ? ".mp4" : ".webp")
   ) return null;
-  return { reference, isVideo, siteId: artifact.site_id };
+  return { reference, isVideo, siteId: artifact.site_id, preview: previewKey !== null };
 }
 
 function videoIntegrity(reference: MediaReference): VideoIntegrity | null {
@@ -63,7 +69,7 @@ function videoIntegrity(reference: MediaReference): VideoIntegrity | null {
   };
 }
 
-function videoHeaders(video: VideoIntegrity, extra: Record<string, string>): Headers {
+function videoHeaders(video: VideoIntegrity, extra: Record<string, string>, preview: boolean): Headers {
   return new Headers({
     "content-type": "video/mp4",
     "accept-ranges": "bytes",
@@ -73,6 +79,7 @@ function videoHeaders(video: VideoIntegrity, extra: Record<string, string>): Hea
     "repr-digest": `sha-256=:${Buffer.from(video.integrity, "hex").toString("base64")}:`,
     "x-content-type-options": "nosniff",
     ...extra,
+    ...(preview ? PREVIEW_ASSET_HEADERS : {}),
   });
 }
 
@@ -101,7 +108,7 @@ function observeChunkRefusal(siteId: string, error: unknown) {
  * hashes the whole file per request and never sends a byte of a chunk that
  * does not match (502 instead).
  */
-async function serveVideo(request: Request, video: VideoIntegrity, objectKey: string, siteId: string, head: boolean): Promise<Response> {
+async function serveVideo(request: Request, video: VideoIntegrity, objectKey: string, siteId: string, head: boolean, preview: boolean): Promise<Response> {
   const incoming = request.headers;
   const plan = planVideoRange({
     size: video.bytes,
@@ -110,18 +117,18 @@ async function serveVideo(request: Request, video: VideoIntegrity, objectKey: st
     ifRange: incoming.get("if-range"),
     ifNoneMatch: incoming.get("if-none-match"),
   });
-  if (plan.status === 304) return new NextResponse(null, { status: 304, headers: videoHeaders(video, {}) });
+  if (plan.status === 304) return new NextResponse(null, { status: 304, headers: videoHeaders(video, {}, preview) });
   if (plan.status === 416) {
     return new NextResponse(null, {
       status: 416,
-      headers: videoHeaders(video, { "content-range": `bytes */${video.bytes}`, "cache-control": "no-store" }),
+      headers: videoHeaders(video, { "content-range": `bytes */${video.bytes}`, "cache-control": "no-store" }, preview),
     });
   }
   const length = plan.end - plan.start + 1;
   const responseHeaders = videoHeaders(video, {
     "content-length": String(length),
     ...(plan.status === 206 ? { "content-range": `bytes ${plan.start}-${plan.end}/${video.bytes}` } : {}),
-  });
+  }, preview);
   if (head) return new NextResponse(null, { status: plan.status, headers: responseHeaders });
   const bucket = runtimeConfig().approvedMediaBucket;
   const fetchBytes = (start: number, end: number) => readPrivateObjectRange(bucket, objectKey, { start, end });
@@ -144,7 +151,7 @@ async function serveVideo(request: Request, video: VideoIntegrity, objectKey: st
  * so it is still verified whole, exactly as before W6. Every v2 video carries
  * chunk digests (the v2 contract requires them).
  */
-async function serveWholeVerified(reference: MediaReference, isVideo: boolean): Promise<Response> {
+async function serveWholeVerified(reference: MediaReference, isVideo: boolean, preview: boolean): Promise<Response> {
   const object = await readPrivateObject(runtimeConfig().approvedMediaBucket, reference.object_key, "force-cache");
   if (!object.ok) return notFound();
   const bytes = new Uint8Array(await object.arrayBuffer());
@@ -155,18 +162,19 @@ async function serveWholeVerified(reference: MediaReference, isVideo: boolean): 
       "cache-control": IMMUTABLE,
       "content-digest": `sha-256=:${Buffer.from(reference.integrity, "hex").toString("base64")}:`,
       "x-content-type-options": "nosniff",
+      ...(preview ? PREVIEW_ASSET_HEADERS : {}),
     },
   });
 }
 
 async function handle(request: Request, context: Params, head: boolean): Promise<Response> {
   try {
-    const resolved = await resolveReference(context);
+    const resolved = await resolveReference(request, context);
     if (!resolved) return notFound();
     const video = resolved.isVideo ? videoIntegrity(resolved.reference) : null;
-    if (video) return await serveVideo(request, video, resolved.reference.object_key, resolved.siteId, head);
+    if (video) return await serveVideo(request, video, resolved.reference.object_key, resolved.siteId, head, resolved.preview);
     // Images (and v1 videos) are verified whole; a HEAD reports what a GET would.
-    const response = await serveWholeVerified(resolved.reference, resolved.isVideo);
+    const response = await serveWholeVerified(resolved.reference, resolved.isVideo, resolved.preview);
     return head ? new NextResponse(null, { status: response.status, headers: response.headers }) : response;
   } catch {
     return notFound();

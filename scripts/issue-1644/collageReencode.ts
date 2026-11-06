@@ -62,6 +62,10 @@ import decodeWebp from "npm:@jsquash/webp@1.5.0/decode.js";
 // agree on the TTL, or half the bucket ends up on a one-hour cache and nobody
 // notices (Constitution #2 — one owner per truth).
 export { COLLAGE_CACHE_CONTROL_SECONDS } from "../../supabase/functions/_shared/imageCollage.ts";
+import {
+  COLLAGE_CONTENT_TYPE,
+  COLLAGE_WEBP_QUALITY,
+} from "../../supabase/functions/_shared/imageCollage.ts";
 
 /** The bucket holding the collages. Content-addressed: `<placeId>/<fp12>.png`. */
 export const COLLAGE_BUCKET = "place-collages";
@@ -73,10 +77,10 @@ export const COLLAGE_BUCKET = "place-collages";
  * resolution is a model-quality change, not a storage change. We change the
  * container, not the picture.
  */
-export const WEBP_QUALITY = 80;
+export const WEBP_QUALITY = COLLAGE_WEBP_QUALITY;
 
 /** Storage content-type for the re-encoded objects. Gemini reads mime from this. */
-export const WEBP_CONTENT_TYPE = "image/webp";
+export const WEBP_CONTENT_TYPE = COLLAGE_CONTENT_TYPE;
 
 /** `<placeId>/<12-hex fingerprint>.png` — the shape every collage key has. */
 export const COLLAGE_PNG_KEY_PATTERN =

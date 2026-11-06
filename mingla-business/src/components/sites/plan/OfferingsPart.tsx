@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "expo-router";
 import { SiteOfferingsView, type OfferingsConfirm } from "../SiteOfferingsView";
-import { SafeScreen } from "../../../components/ui/SafeScreen";
-import { TopBar } from "../../../components/ui/TopBar";
-import { canvas } from "../../../constants/designSystem";
 import { useBrandSitePlan, useSaveBrandSitePlan } from "../../../sites/planApi";
 import { useFeatureFlag } from "../../../hooks/useFeatureFlag";
 import { BrandSitesError } from "../../../services/brandSitesService";
@@ -11,8 +7,7 @@ import { untickedWithLiveItems } from "../../../sites/planScreens";
 import type { PlanOfferingKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
 /** #2829 W9a — plan part 1, "What you'll offer" (native "Do it myself"). */
-export function OfferingsPart({ brandId, embedded = false }: { brandId: string; embedded?: boolean }): React.ReactElement {
-  const router = useRouter();
+export function OfferingsPart({ brandId, onDone, readOnly = false }: { brandId: string; onDone: () => void; readOnly?: boolean }): React.ReactElement {
   const plan = useBrandSitePlan(brandId);
   const save = useSaveBrandSitePlan(brandId);
   const stay = useFeatureFlag("STAY_VENUE_AUTHORING");
@@ -30,11 +25,6 @@ export function OfferingsPart({ brandId, embedded = false }: { brandId: string; 
     }
   }, [plan.data, selected]);
 
-  const back = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace(`/brand/${brandId}/website/plan` as never);
-  }, [router, brandId]);
-
   const persist = useCallback(() => {
     if (!plan.data || !selected) return;
     setNotice(null);
@@ -46,14 +36,14 @@ export function OfferingsPart({ brandId, embedded = false }: { brandId: string; 
         patch: { offerings_selected: offerings, venue_descriptor: venue ? descriptor ?? null : null },
       },
       {
-        onSuccess: () => { setConfirm(null); back(); },
+        onSuccess: () => { setConfirm(null); onDone(); },
         onError: (error) => {
           setConfirm(null);
           setNotice({ kind: "error", message: error instanceof BrandSitesError ? error.message : "Your answer didn't save. Try again." });
         },
       },
     );
-  }, [plan.data, selected, descriptor, save, back]);
+  }, [plan.data, selected, descriptor, save, onDone]);
 
   const onContinue = useCallback(() => {
     if (!plan.data || !selected) return;
@@ -68,13 +58,11 @@ export function OfferingsPart({ brandId, embedded = false }: { brandId: string; 
     ? plan.error instanceof BrandSitesError ? plan.error.message : "Your website plan could not be loaded."
     : null;
 
-  // #2829 W9r — inside the Website section the shell draws the top bar.
-  const body = (
-    <>
+  return (
     <SiteOfferingsView
       isLoading={plan.isLoading || (plan.isSuccess && selected === null)}
       loadError={loadError}
-      readOnly={plan.data?.canManage !== true}
+      readOnly={readOnly || plan.data?.canManage !== true}
       includeStay={stay.data === true}
       selected={selected ?? new Set()}
       descriptor={descriptor ?? null}
@@ -95,13 +83,5 @@ export function OfferingsPart({ brandId, embedded = false }: { brandId: string; 
       onCancelConfirm={() => setConfirm(null)}
       onRetry={() => { void plan.refetch(); }}
     />
-    </>
-  );
-  if (embedded) return body;
-  return (
-    <SafeScreen style={{ backgroundColor: canvas.discover }}>
-      <TopBar leftKind="back" title="What you'll offer" onBack={back} rightSlot={null} />
-      {body}
-    </SafeScreen>
   );
 }

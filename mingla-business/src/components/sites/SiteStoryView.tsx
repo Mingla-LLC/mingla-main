@@ -34,10 +34,21 @@ export interface SiteStoryViewProps {
   onSaveAnswers: () => void;
   onApprove: () => void;
   onEditBrand: () => void;
+  /** #2830 state 6 — each row edits in place. */
+  onChangeSomething: (part: "story" | "look" | "offer") => void;
   onRetry: () => void;
 }
 
 const MAX = 300;
+
+/** #2830 — where each row of the plan is edited, on this same screen. */
+const APPROVED_PLAN_EDIT: Readonly<Record<string, "story" | "look" | "offer" | undefined>> = {
+  for: "story",
+  leads_with: "story",
+  main_action: "story",
+  look: "look",
+  pages: "offer",
+};
 
 export function SiteStoryView(props: SiteStoryViewProps): React.ReactElement {
   if (props.isLoading) return <View style={styles.centered}><ActivityIndicator accessibilityLabel="Loading" /></View>;
@@ -57,16 +68,26 @@ export function SiteStoryView(props: SiteStoryViewProps): React.ReactElement {
   if (props.step === "approve") {
     return (
       <ScrollView contentContainerStyle={styles.page}>
-        <Text style={styles.title}>Approve the plan</Text>
-        <Text style={styles.body}>This is the plan, not the website. Change any line by going back to that part.</Text>
+        <Text style={styles.title}>Is this your website plan?</Text>
         <GlassCard>
           <View style={styles.card}>
-            {APPROVED_PLAN_LABELS.filter(([key]) => props.summary[key]).map(([key, label]) => (
-              <View key={key} style={styles.field} testID={`summary-${key}`}>
-                <Text style={styles.caption}>{label}</Text>
-                <Text style={styles.value}>{props.summary[key]}</Text>
-              </View>
-            ))}
+            {APPROVED_PLAN_LABELS.filter(([key]) => props.summary[key]).map(([key, label]) => {
+              const target = APPROVED_PLAN_EDIT[key];
+              return (
+                <Pressable
+                  key={key}
+                  disabled={props.readOnly || target === undefined}
+                  onPress={() => { if (target) props.onChangeSomething(target); }}
+                  accessibilityRole={target && !props.readOnly ? "button" : undefined}
+                  accessibilityLabel={`${label}: ${props.summary[key]}`}
+                  style={styles.summaryRow}
+                  testID={`summary-${key}`}
+                >
+                  <Text style={styles.caption}>{label}</Text>
+                  <Text style={styles.summaryValue}>{props.summary[key]}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </GlassCard>
         {props.approveBlocked ? (
@@ -81,13 +102,16 @@ export function SiteStoryView(props: SiteStoryViewProps): React.ReactElement {
         {props.readOnly ? (
           <Text style={styles.caption}>Only a brand admin or the owner can approve the plan.</Text>
         ) : (
-          <Button
-            label={props.isSaving ? "Saving…" : props.approved ? "Approved · build your pages" : "Approve and build"}
-            onPress={props.onApprove}
-            loading={props.isSaving}
-            disabled={props.isSaving || props.approveBlocked !== null}
-            testID="story-approve"
-          />
+          <View style={styles.row}>
+            <Button
+              label={props.isSaving ? "Saving…" : props.approved ? "Approved · build your pages" : "Approve and build my draft"}
+              onPress={props.onApprove}
+              loading={props.isSaving}
+              disabled={props.isSaving || props.approveBlocked !== null}
+              testID="story-approve"
+            />
+            <Button label="Change something" variant="ghost" onPress={() => props.onChangeSomething("story")} testID="story-change" />
+          </View>
         )}
       </ScrollView>
     );
@@ -156,11 +180,13 @@ const styles = StyleSheet.create({
   title: { ...typography.h2, color: textTokens.primary },
   heading: { ...typography.h3, color: textTokens.primary },
   body: { ...typography.body, color: textTokens.secondary },
-  value: { ...typography.body, color: textTokens.primary },
   caption: { ...typography.caption, color: textTokens.tertiary },
   error: { ...typography.bodySm, color: semantic.errorText },
   card: { padding: spacing.md, gap: spacing.sm },
   field: { gap: spacing.xs },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
+  summaryRow: { minHeight: 44, justifyContent: "center", gap: spacing.xs },
+  summaryValue: { ...typography.body, color: textTokens.primary },
   input: { ...typography.body, color: textTokens.primary, borderWidth: 1, borderColor: textTokens.quaternary, borderRadius: radius.sm, padding: spacing.sm, minHeight: 72, textAlignVertical: "top" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   chip: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: 999, borderWidth: 1, borderColor: textTokens.quaternary },

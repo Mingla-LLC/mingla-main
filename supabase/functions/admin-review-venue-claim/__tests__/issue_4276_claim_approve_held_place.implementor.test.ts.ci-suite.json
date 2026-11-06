@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-review-venue-claim/__tests__/issue_4276_claim_approve_held_place.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-claim-approve-held-place",
+  "profile": "deno-2-unit"
+}

@@ -8,7 +8,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SharedPreviewLinks } from "./SharedPreviewLinks";
+import { PreviewLinkScope } from "./PreviewLinks";
 
 const TOKEN = "T".repeat(43);
 let container: HTMLDivElement;
@@ -38,7 +38,7 @@ function link(href: string, onClick: (event: MouseEvent) => void) {
 
 describe("#2829 W10 links inside a shared link", () => {
   it("a site link's own (client-side) handler never runs; the preview page opens instead", () => {
-    act(() => root.render(<SharedPreviewLinks token={TOKEN} />));
+    act(() => root.render(<PreviewLinkScope scope={{ target: { token: TOKEN }, path: "", assetKey: "k" }}>{null}</PreviewLinkScope>));
     const liveNavigation = vi.fn((event: MouseEvent) => event.preventDefault());
     const anchor = link("https://young.sites.usemingla.com/about-us", liveNavigation);
     anchor.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
@@ -47,7 +47,7 @@ describe("#2829 W10 links inside a shared link", () => {
   });
 
   it("links to other sites keep their behaviour", () => {
-    act(() => root.render(<SharedPreviewLinks token={TOKEN} />));
+    act(() => root.render(<PreviewLinkScope scope={{ target: { token: TOKEN }, path: "", assetKey: "k" }}>{null}</PreviewLinkScope>));
     const own = vi.fn((event: MouseEvent) => event.preventDefault());
     link("https://host.usemingla.com/t/young/bali", own).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
     expect(own).toHaveBeenCalledTimes(1);

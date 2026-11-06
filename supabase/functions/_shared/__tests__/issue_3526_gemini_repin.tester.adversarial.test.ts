@@ -222,7 +222,8 @@ Deno.test("#3526 TESTER-DEFECT — the admin owns NO per-place cost at all", () 
   const sites = [
     "mingla-admin/src/hooks/useBulkRunDispatcher.js",
     "mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx",
-    "mingla-admin/src/components/placeIntelligenceTrial/TrialResultsTab.jsx",
+    // #4276: TrialResultsTab.jsx (sample mode and the results explorer) was retired;
+    // the remaining run paths below still carry the check.
     "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderConfirmModal.jsx",
     "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderOnAllConfirmModal.jsx",
     "mingla-admin/src/components/placeIntelligenceTrial/ActiveRunCard.jsx",
@@ -329,7 +330,7 @@ Deno.test("#3526 TESTER-DEFECT — the admin owns NO per-place cost at all", () 
   for (
     const rel of [
       "mingla-admin/src/hooks/useBulkRunDispatcher.js",
-      "mingla-admin/src/components/placeIntelligenceTrial/TrialResultsTab.jsx",
+      // #4276: TrialResultsTab.jsx retired with sample mode.
       "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderConfirmModal.jsx",
     ]
   ) {

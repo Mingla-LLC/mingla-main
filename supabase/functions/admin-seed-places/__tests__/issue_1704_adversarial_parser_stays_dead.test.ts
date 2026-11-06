@@ -168,13 +168,13 @@ Deno.test("#1704 adversarial — the extracted resolver is imported AND called",
   }
 });
 
-Deno.test("#1704 adversarial — both transform call sites pass the city's country and code", () => {
+Deno.test("#1704 adversarial — the transform call site, shared by both batch handlers since #4276, passes the city's country and code", () => {
   // Paren-BALANCED extraction. A lazy `\([^;]*?\)` stops at the first `)`, which
   // here is `parseCity(...)`'s — the argument list is nested, so a regex cannot
   // see the last argument at all and the assertion would silently test a prefix.
   const calls = callArgsOf(CODE, "transformGooglePlaceForSeed")
     .filter((c) => !c.isDeclaration);
-  assertEquals(calls.length, 2, `expected 2 call sites, found ${calls.length}`);
+  assertEquals(calls.length, 1, `expected the 1 shared call site, found ${calls.length}`);
   for (const call of calls) {
     // EXACT positional identity, not `includes`. A containment check is
     // satisfied by the defect itself: `parseCountry(p.formattedAddress,
