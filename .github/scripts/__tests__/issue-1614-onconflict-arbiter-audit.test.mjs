@@ -182,9 +182,19 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       _shared/adListAudienceProvider.ts and two in admin-ad-audiences;
   //       arbiter: `connection_id uuid PRIMARY KEY`.
   //
+  // #4276 Place pool pipeline, census net +1 (108):
+  //   -1  admin-seed-places/index.ts drops one of its three
+  //       `place_pool (google_place_id)` seed upserts (the paths merged).
+  //   +1  `seeding_filtered_results (city_id,google_place_id,reason)` —
+  //       admin-seed-places/index.ts; arbiter: that table's `PRIMARY KEY`
+  //       in 20280410024276_issue_4276_tile_completeness.sql.
+  //   +1  `place_review_fetch_state (place_id)` —
+  //       run-place-intelligence-trial/index.ts; arbiter: `place_id uuid PRIMARY
+  //       KEY` in 20280410014276_issue_4276_place_merge_and_review_state.sql.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 107);
+  assert.equal(sites.length, 108);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&
