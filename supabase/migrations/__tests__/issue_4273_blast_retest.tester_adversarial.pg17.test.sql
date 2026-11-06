@@ -343,7 +343,7 @@ END;
 $out$;
 RESET ROLE;
 
--- ── Finalize: a withheld target reads like a sent one, a real failure stays one ──
+-- ── Finalize (#4273 honest count): a withheld target is not counted as sent ──
 CREATE FUNCTION pg_temp.fin(p_id uuid, p_group text, p_channel text, p_lead uuid DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql AS $f$
 DECLARE v_o uuid := '4273b000-0000-4000-8000-000000000001'; v_b uuid := '4273b000-0000-4000-8000-0000000000b1'; v_a uuid; v_env jsonb;
 BEGIN
@@ -380,7 +380,7 @@ BEGIN
   v_st := public.mkt_finalize_campaign(v_c);
   SELECT recipient_count, (SELECT reachable_count FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c) INTO v_rc, v_reach
     FROM public.marketing_campaigns WHERE id = v_c;
-  PERFORM pg_temp.chk('F-01 all withheld finalizes as sent with the quote''s count', v_st = 'sent' AND v_rc = v_reach, v_st || ' ' || v_rc || '/' || v_reach);
+  PERFORM pg_temp.chk('F-01 all withheld reached nobody: failed, count 0', v_st = 'failed' AND v_rc = 0 AND v_reach > 0, v_st || ' ' || v_rc || '/' || v_reach);
   SELECT * INTO v_ex FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c;
   v_res := public.biz_marketing_book_existing_result_v1(v_owner, v_c, v_ex.client_request_id, v_ex.quote_hash, v_ex.quoted_at, v_ex.estimated_cost_minor, v_ex.currency, v_ex.scheduled_for);
   PERFORM pg_temp.chk('F-02 a retry of it does not read as failed', (v_res ->> 'campaignFailed')::boolean IS NOT TRUE, COALESCE(v_res::text, 'null'));
@@ -389,8 +389,8 @@ BEGIN
   v_send := public.biz_marketing_combined_send_audience_v1(v_c);
   v_st := public.mkt_finalize_campaign(v_c);
   PERFORM pg_temp.chk('F-03 reclaim of it sends nothing and finalizes the same',
-    jsonb_array_length(v_send -> 'rows') = 0 AND v_st = 'sent'
-    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = v_reach, v_st);
+    jsonb_array_length(v_send -> 'rows') = 0 AND v_st = 'failed'
+    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = 0, v_st);
 
   -- A genuine provider failure, alone.
   v_c := '4273b000-3000-4000-8000-0000000000a2';
@@ -416,8 +416,8 @@ BEGIN
     (gen_random_uuid(), v_c, '+12025558201', 'sms', 'sent'), (gen_random_uuid(), v_c, '+12025557114', 'sms', 'sent');
   v_reach := (SELECT reachable_count FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c);
   v_st := public.mkt_finalize_campaign(v_c);
-  PERFORM pg_temp.chk('F-06 mixed: sent, count equals the quote', v_st = 'sent'
-    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = v_reach,
+  PERFORM pg_temp.chk('F-06 mixed: sent, count is the two delivered, below the quote', v_st = 'sent'
+    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = 2 AND v_reach > 2,
     v_st || ' ' || (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) || '/' || v_reach);
   INSERT INTO public.brand_follows(user_id, brand_id, muted_until)
   VALUES ('4273b000-0000-4000-8000-000000000014', v_brand, 'infinity');
@@ -444,9 +444,9 @@ BEGIN
   PERFORM pg_temp.chk('F-09a SMS method withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
   v_send := pg_temp.fin('4273b000-3000-4000-8000-0000000000a7', v_g, 'email', '4273b000-3000-4000-8000-0000000000a6');
   PERFORM pg_temp.chk('F-09b email method withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
-  PERFORM pg_temp.chk('F-09 both methods finalize as sent',
-    public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a6') = 'sent'
-    AND public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a7') = 'sent', '');
+  PERFORM pg_temp.chk('F-09 both methods reached nobody and say so',
+    public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a6') = 'failed'
+    AND public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a7') = 'failed', '');
   v_after := public.biz_brand_blast_usage_v1(v_owner, v_brand);
   PERFORM pg_temp.chk('F-10 the two methods count once toward the week',
     (v_after ->> 'blastsThisWeek')::int = (v_before ->> 'blastsThisWeek')::int + 1, v_before::text || ' -> ' || v_after::text);

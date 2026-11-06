@@ -172,9 +172,12 @@ BEGIN
   PERFORM pg_temp.chk('S-03 every sealed target of the probe is sent or a recorded skip',
     jsonb_array_length(send1 -> 'rows') + (SELECT count(*) FROM public.marketing_combined_send_skips s WHERE s.execution_id = x1)
       = (SELECT count(*) FROM public.marketing_book_send_targets t WHERE t.execution_id = x1 AND t.outcome = 'queued'), send1::text);
-  PERFORM pg_temp.chk('S-04 the probe''s difference never reaches the Host skipped count',
+  -- #4273 honest count: only a target reached through a shared address stays out
+  -- of the skipped figure; everything else withheld is "couldn't be reached".
+  PERFORM pg_temp.chk('S-04 the Host skipped figure is every withheld target not reached through a shared address',
     (SELECT reachable_count FROM public.marketing_book_send_executions WHERE id = x1)
-      - jsonb_array_length(send1 -> 'rows') - public.biz_marketing_combined_hidden_skips_v1(c1) = 0,
+      - jsonb_array_length(send1 -> 'rows') - public.biz_marketing_combined_hidden_skips_v1(c1)
+      = (SELECT count(*) FROM public.marketing_combined_send_skips s WHERE s.execution_id = x1 AND s.reason <> 'address_duplicate'),
     public.biz_marketing_combined_hidden_skips_v1(c1)::text);
 
   -- ── M: money. At or below the quote, never above. ────────────────────────
@@ -323,8 +326,12 @@ BEGIN
     NOT ('blocker@example.test' = ANY(emails)), emails::text);
   PERFORM pg_temp.chk('E-04 a clean match and a stranger both send, once each',
     emails = ARRAY['fine@example.test', 'plain@example.test', 'unverified@example.test'], emails::text);
-  PERFORM pg_temp.chk('E-05 those drops are recorded and hidden from the skipped count',
-    public.biz_marketing_combined_hidden_skips_v1(c3) >= 2, public.biz_marketing_combined_hidden_skips_v1(c3)::text);
+  PERFORM pg_temp.chk('E-05 those drops are recorded and counted as not reached',
+    (SELECT count(*) FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
+      WHERE e.campaign_id = c3 AND s.reason = 'contact_match_blocked') >= 2
+    AND public.biz_marketing_combined_hidden_skips_v1(c3) = (SELECT count(*) FROM public.marketing_combined_send_skips s
+      JOIN public.marketing_book_send_executions e ON e.id = s.execution_id WHERE e.campaign_id = c3 AND s.reason = 'address_duplicate'),
+    public.biz_marketing_combined_hidden_skips_v1(c3)::text);
   -- A global opt-out on the account's address, after confirm.
   INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope) VALUES ('fine@example.test', 'email', 'global');
   send3 := public.biz_marketing_combined_send_audience_v1(c3);
@@ -334,7 +341,8 @@ BEGIN
 END;
 $email$;
 
--- A one-contact list must not answer whether that contact belongs to someone.
+-- #4273 honest count: a one-contact list withheld at send reached nobody and says
+-- so, with no reason anywhere the Host can read.
 -- b4 probe: the only Book row holds a muted account's phone. b5 control: a stranger's.
 -- b6: one Book row whose message the provider really failed.
 INSERT INTO auth.users(id, email) VALUES ('42730000-0000-4000-8000-000000000051', 'solo@example.test');
@@ -375,13 +383,16 @@ BEGIN
     ids := ids || c;
   END LOOP;
   PERFORM pg_temp.chk('D-00 fixture: the probe really was withheld and the control really sent',
-    public.biz_marketing_combined_hidden_skips_v1(ids[1]) = 1
+    (SELECT count(*) FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
+      WHERE e.campaign_id = ids[1] AND s.reason = 'contact_match_blocked') = 1
+    AND public.biz_marketing_combined_hidden_skips_v1(ids[1]) = 0
     AND NOT EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[1])
     AND EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[2]), '');
   SELECT jsonb_build_object('status', status, 'count', recipient_count, 'sent', sent_at IS NOT NULL) INTO v_probe FROM public.marketing_campaigns WHERE id = ids[1];
   SELECT jsonb_build_object('status', status, 'count', recipient_count, 'sent', sent_at IS NOT NULL) INTO v_control FROM public.marketing_campaigns WHERE id = ids[2];
-  PERFORM pg_temp.chk('D-01 a one-contact list all withheld by a contact match finalizes like its control',
-    v_probe = v_control AND v_probe ->> 'status' = 'sent', v_probe::text || ' vs ' || v_control::text);
+  PERFORM pg_temp.chk('D-01 a one-contact list withheld at send is not counted as sent',
+    v_probe = '{"status":"failed","count":0,"sent":false}'::jsonb
+    AND v_control = '{"status":"sent","count":1,"sent":true}'::jsonb, v_probe::text || ' vs ' || v_control::text);
   PERFORM pg_temp.chk('D-02 a genuine provider failure still reads as failed',
     (SELECT status FROM public.marketing_campaigns WHERE id = ids[3]) = 'failed', '');
 END;
