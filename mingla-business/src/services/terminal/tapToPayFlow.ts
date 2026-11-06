@@ -330,6 +330,11 @@ const UNCLEAR_CREATE_FAILURES: ReadonlySet<DoorTapErrorCode> = new Set<DoorTapEr
   "unknown",
 ]);
 
+const amountOf = (intent: DoorTapIntent): TapAmount => ({
+  totalCents: intent.totalCents,
+  currency: intent.currency,
+});
+
 /** When an intent's clock started, on both clocks. */
 interface IntentClock {
   monotonic: number;
@@ -353,7 +358,12 @@ export class TapToPaySaleFlow {
   private intent: DoorTapIntent | null = null;
   private paymentIntent: TerminalPaymentIntentLike | null = null;
   private collectedPaymentIntent: TerminalPaymentIntentLike | null = null;
-  private succeededPaymentIntentId: string | null = null;
+  /**
+   * The tap Stripe charged, with what recording it needs. Kept apart from
+   * `intent`, which a close or a replacement may forget while a confirm or a
+   * complete is still answering.
+   */
+  private succeeded: { paymentIntentId: string; clientRequestId: string; amount: TapAmount } | null = null;
   private lastCardLabel: string | null = null;
   private busy = false;
   private state: TapSaleState = { kind: "idle" };
@@ -401,7 +411,7 @@ export class TapToPaySaleFlow {
       });
     } catch (error) {
       if (error instanceof DoorTapError && error.code === "payment_succeeded") {
-        this.succeededPaymentIntentId = intent.paymentIntentId;
+        this.markSucceeded(intent, this.clientRequestId);
         await this.complete();
         return false;
       }
@@ -432,10 +442,15 @@ export class TapToPaySaleFlow {
    * shown the tap as cancelled (not an unknown result), and "Try again" starts a
    * fresh intent.
    */
-  private emitIntentCanceled(): void {
+  private emitIntentCanceled(amount: TapAmount): void {
     this.intentCanceled = true;
     this.collectedPaymentIntent = null;
-    this.emit({ kind: "cancelled", amount: this.amount() });
+    this.emit({ kind: "cancelled", amount });
+  }
+
+  /** Stripe charged this intent: remember it with its own id and amount for recording. */
+  private markSucceeded(intent: DoorTapIntent, clientRequestId: string): void {
+    this.succeeded = { paymentIntentId: intent.paymentIntentId, clientRequestId, amount: amountOf(intent) };
   }
 
   /**
@@ -448,9 +463,7 @@ export class TapToPaySaleFlow {
       if (this.intent?.paymentIntentId === intent.paymentIntentId) this.forgetIntent();
     } catch (error) {
       if (error instanceof DoorTapError && error.code === "payment_succeeded") {
-        this.intent = intent;
-        this.clientRequestId = clientRequestId;
-        this.succeededPaymentIntentId = intent.paymentIntentId;
+        this.markSucceeded(intent, clientRequestId);
         await this.complete();
         return;
       }
@@ -485,18 +498,13 @@ export class TapToPaySaleFlow {
     this.readyTimer = null;
   }
 
-  private amount(): TapAmount {
-    const intent = this.intent;
-    if (intent === null) throw new Error("tap flow: no intent");
-    return { totalCents: intent.totalCents, currency: intent.currency };
-  }
 
   /** Begin (or resume) the sale. Safe to call again after a failure. */
   async start(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     try {
-      if (this.succeededPaymentIntentId !== null) {
+      if (this.succeeded !== null) {
         await this.complete();
         return;
       }
@@ -533,7 +541,7 @@ export class TapToPaySaleFlow {
         }
         this.paymentIntent = retrieved.paymentIntent;
         if (retrieved.paymentIntent.status === "canceled") {
-          this.emitIntentCanceled();
+          this.emitIntentCanceled(amountOf(intent));
           return;
         }
       }
@@ -616,7 +624,7 @@ export class TapToPaySaleFlow {
    */
   async abandonForPayCode(): Promise<PayCodeSwitchOutcome> {
     this.closed = true;
-    if (this.succeededPaymentIntentId !== null) {
+    if (this.succeeded !== null) {
       await this.retrySave();
       return "already_paid";
     }
@@ -636,7 +644,7 @@ export class TapToPaySaleFlow {
       });
     } catch (error) {
       if (error instanceof DoorTapError && error.code === "payment_succeeded") {
-        this.succeededPaymentIntentId = intent.paymentIntentId;
+        this.markSucceeded(intent, this.clientRequestId);
         await this.retrySave();
         return "already_paid";
       }
@@ -664,7 +672,7 @@ export class TapToPaySaleFlow {
     this.closed = false;
   }
 
-  private emitTerminalFailure(error: TerminalErrorLike, fallbackMessage: string): void {
+  private emitTerminalFailure(error: TerminalErrorLike, fallbackMessage: string, stepAmount?: TapAmount): void {
     const kind = classifyTerminalError(error);
     if (kind === "not_on_this_phone") {
       this.emit({ kind: "not_on_this_phone" });
@@ -682,11 +690,11 @@ export class TapToPaySaleFlow {
       this.emit({ kind: "reader_problem", problem: kind });
       return;
     }
-    if (this.intent === null) {
+    const amount = stepAmount ?? (this.intent === null ? null : amountOf(this.intent));
+    if (amount === null) {
       this.emit({ kind: "failed", message: fallbackMessage });
       return;
     }
-    const amount = this.amount();
     if (kind === "needs_pin") this.emit({ kind: "needs_pin", amount });
     else if (kind === "declined") {
       this.emit({ kind: "declined", amount, cardLabel: cardLabelFor(error.paymentIntent ?? this.paymentIntent ?? undefined) });
@@ -695,11 +703,22 @@ export class TapToPaySaleFlow {
     else this.emit({ kind: "failed", message: fallbackMessage });
   }
 
+  /**
+   * The intent one collect-and-confirm step works on, captured at its start: a
+   * close or a replacement may forget `this.intent` while the step is waiting.
+   */
+  private stepContext(): { intent: DoorTapIntent; clientRequestId: string; amount: TapAmount } | null {
+    const intent = this.intent;
+    if (intent === null) return null;
+    return { intent, clientRequestId: this.clientRequestId, amount: amountOf(intent) };
+  }
+
   private async collectAndConfirm(): Promise<void> {
     if (this.closed) return;
-    const amount = this.amount();
+    const step = this.stepContext();
     const current = this.paymentIntent;
-    if (current === null) return;
+    if (step === null || current === null) return;
+    const { amount } = step;
 
     this.emit({ kind: "ready", amount });
     this.input.onBeforeCollect?.();
@@ -707,20 +726,23 @@ export class TapToPaySaleFlow {
     if (collected.error || collected.paymentIntent === undefined) {
       if (collected.error?.paymentIntent !== undefined) this.paymentIntent = collected.error.paymentIntent;
       if (collected.error?.paymentIntent?.status === "canceled") {
-        this.emitIntentCanceled();
+        this.emitIntentCanceled(amount);
         return;
       }
-      this.emitTerminalFailure(collected.error ?? {}, "The card couldn't be read. Nothing was charged. Try again.");
+      this.emitTerminalFailure(collected.error ?? {}, "The card couldn't be read. Nothing was charged. Try again.", amount);
       return;
     }
+    // The card was read as the host closed: never charge it. The close's server
+    // cancel finishes the intent (Stripe can't charge a card that was only read).
+    if (this.closed) return;
     this.paymentIntent = collected.paymentIntent;
 
     this.collectedPaymentIntent = collected.paymentIntent;
-    await this.confirm();
+    await this.confirm(step);
   }
 
-  private async confirm(): Promise<void> {
-    const amount = this.amount();
+  private async confirm(step: { intent: DoorTapIntent; clientRequestId: string; amount: TapAmount }): Promise<void> {
+    const { amount } = step;
     const collected = this.collectedPaymentIntent;
     if (collected === null) return;
     this.emit({ kind: "reading", amount });
@@ -730,11 +752,11 @@ export class TapToPaySaleFlow {
       const after = error.paymentIntent;
       if (after !== undefined) this.paymentIntent = after;
       if (after?.status === "succeeded") {
-        await this.recordSucceeded(after);
+        await this.recordSucceeded(after, step);
         return;
       }
       if (after?.status === "canceled") {
-        this.emitIntentCanceled();
+        this.emitIntentCanceled(amount);
         return;
       }
       // Stripe: with no PaymentIntent back, or a timed-out request, the status is
@@ -750,12 +772,12 @@ export class TapToPaySaleFlow {
         return;
       }
       this.collectedPaymentIntent = null;
-      this.emitTerminalFailure(error, "The payment didn't go through. Nothing was charged. Try again.");
+      this.emitTerminalFailure(error, "The payment didn't go through. Nothing was charged. Try again.", amount);
       return;
     }
     this.paymentIntent = confirmed.paymentIntent;
     if (confirmed.paymentIntent.status === "canceled") {
-      this.emitIntentCanceled();
+      this.emitIntentCanceled(amount);
       return;
     }
     if (confirmed.paymentIntent.status === "requires_payment_method") {
@@ -769,12 +791,15 @@ export class TapToPaySaleFlow {
       this.emit({ kind: "unknown_result", amount });
       return;
     }
-    await this.recordSucceeded(confirmed.paymentIntent);
+    await this.recordSucceeded(confirmed.paymentIntent, step);
   }
 
-  private async recordSucceeded(paymentIntent: TerminalPaymentIntentLike): Promise<void> {
+  private async recordSucceeded(
+    paymentIntent: TerminalPaymentIntentLike,
+    step: { intent: DoorTapIntent; clientRequestId: string },
+  ): Promise<void> {
     this.collectedPaymentIntent = null;
-    this.succeededPaymentIntentId = this.intent?.paymentIntentId ?? null;
+    this.markSucceeded(step.intent, step.clientRequestId);
     this.lastCardLabel = cardLabelFor(paymentIntent);
     await this.complete();
   }
@@ -782,9 +807,11 @@ export class TapToPaySaleFlow {
   /** "Try again" on an unknown result: confirm the SAME intent. */
   async retryConfirm(): Promise<void> {
     if (this.busy || this.state.kind !== "unknown_result") return;
+    const step = this.stepContext();
+    if (step === null) return;
     this.busy = true;
     try {
-      await this.confirm();
+      await this.confirm(step);
     } finally {
       this.busy = false;
     }
@@ -803,22 +830,19 @@ export class TapToPaySaleFlow {
   /** What a receipt or the sweep's "seen" call needs. */
   getReceiptFacts(): { paymentIntentId: string | null; feeCents: number | null; clientRequestId: string } {
     return {
-      paymentIntentId: this.intent?.paymentIntentId ?? null,
+      paymentIntentId: this.succeeded?.paymentIntentId ?? this.intent?.paymentIntentId ?? null,
       feeCents: this.intent?.feeCents ?? null,
-      clientRequestId: this.clientRequestId,
+      clientRequestId: this.succeeded?.clientRequestId ?? this.clientRequestId,
     };
   }
 
   private async complete(): Promise<void> {
-    const paymentIntentId = this.succeededPaymentIntentId;
-    if (paymentIntentId === null) return;
-    const amount = this.amount();
+    const succeeded = this.succeeded;
+    if (succeeded === null) return;
+    const { paymentIntentId, clientRequestId, amount } = succeeded;
     this.emit({ kind: "saving", amount });
     try {
-      const result = await this.input.server.completeIntent({
-        paymentIntentId,
-        clientRequestId: this.clientRequestId,
-      });
+      const result = await this.input.server.completeIntent({ paymentIntentId, clientRequestId });
       this.emit({ kind: "approved", amount, result, cardLabel: this.lastCardLabel });
       if (this.hostLeft) this.input.onPaidAfterClose?.({ amount, saved: true });
     } catch {
@@ -833,7 +857,7 @@ export class TapToPaySaleFlow {
 
   /** Retry recording a payment that already succeeded. */
   async retrySave(): Promise<void> {
-    if (this.busy || this.succeededPaymentIntentId === null) return;
+    if (this.busy || this.succeeded === null) return;
     this.busy = true;
     try {
       await this.complete();
