@@ -307,14 +307,13 @@ jobs:
           set -euo pipefail
           after_stage2=false
           for migration in supabase/migrations/*.sql; do
-            if [ "$after_stage2" = false ]; then
-              case "$(basename "$migration")" in
-                20270221001644_*) after_stage2=true ;;
-              esac
-              continue
+            if [ "$after_stage2" = true ]; then
+              docker exec -i issue1644-stage2-pg \
+                psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" > /dev/null
             fi
-            docker exec -i issue1644-stage2-pg \
-              psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" > /dev/null
+            case "$(basename "$migration")" in
+              20270221001644_*) after_stage2=true ;;
+            esac
           done
 
       - name: Prove the manifest, the format-only commit, the skips and the rollback
