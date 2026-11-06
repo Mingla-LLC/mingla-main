@@ -14,7 +14,7 @@ import { ChannelTabs } from "../ChannelTabs";
 import { ComposerPreviewTabs } from "../ComposerPreviewTabs";
 import { ComposerReviewSheet } from "../ComposerReviewSheet";
 import { PushComposeCard } from "../PushComposeCard";
-import { audienceSourceDetail, prefillPushFromEmail } from "../../../features/marketing/blastSendModel";
+import { audienceSourceDetail, prefillPushFromEmail, smsCostLabel } from "../../../features/marketing/blastSendModel";
 import { useAutoFilledText, type AutoFilledText } from "../../../features/marketing/useAutoFilledText";
 import { Text } from "react-native";
 
@@ -223,6 +223,32 @@ describe("#4273 review", () => {
     expect(text).toContain("Not now");
     expect(text).toContain("How SMS timing works");
     expect(text).not.toContain("One campaign:");
+  });
+
+  it("#4273 a mixed-currency SMS shows the converted total and its parts", () => {
+    const quote = {
+      costKind: "provider_estimate" as const,
+      estimatedCostMinor: 157700,
+      currency: "NGN",
+      costBreakdown: [
+        { currency: "NGN", providerCostMinor: 26500, convertedCostMinor: 26500 },
+        { currency: "USD", providerCostMinor: 79, convertedCostMinor: 131200 },
+      ],
+    };
+    const renderer = mount(
+      <ComposerReviewSheet
+        {...base}
+        audienceName="Your Book"
+        recipientCount={2}
+        estimatedCostLabel={smsCostLabel(quote, "total")}
+        sendingBy={[{ key: "sms", label: "SMS", reachLabel: "2 reachable", costLabel: smsCostLabel(quote, "row") }]}
+      />,
+    );
+    const text = treeText(renderer.toJSON());
+    expect(text).toContain("About NGN 1577.00 estimated");
+    expect(text).toContain(
+      "About NGN 1577.00 estimated provider cost (NGN 265.00 + USD 0.79, converted at today's exchange rate)",
+    );
   });
 
   it("a plain buyer-list send with no quote shows no method list", () => {

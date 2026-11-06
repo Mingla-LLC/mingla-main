@@ -60,17 +60,41 @@ export function validatedSmsRates(
   });
 }
 
+export interface SmsCostSubtotal {
+  currency: string;
+  estimatedCostMinor: number;
+}
+
+/**
+ * #4273 — prices every reachable phone with its own provider rate.
+ *
+ * A Blast may text numbers priced in different currencies (Termii bills NGN,
+ * Twilio bills USD). This function never joins currencies: it returns one
+ * subtotal per currency, each computed exactly as a single-currency quote
+ * always was (ceil of the exact rational sum, largest-remainder allocation).
+ * The ONE place currencies are joined is `buildMarketingBookQuote` with
+ * `marketingSmsFx.ts`, which converts with the FX snapshot as of `quotedAt`
+ * so a confirm rebuild reproduces the preview byte for byte. The top-level
+ * `estimatedCostMinor` / `currency` are set only when there is at most one
+ * currency; for a single currency every number is identical to before.
+ */
 export function allocateSmsCosts<T>(
   inputs: SmsCostInput<T>[],
   now: Date,
   suppliedRates?: SmsRateV1[],
 ): {
   allocations: SmsCostAllocation<T>[];
-  estimatedCostMinor: number;
+  subtotals: SmsCostSubtotal[];
+  estimatedCostMinor: number | null;
   currency: string | null;
 } {
   if (inputs.length === 0) {
-    return { allocations: [], estimatedCostMinor: 0, currency: null };
+    return {
+      allocations: [],
+      subtotals: [],
+      estimatedCostMinor: 0,
+      currency: null,
+    };
   }
   const rates = suppliedRates ?? validatedSmsRates(now);
   const fractions = inputs.map((input) => {
@@ -94,43 +118,54 @@ export function allocateSmsCosts<T>(
       denominator: BigInt(rate.minorDenominator),
     };
   });
-  const currencies = new Set(fractions.map((entry) => entry.rate.currency));
-  if (currencies.size !== 1) throw new Error("mixed_currency_cost_unsupported");
-  let exactNumerator = 0n, exactDenominator = 1n, floorTotal = 0n;
-  for (const entry of fractions) {
-    floorTotal += entry.numerator / entry.denominator;
-    exactNumerator = exactNumerator * entry.denominator +
-      entry.numerator * exactDenominator;
-    exactDenominator *= entry.denominator;
+  const currencies = [...new Set(fractions.map((entry) => entry.rate.currency))]
+    .sort();
+  const allocations: SmsCostAllocation<T>[] = [];
+  const subtotals: SmsCostSubtotal[] = [];
+  for (const currency of currencies) {
+    const group = fractions.filter((entry) => entry.rate.currency === currency);
+    let exactNumerator = 0n, exactDenominator = 1n, floorTotal = 0n;
+    for (const entry of group) {
+      floorTotal += entry.numerator / entry.denominator;
+      exactNumerator = exactNumerator * entry.denominator +
+        entry.numerator * exactDenominator;
+      exactDenominator *= entry.denominator;
+    }
+    const aggregate = (exactNumerator + exactDenominator - 1n) /
+      exactDenominator;
+    const groupAllocations = group.map((entry) => ({
+      ...entry.input,
+      rate: entry.rate,
+      allocatedCostMinor: Number(entry.numerator / entry.denominator),
+    }));
+    let remainder = Number(aggregate - floorTotal);
+    group.map((entry, index) => ({ entry, allocation: groupAllocations[index] }))
+      .sort((left, right) => {
+        const l = left.entry.numerator % left.entry.denominator,
+          r = right.entry.numerator % right.entry.denominator;
+        const comparison = l * right.entry.denominator -
+          r * left.entry.denominator;
+        return comparison === 0n
+          ? left.entry.input.key.localeCompare(right.entry.input.key)
+          : comparison > 0n
+          ? -1
+          : 1;
+      }).forEach(({ allocation }) => {
+        if (remainder > 0) {
+          allocation.allocatedCostMinor += 1;
+          remainder -= 1;
+        }
+      });
+    allocations.push(...groupAllocations);
+    subtotals.push({ currency, estimatedCostMinor: Number(aggregate) });
   }
-  const aggregate = (exactNumerator + exactDenominator - 1n) / exactDenominator;
-  const allocations = fractions.map((entry) => ({
-    ...entry.input,
-    rate: entry.rate,
-    allocatedCostMinor: Number(entry.numerator / entry.denominator),
-  }));
-  let remainder = Number(aggregate - floorTotal);
-  fractions.map((entry, index) => ({ entry, allocation: allocations[index] }))
-    .sort((left, right) => {
-      const l = left.entry.numerator % left.entry.denominator,
-        r = right.entry.numerator % right.entry.denominator;
-      const comparison = l * right.entry.denominator -
-        r * left.entry.denominator;
-      return comparison === 0n
-        ? left.entry.input.key.localeCompare(right.entry.input.key)
-        : comparison > 0n
-        ? -1
-        : 1;
-    }).forEach(({ allocation }) => {
-      if (remainder > 0) {
-        allocation.allocatedCostMinor += 1;
-        remainder -= 1;
-      }
-    });
   allocations.sort((a, b) => a.key.localeCompare(b.key));
   return {
     allocations,
-    estimatedCostMinor: Number(aggregate),
-    currency: allocations[0].rate.currency,
+    subtotals,
+    estimatedCostMinor: subtotals.length === 1
+      ? subtotals[0].estimatedCostMinor
+      : null,
+    currency: subtotals.length === 1 ? subtotals[0].currency : null,
   };
 }
