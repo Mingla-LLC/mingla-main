@@ -165,10 +165,10 @@ serve(async (req) => {
       const placePoolId = clean(ids.placePoolId, 64);
       const googlePlaceId = clean(ids.googlePlaceId, 256);
       if (!placePoolId && !googlePlaceId) return json({ error: "validation" }, 400);
-      let query = db.from("place_pool").select("id,google_place_id,name,address,city,country,primary_type_display_name,primary_type,rating,price_level,photo_collage_url,stored_photo_urls,is_active,is_servable,editorial_summary,generative_summary,opening_hours,google_maps_uri,national_phone_number,website").limit(1);
+      let query = db.from("place_pool").select("id,google_place_id,name,address,city,country,primary_type_display_name,primary_type,rating,price_level,photo_collage_url,stored_photo_urls,is_active,is_servable,serving_hold,editorial_summary,generative_summary,opening_hours,google_maps_uri,national_phone_number,website").limit(1);
       query = placePoolId ? query.eq("id", placePoolId) : query.eq("google_place_id", googlePlaceId);
       const { data: place } = await query.maybeSingle();
-      if (!place || place.is_active !== true || place.is_servable === false) return json({ error: "not_found" }, 404);
+      if (!place || place.is_active !== true || place.is_servable === false || place.serving_hold === true) return json({ error: "not_found" }, 404);
       ({ title, coverUrl, metadata, stops, sourceIds } = mapPlaceSnapshot(place));
     } else {
       const savedCardId = clean(ids.savedCardId, 64);

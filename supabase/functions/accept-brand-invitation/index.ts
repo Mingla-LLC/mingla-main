@@ -20,6 +20,7 @@
 //   → 403 { error:'invite_email_mismatch', invited_email? } (token path names it)
 //   → 404 { error:'invite_not_found' }
 //   → 409 { error:'invite_currency_mismatch', reason, brand_currency, partner_currencies }
+//   → 409 { error:'invite_membership_conflict' } (#4283: 23505 on the team row)
 //   → 410 { error:'invite_already_used' | 'invite_expired' | 'invite_revoked' }
 //   → 500 { error:'server' }
 //
@@ -147,6 +148,12 @@ export function mapRpcError(code: string | undefined, message?: string): {
       // ORCH-1111 — a declined invite is terminal (the RPC refuses it even on
       // the raw token / web path so a stale email link can't resurrect it).
       return { status: 410, error: "invite_declined" };
+    case "23505":
+      // #4283 — a unique-key clash while writing the acceptor's team row (the
+      // one-active-row-per-brand index). The RPC now keeps one row, so this is
+      // a residual conflict; name it instead of a generic 500 `server`, which
+      // the app showed as "Couldn't reach Mingla".
+      return { status: 409, error: "invite_membership_conflict" };
     default:
       return null;
   }
@@ -348,6 +355,15 @@ export async function handler(req: Request): Promise<Response> {
       const mapped = mapRpcError(rpcErr.code, rpcErr.message) ??
         mapRpcMessage(rpcErr.message);
       if (mapped) {
+        if (mapped.error === "invite_membership_conflict") {
+          // #4283 — a 23505 is a server-side fault, not an expected refusal.
+          // Keep the log line that proved the bug in production.
+          console.error(
+            "[accept-brand-invitation] rpc failed",
+            rpcErr.code,
+            rpcErr.message,
+          );
+        }
         if (mapped.error === "invite_currency_mismatch") {
           // ORCH-1052: surface the partner-gate payload (brand_currency,
           // partner_currencies, reason) so the client can render a useful

@@ -100,14 +100,16 @@ BEGIN
   END IF;
   RAISE NOTICE 'L2-03 PASS: drift-reeval partial unique idx present';
 
-  -- ─── L4-01: quarterly backstop cron ─────────────────────────────────────
+  -- ─── L4-01: quarterly backstop cron (#4276: paused) ─────────────────────
+  -- #4276 unschedules the quarterly all-cities sweep while older results are held
+  -- (20280415004276); it comes back, at 0 4 1 */3 *, when the hold is lifted.
   SELECT schedule INTO v_schedule
     FROM cron.job
    WHERE jobname = 'meta_orch_1009_sub_d_quarterly_all_cities_sweep' LIMIT 1;
-  IF v_schedule IS DISTINCT FROM '0 4 1 */3 *' THEN
-    RAISE EXCEPTION 'L4-01 FAIL: quarterly cron schedule is % (expected 0 4 1 */3 *)', v_schedule;
+  IF v_schedule IS NOT NULL THEN
+    RAISE EXCEPTION 'L4-01 FAIL: quarterly cron is scheduled (%) while #4276 holds older results', v_schedule;
   END IF;
-  RAISE NOTICE 'L4-01 PASS: quarterly backstop cron registered at 0 4 1 */3 *';
+  RAISE NOTICE 'L4-01 PASS: quarterly all-cities sweep paused (#4276)';
 
   -- ─── D-6: seed-UPDATE idempotency ───────────────────────────────────────
   -- The migration's final UPDATE stamps ai_signal_scores_at for rows

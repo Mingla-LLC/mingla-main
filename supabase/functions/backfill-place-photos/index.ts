@@ -28,6 +28,15 @@ const COST_PER_PLACE = 0.035; // 5 photos × $0.007
 // and exercised by a Deno regression test without binding the HTTP server. The
 // Supabase edge runtime runs this file as the entry module (import.meta.main=true),
 // so production behavior is unchanged.
+const CONDUCTOR_ACTIONS: ReadonlySet<string> = new Set([
+  'preview_run',
+  'create_run',
+  'run_next_batch',
+  'retry_batch',
+  'run_status',
+  'cancel_run',
+]);
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -61,18 +70,27 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: 'Missing authorization' }, 401);
     }
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !user) {
-      return json({ error: 'Invalid token' }, 401);
-    }
-    const { data: adminRow } = await supabaseAdmin
-      .from('admin_users')
-      .select('id')
-      .eq('email', user.email)
-      .eq('status', 'active')
-      .maybeSingle();
-    if (!adminRow) {
-      return json({ error: 'Admin access required' }, 403);
+
+    // #4276: the conductor drives its photo stage with the service key, and only these
+    // actions. A run it creates is linked from its stage, so triggered_by stays empty.
+    let userId: string | null = null;
+    const isConductor = !!supabaseServiceKey && token === supabaseServiceKey &&
+      CONDUCTOR_ACTIONS.has(body.action);
+    if (!isConductor) {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+      if (authErr || !user) {
+        return json({ error: 'Invalid token' }, 401);
+      }
+      const { data: adminRow } = await supabaseAdmin
+        .from('admin_users')
+        .select('id')
+        .eq('email', user.email)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (!adminRow) {
+        return json({ error: 'Admin access required' }, 403);
+      }
+      userId = user.id;
     }
 
     // ── Action dispatch ───────────────────────────────────────────────────
@@ -80,7 +98,7 @@ export async function handler(req: Request): Promise<Response> {
       case 'preview_run':
         return handlePreviewRun(supabaseAdmin, body);
       case 'create_run':
-        return handleCreateRun(supabaseAdmin, body, user.id);
+        return handleCreateRun(supabaseAdmin, body, userId);
       case 'run_next_batch':
         return handleRunNextBatch(supabaseAdmin, body, apiKey);
       case 'run_status':
@@ -326,7 +344,7 @@ async function handlePreviewRun(
 async function handleCreateRun(
   db: SupabaseDb,
   body: Record<string, unknown>,
-  userId: string,
+  userId: string | null,
 ): Promise<Response> {
   const cityId = body.cityId as string;
   const city = body.city as string;
