@@ -3,7 +3,7 @@
 // before anything is read or written; an admin and the service key get through to the
 // function's own request checks.
 //
-// MINGLA-INVARIANT: I-4276-PLACE-JUDGING-ADMIN-OR-SERVICE | issue #4276 | run-bouncer, run-pre-photo-bouncer and run-signal-scorer answer only the service role or an active admin
+// MINGLA-INVARIANT: I-4276-PLACE-JUDGING-ADMIN-OR-SERVICE | issue #4276 | run-bouncer, run-pre-photo-bouncer and run-signal-scorer answer only the service role or a current admin
 //
 // FAILS-ON-REVERT: delete the authorizePlaceJudgingCaller lines from any of the three
 // functions and its "refused" test fails (the anon key reaches the body check and gets

@@ -10,7 +10,8 @@
 // by email to an active admin_users row. Anything else is refused before the body is
 // read, so nothing is judged or scored for it.
 //
-// MINGLA-INVARIANT: I-4276-PLACE-JUDGING-ADMIN-OR-SERVICE | issue #4276 | run-bouncer, run-pre-photo-bouncer and run-signal-scorer answer only the service role or an active admin
+// Invariant I-4276-PLACE-JUDGING-ADMIN-OR-SERVICE is declared in
+// __tests__/issue_4276_place_judging_auth.implementor.test.ts.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { constantTimeEqualSecret } from "./contentShareProxyAuth.ts";

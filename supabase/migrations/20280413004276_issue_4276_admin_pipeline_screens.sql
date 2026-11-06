@@ -16,7 +16,7 @@
 -- Read only. Admin only: SECURITY DEFINER with the admin check first, EXECUTE revoked
 -- from PUBLIC and anon.
 --
--- MINGLA-INVARIANT: I-4276-PIPELINE-SCREENS-SERVER-COUNTED | issue #4276 | The Place pool funnel, readiness gaps and exclusion reasons are counted by admin-only server functions, never by a browser page over a truncated list
+-- Invariant I-4276-PIPELINE-SCREENS-SERVER-COUNTED is declared in its contract test under __tests__/.
 --
 -- Rollback: DROP FUNCTION public.admin_place_pipeline_funnel(uuid);
 --           DROP FUNCTION public.admin_place_excluded_summary(uuid);

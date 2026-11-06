@@ -1,7 +1,7 @@
 -- Issue #4276 wave 2, T1 to T9 and B2. Implementor happy path on the fully replayed
 -- PG17 schema, for 20280410024276_issue_4276_tile_completeness.sql.
 --
--- MINGLA-INVARIANT: I-4276-TILES-NEVER-DELETED | issue #4276 | A tile is retired, never deleted, and every search keeps its history when its tile changes
+-- MINGLA-INVARIANT: I-4276-TILES-NEVER-DELETED | issue #4276 | A tile is taken out of use, never deleted, and every search keeps its history when its tile changes
 -- MINGLA-INVARIANT: I-4276-SEARCH-RECORDS-CONFIG | issue #4276 | Every search records the config it ran, and old rows say how that was worked out
 -- MINGLA-INVARIANT: I-4276-NO-SILENT-SEARCH-GAP | issue #4276 | A search that never finished, a capped search and an unresolved search are all counted for the city
 --

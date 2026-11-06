@@ -15,7 +15,7 @@
 --
 -- Idempotent: nothing happens if the job is already gone.
 --
--- MINGLA-INVARIANT: I-4276-NO-CITY-WIDE-SCORING-WHILE-HELD | issue #4276 | No cron job asks run-signal-scorer for city-wide scoring while older results are held, and the scorer refuses it for every caller
+-- Invariant I-4276-NO-CITY-WIDE-SCORING-WHILE-HELD is declared in its contract test under __tests__/.
 
 DO $unschedule$
 DECLARE

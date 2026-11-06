@@ -2,7 +2,8 @@
 // every caller, admin and service key alike, while older Intelligence results are held
 // back from live decks. Scoring by place id still runs.
 //
-// MINGLA-INVARIANT: I-4276-NO-CITY-WIDE-SCORING-WHILE-HELD | issue #4276 | No cron job asks run-signal-scorer for city-wide scoring while older results are held, and the scorer refuses it for every caller
+// Also pins I-4276-NO-CITY-WIDE-SCORING-WHILE-HELD, declared in
+// supabase/migrations/__tests__/issue_4276_quarterly_scoring_paused.implementor.pg17.test.sql.
 //
 // FAILS-ON-REVERT: delete the city_wide_scoring_paused branch from run-signal-scorer and
 // the refusal tests fail: the request reaches signal_definitions and scores.

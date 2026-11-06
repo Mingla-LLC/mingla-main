@@ -3,7 +3,8 @@
 // writes. Nothing here starts a run: a run exists only because an admin started it, and
 // a tick with no run does nothing at all.
 //
-// MINGLA-INVARIANT: I-4276-CONDUCTOR-NEVER-SPENDS-UNAPPROVED | issue #4276 | A tile split level, a box needing a person and any stage above its high-cost limit wait for a person, and every paid step is checked against the gates first
+// Invariant I-4276-CONDUCTOR-NEVER-SPENDS-UNAPPROVED is declared in
+// __tests__/issue_4276_conductor.implementor.test.ts.
 import {
   databaseGate,
   failureGate,

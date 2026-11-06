@@ -3,7 +3,8 @@
 // an admin). Its existing score is left untouched and it is reported as held_old_result.
 // The hold date has one TypeScript home and two SQL homes; this pins all three equal.
 //
-// MINGLA-INVARIANT: I-4276-SCORE-STAGE-NEVER-RELEASES-HELD-AI | issue #4276 | The final-score stage never selects a place whose AI result predates the backlog hold, and the scorer leaves such a place's score untouched
+// Also pins I-4276-SCORE-STAGE-NEVER-RELEASES-HELD-AI, declared in
+// supabase/migrations/__tests__/issue_4276_score_hold_and_release.implementor.pg17.test.sql.
 //
 // FAILS-ON-REVERT: remove the heldOld ids from readProtectedIds (or markHeld) in
 // run-signal-scorer and the pre-hold place is upserted; change any of the three dates

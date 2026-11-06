@@ -2,6 +2,7 @@
 // the real stage code against a small in-memory store and recording stubs, so each gate
 // is proved to stop a run before a paid call goes out.
 //
+// MINGLA-INVARIANT: I-4276-CONDUCTOR-NEVER-SPENDS-UNAPPROVED | issue #4276 | A tile split level, a box needing a person and any stage above its high-cost limit wait for a person, and every paid step is checked against the gates first
 // MINGLA-INVARIANT: I-4276-GATES-PAUSE-BEFORE-SPEND | issue #4276 | Spend limit, database at 7 GB, storage at the 85 GB guard, an unhealthy provider and the failure rate each pause a run before the next paid call
 //
 // FAILS-ON-REVERT: remove the paidStepBlocked calls and the provider, spend and approval

@@ -3,7 +3,7 @@
 --
 -- MINGLA-INVARIANT: I-4276-HELD-PLACE-NEVER-SERVED | issue #4276 | While a place is held, is_servable cannot be true and every serving path hides it, and no place that is live can be held
 -- MINGLA-INVARIANT: I-4276-SEARCH-CLAIM-ATOMIC | issue #4276 | A search is claimed and finished in one step each, a stale claim comes back, and a late finish counts for nothing
--- MINGLA-INVARIANT: I-4276-RUN-EXISTS-BECAUSE-ADMIN | issue #4276 | A conductor run needs an active admin, and a cron tick with no run does nothing
+-- MINGLA-INVARIANT: I-4276-RUN-EXISTS-BECAUSE-ADMIN | issue #4276 | A conductor run needs a current admin, and a cron tick with no run does nothing
 -- MINGLA-INVARIANT: I-4276-SYSTEM-RUNS-RECOVER | issue #4276 | System runs resume when the provider is healthy, skipped drift is re-queued under a cap, and a stalled run stops holding its city and the limit
 --
 --   R-HOLD     the verdict is parked and is_servable stays away from true

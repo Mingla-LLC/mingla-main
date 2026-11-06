@@ -16,8 +16,8 @@
 --    base clears serving_hold; the final check, admin edits and business-owner updates
 --    never touch it, and a held place's is_servable is already kept away from true.
 --
--- MINGLA-INVARIANT: I-4276-SCORE-STAGE-NEVER-RELEASES-HELD-AI | issue #4276 | The final-score stage never selects a place whose AI result predates the backlog hold, and the scorer leaves such a place's score untouched
--- MINGLA-INVARIANT: I-4276-RELEASE-ONLY-PATH-TO-LIVE | issue #4276 | serving_hold is cleared only inside city_pipeline_release_places
+-- Invariant I-4276-SCORE-STAGE-NEVER-RELEASES-HELD-AI is declared in its contract test under __tests__/.
+-- Invariant I-4276-RELEASE-ONLY-PATH-TO-LIVE is declared in its contract test under __tests__/.
 --
 -- Rollback: restore city_pipeline_places_to_score, tg_place_pool_serving_hold and
 -- city_pipeline_release_places from 20280410034276_issue_4276_city_pipeline_conductor.sql
