@@ -171,6 +171,8 @@ Deno.test({ name: "the rescore selector never offers a pre-hold AI result", ...o
 
 // #4276 rework: was an observation (the scorer blended a pre-hold AI result by id).
 Deno.test({ name: "scoring by place id leaves a pre-hold AI result untouched and says so", ...opts, fn: async () => {
+  // The bouncer calls above re-judge the place (no photos, no website); put it back.
+  await sql(`update public.place_pool set is_servable = true where id = '${OLD_AI}'`);
   const r = await call("run-signal-scorer", { signal_id: SIGNAL, place_ids: [OLD_AI] }, SERVICE_KEY);
   assertEquals(r.status, 200, JSON.stringify(r.body));
   assertEquals(r.body.held_old_result, 1);

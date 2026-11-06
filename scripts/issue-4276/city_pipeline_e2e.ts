@@ -373,7 +373,9 @@ Deno.test({ name: "a city runs from box to final score with no browser, through 
 
   // Later split levels ask too.
   for (let i = 0; i < 6; i++) {
-    row = await runUntil(id, (r) => r.status === "awaiting_approval" || r.current_stage === "intelligence" || r.status === "paused", "split levels");
+    // Reaching the Intelligence stage isn't the end of this loop: under load a tick can
+    // run out of time right after moving into it, so wait for the gate's decision.
+    row = await runUntil(id, (r) => r.status === "awaiting_approval" || r.status === "paused", "split levels");
     if (row.status !== "awaiting_approval") break;
     assertEquals((await callAdmin("approve", { runId: id, key: row.pause_detail.key })).status, 200);
   }
