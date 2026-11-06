@@ -1403,6 +1403,7 @@ DECLARE
   v_charged integer;
   v_fee integer;
   v_provider_amount integer;
+  v_provider_text text;
 BEGIN
   SELECT * INTO v_session FROM public.ticket_checkout_sessions WHERE id = NEW.source_id;
   IF NOT FOUND THEN
@@ -1412,31 +1413,41 @@ BEGIN
   -- failed, disagreed with checkout, or the session has no computed split), the
   -- provider's own amount is still in the stored webhook event for this payment
   -- (both webhooks store the event before processing it). Same lookups as the
-  -- #3872 backfill; same currency only.
+  -- #3872 backfill; same currency only. The stored amount is read as text and
+  -- used only when it is a whole number that fits an integer: a malformed or
+  -- oversized value is ignored (the next lookup, then the session's own total,
+  -- is used) and never aborts the refund row.
   IF v_session.pricing_source IS DISTINCT FROM 'provider_reconciled'
      AND NEW.provider_payment_reference IS NOT NULL THEN
     IF NEW.provider = 'stripe' THEN
-      SELECT (w.payload #>> '{data,object,amount_received}')::integer INTO v_provider_amount
+      SELECT w.payload #>> '{data,object,amount_received}' INTO v_provider_text
         FROM public.payment_webhook_events w
        WHERE w.type = 'payment_intent.succeeded'
          AND w.payload #>> '{data,object,id}' = NEW.provider_payment_reference
          AND upper(w.payload #>> '{data,object,currency}') = upper(NEW.currency)
        ORDER BY w.created_at DESC LIMIT 1;
+      v_provider_amount := CASE WHEN v_provider_text ~ '^[0-9]{1,10}$' THEN
+        CASE WHEN v_provider_text::bigint <= 2147483647 THEN v_provider_text::integer END END;
       IF v_provider_amount IS NULL THEN
-        SELECT (w.payload #>> '{data,object,amount_total}')::integer INTO v_provider_amount
+        v_provider_text := NULL;
+        SELECT w.payload #>> '{data,object,amount_total}' INTO v_provider_text
           FROM public.payment_webhook_events w
          WHERE w.type = 'checkout.session.completed'
            AND w.payload #>> '{data,object,payment_intent}' = NEW.provider_payment_reference
            AND upper(w.payload #>> '{data,object,currency}') = upper(NEW.currency)
          ORDER BY w.created_at DESC LIMIT 1;
+        v_provider_amount := CASE WHEN v_provider_text ~ '^[0-9]{1,10}$' THEN
+          CASE WHEN v_provider_text::bigint <= 2147483647 THEN v_provider_text::integer END END;
       END IF;
     ELSE
-      SELECT (w.payload #>> '{data,amount}')::integer INTO v_provider_amount
+      SELECT w.payload #>> '{data,amount}' INTO v_provider_text
         FROM public.payment_webhook_events w
        WHERE w.type = 'charge.success'
          AND w.payload #>> '{data,reference}' = NEW.provider_payment_reference
          AND upper(w.payload #>> '{data,currency}') = upper(NEW.currency)
        ORDER BY w.created_at DESC LIMIT 1;
+      v_provider_amount := CASE WHEN v_provider_text ~ '^[0-9]{1,10}$' THEN
+        CASE WHEN v_provider_text::bigint <= 2147483647 THEN v_provider_text::integer END END;
     END IF;
     IF v_provider_amount IS NOT NULL AND v_provider_amount <= 0 THEN
       v_provider_amount := NULL;

@@ -360,13 +360,18 @@ $final$;
 --             smaller than Mingla's fee refunds the charge, reverses at most the
 --             charge, and leaves the organiser no negative liability.
 --   W-NEWEST  two stored events for the same payment: the newest one is used.
+--   W-BAD     (retest 2 P4-2, implementor) a malformed or oversized stored
+--             amount (a fraction, text, above 2^31) is ignored: the refund row
+--             is still minted, from the next stored lookup or the session's own
+--             total. Paystack too (W-PS-BAD).
 --
 -- FAILS-ON-REVERT (verified by retest 2 at 63ac7e962b): drop the currency
 -- filters in issue_4271_ticket_late_refund_amounts -> W-CUR fails; match by
 -- event type only (drop the reference filter) -> W-OTHER fails; drop the
 -- `<= 0` guard -> W-ZERO fails; drop the provider_reconciled skip -> W-LOWREC
 -- fails; use `buyer_total_cents` before the stored amount (63ac7e962b^ body)
--- -> W-CAP and W-NEWEST fail.
+-- -> W-CAP and W-NEWEST fail. Restore the bare `::integer` casts (the body
+-- before the P4-2 guard) -> W-BAD and W-PS-BAD abort the mint with 22P02 / 22003.
 -- ===========================================================================
 DO $retest2$
 DECLARE
@@ -419,7 +424,16 @@ BEGIN
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',100,'currency','GBP','age',0))),
     jsonb_build_object('tag','W-NEWEST', 'expect',3385, 'fee',135, 'events', jsonb_build_array(
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3200,'currency','gbp','age',60),
-      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3385,'currency','gbp','age',0)))
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3385,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-BAD-FRACTION', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3135.5,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-BAD-TEXT', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','abc','currency','gbp','age',0))),
+    jsonb_build_object('tag','W-BAD-OVERSIZED', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3000000000,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-BAD-NEXT', 'expect',3200, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','3135.5','currency','gbp','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',3200,'currency','gbp','age',0)))
   )) LOOP
     v_session := gen_random_uuid();
     v_key := replace(v_session::text, '-', '');
@@ -442,10 +456,10 @@ BEGIN
         THEN jsonb_build_object('data', jsonb_build_object('object', jsonb_build_object(
           'id', 'cs_r2x'||ord||v_key,
           'payment_intent', CASE WHEN e->>'pi' = 'SELF' THEN v_pi ELSE 'pi_other'||ord||v_key END,
-          'amount_total', (e->>'amount')::integer, 'currency', e->>'currency')))
+          'amount_total', e->'amount', 'currency', e->>'currency')))
         ELSE jsonb_build_object('data', jsonb_build_object('object', jsonb_build_object(
           'id', CASE WHEN e->>'pi' = 'SELF' THEN v_pi ELSE 'pi_other'||ord||v_key END,
-          'amount_received', (e->>'amount')::integer, 'amount', (e->>'amount')::integer,
+          'amount_received', e->'amount', 'amount', e->'amount',
           'payment_intent', v_pi, 'currency', e->>'currency')))
       END,
       'stripe', e->>'type', now() - make_interval(secs => (e->>'age')::integer)
@@ -459,7 +473,11 @@ BEGIN
         v_fail := v_fail || format('%s precondition: pricing_source %s', v_case->>'tag', v_src);
       END IF;
     END IF;
-    PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'stripe', v_pi, NULL, 'ch_r2'||v_key);
+    BEGIN
+      PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'stripe', v_pi, NULL, 'ch_r2'||v_key);
+    EXCEPTION WHEN OTHERS THEN
+      v_fail := v_fail || format('%s the mint aborted: %s %s', v_case->>'tag', SQLSTATE, SQLERRM);
+    END;
     SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
     IF NOT FOUND THEN
       v_fail := v_fail || format('%s no late refund minted', v_case->>'tag');
@@ -505,6 +523,43 @@ BEGIN
      OR v_row.fee_reversal_required_cents <> 67500 THEN
     v_fail := v_fail || format('W-PS a foreign-currency or foreign-reference charge.success was used: %s', to_jsonb(v_row));
   END IF;
+
+  -- W-PS-BAD: Paystack's stored amount is malformed (text, then above 2^31):
+  -- ignored, the refund row still lands for the session's total.
+  FOR v_case IN SELECT * FROM jsonb_array_elements(jsonb_build_array(
+    jsonb_build_object('tag','W-PS-BAD-TEXT','amount','abc'),
+    jsonb_build_object('tag','W-PS-BAD-OVERSIZED','amount',2147483648)
+  )) LOOP
+    v_session := gen_random_uuid();
+    v_key := replace(v_session::text, '-', '');
+    v_ref := 'psr2b'||v_key;
+    INSERT INTO public.ticket_checkout_sessions (
+      id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164, total_cents, currency, status,
+      idempotency_key, expires_at, application_fee_amount_cents
+    ) VALUES (
+      v_session, v_event_ps, v_brand_ps, 'Guest', 'guest.r2@example.test', '+2348012345678', 1567500, 'NGN',
+      'awaiting_web_redirect', 'r2b-'||v_session, now() + interval '40 minutes', 67500
+    );
+    INSERT INTO public.ticket_checkout_session_items (checkout_session_id, ticket_type_id, ticket_name_at_purchase, quantity, unit_price_cents, total_cents)
+    VALUES (v_session, v_tier_ps, 'General', 1, 1500000, 1500000);
+    INSERT INTO public.payment_webhook_events(stripe_event_id, type, payload, provider, provider_event_type) VALUES
+      ('paystack:r2bad'||v_key, 'charge.success', jsonb_build_object('event','charge.success','data',
+        jsonb_build_object('reference', v_ref, 'amount', v_case->'amount', 'currency', 'NGN')), 'paystack', 'charge.success');
+    v_claim := public.issue_1930_claim_ticket_provider_attempt(v_session, v_event_ps, 'paystack', 'paystack_redirect', 'r2b-fp-'||v_session);
+    PERFORM public.issue_1930_commit_ticket_provider_attempt((v_claim->>'attemptId')::uuid, (v_claim->>'epoch')::bigint, NULL, NULL, v_ref, 'r2b-cont-'||v_session);
+    BEGIN
+      PERFORM public.issue_1930_mint_ticket_late_reversal(v_session, 'paystack', v_ref, '900323458', NULL);
+    EXCEPTION WHEN OTHERS THEN
+      v_fail := v_fail || format('%s the mint aborted: %s %s', v_case->>'tag', SQLSTATE, SQLERRM);
+    END;
+    SELECT * INTO v_row FROM public.source_refunds WHERE source_id = v_session AND refund_kind = 'late_payment_no_value';
+    IF NOT FOUND THEN
+      v_fail := v_fail || format('%s no late refund row', v_case->>'tag');
+    ELSIF v_row.buyer_refund_requested_cents <> 1567500 OR v_row.original_charge_cents <> 1567500
+       OR v_row.fee_reversal_required_cents <> 67500 THEN
+      v_fail := v_fail || format('%s expected 1567500 fee 67500, got %s', v_case->>'tag', to_jsonb(v_row));
+    END IF;
+  END LOOP;
 
   IF array_length(v_fail, 1) > 0 THEN
     RAISE EXCEPTION E'#4271 retest 2 tester adversarial: % failure(s)\n  - %',
