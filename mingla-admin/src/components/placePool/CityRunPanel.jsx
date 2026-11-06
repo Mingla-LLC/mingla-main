@@ -34,6 +34,7 @@ import {
 } from "../../lib/cityPipeline";
 
 const POLL_MS = 15_000;
+const PREVIEW_DEBOUNCE_MS = 350;
 
 const STAGE_STATUS = {
   pending: { label: "Waiting", variant: "default" },
@@ -112,11 +113,14 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
     setPlanLoading(true);
     setPlanError(null);
     const [, stages, redoIntelligence, whole] = JSON.parse(planKey);
-    pipeline("preview", { cityId: city.city_id, stages, redoIntelligence, scope: whole ? "whole_city" : "new_only" })
-      .then((res) => { if (live) setPlanPrice({ key: planKey, plan: res.plan }); })
-      .catch((err) => { if (live) setPlanError(err.message); })
-      .finally(() => { if (live) setPlanLoading(false); });
-    return () => { live = false; };
+    // One request per settled plan: quick taps (and a remount) cancel the timer first.
+    const timer = setTimeout(() => {
+      pipeline("preview", { cityId: city.city_id, stages, redoIntelligence, scope: whole ? "whole_city" : "new_only" })
+        .then((res) => { if (live) setPlanPrice({ key: planKey, plan: res.plan }); })
+        .catch((err) => { if (live) setPlanError(err.message); })
+        .finally(() => { if (live) setPlanLoading(false); });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => { live = false; clearTimeout(timer); };
   }, [planKey, city.city_id]);
   const plan = planPrice && planPrice.key === planKey ? planPrice.plan : null;
 
@@ -289,12 +293,21 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
       >
         <p>The server prices this run at {plan ? planPriceText(plan, serperRate) : "…"}{plan?.atLeast ? " or more: the checks can add places before photos and Intelligence, and each asks again if it goes over its limit" : ""}.</p>
         <p>It does: {plan ? plan.stages.map(stageLabel).join(", ") : ""}. Then it stops.</p>
+        {judgedCount(plan) !== null && (
+          <p className="font-medium text-[var(--color-text-primary)]">Re-judges {count(judgedCount(plan))} {judgedCount(plan) === 1 ? "place" : "places"} in {city.city_name} (never places held in the score backlog).</p>
+        )}
         {server?.redoIntelligence && <p className="text-[var(--color-warning-700)]">Redoing Intelligence with fresh reviews changes live decks for the places it covers.</p>}
         {wholeCity && <p>Every place in the city is judged again by both checks, not only new ones.</p>}
         <p>Spend limit: {usd(limitNumber)}.</p>
       </ConfirmModal>
     </div>
   );
+}
+
+/** How many places the planned Intelligence stage takes, from the server's own count. */
+function judgedCount(plan) {
+  const line = plan?.lines?.find((l) => l.stage === "intelligence");
+  return line && line.places != null ? Number(line.places) : null;
 }
 
 /** The server's price in words: dollars, plus Serper by request until it is priced. */

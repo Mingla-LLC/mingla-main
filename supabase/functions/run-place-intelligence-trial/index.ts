@@ -41,6 +41,7 @@ import {
   MAX_PHOTOS,
 } from "../_shared/imageCollage.ts";
 import { checkStorageHeadroom } from "../_shared/storageHeadroomGuard.ts";
+import { aiSliceIsHeld } from "../_shared/aiScoreHold.ts"; // #4276: a redo never re-judges the held backlog
 import {
   CHILD_RECONCILE_PAGE_SIZE,
   type ChildTruthReconciliationResult,
@@ -1455,7 +1456,22 @@ export async function handleComposeCollage(
 // limit. Per-place architecture mirrors PhotoScorerPage's batch loop pattern.
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handleStartRun(
+/**
+ * #4276: the places among these rows whose AI result is held in the score backlog: any
+ * signal slice evaluated before AI_SCORE_HOLD_SINCE, or with no usable date. A redo
+ * never re-judges them.
+ */
+export function heldPlaceIds(rows: Array<{ id: string; ai_signal_scores: unknown }>): string[] {
+  return rows
+    .filter((r) => {
+      const ai = r.ai_signal_scores;
+      if (!ai || typeof ai !== "object") return false;
+      return Object.values(ai as Record<string, unknown>).some((slice) => aiSliceIsHeld(slice));
+    })
+    .map((r) => r.id);
+}
+
+export async function handleStartRun(
   db: SupabaseClient,
   body: Record<string, unknown>,
   adminId: string,
@@ -1589,6 +1605,21 @@ async function handleStartRun(
       );
       if (noReviewsErr) return json({ error: noReviewsErr.message }, 500);
       redoSet = new Set((noReviews ?? []) as string[]);
+      // THE SCORE BACKLOG STAYS HELD. The list above already leaves out places whose AI
+      // result predates the hold; this checks the slices again here, so no caller and
+      // no later change to that list can re-judge one. A re-judged place would get a
+      // slice dated now and leave the hold place by place.
+      const evaluatedRedo = [...redoSet].filter((id) => evaluatedSet.has(id));
+      for (let i = 0; i < evaluatedRedo.length; i += 200) {
+        const { data: aiRows, error: aiErr } = await db
+          .from("place_pool")
+          .select("id, ai_signal_scores")
+          .in("id", evaluatedRedo.slice(i, i + 200));
+        if (aiErr) return json({ error: aiErr.message }, 500);
+        for (const id of heldPlaceIds((aiRows ?? []) as Array<{ id: string; ai_signal_scores: unknown }>)) {
+          redoSet.delete(id);
+        }
+      }
     }
     sampledIds = pool.map((p) => p.id).filter((id) =>
       !evaluatedSet.has(id) || redoSet.has(id)

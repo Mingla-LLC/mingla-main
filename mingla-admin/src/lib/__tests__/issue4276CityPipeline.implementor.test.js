@@ -272,7 +272,8 @@ test("the gaps table: All gaps totals, the Show filter and a city's status line"
   const live = { city_id: "l", is_live: true, active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 50, rules_only: 0, intelligence_without_reviews: 50, held: 0 };
   const seeded = { city_id: "s", is_live: false, active: 40, pre_checked: 0, pre_passed: 0, with_photos: 0, final_checked: 0, servable: 0, scored: 0 };
   const draft = { city_id: "d", is_live: false, active: 0 };
-  const rows = [live, seeded, draft].map((c) => matrixCells(c, { uncoveredTiles: 1, unfinishedSearches: 2, cappedOpen: 3 }, { outside_active: c === live ? 5 : 0 }));
+  const redo = { reviews_eligible: 50, reviews_held: 0, redo_eligible: 50, redo_held: 0 };
+  const rows = [live, seeded, draft].map((c) => matrixCells(c, { uncoveredTiles: 1, unfinishedSearches: 2, cappedOpen: 3 }, { outside_active: c === live ? 5 : 0 }, c === live ? redo : { reviews_eligible: 0, reviews_held: 0, redo_eligible: 0, redo_held: 0 }));
   const totals = Object.fromEntries(pipelineLib.matrixTotals(rows).map((t) => [t.id, t]));
   assert.equal(totals.unsearched.text, "9");
   assert.equal(totals.capped.text, "9");
@@ -371,7 +372,7 @@ test("the run rates mirror the server's own constants", () => {
 
 test("cells cost what a run would spend, and Serper or Gemini say so until priced", () => {
   const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
-  const cells = matrixCells(f, { uncoveredTiles: 2, unfinishedSearches: 10, cappedOpen: 3 }, { outside_active: 0 });
+  const cells = matrixCells(f, { uncoveredTiles: 2, unfinishedSearches: 10, cappedOpen: 3 }, { outside_active: 0 }, { reviews_eligible: 6, reviews_held: 0, redo_eligible: 2, redo_held: 0 });
   const by = Object.fromEntries(cells.map((c) => [c.id, c]));
   assert.equal(pipelineLib.cellCost(by.unsearched).text, "$1.22"); // (2 x 14 + 10) x $0.032
   assert.equal(pipelineLib.cellCost(by.capped).text, "$0.38"); // 3 x 4 x $0.032
@@ -389,10 +390,10 @@ test("cells cost what a run would spend, and Serper or Gemini say so until price
 
 test("picking a gap adds the gaps it needs first; a city name picks its whole row", () => {
   const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
-  const cells = matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 5 });
+  const cells = matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 5 }, { reviews_eligible: 6, reviews_held: 0, redo_eligible: 2, redo_held: 0 });
   assert.deepEqual([...pipelineLib.neededFirst(["photos"], cells)].sort(), ["pre_check"]);
   assert.deepEqual([...pipelineLib.neededFirst(["intelligence"], cells)].sort(), ["final_check", "photos", "pre_check"]);
-  assert.deepEqual([...pipelineLib.neededFirst(["redo"], cells)].sort(), ["final_check", "intelligence", "photos", "pre_check", "reviews"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["redo"], cells)].sort(), ["final_check", "intelligence", "photos", "pre_check"]);
   assert.deepEqual([...pipelineLib.neededFirst(["box"], cells)], [], "a box check needs nothing first");
   assert.deepEqual(pipelineLib.wholeRow(cells), ["box", "pre_check", "photos", "final_check", "reviews", "intelligence"]);
   const plan = pipelineLib.planLines(cells, ["photos"], {});
@@ -400,6 +401,7 @@ test("picking a gap adds the gaps it needs first; a city name picks its whole ro
   assert.equal(plan.totalText, "$0.70");
   assert.equal(plan.searches, false);
   assert.equal(pipelineLib.planLines(cells, ["reviews"], {}).totalText, "$0.70 + Serper + Gemini");
+  assert.equal(pipelineLib.neededFirst(["reviews"], cells).has("redo"), false, "Reviews never brings a redo");
   const section = read("components/placePool/PipelineSection.jsx");
   assert.ok(section.includes("onToggle={pickable(cell) ? () => toggleCell(c.city_id, cell.id) : null}"));
   assert.ok(section.includes("onClick={() => pickCity(row)}"));
@@ -431,16 +433,18 @@ test("Browse: sentence-case headings, the Google type under the name, and a side
 // and picking Reviews adds Unsearched and Capped again.
 test("picking Reviews adds what the data needs, never a search", () => {
   const f = { active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 50, rules_only: 0, intelligence_without_reviews: 40 };
-  const cells = matrixCells(f, { uncoveredTiles: 3, unfinishedSearches: 7, cappedOpen: 5 }, { outside_active: 2 });
+  const cells = matrixCells(f, { uncoveredTiles: 3, unfinishedSearches: 7, cappedOpen: 5 }, { outside_active: 2 }, { reviews_eligible: 10, reviews_held: 40, redo_eligible: 4, redo_held: 36 });
   const needed = pipelineLib.neededFirst(["reviews"], cells);
-  for (const search of ["seed", "unsearched", "capped", "box"]) assert.equal(needed.has(search), false, `${search} was added`);
-  assert.deepEqual([...needed], ["redo"], "the redo of places that ran with no reviews is the same work");
+  for (const search of ["seed", "unsearched", "capped", "box", "redo"]) assert.equal(needed.has(search), false, `${search} was added`);
+  assert.deepEqual([...needed], [], "everything before reviews is done here");
   const plan = pipelineLib.planLines(cells, ["reviews"], {});
   assert.equal(plan.searches, false);
-  assert.deepEqual(plan.server, { stages: ["intelligence"], redoIntelligence: true });
+  // Round 4: Reviews is not a redo.
+  assert.deepEqual(plan.server, { stages: ["intelligence"], redoIntelligence: false });
   assert.deepEqual(pipelineLib.serverPlanFor(["unsearched", "capped", "photos"]), { stages: ["fill", "split", "photos"], redoIntelligence: false });
   assert.deepEqual(pipelineLib.serverPlanFor(["seed", "unsearched"]), { stages: ["fill"], redoIntelligence: false });
   assert.deepEqual(pipelineLib.serverPlanFor(["redo"]), { stages: ["intelligence"], redoIntelligence: true });
+  assert.deepEqual(pipelineLib.serverPlanFor(["reviews"]), { stages: ["intelligence"], redoIntelligence: false });
 });
 
 // FAILS-ON-REVERT: drop the stages and redo from the start body and this fails; the
@@ -459,4 +463,42 @@ test("the Intelligence coverage table reads in sentence case", () => {
   const tab = read("components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx");
   assert.equal(/uppercase tracking-wide font-mono text-\[var\(--color-text-tertiary\)\]/.test(tab), false);
   assert.equal(tab.includes('<div className="text-[10px] uppercase tracking-wide'), false);
+});
+
+
+// ── #4276 round 4: the score backlog stays held ─────────────────────────────
+
+// FAILS-ON-REVERT: count Reviews and Redo from the funnel again (no_reviews,
+// intelligence_without_reviews) and the held places become pickable gaps; map Reviews
+// to a redo again and serverPlanFor sets redoIntelligence.
+test("held backlog places are shown apart and can't be picked; Reviews is never a redo", () => {
+  const f = { active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 40, rules_only: 0, intelligence_without_reviews: 36 };
+  const allHeld = Object.fromEntries(matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 0 },
+    { reviews_eligible: 0, reviews_held: 40, redo_eligible: 0, redo_held: 36 }).map((c) => [c.id, c]));
+  assert.equal(allHeld.reviews.text, "–");
+  assert.equal(allHeld.reviews.gap, false);
+  assert.equal(pipelineLib.pickable(allHeld.reviews), false);
+  assert.equal(allHeld.reviews.heldText, "Held: 40 (backlog paused)");
+  assert.equal(allHeld.redo.text, "–");
+  assert.equal(pipelineLib.pickable(allHeld.redo), false);
+  assert.equal(allHeld.redo.heldText, "Held: 36 (backlog paused)");
+  assert.equal(pipelineLib.wholeRow(Object.values(allHeld)).includes("reviews"), false, "a whole-row pick skips held places");
+
+  const some = Object.fromEntries(matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 0 },
+    { reviews_eligible: 3, reviews_held: 37, redo_eligible: 0, redo_held: 36 }).map((c) => [c.id, c]));
+  assert.equal(some.reviews.text, "3");
+  assert.equal(pipelineLib.pickable(some.reviews), true);
+  assert.deepEqual(pipelineLib.serverPlanFor(["reviews"]).redoIntelligence, false);
+
+  // Before the counts have answered, neither cell can be picked.
+  const unknown = Object.fromEntries(matrixCells(f, null, null).map((c) => [c.id, c]));
+  assert.equal(unknown.reviews.text, "?");
+  assert.equal(pipelineLib.pickable(unknown.reviews), false);
+
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("fetchRedoCounts(),"), "the gaps table reads the held split");
+  assert.ok(section.includes("title={HELD_BACKLOG_NOTE}"), "held places carry a note on the hold");
+  const run = read("components/placePool/CityRunPanel.jsx");
+  assert.ok(run.includes("(never places held in the score backlog)"), "the confirmation states the scope");
+  assert.ok(run.includes("setTimeout(() => {") && run.includes("clearTimeout(timer)"), "one preview per settled plan");
 });

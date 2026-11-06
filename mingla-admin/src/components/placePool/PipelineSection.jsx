@@ -32,11 +32,13 @@ import { supabase } from "../../lib/supabase";
 import {
   fetchPipelineFunnel,
   fetchPipelineRuns,
+  fetchRedoCounts,
   fetchSpendTotals,
   pipeline,
   seeding,
 } from "../../services/cityPipelineService";
 import {
+  HELD_BACKLOG_NOTE,
   MATRIX_COLUMNS,
   MATRIX_FILTERS,
   boxSizeText,
@@ -274,9 +276,24 @@ function boxCell(cell, size) {
   return { ...cell, text: size || cell.text };
 }
 
+// The held backlog under a count: not pickable, with what the hold is.
+function HeldLine({ cell }) {
+  if (!cell.heldText) return null;
+  return (
+    <span className="block cursor-help truncate text-[10.5px] font-normal text-[var(--color-text-secondary)]" title={HELD_BACKLOG_NOTE}>
+      {cell.heldText}
+    </span>
+  );
+}
+
 function GapCell({ cell, cost, state, onToggle, cityName, label }) {
   if (!cell.gap) {
-    return <span className="flex min-h-11 items-center px-1 text-[12px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
+    return (
+      <span className="flex min-h-11 flex-col items-start justify-center px-1 text-[12px] text-[var(--color-text-tertiary)]">
+        <span>{cell.text}</span>
+        <HeldLine cell={cell} />
+      </span>
+    );
   }
   const tone = CELL_TONE[state] ?? CELL_TONE[cell.kind] ?? CELL_TONE.missing;
   const body = (
@@ -286,14 +303,18 @@ function GapCell({ cell, cost, state, onToggle, cityName, label }) {
       {cost?.text && <span className="block truncate text-[10.5px] font-normal tabular-nums opacity-90">{cost.text}</span>}
     </>
   );
+  const held = cell.heldText ? <HeldLine cell={cell} /> : null;
   const cls = `flex min-h-11 w-full min-w-0 flex-col items-start justify-center rounded-md border px-1.5 py-1 text-left ${tone}`;
-  if (!onToggle) return <span className={cls}>{body}</span>;
+  if (!onToggle) return <span className="block"><span className={cls}>{body}</span>{held}</span>;
   return (
-    <button type="button" className={`${cls} cursor-pointer hover:brightness-95`} aria-pressed={state === "picked"}
-      aria-label={`${cityName}, ${label}: ${cell.text}${cost?.text ? `, ${cost.text}` : ""}${state === "needed" ? ", needed first" : ""}`}
-      onClick={onToggle}>
-      {body}
-    </button>
+    <span className="block">
+      <button type="button" className={`${cls} cursor-pointer hover:brightness-95`} aria-pressed={state === "picked"}
+        aria-label={`${cityName}, ${label}: ${cell.text}${cost?.text ? `, ${cost.text}` : ""}${state === "needed" ? ", needed first" : ""}`}
+        onClick={onToggle}>
+        {body}
+      </button>
+      {held}
+    </span>
   );
 }
 
@@ -304,6 +325,7 @@ export function PipelineSection() {
   const [search, setSearch] = useState(null);
   const [searchError, setSearchError] = useState(null);
   const [outside, setOutside] = useState(null);
+  const [redoCounts, setRedoCounts] = useState(null);
   const [boxes, setBoxes] = useState({});
   const [runs, setRuns] = useState({});
   const [health, setHealth] = useState(null);
@@ -343,13 +365,16 @@ export function PipelineSection() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [f, s, o, r, b] = await Promise.allSettled([
+    const [f, s, o, r, b, h] = await Promise.allSettled([
       fetchPipelineFunnel(null),
       seeding("cities_search_status"),
       seeding("places_outside_box"),
       fetchPipelineRuns(),
       supabase.from("seeding_cities").select("id, bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng"),
+      fetchRedoCounts(),
     ]);
+    // Reviews and Redo read "?" (not pickable) until this answers.
+    setRedoCounts(h.status === "fulfilled" ? (h.value ?? {}) : null);
     if (f.status === "fulfilled") { setFunnel(f.value); setFunnelError(null); } else setFunnelError(f.reason.message);
     if (s.status === "fulfilled") {
       setSearch(Object.fromEntries((s.value.cities ?? []).map((c) => [c.cityId, c])));
@@ -368,9 +393,10 @@ export function PipelineSection() {
   const allCities = useMemo(() => (funnel?.cities ?? []).filter((c) => c.city_id), [funnel]);
   const noCity = useMemo(() => (funnel?.cities ?? []).find((c) => !c.city_id), [funnel]);
   const rows = useMemo(() => allCities.map((c) => {
-    const cells = matrixCells(c, search?.[c.city_id], outside ? outside[c.city_id] ?? { outside_active: 0 } : null);
+    const redoRow = redoCounts ? redoCounts[c.city_id] ?? { reviews_eligible: 0, reviews_held: 0, redo_eligible: 0, redo_held: 0 } : null;
+    const cells = matrixCells(c, search?.[c.city_id], outside ? outside[c.city_id] ?? { outside_active: 0 } : null, redoRow);
     return { city: c, cells, status: cityStatusLine(c, cells) };
-  }), [allCities, search, outside]);
+  }), [allCities, search, outside, redoCounts]);
   const shown = useMemo(() => rows.filter((r) => matrixFilter(r.city, filter)), [rows, filter]);
   const totals = useMemo(() => matrixTotals(shown.map((r) => r.cells)), [shown]);
   const filterCounts = useMemo(() => Object.fromEntries(MATRIX_FILTERS.map((f) => [f.id, rows.filter((r) => matrixFilter(r.city, f.id)).length])), [rows]);

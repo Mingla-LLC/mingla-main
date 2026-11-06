@@ -340,8 +340,16 @@ export function neverSeeded(funnelRow) {
   return !funnelRow?.is_live && (num(funnelRow?.active) ?? 0) === 0;
 }
 
-/** One row's cells. A cell is a gap when its count is above zero; null is unknown. */
-export function matrixCells(funnelRow, searchRow, outsideRow) {
+export const HELD_BACKLOG_NOTE =
+  "Held in the score backlog: AI results from before 5 Nov 2026 stay off live decks until Seth releases them, so no run re-judges or rescores these places.";
+
+/**
+ * One row's cells. A cell is a gap when its count is above zero; null is unknown.
+ * redoRow (admin_place_pipeline_redo_counts) splits the no-review places: Reviews and
+ * Redo count only the places a run may reach, and the held backlog is carried as
+ * `held` on the cell, never pickable. Until it has answered those two cells are "?".
+ */
+export function matrixCells(funnelRow, searchRow, outsideRow, redoRow) {
   const n = (v) => num(v) ?? 0;
   const f = funnelRow ?? {};
   const unknownSearch = !searchRow || !!searchRow.error;
@@ -355,9 +363,9 @@ export function matrixCells(funnelRow, searchRow, outsideRow) {
     pre_check: Math.max(0, n(f.active) - n(f.pre_checked)),
     photos: Math.max(0, n(f.pre_passed) - n(f.with_photos)),
     final_check: Math.max(0, n(f.with_photos) - n(f.final_checked)),
-    reviews: n(f.no_reviews),
+    reviews: redoRow ? n(redoRow.reviews_eligible) : null,
     intelligence: n(f.rules_only),
-    redo: n(f.intelligence_without_reviews),
+    redo: redoRow ? n(redoRow.redo_eligible) : null,
     score: Math.max(0, n(f.servable) - n(f.scored)),
   };
   // What a search cell is made of, for its cost: tiles never searched, searches not done.
@@ -370,7 +378,14 @@ export function matrixCells(funnelRow, searchRow, outsideRow) {
     if (c.id === "seed") text = fresh ? "Never seeded" : "Done";
     // A city never seeded has nothing for the later stages to do yet.
     if (fresh && !["box", "seed", "unsearched"].includes(c.id) && v === 0) text = "–";
-    return { id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0, parts: parts[c.id] ?? null };
+    const held = c.id === "reviews" ? n(redoRow?.reviews_held) : c.id === "redo" ? n(redoRow?.redo_held) : 0;
+    // Nothing a run may reach, only held places: "–", not a gap and not pickable.
+    if ((c.id === "reviews" || c.id === "redo") && v === 0 && held > 0) text = "–";
+    return {
+      id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0, parts: parts[c.id] ?? null,
+      held, heldText: held > 0 ? `Held: ${count(held)} (backlog paused)` : "",
+      total: c.id === "reviews" ? n(f.no_reviews) : c.id === "redo" ? n(f.intelligence_without_reviews) : v,
+    };
   });
 }
 
@@ -411,7 +426,7 @@ export function cityStatusLine(funnelRow, cells) {
   const by = Object.fromEntries((cells ?? []).map((c) => [c.id, c]));
   let where;
   if (active > 0 && (by.pre_check?.value ?? 0) >= active) where = "Not started";
-  else if (servable > 0 && (by.reviews?.value ?? 0) * 2 > servable) where = STAGE_WORDS.reviews;
+  else if (servable > 0 && (by.reviews?.total ?? by.reviews?.value ?? 0) * 2 > servable) where = STAGE_WORDS.reviews;
   else if (servable > 0 && (by.intelligence?.value ?? 0) * 2 > servable) where = STAGE_WORDS.intelligence;
   else {
     const first = ["pre_check", "photos", "final_check"].find((id) => (by[id]?.value ?? 0) > active * 0.25);
@@ -710,8 +725,9 @@ const NEEDS = Object.freeze({
   photos: ["pre_check"],
   final_check: ["photos", "pre_check"],
   intelligence: ["final_check", "photos", "pre_check"],
-  reviews: ["final_check", "photos", "pre_check", "intelligence", "redo"],
-  redo: ["final_check", "photos", "pre_check", "intelligence", "reviews"],
+  // Reviews come with a place's first Intelligence; a redo is its own, separate choice.
+  reviews: ["final_check", "photos", "pre_check", "intelligence"],
+  redo: ["final_check", "photos", "pre_check", "intelligence"],
 });
 
 // A picked gap as the run's stage list (run-city-pipeline start and preview).
@@ -755,7 +771,9 @@ export function serverPlanFor(picked) {
     const stage = SERVER_STAGE[id];
     if (stage && !stages.includes(stage)) stages.push(stage);
   }
-  const redoIntelligence = set.has("reviews") || set.has("redo");
+  // Reviews are fetched with a place's first Intelligence; only Redo re-judges.
+  if (set.has("reviews") && !stages.includes("intelligence")) stages.push("intelligence");
+  const redoIntelligence = set.has("redo");
   if (redoIntelligence && !stages.includes("intelligence")) stages.push("intelligence");
   return { stages, redoIntelligence };
 }

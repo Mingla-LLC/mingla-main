@@ -55,6 +55,11 @@ export function fetchSpendTotals() {
   return rpc("admin_place_pipeline_spend_totals", {});
 }
 
+/** #4276: per city, the no-review places a run may reach and those held in the score backlog. */
+export function fetchRedoCounts() {
+  return rpc("admin_place_pipeline_redo_counts", {});
+}
+
 /** The latest pipeline run per city, active ones first. Admins can read runs directly. */
 export async function fetchPipelineRuns() {
   const { data, error } = await supabase
