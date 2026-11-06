@@ -402,6 +402,47 @@ describe("B5 only admins accept Apple's terms", () => {
     await flush();
     expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: true });
   });
+
+  // Retest 2 P4-7: the probe stays quiet, but the user's own press always shows its failure.
+  const pressSetup = async (root: ReactTestInstance): Promise<void> => {
+    await act(async () => {
+      byTestId(root, "tap-setup-start").props.onPress();
+      await Promise.resolve();
+    });
+    await flush();
+    await flush();
+  };
+  const SETUP_FAILED =
+    /Couldn't finish Apple's Tap to Pay setup\. Accept Apple's terms when asked, then try again\.|Couldn't start Tap to Pay on this phone\. Try again\./;
+
+  test("retest 2 P4-7: an admin's own press that fails for a network reason shows the error", async () => {
+    mockRole = { rank: 50, isLoading: false };
+    const connect = readyClient({ code: "STRIPE_API_CONNECTION_ERROR", message: "network down" });
+    const { root } = await setup();
+    expect(textOf(root)).not.toMatch(SETUP_FAILED);
+    await pressSetup(root);
+    expect(connect).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: true });
+    expect(textOf(root)).toMatch(SETUP_FAILED);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  test("retest 2 P4-7: an admin's own press that throws shows Setup didn't finish", async () => {
+    mockRole = { rank: 50, isLoading: false };
+    updateTapToPaySession({
+      status: "ready",
+      client: {
+        ensureReaderConnected: jest.fn(async () => {
+          throw new Error("socket closed");
+        }),
+        checkDeviceSupport: async () => ({ supported: true }),
+      } as never,
+    });
+    const { root } = await setup();
+    expect(textOf(root)).not.toContain("Setup didn't finish");
+    await pressSetup(root);
+    expect(textOf(root)).toContain("Setup didn't finish. Check your connection and try again.");
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
 });
 
 describe("B6 warm-up through the real host", () => {
