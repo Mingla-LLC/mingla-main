@@ -670,7 +670,7 @@ const PRODUCTION_DEPS: ResearchRunDeps = {
 };
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     work,
     new Promise<T>((_, reject) => {
