@@ -428,7 +428,10 @@ export function errorEnvelope(
   const definition = takenOverBy
     ? {
       ...ARI_ERROR_REGISTRY[code],
-      userMessage: ARI_ERROR_REGISTRY[code].userMessage.replace("A teammate", takenOverBy),
+      userMessage: ARI_ERROR_REGISTRY[code].userMessage.replace(
+        "A teammate",
+        takenOverBy,
+      ),
     }
     : ARI_ERROR_REGISTRY[code];
   const body: AriErrorEnvelope = {
