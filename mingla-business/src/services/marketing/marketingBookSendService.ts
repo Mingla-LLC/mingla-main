@@ -19,6 +19,55 @@ import type {
 } from "../../types/marketing";
 import { MarketingBookSendError } from "./marketingCampaignService";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #4273 — the other drafts in a campaign's group (not the lead). A tab that
+ * closed with the review open leaves its sibling drafts behind; the composer
+ * reads them so it can adopt or discard them instead of colliding with them.
+ *
+ * The group is COALESCE(campaign_group_id, id) of the lead, the same rule the
+ * server uses: a sibling reopened from Drafts belongs to its head's group, and
+ * the head comes back flagged `isHead` so it is never discarded.
+ * Lives here, not in marketingCampaignService, so it loads only with the
+ * composer (the campaign list loads that service eagerly; #3493 budget).
+ * RLS (`marketing_campaigns_select`) admits the owner or a brand member.
+ */
+export async function listGroupDrafts(
+  leadCampaignId: string,
+): Promise<{
+  /** COALESCE(campaign_group_id, id) of the lead: the id new siblings join. */
+  groupId: string;
+  drafts: Array<{ id: string; channel: "email" | "sms" | "push"; isHead: boolean }>;
+}> {
+  if (!UUID_RE.test(leadCampaignId)) throw new Error("listGroupDrafts.lead_campaign_id: expected UUID");
+  const lead = await supabase
+    .from("marketing_campaigns")
+    .select("id, campaign_group_id")
+    .eq("id", leadCampaignId)
+    .maybeSingle();
+  if (lead.error) throw lead.error;
+  if (lead.data === null) throw new Error("listGroupDrafts: campaign not found");
+  const row = lead.data as { id: string; campaign_group_id: string | null };
+  const group = row.campaign_group_id ?? row.id;
+  if (!UUID_RE.test(group)) throw new Error("listGroupDrafts.group_id: expected UUID");
+  const { data, error } = await supabase
+    .from("marketing_campaigns")
+    .select("id, channel")
+    .or(`campaign_group_id.eq.${group},id.eq.${group}`)
+    .eq("status", "draft")
+    .neq("id", leadCampaignId);
+  if (error) throw error;
+  return {
+    groupId: group,
+    drafts: ((data ?? []) as Array<{ id: string; channel: "email" | "sms" | "push" }>).map((draft) => ({
+      ...draft,
+      isHead: draft.id === group,
+    })),
+  };
+}
+
+
 async function parseMarketingBookError(
   error: unknown,
 ): Promise<MarketingBookSendError> {
@@ -66,9 +115,15 @@ export async function previewMarketingBook(
  */
 export async function previewMarketingCampaignGroup(
   leadCampaignId: string,
+  /** #4273 — the drafts being sent (lead first); only these are priced. */
+  campaignIds?: readonly string[],
 ): Promise<CampaignGroupPreview> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: { action: "preview_group_v1", campaign_id: leadCampaignId },
+    body: {
+      action: "preview_group_v1",
+      campaign_id: leadCampaignId,
+      ...(campaignIds === undefined ? {} : { campaign_ids: [...campaignIds] }),
+    },
   });
   if (error) throw await parseMarketingBookError(error);
   return data as CampaignGroupPreview;

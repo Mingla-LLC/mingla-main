@@ -114,13 +114,16 @@ const PUSH = {
 function deps(overrides: Record<string, unknown> = {}) {
   return {
     loadGroup: () =>
-      Promise.resolve([
-        { id: "push-row", channel: "push" as const },
-        { id: "email-row", channel: "email" as const },
-      ]),
+      Promise.resolve({
+        rows: [
+          { id: "push-row", channel: "push" as const },
+          { id: "email-row", channel: "email" as const },
+        ],
+        unlisted: [],
+      }),
     candidates: (_id: string, channel: string) =>
       Promise.resolve(channel === "push" ? PUSH : EMAIL),
-    followBrand: () => Promise.resolve(null),
+    quoteBrand: () => Promise.resolve({ followBrand: null, costCurrency: null }),
     allowance: (_c: unknown, quote: Record<string, unknown>) =>
       Promise.resolve({ ...quote, allowance: { emailRemaining: 997 } }),
     errorCode: (error: unknown) => String(error),
@@ -218,7 +221,10 @@ Deno.test("#4273 the SMS cost in the tile is exactly what the method's quote pri
   const preview = await buildCampaignGroupPreview(
     deps({
       loadGroup: () =>
-        Promise.resolve([{ id: "sms-row", channel: "sms" as const }]),
+        Promise.resolve({
+          rows: [{ id: "sms-row", channel: "sms" as const }],
+          unlisted: [],
+        }),
       candidates: () => Promise.resolve(sms),
       smsRates: RATES,
     }),
@@ -351,6 +357,13 @@ Deno.test("#4273 the subject feeds the push title; no title keeps the brand name
 
 function groupClient(rpc: (name: string) => unknown) {
   const select = () => ({
+    or: () => ({
+      eq: () =>
+        Promise.resolve({
+          data: [{ id: "lead", channel: "push" }],
+          error: null,
+        }),
+    }),
     eq: (column: string) =>
       column === "id"
         ? {
@@ -402,7 +415,8 @@ Deno.test("#4273 when every method is refused, the host gets the reason", async 
     "lead",
     NOW,
   );
-  assertEquals(response.status, 409);
+  // #4273 — the status is the refused method's own (404), not a blanket 409.
+  assertEquals(response.status, 404);
   assertEquals((await response.json()).error, "BOOK_BLAST_AUDIENCE_NOT_FOUND");
 });
 

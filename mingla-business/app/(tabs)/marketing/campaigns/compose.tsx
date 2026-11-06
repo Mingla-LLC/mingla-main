@@ -200,6 +200,7 @@ import {
   pushTitleFromSubject,
   reconcileBlastChannels,
   sendByUnavailable,
+  smsCostLabel,
   sourceKeyForOption,
   sourceKeysForDefinition,
   sortBlastChannels,
@@ -212,6 +213,9 @@ import {
   campaignPreviewInput,
   extendedPushReady,
   prepareCampaignGroupPreview,
+  settleLeftoverGroupDrafts,
+  draftSaveErrorMessage,
+  GroupHeadMethodTakenError,
   type CampaignChannel,
   type SiblingChannelState,
 } from "../../../../src/services/marketing/campaignChannelGroupService";
@@ -485,6 +489,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // #4273 — the picked groups as the server's source keys, one lane decision:
   // one group by one method keeps its lane, anything wider goes combined.
   const [pickedKeys, setPickedKeys] = useState<readonly string[]>([]);
+  // #4273 — the display names of picked groups, by source key (Push hint).
+  const [pickedNames, setPickedNames] = useState<Readonly<Record<string, string>>>({});
   const [combinedPeople, setCombinedPeople] = useState<number | null>(null);
   const [followersAlsoInBook, setFollowersAlsoInBook] = useState(0);
   const [audiencePending, setAudiencePending] = useState(false);
@@ -824,6 +830,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setSealedAudienceKind(null);
           setIsBookAudience(false);
           setPickedKeys(["brand_buyers"]);
+          setPickedNames({ brand_buyers: "All brand buyers" });
         } else {
           // #3682 — event buyers must belong to the active brand.
           await assertEventBelongsToBrand({
@@ -841,6 +848,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setSealedAudienceKind(null);
           setIsBookAudience(false);
           setPickedKeys([`event:${audienceParam.id}`]);
+          setPickedNames({ [`event:${audienceParam.id}`]: "Event buyers" });
         }
       } catch (err) {
         if (!cancelled) {
@@ -1044,7 +1052,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     return subject.length > 0 ? subject : "Untitled campaign";
   }, [channel, pushBody, smsBody, subject]);
 
+  // #4273 — the last save was refused with its own message; the review must
+  // not then tell the host to "save the draft" as if saving could succeed.
+  const saveRefusedRef = useRef(false);
   const flushDraft = useCallback(async (): Promise<string | null> => {
+    saveRefusedRef.current = false;
     if (accountId === null || brandId === null || audienceId === null)
       return null;
     const payload = buildPayload();
@@ -1072,11 +1084,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       setIsDirty(false);
       return campaignId;
     } catch (err) {
-      setErrorBanner(
-        err instanceof Error
-          ? err.message
-          : "Couldn't save draft. Tap Save draft to retry.",
-      );
+      // #4273 — plain words, never the database's constraint text.
+      saveRefusedRef.current = true;
+      setErrorBanner(draftSaveErrorMessage(err));
     }
     return null;
   }, [
@@ -1429,9 +1439,33 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     if (staleSiblings.length > 0) {
       await discardSiblingDrafts(staleSiblings.map((row) => row.campaignId));
     }
+    // #4273 — a tab that closed with the review open leaves sibling drafts in
+    // the group. Drop the one on the lead's method before saving the lead, or
+    // the save collides with it; the group preview adopts or drops the rest.
+    if (campaignId !== null) {
+      try {
+        await settleLeftoverGroupDrafts({
+          leadCampaignId: campaignId,
+          leadChannel: channel,
+          extras: sealedAudienceKind === "combined_sources"
+            ? [...extraChannels].map((kind) => ({
+                channel: kind,
+                existingCampaignId: siblings.find((row) => row.channel === kind)?.campaignId ?? null,
+              }))
+            : [],
+        });
+      } catch (error) {
+        setErrorBanner(
+          error instanceof GroupHeadMethodTakenError
+            ? error.message
+            : "Couldn't check this campaign's drafts. Try again.",
+        );
+        return;
+      }
+    }
     const id = await flushDraft();
     if (id === null) {
-      setErrorBanner("Save the draft, then preview again.");
+      if (!saveRefusedRef.current) setErrorBanner("Save the draft, then preview again.");
       return;
     }
     setBookPreviewError(null);
@@ -1476,7 +1510,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       setBookPreviewError(bookPreviewFailure(error));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bookPreviewFailure reads only the audience kind below
-  }, [accountId, audienceId, bookPreviewMutation, brandId, campaignName, channel, extraChannels, flushDraft, payloadFor, sealedAudienceKind, siblings]);
+  }, [accountId, audienceId, bookPreviewMutation, brandId, campaignId, campaignName, channel, extraChannels, flushDraft, payloadFor, sealedAudienceKind, siblings]);
   openReviewRef.current = openReviewWithServerPreview;
 
   // Sibling drafts never outlive a review the host backed out of: the lead
@@ -1628,6 +1662,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   // #4273 — why a chip is off for the picked groups. The Push rule is unchanged:
   // a buyer list turns Push off for the whole selection, never for a subset.
+  // The Push hint names the picked buyer lists; if any name is unknown (a
+  // restored draft), it says "a buyer list" rather than name only some.
+  const buyerListNames = useMemo<readonly string[]>(() => {
+    const keys = pickedKeys.filter(isBuyerSourceKey);
+    const names = keys.map((key) => pickedNames[key]).filter((name): name is string => typeof name === "string");
+    return names.length === keys.length ? names : [];
+  }, [pickedKeys, pickedNames]);
   const channelUnavailable = useMemo(
     () => sendByUnavailable({
       sourceKeys: pickedKeys,
@@ -1636,9 +1677,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       lead: channel,
       followersEnabled,
       extendedEnabled,
+      buyerListNames,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the two maps are read from flags
-    [bookBlastEnabled, channel, isBookAudience, pickedKeys, followerEmailFlag.data, followerSmsFlag.data, circleRosterFlag.data, extendedEmailFlag.data, extendedSmsFlag.data, extendedPushFlag.data],
+    [bookBlastEnabled, buyerListNames, channel, isBookAudience, pickedKeys, followerEmailFlag.data, followerSmsFlag.data, circleRosterFlag.data, extendedEmailFlag.data, extendedSmsFlag.data, extendedPushFlag.data],
   );
   const [fallbackSentence, setFallbackSentence] = useState<string | null>(null);
   useEffect(() => {
@@ -1893,6 +1935,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     async (option: AudienceOption) => {
       setAudienceName(option.name);
       setPickedKeys([sourceKeyForOption(option)]);
+      setPickedNames({ [sourceKeyForOption(option)]: option.name });
       const nextSealedKind: SealedMarketingAudienceKind | null =
         option.kind === "all_brand_people" ||
           option.kind === "manual_group" ||
@@ -1948,6 +1991,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     (options: AudienceOption[]): void => {
       const keys = options.map(sourceKeyForOption);
       setPickedKeys(keys);
+      setPickedNames(Object.fromEntries(options.map((option) => [sourceKeyForOption(option), option.name])));
       setAudienceName(audienceButtonName(options.map((option) => option.name)));
       setCombinedPeople(null);
       setIsDirty(true);
@@ -2532,7 +2576,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                     ? "Free"
                     : quote === null
                       ? "Cost unavailable"
-                      : `${quote.currency ?? ""} ${((quote.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated`,
+                      : smsCostLabel(quote, "row"),
                   allowanceLabel: allowance === undefined
                     ? undefined
                     : kind === "sms"
@@ -2549,13 +2593,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             groupFigures !== null
               ? groupFigures.costKind === "not_metered"
                 ? "Free"
-                : `${groupFigures.currency ?? ""} ${((groupFigures.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated provider cost`
+                : smsCostLabel(groupFigures, "total")
               : isBookAudience && bookQuote !== null && channel === "push"
               ? "Free · push is unlimited"
               : isBookAudience && bookQuote !== null
               ? bookQuote.costKind === "not_metered"
                 ? "Provider cost not metered"
-                : `${bookQuote.currency ?? ""} ${((bookQuote.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated provider cost`
+                : smsCostLabel(bookQuote, "total")
               : undefined
           }
           selectedCount={groupFigures?.selectedCount ?? (isBookAudience ? bookQuote?.selectedCount : undefined)}
