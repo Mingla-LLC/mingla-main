@@ -84,6 +84,10 @@ Deno.test("aiSliceIsHeld: before the hold, or no date, is held; no slice is not"
   assertEquals(aiSliceIsHeld({ evaluated_at: "2026-11-05T00:00:00Z" }), false);
   assertEquals(aiSliceIsHeld({ score_0_to_100: 5 }), true);
   assertEquals(aiSliceIsHeld({ evaluated_at: "not a date" }), true);
+  // #4276 final round: the same unreadable dates the pg proof holds (H-UNPARSEABLE).
+  for (const at of ["not a date", "2026-13-45T00:00:00Z", "", "now", "infinity"]) {
+    assertEquals(aiSliceIsHeld({ evaluated_at: at }), true, at);
+  }
   assertEquals(aiSliceIsHeld(undefined), false);
   assertEquals(aiSliceIsHeld(null), false);
 });
@@ -96,6 +100,9 @@ Deno.test("the hold date is the same in TypeScript and both SQL homes", async ()
   const helper = await Deno.readTextFile(new URL("20280416004276_issue_4276_score_hold_and_release_only_path.sql", root));
   assert(selector.includes(`ak.ai_evaluated_at >= ${sqlLiteral}`), "the rescore selector's hold date moved");
   assert(helper.includes(`SELECT ${sqlLiteral};`), "ai_score_hold_since() moved");
+  // An unreadable date is held in SQL too, without raising (20280417004276).
+  const unparseable = await Deno.readTextFile(new URL("20280417004276_issue_4276_unparseable_ai_date_is_held.sql", root));
+  assert(unparseable.includes("WHEN NOT pg_input_is_valid(s.slice ->> 'evaluated_at', 'timestamptz') THEN true"), "an unreadable date is not held in SQL");
 });
 
 addEventListener("unload", () => {

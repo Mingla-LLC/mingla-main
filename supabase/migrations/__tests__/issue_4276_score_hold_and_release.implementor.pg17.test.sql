@@ -11,8 +11,11 @@
 --   R-RELEASE city_pipeline_release_places still releases and rejects
 --   R-OTHER   the final check's verdict on a held place and ordinary updates still work
 --
+-- H-UNPARSEABLE an evaluated_at that cannot be read as a date is held, without raising
+--             (20280417004276)
+--
 -- FAILS-ON-REVERT: restore the old selector and H-SELECT fails; restore the old trigger
--- and R-REFUSE fails.
+-- and R-REFUSE fails; restore the old ai_slices_predate_hold and H-UNPARSEABLE fails.
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -60,6 +63,22 @@ begin
   if not (v_new = any (v_ids)) then raise exception 'H-SELECT: a post-hold slice was left out: %', v_ids; end if;
   if v_old = any (v_ids) then raise exception 'H-SELECT: a place with a pre-hold slice was selected'; end if;
   if v_nodate = any (v_ids) then raise exception 'H-SELECT: a slice with no evaluated_at was selected'; end if;
+
+  -- H-UNPARSEABLE (20280417004276): a date that cannot be read is held, without raising,
+  -- the same cases aiSliceIsHeld pins in issue_4276_score_hold.implementor.test.ts.
+  if public.ai_slices_predate_hold('{"drinks": {"evaluated_at": "not a date"}}') is distinct from true
+    or public.ai_slices_predate_hold('{"drinks": {"evaluated_at": "2026-13-45T00:00:00Z"}}') is distinct from true
+    or public.ai_slices_predate_hold('{"drinks": {"evaluated_at": ""}}') is distinct from true
+    or public.ai_slices_predate_hold('{"drinks": {"evaluated_at": "now"}}') is distinct from true
+    or public.ai_slices_predate_hold('{"drinks": {"evaluated_at": "infinity"}}') is distinct from true then
+    raise exception 'H-UNPARSEABLE: an unreadable evaluated_at was not held';
+  end if;
+  if public.ai_slices_predate_hold('{"drinks": {"evaluated_at": "2026-11-20T00:00:00Z"}, "x": {"evaluated_at": "not a date"}}') is distinct from true then
+    raise exception 'H-UNPARSEABLE: one unreadable slice did not hold the place';
+  end if;
+  if public.ai_slices_predate_hold('{"drinks": {"evaluated_at": "2026-11-20T00:00:00Z"}}') is distinct from false then
+    raise exception 'H-UNPARSEABLE: a readable post-hold date was held';
+  end if;
 
   -- R-REFUSE
   begin

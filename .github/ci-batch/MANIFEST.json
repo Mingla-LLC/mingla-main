@@ -17769,6 +17769,7 @@
         "supabase/migrations/20280413004276_issue_4276_admin_pipeline_screens.sql",
         "supabase/migrations/20280415004276_issue_4276_pause_quarterly_all_cities_scoring.sql",
         "supabase/migrations/20280416004276_issue_4276_score_hold_and_release_only_path.sql",
+        "supabase/migrations/20280417004276_issue_4276_unparseable_ai_date_is_held.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19476,6 +19477,7 @@
         "supabase/migrations/20280413004276_issue_4276_admin_pipeline_screens.sql",
         "supabase/migrations/20280415004276_issue_4276_pause_quarterly_all_cities_scoring.sql",
         "supabase/migrations/20280416004276_issue_4276_score_hold_and_release_only_path.sql",
+        "supabase/migrations/20280417004276_issue_4276_unparseable_ai_date_is_held.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -24387,6 +24389,7 @@
         "supabase/migrations/20280413004276_issue_4276_admin_pipeline_screens.sql",
         "supabase/migrations/20280415004276_issue_4276_pause_quarterly_all_cities_scoring.sql",
         "supabase/migrations/20280416004276_issue_4276_score_hold_and_release_only_path.sql",
+        "supabase/migrations/20280417004276_issue_4276_unparseable_ai_date_is_held.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -52888,5 +52891,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "5f4e15adea3bf2194ff242f1107706142e656d0af75c7c65bb65fcab9bda2d9f"
+  "phase3eContractSha256": "13843dc700f6d1a18c29c18b20ffa2dbd91fbb3750bc0da90fe7bdceb5290106"
 }
