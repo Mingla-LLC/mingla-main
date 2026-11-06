@@ -957,3 +957,23 @@ describe("retest 3 P4: honest copy when a replacement can't cancel, and a swept 
     expect(h.completeIntent).not.toHaveBeenCalled();
   });
 });
+
+describe("retest 4 P3-B: no pay code while a card is being read or saved", () => {
+  test("a pay code pressed during reading is refused, and the charge is still recorded", async () => {
+    let finishConfirm: (r: TerminalCallResult) => void = () => undefined;
+    const h = makeHarness();
+    jest.mocked(h.terminal.confirmPaymentIntent).mockImplementation(
+      () => new Promise<TerminalCallResult>((resolve) => {
+        finishConfirm = resolve;
+      }),
+    );
+    const started = h.flow.start();
+    for (let i = 0; i < 30; i += 1) await Promise.resolve();
+    expect(h.flow.getState().kind).toBe("reading");
+    expect(await h.flow.abandonForPayCode()).toBe("blocked");
+    finishConfirm({ paymentIntent: PI_SUCCEEDED });
+    await started;
+    expect(h.flow.getState().kind).toBe("approved");
+    expect(h.completeIntent).toHaveBeenCalledTimes(1);
+  });
+});

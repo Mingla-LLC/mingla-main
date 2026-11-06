@@ -2,8 +2,8 @@
  * #4271 retest 4 — the tester's close-race probe (probe_P3A_P3B), committed by the
  * implementor for P3-A and P3-B: closing the sale (or switching to a pay code)
  * interleaved at EVERY await of every Tap to Pay path, with C6 (nothing rejects)
- * checked on the tap-beats-cancel cases. Red at d89caf40e4 (4 cases), green
- * after the P3-A fix.
+ * checked on the tap-beats-cancel cases and on reopen after a failed pay code.
+ * Red at d89caf40e4 (7 cases), green after the P3-A/P3-B fixes.
  *
  * The builder's P2-1 tests hold the flow at five chosen points. This file does
  * not choose: it runs each path once to count its awaits (every server and SDK
@@ -491,6 +491,34 @@ describe("#4271 retest 4: close or pay code at every await of every tap path", (
         }
       });
     }
+  }
+
+  for (const path of PATHS) {
+    test(`${path}: a pay code that fails reopens the tap at every await: one live intent, nothing on a dead one`, async () => {
+      let switched = 0;
+      for (const order of ORDERS) {
+        const dry = await runOnce(path, "payCode", order, null);
+        for (let at = 0; at <= dry.steps + 1; at += 1) {
+          const { w, outcome } = await runReopen(path, order, at);
+          const where = `${path} reopen ${order} at=${at}\n${w.events.join("\n")}`;
+          expect({ where, errors: w.errors.map(String) }).toEqual({ where, errors: [] });
+          expect({ where, bad: named(w, "collect-on-dead").concat(named(w, "two-open")) }).toEqual({ where, bad: [] });
+          const charged = [...w.rows.values()].filter((row) => row.status === "succeeded").length;
+          expect({ where, charged: charged <= 1 }).toEqual({ where, charged: true });
+          const open = [...w.rows.values()].filter((row) => row.status === "open").length;
+          expect({ where, open: open <= 1 }).toEqual({ where, open: true });
+          if (outcome === "switch") {
+            switched += 1;
+            // The reopened screen works: the retry opens a tap on a fresh, live intent.
+            const reopenSeq = seqOf(named(w, "reopen")[0] ?? "0:");
+            const after = named(w, "collect").filter((line) => seqOf(line) > reopenSeq);
+            expect({ where, collectsAfterReopen: after.length }).toEqual({ where, collectsAfterReopen: 1 });
+          }
+        }
+      }
+      // The pay code was really pressed (and failed) at several points.
+      expect(switched).toBeGreaterThanOrEqual(2);
+    });
   }
 
   test("the paths really pass through the awaits they claim (create, cancel, retrieve, collect, confirm)", async () => {

@@ -313,6 +313,9 @@ export interface TapToPaySaleFlowInput {
  */
 export const TAP_READY_LIMIT_MS = 10 * 60 * 1000;
 
+/** Shown after a pay code that couldn't be made stopped a tap that was starting. */
+export const TAP_RESTART_MESSAGE = "Tap to Pay stopped. Try again to take the card.";
+
 /** A stale intent's cancel didn't land: its state is unconfirmed, so no "nothing was charged". */
 export const TAP_REPLACE_FAILED_MESSAGE = "Couldn't start a new payment. Check your connection and try again.";
 
@@ -380,6 +383,8 @@ export class TapToPaySaleFlow {
   private closed = false;
   /** closeSale only: the screen is gone, so a late payment is reported via onPaidAfterClose. */
   private hostLeft = false;
+  /** reopen() arrived while a step was running: applied when it ends (endStep). */
+  private reopenPending = false;
   /** Stripe reported the current intent canceled (the sweep, or a cancel elsewhere): the next try replaces it. */
   private intentCanceled = false;
 
@@ -460,7 +465,11 @@ export class TapToPaySaleFlow {
   private async settleIntentAfterClose(intent: DoorTapIntent, clientRequestId: string): Promise<void> {
     try {
       await this.input.server.cancelIntent({ paymentIntentId: intent.paymentIntentId, clientRequestId });
-      if (this.intent?.paymentIntentId === intent.paymentIntentId) this.forgetIntent();
+      // That request id now names a cancelled intent: a later start (after a
+      // reopen) must not replay it, so it gets a fresh id and clock.
+      if (this.intent?.paymentIntentId === intent.paymentIntentId || this.clientRequestId === clientRequestId) {
+        this.forgetIntent();
+      }
     } catch (error) {
       if (error instanceof DoorTapError && error.code === "payment_succeeded") {
         this.markSucceeded(intent, clientRequestId);
@@ -547,7 +556,7 @@ export class TapToPaySaleFlow {
       }
       await this.collectAndConfirm();
     } finally {
-      this.busy = false;
+      this.endStep();
     }
   }
 
@@ -605,7 +614,7 @@ export class TapToPaySaleFlow {
     try {
       await this.collectAndConfirm();
     } finally {
-      this.busy = false;
+      this.endStep();
     }
   }
 
@@ -623,6 +632,9 @@ export class TapToPaySaleFlow {
    * reports as succeeded is recorded instead of replaced.
    */
   async abandonForPayCode(): Promise<PayCodeSwitchOutcome> {
+    // A card being read or a sale being saved may already have charged: never a
+    // second way to pay (the same states closeSale leaves alone).
+    if (this.state.kind === "reading" || this.state.kind === "saving") return "blocked";
     this.closed = true;
     if (this.succeeded !== null) {
       await this.retrySave();
@@ -669,7 +681,30 @@ export class TapToPaySaleFlow {
    */
   reopen(): void {
     if (this.hostLeft) return;
+    // A step still running (a create, retrieve or cancel in flight) saw the flow
+    // closed and will stop at its next check; reopening under it would let it
+    // carry on with an intent that was cancelled. Reopen once it has ended.
+    if (this.busy) {
+      this.reopenPending = true;
+      return;
+    }
+    this.applyReopen();
+  }
+
+  private applyReopen(): void {
+    this.reopenPending = false;
     this.closed = false;
+    // A start that stopped because of the close left the screen on "Starting…":
+    // give the host a way on. Try again starts a fresh intent.
+    if (this.state.kind === "starting" || this.state.kind === "idle") {
+      this.emit({ kind: "failed", message: TAP_RESTART_MESSAGE });
+    }
+  }
+
+  /** Ends a step started with `busy = true`; applies a reopen that waited for it. */
+  private endStep(): void {
+    this.busy = false;
+    if (this.reopenPending) this.applyReopen();
   }
 
   private emitTerminalFailure(error: TerminalErrorLike, fallbackMessage: string, stepAmount?: TapAmount): void {
@@ -813,7 +848,7 @@ export class TapToPaySaleFlow {
     try {
       await this.confirm(step);
     } finally {
-      this.busy = false;
+      this.endStep();
     }
   }
 
@@ -862,7 +897,7 @@ export class TapToPaySaleFlow {
     try {
       await this.complete();
     } finally {
-      this.busy = false;
+      this.endStep();
     }
   }
 }
