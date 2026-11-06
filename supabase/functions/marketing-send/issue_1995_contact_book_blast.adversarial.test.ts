@@ -25,7 +25,10 @@ Deno.test("#1995 public Book preview is an aggregate-only allowlist", async () =
   }, new Date("2026-08-13T12:00:00.000Z"));
 
   const publicQuote = publicMarketingBookQuote(quote);
+  // #4273 — costBreakdown (per-currency amounts only) is public; the FX
+  // snapshot id stays server-only.
   assertEquals(Object.keys(publicQuote).sort(), [
+    "costBreakdown",
     "costKind",
     "currency",
     "estimatedCostMinor",

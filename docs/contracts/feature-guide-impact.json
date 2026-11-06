@@ -760,6 +760,8 @@
         "supabase/functions/_shared/marketingBookQuote.ts",
         "supabase/functions/_shared/marketingEmailRender.ts",
         "supabase/functions/_shared/marketingReceiveReason.ts",
+        "supabase/functions/_shared/marketingSmsFx.ts",
+        "supabase/functions/_shared/smsPriceBook.ts",
         "supabase/functions/marketing-send/campaignGroupPreview.ts",
         "supabase/functions/marketing-send/index.ts",
         "supabase/functions/marketing-send/pushCampaign.ts",
