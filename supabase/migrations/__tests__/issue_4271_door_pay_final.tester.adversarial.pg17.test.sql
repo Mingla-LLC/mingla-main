@@ -364,6 +364,8 @@ $final$;
 --             amount (a fraction, text, above 2^31) is ignored: the refund row
 --             is still minted, from the next stored lookup or the session's own
 --             total. Paystack too (W-PS-BAD).
+--   W-ZERO-NEXT (retest 3 P4-2) a stored amount of 0 is ignored the same way as
+--             a negative one: the next lookup is used, not the session total.
 --   W3-*      (retest 3, tester) both Stripe lookups malformed ('' then
 --             '1e3'): the session's own total, no abort; a negative stored
 --             amount is malformed, so the next lookup is used (W3-NEG-NEXT);
@@ -437,6 +439,9 @@ BEGIN
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','abc','currency','gbp','age',0))),
     jsonb_build_object('tag','W-BAD-OVERSIZED', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3000000000,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W-ZERO-NEXT', 'expect',3200, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',0,'currency','gbp','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',3200,'currency','gbp','age',0))),
     jsonb_build_object('tag','W-BAD-NEXT', 'expect',3200, 'fee',135, 'events', jsonb_build_array(
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','3135.5','currency','gbp','age',0),
       jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',3200,'currency','gbp','age',0))),

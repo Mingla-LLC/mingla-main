@@ -1414,9 +1414,10 @@ BEGIN
   -- provider's own amount is still in the stored webhook event for this payment
   -- (both webhooks store the event before processing it). Same lookups as the
   -- #3872 backfill; same currency only. The stored amount is read as text and
-  -- used only when it is a whole number that fits an integer: a malformed or
-  -- oversized value is ignored (the next lookup, then the session's own total,
-  -- is used) and never aborts the refund row.
+  -- used only when it is a positive whole number that fits an integer: zero, a
+  -- negative, malformed or oversized value is ignored the same way (the next
+  -- lookup, then the session's own total, is used) and never aborts the refund
+  -- row.
   IF v_session.pricing_source IS DISTINCT FROM 'provider_reconciled'
      AND NEW.provider_payment_reference IS NOT NULL THEN
     IF NEW.provider = 'stripe' THEN
@@ -1427,7 +1428,7 @@ BEGIN
          AND upper(w.payload #>> '{data,object,currency}') = upper(NEW.currency)
        ORDER BY w.created_at DESC LIMIT 1;
       v_provider_amount := CASE WHEN v_provider_text ~ '^[0-9]{1,10}$' THEN
-        CASE WHEN v_provider_text::bigint <= 2147483647 THEN v_provider_text::integer END END;
+        CASE WHEN v_provider_text::bigint BETWEEN 1 AND 2147483647 THEN v_provider_text::integer END END;
       IF v_provider_amount IS NULL THEN
         v_provider_text := NULL;
         SELECT w.payload #>> '{data,object,amount_total}' INTO v_provider_text
@@ -1437,7 +1438,7 @@ BEGIN
            AND upper(w.payload #>> '{data,object,currency}') = upper(NEW.currency)
          ORDER BY w.created_at DESC LIMIT 1;
         v_provider_amount := CASE WHEN v_provider_text ~ '^[0-9]{1,10}$' THEN
-          CASE WHEN v_provider_text::bigint <= 2147483647 THEN v_provider_text::integer END END;
+          CASE WHEN v_provider_text::bigint BETWEEN 1 AND 2147483647 THEN v_provider_text::integer END END;
       END IF;
     ELSE
       SELECT w.payload #>> '{data,amount}' INTO v_provider_text
@@ -1447,7 +1448,7 @@ BEGIN
          AND upper(w.payload #>> '{data,currency}') = upper(NEW.currency)
        ORDER BY w.created_at DESC LIMIT 1;
       v_provider_amount := CASE WHEN v_provider_text ~ '^[0-9]{1,10}$' THEN
-        CASE WHEN v_provider_text::bigint <= 2147483647 THEN v_provider_text::integer END END;
+        CASE WHEN v_provider_text::bigint BETWEEN 1 AND 2147483647 THEN v_provider_text::integer END END;
     END IF;
     IF v_provider_amount IS NOT NULL AND v_provider_amount <= 0 THEN
       v_provider_amount := NULL;
