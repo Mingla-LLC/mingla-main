@@ -40,11 +40,32 @@ function mockProbe(name: string) {
 jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: mockProbe("SmartScroll") }));
 // The last props each sheet got, so a test can say when the sheet has gone.
 const mockSheets: Record<string, Record<string, unknown>> = {};
-jest.mock("../../ui/Sheet", () => ({ Sheet: (props: Record<string, unknown>) => {
-  mockSheets[String(props.testID)] = props;
+// P3-1: with `on`, the sheet runs SheetNative's own lifecycle with the REAL
+// useSheetGone: mounted until 280 ms after visible goes false, then (iOS) the
+// Modal stays with presented=false until UIKit dismisses it.
+const mockLifecycle = { on: false };
+jest.mock("../../ui/Sheet", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return props.visible ? require("react").createElement("SheetProbe", props, props.children as React.ReactNode) : null;
-} }));
+  const R = require("react") as typeof import("react");
+  const { useSheetGone } = jest.requireActual("../../ui/useSheetGone") as typeof import("../../ui/useSheetGone");
+  function LifecycleSheet(props: Record<string, unknown>): React.ReactElement | null {
+    const visible = props.visible === true;
+    const [mounted, setMounted] = R.useState(visible);
+    R.useEffect(() => {
+      if (visible) { setMounted(true); return undefined; }
+      const timer = setTimeout(() => setMounted(false), 280);
+      return () => clearTimeout(timer);
+    }, [visible]);
+    const gone = useSheetGone(mounted, props.onDismissed as (() => void) | undefined);
+    if (!mounted && !gone.waiting) return null;
+    return R.createElement("SheetProbe", { ...props, presented: mounted, onNativeDismiss: gone.onModalDismiss }, props.children as React.ReactNode);
+  }
+  return { Sheet: (props: Record<string, unknown>) => {
+    mockSheets[String(props.testID)] = props;
+    if (mockLifecycle.on) return R.createElement(LifecycleSheet, props);
+    return props.visible ? R.createElement("SheetProbe", props, props.children as React.ReactNode) : null;
+  } };
+});
 jest.mock("../../ui/SheetMobile", () => ({ UNMOUNT_DELAY_MS: 280 }));
 jest.mock("../../ui/Modal", () => ({ UNMOUNT_DELAY_MS: 200 }));
 jest.mock("../../ui/Toast", () => ({ Toast: mockProbe("ToastProbe") }));
@@ -440,7 +461,8 @@ describe("one native modal at a time: nothing opens until the sheet before it ha
     const root = await mountPanel(plan([item()]));
     await press(byId(root, "brand-plan-menu-i1"));
     await press(root.findAll((n) => n.props.testID === "brand-plan-change-date")[0]);
-    await TestRenderer.act(async () => { jest.advanceTimersByTime(2999); });
+    // The 3 s safety starts after the sheet's own 280 ms unmount (P3-1).
+    await TestRenderer.act(async () => { jest.advanceTimersByTime(3279); });
     expect(formOpen()).toBe(false);
     await TestRenderer.act(async () => { jest.advanceTimersByTime(1); });
     expect(formOpen()).toBe(true);
@@ -483,6 +505,65 @@ describe("the plan's English words load with the plan (bundle budget)", () => {
     await TestRenderer.act(async () => { TestRenderer.create(<Probe />); });
     expect(t("plan.saved")).toBe("Saved. Your plan is up to date.");
     expect(t("plan.pill")).toBe("Plan");
+  });
+});
+
+describe("W6 retest P3-1: a stalled JS thread never raises the form over a menu iOS still holds (real useSheetGone)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require("react-native") as { Platform: { OS: string } };
+  const os = RN.Platform.OS;
+  let root: TestNode;
+  let most = 0;
+  let mostPresented = 0;
+  const modals = (): TestNode[] => root.findAll((n) => n.type === "SheetProbe");
+  const which = (): string[] => modals().map((n) => `${String(n.props.testID)}:${n.props.presented === true ? "up" : "going"}`);
+  async function step(work: () => unknown): Promise<void> {
+    await TestRenderer.act(async () => { await work(); });
+    most = Math.max(most, modals().length);
+    mostPresented = Math.max(mostPresented, modals().filter((n) => n.props.presented === true).length);
+  }
+  const tap = (id: string) => step(() => (root.findAll((n) => n.props.testID === id && typeof n.type === "string")[0]?.props.onPress as () => unknown)());
+  // A JS stall of `ms`: every timer due in it fires in one batch, with no render between.
+  const stall = (ms: number) => step(() => { jest.advanceTimersByTime(ms); });
+  const uikit = () => step(() => { for (const m of modals()) if (m.props.presented === false) (m.props.onNativeDismiss as (() => void) | undefined)?.(); });
+
+  beforeEach(async () => {
+    jest.useFakeTimers();
+    RN.Platform.OS = "ios";
+    mockLifecycle.on = true;
+    most = 0;
+    mostPresented = 0;
+    root = await mountPanel(plan([item()]));
+  });
+  afterEach(() => { mockLifecycle.on = false; RN.Platform.OS = os; jest.useRealTimers(); });
+
+  for (const [route, button] of [["date", "brand-plan-change-date"], ["link", "brand-plan-change-link"]] as const) {
+    for (const ms of [3000, 3279]) {
+      it(`menu, Change ${route}, then a ${ms} ms stall: never two sheets in the tree; the form opens once UIKit lets the menu go`, async () => {
+        await tap("brand-plan-menu-i1");
+        expect(which()).toEqual(["brand-plan-menu-sheet:up"]);
+        await tap(button);
+        await stall(ms);
+        expect(which()).toEqual(["brand-plan-menu-sheet:going"]);
+        await uikit();
+        expect(which()).toEqual(["brand-plan-add-sheet:up"]);
+        await stall(10000); // the old safety has nothing left to release
+        expect(which()).toEqual(["brand-plan-add-sheet:up"]);
+        expect(most).toBe(1);
+      });
+    }
+  }
+  it("the safety still opens the plan if the menu never says it has gone, 3 s after it really closed", async () => {
+    await tap("brand-plan-menu-i1");
+    await tap("brand-plan-change-date");
+    await stall(280);
+    expect(which()).toEqual(["brand-plan-menu-sheet:going"]);
+    await stall(2999);
+    expect(which()).toEqual(["brand-plan-menu-sheet:going"]);
+    await stall(1);
+    // onDismissed never came: the safety releases the queue, and never while the menu was up.
+    expect(which().sort()).toEqual(["brand-plan-add-sheet:up", "brand-plan-menu-sheet:going"]);
+    expect(mostPresented).toBe(1);
   });
 });
 

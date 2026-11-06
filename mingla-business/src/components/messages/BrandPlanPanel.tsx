@@ -2,7 +2,7 @@
 // a month grid. Hosts see Mingla as "Mingla", never a staff name (D19). Titles
 // wrap and are never cut. Links open only when they pass the same check the
 // server applies.
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -46,6 +46,8 @@ interface Props {
 
 const MAX_DOTS = 3;
 const SHEET_GONE_SAFETY_MS = 3000;
+// The sheet unmounts this long after it is hidden (SheetMobile UNMOUNT_DELAY_MS; web 220).
+const SHEET_UNMOUNT_MS = 280;
 const KNOWN_STATES = new Set(["planned", "being_made", "in_review", "scheduled", "posted", "todo", "doing", "done", "live", "draft", "happened", "on_mingla"]);
 
 export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): React.ReactElement {
@@ -106,13 +108,28 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
     for (const next of queued) next();
   };
   // Safety only: if a sheet never reports that it has gone, the plan must not
-  // stay shut. It is far longer than a sheet takes to go, even on a busy phone.
+  // stay shut. Its clock starts only once the sheet has really closed: from the
+  // commit that hides it, after the sheet's own unmount timer (set first, in the
+  // sheet's effect). A stalled JS thread can then never fire the release in the
+  // same batch as the sheet's close, which would raise a second native modal
+  // while iOS still holds the first (W6 retest P3-1).
   const closing = useRef({ menu: 0, form: 0 });
   const startLeaving = (which: "menu" | "form"): void => {
     leaving.current[which] = true;
-    const token = ++closing.current[which];
-    setTimeout(() => { if (closing.current[which] === token && leaving.current[which]) sheetGone(which); }, SHEET_GONE_SAFETY_MS);
+    ++closing.current[which];
   };
+  const armSafety = (which: "menu" | "form"): void => {
+    if (!leaving.current[which]) return;
+    const token = closing.current[which];
+    const still = (): boolean => closing.current[which] === token && leaving.current[which];
+    setTimeout(() => { if (still()) setTimeout(() => { if (still()) sheetGone(which); }, SHEET_GONE_SAFETY_MS); }, SHEET_UNMOUNT_MS);
+  };
+  const menuShown = menuItem !== null;
+  const formShown = form !== null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- armSafety reads refs only
+  useEffect(() => { if (!menuShown) armSafety("menu"); }, [menuShown]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- armSafety reads refs only
+  useEffect(() => { if (!formShown) armSafety("form"); }, [formShown]);
   const closeMenu = (): void => {
     if (menuItem !== null) startLeaving("menu");
     setMenuItem(null);
