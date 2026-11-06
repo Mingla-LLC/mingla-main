@@ -521,7 +521,9 @@
         "mingla-business/app/accept-brand-invitation.tsx",
         "mingla-business/src/components/team/InvitePendingSheet.tsx",
         "mingla-business/src/components/team/inviteAcceptErrorCopy.ts",
-        "supabase/migrations/20280415004283_issue_4283_accept_invite_single_member_row.sql"
+        "supabase/migrations/20280415004283_issue_4283_accept_invite_single_member_row.sql",
+        "mingla-business/src/hooks/useBrandTeamMemberDirectory.ts",
+        "mingla-business/src/services/brandTeamDirectoryService.ts"
       ]
     },
     {
@@ -1482,7 +1484,24 @@
         "supabase/functions/terminal-connection-token/function-policy.json",
         "supabase/functions/terminal-connection-token/index.ts",
         "supabase/functions/ticket-checkout-create/doorPayCheckout.ts",
-        "supabase/migrations/20280404004271_issue_4271_door_pay.sql"
+        "supabase/migrations/20280404004271_issue_4271_door_pay.sql",
+        "mingla-business/app/brand/[id]/scanners.tsx",
+        "mingla-business/src/components/door/LazyDoorRefundSheet.tsx",
+        "mingla-business/src/components/door/LazyDoorSaleScreens.tsx",
+        "mingla-business/src/components/door/doorPayGuestState.ts",
+        "mingla-business/src/components/door/doorSaleScreens.ts",
+        "mingla-business/src/components/door/scannerDoorPaymentsCopy.ts",
+        "mingla-business/src/components/door/tap/TapToPayAwarenessModal.web.tsx",
+        "mingla-business/src/components/door/tap/TapToPayTerminalHost.web.tsx",
+        "mingla-business/src/components/scanners/LazyInviteScannerSheet.tsx",
+        "mingla-business/src/components/ui/OnIntentLazySheet.tsx",
+        "mingla-business/src/constants/tapToPayName.ts",
+        "mingla-business/src/hooks/useDoorPayCodes.ts",
+        "mingla-business/src/hooks/useTapToPaySettingsEntry.web.ts",
+        "mingla-business/src/services/doorPayCodeServiceImpl.ts",
+        "mingla-business/src/services/terminal/tapToPayDevice.ts",
+        "mingla-business/src/utils/isDoorOrder.ts",
+        "mingla-business/src/utils/tapToPayBrandEligible.ts"
       ]
     }
   ]

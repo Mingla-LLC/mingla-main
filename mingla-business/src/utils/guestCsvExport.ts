@@ -24,7 +24,8 @@ import type { OrderRecord } from "../store/orderStore";
 import { isCompOrder } from "./compOrders";
 import { PAYMENT_METHOD_LABELS } from "./paymentMethodLabels";
 import { doorSaleMoney } from "./moneySummary";
-import { isDoorOrder, type ReconciliationSummary } from "./reconciliation";
+import { isDoorOrder } from "./isDoorOrder";
+import type { ReconciliationSummary } from "./reconciliation";
 import type {
   DoorPaymentMethod,
   DoorSaleRecord,

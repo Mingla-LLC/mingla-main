@@ -32,7 +32,8 @@
  */
 
 import { guestListTicketCount, isCompOrder } from "./compOrders";
-import { isCardDoorPaymentMethod, type DoorSaleRecord } from "../types/doorSales";
+import type { DoorSaleRecord } from "../types/doorSales";
+import { isDoorOrder } from "./isDoorOrder";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
 import { expandDoorTickets } from "./expandDoorTickets";
@@ -189,9 +190,7 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
 
 // ---- Helpers ---------------------------------------------------------
 
-/** issue #4271 — an order the door stream also reports. */
-export const isDoorOrder = (order: OrderRecord): boolean =>
-  order.source === "door_sale" || isCardDoorPaymentMethod(order.paymentMethod);
+export { isDoorOrder };
 
 /** Round to 2 decimal places to avoid float drift in revenue arithmetic. */
 const round2 = (n: number): number => Math.round(n * 100) / 100;

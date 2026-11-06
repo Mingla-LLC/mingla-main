@@ -10,7 +10,7 @@
  * backend ships".
  */
 
-import { tapToPayName } from "../../constants/tapToPayCopy";
+import { tapToPayName } from "../../constants/tapToPayName";
 import type { DoorPaymentMethod } from "../../types/doorSales";
 
 export interface DoorPaymentOption {
@@ -182,13 +182,4 @@ export const doorTapBlockReason = (facts: DoorTapBlockFacts): string | null => {
   return null;
 };
 
-/**
- * Tap to Pay does not exist on the Paystack rail (Nigeria); it is named only
- * once the brand is known to be on Stripe.
- */
-export const scannerDoorPaymentsCopy = (
-  paymentProvider: "stripe" | "paystack" | null | undefined,
-): string =>
-  paymentProvider === "stripe"
-    ? "Cash, manual, pay codes and Tap to Pay. Card money goes to your bank with online sales."
-    : "Cash, manual and pay codes. Card money goes to your bank with online sales.";
+export { scannerDoorPaymentsCopy } from "./scannerDoorPaymentsCopy";

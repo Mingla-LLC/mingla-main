@@ -7,10 +7,9 @@
  * orders, CSV) and the shared push use TAP_TO_PAY_SHORT, because they are read
  * on other devices and on the web.
  */
-export const TAP_TO_PAY_SHORT = "Tap to Pay";
+import { TAP_TO_PAY_SHORT, tapOnboardingCopy, tapToPayName } from "./tapToPayName";
 
-export const tapToPayName = (os: string): string =>
-  os === "ios" ? "Tap to Pay on iPhone" : TAP_TO_PAY_SHORT;
+export { TAP_TO_PAY_SHORT, tapOnboardingCopy, tapToPayName };
 
 export const TAP_UPDATE_IOS_COPY = {
   title: "Update iOS to use Tap to Pay on iPhone",
@@ -119,12 +118,6 @@ export const TAP_CARD_NEEDS_INSERT_COPY = {
   title: "This card can't be tapped",
   body: "This card needs to be inserted, and a phone can't do that. Try Apple Pay, another card, or a pay code.",
 } as const;
-
-export const tapOnboardingCopy = (os: string): { title: string; body: string; button: string } => ({
-  title: `Take cards with ${tapToPayName(os)}`,
-  body: "No card machine. Guests tap a card or phone on your phone at the door.",
-  button: `Set up ${tapToPayName(os)}`,
-});
 
 export const TAP_TIMED_OUT_COPY = {
   title: "Payment timed out",

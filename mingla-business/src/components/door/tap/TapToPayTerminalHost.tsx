@@ -23,7 +23,7 @@ import type { Reader } from "@stripe/stripe-terminal-react-native";
 
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { useBrand } from "../../../hooks/useBrands";
-import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../hooks/useTapToPayAvailability";
+import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../services/terminal/tapToPayDevice";
 import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
 import { hasTapToPayLocation, requestTapToPayLocation } from "../../../services/terminal/tapToPayAndroidLocation";

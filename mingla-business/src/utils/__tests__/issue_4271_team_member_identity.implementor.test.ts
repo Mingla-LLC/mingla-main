@@ -15,7 +15,7 @@ import {
   teamMemberIdentity,
   TEAM_MEMBER_FALLBACK_NAME,
 } from "../brandTeamMemberIdentity";
-import { listBrandTeamMemberDirectory } from "../../services/brandInvitationsService";
+import { listBrandTeamMemberDirectory } from "../../services/brandTeamDirectoryService";
 
 const USER_ID = "8f14e45f-ceea-467a-9575-7f2b1c3d4e5f";
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;

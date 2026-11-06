@@ -6,7 +6,7 @@
 import React, { useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { TapToPaySetupScreen } from "../../src/components/door/tap/TapToPaySetupScreen";
+import { LazyTapToPaySetupScreen } from "../../src/components/door/LazyDoorSaleScreens";
 import { useBrand } from "../../src/hooks/useBrands";
 import { setTapToPayScope } from "../../src/services/terminal/tapToPaySession";
 import { useCurrentBrandId } from "../../src/store/currentBrandStore";
@@ -22,5 +22,5 @@ export default function TapToPaySettingsRoute(): React.ReactElement {
     setTapToPayScope({ brandId, eventId: null, merchantDisplayName });
     return () => setTapToPayScope(null);
   }, [brandId, merchantDisplayName]);
-  return <TapToPaySetupScreen brandId={brandId} eventId={null} rawDraft={null} />;
+  return <LazyTapToPaySetupScreen brandId={brandId} eventId={null} rawDraft={null} />;
 }

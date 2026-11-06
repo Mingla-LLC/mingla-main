@@ -12,7 +12,7 @@ import React from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 
 import { spacing, text as textTokens, typography } from "../../../constants/designSystem";
-import { tapOnboardingCopy } from "../../../constants/tapToPayCopy";
+import { tapOnboardingCopy } from "../../../constants/tapToPayName";
 import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";

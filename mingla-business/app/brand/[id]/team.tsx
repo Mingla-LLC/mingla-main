@@ -54,10 +54,10 @@ import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useBrandInvitations,
   useBrandTeamMembers,
-  useBrandTeamMemberDirectory,
   useRemoveBrandTeamMember,
   useRevokeBrandInvitation,
 } from "../../../src/hooks/useBrandInvitations";
+import { useBrandTeamMemberDirectory } from "../../../src/hooks/useBrandTeamMemberDirectory";
 import { useUpdateBrandTeamMemberVenueGrants } from "../../../src/hooks/useBrandVenueAccessMutation";
 import {
   BrandInvitationServiceError,

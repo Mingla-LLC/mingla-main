@@ -35,7 +35,7 @@ import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels
 import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
-import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
+import { LazyDoorRefundSheet } from "../../../../src/components/door/LazyDoorRefundSheet";
 import { doorSaleCardLine, doorSaleMoney } from "../../../../src/utils/moneySummary";
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -473,7 +473,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
       </ScrollView>
 
       {/* Refund sheet */}
-      <DoorRefundSheet
+      <LazyDoorRefundSheet
         visible={refundOpen}
         sale={sale}
         onClose={() => setRefundOpen(false)}

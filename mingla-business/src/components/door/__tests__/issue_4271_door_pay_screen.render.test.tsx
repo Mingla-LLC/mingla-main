@@ -99,6 +99,9 @@ jest.mock("../../../services/doorPayCodeService", () => {
   return { DoorPayCodeError };
 });
 jest.mock("../../../hooks/useEventDoorSales", () => ({
+  useCreateDoorPayCode: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+}));
+jest.mock("../../../hooks/useDoorPayCodes", () => ({
   useDoorPayCode: () => ({
     data: mockRow,
     isLoading: false,
@@ -108,7 +111,6 @@ jest.mock("../../../hooks/useEventDoorSales", () => ({
   useCreatedDoorPayCode: () => null,
   useCancelDoorPayCode: () => ({ mutateAsync: mockCancel, isPending: false }),
   useSettleDoorPayCode: () => ({ mutateAsync: mockSettle, isPending: false }),
-  useCreateDoorPayCode: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
   useTextDoorPayLink: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useDoorPayLatePayment: (...args: unknown[]) => {
     mockLateArgs.push(args);

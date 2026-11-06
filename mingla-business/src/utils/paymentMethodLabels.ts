@@ -7,7 +7,7 @@
  * issue #4271 — the door method set is cash, manual, card reader (disabled,
  * coming later), buyer's phone (pay code) and tap to pay. "NFC tap" is gone.
  */
-import { TAP_TO_PAY_SHORT } from "../constants/tapToPayCopy";
+import { TAP_TO_PAY_SHORT } from "../constants/tapToPayName";
 
 import type { DoorPaymentMethod } from "../types/doorSales";
 

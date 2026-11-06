@@ -97,6 +97,12 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #4063 — door-sale history is brand/event scoped and must wait for the
   // restored host session before it calls the protected RPC.
   "useEventDoorSales.ts",
+  // #4271 — the host's door pay code screen hooks, split out of
+  // useEventDoorSales.ts (door_pay_codes RLS + host RPCs). Folds isAuthReady.
+  "useDoorPayCodes.ts",
+  // #4271 — biz_brand_team_members, split out of useBrandInvitations.ts.
+  // Folds isAuthReady into enabled.
+  "useBrandTeamMemberDirectory.ts",
   // #4271 — biz_tap_to_pay_release, authenticated only. Folds isAuthReady into enabled.
   "useTapToPayRelease.ts",
   // issue #3281 — event_dates keys for sold-date counts; folds isAuthReady.

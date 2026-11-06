@@ -26,10 +26,6 @@
 import { supabase } from "./supabase";
 import type { BrandRole } from "../utils/brandRole";
 import {
-  parseBrandTeamDirectory,
-  type BrandTeamDirectoryEntry,
-} from "../utils/brandTeamMemberIdentity";
-import {
   BrandInvitationServiceError,
   parseFunctionsError,
   type BrandInvitationRow,
@@ -385,31 +381,6 @@ export async function listBrandTeamMembers(
 ): Promise<BrandTeamMemberRow[]> {
   const venueAccess = await import("./brandVenueAccessService");
   return venueAccess.listBrandTeamMembersWithVenueGrants(brandId);
-}
-
-/**
- * issue #4271 — accepted members' display names and emails, from wherever the
- * server keeps them (SECURITY DEFINER rpc; any accepted member may call it).
- */
-export async function listBrandTeamMemberDirectory(
-  brandId: string,
-): Promise<BrandTeamDirectoryEntry[]> {
-  const { data, error } = await supabase.rpc("biz_brand_team_members", {
-    p_brand_id: brandId,
-  });
-  if (error) {
-    // The rpc refuses non-members with 42501 brand_access_denied.
-    const forbidden =
-      error.code === "42501" ||
-      (error.message?.includes("brand_access_denied") ?? false) ||
-      (error.message?.includes("forbidden") ?? false);
-    throw new BrandInvitationServiceError(
-      forbidden ? "forbidden" : "server",
-      forbidden ? 403 : 500,
-      "Couldn't load team names.",
-    );
-  }
-  return parseBrandTeamDirectory(data);
 }
 
 export async function updateBrandTeamMemberVenueGrants(

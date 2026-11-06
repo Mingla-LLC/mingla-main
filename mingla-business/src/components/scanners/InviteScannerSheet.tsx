@@ -36,7 +36,7 @@ import {
   type ScannerInvitationScope,
 } from "../../services/scannerInvitationsService";
 import type { LiveEvent } from "../../store/liveEventStore";
-import { scannerDoorPaymentsCopy } from "../door/doorPaymentOptions";
+import { scannerDoorPaymentsCopy } from "../door/scannerDoorPaymentsCopy";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";

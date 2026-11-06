@@ -6,12 +6,12 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { TapToPaySetupScreen } from "../../../../../src/components/door/tap/TapToPaySetupScreen";
+import { LazyTapToPaySetupScreen } from "../../../../../src/components/door/LazyDoorSaleScreens";
 
 const first = (value: string | string[] | undefined): string | null =>
   Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 
 export default function DoorTapSetupRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id?: string | string[]; draft?: string | string[] }>();
-  return <TapToPaySetupScreen eventId={first(params.id)} rawDraft={first(params.draft)} />;
+  return <LazyTapToPaySetupScreen eventId={first(params.id)} rawDraft={first(params.draft)} />;
 }

@@ -67,8 +67,8 @@ import {
 } from "../tapToPayFlow";
 import type { DoorTapIntent } from "../doorTapEdge";
 import { hasTapToPayLocation, requestTapToPayLocation } from "../tapToPayAndroidLocation";
-import { parseDoorPayCodeView } from "../../doorPayCodeService";
-import { doorPayGuestEndCopy, doorPayGuestReturnSettled } from "../../../components/door/doorPayCodeState";
+import { parseDoorPayCodeView } from "../../doorPayCodeServiceImpl";
+import { doorPayGuestEndCopy, doorPayGuestReturnSettled } from "../../../components/door/doorPayGuestState";
 
 // ---- P1 / P2: the guest page ------------------------------------------------
 

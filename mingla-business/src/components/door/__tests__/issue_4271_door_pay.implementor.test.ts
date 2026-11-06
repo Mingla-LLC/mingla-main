@@ -23,8 +23,8 @@ import {
   makeDoorPayUrl,
   type DoorPayUrl,
 } from "../doorPayUrl";
+import { doorPayGuestEndCopy } from "../doorPayGuestState";
 import {
-  doorPayGuestEndCopy,
   doorPayHostEndCopy,
   closeDoorPayCodeThen,
   doorPayHostStatus,

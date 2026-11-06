@@ -46,7 +46,7 @@ import {
 } from "../tapToPayFlow";
 import { runTapToPaySetup, type TapToPaySetupDeps } from "../tapToPaySetup";
 import { doorPayTextLinkErrorMessage } from "../../../components/door/doorPayCodeState";
-import { listBrandTeamMemberDirectory } from "../../brandInvitationsService";
+import { listBrandTeamMemberDirectory } from "../../brandTeamDirectoryService";
 
 const BIZ_ROOT = path.join(__dirname, "..", "..", "..", "..");
 const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
@@ -344,8 +344,8 @@ describe("door_pay_codes realtime binding", () => {
   test("the host screen listens on the UNIQUE code column, never the primary key", () => {
     // Supabase realtime silently drops `id=eq.*` bindings on RLS-gated tables
     // (I-PROPOSED-ORCH-0931): the screen would never turn green on payment.
-    const src = read("src/hooks/useEventDoorSales.ts");
-    const hook = src.slice(src.indexOf("export function useDoorPayCode"));
+    const src = read("src/hooks/useDoorPayCodes.ts");
+    const hook = src.slice(src.indexOf("export function useDoorPayCode("));
     expect(hook).toContain('table: "door_pay_codes"');
     expect(hook).toContain("filter: `code=eq.${code}`");
     expect(hook).not.toMatch(/filter:\s*`id=eq\./);

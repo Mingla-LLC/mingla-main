@@ -54,14 +54,14 @@ import { PhoneField, usePhoneEntry } from "../../../../../src/components/ui/Phon
 import { Sheet } from "../../../../../src/components/ui/Sheet";
 import {
   useCancelDoorPayCode,
-  useCreateDoorPayCode,
   useCreatedDoorPayCode,
   useDoorPayCode,
   useDoorPayGuestName,
   useDoorPayLatePayment,
   useSettleDoorPayCode,
   useTextDoorPayLink,
-} from "../../../../../src/hooks/useEventDoorSales";
+} from "../../../../../src/hooks/useDoorPayCodes";
+import { useCreateDoorPayCode } from "../../../../../src/hooks/useEventDoorSales";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
 import { useDoorScreenAwake } from "../../../../../src/hooks/useDoorScreenAwake";
 import { DoorPayCodeError, type DoorPayLiveStatus } from "../../../../../src/services/doorPayCodeService";

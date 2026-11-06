@@ -5,8 +5,8 @@
  */
 import { Platform } from "react-native";
 
-import { tapToPayName } from "../constants/tapToPayCopy";
-import { currentTapToPayDevice, isTapToPayDeviceSupported } from "./useTapToPayAvailability";
+import { tapToPayName } from "../constants/tapToPayName";
+import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../services/terminal/tapToPayDevice";
 import { useTapToPayRelease } from "./useTapToPayRelease";
 
 export const useTapToPaySettingsEntry = (brandId: string | null): { label: string } | null => {
@@ -15,11 +15,4 @@ export const useTapToPaySettingsEntry = (brandId: string | null): { label: strin
   return { label: tapToPayName(Platform.OS) };
 };
 
-/** Tap to Pay countries Mingla supports, on the Stripe rail. */
-export const tapToPayBrandEligible = (
-  brand: { paymentProvider?: string | null; defaultCurrency?: string | null } | null | undefined,
-): boolean => {
-  if (brand === null || brand === undefined || brand.paymentProvider === "paystack") return false;
-  const currency = (brand.defaultCurrency ?? "").trim().toUpperCase();
-  return currency === "GBP" || currency === "USD";
-};
+export { tapToPayBrandEligible } from "../utils/tapToPayBrandEligible";

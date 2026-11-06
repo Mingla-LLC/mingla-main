@@ -57,7 +57,7 @@ import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { Button } from "../../../../src/components/ui/Button";
 import { decodeDoorTapDraft } from "../../../../src/components/door/doorTapDraft";
 
-import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
+import { LazyDoorSaleNewSheet } from "../../../../src/components/door/LazyDoorSaleScreens";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -631,7 +631,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
 
       {/* New sale sheet */}
       {brand !== null ? (
-        <DoorSaleNewSheet
+        <LazyDoorSaleNewSheet
           visible={newSheetOpen}
           event={event}
           onClose={() => setNewSheetOpen(false)}

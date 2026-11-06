@@ -65,7 +65,7 @@ import {
   useCreateDoorPayCode,
   useDoorPayCodeQuote,
 } from "../../hooks/useEventDoorSales";
-import { tapToPayName } from "../../constants/tapToPayCopy";
+import { tapToPayName } from "../../constants/tapToPayName";
 import { TapToPayIcon } from "./tap/TapToPayIcon";
 import { getTapToPaySession } from "../../services/terminal/tapToPaySession";
 import { markDoorTapPress } from "../../services/terminal/tapTiming";

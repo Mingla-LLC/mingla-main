@@ -49,7 +49,7 @@ import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
-import { InviteScannerSheet } from "../../../src/components/scanners/InviteScannerSheet";
+import { LazyInviteScannerSheet } from "../../../src/components/scanners/LazyInviteScannerSheet";
 
 const hashStringToHue = (s: string): number => {
   let hash = 0;
@@ -327,7 +327,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
         )}
       </ScrollView>
 
-      <InviteScannerSheet
+      <LazyInviteScannerSheet
         visible={inviteSheetOpen}
         event={null}
         brandId={brandId}

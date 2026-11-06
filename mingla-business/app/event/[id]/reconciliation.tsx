@@ -28,7 +28,7 @@
  * Per Cycle 13 SPEC §4.3.2 + ORCH-0796 reframe (real expected-payout wiring).
  */
 
-import { TAP_TO_PAY_SHORT } from "../../../src/constants/tapToPayCopy";
+import { TAP_TO_PAY_SHORT } from "../../../src/constants/tapToPayName";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,

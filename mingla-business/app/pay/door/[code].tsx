@@ -60,7 +60,7 @@ import {
   doorPayGuestEndCopy,
   doorPayGuestLateCopy,
   doorPayGuestReturnSettled,
-} from "../../../src/components/door/doorPayCodeState";
+} from "../../../src/components/door/doorPayGuestState";
 import { recordConsent } from "../../../src/services/consentService";
 import {
   createDoorCodeCheckout,
