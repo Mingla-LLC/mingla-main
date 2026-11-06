@@ -584,10 +584,36 @@ BEGIN
   -- minter. It reads no ticket checkout session and has no admission-epoch CAS;
   -- its independently locked capacity path therefore cannot share #2136's
   -- NULL-epoch defect. The list remains exact so any fourth minter fails closed.
-  IF v_minters IS DISTINCT FROM 'biz_door_sale_record, issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one' THEN
+  -- [TEST-MOD-APPROVED #4271] biz_door_tap_record is a fourth intentional
+  -- minter (Tap to Pay at the door). Audited for #2136: service role only; it
+  -- reads no ticket checkout session and has no admission-epoch CAS; it mints
+  -- only for a door_tap_intents row locked FOR UPDATE whose server-priced
+  -- total_cents is CHECK (> 0), only when Stripe's amount received equals that
+  -- total, as a paid card_present order of that value (never the free no-value
+  -- arm), and a replay returns the existing order. It never refunds or reverses
+  -- a payment. Pinned below like the cash door minter.
+  IF v_minters IS DISTINCT FROM 'biz_door_sale_record, biz_door_tap_record, issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one' THEN
     RAISE EXCEPTION 'TA-14a FAIL: order minters are now [%] (expected exactly '
-      'biz_door_sale_record, issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one). A new minter must be audited for the #2136 '
+      'biz_door_sale_record, biz_door_tap_record, issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one). A new minter must be audited for the #2136 '
       'zero-total / NULL-admission-epoch defect before it ships.', COALESCE(v_minters, '<none>');
+  END IF;
+
+  SELECT position('admission_epoch' in prosrc) > 0,
+         position('ticket_checkout_sessions' in prosrc) > 0
+    INTO v_door_uses_epoch, v_door_reads_checkout
+    FROM pg_proc WHERE proname = 'biz_door_tap_record';
+  IF v_door_uses_epoch IS NULL THEN
+    RAISE EXCEPTION 'TA-14a FAIL: biz_door_tap_record is missing from the catalog';
+  END IF;
+  IF v_door_uses_epoch OR v_door_reads_checkout THEN
+    RAISE EXCEPTION 'TA-14a FAIL: biz_door_tap_record now reads the checkout/epoch rail and must receive the full #2136 CAS audit';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.door_tap_intents'::regclass AND contype = 'c'
+       AND pg_get_constraintdef(oid) = 'CHECK ((total_cents > 0))'
+  ) THEN
+    RAISE EXCEPTION 'TA-14a FAIL: door_tap_intents.total_cents lost its (> 0) check, so the tap minter could mint a zero-value order';
   END IF;
 
   SELECT position('admission_epoch' in prosrc) > 0,
