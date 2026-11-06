@@ -43,14 +43,11 @@ export const PURCHASE_TERMS_LABEL_JOINER = " and " as const;
 export const PURCHASE_TERMS_LABEL_PRIVACY = "Privacy Policy" as const;
 export const PURCHASE_TERMS_LABEL_SUFFIX = "." as const;
 
-export const CHECKOUT_MARKETING_DISCLOSURE_VERSION =
-  "2026-10-14-marketing-v1" as const;
-export const CHECKOUT_MARKETING_LABEL =
-  "Send me occasional updates and offers from Mingla and this host." as const;
-export const CHECKOUT_MARKETING_HELPER =
-  "Optional. You can unsubscribe at any time." as const;
-export const CHECKOUT_MARKETING_DISCLOSURE_TEXT =
-  `${CHECKOUT_MARKETING_LABEL} ${CHECKOUT_MARKETING_HELPER}` as const;
+// #4273 (Seth, 2026-11-06): anybody who buys is opted in to the brand's
+// marketing by email and text. No checkbox; the buyer is told plainly. The
+// grant is recorded at order ingest as purchase_auto_optin.
+export const CHECKOUT_MARKETING_NOTICE =
+  "By buying, you'll get updates from this brand by email and text. You can unsubscribe at any time." as const;
 
 export const PURCHASE_TERMS_URL =
   "https://www.usemingla.com/terms-of-service" as const;

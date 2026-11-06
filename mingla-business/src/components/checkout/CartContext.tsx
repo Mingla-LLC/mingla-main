@@ -89,9 +89,9 @@ export interface BuyerDetails {
   phone: string;
   marketingOptIn: boolean;
   /**
-   * #3859 — required purchase acceptance. This gates checkout independently
-   * from the optional `marketingOptIn` choice; changing one never changes the
-   * other. Both default false and require their own affirmative acts.
+   * #3859 — required purchase acceptance. Defaults false and needs its own
+   * affirmative act. #4273: `marketingOptIn` is no longer a choice — buying
+   * opts the buyer in, and the checkout shows a plain notice instead of a box.
    */
   termsAccepted?: boolean;
   address?: {
@@ -323,7 +323,8 @@ const EMPTY_BUYER: BuyerDetails = {
   name: "",
   email: "",
   phone: "",
-  marketingOptIn: false,
+  // #4273: buying opts the buyer in to the brand's updates.
+  marketingOptIn: true,
   termsAccepted: false,
   address: {
     line1: "",
@@ -690,7 +691,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
           name: state.buyer.name,
           email: state.buyer.email,
           phone: state.buyer.phone,
-          marketingOptIn: state.buyer.marketingOptIn === true,
+          marketingOptIn: true, // #4273: buying opts in
         },
         providerInput: { surface: input.surface },
         // issue #3281 — the contract reads dates and extras off the line too,
