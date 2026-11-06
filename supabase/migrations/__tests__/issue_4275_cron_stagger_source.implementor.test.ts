@@ -86,11 +86,14 @@ Deno.test("T-D4 every moved job keeps its cadence, and the time-critical jobs do
   }
 });
 
-Deno.test("the admin copy states the place pool view's real cadence", () => {
+// #4276 moved the Place pool page off the view: its counts are worked out on the server
+// when the page opens, so the page must not claim the view's refresh cadence any more.
+Deno.test("the admin copy states the place pool's real cadence", () => {
   assert(code.includes("schedule := '3,33 * * * *'"), "the view refreshes every 30 minutes");
   const root = new URL("../../../mingla-admin/src/", import.meta.url);
   const page = Deno.readTextFileSync(new URL("pages/PlacePoolPage.jsx", root));
-  assert(page.includes("Counts refresh every 30 minutes."), "the page says 30");
+  assert(page.includes("counted on the server when you open this."), "the page says counts are live");
+  assert(!page.includes("Counts refresh every"), "the page does not claim a view cadence");
   const service = Deno.readTextFileSync(new URL("services/systemPagesService.js", root));
-  assert(service.includes("refreshes every 30 minutes"), "the service comment says 30");
+  assert(!service.includes("admin_refresh_place_pool_mv"), "the admin no longer re-counts the view");
 });

@@ -17,14 +17,8 @@
 --
 -- Invariant I-4276-NO-CITY-WIDE-SCORING-WHILE-HELD is declared in its contract test under __tests__/.
 
-DO $unschedule$
-DECLARE
-  v_job_id bigint;
-BEGIN
-  FOR v_job_id IN
-    SELECT jobid FROM cron.job WHERE jobname = 'meta_orch_1009_sub_d_quarterly_all_cities_sweep'
-  LOOP
-    PERFORM cron.unschedule(v_job_id);
-  END LOOP;
-END;
-$unschedule$;
+-- A literal job name, so the cron reachability gate (#2290) models this removal.
+SELECT cron.unschedule('meta_orch_1009_sub_d_quarterly_all_cities_sweep')
+ WHERE EXISTS (
+   SELECT 1 FROM cron.job WHERE jobname = 'meta_orch_1009_sub_d_quarterly_all_cities_sweep'
+ );
