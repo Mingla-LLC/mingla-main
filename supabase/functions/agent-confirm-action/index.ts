@@ -729,7 +729,9 @@ async function handleConfirmAction(args: {
     } catch {
       // The name is a courtesy; the refusal stands either way.
     }
-    return ariErrorResponse(409, "FLOW_TAKEN_OVER", "", { taken_over_by: name });
+    return ariErrorResponse(409, "FLOW_TAKEN_OVER", "", {
+      taken_over_by: name,
+    });
   }
   // #3355 P1: a newer proposal in this chat replaced this one. Nothing ran;
   // the owner reviews the newest card instead.

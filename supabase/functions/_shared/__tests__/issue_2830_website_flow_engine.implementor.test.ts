@@ -2395,7 +2395,7 @@ Deno.test("#2830 T-EDGE-7: confirming a card from a taken-over run names the per
   assert(at > 0 && at < generic, "the taken-over check must run first");
   assertMatch(
     source,
-    /ariErrorResponse\(409, "FLOW_TAKEN_OVER", "", \{ taken_over_by: name \}\)/,
+    /ariErrorResponse\(409, "FLOW_TAKEN_OVER", "", \{\s*taken_over_by: name,?\s*\}\)/,
   );
   assertMatch(
     source,
