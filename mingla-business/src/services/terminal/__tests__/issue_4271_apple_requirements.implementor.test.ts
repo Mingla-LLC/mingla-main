@@ -757,7 +757,26 @@ describe("B13 the app says what the host saw", () => {
     expect(template.pushBody).toContain("Tap to Pay sale");
     expect(template.pushBody).not.toContain("iPhone");
     const routing = fs.readFileSync(path.join(BIZ_ROOT, "src/services/businessNotificationRouting.ts"), "utf8");
-    expect(routing).toMatch(/business\.door_tap_not_completed":\s*return eventId \? `\/event\/\$\{eventId\}\/door`/);
+    // Retest 4 P3-C: the paid-unseen push shares this case.
+    expect(routing).toMatch(
+      /business\.door_tap_not_completed":\s*(?:case "business\.door_tap_paid_unseen":\s*)?return eventId \? `\/event\/\$\{eventId\}\/door`/,
+    );
+  });
+  test("retest 4 P3-C: the paid-unseen push says the card was charged, matches the server, and routes to the door", () => {
+    const { BUSINESS_NOTIFICATION_TEMPLATES } = jest.requireActual<
+      typeof import("../../../constants/businessNotificationTemplates")
+    >("../../../constants/businessNotificationTemplates");
+    const template = BUSINESS_NOTIFICATION_TEMPLATES["business.door_tap_paid_unseen"];
+    expect(template.pushTitle).toBe("Door card payment went through");
+    expect(template.pushBody).toContain("went through");
+    expect(template.pushBody).toContain("Don't take this payment again.");
+    expect(template.pushBody).not.toMatch(/no money|wasn't approved|iPhone/i);
+    const server = fs.readFileSync(path.join(BIZ_ROOT, "../supabase/functions/door-tap-intent/index.ts"), "utf8");
+    const serverBody = /doorTapPaidUnseenBody = \(eventTitle: string\): string =>\s*`([^`]+)`/.exec(server)?.[1];
+    expect(serverBody?.replace("${eventTitle}", "{eventTitle}")).toBe(template.pushBody);
+    expect(server).toContain('title: "Door card payment went through"');
+    const routing = fs.readFileSync(path.join(BIZ_ROOT, "src/services/businessNotificationRouting.ts"), "utf8");
+    expect(routing).toMatch(/case "business\.door_tap_paid_unseen":\s*return eventId \? `\/event\/\$\{eventId\}\/door`/);
   });
 });
 

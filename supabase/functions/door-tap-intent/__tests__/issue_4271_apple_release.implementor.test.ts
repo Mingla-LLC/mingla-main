@@ -343,13 +343,49 @@ Deno.test("#4271 B13 a seen intent is left alone", async () => {
   assertEquals(h.stripe.calls.some((c) => c.method === "paymentIntents.cancel"), false);
 });
 
+// [TEST-MOD #4271 retest 4 P3-C] A recorded payment nobody saw now gets one
+// paid push (it used to get none); it is still never told the sale failed.
 Deno.test("#4271 B13 a payment that succeeded is recorded and nobody is told it failed", async () => {
   const h = sweepHarness({ status: "succeeded" });
   const res = await h.run();
   assertEquals((await res.json()).swept.recorded, 1);
   assertEquals(h.db.rpcs.some((r) => r.name === "biz_door_tap_record"), true);
-  assertEquals(h.pushes.length, 0);
+  assertEquals(h.pushes.map((p) => p.type), ["business.door_tap_paid_unseen"]);
+  assertEquals(h.pushes.some((p) => p.type === "business.door_tap_not_completed"), false);
   assertEquals(h.stripe.calls.some((c) => c.method === "paymentIntents.cancel"), false);
+});
+
+Deno.test("#4271 retest 4 P3-C: a paid tap nobody saw end tells the host it was paid, once", async () => {
+  const h = sweepHarness({ status: "succeeded" });
+  await h.run();
+  await h.run();
+  assertEquals(h.pushes.length, 1);
+  assertEquals(h.pushes[0].userId, ACTOR);
+  assertEquals(h.pushes[0].title, "Door card payment went through");
+  assertEquals(
+    h.pushes[0].body,
+    "A Tap to Pay payment for Door night went through. It's recorded in door sales. Don't take this payment again.",
+  );
+  assertEquals(h.pushes[0].idempotencyKey, `door_tap_paid_unseen:${INTENT}`);
+  assertEquals(h.pushes[0].deepLink, `mingla-business://event/${EVENT}/door`);
+});
+
+Deno.test("#4271 retest 4 P3-C: a sale recorded by the app or the webhook after the host closed is announced", async () => {
+  // Closed on "We don't know yet": the webhook or finalize recorded it later; the
+  // app never marked the outcome seen.
+  const h = sweepHarness({ row: { status: "recorded" } });
+  const res = await h.run();
+  assertEquals((await res.json()).swept.notified, 1);
+  assertEquals(h.pushes.map((p) => p.type), ["business.door_tap_paid_unseen"]);
+  assertEquals(h.stripe.calls.length, 0);
+  await h.run();
+  assertEquals(h.pushes.length, 1);
+});
+
+Deno.test("#4271 retest 4 P3-C: a recorded sale the host saw is never announced again", async () => {
+  const h = sweepHarness({ row: { status: "recorded", outcome_seen_at: "2026-11-06T00:00:00Z" } });
+  await h.run();
+  assertEquals(h.pushes.length, 0);
 });
 
 Deno.test("#4271 B13 a second sweep sends nothing", async () => {

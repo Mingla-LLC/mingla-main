@@ -443,6 +443,10 @@ async function handleSweepUnfinished(
         });
         if (recordError) throw new Error(recordError.message);
         tally.recorded += 1;
+        // Nobody saw this tap end (the app was closed, or the host closed the
+        // sale on "We don't know yet"): tell them the card was charged, so they
+        // don't take the money again.
+        if (await tellHostPaidUnseen(supabase, notify, row)) tally.notified += 1;
         continue;
       }
       // Being processed right now: only Stripe's answer can say no money moved.
@@ -489,8 +493,77 @@ async function handleSweepUnfinished(
       );
     }
   }
+  // A tap recorded by the app's retrieve, the webhook or finalize after the host
+  // stopped watching (closed on "We don't know yet", or the app went away) is
+  // never seen: tell the host it was paid, once.
+  const { data: recordedRows, error: recordedError } = await supabase
+    .from("door_tap_intents")
+    .select("id, brand_id, event_id, created_by, events(title)")
+    .eq("status", "recorded")
+    .lt("created_at", new Date(now - UNFINISHED_AFTER_MS).toISOString())
+    .gt("created_at", new Date(now - UNFINISHED_WITHIN_MS).toISOString())
+    .is("outcome_seen_at", null)
+    .is("unfinished_notified_at", null)
+    .limit(100);
+  if (recordedError) {
+    console.error("[door-tap-intent] sweep recorded read failed", recordedError.message);
+    return jsonResponse({ swept: tally, error: "server_error" }, 500);
+  }
+  for (const row of (recordedRows ?? []) as Array<Record<string, unknown>>) {
+    try {
+      if (await tellHostPaidUnseen(supabase, notify, row)) tally.notified += 1;
+    } catch (rowError) {
+      tally.failed += 1;
+      console.error(
+        "[door-tap-intent] sweep paid notice failed",
+        row.id,
+        rowError instanceof Error ? rowError.message : "unknown",
+      );
+    }
+  }
   return jsonResponse({ swept: tally });
 }
+
+/**
+ * B13 with paid wording (#4271 retest 4 P3-C): a door tap that was charged and
+ * recorded while nobody was looking. Claims the row first (unfinished_notified_at)
+ * so a second sweep never sends it again. False when another run already did.
+ */
+async function tellHostPaidUnseen(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  notify: NonNullable<DoorTapIntentDeps["notify"]>,
+  row: Record<string, unknown>,
+): Promise<boolean> {
+  const nowIso = new Date().toISOString();
+  const { data: claimed, error: claimError } = await supabase.from("door_tap_intents")
+    .update({ unfinished_notified_at: nowIso, updated_at: nowIso })
+    .eq("id", row.id)
+    .is("outcome_seen_at", null)
+    .is("unfinished_notified_at", null)
+    .select("id");
+  if (claimError) throw new Error(claimError.message);
+  if (Array.isArray(claimed) && claimed.length === 0) return false;
+  const rel = row.events as { title?: string } | Array<{ title?: string }> | null;
+  const eventTitle = (Array.isArray(rel) ? rel[0]?.title : rel?.title) ?? "your event";
+  await notify({
+    userId: row.created_by as string,
+    brandId: row.brand_id as string,
+    type: "business.door_tap_paid_unseen",
+    title: "Door card payment went through",
+    body: doorTapPaidUnseenBody(eventTitle),
+    data: { eventId: row.event_id, eventTitle },
+    relatedId: row.id as string,
+    relatedType: "door_tap_intent",
+    idempotencyKey: `door_tap_paid_unseen:${row.id}`,
+    deepLink: `mingla-business://event/${row.event_id}/door`,
+  });
+  return true;
+}
+
+/** The paid-unseen push body; the same words as the app's template. */
+export const doorTapPaidUnseenBody = (eventTitle: string): string =>
+  `A Tap to Pay payment for ${eventTitle} went through. It's recorded in door sales. Don't take this payment again.`;
 
 /** The card brand and last four of a succeeded card_present charge. */
 export function cardPresentDetails(

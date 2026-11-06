@@ -42,6 +42,7 @@ export type BusinessNotificationType =
   | "business.refund_processed"
   | "business.cancel_refunds_released"
   | "business.door_tap_not_completed"
+  | "business.door_tap_paid_unseen"
   | "business.dispute_opened"
   | "business.installment_failed"
   | "business.installment_at_risk"
@@ -176,6 +177,23 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     severity: "warning",
     family: "money",
     icon: "refund",
+    masterCategory: "orderActivity",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4271 retest 4 P3-C — a door tap charged and recorded while nobody watched it
+  // end (the sale was closed on "We don't know yet", or the app went away).
+  "business.door_tap_paid_unseen": {
+    type: "business.door_tap_paid_unseen",
+    pushTitle: "Door card payment went through",
+    pushBody:
+      "A Tap to Pay payment for {eventTitle} went through. It's recorded in door sales. Don't take this payment again.",
+    inAppTitle: "Door card payment went through",
+    inAppBody:
+      "A Tap to Pay payment for {eventTitle} went through. It's recorded in door sales. Don't take this payment again.",
+    severity: "info",
+    family: "money",
+    icon: "receipt",
     masterCategory: "orderActivity",
     defaultPush: true,
     defaultInApp: true,
