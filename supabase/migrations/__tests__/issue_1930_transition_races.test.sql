@@ -48,13 +48,13 @@ VALUES
 INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_free,quantity_total,
   min_purchase_qty,available_online,available_in_person,display_order)
 VALUES('19300000-0000-0000-0000-000000000712','19300000-0000-0000-0000-000000000711',
-  'Race',1000,'NGN',false,10,1,true,false,0),
+  'Race',10000,'NGN',false,10,1,true,false,0),
 ('19300000-0000-0000-0000-000000000732','19300000-0000-0000-0000-000000000731',
-  'Capacity',1000,'NGN',false,10,1,true,false,0),
+  'Capacity',10000,'NGN',false,10,1,true,false,0),
 ('19300000-0000-0000-0000-000000000752','19300000-0000-0000-0000-000000000751',
-  'Move A',1000,'NGN',false,10,1,true,false,0),
+  'Move A',10000,'NGN',false,10,1,true,false,0),
 ('19300000-0000-0000-0000-000000000762','19300000-0000-0000-0000-000000000761',
-  'Move B',1000,'NGN',false,10,1,true,false,0);
+  'Move B',10000,'NGN',false,10,1,true,false,0);
 
 SELECT public.biz_ticket_checkout_create_session(
   '19300000-0000-0000-0000-000000000711',NULL,'Race','race@example.com',
