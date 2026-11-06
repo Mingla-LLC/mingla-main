@@ -1,8 +1,7 @@
 // Issue #4275 Part C — the curated function's fan-out, driven through the real
 // handler over a counting fake PostgREST.
 //
-// invariant: I-FEED-BATCHED-LOOKUPS — the curated function makes no per-category or
-// per-anchor RPC. Cards stay the same.
+// MINGLA-INVARIANT: I-FEED-BATCHED-LOOKUPS | issue #4275 | the curated function makes no per-category or per-anchor RPC, and the cards stay the same.
 //
 // FAILS-ON-REVERT: send all of a standard intent's lookups in one statement and T-C2
 // fails. Fetch near data one anchor at a time and T-C2 fails on the

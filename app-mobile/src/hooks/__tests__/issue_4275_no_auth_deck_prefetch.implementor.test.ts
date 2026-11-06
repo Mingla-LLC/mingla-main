@@ -1,7 +1,6 @@
 // Issue #4275 T-C7 — a cold open fetches the deck once.
 //
-// invariant: I-FEED-ONE-SET-PER-LOAD — the auth hook's deck prefetch wrote under
-// a key nothing reads, so every cold open fetched the whole deck twice.
+// MINGLA-INVARIANT: I-FEED-ONE-SET-PER-LOAD | issue #4275 | a cold open fetches the deck once; the auth hook never prefetches it under a key nothing reads.
 //
 // FAILS-ON-REVERT: put deckService.fetchDeck back in useAuthSimple and this fails.
 

@@ -1,8 +1,6 @@
 // Issue #4275 Part A — the open-chat recovery controller.
 //
-// invariant: I-CHAT-RECOVERY-CATCHUP — every return to SUBSCRIBED on an open chat
-// runs a merge-only catch-up, and a library-recoverable error never re-creates a
-// channel.
+// MINGLA-INVARIANT: I-CHAT-RECOVERY-CATCHUP | issue #4275 | every return to SUBSCRIBED on an open chat runs a merge-only catch-up, and a library-recoverable error never re-creates a channel.
 //
 // FAILS-ON-REVERT: drop the requestCatchUp() from the SUBSCRIBED branch and T-A1
 // and T-A2 fail. Call armRebuild for CHANNEL_ERROR and T-A2 and T-A3 fail. Move

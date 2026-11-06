@@ -1,7 +1,6 @@
 // Issue #4275 Part B — a slow first load is not "no chats".
 //
-// invariant: I-CHAT-LIST-EMPTY-MEANS-SERVER-EMPTY — the empty state requires a
-// loaded list.
+// MINGLA-INVARIANT: I-CHAT-LIST-EMPTY-MEANS-SERVER-EMPTY | issue #4275 | the chat list shows its empty state only after a list has loaded, never for a slow or failed first load.
 //
 // FAILS-ON-REVERT: drop `!loaded ||` from chatListViewState and T-B1 fails. Skip
 // the retry for timeouts with no list and T-B5 fails. Put the old showSkeleton
