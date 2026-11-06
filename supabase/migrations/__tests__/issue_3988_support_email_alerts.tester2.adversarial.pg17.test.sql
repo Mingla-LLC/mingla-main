@@ -515,7 +515,7 @@ BEGIN
   END IF;
   IF (SELECT count(*) FROM cron.job WHERE jobname = 'issue_3988_support_overdue_sweep') <> 1
      OR (SELECT count(*) FROM cron.job WHERE command LIKE '%issue_3988_support_overdue_sweep%') <> 1
-     OR (SELECT schedule FROM cron.job WHERE jobname = 'issue_3988_support_overdue_sweep') <> '*/15 * * * *' THEN
+     OR (SELECT schedule FROM cron.job WHERE jobname = 'issue_3988_support_overdue_sweep') <> '6,21,36,51 * * * *' THEN
     RAISE EXCEPTION 'overdue_cron_not_single_15m_job';
   END IF;
 END;

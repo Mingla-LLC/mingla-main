@@ -300,7 +300,7 @@ SELECT pg_temp.i4063_assert(NOT EXISTS (
 ), 'reservation at lead plus four minutes must stay outside the fixed window');
 
 SELECT pg_temp.i4063_assert((
-  SELECT schedule = '*/5 * * * *'
+  SELECT schedule = '1,6,11,16,21,26,31,36,41,46,51,56 * * * *'
     FROM cron.job
    WHERE jobname = 'orch_1161_notify_reminders'
 ), 'reminder cron must run every five minutes');

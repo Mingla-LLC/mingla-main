@@ -1678,7 +1678,7 @@ begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform pg_temp.t3802w_check('W1-12', 'one scheduled job, every 10 minutes, calling the one function',
       (select string_agg(j.schedule || ' | ' || btrim(j.command) || ' | ' || j.active::text, ' ;; ') from cron.job j where j.jobname = 'crm_reconcile_live'),
-      '*/10 * * * * | SELECT public.crm_reconcile_live() | true');
+      '6,16,26,36,46,56 * * * * | SELECT public.crm_reconcile_live() | true');
   else
     perform pg_temp.t3802w_check('W1-12', 'no scheduler on this database (nothing to check)', 'skipped', 'skipped');
   end if;

@@ -80,6 +80,9 @@ export function shouldDehydrateMinglaQuery(query: QueryLike, currentUserId?: str
   const queryKey = query.queryKey;
 
   if (query.state.status === "pending") return false;
+  // Issue #4275: an Error stringifies to `{}`, so a persisted failed query came
+  // back on the next launch as `error: {}`. Nothing worth keeping without data.
+  if (query.state.status === "error" && query.state.data === undefined) return false;
   if (query.state.fetchStatus && query.state.fetchStatus !== "idle") return false;
 
   if (Array.isArray(queryKey)) {

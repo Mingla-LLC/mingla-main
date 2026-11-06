@@ -1195,6 +1195,7 @@ async function fetchCuratedBatchInternal(args: {
     body: JSON.stringify({
       experienceType: args.experienceType,
       session_id: args.sessionId,
+      source: 'collab',
       limit: args.limit,
       skipDescriptions: true,
       excludePlacePoolIds: args.excludePlacePoolIds,

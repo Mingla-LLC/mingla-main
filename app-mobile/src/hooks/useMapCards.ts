@@ -142,6 +142,7 @@ export function useMapCards(
         limit: 10,
         skipDescriptions: true,
         batchSeed: 0,
+        source: 'map' as const,
       });
 
       console.log(`[useMapCards] Fetching curated types: ${CURATED_TYPES.join(', ')}`);

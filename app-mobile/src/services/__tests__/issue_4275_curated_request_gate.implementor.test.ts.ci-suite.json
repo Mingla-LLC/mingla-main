@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4275_curated_request_gate.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-curated-request-gate-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

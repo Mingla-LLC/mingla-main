@@ -562,6 +562,11 @@ export const MESSAGE_CLIENT_ID_UNIQUE_INDEX = 'messages_unique_client_id_per_con
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
   private senderProfileCache: Map<string, { name: string; cachedAt: number }> = new Map();
+  // Issue #4275: a cold page holds up to 50 rows from one sender; they share one read.
+  private senderNameLookups: Map<string, Promise<string>> = new Map();
+  // Issue #4275: senders whose last name read failed. A page showing one of them is
+  // "degraded", so the open chat's recovery reads it again (same cap and backoff).
+  private failedSenderLookups: Set<string> = new Set();
   private static PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   /**
@@ -856,8 +861,25 @@ export class MessagingService {
     profiles: ReadonlyArray<{ id: string; display_name?: string | null; username?: string | null; first_name?: string | null; last_name?: string | null }>,
   ): void {
     for (const p of profiles) {
-      this.senderProfileCache.set(p.id, { name: getDisplayName(p, 'Unknown'), cachedAt: Date.now() });
+      this.rememberSenderName(p.id, getDisplayName(p, 'Unknown'));
     }
+  }
+
+  /**
+   * Issue #4275: every write of a sender's name goes through here. A stored answer
+   * also ends that sender's failure mark, or a fresh cache (no lookup runs) would
+   * keep every page with their rows "degraded" and spend recovery's retries for nothing.
+   */
+  private rememberSenderName(senderId: string, name: string): void {
+    this.senderProfileCache.set(senderId, { name, cachedAt: Date.now() });
+    this.failedSenderLookups.delete(senderId);
+  }
+
+  /** Issue #4275: sign-out. Names, lookups in flight and failure marks belonged to that account. */
+  clearSenderNames(): void {
+    this.senderProfileCache.clear();
+    this.senderNameLookups.clear();
+    this.failedSenderLookups.clear();
   }
 
   /**
@@ -979,7 +1001,7 @@ export class MessagingService {
           .in('id', Array.from(senderIds));
         for (const p of profiles || []) {
           const name = getDisplayName(p, 'Unknown');
-          this.senderProfileCache.set(p.id, { name, cachedAt: Date.now() });
+          this.rememberSenderName(p.id, name);
         }
       }
 
@@ -1064,7 +1086,7 @@ export class MessagingService {
     userId: string,
     limit: number = MESSAGE_PAGE_SIZE,
     before?: string,
-  ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean }> {
+  ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean; degraded?: boolean }> {
     try {
       const ids = typeof conversationId === 'string' ? [conversationId] : Array.from(new Set(conversationId));
       if (ids.length === 0) return { messages: [], error: null, hasMore: false };
@@ -1079,10 +1101,15 @@ export class MessagingService {
 
       if (error) throw error;
 
-      // Enrich messages with sender names and read status
-      const enrichedMessages = await Promise.all(
-        (data || []).map(msg => this.enrichMessage(msg, userId))
+      // Issue #4275: sender names per row, read status in ONE read for the page.
+      // It used to be one `.single()` per message, up to 50 requests a page, each
+      // answering 406 when there was no read row. Recovery reads this on every
+      // reconnect, so it must be cheap.
+      const senderEnriched = await Promise.all(
+        (data || []).map(msg => this.enrichMessageRealtime(msg))
       );
+      const readIds = await this.getReadMessageIds(senderEnriched.map((msg) => msg.id), userId);
+      const enrichedMessages = senderEnriched.map((msg) => ({ ...msg, is_read: readIds.has(msg.id) }));
       // Issue #4114 Wave 3: one reactions read for the whole page.
       const reactionsByMessage = await this.getReactionsForMessages(enrichedMessages.map((msg) => msg.id));
       // Issue #4114 Wave 4: one read of who opened the page's view-once messages.
@@ -1095,11 +1122,36 @@ export class MessagingService {
         ...(msg.view_once === true ? { media_views: viewsByMessage.get(msg.id) ?? [] } : {}),
       }));
 
-      return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
+      // Issue #4275: true when a row's sender name could not be read, so it shows a
+      // fallback. The rows are still good; the caller decides whether to read again.
+      const degraded = (data || []).some((msg: { sender_id?: string | null; sender_display_name_snapshot?: unknown }) =>
+        !(typeof msg.sender_display_name_snapshot === 'string' && msg.sender_display_name_snapshot.trim()) &&
+        !!msg.sender_id && this.failedSenderLookups.has(msg.sender_id));
+
+      return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit, degraded };
     } catch (error: any) {
       console.error('Error getting messages:', error);
       return { messages: [], error: error.message, hasMore: false };
     }
+  }
+
+  /**
+   * Issue #4275: which of a page of messages this user has read, in one query.
+   * A read failure warns and treats them all as unread, the same outcome each
+   * per-message read had on failure.
+   */
+  private async getReadMessageIds(messageIds: string[], userId: string): Promise<Set<string>> {
+    if (messageIds.length === 0) return new Set();
+    const { data, error } = await supabase
+      .from('message_reads')
+      .select('message_id')
+      .eq('user_id', userId)
+      .in('message_id', messageIds);
+    if (error) {
+      console.warn('[messagingService] read status read failed; page shows as unread', error);
+      return new Set();
+    }
+    return new Set((data ?? []).map((row: { message_id: string }) => row.message_id));
   }
 
   /**
@@ -1861,6 +1913,13 @@ export class MessagingService {
        * is matched against the chat's own reaction ids by the caller.
        */
       onLiveChange?: (change: ChatLiveChange) => void;
+      /**
+       * Issue #4275: every channel status while this channel is the current one.
+       * The recovery controller owns what happens next (chatChannelRecovery.ts).
+       */
+      onStatus?: (status: string) => void;
+      /** Issue #4275: a `system` error on postgres_changes. The library reports no status for it. */
+      onSystemError?: () => void;
     }
   ): RealtimeChannel {
     // Issue #4114 Wave 6: one channel for one chat, or for all of a brand
@@ -1877,6 +1936,15 @@ export class MessagingService {
 
     const channel = supabase
       .channel(channelName)
+      .on('system', {}, (payload: { extension?: string; status?: string }) => {
+        if (
+          payload?.extension === 'postgres_changes' &&
+          payload?.status === 'error' &&
+          this.channels.get(channelName) === channel
+        ) {
+          callbacks.onSystemError?.();
+        }
+      })
       .on(
         'postgres_changes',
         {
@@ -1960,6 +2028,9 @@ export class MessagingService {
         if (status === 'SUBSCRIBED') {
           console.log(`Subscribed to conversation: ${channelKey}`);
         }
+        if (this.channels.get(channelName) === channel) {
+          callbacks.onStatus?.(status);
+        }
       });
 
     this.channels.set(channelName, channel);
@@ -1973,8 +2044,12 @@ export class MessagingService {
     const channelName = `conversation:${conversationId}`;
     const channel = this.channels.get(channelName);
     if (channel) {
-      supabase.removeChannel(channel);
+      // Issue #4275: forget it BEFORE removing it. removeChannel fires CLOSED
+      // synchronously inside the call, and onStatus forwards only for the channel
+      // in this map, so the old order reported a deliberate leave as a failure
+      // and started a rebuild of the chat being left.
       this.channels.delete(channelName);
+      supabase.removeChannel(channel);
     }
   }
 
@@ -1989,16 +2064,34 @@ export class MessagingService {
       return cached.name;
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('display_name, username, first_name, last_name')
-      .eq('id', senderId)
-      .single();
+    const inFlight = this.senderNameLookups.get(senderId);
+    if (inFlight) return inFlight;
 
-    const senderName = getDisplayName(profile, 'Unknown');
+    const lookup = (async () => {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('display_name, username, first_name, last_name')
+        .eq('id', senderId)
+        .single();
 
-    this.senderProfileCache.set(senderId, { name: senderName, cachedAt: Date.now() });
-    return senderName;
+      // Issue #4275: a failed read says nothing about the person, so it is not
+      // remembered: the next page may succeed. No row (PGRST116) is an answer. There
+      // is no retry here; the next attempt is the next page read, sharing one lookup.
+      if (error && error.code !== 'PGRST116') {
+        console.warn('[messagingService] sender name read failed; not caching it', error);
+        this.failedSenderLookups.add(senderId);
+        return cached?.name ?? 'Unknown';
+      }
+
+      const senderName = getDisplayName(profile, 'Unknown');
+
+      this.rememberSenderName(senderId, senderName);
+      return senderName;
+    })().finally(() => {
+      this.senderNameLookups.delete(senderId);
+    });
+    this.senderNameLookups.set(senderId, lookup);
+    return lookup;
   }
 
   /**
