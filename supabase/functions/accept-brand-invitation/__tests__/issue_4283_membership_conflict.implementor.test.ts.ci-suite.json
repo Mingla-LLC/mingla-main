@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/accept-brand-invitation/__tests__/issue_4283_membership_conflict.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4283-accept-membership-conflict",
+  "profile": "deno-2-unit"
+}

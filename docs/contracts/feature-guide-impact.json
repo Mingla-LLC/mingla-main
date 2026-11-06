@@ -517,7 +517,11 @@
         "mingla-business/src/utils/navTabGate.ts",
         "mingla-business/src/components/venue/venueCapabilityGate.ts",
         "supabase/functions/accept-brand-invitation/index.ts",
-        "supabase/functions/invite-brand-member/index.ts"
+        "supabase/functions/invite-brand-member/index.ts",
+        "mingla-business/app/accept-brand-invitation.tsx",
+        "mingla-business/src/components/team/InvitePendingSheet.tsx",
+        "mingla-business/src/components/team/inviteAcceptErrorCopy.ts",
+        "supabase/migrations/20280415004283_issue_4283_accept_invite_single_member_row.sql"
       ]
     },
     {
