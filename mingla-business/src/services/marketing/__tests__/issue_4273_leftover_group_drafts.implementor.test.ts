@@ -13,7 +13,6 @@ jest.mock("../marketingCampaignService", () => ({
   createDraft: (...a: unknown[]) => createDraft(...a),
   updateDraft: (...a: unknown[]) => updateDraft(...a),
   deleteDraft: (...a: unknown[]) => deleteDraft(...a),
-  listGroupDrafts: (...a: unknown[]) => listGroupDrafts(...a),
   MarketingBookSendError: class MarketingBookSendError extends Error {
     constructor(public readonly code: string) { super(code); }
   },
@@ -22,6 +21,7 @@ jest.mock("../marketingBookSendService", () => ({
   previewMarketingBook: jest.fn(),
   confirmMarketingBook: jest.fn(),
   previewMarketingCampaignGroup: (...a: unknown[]) => previewMarketingCampaignGroup(...a),
+  listGroupDrafts: (...a: unknown[]) => listGroupDrafts(...a),
 }));
 
 /** The head's id when one is listed, else the lead's own group (LEAD). */

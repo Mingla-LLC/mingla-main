@@ -24,7 +24,7 @@ jest.mock("../../supabase", () => {
   return { supabase: { from: () => builder() } };
 });
 
-import { listGroupDrafts } from "../marketingCampaignService";
+import { listGroupDrafts } from "../marketingBookSendService";
 
 const HEAD = "42730000-0000-4000-8000-0000000000a1";
 const SIB = "42730000-0000-4000-8000-0000000000a2";
