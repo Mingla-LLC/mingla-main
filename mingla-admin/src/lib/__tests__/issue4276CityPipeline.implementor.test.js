@@ -222,3 +222,10 @@ test("the stored-box legend swatch uses a theme token, and the early stop says r
   assert.ok(panel.includes("It stops after 3 failures in a row; searches already running finish."));
   assert.equal(panel.includes("stops early after 3 failed searches"), false);
 });
+
+// #4276 final round: the refresh slot comes from the cron schedule; unknown is said, never 600.
+test("the place list refresh line never assumes a 600-second slot", () => {
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.equal(section.includes("mv.interval_seconds ?? 600"), false, "no guessed slot");
+  assert.ok(section.includes("its schedule couldn't be read, so its slot is unknown"));
+});

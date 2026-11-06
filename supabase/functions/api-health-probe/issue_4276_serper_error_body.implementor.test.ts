@@ -4,7 +4,7 @@
 // fails if it comes back.
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { serperErrorDetail } from "./logic.ts";
+import { mvRefreshNearLimit, serperErrorDetail } from "./logic.ts";
 
 Deno.test("the depletion body is stored and recognised", () => {
   const d = serperErrorDetail(400, '{"message":"Not enough credits","statusCode":400}');
@@ -22,4 +22,12 @@ Deno.test("probeSerper reads the failed response's body", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   const body = source.slice(source.indexOf("async function probeSerper"), source.indexOf("async function probePexels"));
   assert(body.includes("serperErrorDetail(res.status, await res.text())"));
+});
+
+// #4276: the refresh slot comes from the cron schedule (20280418004276). An unreadable
+// schedule gives a null slot, and a null slot never warns.
+Deno.test("the place list refresh warns against the real slot, and not at all when it is unknown", () => {
+  assertEquals(mvRefreshNearLimit({ max_seconds: 400, interval_seconds: 1800 }), false);
+  assertEquals(mvRefreshNearLimit({ max_seconds: 400, interval_seconds: 600 }), true);
+  assertEquals(mvRefreshNearLimit({ max_seconds: 4000, interval_seconds: null }), false);
 });

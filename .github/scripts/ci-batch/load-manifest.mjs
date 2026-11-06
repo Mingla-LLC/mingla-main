@@ -157,7 +157,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
 // #4283: register the accept single-member-row migration and its proofs
 // #4276: register the place-pipeline migrations and their proofs.
-export const BOOTSTRAP_SHA256 = "e676ae119d0b4139852b9982f61d2812e6201141cff95f083befe112ef5eec90";
+export const BOOTSTRAP_SHA256 = "ab1da3eb37372738a2ef25b2e83454c3f4710ad3cf01a9725e772a727ab1cd66";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -128,7 +128,9 @@ function HealthStrip({ health, error, onReload, onRateSaved }) {
         <span className={`ml-auto text-xs ${mvNear ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-tertiary)]"}`}>
           {mv.max_seconds == null
             ? "Place list refresh: no run recorded in the last day"
-            : `Place list refresh: longest ${mv.max_seconds} s of its ${mv.interval_seconds ?? 600} s slot in the last day${mvNear ? ", over half" : ""}`}
+            : mv.interval_seconds == null
+              ? `Place list refresh: longest ${mv.max_seconds} s in the last day; its schedule couldn't be read, so its slot is unknown`
+              : `Place list refresh: longest ${mv.max_seconds} s of its ${mv.interval_seconds} s slot in the last day${mvNear ? ", over half" : ""}`}
         </span>
       </div>
     </div>
