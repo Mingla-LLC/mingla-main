@@ -368,7 +368,8 @@ export function phase3dContractDigest(manifest) {
 // #3281: skip the private link dates migration on the pre-feature lanes
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
 // #4283: register the accept single-member-row migration and its proofs
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f27cf49ab1d99075dfdbbc10622934536cd0691793a8cf2b6ff8687bba1fbbad";
+// #4276: register the place-pipeline migrations and their proofs.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "57a7e5b210bb9e604b939449b7caf4d77dbb05976f3e362ee5725e99f7ec3ffa";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

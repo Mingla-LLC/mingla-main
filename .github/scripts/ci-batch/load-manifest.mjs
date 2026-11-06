@@ -156,7 +156,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: skip the private link dates migration on the pre-feature lanes
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
 // #4283: register the accept single-member-row migration and its proofs
-export const BOOTSTRAP_SHA256 = "140ee64b08e0786de56710966bbc60d8c71be6a079de13506d435be6ab67a73b";
+// #4276: register the place-pipeline migrations and their proofs.
+// #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
+// (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
+export const BOOTSTRAP_SHA256 = "d0d637fbae58bb57e8516e1e1c5cda0e316557b111052566efe4786c0435821d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

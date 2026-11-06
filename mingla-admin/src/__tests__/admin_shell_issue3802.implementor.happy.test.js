@@ -422,8 +422,10 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log draw the one header.
     "WorkBoardPage.jsx", "AgentLogPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
-    "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
-    "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "SubscriptionManagementPage.jsx",
+    // #4276: the Intelligence Trial and Signal Library pages are retired; their tools
+    // live in Place pool's pipeline.
+    "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
+    "RoleHomePage.jsx", "SettingsPage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "VenuesConsolePage.jsx",
     // #4130: Wave 2a's Mingla money page draws the one header.
     "MinglaMoneyPage.jsx",
@@ -476,7 +478,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
     // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 52);
+    assert.equal(MIGRATED.length, 50); // #4276: Intelligence Trial and Signal Library pages retired
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -626,7 +628,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
     // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 52);
+    assert.equal(MIGRATED.length, 50); // #4276: Intelligence Trial and Signal Library pages retired
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(
@@ -640,10 +642,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
 
   it("the states that had no title now have one, and add no padding of their own", () => {
     const states = (file) => pageReturns(file).filter((r) => r.hasHeader);
-    // Signal Library: loading, could not load, nothing defined, and the page itself.
-    assert.equal(states("SignalLibraryPage.jsx").length, 4);
-    assert.equal((raw("SignalLibraryPage.jsx").match(/\{pageHeader\}/g) || []).length, 4);
-    assert.equal((raw("SignalLibraryPage.jsx").match(/<PageHeader\b/g) || []).length, 1, "one header, drawn four times");
+    // #4276: the Signal Library page is retired (its scoring tools sit in Place pool).
     // "Ads console is off" on both pages, and Refund operations while it loads.
     for (const [file, title, words] of [
       ["CampaignBuilderPage.jsx", '<PageHeader title="Campaign Builder" />', "Ads console is off"],
@@ -667,7 +666,6 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
         assert.equal(/(?:^|\s)(?:p|px|py|pt|pb)-(?:\d|\[)|max-w-|mx-auto/.test(root[1] ?? ""), false, `${file}:${r.line} "${root[1]}"`);
       }
     }
-    assert.equal(/<div className="py-12">\s*<AlertCard kind="info"/.test(raw("SignalLibraryPage.jsx")), false);
   });
 
   it("Email already drew its header in every state: its spinner and setup card sit under it", () => {

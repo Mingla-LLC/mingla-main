@@ -7,6 +7,8 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizePlaceJudgingCaller } from '../_shared/placeJudgingAuth.ts';
+import { aiSliceIsHeld } from '../_shared/aiScoreHold.ts';
 import { type PlaceForScoring, type SignalConfig } from '../_shared/signalScorer.ts';
 // ORCH-1066 — sticky-through-approval: shared admin-override marker predicates so
 // the scorer and its regression test agree on exactly one definition.
@@ -53,10 +55,14 @@ const IN_CHUNK = 100; // max UUIDs per PostgREST .in() URL — 500 blew the HTTP
 // the 15-min cron + approval re-score finish in ONE invocation.
 const SCORER_MAX_ROWS_PER_CALL = 500;
 
-serve(async (req: Request) => {
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // #4276: only the service role (conductor, rescore cron) or an active admin.
+  const caller = await authorizePlaceJudgingCaller(req);
+  if (caller instanceof Response) return caller;
 
   const t0 = Date.now();
 
@@ -79,6 +85,12 @@ serve(async (req: Request) => {
     const afterId: string | null =
       typeof body.after_id === 'string' && body.after_id.length > 0 ? body.after_id : null;
 
+    // #4276 C7: a place held for its first final score has a passing verdict parked
+    // while is_servable stays false. Only ever by id: a city-wide score would release
+    // held AI results into live decks. A score on a held place serves nobody until the
+    // place is released.
+    const includeHeld: boolean = body.include_held === true;
+
     if (!signalId) {
       return new Response(
         JSON.stringify({ error: 'signal_id is required' }),
@@ -91,15 +103,35 @@ serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
+    if (includeHeld && !(placeIds && placeIds.length > 0)) {
+      return new Response(
+        JSON.stringify({ error: 'include_held needs place_ids' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
     if (placeIds && allCities) {
       return new Response(
         JSON.stringify({ error: 'place_ids and all_cities are mutually exclusive' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
-    if (!placeIds && !cityId && !allCities) {
+    // #4276: a city-wide score blends in every stored Intelligence result, including
+    // older results held back from live decks, so it would release them. Refused for
+    // every caller until the hold is lifted; scoring by place id is unchanged. A request
+    // with place_ids still drops city_id, as before.
+    const hasPlaceIds = !!(placeIds && placeIds.length > 0);
+    if (!hasPlaceIds && (cityId || allCities)) {
       return new Response(
-        JSON.stringify({ error: 'Provide place_ids, city_id, or all_cities=true' }),
+        JSON.stringify({
+          error: 'City-wide scoring is paused while older results are held (#4276). Score by place_ids instead.',
+          code: 'city_wide_scoring_paused',
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    if (!hasPlaceIds) {
+      return new Response(
+        JSON.stringify({ error: 'Provide place_ids' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
@@ -158,6 +190,19 @@ serve(async (req: Request) => {
 
     // ORCH-1333 — ALL DB IO lives HERE in index.ts (sole-writer strict-grep
     // gates). The shared engine is pure logic + these injected callbacks.
+    // #4276: a place whose AI result for this signal predates the backlog hold is not
+    // rescored, for any caller: its existing score is left untouched (the engine drops
+    // protected ids from both the upsert and the veto delete) and it is reported as
+    // held_old_result. This keeps a held result out of live decks on every by-id path.
+    const heldOld = new Set<string>();
+    const markHeld = (rows: Array<PlaceForScoring & { id: string }>) => {
+      for (const r of rows) {
+        const ai = (r as unknown as { ai_signal_scores?: Record<string, unknown> | null }).ai_signal_scores;
+        if (aiSliceIsHeld(ai?.[signalId])) heldOld.add(r.id);
+      }
+      return rows;
+    };
+
     const deps: ScorerBatchDeps = {
       // Page is_active + is_servable place_pool by id after `cursor`. Per-place
       // mode filters to the exact id set; city mode filters by city_id;
@@ -171,9 +216,11 @@ serve(async (req: Request) => {
             .from('place_pool')
             .select(SELECT_FIELDS)
             .eq('is_active', true)
-            .eq('is_servable', true)
             .order('id')
             .limit(size);
+          q = includeHeld
+            ? q.or('is_servable.eq.true,held_final_check_passed.eq.true')
+            : q.eq('is_servable', true);
           if (!isPerPlace && cityId) q = q.eq('city_id', cityId);
           if (cursor) q = q.gt('id', cursor);
           return q;
@@ -197,11 +244,11 @@ serve(async (req: Request) => {
           }
           const rows = collected as Array<PlaceForScoring & { id: string }>;
           rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-          return rows.slice(0, size);
+          return markHeld(rows.slice(0, size));
         }
         const { data, error } = await buildBase();
         if (error) throw new Error(`place_pool fetch failed: ${error.message}`);
-        return (data ?? []) as Array<PlaceForScoring & { id: string }>;
+        return markHeld((data ?? []) as Array<PlaceForScoring & { id: string }>);
       },
       // ── ORCH-1066 STICKY-THROUGH-APPROVAL (per page) ──────────────────────
       // An admin can SET / PIN / override a place's signal score via the
@@ -213,7 +260,7 @@ serve(async (req: Request) => {
       // keeps prior pages persisted (Constitution #5 — no silent failure).
       // Authority: I-1066-ADMIN-OVERRIDE-STICKY-THROUGH-RESCORE.
       readProtectedIds: async (ids) => {
-        const out = new Set<string>();
+        const out = new Set<string>(ids.filter((id) => heldOld.has(id)));
         // ORCH-1333 retest — chunk by IN_CHUNK (not BATCH_SIZE): a 500-UUID
         // `.in('place_id', …)` GET URL (~18KB) tripped the HTTP/2 request-URL
         // limit and failed the whole page. ~100 ids per URL is safe.
@@ -347,6 +394,9 @@ serve(async (req: Request) => {
         written: result.written,
         veto_deleted: result.veto_deleted,
         sticky_skipped: result.sticky_skipped,
+        // #4276: left untouched because their AI result predates the backlog hold.
+        held_old_result: heldOld.size,
+        held_old_result_ids: [...heldOld].slice(0, 100),
         next_cursor: result.next_cursor,
         done: result.done,
         remaining: result.remaining,
@@ -363,4 +413,7 @@ serve(async (req: Request) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
-});
+};
+
+// Importing this file for tests must not start a server.
+if (import.meta.main) serve(handler);

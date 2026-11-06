@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4276_place_judging_auth.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-place-judging-auth",
+  "profile": "deno-2-unit"
+}

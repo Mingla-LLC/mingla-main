@@ -17,9 +17,6 @@ import {
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  // ORCH-0733 — computeCostUsd dropped from active import; only referenced
-  // in commented-historical Anthropic helper. Re-add if Anthropic is ever
-  // re-enabled (would also need DEC entry).
   computeCostUsdGemini,
   MINGLA_SIGNAL_IDS,
 } from "../_shared/photoAestheticEnums.ts";
@@ -35,7 +32,11 @@ import {
 } from "../_shared/geminiModel.ts";
 import {
   COLLAGE_CACHE_CONTROL_SECONDS,
+  COLLAGE_CONTENT_TYPE,
+  COLLAGE_FILE_EXTENSION,
+  collageKeyFromPublicUrl,
   composeCollage,
+  encodeCollageWebp,
   fingerprintPhotos,
   MAX_PHOTOS,
 } from "../_shared/imageCollage.ts";
@@ -62,20 +63,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-// ORCH-0733 — Anthropic Claude Haiku 4.5 dropped from active trial pipeline per
-// DEC-101. Constants preserved as commented historical reference for `git
-// revert`-cheap reversal if HYBRID architecture is ever revisited. DO NOT
-// re-enable without a DEC entry. Live evidence: comparison run fe15cb99
-// vs Anthropic baseline 942fbddf — Gemini 2.5 Flash matched quality at
-// −71% cost; HYBRID rejected, Gemini-only locked.
-/*
-const MODEL_ID = "claude-haiku-4-5-20251001";
-const MODEL_NAME_SHORT = "claude-haiku-4-5";
-const ANTHROPIC_VERSION = "2023-06-01";
-const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-type Provider = "anthropic" | "gemini";
-*/
 
 // ORCH-0713 Gemini A/B (2026-05-05) — became sole provider per ORCH-0733.
 // issue #3526 — both the long id and the short name now come from the single
@@ -235,9 +222,13 @@ export async function writeAiSignalScoresToPlacePool(
 const REVIEWS_FETCH_THROTTLE_MS = 200; // gentle Serper throttle
 
 // Reviews fetch
-const REVIEWS_PAGES_MAX = 5; // ~100 reviews
+// #4276 R2: page until the prompt's worth of reviews with text are held for this
+// fetch (TOP_REVIEWS_FOR_PROMPT) or Google has no more, capped here. Sampled on 118
+// places: 2 pages gave a median of 12 with text against up to 30 today, so Gemini's
+// input must not shrink. The saving is only on places that reach 30 early.
+const REVIEW_FETCH_MAX_PAGES = 5;
 const REVIEWS_FRESHNESS_DAYS = 30;
-const TOP_REVIEWS_FOR_PROMPT = 30; // top-N most-recent with text fed to Claude
+const TOP_REVIEWS_FOR_PROMPT = 30; // top-N most-recent with text fed to Gemini
 
 // Retry config (mirrors score-place-photo-aesthetics)
 const MAX_ATTEMPTS = 4;
@@ -249,59 +240,6 @@ function json(data: unknown, status = 200): Response {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
-
-// ─── Anthropic call helper with retry — DEPRECATED (ORCH-0733) ──────────────
-// Preserved as commented historical reference for `git revert`-cheap reversal.
-// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
-// DO NOT re-enable without a DEC entry. Constants (MODEL_ID, ANTHROPIC_VERSION,
-// ANTHROPIC_MESSAGES_URL) are also commented above.
-/*
-interface AnthropicUsage {
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
-}
-
-async function callAnthropicWithRetry(
-  apiKey: string,
-  reqBody: Record<string, unknown>,
-): Promise<{ payload: any; usage: AnthropicUsage }> {
-  let lastErrText = "";
-  let res: Response;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    res = await fetch(ANTHROPIC_MESSAGES_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify(reqBody),
-    });
-
-    if (res.ok) break;
-
-    const status = res.status;
-    lastErrText = await res.text();
-    const isRetryable = status === 429 || (status >= 500 && status < 600);
-    if (!isRetryable || attempt === MAX_ATTEMPTS) {
-      throw new Error(`Anthropic ${status}: ${lastErrText.slice(0, 500)}`);
-    }
-    const retryAfter = res.headers.get("retry-after");
-    const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
-    const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
-    console.log(`[place-intel-trial] Anthropic ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
-    await new Promise((r) => setTimeout(r, backoffMs));
-  }
-
-  if (!res!.ok) throw new Error(`Anthropic exhausted retries: ${lastErrText.slice(0, 500)}`);
-
-  const payload = await res!.json();
-  const usage: AnthropicUsage = payload?.usage || { input_tokens: 0, output_tokens: 0 };
-  return { payload, usage };
-}
-*/
 
 // ─── Gemini call helper with retry (ORCH-0713 A/B comparison) ───────────────
 
@@ -691,6 +629,14 @@ const Q2_TOOL = {
 // 49 of the 194 deployed edge functions already ship with exactly this guard
 // (including backfill-place-photo-thumbs at version 328), so the runtime does
 // treat index.ts as the main module.
+const CONDUCTOR_ACTIONS: ReadonlySet<string> = new Set([
+  "start_run",
+  "retry_failed_run",
+  "resume_run",
+  "pause_run",
+  "cancel_trial",
+]);
+
 export const httpHandler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -701,7 +647,6 @@ export const httpHandler = async (req: Request): Promise<Response> => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     // ORCH-0733 — Anthropic dropped from trial pipeline; Gemini 2.5 Flash is sole provider per DEC-101.
-    // ANTHROPIC_API_KEY env var no longer required (helpers preserved as commented historical reference).
     const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
     const serperKey = Deno.env.get("SERPER_API_KEY") ?? "";
 
@@ -720,7 +665,7 @@ export const httpHandler = async (req: Request): Promise<Response> => {
     if (!body.action) {
       return json({
         error:
-          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage' | 'admin_reeval_place'",
+          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'resume_run' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage' | 'admin_reeval_place'",
       }, 400);
     }
 
@@ -749,17 +694,41 @@ export const httpHandler = async (req: Request): Promise<Response> => {
       return json({ error: "Missing authorization" }, 401);
     }
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(
-      token,
-    );
-    if (authErr || !user) return json({ error: "Invalid token" }, 401);
-    const { data: adminRow } = await supabaseAdmin
-      .from("admin_users")
-      .select("id")
-      .eq("email", user.email)
-      .eq("status", "active")
-      .maybeSingle();
-    if (!adminRow) return json({ error: "Admin access required" }, 403);
+
+    // #4276: the conductor calls in with the service key, acting for the admin who
+    // started its run. Only these actions, and only with that admin named. Every other
+    // caller still goes through the user check below.
+    let adminRow: { id: string } | null = null;
+    if (
+      supabaseServiceKey && token === supabaseServiceKey &&
+      CONDUCTOR_ACTIONS.has(body.action)
+    ) {
+      const { data: namedAdmin } = typeof body.admin_id === "string"
+        ? await supabaseAdmin
+          .from("admin_users")
+          .select("id")
+          .eq("id", body.admin_id)
+          .eq("status", "active")
+          .maybeSingle()
+        : { data: null };
+      if (!namedAdmin) {
+        return json({ error: "admin_id must name an active admin" }, 403);
+      }
+      adminRow = namedAdmin;
+    } else {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(
+        token,
+      );
+      if (authErr || !user) return json({ error: "Invalid token" }, 401);
+      const { data: userAdmin } = await supabaseAdmin
+        .from("admin_users")
+        .select("id")
+        .eq("email", user.email)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!userAdmin) return json({ error: "Admin access required" }, 403);
+      adminRow = userAdmin;
+    }
 
     switch (body.action) {
       case "preview_run":
@@ -781,6 +750,10 @@ export const httpHandler = async (req: Request): Promise<Response> => {
         return await handleRunStatus(supabaseAdmin, body);
       case "cancel_trial":
         return await handleCancelTrial(supabaseAdmin, body, adminRow.id);
+      case "resume_run":
+        return await handleResumeRun(supabaseAdmin, body);
+      case "pause_run":
+        return await handlePauseRun(supabaseAdmin, body);
       case "list_active_runs":
         return await handleListActiveRuns(supabaseAdmin);
       case "city_coverage":
@@ -1004,32 +977,102 @@ async function handlePreviewRun(
 // fetch_reviews
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handleFetchReviews(
-  db: SupabaseClient,
-  body: Record<string, unknown>,
-  serperKey: string,
-): Promise<Response> {
-  const placePoolId = body.place_pool_id as string;
-  const forceRefresh = !!body.force_refresh;
-  if (!placePoolId) return json({ error: "place_pool_id required" }, 400);
+// #4276 S4: every way a review fetch can end. Prep needs to tell these apart: a
+// place Google has no reviews for is fine to send to Gemini, a failed fetch isn't,
+// and a depleted provider means no later place in the run can succeed either.
+export type ReviewFetchOutcome =
+  | { kind: "skipped_fresh"; count: number }
+  | { kind: "fetched"; fetched: number; placeName: string | null }
+  | { kind: "none_on_google"; placeName: string | null }
+  | {
+    kind: "failed";
+    error: string;
+    depleted: boolean;
+    fetched: number;
+    placeName: string | null;
+    httpStatus?: number;
+  };
 
+export function isSerperDepleted(status: number, body: string): boolean {
+  return status === 402 || /not enough credits/i.test(body);
+}
+
+// A failed write here must not fail the place: the reviews themselves are stored
+// or the fetch has already failed. It only costs a repeat check next time.
+async function recordReviewFetchState(
+  db: SupabaseClient,
+  placePoolId: string,
+  outcome: "fetched" | "none_on_google" | "failed",
+  reviewCount: number,
+  lastError: string | null,
+): Promise<void> {
+  const { error } = await db.from("place_review_fetch_state").upsert({
+    place_id: placePoolId,
+    outcome,
+    review_count: reviewCount,
+    last_checked_at: new Date().toISOString(),
+    last_error: lastError ? lastError.slice(0, 500) : null,
+  }, { onConflict: "place_id" });
+  if (error) {
+    console.error(
+      `[place-intel-trial:fetch_reviews] could not record state for ${placePoolId}: ${error.message}`,
+    );
+  }
+}
+
+export async function fetchReviewsForPlace(
+  db: SupabaseClient,
+  placePoolId: string,
+  forceRefresh: boolean,
+  serperKey: string,
+  onSerperRequest?: () => void,
+): Promise<ReviewFetchOutcome> {
   // Idempotency check
   if (!forceRefresh) {
     const cutoff = new Date(
       Date.now() - REVIEWS_FRESHNESS_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
-    const { data: existing } = await db
-      .from("place_external_reviews")
-      .select("id", { count: "exact", head: false })
-      .eq("place_pool_id", placePoolId)
-      .gte("fetched_at", cutoff)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      const { count } = await db
+    const { data: state, error: stateErr } = await db
+      .from("place_review_fetch_state")
+      .select("outcome, last_checked_at")
+      .eq("place_id", placePoolId)
+      .maybeSingle();
+    if (stateErr) {
+      return {
+        kind: "failed",
+        error: `review state read failed: ${stateErr.message}`,
+        depleted: false,
+        fetched: 0,
+        placeName: null,
+      };
+    }
+    // A failed fetch is never fresh, even if it stored some pages before failing.
+    if (state?.outcome !== "failed") {
+      if (state?.outcome === "none_on_google" && state.last_checked_at >= cutoff) {
+        return { kind: "skipped_fresh", count: 0 };
+      }
+      const { data: existing, error: existingErr } = await db
         .from("place_external_reviews")
-        .select("id", { count: "exact", head: true })
-        .eq("place_pool_id", placePoolId);
-      return json({ skipped: true, reason: "fresh_within_30_days", count });
+        .select("id", { count: "exact", head: false })
+        .eq("place_pool_id", placePoolId)
+        .gte("fetched_at", cutoff)
+        .limit(1);
+      if (existingErr) {
+        return {
+          kind: "failed",
+          error: `review freshness read failed: ${existingErr.message}`,
+          depleted: false,
+          fetched: 0,
+          placeName: null,
+        };
+      }
+      if (existing && existing.length > 0) {
+        const { count } = await db
+          .from("place_external_reviews")
+          .select("id", { count: "exact", head: true })
+          .eq("place_pool_id", placePoolId);
+        return { kind: "skipped_fresh", count: count ?? 0 };
+      }
     }
   }
 
@@ -1039,17 +1082,35 @@ async function handleFetchReviews(
     .select("google_place_id, name")
     .eq("id", placePoolId)
     .maybeSingle();
-  if (ppErr) return json({ error: ppErr.message }, 500);
+  if (ppErr) {
+    return {
+      kind: "failed",
+      error: ppErr.message,
+      depleted: false,
+      fetched: 0,
+      placeName: null,
+      httpStatus: 500,
+    };
+  }
   if (!pp?.google_place_id) {
-    return json({ error: "place has no google_place_id" }, 400);
+    return {
+      kind: "failed",
+      error: "place has no google_place_id",
+      depleted: false,
+      fetched: 0,
+      placeName: null,
+      httpStatus: 400,
+    };
   }
 
   // Page through Serper
   let nextPageToken: string | undefined;
   let totalCollected = 0;
+  const idsWithText = new Set<string>();
   let lastErr: string | null = null;
+  let depleted = false;
 
-  for (let page = 1; page <= REVIEWS_PAGES_MAX; page++) {
+  for (let page = 1; page <= REVIEW_FETCH_MAX_PAGES; page++) {
     const reqBody: Record<string, unknown> = {
       placeId: pp.google_place_id,
       sortBy: "newest",
@@ -1061,6 +1122,8 @@ async function handleFetchReviews(
     let serperRes: Response;
     const _serperT0 = Date.now();
     try {
+      // #4276 M1: every request counts, including one that fails.
+      onSerperRequest?.();
       serperRes = await fetch(SERPER_REVIEWS_URL, {
         method: "POST",
         headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
@@ -1081,7 +1144,7 @@ async function handleFetchReviews(
       lastErr = `Serper ${serperRes.status}: ${text.slice(0, 300)}`;
       // ORCH-1201-R2 Layer-C: capture the Serper depletion fingerprint. The body
       // "Not enough credits" is the CONFIRMED quota-exhaustion signal.
-      const depleted = /not enough credits/i.test(text);
+      depleted = isSerperDepleted(serperRes.status, text);
       void recordApiCall(
         "serper", false, Date.now() - _serperT0, serperRes.status,
         depleted ? { code: "not_enough_credits", text: text.slice(0, 300) } : { text: text.slice(0, 300) },
@@ -1107,8 +1170,9 @@ async function handleFetchReviews(
         author_review_count: r.user?.reviews ?? null,
         author_photo_count: r.user?.photos ?? null,
         has_media: Array.isArray(r.media) && r.media.length > 0,
+        // #4276 R1: `raw` is no longer written. Nothing reads it, and it held about
+        // 930 MB. Rows keep their existing value; the column stays until a reclaim.
         media: r.media || [],
-        raw: r,
       }));
       const { error: upsertErr } = await db
         .from("place_external_reviews")
@@ -1119,19 +1183,93 @@ async function handleFetchReviews(
         break;
       }
       totalCollected += reviews.length;
+      for (const row of rows) {
+        if (row.review_text && row.review_text.trim().length > 0) {
+          idsWithText.add(row.source_review_id);
+        }
+      }
     }
 
+    if (idsWithText.size >= TOP_REVIEWS_FOR_PROMPT) break;
     nextPageToken = data.nextPageToken;
     if (!nextPageToken) break;
     await new Promise((r) => setTimeout(r, REVIEWS_FETCH_THROTTLE_MS));
   }
 
-  return json({
+  if (lastErr) {
+    await recordReviewFetchState(db, placePoolId, "failed", totalCollected, lastErr);
+    return {
+      kind: "failed",
+      error: lastErr,
+      depleted,
+      fetched: totalCollected,
+      placeName: pp.name,
+    };
+  }
+  if (totalCollected === 0) {
+    await recordReviewFetchState(db, placePoolId, "none_on_google", 0, null);
+    return { kind: "none_on_google", placeName: pp.name };
+  }
+  await recordReviewFetchState(db, placePoolId, "fetched", totalCollected, null);
+  return { kind: "fetched", fetched: totalCollected, placeName: pp.name };
+}
+
+async function handleFetchReviews(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  serperKey: string,
+): Promise<Response> {
+  const placePoolId = body.place_pool_id as string;
+  if (!placePoolId) return json({ error: "place_pool_id required" }, 400);
+
+  const outcome = await fetchReviewsForPlace(
+    db,
     placePoolId,
-    placeName: pp.name,
-    fetched: totalCollected,
-    error: lastErr,
-  });
+    !!body.force_refresh,
+    serperKey,
+  );
+
+  switch (outcome.kind) {
+    case "skipped_fresh":
+      return json({
+        skipped: true,
+        reason: "fresh_within_30_days",
+        count: outcome.count,
+        outcome: outcome.kind,
+      });
+    case "failed":
+      if (outcome.httpStatus) {
+        return json({ error: outcome.error }, outcome.httpStatus);
+      }
+      return json({
+        placePoolId,
+        placeName: outcome.placeName,
+        fetched: outcome.fetched,
+        error: outcome.error,
+        outcome: outcome.kind,
+        depleted: outcome.depleted,
+      });
+    case "none_on_google":
+      return json({
+        placePoolId,
+        placeName: outcome.placeName,
+        fetched: 0,
+        error: null,
+        outcome: outcome.kind,
+      });
+    case "fetched":
+      return json({
+        placePoolId,
+        placeName: outcome.placeName,
+        fetched: outcome.fetched,
+        error: null,
+        outcome: outcome.kind,
+      });
+    default: {
+      const unreachable: never = outcome;
+      throw new Error(`unknown review outcome: ${JSON.stringify(unreachable)}`);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1215,10 +1353,10 @@ export async function handleComposeCollage(
   // lives here rather than in the HTTP action dispatch, where the cron path
   // would bypass it entirely.
   //
-  // Collage paths are content-addressed (`<placeId>/<fingerprint>.png`) and
-  // nothing ever deletes the superseded object, so every photo rotation mints a
-  // NEW ~1 MB object. A re-run over a new city is exactly the 29.3 GiB/week
-  // burst this guardrail exists to stop.
+  // Collage paths are content-addressed (`<placeId>/<fingerprint>.webp`), so every
+  // photo rotation mints a NEW object. #4276 R4 removes the superseded one once the
+  // new one is saved, but a new city is still all new objects, which is the
+  // 29.3 GiB/week burst this guardrail exists to stop.
   const headroom = await checkStorageHeadroom(db, "run-place-intelligence-trial compose_collage");
   if (!headroom.ok) {
     console.error(headroom.message);
@@ -1230,10 +1368,13 @@ export async function handleComposeCollage(
     }, 507);
   }
 
-  // Compose
+  // Compose, then encode. Either failing is a failed collage, and prep reports it:
+  // falling back to PNG would quietly cost ten times the storage.
   let result;
+  let imageBytes: Uint8Array;
   try {
     result = await composeCollage(allPhotos);
+    imageBytes = await encodeCollageWebp(result.image);
   } catch (err) {
     return json({
       error: err instanceof Error ? err.message : "compose failed",
@@ -1241,15 +1382,15 @@ export async function handleComposeCollage(
   }
 
   // Upload to Storage
-  const path = `${placePoolId}/${fingerprint.slice(0, 12)}.png`;
+  const path = `${placePoolId}/${fingerprint.slice(0, 12)}.${COLLAGE_FILE_EXTENSION}`;
   const { error: uploadErr } = await db.storage
     .from(COLLAGE_BUCKET)
-    .upload(path, result.pngBytes, {
-      contentType: "image/png",
+    .upload(path, imageBytes, {
+      contentType: COLLAGE_CONTENT_TYPE,
       upsert: true,
       // [#1644 Stage 2] Omitting cacheControl let Supabase Storage default these
       // objects to `max-age=3600`, while place-photos next door serve
-      // `max-age=31536000`. The key is `<placeId>/<12-hex fingerprint>.png` where
+      // `max-age=31536000`. The key is `<placeId>/<12-hex fingerprint>.<ext>` where
       // the fingerprint is a SHA-256 of the source photo URLs — so the object at a
       // given key can never change, and a one-hour TTL was pure wasted egress on
       // every re-read by Gemini and by the admin console. Rotating photos mint a
@@ -1276,6 +1417,21 @@ export async function handleComposeCollage(
       { error: `place_pool update failed: ${updateErr.message}` },
       500,
     );
+  }
+
+  // #4276 R4: only now is the old collage unreferenced. It stays if anything above
+  // failed, and a failed removal costs storage, not a place, so it doesn't fail the
+  // compose. Only this place's own folder can ever be touched.
+  const supersededKey = collageKeyFromPublicUrl(pp.photo_collage_url);
+  if (supersededKey && supersededKey !== path && supersededKey.startsWith(`${placePoolId}/`)) {
+    const { error: removeErr } = await db.storage
+      .from(COLLAGE_BUCKET)
+      .remove([supersededKey]);
+    if (removeErr) {
+      console.error(
+        `[place-intel-trial:compose_collage] could not remove superseded ${supersededKey}: ${removeErr.message}`,
+      );
+    }
   }
 
   return json({
@@ -1360,14 +1516,36 @@ async function handleStartRun(
     return json({ error: "city_id does not exist in seeding_cities" }, 400);
   }
 
-  // Load all servable place IDs for the city, ranked by review_count desc
-  const { data: pool, error: poolErr } = await db
-    .from("place_pool")
-    .select("id, review_count")
-    .eq("is_servable", true)
-    .eq("city_id", cityId)
-    .order("review_count", { ascending: false, nullsFirst: false });
-  if (poolErr) return json({ error: poolErr.message }, 500);
+  // Load all servable place IDs for the city, ranked by review_count desc.
+  // #4276 C6, C7: the conductor's new-only run takes exactly the places held for their
+  // first evaluation, and its whole-city run adds them to the servable ones. Neither
+  // can reach a place a person hasn't chosen.
+  const placeScope = body.place_scope ?? "servable";
+  if (placeScope !== "servable" && placeScope !== "held" && placeScope !== "servable_and_held") {
+    return json({ error: "place_scope must be 'servable' | 'held' | 'servable_and_held'" }, 400);
+  }
+  // Paged: the server caps one read at 1000 rows, and a large city is many times that.
+  const poolFetch = await fetchAllPages<{ id: string; review_count: number | null }>(
+    async (from, to) => {
+      let q = db
+        .from("place_pool")
+        .select("id, review_count")
+        .eq("city_id", cityId)
+        .order("review_count", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (placeScope === "held") {
+        q = q.eq("serving_hold", true).eq("held_final_check_passed", true);
+      } else if (placeScope === "servable_and_held") {
+        q = q.or("is_servable.eq.true,held_final_check_passed.eq.true");
+      } else {
+        q = q.eq("is_servable", true);
+      }
+      return await q;
+    },
+  );
+  if (poolFetch.error) return json({ error: poolFetch.error }, 500);
+  const pool = poolFetch.rows;
   if (!pool || pool.length === 0) {
     return json({ error: "No servable places in city" }, 400);
   }
@@ -1385,14 +1563,19 @@ async function handleStartRun(
   if (mode === "full_city") {
     sampledIds = pool.map((p) => p.id);
   } else if (mode === "remainder") {
-    const { data: completedRows, error: completedErr } = await db
-      .from("place_intelligence_trial_runs")
-      .select("place_pool_id")
-      .eq("city_id", cityId)
-      .eq("status", "completed");
-    if (completedErr) return json({ error: completedErr.message }, 500);
+    const completedFetch = await fetchAllPages<{ place_pool_id: string }>(
+      async (from, to) =>
+        await db
+          .from("place_intelligence_trial_runs")
+          .select("place_pool_id")
+          .eq("city_id", cityId)
+          .eq("status", "completed")
+          .order("id", { ascending: true })
+          .range(from, to),
+    );
+    if (completedFetch.error) return json({ error: completedFetch.error }, 500);
     const evaluatedSet = new Set(
-      (completedRows ?? []).map((r) => r.place_pool_id as string),
+      completedFetch.rows.map((r) => r.place_pool_id),
     );
     sampledIds = pool.map((p) => p.id).filter((id) => !evaluatedSet.has(id));
     if (sampledIds.length === 0) {
@@ -1435,6 +1618,17 @@ async function handleStartRun(
   // full_city + remainder modes: require confirm_high_cost=true body field for
   // cost > $5 (admin UI surfaces a double-confirm dialog before sending this).
   // ORCH-1008: remainder mirrors full_city semantics.
+  // #4276 C9: the conductor checks its limits with the real number before any spend.
+  if (body.estimate_only === true) {
+    return json({
+      estimate_only: true,
+      totalPlaces: effectiveCount,
+      estimatedCostUsd: estCost,
+      exceedsCostGuard: estCost > COST_GUARD_USD,
+      costGuardUsd: COST_GUARD_USD,
+    });
+  }
+
   if (estCost > COST_GUARD_USD) {
     if (mode === "sample") {
       return json({
@@ -1492,6 +1686,7 @@ async function handleStartRun(
       prompt_version: PROMPT_VERSION,
       model: GEMINI_MODEL_NAME_SHORT,
       started_by: adminId,
+      force_refresh_reviews: body.force_refresh_reviews === true,
       // ORCH-1032 S-3: at capacity → park as queued (no slot, no kick). The cron
       // tg_kick_pending_trial_runs promotes oldest queued → running when a slot
       // frees. Below capacity → behave exactly as before.
@@ -1766,6 +1961,7 @@ async function handleAdminReevalPlace(
     prompt_version: PROMPT_VERSION,
     model: GEMINI_MODEL_NAME_SHORT,
     started_by: null,
+    force_refresh_reviews: body.force_refresh_reviews === true,
     status: "running",
     started_at: new Date().toISOString(),
   });
@@ -1975,7 +2171,6 @@ async function processOnePlace(args: {
 
     // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
     // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
-    // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
     // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
     const {
       aggregate: q2,
@@ -2098,64 +2293,6 @@ async function processOnePlace(args: {
     attachTimingDiagnostics(err, diagnostics);
   }
 }
-
-// ─── Anthropic Q2 wrapper — DEPRECATED (ORCH-0733) ──────────────────────────
-// Preserved as commented historical reference for `git revert`-cheap reversal.
-// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
-// DO NOT re-enable without a DEC entry. Helpers (callAnthropicWithRetry,
-// AnthropicUsage) are also commented above.
-/*
-async function callQuestion(args: {
-  apiKey: string;
-  systemPrompt: string;
-  userTextBlock: string;
-  collageUrl: string;
-  tool: typeof Q2_TOOL;
-  cacheSystem: boolean;
-}): Promise<{ aggregate: any; totalCostUsd: number }> {
-  const { apiKey, systemPrompt, userTextBlock, collageUrl, tool, cacheSystem } = args;
-
-  const systemBlock = [
-    cacheSystem
-      ? { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }
-      : { type: "text", text: systemPrompt },
-  ];
-
-  const reqBody = {
-    model: MODEL_ID,
-    max_tokens: 2000,
-    system: systemBlock,
-    messages: [{
-      role: "user",
-      content: [
-        { type: "image", source: { type: "url", url: collageUrl } },
-        { type: "text", text: userTextBlock },
-      ],
-    }],
-    tool_choice: { type: "tool", name: tool.name },
-    tools: [tool],
-  };
-
-  const { payload, usage } = await callAnthropicWithRetry(apiKey, reqBody);
-  const toolUseBlock = (payload?.content || []).find(
-    (b: { type: string; name?: string }) => b.type === "tool_use" && b.name === tool.name,
-  );
-  if (!toolUseBlock) {
-    throw new Error(`Claude returned no tool_use block for ${tool.name}`);
-  }
-  const aggregate = (toolUseBlock as { input: any }).input;
-
-  const cost = computeCostUsd({
-    inputTokens: usage.input_tokens || 0,
-    outputTokens: usage.output_tokens || 0,
-    cacheReadTokens: usage.cache_read_input_tokens || 0,
-    cacheWriteTokens: usage.cache_creation_input_tokens || 0,
-    useBatchApi: false,
-  });
-
-  return { aggregate, totalCostUsd: cost };
-}
-*/
 
 // ─── Gemini equivalent of callQuestion (ORCH-0713 A/B comparison) ───────────
 // Same inputs (system prompt, user text block, collage URL, Q2 tool schema).
@@ -2970,6 +3107,7 @@ async function handleRetryFailedRun(
       prompt_version: PROMPT_VERSION,
       model: GEMINI_MODEL_NAME_SHORT,
       started_by: adminId,
+      force_refresh_reviews: body.force_refresh_reviews === true,
       status: "running",
       started_at: startedAt,
       source_run_id: sourceRunId,
@@ -3105,6 +3243,34 @@ async function handleCancelTrial(
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
 
+  // #4276 S4: no worker is watching a paused run, so "cancelling" would never
+  // finish. Close it here.
+  const { data: pausedRun, error: pausedErr } = await db
+    .from("place_intelligence_runs")
+    .update({
+      status: "cancelled",
+      cancelled_by: adminId,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", runId)
+    .eq("status", "paused")
+    .select("id")
+    .maybeSingle();
+  if (pausedErr) return json({ error: pausedErr.message }, 500);
+  if (pausedRun) {
+    const { error: childErr } = await db
+      .from("place_intelligence_trial_runs")
+      .update({
+        status: "cancelled",
+        completed_at: new Date().toISOString(),
+        error_message: "cancelled by operator",
+      })
+      .eq("parent_run_id", runId)
+      .in("status", ["pending", "running"]);
+    if (childErr) return json({ error: childErr.message }, 500);
+    return json({ ok: true, mode: "paused", run_status: "cancelled" });
+  }
+
   // ORCH-0737: signal cancellation at run-level. Worker checks status at
   // chunk start and finalizes 'cancelled' within next chunk boundary (~30-90s).
   // Falls back to legacy direct-update if no parent row exists (pre-ORCH-0737 runs).
@@ -3133,6 +3299,60 @@ async function handleCancelTrial(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// #4276 S4: resume_run — continue a run paused for provider depletion. It goes to
+// 'queued' so the cron promotes it under the existing concurrent-run limit. If
+// Serper is still out of credits, the first prep batch simply pauses it again.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #4276 C9: the conductor stops a running or queued run when one of its gates trips.
+// The worker checks between iterations, so what is in flight finishes and is counted.
+export async function handlePauseRun(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const runId = body.run_id as string;
+  if (!runId) return json({ error: "run_id required" }, 400);
+  const { data: run, error } = await db
+    .from("place_intelligence_runs")
+    .update({
+      status: "paused",
+      error_reason: typeof body.reason === "string" ? body.reason : "paused",
+      paused_since: new Date().toISOString(),
+    })
+    .eq("id", runId)
+    .in("status", ["queued", "running"])
+    .select("id, status")
+    .maybeSingle();
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, run_id: runId, paused: !!run });
+}
+
+export async function handleResumeRun(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const runId = body.run_id as string;
+  if (!runId) return json({ error: "run_id required" }, 400);
+
+  const { data: run, error } = await db
+    .from("place_intelligence_runs")
+    .update({ status: "queued", error_reason: null, paused_since: null })
+    .eq("id", runId)
+    .eq("status", "paused")
+    .select("id, status")
+    .maybeSingle();
+  if (error) {
+    // 23505: another run now holds this city's slot.
+    if (error.code === "23505") {
+      return json({ error: "concurrent_run_for_city" }, 409);
+    }
+    return json({ error: error.message }, 500);
+  }
+  if (!run) return json({ error: "run_not_paused" }, 409);
+  return json({ ok: true, run_id: runId, run_status: run.status });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ORCH-0737: list_active_runs — admin UI cross-session resume on mount
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -3141,7 +3361,8 @@ async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
     .from("place_intelligence_runs")
     .select("*")
     // ORCH-1032: include 'queued' so the control tower shows parked runs.
-    .in("status", ["pending", "queued", "running", "cancelling"])
+    // #4276 S4: and 'paused', which needs a person to resume or cancel it.
+    .in("status", ["pending", "queued", "running", "paused", "cancelling"])
     .order("created_at", { ascending: false });
   if (error) return json({ error: error.message }, 500);
   return json({ runs: data || [] });
@@ -3270,7 +3491,7 @@ async function reconcileAndFinalizeParentFromChildren(
   return reconciliation;
 }
 
-async function handleProcessChunk(
+export async function handleProcessChunk(
   db: SupabaseClient,
   body: Record<string, unknown>,
   geminiKey: string,
@@ -3394,6 +3615,11 @@ async function handleProcessChunk(
         prepped: totalPrepped,
       });
     }
+    // #4276 C9: paused between iterations. Nothing more goes out.
+    if (liveRun.status !== "running") {
+      exitReason = `status_${liveRun.status}`;
+      break;
+    }
     if (liveRun.processed_count >= liveRun.total_count) {
       const counterReconcile = await reconcileAndFinalizeParentFromChildren(
         db,
@@ -3468,6 +3694,10 @@ async function handleProcessChunk(
       totalPrepped += result.prepped;
       totalPrepFailed += result.prep_failed;
       totalReclaimed += result.reclaimed;
+      if (result.paused_by_provider) {
+        exitReason = "paused_provider_out_of_credits";
+        break;
+      }
       if (result.prepped === 0 && result.prep_failed === 0) {
         // No prep AND no score work → run functionally complete or all
         // remaining rows transient. Defensively re-check completion.
@@ -3753,6 +3983,13 @@ async function runScoreIteration(args: {
   return { scored: results.length, failed, reclaimed };
 }
 
+class ReviewFetchFailure extends Error {
+  constructor(message: string, readonly depleted: boolean) {
+    super(message);
+    this.name = "ReviewFetchFailure";
+  }
+}
+
 // ─── Prep iteration (v6): PARALLEL-12 OUTER × serial-internal compose ────
 // Returns a result shape (not a Response) — the budget loop wraps this.
 //
@@ -3764,16 +4001,54 @@ async function runScoreIteration(args: {
 // If WORKER_RESOURCE_LIMIT 546 errors appear post-deploy, REVERT to .limit(6)
 // or .limit(3) (single-line edit) and escalate. The internal compose loop
 // MUST stay serial — do NOT parallelize photos within a compose call.
-async function runPrepIteration(args: {
+export async function runPrepIteration(args: {
   db: SupabaseClient;
   serperKey: string;
   runId: string;
   stuckCutoff: string;
   workerStartedAtMs: number;
   iteration: number;
-}): Promise<{ prepped: number; prep_failed: number; reclaimed: number }> {
+}): Promise<
+  {
+    prepped: number;
+    prep_failed: number;
+    reclaimed: number;
+    paused_by_provider: boolean;
+  }
+> {
   const { db, serperKey, runId, stuckCutoff, workerStartedAtMs, iteration } =
     args;
+
+  // #4276 S4: a redo run re-fetches reviews even when they look fresh.
+  const { data: parentRun, error: parentRunErr } = await db
+    .from("place_intelligence_runs")
+    .select("force_refresh_reviews")
+    .eq("id", runId)
+    .maybeSingle();
+  if (parentRunErr) throw new Error(`prep run read failed: ${parentRunErr.message}`);
+  const forceRefreshReviews = parentRun?.force_refresh_reviews === true;
+
+  // #4276: check Serper before claiming a prep batch, so an outage costs nothing: no
+  // collage, no review fetch, no place marked failed. Same pause and reason as running
+  // out of credits mid-batch, so the existing resume (manual, or automatic for system
+  // runs once a newer health check is healthy) picks it up.
+  const { data: serperHealthy, error: healthErr } = await db.rpc("place_intel_provider_healthy", {
+    p_service_key: "serper",
+  });
+  if (healthErr) throw new Error(`Serper health read failed: ${healthErr.message}`);
+  if (serperHealthy !== true) {
+    const { error: pauseErr } = await db.from("place_intelligence_runs")
+      .update({
+        status: "paused",
+        error_reason: "review_provider_out_of_credits",
+        paused_since: new Date().toISOString(),
+      })
+      .eq("id", runId)
+      .eq("status", "running");
+    if (pauseErr) throw new Error(`run could not be paused: ${pauseErr.message}`);
+    console.error(`[v6 prep] run ${runId} paused before prep: Serper's latest health check is not healthy`);
+    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: true };
+  }
 
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
@@ -3785,7 +4060,7 @@ async function runPrepIteration(args: {
 
   if (pickupErr) throw new Error(`prep pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {
-    return { prepped: 0, prep_failed: 0, reclaimed: 0 };
+    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: false };
   }
 
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
@@ -3800,6 +4075,7 @@ async function runPrepIteration(args: {
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
+  let serperRequests = 0;
   const batchStartedAtPerf = performance.now();
   const batchStartedAtIso = new Date().toISOString();
   const batchContext: BatchContext = {
@@ -3844,11 +4120,21 @@ async function runPrepIteration(args: {
     try {
       // fetch_reviews (idempotent — skips if fresh-within-30-days)
       const reviewsStarted = performance.now();
-      await handleFetchReviews(db, {
-        place_pool_id: row.place_pool_id,
-        force_refresh: false,
-      }, serperKey);
+      const reviewOutcome = await fetchReviewsForPlace(
+        db,
+        row.place_pool_id,
+        forceRefreshReviews,
+        serperKey,
+        () => {
+          serperRequests++;
+        },
+      );
       reviewsFetchMs = elapsedMs(reviewsStarted);
+      // #4276 S4: this result used to be ignored, so a failed fetch went on to
+      // Gemini as a place with no reviews. No reviews on Google is not a failure.
+      if (reviewOutcome.kind === "failed") {
+        throw new ReviewFetchFailure(reviewOutcome.error, reviewOutcome.depleted);
+      }
 
       // compose_collage (idempotent — skips if fingerprint-matched cache)
       // Internally serial photo loop; per-call peak ~5 MB with URL transforms.
@@ -3905,10 +4191,12 @@ async function runPrepIteration(args: {
         id: row.id,
         place_pool_id: row.place_pool_id,
         diagnostics: finalDiagnostics,
+        provider_depleted: false,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[v6 prep] row ${row.place_pool_id} prep failed: ${msg}`);
+      const reviewFailure = err instanceof ReviewFetchFailure ? err : null;
       const diagnostics = safeMergeDiagnostics(
         baseDiagnostics,
         getErrorDiagnostics(err),
@@ -3922,20 +4210,41 @@ async function runPrepIteration(args: {
           error_message: msg.slice(0, 500),
         },
       );
-      await db.from("place_intelligence_trial_runs")
-        .update({
-          status: "failed",
-          error_message: `prep: ${msg.slice(0, 500)}`,
-          completed_at: new Date().toISOString(),
-          timing_diagnostics: diagnostics,
-        })
+      // #4276 S4: running out of provider credit says nothing about this place, so
+      // it goes back in the queue for when the run resumes.
+      const providerDepleted = reviewFailure?.depleted === true;
+      const { error: rowUpdateErr } = await db.from("place_intelligence_trial_runs")
+        .update(
+          providerDepleted
+            ? {
+              status: "pending",
+              started_at: null,
+              error_message: `prep: ${msg.slice(0, 500)}`,
+              timing_diagnostics: diagnostics,
+            }
+            : {
+              status: "failed",
+              prep_status: reviewFailure ? "review_failed" : null,
+              error_message: reviewFailure
+                ? `prep: review_fetch_failed: ${msg.slice(0, 480)}`
+                : `prep: ${msg.slice(0, 500)}`,
+              completed_at: new Date().toISOString(),
+              timing_diagnostics: diagnostics,
+            },
+        )
         .eq("id", row.id);
+      if (rowUpdateErr) {
+        console.error(
+          `[v6 prep] row ${row.place_pool_id} failure could not be saved: ${rowUpdateErr.message}`,
+        );
+      }
       emitTiming("row_failed", diagnostics);
       return {
         ok: false,
         id: row.id,
         place_pool_id: row.place_pool_id,
         diagnostics,
+        provider_depleted: providerDepleted,
       };
     }
   }));
@@ -3955,8 +4264,10 @@ async function runPrepIteration(args: {
 
   let preppedCount = 0;
   let prepFailedCount = 0;
+  let requeuedCount = 0;
   for (const r of results) {
     if (r.ok) preppedCount++;
+    else if (r.provider_depleted) requeuedCount++;
     else prepFailedCount++;
   }
   const slowest = results.reduce((best, r) => {
@@ -3983,6 +4294,19 @@ async function runPrepIteration(args: {
     worker_elapsed_ms_at_batch_end: workerElapsedEnd,
   });
 
+  // #4276 M1: a lost count understates spend, so it is reported, not swallowed.
+  if (serperRequests > 0) {
+    const { error: serperCountErr } = await db.rpc("increment_run_serper_requests", {
+      p_run_id: runId,
+      p_requests: serperRequests,
+    });
+    if (serperCountErr) {
+      console.error(
+        `[v6 prep] run ${runId}: ${serperRequests} Serper requests not counted: ${serperCountErr.message}`,
+      );
+    }
+  }
+
   // Failed-prep rows count toward processed (terminal). Successful preps do NOT
   // count yet — they need to flow through score iteration.
   if (prepFailedCount > 0) {
@@ -3995,5 +4319,30 @@ async function runPrepIteration(args: {
     });
   }
 
-  return { prepped: preppedCount, prep_failed: prepFailedCount, reclaimed };
+  // #4276 S4: every further place would fail the same way, so stop here. The run
+  // keeps its queue and its counters; resume_run picks it up once Serper is topped up.
+  const pausedByProvider = requeuedCount > 0;
+  if (pausedByProvider) {
+    const { error: pauseErr } = await db.from("place_intelligence_runs")
+      .update({
+        status: "paused",
+        error_reason: "review_provider_out_of_credits",
+        paused_since: new Date().toISOString(),
+      })
+      .eq("id", runId)
+      .eq("status", "running");
+    if (pauseErr) {
+      throw new Error(`run could not be paused: ${pauseErr.message}`);
+    }
+    console.error(
+      `[v6 prep] run ${runId} paused: review provider out of credits (${requeuedCount} places requeued)`,
+    );
+  }
+
+  return {
+    prepped: preppedCount,
+    prep_failed: prepFailedCount,
+    reclaimed,
+    paused_by_provider: pausedByProvider,
+  };
 }

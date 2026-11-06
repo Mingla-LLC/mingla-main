@@ -993,3 +993,28 @@ export function pgCronDownAlertCopy(
       : `Scheduled job(s) failing: ${fullList}`,
   };
 }
+
+// ── issue #4276 S4 — what Serper said when a health check failed (pure) ──
+export function serperErrorDetail(
+  status: number,
+  body: string,
+): { error_body: string; http_status: number; not_enough_credits: boolean } {
+  return {
+    error_body: body.slice(0, 500),
+    http_status: status,
+    not_enough_credits: /not enough credits/i.test(body),
+  };
+}
+
+// ── issue #4276 M3 — the materialized view refresh against its 10-minute cron (pure) ──
+// Half the interval is the warning: it gives time to act before refreshes overlap.
+export const MV_REFRESH_WARN_FRACTION = 0.5;
+
+export function mvRefreshNearLimit(
+  health: { max_seconds?: number | null; interval_seconds?: number | null } | null,
+): boolean {
+  if (typeof health?.max_seconds !== "number" || typeof health?.interval_seconds !== "number") {
+    return false;
+  }
+  return health.max_seconds >= health.interval_seconds * MV_REFRESH_WARN_FRACTION;
+}

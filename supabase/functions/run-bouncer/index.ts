@@ -22,6 +22,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizePlaceJudgingCaller } from '../_shared/placeJudgingAuth.ts';
 import { type PlaceRow } from '../_shared/bouncer.ts';
 import { runBouncerBatch } from '../_shared/bouncerBatch.ts';
 
@@ -42,10 +43,14 @@ const WRITE_CONCURRENCY = 50;
 const DEFAULT_MAX_ROWS = 3000;
 const MAX_MAX_ROWS = 20000;
 
-serve(async (req: Request) => {
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // #4276: only the service role (conductor, rescore cron) or an active admin.
+  const caller = await authorizePlaceJudgingCaller(req);
+  if (caller instanceof Response) return caller;
 
   const t0 = Date.now();
 
@@ -151,4 +156,7 @@ serve(async (req: Request) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
-});
+};
+
+// Importing this file for tests must not start a server.
+if (import.meta.main) serve(handler);

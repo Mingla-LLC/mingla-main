@@ -58,6 +58,8 @@ import {
   indicatorToStatus,
   matchClassBDepletion,
   type ProbeResult,
+  mvRefreshNearLimit,
+  serperErrorDetail,
   STATUS_PAGE_URLS,
   tallyDeliveryRows,
   // #3040 — video lane verdict.
@@ -435,7 +437,10 @@ async function probeSerper(): Promise<ProbeResult> {
       headers: { "X-API-KEY": key, "Content-Type": "application/json" },
       body: JSON.stringify({ q: "mingla healthcheck", num: 1 }),
     });
-    return { ok: res.ok, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail: {} };
+    // #4276 S4: keep the body. It is the only place a provider says why: every
+    // Serper check from 6 October was a bare HTTP 400 until someone asked by hand.
+    const detail = res.ok ? {} : serperErrorDetail(res.status, await res.text());
+    return { ok: res.ok, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -1002,10 +1007,19 @@ serve(async (req) => {
           });
         } else {
           const verdict = evaluateCronJobHealth((data ?? []) as CronJobHealthRow[]);
+          // #4276 M3: warn before the refresh outgrows its cron, through the same tile
+          // and alert. A failed read is reported in the detail, not read as fine.
+          const { data: mvHealth, error: mvErr } = await serviceClient.rpc("city_pipeline_mv_refresh_health");
+          const mvNearLimit = !mvErr && mvRefreshNearLimit(mvHealth);
           checkRows.push({
-            service_key: "pg_cron", layer: "passive", status: verdict.status,
+            service_key: "pg_cron", layer: "passive",
+            status: mvNearLimit && verdict.status === "healthy" ? "degraded" : verdict.status,
             latency_ms: Date.now() - t0, mode: null, http_status: null,
-            detail: verdict.detail,
+            detail: {
+              ...verdict.detail,
+              mv_refresh: mvErr ? { error: mvErr.message } : mvHealth,
+              mv_refresh_near_limit: mvNearLimit,
+            },
           });
         }
       } catch (e) {
