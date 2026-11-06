@@ -25,6 +25,7 @@ import type {
   DoorTapIntent,
 } from "./doorTapEdge";
 import { DoorTapError } from "./doorTapEdge";
+import { randomUuid } from "../../utils/randomId";
 import { TAP_TO_PAY_SHORT, type TapReaderProblem } from "../../constants/tapToPayCopy";
 
 // ---- Minimal structural views of the SDK objects we read ----------------
@@ -294,12 +295,22 @@ export interface TapToPaySaleFlowInput {
 }
 
 /**
- * The ready screen stops waiting for a tap after this long and shows the host the
- * sale was cancelled. The server's unfinished-tap sweep (door-tap-intent,
- * UNFINISHED_AFTER_MS = 15 minutes) only runs after it, so it never cancels or
- * pushes about a sale the host is still looking at.
+ * No ready screen waits on an intent older than this. The age counts from the
+ * intent's creation (the first create call for its clientRequestId, which is no
+ * later than the server's created_at), not from each ready window, so "Try again"
+ * or "Try another card" never re-arms it. Past the limit the screen shows the
+ * sale cancelled, and the next try cancels the old intent on the server and
+ * makes a fresh one. The server's unfinished-tap sweep (door-tap-intent,
+ * UNFINISHED_AFTER_MS = 15 minutes from created_at) only runs after it, so it
+ * never cancels or pushes about a sale the host is still looking at.
  */
 export const TAP_READY_LIMIT_MS = 10 * 60 * 1000;
+
+/** A clock that wall-clock changes don't move (falls back to Date.now). */
+const monotonicNow = (): number => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  return typeof perf?.now === "function" ? perf.now() : Date.now();
+};
 
 export class TapToPaySaleFlow {
   private readonly input: TapToPaySaleFlowInput;
@@ -311,9 +322,56 @@ export class TapToPaySaleFlow {
   private busy = false;
   private state: TapSaleState = { kind: "idle" };
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** One per intent: a stale intent is replaced under a new id (see TAP_READY_LIMIT_MS). */
+  private clientRequestId: string;
+  /** When the first create call for clientRequestId was sent (monotonicNow). */
+  private intentClockStart: number | null = null;
 
   constructor(input: TapToPaySaleFlowInput) {
     this.input = input;
+    this.clientRequestId = input.clientRequestId;
+  }
+
+  /** How long the ready screen may still wait on the current intent. */
+  private readyTimeLeftMs(): number {
+    if (this.intentClockStart === null) return TAP_READY_LIMIT_MS;
+    return TAP_READY_LIMIT_MS - (monotonicNow() - this.intentClockStart);
+  }
+
+  /**
+   * The current intent reached TAP_READY_LIMIT_MS: cancel it on the server and
+   * forget it, so the next collect is on a fresh intent under a new id. Returns
+   * false when it must not be replaced: Stripe says it already succeeded (the sale
+   * is recorded instead) or the cancel didn't land (the host is told to try again).
+   */
+  private async replaceStaleIntent(): Promise<boolean> {
+    const intent = this.intent;
+    if (intent === null || this.readyTimeLeftMs() > 0) return true;
+    this.emit({ kind: "starting" });
+    try {
+      await this.input.server.cancelIntent({
+        paymentIntentId: intent.paymentIntentId,
+        clientRequestId: this.clientRequestId,
+      });
+    } catch (error) {
+      if (error instanceof DoorTapError && error.code === "payment_succeeded") {
+        this.succeededPaymentIntentId = intent.paymentIntentId;
+        await this.complete();
+        return false;
+      }
+      this.input.report?.("door-tap.replace-stale-intent", error, {
+        payment_intent_id: intent.paymentIntentId,
+        code: error instanceof DoorTapError ? error.code : null,
+      });
+      this.emit({ kind: "failed", message: "Couldn't start the payment. Nothing was charged. Try again." });
+      return false;
+    }
+    this.intent = null;
+    this.paymentIntent = null;
+    this.collectedPaymentIntent = null;
+    this.clientRequestId = randomUuid();
+    this.intentClockStart = null;
+    return true;
   }
 
   getState(): TapSaleState {
@@ -327,7 +385,7 @@ export class TapToPaySaleFlow {
       this.readyTimer = setTimeout(() => {
         this.readyTimer = null;
         this.cancel().catch((error: unknown) => this.input.report?.("door-tap.ready-limit", error));
-      }, TAP_READY_LIMIT_MS);
+      }, Math.max(0, this.readyTimeLeftMs()));
       // Node (tests) only: a waiting screen's timer never keeps the process alive.
       (this.readyTimer as { unref?: () => void }).unref?.();
     }
@@ -355,14 +413,17 @@ export class TapToPaySaleFlow {
         await this.complete();
         return;
       }
+      if (!(await this.replaceStaleIntent())) return;
       this.emit({ kind: "starting" });
       if (this.intent === null) {
+        // A replayed create returns the intent the first call made: keep its clock.
+        if (this.intentClockStart === null) this.intentClockStart = monotonicNow();
         try {
           this.intent = await this.input.server.createIntent({
             eventId: this.input.eventId,
             eventDateId: this.input.draft.eventDateId,
             lines: this.input.draft.lines,
-            clientRequestId: this.input.clientRequestId,
+            clientRequestId: this.clientRequestId,
             buyerPhone: this.input.draft.buyerPhone,
             phoneCountryIso: this.input.draft.phoneCountryIso,
           });
@@ -404,6 +465,10 @@ export class TapToPaySaleFlow {
       return;
     }
     if (this.busy) return;
+    if (this.readyTimeLeftMs() <= 0) {
+      await this.start();
+      return;
+    }
     this.busy = true;
     try {
       await this.collectAndConfirm();
@@ -442,7 +507,7 @@ export class TapToPaySaleFlow {
     try {
       await this.input.server.cancelIntent({
         paymentIntentId: intent.paymentIntentId,
-        clientRequestId: this.input.clientRequestId,
+        clientRequestId: this.clientRequestId,
       });
     } catch (error) {
       if (error instanceof DoorTapError && error.code === "payment_succeeded") {
@@ -585,7 +650,7 @@ export class TapToPaySaleFlow {
     return {
       paymentIntentId: this.intent?.paymentIntentId ?? null,
       feeCents: this.intent?.feeCents ?? null,
-      clientRequestId: this.input.clientRequestId,
+      clientRequestId: this.clientRequestId,
     };
   }
 
@@ -597,7 +662,7 @@ export class TapToPaySaleFlow {
     try {
       const result = await this.input.server.completeIntent({
         paymentIntentId,
-        clientRequestId: this.input.clientRequestId,
+        clientRequestId: this.clientRequestId,
       });
       this.emit({ kind: "approved", amount, result, cardLabel: this.lastCardLabel });
     } catch {

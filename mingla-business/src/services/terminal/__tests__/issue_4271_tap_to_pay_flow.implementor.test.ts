@@ -383,3 +383,165 @@ describe("final P3: a ready screen is never swept while the host is on it", () =
     expect(sweepAfterMs - TAP_READY_LIMIT_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);
   });
 });
+
+describe("retest 2 P3-2: retries never keep a ready screen on an intent older than the limit", () => {
+  const MIN = 60 * 1000;
+  const SWEEP_AFTER_MS = 15 * MIN;
+
+  /** Tap flow whose collect waits for the test; intents are stamped with their creation time. */
+  const staleHarness = (cancelIntent: TapToPayServer["cancelIntent"] = async () => undefined) => {
+    const createdAt = new Map<string, number>();
+    const readyAges: number[] = [];
+    const requestIds: string[] = [];
+    let current: string | null = null;
+    let pending: ((result: TerminalCallResult) => void) | null = null;
+    let made = 0;
+    const terminal: TapToPayTerminalClient = {
+      ensureReaderConnected: jest.fn(async () => ({})),
+      retrievePaymentIntent: jest.fn(async (secret: string) => ({
+        paymentIntent: { id: secret.replace(/_secret$/, ""), status: "requires_payment_method" },
+      })),
+      collectPaymentMethod: jest.fn(
+        () => new Promise<TerminalCallResult>((resolve) => {
+          pending = resolve;
+        }),
+      ),
+      confirmPaymentIntent: jest.fn(async (pi: TerminalPaymentIntentLike) => ({
+        paymentIntent: { ...pi, status: "succeeded" },
+      })),
+      cancelCollectPaymentMethod: jest.fn(async () => {
+        pending?.({ error: { code: "CANCELED" } });
+        pending = null;
+        return {};
+      }),
+    };
+    const createIntent = jest.fn<TapToPayServer["createIntent"]>(async (input) => {
+      requestIds.push(input.clientRequestId);
+      made += 1;
+      const id = `pi_${made}`;
+      createdAt.set(id, Date.now());
+      current = id;
+      return { ...INTENT, paymentIntentId: id, clientSecret: `${id}_secret` };
+    });
+    const cancel = jest.fn<TapToPayServer["cancelIntent"]>(cancelIntent);
+    const completeIntent = jest.fn<TapToPayServer["completeIntent"]>(async () => ({
+      orderId: "ord_1",
+      ticketIds: ["t1"],
+      receiptQueued: true,
+      replayed: false,
+    }));
+    const flow = new TapToPaySaleFlow({
+      eventId: "evt_1",
+      draft: DRAFT,
+      clientRequestId: "req-1",
+      terminal,
+      server: { createIntent, completeIntent, cancelIntent: cancel },
+      onState: (state) => {
+        if (state.kind === "ready" && current !== null) {
+          readyAges.push(Date.now() - (createdAt.get(current) ?? Date.now()));
+        }
+      },
+    });
+    const decline = (): void => {
+      pending?.({ error: { code: "DECLINED_BY_STRIPE_API" } });
+      pending = null;
+    };
+    const flush = async (): Promise<void> => {
+      for (let i = 0; i < 30; i += 1) await Promise.resolve();
+    };
+    return { flow, terminal, createIntent, cancel, completeIntent, readyAges, requestIds, decline, flush, intentAge: () => (current === null ? 0 : Date.now() - (createdAt.get(current) ?? 0)) };
+  };
+
+  test("the retester's 17-minute repro: decline at 9, another card, Try again at 17 -> a fresh intent, never a stale ready", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = staleHarness();
+      void h.flow.start();
+      await h.flush();
+      expect(h.flow.getState().kind).toBe("ready");
+
+      // Minute 9: declined, host tries another card on the same intent.
+      jest.advanceTimersByTime(9 * MIN);
+      h.decline();
+      await h.flush();
+      expect(h.flow.getState().kind).toBe("declined");
+      void h.flow.tryAnotherCard();
+      await h.flush();
+      expect(h.flow.getState().kind).toBe("ready");
+
+      // The limit counts from the intent's creation: it fires at minute 10, not 19.
+      jest.advanceTimersByTime(MIN - 1);
+      await h.flush();
+      expect(h.terminal.cancelCollectPaymentMethod).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      await h.flush();
+      expect(h.terminal.cancelCollectPaymentMethod).toHaveBeenCalledTimes(1);
+      expect(h.flow.getState().kind).toBe("cancelled");
+
+      // Minute 17: "Try again" cancels the old intent and makes a fresh one.
+      jest.advanceTimersByTime(7 * MIN);
+      void h.flow.tryAnotherCard();
+      await h.flush();
+      expect(h.cancel).toHaveBeenCalledWith({ paymentIntentId: "pi_1", clientRequestId: "req-1" });
+      expect(h.createIntent).toHaveBeenCalledTimes(2);
+      expect(h.requestIds[1]).not.toBe("req-1");
+      expect(h.flow.getReceiptFacts()).toEqual(
+        expect.objectContaining({ paymentIntentId: "pi_2", clientRequestId: h.requestIds[1] }),
+      );
+      expect(h.flow.getState().kind).toBe("ready");
+
+      // The fresh intent gets its own full window, and still stops before its sweep.
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await h.flush();
+      expect(h.flow.getState().kind).toBe("cancelled");
+      expect(h.intentAge()).toBeLessThan(SWEEP_AFTER_MS);
+
+      // Every ready screen was on an intent younger than the limit.
+      expect(h.readyAges.length).toBe(3);
+      for (const age of h.readyAges) expect(age).toBeLessThan(TAP_READY_LIMIT_MS);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a stale intent Stripe already charged is recorded, never replaced", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = staleHarness(async () => {
+        throw new DoorTapError("payment_succeeded", "already paid");
+      });
+      void h.flow.start();
+      await h.flush();
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await h.flush();
+      expect(h.flow.getState().kind).toBe("cancelled");
+      void h.flow.tryAnotherCard();
+      await h.flush();
+      expect(h.createIntent).toHaveBeenCalledTimes(1);
+      expect(h.completeIntent).toHaveBeenCalledWith({ paymentIntentId: "pi_1", clientRequestId: "req-1" });
+      expect(h.flow.getState().kind).toBe("approved");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a stale intent whose cancel didn't land is not replaced: the host is asked to try again", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = staleHarness(async () => {
+        throw new DoorTapError("server_error", "down");
+      });
+      void h.flow.start();
+      await h.flush();
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await h.flush();
+      void h.flow.tryAnotherCard();
+      await h.flush();
+      expect(h.createIntent).toHaveBeenCalledTimes(1);
+      expect(h.terminal.collectPaymentMethod).toHaveBeenCalledTimes(1);
+      expect(h.flow.getState().kind).toBe("failed");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
