@@ -1577,7 +1577,22 @@ async function handleStartRun(
     const evaluatedSet = new Set(
       completedFetch.rows.map((r) => r.place_pool_id),
     );
-    sampledIds = pool.map((p) => p.id).filter((id) => !evaluatedSet.has(id));
+    // #4276: a redo also takes places already evaluated that have no reviews on record
+    // (place_intel_places_without_reviews), so their Intelligence runs again with
+    // reviews. Only when asked: include_no_reviews:true, sent with
+    // force_refresh_reviews by the city pipeline when a person picked the redo.
+    let redoSet = new Set<string>();
+    if (body.include_no_reviews === true) {
+      const { data: noReviews, error: noReviewsErr } = await db.rpc(
+        "place_intel_places_without_reviews",
+        { p_city_id: cityId },
+      );
+      if (noReviewsErr) return json({ error: noReviewsErr.message }, 500);
+      redoSet = new Set((noReviews ?? []) as string[]);
+    }
+    sampledIds = pool.map((p) => p.id).filter((id) =>
+      !evaluatedSet.has(id) || redoSet.has(id)
+    );
     if (sampledIds.length === 0) {
       return json({
         error: "no_remainder",

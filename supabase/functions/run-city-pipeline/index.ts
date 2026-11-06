@@ -92,7 +92,7 @@ export const httpHandler = async (req: Request): Promise<Response> => {
 
     switch (body.action) {
       case "preview":
-        return json(await preview(deps, body));
+        return json(await preview(deps, body, admin.id));
       case "start":
         return json(await start(deps, body, admin.id));
       case "status":

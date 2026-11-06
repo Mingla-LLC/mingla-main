@@ -104,8 +104,8 @@ test("the box panel warns about places outside the box before anything changes",
 
 test("a run always has a spend limit, and a whole-city re-check asks first", () => {
   const run = read("components/placePool/CityRunPanel.jsx");
-  assert.ok(run.includes("disabled={!limitOk || starting}"));
-  assert.ok(run.includes("onClick={() => (wholeCity ? setConfirmWhole(true) : start())}"));
+  assert.ok(run.includes("disabled={!limitOk || starting || (server !== null && !plan)}"));
+  assert.ok(run.includes("onClick={() => (server ? setConfirmPlan(true) : wholeCity ? setConfirmWhole(true) : start())}"));
   assert.ok(run.includes('confirmWholeCity: wholeCity ? true : undefined'));
   assert.ok(run.includes('scope: wholeCity ? "whole_city" : "new_only"'));
 });
@@ -391,15 +391,15 @@ test("picking a gap adds the gaps it needs first; a city name picks its whole ro
   const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
   const cells = matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 5 });
   assert.deepEqual([...pipelineLib.neededFirst(["photos"], cells)].sort(), ["pre_check"]);
-  assert.deepEqual([...pipelineLib.neededFirst(["intelligence"], cells)].sort(), ["final_check", "photos", "pre_check", "reviews"]);
-  assert.deepEqual([...pipelineLib.neededFirst(["redo"], cells)].sort(), ["final_check", "photos", "pre_check", "reviews"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["intelligence"], cells)].sort(), ["final_check", "photos", "pre_check"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["redo"], cells)].sort(), ["final_check", "intelligence", "photos", "pre_check", "reviews"]);
   assert.deepEqual([...pipelineLib.neededFirst(["box"], cells)], [], "a box check needs nothing first");
   assert.deepEqual(pipelineLib.wholeRow(cells), ["box", "pre_check", "photos", "final_check", "reviews", "intelligence"]);
   const plan = pipelineLib.planLines(cells, ["photos"], {});
   assert.deepEqual(plan.lines.map((l) => [l.id, l.needed]), [["pre_check", true], ["photos", false]]);
   assert.equal(plan.totalText, "$0.70");
   assert.equal(plan.searches, false);
-  assert.equal(pipelineLib.planLines(cells, ["reviews"], {}).totalText, "$0.70 + Serper");
+  assert.equal(pipelineLib.planLines(cells, ["reviews"], {}).totalText, "$0.70 + Serper + Gemini");
   const section = read("components/placePool/PipelineSection.jsx");
   assert.ok(section.includes("onToggle={pickable(cell) ? () => toggleCell(c.city_id, cell.id) : null}"));
   assert.ok(section.includes("onClick={() => pickCity(row)}"));
@@ -422,4 +422,41 @@ test("Browse: sentence-case headings, the Google type under the name, and a side
   assert.deepEqual(stages.map((x) => [x.id, x.state]), [["pre_check", "failed"], ["photos", "not_run"], ["final_check", "not_run"], ["scores", "not_run"]]);
   assert.equal(stages[0].text, "Failed: No website");
   assert.equal(pipelineLib.placeStages({ is_servable: false })[2].text, "Failed");
+});
+
+
+// ── #4276 round 3: what you pick is what runs ───────────────────────────────
+
+// FAILS-ON-REVERT: restore the stage-order neededFirst (every earlier stage with a gap)
+// and picking Reviews adds Unsearched and Capped again.
+test("picking Reviews adds what the data needs, never a search", () => {
+  const f = { active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 50, rules_only: 0, intelligence_without_reviews: 40 };
+  const cells = matrixCells(f, { uncoveredTiles: 3, unfinishedSearches: 7, cappedOpen: 5 }, { outside_active: 2 });
+  const needed = pipelineLib.neededFirst(["reviews"], cells);
+  for (const search of ["seed", "unsearched", "capped", "box"]) assert.equal(needed.has(search), false, `${search} was added`);
+  assert.deepEqual([...needed], ["redo"], "the redo of places that ran with no reviews is the same work");
+  const plan = pipelineLib.planLines(cells, ["reviews"], {});
+  assert.equal(plan.searches, false);
+  assert.deepEqual(plan.server, { stages: ["intelligence"], redoIntelligence: true });
+  assert.deepEqual(pipelineLib.serverPlanFor(["unsearched", "capped", "photos"]), { stages: ["fill", "split", "photos"], redoIntelligence: false });
+  assert.deepEqual(pipelineLib.serverPlanFor(["seed", "unsearched"]), { stages: ["fill"], redoIntelligence: false });
+  assert.deepEqual(pipelineLib.serverPlanFor(["redo"]), { stages: ["intelligence"], redoIntelligence: true });
+});
+
+// FAILS-ON-REVERT: drop the stages and redo from the start body and this fails; the
+// tester saw a start carrying only cityId, spendLimitUsd, scope and skipSearch.
+test("the start request carries the picks, and Start waits for the server's price", () => {
+  const run = read("components/placePool/CityRunPanel.jsx");
+  assert.ok(run.includes("? { stages: server.stages, redoIntelligence: server.redoIntelligence, confirmRedo: server.redoIntelligence ? true : undefined }"));
+  assert.ok(run.includes(': { skipSearch }),'), "without picks the body is what it always was");
+  assert.ok(run.includes('pipeline("preview", { cityId: city.city_id, stages, redoIntelligence, scope: whole ? "whole_city" : "new_only" })'));
+  assert.ok(run.includes("disabled={!limitOk || starting || (server !== null && !plan)}"), "no Start before the server's price");
+  assert.ok(run.includes("onClick={() => (server ? setConfirmPlan(true) : wholeCity ? setConfirmWhole(true) : start())}"));
+  assert.ok(run.includes('confirmLabel={`Start, ${plan ? planPriceText(plan, serperRate) : ""}`}'), "the confirmation names the server's price");
+});
+
+test("the Intelligence coverage table reads in sentence case", () => {
+  const tab = read("components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx");
+  assert.equal(/uppercase tracking-wide font-mono text-\[var\(--color-text-tertiary\)\]/.test(tab), false);
+  assert.equal(tab.includes('<div className="text-[10px] uppercase tracking-wide'), false);
 });

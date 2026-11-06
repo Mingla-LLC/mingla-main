@@ -700,26 +700,64 @@ export function matrixTotalCosts(rowsOfCells, rates = {}) {
   });
 }
 
-// Stages in the order a run does them. Picking one adds the gaps before it.
-const PLAN_ORDER = Object.freeze(["seed", "unsearched", "capped", "pre_check", "photos", "final_check", "reviews", "intelligence"]);
+// What a picked gap needs first, by what the data needs, not by stage order (the same
+// rule as supabase/functions/run-city-pipeline/plan.ts). Photos are only downloaded for
+// places that passed the pre-check; the final check needs photos; Intelligence and
+// reviews only run on places that passed the final check. A redo or a reviews pick also
+// evaluates places never evaluated, and the two are one piece of work. A search is never
+// needed first: it finds places not found yet, which none of these need.
+const NEEDS = Object.freeze({
+  photos: ["pre_check"],
+  final_check: ["photos", "pre_check"],
+  intelligence: ["final_check", "photos", "pre_check"],
+  reviews: ["final_check", "photos", "pre_check", "intelligence", "redo"],
+  redo: ["final_check", "photos", "pre_check", "intelligence", "reviews"],
+});
+
+// A picked gap as the run's stage list (run-city-pipeline start and preview).
+const SERVER_STAGE = Object.freeze({
+  box: "box",
+  seed: "fill",
+  unsearched: "fill",
+  capped: "split",
+  pre_check: "pre_check",
+  photos: "photos",
+  final_check: "final_check",
+  intelligence: "intelligence",
+});
 
 /** A cell a person can pick: a gap that doesn't simply follow on its own. */
 export function pickable(cell) {
   return !!cell?.gap && cell.kind !== "follows";
 }
 
-/** The gaps a pick needs first, which the plan adds for you. */
+/** The gaps a pick needs first, which the plan adds for you. Only gaps that exist. */
 export function neededFirst(picked, cells) {
   const set = new Set(picked);
   const gaps = new Set((cells ?? []).filter(pickable).map((c) => c.id));
   const needed = new Set();
-  let last = -1;
-  for (const id of set) last = Math.max(last, PLAN_ORDER.indexOf(id === "redo" ? "reviews" : id));
-  for (let i = 0; i <= last; i += 1) {
-    const id = PLAN_ORDER[i];
-    if (gaps.has(id) && !set.has(id)) needed.add(id);
+  for (const id of set) {
+    for (const n of NEEDS[id] ?? []) {
+      if (gaps.has(n) && !set.has(n)) needed.add(n);
+    }
   }
   return needed;
+}
+
+/**
+ * What the run is asked to do for these picks: its stage list and whether to redo
+ * Intelligence with fresh reviews. The server adds what each stage needs first.
+ */
+export function serverPlanFor(picked) {
+  const set = new Set(picked);
+  const stages = [];
+  for (const id of set) {
+    const stage = SERVER_STAGE[id];
+    if (stage && !stages.includes(stage)) stages.push(stage);
+  }
+  const redoIntelligence = set.has("reviews") || set.has("redo");
+  if (redoIntelligence && !stages.includes("intelligence")) stages.push("intelligence");
+  return { stages, redoIntelligence };
 }
 
 /** Everything a whole row picks: every gap that can be picked except optional redos. */
@@ -744,6 +782,7 @@ export function planLines(cells, picked, rates = {}) {
     lines,
     totalText: `${money(usd)}${unpriced.length ? ` + ${[...new Set(unpriced)].join(" + ")}` : ""}`,
     searches: lines.some((l) => ["seed", "unsearched", "capped"].includes(l.id)),
+    server: serverPlanFor(picked),
   };
 }
 

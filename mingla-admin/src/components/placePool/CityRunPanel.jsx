@@ -76,7 +76,15 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
   const [wholeCity, setWholeCity] = useState(false);
   const [skipSearch, setSkipSearch] = useState(false);
   const [confirmWhole, setConfirmWhole] = useState(false);
+  const [confirmPlan, setConfirmPlan] = useState(false);
   const [starting, setStarting] = useState(false);
+  // #4276: with picks, the run does only those stages. The server prices exactly them,
+  // and Start waits for that price; the cells' estimate is only a guide.
+  const server = picks && picks.lines.length > 0 ? picks.server : null;
+  const planKey = server ? JSON.stringify([city.city_id, server.stages, server.redoIntelligence, wholeCity]) : null;
+  const [planPrice, setPlanPrice] = useState(null); // { key, plan }
+  const [planError, setPlanError] = useState(null);
+  const [planLoading, setPlanLoading] = useState(false);
 
   const check = useCallback(async () => {
     setLoading(true);
@@ -94,10 +102,21 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setPreview(null); setPreviewError(null); }, [city.city_id]);
 
-  // #4276: picks with no search stage start the run past searching.
-  const pickedSearches = picks ? picks.searches : null;
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (pickedSearches !== null) setSkipSearch(!pickedSearches); }, [pickedSearches]);
+  // The server's price for exactly these picks, read again whenever they change.
+  useEffect(() => {
+    if (!planKey) return undefined;
+    let live = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPlanLoading(true);
+    setPlanError(null);
+    const [, stages, redoIntelligence, whole] = JSON.parse(planKey);
+    pipeline("preview", { cityId: city.city_id, stages, redoIntelligence, scope: whole ? "whole_city" : "new_only" })
+      .then((res) => { if (live) setPlanPrice({ key: planKey, plan: res.plan }); })
+      .catch((err) => { if (live) setPlanError(err.message); })
+      .finally(() => { if (live) setPlanLoading(false); });
+    return () => { live = false; };
+  }, [planKey, city.city_id]);
+  const plan = planPrice && planPrice.key === planKey ? planPrice.plan : null;
 
   const limitNumber = Number(limit);
   const limitOk = limit.trim() !== "" && Number.isFinite(limitNumber) && limitNumber > 0;
@@ -110,10 +129,13 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
         spendLimitUsd: limitNumber,
         scope: wholeCity ? "whole_city" : "new_only",
         confirmWholeCity: wholeCity ? true : undefined,
-        skipSearch,
+        ...(server
+          ? { stages: server.stages, redoIntelligence: server.redoIntelligence, confirmRedo: server.redoIntelligence ? true : undefined }
+          : { skipSearch }),
       });
       addToast({ variant: "success", title: `Run started for ${city.city_name}`, description: "It carries on if you close this page." });
       setConfirmWhole(false);
+      setConfirmPlan(false);
       onStarted(res.runId);
     } catch (err) {
       addToast({ variant: "error", title: "The run did not start", description: err.message });
@@ -146,7 +168,30 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
             <span className="text-xs text-[var(--color-text-secondary)]">Estimated cost</span>
             <b className="text-[20px] font-semibold tabular-nums text-[var(--color-text-primary)]">{picks.totalText}</b>
           </div>
-          <p className="text-[11px] leading-4 text-[var(--color-text-tertiary)]">An estimate from the rates a run uses. The run does every stage the city still needs, in order, and checks the server's own cost first.</p>
+          <p className="text-[11px] leading-4 text-[var(--color-text-tertiary)]">The cells' estimate. The run does only these stages and what they need first, then stops.</p>
+          <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] p-3" aria-label="Server price">
+            {planError ? (
+              <AlertCard variant="error" title="Couldn't price the plan">{planError}</AlertCard>
+            ) : !plan || planLoading ? (
+              <span className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]"><Spinner size="sm" /> Pricing on the server…</span>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-xs font-medium text-[var(--color-text-primary)]">Server price{plan.atLeast ? ", at least" : ""}</span>
+                  <b className="text-[18px] font-semibold tabular-nums">{planPriceText(plan, serperRate)}</b>
+                </div>
+                <ul className="flex flex-col gap-0.5 text-[12px] tabular-nums text-[var(--color-text-secondary)]">
+                  {plan.lines.map((l) => (
+                    <li key={l.stage} className="flex justify-between gap-3">
+                      <span>{stageLabel(l.stage)}{l.redo ? " (redo with fresh reviews)" : ""}{l.places != null ? ` · ${count(l.places)} places` : ""}</span>
+                      <span>{Number(l.usd) > 0 ? usd(l.usd) : "Free"}</span>
+                    </li>
+                  ))}
+                </ul>
+                {plan.serperRequests > 0 && <span className="text-[11px] text-[var(--color-text-tertiary)]">{serperCostText(plan.serperRequests, serperRate)}</span>}
+              </>
+            )}
+          </div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -197,19 +242,28 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
             <input id={`whole-city-${city.city_id}`} type="checkbox" className="h-5 w-5" checked={wholeCity} onChange={(e) => setWholeCity(e.target.checked)} />
             <label htmlFor={`whole-city-${city.city_id}`}>Re-check the whole city, not just new places</label>
           </div>
-          <div className="flex min-h-10 items-center gap-2">
-            <input id={`skip-search-${city.city_id}`} type="checkbox" className="h-5 w-5" checked={skipSearch} onChange={(e) => setSkipSearch(e.target.checked)} />
-            <label htmlFor={`skip-search-${city.city_id}`}>Skip searching; only check, photograph and score</label>
-          </div>
+          {server ? (
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              {server.stages.some((st) => ["box", "fill", "split"].includes(st))
+                ? "Searches run because you picked them."
+                : "No searching: nothing you picked needs places not found yet."}
+            </p>
+          ) : (
+            <div className="flex min-h-10 items-center gap-2">
+              <input id={`skip-search-${city.city_id}`} type="checkbox" className="h-5 w-5" checked={skipSearch} onChange={(e) => setSkipSearch(e.target.checked)} />
+              <label htmlFor={`skip-search-${city.city_id}`}>Skip searching; only check, photograph and score</label>
+            </div>
+          )}
         </div>
       </div>
 
       <div>
-        <Button icon={Play} disabled={!limitOk || starting} loading={starting}
-          onClick={() => (wholeCity ? setConfirmWhole(true) : start())}>
+        <Button icon={Play} disabled={!limitOk || starting || (server !== null && !plan)} loading={starting}
+          onClick={() => (server ? setConfirmPlan(true) : wholeCity ? setConfirmWhole(true) : start())}>
           Start run
         </Button>
         {!limitOk && <span className="ml-3 text-xs text-[var(--color-text-tertiary)]">Set a spend limit to start.</span>}
+        {limitOk && server && !plan && <span className="ml-3 text-xs text-[var(--color-text-tertiary)]">Waiting for the server's price.</span>}
       </div>
 
       <ConfirmModal
@@ -223,8 +277,28 @@ function RunPlan({ city, serperRate, onStarted, picks }) {
         <p>Every place in the city is judged again by both checks, not only new ones. Live places can leave Explorers' decks if they now fail.</p>
         <p>Spend limit: {usd(limitNumber)}.</p>
       </ConfirmModal>
+      <ConfirmModal
+        open={confirmPlan && !!plan}
+        title={`Run ${plan ? plan.stages.length : ""} stages for ${city.city_name}?`}
+        confirmLabel={`Start, ${plan ? planPriceText(plan, serperRate) : ""}`}
+        busy={starting}
+        onConfirm={start}
+        onClose={() => setConfirmPlan(false)}
+      >
+        <p>The server prices this run at {plan ? planPriceText(plan, serperRate) : "…"}{plan?.atLeast ? " or more: the checks can add places before photos and Intelligence, and each asks again if it goes over its limit" : ""}.</p>
+        <p>It does: {plan ? plan.stages.map(stageLabel).join(", ") : ""}. Then it stops.</p>
+        {server?.redoIntelligence && <p className="text-[var(--color-warning-700)]">Redoing Intelligence with fresh reviews changes live decks for the places it covers.</p>}
+        {wholeCity && <p>Every place in the city is judged again by both checks, not only new ones.</p>}
+        <p>Spend limit: {usd(limitNumber)}.</p>
+      </ConfirmModal>
     </div>
   );
+}
+
+/** The server's price in words: dollars, plus Serper by request until it is priced. */
+function planPriceText(plan, serperRate) {
+  if (plan.totalUsd != null) return usd(plan.totalUsd);
+  return `${usd(plan.knownUsd)} + Serper${serperRate == null ? ` (${count(plan.serperRequests)} requests, unpriced)` : ""}`;
 }
 
 // ── During and after a run ───────────────────────────────────────────────────
