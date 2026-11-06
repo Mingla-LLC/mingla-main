@@ -364,6 +364,10 @@ $final$;
 --             amount (a fraction, text, above 2^31) is ignored: the refund row
 --             is still minted, from the next stored lookup or the session's own
 --             total. Paystack too (W-PS-BAD).
+--   W3-*      (retest 3, tester) both Stripe lookups malformed ('' then
+--             '1e3'): the session's own total, no abort; a negative stored
+--             amount is malformed, so the next lookup is used (W3-NEG-NEXT);
+--             Paystack '' and an 11-digit amount are ignored, no abort.
 --
 -- FAILS-ON-REVERT (verified by retest 2 at 63ac7e962b): drop the currency
 -- filters in issue_4271_ticket_late_refund_amounts -> W-CUR fails; match by
@@ -372,6 +376,8 @@ $final$;
 -- fails; use `buyer_total_cents` before the stored amount (63ac7e962b^ body)
 -- -> W-CAP and W-NEWEST fail. Restore the bare `::integer` casts (the body
 -- before the P4-2 guard) -> W-BAD and W-PS-BAD abort the mint with 22P02 / 22003.
+-- Retest 3: the same revert -> W3-BOTH-BAD, W3-PS-EMPTY and W3-PS-DIGITS11
+-- abort the mint, and W3-NEG-NEXT refunds 3135 instead of 3200.
 -- ===========================================================================
 DO $retest2$
 DECLARE
@@ -433,6 +439,12 @@ BEGIN
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount',3000000000,'currency','gbp','age',0))),
     jsonb_build_object('tag','W-BAD-NEXT', 'expect',3200, 'fee',135, 'events', jsonb_build_array(
       jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','3135.5','currency','gbp','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',3200,'currency','gbp','age',0))),
+    jsonb_build_object('tag','W3-BOTH-BAD', 'expect',3135, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','','currency','gbp','age',0),
+      jsonb_build_object('type','checkout.session.completed','pi','SELF','amount','1e3','currency','gbp','age',0))),
+    jsonb_build_object('tag','W3-NEG-NEXT', 'expect',3200, 'fee',135, 'events', jsonb_build_array(
+      jsonb_build_object('type','payment_intent.succeeded','pi','SELF','amount','-3135','currency','gbp','age',0),
       jsonb_build_object('type','checkout.session.completed','pi','SELF','amount',3200,'currency','gbp','age',0)))
   )) LOOP
     v_session := gen_random_uuid();
@@ -528,7 +540,9 @@ BEGIN
   -- ignored, the refund row still lands for the session's total.
   FOR v_case IN SELECT * FROM jsonb_array_elements(jsonb_build_array(
     jsonb_build_object('tag','W-PS-BAD-TEXT','amount','abc'),
-    jsonb_build_object('tag','W-PS-BAD-OVERSIZED','amount',2147483648)
+    jsonb_build_object('tag','W-PS-BAD-OVERSIZED','amount',2147483648),
+    jsonb_build_object('tag','W3-PS-EMPTY','amount',''),
+    jsonb_build_object('tag','W3-PS-DIGITS11','amount','99999999999')
   )) LOOP
     v_session := gen_random_uuid();
     v_key := replace(v_session::text, '-', '');
