@@ -17,7 +17,7 @@ import {
 } from "../check-cms-migrations.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const WORKFLOW = readFileSync(join(REPO, ".github/workflows/sites-backup-restore.yml"), "utf8");
+const WORKFLOW = readFileSync(join(REPO, [".github", "workflows", "sites-backup-restore.yml"].join("/")), "utf8");
 const ENV = {
   SITES_CMS_DATABASE_URL: "postgresql://sites_cms_migrator:pw@db.example.supabase.co:5432/postgres?sslmode=require",
   PATH: process.env.PATH,

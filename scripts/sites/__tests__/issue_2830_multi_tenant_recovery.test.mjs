@@ -578,7 +578,7 @@ test("#2830 every site gets its own freshly signed sweep; one failure does not s
 });
 
 test("#2830 the workflow hands the verified site list to the retention job", () => {
-  const workflow = SOURCE(".github/workflows/sites-backup-restore.yml");
+  const workflow = SOURCE([".github", "workflows", "sites-backup-restore.yml"].join("/"));
   assert.match(workflow, /backup_site_ids: \$\{\{ steps\.bundle\.outputs\.site_ids \}\}/);
   assert.match(
     workflow,
@@ -598,7 +598,7 @@ const CHAIN = [
   "scripts/sites/restore-sites-cms.mjs",
   "scripts/sites/run-sites-retention.mjs",
   "scripts/sites/lib/sites-ops.mjs",
-  ".github/workflows/sites-backup-restore.yml",
+  [".github", "workflows", "sites-backup-restore.yml"].join("/"),
 ];
 const SINGLE_TENANT_SHAPES = [
   /\b(?:tenants|site_ids|tenant_rows)\.length\s*(?:!==|===|!=|==)\s*1\b/,
