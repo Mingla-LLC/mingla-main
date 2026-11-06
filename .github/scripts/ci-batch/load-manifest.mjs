@@ -160,8 +160,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
 // (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
 // #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
-// #4270: register the brand plan migrations (20280414004270-20280414024270) and their proofs the same way.
-export const BOOTSTRAP_SHA256 = "bde7a348af02ba06995e52e55b1f217a27b240d8bb0774db3d4aff5f6c69f68d";
+// #4270: register the brand plan migrations (20280423004270-20280423024270) and their proofs the same way.
+export const BOOTSTRAP_SHA256 = "5fc144120d55b38959663490ac96a12f9e19c93d950f42cb857f52c70f26cd3b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

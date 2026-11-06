@@ -1,6 +1,6 @@
 -- Issue #4270 (Wave 1 rework) -- implementor regression tests for the tester's
 -- W1 defects, on the fully replayed PG17 schema
--- (20280414004270_issue_4270_w1_work_board_three_columns.sql).
+-- (20280423004270_issue_4270_w1_work_board_three_columns.sql).
 -- MINGLA-INVARIANT: I-4270-COLUMNS-NEVER-CUT-BY-ANOTHER | issue #4270 | with per_status the board's limit applies to each column, so a long To do never empties In progress or Done, and each column says how many cards it has and how many came back.
 -- MINGLA-INVARIANT: I-4270-DONE-THIS-WEEK | issue #4270 | Done on the board (and its count) is the cards closed since Monday 00:00 of the sprint week in the viewer's time zone (UTC when unknown); done_days asks for a rolling window instead.
 --

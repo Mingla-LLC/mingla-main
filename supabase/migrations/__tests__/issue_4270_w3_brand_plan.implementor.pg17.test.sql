@@ -1,5 +1,5 @@
 -- Issue #4270 (Wave 3) -- implementor happy path for
--- 20280414024270_issue_4270_w3_brand_plan.sql, on the fully replayed PG17
+-- 20280423024270_issue_4270_w3_brand_plan.sql, on the fully replayed PG17
 -- schema.
 -- MINGLA-INVARIANT: I-4270-HOST-PLAN-MEMBERSHIP | issue #4270 | every host plan function answers not_found, the same words, for a missing brand and for someone outside it; only marketing managers and up add (D14).
 -- MINGLA-INVARIANT: I-4270-HOST-EDITS-OWN-ONLY | issue #4270 | a host changes or removes only items they added, while Mingla has not started on them (D7).

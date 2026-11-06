@@ -1,5 +1,5 @@
 -- Issue #4270 (Wave 2) -- tester adversarial suite for
--- 20280414014270_issue_4270_w2_host_card.sql, on the fully replayed PG17
+-- 20280423014270_issue_4270_w2_host_card.sql, on the fully replayed PG17
 -- schema. Different angles from the implementor's happy path:
 --
 --   X-SHOW    D15, every route an agent has to "Host can see this": a batch
