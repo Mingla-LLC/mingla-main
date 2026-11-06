@@ -358,7 +358,8 @@ export function phase3dContractDigest(manifest) {
 // #4271: register the tester adversarial PostgreSQL proof the same way.
 // #4271: register the rework implementor PostgreSQL proof the same way.
 // #4271: register the Apple build PostgreSQL proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "852f70995ffd668595882d216f7b1437932a9c6520021eeecbcc6bb228d0a4e4";
+// #4271: register the final tester PostgreSQL proof the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c90baf41d80d3df7e07d2e1fba713c81a7890bdfe283420e358769bc309deb41";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

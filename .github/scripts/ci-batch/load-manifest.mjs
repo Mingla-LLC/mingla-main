@@ -145,7 +145,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4271: register the tester adversarial PostgreSQL proof the same way.
 // #4271: register the rework implementor PostgreSQL proof the same way.
 // #4271: register the Apple build PostgreSQL proof the same way.
-export const BOOTSTRAP_SHA256 = "e1bc6d1d125cf01b024b603870f4a8694d1e365332534a11999e82cff52ae828";
+// #4271: register the final tester PostgreSQL proof the same way.
+export const BOOTSTRAP_SHA256 = "ab4a8f0856d28338d22663a1fa40d7f840ba1fcec2d01a987cc0334e402e18f3";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

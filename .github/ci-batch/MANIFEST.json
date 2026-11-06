@@ -20654,6 +20654,8 @@
         "supabase/migrations/__tests__/issue_4271_door_pay.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4271_door_pay_final.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4271_door_pay_final.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_door_pay_rework.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_door_pay_rework.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
@@ -25535,6 +25537,8 @@
         "supabase/migrations/__tests__/issue_4271_door_pay.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_door_pay.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4271_door_pay_final.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4271_door_pay_final.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_door_pay_rework.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_door_pay_rework.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
@@ -52809,5 +52813,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "852f70995ffd668595882d216f7b1437932a9c6520021eeecbcc6bb228d0a4e4"
+  "phase3eContractSha256": "c90baf41d80d3df7e07d2e1fba713c81a7890bdfe283420e358769bc309deb41"
 }
