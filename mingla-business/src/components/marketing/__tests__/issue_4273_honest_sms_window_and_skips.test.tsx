@@ -3,12 +3,12 @@
  *
  * Run: npx jest src/components/marketing/__tests__/issue_4273_honest_sms_window_and_skips.test.tsx --maxWorkers=2
  *
- * MINGLA-INVARIANT: I-4273-SMS-WINDOW-COPY-FROM-SENDER-HOURS | issue #4273 | The composer's SMS timing note is built from SMS_QUIET_HOURS, which the drift test pins to marketing-send's QUIET_HOURS, so it never states a window the sender does not use.
- * MINGLA-INVARIANT: I-4273-SKIPPED-LINE-GIVES-NO-REASON | issue #4273 | The send-now confirmation reports recipients sealed and not sent as "couldn't be reached" with no reason.
- *
  * fails-on-revert: restoring the hard-coded "(8 AM–9 PM)" copy, or the old
  * "safely skipped because …" line, fails these assertions.
  */
+
+// MINGLA-INVARIANT: I-4273-SMS-WINDOW-COPY-FROM-SENDER-HOURS | issue #4273 | The composer's SMS timing note is built from SMS_QUIET_HOURS, which the drift test pins to marketing-send's QUIET_HOURS, so it never states a window the sender does not use.
+// MINGLA-INVARIANT: I-4273-SKIPPED-LINE-GIVES-NO-REASON | issue #4273 | The send-now confirmation reports recipients sealed and not sent as "couldn't be reached" with no reason.
 
 import { readFileSync } from "fs";
 import path from "path";
