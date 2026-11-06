@@ -4,6 +4,16 @@
 //   StatTile   a label, a big number and one line under it
 //   ChipGroup  a row of pill filters, one pressed
 //   ShareBar   a thin bar of a share, brand coloured
+//   PortalModal  the admin Modal, drawn on document.body so the gaps table's sticky
+//              city column and the sticky Run plan can never sit on top of it
+
+import { createPortal } from "react-dom";
+import { Modal } from "../ui/Modal";
+
+export function PortalModal(props) {
+  if (typeof document === "undefined") return <Modal {...props} />;
+  return createPortal(<Modal {...props} />, document.body);
+}
 
 export function StatTile({ label, value, note, tone = "default" }) {
   const valueTone = tone === "error" ? "text-[var(--color-error-700)]" : "text-[var(--color-text-primary)]";

@@ -23,7 +23,9 @@ import { Plus, RefreshCw, X } from "lucide-react";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
-import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { ModalBody, ModalFooter } from "../ui/Modal";
+// #4276: modals here are drawn on document.body, above the sticky table and Run plan.
+import { ChipGroup, PortalModal as Modal, StatTile } from "./PoolUi";
 import { useToast } from "../../context/ToastContext";
 import { EmbeddedPageContext } from "../layout/embeddedPage";
 import { supabase } from "../../lib/supabase";
@@ -62,7 +64,6 @@ import {
 import { CityRunPanel } from "./CityRunPanel";
 import { CityBoxPanel } from "./CityBoxPanel";
 import { ScoringTools } from "./ScoringTools";
-import { ChipGroup, StatTile } from "./PoolUi";
 import { ActiveRunsControlTower } from "../placeIntelligenceTrial/ActiveRunsControlTower";
 import { IntelligenceOverviewTab } from "../placeIntelligenceTrial/IntelligenceOverviewTab";
 import { AddCityModal, PlacePoolManagementPage } from "../../pages/PlacePoolManagementPage";

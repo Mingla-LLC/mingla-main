@@ -12,7 +12,9 @@ import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { Spinner } from "../ui/Spinner";
-import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { ModalBody, ModalFooter } from "../ui/Modal";
+// #4276: modals here are drawn on document.body, above the sticky table and Run plan.
+import { PortalModal as Modal } from "./PoolUi";
 import { useToast } from "../../context/ToastContext";
 import { seeding } from "../../services/cityPipelineService";
 import { completenessSummary, count, outsideBoxRow, plural, usd } from "../../lib/cityPipeline";
