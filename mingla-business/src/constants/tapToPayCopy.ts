@@ -136,5 +136,16 @@ export const TAP_UNKNOWN_RESULT_COPY = {
   body: "We don't know yet if this went through. Don't take another payment until this finishes.",
 } as const;
 
+/**
+ * #4271 — a tap that went through after the host closed the sale. The host is
+ * told so they don't take the money again (cash or another card).
+ */
+export const tapPaidAfterCloseCopy = (amount: string, saved: boolean): { title: string; body: string } => ({
+  title: "A card payment went through",
+  body: saved
+    ? `${amount} was paid by card after you closed the sale. It's recorded as a sale. Don't take this payment again.`
+    : `${amount} was paid by card after you closed the sale. It will be recorded as a sale shortly. Don't take this payment again.`,
+});
+
 export const TAP_PROCESSING_TEXT = "Processing payment…";
 export const TAP_SEND_RECEIPT = "Send receipt";

@@ -292,6 +292,12 @@ export interface TapToPaySaleFlowInput {
   onBeforeCollect?: () => void;
   /** Non-fatal reporter (reportNonFatal in the app). */
   report?: (scope: string, error: unknown, extra?: Record<string, unknown>) => void;
+  /**
+   * A tap Stripe reports paid after the host closed the sale (closeSale). It is
+   * recorded (saved) or left to the webhook backstop (not saved yet); either way
+   * the app tells the host, so they don't take the money again.
+   */
+  onPaidAfterClose?: (outcome: { amount: TapAmount; saved: boolean }) => void;
 }
 
 /**
@@ -326,6 +332,14 @@ export class TapToPaySaleFlow {
   private clientRequestId: string;
   /** When the first create call for clientRequestId was sent (monotonicNow). */
   private intentClockStart: number | null = null;
+  /**
+   * Set by closeSale and abandonForPayCode: no path may create, retrieve or
+   * collect after it. An intent that arrives after it is cancelled on the server
+   * at once (recorded instead if Stripe says it was paid).
+   */
+  private closed = false;
+  /** closeSale only: the screen is gone, so a late payment is reported via onPaidAfterClose. */
+  private hostLeft = false;
 
   constructor(input: TapToPaySaleFlowInput) {
     this.input = input;
@@ -366,12 +380,40 @@ export class TapToPaySaleFlow {
       this.emit({ kind: "failed", message: "Couldn't start the payment. Nothing was charged. Try again." });
       return false;
     }
+    this.forgetIntent();
+    return !this.closed;
+  }
+
+  /** The current intent is cancelled on the server: the next sale starts a fresh one. */
+  private forgetIntent(): void {
     this.intent = null;
     this.paymentIntent = null;
     this.collectedPaymentIntent = null;
     this.clientRequestId = randomUuid();
     this.intentClockStart = null;
-    return true;
+  }
+
+  /**
+   * An intent that came back after the sale was closed: cancel it on the server
+   * at once and never collect on it. If Stripe says it was paid, record the sale.
+   */
+  private async settleIntentAfterClose(intent: DoorTapIntent, clientRequestId: string): Promise<void> {
+    try {
+      await this.input.server.cancelIntent({ paymentIntentId: intent.paymentIntentId, clientRequestId });
+      if (this.intent?.paymentIntentId === intent.paymentIntentId) this.forgetIntent();
+    } catch (error) {
+      if (error instanceof DoorTapError && error.code === "payment_succeeded") {
+        this.intent = intent;
+        this.clientRequestId = clientRequestId;
+        this.succeededPaymentIntentId = intent.paymentIntentId;
+        await this.complete();
+        return;
+      }
+      this.input.report?.("door-tap.cancel-after-close", error, {
+        payment_intent_id: intent.paymentIntentId,
+        code: error instanceof DoorTapError ? error.code : null,
+      });
+    }
   }
 
   getState(): TapSaleState {
@@ -413,39 +455,24 @@ export class TapToPaySaleFlow {
         await this.complete();
         return;
       }
+      if (this.closed) return;
       if (!(await this.replaceStaleIntent())) return;
       this.emit({ kind: "starting" });
-      if (this.intent === null) {
-        // A replayed create returns the intent the first call made: keep its clock.
-        if (this.intentClockStart === null) this.intentClockStart = monotonicNow();
-        try {
-          this.intent = await this.input.server.createIntent({
-            eventId: this.input.eventId,
-            eventDateId: this.input.draft.eventDateId,
-            lines: this.input.draft.lines,
-            clientRequestId: this.clientRequestId,
-            buyerPhone: this.input.draft.buyerPhone,
-            phoneCountryIso: this.input.draft.phoneCountryIso,
-          });
-        } catch (error) {
-          if (error instanceof DoorTapError && error.code === "tap_not_available") {
-            this.emit({ kind: "not_on_this_phone" });
-            return;
-          }
-          this.emit({ kind: "failed", message: serverMessage(error) });
-          return;
-        }
-      }
+      if (this.intent === null && !(await this.createIntent())) return;
+      const intent = this.intent;
+      if (intent === null || this.closed) return;
       // A sale never accepts Apple's terms: terms-not-accepted goes to setup.
-      const connected = await this.input.terminal.ensureReaderConnected(this.intent.locationId, {
+      const connected = await this.input.terminal.ensureReaderConnected(intent.locationId, {
         mayAcceptTerms: false,
       });
+      if (this.closed) return;
       if (connected.error) {
         this.emitTerminalFailure(connected.error, "Couldn't start Tap to Pay on this phone. Try again.");
         return;
       }
       if (this.paymentIntent === null) {
-        const retrieved = await this.input.terminal.retrievePaymentIntent(this.intent.clientSecret);
+        const retrieved = await this.input.terminal.retrievePaymentIntent(intent.clientSecret);
+        if (this.closed) return;
         if (retrieved.error || retrieved.paymentIntent === undefined) {
           this.emit({ kind: "failed", message: "Couldn't start the payment. Nothing was charged. Try again." });
           return;
@@ -458,8 +485,41 @@ export class TapToPaySaleFlow {
     }
   }
 
+  /** door-tap-intent create for the current request id. False when nothing usable came back. */
+  private async createIntent(): Promise<boolean> {
+    // A replayed create returns the intent the first call made: keep its clock.
+    if (this.intentClockStart === null) this.intentClockStart = monotonicNow();
+    const clientRequestId = this.clientRequestId;
+    let created: DoorTapIntent;
+    try {
+      created = await this.input.server.createIntent({
+        eventId: this.input.eventId,
+        eventDateId: this.input.draft.eventDateId,
+        lines: this.input.draft.lines,
+        clientRequestId,
+        buyerPhone: this.input.draft.buyerPhone,
+        phoneCountryIso: this.input.draft.phoneCountryIso,
+      });
+    } catch (error) {
+      if (this.closed) return false;
+      if (error instanceof DoorTapError && error.code === "tap_not_available") {
+        this.emit({ kind: "not_on_this_phone" });
+        return false;
+      }
+      this.emit({ kind: "failed", message: serverMessage(error) });
+      return false;
+    }
+    if (this.closed) {
+      await this.settleIntentAfterClose(created, clientRequestId);
+      return false;
+    }
+    this.intent = created;
+    return true;
+  }
+
   /** After a decline, PIN request or cancel: tap again on the SAME intent. */
   async tryAnotherCard(): Promise<void> {
+    if (this.closed) return;
     if (this.intent === null || this.paymentIntent === null) {
       await this.start();
       return;
@@ -491,6 +551,7 @@ export class TapToPaySaleFlow {
    * reports as succeeded is recorded instead of replaced.
    */
   async abandonForPayCode(): Promise<PayCodeSwitchOutcome> {
+    this.closed = true;
     if (this.succeededPaymentIntentId !== null) {
       await this.retrySave();
       return "already_paid";
@@ -519,9 +580,24 @@ export class TapToPaySaleFlow {
         payment_intent_id: intent.paymentIntentId,
         code: error instanceof DoorTapError ? error.code : null,
       });
-      if (this.state.kind === "unknown_result") return "blocked";
+      if (this.state.kind === "unknown_result" && !this.hostLeft) {
+        // The sale stays on screen: its only way on is confirming the same intent.
+        this.closed = false;
+        return "blocked";
+      }
+      return "switch";
     }
+    if (this.intent?.paymentIntentId === intent.paymentIntentId) this.forgetIntent();
     return "switch";
+  }
+
+  /**
+   * The pay code couldn't be made after abandonForPayCode: the tap screen stays,
+   * so a new tap may start again (on a fresh intent: the old one was cancelled).
+   */
+  reopen(): void {
+    if (this.hostLeft) return;
+    this.closed = false;
   }
 
   private emitTerminalFailure(error: TerminalErrorLike, fallbackMessage: string): void {
@@ -556,6 +632,7 @@ export class TapToPaySaleFlow {
   }
 
   private async collectAndConfirm(): Promise<void> {
+    if (this.closed) return;
     const amount = this.amount();
     const current = this.paymentIntent;
     if (current === null) return;
@@ -639,6 +716,8 @@ export class TapToPaySaleFlow {
 
   /** The host closed the sale. An open intent is cancelled unless it's mid-confirm or paid. */
   async closeSale(): Promise<void> {
+    this.closed = true;
+    this.hostLeft = true;
     this.clearReadyTimer();
     const kind = this.state.kind;
     if (kind === "reading" || kind === "saving" || kind === "approved" || kind === "save_failed") return;
@@ -665,12 +744,14 @@ export class TapToPaySaleFlow {
         clientRequestId: this.clientRequestId,
       });
       this.emit({ kind: "approved", amount, result, cardLabel: this.lastCardLabel });
+      if (this.hostLeft) this.input.onPaidAfterClose?.({ amount, saved: true });
     } catch {
       this.emit({
         kind: "save_failed",
         amount,
         message: "The card was charged, but the sale didn't save yet. Don't charge again. Tap Try again to finish.",
       });
+      if (this.hostLeft) this.input.onPaidAfterClose?.({ amount, saved: false });
     }
   }
 

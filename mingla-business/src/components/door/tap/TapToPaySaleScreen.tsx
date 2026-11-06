@@ -8,7 +8,7 @@
  * succeeded payment (door-tap-intent complete).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Platform, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, AppState, Platform, Share, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,6 +28,7 @@ import {
   TAP_TIMED_OUT_COPY,
   TAP_UNKNOWN_RESULT_COPY,
   TAP_TO_PAY_SHORT,
+  tapPaidAfterCloseCopy,
   tapReaderProblemCanRetry,
   tapReaderProblemCopy,
   tapReaderProblemTitle,
@@ -163,10 +164,16 @@ export const TapToPaySaleScreen = ({
         if (timing !== null) postHogService.capture("door_tap_ui_ms", { ms: timing.ms, warm: timing.warm });
       },
       report: reportNonFatal,
+      // The screen may be gone: a native alert still reaches the host.
+      onPaidAfterClose: ({ amount, saved }) => {
+        void queryClient.invalidateQueries({ queryKey: doorSaleKeys.byEvent(eventId) });
+        const copy = tapPaidAfterCloseCopy(formatAmount(amount), saved);
+        Alert.alert(copy.title, copy.body);
+      },
     });
     flowRef.current = flow;
     void flow.start();
-  }, [draft, availability.available, availability.needsSetup, terminal.status, terminal.client, eventId]);
+  }, [draft, availability.available, availability.needsSetup, terminal.status, terminal.client, eventId, queryClient]);
 
   // Side effects of the end states.
   useEffect(() => {
@@ -223,6 +230,8 @@ export const TapToPaySaleScreen = ({
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
     } catch {
+      // The tap screen stays: a tap may start again (on a fresh intent).
+      flowRef.current?.reopen();
       setPayCodeError("Couldn't make a pay code. Check your connection and try again.");
     } finally {
       setPayCodeBusy(false);

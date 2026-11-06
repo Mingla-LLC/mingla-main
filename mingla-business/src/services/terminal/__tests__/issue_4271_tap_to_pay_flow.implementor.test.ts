@@ -545,3 +545,207 @@ describe("retest 2 P3-2: retries never keep a ready screen on an intent older th
     }
   });
 });
+
+describe("retest 3 P2-1: nothing collects after the sale is closed", () => {
+  type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void };
+  const deferred = <T,>(): Deferred<T> => {
+    let resolve: (v: T) => void = () => undefined;
+    let reject: (e: unknown) => void = () => undefined;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+  };
+
+  /** Server calls can be held open by the test; every call is logged in order. */
+  const closeHarness = () => {
+    const log: string[] = [];
+    let made = 0;
+    let pendingCollect: ((r: TerminalCallResult) => void) | null = null;
+    const holdCreate: Deferred<void>[] = [];
+    const holdCancel: Deferred<void>[] = [];
+    let cancelError: unknown = null;
+    const paidAfterClose: { saved: boolean }[] = [];
+    const terminal: TapToPayTerminalClient = {
+      ensureReaderConnected: jest.fn(async () => ({})),
+      retrievePaymentIntent: jest.fn(async (secret: string) => ({
+        paymentIntent: { id: secret.replace(/_secret$/, ""), status: "requires_payment_method" },
+      })),
+      collectPaymentMethod: jest.fn((pi: TerminalPaymentIntentLike) => {
+        log.push(`collect:${pi.id}`);
+        return new Promise<TerminalCallResult>((resolve) => {
+          pendingCollect = resolve;
+        });
+      }),
+      confirmPaymentIntent: jest.fn(async (pi: TerminalPaymentIntentLike) => ({ paymentIntent: { ...pi, status: "succeeded" } })),
+      cancelCollectPaymentMethod: jest.fn(async () => {
+        log.push("cancelCollect");
+        pendingCollect?.({ error: { code: "CANCELED" } });
+        pendingCollect = null;
+        return {};
+      }),
+    };
+    const createIntent = jest.fn<TapToPayServer["createIntent"]>(async () => {
+      made += 1;
+      const id = `pi_${made}`;
+      const hold = holdCreate.shift();
+      if (hold) await hold.promise;
+      log.push(`create:${id}`);
+      return { ...INTENT, paymentIntentId: id, clientSecret: `${id}_secret` };
+    });
+    const cancelIntent = jest.fn<TapToPayServer["cancelIntent"]>(async (input) => {
+      const hold = holdCancel.shift();
+      if (hold) await hold.promise;
+      log.push(`cancel:${input.paymentIntentId}`);
+      if (cancelError !== null) throw cancelError;
+    });
+    const completeIntent = jest.fn<TapToPayServer["completeIntent"]>(async (input) => {
+      log.push(`complete:${input.paymentIntentId}`);
+      return { orderId: "ord_1", ticketIds: ["t1"], receiptQueued: true, replayed: false };
+    });
+    const flow = new TapToPaySaleFlow({
+      eventId: "evt_1",
+      draft: DRAFT,
+      clientRequestId: "req-1",
+      terminal,
+      server: { createIntent, completeIntent, cancelIntent },
+      onState: () => undefined,
+      onPaidAfterClose: ({ saved }) => paidAfterClose.push({ saved }),
+    });
+    const decline = (): void => {
+      pendingCollect?.({ error: { code: "DECLINED_BY_STRIPE_API" } });
+      pendingCollect = null;
+    };
+    return {
+      flow, log, terminal, createIntent, cancelIntent, completeIntent, paidAfterClose, decline,
+      holdNextCreate: () => { const d = deferred<void>(); holdCreate.push(d); return d; },
+      holdNextCancel: () => { const d = deferred<void>(); holdCancel.push(d); return d; },
+      failCancelWith: (error: unknown) => { cancelError = error; },
+    };
+  };
+  const collectsAfter = (log: string[], marker: number): string[] => log.slice(marker).filter((l) => l.startsWith("collect:"));
+  const createdIds = (log: string[]): string[] => log.filter((l) => l.startsWith("create:")).map((l) => l.slice(7));
+  const cancelledIds = (log: string[]): string[] => log.filter((l) => l.startsWith("cancel:")).map((l) => l.slice(7));
+
+  test("(a) close during the first create: the intent that arrives is cancelled and never collected", async () => {
+    const h = closeHarness();
+    const create = h.holdNextCreate();
+    void h.flow.start();
+    await flush();
+    await h.flow.closeSale();
+    const marker = h.log.length;
+    create.resolve();
+    await flush();
+    expect(createdIds(h.log)).toEqual(["pi_1"]);
+    expect(collectsAfter(h.log, marker)).toEqual([]);
+    expect(h.terminal.collectPaymentMethod).not.toHaveBeenCalled();
+    expect(cancelledIds(h.log)).toEqual(["pi_1"]);
+  });
+
+  test("(b) close while a stale intent's cancel is in flight: no replacement is made or collected", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = closeHarness();
+      void h.flow.start();
+      await flush();
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await flush();
+      expect(h.flow.getState().kind).toBe("cancelled");
+      const cancel = h.holdNextCancel();
+      void h.flow.tryAnotherCard();
+      await flush();
+      await h.flow.closeSale();
+      const marker = h.log.length;
+      cancel.resolve();
+      await flush();
+      expect(collectsAfter(h.log, marker)).toEqual([]);
+      // Every intent that exists is cancelled; none is left live.
+      for (const id of createdIds(h.log)) expect(cancelledIds(h.log)).toContain(id);
+      expect(h.terminal.collectPaymentMethod).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("(b2) close while the replacement's create is in flight: the new intent is cancelled, never collected", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = closeHarness();
+      void h.flow.start();
+      await flush();
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await flush();
+      const create = h.holdNextCreate();
+      void h.flow.tryAnotherCard();
+      await flush();
+      expect(h.log).toContain("cancel:pi_1");
+      await h.flow.closeSale();
+      const marker = h.log.length;
+      create.resolve();
+      await flush();
+      expect(createdIds(h.log)).toEqual(["pi_1", "pi_2"]);
+      expect(collectsAfter(h.log, marker)).toEqual([]);
+      expect(cancelledIds(h.log)).toContain("pi_2");
+      expect(h.terminal.collectPaymentMethod).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("(c) close during try another card: the tap stops, the intent is cancelled, nothing collects again", async () => {
+    const h = closeHarness();
+    void h.flow.start();
+    await flush();
+    h.decline();
+    await flush();
+    expect(h.flow.getState().kind).toBe("declined");
+    void h.flow.tryAnotherCard();
+    await flush();
+    expect(h.flow.getState().kind).toBe("ready");
+    await h.flow.closeSale();
+    await flush();
+    const marker = h.log.length;
+    expect(h.log).toContain("cancelCollect");
+    expect(cancelledIds(h.log)).toEqual(["pi_1"]);
+    await h.flow.tryAnotherCard();
+    await h.flow.start();
+    await flush();
+    expect(collectsAfter(h.log, marker)).toEqual([]);
+    expect(h.createIntent).toHaveBeenCalledTimes(1);
+  });
+
+  test("an intent that arrives after close and is already paid is recorded, and the host is told", async () => {
+    const h = closeHarness();
+    const create = h.holdNextCreate();
+    void h.flow.start();
+    await flush();
+    await h.flow.closeSale();
+    h.failCancelWith(new DoorTapError("payment_succeeded", "paid"));
+    create.resolve();
+    await flush();
+    expect(h.completeIntent).toHaveBeenCalledWith({ paymentIntentId: "pi_1", clientRequestId: "req-1" });
+    expect(h.paidAfterClose).toEqual([{ saved: true }]);
+    expect(h.terminal.collectPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  test("a pay code that couldn't be made reopens the tap on a fresh intent", async () => {
+    const h = closeHarness();
+    void h.flow.start();
+    await flush();
+    h.decline();
+    await flush();
+    expect(await h.flow.abandonForPayCode()).toBe("switch");
+    await h.flow.tryAnotherCard();
+    expect(h.terminal.collectPaymentMethod).toHaveBeenCalledTimes(1);
+    h.flow.reopen();
+    void h.flow.tryAnotherCard();
+    await flush();
+    expect(createdIds(h.log)).toEqual(["pi_1", "pi_2"]);
+    expect(h.log[h.log.length - 1]).toBe("collect:pi_2");
+    expect(h.flow.getReceiptFacts().clientRequestId).not.toBe("req-1");
+  });
+});
