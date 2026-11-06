@@ -749,3 +749,115 @@ describe("retest 3 P2-1: nothing collects after the sale is closed", () => {
     expect(h.flow.getReceiptFacts().clientRequestId).not.toBe("req-1");
   });
 });
+
+describe("retest 3 P3-1: the intent's age counts sleep", () => {
+  const MIN = 60 * 1000;
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+  };
+  /** createdAt per intent (wall clock, as the server stamps created_at); ready ages logged. */
+  const ageHarness = (opts: { createFails?: (n: number) => unknown; replayFirst?: boolean } = {}) => {
+    const createdAt = new Map<string, number>();
+    const readyAges: { pi: string; age: number }[] = [];
+    const log: string[] = [];
+    let current: string | null = null;
+    let pending: ((r: TerminalCallResult) => void) | null = null;
+    let calls = 0;
+    let made = 0;
+    const terminal: TapToPayTerminalClient = {
+      ensureReaderConnected: jest.fn(async () => ({})),
+      retrievePaymentIntent: jest.fn(async (secret: string) => ({
+        paymentIntent: { id: secret.replace(/_secret$/, ""), status: "requires_payment_method" },
+      })),
+      collectPaymentMethod: jest.fn((pi: TerminalPaymentIntentLike) => {
+        log.push(`collect:${pi.id}`);
+        return new Promise<TerminalCallResult>((resolve) => {
+          pending = resolve;
+        });
+      }),
+      confirmPaymentIntent: jest.fn(async (pi: TerminalPaymentIntentLike) => ({ paymentIntent: { ...pi, status: "succeeded" } })),
+      cancelCollectPaymentMethod: jest.fn(async () => {
+        pending?.({ error: { code: "CANCELED" } });
+        pending = null;
+        return {};
+      }),
+    };
+    const byRequest = new Map<string, string>();
+    const createIntent = jest.fn<TapToPayServer["createIntent"]>(async (input) => {
+      calls += 1;
+      const failure = opts.createFails?.(calls);
+      // A replayed request id gets the intent its first call made (lost response).
+      let id = byRequest.get(input.clientRequestId);
+      if (id === undefined && !(failure !== undefined && !opts.replayFirst)) {
+        made += 1;
+        id = `pi_${made}`;
+        byRequest.set(input.clientRequestId, id);
+        createdAt.set(id, Date.now());
+      }
+      if (failure !== undefined) throw failure;
+      if (id === undefined) throw new Error("unreachable");
+      log.push(`create:${id}`);
+      current = id;
+      return { ...INTENT, paymentIntentId: id, clientSecret: `${id}_secret` };
+    });
+    const cancelIntent = jest.fn<TapToPayServer["cancelIntent"]>(async (input) => {
+      log.push(`cancel:${input.paymentIntentId}`);
+    });
+    const flow = new TapToPaySaleFlow({
+      eventId: "evt_1",
+      draft: DRAFT,
+      clientRequestId: "req-1",
+      terminal,
+      server: { createIntent, completeIntent: jest.fn(async () => ({ orderId: "o", ticketIds: [], receiptQueued: false, replayed: false })), cancelIntent },
+      onState: (state) => {
+        if (state.kind === "ready" && current !== null) {
+          readyAges.push({ pi: current, age: Date.now() - (createdAt.get(current) ?? Date.now()) });
+        }
+      },
+    });
+    const decline = (): void => {
+      pending?.({ error: { code: "DECLINED_BY_STRIPE_API" } });
+      pending = null;
+    };
+    return { flow, log, readyAges, decline, createIntent, cancelIntent, terminal };
+  };
+
+  test("P3-1 the phone sleeps 20 minutes (wall clock moves, monotonic doesn't): another card makes a fresh intent", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = ageHarness();
+      void h.flow.start();
+      await flush();
+      jest.advanceTimersByTime(2 * MIN);
+      h.decline();
+      await flush();
+      expect(h.flow.getState().kind).toBe("declined");
+      const perfBefore = performance.now();
+      jest.setSystemTime(Date.now() + 20 * MIN); // sleep: Date moves, performance.now does not
+      expect(performance.now()).toBe(perfBefore);
+      void h.flow.tryAnotherCard();
+      await flush();
+      expect(h.log).toContain("cancel:pi_1");
+      expect(h.log.filter((l) => l.startsWith("create:"))).toEqual(["create:pi_1", "create:pi_2"]);
+      expect(h.flow.getState().kind).toBe("ready");
+      for (const { age } of h.readyAges) expect(age).toBeLessThan(TAP_READY_LIMIT_MS);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("P3-1 a wall clock moved back does not stretch the limit: monotonic time still counts", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = ageHarness();
+      void h.flow.start();
+      await flush();
+      jest.setSystemTime(Date.now() - 60 * MIN);
+      jest.advanceTimersByTime(TAP_READY_LIMIT_MS);
+      await flush();
+      expect(h.flow.getState().kind).toBe("cancelled");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

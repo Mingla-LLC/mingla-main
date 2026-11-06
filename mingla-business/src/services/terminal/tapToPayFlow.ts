@@ -318,6 +318,24 @@ const monotonicNow = (): number => {
   return typeof perf?.now === "function" ? perf.now() : Date.now();
 };
 
+/** When an intent's clock started, on both clocks. */
+interface IntentClock {
+  monotonic: number;
+  wall: number;
+}
+
+const startIntentClock = (): IntentClock => ({ monotonic: monotonicNow(), wall: Date.now() });
+
+/**
+ * How old the intent is. The monotonic clock (performance.now) stops while the
+ * phone sleeps (CLOCK_UPTIME_RAW on iOS, CLOCK_MONOTONIC on Android), but the
+ * server's sweep keeps counting; the wall clock counts sleep but can be moved.
+ * The larger of the two is used, so a sleep or a forward clock change can only
+ * make the window shorter, never longer.
+ */
+const intentAgeMs = (clock: IntentClock): number =>
+  Math.max(monotonicNow() - clock.monotonic, Date.now() - clock.wall);
+
 export class TapToPaySaleFlow {
   private readonly input: TapToPaySaleFlowInput;
   private intent: DoorTapIntent | null = null;
@@ -330,8 +348,8 @@ export class TapToPaySaleFlow {
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
   /** One per intent: a stale intent is replaced under a new id (see TAP_READY_LIMIT_MS). */
   private clientRequestId: string;
-  /** When the first create call for clientRequestId was sent (monotonicNow). */
-  private intentClockStart: number | null = null;
+  /** When the first create call for clientRequestId was sent. */
+  private intentClockStart: IntentClock | null = null;
   /**
    * Set by closeSale and abandonForPayCode: no path may create, retrieve or
    * collect after it. An intent that arrives after it is cancelled on the server
@@ -349,7 +367,7 @@ export class TapToPaySaleFlow {
   /** How long the ready screen may still wait on the current intent. */
   private readyTimeLeftMs(): number {
     if (this.intentClockStart === null) return TAP_READY_LIMIT_MS;
-    return TAP_READY_LIMIT_MS - (monotonicNow() - this.intentClockStart);
+    return TAP_READY_LIMIT_MS - intentAgeMs(this.intentClockStart);
   }
 
   /**
@@ -488,7 +506,7 @@ export class TapToPaySaleFlow {
   /** door-tap-intent create for the current request id. False when nothing usable came back. */
   private async createIntent(): Promise<boolean> {
     // A replayed create returns the intent the first call made: keep its clock.
-    if (this.intentClockStart === null) this.intentClockStart = monotonicNow();
+    if (this.intentClockStart === null) this.intentClockStart = startIntentClock();
     const clientRequestId = this.clientRequestId;
     let created: DoorTapIntent;
     try {
