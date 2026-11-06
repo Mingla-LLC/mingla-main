@@ -140,23 +140,32 @@ jest.mock("../../../hooks/useEventDoorSales", () => ({
 }));
 jest.mock("../../../services/doorPayCodeService", () => {
   class DoorPayCodeError extends Error {}
+  // The default guest view is a Stripe code, the case the guest-copy probes were
+  // written for. A view a test hands in without naming a provider is a Stripe
+  // view too; a test that names one (paystack, null) keeps it.
+  const viewDefaults = { provider: "stripe", latePayment: null };
+  const viewDoorPayCode = jest.fn().mockResolvedValue({
+    ...viewDefaults,
+    status: "open",
+    eventId: "event-1",
+    eventName: "Night",
+    eventStartsAt: null,
+    venueLabel: null,
+    brandName: "Brand",
+    lines: [{ ticketTypeId: "tier-1", name: "General", quantity: 1, unitCents: 1500 }],
+    subtotalCents: 1500,
+    feeCents: 70,
+    totalCents: 1570,
+    currency: "GBP",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
+  const resolveOnce = viewDoorPayCode.mockResolvedValueOnce.bind(viewDoorPayCode);
+  viewDoorPayCode.mockResolvedValueOnce = (value: unknown) =>
+    resolveOnce({ ...viewDefaults, ...(value as Record<string, unknown>) });
   return {
     DoorPayCodeError,
     createDoorCodeCheckout: jest.fn(),
-    viewDoorPayCode: jest.fn().mockResolvedValue({
-      status: "open",
-      eventId: "event-1",
-      eventName: "Night",
-      eventStartsAt: null,
-      venueLabel: null,
-      brandName: "Brand",
-      lines: [{ ticketTypeId: "tier-1", name: "General", quantity: 1, unitCents: 1500 }],
-      subtotalCents: 1500,
-      feeCents: 70,
-      totalCents: 1570,
-      currency: "GBP",
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    }),
+    viewDoorPayCode,
   };
 });
 
