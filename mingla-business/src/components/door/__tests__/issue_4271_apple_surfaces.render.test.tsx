@@ -729,18 +729,27 @@ describe("B10 onboarding and awareness", () => {
 
   test("the onboarding card shows when live and eligible, and opens setup", () => {
     mockLive = true;
-    const { root } = mount(<TapToPayOnboardingCard brand={STRIPE} />);
+    const onSetUp = jest.fn();
+    const { root } = mount(<TapToPayOnboardingCard brand={STRIPE} onSetUp={onSetUp} />);
     const text = textOf(root);
     expect(text).toContain("Take cards with Tap to Pay on iPhone");
     expect(text).toContain("Set up Tap to Pay on iPhone");
+    byTestId(root, "tap-onboarding-setup").props.onPress();
+    expect(onSetUp).toHaveBeenCalledTimes(1);
   });
 
-  test("hidden when not live, on Paystack, or in another currency", () => {
+  test("hidden when not live, on Paystack, in another currency, or with nowhere to go", () => {
+    const onSetUp = jest.fn();
     mockLive = false;
-    expect(mount(<TapToPayOnboardingCard brand={STRIPE} />).toJSON()).toBeNull();
+    expect(mount(<TapToPayOnboardingCard brand={STRIPE} onSetUp={onSetUp} />).toJSON()).toBeNull();
     mockLive = true;
-    expect(mount(<TapToPayOnboardingCard brand={{ ...STRIPE, paymentProvider: "paystack" }} />).toJSON()).toBeNull();
-    expect(mount(<TapToPayOnboardingCard brand={{ ...STRIPE, defaultCurrency: "EUR" }} />).toJSON()).toBeNull();
+    expect(
+      mount(<TapToPayOnboardingCard brand={{ ...STRIPE, paymentProvider: "paystack" }} onSetUp={onSetUp} />).toJSON(),
+    ).toBeNull();
+    expect(
+      mount(<TapToPayOnboardingCard brand={{ ...STRIPE, defaultCurrency: "EUR" }} onSetUp={onSetUp} />).toJSON(),
+    ).toBeNull();
+    expect(mount(<TapToPayOnboardingCard brand={STRIPE} />).toJSON()).toBeNull();
   });
 
   test("the modal never renders without Apple's assets, whatever the switch says", async () => {

@@ -73,6 +73,12 @@ export default function BrandPaymentsRoute(): React.ReactElement {
     router.push("/account/support?tab=support" as never);
   };
 
+  // #4271 — Tap to Pay setup for this brand.
+  const handleOpenTapToPay = (): void => {
+    if (brand === null) return;
+    router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brand.id)}` as never);
+  };
+
   return (
     <View
       style={{
@@ -95,6 +101,7 @@ export default function BrandPaymentsRoute(): React.ReactElement {
           onOpenPayout={handleOpenPayout}
           onContactSupport={handleContactSupport}
           onChooseDifferentCountry={handleChooseDifferentCountry}
+          onOpenTapToPay={handleOpenTapToPay}
         />
       </BrandPaymentsPermissionGate>
     </View>

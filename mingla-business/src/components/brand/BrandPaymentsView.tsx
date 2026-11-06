@@ -47,8 +47,6 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
-import { useRouter } from "expo-router";
-
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -161,6 +159,11 @@ export interface BrandPaymentsViewProps {
    * Nigerian address straight back to Nigeria. Falls back to `onOpenOnboard`.
    */
   onChooseDifferentCountry?: () => void;
+  /**
+   * #4271 — opens Tap to Pay setup for this brand. The route owns navigation;
+   * without it the Tap to Pay button is not shown.
+   */
+  onOpenTapToPay?: () => void;
 }
 
 /**
@@ -220,6 +223,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   onOpenReports,
   onContactSupport = onOpenOnboard,
   onChooseDifferentCountry,
+  onOpenTapToPay,
 }) => {
   const insets = useSafeAreaInsets();
   // #3645 — the Nigerian status card's "Add bank" scrolls to the bank form
@@ -248,7 +252,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // V3 (Sub-C Session A): live status query gives access to requirements
   // shape for the KycRemediationCard. Sibling-pattern: cached + Realtime-fed.
   const stripeStatusQuery = useBrandStripeStatus(brand?.id ?? null);
-  const router = useRouter();
   const tapToPayEntry = useTapToPaySettingsEntry(brand?.id ?? null);
   const stripeStatus = getEffectiveBrandStripeStatus({
     liveStatus: stripeStatusQuery.data?.status,
@@ -723,10 +726,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           suppressAttention={stripeStatus !== "active" || cardRailAddBank}
         />
 
-        {tapToPayEntry !== null && tapToPayBrandEligible(brand) ? (
+        {tapToPayEntry !== null && onOpenTapToPay !== undefined && tapToPayBrandEligible(brand) ? (
           <Button
             label={tapToPayEntry.label}
-            onPress={() => router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brand?.id ?? "")}` as never)}
+            onPress={onOpenTapToPay}
             variant="secondary"
             size="md"
             fullWidth

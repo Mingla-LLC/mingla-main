@@ -548,10 +548,36 @@ describe("B9 every Android string stays clear of the iPhone", () => {
   });
 });
 
+// Shared components that existing suites load under the stock Jest config (which
+// doesn't transform expo-router) never import expo-router at module scope: the
+// route owns navigation and passes the callback down. Reverting the card to its
+// own useRouter fails this (and the #3645 BrandOnboardView suites fail to load).
+describe("#4271 Tap to Pay entries take navigation from their route", () => {
+  const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
+  const EXPO_ROUTER_IMPORT = /^\s*import\b[^;]*from\s+["']expo-router["']/m;
+  test.each([
+    "src/components/door/tap/TapToPayOnboardingCard.tsx",
+    "src/components/brand/BrandOnboardView.tsx",
+    "src/components/brand/BrandPaymentsView.tsx",
+  ])("%s has no module-scope expo-router import", (rel) => {
+    const source = read(rel);
+    expect(source).not.toMatch(EXPO_ROUTER_IMPORT);
+    expect(source).not.toMatch(/\buseRouter\s*\(/);
+  });
+  test("each route passes a callback that opens Tap to Pay setup for its brand", () => {
+    const onboard = read("app/brand/[id]/payments/onboard.tsx");
+    expect(onboard).toContain("onOpenTapToPay={brandId !== null ? handleOpenTapToPay : undefined}");
+    expect(onboard).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}`");
+    const payments = read("app/brand/[id]/payments/index.tsx");
+    expect(payments).toContain("onOpenTapToPay={handleOpenTapToPay}");
+    expect(payments).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(brand.id)}`");
+  });
+});
+
 describe("B10 where the card goes", () => {
   test("complete-active and already-active have it, complete-verifying does not", () => {
     const view = fs.readFileSync(path.join(BIZ_ROOT, "src/components/brand/BrandOnboardView.tsx"), "utf8");
-    expect(view.match(/<TapToPayOnboardingCard brand=\{brand\} \/>/g)).toHaveLength(2);
+    expect(view.match(/<TapToPayOnboardingCard brand=\{brand\} onSetUp=\{onOpenTapToPay\} \/>/g)).toHaveLength(2);
     const verifying = view.slice(view.indexOf('viewState === "complete-verifying" ? ('));
     expect(verifying.slice(0, 1200)).not.toContain("TapToPayOnboardingCard");
   });

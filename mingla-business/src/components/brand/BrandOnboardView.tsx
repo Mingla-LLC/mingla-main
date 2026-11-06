@@ -253,6 +253,11 @@ export interface BrandOnboardViewProps {
    * straight back to Nigeria. A brand with a payment account keeps its lock.
    */
   countryChoiceRequested?: boolean;
+  /**
+   * #4271 — opens Tap to Pay setup for this brand from the "all set" states. The
+   * route owns navigation; without it the Tap to Pay card is not shown.
+   */
+  onOpenTapToPay?: () => void;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -295,6 +300,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   initialCountry = null,
   returnPath = null,
   countryChoiceRequested = false,
+  onOpenTapToPay,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -1260,7 +1266,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </Text>
             </View>
             <View style={styles.actionsCol}>
-              <TapToPayOnboardingCard brand={brand} />
+              <TapToPayOnboardingCard brand={brand} onSetUp={onOpenTapToPay} />
               <Button
                 label="Done"
                 onPress={handleDone}
@@ -1443,7 +1449,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </Text>
             </View>
             <View style={styles.actionsCol}>
-              <TapToPayOnboardingCard brand={brand} />
+              <TapToPayOnboardingCard brand={brand} onSetUp={onOpenTapToPay} />
               <Button
                 label="Done"
                 onPress={handleDone}
