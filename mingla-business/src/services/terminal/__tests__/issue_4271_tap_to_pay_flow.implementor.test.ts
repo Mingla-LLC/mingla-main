@@ -977,3 +977,85 @@ describe("retest 4 P3-B: no pay code while a card is being read or saved", () =>
     expect(h.completeIntent).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("retest 4 P4: a ready screen that slept past the limit is replaced on wake", () => {
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+  };
+  const wakeHarness = () => {
+    const log: string[] = [];
+    let made = 0;
+    let pending: ((r: TerminalCallResult) => void) | null = null;
+    const terminal: TapToPayTerminalClient = {
+      ensureReaderConnected: jest.fn(async () => ({})),
+      retrievePaymentIntent: jest.fn(async (secret: string) => ({
+        paymentIntent: { id: secret.replace(/_secret$/, ""), status: "requires_payment_method" },
+      })),
+      collectPaymentMethod: jest.fn((pi: TerminalPaymentIntentLike) => {
+        log.push(`collect:${pi.id}`);
+        return new Promise<TerminalCallResult>((resolve) => {
+          pending = resolve;
+        });
+      }),
+      confirmPaymentIntent: jest.fn(async (pi: TerminalPaymentIntentLike) => ({ paymentIntent: { ...pi, status: "succeeded" } })),
+      cancelCollectPaymentMethod: jest.fn(async () => {
+        log.push("cancelCollect");
+        pending?.({ error: { code: "CANCELED" } });
+        pending = null;
+        return {};
+      }),
+    };
+    const flow = new TapToPaySaleFlow({
+      eventId: "evt_1",
+      draft: DRAFT,
+      clientRequestId: "req-1",
+      terminal,
+      server: {
+        createIntent: jest.fn(async () => {
+          made += 1;
+          log.push(`create:pi_${made}`);
+          return { ...INTENT, paymentIntentId: `pi_${made}`, clientSecret: `pi_${made}_secret` };
+        }),
+        completeIntent: jest.fn(async () => ({ orderId: "o", ticketIds: [], receiptQueued: false, replayed: false })),
+        cancelIntent: jest.fn<TapToPayServer["cancelIntent"]>(async (input) => {
+          log.push(`cancel:${input.paymentIntentId}`);
+        }),
+      },
+      onState: () => undefined,
+    });
+    return { flow, log };
+  };
+
+  test("the phone sleeps 11 minutes on the ready screen: on wake the tap stops and a fresh intent is ready", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = wakeHarness();
+      void h.flow.start();
+      await flush();
+      expect(h.flow.getState().kind).toBe("ready");
+      jest.setSystemTime(Date.now() + 11 * 60 * 1000); // asleep: timers held, wall clock moves
+      await h.flow.recheckOnForeground();
+      await flush();
+      expect(h.log).toEqual(["create:pi_1", "collect:pi_1", "cancelCollect", "cancel:pi_1", "create:pi_2", "collect:pi_2"]);
+      expect(h.flow.getState().kind).toBe("ready");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("waking inside the limit changes nothing", async () => {
+    jest.useFakeTimers();
+    try {
+      const h = wakeHarness();
+      void h.flow.start();
+      await flush();
+      jest.setSystemTime(Date.now() + 5 * 60 * 1000);
+      await h.flow.recheckOnForeground();
+      await flush();
+      expect(h.log).toEqual(["create:pi_1", "collect:pi_1"]);
+      expect(h.flow.getState().kind).toBe("ready");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

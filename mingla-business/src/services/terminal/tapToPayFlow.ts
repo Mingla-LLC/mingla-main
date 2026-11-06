@@ -387,6 +387,10 @@ export class TapToPaySaleFlow {
   private readonly intentMayExist = new Set<string>();
   /** reopen() arrived while a step was running: applied when it ends (endStep). */
   private reopenPending = false;
+  /** A charged tap found while a step was running: recorded when it ends (endStep). */
+  private saveWhenStopped = false;
+  /** recheckOnForeground stopped a stale ready screen: replaced when the step ends. */
+  private replaceWhenStopped = false;
   /** Stripe reported the current intent canceled (the sweep, or a cancel elsewhere): the next try replaces it. */
   private intentCanceled = false;
 
@@ -645,7 +649,7 @@ export class TapToPaySaleFlow {
     if (this.state.kind === "reading" || this.state.kind === "saving") return "blocked";
     this.closed = true;
     if (this.succeeded !== null) {
-      await this.retrySave();
+      await this.saveSucceeded();
       return "already_paid";
     }
     if (this.state.kind === "ready") {
@@ -665,7 +669,7 @@ export class TapToPaySaleFlow {
     } catch (error) {
       if (error instanceof DoorTapError && error.code === "payment_succeeded") {
         this.markSucceeded(intent, this.clientRequestId);
-        await this.retrySave();
+        await this.saveSucceeded();
         return "already_paid";
       }
       this.input.report?.("door-tap.cancel-intent", error, {
@@ -709,10 +713,42 @@ export class TapToPaySaleFlow {
     }
   }
 
-  /** Ends a step started with `busy = true`; applies a reopen that waited for it. */
+  /** Ends a step started with `busy = true`; runs what waited for it. */
   private endStep(): void {
     this.busy = false;
     if (this.reopenPending) this.applyReopen();
+    if (this.saveWhenStopped) {
+      this.saveWhenStopped = false;
+      this.retrySave().catch((error: unknown) => this.input.report?.("door-tap.save-after-stop", error));
+      return;
+    }
+    if (this.replaceWhenStopped) {
+      this.replaceWhenStopped = false;
+      if (!this.closed && this.state.kind === "cancelled") {
+        this.tryAnotherCard().catch((error: unknown) => this.input.report?.("door-tap.replace-on-wake", error));
+      }
+    }
+  }
+
+  /** Records a charged tap now, or as soon as the step in flight ends. */
+  private async saveSucceeded(): Promise<void> {
+    if (this.busy) {
+      this.saveWhenStopped = true;
+      return;
+    }
+    await this.retrySave();
+  }
+
+  /**
+   * The app came back to the foreground. The ready timer is a JS timer that a
+   * sleeping phone holds back, so a ready screen can wake past the limit: stop
+   * the tap and, once it has stopped, start a fresh intent.
+   */
+  async recheckOnForeground(): Promise<void> {
+    if (this.closed || this.state.kind !== "ready" || this.readyTimeLeftMs() > 0) return;
+    this.clearReadyTimer();
+    this.replaceWhenStopped = true;
+    await this.cancel();
   }
 
   private emitTerminalFailure(error: TerminalErrorLike, fallbackMessage: string, stepAmount?: TapAmount): void {

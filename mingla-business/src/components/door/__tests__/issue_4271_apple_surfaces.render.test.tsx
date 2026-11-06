@@ -4,7 +4,7 @@
  * Every test here fails when its change is reverted (recorded on the issue).
  */
 import React from "react";
-import { AppState, Linking, PermissionsAndroid, Platform, Share, Text } from "react-native";
+import { Alert, AppState, Linking, PermissionsAndroid, Platform, Share, Text } from "react-native";
 
 // react-test-renderer ships no types in this app.
 interface ReactTestInstance {
@@ -900,6 +900,76 @@ describe("B12 outcomes", () => {
     });
     await flush();
     expect(edge.cancelDoorTapIntent).toHaveBeenCalledTimes(1);
+  });
+
+  // Retest 4 P4: the real screen's wiring for the paid-after-close alert and reopen().
+  test("closing a ready sale that Stripe says was already paid records it and alerts the host", async () => {
+    const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as {
+      cancelDoorTapIntent: jest.Mock;
+      completeDoorTapIntent: jest.Mock;
+      DoorTapError: new (code: string, detail?: string | null) => Error;
+    };
+    edge.cancelDoorTapIntent.mockReset();
+    edge.cancelDoorTapIntent.mockRejectedValueOnce(new edge.DoorTapError("payment_succeeded", "paid"));
+    edge.completeDoorTapIntent.mockClear();
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
+    let pending: ((r: unknown) => void) | null = null;
+    const { root } = await sale(
+      client({
+        collectPaymentMethod: () =>
+          new Promise((resolve) => {
+            pending = resolve;
+          }),
+        cancelCollectPaymentMethod: async () => {
+          pending?.({ error: { code: "CANCELED" } });
+          return {};
+        },
+      }),
+    );
+    expect(root.findAll((n) => n.props.testID === "tap-state-ready" || textOf(n).includes("£31.35")).length).toBeGreaterThan(0);
+    const chromeClose = jest.requireMock("../../ui/IconChrome") as { lastOnPress?: () => void };
+    await act(async () => {
+      chromeClose.lastOnPress?.();
+    });
+    await settleSale();
+    expect(edge.completeDoorTapIntent).toHaveBeenCalledWith(expect.objectContaining({ paymentIntentId: "pi_1" }));
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(alert.mock.calls[0]?.[0]).toBe("A card payment went through");
+    expect(alert.mock.calls[0]?.[1]).toContain("£31.35 was paid by card after you closed the sale. It's recorded as a sale.");
+    alert.mockRestore();
+    edge.cancelDoorTapIntent.mockImplementation(async () => undefined);
+  });
+
+  test("a pay code that couldn't be made leaves a working tap: Try another card starts a fresh intent", async () => {
+    const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as {
+      createDoorPayCodeForLines: jest.Mock;
+      createDoorTapIntent: jest.Mock;
+      cancelDoorTapIntent: jest.Mock;
+    };
+    edge.createDoorTapIntent.mockClear();
+    edge.cancelDoorTapIntent.mockClear();
+    edge.createDoorPayCodeForLines.mockRejectedValueOnce(new Error("offline"));
+    const collect = jest.fn(async () => ({
+      error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { id: "pi_1", status: "requires_payment_method" } },
+    }));
+    const { root } = await sale(client({ collectPaymentMethod: collect }));
+    expect(textOf(root)).toContain("Card declined");
+    await act(async () => {
+      byTestId(root, "tap-show-pay-code").props.onPress();
+    });
+    await settleSale();
+    expect(edge.cancelDoorTapIntent).toHaveBeenCalledTimes(1);
+    expect(textOf(root)).toContain("Couldn't make a pay code.");
+    const another = root.findAll((n) => n.props.label === "Try another card" && typeof n.props.onPress === "function")[0];
+    expect(another).toBeTruthy();
+    await act(async () => {
+      another.props.onPress();
+    });
+    await settleSale();
+    expect(edge.createDoorTapIntent).toHaveBeenCalledTimes(2);
+    const ids = edge.createDoorTapIntent.mock.calls.map((call) => (call[0] as { clientRequestId: string }).clientRequestId);
+    expect(ids[1]).not.toBe(ids[0]);
+    expect(collect).toHaveBeenCalledTimes(2);
   });
 });
 

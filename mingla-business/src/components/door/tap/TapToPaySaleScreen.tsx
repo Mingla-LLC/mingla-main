@@ -175,6 +175,15 @@ export const TapToPaySaleScreen = ({
     void flow.start();
   }, [draft, availability.available, availability.needsSetup, terminal.status, terminal.client, eventId, queryClient]);
 
+  // A phone that slept on the ready screen: the flow rechecks the intent's age.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next !== "active") return;
+      void flowRef.current?.recheckOnForeground().catch((error: unknown) => reportNonFatal("door-tap.wake", error));
+    });
+    return () => subscription.remove();
+  }, []);
+
   // Side effects of the end states.
   useEffect(() => {
     if (state.kind === "approved") {
