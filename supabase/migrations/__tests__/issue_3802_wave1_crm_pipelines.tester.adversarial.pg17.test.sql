@@ -392,7 +392,7 @@ begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform pg_temp.x_eq('XA-1', 'one schedule entry, exact command and timing',
       (select string_agg(j.schedule || '|' || j.command || '|' || j.active::text, ';') from cron.job j where j.jobname = 'crm_reconcile_live'),
-      '*/10 * * * *|SELECT public.crm_reconcile_live()|true');
+      '6,16,26,36,46,56 * * * *|SELECT public.crm_reconcile_live()|true');
     perform pg_temp.x_eq('XA-1', 'no other schedule entry calls a crm_ function',
       (select count(*)::text from cron.job j where j.command ~* 'crm_' and j.jobname <> 'crm_reconcile_live'), '0');
     perform pg_temp.x_ok('XA-1', 'the schedule owner can run the job',

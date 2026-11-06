@@ -101,7 +101,7 @@ function Harness(): React.ReactElement {
         onClose={noop}
         onConfirm={noop}
         channelKind="email"
-        additionalChannels={[
+        sendingBy={[
           { key: "push", label: "Push", reachLabel: "9 reachable", costLabel: "Free" },
         ]}
       />
@@ -125,7 +125,7 @@ describe("#3682 closeout — the composer carries the subject once", () => {
     expect(latestSubject).toBe(SUBJECT);
     expect(subjectInput(renderer).props.value).toBe(SUBJECT);
     const text = treeText(renderer.toJSON());
-    expect(text).toContain("ALSO SENDING BY");
+    expect(text).toContain("SENDING BY");
     expect(text).toContain("Push");
     // Once in the input's value prop is not in the text tree; the review sheet
     // is the only place the subject renders as text.

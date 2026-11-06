@@ -203,6 +203,15 @@ const button = (renderer: any, label: RegExp): any =>
     typeof node.props.label === "string" && label.test(node.props.label),
   );
 
+// #4273: the sources are tick boxes, not Select / Add group buttons.
+const checkbox = (renderer: any, label: RegExp): any =>
+  renderer.root.findAll((node: any) =>
+    node.props.accessibilityRole === "checkbox" &&
+    typeof node.props.accessibilityLabel === "string" &&
+    label.test(node.props.accessibilityLabel) &&
+    typeof node.props.onPress === "function",
+  )[0];
+
 describe("issue #1780 tester adversarial — required Invite people states", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -235,15 +244,18 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     expect(text).toContain("Followers"); // [TEST-MOD-APPROVED #3682]
     expect(text).toContain("Friends of followers"); // [TEST-MOD-APPROVED #3682]
     expect(text).toContain("Launch circle");
-    expect(button(renderer, /^Select all$/i)).toBeDefined();
+    expect(checkbox(renderer, /^Select all$/i)).toBeDefined();
     expect(button(renderer, /^(?:Choose people|Edit selection)$/i)).toBeDefined();
   });
 
+  // #4273: Select all is ticked when Everyone in Your Book is a source; Book
+  // people chosen another way read as partly ticked.
   test.each([
-    [0, false],
-    [1, "mixed"],
-    [2, true],
-  ])("Select all exposes the %s-of-2 accessibility state", (selectedCount, checked) => {
+    [0, false, false],
+    [1, false, "mixed"],
+    [2, false, "mixed"],
+    [2, true, true],
+  ])("Select all exposes the %s-of-2 (everyone=%s) accessibility state", (selectedCount, everyone, checked) => {
     let renderer: any;
     act(() => {
       renderer = TestRenderer.create(
@@ -251,16 +263,20 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
           bookCount={2}
           groups={[]}
           selectedCount={selectedCount as number}
+          sources={{
+            includeEveryone: everyone as boolean, includeFollowers: false,
+            includeFriendsOfFollowers: false, manualGroupIds: [], personIds: [], excludedPersonIds: [],
+          }}
           disabled={false}
-          onSelectEveryone={jest.fn()}
-          onSelectFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
-          onSelectFriendsOfFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
-          onSelectGroup={jest.fn()}
+          onToggleEveryone={jest.fn()}
+          onToggleFollowers={jest.fn()}
+          onToggleFriendsOfFollowers={jest.fn()}
+          onToggleGroup={jest.fn()}
           onChoosePeople={jest.fn()}
         />,
       );
     });
-    const selectAll = button(renderer, /^Select all$/i);
+    const selectAll = checkbox(renderer, /^Select all$/i);
     expect(selectAll).toBeDefined();
     expect(selectAll.props.accessibilityRole).toBe("checkbox");
     expect(selectAll.props.accessibilityState).toEqual(
@@ -345,7 +361,7 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     }));
     const renderer = renderStep();
     await act(async () => {
-      button(renderer, /^Add group$/i).props.onPress();
+      checkbox(renderer, /^Launch circle$/i).props.onPress();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -366,6 +382,7 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     const renderer = renderStep({ onProtectedFlowExit });
     expect(treeText(renderer.toJSON())).toMatch(/access.*changed|no longer have access/i);
     expect(button(renderer, /select all|add group|choose people/i)).toBeUndefined();
+    expect(checkbox(renderer, /select all|launch circle|followers/i)).toBeUndefined();
     const exit = button(renderer, /leave|back/i);
     expect(exit).toBeDefined();
     act(() => exit.props.onPress());
@@ -425,12 +442,13 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     }));
     const renderer = renderStep({ onProtectedFlowExit });
     await act(async () => {
-      button(renderer, /^Add group$/i).props.onPress();
+      checkbox(renderer, /^Launch circle$/i).props.onPress();
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(treeText(renderer.toJSON())).toMatch(/access.*changed|no longer have access/i);
     expect(button(renderer, /select all|add group|choose people/i)).toBeUndefined();
+    expect(checkbox(renderer, /select all|launch circle|followers/i)).toBeUndefined();
     const exit = button(renderer, /leave|back/i);
     expect(exit).toBeDefined();
     act(() => exit.props.onPress());

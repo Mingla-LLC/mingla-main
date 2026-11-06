@@ -1,6 +1,7 @@
 // ORCH-0712 — adaptive photo collage helper.
 //
-// Composes up to 16 photo URLs into a single TARGET_SIZE×TARGET_SIZE grid image (PNG).
+// Composes up to 16 photo URLs into a single TARGET_SIZE×TARGET_SIZE grid image, and
+// encodes it as WebP (#4276 R4).
 // Adaptive sizing: 1 = 1x1, 2-4 = 2x2, 5-9 = 3x3, 10-16 = 4x4.
 // Failed photo fetches leave that cell black; we proceed with what we can decode.
 //
@@ -14,6 +15,7 @@
 // observed at full-Triangle scale.
 
 import { Image, decode } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
+import encodeWebp from "npm:@jsquash/webp@1.5.0/encode.js";
 
 export const TARGET_SIZE = 768;
 export const MAX_PHOTOS = 16;
@@ -37,6 +39,47 @@ export const MAX_PHOTOS = 16;
  * leave half the bucket on a one-hour TTL.
  */
 export const COLLAGE_CACHE_CONTROL_SECONDS = 31_536_000;
+
+/**
+ * WebP quality for every collage. 80 is the #1644 sweep's measured operating point
+ * (90.2% saving over 20 objects). Shared with the re-encoder, so a new collage and
+ * a re-encoded one are the same kind of object.
+ */
+export const COLLAGE_WEBP_QUALITY = 80;
+
+/** Gemini reads the mime type from this header, not from the extension. */
+export const COLLAGE_CONTENT_TYPE = "image/webp";
+
+export const COLLAGE_FILE_EXTENSION = "webp";
+
+const COLLAGE_BUCKET_PATH = "/storage/v1/object/public/place-collages/";
+
+/** The storage key inside a place-collages public URL, or null if it isn't one. */
+export function collageKeyFromPublicUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const at = url.indexOf(COLLAGE_BUCKET_PATH);
+  if (at < 0) return null;
+  const key = url.slice(at + COLLAGE_BUCKET_PATH.length).split(/[?#]/)[0];
+  return key.length > 0 ? decodeURIComponent(key) : null;
+}
+
+/** Encode a composed collage. The canvas is opaque, so no alpha channel is stored. */
+export async function encodeCollageWebp(image: Image): Promise<Uint8Array> {
+  const encoded = await encodeWebp(
+    {
+      data: new Uint8ClampedArray(
+        image.bitmap.buffer,
+        image.bitmap.byteOffset,
+        image.bitmap.byteLength,
+      ),
+      width: image.width,
+      height: image.height,
+      colorSpace: "srgb",
+    } as ImageData,
+    { quality: COLLAGE_WEBP_QUALITY },
+  );
+  return new Uint8Array(encoded);
+}
 
 /**
  * Compute adaptive grid dimension for N photos.
@@ -244,11 +287,11 @@ async function fetchAndDecode(url: string, tileSize: number, timeoutMs = 12_000)
 }
 
 /**
- * Compose photos into a single TARGET_SIZE×TARGET_SIZE PNG.
- * Returns the encoded PNG bytes + the actual photo count successfully placed.
+ * Compose photos into a single TARGET_SIZE×TARGET_SIZE image.
+ * Returns the unencoded image + the actual photo count successfully placed.
  */
 export async function composeCollage(photoUrls: string[]): Promise<{
-  pngBytes: Uint8Array;
+  image: Image;
   placedCount: number;
   failedCount: number;
   grid: number;
@@ -325,6 +368,5 @@ export async function composeCollage(photoUrls: string[]): Promise<{
     );
   }
 
-  const pngBytes = await canvas.encode();
-  return { pngBytes, placedCount: placed, failedCount: failed, grid };
+  return { image: canvas, placedCount: placed, failedCount: failed, grid };
 }

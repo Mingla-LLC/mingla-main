@@ -37,6 +37,8 @@ export interface ServerScanResult {
   lastEndAt: string | null;
   /** issue #3281 PR8 — day this scan admitted (biz_ticket_scan). */
   eventDateId?: string | null;
+  /** issue #3281 — extras this order still owes; absent when none. */
+  extras?: unknown;
 }
 
 export type ScanTicketErrorCode =

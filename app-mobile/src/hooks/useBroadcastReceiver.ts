@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { DirectMessage } from '../services/messagingService';
+import { chatChannelBus } from '../utils/chatChannelRecovery';
 
 interface UseBroadcastReceiverOptions {
   conversationId: string | null;
@@ -31,10 +32,25 @@ export function useBroadcastReceiver({
 }: UseBroadcastReceiverOptions): void {
   const onBroadcastMessageRef = useRef(onBroadcastMessage);
   onBroadcastMessageRef.current = onBroadcastMessage;
+  // Issue #4275: bumped by the recovery controller when the server closed this
+  // channel for good (the library does not rejoin after that).
+  const [rebuildNonce, setRebuildNonce] = useState(0);
+
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    return chatChannelBus.subscribe((event) => {
+      if (event.kind === 'rebuild' && event.source === 'broadcast' && event.conversationId === conversationId) {
+        setRebuildNonce((nonce) => nonce + 1);
+      }
+    });
+  }, [conversationId]);
 
   useEffect(() => {
     if (!conversationId || !currentUserId) return;
 
+    // Issue #4275: removeChannel fires CLOSED synchronously, so a deliberate
+    // release must be marked first or it reads as a failure.
+    let released = false;
     const channelName = `chat:${conversationId}`;
     const channel = supabase
       .channel(channelName)
@@ -57,10 +73,14 @@ export function useBroadcastReceiver({
         // seen-set add as a coupled operation.
         onBroadcastMessageRef.current(msg);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (released) return;
+        chatChannelBus.emit({ kind: 'status', source: 'broadcast', conversationId, status });
+      });
 
     return () => {
+      released = true;
       supabase.removeChannel(channel);
     };
-  }, [conversationId, currentUserId]);
+  }, [conversationId, currentUserId, rebuildNonce]);
 }

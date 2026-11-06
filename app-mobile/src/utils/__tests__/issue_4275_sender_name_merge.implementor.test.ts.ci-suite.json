@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/utils/__tests__/issue_4275_sender_name_merge.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-sender-name-merge-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

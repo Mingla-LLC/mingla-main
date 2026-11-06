@@ -351,6 +351,12 @@ export interface LiveEvent {
   requireApproval: boolean;
   allowTransfers: boolean;
   hideRemainingCount: boolean;
+  /**
+   * issue #3281 — events.multi_date_pricing_mode, read by the by-id fetch the
+   * edit screen uses. Undefined when not read: the ticket sheet then hides
+   * the hints that depend on it rather than state wrong arithmetic.
+   */
+  multiDatePricingMode?: "per_day" | "all_days";
   passwordProtected: boolean;
   /** Cycle 10: hide attendee count from buyer-side surfaces. I-26 — operator-only flag; buyer surfaces honor this when added (NOT in Cycle 10). */
   privateGuestList: boolean;

@@ -109,13 +109,11 @@ Deno.test("T-05 [Sub-D / ORCH-1333] ScoreWrite type declares the AI freshness pa
   );
 });
 
-Deno.test("T-06 [Sub-D] validation: at least one of place_ids/city_id/all_cities required", () => {
-  // SPEC §3.1: error if none provided.
-  assertStringIncludes(
-    SOURCE,
-    "Provide place_ids, city_id, or all_cities=true",
-    "missing-scope validation message missing",
-  );
+Deno.test("T-06 [Sub-D, #4276] validation: place_ids required while city-wide scoring is paused", () => {
+  // #4276: city_id / all_cities are refused while older results are held (the
+  // behaviour is proved in _shared/__tests__/issue_4276_no_city_wide_scoring.implementor.test.ts).
+  assertStringIncludes(SOURCE, "Provide place_ids", "missing-scope validation message missing");
+  assertStringIncludes(SOURCE, "city_wide_scoring_paused", "city-wide refusal missing");
 });
 
 Deno.test("T-07 [Sub-D / ORCH-1333] city/all_cities scoring is a bounded resumable cursor loop", () => {

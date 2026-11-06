@@ -138,7 +138,7 @@ BEGIN
   ) OR NOT EXISTS (
     SELECT 1 FROM cron.job
     WHERE jobname = 'issue_1389_stay_reservation_sweep'
-      AND schedule = '*/5 * * * *'
+      AND schedule = '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   ) THEN
     RAISE EXCEPTION 'C-4 FAIL: durable notification or sweep missing';
   END IF;

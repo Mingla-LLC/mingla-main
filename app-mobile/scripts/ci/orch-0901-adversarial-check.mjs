@@ -370,9 +370,16 @@ check(
 check(
   "TA-10 Q3 batch profile fetch writes to `this.senderProfileCache` so downstream `enrichMessage`" +
     " calls in other service methods (getMessageById, sendMessage) benefit from the warm cache",
-  body !== null && /this\.senderProfileCache\.set\(\s*p\.id\s*,\s*\{\s*name\s*,\s*cachedAt:\s*Date\.now\(\)\s*\}\s*\)/.test(
-    stripComments(body),
-  ),
+  body !== null &&
+    (/this\.senderProfileCache\.set\(\s*p\.id\s*,\s*\{\s*name\s*,\s*cachedAt:\s*Date\.now\(\)\s*\}\s*\)/.test(
+      stripComments(body),
+    ) ||
+      // Issue #4275: every sender-name write goes through rememberSenderName, which
+      // must itself write the shared cache, so the warm-cache contract still holds.
+      (/this\.rememberSenderName\(\s*p\.id\s*,\s*name\s*\)/.test(stripComments(body)) &&
+        /private\s+rememberSenderName\([^)]*\)\s*:\s*void\s*\{[^}]*this\.senderProfileCache\.set\(\s*senderId\s*,\s*\{\s*name\s*,\s*cachedAt:\s*Date\.now\(\)\s*\}\s*\)/.test(
+          stripComments(svcSrc ?? ""),
+        ))),
   "Q3's purpose is dual: (a) provide sender names for last_message.sender_name in the immediate return, and" +
     " (b) warm the senderProfileCache so subsequent enrichMessage calls in OTHER methods hit the cache." +
     " Without (b), the perf benefit of Q3 is contained to one cold-load. Verifying the cache write" +

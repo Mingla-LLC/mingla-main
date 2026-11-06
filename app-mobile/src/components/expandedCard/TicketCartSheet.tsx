@@ -113,6 +113,11 @@ import {
 } from "@mingla/offering-rendering/ticketExtrasCart";
 import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketCheckoutContract";
 import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
+import {
+  dayChooserCaptions,
+  removedTicketsNotice,
+  ticketDayScopeLabel,
+} from "./ticketDayScope";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 import { useTicketQuote } from "../../hooks/useTicketQuote";
@@ -549,6 +554,26 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [byDateByTicket, setByDateByTicket] = useState<
     Record<string, ByDateMap>
   >({});
+  // issue #3281 — the notice after a day change took tickets out, and the
+  // days and tickets its Undo brings back.
+  // The snapshot is the whole cart as it stood before the day change: every
+  // line, the split mode and every per-date map, since dropping to one date
+  // also folds split lines back to uniform.
+  const [dayNotice, setDayNotice] = useState<{
+    message: string;
+    days: readonly string[];
+    quantities: Record<string, number>;
+    byDate: Record<string, ByDateMap>;
+    sameTicketsForEveryDate: boolean;
+    addOns: Record<string, CheckoutAddOnRequest[] | undefined>;
+  } | null>(null);
+  const pendingDayRestoreRef = React.useRef<{
+    days: readonly string[];
+    quantities: Record<string, number>;
+    byDate: Record<string, ByDateMap>;
+    sameTicketsForEveryDate: boolean;
+    addOns: Record<string, CheckoutAddOnRequest[] | undefined>;
+  } | null>(null);
   // issue #3281 — the extras the guest asked for, by ticket. The quote lines
   // below fit them to each line, so a lowered ticket count never over-asks.
   const [addOnsByTicket, setAddOnsByTicket] = useState<
@@ -669,6 +694,22 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             )
             .map((day) => day.id),
     [multiDaySelection],
+  );
+  // issue #3281 — the days the last render saw, to tell a day change apart.
+  const previousDaysRef = React.useRef<readonly string[]>(quoteEventDateIds);
+  // issue #3281 — "Sold out" / "No tickets" on each date; the event bundle's
+  // tickets carry the per-date sold-out list when the cart's own source doesn't.
+  const dayCaptions = useMemo(
+    () =>
+      multiDaySelection === null
+        ? {}
+        : dayChooserCaptions(
+            extrasTickets !== undefined && extrasTickets.length > 0
+              ? extrasTickets
+              : tickets ?? [],
+            multiDaySelection.occurrences,
+          ),
+    [extrasTickets, multiDaySelection, tickets],
   );
   // issue #3281 decision 7 — only a per-day cart with 2+ chosen dates can split.
   const canSplitByDate =
@@ -942,6 +983,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       setSameTicketsForEveryDate(true);
       setByDateByTicket({});
       setAddOnsByTicket({});
+      setDayNotice(null);
+      pendingDayRestoreRef.current = null;
       setIntakeAnswers({});
       setIntakeErrors({});
       intakeUploadSessionRef.current = createIntakeUploadSessionId();
@@ -1467,20 +1510,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     currency: ticket.currency ?? fallbackCurrency,
     isFree: ticket.isFree,
   });
-  // issue #3281 — says which days a listed ticket covers. Explorer has no
-  // scope line on the event page yet, so the cart is where a guest sees it.
-  const dayScopeLabelFor = (ticket: PublicTicketProps): string | null => {
-    if (multiDaySelection == null) return null;
-    const days = multiDaySelection.occurrences.filter((day) =>
-      ticket.validOccurrenceIds?.includes(day.id),
-    );
-    if (days.length === 0 || days.length === multiDaySelection.occurrences.length) {
-      return null;
-    }
-    return days.length === 1
-      ? formatOccurrenceLine(days[0], multiDaySelection.timezone)
-      : `${days.length} of ${multiDaySelection.occurrences.length} dates`;
-  };
+  // issue #3281 — says which days a listed ticket covers, as the event page does.
+  const dayScopeLabelFor = (ticket: PublicTicketProps): string | null =>
+    multiDaySelection == null
+      ? null
+      : ticketDayScopeLabel(
+          ticket.validOccurrenceIds,
+          multiDaySelection.occurrences,
+          multiDaySelection.timezone,
+        );
   const renderQuantityRow = (
     ticket: PublicTicketProps,
     key: string,
@@ -1520,12 +1558,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         extras={extras}
         selected={line.addOns}
         caps={caps}
-        onChange={(addOnId: string, quantity: number) =>
+        onChange={(addOnId: string, quantity: number) => {
+          // A later choice ends the day notice, so Undo can't overwrite it.
+          setDayNotice(null);
           setAddOnsByTicket((current) => ({
             ...current,
             [ticket.id]: withExtraQuantity(line.addOns, addOnId, quantity),
-          }))
-        }
+          }));
+        }}
         formatMoney={(cents: number) => formatMajorCurrency(cents / 100, currency)}
         dateCaption={(extra: PublicTicketExtra) => {
           const dates = extraDatesOnLine(extra, lineDates);
@@ -1569,6 +1609,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
   };
   const handleSameTicketsForEveryDate = (on: boolean): void => {
+    // A newer choice ends the day notice, so Undo can't put the old one back.
+    setDayNotice(null);
     setSameTicketsForEveryDate(on);
     // Rebuilt from the cart each time, so a removed ticket keeps no saved counts.
     const nextByDate: Record<string, ByDateMap> = {};
@@ -1616,7 +1658,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSplitByDate, quoteEventDateIds]);
   // issue #3281 — a line can't stay on a ticket none of the chosen dates admit.
+  // When a day change takes tickets out, the guest is told, with an Undo that
+  // brings the days and the tickets back (as on Host web).
   useEffect(() => {
+    const previousDays = previousDaysRef.current;
+    const daysChanged = previousDays.join(",") !== quoteEventDateIds.join(",");
+    previousDaysRef.current = quoteEventDateIds;
+    const removed: Array<{ ticket: PublicTicketProps; quantity: number }> = [];
     for (const line of lines) {
       const ticket = visibleTickets.find((t) => t.id === line.ticketTypeId);
       if (
@@ -1624,11 +1672,67 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         line.quantity > 0 &&
         !ticketCoversAnyDate(ticket.validOccurrenceIds, quoteEventDateIds)
       ) {
-        setLineQuantity(seedForTicket(ticket), 0);
+        removed.push({ ticket, quantity: line.quantity });
       }
     }
+    if (removed.length === 0) {
+      if (daysChanged && pendingDayRestoreRef.current === null) setDayNotice(null);
+      return;
+    }
+    for (const { ticket } of removed) setLineQuantity(seedForTicket(ticket), 0);
+    // A ticket's own list can change under the guest; Undo is for date edits.
+    if (!daysChanged || multiDaySelection === null) return;
+    setDayNotice({
+      message: removedTicketsNotice(
+        removed.map(({ ticket, quantity }) => ({
+          name: ticket.name,
+          quantity,
+          dayLabel: ticketDayScopeLabel(
+            ticket.validOccurrenceIds,
+            multiDaySelection.occurrences,
+            multiDaySelection.timezone,
+          ),
+        })),
+      ),
+      days: previousDays,
+      // This render still holds the cart from before the day change.
+      quantities: Object.fromEntries(
+        lines.map((line) => [line.ticketTypeId, line.quantity]),
+      ),
+      byDate: { ...byDateByTicket },
+      sameTicketsForEveryDate,
+      // The extras too: the fitting below trims date-limited ones off lines.
+      addOns: { ...addOnsByTicket },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, quoteEventDateIds, visibleTickets]);
+  // Undo, second half: once the earlier days are back, so are the tickets.
+  useEffect(() => {
+    const pending = pendingDayRestoreRef.current;
+    if (pending === null) return;
+    if (pending.days.join(",") !== quoteEventDateIds.join(",")) return;
+    pendingDayRestoreRef.current = null;
+    setSameTicketsForEveryDate(pending.sameTicketsForEveryDate);
+    setByDateByTicket(pending.byDate);
+    setAddOnsByTicket(pending.addOns);
+    for (const [id, quantity] of Object.entries(pending.quantities)) {
+      const ticket = visibleTickets.find((t) => t.id === id);
+      if (ticket !== undefined) setLineQuantity(seedForTicket(ticket), quantity);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteEventDateIds]);
+  const undoDayRemoval = (): void => {
+    if (dayNotice === null || multiDaySelection === null || isSubmitting) return;
+    pendingDayRestoreRef.current = dayNotice;
+    const before = new Set(dayNotice.days);
+    for (const id of quoteEventDateIds) {
+      if (!before.has(id)) multiDaySelection.onToggle(id);
+    }
+    for (const id of dayNotice.days) {
+      if (!quoteEventDateIds.includes(id)) multiDaySelection.onToggle(id);
+    }
+    setDayNotice(null);
+  };
   const ticketRows = perDateActive && multiDaySelection !== null
     ? multiDaySelection.occurrences
         .filter((day) => quoteEventDateIds.includes(day.id))
@@ -1657,7 +1761,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   ticket,
                   `${day.id}-${ticket.id}-row`,
                   byDateByTicket[ticket.id]?.[day.id] ?? 0,
-                  (next) => setTicketByDate(ticket, day.id, next),
+                  (next) => {
+                    setDayNotice(null);
+                    setTicketByDate(ticket, day.id, next);
+                  },
                 )}
               </View>
             ))}
@@ -1675,7 +1782,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               ticket,
               `${ticket.id}-row`,
               line?.quantity ?? 0,
-              (next) => setLineQuantity(seedForTicket(ticket), next),
+              (next) => {
+                setDayNotice(null);
+                setLineQuantity(seedForTicket(ticket), next);
+              },
             )}
             {renderExtras(ticket)}
           </View>
@@ -1811,7 +1921,26 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               multiDaySelection.onToggle(eventDateId);
             }}
             onRetry={multiDaySelection.onRetry}
+            captions={dayCaptions}
           />
+        ) : null}
+        {dayNotice !== null ? (
+          <View style={styles.dayNotice} testID="issue-3281-scope-notice">
+            <Text style={styles.dayNoticeText} accessibilityRole="alert">
+              {dayNotice.message}
+            </Text>
+            <Pressable
+              onPress={undoDayRemoval}
+              // Checkout has the cart once it is submitting.
+              disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel="Undo"
+              accessibilityState={{ disabled: isSubmitting }}
+              style={styles.dayNoticeUndo}
+            >
+              <Text style={styles.dayNoticeUndoText}>Undo</Text>
+            </Pressable>
+          </View>
         ) : null}
         <Text style={styles.sectionLabel}>SELECT YOUR TICKETS</Text>
         {canSplitByDate ? (
@@ -2675,6 +2804,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
+  dayNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+  },
+  dayNoticeText: {
+    flex: 1,
+    color: "rgba(255, 255, 255, 0.96)",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  dayNoticeUndo: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayNoticeUndoText: { color: "#eb7825", fontSize: 14, fontWeight: "800" },
   sheetBackground: {
     backgroundColor: "#15181f",
     borderTopLeftRadius: 28,

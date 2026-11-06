@@ -1,5 +1,7 @@
 import { supabase, trackedInvoke } from './supabase';
 import type { CuratedExperienceCard, CuratedSummary } from '../types/curatedExperience';
+import { createCuratedRequestGate } from './curatedRequestGate';
+import { useAppStore } from '../store/appStore';
 
 interface GenerateCuratedParams {
   experienceType: 'adventurous' | 'first-date' | 'romantic' | 'group-fun' | 'picnic-dates' | 'take-a-stroll';
@@ -19,6 +21,9 @@ interface GenerateCuratedParams {
   sessionId?: string;
   batchSeed?: number;
   selectedCategories?: string[];
+  // Issue #4275: which client path started this call, logged by the function so
+  // the next burst can be attributed.
+  source?: 'deck' | 'map';
 }
 
 // ORCH-0677 RC-2: return shape now carries optional `summary` so deckService
@@ -27,6 +32,16 @@ interface GenerateCuratedParams {
 export interface CuratedResponse {
   cards: CuratedExperienceCard[];
   summary?: CuratedSummary;
+}
+
+// Issue #4275: at most CURATED_MAX_CONCURRENT calls in flight per device, and
+// identical requests share one call. This is the only path to the function
+// from the app. The key carries the user, and sign-out resets it (authCleanup), so one
+// account can never share another's in-flight answer.
+const curatedGate = createCuratedRequestGate<CuratedResponse>();
+
+export function resetCuratedRequests(): void {
+  curatedGate.reset();
 }
 
 class CuratedExperiencesService {
@@ -65,11 +80,13 @@ class CuratedExperiencesService {
     // curated delivers as soon as THIS call returns; no 20s dead-wait.
     // The ceiling only matters for curated-only decks; shrinking it further
     // is ORCH-0495 territory (client warm-ping of discover-cards, deferred).
-    const { data, error } = await trackedInvoke('generate-curated-experiences', { body });
-    if (error) throw error;
-    const cards = (data?.cards ?? []) as CuratedExperienceCard[];
-    const summary = data?.summary as CuratedSummary | undefined;
-    return { cards, summary };
+    return curatedGate.run(JSON.stringify([useAppStore.getState().user?.id ?? null, body]), async () => {
+      const { data, error } = await trackedInvoke('generate-curated-experiences', { body });
+      if (error) throw error;
+      const cards = (data?.cards ?? []) as CuratedExperienceCard[];
+      const summary = data?.summary as CuratedSummary | undefined;
+      return { cards, summary };
+    });
   }
 
   async warmPool(params: {

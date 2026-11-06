@@ -142,10 +142,25 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3682: register the tester send-time switch migration and adversarial proofs the same way.
 // #3682: the roster suite runs the closeout subject and empty-roster proofs.
 // #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
+// #4273: register the Invite step sources-and-methods migration and its proofs the same way.
+// #4273: register the Blast combined-audience migration and its proofs the same way.
+// #4273: register the tester adversarial proofs the same way.
+// #4273: register the rework proofs the same way.
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
+// #4273: register the tester retest proofs the same way.
+// #4273: register the segment-count proofs the same way.
+// #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
+// #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
+// (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
 // #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
-export const BOOTSTRAP_SHA256 = "5597615263603fa4b320c09caf7e922c5f67c1c4444e7cbe1b6e1db51d170d7e";
+export const BOOTSTRAP_SHA256 = "ec18ada953602f069feb7e01e47a1b2648614589283e2a2190b03c197aeae16f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

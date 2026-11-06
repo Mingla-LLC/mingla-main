@@ -12,6 +12,8 @@ import "./issue_4174_due_today_plan_only.cases";
 import "./issue_3281_per_date_cart.cases";
 // #3281 — extras on the mounted sheet (same harness).
 import "./issue_3281_extras_cart.cases";
+// #3281 — day captions and the removal notice with Undo (same harness).
+import "./issue_3281_day_scope_cart.cases";
 
 describe("issue #3859 — Explorer expired-session checkout guard", () => {
   test("null account never becomes anonymous contact entry, then late auth restores the recap without losing lines", () => {

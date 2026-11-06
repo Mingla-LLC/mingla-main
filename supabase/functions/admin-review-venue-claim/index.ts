@@ -103,8 +103,40 @@ interface GoLiveResult {
   bounce_reasons: string[];
   scored_signals: string[];
   failed_signals: Array<{ signal_id: string; error: string }>;
+  // #4276: signals the scorer answered but did not score this place for
+  // (held_old_result, or written=0), with the reason. Not counted as scored.
+  unscored_signals: Array<{ signal_id: string; reason: string }>;
   rolled_back: boolean;
+  // #4276: the city pipeline is holding this place (serving_hold). The hold
+  // trigger keeps is_servable false, so the place is not live until the city
+  // pipeline releases it.
+  held: boolean;
+  held_message: string | null;
 }
+
+// #4276: what a scorer reply says about ONE place. A reply that reports the
+// place as held_old_result, or that wrote nothing, did not score it. A reply
+// without those fields (an older scorer) is read as scored, as before.
+export function scorerReplyUnscoredReason(reply: unknown): string | null {
+  if (reply === null || typeof reply !== "object") return null;
+  const r = reply as Record<string, unknown>;
+  if (typeof r.held_old_result === "number" && r.held_old_result > 0) {
+    return "held_old_result: its older Intelligence result is held, so the scorer left it untouched";
+  }
+  if (typeof r.written === "number" && r.written === 0) {
+    if (typeof r.vetoed_count === "number" && r.vetoed_count > 0) {
+      return "not_written: vetoed for this signal";
+    }
+    if (typeof r.ineligible_count === "number" && r.ineligible_count > 0) {
+      return "not_written: not eligible for this signal";
+    }
+    return "not_written: the scorer wrote no score for this place";
+  }
+  return null;
+}
+
+export const HELD_BY_CITY_PIPELINE_MESSAGE =
+  "Approved, but not live: the city pipeline is holding this place. It goes live when the city pipeline releases it.";
 
 // META-ORCH-1062 Phase 4 — pure builder for the run-signal-scorer per-place
 // invoke body. The scorer hard-requires BOTH signal_id AND place_ids; the live
@@ -142,7 +174,10 @@ export async function runApproveGoLive(
     bounce_reasons: [],
     scored_signals: [],
     failed_signals: [],
+    unscored_signals: [],
     rolled_back: false,
+    held: false,
+    held_message: null,
   };
 
   // ── Phase 2: re-bounce the linked row over its CURRENT data ────────────────
@@ -208,7 +243,25 @@ export async function runApproveGoLive(
     console.error("[admin-review-venue-claim] go-live update", liveErr.message);
     return result; // flip failed; nothing to score
   }
-  result.servable = true;
+  // #4276: read the row back. A place the city pipeline holds (serving_hold) is
+  // parked by the hold trigger with is_servable=false, so the update above did
+  // not make it live. Report that plainly instead of claiming it is servable.
+  const { data: liveRow, error: liveReadErr } = await admin
+    .from("place_pool")
+    .select("is_servable, serving_hold")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (liveReadErr) {
+    console.error("[admin-review-venue-claim] go-live read-back", liveReadErr.message);
+  }
+  const back = (liveRow ?? null) as { is_servable?: unknown; serving_hold?: unknown } | null;
+  if (back?.serving_hold === true || back?.is_servable === false) {
+    result.servable = false;
+    result.held = back?.serving_hold === true;
+    result.held_message = result.held ? HELD_BY_CITY_PIPELINE_MESSAGE : null;
+  } else {
+    result.servable = true;
+  }
 
   // Load the active signals (16 live). Score ONCE PER SIGNAL with signal_id +
   // place_ids — the live keystone bug (1062-A) was the missing signal_id.
@@ -243,8 +296,12 @@ export async function runApproveGoLive(
           );
           result.failed_signals.push({ signal_id: signalId, error: scoreErr.message ?? "invoke_error" });
         } else {
-          result.scored_signals.push(signalId);
-          void scoreRes;
+          const unscored = scorerReplyUnscoredReason(scoreRes);
+          if (unscored !== null) {
+            result.unscored_signals.push({ signal_id: signalId, reason: unscored });
+          } else {
+            result.scored_signals.push(signalId);
+          }
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

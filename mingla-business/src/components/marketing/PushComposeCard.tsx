@@ -42,9 +42,14 @@ export interface PushComposeCardProps {
   reason: PushAudienceReason;
   /** Shown instead of the editor note when push cannot reach this audience. */
   unavailableReason?: string | null;
+  /** #4273 — "Filled in from your email · edit anytime" / "Edited by you". */
+  autoFillLabel?: string | null;
+  /** #4273 — the notification's title (the email subject). Absent shows the brand. */
+  title?: string | null;
 }
 
-export function PushPreview({ body, brandName, reason }: {
+export function PushPreview({ body, brandName, reason, title }: {
+  title?: string | null;
   body: string;
   brandName: string;
   reason: PushAudienceReason;
@@ -52,7 +57,7 @@ export function PushPreview({ body, brandName, reason }: {
   return (
     <View style={styles.preview} accessibilityLabel="Push preview" testID="push-preview">
       <Text style={styles.previewApp}>MINGLA · now</Text>
-      <Text style={styles.previewTitle} numberOfLines={1}>{brandName}</Text>
+      <Text style={styles.previewTitle} numberOfLines={1}>{title && title.length > 0 ? title : brandName}</Text>
       <Text style={styles.previewBody} numberOfLines={3}>
         {`${body.trim().length > 0 ? body.trim() : "Your message"} ${pushReasonLine(reason, brandName)}`}
       </Text>
@@ -66,6 +71,8 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
   brandName,
   reason,
   unavailableReason,
+  autoFillLabel,
+  title,
 }) => {
   const remaining = PUSH_BODY_MAX - body.length;
   return (
@@ -76,6 +83,9 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
           {`${remaining}`}
         </Text>
       </View>
+      {autoFillLabel ? (
+        <Text style={styles.autoFill} testID="push-autofill-label">{autoFillLabel}</Text>
+      ) : null}
       <TextInput
         value={body}
         onChangeText={onChangeBody}
@@ -86,7 +96,7 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
         accessibilityLabel="Push message"
         style={styles.input}
       />
-      <PushPreview body={body} brandName={brandName} reason={reason} />
+      <PushPreview body={body} brandName={brandName} reason={reason} title={title} />
       <Text style={styles.note}>
         {unavailableReason ??
           "Free and unlimited. Sent to Mingla accounts in this audience; muted guests and anyone who switched push off for your brand are skipped."}
@@ -111,6 +121,7 @@ const styles = StyleSheet.create({
   label: { ...typography.labelCap, color: textTokens.tertiary },
   counter: { color: textTokens.tertiary, fontSize: 12, fontWeight: "600" },
   counterOver: { color: accent.warm },
+  autoFill: { color: accent.warm, fontSize: 11, fontWeight: "700" },
   input: {
     minHeight: 72,
     color: textTokens.primary,
