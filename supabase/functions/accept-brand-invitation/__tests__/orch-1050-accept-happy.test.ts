@@ -65,6 +65,8 @@ Deno.test("mapRpcError — P0005 → 410 invite_revoked", () => {
 });
 
 Deno.test("mapRpcError — unknown ERRCODE → null", () => {
-  assertEquals(mapRpcError("23505"), null);
+  // #4283: 23505 is now a named 409 (invite_membership_conflict); use a code
+  // the function still does not map.
+  assertEquals(mapRpcError("23503"), null);
   assertEquals(mapRpcError(undefined), null);
 });

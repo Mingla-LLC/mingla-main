@@ -144,7 +144,7 @@ Deno.test("T-07 source-inspect: list_active_runs includes queued", async () => {
   const src = await Deno.readTextFile(INDEX_PATH);
   assert(
     src.includes(
-      '.in("status", ["pending", "queued", "running", "cancelling"])',
+      '.in("status", ["pending", "queued", "running", "paused", "cancelling"])',
     ),
     "handleListActiveRuns must include 'queued' in the status .in(...) array",
   );

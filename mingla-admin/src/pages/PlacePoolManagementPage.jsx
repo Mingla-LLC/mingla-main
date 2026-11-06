@@ -33,6 +33,13 @@ import { Badge } from "../components/ui/Badge";
 import { Breadcrumbs } from "../components/ui/Breadcrumbs";
 import { Spinner } from "../components/ui/Spinner";
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
+import {
+  adminDeactivateError,
+  PLACE_CATEGORY_COLUMN,
+  PLACE_LIST_COLUMNS,
+  PLACE_LIST_COUNT_MODE,
+  PLACE_MAP_COLUMNS,
+} from "../lib/placePoolQueries";
 // ORCH-0553 — SeedTab + RefreshTab extracted to shared seeding components.
 // HARD_CAP_USD + formatCost + TILE_RADIUS_OPTIONS imported from shared lib so
 // both this page and AIValidationPage tabs use a single source of truth.
@@ -44,7 +51,6 @@ import {
   buildAdminDiscoveryRangeUpdate,
 } from "../lib/deckCardPreviewRules";
 import { PageHeader } from "../components/ui/PageHeader";
-import { SignalLibraryPage } from "./SignalLibraryPage";
 import { PlaceScoreOverride } from "../components/placePool/PlaceScoreOverride";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -214,8 +220,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
 
   const photos = place.stored_photo_urls || [];
   const types = place.types || [];
-  const aiCats = place.ai_categories || [];
-  const hasConflict = place.seeding_category && aiCats.length > 0 && place.seeding_category !== aiCats[0];
+  const placeCategory = place.mingla_category || null;
 
   const bouncerStatusBadge = () => {
     if (place.is_servable === true) return <Badge variant="success">Servable</Badge>;
@@ -424,10 +429,10 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Classification</h4>
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2">
-                <span className="text-[var(--color-text-secondary)]">Google Category:</span>
-                {place.seeding_category ? (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[place.seeding_category] }}>
-                    {CATEGORY_LABELS[place.seeding_category] || place.seeding_category}
+                <span className="text-[var(--color-text-secondary)]">Category:</span>
+                {placeCategory ? (
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[placeCategory] || "#6b7280" }}>
+                    {CATEGORY_LABELS[placeCategory] || placeCategory}
                   </span>
                 ) : <Badge variant="error">None</Badge>}
               </div>
@@ -439,15 +444,6 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--color-text-secondary)]">AI Category:</span>
-                {aiCats.length > 0 ? (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[aiCats[0]] || "#6b7280" }}>
-                    {CATEGORY_LABELS[aiCats[0]] || aiCats[0]}
-                  </span>
-                ) : <Badge variant="outline">Not validated</Badge>}
-                {hasConflict && <Badge variant="warning">Conflict</Badge>}
-              </div>
               <div className="flex items-center gap-2">
                 <span className="text-[var(--color-text-secondary)]">Bouncer Status:</span> {bouncerStatusBadge()}
               </div>
@@ -902,7 +898,7 @@ function AddCityModal({ open, onClose, onSave }) {
               {/* Selected estimate summary */}
               {selectedEstimate && (
                 <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-2.5">
-                  {selectedEstimate.tiles} tiles × 13 categories = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
+                  {selectedEstimate.tiles} tiles × {Math.round(selectedEstimate.apiCalls / Math.max(selectedEstimate.tiles, 1))} searches = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
                 </div>
               )}
             </div>
@@ -919,215 +915,8 @@ function AddCityModal({ open, onClose, onSave }) {
   );
 }
 
-// ── Update City Modal (Re-geocode existing city) ──────────────────────────────
-
-function UpdateCityModal({ open, onClose, city, onUpdated }) {
-  const [query, setQuery] = useState("");
-  const [tileRadius, setTileRadius] = useState("1500");
-  const [geocodeResult, setGeocodeResult] = useState(null);
-  const [overlap, setOverlap] = useState([]);
-  const [geocoding, setGeocoding] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
-  // Pre-fill when modal opens or city changes
-  useEffect(() => {
-    if (open && city) {
-      setQuery(city.name || "");
-      setTileRadius(String(city.tile_radius_m || 1500));
-      setGeocodeResult(null);
-      setOverlap([]);
-      setError(null);
-    }
-  }, [open, city]);
-
-  const handleGeocode = useCallback(async () => {
-    if (!query.trim() || query.trim().length < 2) return;
-    setGeocoding(true);
-    setGeocodeResult(null);
-    setOverlap([]);
-    setError(null);
-    try {
-      const { data, error: fnErr } = await supabase.functions.invoke("admin-seed-places", {
-        body: { action: "geocode_city", query: query.trim() },
-      });
-      if (fnErr) throw new Error(await extractFunctionError(fnErr, "Geocoding failed"));
-      if (data?.error) throw new Error(data.error);
-      setGeocodeResult(data);
-
-      // Check overlap — exclude THIS city (the key difference from AddCityModal)
-      const { data: overlapData } = await supabase.rpc("check_city_bbox_overlap", {
-        p_sw_lat: data.viewport.swLat,
-        p_sw_lng: data.viewport.swLng,
-        p_ne_lat: data.viewport.neLat,
-        p_ne_lng: data.viewport.neLng,
-        p_exclude_id: city.id,
-      });
-      setOverlap(overlapData || []);
-    } catch (err) {
-      setError(err.message || "Geocoding failed");
-    } finally {
-      setGeocoding(false);
-    }
-  }, [query, city]);
-
-  // Overlap is informational for updates — neighboring cities may legitimately overlap
-  const isValid = geocodeResult && tileRadius;
-
-  const handleSave = useCallback(async () => {
-    if (!geocodeResult || !isValid || !city) return;
-    setSaving(true);
-    const vp = geocodeResult.viewport;
-    const tileRadiusNum = parseInt(tileRadius);
-
-    try {
-      // UPDATE existing city record (not INSERT)
-      const { error: updateErr } = await supabase.from("seeding_cities").update({
-        google_place_id: `geocoded_${geocodeResult.center.lat}_${geocodeResult.center.lng}`,
-        name: geocodeResult.cityName,
-        country: geocodeResult.country,
-        country_code: geocodeResult.countryCode,
-        center_lat: geocodeResult.center.lat,
-        center_lng: geocodeResult.center.lng,
-        bbox_sw_lat: vp.swLat,
-        bbox_sw_lng: vp.swLng,
-        bbox_ne_lat: vp.neLat,
-        bbox_ne_lng: vp.neLng,
-        coverage_radius_km: 0,
-        tile_radius_m: tileRadiusNum,
-        updated_at: new Date().toISOString(),
-      }).eq("id", city.id);
-      if (updateErr) throw updateErr;
-
-      // Regenerate tiles with new bbox + radius
-      const { data: tileResult, error: tileErr } = await supabase.functions.invoke("admin-seed-places", {
-        body: { action: "generate_tiles", cityId: city.id },
-      });
-      if (tileErr) throw new Error(await extractFunctionError(tileErr, "Tile generation failed"));
-      if (tileResult?.error) throw new Error(tileResult.error);
-
-      onUpdated(tileResult?.tileCount || 0);
-      onClose();
-    } catch (err) {
-      setError(err.message || "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }, [geocodeResult, isValid, tileRadius, city, onUpdated, onClose]);
-
-  const selectedEstimate = geocodeResult?.tileEstimates?.[`atRadius${tileRadius}`] || null;
-
-  if (!city) return null;
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Update City — ${city.name}`} size="md">
-      <ModalBody>
-        <div className="space-y-4">
-          {/* City search (pre-filled) */}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Input label="City Name" placeholder="e.g. Raleigh, NC" value={query}
-                onChange={(e) => { setQuery(e.target.value); setGeocodeResult(null); setOverlap([]); setError(null); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleGeocode(); }}
-              />
-            </div>
-            <div className="pt-6">
-              <Button variant="secondary" icon={Search} loading={geocoding} onClick={handleGeocode}
-                disabled={!query.trim() || query.trim().length < 2}>
-                Re-geocode
-              </Button>
-            </div>
-          </div>
-
-          {/* Current bbox info */}
-          {!geocodeResult && city.bbox_sw_lat && (
-            <div className="rounded-lg border border-[var(--gray-200)] p-3 space-y-1 bg-[var(--gray-50)]">
-              <p className="text-xs font-medium text-[var(--color-text-secondary)]">Current bounding box</p>
-              <p className="text-xs text-[var(--color-text-tertiary)]">
-                {((city.bbox_ne_lat - city.bbox_sw_lat) * 111.32).toFixed(1)}km × {((city.bbox_ne_lng - city.bbox_sw_lng) * 111.32 * Math.cos((city.center_lat * Math.PI) / 180)).toFixed(1)}km · {city.tile_radius_m}m tiles
-              </p>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="flex items-start gap-2 text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] rounded-lg p-3">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Geocode result */}
-          {geocodeResult && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-[var(--gray-200)] p-3 space-y-1">
-                <p className="text-sm font-semibold text-[var(--color-text-primary)]">{geocodeResult.cityName}</p>
-                <p className="text-xs text-[var(--color-text-secondary)]">{geocodeResult.formattedAddress}</p>
-                <p className="text-xs text-[var(--color-text-tertiary)]">
-                  Country: {geocodeResult.country} ({geocodeResult.countryCode}) · {geocodeResult.tileEstimates.extentLatKm} km × {geocodeResult.tileEstimates.extentLngKm} km · ~{geocodeResult.tileEstimates.areaKm2.toLocaleString()} km²
-                </p>
-              </div>
-
-              {/* Overlap notice (informational — does not block save for updates) */}
-              {overlap.length > 0 && (
-                <div className="flex items-start gap-2 text-sm text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-3">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-warning-500)]" />
-                  <span>Bbox overlaps with: {overlap.map((c) => `${c.name} (${c.country})`).join(", ")}. This is normal for neighboring cities.</span>
-                </div>
-              )}
-
-              {/* Tile radius picker */}
-              <div>
-                <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-2">Tile Radius (search granularity)</p>
-                <div className="flex gap-2">
-                  {TILE_RADIUS_OPTIONS.map((opt) => {
-                    const est = geocodeResult.tileEstimates[`atRadius${opt.value}`];
-                    const active = tileRadius === opt.value;
-                    return (
-                      <button key={opt.value} onClick={() => setTileRadius(opt.value)}
-                        className={[
-                          "flex-1 rounded-lg border p-2.5 text-left transition-all cursor-pointer",
-                          active
-                            ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-500)]"
-                            : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
-                        ].join(" ")}
-                      >
-                        <p className={`text-sm font-semibold ${active ? "text-[var(--color-brand-700)]" : "text-[var(--color-text-primary)]"}`}>{opt.label}</p>
-                        <p className="text-xs text-[var(--color-text-tertiary)]">{opt.desc}</p>
-                        {est && (
-                          <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-                            {est.tiles} tiles · ${est.searchCostUsd}
-                          </p>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {selectedEstimate && (
-                <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-2.5">
-                  {selectedEstimate.tiles} tiles × 13 categories = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} onClick={handleSave} disabled={!isValid}>
-          Update & Regenerate Tiles
-        </Button>
-      </ModalFooter>
-    </Modal>
-  );
-}
-
-// ── Tab 1: Seed & Import ─────────────────────────────────────────────────────
-
-// ORCH-0553 — function SeedTab(...) MOVED to components/seeding/SeedTab.jsx (~838 lines).
-// Imported at top of this file. Behavior unchanged.
+// #4276 (B1): the Update Bbox modal is gone. A box changes only in the pipeline's
+// geo box panel (apply_city_box), which keeps the larger edge and warns first.
 
 // ── Tab 2: Map View ──────────────────────────────────────────────────────────
 
@@ -1143,10 +932,10 @@ function getTileStatus(tile, ops, placesNearTile) {
     ops.filter((o) => o.tile_id === tile.id && o.status === "completed").map((o) => o.seeding_category)
   );
   // Also count from places within tile radius (more reliable)
-  const catsFromPlaces = new Set(placesNearTile.map((p) => p.seeding_category).filter(Boolean));
+  const catsFromPlaces = new Set(placesNearTile.map((p) => p.mingla_category).filter(Boolean));
   const totalCats = new Set([...seededCats, ...catsFromPlaces]);
 
-  if (totalCats.size >= 13) return "full";
+  if (totalCats.size >= ALL_CATEGORIES.length) return "full";
   if (totalCats.size > 0) return "partial";
   return "unseeded";
 }
@@ -1164,6 +953,7 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
   const [visibleCats, setVisibleCats] = useState(new Set(ALL_CATEGORIES));
   const [places, setPlaces] = useState([]);
   const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -1171,18 +961,22 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
     if (!selectedCity) { setPlaces([]); return; }
     setMapLoading(true);
     let q = supabase.from("place_pool")
-      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, is_servable, deleted_at, deleted_reason")
+      .select(PLACE_MAP_COLUMNS)
       .eq("is_active", true)
       .eq("is_servable", true)
       .eq("city_id", selectedCity);
-    q.limit(3000).then(({ data }) => {
-      if (mountedRef.current) { setPlaces(data || []); setMapLoading(false); }
+    q.limit(3000).then(({ data, error }) => {
+      if (!mountedRef.current) return;
+      setMapError(error ? error.message : null);
+      setPlaces(data || []);
+      setMapLoading(false);
     });
     return () => { mountedRef.current = false; };
   }, [selectedCountry, selectedCity]);
 
   if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city from the picker above to view the map.</div>;
   if (mapLoading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading map data...</div>;
+  if (mapError) return <div className="text-center py-12 text-[var(--color-error-600)]">The map could not load places: {mapError}</div>;
   if (places.length === 0) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No places found to display.</div>;
 
   // Compute center from places average
@@ -1193,7 +987,8 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
       ? [validPlaces.reduce((s, p) => s + p.lat, 0) / validPlaces.length, validPlaces.reduce((s, p) => s + p.lng, 0) / validPlaces.length]
       : [0, 0];
 
-  const filteredPlaces = places.filter((p) => visibleCats.has(p.ai_categories?.[0] || p.seeding_category));
+  // A place with no derived category stays on the map: the toggles can't hide it.
+  const filteredPlaces = places.filter((p) => !p.mingla_category || visibleCats.has(p.mingla_category));
   const showTiles = registeredCity && tiles.length > 0;
 
   // Pre-compute tile data if registered
@@ -1269,11 +1064,11 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
           {/* Place pins */}
           {filteredPlaces.map((p) => (
             <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={5}
-              pathOptions={{ color: CATEGORY_COLORS[p.seeding_category] || "#6b7280", fillColor: CATEGORY_COLORS[p.seeding_category] || "#6b7280", fillOpacity: 0.8, weight: 1 }}>
+              pathOptions={{ color: CATEGORY_COLORS[p.mingla_category] || "#6b7280", fillColor: CATEGORY_COLORS[p.mingla_category] || "#6b7280", fillOpacity: 0.8, weight: 1 }}>
               <Popup>
                 <div className="text-xs">
                   <strong>{p.name}</strong><br />
-                  {CATEGORY_LABELS[p.seeding_category] || p.seeding_category}<br />
+                  {CATEGORY_LABELS[p.mingla_category] || p.mingla_category || "No category"}<br />
                   {p.rating ? `★ ${p.rating}` : "No rating"} · {(p.stored_photo_urls?.length || 0)} photos<br />
                   <Badge variant={p.is_active ? "success" : "error"}>{p.is_active ? "Active" : "Inactive"}</Badge>
                 </div>
@@ -1311,12 +1106,12 @@ function BrowseTab({ scope, onRefresh }) {
     }
 
     let q = supabase.from("place_pool").select(
-      "*, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,source_type,version,updated_by,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)",
-      { count: "exact" },
+      `${PLACE_LIST_COLUMNS}, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,source_type,version,updated_by,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)`,
+      { count: PLACE_LIST_COUNT_MODE },
     );
     if (selectedCity) q = q.eq("city_id", selectedCity);
     else if (countryCityIds && countryCityIds.length > 0) q = q.in("city_id", countryCityIds);
-    if (filters.category) q = q.contains("ai_categories", [filters.category]);
+    if (filters.category) q = q.eq(PLACE_CATEGORY_COLUMN, filters.category);
     if (filters.status === "active") q = q.eq("is_active", true);
     else if (filters.status === "inactive") q = q.eq("is_active", false);
     if (filters.photoStatus === "has") q = q.not("stored_photo_urls", "is", null);
@@ -1351,11 +1146,11 @@ function BrowseTab({ scope, onRefresh }) {
 
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => setDetailPlace(r)}>{r.name}</button> },
-    { key: "ai_categories", label: "Category", render: (_, r) => {
-      const cats = r.ai_categories || [];
-      if (cats.length === 0) return r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]} <span className="ml-1 opacity-60">(seed)</span></span> : "—";
-      return <div className="flex flex-wrap gap-1">{cats.map((c) => <span key={c} className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[c] || "#6b7280" }}>{CATEGORY_LABELS[c] || c}</span>)}</div>;
-    }},
+    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.mingla_category] || "#6b7280" }}>
+        {CATEGORY_LABELS[r.mingla_category] || r.mingla_category}
+      </span>
+    ) : "—" },
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[160px] truncate block">{r.address || "—"}</span> },
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
@@ -1454,7 +1249,7 @@ function BrowseTab({ scope, onRefresh }) {
 
       <DataTable columns={columns} rows={places} loading={loading}
         emptyMessage="No places found" emptyIcon={Globe}
-        pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
+        pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
 
       <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { fetchPlaces(); if (onRefresh) onRefresh(); }} />
     </div>
@@ -2831,25 +2626,32 @@ function ExcludedTab({ scope, onRefresh }) {
   const fetchExcluded = useCallback(async () => {
     setLoading(true);
     let q = supabase.from("place_pool")
-      .select("*", { count: "exact" })
+      .select(PLACE_LIST_COLUMNS, { count: PLACE_LIST_COUNT_MODE })
       .eq("is_active", true)
       .eq("is_servable", false);
     if (scope.cityId) q = q.eq("city_id", scope.cityId);
-    if (filterCat) q = q.eq("seeding_category", filterCat);
+    if (filterCat) q = q.eq(PLACE_CATEGORY_COLUMN, filterCat);
     q = q.order("name").range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-    const { data, count } = await q;
+    const { data, count, error } = await q;
+    if (error) addToast({ variant: "error", title: "Failed to load excluded places", description: error.message });
     setPlaces(data || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [scope.cityId, page, filterCat]);
+  }, [scope.cityId, page, filterCat, addToast]);
 
   useEffect(() => { fetchExcluded(); }, [fetchExcluded]);
   useEffect(() => { setPage(0); }, [scope.cityId, filterCat]);
 
   const handleDelete = async (place) => {
     if (!confirm(`Delete "${place.name}"? This sets it to inactive.`)) return;
-    const { error } = await supabase.from("place_pool").update({ is_active: false }).eq("id", place.id);
-    if (error) { addToast({ variant: "error", title: "Delete failed", description: error.message }); return; }
+    // #4276 U5: the audited path. It records who removed the place and why in
+    // place_admin_actions; a direct table update left no trace.
+    const result = await supabase.rpc("admin_deactivate_place", {
+      p_place_id: place.id,
+      p_reason: "Removed from the Excluded list",
+    });
+    const deactivateError = adminDeactivateError(result);
+    if (deactivateError) { addToast({ variant: "error", title: "Delete failed", description: deactivateError }); return; }
     addToast({ variant: "success", title: `Deleted "${place.name}"` });
     fetchExcluded();
   };
@@ -2861,9 +2663,9 @@ function ExcludedTab({ scope, onRefresh }) {
     )},
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[250px] truncate block">{r.address || "—"}</span> },
     { key: "bouncer_reason", label: "Bouncer Reason", render: (_, r) => <span className="text-xs max-w-[250px] truncate block text-[var(--color-error-600)]">{r.bouncer_reason || "—"}</span> },
-    { key: "seeding_category", label: "Discovered Via", render: (_, r) => r.seeding_category ? (
-      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] || "#6b7280" }}>
-        {CATEGORY_LABELS[r.seeding_category] || r.seeding_category}
+    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.mingla_category] || "#6b7280" }}>
+        {CATEGORY_LABELS[r.mingla_category] || r.mingla_category}
       </span>
     ) : "—" },
     { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
@@ -2904,7 +2706,7 @@ function ExcludedTab({ scope, onRefresh }) {
 
       <DataTable columns={columns} rows={places} loading={loading}
         emptyMessage="No Bouncer-excluded places" emptyIcon={CheckCircle}
-        pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
+        pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
 
       {/* Place detail modal — reuses the same modal as Browse tab */}
       <PlaceDetailModal place={detailPlace} open={!!detailPlace}
@@ -2915,23 +2717,21 @@ function ExcludedTab({ scope, onRefresh }) {
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
-// #4130 (Wave 4b): Place pool shows this page in three of its tabs, each with
-// only its own tools. Pipeline: seeding, refresh, photos, thumbnails and
-// scoring (the old Signal Library). Browse and map: the list and the map; a
-// place opens with its score override (the old Deck tuner). Excluded: the
-// places Bouncer left out, with the reason.
+// #4130 (Wave 4b), #4276: Place pool shows this page in several places, each with
+// only its own tools. Pipeline's hand tools: seeding chosen categories, refresh,
+// photos and thumbnails (scoring moved to the pipeline's Scoring tools, with no
+// city-wide score). Browse: the list; a place opens with its score override (the old
+// Deck tuner). Map: the map. Excluded: the places the checks left out, with the reason.
 const SECTION_TABS = {
   pipeline: [
     { id: "seeding", label: "Seeding" },
     { id: "refresh", label: "Refresh" },
     { id: "photos", label: "Photos" },
     { id: "thumbnails", label: "Thumbnails" },
-    { id: "scoring", label: "Bouncer and scoring" },
   ],
-  browse: [
-    { id: "browse", label: "List" },
-    { id: "map", label: "Map" },
-  ],
+  // #4276: Browse and Map are their own Place pool tabs.
+  browse: [{ id: "browse", label: "List" }],
+  map: [{ id: "map", label: "Map" }],
   excluded: [{ id: "excluded", label: "Excluded by Bouncer" }],
 };
 
@@ -2947,7 +2747,7 @@ export function PlacePoolManagementPage({ section = "browse" }) {
   // Tab state
   const tabs = SECTION_TABS[section] || SECTION_TABS.browse;
   const [activeTab, setActiveTab] = useState(tabs[0].id);
-  const [seedingActive, setSeedingActive] = useState(false);
+  const [, setSeedingActive] = useState(false);
 
   // Seeding state (loaded when a city is selected)
   const [registeredCity, setRegisteredCity] = useState(null);
@@ -2955,7 +2755,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
   const [stats, setStats] = useState(null);
   const [seedingOps, setSeedingOps] = useState([]);
   const [addCityOpen, setAddCityOpen] = useState(false);
-  const [updateCityOpen, setUpdateCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Photo backfill job status bar
@@ -2992,7 +2791,7 @@ export function PlacePoolManagementPage({ section = "browse" }) {
         if (!mountedRef.current) return;
         setRegisteredCity(data || null);
         if (data) {
-          supabase.from("seeding_tiles").select("*").eq("city_id", data.id).order("tile_index")
+          supabase.from("seeding_tiles").select("*").eq("city_id", data.id).is("retired_at", null).in("kind", ["grid", "fill"]).order("tile_index")
             .then(({ data: t }) => { if (mountedRef.current) setTiles(t || []); });
           supabase.rpc("admin_city_place_stats", { p_city_id: data.id })
             .then(({ data: s }) => { if (mountedRef.current) setStats(s); });
@@ -3022,11 +2821,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
     setScope({ countryCode: city.country_code || null, cityId: city.id });
   };
 
-  const handleCityUpdated = (tileCount) => {
-    addToast({ variant: "success", title: `City updated — ${tileCount} tiles regenerated` });
-    refresh();
-  };
-
   const handleDeleteCity = async (city) => {
     try {
       const { error } = await supabase.from("seeding_cities").delete().eq("id", city.id);
@@ -3047,10 +2841,6 @@ export function PlacePoolManagementPage({ section = "browse" }) {
         actions={
           <>
             <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
-            {scope.cityId && registeredCity && (
-              <Button icon={RefreshCw} size="sm" variant="secondary" onClick={() => setUpdateCityOpen(true)}
-                disabled={seedingActive}>Update Bbox</Button>
-            )}
             <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>
           </>
         }
@@ -3130,11 +2920,9 @@ export function PlacePoolManagementPage({ section = "browse" }) {
         {activeTab === "excluded" && (
           <ExcludedTab scope={scope} onRefresh={refresh} />
         )}
-        {activeTab === "scoring" && <SignalLibraryPage />}
       </div>
 
       <AddCityModal open={addCityOpen} onClose={() => setAddCityOpen(false)} onSave={handleAddCity} />
-      <UpdateCityModal open={updateCityOpen} onClose={() => setUpdateCityOpen(false)} city={registeredCity} onUpdated={handleCityUpdated} />
     </div>
   );
 }

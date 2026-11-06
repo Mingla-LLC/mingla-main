@@ -6,17 +6,23 @@
 
 // ── Tabs held in the address (#/page?tab=…) ──────────────────────────────────
 
+// #4276: the pipeline sits at the top of Place pool, above these tabs, so it is not a
+// tab. "pipeline" stays a valid address: it opens Overview and scrolls to the pipeline.
 export const PLACE_POOL_TABS = Object.freeze([
   Object.freeze({ id: "overview", label: "Overview" }),
   Object.freeze({ id: "cities", label: "Cities" }),
-  Object.freeze({ id: "pipeline", label: "Pipeline" }),
-  Object.freeze({ id: "browse", label: "Browse and map" }),
+  Object.freeze({ id: "browse", label: "Browse" }),
+  Object.freeze({ id: "map", label: "Map" }),
   Object.freeze({ id: "excluded", label: "Excluded" }),
 ]);
 
-// Older tab names that still arrive in links: the Wave 0 hub's "places" tab
-// and the retired Deck tuner (now an action on a place in Browse and map).
-const PLACE_POOL_TAB_ALIASES = Object.freeze({ places: "browse", "deck-tuner": "browse" });
+/** The address that names the pipeline itself (#/placepool?tab=pipeline). */
+export const PLACE_POOL_PIPELINE_ADDRESS = "pipeline";
+
+// Older tab names that still arrive in links: the Wave 0 hub's "places" tab,
+// the retired Deck tuner (now an action on a place in Browse) and the pipeline,
+// which is above every tab.
+const PLACE_POOL_TAB_ALIASES = Object.freeze({ places: "browse", "deck-tuner": "browse", pipeline: "overview" });
 
 export const TEAM_TABS = Object.freeze([
   Object.freeze({ id: "team", label: "People", hosts: "admin" }),
@@ -32,7 +38,6 @@ export const SETTINGS_SECTIONS = Object.freeze([
   "appearance",
   "app-config",
   "competitor-watch",
-  "intelligence-trial",
   "danger-zone",
 ]);
 
@@ -68,57 +73,6 @@ export function shareOf(done, total) {
   const t = count(total);
   if (d === null || t === null || t === 0) return null;
   return Math.round((Math.min(d, t) / t) * 100);
-}
-
-/**
- * The place funnel, every share of ACTIVE places. Returns null when the
- * funnel did not load: the page shows an error, never zeros.
- */
-export function placeFunnelSteps(funnel) {
-  if (!funnel || typeof funnel !== "object") return null;
-  const active = count(funnel.active);
-  if (active === null) return null;
-  const step = (key, label, value) => {
-    const n = count(value);
-    return { key, label, count: n, share: n === null ? null : shareOf(n, active) };
-  };
-  return [
-    { key: "active", label: "Active places", count: active, share: active > 0 ? 100 : null },
-    step("checked", "Checked by Bouncer", funnel.checked),
-    step("visible", "Explorers can see", funnel.visible),
-    step("with_photos", "Have stored photos", funnel.with_photos),
-  ];
-}
-
-/**
- * A pipeline stage, done of total. "Scored" can count more rows than there
- * are visible places (places scored before Bouncer excluded them), so the
- * share is capped at 100% and the extra is said, not shown as 114%.
- */
-export function stageShare(done, total) {
-  const d = count(done) ?? 0;
-  const t = count(total) ?? 0;
-  if (t === 0) return { pct: 0, done: d, total: t, extra: 0, label: d > 0 ? `${d.toLocaleString()} (no places to measure against)` : "0" };
-  const shown = Math.min(d, t);
-  const pct = Math.round((shown / t) * 100);
-  const extra = Math.max(0, d - t);
-  return {
-    pct,
-    done: shown,
-    total: t,
-    extra,
-    label: `${shown.toLocaleString()} / ${t.toLocaleString()} (${pct}%)${extra > 0 ? ` · ${extra.toLocaleString()} more no longer visible` : ""}`,
-  };
-}
-
-/** Where a city stands before and after it goes live for Explorers. */
-export function cityReadiness(row) {
-  const visible = count(row?.is_servable_places) ?? 0;
-  const active = count(row?.total_active_places) ?? 0;
-  if (row?.is_live_for_consumers) return { key: "live", label: "Live", variant: "success" };
-  if (visible > 0) return { key: "ready", label: "Ready to launch", variant: "brand" };
-  if (active > 0) return { key: "checking", label: "Places not checked yet", variant: "warning" };
-  return { key: "not_seeded", label: "Not seeded", variant: "default" };
 }
 
 // ── Platform health ──────────────────────────────────────────────────────────

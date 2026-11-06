@@ -35,6 +35,8 @@ import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 
+import { acceptErrorCopy } from "./inviteAcceptErrorCopy";
+
 export interface InvitePendingSheetProps {
   invitationId: string;
   brandName: string;
@@ -150,25 +152,14 @@ export const InvitePendingSheet: React.FC<InvitePendingSheetProps> = ({
   );
 };
 
+// #4283 — copy lives in inviteAcceptErrorCopy (pure, tested). A server
+// refusal (status >= 400) is no longer reported as "Couldn't reach Mingla".
 function acceptErrorMessageFor(err: unknown): string {
-  if (err instanceof BrandInvitationServiceError) {
-    switch (err.code) {
-      case "invite_email_mismatch":
-        return "This invite isn't for this account.";
-      case "invite_not_actionable":
-      case "invite_declined":
-      case "invite_already_used":
-      case "invite_revoked":
-      case "invite_expired":
-      case "invite_not_found":
-        return "This invite is no longer available.";
-      case "invite_currency_mismatch":
-        return "Connect your bank to accept this brand.";
-      default:
-        return "Couldn't reach Mingla — please try again.";
-    }
-  }
-  return "Couldn't reach Mingla — please try again.";
+  return acceptErrorCopy(
+    err instanceof BrandInvitationServiceError
+      ? { code: err.code, status: err.status }
+      : null,
+  );
 }
 
 function declineErrorMessageFor(err: unknown): string {

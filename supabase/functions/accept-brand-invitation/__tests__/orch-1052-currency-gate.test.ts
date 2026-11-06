@@ -25,7 +25,9 @@ Deno.test("mapRpcError: legacy ERRCODEs unchanged", () => {
   assertEquals(mapRpcError("P0003"), { status: 410, error: "invite_expired" });
   assertEquals(mapRpcError("P0004"), { status: 403, error: "invite_email_mismatch" });
   assertEquals(mapRpcError("P0005"), { status: 410, error: "invite_revoked" });
-  assertEquals(mapRpcError("23505"), null);
+  // #4283: 23505 is now a named 409 (invite_membership_conflict); use a code
+  // the function still does not map.
+  assertEquals(mapRpcError("23503"), null);
 });
 
 Deno.test("parsePartnerGateDetail: parses currency_mismatch payload", () => {

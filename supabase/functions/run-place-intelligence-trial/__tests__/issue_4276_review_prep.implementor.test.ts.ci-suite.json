@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/run-place-intelligence-trial/__tests__/issue_4276_review_prep.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-review-prep",
+  "profile": "deno-2-unit"
+}

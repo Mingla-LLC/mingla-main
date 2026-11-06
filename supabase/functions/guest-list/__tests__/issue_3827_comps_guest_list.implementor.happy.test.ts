@@ -513,11 +513,112 @@ Deno.test("#3827 door attribution uses a separate label RPC without widening sea
   );
   const body = await res.json();
   assertEquals(body.orders[0].viaLinkLabel, "Press invites");
+  // [TEST-MOD-APPROVED #3281] the door search also reads each order's extras
+  // through its own optional RPC; it is the fourth call.
   assertEquals(h.calls.map((call) => call.fn), [
     "pg_venue_order_rate_limit_hit",
     "biz_door_guest_search",
     "biz_ticket_link_order_labels",
+    "issue_3281_door_order_extras",
   ]);
   assertEquals(h.calls[2].args.p_order_ids, [ORDER]);
   assertEquals(h.calls[2].args.p_actor_id, ACTOR);
+  // A failed extras read leaves the search answer as it was.
+  assertEquals("extras" in body.orders[0], false);
+});
+
+Deno.test("#3281 door search names each order's extras, read through the door's authority", async () => {
+  const h = harness({
+    rpc: (fn) =>
+      fn === "pg_venue_order_rate_limit_hit"
+        ? { data: { allowed: true }, error: null }
+        : fn === "biz_door_guest_search"
+        ? {
+          data: {
+            truncated: false,
+            orders: [{
+              orderId: ORDER,
+              displayName: "Ana",
+              maskedEmail: "an***@example.test",
+              isGuestList: false,
+              cameWithName: null,
+              tickets: [],
+            }],
+          },
+          error: null,
+        }
+        : fn === "biz_ticket_link_order_labels"
+        ? { data: {}, error: null }
+        : fn === "issue_3281_door_order_extras"
+        ? {
+          data: {
+            [ORDER]: [{ name: "Friday dinner", quantity: 2, eventDateIds: null }],
+          },
+          error: null,
+        }
+        : { data: null, error: { message: "unexpected_rpc" } },
+  });
+
+  const res = await h.handler(
+    post({ operation: "search", eventId: EVENT, query: "an" }),
+  );
+  const body = await res.json();
+  assertEquals(body.orders[0].extras, [
+    { name: "Friday dinner", quantity: 2, eventDateIds: null },
+  ]);
+  assertEquals(h.calls[3].args, {
+    p_actor_id: ACTOR,
+    p_event_id: EVENT,
+    p_order_ids: [ORDER],
+  });
+});
+
+// issue #3281 — the extras read is optional: a refused or stalled read leaves
+// the door search answer as it was.
+const extrasSearch = (extrasRpc: () => unknown) =>
+  harness({
+    rpc: (fn) =>
+      (fn === "pg_venue_order_rate_limit_hit"
+        ? { data: { allowed: true }, error: null }
+        : fn === "biz_door_guest_search"
+        ? {
+          data: {
+            truncated: false,
+            orders: [{
+              orderId: ORDER,
+              displayName: "Ana",
+              maskedEmail: null,
+              isGuestList: false,
+              cameWithName: null,
+              tickets: [],
+            }],
+          },
+          error: null,
+        }
+        : fn === "biz_ticket_link_order_labels"
+        ? { data: {}, error: null }
+        : extrasRpc()) as never,
+  });
+
+Deno.test("#3281 a rejected extras read still answers the door search", async () => {
+  const h = extrasSearch(() => {
+    throw new Error("connection reset");
+  });
+  const res = await h.handler(post({ operation: "search", eventId: EVENT, query: "an" }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.orders[0].displayName, "Ana");
+  assertEquals("extras" in body.orders[0], false);
+});
+
+Deno.test("#3281 a stalled extras read gives up at the deadline", async () => {
+  const h = extrasSearch(() => new Promise(() => {}));
+  const started = Date.now();
+  const res = await h.handler(post({ operation: "search", eventId: EVENT, query: "an" }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.orders[0].displayName, "Ana");
+  assertEquals("extras" in body.orders[0], false);
+  // It waited for the deadline, not forever.
+  assertEquals(Date.now() - started < 5000, true);
 });

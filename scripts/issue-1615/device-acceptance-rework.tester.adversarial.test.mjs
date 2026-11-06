@@ -28,6 +28,8 @@ const deployedColumns = new Set([
   'utc_offset_minutes', 'editorial_summary', 'generative_summary',
   'opening_hours', 'stored_photo_urls', 'google_maps_uri',
   'national_phone_number', 'website', 'lat', 'lng', 'is_active', 'is_servable',
+  // #4276: added by 20280410034276_issue_4276_city_pipeline_conductor.sql.
+  'serving_hold',
 ]);
 
 const makePostgrestClient = (row) => {

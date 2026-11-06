@@ -65,7 +65,7 @@ Deno.test("#1644 5-photo 3x3 collage: the 4 empty cells are OPAQUE BLACK, and no
     assertEquals(result.failedCount, 0);
     assertEquals(result.grid, 3); // 5 photos => 3x3
 
-    const decoded = await decode(result.pngBytes);
+    const decoded = result.image;
     assert(decoded instanceof Image, "collage must decode as an Image");
     const img = decoded as Image;
 
@@ -121,7 +121,7 @@ Deno.test("#1644 single-photo 1x1 collage is fully covered and fully opaque (no 
     assertEquals(result.placedCount, 1);
     assertEquals(result.grid, 1);
 
-    const decoded = await decode(result.pngBytes);
+    const decoded = result.image;
     assert(decoded instanceof Image);
     const hist = alphaHistogram(decoded as Image);
     assertEquals(hist.transparent, 0);
@@ -155,7 +155,7 @@ Deno.test("#1644 a FAILED photo leaves an opaque-black cell, matching the module
     assertEquals(result.failedCount, 1);
     assertEquals(result.grid, 2);
 
-    const decoded = await decode(result.pngBytes);
+    const decoded = result.image;
     assert(decoded instanceof Image);
     const img = decoded as Image;
     const hist = alphaHistogram(img);

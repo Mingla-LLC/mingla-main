@@ -362,7 +362,14 @@ export function phase3dContractDigest(manifest) {
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "27ec0729c22a0fbdcdbd5e854dbd47f88f9ee8aa9cb840052cf12dac0b7974d6";
+// #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "57a7e5b210bb9e604b939449b7caf4d77dbb05976f3e362ee5725e99f7ec3ffa";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1268,7 +1275,8 @@ export function trackedFiles(root) {
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOBUFS") throw new Error("registry validation: git ls-files output exceeded maxBuffer");
     throw new Error("registry validation requires a git worktree");
   }
   if (!scope) return listed;

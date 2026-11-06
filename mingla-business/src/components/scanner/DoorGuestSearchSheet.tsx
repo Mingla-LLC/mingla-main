@@ -52,6 +52,7 @@ export {
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
+import { doorExtrasLine, readDoorExtras } from "./doorExtras";
 
 // issue #3827 — the guest-list client is its own chunk (__common ceiling).
 const loadGuestList = () => import("../../services/guestListService");
@@ -115,6 +116,12 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   const [debounced, setDebounced] = useState<string>("");
   const [admitting, setAdmitting] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ScanResultCopy | null>(null);
+  // issue #3281 — whose extras the result banner shows, and the day admitted.
+  // The line itself is read from the refreshed search answer below, so a
+  // refund between search and admission never tells the door to hand it over.
+  const [lastAdmitted, setLastAdmitted] = useState<
+    { orderId: string; admittedDateIds: string[]; at: number } | null
+  >(null);
   const [admitError, setAdmitError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -139,6 +146,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
       try {
         let copy: ScanResultCopy | null = null;
         let admitted = 0;
+        // Every day a ticket was actually admitted for: "Admit all" can cover
+        // more than one when scan windows overlap.
+        const admittedDateIds: string[] = [];
         for (const ticket of tickets) {
           const res = await (await loadGuestList()).admitTicket({ eventId, ticketId: ticket.ticketId });
           copy = describeScanResult(
@@ -147,12 +157,21 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
             noun,
           );
           if (res.result === "success") admitted += 1;
+          // The day a ticket was actually admitted; a refusal names no such day.
+          if (
+            res.result === "success" &&
+            typeof res.eventDateId === "string" &&
+            !admittedDateIds.includes(res.eventDateId)
+          ) {
+            admittedDateIds.push(res.eventDateId);
+          }
           onAdmitted?.(copy, res);
         }
         if (copy !== null && tickets.length > 1 && admitted > 1) {
           copy = { ...copy, message: `${guest.displayName}: ${admitted} checked in` };
         }
         setLastResult(copy);
+        setLastAdmitted({ orderId: guest.orderId, admittedDateIds, at: Date.now() });
       } catch (error) {
         setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
       } finally {
@@ -173,6 +192,20 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
       : null;
 
   const results = query.data?.orders ?? [];
+  // issue #3281 — the admitted guest's extras from an answer read after the
+  // admission, marked for the day admitted. Nothing while it is refreshing,
+  // and nothing if that refresh failed: an older answer may owe a refunded one.
+  const admittedGuest =
+    lastAdmitted === null ||
+    query.isFetching ||
+    query.isError ||
+    query.dataUpdatedAt < lastAdmitted.at
+      ? undefined
+      : results.find((guest) => guest.orderId === lastAdmitted.orderId);
+  const lastExtras =
+    admittedGuest === undefined || lastAdmitted === null
+      ? null
+      : doorExtrasLine(readDoorExtras(admittedGuest.extras), lastAdmitted.admittedDateIds);
 
   return (
     <View style={styles.panel}>
@@ -182,6 +215,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           onChangeText={(next) => {
             setText(next);
             setLastResult(null);
+            setLastAdmitted(null);
             setAdmitError(null);
           }}
           placeholder="Search name or email"
@@ -213,6 +247,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         >
           <Text style={styles.resultMessage}>{lastResult.message}</Text>
           {lastResult.detail !== undefined ? <Text style={styles.resultDetail}>{lastResult.detail}</Text> : null}
+          {lastExtras !== null ? (
+            <Text style={styles.resultDetail} testID="door-admit-extras">{lastExtras}</Text>
+          ) : null}
         </View>
       ) : null}
       {admitError !== null ? (
@@ -252,6 +289,14 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                 <Text style={styles.guestMeta}>{guest.maskedEmail ?? "No email"}</Text>
                 {guest.cameWithName !== null ? <Text style={styles.guestMeta}>{`with ${guest.cameWithName}`}</Text> : null}
                 {guest.viaLinkLabel !== null ? <Text style={styles.guestMeta}>{`via ${guest.viaLinkLabel}`}</Text> : null}
+                {(() => {
+                  // issue #3281 — what this order still has to be handed. Not
+                  // from an answer whose refresh failed: it may owe a refund.
+                  const line = query.isError ? null : doorExtrasLine(readDoorExtras(guest.extras));
+                  return line !== null ? (
+                    <Text style={styles.guestMeta} testID={`door-extras-${guest.orderId}`}>{line}</Text>
+                  ) : null;
+                })()}
                 {guest.tickets.map((ticket) => {
                   const state = ticketStateLabel(ticket);
                   return (

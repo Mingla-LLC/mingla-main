@@ -57,7 +57,8 @@ Deno.test("W6 the Chats list folds guests' event chats per brand (team members e
 
 Deno.test("W6 one query, one realtime channel and per-chat writes for the merged thread", async () => {
   const page = strip(await read("components/ConnectionsPage.tsx"));
-  const load = body(page, /const loadBrandChannelNewest = \(channel: BrandChannel, userId: string\) =>/);
+  // #4275: the read moved to the rejecting reader that loadBrandChannelNewest wraps.
+  const load = body(page, /const fetchBrandChannelNewest = \(channel: BrandChannel, userId: string\): Promise<void> =>/);
   assert(/messagingService\.getMessages\(memberIds, userId\)/.test(load), "one read across the brand's chats");
   assert(/byConversation\.get\(raw\.conversation_id\)/.test(load), "rows are split by their own conversation");
   assert(/writeConversationMessages\(conversationId, list, \{ snapshot: \{ complete: !hasMore \} \}\)/.test(load), "through the Wave 1 merge");

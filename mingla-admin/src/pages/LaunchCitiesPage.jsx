@@ -4,7 +4,8 @@
  * Operator-only control panel to declare individual seeding cities "live for
  * consumers" (the source of truth for the ORCH-1028 onboarding location gate via
  * the check-launch-city edge fn). One decision per row: flip the live switch.
- * One utility per row: map/refresh the city boundary (bbox-only).
+ * #4276: readiness counts what is still missing (Intelligence, reviews, unsearched
+ * areas, a flagged box). Geo boxes change in the Place pool pipeline, not here.
  *
  * Spec:   Mingla_Artifacts/specs/SPEC_ORCH-1027_LAUNCH_CITIES_ADMIN.md (§A–§C)
  * Design: Mingla_Artifacts/specs/DESIGN_ORCH-1027_LAUNCH_CITIES_TAB.md (all 9 states)
@@ -18,12 +19,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { MapContainer, TileLayer, Rectangle, useMap } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import { Rocket, MapPin, MapPinned, Search } from "lucide-react";
+import { Rocket, MapPinned } from "lucide-react";
 import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Input, Toggle } from "../components/ui/Input";
+import { Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
@@ -33,7 +32,8 @@ import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { supabase } from "../lib/supabase";
 import { PageHeader } from "../components/ui/PageHeader";
-import { cityReadiness } from "../lib/systemPages";
+import { cityGaps, cityReadinessWithGaps } from "../lib/cityPipeline";
+import { fetchPipelineFunnel, seeding } from "../services/cityPipelineService";
 
 // ─── Local presentational helper: summary metric chip (DESIGN §4) ────────────
 function SummaryChip({ icon: Icon, label, value, accent = "muted" }) {
@@ -53,195 +53,11 @@ function SummaryChip({ icon: Icon, label, value, accent = "muted" }) {
 }
 
 // ─── Leaflet helper: fit the map to the given bounds when they change ─────────
-function FitBounds({ bounds }) {
-  const map = useMap();
-  useEffect(() => {
-    if (bounds) {
-      try {
-        map.fitBounds(bounds, { padding: [24, 24] });
-      } catch {
-        /* invalid bounds — leave the map where it is */
-      }
-    }
-  }, [bounds, map]);
-  return null;
-}
+// #4276 (B1): the boundary modal that wrote Google's viewport straight over the box is
+// gone. A box now changes only in the pipeline (apply_city_box): Google's box applies
+// keeping the larger edge, tiles are rebuilt with their history kept, and places that
+// would fall outside are counted first.
 
-// ─── Boundary map preview (DESIGN §8.1): current (gray dashed) + proposed (orange) ─
-function BoundaryMap({ city, result }) {
-  const current = (city?.bbox_sw_lat != null && city?.bbox_ne_lat != null)
-    ? [[city.bbox_sw_lat, city.bbox_sw_lng], [city.bbox_ne_lat, city.bbox_ne_lng]]
-    : null;
-  const proposed = result?.viewport
-    ? [[result.viewport.swLat, result.viewport.swLng], [result.viewport.neLat, result.viewport.neLng]]
-    : null;
-  const fitTo = proposed || current;
-  const center = current
-    ? [(city.bbox_sw_lat + city.bbox_ne_lat) / 2, (city.bbox_sw_lng + city.bbox_ne_lng) / 2]
-    : [city?.center_lat ?? 0, city?.center_lng ?? 0];
-
-  return (
-    <div>
-      <div className="rounded-lg overflow-hidden border border-[var(--gray-200)]" style={{ height: 280 }}>
-        <MapContainer center={center} zoom={10} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
-          <FitBounds bounds={fitTo} />
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap contributors"
-          />
-          {current && (
-            <Rectangle bounds={current} pathOptions={{ color: "#6b7280", dashArray: "8 4", fillOpacity: 0.03, weight: 2 }} />
-          )}
-          {proposed && (
-            <Rectangle bounds={proposed} pathOptions={{ color: "#f97316", fillOpacity: 0.06, weight: 2 }} />
-          )}
-        </MapContainer>
-      </div>
-      <div className="mt-2 flex items-center gap-4 text-xs text-[var(--color-text-tertiary)]">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-3 rounded-sm border border-dashed border-[#6b7280]" /> Current
-        </span>
-        {proposed && (
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2 w-3 rounded-sm bg-[#f97316]/40 border border-[#f97316]" /> New
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Boundary modal (DESIGN §8): geocode → preview → persist bbox-only ────────
-function BoundaryModal({ open, city, onClose, onSaved }) {
-  const { addToast } = useToast();
-  const [query, setQuery] = useState("");
-  const [geocoding, setGeocoding] = useState(false);
-  const [geocodeResult, setGeocodeResult] = useState(null);
-  const [overlap, setOverlap] = useState([]);
-  const [error, setError] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open && city) {
-      setQuery(city.city_name || "");
-      setGeocodeResult(null);
-      setOverlap([]);
-      setError(null);
-      setSaving(false);
-    }
-  }, [open, city]);
-
-  const handleGeocode = useCallback(async () => {
-    if (!query.trim() || query.trim().length < 2) return;
-    setGeocoding(true);
-    setGeocodeResult(null);
-    setOverlap([]);
-    setError(null);
-    try {
-      // Reuse the EXISTING admin-seed-places geocode_city action — no new edge fn.
-      // It calls Google Geocoding server-side:
-      //   https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={key}
-      // Docs: https://developers.google.com/maps/documentation/geocoding/requests-geocoding
-      // Response fields used: results[0].geometry.location.{lat,lng} +
-      //   results[0].geometry.viewport.{southwest,northeast}.{lat,lng}; status handling
-      //   for OK / ZERO_RESULTS / REQUEST_DENIED per the docs' GeocodingResponses section.
-      const { data, error: fnErr } = await supabase.functions.invoke("admin-seed-places", {
-        body: { action: "geocode_city", query: query.trim() },
-      });
-      if (fnErr) throw fnErr;
-      if (data?.error) throw new Error(data.error);
-      setGeocodeResult(data);
-
-      // Informational overlap check (mirrors PlacePoolManagementPage:943) — exclude self.
-      const { data: overlapData } = await supabase.rpc("check_city_bbox_overlap", {
-        p_sw_lat: data.viewport.swLat,
-        p_sw_lng: data.viewport.swLng,
-        p_ne_lat: data.viewport.neLat,
-        p_ne_lng: data.viewport.neLng,
-        p_exclude_id: city.city_id,
-      });
-      setOverlap(overlapData || []);
-    } catch (err) {
-      setError(err.message || "Couldn't map that — try a more specific name.");
-    } finally {
-      setGeocoding(false);
-    }
-  }, [query, city]);
-
-  const handleSave = useCallback(async () => {
-    if (!geocodeResult || !city) return;
-    setSaving(true);
-    setError(null);
-    const vp = geocodeResult.viewport;
-    try {
-      // LOCKED (SPEC §B.4): persist ONLY center + bbox + updated_at. Never touches
-      // is_live_for_consumers, status, tile_radius_m; no tile regeneration.
-      const { error: updateErr } = await supabase.from("seeding_cities").update({
-        center_lat: geocodeResult.center.lat,
-        center_lng: geocodeResult.center.lng,
-        bbox_sw_lat: vp.swLat,
-        bbox_sw_lng: vp.swLng,
-        bbox_ne_lat: vp.neLat,
-        bbox_ne_lng: vp.neLng,
-        updated_at: new Date().toISOString(),
-      }).eq("id", city.city_id);
-      if (updateErr) throw updateErr;
-
-      logAdminAction("city.refresh_boundary", "seeding_city", city.city_id, {
-        bbox_sw_lat: vp.swLat, bbox_sw_lng: vp.swLng, bbox_ne_lat: vp.neLat, bbox_ne_lng: vp.neLng,
-      });
-      addToast({ variant: "success", title: `Boundary updated for ${city.city_name}.` });
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(err.message || "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  }, [geocodeResult, city, addToast, onSaved, onClose]);
-
-  if (!open || !city) return null;
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Boundary — ${city.city_name}`} size="md">
-      <ModalBody>
-        <div className="space-y-4">
-          <div className="flex items-end gap-2">
-            <Input
-              label="City"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleGeocode(); } }}
-              className="flex-1"
-              placeholder="e.g. Lagos, Nigeria"
-            />
-            <Button variant="secondary" icon={Search} loading={geocoding} onClick={handleGeocode}>Find</Button>
-          </div>
-
-          <BoundaryMap city={city} result={geocodeResult} />
-
-          {overlap.length > 0 && (
-            <AlertCard variant="warning" title="Overlaps existing cities">
-              New boundary overlaps: {overlap.map((o) => o.name).join(", ")}. That&apos;s allowed — just confirming.
-            </AlertCard>
-          )}
-
-          {error && (
-            <AlertCard variant="error" title="Couldn't map that">{error}</AlertCard>
-          )}
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} disabled={!geocodeResult} onClick={handleSave}>
-          Save boundary
-        </Button>
-      </ModalFooter>
-    </Modal>
-  );
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export function LaunchCitiesPage() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
@@ -255,7 +71,10 @@ export function LaunchCitiesPage() {
   const [loadError, setLoadError] = useState(null);
   const [togglingIds, setTogglingIds] = useState(new Set());
   const [filter, setFilter] = useState("all"); // "all" | "live"
-  const [boundaryCity, setBoundaryCity] = useState(null);
+  // #4276 U3: what keeps each city from being ready, counted on the server. Null while
+  // loading; a failed read is said in the readiness cell, never read as "no gaps".
+  const [gaps, setGaps] = useState(null);
+  const [gapsError, setGapsError] = useState(null);
   // #4130 (Wave 4b): going live (or hiding a live city) asks first.
   const [confirmCity, setConfirmCity] = useState(null);
 
@@ -274,6 +93,31 @@ export function LaunchCitiesPage() {
   }, []);
 
   useEffect(() => { fetchCities(); }, [fetchCities]);
+
+  const fetchGaps = useCallback(async () => {
+    setGapsError(null);
+    try {
+      const [funnel, search, outside] = await Promise.all([
+        fetchPipelineFunnel(null),
+        seeding("cities_search_status").catch(() => ({ cities: [] })),
+        seeding("places_outside_box").catch(() => ({ report: null })),
+      ]);
+      const byId = (list, key) => Object.fromEntries((list ?? []).map((x) => [x[key], x]));
+      const f = byId(funnel?.cities, "city_id");
+      const s = byId(search?.cities, "cityId");
+      const o = outside?.report ? byId(outside.report, "city_id") : null;
+      const out = {};
+      for (const id of Object.keys(f)) {
+        if (id === "null") continue;
+        out[id] = cityGaps(f[id], s[id] ?? null, o ? o[id] ?? { outside_active: 0 } : null);
+      }
+      if (mountedRef.current) setGaps(out);
+    } catch (err) {
+      if (mountedRef.current) setGapsError(err.message);
+    }
+  }, []);
+
+  useEffect(() => { fetchGaps(); }, [fetchGaps]);
 
   // ─── Live toggle: optimistic flip → write → VISIBLE rollback on failure ─────
   const handleToggleLive = useCallback(async (row) => {
@@ -372,19 +216,34 @@ export function LaunchCitiesPage() {
     {
       key: "_readiness",
       label: "Readiness",
-      width: "170px",
+      width: "260px",
       render: (_v, row) => {
-        const readiness = cityReadiness(row);
-        return <Badge variant={readiness.variant} dot>{readiness.label}</Badge>;
+        if (gapsError) {
+          return <span className="text-xs text-[var(--color-error-700)]">Gaps couldn't be counted: {gapsError}</span>;
+        }
+        if (!gaps) return <Skeleton width={120} height={20} rounded="full" />;
+        const readiness = cityReadinessWithGaps(row, gaps[row.city_id] ?? null);
+        return (
+          <div className="flex min-w-0 flex-col items-start gap-1">
+            <Badge variant={readiness.variant} dot>{readiness.label}</Badge>
+            {readiness.gaps.length > 0 && (
+              <span className="whitespace-normal break-words text-xs text-[var(--color-text-secondary)]">{readiness.gaps.join(" · ")}</span>
+            )}
+          </div>
+        );
       },
     },
     {
       key: "has_bbox",
-      label: "Boundary",
-      width: "130px",
-      render: (_v, row) => row.has_bbox
-        ? <Badge variant="success" dot>Boundary set</Badge>
-        : <Badge variant="warning" dot>No boundary</Badge>,
+      label: "Geo box",
+      width: "150px",
+      render: (_v, row) => {
+        if (!row.has_bbox) return <Badge variant="warning" dot>No box</Badge>;
+        const outside = gaps?.[row.city_id]?.outsideBox ?? 0;
+        return outside > 0
+          ? <Badge variant="error" dot>{`${outside.toLocaleString()} ${outside === 1 ? "place" : "places"} outside`}</Badge>
+          : <Badge variant="success" dot>Box set</Badge>;
+      },
     },
     {
       key: "is_live_for_consumers",
@@ -401,23 +260,7 @@ export function LaunchCitiesPage() {
         </div>
       ),
     },
-    {
-      key: "_action",
-      label: "",
-      width: "64px",
-      cellClassName: "text-right",
-      render: (_v, row) => (
-        <Button
-          variant="ghost"
-          size="md"
-          icon={MapPin}
-          className="!h-10"
-          onClick={(e) => { e.stopPropagation(); setBoundaryCity(row); }}
-          aria-label={`Map or refresh boundary for ${row.city_name}`}
-        />
-      ),
-    },
-  ], [togglingIds]);
+  ], [togglingIds, gaps, gapsError]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -542,13 +385,6 @@ export function LaunchCitiesPage() {
           </Button>
         </ModalFooter>
       </Modal>
-
-      <BoundaryModal
-        open={!!boundaryCity}
-        city={boundaryCity}
-        onClose={() => setBoundaryCity(null)}
-        onSaved={fetchCities}
-      />
     </div>
   );
 }

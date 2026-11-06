@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": ".github/scripts/ci-batch/__tests__/issue_4275_git_listing_buffer.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-git-listing-buffer-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

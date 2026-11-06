@@ -1535,9 +1535,21 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
     return src.slice(0, a) + src.slice(b)
   }
   const liveRest = cutFns(HOOK_SOURCE)
-  const baseRest = cutFns(base)
+  // #4275 removed the deck prefetch, which wrote under a key nothing read (see
+  // issue_4275_no_auth_deck_prefetch.implementor.test.ts). Excise only that
+  // declared region from both sides so this older guard keeps proving #1875 alone.
+  const excise4275 = (source: string, start: string): string => {
+    const startAt = source.indexOf(start)
+    const endAt = source.indexOf('          // Seed map location so friends can see this user on the map.', startAt)
+    assert.ok(startAt > -1 && endAt > startAt, `AX-F #4275 region missing: ${start}`)
+    return source.slice(0, startAt) + source.slice(endAt)
+  }
+  const baseRest = excise4275(cutFns(base), '          // ── Deck prefetch for returning users (ORCH-0391)')
+    .replace('import { deckService, DeckResponse } from "../services/deckService";\n', '')
+    .replace('import { buildDeckQueryKey } from "./useDeckCards";\n', '')
+    .replace('import { normalizeCategoryArray } from "../utils/categoryUtils";\n', '')
   // The declared out-of-function #1875 additions, excised.
-  let residue = liveRest
+  let residue = excise4275(liveRest, '          // Pre-seed the preferences cache (saves ~200ms re-fetch post-transition).')
   residue = residue.replace(
     'import { useState, useEffect, useRef } from "react";\nimport { Alert, AppState, Platform } from "react-native";',
     'import { useState, useEffect } from "react";\nimport { Alert, Platform } from "react-native";',

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-seed-places/__tests__/issue_4276_city_box.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-city-box",
+  "profile": "deno-2-unit"
+}

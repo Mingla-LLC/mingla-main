@@ -81,30 +81,24 @@ describe("ORCH-1027 — real counts only (no placeholders)", () => {
   });
 });
 
-describe("ORCH-1027 — boundary action is bbox-only (I-LC-STATUS-ORTHOGONAL)", () => {
-  it("persists center + bbox + updated_at and NOTHING else", () => {
-    // The boundary save update must include the 6 geometry fields + updated_at.
-    assert.match(PAGE, /bbox_sw_lat:\s*vp\.swLat/);
-    assert.match(PAGE, /bbox_ne_lng:\s*vp\.neLng/);
-    assert.match(PAGE, /center_lat:\s*geocodeResult\.center\.lat/);
-    assert.match(PAGE, /updated_at:\s*new Date\(\)\.toISOString\(\)/);
+// #4276 (B1): Cities no longer writes a box. Its boundary modal wrote Google's viewport
+// straight over the stored box (it could shrink it, and kept the old tiles). Boxes now
+// change only in the Place pool pipeline through apply_city_box, which keeps the larger
+// edge, rebuilds tiles with their history and counts places that fall outside.
+describe("#4276 — Cities never writes a geo box (I-LC-STATUS-ORTHOGONAL still holds)", () => {
+  it("has no box writer and no geocode of its own", () => {
+    assert.ok(!/from\("seeding_cities"\)\s*\.update\(/.test(PAGE), "no direct seeding_cities update");
+    assert.ok(!/bbox_sw_lat\s*:/.test(PAGE), "no bbox field written");
+    assert.ok(!/action:\s*"geocode_city"/.test(PAGE), "no geocode from Cities");
   });
 
-  it("NEVER mutates is_live_for_consumers / status / tile_radius_m from the boundary save", () => {
-    // Scope the check to the boundary update payload (between the .update({ in
-    // handleSave and its closing }).eq).
-    const saveStart = PAGE.indexOf("// LOCKED (SPEC §B.4)");
-    const saveEnd = PAGE.indexOf('}).eq("id", city.city_id)', saveStart);
-    assert.ok(saveStart > -1 && saveEnd > saveStart, "boundary save payload located");
-    const payload = PAGE.slice(saveStart, saveEnd);
-    assert.ok(!/is_live_for_consumers\s*:/.test(payload), "must not write is_live_for_consumers");
-    assert.ok(!/status\s*:/.test(payload), "must not write status");
-    assert.ok(!/tile_radius_m\s*:/.test(payload), "must not write tile_radius_m");
-    assert.ok(!/generate_tiles/.test(payload), "must not regenerate tiles");
+  it("the only city write is going live, through admin_set_city_live", () => {
+    assert.ok(!/\.update\(\{/.test(PAGE), "no table update at all");
+    assert.match(PAGE, /supabase\.rpc\("admin_set_city_live"/);
   });
 
-  it("reuses the existing admin-seed-places geocode_city action (no new edge fn)", () => {
-    assert.match(PAGE, /supabase\.functions\.invoke\("admin-seed-places"/);
-    assert.match(PAGE, /action:\s*"geocode_city"/);
+  it("readiness counts the gaps, and a failed count is said", () => {
+    assert.match(PAGE, /cityReadinessWithGaps\(row, gaps\[row\.city_id\] \?\? null\)/);
+    assert.match(PAGE, /Gaps couldn't be counted/);
   });
 });

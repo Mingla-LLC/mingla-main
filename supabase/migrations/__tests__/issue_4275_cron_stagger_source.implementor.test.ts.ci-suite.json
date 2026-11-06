@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4275_cron_stagger_source.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4275-cron-stagger-source-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
