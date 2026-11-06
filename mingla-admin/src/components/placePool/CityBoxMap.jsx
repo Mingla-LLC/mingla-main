@@ -14,7 +14,9 @@ export const TILE_STATE_STYLE = Object.freeze({
 });
 
 const BOX_STYLE = Object.freeze({
-  stored: { color: "#111827", weight: 2, fill: false, label: "Stored box" },
+  // The map's street tiles are light in both themes, so the outline stays dark there;
+  // the legend sits on the page, so its swatch follows the theme.
+  stored: { color: "#111827", swatchColor: "var(--color-text-primary)", weight: 2, fill: false, label: "Stored box" },
   google: { color: "#2563eb", weight: 2, dashArray: "6 4", fill: false, label: "Google's box" },
   proposed: { color: "#c2410c", weight: 3, fill: false, label: "Proposed box" },
 });
@@ -34,7 +36,7 @@ function Swatch({ style, round }) {
     <span
       aria-hidden="true"
       className={`inline-block h-3 w-3 ${round ? "rounded-full" : "rounded-sm"}`}
-      style={{ background: style.fillColor ?? "transparent", border: `2px ${style.dashArray ? "dashed" : "solid"} ${style.color}` }}
+      style={{ background: style.fillColor ?? "transparent", border: `2px ${style.dashArray ? "dashed" : "solid"} ${style.swatchColor ?? style.color}` }}
     />
   );
 }

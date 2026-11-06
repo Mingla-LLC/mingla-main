@@ -51,7 +51,7 @@ type Db = any;
 
 export const SAMPLE_TILE_LIMIT = 10;
 export const COMPLETENESS_SEARCH_COUNT = 20;
-/** Failed searches in a row that end a completeness check early. */
+/** Failures in a row after which a completeness check starts no new searches; searches already running finish. */
 export const COMPLETENESS_FAILURE_STREAK = 3;
 export const COMPLETENESS_RADIUS_M = 300;
 const COMPLETENESS_CONCURRENCY = 4;
@@ -652,8 +652,9 @@ export async function runCompletenessCheck(
   const errors: string[] = [];
   let capped = 0;
   let next = 0;
-  // #4276: three failures in a row (Google down, key refused) end the check early, so
-  // an outage costs a few searches, not all twenty. It is recorded as failed.
+  // #4276: after three failures in a row (Google down, key refused) the check starts no
+  // new searches; the searches already running finish. An outage costs a few searches,
+  // not all twenty. It is recorded as failed.
   let failStreak = 0;
   let stoppedEarly = false;
   let attempted = 0;
@@ -721,7 +722,7 @@ export async function runCompletenessCheck(
     ...summary,
     points,
     error_message: errors.length
-      ? `${stoppedEarly ? `Stopped after ${COMPLETENESS_FAILURE_STREAK} failed searches in a row (${attempted} of ${points.length} tried). ` : ""}${errors.slice(0, 3).join(" | ")}`
+      ? `${stoppedEarly ? `Stopped after ${COMPLETENESS_FAILURE_STREAK} failures in a row; searches already running finished (${attempted} of ${points.length} tried). ` : ""}${errors.slice(0, 3).join(" | ")}`
       : null,
     // Searches Google refused were not billed; a timeout may have been, so it counts.
     cost_usd: Math.round((attempted - refused) * COST_PER_NEARBY_SEARCH * 1000) / 1000,

@@ -212,3 +212,13 @@ test("a city with no places reads as 0 places outside the box, not as a failed c
   const panel = read("components/placePool/CityBoxPanel.jsx");
   assert.ok(panel.includes('outsideBoxRow(o.value.report ?? [], cityId)'));
 });
+
+// #4276 final round (P4): the legend follows the theme, and the check's stop is said as it happens.
+test("the stored-box legend swatch uses a theme token, and the early stop says running searches finish", () => {
+  const map = read("components/placePool/CityBoxMap.jsx");
+  assert.ok(map.includes('swatchColor: "var(--color-text-primary)"'), "the stored-box swatch follows the theme");
+  assert.ok(map.includes("style.swatchColor ?? style.color"), "the swatch draws with the theme token");
+  const panel = read("components/placePool/CityBoxPanel.jsx");
+  assert.ok(panel.includes("It stops after 3 failures in a row; searches already running finish."));
+  assert.equal(panel.includes("stops early after 3 failed searches"), false);
+});

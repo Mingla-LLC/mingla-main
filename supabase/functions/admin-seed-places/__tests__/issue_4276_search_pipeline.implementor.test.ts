@@ -781,7 +781,7 @@ Deno.test({ name: "T8: three failed searches in a row end the check, recorded as
     assertEquals(row.status, "failed");
     assert(g.bodies.length < COMPLETENESS_SEARCH_COUNT, `it kept going: ${g.bodies.length} searches`);
     assert(g.bodies.length >= COMPLETENESS_FAILURE_STREAK);
-    assert(String(row.error_message).startsWith(`Stopped after ${COMPLETENESS_FAILURE_STREAK} failed searches in a row`));
+    assert(String(row.error_message).startsWith(`Stopped after ${COMPLETENESS_FAILURE_STREAK} failures in a row; searches already running finished`));
     assertEquals(row.cost_usd, 0, "Google refused every search, so nothing was billed");
   } finally { g.restore(); }
 }});

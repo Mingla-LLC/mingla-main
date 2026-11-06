@@ -276,7 +276,7 @@ export function CityBoxPanel({ city, onChanged }) {
             {confirm?.kind === "geocode" ? (
               <p>One Google Geocoding request, about {usd(status?.geocodeCostUsd ?? null)}. Nothing changes until you apply the box it suggests.</p>
             ) : confirm?.kind === "completeness" ? (
-              <p>{count(status?.completenessSearches ?? null)} paid Google searches at random points in the box, about {usd(status?.completenessCostUsd ?? null)}. It stops early after 3 failed searches in a row. It measures what share of places Google knows here is missing from the pool.</p>
+              <p>{count(status?.completenessSearches ?? null)} paid Google searches at random points in the box, about {usd(status?.completenessCostUsd ?? null)}. It stops after 3 failures in a row; searches already running finish. It measures what share of places Google knows here is missing from the pool.</p>
             ) : (
               <>
                 <p>New box: {boxText(confirm?.kind === "manual" ? Object.fromEntries(Object.entries(manual ?? {}).map(([k, v]) => [k, Number(v)])) : plan?.box)}</p>
