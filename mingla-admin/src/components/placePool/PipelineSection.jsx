@@ -266,7 +266,7 @@ function GapCell({ cell }) {
     return <span className="inline-flex min-h-11 items-center whitespace-nowrap px-2 text-[13px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
   }
   return (
-    <span className={`inline-flex min-h-11 min-w-[72px] flex-col items-start justify-center rounded-lg border px-2.5 text-[13px] font-semibold tabular-nums ${CELL_TONE[cell.kind] ?? CELL_TONE.missing}`}>
+    <span className={`inline-flex min-h-11 min-w-[72px] flex-col items-start justify-center whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-semibold tabular-nums ${CELL_TONE[cell.kind] ?? CELL_TONE.missing}`}>
       {cell.text}
       {cell.sub && <span className="text-[11px] font-normal">{cell.sub}</span>}
     </span>
