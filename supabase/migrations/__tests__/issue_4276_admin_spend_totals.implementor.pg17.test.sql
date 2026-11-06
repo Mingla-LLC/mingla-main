@@ -9,10 +9,12 @@
 --   T-SERPER   with no Serper rate its dollars are null and not in the known total;
 --              with a rate they are requests x rate and are counted
 --   T-SUMS     seeding, photos and Gemini read their own runs' recorded cost
+--   T-GRANTS   authenticated may call it; anon and service_role may not (is_admin_user()
+--              is always false for the service role, so a grant there only raises)
 --
 -- FAILS-ON-REVERT: without the migration the function does not exist; drop the
 -- is_admin_user() check and T-REFUSE fails; count Serper at $0 with no rate and
--- T-SERPER fails.
+-- T-SERPER fails; grant it to service_role again and T-GRANTS fails.
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -102,5 +104,20 @@ exception when insufficient_privilege then
 end $$;
 
 reset role;
+
+-- T-GRANTS.
+do $$
+begin
+  if not has_function_privilege('authenticated', 'public.admin_place_pipeline_spend_totals()', 'EXECUTE') then
+    raise exception 'T-GRANTS: authenticated cannot call it';
+  end if;
+  if has_function_privilege('service_role', 'public.admin_place_pipeline_spend_totals()', 'EXECUTE') then
+    raise exception 'T-GRANTS: service_role can call a function that always refuses it';
+  end if;
+  if has_function_privilege('anon', 'public.admin_place_pipeline_spend_totals()', 'EXECUTE') then
+    raise exception 'T-GRANTS: anon can call it';
+  end if;
+end $$;
+
 select 'issue_4276_admin_spend_totals: all checks passed' as result;
 rollback;

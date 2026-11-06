@@ -80,7 +80,7 @@ test("the Intelligence run is reachable again from Place pool (the #4130 regress
   assert.equal(/Retired research|Research history|research-only/i.test(settings), false);
   const section = read("components/placePool/PipelineSection.jsx");
   assert.ok(section.includes("<ActiveRunsControlTower />"));
-  assert.ok(section.includes("<IntelligenceOverviewTab />"));
+  assert.ok(section.includes("<IntelligenceOverviewTab onCostModel={setCostModel} />"));
   const page = read("pages/PlacePoolPage.jsx");
   // #4276 design pass: the tabs sit straight under the title and the pipeline is one of them.
   assert.ok(page.indexOf("<Tabs ") > 0 && page.indexOf("<Tabs ") < page.indexOf("<PipelineSection"), "the tabs come first");
@@ -145,7 +145,7 @@ test("the gaps table marks only real gaps, and '?' when searches are unknown", (
   assert.equal(by.unsearched.text, "?");
   assert.equal(by.box.text, "Done");
   // #4276 design pass: the design's columns, in its order, each with its legend kind.
-  assert.deepEqual(cells.map((c) => c.id), ["box", "seed", "unsearched", "capped", "pre_check", "photos", "final_check", "reviews", "intelligence", "redo", "score", "held"]);
+  assert.deepEqual(cells.map((c) => c.id), ["box", "seed", "unsearched", "capped", "pre_check", "photos", "final_check", "reviews", "intelligence", "redo", "score"]);
   assert.equal(by.box.kind, "check");
   assert.equal(by.score.kind, "follows");
   assert.equal(by.seed.text, "Done");
@@ -265,7 +265,7 @@ test("Intelligence coverage retries once, quietly, and loads after the gaps tabl
   const section = read("components/placePool/PipelineSection.jsx");
   assert.ok(section.includes("const tableSettled = (funnel !== null || funnelError !== null) && (health !== null || healthError !== null);"));
   const gate = section.indexOf("{tableSettled ? (");
-  assert.ok(gate > 0 && gate < section.indexOf("<IntelligenceOverviewTab />"), "coverage mounts only once the table has answered");
+  assert.ok(gate > 0 && gate < section.indexOf("<IntelligenceOverviewTab onCostModel={setCostModel} />"), "coverage mounts only once the table has answered");
 });
 
 test("the gaps table: All gaps totals, the Show filter and a city's status line", () => {
@@ -330,4 +330,95 @@ test("needs attention links each gap to the tab that shows it", () => {
   assert.equal(items.find((i) => i.head.startsWith("Explorers see")).tab, "pipeline");
   assert.equal(items.find((i) => i.head.startsWith("Held")).tab, null);
   assert.equal(items.find((i) => i.head.startsWith("Dropped")).tab, "excluded");
+});
+
+
+// ── #4276 rework (tester round 2) ───────────────────────────────────────────
+
+// Items 1 and 2. FAILS-ON-REVERT: give the chips the raw filterCounts again, or the
+// first tile its old `funnel ? … : "Counting…"`, and the source checks fail; break
+// either helper and the behaviour checks fail.
+test("while the pipeline loads or fails, no count reads 0 and the first tile says it failed", () => {
+  const loading = { loading: true, error: null };
+  const failed = { loading: false, error: "statement timeout" };
+  const done = { loading: false, error: null };
+  assert.equal(pipelineLib.filterChipCount(0, loading), "–");
+  assert.equal(pipelineLib.filterChipCount(0, failed), null, "no count at all on error");
+  assert.equal(pipelineLib.filterChipCount(7, done), 7);
+  assert.equal(pipelineLib.loadedCount(null, loading), "–");
+  assert.equal(pipelineLib.loadedCount(0, loading), "–");
+  assert.equal(pipelineLib.loadedCount(0, failed), "?");
+  assert.equal(pipelineLib.loadedCount(1234, done), "1,234");
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("count: filterChipCount(filterCounts[f.id], tableState)"), "chips use the loading-aware count");
+  assert.ok(section.includes("const tableState = { loading: !funnel && !funnelError, error: funnelError };"));
+  assert.ok(section.includes('value={loadedCount(funnel ? unfinishedCities : null, tableState)}'));
+  assert.ok(section.includes("note={funnelError ? `Couldn't count: ${funnelError}`"), "a failed count says so instead of Counting…");
+  assert.equal(section.includes('note={funnel ? `${count(filterCounts.drafts)} draft'), false, "the old tile that stayed on Counting… is gone");
+});
+
+test("the run rates mirror the server's own constants", () => {
+  const geo = readFileSync(join(SRC, "../../supabase/functions/_shared/seedingGeometry.ts"), "utf8");
+  const conductor = readFileSync(join(SRC, "../../supabase/functions/run-city-pipeline/conductor.ts"), "utf8");
+  const configs = readFileSync(join(SRC, "../../supabase/functions/_shared/seedingCategories.ts"), "utf8");
+  const R = pipelineLib.PIPELINE_RATES;
+  assert.match(geo, new RegExp(`COST_PER_NEARBY_SEARCH = ${R.SEARCH_USD};`));
+  assert.match(geo, new RegExp(`COST_PER_PHOTO = ${R.PHOTO_USD};`));
+  assert.match(geo, new RegExp(`PHOTOS_PER_PLACE = ${R.PHOTOS_PER_PLACE};`));
+  assert.match(conductor, new RegExp(`REVIEW_MAX_PAGES = ${R.REVIEW_MAX_PAGES};`));
+  assert.equal((configs.match(/^\s+id: ['"]/gm) ?? []).length, R.SEARCHES_PER_TILE);
+});
+
+test("cells cost what a run would spend, and Serper or Gemini say so until priced", () => {
+  const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
+  const cells = matrixCells(f, { uncoveredTiles: 2, unfinishedSearches: 10, cappedOpen: 3 }, { outside_active: 0 });
+  const by = Object.fromEntries(cells.map((c) => [c.id, c]));
+  assert.equal(pipelineLib.cellCost(by.unsearched).text, "$1.22"); // (2 x 14 + 10) x $0.032
+  assert.equal(pipelineLib.cellCost(by.capped).text, "$0.38"); // 3 x 4 x $0.032
+  assert.equal(pipelineLib.cellCost(by.photos).text, "$0.70"); // 20 x 5 x $0.007
+  assert.equal(pipelineLib.cellCost(by.pre_check).text, "Free");
+  assert.equal(pipelineLib.cellCost(by.reviews).text, "Serper");
+  assert.equal(pipelineLib.cellCost(by.reviews, { serperUsdPerRequest: 0.001 }).text, "$0.03");
+  assert.equal(pipelineLib.cellCost(by.intelligence).text, "Gemini");
+  assert.equal(pipelineLib.cellCost(by.intelligence, { geminiPerPlaceUsd: 0.01 }).text, "$0.04");
+  assert.equal(pipelineLib.cellCost(by.score).text, "", "a stage that follows has no cost line");
+  const totals = pipelineLib.matrixTotalCosts([cells, cells]);
+  assert.equal(totals.find((t) => t.id === "photos").text, "$1.40");
+  assert.equal(totals.find((t) => t.id === "reviews").text, "Serper");
+});
+
+test("picking a gap adds the gaps it needs first; a city name picks its whole row", () => {
+  const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
+  const cells = matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 5 });
+  assert.deepEqual([...pipelineLib.neededFirst(["photos"], cells)].sort(), ["pre_check"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["intelligence"], cells)].sort(), ["final_check", "photos", "pre_check", "reviews"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["redo"], cells)].sort(), ["final_check", "photos", "pre_check", "reviews"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["box"], cells)], [], "a box check needs nothing first");
+  assert.deepEqual(pipelineLib.wholeRow(cells), ["box", "pre_check", "photos", "final_check", "reviews", "intelligence"]);
+  const plan = pipelineLib.planLines(cells, ["photos"], {});
+  assert.deepEqual(plan.lines.map((l) => [l.id, l.needed]), [["pre_check", true], ["photos", false]]);
+  assert.equal(plan.totalText, "$0.70");
+  assert.equal(plan.searches, false);
+  assert.equal(pipelineLib.planLines(cells, ["reviews"], {}).totalText, "$0.70 + Serper");
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("onToggle={pickable(cell) ? () => toggleCell(c.city_id, cell.id) : null}"));
+  assert.ok(section.includes("onClick={() => pickCity(row)}"));
+  assert.ok(section.includes('{ kind: "picked", label: "You picked" }') && section.includes('{ kind: "needed", label: "Needed first, added for you" }'));
+  assert.ok(section.includes("Finish {selectedRow.city.city_name}"));
+  assert.ok(section.includes('className="w-full table-fixed border-collapse text-sm"'), "every column fits: no minimum table width");
+});
+
+test("Browse: sentence-case headings, the Google type under the name, and a side panel", () => {
+  const page = read("pages/PlacePoolManagementPage.jsx");
+  assert.ok(page.includes('<DataTable columns={columns} rows={places} loading={loading} headerCase="sentence"'));
+  assert.ok(read("pages/LaunchCitiesPage.jsx").includes('headerCase="sentence"'));
+  assert.equal(pipelineLib.placeTypeLabel({ primary_type: "italian_restaurant" }), "Italian restaurant");
+  assert.equal(pipelineLib.placeTypeLabel({ primary_type_display_name: "Pub", primary_type: "pub" }), "Pub");
+  assert.equal(pipelineLib.placeTypeLabel({}), "No type");
+  assert.equal(page.includes("r.primary_type_display_name || (r.mingla_category ? CATEGORY_LABELS[r.mingla_category]"), false, "the category no longer stands in for the type");
+  assert.ok(page.includes("Pick a place to see where it stands, and to change it."));
+  assert.ok(page.includes("<PlaceSidePanel place={picked} onEdit={() => setDetailPlace(picked)}"));
+  const stages = pipelineLib.placeStages({ passes_pre_photo_check: false, pre_photo_bouncer_reason: "B4:no_website", stored_photo_urls: [], is_servable: null });
+  assert.deepEqual(stages.map((x) => [x.id, x.state]), [["pre_check", "failed"], ["photos", "not_run"], ["final_check", "not_run"], ["scores", "not_run"]]);
+  assert.equal(stages[0].text, "No website");
 });

@@ -38,8 +38,16 @@ import {
   MATRIX_COLUMNS,
   MATRIX_FILTERS,
   boxSizeText,
+  cellCost,
   cityStatusLine,
   count,
+  filterChipCount,
+  loadedCount,
+  matrixTotalCosts,
+  neededFirst,
+  pickable,
+  planLines,
+  wholeRow,
   plural,
   formatGb,
   matrixCells,
@@ -65,6 +73,8 @@ const PLAN_STORAGE_BYTES = 100 * 1024 ** 3;
 
 // The legend's colours, from the theme tokens.
 const CELL_TONE = {
+  picked: "border-[var(--color-brand-600)] bg-[var(--color-brand-500)] text-white",
+  needed: "border-dashed border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-800)]",
   missing: "border-[var(--color-warning-100)] bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
   check: "border-[var(--color-error-100)] bg-[var(--color-error-50)] text-[var(--color-error-700)]",
   redo: "border-[var(--color-info-100)] bg-[var(--color-info-50)] text-[var(--color-info-700)]",
@@ -75,6 +85,8 @@ const LEGEND = [
   { kind: "missing", label: "Missing" },
   { kind: "redo", label: "Optional redo" },
   { kind: "check", label: "Check this box" },
+  { kind: "picked", label: "You picked" },
+  { kind: "needed", label: "Needed first, added for you" },
   { kind: "follows", label: "Follows automatically" },
 ];
 
@@ -261,15 +273,26 @@ function boxCell(cell, size) {
   return { ...cell, text: size || cell.text };
 }
 
-function GapCell({ cell }) {
+function GapCell({ cell, cost, state, onToggle, cityName, label }) {
   if (!cell.gap) {
-    return <span className="inline-flex min-h-11 items-center whitespace-nowrap px-2 text-[13px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
+    return <span className="flex min-h-11 items-center px-1 text-[12px] text-[var(--color-text-tertiary)]">{cell.text}</span>;
   }
+  const tone = CELL_TONE[state] ?? CELL_TONE[cell.kind] ?? CELL_TONE.missing;
+  const body = (
+    <>
+      <span className="block truncate text-[12px] font-semibold tabular-nums">{cell.text}</span>
+      {cell.sub && <span className="block truncate text-[10.5px] font-normal">{cell.sub}</span>}
+      {cost?.text && <span className="block truncate text-[10.5px] font-normal tabular-nums opacity-90">{cost.text}</span>}
+    </>
+  );
+  const cls = `flex min-h-11 w-full min-w-0 flex-col items-start justify-center rounded-md border px-1.5 py-1 text-left ${tone}`;
+  if (!onToggle) return <span className={cls}>{body}</span>;
   return (
-    <span className={`inline-flex min-h-11 min-w-[72px] flex-col items-start justify-center whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-semibold tabular-nums ${CELL_TONE[cell.kind] ?? CELL_TONE.missing}`}>
-      {cell.text}
-      {cell.sub && <span className="text-[11px] font-normal">{cell.sub}</span>}
-    </span>
+    <button type="button" className={`${cls} cursor-pointer hover:brightness-95`} aria-pressed={state === "picked"}
+      aria-label={`${cityName}, ${label}: ${cell.text}${cost?.text ? `, ${cost.text}` : ""}${state === "needed" ? ", needed first" : ""}`}
+      onClick={onToggle}>
+      {body}
+    </button>
   );
 }
 
@@ -287,6 +310,10 @@ export function PipelineSection() {
   const [spend, setSpend] = useState(null);
   const [spendError, setSpendError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  // The gaps picked for the selected city's run (one city at a time), and Gemini's
+  // per-place rate once the Intelligence coverage has read it.
+  const [picked, setPicked] = useState([]);
+  const [costModel, setCostModel] = useState(null);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -348,6 +375,25 @@ export function PipelineSection() {
   const filterCounts = useMemo(() => Object.fromEntries(MATRIX_FILTERS.map((f) => [f.id, rows.filter((r) => matrixFilter(r.city, f.id)).length])), [rows]);
   const selected = allCities.find((c) => c.city_id === selectedId) ?? null;
   const t = funnel?.totals;
+  const rates = { serperUsdPerRequest: health?.serper_usd_per_request ?? null, geminiPerPlaceUsd: costModel?.perPlaceCostUsd ?? null };
+  const totalCosts = matrixTotalCosts(shown.map((r) => r.cells), rates);
+  const selectedRow = rows.find((r) => r.city.city_id === selectedId) ?? null;
+  const needed = selectedRow ? neededFirst(picked, selectedRow.cells) : new Set();
+  const picks = selectedRow && picked.length ? planLines(selectedRow.cells, picked, rates) : null;
+  // The table's state for counts that depend on it: loading, failed or answered.
+  const tableState = { loading: !funnel && !funnelError, error: funnelError };
+
+  // Tap a number: that gap joins the selected city's plan (a gap in another city
+  // starts a new plan there). Tap a city name: pick its whole row, or close it.
+  const toggleCell = (cityId, id) => {
+    if (cityId !== selectedId) { setSelectedId(cityId); setPicked([id]); return; }
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  };
+  const pickCity = (row) => {
+    if (row.city.city_id === selectedId) { setSelectedId(null); setPicked([]); return; }
+    setSelectedId(row.city.city_id);
+    setPicked(wholeRow(row.cells));
+  };
 
   const unfinishedCities = rows.filter((r) => r.cells.some((c) => c.gap && c.kind === "missing")).length;
   // Null until the search status has answered, so a count still loading never reads 0.
@@ -361,7 +407,8 @@ export function PipelineSection() {
   // Intelligence coverage waits for the health card and the gaps table (fix d).
   const tableSettled = (funnel !== null || funnelError !== null) && (health !== null || healthError !== null);
 
-  const filterOptions = MATRIX_FILTERS.map((f) => ({ ...f, count: filterCounts[f.id] }));
+  // While the table loads the chips show "–"; when it failed they show no count at all.
+  const filterOptions = MATRIX_FILTERS.map((f) => ({ ...f, count: filterChipCount(filterCounts[f.id], tableState) }));
   const reloadAll = () => { load(); loadHealth(); loadSpend(); };
 
   return (
@@ -370,20 +417,22 @@ export function PipelineSection() {
       <SpendStrip spend={spend} error={spendError} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile label="Cities not finished" value={funnel ? count(unfinishedCities) : "–"} note={funnel ? `${count(filterCounts.drafts)} draft, ${count(rows.filter((r) => r.status.endsWith("Not started")).length)} not started` : "Counting…"} />
-        <StatTile label="Servable, no Intelligence" value={t ? count(t.rules_only) : "–"} note="Scored by rules only." />
-        <StatTile label="Intelligence ran with no reviews" value={t ? count(t.intelligence_without_reviews) : "–"} note="Can be redone once Serper works. Changes live decks." />
+        <StatTile label="Cities not finished" value={loadedCount(funnel ? unfinishedCities : null, tableState)}
+          tone={funnelError ? "error" : "default"}
+          note={funnelError ? `Couldn't count: ${funnelError}` : funnel ? `${count(filterCounts.drafts)} draft, ${count(rows.filter((r) => r.status.includes("Not started")).length)} not started` : "Counting…"} />
+        <StatTile label="Servable, no Intelligence" value={loadedCount(t?.rules_only, tableState)} note="Scored by rules only." />
+        <StatTile label="Intelligence ran with no reviews" value={loadedCount(t?.intelligence_without_reviews, tableState)} note="Can be redone once Serper works. Changes live decks." />
         <StatTile label="Searches at Google's 20 cap" value={searchError ? "?" : capped === null ? "–" : count(capped)} note="Each repeats as 4 smaller searches, with your OK." />
         <StatTile label="Areas and searches never run" value={searchError ? "?" : unsearched === null ? "–" : count(unsearched)} note="Inside a box, never searched or failed." />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
           <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
             <div className="min-w-0 flex-1">
               <h2 className="text-[17px] font-semibold text-[var(--color-text-primary)]">What each city is missing</h2>
               <p className="mt-1 max-w-[80ch] text-[13px] leading-5 text-[var(--color-text-secondary)]">
-                Counted on the server. Pick a city to see its geo box and whether we are missing places there; its run opens in the Run plan.
+                Tap a number to add that gap to the city's run; a city name takes its whole row. Its geo box opens under the row and the plan on the right.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -404,6 +453,12 @@ export function PipelineSection() {
                 </span>
               ))}
             </div>
+            {selectedRow && (
+              <div className="flex flex-wrap items-center gap-2" aria-label="Quick plan">
+                <Button size="sm" variant="secondary" onClick={() => setPicked(wholeRow(selectedRow.cells))}>Finish {selectedRow.city.city_name}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setPicked([])} disabled={picked.length === 0}>Clear</Button>
+              </div>
+            )}
             {searchError && <AlertCard variant="warning" title="Search gaps couldn't be read">{searchError} Unsearched and capped show "?".</AlertCard>}
           </div>
 
@@ -414,26 +469,34 @@ export function PipelineSection() {
           ) : (
             <>
               <div ref={scrollRef} className="overflow-x-auto border-t border-[var(--gray-200)]">
-                <table className="w-full min-w-[1240px] border-collapse text-sm" aria-label="Pipeline gaps by city and stage">
+                <table className="w-full table-fixed border-collapse text-sm" aria-label="Pipeline gaps by city and stage">
+                  <colgroup>
+                    <col style={{ width: "112px" }} />
+                    {MATRIX_COLUMNS.map((c) => <col key={c.id} />)}
+                  </colgroup>
                   <thead>
                     <tr className="text-left align-bottom">
-                      <th scope="col" className="sticky left-0 z-[1] bg-[var(--color-background-primary)] px-4 py-2.5 text-xs font-medium text-[var(--color-text-secondary)]">City</th>
+                      <th scope="col" className="sticky left-0 z-[1] bg-[var(--color-background-primary)] px-2 py-2 text-[11px] font-medium text-[var(--color-text-secondary)]">City</th>
                       {MATRIX_COLUMNS.map((c) => (
-                        <th key={c.id} scope="col" className="px-1.5 py-2.5 align-bottom">
-                          <span className="block text-[13px] font-semibold text-[var(--color-text-primary)]">{c.label}</span>
-                          <span className="block text-[11px] font-normal leading-[14px] text-[var(--color-text-tertiary)]">{c.sub}</span>
+                        <th key={c.id} scope="col" className="px-0.5 py-2 align-bottom">
+                          <span className="block text-[11px] font-semibold leading-[13px] text-[var(--color-text-primary)]">{c.label}</span>
+                          <span className="block text-[10px] font-normal leading-[12px] text-[var(--color-text-tertiary)]">{c.sub}</span>
                         </th>
                       ))}
                     </tr>
-                    <tr className="border-y border-[var(--gray-200)] bg-[var(--gray-50)]">
-                      <th scope="row" className="sticky left-0 z-[1] bg-[var(--gray-50)] px-4 py-2.5 text-left text-[13px] font-semibold">All gaps</th>
-                      {totals.map((c) => (
-                        <td key={c.id} className={`px-1.5 py-2.5 text-[13px] tabular-nums ${c.gap ? "font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-tertiary)]"}`}>{c.text}</td>
+                    <tr className="border-y border-[var(--gray-200)] bg-[var(--gray-50)] align-top">
+                      <th scope="row" className="sticky left-0 z-[1] bg-[var(--gray-50)] px-2 py-2 text-left text-[12px] font-semibold">All gaps</th>
+                      {totals.map((c, i) => (
+                        <td key={c.id} className="px-0.5 py-2 tabular-nums">
+                          <span className={`block truncate text-[12px] ${c.gap ? "font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-tertiary)]"}`}>{c.text}</span>
+                          {totalCosts[i].text && <span className="block truncate text-[10.5px] text-[var(--color-text-secondary)]">{totalCosts[i].text}</span>}
+                        </td>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {shown.map(({ city: c, cells, status }) => {
+                    {shown.map((row) => {
+                      const { city: c, cells, status } = row;
                       const run = runs[c.city_id];
                       const word = run ? runStatusWord(run.status) : null;
                       const isSel = c.city_id === selectedId;
@@ -441,18 +504,24 @@ export function PipelineSection() {
                       return (
                         <Fragment key={c.city_id}>
                           <tr className={`border-b border-[var(--gray-100)] ${isSel ? "bg-[var(--color-brand-50)]" : ""}`}>
-                            <th scope="row" className={`sticky left-0 z-[1] px-2 py-1 text-left font-normal ${isSel ? "bg-[var(--color-brand-50)]" : "bg-[var(--color-background-primary)]"}`}>
-                              <button type="button" className="flex min-h-11 w-full min-w-[150px] cursor-pointer flex-col items-start justify-center rounded-lg px-2 text-left hover:bg-[var(--gray-50)]"
-                                aria-expanded={isSel} onClick={() => setSelectedId(isSel ? null : c.city_id)}>
-                                <b className="text-[13px] font-semibold text-[var(--color-text-primary)]">{c.city_name}</b>
-                                <span className="text-[11px] leading-[14px] text-[var(--color-text-secondary)]">{status}{word ? ` · run ${word.label.toLowerCase()}` : ""}</span>
+                            <th scope="row" className={`sticky left-0 z-[1] px-1 py-1 text-left font-normal ${isSel ? "bg-[var(--color-brand-50)]" : "bg-[var(--color-background-primary)]"}`}>
+                              <button type="button" className="flex min-h-11 w-full min-w-0 cursor-pointer flex-col items-start justify-center rounded-lg px-1 text-left hover:bg-[var(--gray-50)]"
+                                aria-expanded={isSel} onClick={() => pickCity(row)}>
+                                <b className="block w-full truncate text-[12px] font-semibold text-[var(--color-text-primary)]">{c.city_name}</b>
+                                <span className="text-[10.5px] leading-[13px] text-[var(--color-text-secondary)]">{status}{word ? ` · run ${word.label.toLowerCase()}` : ""}</span>
                               </button>
                             </th>
-                            {cells.map((cell) => (
-                              <td key={cell.id} className="px-1.5 py-1">
-                                <GapCell cell={cell.id === "box" ? boxCell(cell, size) : cell} />
-                              </td>
-                            ))}
+                            {cells.map((cell, i) => {
+                              const shownCell = cell.id === "box" ? boxCell(cell, size) : cell;
+                              const state = isSel && picked.includes(cell.id) ? "picked" : isSel && needed.has(cell.id) ? "needed" : null;
+                              return (
+                                <td key={cell.id} className="px-0.5 py-1">
+                                  <GapCell cell={shownCell} cost={cellCost(cell, rates)} state={state}
+                                    cityName={c.city_name} label={MATRIX_COLUMNS[i].label}
+                                    onToggle={pickable(cell) ? () => toggleCell(c.city_id, cell.id) : null} />
+                                </td>
+                              );
+                            })}
                           </tr>
                           {isSel && (
                             <tr className="border-b border-[var(--gray-200)] bg-[var(--gray-50)]">
@@ -460,7 +529,7 @@ export function PipelineSection() {
                                 <div className="sticky left-0 flex flex-col gap-3 p-4" style={{ width: visibleWidth ?? undefined }} aria-label={`${c.city_name} setup`}>
                                   <div className="flex items-center justify-between gap-2">
                                     <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{c.city_name}: geo box and coverage</h3>
-                                    <Button size="sm" variant="ghost" icon={X} onClick={() => setSelectedId(null)}>Close</Button>
+                                    <Button size="sm" variant="ghost" icon={X} onClick={() => { setSelectedId(null); setPicked([]); }}>Close</Button>
                                   </div>
                                   <CityBoxPanel city={c} onChanged={load} />
                                 </div>
@@ -484,7 +553,7 @@ export function PipelineSection() {
                 <Button size="sm" variant="secondary" onClick={() => setToolsOpen(true)}>Open thumbnail tools</Button>
               </div>
               <div className="border-t border-[var(--gray-200)] px-5 py-1.5 text-[11px] text-[var(--color-text-tertiary)]">
-                Counted {funnel.counted_at ? new Date(funnel.counted_at).toLocaleTimeString() : "just now"}.
+                Estimated: costs under each number use the rates a run uses (Google $0.032 a search, $0.007 a photo, Gemini at the server's per-place rate, Serper at your rate). The run checks the server's own cost before anything is spent. Counted {funnel.counted_at ? new Date(funnel.counted_at).toLocaleTimeString() : "just now"}.
               </div>
             </>
           )}
@@ -492,7 +561,7 @@ export function PipelineSection() {
 
         <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-4" aria-label="Run plan">
           {selected ? (
-            <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load}
+            <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load} picks={picks}
               footer={<SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />} />
           ) : (
             <SectionCard title="Run plan">
@@ -511,7 +580,7 @@ export function PipelineSection() {
         {tableSettled ? (
           <div className="flex flex-col gap-4">
             <ActiveRunsControlTower />
-            <IntelligenceOverviewTab />
+            <IntelligenceOverviewTab onCostModel={setCostModel} />
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]"><Spinner size="sm" /> Waiting for the gaps table first…</div>

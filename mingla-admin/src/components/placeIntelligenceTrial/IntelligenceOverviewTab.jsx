@@ -192,7 +192,7 @@ function statusBadgeClasses(status) {
   return "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]";
 }
 
-export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
+export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange, onCostModel }) {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -213,6 +213,8 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         await withOneRetry(() => fetchIntelligenceCoverage());
       setRows(coverageRows);
       setCostModel(serverCostModel);
+      // #4276: the Pipeline gaps table prices Intelligence cells from the same rate.
+      if (onCostModel) onCostModel(serverCostModel);
     } catch (err) {
       setError(err?.message || "Couldn't load coverage");
       if (!silent) {
@@ -225,7 +227,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, onCostModel]);
 
   useEffect(() => {
     refresh();

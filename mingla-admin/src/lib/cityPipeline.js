@@ -322,18 +322,17 @@ export function cityReadinessWithGaps(row, gaps) {
 //   redo     an optional redo (blue): Intelligence that ran with no reviews
 //   follows  happens on its own once the stages before it finish (dashed)
 export const MATRIX_COLUMNS = Object.freeze([
-  Object.freeze({ id: "box", label: "Geo box", sub: "Places outside it", kind: "check" }),
-  Object.freeze({ id: "seed", label: "Seed", sub: "Find places, Google", kind: "missing" }),
-  Object.freeze({ id: "unsearched", label: "Unsearched", sub: "Areas and searches never run", kind: "missing" }),
-  Object.freeze({ id: "capped", label: "Capped", sub: "Hit 20 results, search smaller", kind: "missing" }),
-  Object.freeze({ id: "pre_check", label: "Pre-check", sub: "Free rules, no photos", kind: "missing" }),
-  Object.freeze({ id: "photos", label: "Photos", sub: "Passed, no stored photos", kind: "missing" }),
-  Object.freeze({ id: "final_check", label: "Final check", sub: "Have photos, not checked", kind: "missing" }),
-  Object.freeze({ id: "reviews", label: "Reviews", sub: "Servable, none", kind: "missing" }),
-  Object.freeze({ id: "intelligence", label: "Intelligence", sub: "Servable, rules only", kind: "missing" }),
-  Object.freeze({ id: "redo", label: "Redo Intelligence", sub: "Ran with no reviews", kind: "redo" }),
-  Object.freeze({ id: "score", label: "Final score", sub: "Servable, no score", kind: "follows" }),
-  Object.freeze({ id: "held", label: "Held", sub: "Waiting to finish", kind: "follows" }),
+  Object.freeze({ id: "box", label: "Geo box", sub: "Places outside", kind: "check" }),
+  Object.freeze({ id: "seed", label: "Seed", sub: "Find places", kind: "missing" }),
+  Object.freeze({ id: "unsearched", label: "Unsearched", sub: "Never run", kind: "missing" }),
+  Object.freeze({ id: "capped", label: "Capped", sub: "Hit 20, split", kind: "missing" }),
+  Object.freeze({ id: "pre_check", label: "Pre-check", sub: "Free rules", kind: "missing" }),
+  Object.freeze({ id: "photos", label: "Photos", sub: "Download", kind: "missing" }),
+  Object.freeze({ id: "final_check", label: "Final check", sub: "Servable?", kind: "missing" }),
+  Object.freeze({ id: "reviews", label: "Reviews", sub: "Serper", kind: "missing" }),
+  Object.freeze({ id: "intelligence", label: "Intelligence", sub: "Gemini", kind: "missing" }),
+  Object.freeze({ id: "redo", label: "Redo", sub: "Ran, no reviews", kind: "redo" }),
+  Object.freeze({ id: "score", label: "Final score", sub: "Follows", kind: "follows" }),
 ]);
 
 /** A city never seeded: a draft with no active places. */
@@ -360,7 +359,10 @@ export function matrixCells(funnelRow, searchRow, outsideRow) {
     intelligence: n(f.rules_only),
     redo: n(f.intelligence_without_reviews),
     score: Math.max(0, n(f.servable) - n(f.scored)),
-    held: n(f.held),
+  };
+  // What a search cell is made of, for its cost: tiles never searched, searches not done.
+  const parts = {
+    unsearched: unknownSearch ? null : { tiles: n(searchRow.uncoveredTiles), searches: n(searchRow.unfinishedSearches) },
   };
   return MATRIX_COLUMNS.map((c) => {
     const v = values[c.id];
@@ -368,7 +370,7 @@ export function matrixCells(funnelRow, searchRow, outsideRow) {
     if (c.id === "seed") text = fresh ? "Never seeded" : "Done";
     // A city never seeded has nothing for the later stages to do yet.
     if (fresh && !["box", "seed", "unsearched"].includes(c.id) && v === 0) text = "–";
-    return { id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0 };
+    return { id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0, parts: parts[c.id] ?? null };
   });
 }
 
@@ -416,7 +418,9 @@ export function cityStatusLine(funnelRow, cells) {
     where = first ? STAGE_WORDS[first]
       : (cells ?? []).some((c) => c.gap && c.kind !== "follows" && c.kind !== "redo") ? "Small gaps" : "Complete";
   }
-  return f.is_live ? `Live · ${where}` : where;
+  const held = num(f.held) ?? 0;
+  const line = f.is_live ? `Live · ${where}` : where;
+  return held > 0 ? `${line} · ${count(held)} held` : line;
 }
 
 /** The "Show" filter on the gaps table. */
@@ -576,4 +580,182 @@ export function biggestRuleLoss(cities) {
     }
   }
   return best && best.share >= 25 ? best : null;
+}
+
+/** A place's Google type in words: "Pub", "Bakery", "Italian restaurant". */
+export function placeTypeLabel(place) {
+  const shown = typeof place?.primary_type_display_name === "string" ? place.primary_type_display_name.trim() : "";
+  if (shown) return shown;
+  const raw = typeof place?.primary_type === "string" ? place.primary_type.trim() : "";
+  if (!raw) return "No type";
+  const words = raw.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Where one place stands, stage by stage, for the Browse side panel. Each stage is
+ * { id, label, state: "done" | "failed" | "waiting" | "not_run", text }.
+ */
+export function placeStages(place) {
+  if (!place) return [];
+  const photos = Array.isArray(place.stored_photo_urls) ? place.stored_photo_urls.length : 0;
+  const stage = (id, label, state, text) => ({ id, label, state, text });
+  const pre = place.passes_pre_photo_check === true ? stage("pre_check", "Pre-check", "done", "Passed")
+    : place.passes_pre_photo_check === false ? stage("pre_check", "Pre-check", "failed", reasonWords(place.pre_photo_bouncer_reason))
+    : stage("pre_check", "Pre-check", "not_run", "Not run");
+  const pic = photos > 0 ? stage("photos", "Photos", "done", `${photos} saved`)
+    : place.passes_pre_photo_check === false ? stage("photos", "Photos", "not_run", "Not needed: failed the pre-check")
+    : stage("photos", "Photos", "not_run", "Not downloaded");
+  const fin = place.is_servable === true ? stage("final_check", "Final check", "done", "Passed: Explorers can see it")
+    : place.is_servable === false ? stage("final_check", "Final check", "failed", reasonWords(place.bouncer_reason))
+    : stage("final_check", "Final check", "not_run", "Not run");
+  const scores = place.is_servable !== true ? stage("scores", "Scores", "not_run", "Only for places that pass the final check")
+    : place.ai_signal_scores ? stage("scores", "Scores", "done", "Scored")
+    : stage("scores", "Scores", "failed", "Missing");
+  const held = place.serving_hold ? [stage("held", "Held", "waiting", "Hidden until its run finishes")] : [];
+  const active = place.is_active === false ? [stage("active", "Active pool", "failed", place.deleted_reason || "Removed")] : [];
+  return [pre, pic, fin, scores, ...held, ...active];
+}
+
+// ── Picking gaps for a city's run, and what they cost ───────────────────────
+
+// The rates a run uses. They mirror the server so a cell can show a cost before the
+// run's own preview prices it; a test reads the server files and fails if they drift.
+//   SEARCH_USD, PHOTO_USD, PHOTOS_PER_PLACE  supabase/functions/_shared/seedingGeometry.ts
+//   SEARCHES_PER_TILE                        the 14 configs in _shared/seedingCategories.ts
+//   SPLIT_SEARCHES                           a capped search repeats as 4 at half radius
+//   REVIEW_MAX_PAGES                         run-city-pipeline/conductor.ts (Serper requests)
+// Gemini's per-place rate comes from the server's cost model; Serper's from your rate.
+export const PIPELINE_RATES = Object.freeze({
+  SEARCH_USD: 0.032,
+  PHOTO_USD: 0.007,
+  PHOTOS_PER_PLACE: 5,
+  SEARCHES_PER_TILE: 14,
+  SPLIT_SEARCHES: 4,
+  REVIEW_MAX_PAGES: 5,
+});
+
+function money(n) {
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * One cell's estimated cost: { usd, text }. usd is null when it can't be priced yet
+ * (Serper with no rate, Gemini before its rate is read) and text then names the provider.
+ * A free stage reads "Free". Cells with nothing to do, or that follow on their own,
+ * have no cost line ({ usd: null, text: "" }).
+ */
+export function cellCost(cell, rates = {}) {
+  const none = { usd: null, text: "" };
+  if (!cell?.gap) return none;
+  const r = PIPELINE_RATES;
+  const v = num(cell.value) ?? 0;
+  const priced = (usd) => ({ usd, text: money(usd) });
+  switch (cell.id) {
+    case "unsearched": {
+      const p = cell.parts ?? { tiles: 0, searches: v };
+      return priced((p.tiles * r.SEARCHES_PER_TILE + p.searches) * r.SEARCH_USD);
+    }
+    case "capped":
+      return priced(v * r.SPLIT_SEARCHES * r.SEARCH_USD);
+    case "pre_check":
+    case "final_check":
+      return { usd: 0, text: "Free" };
+    case "photos":
+      return priced(v * r.PHOTOS_PER_PLACE * r.PHOTO_USD);
+    case "reviews": {
+      const rate = num(rates.serperUsdPerRequest);
+      return rate === null ? { usd: null, text: "Serper" } : priced(v * r.REVIEW_MAX_PAGES * rate);
+    }
+    case "intelligence":
+    case "redo": {
+      const rate = num(rates.geminiPerPlaceUsd);
+      return rate === null ? { usd: null, text: "Gemini" } : priced(v * rate);
+    }
+    default:
+      return none;
+  }
+}
+
+/** The "All gaps" row's cost per column: summed where every row could be priced. */
+export function matrixTotalCosts(rowsOfCells, rates = {}) {
+  return MATRIX_COLUMNS.map((c, i) => {
+    let usd = 0;
+    let any = false;
+    let label = "";
+    for (const cells of rowsOfCells) {
+      const cost = cellCost(cells[i], rates);
+      if (!cost.text) continue;
+      any = true;
+      if (cost.usd === null) label = cost.text;
+      else usd += cost.usd;
+    }
+    if (!any) return { id: c.id, text: "" };
+    if (label) return { id: c.id, text: usd > 0 ? `${money(usd)} + ${label}` : label };
+    return { id: c.id, text: usd === 0 ? "Free" : money(usd) };
+  });
+}
+
+// Stages in the order a run does them. Picking one adds the gaps before it.
+const PLAN_ORDER = Object.freeze(["seed", "unsearched", "capped", "pre_check", "photos", "final_check", "reviews", "intelligence"]);
+
+/** A cell a person can pick: a gap that doesn't simply follow on its own. */
+export function pickable(cell) {
+  return !!cell?.gap && cell.kind !== "follows";
+}
+
+/** The gaps a pick needs first, which the plan adds for you. */
+export function neededFirst(picked, cells) {
+  const set = new Set(picked);
+  const gaps = new Set((cells ?? []).filter(pickable).map((c) => c.id));
+  const needed = new Set();
+  let last = -1;
+  for (const id of set) last = Math.max(last, PLAN_ORDER.indexOf(id === "redo" ? "reviews" : id));
+  for (let i = 0; i <= last; i += 1) {
+    const id = PLAN_ORDER[i];
+    if (gaps.has(id) && !set.has(id)) needed.add(id);
+  }
+  return needed;
+}
+
+/** Everything a whole row picks: every gap that can be picked except optional redos. */
+export function wholeRow(cells) {
+  return (cells ?? []).filter((c) => pickable(c) && c.kind !== "redo").map((c) => c.id);
+}
+
+/** The Run plan's lines for a city's picks, in run order, with an estimated total. */
+export function planLines(cells, picked, rates = {}) {
+  const set = new Set(picked);
+  const needed = neededFirst(picked, cells);
+  const lines = [];
+  for (const c of cells ?? []) {
+    if (!set.has(c.id) && !needed.has(c.id)) continue;
+    const col = MATRIX_COLUMNS.find((m) => m.id === c.id);
+    lines.push({ id: c.id, label: col?.label ?? c.id, count: c.text, cost: cellCost(c, rates), needed: needed.has(c.id) });
+  }
+  const priced = lines.filter((l) => l.cost.usd !== null);
+  const unpriced = lines.filter((l) => l.cost.usd === null && l.cost.text).map((l) => l.cost.text);
+  const usd = priced.reduce((a, l) => a + l.cost.usd, 0);
+  return {
+    lines,
+    totalText: `${money(usd)}${unpriced.length ? ` + ${[...new Set(unpriced)].join(" + ")}` : ""}`,
+    searches: lines.some((l) => ["seed", "unsearched", "capped"].includes(l.id)),
+  };
+}
+
+/**
+ * A count that depends on the pipeline table: "–" while it loads, "?" when it failed,
+ * the number once it answered. Never 0 for a count nobody has read.
+ */
+export function loadedCount(value, { loading, error }) {
+  if (error) return "?";
+  if (loading || value === null || value === undefined) return "–";
+  return count(value);
+}
+
+/** The Show chips' counts: a placeholder while loading, none on error. */
+export function filterChipCount(n, { loading, error }) {
+  if (error) return null;
+  if (loading) return "–";
+  return n;
 }

@@ -67,7 +67,7 @@ function ConfirmModal({ open, title, children, confirmLabel, destructive, busy, 
 
 // ── Before a run ─────────────────────────────────────────────────────────────
 
-function RunPlan({ city, serperRate, onStarted }) {
+function RunPlan({ city, serperRate, onStarted, picks }) {
   const { addToast } = useToast();
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState(null);
@@ -93,6 +93,11 @@ function RunPlan({ city, serperRate, onStarted }) {
   // A server read; its state changes happen when it answers.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setPreview(null); setPreviewError(null); }, [city.city_id]);
+
+  // #4276: picks with no search stage start the run past searching.
+  const pickedSearches = picks ? picks.searches : null;
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (pickedSearches !== null) setSkipSearch(!pickedSearches); }, [pickedSearches]);
 
   const limitNumber = Number(limit);
   const limitOk = limit.trim() !== "" && Number.isFinite(limitNumber) && limitNumber > 0;
@@ -123,6 +128,27 @@ function RunPlan({ city, serperRate, onStarted }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {picks && picks.lines.length > 0 && (
+        <div className="flex flex-col gap-2" aria-label="Your picks">
+          <ul className="flex flex-col divide-y divide-[var(--gray-100)] rounded-lg border border-[var(--gray-200)] text-[13px]">
+            {picks.lines.map((l) => (
+              <li key={l.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2">
+                <span className="min-w-0">
+                  <span className="font-medium text-[var(--color-text-primary)]">{l.label}</span>
+                  {l.needed && <span className="ml-1.5 text-[11px] text-[var(--color-brand-700)]">needed first</span>}
+                </span>
+                <span className="tabular-nums text-[var(--color-text-secondary)]">{l.count}</span>
+                <span className="tabular-nums text-[var(--color-text-primary)]">{l.cost.text || "–"}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-xs text-[var(--color-text-secondary)]">Estimated cost</span>
+            <b className="text-[20px] font-semibold tabular-nums text-[var(--color-text-primary)]">{picks.totalText}</b>
+          </div>
+          <p className="text-[11px] leading-4 text-[var(--color-text-tertiary)]">An estimate from the rates a run uses. The run does every stage the city still needs, in order, and checks the server's own cost first.</p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" icon={RefreshCw} onClick={check} loading={loading}>
           {preview ? "Check again" : "See what a run would do"}
@@ -368,7 +394,7 @@ function RunStatus({ runId, serperRate, onChanged }) {
   );
 }
 
-export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = null }) {
+export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = null, picks = null }) {
   const [runId, setRunId] = useState(latestRun?.id ?? null);
   const [planning, setPlanning] = useState(false);
   // A server read; its state changes happen when it answers.
@@ -385,7 +411,7 @@ export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = 
       action={runId && !activeRun && !planning ? <Button size="sm" variant="secondary" onClick={() => setPlanning(true)}>Plan a new run</Button> : null}
     >
       {showPlan ? (
-        <RunPlan city={city} serperRate={serperRate} onStarted={(id) => { setRunId(id); setPlanning(false); onChanged(); }} />
+        <RunPlan city={city} serperRate={serperRate} picks={picks} onStarted={(id) => { setRunId(id); setPlanning(false); onChanged(); }} />
       ) : (
         <RunStatus runId={runId} serperRate={serperRate} onChanged={onChanged} />
       )}

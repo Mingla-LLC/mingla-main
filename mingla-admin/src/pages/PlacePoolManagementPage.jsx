@@ -17,7 +17,7 @@ import {
   Globe, Search, Camera, Clock, Plus, RefreshCw, Play, Pause,
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
   Download, ImageOff, Eye, Edit3, DollarSign, Layers,
-  Square, SkipForward, XCircle, Loader, RotateCcw, Zap, MinusCircle,
+  Square, SkipForward, XCircle, X, Loader, RotateCcw, Zap, MinusCircle,
   Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -42,7 +42,7 @@ import {
   PLACE_LIST_COUNT_MODE,
   PLACE_MAP_COLUMNS,
 } from "../lib/placePoolQueries";
-import { reasonWords } from "../lib/cityPipeline";
+import { placeStages, placeTypeLabel, reasonWords } from "../lib/cityPipeline";
 // ORCH-0553 — SeedTab + RefreshTab extracted to shared seeding components.
 // HARD_CAP_USD + formatCost + TILE_RADIUS_OPTIONS imported from shared lib so
 // both this page and AIValidationPage tabs use a single source of truth.
@@ -1136,6 +1136,7 @@ function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list"
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [picked, setPicked] = useState(null); // the place shown in the side panel
   const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", servableStatus: "", nameSearch: "", missing: "" });
   const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
@@ -1199,9 +1200,9 @@ function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list"
 
   const columns = [
     { key: "name", label: "Place", render: (_, r) => (
-      <button type="button" className="flex min-h-11 cursor-pointer flex-col items-start justify-center text-left" onClick={() => setDetailPlace(r)}>
+      <button type="button" aria-pressed={picked?.id === r.id} className="flex min-h-11 cursor-pointer flex-col items-start justify-center text-left" onClick={() => setPicked(r)}>
         <b className="text-[13px] font-semibold text-[var(--color-text-primary)] hover:underline">{r.name}</b>
-        <span className="text-[11px] text-[var(--color-text-tertiary)]">{r.primary_type_display_name || (r.mingla_category ? CATEGORY_LABELS[r.mingla_category] : "") || "No type"}</span>
+        <span className="text-[11px] text-[var(--color-text-tertiary)]">{placeTypeLabel(r)}</span>
       </button>
     ) },
     { key: "city", label: "City", render: (_, r) => r.city || "—" },
@@ -1338,16 +1339,59 @@ function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list"
       ) : loadError ? (
         <LoadError title="Couldn't load the place list" message={loadError} onRetry={fetchPlaces} retrying={loading} />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
-          <p className="px-4 pt-3 text-xs text-[var(--color-text-secondary)]">{loading ? "Loading places…" : `${total.toLocaleString()} ${total === 1 ? "place" : "places"}, newest first. Totals over 1,000 are estimates.`}</p>
-          <DataTable columns={columns} rows={places} loading={loading}
-            emptyMessage="No places match these filters" emptyIcon={Globe}
-            pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
+        <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+            <p className="px-4 pt-3 text-xs text-[var(--color-text-secondary)]">{loading ? "Loading places…" : `${total.toLocaleString()} ${total === 1 ? "place" : "places"}, newest first. Totals over 1,000 are estimates.`}</p>
+            <DataTable columns={columns} rows={places} loading={loading} headerCase="sentence"
+              emptyMessage="No places match these filters" emptyIcon={Globe}
+              rowClassName={(r) => (picked?.id === r.id ? "bg-[var(--color-brand-50)]" : "")}
+              pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
+          </div>
+          <PlaceSidePanel place={picked} onEdit={() => setDetailPlace(picked)} onClose={() => setPicked(null)} />
         </div>
       )}
 
-      <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { fetchPlaces(); if (onRefresh) onRefresh(); }} />
+      <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { setPicked(null); fetchPlaces(); if (onRefresh) onRefresh(); }} />
     </div>
+  );
+}
+
+// #4276 design pass: the panel beside the place list. Nothing picked: what it is for.
+// A place picked: where it stands at each stage, with the full edit form one tap away.
+const STAGE_TONE = {
+  done: "text-[var(--color-success-700)]",
+  failed: "text-[var(--color-error-700)]",
+  waiting: "text-[var(--color-warning-700)]",
+  not_run: "text-[var(--color-text-tertiary)]",
+};
+
+export function PlaceSidePanel({ place, onEdit, onClose }) {
+  return (
+    <aside aria-label="Picked place" className="flex min-w-0 flex-col gap-4 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-5 shadow-[var(--shadow-sm)] xl:sticky xl:top-4">
+      {!place ? (
+        <p className="text-sm leading-5 text-[var(--color-text-secondary)]">Pick a place to see where it stands, and to change it.</p>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="break-words text-[15px] font-semibold text-[var(--color-text-primary)]">{place.name}</h3>
+              <p className="text-xs text-[var(--color-text-secondary)]">{placeTypeLabel(place)}{place.city ? ` · ${place.city}` : ""}{place.rating ? ` · ${Number(place.rating).toFixed(1)}` : ""}</p>
+            </div>
+            <Button size="sm" variant="ghost" icon={X} aria-label="Close" onClick={onClose} />
+          </div>
+          <dl className="flex flex-col divide-y divide-[var(--gray-100)] text-[13px]">
+            {placeStages(place).map((st) => (
+              <div key={st.id} className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-2">
+                <dt className="text-[var(--color-text-secondary)]">{st.label}</dt>
+                <dd className={`font-medium ${STAGE_TONE[st.state]}`}>{st.text}</dd>
+              </div>
+            ))}
+          </dl>
+          {place.address && <p className="text-xs text-[var(--color-text-tertiary)]">{place.address}</p>}
+          <Button variant="secondary" icon={Edit3} onClick={onEdit}>Edit place and scores</Button>
+        </>
+      )}
+    </aside>
   );
 }
 
@@ -2767,7 +2811,7 @@ function ExcludedTab({ scope, onRefresh, cities = [], onScopeChange }) {
     { key: "name", label: "Place", render: (_, r) => (
       <button type="button" className="flex min-h-11 min-w-[200px] cursor-pointer flex-col items-start justify-center text-left" onClick={() => setDetailPlace(r)}>
         <b className="text-[13px] font-semibold text-[var(--color-text-primary)] hover:underline">{r.name}</b>
-        <span className="text-[11px] text-[var(--color-text-tertiary)]">{r.primary_type_display_name || (r.mingla_category ? CATEGORY_LABELS[r.mingla_category] : "") || "No type"}</span>
+        <span className="text-[11px] text-[var(--color-text-tertiary)]">{placeTypeLabel(r)}</span>
       </button>
     )},
     { key: "city", label: "City", render: (_, r) => r.city || "—" },
@@ -2802,7 +2846,7 @@ function ExcludedTab({ scope, onRefresh, cities = [], onScopeChange }) {
       ) : (
         <>
           <p className="px-4 pt-3 text-xs text-[var(--color-text-secondary)]">{loading ? "Loading…" : `${total.toLocaleString()} ${total === 1 ? "place" : "places"} left out by the final check, by name. Totals over 1,000 are estimates.`}</p>
-          <DataTable columns={columns} rows={places} loading={loading}
+          <DataTable columns={columns} rows={places} loading={loading} headerCase="sentence"
             emptyMessage="No places were left out here" emptyIcon={CheckCircle}
             pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
         </>

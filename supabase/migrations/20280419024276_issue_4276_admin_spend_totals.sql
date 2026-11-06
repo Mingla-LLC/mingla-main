@@ -57,7 +57,10 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.admin_place_pipeline_spend_totals() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.admin_place_pipeline_spend_totals() TO authenticated, service_role;
+-- Only signed-in admins can use it: is_admin_user() is false for the service role, so
+-- a grant there would only ever raise.
+REVOKE ALL ON FUNCTION public.admin_place_pipeline_spend_totals() FROM service_role;
+GRANT EXECUTE ON FUNCTION public.admin_place_pipeline_spend_totals() TO authenticated;
 
 COMMENT ON FUNCTION public.admin_place_pipeline_spend_totals() IS
   'Issue #4276: recorded spend to date across every city, by provider; admins only. '

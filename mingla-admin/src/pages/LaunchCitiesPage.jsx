@@ -289,6 +289,7 @@ export function LaunchCitiesPage() {
             </Button>
           }
           getRowId={(r) => r.city_id}
+          headerCase="sentence"
         />
       </SectionCard>
 
