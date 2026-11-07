@@ -481,7 +481,9 @@ test("H33 proxy credential is standalone governed authority and excluded from ru
   const record = manifest.secrets.find((entry) => entry.name === "SHARED_CARD_PROXY_SECRET");
   // [TEST-MOD-APPROVED #3645] The payout-release restricted key is the
   // approved 90th name; this cross-issue proof follows the governed manifest.
-  assert.equal(manifest.rollout.expected_user_managed_count, 90);
+  // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is
+  // the approved 91st name; this cross-issue proof follows the governed manifest.
+  assert.equal(manifest.rollout.expected_user_managed_count, 91);
   assert.equal(record.class, "authentication_secret");
   assert.deepEqual(record.readers, ["supabase/functions/shared-card/index.ts"]);
   assert.equal(record.issue, 1615);

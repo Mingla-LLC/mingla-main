@@ -16,6 +16,10 @@
  * [TEST-MOD-APPROVED #3645] Seth approved the payout-release restricted key
  * as the 90th and final absolute-ceiling name. The migration band is therefore
  * empty; both modes require the exact declared set and the 91st name fails.
+ *
+ * [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
+ * 91st declared name and the absolute ceiling moves 90 -> 91. The band stays
+ * empty; both modes require the exact 91-name set and a 92nd name fails.
  */
 
 import assert from "node:assert/strict";
@@ -79,17 +83,17 @@ function readinessCode(code, detail = null) {
 // ---------------------------------------------------------------------------
 
 test("#2241 happy: normal mode accepts the approved migration band", () => {
-  assert.equal(declared.length, 90);
+  assert.equal(declared.length, 91);
   assert.deepEqual([...ISSUE_2241_EXTRA_NAMES], []);
 
-  // 90 — today's production state and the exact absolute-ceiling authority.
+  // 91 — the approved production state and the exact absolute-ceiling authority.
   const full = parity([...declared, ...ISSUE_2241_EXTRA_NAMES]);
-  assert.equal(full.liveUserManaged.length, 90);
+  assert.equal(full.liveUserManaged.length, 91);
 
   // The empty in-band subset is the only permitted state at the ceiling.
   for (const band of [[]]) {
     const result = parity([...declared, ...band]);
-    assert.equal(result.liveUserManaged.length, 90 + band.length);
+    assert.equal(result.liveUserManaged.length, 91 + band.length);
   }
 
   // Platform-managed names are still excluded before the comparison, so the
@@ -99,7 +103,7 @@ test("#2241 happy: normal mode accepts the approved migration band", () => {
     ...ISSUE_2241_EXTRA_NAMES,
     ...contract.platform_managed,
   ]);
-  assert.equal(withPlatform.liveUserManaged.length, 90);
+  assert.equal(withPlatform.liveUserManaged.length, 91);
 });
 
 // ---------------------------------------------------------------------------
@@ -111,7 +115,7 @@ test("#2241 adversarial: normal mode still rejects any name outside the band", (
     () => parity([...declared, "UNAPPROVED_EXTRA"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNAPPROVED_EXTRA"),
   );
-  // A 91st name is the exact breach the empty band must not admit.
+  // A 92nd name is the exact breach the empty band must not admit.
   assert.throws(
     () => parity([...declared, ...ISSUE_2241_EXTRA_NAMES, "UNAPPROVED_EXTRA"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNAPPROVED_EXTRA"),
@@ -178,12 +182,12 @@ test("#2241 adversarial: normal mode still rejects a missing declared name", () 
 // Remediation mode is untouched by the relaxation.
 // ---------------------------------------------------------------------------
 
-test("#2241 regression: remediation mode still REQUIRES exactly 90", () => {
+test("#2241 regression: remediation mode still REQUIRES exactly 91", () => {
   const result = parity(
     [...declared, ...ISSUE_2241_EXTRA_NAMES],
     "issue-2241-remediation",
   );
-  assert.equal(result.liveUserManaged.length, 90);
+  assert.equal(result.liveUserManaged.length, 91);
 
   assert.throws(
     () => parity(declared.slice(1), "issue-2241-remediation"),
@@ -197,8 +201,8 @@ test("#2241 regression: remediation mode still REQUIRES exactly 90", () => {
 
 test("#2241 regression: every out-of-scope secret invariant is unchanged", () => {
   assert.equal(manifest.policy.normal_ceiling, 87);
-  assert.equal(manifest.policy.absolute_ceiling, 90);
-  assert.equal(manifest.secrets.length, 90);
+  assert.equal(manifest.policy.absolute_ceiling, 91);
+  assert.equal(manifest.secrets.length, 91);
   assert.equal(contract.remediation.allowed_extra_live_names.length, 0);
   assert.equal(contract.remediation.production_ref, projectRef);
   assert.equal(contract.remediation.issue, 2241);
@@ -210,8 +214,8 @@ test("#2241 regression: every out-of-scope secret invariant is unchanged", () =>
   );
   for (
     const token of [
-      "remediation_requires_exact_90",
-      "liveUserManaged.length !== 90",
+      "remediation_requires_exact_91",
+      "liveUserManaged.length !== 91",
       "wrong_project",
       "`missing:${name}`",
       "`unexpected:${name}`",

@@ -93,14 +93,16 @@ const EXPECTED_FIELDS = [
 // preserving all 90 top-level names and every #1772 field and ordering guarantee.
 // [TEST-MOD-APPROVED #4182] Creator review media adds one governed-bundle reader
 // and eight Bunny fields while preserving the 90-name ceiling and #1772 field.
-test("#1772 keeps the exact governed 90-name envelope with no direct erasure secret", () => {
+// [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
+// 91st top-level name; the AD envelope and #1772 field remain byte-for-byte unchanged.
+test("#1772 keeps the exact governed 91-name envelope with no direct erasure secret", () => {
   const names = manifest.secrets.map((entry) => entry.name);
-  assert.equal(names.length, 90);
+  assert.equal(names.length, 91);
   assert.equal(
     crypto.createHash("sha256").update(JSON.stringify(names)).digest("hex"),
-    "0a8e6db5a5618cd0b846a699606a0d7f0cdbeaf965cbfae25f0791f9190f59be",
+    "9f8ed3375fb188bb9b7ba2e0d84cf54916e709d1a337ed167650cb169c75cc1a",
   );
-  assert.equal(manifest.rollout.expected_user_managed_count, 90);
+  assert.equal(manifest.rollout.expected_user_managed_count, 91);
   assert.deepEqual(manifest.exceptions, [
     {
       issue: 2830,
