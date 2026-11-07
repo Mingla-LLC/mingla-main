@@ -409,6 +409,16 @@ export function useEnsureBrandSiteDraft(brandId: string) {
         await provisionBrandSite(brandId, createBrandSiteOperationId());
         site = await readBrandSite(brandId);
       }
+      // #2830 — a site stuck provisioning has a receipt the server never closed
+      // (Studio didn't answer). Replay that SAME operation: it is idempotent and
+      // can't make a second website. Polling alone waited on nothing.
+      const stuckOperation = site?.status === "provisioning"
+        ? site.latest_provision_operation?.operation_id ?? null
+        : null;
+      if (stuckOperation) {
+        await provisionBrandSite(brandId, stuckOperation);
+        site = await readBrandSite(brandId);
+      }
       const started = Date.now();
       while (site && site.status === "provisioning" && Date.now() - started < SITE_READY_WINDOW_MS) {
         await new Promise((resolve) => setTimeout(resolve, 2_000));

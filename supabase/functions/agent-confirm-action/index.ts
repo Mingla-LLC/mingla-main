@@ -532,7 +532,7 @@ Deno.serve(async (req) => {
     const { data: pending, error: pendingErr } = await userClient
       .from("agent_pending_actions")
       .select(
-        "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id, server_proposed_at",
+        "id, conversation_id, tool_name, tool_args, status, failure_reason, expires_at, source, related_brand_id, server_proposed_at",
       )
       .eq("id", body.pending_action_id)
       .eq("user_id", userId)
@@ -575,6 +575,7 @@ async function handleConfirmAction(args: {
     source: string | null;
     related_brand_id: string | null;
     server_proposed_at: string | null;
+    failure_reason?: string | null;
   };
 }): Promise<Response> {
   const {
@@ -709,6 +710,29 @@ async function handleConfirmAction(args: {
   // CONFIRM path. `executing` is deliberately recoverable: the prior request
   // may have committed the domain write and lost its HTTP response. The domain
   // receipt turns this retry into a read of the committed result.
+  // #2830: a teammate took this Website setup over, so this card can't save.
+  // Tell the person why, instead of a status the client would quietly clear.
+  if (
+    pending.status === "superseded" &&
+    pending.failure_reason === "flow_taken_over"
+  ) {
+    let name: string | undefined;
+    try {
+      const { data } = await pendingStateClient.rpc(
+        "ari_flow_run_displacement_get",
+        { p_user_id: userId, p_conversation_id: pending.conversation_id },
+      );
+      const taken = data as { to_name?: unknown } | null;
+      if (typeof taken?.to_name === "string" && taken.to_name) {
+        name = taken.to_name;
+      }
+    } catch {
+      // The name is a courtesy; the refusal stands either way.
+    }
+    return ariErrorResponse(409, "FLOW_TAKEN_OVER", "", {
+      taken_over_by: name,
+    });
+  }
   // #3355 P1: a newer proposal in this chat replaced this one. Nothing ran;
   // the owner reviews the newest card instead.
   if (pending.status === "superseded") {

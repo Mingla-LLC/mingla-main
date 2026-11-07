@@ -8,6 +8,11 @@
  * two can never disagree about what exists.
  */
 
+import { PLAN_PARTS, type PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
+
+const validStep = (value: string | null | undefined): PlanPartKey | null =>
+  PLAN_PARTS.find((part) => part.key === value)?.key ?? null;
+
 export const WEBSITE_SECTIONS = [
   "overview",
   "pages",
@@ -36,7 +41,7 @@ export const SECTION_LABELS: Readonly<Record<WebsiteSection, string>> = {
   past: "Past trips",
   publish: "Publish & history",
   addresses: "Addresses",
-  plan: "Setup plan",
+  plan: "Website setup",
   settings: "Settings",
 };
 
@@ -101,9 +106,9 @@ function planMeta(plan: WebsiteNavInput["plan"]): string | null {
 
 /**
  * The rail / list for this site (§1.2 rules): before a site exists only
- * Overview and Setup plan; content items only when the design has a page for
+ * Overview and Website setup; content items only when the design has a page for
  * them or entries already exist; Past trips when the brand ticked Trips; the
- * Setup plan row never disappears.
+ * Website setup row never disappears.
  */
 export function websiteNavGroups(input: WebsiteNavInput): WebsiteNavGroup[] {
   if (!input.hasSite) {
@@ -153,9 +158,10 @@ export function navRowAccessibilityLabel(entry: WebsiteNavItem): string {
 }
 
 export type WebsiteRoute =
-  | { kind: "section"; section: WebsiteSection; planPart?: string | null }
+  | { kind: "section"; section: WebsiteSection }
   | { kind: "editor"; section: CollectionSection; entryId: string | "new" }
   | { kind: "preview" }
+  | { kind: "setup"; step: PlanPartKey | null }
   | { kind: "redirect"; to: string };
 
 const ENTRY_ID = /^[A-Za-z0-9-]{1,64}$/;
@@ -163,12 +169,12 @@ const ENTRY_ID = /^[A-Za-z0-9-]{1,64}$/;
 /**
  * /brand/<id>/website[/<section>[/<entry|new>]] → what to show. Old
  * addresses redirect: look → design, domains → addresses, plan?part=x →
- * plan with that part open. Anything unknown is the Overview.
+ * setup on that step. Anything unknown is the Overview.
  */
 export function parseWebsitePath(
   brandId: string,
   segments: readonly string[],
-  search: { part?: string | null } = {},
+  search: { part?: string | null; step?: string | null } = {},
 ): WebsiteRoute {
   const [first, second, ...rest] = segments.filter((segment) => segment.length > 0);
   const base = `/brand/${brandId}/website`;
@@ -176,17 +182,19 @@ export function parseWebsitePath(
   if (first === "look" && !second) return { kind: "redirect", to: `${base}/design` };
   if (first === "domains" && !second) return { kind: "redirect", to: `${base}/addresses` };
   if (first === "preview" && !second) return { kind: "preview" };
+  if (first === "setup" && !second) return { kind: "setup", step: validStep(search.step) };
+  // #2830 — Home's to-do, notifications and server-sent cards still use this.
+  if (first === "plan" && !second) {
+    const step = validStep(search.part);
+    return { kind: "redirect", to: step ? `${base}/setup?step=${step}` : `${base}/setup` };
+  }
   if ((COLLECTION_SECTIONS as readonly string[]).includes(first) && second && rest.length === 0) {
     if (second === "new" || ENTRY_ID.test(second)) {
       return { kind: "editor", section: first as CollectionSection, entryId: second === "new" ? "new" : second };
     }
   }
   if ((WEBSITE_SECTIONS as readonly string[]).includes(first) && !second) {
-    return {
-      kind: "section",
-      section: first as WebsiteSection,
-      ...(first === "plan" && search.part ? { planPart: search.part } : {}),
-    };
+    return { kind: "section", section: first as WebsiteSection };
   }
   return { kind: "section", section: "overview" };
 }
@@ -194,14 +202,16 @@ export function parseWebsitePath(
 export function websitePath(brandId: string, route: Exclude<WebsiteRoute, { kind: "redirect" }>): string {
   const base = `/brand/${brandId}/website`;
   if (route.kind === "preview") return `${base}/preview`;
+  if (route.kind === "setup") return route.step ? `${base}/setup?step=${route.step}` : `${base}/setup`;
   if (route.kind === "editor") return `${base}/${route.section}/${route.entryId}`;
   if (route.section === "overview") return base;
-  return route.planPart ? `${base}/plan?part=${encodeURIComponent(route.planPart)}` : `${base}/${route.section}`;
+  if (route.section === "plan") return `${base}/setup`;
+  return `${base}/${route.section}`;
 }
 
 /** Sections that show the draft preview beside them on desktop (§1.5). */
 export function sectionShowsPreview(section: WebsiteSection): boolean {
-  return section === "overview" || section === "design" || section === "pages" || section === "publish" || section === "plan";
+  return section === "overview" || section === "design" || section === "pages" || section === "publish";
 }
 
 /** The preview panel's one-line purpose (§1.5). */
@@ -209,7 +219,6 @@ export const PREVIEW_PURPOSE: Readonly<Partial<Record<WebsiteSection, string>>> 
   design: "Your design, before you save",
   pages: "Your menu and pages",
   publish: "What will go live",
-  plan: "Your draft so far",
   overview: "Your draft",
 };
 
@@ -223,6 +232,6 @@ export function routeToRender(
   route: Exclude<WebsiteRoute, { kind: "redirect" }>,
   sectionMissing: boolean,
 ): Exclude<WebsiteRoute, { kind: "redirect" }> {
-  if (route.kind === "preview" || !sectionMissing) return route;
+  if (route.kind === "preview" || route.kind === "setup" || !sectionMissing) return route;
   return { kind: "section", section: "overview" };
 }

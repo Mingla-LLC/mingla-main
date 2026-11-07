@@ -12,6 +12,10 @@ import {
   publicMarketingBookQuote,
 } from "../_shared/marketingBookQuote.ts";
 import type { SmsRateV1 } from "../_shared/smsPriceBook.ts";
+import type {
+  SmsFxConverted,
+  SmsFxConverter,
+} from "../_shared/marketingSmsFx.ts";
 import {
   buildPushQuote,
   publicPushQuote,
@@ -20,17 +24,31 @@ import {
 
 export type GroupMethodChannel = "email" | "sms" | "push";
 
+export interface GroupRows {
+  /** The drafts this preview prices. */
+  rows: Array<{ id: string; channel: GroupMethodChannel }>;
+  /** Group drafts the client did not name: never priced (#4273). */
+  unlisted: string[];
+}
+
+export interface QuoteBrand {
+  followBrand: { name: string; slug: string } | null;
+  costCurrency: string | null;
+}
+
 export interface GroupPreviewDeps {
   loadGroup: (
     campaignId: string,
-  ) => Promise<Array<{ id: string; channel: GroupMethodChannel }>>;
+    onlyIds?: readonly string[],
+  ) => Promise<GroupRows>;
   candidates: (
     campaignId: string,
     channel: GroupMethodChannel,
   ) => Promise<unknown>;
-  followBrand: (
-    candidates: unknown,
-  ) => Promise<{ name: string; slug: string } | null>;
+  /** One brand read per quote: the Follow line and the cost currency. */
+  quoteBrand: (candidates: unknown) => Promise<QuoteBrand>;
+  /** Converts a mixed-currency SMS total into the brand's currency. */
+  fx?: SmsFxConverter;
   allowance: (
     candidates: unknown,
     quote: Record<string, unknown>,
@@ -54,6 +72,8 @@ export interface GroupPreviewFigures {
   estimatedCostMinor: number | null;
   currency: string | null;
   costKind: "provider_estimate" | "not_metered";
+  /** #4273 — the SMS total's per-currency parts (empty when not metered). */
+  costBreakdown: SmsFxConverted[];
   audienceSources: MarketingAudienceSourceTotal[];
   quotedAt: string;
   expiresAt: string;
@@ -66,16 +86,24 @@ export async function buildCampaignGroupPreview(
   deps: GroupPreviewDeps,
   leadCampaignId: string,
   now: Date,
+  onlyIds?: readonly string[],
 ): Promise<
-  { group: GroupPreviewFigures | null; methods: GroupMethodPreview[] }
+  {
+    group: GroupPreviewFigures | null;
+    methods: GroupMethodPreview[];
+    unlistedDraftIds: string[];
+  }
 > {
-  const rows = await deps.loadGroup(leadCampaignId);
+  const { rows, unlisted } = await deps.loadGroup(leadCampaignId, onlyIds);
   const methods: GroupMethodPreview[] = [];
   // personKey → reachable on at least one method.
   const people = new Map<string, boolean>();
   let sources: MarketingAudienceSourceTotal[] | null = null;
   let costMinor: number | null = null;
   let currency: string | null = null;
+  let metered = false;
+  let currencyConflict = false;
+  let breakdown: SmsFxConverted[] = [];
   let quotedAt: string | null = null;
   let expiresAt: string | null = null;
 
@@ -100,8 +128,11 @@ export async function buildCampaignGroupPreview(
         sources ??= envelope.audienceSources ?? null;
       } else {
         const envelope = candidates as MarketingBookCandidateResponse;
+        const brand = await deps.quoteBrand(candidates);
         const quote = await buildMarketingBookQuote(envelope, now, {
-          followBrand: await deps.followBrand(candidates),
+          followBrand: brand.followBrand,
+          costCurrency: brand.costCurrency,
+          ...(deps.fx === undefined ? {} : { fx: deps.fx }),
           ...(deps.smsRates === undefined ? {} : { smsRates: deps.smsRates }),
         });
         publicQuote = publicMarketingBookQuote(quote);
@@ -116,8 +147,15 @@ export async function buildCampaignGroupPreview(
           quote.costKind === "provider_estimate" &&
           quote.estimatedCostMinor !== null
         ) {
+          // Two metered quotes in different currencies cannot be summed:
+          // say the cost is unavailable rather than add unlike money. One SMS
+          // row per group (I-3682-CAMPAIGN-GROUP-COUNTS-ONCE) keeps this
+          // defensive.
+          if (metered && currency !== quote.currency) currencyConflict = true;
+          metered = true;
           costMinor = (costMinor ?? 0) + quote.estimatedCostMinor;
           currency = quote.currency;
+          breakdown = [...breakdown, ...quote.costBreakdown];
         }
       }
       quotedAt ??= String(publicQuote.quotedAt);
@@ -137,20 +175,24 @@ export async function buildCampaignGroupPreview(
       });
     }
   }
-  if (quotedAt === null || expiresAt === null) return { group: null, methods };
+  if (quotedAt === null || expiresAt === null) {
+    return { group: null, methods, unlistedDraftIds: unlisted };
+  }
   const reachableCount = [...people.values()].filter(Boolean).length;
   return {
     group: {
       selectedCount: people.size,
       reachableCount,
       skippedCount: people.size - reachableCount,
-      estimatedCostMinor: costMinor,
-      currency,
-      costKind: costMinor === null ? "not_metered" : "provider_estimate",
+      estimatedCostMinor: currencyConflict ? null : costMinor,
+      currency: currencyConflict ? null : currency,
+      costKind: metered ? "provider_estimate" : "not_metered",
+      costBreakdown: currencyConflict ? [] : breakdown,
       audienceSources: sources ?? [],
       quotedAt,
       expiresAt,
     },
     methods,
+    unlistedDraftIds: unlisted,
   };
 }

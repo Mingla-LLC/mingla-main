@@ -95,6 +95,12 @@ export default function BrandOnboardRoute(): React.ReactElement {
     );
   };
 
+  // #4271 — Tap to Pay setup for this brand, from the "all set" states.
+  const handleOpenTapToPay = (): void => {
+    if (brandId === null) return;
+    router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never);
+  };
+
   return (
     <View
       style={{
@@ -116,6 +122,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           initialCountry={typeof countryParam === "string" ? countryParam : null}
           returnPath={isBrandCreateFunnel ? null : resumePath}
           countryChoiceRequested={countryChoiceRequested}
+          onOpenTapToPay={brandId !== null ? handleOpenTapToPay : undefined}
         />
       </BrandPaymentsPermissionGate>
     </View>

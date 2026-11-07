@@ -44,6 +44,11 @@ describe("#3355 readable Ari replies", () => {
     expect(screen).toContain("const message = ariChatErrorCopy(result.code)");
     expect(screen).toContain("setLocalError(ariChatErrorCopy(result.code))");
     expect(screen).not.toContain("setLocalError(result.message)");
+    // #2830: the one server sentence the chat shows is FLOW_TAKEN_OVER's, and
+    // only through the registry-bound helper.
+    expect(screen.match(/result\.message/g)?.length).toBe(2);
+    expect(screen).toContain("flowTakenOverCopy(result.message)");
+    expect(screen).toContain("isAlreadyResolvedError(result.message)");
     expect(screen).not.toMatch(/setLocalError\([\s\S]{0,100}error\.message/);
     expect(card).not.toMatch(/setProposalError\([\s\S]{0,100}error\.message/);
   });

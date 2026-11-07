@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- media is already sanitized, responsive, immutable, and integrity-checked by the controlled route. */
 // TEMPORARY(#2829): v1 rollback renderer — remove once every site has a v2 last-good publication.
-import Link from "next/link";
+import { SiteAnchor, SiteRouteLink as Link } from "./PreviewLinks";
 import { Fragment } from "react";
 import type {
   LegacyArtifactPage,
@@ -97,7 +97,7 @@ function SafeLink({ href, children, className, context, ctaKind = "checkout", of
   if (!isSafeHref(href)) return null;
   if (context && isCanonicalMinglaHref(href)) return <TrackedLink href={href} className={className} context={context} ctaKind={ctaKind} offeringId={offeringId}>{children}</TrackedLink>;
   const external = !href.startsWith("/");
-  return <a href={href} className={className} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}{external ? <span className="sr-only"> (opens in a new tab)</span> : null}</a>;
+  return <SiteAnchor href={href} className={className} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}{external ? <span className="sr-only"> (opens in a new tab)</span> : null}</SiteAnchor>;
 }
 
 

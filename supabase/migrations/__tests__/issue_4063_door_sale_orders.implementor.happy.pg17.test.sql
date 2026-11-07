@@ -70,8 +70,11 @@ BEGIN
     v_tier, v_event, 'At the door', 1500, 'USD', 4, false,
     true, true, false, false
   );
-  INSERT INTO public.event_scanners(event_id, user_id)
-  VALUES (v_event, v_scanner);
+  -- #4271 (F6): a scanner may take door money only when its invitation turned
+  -- on canAcceptPayments; biz_door_sale_record now enforces it. This scanner
+  -- sells at the door (T5-3), so it carries the permission.
+  INSERT INTO public.event_scanners(event_id, user_id, permissions)
+  VALUES (v_event, v_scanner, '{"canScan":true,"canAcceptPayments":true}'::jsonb);
 
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   v_result := public.biz_door_sale_record(

@@ -105,6 +105,9 @@ export const brandTeamMemberKeys = {
   all: ["brand-team-members"] as const,
   list: (brandId: string): readonly ["brand-team-members", "list", string] =>
     ["brand-team-members", "list", brandId] as const,
+  /** issue #4271 — accepted members' names and emails (biz_brand_team_members). */
+  directory: (brandId: string): readonly ["brand-team-members", "directory", string] =>
+    ["brand-team-members", "directory", brandId] as const,
 };
 
 // ---------- Mutations ----------

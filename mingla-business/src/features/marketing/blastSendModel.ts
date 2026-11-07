@@ -130,6 +130,22 @@ export interface SendByRules {
   /** Delivery switches per picked Mingla-reach source, by method. */
   followersEnabled?: Partial<Record<BlastChannel, boolean>>;
   extendedEnabled?: Partial<Record<BlastChannel, boolean>>;
+  /** Display names of the picked buyer lists, the names the audience button uses. */
+  buyerListNames?: readonly string[];
+}
+
+/**
+ * Why Push is off while a buyer list is picked, naming those lists. The old
+ * advice ("pick Your Book, Followers or a saved group") was wrong when the host
+ * had already picked Your Book: it is the buyer list that turns Push off.
+ */
+export function pushBuyerListReason(names: readonly string[]): string {
+  const base = "reaches Mingla accounts only, so it's off while";
+  if (names.length === 0) return `${base} a buyer list is picked`;
+  if (names.length === 1) return `${base} ${names[0]} is picked`;
+  if (names.length === 2) return `${base} ${names[0]} and ${names[1]} are picked`;
+  const more = names.length - 2;
+  return `${base} ${names[0]}, ${names[1]} and ${more} more buyer ${more === 1 ? "list" : "lists"} are picked`;
 }
 
 /** Why each chip cannot be ticked right now. */
@@ -148,7 +164,9 @@ export function sendByUnavailable(rules: SendByRules): Partial<Record<BlastChann
   }
   // Unchanged rule, now on the chip: a buyer list has no Mingla account
   // guarantee, so Push is off for the whole selection, never for a subset.
-  if (rules.sourceKeys.some(isBuyerSourceKey)) reasons.push = PUSH_AUDIENCE_LIMIT;
+  if (rules.sourceKeys.some(isBuyerSourceKey)) {
+    reasons.push = pushBuyerListReason(rules.buyerListNames ?? []);
+  }
   return reasons;
 }
 
@@ -164,6 +182,42 @@ export function reconcileBlastChannels(
   if (kept.length > 0) return kept;
   const fallback = BLAST_CHANNEL_ORDER.find((channel) => unavailable[channel] === undefined);
   return [fallback ?? channels[0] ?? "email"];
+}
+
+// ── The cost line on the review sheet ───────────────────────────────────────
+
+export interface SmsCostQuoteLike {
+  costKind: "provider_estimate" | "not_metered";
+  estimatedCostMinor: number | null;
+  currency: string | null;
+  costBreakdown?: ReadonlyArray<{
+    currency: string;
+    providerCostMinor: number;
+    convertedCostMinor: number;
+  }>;
+}
+
+const minorAmount = (minor: number): string => (minor / 100).toFixed(2);
+
+/**
+ * #4273 — the estimated provider cost, for one method's row or the total.
+ * Information only: SMS is free to hosts under the monthly text cap. A total
+ * across provider currencies was converted into the brand's currency at quote
+ * time, so it reads "About" and lists the parts it was made of.
+ */
+export function smsCostLabel(quote: SmsCostQuoteLike, variant: "row" | "total"): string {
+  if (quote.costKind !== "provider_estimate") return "Free";
+  if (quote.estimatedCostMinor === null || quote.currency === null) return "Cost unavailable";
+  const amount = `${quote.currency} ${minorAmount(quote.estimatedCostMinor)}`;
+  const parts = quote.costBreakdown ?? [];
+  if (parts.length <= 1) {
+    return variant === "row" ? `${amount} estimated` : `${amount} estimated provider cost`;
+  }
+  if (variant === "row") return `About ${amount} estimated`;
+  const listed = parts
+    .map((part) => `${part.currency} ${minorAmount(part.providerCostMinor)}`)
+    .join(" + ");
+  return `About ${amount} estimated provider cost (${listed}, converted at today's exchange rate)`;
 }
 
 /** "Your Book + Followers", shortened so the button stays one line. */

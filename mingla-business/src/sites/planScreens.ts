@@ -60,7 +60,7 @@ export function approvedPlanFrom(state: SitePlanState, story: SitePlanStory): Re
 export const APPROVED_PLAN_LABELS: ReadonlyArray<[key: string, label: string]> = [
   ["for", "For"],
   ["leads_with", "Leads with"],
-  ["main_action", "Main action"],
+  ["main_action", "Main button"],
   ["look", "Look"],
   ["pages", "Pages"],
   ["wont_do", "Won't do"],

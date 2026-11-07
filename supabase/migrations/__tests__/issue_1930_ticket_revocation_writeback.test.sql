@@ -44,7 +44,7 @@ INSERT INTO public.ticket_types(
 VALUES(
   '19300000-0000-0000-0000-000000000812',
   '19300000-0000-0000-0000-000000000811',
-  'Writeback',1000,'NGN',false,100,1,true,false,0);
+  'Writeback',10000,'NGN',false,100,1,true,false,0);
 
 SELECT public.biz_ticket_checkout_create_session(
   '19300000-0000-0000-0000-000000000811',NULL,'No attempt',

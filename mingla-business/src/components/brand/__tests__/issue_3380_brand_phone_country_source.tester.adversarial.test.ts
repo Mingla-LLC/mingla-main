@@ -907,10 +907,12 @@ describe("issue #3380 retest 2 — the shared phone field is unchanged unless th
     walk(join(process.cwd(), "src"));
     walk(join(process.cwd(), "app"));
     // #2830 — Ari's Website setup asks for the brand contact phone with the
-    // SAME control and rules as Brand details, so it is the one other user.
+    // SAME control and rules as Brand details, so it is the one other user. The
+    // one-screen setup form asks for it by hand with that same control.
     expect(users.sort()).toEqual([
       "src/components/ari/renditions/AriRenditionPreview.tsx",
       "src/components/brand/BrandEditView.tsx",
+      "src/components/sites/setup/SetupBrandStep.tsx",
     ]);
     // The other phone fields exist and are the ones left alone.
     expect(phoneFields.length).toBeGreaterThan(1);

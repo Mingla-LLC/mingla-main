@@ -52,6 +52,7 @@ import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute
 import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
+import { PAYMENT_METHOD_PILLS } from "../../../../src/utils/paymentMethodLabels";
 // issue #2160 — the occurrences ride the event payload (same reader that served
 // the event, #2161), so the per-day roster needs no extra query.
 import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
@@ -230,13 +231,12 @@ const doorPaymentPill = (
   }
   switch (method) {
     case "cash":
-      return { variant: "info", label: "CASH" };
     case "card_reader":
-      return { variant: "info", label: "CARD" };
-    case "nfc":
-      return { variant: "info", label: "NFC" };
+    case "pay_code":
+    case "tap_to_pay":
+      return { variant: "info", label: PAYMENT_METHOD_PILLS[method] };
     case "manual":
-      return { variant: "draft", label: "MANUAL" };
+      return { variant: "draft", label: PAYMENT_METHOD_PILLS[method] };
     default: {
       const _exhaust: never = method;
       return _exhaust;
@@ -314,8 +314,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   const merged = useMemo<GuestRow[]>(() => {
     if (typeof eventId !== "string") return [];
+    // issue #4271 — a sale taken at the door (cash, manual, or card money such
+    // as a pay code) is one guest row: its door row, never also an order row.
+    const doorSaleIds = new Set(allDoorEntries.map((s) => s.id));
     const orders = allOrderEntries
-      .filter((o) => o.eventId === eventId)
+      .filter((o) => o.eventId === eventId && !doorSaleIds.has(o.id))
       .map<GuestRow>((o) => ({
         kind: "order",
         id: o.id,

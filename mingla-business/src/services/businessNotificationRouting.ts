@@ -242,6 +242,10 @@ export function resolveBusinessNavTarget(
     case "business.installment_at_risk":
       return eventId ? `/trip/${eventId}/money` : paymentsTarget;
 
+    case "business.door_tap_not_completed":
+    case "business.door_tap_paid_unseen":
+      return eventId ? `/event/${eventId}/door` : ACCOUNT_FALLBACK;
+
     case "business.order_paid":
     case "business.event_sold_out":
     case "business.low_inventory":

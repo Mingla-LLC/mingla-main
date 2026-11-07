@@ -34,8 +34,13 @@ describe("template coverage", () => {
   // three Host inbox types to the same exhaustive catalog.
   // [TEST-MOD-APPROVED #3645] Late and debt-withheld payout states lift the
   // exhaustive catalog from 25 to 27.
-  test("27 business types include payout, Community, support, Brand groups, and discounts", () => {
-    expect(TYPES).toHaveLength(27);
+  // [TEST-MOD-APPROVED #4271] business.door_tap_not_completed (a Tap to Pay sale that ended
+  // with the app closed): 28. Retest 4 P3-C adds business.door_tap_paid_unseen (a door
+  // tap charged while nobody watched it end): 29.
+  test("29 business types include payout, Community, support, Brand groups, discounts and the door taps", () => {
+    expect(TYPES).toHaveLength(29);
+    expect(isBusinessNotificationType("business.door_tap_not_completed")).toBe(true);
+    expect(isBusinessNotificationType("business.door_tap_paid_unseen")).toBe(true);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);
     expect(isBusinessNotificationType("business.order_paid")).toBe(true);
     expect(isBusinessNotificationType("business.payout_waiting_for_bank")).toBe(

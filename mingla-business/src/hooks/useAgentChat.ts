@@ -858,6 +858,7 @@ export function useAgentChat(
             accepted: false,
             errorCode: "QUESTION_STALE",
             errorMessage:
+              response.taken_over_text ??
               "That question was replaced by a newer one, so nothing changed.",
             reconciling: false,
           });

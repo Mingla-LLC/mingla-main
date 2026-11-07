@@ -10,6 +10,7 @@
 //      sent to Gemini (I-ARI-USER-DATA-WRAP).
 
 // deno-lint-ignore-file no-explicit-any
+import { prepareBrandResearch } from "../_shared/ariBrandResearch.ts";
 import {
   createClient,
   SupabaseClient,
@@ -334,6 +335,8 @@ type Response_ =
     conversation_id: string;
     next: FlowArtefact | null;
     flow_state: FlowStateView | null;
+    /** #2830 — why, when a teammate took this setup over. Older clients ignore it. */
+    taken_over_text?: string;
   }
   | {
     kind: "pending_action";
@@ -1329,7 +1332,7 @@ async function handle(req: Request): Promise<Response> {
       : { data: [] };
     if (!acceptedRows || acceptedRows.length === 0) {
       const stale = !body.conversation_id || !engineOn
-        ? { next: null, state: null }
+        ? { next: null, state: null, taken_over_text: undefined }
         : await staleFlowAnswer({
           store: createFlowStore(serviceClient, userId),
           conversationId: body.conversation_id,
@@ -1343,6 +1346,9 @@ async function handle(req: Request): Promise<Response> {
           conversation_id: body.conversation_id ?? "",
           next: stale.next,
           flow_state: stale.state,
+          ...(stale.taken_over_text
+            ? { taken_over_text: stale.taken_over_text }
+            : {}),
         });
       }
     }
@@ -1842,6 +1848,16 @@ async function handle(req: Request): Promise<Response> {
           !["completed", "cancelled"].includes(taskState.status));
       const decision = await decideFlowTurn({
         service: serviceClient,
+        // #2830 — Ari's public research for brand details.
+        research: ({ userId: researchUser, brandId, plan }) =>
+          prepareBrandResearch({
+            service: serviceClient,
+            userId: researchUser,
+            brandId,
+            plan,
+          }) as Promise<
+            Record<string, Record<string, unknown>[] | undefined> | null
+          >,
         userClient,
         userId,
         brand: { id: activeBrand.id, name: activeBrand.name },
