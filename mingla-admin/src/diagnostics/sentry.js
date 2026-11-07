@@ -23,6 +23,16 @@ import * as Sentry from "@sentry/react";
 let started = false;
 
 /**
+ * Issue #4294: a request to a mingla_connector_ server function (one of them
+ * carries a company tool's key in its body) leaves no breadcrumb at all.
+ */
+export function dropConnectorBreadcrumb(breadcrumb) {
+  const url = breadcrumb?.data?.url;
+  if (typeof url === "string" && /\/rpc\/mingla_connector_/.test(url)) return null;
+  return breadcrumb;
+}
+
+/**
  * Initialize crash reporting once. Safe no-op when the DSN is absent
  * (dev / preview) — returns false without calling `sdk.init`.
  * @returns {boolean} true if Sentry was initialized on this call.
@@ -36,6 +46,7 @@ export function initSentry({ dsn, environment } = {}, sdk = Sentry) {
     environment: environment || "admin-production",
     tracesSampleRate: 0,
     sendClientReports: true,
+    beforeBreadcrumb: dropConnectorBreadcrumb,
   });
   started = true;
   return true;

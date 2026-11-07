@@ -441,9 +441,10 @@ Deno.test("#3802 U-2: every key that cannot be used gets the same status, header
   }
   assertEquals(seenShapes.size, 1, "one answer for every cause");
   const one = JSON.parse([...seenShapes][0]);
+  // #4294: the 401 says where to sign in (the test's own address here).
   assertEquals(
     one.headers["www-authenticate"],
-    'Bearer realm="mingla-team-agent"',
+    'Bearer resource_metadata="https://example.test/functions/v1/team-agent/.well-known/oauth-protected-resource", scope="mingla"',
   );
   assertEquals(one.headers["content-type"], "application/json");
   assert(!one.body.includes("mgla_"), "the answer never repeats a key");
@@ -1623,11 +1624,16 @@ const CONTENT_MIGRATION = read(
 );
 
 Deno.test("#3802 U-11: the function reaches one thing, reads two settings and logs one shaped line", () => {
-  assert(
-    !/\bfetch\s*\(/.test(INDEX),
-    "the function makes a request of its own",
+  // #4294: its only request of its own goes to a company tool server, through
+  // the proxy (one injected fetch in the function, one default in the module).
+  assertEquals(
+    [...INDEX.matchAll(/\bfetch\s*\(/g)].length,
+    1,
+    "the function makes a request of its own other than to a company tool",
   );
-  assert(!/\bfetch\s*\(/.test(MCP) && !/\bfetch\s*\(/.test(TOOLS));
+  assert(/fetch: \(input, init\) => fetch\(input, init\)/.test(INDEX));
+  assertEquals([...MCP.matchAll(/\bfetch\s*\(/g)].length, 1);
+  assert(!/\bfetch\s*\(/.test(TOOLS));
   assertEquals(
     [...INDEX.matchAll(/Deno\.env\.get\("([A-Z_]+)"\)/g)].map((m) => m[1])
       .sort(),

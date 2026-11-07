@@ -204,6 +204,8 @@ export const NAV_GROUPS = [
       { id: "feature-flags",             label: "Feature flags",      icon: "Flag" },
       { id: "ari-improvement-lab",       label: "Ari Improvement Lab", icon: "BrainCircuit" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
+      // Issue #4294: owner only; the page says so to anyone else.
+      { id: "company-tools",             label: "Company tools",      icon: "KeyRound" },
     ],
   },
 ];
