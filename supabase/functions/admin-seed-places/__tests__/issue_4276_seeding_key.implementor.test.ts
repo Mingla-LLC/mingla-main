@@ -3,22 +3,27 @@
 import { assertEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { seedingGoogleApiKey } from "../../_shared/seedingGoogleKey.ts";
 
-const env = (vars: Record<string, string>) => (name: string) => vars[name];
 
 Deno.test("the seeding key wins when it is set", () => {
-  assertEquals(seedingGoogleApiKey(env({ GOOGLE_SEEDING_API_KEY: "seed", GOOGLE_MAPS_API_KEY: "maps" })), "seed");
+  assertEquals(seedingGoogleApiKey({ seeding: "seed", maps: "maps" }), "seed");
 });
 
 Deno.test("with no seeding key, the shared maps key is used", () => {
-  assertEquals(seedingGoogleApiKey(env({ GOOGLE_MAPS_API_KEY: "maps" })), "maps");
+  assertEquals(seedingGoogleApiKey({ maps: "maps" }), "maps");
 });
 
 Deno.test("a blank seeding key falls back instead of sending an empty key", () => {
-  assertEquals(seedingGoogleApiKey(env({ GOOGLE_SEEDING_API_KEY: "  ", GOOGLE_MAPS_API_KEY: "maps" })), "maps");
+  assertEquals(seedingGoogleApiKey({ seeding: "  ", maps: "maps" }), "maps");
 });
 
 Deno.test("no key at all returns empty, so callers can refuse", () => {
-  assertEquals(seedingGoogleApiKey(env({})), "");
+  assertEquals(seedingGoogleApiKey({}), "");
+});
+
+Deno.test("by default the helper reads exactly the two named secrets", async () => {
+  const src = await Deno.readTextFile(new URL("../../_shared/seedingGoogleKey.ts", import.meta.url));
+  assertMatch(src, /Deno\.env\.get\("GOOGLE_SEEDING_API_KEY"\)/);
+  assertMatch(src, /Deno\.env\.get\("GOOGLE_MAPS_API_KEY"\)/);
 });
 
 Deno.test("seeding and photo downloads read the seeding key, not the maps key directly", async () => {

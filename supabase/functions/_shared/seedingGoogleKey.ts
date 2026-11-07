@@ -1,14 +1,19 @@
 /**
  * #4276: the Google key that city seeding and photo downloads spend.
  *
- * Seeding and photo downloads can run on their own Google Cloud project
+ * Seeding and photo downloads run on their own Google Cloud project
  * (GOOGLE_SEEDING_API_KEY), so their spend stays off the key the rest of the
  * product uses. With no seeding key set, they keep using GOOGLE_MAPS_API_KEY.
  */
+export type SeedingGoogleKeys = { seeding?: string; maps?: string };
+
 export function seedingGoogleApiKey(
-  get: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  keys: SeedingGoogleKeys = {
+    seeding: Deno.env.get("GOOGLE_SEEDING_API_KEY"),
+    maps: Deno.env.get("GOOGLE_MAPS_API_KEY"),
+  },
 ): string {
-  const seeding = get("GOOGLE_SEEDING_API_KEY")?.trim();
+  const seeding = keys.seeding?.trim();
   if (seeding) return seeding;
-  return get("GOOGLE_MAPS_API_KEY")?.trim() ?? "";
+  return keys.maps?.trim() ?? "";
 }
