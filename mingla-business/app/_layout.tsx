@@ -112,6 +112,7 @@ import {
   isBusinessNavigationStartupSettled,
 } from "../src/services/businessPushLaunchIntent";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
+import { useMotionDeepLink } from "../src/dev/motionDeepLink";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // ORCH-1102 — route-agnostic auth routing with no dead-ends. Pure, unit-tested
 // predicates: an unauthenticated user on ANY web route redirects to the real
@@ -854,6 +855,8 @@ const authRoutingStyles = StyleSheet.create({
 });
 
 export default function RootLayout(): React.ReactElement {
+  // issue #1023 — DEV-ONLY `motion=<slug>` link switch (no-op in production).
+  useMotionDeepLink();
   const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
   const updateRequiredRef = useRef(false);

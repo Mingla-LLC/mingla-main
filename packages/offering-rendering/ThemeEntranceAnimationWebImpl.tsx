@@ -34,7 +34,7 @@ import {
 import { ThemeMotionPauseButton, useMotionPaused } from "./ThemeMotionPauseButton";
 import { motionPauseStore } from "./themeMotionPauseStore";
 import { useReduceMotionPreference } from "./useReduceMotionPreference";
-import { useThemeMotionSlug } from "./useThemeMotionSlug";
+import { useThemeMotionReplayKey, useThemeMotionSlug } from "./useThemeMotionSlug";
 
 export interface ThemeEntranceAnimationProps {
   theme: ResolvedTheme;
@@ -117,12 +117,13 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   // a picker tile shows ITS slug, never the dev preview override
   const slug = still ? theme.animation : themed;
   const reduceMotion = useReduceMotionPreference() || still;
+  const replayKey = useThemeMotionReplayKey();
   if (slug === "none") return null;
   if (part === "pauseButton") return <ThemeMotionPauseButton theme={theme} />;
   return (
     <View pointerEvents="box-none" style={styles.wrap} testID="theme-entrance-animation">
       <WebMotion
-        key={`${sessionKey}:${slug}:${reduceMotion ? "still" : "play"}`}
+        key={`${sessionKey}:${slug}:${reduceMotion ? "still" : "play"}:${replayKey}`}
         slug={slug}
         color={theme.color}
         reduceMotion={reduceMotion}

@@ -145,6 +145,8 @@ export function parseMotionQueryParam(search: string | null | undefined): ThemeA
 }
 
 let devOverride: ThemeAnimationSlug | null = null;
+/** Bumped on every set, so re-sending the SAME slug still replays the entrance. */
+let devOverrideVersion = 0;
 const devListeners = new Set<() => void>();
 
 /**
@@ -156,11 +158,16 @@ const devListeners = new Set<() => void>();
 export function setThemeMotionDevOverride(slug: ThemeAnimationSlug | null, isDev: boolean): void {
   if (!isDev) return;
   devOverride = slug;
+  devOverrideVersion += 1;
   devListeners.forEach((listener) => listener());
 }
 
 export function getThemeMotionDevOverride(): ThemeAnimationSlug | null {
   return devOverride;
+}
+
+export function getThemeMotionDevOverrideVersion(): number {
+  return devOverrideVersion;
 }
 
 export function subscribeThemeMotionDevOverride(listener: () => void): () => void {

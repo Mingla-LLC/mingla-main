@@ -7,6 +7,7 @@ import { useSyncExternalStore } from "react";
 import type { ThemeAnimationSlug } from "./designTokens";
 import {
   getThemeMotionDevOverride,
+  getThemeMotionDevOverrideVersion,
   parseMotionQueryParam,
   resolveThemeMotionSlug,
   setThemeMotionDevOverride,
@@ -32,4 +33,17 @@ export function useThemeMotionSlug(themeSlug: ThemeAnimationSlug): ThemeAnimatio
     getThemeMotionDevOverride,
   );
   return resolveThemeMotionSlug(themeSlug, override, isDev());
+}
+
+/**
+ * Changes every time a dev override is set (even to the same slug). Entrance
+ * layers key on it so a re-sent `motion=` link replays the entrance. Always 0
+ * in production (the override can never be set there).
+ */
+export function useThemeMotionReplayKey(): number {
+  return useSyncExternalStore(
+    subscribeThemeMotionDevOverride,
+    getThemeMotionDevOverrideVersion,
+    getThemeMotionDevOverrideVersion,
+  );
 }

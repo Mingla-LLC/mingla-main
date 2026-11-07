@@ -45,7 +45,8 @@
       "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_web.implementor.test.tsx",
       "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_web_chunk_failure.implementor.test.tsx",
       "mingla-business/src/components/theme/__tests__/issue_1023_theme_motion_files.implementor.test.ts",
-      "mingla-business/src/components/theme/__tests__/jest.issue1023.cjs"
+      "mingla-business/src/components/theme/__tests__/jest.issue1023.cjs",
+      "mingla-business/src/dev/__tests__/issue_1023_motion_deep_link.implementor.test.ts"
     ],
     "externalReferenceFiles": [
       "mingla-business/jest.config.cjs"
