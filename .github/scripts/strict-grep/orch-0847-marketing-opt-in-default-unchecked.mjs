@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// MINGLA-INVARIANT: I-PROPOSED-3859-CONSENT-SEPARATION | issue #3859 | Explorer and buyer-web checkout each have one required transactional purchase act and no marketing control; purchase terms default off; buyer web shows the #4273 opt-in notice.
+// MINGLA-INVARIANT: I-PROPOSED-3859-CONSENT-SEPARATION | issue #3859 | Explorer and buyer-web checkout each have one required transactional purchase act and no marketing control; purchase terms default off; both show the #4273 opt-in notice.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
@@ -109,7 +109,11 @@ export function checkSnapshot(snapshot) {
   );
   forbidToken(explorer, "setMarketingOptIn", "Explorer checkout", failures);
   forbidToken(explorer, "toggleMarketing", "Explorer checkout", failures);
-  forbidToken(explorer, "CHECKOUT_MARKETING_", "Explorer checkout", failures);
+  // #4273: the only marketing copy at checkout is the plain opt-in notice.
+  forbidToken(explorer, "CHECKOUT_MARKETING_LABEL", "Explorer checkout", failures);
+  forbidToken(explorer, "CHECKOUT_MARKETING_HELPER", "Explorer checkout", failures);
+  forbidToken(explorer, "CHECKOUT_MARKETING_DISCLOSURE", "Explorer checkout", failures);
+  requireToken(explorer, "{CHECKOUT_MARKETING_NOTICE}", "Explorer opt-in notice", failures);
 
   requireToken(
     explorer,
@@ -193,6 +197,7 @@ function verifyHostileMutations() {
       recordConsent({ scopes: ["transactional"] });
       <Pressable accessibilityLabel={PURCHASE_TERMS_DISCLOSURE_TEXT} />;
       onCheckout({ marketingOptIn: true, purchaseTermsAccepted: termsAccepted, });
+      <Text>{CHECKOUT_MARKETING_NOTICE}</Text>;
     `,
     webCart: `
       const EMPTY_BUYER: BuyerDetails = {
@@ -232,6 +237,11 @@ function verifyHostileMutations() {
       "Explorer audit grants marketing",
       "explorer",
       clean.explorer.replace('scopes: ["transactional"]', 'scopes: ["marketing"]'),
+    ],
+    [
+      "Explorer opt-in notice removed",
+      "explorer",
+      clean.explorer.replace("{CHECKOUT_MARKETING_NOTICE}", ""),
     ],
     [
       "Buyer web marketing box restored",
@@ -276,7 +286,7 @@ function verifyHostileMutations() {
   }
 
   process.stdout.write(
-    "[ORCH-0847/#3859 consent separation] MUTATION PROOF PASS — 10 hostile consent mutations detected.\n",
+    "[ORCH-0847/#3859 consent separation] MUTATION PROOF PASS — 11 hostile consent mutations detected.\n",
   );
 }
 
@@ -291,6 +301,6 @@ if (failures.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    "[ORCH-0847/#3859 consent separation] PASS — Explorer and buyer-web purchase-only checkout, with the buyer-web opt-in notice, are intact.\n",
+    "[ORCH-0847/#3859 consent separation] PASS — Explorer and buyer-web purchase-only checkout, with the opt-in notice on both, are intact.\n",
   );
 }

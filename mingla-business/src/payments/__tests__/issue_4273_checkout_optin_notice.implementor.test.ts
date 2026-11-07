@@ -33,7 +33,7 @@ const surfaces = [
 describe("#4273 checkout opt-in notice", () => {
   test("the notice says the buyer gets this brand's updates by email and text and can unsubscribe", () => {
     expect(CHECKOUT_MARKETING_NOTICE).toBe(
-      "By buying, you'll get updates from this brand by email and text. You can unsubscribe at any time.",
+      "By buying, you'll get updates from this brand and Mingla by email and text. You can unsubscribe at any time.",
     );
   });
 

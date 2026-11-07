@@ -47,7 +47,7 @@ export const PURCHASE_TERMS_LABEL_SUFFIX = "." as const;
 // marketing by email and text. No checkbox; the buyer is told plainly. The
 // grant is recorded at order ingest as purchase_auto_optin.
 export const CHECKOUT_MARKETING_NOTICE =
-  "By buying, you'll get updates from this brand by email and text. You can unsubscribe at any time." as const;
+  "By buying, you'll get updates from this brand and Mingla by email and text. You can unsubscribe at any time." as const;
 
 export const PURCHASE_TERMS_URL =
   "https://www.usemingla.com/terms-of-service" as const;

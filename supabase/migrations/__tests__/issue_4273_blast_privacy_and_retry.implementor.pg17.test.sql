@@ -2,7 +2,7 @@
 -- rule lands at send, who pays, and a stalled run coming back.
 -- Runs on the fully applied migration chain.
 --
--- MINGLA-INVARIANT: I-4273-PREVIEW-NEVER-CONTACT-MATCHES-GRAPH | issue #4273 | A contact typed into a Book row yields identical Host-visible previews whether or not it belongs to someone known only through followers or friends of followers.
+-- MINGLA-INVARIANT: I-4273-PREVIEW-NEVER-NAMES-A-CONTACT-MATCH | issue #4273 | A recipient the send would refuse for a contact match previews as an ordinary unpriced suppression; no Host-visible preview names a match (Seth chose honest counts over hiding contact-match refusals, 2026-11-06).
 -- MINGLA-INVARIANT: I-4273-SENT-AT-OR-BELOW-QUOTE | issue #4273 | A combined Blast never sends or counts more than its sealed quote; every sealed target not sent is a recorded skip.
 -- MINGLA-INVARIANT: I-4273-UNSUBSCRIBE-CONTACT-NEVER-REACHES-HOST | issue #4273 | A host reads an opt-out only for a contact their brand already holds; everyone's opt-out still stops the send.
 -- MINGLA-INVARIANT: I-4273-CLAIM-KEEPS-RECLAIM-AND-SEAL | issue #4273 | The claim reclaims a stalled sending campaign and still refuses a sealed-lane campaign with no sealed execution.
@@ -150,9 +150,19 @@ BEGIN
   v1 := v1 || jsonb_build_object('smsReach', public.biz_marketing_combined_audience_reach_v1(o1, b1, '["book","followers"]'::jsonb, 'sms'));
   PERFORM set_config('request.jwt.claim.sub', o2::text, true);
   v2 := v2 || jsonb_build_object('smsReach', public.biz_marketing_combined_audience_reach_v1(o2, b2, '["book","followers"]'::jsonb, 'sms'));
-  PERFORM pg_temp.chk('P-01 the probe preview equals the control preview', v1 = v2, v1::text || ' vs ' || v2::text);
-  PERFORM pg_temp.chk('P-02 fixture: three followers and three Book rows, six people, five candidates',
-    (v1 ->> 'people')::int = 6 AND (v1 ->> 'reachable')::int = 4 AND (v1 ->> 'suppressed')::int = 1, v1::text);
+  -- Seth chose honest counts over hiding contact-match refusals (#4273,
+  -- 2026-11-06): the probe prices only what its send will deliver. The Book
+  -- rows on the muted and blocking followers' numbers read as ordinary
+  -- suppressions, and the follower sharing a Book row's number is priced once.
+  PERFORM pg_temp.chk('P-01 the probe prices only what the send delivers; the control is unchanged',
+    (v1 ->> 'reachable')::int = 1 AND (v1 ->> 'suppressed')::int = 2 AND (v1 ->> 'smsReach')::int = 1
+    AND (v2 ->> 'reachable')::int = 4 AND (v2 ->> 'smsReach')::int = 4, v1::text || ' vs ' || v2::text);
+  PERFORM pg_temp.chk('P-01b no candidate reason names a contact match',
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e1 -> 'candidates') x
+                 WHERE x ->> 'safeReasonCode' NOT IN ('allowed', 'suppressed', 'can_send_denied', 'delivery_denied', 'channel_unavailable'))
+    AND e1::text !~* 'match', e1::text);
+  PERFORM pg_temp.chk('P-02 fixture: three followers and three Book rows, six people, five candidates in the control',
+    (v2 ->> 'people')::int = 6 AND (v2 ->> 'reachable')::int = 4 AND (v2 ->> 'suppressed')::int = 1, v2::text);
   PERFORM pg_temp.chk('P-03 no contact appears in the summary', s1::text !~ '@|\+1202', s1::text);
 
   -- ── S: confirm, send, and what the Host can read of the difference. ──────
@@ -184,12 +194,12 @@ BEGIN
   PERFORM pg_temp.chk('M-01 sends never exceed what was sealed and quoted',
     jsonb_array_length(send1 -> 'rows') <= (SELECT reachable_count FROM public.marketing_book_send_executions WHERE id = x1), '');
   PERFORM pg_temp.chk('M-02 the sealed price is exactly the quote, not recomputed upward at send',
-    (SELECT estimated_cost_minor FROM public.marketing_book_send_executions WHERE id = x1) = 12, '');
+    (SELECT estimated_cost_minor FROM public.marketing_book_send_executions WHERE id = x1) = 3, '');
   PERFORM set_config('request.jwt.claim.sub', o1::text, true);
   used := (public.biz_brand_blast_usage_v1(o1, b1) ->> 'smsUsed')::int;
   send1 := public.biz_marketing_combined_send_audience_v1(c1);
   PERFORM pg_temp.chk('M-03 the monthly count is the quoted reach and re-resolving does not add to it',
-    used = 4 AND (public.biz_brand_blast_usage_v1(o1, b1) ->> 'smsUsed')::int = 4, used::text);
+    used = 1 AND (public.biz_brand_blast_usage_v1(o1, b1) ->> 'smsUsed')::int = 1, used::text);
 
   -- ── A: a STOP on a buyer's older phone stops the SMS to their newer one. ──
   a2 := (public.biz_get_or_create_marketing_combined_audience_v1(o1, b1, '["brand_buyers"]'::jsonb) ->> 'audienceId')::uuid;
@@ -239,7 +249,7 @@ BEGIN
     AND (SELECT status FROM public.marketing_messages WHERE id = '42730000-5000-4000-8000-000000000012') = 'queued', '');
   PERFORM pg_temp.chk('C-05 a reclaim re-seals nothing and counts nothing again',
     (SELECT count(*) FROM public.marketing_book_send_executions WHERE campaign_id = c1) = 1
-    AND (public.biz_brand_blast_usage_v1(o1, b1) ->> 'smsUsed')::int = 4, '');
+    AND (public.biz_brand_blast_usage_v1(o1, b1) ->> 'smsUsed')::int = 1, '');
   v_state := NULL;
   BEGIN
     INSERT INTO public.marketing_messages(campaign_id, recipient_phone, channel, status)
@@ -326,12 +336,15 @@ BEGIN
     NOT ('blocker@example.test' = ANY(emails)), emails::text);
   PERFORM pg_temp.chk('E-04 a clean match and a stranger both send, once each',
     emails = ARRAY['fine@example.test', 'plain@example.test', 'unverified@example.test'], emails::text);
-  PERFORM pg_temp.chk('E-05 those drops are recorded and counted as not reached',
-    (SELECT count(*) FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
-      WHERE e.campaign_id = c3 AND s.reason = 'contact_match_blocked') >= 2
-    AND public.biz_marketing_combined_hidden_skips_v1(c3) = (SELECT count(*) FROM public.marketing_combined_send_skips s
-      JOIN public.marketing_book_send_executions e ON e.id = s.execution_id WHERE e.campaign_id = c3 AND s.reason = 'address_duplicate'),
-    public.biz_marketing_combined_hidden_skips_v1(c3)::text);
+  -- Seth chose honest counts (#4273, 2026-11-06): the quote already refuses
+  -- the muted and blocking accounts' addresses, so they are never priced,
+  -- sealed or skipped, and the send matches the quote.
+  PERFORM pg_temp.chk('E-05 those addresses are quoted as plain suppressions, never priced',
+    e3 -> 'candidates' @> '[{"normalizedContact":"muted@example.test","allowed":false,"safeReasonCode":"suppressed"}]'::jsonb
+    AND e3 -> 'candidates' @> '[{"normalizedContact":"blocker@example.test","allowed":false,"safeReasonCode":"suppressed"}]'::jsonb
+    AND NOT EXISTS (SELECT 1 FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
+      WHERE e.campaign_id = c3 AND s.reason = 'contact_match_blocked'),
+    e3::text);
   -- A global opt-out on the account's address, after confirm.
   INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope) VALUES ('fine@example.test', 'email', 'global');
   send3 := public.biz_marketing_combined_send_audience_v1(c3);
@@ -365,7 +378,7 @@ DO $solo$
 DECLARE
   o1 uuid := '42730000-0000-4000-8000-000000000001';
   x text; b uuid; a uuid; c uuid; e jsonb; send jsonb; ids uuid[] := '{}';
-  v_probe jsonb; v_control jsonb;
+  v_probe jsonb; v_control jsonb; v_quote jsonb; v_refused boolean;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub', o1::text, true);
   FOREACH x IN ARRAY ARRAY['4', '5', '6'] LOOP
@@ -373,6 +386,17 @@ BEGIN
     a := (public.biz_get_or_create_marketing_combined_audience_v1(o1, b, '["book"]'::jsonb) ->> 'audienceId')::uuid;
     c := pg_temp.draft(('42730000-3000-4000-8000-00000000004' || x)::uuid, o1, b, a, 'sms');
     e := public.biz_marketing_combined_quote_candidates_v1(o1, c);
+    IF x = '4' THEN
+      v_quote := e;
+      BEGIN
+        PERFORM public.biz_confirm_marketing_combined_send_v1(o1, c, ('42730000-4000-4000-8000-00000000004' || x)::uuid, pg_temp.snap(e), now() + interval '1 hour');
+        v_refused := false;
+      EXCEPTION WHEN SQLSTATE 'PT409' THEN
+        v_refused := SQLERRM = 'book_blast_zero_recipients';
+      END;
+      ids := ids || c;
+      CONTINUE;
+    END IF;
     PERFORM public.biz_confirm_marketing_combined_send_v1(o1, c, ('42730000-4000-4000-8000-00000000004' || x)::uuid, pg_temp.snap(e), now() + interval '1 hour');
     send := public.biz_marketing_combined_send_audience_v1(c);
     -- What the dispatcher does with the rows it was handed.
@@ -382,17 +406,23 @@ BEGIN
     PERFORM public.mkt_finalize_campaign(c);
     ids := ids || c;
   END LOOP;
-  PERFORM pg_temp.chk('D-00 fixture: the probe really was withheld and the control really sent',
-    (SELECT count(*) FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions e ON e.id = s.execution_id
-      WHERE e.campaign_id = ids[1] AND s.reason = 'contact_match_blocked') = 1
-    AND public.biz_marketing_combined_hidden_skips_v1(ids[1]) = 0
-    AND NOT EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[1])
-    AND EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[2]), '');
-  SELECT jsonb_build_object('status', status, 'count', recipient_count, 'sent', sent_at IS NOT NULL) INTO v_probe FROM public.marketing_campaigns WHERE id = ids[1];
+  -- Seth chose honest counts over hiding contact-match refusals (#4273,
+  -- 2026-11-06). The probe's only Book row holds a muted account's phone: the
+  -- send would refuse it, so the quote does too, and quote and send agree —
+  -- nothing priced, nothing sealed, nothing sent. No reason names the match.
+  PERFORM pg_temp.chk('D-00 fixture: the send would refuse the probe''s only contact',
+    public.issue_4273_send_verdict(o1, '42730000-0000-4000-8000-0000000000b4', 'sms', '+12025556151',
+      '42730000-2000-4000-8000-000000000044', NULL, NULL) = 'contact_match_blocked', '');
+  PERFORM pg_temp.chk('D-01 Seth chose honest counts over hiding contact-match refusals (#4273, 2026-11-06): the probe''s quote and send agree',
+    v_quote -> 'candidates' @> '[{"allowed":false,"safeReasonCode":"suppressed"}]'::jsonb
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_quote -> 'candidates') q WHERE (q ->> 'allowed')::boolean)
+    AND v_refused IS TRUE
+    AND NOT EXISTS (SELECT 1 FROM public.marketing_book_send_executions e WHERE e.campaign_id = ids[1])
+    AND NOT EXISTS (SELECT 1 FROM public.marketing_messages m WHERE m.campaign_id = ids[1]),
+    COALESCE(v_quote::text, 'null') || ' refused=' || COALESCE(v_refused::text, 'null'));
   SELECT jsonb_build_object('status', status, 'count', recipient_count, 'sent', sent_at IS NOT NULL) INTO v_control FROM public.marketing_campaigns WHERE id = ids[2];
-  PERFORM pg_temp.chk('D-01 a one-contact list withheld at send is not counted as sent',
-    v_probe = '{"status":"failed","count":0,"sent":false}'::jsonb
-    AND v_control = '{"status":"sent","count":1,"sent":true}'::jsonb, v_probe::text || ' vs ' || v_control::text);
+  PERFORM pg_temp.chk('D-01b the control still sends and counts its one text',
+    v_control = '{"status":"sent","count":1,"sent":true}'::jsonb, v_control::text);
   PERFORM pg_temp.chk('D-02 a genuine provider failure still reads as failed',
     (SELECT status FROM public.marketing_campaigns WHERE id = ids[3]) = 'failed', '');
 END;
