@@ -209,6 +209,13 @@ describe("#1023 native entrance motion", () => {
     expect(lottieCalls.resume).toBeGreaterThan(0);
   });
 
+  test("centrepiece looks use contain fit; particle fields use cover", async () => {
+    const burst = await mount(<ThemeEntranceAnimation theme={theme("love_burst")} sessionKey="event:9" />);
+    expect(lotties(burst, "intro")[0].props.resizeMode).toBe("contain");
+    const confetti = await mount(<ThemeEntranceAnimation theme={theme("confetti")} sessionKey="event:10" />);
+    expect(lotties(confetti, "intro")[0].props.resizeMode).toBe("cover");
+  });
+
   test("no motion renders nothing", async () => {
     const r = await mount(<ThemeEntranceAnimation theme={theme("none")} sessionKey="event:6" />);
     expect(r.toJSON()).toBeNull();

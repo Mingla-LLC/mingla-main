@@ -124,6 +124,58 @@ describe("#1023 — every loop is seamless (the first frame's state equals the l
   });
 });
 
+describe("#1023 review — glows fade out and paint order matches the reference", () => {
+  type Grad = { ty: string; nm?: string; t?: number; g?: { p: number; k: { k: number[] } } };
+  const gradients = (json: unknown): Grad[] => {
+    const out: Grad[] = [];
+    const walk = (node: unknown): void => {
+      if (node === null || typeof node !== "object") return;
+      const obj = node as Grad & Json;
+      if (obj.ty === "gf" || obj.ty === "gs") out.push(obj);
+      for (const value of Object.values(obj)) walk(value);
+    };
+    walk(json);
+    return out;
+  };
+  const GLOW_SLUGS = [
+    "sparkles", "disco_glints", "fireflies", "lanterns", "embers", "hearts", "love_burst", "love_balloons",
+  ];
+
+  test.each(GLOW_SLUGS)("every %s glow is radial and ends at alpha 0", (slug) => {
+    for (const phase of ["intro", "loop"]) {
+      const glows = gradients(readJson(`${slug}.${phase}.json`)).filter((g) => g.nm?.includes("~glow"));
+      expect(glows.length).toBeGreaterThan(0);
+      for (const g of glows) {
+        expect(g.t).toBe(2);
+        const stops = g.g!.p;
+        const values = g.g!.k.k;
+        const alphas = values.slice(stops * 4).filter((_, i) => i % 2 === 1);
+        expect(alphas).toHaveLength(stops);
+        expect(alphas[0]).toBeGreaterThan(0);
+        expect(alphas[alphas.length - 1]).toBe(0);
+      }
+    }
+  });
+
+  test("Lottie paints the first shape on top, so a halo is listed AFTER its heart", () => {
+    const hearts = readJson("hearts.loop.json");
+    const look = (hearts.assets as Array<{ layers: Array<{ nm?: string; shapes?: Array<{ it: Grad[] }> }> }>)
+      .flatMap((a) => a.layers)
+      .find((l) => l.nm === "look");
+    const order = (look?.shapes ?? []).map((g) => g.it.find((i) => i.ty === "fl" || i.ty === "gf")?.nm ?? "");
+    const halo = order.findIndex((nm) => nm.includes("~glow"));
+    const highlight = order.findIndex((nm) => nm === "fx");
+    expect(highlight).toBe(0); // the white gloss is on top
+    expect(halo).toBe(order.length - 1); // the halo is underneath everything
+  });
+
+  test("centrepiece looks fit inside wide heroes; particle fields cover", () => {
+    expect((readJson("love_burst.loop.json").meta as Json).fit).toBe("contain");
+    expect((readJson("neon_pulse.intro.json").meta as Json).fit).toBe("contain");
+    expect((readJson("confetti.loop.json").meta as Json).fit).toBe("cover");
+  });
+});
+
 describe("#1023 — brand tinting rewrites the named colour slots", () => {
   const solidOf = (json: unknown, slot: string): number[][] => {
     const found: number[][] = [];
@@ -177,6 +229,17 @@ describe("#1023 — brand tinting rewrites the named colour slots", () => {
     expect(a).toBe(b);
     expect(JSON.stringify(json)).toBe(snapshot);
     expect(a).not.toBe(json);
+  });
+
+  test("a muted brand is made vivid at runtime (77events' muted gold)", () => {
+    const [r, g, b] = buildThemeMotionPalette("#846420").slots.c0;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    const s = (max - min) / (1 - Math.abs(2 * l - 1));
+    expect(s).toBeGreaterThanOrEqual(0.775);
+    expect(l).toBeGreaterThanOrEqual(0.515);
+    expect(l).toBeLessThanOrEqual(0.645);
   });
 
   test("the palette ports the reference viv(): saturation floor 78, lightness 52-64", () => {

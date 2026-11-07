@@ -234,7 +234,7 @@ const MotionLayers: React.FC<MotionLayersProps> = ({ slug, color, reduceMotion, 
           autoPlay={running}
           loop={phase === "loop"}
           progress={reduceMotion ? REDUCED_MOTION_PROGRESS : undefined}
-          resizeMode="cover"
+          resizeMode={(json as { meta?: { fit?: string } }).meta?.fit === "contain" ? "contain" : "cover"}
           cacheComposition
           style={[
             styles.lottie,

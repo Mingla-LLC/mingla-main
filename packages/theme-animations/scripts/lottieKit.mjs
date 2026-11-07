@@ -113,8 +113,24 @@ const tr = (p = [0, 0], r = 0, s = [100, 100], o = 100) => ({
   o: { a: 0, k: o },
 });
 
+const STYLE_TYPES = new Set(["fl", "st", "gf", "gs"]);
+
+/**
+ * Lottie paints the FIRST item of a shape list on top; the reference canvas
+ * paints the LAST call on top. Every builder in this kit takes items in
+ * canvas (painter's) order — background first — and this converts: child
+ * groups and paint styles are reversed so the last-listed paints on top,
+ * geometry stays where it is (it only defines what the styles fill).
+ */
+export function painterOrder(items) {
+  const groups = items.filter((it) => it.ty === "gr");
+  const geometry = items.filter((it) => it.ty !== "gr" && !STYLE_TYPES.has(it.ty) && it.ty !== "tr");
+  const styles = items.filter((it) => STYLE_TYPES.has(it.ty));
+  return [...groups.reverse(), ...geometry, ...styles.reverse()];
+}
+
 export function group(items, opts = {}) {
-  return { ty: "gr", it: [...items, tr(opts.p, opts.r, opts.s, opts.o)] };
+  return { ty: "gr", it: [...painterOrder(items), tr(opts.p, opts.r, opts.s, opts.o)] };
 }
 
 export const rect = (w, h, round = 0, p = [0, 0]) => ({
@@ -233,18 +249,18 @@ export function gradientStroke(stops, start, end, width) {
 
 /** A soft radial glow disc of radius `r`, colour at `alpha` in the centre. */
 export function glowDisc(r, color, alpha, p = [0, 0]) {
-  return group([
-    ellipse(r * 2, r * 2),
-    gradientFill(
-      [
-        { at: 0, color, alpha },
-        { at: 1, color, alpha: 0 },
-      ],
-      [0, 0],
-      [r, 0],
-      true,
-    ),
-  ], { p });
+  const fillNode = gradientFill(
+    [
+      { at: 0, color, alpha },
+      { at: 1, color, alpha: 0 },
+    ],
+    [0, 0],
+    [r, 0],
+    true,
+  );
+  // tagged so tests can prove every glow fades to fully transparent
+  fillNode.nm += "|~glow";
+  return group([ellipse(r * 2, r * 2), fillNode], { p });
 }
 
 export function star4Points(r, thin = 0.18) {

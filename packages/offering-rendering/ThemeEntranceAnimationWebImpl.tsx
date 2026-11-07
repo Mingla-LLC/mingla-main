@@ -64,8 +64,9 @@ interface WebLottieAnimation {
   goToAndStop: (value: number, isFrame?: boolean) => void;
   resize: () => void;
   destroy: () => void;
-  addEventListener: (name: "complete", cb: () => void) => void;
+  addEventListener: (name: "complete" | "enterFrame", cb: () => void) => void;
   totalFrames: number;
+  currentFrame: number;
 }
 
 interface WebLottiePlayer {
@@ -141,6 +142,10 @@ interface WebMotionProps {
   textSafeZone: TextSafeZoneProp;
 }
 
+/** "contain" for centrepiece looks, else "cover" (from the generator's meta). */
+export const motionFit = (json: object): "contain" | "cover" =>
+  (json as { meta?: { fit?: string } }).meta?.fit === "contain" ? "contain" : "cover";
+
 const cloneForPlayer = (json: object): object =>
   // lottie-web completes (mutates) the data it is given; the tinted object is
   // memoised and shared, so every player gets its own copy.
@@ -192,8 +197,15 @@ const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSa
       .then(([player, ...files]) => {
         if (!alive) return;
         const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-        const settings = { preserveAspectRatio: "xMidYMid slice", clearCanvas: true, dpr };
         const loopJson = files[files.length - 1] as object;
+        // centrepiece looks (love burst, neon pulse) ship `meta.fit: "contain"`
+        // so a wide desktop hero shows them whole instead of a cropped zoom
+        const fit = motionFit(loopJson);
+        const settings = {
+          preserveAspectRatio: fit === "contain" ? "xMidYMid meet" : "xMidYMid slice",
+          clearCanvas: true,
+          dpr,
+        };
         if (loopRef.current !== null) {
           loopAnim.current = player.loadAnimation({
             container: loopRef.current,
@@ -219,10 +231,19 @@ const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSa
             animationData: cloneForPlayer(tintLottie(files[0] as object, palette)),
             rendererSettings: settings,
           });
-          anim.addEventListener("complete", () => {
-            if (!alive) return;
+          // Hand over to the loop ONCE, from whichever signal arrives first:
+          // lottie's "complete", or the last frame seen on "enterFrame" (a
+          // pause landing on the final frame can swallow "complete").
+          let handedOver = false;
+          const handOver = (): void => {
+            if (!alive || handedOver) return;
+            handedOver = true;
             setStage("loop");
             if (runningRef.current) loopAnim.current?.play();
+          };
+          anim.addEventListener("complete", handOver);
+          anim.addEventListener("enterFrame", () => {
+            if (anim.currentFrame >= anim.totalFrames - 1) handOver();
           });
           introAnim.current = anim;
         }

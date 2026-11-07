@@ -53,7 +53,7 @@ jest.mock("../../../../../packages/offering-rendering/useReduceMotionPreference"
 }));
 
 type Params = { loop: boolean; autoplay: boolean; animationData: { meta?: { phase?: string } } };
-const created: Array<{ params: Params; anim: Record<string, jest.Mock> & { fire: () => void } }> = [];
+const created: Array<{ params: Params; anim: Record<string, jest.Mock> & { fire: () => void; lastFrame: () => void } }> = [];
 jest.mock(
   "lottie-web/build/player/lottie_light_canvas",
   () => ({
@@ -61,6 +61,7 @@ jest.mock(
     default: {
       loadAnimation: (params: Params) => {
         let onComplete: (() => void) | null = null;
+        let onFrame: (() => void) | null = null;
         const anim = {
           play: jest.fn(),
           pause: jest.fn(),
@@ -68,10 +69,16 @@ jest.mock(
           resize: jest.fn(),
           destroy: jest.fn(),
           totalFrames: 180,
-          addEventListener: jest.fn((_name: string, cb: () => void) => {
-            onComplete = cb;
+          addEventListener: jest.fn((name: string, cb: () => void) => {
+            if (name === "complete") onComplete = cb;
+            if (name === "enterFrame") onFrame = cb;
           }),
+          currentFrame: 0,
           fire: () => onComplete?.(),
+          lastFrame: () => {
+            anim.currentFrame = 77;
+            onFrame?.();
+          },
         };
         created.push({ params, anim: anim as never });
         return anim;
@@ -152,6 +159,25 @@ describe("#1023 web entrance motion", () => {
       intro?.anim.fire();
     });
     expect(loop?.anim.play).toHaveBeenCalled();
+  });
+
+  test("the loop still takes over when 'complete' never fires (last frame seen)", async () => {
+    await mount(<ThemeEntranceAnimation theme={theme("hearts")} sessionKey="b:2b" />);
+    const intro = created.find((c) => c.params.animationData.meta?.phase === "intro");
+    const loop = created.find((c) => c.params.animationData.meta?.phase === "loop");
+    (intro!.anim as unknown as { totalFrames: number }).totalFrames = 78;
+    await act(async () => {
+      intro?.anim.lastFrame();
+    });
+    expect(loop?.anim.play).toHaveBeenCalled();
+  });
+
+  test("love burst fits inside a wide hero (meet), confetti covers (slice)", async () => {
+    await mount(<ThemeEntranceAnimation theme={theme("love_burst")} sessionKey="b:fit" />);
+    expect((created[0].params as unknown as { rendererSettings: { preserveAspectRatio: string } }).rendererSettings.preserveAspectRatio).toBe("xMidYMid meet");
+    created.length = 0;
+    await mount(<ThemeEntranceAnimation theme={theme("confetti")} sessionKey="b:fit2" />);
+    expect((created[0].params as unknown as { rendererSettings: { preserveAspectRatio: string } }).rendererSettings.preserveAspectRatio).toBe("xMidYMid slice");
   });
 
   test("prefers-reduced-motion shows one still frame of the loop", async () => {

@@ -35,6 +35,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  painterOrder,
   animPath,
   animScalar,
   animScale,
@@ -461,7 +462,8 @@ def({
   },
   xf: (p) => {
     const kk = ksin(p);
-    return { x: p.x, y: p.y, r: p.rot * DEG, sx: 100 * kk, sy: 100 * kk, o: 100 * kk };
+    // the reference draws its stars axis-aligned (its `rot` is never used)
+    return { x: p.x, y: p.y, r: 0, sx: 100 * kk, sy: 100 * kk, o: 100 * kk };
   },
 });
 
@@ -642,6 +644,8 @@ function scaleAnim(anim) {
 
 def({
   id: "neon_pulse",
+  // a centrepiece: keep it whole on wide heroes (contain, not cover)
+  fit: "contain",
   group: "Glow",
   rate: [2.4, 0.7],
   noFlip: true,
@@ -1026,7 +1030,9 @@ def({
   id: "hearts",
   group: "Love",
   enterTilt: 0.3,
-  rate: [9, 2.4],
+  // ambient 2.4 → 3.2: the loop keeps several big hearts on the cover at all
+  // times (Seth: big, vivid hearts, clearly visible in the loop too)
+  rate: [9, 3.2],
   noFlip: true,
   enter(s, R) {
     const out = [];
@@ -1066,6 +1072,8 @@ def({
 
 def({
   id: "love_burst",
+  // a centrepiece: keep it whole on wide heroes (contain, not cover)
+  fit: "contain",
   group: "Love",
   rate: [0, 0],
   custom: "love_burst",
@@ -1169,7 +1177,7 @@ function shapeLayer(nm, shapes, ks, frames, extra = {}) {
       p: { a: 0, k: [0, 0] },
       ...ks,
     },
-    shapes,
+    shapes: painterOrder(shapes),
     ...(extra.parent !== undefined ? { parent: extra.parent } : {}),
     ...(extra.ind !== undefined ? { ind: extra.ind } : {}),
   };
@@ -1431,7 +1439,7 @@ class Builder {
       h: COMP_H,
       nm: `mingla-${preset.id}-${this.mode}`,
       ddd: 0,
-      meta: { g: "mingla generate-lottie (#1023)", slug: preset.id, phase: this.mode },
+      meta: { g: "mingla generate-lottie (#1023)", slug: preset.id, phase: this.mode, fit: preset.fit ?? "cover" },
       assets: this.assets,
       layers,
     };
@@ -1696,14 +1704,15 @@ class Builder {
     const glowOp = ctx.sample((t) => 100 * ((0.25 + 0.25 * beatAt(t)) / 0.5));
     const r = REF_W * 0.34;
     const big = shapeLayer("bigheart", [
-      group([ellipse(k(r * 3.4), k(r * 3.4)), gradientFill([{ at: 0, color: pal(0), alpha: 0.5 }, { at: 1, color: pal(0), alpha: 0 }], [0, 0], [k(r * 1.7), 0], true)]),
+      { ...glowDisc(k(r * 1.7), pal(0), 0.5), nm: "beat-glow" },
       ...heartLook(r, pal(0), pal(2)),
     ], {
       p: { a: 0, k: [r1(k(cx)), r1(k(cy))] },
       s: animScale(scale.map((v) => [v, v]), 1.5),
     }, ctx.frames);
     // the glow follows the beat through the first group's opacity
-    big.shapes[0].it[big.shapes[0].it.length - 1].o = animScalar(glowOp, 2, Math.round);
+    const glowGroup = big.shapes.find((g) => g.nm === "beat-glow");
+    glowGroup.it[glowGroup.it.length - 1].o = animScalar(glowOp, 2, Math.round);
     const R = this.rng;
     const smallAsset = (key) => {
       const id = `small:${key}`;
