@@ -61,13 +61,17 @@ describe("R-3 Back to the chat keeps browser Back working", () => {
     assert.equal(hostCloseStep(true), "back");
     assert.equal(hostCloseStep(false), "push");
   });
-  it("closeHost never replaces the address", () => {
+  // #4270 W7: the host card is one item of the Brand group side panel now;
+  // closePanel keeps this rule (sideCloseStep: go back what this page pushed,
+  // else push, never replace).
+  it("closing the side panel never replaces the address", () => {
     const src = code("components/community/BrandGroupsPanel.jsx");
-    const close = src.slice(src.indexOf("const closeHost"), src.indexOf("const selectedGroup"));
-    assert.ok(close.length > 0, "closeHost is there");
+    const close = src.slice(src.indexOf("const closePanel = useCallback"), src.indexOf("const onPop = () =>"));
+    assert.ok(close.length > 40, "closePanel is there");
     assert.doesNotMatch(close, /replace:\s*true/);
-    assert.match(close, /hostCloseStep\(hostOpenedHere\.current\) === "back"/);
-    assert.match(close, /window\.history\.back\(\)/);
+    assert.match(close, /const step = sideCloseStep\(pushesHere\.current\);/);
+    assert.match(close, /if \(step\.kind === "go"\) window\.history\.go\(step\.delta\);/);
+    assert.match(close, /else setSearch\(brandGroupSearch\(search, \{ side: null \}\)\);/);
   });
 });
 

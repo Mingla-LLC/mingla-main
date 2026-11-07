@@ -12,7 +12,7 @@ Deno.test("#3720 Admin gives scoped Support staff the Brand groups tab", () => {
   assertStringIncludes(access, 'allowed.add("brand-groups")');
   // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js.
   assertStringIncludes(read("lib/supportCommunityTabs.js"), '{ id: "brand-groups", label: "Brand groups" }');
-  assertStringIncludes(page, '<BrandGroupsPanel />');
+  assertStringIncludes(page, '<BrandGroupsPanel onCounts={onBrandGroupCounts} />');
 });
 
 Deno.test("#3720 Admin Brand groups use guarded RPCs and realtime read/message sync", () => {
@@ -27,8 +27,14 @@ Deno.test("#3720 Admin Brand groups use guarded RPCs and realtime read/message s
   ]) assertStringIncludes(service, rpc);
   assertStringIncludes(panel, 'table: "messages"');
   assertStringIncludes(panel, 'table: "brand_group_reads"');
-  assertStringIncludes(panel, "Create product signal");
-  assertStringIncludes(panel, "your real staff name · Mingla Support");
+  // #4270 W7: the actions and the composer's words live in their own components.
+  const thread = read("components/community/BrandGroupThread.jsx");
+  const composer = read("components/community/BrandGroupComposer.jsx");
+  assertStringIncludes(thread, "Create product signal");
+  assertStringIncludes(composer, "Create product signal");
+  assertStringIncludes(composer, "Replying as <strong");
+  assertStringIncludes(composer, "{replyingAs} · Mingla Support</strong> · the brand team gets a push");
+  assertStringIncludes(panel, 'replyingAs={myName || "you"}');
 });
 
 Deno.test("#3720 Brand-message Product signals remain private RPC workflow records", () => {
