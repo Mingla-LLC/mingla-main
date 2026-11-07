@@ -427,3 +427,26 @@ Deno.test("T-10: an MCP row behind the router is byte-for-byte what McpHttpTrans
   assertEquals(routed, direct);
   assert(routed.every((line) => line.startsWith("POST https://mcp.posthog.com/mcp ")));
 });
+
+Deno.test("T-11: a next page that is refused still reports more, so the agent never takes a partial list as whole", async () => {
+  const refusedNext = [
+    "https://evil.example/v23.0/act_1/ads?after=x",
+    "https://graph.facebook.com/v22.0/act_1/ads?after=x",
+    "https://graph.facebook.com" + AT + "evil.example/v23.0/act_1/ads?after=x",
+  ];
+  for (const next of refusedNext) {
+    const seen: Seen[] = [];
+    const t = new MetaGraphTransport(recorder(seen, () => json({ data: [{ id: "1" }], paging: { next } })));
+    const out = JSON.parse(textOf(await t.callTool(target(), "list_ads", { account_id: "act_1", limit: 50 })));
+    assertEquals(seen.length, 1, "a refused next page was followed");
+    assertEquals(out.more, true, next.replace(AT, "<AT>"));
+    assert(typeof out.note === "string");
+  }
+  // No next page, or an empty one, is a complete list.
+  for (const paging of [{}, { next: "" }, { next: null }, { cursors: { after: "x" } }]) {
+    const t = new MetaGraphTransport(() => Promise.resolve(json({ data: [{ id: "1" }], paging })));
+    const out = JSON.parse(textOf(await t.callTool(target(), "list_ads", { account_id: "act_1", limit: 50 })));
+    assertEquals(out.more, false, JSON.stringify(paging));
+    assertEquals(out.note, undefined);
+  }
+});

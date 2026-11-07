@@ -587,7 +587,9 @@ export class MetaGraphTransport implements UpstreamTransport {
     const timer = setTimeout(() => controller.abort(), this.opts.callTimeoutMs ?? CALL_TIMEOUT_MS);
     const rows: unknown[] = [];
     let url: string | null = first;
-    let next: string | null = null;
+    // Meta gave a next page on the last page read, whether or not it is safe
+    // to follow: an unsafe one is not followed, but the rows are still not all.
+    let more = false;
     let pages = 0;
     try {
       while (url && pages < MAX_GRAPH_PAGES && rows.length < plan.limit) {
@@ -595,13 +597,13 @@ export class MetaGraphTransport implements UpstreamTransport {
         pages++;
         const data = Array.isArray(body.data) ? body.data : [];
         rows.push(...data.slice(0, plan.limit - rows.length));
-        next = isObject(body.paging) ? safeNextUrl(body.paging.next, base) : null;
-        url = next;
+        const given = isObject(body.paging) ? body.paging.next : undefined;
+        more = typeof given === "string" && given !== "";
+        url = safeNextUrl(given, base);
       }
     } finally {
       clearTimeout(timer);
     }
-    const more = next !== null;
     const out: Json = { count: rows.length, more, data: rows };
     if (more) out.note = "More rows exist. Narrow the request, or raise limit (at most 100).";
     const text = scrubText(JSON.stringify(out), target.key);

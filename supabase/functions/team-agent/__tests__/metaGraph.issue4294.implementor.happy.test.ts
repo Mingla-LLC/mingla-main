@@ -135,7 +135,7 @@ Deno.test("I-4294-6: a next page is followed with its access_token removed, at m
     const t2 = new MetaGraphTransport(fakeGraph(s2, () => json({ data: [{ id: "1" }], paging: { next } })));
     const r2 = await t2.callTool(target(), "list_ads", { account_id: "1", limit: 50 });
     assertEquals(s2.length, 1, `followed ${next}`);
-    assertEquals(JSON.parse(textOf(r2)).more, false);
+    assertEquals(JSON.parse(textOf(r2)).more, true, "Meta said there is more, even though the page is not followed");
     assertEquals(safeNextUrl(next, GRAPH), null);
   }
 });
