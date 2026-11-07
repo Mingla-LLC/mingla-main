@@ -20,6 +20,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createTeamAgentHandler, KEY_PATTERN, sha256Hex } from "../../_shared/teamAgentMcp.ts";
 import { pkceChallenge, redirectAllowed } from "../../_shared/minglaConnectorOAuth.ts";
+// {"invariant":"I-4294-1","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/oauth.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
 
 const MCP = "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent";
 const APP = "https://claude.ai/oauth/mcp-oauth-client-metadata";

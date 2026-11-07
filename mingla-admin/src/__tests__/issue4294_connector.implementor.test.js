@@ -39,6 +39,7 @@ import {
   parseToolList,
   readConnectRequest,
 } from "../services/minglaConnectorService.js";
+// {"invariant":"I-4294-2","issue":4294,"status":"ACTIVE","enforced_by":["mingla-admin/src/__tests__/issue4294_connector.implementor.test.js","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ADMIN = path.resolve(SRC, "..");

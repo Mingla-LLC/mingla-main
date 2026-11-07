@@ -29,6 +29,10 @@
 --
 -- One transaction, rolled back. Never run on production. Runs as the
 -- image's admin role from the repository root (M-10 reads the migration).
+-- {"invariant":"I-4294-1","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql","supabase/functions/team-agent/__tests__/oauth.issue4294.implementor.happy.test.ts"]}
+-- {"invariant":"I-4294-2","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql","mingla-admin/src/__tests__/issue4294_connector.implementor.test.js"]}
+-- {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql","supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts"]}
+-- {"invariant":"I-4294-5","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql","supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts"]}
 
 \set ON_ERROR_STOP on
 \set t4294_selfcheck `sed -n '/^DO \$c4294\$/,/^\$c4294\$;/p' supabase/migrations/20280425004294_issue_4294_mingla_connector.sql`

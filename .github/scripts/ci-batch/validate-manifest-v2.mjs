@@ -376,7 +376,9 @@ export function phase3dContractDigest(manifest) {
 // #4271: register the Apple build PostgreSQL proof the same way.
 // #4271: register the final tester PostgreSQL proof the same way.
 // #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "af0f3088a08b47075b7339b0aed7603159f891da40e5b36f05775b71cd41d6ca";
+// #4294: the Mingla connector migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion (#2492).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "d1bf59fa723ec90f796ad0793755cf704a6cad4c48f0845e9080bab9e8f52ca7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

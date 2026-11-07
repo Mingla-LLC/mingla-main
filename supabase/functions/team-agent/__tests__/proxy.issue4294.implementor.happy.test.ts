@@ -15,6 +15,9 @@
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createTeamAgentHandler, sha256Hex } from "../../_shared/teamAgentMcp.ts";
 import { DATA_NOTE, scrubText } from "../../_shared/minglaConnectorProxy.ts";
+// {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
+// {"invariant":"I-4294-4","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts"]}
+// {"invariant":"I-4294-5","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
 
 const MCP = "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent";
 const UPSTREAM = "https://mcp.fake-tools.example/mcp";
