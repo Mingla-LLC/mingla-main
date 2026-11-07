@@ -66,7 +66,7 @@ import {
   isBrandEditRoute,
   withReturnTo,
 } from "../../utils/brandEditReturn";
-import { setupStepFromRoute } from "./setupFlowRoute";
+import { setupHandoff } from "./setupFlowRoute";
 import { brandSiteKeys } from "../../sites/brandSiteKeys";
 import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
@@ -89,7 +89,7 @@ import {
 import { isAriProposalExpired } from "./ariProposalExpiry";
 import {
   claimWebsiteSetupAutoAudit,
-  websiteSetupAutoAuditKey,
+  websiteSetupKickoffKey,
 } from "./websiteSetupAutoAudit";
 import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 import { submitAriMessageFeedback } from "../../services/ariFeedbackService";
@@ -264,10 +264,16 @@ export interface AriChatScreenProps {
     step: string | null;
     /** The run's chat, when the run is this person's. */
     conversationId: string | null;
+    /** Whether the run's state has answered yet; nothing is sent before. */
+    runKnown?: boolean;
     onOpenStep: (step: string) => void;
     onClose: () => void;
     /** The field the open card asks about, for the form beside it. */
     onFlowField?: (fieldKey: string | null) => void;
+    /** "Add it myself": bring this field into view on the form. */
+    onFocusField?: (fieldKey: string) => void;
+    /** The part the run is on, so the form beside it can follow. */
+    onFlowStep?: (stepKey: string | null) => void;
   };
 }
 
@@ -659,10 +665,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // step on this same screen; a creator keeps its way back.
   const openSetupRoute = (route: string): void => {
     if (setup) {
-      const step = setupStepFromRoute(route, setup.brandId);
-      if (step) {
+      const handoff = setupHandoff(
+        route,
+        setup.brandId,
+        chat.flowState?.current_field_key,
+      );
+      if (handoff) {
+        const step = handoff.step;
         flowHandoffOpenRef.current = false;
         setup.onOpenStep(step);
+        if (handoff.field) setup.onFocusField?.(handoff.field);
         void chat.resumeFlow("handoff_return");
         return;
       }
@@ -670,7 +682,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         router.push(
           withReturnTo(
             route,
-            `/brand/${setup.brandId}/website/setup?step=first_offering`,
+            // Ari was open: the way back reopens it (?ari=1).
+            `/brand/${setup.brandId}/website/setup?step=first_offering&ari=1`,
           ) as never,
         );
         return;
@@ -852,8 +865,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       !online
     )
       return;
-    // #2830 — claimed at module scope so a remount cannot re-send it.
-    const auditKey = websiteSetupAutoAuditKey(sitesBrandId, setupPart);
+    // #2830 — claimed at module scope so a remount cannot re-send it, once
+    // per brand (a move to another part is not a new start), and never over
+    // a live run of this person's: that run's chat is opened and resumed.
+    const auditKey = websiteSetupKickoffKey({
+      brandId: sitesBrandId,
+      part: setupPart ?? null,
+      runKnown: setup?.runKnown !== false,
+      liveRunConversationId: setup?.conversationId ?? null,
+    });
+    if (auditKey === null) return;
     if (!claimWebsiteSetupAutoAudit(auditKey)) return;
     // #2830 P4 — a structured request, never a scripted message in the
     // owner's name: the bubble reads "Set up my Website", the server builds
@@ -883,6 +904,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     disclosureNeeded,
     online,
     selectedBrandId,
+    setup?.conversationId,
+    setup?.runKnown,
     setupPart,
     sitesBrandId,
     websiteSetup,
@@ -910,6 +933,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   React.useEffect(() => {
     onFlowField?.(flowFieldKey);
   }, [flowFieldKey, onFlowField]);
+  const onFlowStep = setup?.onFlowStep;
+  const flowStepKey = chat.flowState?.current_step_key ?? null;
+  React.useEffect(() => {
+    onFlowStep?.(flowStepKey);
+  }, [flowStepKey, onFlowStep]);
   const activeConversation = conversations.conversations.find(
     (item) => item.id === chat.conversationId,
   );
@@ -1303,6 +1331,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   return;
                 }
                 if (behavior.type === "route") {
+                  // #2830 — beside the setup form, "Add it myself" opens the
+                  // field on this screen; full-screen Ari keeps Brand edit.
+                  if (setup) {
+                    openSetupRoute(behavior.route);
+                    return;
+                  }
                   router.push(behavior.route as never);
                   return;
                 }

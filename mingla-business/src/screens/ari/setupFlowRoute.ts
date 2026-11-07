@@ -14,3 +14,18 @@ export function setupStepFromRoute(route: string, brandId: string): string | nul
   const step = params.get("part") ?? params.get("step");
   return step && SETUP_STEPS.has(step) ? step : "approve";
 }
+
+/**
+ * #2830 — "Add it myself" (and any card that opens Brand details) beside the
+ * setup form: the Brand details part on this screen, at the field Ari is
+ * asking about, instead of leaving for Brand edit. Null: not a setup step.
+ */
+export function setupHandoff(
+  route: string,
+  brandId: string,
+  fieldKey: string | null | undefined,
+): { step: string; field: string | null } | null {
+  const step = setupStepFromRoute(route, brandId);
+  if (!step) return null;
+  return { step, field: step === "brand" && fieldKey ? fieldKey : null };
+}

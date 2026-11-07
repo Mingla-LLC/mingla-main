@@ -1,6 +1,11 @@
 /**
  * #2830 P0 (D-1 interim) — the automatic Website setup audit starts at most
- * once per brand + setup part per app session.
+ * once per brand per app session. Not per setup part: the setup screen moves
+ * between parts (`?step=`) while the panel stays open, and a per-part key
+ * re-sent "Set up my Website" on every move, racing the run's own lease
+ * ("I'm already working on this in another window"). A brand that already has
+ * a live run of this person's never kicks off again: the panel opens that
+ * run's chat and resumes it, with no new message.
  *
  * The guard used to live in a component ref. A ref dies with its component,
  * so every remount of the Ari screen (tab switch, pane toggle, route
@@ -16,11 +21,25 @@
 
 const claimedAudits = new Set<string>();
 
-export function websiteSetupAutoAuditKey(
-  brandId: string,
-  setupPart: string | null | undefined,
-): string {
-  return `${brandId}:${setupPart ?? "overview"}`;
+export function websiteSetupAutoAuditKey(brandId: string): string {
+  return `${brandId}:website_setup`;
+}
+
+/**
+ * The kickoff decision for the setup panel. Null: send nothing. It waits until
+ * the run is known, and a live run of this person's resumes instead.
+ */
+export function websiteSetupKickoffKey(input: {
+  brandId: string;
+  /** The part on screen. Deliberately not part of the key: a move is not a start. */
+  part: string | null;
+  /** The run's state has answered (or failed). Until then, nothing is sent. */
+  runKnown: boolean;
+  /** This person's live Website setup run's chat, when there is one. */
+  liveRunConversationId: string | null;
+}): string | null {
+  if (!input.runKnown || input.liveRunConversationId) return null;
+  return websiteSetupAutoAuditKey(input.brandId);
 }
 
 /** True exactly once per key per session; the caller may send only then. */

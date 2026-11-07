@@ -48,6 +48,16 @@ export const DEFERRED_SPECIFIERS = [
 export const BASELINE_MOVEMENT_THRESHOLD_BYTES = 1_024;
 
 /**
+ * The smallest movement of main the post-merge ratchet records. It must stay
+ * below BASELINE_MOVEMENT_THRESHOLD_BYTES: otherwise main can drift by an
+ * amount the ratchet never records but the pull-request gate still counts,
+ * and that drift blocks the next Business pull request. #4270 hit this: main
+ * was +838 B unrecorded under a 2,048 B floor. Both the ratchet and the gate
+ * measure on Linux, so a half-threshold floor stays above measurement noise.
+ */
+export const BASELINE_RECORD_FLOOR_BYTES = BASELINE_MOVEMENT_THRESHOLD_BYTES / 2;
+
+/**
  * Fail-closed verdict for raw `__common` movement from the recorded baseline.
  * The same pure decision is used by pull-request and main builds.
  */

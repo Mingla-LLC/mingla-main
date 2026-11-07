@@ -215,6 +215,7 @@ import {
   websiteSetupEffectiveIntent,
   websiteSetupMergedPlanAnswers,
   websiteSetupPlanAnswer,
+  websiteSetupPlanAnswerRetry,
   websiteSetupPlanRevision,
   websiteSetupWorkflowInitialCalls,
 } from "../_shared/agentWebsiteSetup.ts";
@@ -2762,6 +2763,31 @@ async function handle(req: Request): Promise<Response> {
             classification: "website_setup_structured_retry",
             startedAt: turnStartedAt,
             structuredData: { rendition: retry.rendition },
+          });
+        }
+        // #2830 — a story answer with a claim nothing backs is re-asked,
+        // never saved (the publish truth check's own rules).
+        const storyRetry = structuredWebsitePlanAnswer
+          ? websiteSetupPlanAnswerRetry(
+            structuredWebsitePlanAnswer,
+            plan,
+            activeBrand.id,
+          )
+          : null;
+        if (storyRetry) {
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: storyRetry.text,
+            classification: "website_setup_structured_retry",
+            startedAt: turnStartedAt,
+            structuredData: { rendition: storyRetry.rendition },
           });
         }
         const proposalArgs = contextResolution?.kind === "proposal"
