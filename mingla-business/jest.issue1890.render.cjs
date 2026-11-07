@@ -62,6 +62,10 @@ module.exports = {
     // `useWindowDimensions` instead of the keyboard, so the real
     // WIDE_DESKTOP_MIN_WIDTH boundary is what decides the branch.
     "**/__tests__/issue_3460_ari_composer_narrow_web_clearance.happy.test.ts",
+    // #4304 — First Home with Ari: the same real-AriChatScreen mount, reading
+    // the first-run greeting, chips and top bar by stage. Same harness, so it
+    // rides this already-wired config rather than adding a new one.
+    "**/__tests__/issue_4304_first_run_ari.implementor.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",
