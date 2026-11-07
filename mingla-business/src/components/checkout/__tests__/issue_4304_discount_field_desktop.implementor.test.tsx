@@ -180,6 +180,31 @@ describe("#4304 desktop typing regression", () => {
     expect(textOf(tree)).toContain('"Applying ","SAVE10"');
     await act(async () => tree.unmount());
   });
+
+  test("Apply works while the price for a just-added ticket is still loading", async () => {
+    // Smoke test 2026-11-07: code typed before choosing a ticket, then the
+    // first Apply after adding the ticket was swallowed by the price refresh.
+    const onApply = jest.fn();
+    const tree = await mount(
+      <DiscountCodeField
+        value={null}
+        quote={null}
+        quoteStatus="loading"
+        onApply={onApply}
+        onRemove={jest.fn()}
+      />,
+    );
+    await act(async () => {
+      tree.root.findByType(TextInput).props.onChangeText!("wythe20");
+    });
+    const apply = byLabel(tree, "Apply discount code")!;
+    expect(apply.props.disabled).toBe(false);
+    await act(async () => {
+      apply.props.onPress!();
+    });
+    expect(onApply).toHaveBeenCalledWith("WYTHE20");
+    await act(async () => tree.unmount());
+  });
 });
 
 describe("#4304 dark discount field states", () => {

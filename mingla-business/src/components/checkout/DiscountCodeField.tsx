@@ -107,7 +107,9 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
     normalizedDraft.length > 0 &&
     normalizedDraft !== value &&
     !disabled &&
-    quoteStatus !== "loading";
+    // #4304 — only an in-flight CODE blocks Apply. A price refresh for a ticket
+    // just added must not swallow the tap: the quote re-runs with the code.
+    !applying;
   const capturedRef = useRef(new Set<string>());
 
   useEffect(() => {

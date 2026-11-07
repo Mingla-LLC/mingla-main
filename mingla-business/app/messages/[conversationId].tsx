@@ -600,7 +600,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
 
   function startReply(message: BrandGroupMessage): void {
     setReplyTo(message);
-    setTimeout(() => composerRef.current?.focus(), 0);
+    // On web the closing menu hands focus back to the bubble it opened from,
+    // so focus the composer only after that has happened.
+    setTimeout(() => composerRef.current?.focus(), Platform.OS === "web" ? 160 : 0);
   }
 
   async function copyMessage(message: BrandGroupMessage): Promise<void> {
