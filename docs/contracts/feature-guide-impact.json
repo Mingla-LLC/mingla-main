@@ -1379,6 +1379,7 @@
         "mingla-admin/src/components/ui/Table.jsx",
         "supabase/functions/run-city-pipeline/plan.ts",
         "supabase/migrations/20280419034276_issue_4276_run_only_picked_stages.sql",
+        "supabase/migrations/20280419044276_issue_4276_gap_counts_match_the_work.sql",
         "mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx",
         "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
         "supabase/migrations/20280419004276_issue_4276_fast_place_category.sql",
