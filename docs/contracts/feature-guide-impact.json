@@ -76,6 +76,8 @@
         "supabase/functions/refund-order/index.ts",
         "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql",
         "supabase/functions/_shared/ticketRefundStripeThrow.ts",
+        "mingla-business/src/components/orders/RefundSheet.tsx",
+        "mingla-business/src/utils/refundReason.ts",
         "supabase/migrations/20280426004271_issue_4271_resumable_stuck_refund.sql",
         "mingla-business/src/services/orderRefundService.ts"
       ]
@@ -1437,6 +1439,7 @@
         "mingla-business/src/components/brand/BrandOnboardView.tsx",
         "mingla-business/src/components/brand/BrandPaymentsView.tsx",
         "mingla-business/src/components/door/DoorPayQr.tsx",
+        "mingla-business/src/components/door/DoorRefundSheet.tsx",
         "mingla-business/src/components/door/LazyDoorRefundSheet.tsx",
         "mingla-business/src/components/door/LazyDoorSaleScreens.tsx",
         "mingla-business/src/components/door/doorPayCodeState.ts",
