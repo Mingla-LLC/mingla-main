@@ -276,6 +276,8 @@ const serverMessage = (error: unknown): string => {
         return "These tickets aren't valid on the chosen date.";
       case "invalid_lines":
         return "Pick at least one ticket and try again.";
+      case "buyer_name_invalid":
+        return "Check the buyer's name and try again.";
       case "network_error":
         return "Couldn't reach Mingla. Check your connection and try again.";
       default:

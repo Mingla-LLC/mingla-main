@@ -5,10 +5,16 @@
 //     (old app builds send nothing and still work);
 //   - a non-string name, or one over 120 characters, is refused with 400
 //     before anything is written or charged (the cash door sale's rule);
-//   - the name never reaches a log line.
+//   - the name never reaches a log line;
+//   - a name holding U+0000 or a lone UTF-16 surrogate is refused with 400
+//     (Postgres text can't store it; it used to be a 500 that echoed part of
+//     the name in the database logs); valid emoji still pass;
+//   - buyer_name is always in the written row (null when none), so a re-price
+//     retry without a name clears a stale one, like buyer_phone_e164.
 //
-// fails-on-revert: dropping buyer_name from the stored intent row, or the
-// validation in doorTapBuyerName, fails an assertion here.
+// fails-on-revert: dropping buyer_name from the stored intent row, the
+// validation in doorTapBuyerName, the unstorable-text check, or making
+// buyer_name conditional again fails an assertion here.
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createDoorTapIntentHandler, DOOR_BUYER_NAME_MAX, doorTapBuyerName } from "../index.ts";
 import {
@@ -26,7 +32,7 @@ const ACTOR = "42710000-0000-4000-8000-0000000000b4";
 const REQ = "42710000-0000-4000-8000-0000000000b5";
 const INTENT = "42710000-0000-4000-8000-0000000000b6";
 
-function makeDb() {
+function makeDb(existing = false) {
   return new FakeDb(
     (op: DbOp) => {
       if (op.table === "events") {
@@ -47,9 +53,18 @@ function makeDb() {
         return { data: null, error: null };
       }
       if (op.table === "door_tap_intents" && op.action === "select") {
-        return { data: null, error: null };
+        if (!existing) return { data: null, error: null };
+        // An earlier attempt stored the intent but never reached Stripe.
+        return {
+          data: {
+            id: INTENT, stripe_payment_intent_id: null, stripe_account_id: "acct_door1",
+            stripe_location_id: "tml_door1", total_cents: 2090, currency: "USD",
+            fee_cents: 90, subtotal_cents: 2000,
+          },
+          error: null,
+        };
       }
-      if (op.table === "door_tap_intents" && op.action === "insert") {
+      if (op.table === "door_tap_intents" && (op.action === "insert" || op.action === "update")) {
         return { data: { id: INTENT }, error: null };
       }
       return { data: null, error: null };
@@ -72,8 +87,8 @@ function makeDb() {
   );
 }
 
-async function create(extra: Record<string, unknown>) {
-  const db = makeDb();
+async function create(extra: Record<string, unknown>, existing = false) {
+  const db = makeDb(existing);
   const stripe = fakeStripe();
   const res = await createDoorTapIntentHandler({
     serviceClient: () => db,
@@ -84,8 +99,9 @@ async function create(extra: Record<string, unknown>) {
     lines: [{ ticketTypeId: TIER, quantity: 1 }], ...extra,
   }));
   const inserts = db.opsOn("door_tap_intents", "insert");
-  const stored = (inserts[0]?.payload ?? null) as Record<string, unknown> | null;
-  return { res, stored, inserts, stripe };
+  const updates = db.opsOn("door_tap_intents", "update");
+  const stored = (inserts[0]?.payload ?? updates[0]?.payload ?? null) as Record<string, unknown> | null;
+  return { res, stored, inserts, updates, stripe };
 }
 
 /** Runs fn with console captured; returns everything written to the console. */
@@ -149,4 +165,51 @@ Deno.test("#4271 the buyer name never reaches a log line", async () => {
     await create({ buyerName: NAME + "x".repeat(DOOR_BUYER_NAME_MAX) });
   });
   assert(!output.includes("Zelda"), "the buyer name was logged");
+});
+
+Deno.test("#4271 tap create refuses U+0000 and lone surrogates with 400, before any write or charge", async () => {
+  const unstorable = [
+    "Ada\u0000Lovelace", // NUL
+    "\u0000",
+    "Ada\uD800", // high surrogate at the end
+    "Ada\uD800Lovelace", // high surrogate not followed by a low one
+    "\uDC00Ada", // low surrogate with no high before it
+    "Ada\uDE00\uD83D", // reversed pair
+    "\uD83D\uDE00\uDE00", // a valid pair then a stray low
+  ];
+  for (const buyerName of unstorable) {
+    assertEquals(doorTapBuyerName(buyerName), { ok: false }, JSON.stringify(buyerName));
+    const { res, inserts, updates, stripe } = await create({ buyerName });
+    assertEquals(res.status, 400, `${JSON.stringify(buyerName)} must be a 400`);
+    assertEquals((await res.json()).error, "buyer_name_invalid");
+    assertEquals(inserts.length + updates.length, 0);
+    assertEquals(stripe.calls.length, 0);
+  }
+});
+
+Deno.test("#4271 emoji and other astral characters still pass the unstorable-text check", async () => {
+  for (const name of ["Ada \u{1F600}", "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}", "\u{20BB7}\u{1D11E} Zoe", "Ad\u00E9le"]) {
+    assertEquals(doorTapBuyerName(name), { ok: true, value: name });
+    const { res, stored } = await create({ buyerName: name });
+    assertEquals(res.status, 200);
+    assertEquals(stored?.buyer_name, name);
+  }
+});
+
+Deno.test("#4271 buyer_name is always written, so a re-price retry without a name clears a stale one", async () => {
+  // First insert without a name: the column is present and null.
+  const fresh = await create({});
+  assertEquals(fresh.res.status, 200);
+  assert(fresh.stored !== null && "buyer_name" in fresh.stored, "insert must carry buyer_name");
+  assertEquals(fresh.stored.buyer_name, null);
+  // Re-price of an intent that never reached Stripe, now without a name.
+  const retry = await create({}, true);
+  assertEquals(retry.res.status, 200);
+  assertEquals(retry.inserts.length, 0);
+  assert(retry.updates.length >= 1, "the existing intent is re-priced");
+  const row = retry.updates[0].payload as Record<string, unknown>;
+  assert("buyer_name" in row, "re-price update must overwrite buyer_name");
+  assertEquals(row.buyer_name, null);
+  assert("buyer_phone_e164" in row);
+  assertEquals(row.buyer_phone_e164, null);
 });

@@ -11,9 +11,13 @@
  *     name (an older link) sends null.
  *  3. The draft keeps the name trimmed and at most 120 characters (counted as
  *     characters, never cutting an emoji in half), the cash door sale's rule.
+ *  4. The server's 400 buyer_name_invalid keeps its code (it is a known door-tap
+ *     code, not "unknown") and the host sees "Check the buyer's name and try
+ *     again." instead of the generic failure.
  *
  * fails-on-revert: dropping `buyerName` from the create body or from the flow's
- * createIntent call fails an assertion here.
+ * createIntent call, dropping buyer_name_invalid from KNOWN_CODES, or dropping
+ * its copy from the flow's server message fails an assertion here.
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -25,7 +29,7 @@ jest.mock("../../supabase", () => ({
   },
 }));
 
-import { createDoorTapIntent, type DoorTapIntent } from "../doorTapEdge";
+import { createDoorTapIntent, DoorTapError, type DoorTapIntent } from "../doorTapEdge";
 import {
   TapToPaySaleFlow,
   type TapToPayServer,
@@ -169,5 +173,37 @@ describe("the draft keeps the name by the cash sale's rule", () => {
     expect(kept).toBeDefined();
     expect(Array.from(kept as string)).toHaveLength(120);
     expect(kept).toBe(emoji.repeat(120));
+  });
+});
+
+describe("a refused buyer name tells the host what to fix", () => {
+  const refuseName = () =>
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: {
+        message: "Edge Function returned a non-2xx status code",
+        context: { status: 400, text: async () => JSON.stringify({ error: "buyer_name_invalid" }) },
+      },
+    });
+
+  test("the 400 keeps its buyer_name_invalid code", async () => {
+    refuseName();
+    const caught = await createDoorTapIntent({ ...baseInput, buyerName: "Ada" }).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(DoorTapError);
+    expect((caught as DoorTapError).code).toBe("buyer_name_invalid");
+  });
+
+  test("the sale screen says to check the buyer's name", async () => {
+    refuseName();
+    const h = makeFlow({
+      lines: [{ ticketTypeId: "tt_1", quantity: 1 }],
+      eventDateId: null,
+      buyerPhone: null,
+      phoneCountryIso: null,
+      buyerName: "Ada",
+    });
+    h.createIntent.mockImplementation((input) => createDoorTapIntent(input));
+    await h.flow.start();
+    expect(h.flow.getState()).toEqual({ kind: "failed", message: "Check the buyer's name and try again." });
   });
 });

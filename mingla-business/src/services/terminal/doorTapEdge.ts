@@ -26,6 +26,7 @@ export type DoorTapErrorCode =
   | "payment_succeeded"
   | "offline_pin_required"
   | "buyer_phone_invalid"
+  | "buyer_name_invalid"
   | "not_found"
   | "invalid_request"
   | "server_error"
@@ -45,6 +46,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<DoorTapErrorCode>([
   "payment_succeeded",
   "offline_pin_required",
   "buyer_phone_invalid",
+  "buyer_name_invalid",
   "not_found",
   "invalid_request",
   "server_error",
