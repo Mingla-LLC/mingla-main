@@ -1136,8 +1136,19 @@
     {
       "capability_key": "staff-my-agent",
       "paths": [
+        "mingla-admin/public/.well-known/oauth-authorization-server",
+        "mingla-admin/src/components/ConnectScreen.jsx",
+        "mingla-admin/src/diagnostics/sentry.js",
+        "mingla-admin/src/hooks/useMinglaConnector.js",
         "mingla-admin/src/lib/agentConnect.js",
-        "supabase/functions/_shared/teamAgentTools.ts"
+        "mingla-admin/src/pages/AgentPage.jsx",
+        "mingla-admin/src/services/minglaConnectorService.js",
+        "mingla-admin/vercel.json",
+        "supabase/functions/_shared/minglaConnectorOAuth.ts",
+        "supabase/functions/_shared/teamAgentMcp.ts",
+        "supabase/functions/_shared/teamAgentTools.ts",
+        "supabase/functions/team-agent/index.ts",
+        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
       ]
     },
     {
@@ -1504,6 +1515,17 @@
         "mingla-business/src/utils/tapToPayBrandEligible.ts",
         "mingla-business/src/services/doorPayCodeCore.ts",
         "mingla-business/src/services/terminal/tapToPayConnectParams.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-company-tools",
+      "paths": [
+        "mingla-admin/src/hooks/useMinglaConnector.js",
+        "mingla-admin/src/pages/CompanyToolsPage.jsx",
+        "mingla-admin/src/services/minglaConnectorService.js",
+        "supabase/functions/_shared/minglaConnectorProxy.ts",
+        "supabase/functions/_shared/teamAgentMcp.ts",
+        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
       ]
     }
   ]
