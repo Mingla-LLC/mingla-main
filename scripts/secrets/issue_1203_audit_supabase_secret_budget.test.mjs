@@ -16,9 +16,11 @@ const exceptionWindowNow = Date.parse("2026-08-30T04:00:00Z");
 // credential envelope, with one current exception through 2026-11-28.
 // [TEST-MOD-APPROVED #3645] Seth approved STRIPE_RAK_PAYOUT_RELEASE_LIVE as
 // the 90th and final absolute-ceiling name; the 91st-name fixture stays fatal.
+// [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
+// 91st name and the absolute ceiling is 91; the 92nd-name fixture stays fatal.
 
-test("issue #1203 HP-4: target manifest is names-only, complete, and green at 90", () => {
-  assert.equal(targetNames.length, 90);
+test("issue #1203 HP-4: target manifest is names-only, complete, and green at 91", () => {
+  assert.equal(targetNames.length, 91);
   assert.deepEqual(validateManifest(manifest, exceptionWindowNow), []);
   const result = auditSecretBudget({
     manifest,
@@ -26,14 +28,14 @@ test("issue #1203 HP-4: target manifest is names-only, complete, and green at 90
     nowMs: exceptionWindowNow,
   });
   assert.equal(result.ok, true);
-  assert.equal(result.count, 90);
-  assert.equal(result.freeSlots, 10);
+  assert.equal(result.count, 91);
+  assert.equal(result.freeSlots, 9);
   assert.deepEqual(result.failures, []);
   assert.equal(result.warnings.length, 1);
   assert.match(result.warnings[0], /issue=2830/);
 });
 
-test("issue #1203: 90 requires a current approved exception and 91 always fails", () => {
+test("issue #1203: 91 requires a current approved exception and 92 always fails", () => {
   const extraNames = Array.from(
     { length: 2 },
     (_, index) => `SYNTHETIC_TEMPORARY_NAME_${index + 1}`,
@@ -51,9 +53,9 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
     status: "temporary",
     bundle_fields: [],
   };
-  const manifest90 = manifest;
+  const manifest91 = manifest;
   const withoutException = auditSecretBudget({
-    manifest: { ...manifest90, exceptions: [] },
+    manifest: { ...manifest91, exceptions: [] },
     liveNames: targetNames,
     nowMs: exceptionWindowNow,
   });
@@ -62,7 +64,7 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
 
   const withException = auditSecretBudget({
     manifest: {
-      ...manifest90,
+      ...manifest91,
       exceptions: [{
         issue: 1430,
         owner: "Synthetic Owner",
@@ -76,11 +78,11 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
   assert.equal(withException.ok, true);
   assert.equal(withException.warnings.length, 1);
 
-  const names91 = [
+  const names92 = [
     ...targetNames,
     extraNames[0],
   ];
-  const manifest91 = {
+  const manifest92 = {
     ...manifest,
     exceptions: [{
       issue: 1203,
@@ -94,8 +96,8 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
     ],
   };
   const hardFail = auditSecretBudget({
-    manifest: manifest91,
-    liveNames: names91,
+    manifest: manifest92,
+    liveNames: names92,
     nowMs: exceptionWindowNow,
   });
   assert.equal(hardFail.ok, false);

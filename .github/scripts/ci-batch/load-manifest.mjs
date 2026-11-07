@@ -178,8 +178,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
-// #4270 W7: register the admin Brand group inbox suites.
-export const BOOTSTRAP_SHA256 = "56e7c04d79f128ddfe61baaf008622edaa6f9a560930595367514cf5ff602314";
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4270 W7: register the admin Brand group inbox suites; re-sealed after merging origin/main (#4312, 26c23ff17b).
+export const BOOTSTRAP_SHA256 = "4cf1aee4774e995fd0b878603ad2cfc5809ad639e4491ff7d51f1e100b96d4f6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
