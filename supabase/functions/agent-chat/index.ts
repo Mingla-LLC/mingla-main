@@ -4285,6 +4285,25 @@ ${boundedAgentContext}
           userClient,
         );
       } catch (err: unknown) {
+        if (
+          err instanceof ToolError && OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
+        ) {
+          // #4304: a proposal canonicaliser's question (e.g. a discount code
+          // that can't fit) is said in plain words before any card.
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: err.message,
+            classification: "owner_refusal",
+            startedAt: turnStartedAt,
+          });
+        }
         if (err instanceof ToolError) {
           return errorResponse(
             err.code === "INVALID_ARGS" ? 400 : 503,
