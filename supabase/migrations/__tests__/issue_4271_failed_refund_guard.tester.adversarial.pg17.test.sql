@@ -7,7 +7,7 @@
 -- leaves behind and whether stuck rows are still counted, rather than the
 -- single host happy path.
 --
--- MINGLA-INVARIANT: I-4271-RESUME-NEVER-DOUBLES | issue #4271 | failing a stuck ticket refund never lets the same tickets be refunded twice: a refund committed 'failed' can never later reach Stripe or settle, and a stuck pending refund keeps holding its tickets until it is settled or provably failed.
+-- MINGLA-INVARIANT: I-4271-FAILED-REFUND-NEVER-DOUBLES | issue #4271 | failing a stuck ticket refund never lets the same tickets be refunded twice: a refund committed 'failed' can never later reach Stripe or settle, and a stuck pending refund keeps holding its tickets until it is settled or provably failed.
 --
 -- Rework (the conductor dropped the resume feature, PR #4303):
 --   G1  rewritten: the resume helpers are gone; the new failed-commit and
