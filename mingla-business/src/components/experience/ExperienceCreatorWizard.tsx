@@ -895,7 +895,8 @@ export const ExperienceCreatorWizard: React.FC<
       return false;
     }
     if (isFree) return true;
-    if (pricingMode === "whole") return resolvedTotalMajor > 0;
+    // #3645 — same rule as the server: a price that rounds to 0 minor units is no price.
+    if (pricingMode === "whole") return Math.round(resolvedTotalMajor * 100) > 0;
     // #3645 — per-stop: an EMPTY price means that stop is free (same as 0), so
     // only something typed that is not a valid amount stops Continue.
     return stops.every((s) => stopPriceEntryIsValid(s.priceMajor));

@@ -232,6 +232,10 @@ export const resolveProviderNeutralPaidPublishGuardCopy = (
   return reason === null ? null : PROVIDER_NEUTRAL_PAID_PUBLISH_COPY[reason];
 };
 
+/** Issue #3645 — words for the server's paid_ticket_price_required refusal. */
+export const PAID_TICKET_PRICE_REQUIRED_COPY =
+  "A paid ticket needs a price. Set a price on each paid ticket, or mark it free.";
+
 /**
  * issue #2333 S4b — the LAST-RESORT copy for a server guard NOTHING above
  * recognises. Pinned by DRAFT invariant
@@ -255,10 +259,6 @@ export const resolveProviderNeutralPaidPublishGuardCopy = (
  *     `console.error`, which is inside this function so it cannot be forgotten at a
  *     call site.
  */
-/** Issue #3645 — words for the server's paid_ticket_price_required refusal. */
-export const PAID_TICKET_PRICE_REQUIRED_COPY =
-  "A paid ticket needs a price. Set a price on each paid ticket, or mark it free.";
-
 const UNMAPPED_GUARD_TOKEN_SHAPE = /^[a-z][a-z0-9_]{2,63}$/;
 
 export const describeUnmappedPublishGuard = (

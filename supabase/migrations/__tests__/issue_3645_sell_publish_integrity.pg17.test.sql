@@ -8,7 +8,7 @@
 -- MINGLA-INVARIANT: I-3645-EXPERIENCE-PUBLISH-ONE-UPDATE | issue #3645 | biz_publish_experience publishes an experience in the same UPDATE that writes its currency, and its tickets carry the currency the row ends up with.
 -- MINGLA-INVARIANT: I-3281-CANCELLED-DATE-NOT-SOLD | issue #3281 | cancelling a date revokes open checkouts on the event; a cancelled date is never authorised, checked out, counted as upcoming or auto-picked.
 --
--- Red before green: on main's bodies, T1, T2, T3, T4, T6, T7, T8 and T9 fail.
+-- Red before green: on main's bodies, T1, T2, T3, T4, T6, T7, T8, T9 and T10 fail.
 
 BEGIN;
 
@@ -108,6 +108,17 @@ BEGIN
     RAISE EXCEPTION 'T1 FAIL: price 0 not free: %', coalesce(v_res, 'published');
   END IF;
 
+  -- 0.0049 rounds to 0 too; priceMajor wins over priceGbp, so priceMajor 0 is no price.
+  v_res := pg_temp.publish_event('36452b00-0000-4000-8000-0000000000e1', pg_temp.event_payload(false, 0.0049));
+  IF v_res IS NULL OR v_res NOT LIKE 'paid_ticket_price_required%' THEN
+    RAISE EXCEPTION 'T1 FAIL: 0.0049: %', coalesce(v_res, 'published');
+  END IF;
+  v_res := pg_temp.publish_event('36452b00-0000-4000-8000-0000000000e1',
+    jsonb_set(pg_temp.event_payload(false, 25), '{theme,business_draft,tickets,0,priceMajor}', '0'));
+  IF v_res IS NULL OR v_res NOT LIKE 'paid_ticket_price_required%' THEN
+    RAISE EXCEPTION 'T1 FAIL: priceMajor 0 over priceGbp 25: %', coalesce(v_res, 'published');
+  END IF;
+
   -- Unchanged: a free ticket and a priced paid ticket publish.
   v_res := pg_temp.publish_event('36452b00-0000-4000-8000-0000000000e1', pg_temp.event_payload(true, NULL));
   IF v_res IS NOT NULL THEN RAISE EXCEPTION 'T1 FAIL: free ticket refused: %', v_res; END IF;
@@ -163,6 +174,19 @@ BEGIN
     RAISE EXCEPTION 'T3 FAIL: the refused edit changed the ticket';
   END IF;
 
+  -- An edit that leaves out the price is refused too, and changes nothing.
+  v_err := NULL;
+  BEGIN
+    PERFORM public.biz_update_live_experience(v_event,
+      pg_temp.exp_payload(25000, 'NGN') - 'whole_price_cents', 'Correcting the ticket price for guests');
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  IF v_err IS DISTINCT FROM 'experience_price_invalid'
+     OR NOT EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL
+                     AND price_cents = 25000 AND NOT is_free) THEN
+    RAISE EXCEPTION 'T3 FAIL: an edit without a price (%)', coalesce(v_err, 'accepted');
+  END IF;
+
   -- Marking it free is still allowed.
   PERFORM public.biz_update_live_experience(v_event, pg_temp.exp_payload(0, 'NGN'), 'Making this experience free for everyone');
   IF NOT EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL AND is_free) THEN
@@ -190,6 +214,7 @@ DECLARE
   v_brand uuid := '36452b00-0000-4000-8000-0000000000b4';
   v_event uuid;
   v_move record;
+  v_reach bigint;
 BEGIN
   PERFORM pg_temp.brand(v_brand, 'NGN');
   PERFORM pg_temp.as_host();
@@ -220,11 +245,42 @@ BEGIN
     RAISE EXCEPTION 'T4 FAIL: not published with a master date';
   END IF;
 
-  -- A draft save still stays a draft.
+  IF (SELECT theme #>> '{experience_meta,next_occurrence_at}' FROM public.events WHERE id = v_event) IS NULL
+     OR (SELECT count(*) FROM public.event_dates WHERE event_id = v_event AND is_master) <> 1 THEN
+    RAISE EXCEPTION 'T4 FAIL: next occurrence or master date missing after publish';
+  END IF;
+
+  -- Published again: published_at is kept, tickets stay in the stored currency.
+  UPDATE public.events SET published_at = now() - interval '3 days' WHERE id = v_event;
+  PERFORM public.biz_publish_experience(v_event, pg_temp.exp_payload(25000, 'NGN'), true);
+  IF (SELECT published_at FROM public.events WHERE id = v_event) > now() - interval '2 days'
+     OR (SELECT count(*) FROM public.event_dates WHERE event_id = v_event AND is_master) <> 1 THEN
+    RAISE EXCEPTION 'T4 FAIL: a second publish moved published_at or duplicated the master date';
+  END IF;
+
+  -- The publish sends a currency the brand does not sell in: the row is
+  -- stamped with the brand's currency, and so are its tickets.
   v_event := (public.biz_create_experience(v_brand, pg_temp.exp_payload(25000, 'NGN'), false)->'event'->>'id')::uuid;
+  PERFORM public.biz_publish_experience(v_event, pg_temp.exp_payload(25000, 'USD'), true);
+  IF (SELECT currency FROM public.events WHERE id = v_event) IS DISTINCT FROM 'NGN'
+     OR EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL
+                 AND currency IS DISTINCT FROM 'NGN') THEN
+    RAISE EXCEPTION 'T4 FAIL: tickets kept the sent currency: event %, tickets %',
+      (SELECT currency FROM public.events WHERE id = v_event),
+      (SELECT string_agg(DISTINCT currency::text, ',') FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL);
+  END IF;
+
+  -- A draft save still stays a draft, and names no status column: the
+  -- brand's reach snapshot (an AFTER UPDATE OF status trigger) is not touched.
+  v_event := (public.biz_create_experience(v_brand, pg_temp.exp_payload(25000, 'NGN'), false)->'event'->>'id')::uuid;
+  v_reach := (SELECT snapshot_version FROM public.brand_reach_refresh_state WHERE brand_id = v_brand);
   PERFORM public.biz_publish_experience(v_event, pg_temp.exp_payload(26000, 'NGN'), false);
   IF (SELECT status FROM public.events WHERE id = v_event) <> 'draft' THEN
     RAISE EXCEPTION 'T4 FAIL: a draft save published';
+  END IF;
+  IF (SELECT snapshot_version FROM public.brand_reach_refresh_state WHERE brand_id = v_brand)
+     IS DISTINCT FROM v_reach THEN
+    RAISE EXCEPTION 'T4 FAIL: a draft save marked the brand reach dirty';
   END IF;
   RAISE NOTICE 'ISSUE-3645-2B T4 PASS: one update moves currency and status; tickets follow the stored currency';
 END $t4$;
@@ -298,6 +354,7 @@ DECLARE
   v_status text;
   v_open uuid[] := '{}';
   v_done uuid;
+  v_other uuid;
   v_epoch bigint;
 BEGIN
   PERFORM pg_temp.brand(v_brand, 'NGN');
@@ -307,6 +364,7 @@ BEGIN
     v_open := v_open || pg_temp.session(v_event, v_brand, v_d1, v_status, v_status);
   END LOOP;
   v_done := pg_temp.session(v_event, v_brand, v_d1, 'expired', 'expired');
+  v_other := pg_temp.session(v_event, v_brand, v_d2, 'processing_payment', 'other-date');
 
   -- A preview revokes nothing.
   PERFORM pg_temp.as_host();
@@ -324,6 +382,13 @@ BEGIN
   IF (SELECT count(*) FROM public.checkout_sale_revocation_outbox
        WHERE subject_type = 'ticket_checkout_session' AND subject_id = ANY(v_open)) <> 4 THEN
     RAISE EXCEPTION 'T6 FAIL: revocations were not queued';
+  END IF;
+  -- Event-wide, as a date's time change is: a checkout on the other date
+  -- re-quotes (or, if already charged, is refunded by the late reversal).
+  IF (SELECT revoked_at FROM public.ticket_checkout_sessions WHERE id = v_other) IS NULL
+     OR NOT EXISTS (SELECT 1 FROM public.checkout_sale_revocation_outbox
+                     WHERE subject_type = 'ticket_checkout_session' AND subject_id = v_other) THEN
+    RAISE EXCEPTION 'T6 FAIL: the open checkout on the other date was not revoked';
   END IF;
   IF (SELECT revoked_at FROM public.ticket_checkout_sessions WHERE id = v_done) IS NOT NULL THEN
     RAISE EXCEPTION 'T6 FAIL: a finished checkout was touched';
@@ -364,6 +429,12 @@ BEGIN
   IF public.issue_1930_ticket_session_authorized(v_on_cancelled, v_event) THEN
     RAISE EXCEPTION 'T7 FAIL: a checkout for the cancelled date is authorised';
   END IF;
+  -- Anchored on the active date, but the chosen dates include the cancelled one.
+  INSERT INTO public.ticket_checkout_session_event_dates(checkout_session_id, event_date_id)
+  VALUES (v_on_active, v_d1);
+  IF public.issue_1930_ticket_session_authorized(v_on_active, v_event) THEN
+    RAISE EXCEPTION 'T7 FAIL: a checkout whose chosen dates include the cancelled one is authorised';
+  END IF;
   -- Only the anchor names the date: still refused.
   DELETE FROM public.ticket_checkout_session_event_dates WHERE checkout_session_id = v_on_cancelled;
   IF public.issue_1930_ticket_session_authorized(v_on_cancelled, v_event) THEN
@@ -383,6 +454,15 @@ BEGIN
   END;
   IF v_err IS DISTINCT FROM 'occurrence_not_available' THEN
     RAISE EXCEPTION 'T8 FAIL: a new checkout for the cancelled date (%)', coalesce(v_err, 'accepted');
+  END IF;
+  v_err := NULL;
+  BEGIN
+    PERFORM public.issue_3872_checkout_day_context('36452b00-0000-4000-8000-0000000000e6',
+      ARRAY['36452b00-0000-4000-8000-00000000e6d2'::uuid, '36452b00-0000-4000-8000-00000000e6d1'::uuid], NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  IF v_err IS DISTINCT FROM 'occurrence_not_available' THEN
+    RAISE EXCEPTION 'T8 FAIL: a choice including the cancelled date (%)', coalesce(v_err, 'accepted');
   END IF;
   PERFORM public.issue_3872_checkout_day_context('36452b00-0000-4000-8000-0000000000e6',
     ARRAY['36452b00-0000-4000-8000-00000000e6d2'::uuid], NULL, NULL);
@@ -412,5 +492,41 @@ BEGIN
   END IF;
   RAISE NOTICE 'ISSUE-3645-2B T9 PASS: a cancelled date is not upcoming and is never auto-picked';
 END $t9$;
+
+-- ─── T10  every upcoming date cancelled ─────────────────────────────────────
+DO $t10$
+DECLARE
+  v_brand uuid := '36452b00-0000-4000-8000-0000000000ba';
+  v_rec uuid := '36452b00-0000-4000-8000-0000000000ea';
+  v_multi uuid := '36452b00-0000-4000-8000-0000000000eb';
+  v_choice jsonb;
+  v_ev uuid;
+  v_err text;
+BEGIN
+  PERFORM pg_temp.brand(v_brand, 'NGN');
+  PERFORM pg_temp.dated_event(v_rec, v_brand, true);
+  PERFORM pg_temp.dated_event(v_multi, v_brand, false);
+  PERFORM pg_temp.as_host();
+  FOREACH v_ev IN ARRAY ARRAY[v_rec, v_multi] LOOP
+    PERFORM public.business_cancel_event_date(v_ev,
+      ('36452b00-0000-4000-8000-' || right(v_ev::text, 10) || 'd1')::uuid, 'Venue closed for repairs', false);
+    PERFORM public.business_cancel_event_date(v_ev,
+      ('36452b00-0000-4000-8000-' || right(v_ev::text, 10) || 'd2')::uuid, 'Venue closed for repairs', false);
+    v_choice := public.issue_3313_event_day_choice(v_ev);
+    IF (v_choice->>'upcomingCount')::integer <> 0 OR NOT (v_choice->>'requiresChoice')::boolean
+       OR v_choice->>'soleOccurrenceId' IS NOT NULL THEN
+      RAISE EXCEPTION 'T10 FAIL: day choice with every date cancelled: %', v_choice;
+    END IF;
+    v_err := NULL;
+    BEGIN
+      PERFORM public.issue_3872_checkout_day_context(v_ev, NULL, NULL, NULL);
+    EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+    END;
+    IF v_err IS DISTINCT FROM 'occurrence_not_available' THEN
+      RAISE EXCEPTION 'T10 FAIL: a dateless checkout with every date cancelled (%)', coalesce(v_err, 'accepted');
+    END IF;
+  END LOOP;
+  RAISE NOTICE 'ISSUE-3645-2B T10 PASS: with every upcoming date cancelled nothing can be checked out, and the buyer is told why';
+END $t10$;
 
 ROLLBACK;

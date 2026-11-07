@@ -1776,7 +1776,8 @@ BEGIN
   SELECT * INTO v_existing
   FROM public.events
   WHERE id = p_event_id
-    AND deleted_at IS NULL;
+    AND deleted_at IS NULL
+  FOR UPDATE;  -- issue #3645: serialise publishes; event row before event_dates
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'experience_not_found';
@@ -2161,7 +2162,7 @@ BEGIN
   UPDATE public.events SET
     title             = v_title,
     description       = v_description,
-    currency          = v_currency,
+    currency          = CASE WHEN p_publish THEN currency ELSE v_currency END,  -- issue #3645: see step 8b
     timezone          = v_timezone,
     location_mode     = v_location_mode,
     pricing_mode      = v_pricing_mode,
@@ -2182,14 +2183,11 @@ BEGIN
     pass_tax          = CASE WHEN (p_payload ? 'pass_tax') THEN (p_payload->>'pass_tax')::boolean ELSE pass_tax END,
     pass_mingla_fee   = CASE WHEN (p_payload ? 'pass_mingla_fee') THEN (p_payload->>'pass_mingla_fee')::boolean ELSE pass_mingla_fee END,
     pass_service_fee  = CASE WHEN (p_payload ? 'pass_service_fee') THEN (p_payload->>'pass_service_fee')::boolean ELSE pass_service_fee END,
-    -- issue #3645: on publish, currency and status move in ONE update, so the
-    -- status triggers (brand-currency stamp, draft-currency stop) see the
-    -- currency this publish writes. event_dates were materialised above, so
-    -- biz_enforce_event_has_master_date (ORCH-0792, BUG 5) passes. A draft save
-    -- leaves status, visibility and published_at unchanged.
-    status            = CASE WHEN p_publish THEN 'scheduled' ELSE status END,
-    visibility        = CASE WHEN p_publish THEN 'public' ELSE visibility END,
-    published_at      = CASE WHEN p_publish THEN COALESCE(published_at, v_now) ELSE published_at END,
+    -- BUG 5 ROOT CAUSE (ORCH-0792) — biz_enforce_event_has_master_date needs
+    -- a master event_date before the row leaves draft. issue #3645: dates are
+    -- now materialised above, and a publish writes currency together with
+    -- status in step 8b below. This UPDATE names neither status nor (on a
+    -- publish) currency, so a draft save fires no status-column trigger.
     theme             = jsonb_set(
                           jsonb_set(
                             COALESCE(theme, '{}'::jsonb),
@@ -2204,10 +2202,19 @@ BEGIN
     updated_at        = v_now
   WHERE id = p_event_id;
 
-  -- issue #3645: the brand-currency trigger stamps the brand's currency on
-  -- the way out of draft (or NULL for a free-only publish on a brand with no
-  -- currency). Tickets follow what was stored, not what was sent.
+  -- 8b. issue #3645 — PUBLISH: currency and status in ONE update, so the
+  -- status triggers (brand-currency stamp, draft-currency stop) see the
+  -- currency this publish writes. The brand-currency trigger may stamp the
+  -- brand's currency (or NULL for a free-only publish on a brand with none);
+  -- tickets follow what was stored, not what was sent.
   IF p_publish THEN
+    UPDATE public.events
+    SET currency     = v_currency,
+        status       = 'scheduled',
+        visibility   = 'public',
+        published_at = COALESCE(published_at, v_now),
+        updated_at   = v_now
+    WHERE id = p_event_id;
     SELECT e.currency INTO v_currency FROM public.events e WHERE e.id = p_event_id;
   END IF;
 
@@ -2684,6 +2691,13 @@ BEGIN
   IF v_day_count=0 AND (v_day_choice->>'soleOccurrenceId') IS NOT NULL THEN
     v_day_ids:=ARRAY[(v_day_choice->>'soleOccurrenceId')::uuid]; v_day_count:=1;
   END IF;
+  -- issue #3281: every upcoming date is cancelled. Nothing can be sold, and
+  -- asking the buyer to choose a date that does not exist would mislead.
+  IF v_day_count=0 AND COALESCE((v_day_choice->>'upcomingCount')::integer,0)=0
+     AND EXISTS(SELECT 1 FROM public.event_dates d WHERE d.event_id=p_event_id
+                  AND d.end_at>now() AND d.status<>'active') THEN
+    RAISE EXCEPTION 'occurrence_not_available';
+  END IF;
   IF v_day_count=0 AND COALESCE((v_day_choice->>'requiresChoice')::boolean,false) THEN
     RAISE EXCEPTION 'event_date_choice_required';
   END IF;
@@ -2728,6 +2742,7 @@ DECLARE
   v_upcoming  integer;
   v_sole      uuid;
   v_scope     text;
+  v_cancelled integer;  -- issue #3281
 BEGIN
   SELECT e.event_type, COALESCE(e.is_multi_date, false), COALESCE(e.is_recurring, false),
          COALESCE(e.capacity_scope, 'total')
@@ -2745,10 +2760,17 @@ BEGIN
     FROM public.event_dates d
    WHERE d.event_id = p_event_id AND d.end_at > now()
      AND d.status = 'active';  -- issue #3281
+  -- issue #3281: upcoming dates that were cancelled. When they are all that
+  -- is left, an event still requires a date to be chosen (and none can be),
+  -- so no caller falls back to selling without a date.
+  SELECT count(*)::integer INTO v_cancelled
+    FROM public.event_dates d
+   WHERE d.event_id = p_event_id AND d.end_at > now() AND d.status <> 'active';
 
   RETURN jsonb_build_object(
     'requiresChoice',
-      v_type = 'event' AND (v_multi OR (v_recurring AND v_upcoming > 1)),
+      v_type = 'event' AND (v_multi OR (v_recurring AND v_upcoming > 1)
+        OR (v_upcoming = 0 AND v_cancelled > 0)),  -- issue #3281
     'soleOccurrenceId',
       CASE WHEN v_type = 'event' AND v_recurring AND NOT v_multi AND v_upcoming = 1
         THEN v_sole END,
