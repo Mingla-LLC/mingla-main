@@ -160,7 +160,13 @@
         "app-mobile/src/components/expandedCard/ticketDayScope.ts",
         "mingla-business/src/hooks/useTicketLinkUnlock.ts",
         "mingla-business/src/services/ticketLinkPublicTypes.ts",
-        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql"
+        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql",
+        "app-mobile/src/constants/consentDisclosure.ts",
+        "mingla-business/app/checkout/[eventId]/confirm.tsx",
+        "mingla-business/src/constants/consentDisclosure.ts",
+        "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+        "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql"
       ]
     },
     {
@@ -170,7 +176,12 @@
         "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
         "mingla-business/src/components/experience/ExperienceStopsStep.tsx",
         "supabase/migrations/20280305003355_issue_3355_ari_trip_create_details.sql",
-        "supabase/migrations/20280312003355_issue_3355_trip_seed_truth.sql"
+        "supabase/migrations/20280312003355_issue_3355_trip_seed_truth.sql",
+        "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
+        "mingla-business/src/constants/consentDisclosure.ts"
       ]
     },
     {
@@ -965,7 +976,11 @@
         "supabase/functions/marketing-send/index.ts",
         "supabase/functions/marketing-send/pushCampaign.ts",
         "supabase/migrations/20280401043682_issue_3682_push_campaigns.sql",
-        "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql"
+        "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql",
+        "mingla-business/src/utils/marketing/smsSendWindow.ts",
+        "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
+        "supabase/migrations/20280422014273_issue_4273_quote_matches_send_and_honest_count.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql"
       ]
     },
     {
