@@ -1,6 +1,9 @@
 // Issue #4276 U1: the Pipeline tab of Place pool, laid out as the approved design
 // (pipeline-design/project/Main.dc.html), in the admin's tokens.
 //
+//   Live runs   every active city run as a card (heartbeat, stage track, progress,
+//               spend, actions) and the runs finished in the last 7 days (#4276). Its
+//               read (useLiveCityRuns) also feeds the city rows' chips and the Run plan.
 //   Health      providers as pills, database against its 7 GB pause line and storage
 //               against its 85 GB guard; the place list refresh under them.
 //   Spend       recorded spend to date, by provider. Serper stays unpriced until a
@@ -23,6 +26,7 @@ import { createPortal } from "react-dom";
 import { ArrowDown, Plus, RefreshCw, X } from "lucide-react";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
+import { Badge } from "../ui/Badge";
 import { Spinner } from "../ui/Spinner";
 import { ModalBody, ModalFooter } from "../ui/Modal";
 // #4276: modals here are drawn on document.body, above the sticky table and Run plan.
@@ -61,12 +65,16 @@ import {
   matrixFilter,
   matrixTotals,
   perThousand,
+  ACTIVE_RUN_STATUSES,
+  liveChipFor,
   ratePerRequestFrom,
   runStatusWord,
   sharePct,
   spendTotalsLine,
 } from "../../lib/cityPipeline";
 import { CityRunPanel } from "./CityRunPanel";
+import { LiveRunsSection } from "./LiveRunsSection";
+import { useLiveCityRuns } from "../../hooks/useLiveCityRuns";
 import { CityBoxPanel } from "./CityBoxPanel";
 import { ScoringTools } from "./ScoringTools";
 import { ActiveRunsControlTower } from "../placeIntelligenceTrial/ActiveRunsControlTower";
@@ -411,6 +419,28 @@ export function PipelineSection() {
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // #4276 Live runs: one read shared by the cards, the city rows' chips and the Run plan.
+  const live = useLiveCityRuns();
+  const [highlightRunId, setHighlightRunId] = useState(null);
+  const highlightTimer = useRef(null);
+  useEffect(() => () => clearTimeout(highlightTimer.current), []);
+  const liveByCity = useMemo(() => {
+    const by = {};
+    for (const r of live.runs) {
+      if (!ACTIVE_RUN_STATUSES.includes(r.status)) continue;
+      const have = by[r.city_id];
+      if (!have || Date.parse(r.created_at ?? 0) > Date.parse(have.created_at ?? 0)) by[r.city_id] = r;
+    }
+    return by;
+  }, [live.runs]);
+  // The live read is trusted for the Run plan only while it is answering.
+  const liveRuns = live.updatedAt && !live.error ? live.runs : null;
+  const showRunCard = (runId) => {
+    document.getElementById(`live-run-${runId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightRunId(runId);
+    clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightRunId(null), 2500);
+  };
   // The city setup opens under its row but is as wide as the visible part of the table,
   // so its two panels are never cut off by the table's sideways scroll.
   const scrollRef = useRef(null);
@@ -509,10 +539,17 @@ export function PipelineSection() {
 
   // While the table loads the chips show "–"; when it failed they show no count at all.
   const filterOptions = MATRIX_FILTERS.map((f) => ({ ...f, count: filterChipCount(filterCounts[f.id], tableState) }));
-  const reloadAll = () => { load(); loadHealth(); loadSpend(); };
+  const reloadAll = () => { load(); loadHealth(); loadSpend(); live.refresh(); };
+  // "Open run" on a card: that city's Run plan, showing its run.
+  const openRun = (run) => {
+    setSelectedId(run.city_id);
+    setPicked([]);
+    requestAnimationFrame(() => planEl?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   return (
     <section aria-label="Pipeline" className="flex min-w-0 flex-col gap-6">
+      <LiveRunsSection live={live} serperRate={health?.serper_usd_per_request ?? null} highlightRunId={highlightRunId} onOpen={openRun} onChanged={load} />
       <HealthCard health={health} error={healthError} onReload={loadHealth} />
       <SpendStrip spend={spend} error={spendError} />
 
@@ -598,7 +635,9 @@ export function PipelineSection() {
                     {shown.map((row) => {
                       const { city: c, cells, status } = row;
                       const run = runs[c.city_id];
-                      const word = run ? runStatusWord(run.status) : null;
+                      const chip = liveChipFor(liveByCity[c.city_id]);
+                      // A finished run keeps its quiet word; an active one gets the live chip.
+                      const word = run && !chip && !ACTIVE_RUN_STATUSES.includes(run.status) ? runStatusWord(run.status) : null;
                       const isSel = c.city_id === selectedId;
                       const size = boxSizeText(boxes[c.city_id]);
                       return (
@@ -610,6 +649,12 @@ export function PipelineSection() {
                                 <b className="block w-full break-words text-[12px] font-semibold leading-[15px] text-[var(--color-text-primary)]">{c.city_name}</b>
                                 <span className="text-[10.5px] leading-[13px] text-[var(--color-text-secondary)]">{status}{word ? ` · run ${word.label.toLowerCase()}` : ""}</span>
                               </button>
+                              {chip && (
+                                <button type="button" className="ml-1 mb-1 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+                                  aria-label={`${c.city_name} run: ${chip.label}. Show its live card`} onClick={() => showRunCard(chip.runId)}>
+                                  <Badge variant={chip.variant} dot className="max-w-full truncate text-[10.5px]">{chip.label}</Badge>
+                                </button>
+                              )}
                             </th>
                             {cells.map((cell, i) => {
                               const shownCell = cell.id === "box" ? boxCell(cell, size) : cell;
@@ -661,7 +706,8 @@ export function PipelineSection() {
 
         <aside ref={setPlanEl} className="flex min-w-0 scroll-mt-4 flex-col gap-4 min-[1400px]:sticky min-[1400px]:top-4" aria-label="Run plan">
           {selected ? (
-            <CityRunPanel city={selected} latestRun={runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load} picks={picks}
+            <CityRunPanel city={selected} latestRun={liveByCity[selected.city_id] ?? runs[selected.city_id] ?? null} serperRate={health?.serper_usd_per_request ?? null} onChanged={load} picks={picks}
+              liveRuns={liveRuns}
               footer={<SerperRate health={health} onSaved={() => { loadHealth(); loadSpend(); }} />} />
           ) : (
             <SectionCard title="Run plan">
