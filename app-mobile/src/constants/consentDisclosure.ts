@@ -44,6 +44,14 @@ export const PURCHASE_TERMS_LABEL_PRIVACY = "Privacy Policy" as const;
 export const PURCHASE_TERMS_LABEL_SUFFIX = "." as const;
 
 /**
+ * #4273 (Seth, 2026-11-06) — buying opts the buyer in. Same words as buyer
+ * web (mingla-business/src/constants/consentDisclosure.ts); a parity test pins
+ * the two together. The grant is recorded at order ingest.
+ */
+export const CHECKOUT_MARKETING_NOTICE =
+  "By buying, you'll get updates from this brand and Mingla by email and text. You can unsubscribe at any time." as const;
+
+/**
  * Onboarding phone-consent audit pin. The visible checkbox is still the
  * `onboarding:phone.consent_*` i18n strings (no Follow clause). Keep this
  * pre-follow §1b + version so the consent_records row matches what the user

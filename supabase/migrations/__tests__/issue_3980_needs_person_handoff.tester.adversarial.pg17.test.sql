@@ -7,7 +7,8 @@
 --
 -- What it proves (each check is recorded and reported together):
 --   X-HANDOFF  an agent on a card its person owns can set it to Needs a
---              person with each reason; the card then waits in To review,
+--              person with each reason; the card then waits in To do with
+--              its Send, Spend or Publish tag (#4270) and in Needs your OK,
 --              the agent log says it needs a person, and its owners and
 --              watchers (not the actor) are told; a person can do the same
 --              from the board; a reason outside the four is still refused
@@ -258,14 +259,14 @@ begin
     v := pg_temp.tz_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"person","person_reason":"%s"}}', v_card, pg_temp.tz_rev(v_card), r));
     perform pg_temp.tz_check('X-HANDOFF', 'an agent hands its card to a person with the reason ' || r,
       coalesce(pg_temp.tz_get(v, 'result', 'card', 'status') || '/' || pg_temp.tz_get(v, 'result', 'card', 'person_reason'), pg_temp.tz_get(v, 'error', 'message')),
-      'person/' || r);
+      'todo/' || r); -- #4270: the legacy status person lands as To do with the tag
     perform pg_temp.tz_check('X-HANDOFF', 'the agent log says card ' || r || ' needs a person',
       (select count(*) from public.ops_agent_log where card_id = v_card::uuid and action = 'needs_person')::text, '1');
     perform pg_temp.tz_check('X-HANDOFF', 'the watcher is told about card ' || r || ', the acting person is not',
       (select count(*) from public.team_mentions m join tz_people p on p.id = m.target_user_id
-        where m.source_kind = 'work_card' and p.who = 'admin' and m.body_excerpt like '%needs a person%' and m.body_excerpt like '%' || r || '%')::text
+        where m.source_kind = 'work_card' and p.who = 'admin' and m.body_excerpt like '%Z3980 Hand to a person ' || r || ' · %')::text -- #4270 rework: the tag's words
       || '/' || (select count(*) from public.team_mentions m join tz_people p on p.id = m.target_user_id
-        where m.source_kind = 'work_card' and p.who = 'growth' and m.body_excerpt like '%Z3980 Hand to a person ' || r || '%needs a person%')::text,
+        where m.source_kind = 'work_card' and p.who = 'growth' and m.body_excerpt like '%Z3980 Hand to a person ' || r || ' · %')::text,
       '1/0');
   end loop;
   v := pg_temp.tz_person('admin', 'select public.ops_review_list()::text');
@@ -276,7 +277,7 @@ begin
   v_card := pg_temp.tz_card('growth2', 'Z3980 Person hands it over', '["hal.z3980@test.local"]');
   v := pg_temp.tz_person('growth2', format($q$select public.ops_work_update(%L, '{"status":"person","person_reason":"publish"}'::jsonb, %s)::text$q$, v_card, pg_temp.tz_rev(v_card)));
   perform pg_temp.tz_check('X-HANDOFF', 'a person can set Needs a person from the board',
-    coalesce(pg_temp.tz_get(v, 'card', 'status') || '/' || pg_temp.tz_get(v, 'card', 'person_reason'), v), 'person/publish');
+    coalesce(pg_temp.tz_get(v, 'card', 'status') || '/' || pg_temp.tz_get(v, 'card', 'person_reason'), v), 'todo/publish');
 
   v_card := pg_temp.tz_card('growth', 'Z3980 Bad reason', '["gia.z3980@test.local"]');
   v := pg_temp.tz_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"person","person_reason":"approve"}}', v_card, pg_temp.tz_rev(v_card)));

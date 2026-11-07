@@ -28,6 +28,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -278,7 +280,7 @@ begin
   perform public.ops_auto_steps(null, null);
   select id into v_card from public.ops_work_cards where auto_key = 'series:39880000-0000-4000-d100-000000000002' and status <> 'done';
   perform pg_temp.w3_check('R-D2', 'the weekly series has its open rolling card', (v_card is not null)::text, 'true');
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39880000-0000-4000-c100-000000000002', 'id', '39880000-0000-4000-d100-000000000002',
                             'repeats', 'none', 'expected_on', (pg_temp.w3r_today() + 60)::text), 'w3r-d2-none-0001'));
   perform pg_temp.w3_check('R-D2', 'a person switches the series to "Does not repeat"', pg_temp.w3_j(v)->>'status', 'updated');
@@ -432,7 +434,7 @@ begin
   update public.event_dates set start_at = start_at + interval '5 days', end_at = end_at + interval '5 days'
    where event_id = pg_temp.w3_id('mv_p')::uuid;
   -- A person saves a promised date on the East host only.
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39880000-0000-4000-c100-000000000005', 'title', 'W3R East Later', 'event_type', 'event',
                             'expected_on', (pg_temp.w3r_today() + 120)::text, 'repeats', 'none'), 'w3r-mv-east-0001'));
   perform pg_temp.w3_check('R-MOVE', 'the save says automatic steps were on', pg_temp.w3_j(v)->>'auto_steps', 'true');
@@ -452,7 +454,7 @@ begin
            public.ops_day_words(pg_temp.w3r_today() + 45 - 7)));
   -- With automatic steps off, the save says so and adds nothing.
   update public.ops_settings set value = 'false'::jsonb where key = 'auto_steps';
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39880000-0000-4000-c100-000000000005', 'title', 'W3R East Off', 'event_type', 'event',
                             'expected_on', (pg_temp.w3r_today() + 130)::text, 'repeats', 'none'), 'w3r-mv-east-0002'));
   perform pg_temp.w3_check('R-MOVE', 'with automatic steps off the save says they were off and made no steps',

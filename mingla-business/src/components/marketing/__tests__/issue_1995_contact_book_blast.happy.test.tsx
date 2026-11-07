@@ -551,7 +551,7 @@ test("Book confirmation renders a truthful post-confirm suppression count", () =
       (node) =>
         typeof node.props.children === "string" &&
         node.props.children.includes(
-          "1 recipient was safely skipped because they could no longer receive this campaign through the selected channel after confirmation",
+          "1 person couldn't be reached.",
         ),
     ).length,
   ).toBeGreaterThan(0);

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4270",
+  "suite": {
+    "id": "issue-4270-host-card-tester-adversarial",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**",
+      "supabase/migrations/**",
+      "supabase/functions/**"
+    ],
+    "steps": [
+      {
+        "name": "Host card adversarial: Add work item edges, kinds and Live now, Brand groups address and Back, avatar and To do rows rendered, the #3980 test copy of the old promised-event save stays in pg_temp test transactions",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4270_host_card.tester.adversarial.test.js",
+        "commandId": "assert:issue-4270-host-card-tester-adversarial:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4270_host_card.tester.adversarial.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4270",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4270_host_card.tester.adversarial.test.js"
+    ],
+    "externalReferenceFiles": [
+      "supabase/migrations/__tests__/issue_4270_promised_event_before_d16.fixture.sql"
+    ],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 2,
+      "p95": 4,
+      "evidence": "Local targeted run 2026-11-04 (tester, W2)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

@@ -201,7 +201,7 @@ begin
   select count(*) into v_drafts from public.community_roadmap_cards where public_title = 'PP Trips publish with dates' and status = 'draft' and lane = 'shipped';
   perform pg_temp.tpp_check('PP-1', 'one Recently shipped draft, as a draft', v_drafts::text, '1');
   perform pg_temp.tpp_check('PP-1', 'one approval card for a person',
-    (select count(*)::text || ':' || min(status) || ':' || min(person_reason) from public.ops_work_cards where auto_key = 'roadmap_shipped:issue-9701'), '1:person:publish');
+    (select count(*)::text || ':' || min(status) || ':' || min(person_reason) from public.ops_work_cards where auto_key = 'roadmap_shipped:issue-9701'), '1:todo:publish'); -- #4270: tagged in To do
   v := pg_temp.tpp_person('support', $q$select public.ops_ticket_engineering('support_ticket', '39970000-0000-4000-c400-000000000001')::text$q$);
   perform pg_temp.tpp_check('PP-1', 'the ticket reads Live and names the complete record',
     pg_temp.tpp_get(v, 'label') || ':' || pg_temp.tpp_get(v, 'live') || ':' || pg_temp.tpp_get(v, 'record', 'pr') || ':' || pg_temp.tpp_get(v, 'record', 'complete'), 'Live:true:97010:true');

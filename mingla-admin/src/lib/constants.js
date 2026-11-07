@@ -127,8 +127,8 @@ export const NAV_GROUPS = [
     label: "Home",
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
-      // #4130: the Work entry carries the count of your own cards waiting on
-      // you (Needs you was retired into Work's first column).
+      // #4270 (D20): the Work entry carries the count of your own open cards
+      // due today or overdue.
       { id: "work-board",                label: "Work",               icon: "SquareKanban" },
       { id: "notifications",             label: "Notifications",      icon: "Bell" },
     ],
@@ -204,6 +204,8 @@ export const NAV_GROUPS = [
       { id: "feature-flags",             label: "Feature flags",      icon: "Flag" },
       { id: "ari-improvement-lab",       label: "Ari Improvement Lab", icon: "BrainCircuit" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
+      // Issue #4294: owner only; the page says so to anyone else.
+      { id: "company-tools",             label: "Company tools",      icon: "KeyRound" },
     ],
   },
 ];

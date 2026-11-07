@@ -117,6 +117,17 @@ export function estimateSeedCostUsd(tileCount: number, configCount: number): num
   return Math.round((search + photo) * 100) / 100;
 }
 
+/**
+ * #4276: what a fill costs: every search, plus the photos its new tiles are expected to
+ * bring. preview_fill and start_fill price with this, and the admin gaps table's
+ * "Unsearched" cell uses the same formula (a Deno test pins them equal).
+ */
+export function estimateFillCostUsd(searches: number, newTiles: number): number {
+  const search = searches * COST_PER_NEARBY_SEARCH;
+  const photo = newTiles * EXPECTED_UNIQUE_PLACES_PER_TILE * PHOTOS_PER_PLACE * COST_PER_PHOTO;
+  return Math.round((search + photo) * 100) / 100;
+}
+
 export interface SplitChild {
   center_lat: number;
   center_lng: number;

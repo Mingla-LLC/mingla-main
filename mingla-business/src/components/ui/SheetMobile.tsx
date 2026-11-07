@@ -87,6 +87,7 @@ import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
 // to MIN_SNAP_PX. Shared by the native + web variants below.
 import { useEscapeLayer } from "./escapeLayerStack";
 import { computeSheetHeight } from "./sheetSnapHeight";
+import { useSheetGone } from "./useSheetGone";
 import type { SheetSnapPoint, SheetSnapValue } from "./sheetSnapHeight";
 
 // Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
@@ -164,6 +165,13 @@ export interface SheetProps {
   panelBackground?: string;
   /** Issue #2781: opaque task focus for the Competition workflow only. */
   presentation?: "competition";
+  /**
+   * #4270: called once the sheet has fully gone. On iOS that is the native
+   * Modal's own dismissal, not a timer: iOS shows one modal at a time and drops
+   * a second one (a sheet, a toast) presented while this one is still up. Open
+   * the next sheet or raise words from here. Without it nothing changes.
+   */
+  onDismissed?: () => void;
 }
 
 // SNAP_RATIOS / MIN_SNAP_PX / MAX_SNAP_RATIO now live in ./sheetSnapHeight
@@ -280,6 +288,7 @@ const SheetNative: React.FC<SheetProps> = ({
   style,
   panelBackground,
   presentation,
+  onDismissed,
 }) => {
   const competition = presentation !== undefined;
   const screenHeight = Dimensions.get("window").height;
@@ -311,6 +320,7 @@ const SheetNative: React.FC<SheetProps> = ({
   // prevent inline-render leaks (Sub-phase E.4 / ORCH-BIZ-0a-E12). Stay
   // mounted long enough for the close animation to finish, then unmount.
   const mounted = useSheetMounted(visible);
+  const gone = useSheetGone(mounted, onDismissed);
 
   const translateY = useSharedValue(closedY);
   const scrimOpacity = useSharedValue(0);
@@ -408,7 +418,7 @@ const SheetNative: React.FC<SheetProps> = ({
     if (dismissOnScrimTap) requestDismiss();
   };
 
-  if (!mounted) return null;
+  if (!mounted && !gone.waiting) return null;
 
   // ORCH-0964 / ORCH-1100: on mobile web (< 768px) `backdrop-filter` is globally
   // disabled (inject-mobile-blur-css injects a `@media (max-width:767px){*{
@@ -428,6 +438,7 @@ const SheetNative: React.FC<SheetProps> = ({
       onRequestClose={() => {
         if (!dismissDisabled) requestDismiss();
       }}
+      onDismiss={gone.onModalDismiss}
       statusBarTranslucent
     >
       {/* #1022 F-1 — GestureHandlerRootView is REQUIRED here on Android: the
@@ -802,6 +813,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   style,
   panelBackground,
   presentation,
+  onDismissed,
 }) => {
   // #3645 — this sheet's own Escape is handled by the platform modal
   // (onRequestClose). Registering it as an Escape layer is what stops the
@@ -832,6 +844,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   const reduceMotion = useWebReducedMotion();
 
   const mounted = useSheetMounted(visible);
+  useSheetGone(mounted, onDismissed);
 
   const [animateOpen, setAnimateOpen] = useState<boolean>(false);
   const rafRef = useRef<number | null>(null);

@@ -16,17 +16,15 @@ import {
   type Circle,
   COST_PER_GEOCODE,
   COST_PER_NEARBY_SEARCH,
-  COST_PER_PHOTO,
   countGridTiles,
   decideSplit,
   estimateSeedCostUsd,
-  EXPECTED_UNIQUE_PLACES_PER_TILE,
+  estimateFillCostUsd,
   findUncoveredGridTiles,
   generateTileGrid,
   HIGH_COST_USD,
   isBoxCovered,
   isInsideBox,
-  PHOTOS_PER_PLACE,
   randomPointsInBox,
   SEARCH_RESULT_CAP,
   splitChildren,
@@ -237,10 +235,7 @@ async function planFill(db: Db, cityId: unknown) {
   for (const t of newTiles) {
     for (const config of SEEDING_CATEGORIES) batches.push(batchFor(t.id, config, 0));
   }
-  const estimatedCostUsd = Math.round(
-    (batches.length * COST_PER_NEARBY_SEARCH +
-      newTiles.length * EXPECTED_UNIQUE_PLACES_PER_TILE * PHOTOS_PER_PLACE * COST_PER_PHOTO) * 100,
-  ) / 100;
+  const estimatedCostUsd = estimateFillCostUsd(batches.length, newTiles.length);
 
   const status = await rpc(db, "seeding_city_search_status", {
     p_city_id: city.id,

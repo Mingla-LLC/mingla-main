@@ -276,7 +276,25 @@ function TopPlacesPreview({ cityId, cityName, signalId }) {
   );
 }
 
+// #4276 design pass: collapsed until asked for, as the design draws it; the signals
+// are only read once it is opened.
 export function ScoringTools({ cityId, cityName }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-5 py-4 shadow-[var(--shadow-sm)]">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Scoring tools</h3>
+          <p className="text-xs text-[var(--color-text-secondary)]">One signal at a time: its share of Explorers and the top places in the city you picked.</p>
+        </div>
+        <Button variant="secondary" aria-expanded={false} onClick={() => setOpen(true)}>Show scoring tools</Button>
+      </div>
+    );
+  }
+  return <ScoringToolsOpen cityId={cityId} cityName={cityName} onClose={() => setOpen(false)} />;
+}
+
+function ScoringToolsOpen({ cityId, cityName, onClose }) {
   const [signals, setSignals] = useState(null);
   const [error, setError] = useState(null);
   const [activeId, setActiveId] = useState(null);
@@ -301,7 +319,8 @@ export function ScoringTools({ cityId, cityName }) {
   return (
     <SectionCard
       title="Scoring tools"
-      subtitle="One signal at a time: its share of Explorers and the top places in the city you picked above."
+      subtitle="One signal at a time: its share of Explorers and the top places in the city you picked."
+      action={<Button size="sm" variant="ghost" aria-expanded={true} onClick={onClose}>Hide scoring tools</Button>}
     >
       {error ? (
         <AlertCard variant="error" title="Couldn't load the signals" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>{error}</AlertCard>

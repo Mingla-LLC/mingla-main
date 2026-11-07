@@ -25,6 +25,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -300,7 +302,7 @@ do $p22$
 declare v text; v_rev bigint;
 begin
   select revision into v_rev from public.ops_expected_events where id = '39930000-0000-4000-d100-000000000002';
-  v := pg_temp.pf_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.pf_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39930000-0000-4000-c100-000000000002', 'id', '39930000-0000-4000-d100-000000000002', 'repeats', 'week'),
          'pf-repeat-0001'));
   perform pg_temp.pf_check('P2-2', 'a promised one-off event changes to weekly in place',
@@ -308,12 +310,12 @@ begin
     'open/week/1');
   perform pg_temp.pf_check('P2-2', 'never cancelled and added again: still one promised event on the card',
     (select count(*) from public.ops_expected_events where record_id = '39930000-0000-4000-c100-000000000002')::text, '1');
-  v := pg_temp.pf_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.pf_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39930000-0000-4000-c100-000000000006', 'title', 'PF Detty December menu',
                             'event_type', 'promo_moment', 'expected_on', pg_temp.pf_today() + 45, 'repeats', 'none'), 'pf-moment-0001'));
   perform pg_temp.pf_check('P2-2', 'a venue''s promo moment is saved',
     (select event_type from public.ops_expected_events where record_id = '39930000-0000-4000-c100-000000000006'), 'promo_moment');
-  v := pg_temp.pf_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.pf_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', '39930000-0000-4000-c100-000000000002', 'id', '39930000-0000-4000-d100-000000000002', 'repeats', 'fortnight'),
          'pf-repeat-0002'));
   perform pg_temp.pf_like('P2-2', 'an unknown repeat is refused with the same words as the person''s save', v, '%Repeats must be none, week or month.%');

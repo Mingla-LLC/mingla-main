@@ -366,7 +366,7 @@ begin
   perform pg_temp.t3980w2r4t_check('X1', 'the tie still names the draft Bridge D made', public.ops_roadmap_shipped_draft('roadmap_shipped:issue-8101')::text, v_draft::text);
   perform pg_temp.t3980w2r4t_check('X1', 'exactly one Bridge D row for the issue', (select count(*)::text from public.community_audit_log a where a.action = 'draft_roadmap_card' and a.metadata->>'issue' = '8101'), '1');
   perform pg_temp.t3980w2r4t_bridges();
-  perform pg_temp.t3980w2r4t_check('X1', 'housekeeping keeps the unreviewed card open', pg_temp.t3980w2r4t_state(v_a), 'person:-:-');
+  perform pg_temp.t3980w2r4t_check('X1', 'housekeeping keeps the unreviewed card open', pg_temp.t3980w2r4t_state(v_a), 'todo:-:-'); -- #4270: tagged in To do
 
   -- X2: a second approval card. An agent cannot make one through add_work
   -- (no auto_key from a request), nor turn its own plain card into one.
@@ -440,7 +440,7 @@ begin
   perform pg_temp.t3980w2r4t_like('X4', 'MCP note on the approval card is allowed', v, '%"ok": true%');
   perform pg_temp.t3980w2r4t_check('X4', 'after every gateway attempt it still waits for a person with its own link and GitHub link',
     pg_temp.t3980w2r4t_state(v_b) || '|' || pg_temp.t3980w2r4t_links(v_b) || '|' || (select coalesce(string_agg(number::text, ','), '-') from public.ops_work_github where card_id = v_b),
-    'person:-:-|roadmap_card:' || pg_temp.t3980w2r4t_draft(8103) || '|8103');
+    'todo:-:-|roadmap_card:' || pg_temp.t3980w2r4t_draft(8103) || '|8103');
   -- A person sends it back and starts it; the agent's release cannot take the person's mark.
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_person_action(%L, 'send_back', 'Change the wording first, please.', %s)::text$q$, v_b, pg_temp.t3980w2r4t_rev(v_b::text)));
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_start(%L, %s)::text$q$, v_b, pg_temp.t3980w2r4t_rev(v_b::text)));
@@ -497,7 +497,7 @@ begin
   v_d := pg_temp.t3980w2r4t_bridge_d(8106, '39883000-0000-4000-c100-000000000106', 'X6 hosts can reply to reviews');
   delete from public.community_roadmap_cards where id = pg_temp.t3980w2r4t_draft(8106);
   perform pg_temp.t3980w2r4t_bridges();
-  perform pg_temp.t3980w2r4t_check('X6', 'a deleted draft never closes its approval card as published', pg_temp.t3980w2r4t_state(v_d), 'person:-:-');
+  perform pg_temp.t3980w2r4t_check('X6', 'a deleted draft never closes its approval card as published', pg_temp.t3980w2r4t_state(v_d), 'todo:-:-'); -- #4270: tagged in To do
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"The draft was removed"}]'::jsonb, null, %s)::text$q$, v_d, pg_temp.t3980w2r4t_rev(v_d::text)));
   perform pg_temp.t3980w2r4t_check('X6', 'a person can still close it', pg_temp.t3980w2r4t_state(v_d), 'done:done:-');
 
@@ -516,7 +516,7 @@ begin
   perform pg_temp.t3980w2r4t_check('X7', 'housekeeping (ops_reconcile) runs without an error', (v like 'ERR:%')::text, 'false');
   insert into t3980w2r4t_info (label, detail) values ('X7 reconcile', left(v, 400));
   perform pg_temp.t3980w2r4t_check('X7', 'a person linking a published card does not close the unreviewed approval card at housekeeping',
-    pg_temp.t3980w2r4t_state(v_e), 'person:-:-');
+    pg_temp.t3980w2r4t_state(v_e), 'todo:-:-'); -- #4270: tagged in To do
   update public.community_roadmap_cards set status = 'published' where id = pg_temp.t3980w2r4t_draft(8107);
   perform pg_temp.t3980w2r4t_bridges();
   perform pg_temp.t3980w2r4t_check('X7', 'its draft published, housekeeping closes it as a person publishing',

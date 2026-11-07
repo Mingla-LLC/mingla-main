@@ -38,6 +38,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -552,7 +554,7 @@ do $golive$
 declare d int; p jsonb; v_got text := '';
 begin
   foreach d in array array[22, 21, 20, 0] loop
-    p := pg_temp.w4rt_j(pg_temp.w4rt_person('owner', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+    p := pg_temp.w4rt_j(pg_temp.w4rt_person('owner', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
            jsonb_build_object('record_id', '4e5b0000-0000-4000-c600-000000000001', 'title', 'W4RT Night in ' || d || ' days', 'event_type', 'event',
                               'expected_on', ((now() AT TIME ZONE 'UTC')::date + d)::text), 'w4rt-golive-' || d)));
     v_got := v_got || d || ':' || coalesce(p->'steps'->>'past_go_live', p::text) || ' ';

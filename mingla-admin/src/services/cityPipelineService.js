@@ -50,6 +50,16 @@ export function fetchExcludedSummary(cityId = null) {
   return rpc("admin_place_excluded_summary", { p_city_id: cityId });
 }
 
+/** #4276 design pass: recorded spend to date across every city, by provider. Admin only. */
+export function fetchSpendTotals() {
+  return rpc("admin_place_pipeline_spend_totals", {});
+}
+
+/** #4276: per city, the no-review places a run may reach and those held in the score backlog. */
+export function fetchRedoCounts() {
+  return rpc("admin_place_pipeline_redo_counts", {});
+}
+
 /** The latest pipeline run per city, active ones first. Admins can read runs directly. */
 export async function fetchPipelineRuns() {
   const { data, error } = await supabase

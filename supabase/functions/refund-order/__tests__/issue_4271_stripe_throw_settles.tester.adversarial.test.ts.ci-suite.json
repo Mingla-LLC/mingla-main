@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/refund-order/__tests__/issue_4271_stripe_throw_settles.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4271-refund-stripe-throw-tester-adversarial",
+  "profile": "deno-2-unit"
+}

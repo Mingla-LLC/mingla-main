@@ -21,6 +21,9 @@ export function DataTable({
   onSelectAll,
   getRowId = (row) => row.id,
   rowClassName,
+  // #4276: "sentence" draws headings as written ("Place", "City"), as the Place pool
+  // design does. The default keeps every other table's uppercase headings.
+  headerCase = "upper",
 }) {
   const [internalSortKey, setInternalSortKey] = useState(null);
   const [internalSortDir, setInternalSortDir] = useState("asc");
@@ -117,7 +120,9 @@ export function DataTable({
                   key={col.key}
                   onClick={() => handleHeaderClick(col)}
                   className={[
-                    "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider",
+                    headerCase === "sentence"
+                      ? "px-4 py-3 text-left text-xs font-medium"
+                      : "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider",
                     "text-[var(--color-text-tertiary)]",
                     "bg-[var(--table-header-bg)] border-b border-[var(--table-border)]",
                     "whitespace-nowrap",

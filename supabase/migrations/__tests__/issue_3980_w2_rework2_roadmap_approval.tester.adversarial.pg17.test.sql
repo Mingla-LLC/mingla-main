@@ -242,7 +242,7 @@ do $a1$
 declare v text; v_card uuid; v_rev bigint;
 begin
   v_card := pg_temp.t3980w2r2t_bridge_d(7911, '39870000-0000-4000-c100-000000000011', 'A1 hosts see the new report');
-  perform pg_temp.t3980w2r2t_check('A1', 'the approval card waits for a person', (select status from public.ops_work_cards where id = v_card), 'person');
+  perform pg_temp.t3980w2r2t_check('A1', 'the approval card waits for a person', (select status || ':' || person_reason from public.ops_work_cards where id = v_card), 'todo:publish'); -- #4270: tagged in To do
 
   v := pg_temp.t3980w2r2t_agent('owner', format($q$select public.ops_work_push_back(%L, 'already_done', 'The agent thinks this was already published.', '[{"kind":"text","text":"It is on the roadmap"}]'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
   perform pg_temp.t3980w2r2t_like('A1', 'an agent cannot push it back as already done', v, 'ERR:42501:people_only:%');
@@ -251,11 +251,14 @@ begin
   v := pg_temp.t3980w2r2t_agent('owner', format($q$select public.ops_work_person_action(%L, 'mark_published', 'published', %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
   perform pg_temp.t3980w2r2t_like('A1', 'an agent cannot use a person action', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2r2t_agent('owner', format($q$select public.ops_work_update(%L, '{"status":"done"}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
-  perform pg_temp.t3980w2r2t_check('A1', 'an agent cannot set it to done', (select status from public.ops_work_cards where id = v_card), 'person');
-  v := pg_temp.t3980w2r2t_agent('owner', format($q$select public.ops_work_update(%L, '{"status":"todo"}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
-  perform pg_temp.t3980w2r2t_like('A2', 'an agent moving it out of To review must say why', v, 'ERR:22023:reason_required:%');
+  perform pg_temp.t3980w2r2t_check('A1', 'an agent cannot set it to done', (select status from public.ops_work_cards where id = v_card), 'todo');
+  -- #4270: taking the tag off is what leaving To review was.
+  v := pg_temp.t3980w2r2t_agent('owner', format($q$select public.ops_work_update(%L, '{"person_reason":null}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
+  perform pg_temp.t3980w2r2t_like('A2', 'an agent taking its tag off must say why', v, 'ERR:22023:reason_required:%');
+  v := pg_temp.t3980w2r2t_agent('owner', format($q$select public.ops_work_update(%L, '{"person_reason":null,"reason":"The agent thinks no approval is needed."}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
+  perform pg_temp.t3980w2r2t_like('A2', 'and with a reason it is still people_only', v, 'ERR:42501:people_only:%');
   perform pg_temp.t3980w2r2t_check('A1', 'after every agent attempt it still waits for a person, never closed',
-    (select status || ':' || coalesce(close_kind, '-') from public.ops_work_cards where id = v_card), 'person:-');
+    (select status || ':' || coalesce(close_kind, '-') from public.ops_work_cards where id = v_card), 'todo:-');
 
   -- A person sends it back: it leaves To review open (not closed), nothing is drafted again.
   v := pg_temp.t3980w2r2t_person('owner', format($q$select public.ops_work_person_action(%L, 'send_back', 'Change the wording first, please.', %s)::text$q$, v_card, pg_temp.t3980w2r2t_rev(v_card::text)));
@@ -310,7 +313,7 @@ begin
   -- A6: three bridge runs over a draft: the card stays open, the draft stays a draft.
   v := pg_temp.t3980w2r2t_reconcile(); v := pg_temp.t3980w2r2t_reconcile(); v := pg_temp.t3980w2r2t_reconcile();
   perform pg_temp.t3980w2r2t_check('A6', 'a draft never closes the card and no bridge publishes it',
-    (select status from public.ops_work_cards where id = v_card) || ':' || (select status || ':' || coalesce(shipped_at::text, '-') from public.community_roadmap_cards where id = v_draft), 'person:draft:-');
+    (select status from public.ops_work_cards where id = v_card) || ':' || (select status || ':' || coalesce(shipped_at::text, '-') from public.community_roadmap_cards where id = v_draft), 'todo:draft:-');
   -- A5: archived (not needed), the card closes by itself; then a person publishes the draft after all.
   v := pg_temp.t3980w2r2t_person('owner', format($q$select public.community_upsert_roadmap_card(%L, 'A5 hosts can pause a listing', 'Now live: x.', null, 'shipped', 'archived')::text$q$, v_draft));
   v := pg_temp.t3980w2r2t_reconcile();

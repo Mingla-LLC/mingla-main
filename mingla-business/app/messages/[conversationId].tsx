@@ -91,6 +91,16 @@ const LazyBrandGroupMediaPanel = React.lazy(async () => {
   return { default: module.BrandGroupMediaPanel };
 });
 
+// The plan's module once the panel has loaded it. Only that module reads the
+// plan, so before it loads there is no plan to refresh.
+let loadedPlanModule: typeof import("../../src/components/messages/BrandPlanPanel") | null = null;
+
+const LazyBrandPlanPanel = React.lazy(async () => {
+  const module = await import("../../src/components/messages/BrandPlanPanel");
+  loadedPlanModule = module;
+  return { default: module.BrandPlanPanel };
+});
+
 const LazyMediaThumb = React.lazy(async () => {
   const module = await import("../../src/components/media/MediaThumb");
   return { default: module.MediaThumb };
@@ -230,11 +240,12 @@ function BrandGroupRailTabRow({
 }
 
 function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): React.ReactElement {
-  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[] }>();
+  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[]; plan?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
   const requestedFocusMessageId = first(params.focusMessageId);
   const requestedGallery = first(params.gallery);
+  const requestedPlan = first(params.plan);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -249,6 +260,8 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const group = groups.find((item) => item.conversation_id === conversationId) ?? null;
   const canBrand = group?.access_kind === "brand";
   const canSupport = staff.isStaff;
+  // #4270: the plan is for the brand's own team; support staff use Admin.
+  const planBrandId = canBrand && group ? group.brand_id : null;
   const [actorMode, setActorMode] = useState<"brand" | "support">(
     requestedMode === "support" ? "support" : "brand",
   );
@@ -279,9 +292,13 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const [peopleSheetOpen, setPeopleSheetOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [menuMessage, setMenuMessage] = useState<BrandGroupMessage | null>(null);
-  const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "media">(
-    requestedGallery === "1" ? "media" : "people",
+  const [planPanelOpen, setPlanPanelOpen] = useState(requestedPlan === "1" && requestedGallery !== "1");
+  // #4270: on wide web the rail opens on the plan, unless the address asks for
+  // the gallery. A group with no plan (support access) shows People instead.
+  const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "plan" | "media">(
+    requestedGallery === "1" ? "media" : "plan",
   );
+  const detailTab = desktopDetailTab === "plan" && !planBrandId ? "people" : desktopDetailTab;
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const autoFollowLatest = useRef(requestedFocusMessageId === null);
@@ -458,8 +475,11 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     if (requestedGallery === "1") {
       setMediaPanelOpen(true);
       setDesktopDetailTab("media");
+    } else if (requestedPlan === "1") {
+      setPlanPanelOpen(true);
+      setDesktopDetailTab("plan");
     }
-  }, [requestedGallery]);
+  }, [requestedGallery, requestedPlan]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -468,7 +488,11 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
-        () => {
+        (payload: { new?: { message_type?: unknown } }) => {
+          // #4270: a quiet plan line means the plan changed.
+          if (planBrandId && payload.new?.message_type === "system" && loadedPlanModule) {
+            void loadedPlanModule.refreshBrandPlan(queryClient, planBrandId);
+          }
           void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "list", conversationId] });
           void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "meta", conversationId] });
           void refresh();
@@ -476,7 +500,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       )
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [conversationId, queryClient, refresh]);
+  }, [conversationId, planBrandId, queryClient, refresh]);
 
   const openMedia = useCallback(() => {
     if (!conversationId) return;
@@ -701,6 +725,22 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     />
   );
 
+  if (!showRail && planPanelOpen && planBrandId) {
+    return (
+      <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
+        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={accent.warm} /></View>}>
+          <LazyBrandPlanPanel
+            brandId={planBrandId}
+            onBack={() => {
+              setPlanPanelOpen(false);
+              if (requestedPlan === "1" && conversationId) router.replace({ pathname: "/messages/[conversationId]", params: { conversationId } });
+            }}
+          />
+        </React.Suspense>
+      </SafeScreen>
+    );
+  }
+
   if (!showRail && mediaPanelOpen && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
@@ -761,7 +801,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${group?.brand_name || "Brand group"}, ${memberCount} teammates, tap to see people`}
-          accessibilityState={{ expanded: showRail ? desktopDetailTab === "people" : peopleSheetOpen }}
+          accessibilityState={{ expanded: showRail ? detailTab === "people" : peopleSheetOpen }}
           onPress={openPeople}
           style={styles.peopleTrigger}
         >
@@ -771,13 +811,26 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             <Text style={[styles.subtitle, typingText ? styles.subtitleTyping : null]} numberOfLines={1}>{subtitle}</Text>
           </View>
         </Pressable>
+        {!showRail && planBrandId ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("plan.pill_a11y")}
+            hitSlop={5}
+            onPress={() => setPlanPanelOpen(true)}
+            style={styles.mediaButton}
+            testID="brand-plan-pill"
+          >
+            <Icon name="calendar" size={16} color={brandGroupChat.textPrimary} />
+            <Text style={styles.mediaButtonText}>{t("plan.pill")}</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("chat.media_a11y")}
           accessibilityState={{ expanded: showRail ? mediaPanelOpen : undefined }}
           hitSlop={5}
           onPress={openMedia}
-          style={[styles.mediaButton, showRail && desktopDetailTab === "media" && styles.mediaButtonActive]}
+          style={[styles.mediaButton, showRail && detailTab === "media" && styles.mediaButtonActive]}
         >
           <Icon name="grid" size={16} color={brandGroupChat.textPrimary} />
           <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>
@@ -1033,13 +1086,17 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       {showRail && conversationId ? (
         <View style={styles.detailsRail}>
           <BrandGroupRailTabRow
-            active={desktopDetailTab}
+            active={detailTab}
             tabs={[
               { key: "people", label: `People · ${members.length || "—"}`, accessibilityLabel: "Show people", onPress: () => { setDesktopDetailTab("people"); setMediaPanelOpen(false); } },
+              // #4270 — the brand's plan, for the brand's own team.
+              ...(planBrandId
+                ? [{ key: "plan", label: t("plan.pill"), accessibilityLabel: t("plan.pill_a11y"), onPress: () => { setDesktopDetailTab("plan"); setMediaPanelOpen(false); }, testID: "brand-plan-rail-tab" }]
+                : []),
               { key: "media", label: t("chat.media"), accessibilityLabel: "Show media", onPress: openMedia },
             ]}
           />
-          {desktopDetailTab === "people" ? (
+          {detailTab === "people" ? (
             <BrandGroupPeoplePanel
               groupName={group?.brand_name ?? "Brand group"}
               members={members}
@@ -1049,6 +1106,12 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
               muteBusy={!group || muteBusy}
               onToggleMute={() => void toggleMute()}
             />
+          ) : detailTab === "plan" && planBrandId ? (
+            <View style={styles.mediaRail}>
+              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
+                <LazyBrandPlanPanel compact brandId={planBrandId} />
+              </React.Suspense>
+            </View>
           ) : (
             <View style={styles.mediaRail}>
               <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>

@@ -37,6 +37,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -274,13 +276,13 @@ begin
     (select value::text from public.ops_settings where key = 'follow_through_since'), 'null');
   perform public.ops_reconcile();
   perform pg_temp.w3_check('W3-OFF', 'the housekeeping run makes no automatic card', pg_temp.w3_auto_count()::text, '0');
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'title', 'W33980 Off Promise', 'event_type', 'event',
                        'expected_on', v_today + 70), 'w3-off-1'));
   perform pg_temp.w3_check('W3-OFF', 'a person can still save a promise', pg_temp.w3_j(v)->>'status', 'created');
   perform pg_temp.w3_check('W3-OFF', 'which makes no step while switched off', (pg_temp.w3_j(v)->'steps')::text || '/' || pg_temp.w3_auto_count(), 'null/0');
   perform pg_temp.w3_keep('x_off', pg_temp.w3_j(v)->'expected'->>'id');
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'id', pg_temp.w3_id('x_off'), 'status', 'cancelled',
                        'cancel_reason', 'Fixture, not needed'), 'w3-off-2'));
   perform pg_temp.w3_check('W3-OFF', 'and cancel it', pg_temp.w3_j(v)->>'status', 'cancelled');
@@ -368,7 +370,7 @@ begin
     'done/system/Event cancelled.');
 
   -- A person saves the Replied host's first event.
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'title', 'W33980 Rooftop Sundowner', 'event_type', 'event',
                        'expected_on', v_today + 60), 'w3-auto-1'));
   perform pg_temp.w3_keep('x_roof', pg_temp.w3_j(v)->'expected'->>'id');
@@ -378,23 +380,23 @@ begin
   perform pg_temp.w3_check('W3-AUTO', 'and closes the ask card with what was set',
     (select status || '/' || close_reason from public.ops_work_cards where auto_key = 'ask:39830000-0000-4000-c100-000000000002'),
     'done/Next event set: W33980 Rooftop Sundowner on ' || to_char(v_today + 60, 'FMDD Mon') || '.');
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'id', pg_temp.w3_id('x_roof'), 'expected_on', v_today + 70), 'w3-auto-2'));
   perform pg_temp.w3_check('W3-AUTO', 'a new date re-dates the card at once',
     pg_temp.w3_card('golive:expected:' || pg_temp.w3_id('x_roof')),
     '1/Get W33980 Rooftop Sundowner live by ' || to_char(v_today + 42, 'FMDD Mon') || '/42/');
-  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'id', pg_temp.w3_id('x_roof'), 'status', 'cancelled',
                        'cancel_reason', 'The host called it off'), 'w3-auto-3'));
   perform pg_temp.w3_check('W3-AUTO', 'cancelling it closes the card',
     (select status || '/' || close_reason from public.ops_work_cards where auto_key = 'golive:expected:' || pg_temp.w3_id('x_roof')),
     'done/Event cancelled.');
   perform pg_temp.w3_check('W3-AUTO', 'a person saving a promo moment is accepted',
-    pg_temp.w3_j(pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+    pg_temp.w3_j(pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
       jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'title', 'W33980 December Menu', 'event_type', 'promo_moment',
                          'expected_on', v_today + 50), 'w3-auto-4')))->'expected'->>'promo_moment', 'true');
   perform pg_temp.w3_check('W3-AUTO', 'a bad repeat is refused in words',
-    pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+    pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
       jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'title', 'W33980 Yearly', 'event_type', 'event',
                          'expected_on', v_today + 50, 'repeats', 'year'), 'w3-auto-5')),
     'ERR:22023:invalid_expected: Repeats must be none, week or month.');

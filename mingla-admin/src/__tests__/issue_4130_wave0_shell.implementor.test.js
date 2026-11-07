@@ -63,7 +63,8 @@ const MENU = [
   ["Company", ["admin:Team and roles", "careers:Careers", "data-room:Data room"]],
   // [TEST-MOD-APPROVED #3355] The guarded Ari Improvement Lab is a first-class
   // System destination and must remain in the approved sidebar order.
-  ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "ari-improvement-lab:Ari Improvement Lab", "settings:Settings"]],
+  // #4294: Company tools (owner only) joins System.
+  ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "ari-improvement-lab:Ari Improvement Lab", "settings:Settings", "company-tools:Company tools"]],
 ];
 
 // The approved "Retired and merged" table, as the spec's redirect list.
@@ -109,7 +110,7 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     }
     // #4130: Careers is back as its own page (27). #4130 + #3872: + the four
     // Creator Program pages. #3355: + the guarded Ari Improvement Lab.
-    assert.equal(NAV_ITEMS.length, 32);
+    assert.equal(NAV_ITEMS.length, 33); // #4294: + Company tools
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
@@ -297,8 +298,9 @@ describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => 
     assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;'));
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
-    // #4130 (rework): the count is your own cards waiting on a person, send cards with a ready draft included.
-    assert.ok(hook.includes("cards: work.cards,"));
+    // #4270 (D20): the count is your own open cards due today or overdue.
+    assert.ok(hook.includes('cards: work.status === "ready" ? work.dueToday + work.overdue : null,'));
+    assert.ok(hook.includes("dueTodayState({ enabled, data: counts.data, error: counts.error })"));
     assert.ok(hook.includes('canOpenPage(access, "work-board")'));
     assert.ok(/needs_person_mine/.test(hook) && /draft_needed_mine/.test(hook) && /wording_mine/.test(hook), "only the _mine counts");
   });

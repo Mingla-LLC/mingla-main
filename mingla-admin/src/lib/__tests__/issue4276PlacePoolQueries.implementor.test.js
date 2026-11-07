@@ -54,7 +54,21 @@ test("category filters use the computed column", () => {
 
 test("the map reports a failed load instead of showing no places", () => {
   assert.ok(page.includes("q.limit(3000).then(({ data, error }) => {"));
-  assert.ok(page.includes("The map could not load places:"));
+  assert.ok(page.includes('<LoadError title="The map could not load places" message={mapError} onRetry='));
+});
+
+// #4276 fix e: Browse showed "No places found" after its list timed out. A failed load
+// clears the rows and shows the error with Retry; the empty state only follows a load
+// that worked.
+test("Browse and Excluded never fall through to their empty state after a failed load", () => {
+  assert.ok(page.includes('if (error) { setPlaces([]); setTotal(0); setLoadError(error.message || "The place list did not load."); }'));
+  assert.ok(page.includes('<LoadError title="Couldn\'t load the place list" message={loadError} onRetry={fetchPlaces} retrying={loading} />'));
+  assert.ok(page.includes('if (error) { setPlaces([]); setTotal(0); setLoadError(error.message || "The list did not load."); }'));
+  assert.ok(page.includes('<LoadError title="Couldn\'t load the places left out" message={loadError} onRetry={fetchExcluded} retrying={loading} />'));
+  // The table, and with it the empty message, is only drawn when there is no error.
+  const browse = page.slice(page.indexOf("function BrowseTab("), page.indexOf("// ── Tab 4"));
+  assert.ok(browse.indexOf(") : loadError ? (") < browse.indexOf("<DataTable columns={columns} rows={places}"));
+  assert.equal(page.includes('addToast({ variant: "error", title: "Failed to load places"'), false, "a toast alone left the empty table showing");
 });
 
 test("Excluded removal goes through the audited RPC", () => {
