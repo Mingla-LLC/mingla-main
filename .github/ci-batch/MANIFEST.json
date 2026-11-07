@@ -17793,6 +17793,7 @@
         "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
         "supabase/migrations/20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql",
+        "supabase/migrations/20280426004304_issue_4304_brand_group_live.sql",
         "supabase/migrations/20280427004270_issue_4270_w1_work_board_three_columns.sql",
         "supabase/migrations/20280427014270_issue_4270_w2_host_card.sql",
         "supabase/migrations/20280427024270_issue_4270_w3_brand_plan.sql",
@@ -19527,6 +19528,7 @@
         "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
         "supabase/migrations/20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql",
+        "supabase/migrations/20280426004304_issue_4304_brand_group_live.sql",
         "supabase/migrations/20280427004270_issue_4270_w1_work_board_three_columns.sql",
         "supabase/migrations/20280427014270_issue_4270_w2_host_card.sql",
         "supabase/migrations/20280427024270_issue_4270_w3_brand_plan.sql",
@@ -20843,6 +20845,8 @@
         "supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4304_brand_group_live.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4304_brand_group_live.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -24554,6 +24558,7 @@
         "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
         "supabase/migrations/20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql",
+        "supabase/migrations/20280426004304_issue_4304_brand_group_live.sql",
         "supabase/migrations/20280427004270_issue_4270_w1_work_board_three_columns.sql",
         "supabase/migrations/20280427014270_issue_4270_w2_host_card.sql",
         "supabase/migrations/20280427024270_issue_4270_w3_brand_plan.sql",
@@ -25870,6 +25875,8 @@
         "supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4304_brand_group_live.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4304_brand_group_live.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -53166,5 +53173,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "7fc97c0310cf3b7a6d6e4bd934c2cf3b23d8516ed5e3e88e8cbb170bedc57d14"
+  "phase3eContractSha256": "4a043fe4a8ba639976f23eebf66b29b632f1ad92fb3d81804e17d87283845024"
 }

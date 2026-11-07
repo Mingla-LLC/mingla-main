@@ -7,7 +7,7 @@
 -- Support (read_state_lists_support); removing the new list columns raises
 -- inbox_last_speaker_wrong.
 -- MINGLA-INVARIANT: I-4304-BRAND-GROUP-REACTIONS-SCOPED | issue #4304 | A reaction on a Brand-group message can be read or written only by someone who can access that Brand group, and only with an offered emoji.
--- MINGLA-INVARIANT: I-4304-BRAND-GROUP-SEEN-BY-ROSTER | issue #4304 | Brand-group read state is returned only to someone who can access the group, and lists only active accepted teammates other than the caller.
+-- MINGLA-INVARIANT: I-4304-BRAND-GROUP-SEEN-BY-ROSTER | issue #4304 | Brand-group read state is returned only to someone who can access the group, and lists only current accepted teammates other than the caller.
 \set ON_ERROR_STOP on
 BEGIN;
 

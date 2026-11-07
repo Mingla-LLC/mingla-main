@@ -6,6 +6,7 @@
 // status code" for the args replayed below. Proven locally on PostgreSQL 17
 // with the shipped DDL + issue_3872_upsert_discount: the event target carrying
 // BOTH target_id and listing_kind violates brand_discount_targets.bdt_shape.
+// MINGLA-INVARIANT: I-4304-ARI-DISCOUNT-TARGET-SHAPE | issue #4304 | An Ari discount target is either a specific listing (target_kind + target_id) or a whole listing kind (listing_kind), never both, matching bdt_shape.
 // deno-lint-ignore-file no-explicit-any
 import {
   assert,
@@ -88,7 +89,6 @@ function refusalOf(run: () => unknown): ToolError {
   throw new Error("expected a refusal");
 }
 
-// MINGLA-INVARIANT: I-4304-ARI-DISCOUNT-TARGET-SHAPE | issue #4304 | An Ari discount target is either a specific listing (target_kind + target_id) or a whole listing kind (listing_kind), never both, matching bdt_shape.
 Deno.test("#4304 the production WYTHE20 proposal is canonicalised before the card", () => {
   const canonical = canonicalizeAgentProposalArgs("create_discount", WYTHE20);
   assertEquals(canonical.targets, [{ target_kind: "event", target_id: EVENT }]);
