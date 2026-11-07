@@ -151,7 +151,7 @@ export const INVALID_LINK_WORDS =
 
 function invalidLinkPage(): Response {
   return new Response(
-    `<!doctype html><meta charset="utf-8"><title>Mingla</title><p>${INVALID_LINK_WORDS}</p>\n`,
+    `<meta charset="utf-8"><title>Mingla</title><p>${INVALID_LINK_WORDS}</p>\n`,
     {
       status: 400,
       headers: { "Content-Type": "text/html; charset=utf-8", ...NO_STORE },
