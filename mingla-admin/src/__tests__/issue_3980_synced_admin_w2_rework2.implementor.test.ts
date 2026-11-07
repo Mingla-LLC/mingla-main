@@ -81,7 +81,8 @@ Deno.test("#3980 W2 rework 2: the Work board card shows the draft link and Close
   assert(!/PERSON_ACTIONS\[card\.person_reason\]/.test(d), "the action is no longer read from the bare reason");
   assertMatch(d, /const action = personActionFor\(card\);\n\s+const draftHref = roadmapDraftHref\(card\);/);
   assertMatch(d, /\{draftHref && <a href=\{draftHref\}[^\n]*>Open the draft in Roadmap<\/a>\}/);
-  assertMatch(d, /\{!action && <Button[^\n]*>Close with proof<\/Button>\}/);
+  // #4270: the Next step box calls it "Done with proof".
+  assertMatch(d, /\{!action && <Button[^\n]*>Done with proof<\/Button>\}/);
 });
 
 Deno.test("#3980 W2 rework 2: Community, Roadmap opens the linked draft in the editor", () => {

@@ -824,7 +824,7 @@ describe("T-10 issue #3351 — nothing reserves without a buyer tap (Seth's OQ-2
   test("the cart's frozen literals survive (two strict-grep gates need them)", () => {
     expect(cartContext).toContain('paymentPlanChoice: "full"');
     expect(cartContext).toContain("paymentPlanChoice: TripPaymentPlanChoice");
-    expect(cartContext).toContain("marketingOptIn: false");
+    expect(cartContext).toContain("marketingOptIn: true"); // #4273: buying opts in
     expect(cartContext).toContain("SET_PAYMENT_PLAN_CHOICE");
   });
 });

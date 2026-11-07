@@ -190,7 +190,7 @@ function CheckoutExperienceConfirmScreenInner({
           checkoutSessionId: csi,
           buyerStatusToken: bst,
           lines: [],
-          buyer: { name: "", email: "", phone: "", marketingOptIn: false },
+          buyer: { name: "", email: "", phone: "", marketingOptIn: true }, // #4273: buying opts in
         };
       }
     }

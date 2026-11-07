@@ -130,3 +130,37 @@ export function linkSide(link) {
   const kind = { host: "host", creator: "creator", event: "event", expected: "expected", content: "content", card: "card", work_card: "card" }[link.kind];
   return kind ? cleanSide({ kind, id: link.id }) : null;
 }
+
+/**
+ * #4270 W2: where the Brand groups page is, in its address (after "?"):
+ * group=<conversation> (the open thread; on a phone or tablet it means the
+ * thread is showing), brand=<brand id> (open that brand's group, from a host
+ * card) and side=host:<record id> (the host card is open). Back walks them.
+ */
+export function brandGroupView(search) {
+  const params = new URLSearchParams(typeof search === "string" ? search : "");
+  const side = parseSide(search);
+  return { group: params.get("group") || "", brand: params.get("brand") || "", host: side?.kind === "host" ? side.id : "" };
+}
+
+/**
+ * Issue #4270 W2 rework (P3-2): how "Back to the chat" closes the host card.
+ * When this page opened it (a history entry was pushed), it goes back, so the
+ * browser's Back then walks thread -> list; a host card that arrived in the
+ * address (a pasted link, a reload) gets a new entry without it, never a
+ * replace, so Back never repeats the thread.
+ */
+export function hostCloseStep(openedHere) {
+  return openedHere ? "back" : "push";
+}
+
+export function brandGroupSearch(search, patch) {
+  const params = new URLSearchParams(typeof search === "string" ? search : "");
+  params.set("tab", "brand-groups");
+  for (const [k, v] of Object.entries(patch)) {
+    if (k === "host") continue;
+    if (v) params.set(k, v); else params.delete(k);
+  }
+  const next = params.toString();
+  return Object.hasOwn(patch, "host") ? withSide(next, patch.host ? { kind: "host", id: patch.host } : null) : next;
+}

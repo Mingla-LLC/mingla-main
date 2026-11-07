@@ -13,6 +13,10 @@
  *      into the sale. Opened from Settings (no event), the screen stays and shows
  *      that it's on, with the guide. Only a brand owner or admin may accept Apple's
  *      terms; anyone else is told who to ask.
+ *
+ * Door polish: the three facts are one grouped list (TapFactList) under a
+ * left-aligned title, and every "can't here" screen is neutral with a fallback;
+ * red is kept for Apple's hard blocks (device banned, merchant blocked).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -22,6 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   accent,
   canvas,
+  glass,
   radius as radiusTokens,
   semantic,
   spacing,
@@ -45,16 +50,17 @@ import {
   isIosBelowTapFloor,
   useTapToPayAvailability,
 } from "../../../hooks/useTapToPayAvailability";
-import { createDoorPayCodeForLines, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
+import { createDoorPayCodeForLines, DoorTapError, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
-import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
+import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapConfiguringView } from "./TapConfiguringView";
+import { TapFactList } from "./TapFactList";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
 import { TapToPayEducation } from "./TapToPayEducation";
@@ -157,8 +163,8 @@ export const TapToPaySetupScreen = ({
       });
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
-    } catch {
-      setError("Couldn't make a pay code. Check your connection and try again.");
+    } catch (error) {
+      setError(doorPayCodeCreateErrorCopy(error instanceof DoorTapError ? error.code : "unknown"));
     } finally {
       setPayCodeBusy(false);
     }
@@ -284,8 +290,8 @@ export const TapToPaySetupScreen = ({
   } else if (!availability.available || brandNotAvailable) {
     body = (
       <TapStatusView
-        tone="bad"
-        icon={Platform.OS === "ios" ? "close" : "tap"}
+        tone="neutral"
+        icon={Platform.OS === "ios" ? "globe" : "tap"}
         title={`${TAP_TO_PAY_SHORT} isn't available here`}
         body="This brand can't take taps. Use a pay code instead. It works on any phone."
         primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
@@ -296,8 +302,8 @@ export const TapToPaySetupScreen = ({
       <TapConfiguringView progress={terminal.config.progress} />
     ) : (
       <TapStatusView
-        tone="bad"
-        icon="close"
+        tone="neutral"
+        icon="user"
         title={TAP_ADMIN_ONLY_COPY.title}
         body={error ?? TAP_ADMIN_ONLY_COPY.body}
         primary={
@@ -326,17 +332,10 @@ export const TapToPaySetupScreen = ({
               <Icon name="tap" size={28} color={accent.warm} />
             </View>
           ) : null}
-          <Text style={styles.heroTitle} accessibilityRole="header">
+          <Text style={styles.setupTitle} accessibilityRole="header">
             {Platform.OS === "ios" ? "Take cards on this iPhone" : "Take cards on this phone"}
           </Text>
-          <View style={styles.rows}>
-            {rows.map((row) => (
-              <GlassCard key={row.title} variant="base" radius="md" padding={spacing.md}>
-                <Text style={styles.rowTitle}>{row.title}</Text>
-                <Text style={styles.rowSub}>{row.sub}</Text>
-              </GlassCard>
-            ))}
-          </View>
+          <TapFactList facts={rows} testID="tap-setup-facts" />
           {terminal.status === "error" && terminal.errorMessage ? (
             <Text style={styles.error}>{terminal.errorMessage}</Text>
           ) : null}
@@ -389,21 +388,26 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: radiusTokens.lg,
-    alignSelf: "center",
+    alignSelf: "flex-start",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: accent.tint,
     marginTop: spacing.sm,
   },
   heroTitle: { ...typography.h3, color: textTokens.primary, textAlign: "center" },
-  rows: { gap: spacing.sm, marginTop: spacing.xs },
-  rowTitle: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary },
-  rowSub: { ...typography.caption, color: textTokens.secondary, marginTop: 2 },
+  setupTitle: {
+    ...typography.h2,
+    lineHeight: 32,
+    color: textTokens.primary,
+    textAlign: "left",
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
   bar: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    borderTopColor: glass.border.profileBase,
   },
   error: {
     ...typography.bodySm,

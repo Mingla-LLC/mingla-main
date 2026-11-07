@@ -204,7 +204,7 @@ begin
     'ERR:22023:invalid_query: A filter has the wrong shape.%offset 0 to 100000%');
   perform pg_temp.tr_like('R-SHAPE', 'an unknown key is still refused, naming every key it takes',
     pg_temp.tr_as('growth', $q$select public.ops_work_list('{"page":2}'::jsonb)::text$q$),
-    'ERR:22023:invalid_query: The board cannot filter by "page".%closed_since, closed_until%offset.');
+    'ERR:22023:invalid_query: The board cannot filter by "page".%closed_since, closed_until%offset%.'); -- #4270 rework adds per_status and tz after offset
   perform pg_temp.tr_like('R-SHAPE', 'anon still cannot run it',
     pg_temp.tr_as('anon', $q$select public.ops_work_list('{}'::jsonb)::text$q$), 'ERR:42501:%');
   perform pg_temp.tr_check('R-SHAPE', 'the grants are unchanged (authenticated and service_role, not anon or PUBLIC)',

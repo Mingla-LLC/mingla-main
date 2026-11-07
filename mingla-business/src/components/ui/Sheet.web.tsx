@@ -59,6 +59,7 @@ import {
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useEscapeLayer } from "./escapeLayerStack";
+import { useSheetGone } from "./useSheetGone";
 
 // Import the canonical bottom sheet from the platform-NEUTRAL `./SheetMobile`,
 // never from the bare `./Sheet` specifier. On web, Metro resolves `./Sheet` to
@@ -141,6 +142,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   style,
   panelBackground,
   presentation,
+  onDismissed,
 }) => {
   // #3645 — this card's own Escape is handled by the platform modal
   // (onRequestClose). Registering it as an Escape layer is what stops the
@@ -152,6 +154,8 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   // Lazy-mount + delayed unmount so close animation completes.
   const [mounted, setMounted] = useState<boolean>(visible);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // #4270: tell the caller once the card has gone (after it unmounts).
+  useSheetGone(mounted, onDismissed);
 
   // ORCH-1136 R3: animateOpen drives the compositor CSS transition. Starts
   // false so the card mounts at the CLOSED state (opacity 0, scale 0.96); the

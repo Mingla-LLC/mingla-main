@@ -380,7 +380,13 @@ export function phase3dContractDigest(manifest) {
 // #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
 // #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
 // #4276: re-sealed after merging origin/main (#4271/#2830 rows kept beside the #4276 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "8ee8d97680d0078025ef59b0acd77a7376dbfcffdf482afaa2dbd22cceafad1a";
+// #4294: the Mingla connector migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion (#2492).
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+// #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
+// #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3f3426158428e1991fcd094216eab8dda59134e1ed2337aa78180b6afd1991fd";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

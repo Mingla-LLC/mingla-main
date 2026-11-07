@@ -60,6 +60,11 @@ import { WorkBoardPage } from "./pages/WorkBoardPage";
 import { AGENT_LOG_REDIRECT, AgentLogPage } from "./pages/AgentLogPage";
 // Issue #3802 (Wave 4) — connect your own agent (#/agent).
 import { AgentPage } from "./pages/AgentPage";
+// Issue #4294 — approve a Claude app (#/connect, full screen) and the
+// owner's Company tools page (#/company-tools).
+import { ConnectScreen } from "./components/ConnectScreen";
+import { CompanyToolsPage } from "./pages/CompanyToolsPage";
+import { keepConnectRequest, parseConnectHash } from "./services/minglaConnectorService";
 import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -140,6 +145,8 @@ const PAGES = {
   "feature-flags": FeatureFlagsPage,
   "ari-improvement-lab": AriImprovementLabPage,
   settings: SettingsPage,
+  // Issue #4294: owner only (the page says so to anyone else).
+  "company-tools": CompanyToolsPage,
   // Issue #3980: #/agent-log stays a page that opens Work > Agent activity.
   "agent-log": AgentLogPage,
   // Issue #3802 (Wave 4): opened by the `crm` area. #4130: from the header's
@@ -155,6 +162,22 @@ const PAGE_IDS = Object.keys(PAGES);
 // The page id the address names, exactly as written (first path segment only).
 function requestedPageId() {
   return window.location.hash.replace("#/", "").split("?")[0].split("/")[0];
+}
+
+// Issue #4294 — a Claude sign-in request arrives as #/connect?... . It is
+// kept in this tab's sessionStorage (so it survives Mingla Admin sign-in)
+// and taken out of the address bar and the history entry straight away.
+function captureConnectRequest() {
+  const req = parseConnectHash(window.location.hash);
+  if (req) {
+    try {
+      keepConnectRequest(window.sessionStorage, req);
+    } catch {
+      // Storage refused: the page then says the link is not valid.
+    }
+    window.history.replaceState(null, "", "#/connect");
+  }
+  return requestedPageId() === "connect";
 }
 
 // Issue #4130 (Wave 0) — an address of a retired page (and #3720's old
@@ -277,6 +300,8 @@ export default function App() {
     seq: 0,
   }));
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Issue #4294: approving a Claude app is its own full screen.
+  const [connectOpen, setConnectOpen] = useState(() => captureConnectRequest());
 
   // Issue #3802 — the secret of a one-time invite link, when the app was opened
   // from one. It lives only in this component's state.
@@ -298,6 +323,7 @@ export default function App() {
         window.history.replaceState(null, "", "#/" + INVITE_ROUTE);
         setInviteToken(pasted);
       }
+      setConnectOpen(captureConnectRequest());
       setNav((prev) => ({
         requested: getTabFromHash(),
         named: addressNamesPage(),
@@ -321,7 +347,7 @@ export default function App() {
   // address named a real page that was refused.
   const lastToldRef = useRef(-1);
   useEffect(() => {
-    if (!signedIn || inviteToken || !route.pageId) return;
+    if (!signedIn || inviteToken || connectOpen || !route.pageId) return;
     if (route.denied && nav.named && lastToldRef.current !== nav.seq) {
       lastToldRef.current = nav.seq;
       addToast({
@@ -333,7 +359,7 @@ export default function App() {
     if (requestedPageId() !== route.pageId) {
       window.history.replaceState(null, "", "#/" + route.pageId);
     }
-  }, [signedIn, inviteToken, route.pageId, route.denied, nav.named, nav.seq, access, addToast]);
+  }, [signedIn, inviteToken, connectOpen, route.pageId, route.denied, nav.named, nav.seq, access, addToast]);
 
   // State → hash sync (activeTab change writes hash)
   const handleTabChange = useCallback((tabId) => {
@@ -377,6 +403,12 @@ export default function App() {
 
   if (!session) {
     return <LoginScreen />;
+  }
+
+  // Issue #4294: decides for itself who may approve (anyone who holds the
+  // pipelines area); nothing else is on screen while it does.
+  if (connectOpen) {
+    return <ConnectScreen />;
   }
 
   // Signed in, but the server gave this person nothing they can open.

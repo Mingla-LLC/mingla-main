@@ -152,7 +152,8 @@ Deno.test("#3980 log chips and board groups", () => {
   assertEquals(logChip({ outcome: "ok", action: "card_added" }), { label: "Added", tone: "brand" });
   const cards = [
     { id: "a", status: "todo", owners: [{ email: "x", name: "Xi" }], anchor: null },
-    { id: "b", status: "person", owners: [{ email: "x", name: "Xi" }, { email: "y", name: "Yo" }], anchor: { kind: "event", id: "e", title: "Night", start_on: "2026-11-02" } },
+    // #4270: a card that needs a person is a To do card with a tag.
+    { id: "b", status: "todo", person_reason: "send", owners: [{ email: "x", name: "Xi" }, { email: "y", name: "Yo" }], anchor: { kind: "event", id: "e", title: "Night", start_on: "2026-11-02" } },
   ];
   // #4255: the grouped board is gone; by person is the period views' rows (a
   // card with two owners is under both; a To do card is in no list).

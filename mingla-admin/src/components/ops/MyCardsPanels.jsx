@@ -3,7 +3,7 @@
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { useMyCards } from "../../hooks/useOpsWork";
-import { WORK_STATUSES, dayLabel, dueOrder, opsErrorWords } from "../../lib/opsModel";
+import { WORK_STATUSES, dayLabel, dueOrder, isTagged, opsErrorWords, personReasonLabel } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -11,7 +11,8 @@ const LINK = `inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font
 
 function statusChip(card) {
   if (card.blocked) return { label: "Blocked", tone: "error" };
-  if (card.status === "person") return { label: "Needs a person", tone: "warning" };
+  // #4270: the Send, Spend or Publish tag, in its words.
+  if (isTagged(card)) return { label: personReasonLabel(card), tone: "warning" };
   return { label: WORK_STATUSES.find((s) => s.value === card.status)?.label || card.status, tone: card.status === "doing" ? "brand" : "default" };
 }
 

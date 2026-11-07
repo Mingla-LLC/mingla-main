@@ -9,7 +9,7 @@ import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
 import { useDraftCountValue } from "./useDraftCounts";
 import { useOpsPoll } from "./useOpsWork";
-import { waitingCardsState } from "../lib/opsModel";
+import { dueTodayState } from "../lib/opsModel";
 
 export const REVIEW_CHANGED = "mingla:ops-review-changed";
 
@@ -39,15 +39,15 @@ export function useReviewCount() {
   // Loaded once both counts have answered (the work counts only when this
   // person can open the page).
   const loaded = drafts.data != null && (!enabled || counts.data != null);
-  // #4130: the Work menu entry's and the Dashboard's count, one definition
-  // with the Work board column and the Team dashboard: this person's own open
-  // cards whose status is "Waiting on a person", whatever the reason. A send
-  // card counts whether or not its draft is ready (ops_my_counts
-  // waiting_on_person_mine). Waiting drafts are not cards, so not in it.
-  const work = waitingCardsState({ enabled, data: counts.data, error: counts.error });
+  // #4270 (D20): the Work menu entry's and the Dashboard's count: this
+  // person's own open cards due today or overdue (ops_my_counts
+  // due_today_mine + overdue_mine). A failed read is never 0.
+  const work = dueTodayState({ enabled, data: counts.data, error: counts.error });
   return {
     waiting, needsPerson, draftNeeded, wording,
-    cards: work.cards,
+    cards: work.status === "ready" ? work.dueToday + work.overdue : null,
+    dueToday: work.dueToday,
+    overdue: work.overdue,
     cardsLoaded: work.status !== "loading",
     cardsError: work.status === "error" ? counts.error : null,
     total: waiting + needsPerson + draftNeeded + wording,
