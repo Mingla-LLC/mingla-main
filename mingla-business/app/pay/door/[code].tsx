@@ -15,8 +15,9 @@
  *
  * Pre-purchase copy talks about the ticket, never the app (#4063).
  *
- * Door polish (#4271): the event name moves into the eyebrow ("PAY AT THE DOOR ·
- * EVENT"), the brand and venue line goes (the guest is standing there), the
+ * Door polish (#4271): the event name joins the eyebrow line after a middle
+ * dot (the #4063 gate mutates the eyebrow literal, so it is not repeated in
+ * this comment), the brand and venue line goes (the guest is standing there), the
  * labels drop the asterisks (one line says all three are needed), the fields
  * carry autofill hints, the button names the amount, and the end states use
  * the door tones (expired and cancelled grey, failed red, paid green).
