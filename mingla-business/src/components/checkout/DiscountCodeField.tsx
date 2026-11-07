@@ -10,6 +10,13 @@ import {
 import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 
+import {
+  accent,
+  radius,
+  semantic,
+  spacing,
+  text as textTokens,
+} from "../../constants/designSystem";
 import { useCart, type TicketQuoteStatus } from "./CartContext";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 
@@ -43,6 +50,11 @@ export interface DiscountCodeFieldProps {
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;
   onApply: (code: string) => void;
   onRemove: () => void;
+  /**
+   * #4304 — narrow screens show one quiet "Have a code?" row that expands
+   * into the field. Wide desktop keeps the field open in the order summary.
+   */
+  collapsible?: boolean;
 }
 
 /** W-CODE from the binding #3872 design contract. */
@@ -56,10 +68,20 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
   saleNameByLineRef = {},
   onApply,
   onRemove,
+  collapsible = false,
 }) => {
   const [draft, setDraft] = useState(value ?? "");
+  const [expanded, setExpanded] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const userExpandedRef = useRef(false);
 
   useEffect(() => setDraft(value ?? ""), [value]);
+  useEffect(() => {
+    if (!expanded || userExpandedRef.current) return;
+    userExpandedRef.current = true;
+    inputRef.current?.focus();
+  }, [expanded]);
 
   const normalizedDraft = draft.replace(/[\s-]+/g, "").toUpperCase();
   const outcome = quote?.codeOutcome ?? null;
@@ -127,54 +149,44 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
     }
   }, [quote, quoteStatus, saleNotice, surface, value]);
 
-  return (
-    <View style={styles.wrap} testID="discount-code-field">
-      <Text style={styles.label}>Discount code</Text>
-      <View style={styles.inputRow}>
-        <TextInput
-          value={draft}
-          onChangeText={(next) => setDraft(next.toUpperCase())}
-          placeholder="Enter code"
-          placeholderTextColor="#7a8190"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={32}
-          editable={!disabled && !applying}
-          accessibilityLabel="Discount code"
-          style={styles.input}
-          onSubmitEditing={() => {
-            if (canApply) onApply(normalizedDraft);
-          }}
-        />
+  const showField = !collapsible || expanded || value !== null;
+  // #4304 — the field is ALWAYS typeable. Before, `disabled` (an empty cart)
+  // made the input read-only with no visual cue, so a desktop buyer who
+  // arrived from "Get tickets" with nothing selected clicked a live-looking
+  // field and nothing typed. Only Apply waits for a selection now.
+  const needsSelection = disabled && normalizedDraft.length > 0;
+
+  if (!showField) {
+    return (
+      <View style={styles.collapsedRow} testID="discount-code-field">
+        <Text style={styles.collapsedLabel}>Have a code?</Text>
         <Pressable
+          testID="discount-code-toggle"
           accessibilityRole="button"
-          accessibilityLabel="Apply discount code"
-          disabled={!canApply}
-          onPress={() => onApply(normalizedDraft)}
+          accessibilityLabel="Add discount code"
+          hitSlop={8}
+          onPress={() => setExpanded(true)}
           style={({ pressed }) => [
-            styles.applyButton,
-            !canApply && styles.buttonDisabled,
-            pressed && canApply && styles.buttonPressed,
+            styles.addCodeButton,
+            pressed && styles.buttonPressed,
           ]}
         >
-          {applying ? (
-            <ActivityIndicator color="#ffffff" size="small" />
-          ) : (
-            <Text style={styles.applyText}>Apply</Text>
-          )}
+          <Text style={styles.addCodeText}>Add code</Text>
         </Pressable>
       </View>
+    );
+  }
 
-      {applying ? (
-        <Text style={styles.status} accessibilityLiveRegion="polite">
-          Applying {value}…
-        </Text>
-      ) : null}
-
+  return (
+    <View style={styles.wrap} testID="discount-code-field">
       {value !== null &&
       outcome?.status === "applied" &&
       appliedDiscount !== null ? (
-        <View style={styles.appliedChip} accessibilityLiveRegion="polite">
+        <View
+          style={styles.appliedChip}
+          testID="discount-code-applied"
+          accessibilityLiveRegion="polite"
+        >
           <View style={styles.appliedCopy}>
             <Text style={styles.appliedTitle}>
               {value} · {appliedDiscount.name}
@@ -193,11 +205,65 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
             accessibilityRole="button"
             accessibilityLabel={`Remove ${value}`}
             disabled={disabled}
+            hitSlop={8}
             onPress={onRemove}
           >
             <Text style={styles.removeText}>Remove</Text>
           </Pressable>
         </View>
+      ) : (
+        <>
+          <Text style={styles.label}>Discount code</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              ref={inputRef}
+              value={draft}
+              onChangeText={(next) => setDraft(next.toUpperCase())}
+              placeholder="Enter code"
+              placeholderTextColor={textTokens.quaternary}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={32}
+              editable={!applying}
+              accessibilityLabel="Discount code"
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              style={[styles.input, focused && styles.inputFocused]}
+              onSubmitEditing={() => {
+                if (canApply) onApply(normalizedDraft);
+              }}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Apply discount code"
+              disabled={!canApply}
+              onPress={() => onApply(normalizedDraft)}
+              style={({ pressed }) => [
+                styles.applyButton,
+                !canApply && styles.buttonDisabled,
+                pressed && canApply && styles.buttonPressed,
+              ]}
+            >
+              {applying ? (
+                <ActivityIndicator color={textTokens.inverse} size="small" />
+              ) : (
+                <Text style={styles.applyText}>Apply</Text>
+              )}
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      {needsSelection ? (
+        <Text style={styles.status} testID="discount-code-needs-selection">
+          Choose what you&apos;re buying first, then apply your code.
+        </Text>
+      ) : null}
+
+      {applying ? (
+        <Text style={styles.status} accessibilityLiveRegion="polite">
+          Applying {value}…
+        </Text>
       ) : null}
 
       {value !== null &&
@@ -239,6 +305,7 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
 
 export interface CheckoutDiscountCodeFieldProps {
   disabled?: boolean;
+  collapsible?: boolean;
   surface?: BuyerDiscountSurface;
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;
 }
@@ -261,54 +328,77 @@ export const CheckoutDiscountCodeField: React.FC<
   );
 };
 
+// #4304 — dark field for the dark checkout bar / summary (no hard-coded
+// white): raised surface, 10% white hairline, orange focus ring, green
+// applied chip.
+const SURFACE = "#1a1e24";
+const HAIRLINE = "rgba(255, 255, 255, 0.10)";
+
 const styles = StyleSheet.create({
   wrap: {
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: "#ffffff",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#e5e7eb",
+    gap: spacing.sm,
+    paddingBottom: spacing.sm + spacing.xs,
   },
-  label: { fontSize: 13, fontWeight: "700", color: "#252936" },
-  inputRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  collapsedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+    marginBottom: spacing.xs,
+  },
+  collapsedLabel: { fontSize: 13, color: textTokens.tertiary },
+  addCodeButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs,
+  },
+  addCodeText: { fontSize: 14, fontWeight: "700", color: accent.warm },
+  label: { fontSize: 12, fontWeight: "600", color: textTokens.secondary },
+  inputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   input: {
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
-    borderColor: "#cfd3dc",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    color: "#15181f",
-    backgroundColor: "#ffffff",
+    borderColor: HAIRLINE,
+    borderRadius: radius.sm + 2,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    color: textTokens.primary,
+    backgroundColor: SURFACE,
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 1,
   },
+  inputFocused: { borderColor: accent.warm },
   applyButton: {
     minWidth: 76,
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 14,
+    borderRadius: radius.sm + 2,
+    backgroundColor: accent.warm,
+    paddingHorizontal: spacing.sm + spacing.xs + 2,
   },
-  buttonDisabled: { opacity: 0.45 },
+  buttonDisabled: { opacity: 0.4 },
   buttonPressed: { opacity: 0.82 },
-  applyText: { color: "#ffffff", fontWeight: "700" },
-  status: { color: "#5f6572", fontSize: 13 },
+  applyText: { color: textTokens.inverse, fontWeight: "700" },
+  status: { color: textTokens.tertiary, fontSize: 13 },
   appliedChip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: "#edf8f1",
+    gap: spacing.sm + spacing.xs,
+    borderRadius: radius.sm + 2,
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.35)",
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    backgroundColor: semantic.successTint,
   },
   appliedCopy: { flex: 1, gap: 2 },
-  appliedTitle: { color: "#17623a", fontWeight: "700" },
-  appliedSaving: { color: "#28724a", fontSize: 13 },
-  replacedText: { color: "#28724a", fontSize: 13 },
-  removeText: { color: "#9b3f13", fontWeight: "700" },
-  errorText: { color: "#b42318", fontSize: 13 },
-  noticeText: { color: "#8a4b08", fontSize: 13 },
+  appliedTitle: { color: "#86efac", fontWeight: "700" },
+  appliedSaving: { color: "#bbf7d0", fontSize: 13 },
+  replacedText: { color: "#bbf7d0", fontSize: 13 },
+  removeText: { color: textTokens.secondary, fontWeight: "700" },
+  errorText: { color: semantic.errorText, fontSize: 13 },
+  noticeText: { color: semantic.warning, fontSize: 13 },
 });
