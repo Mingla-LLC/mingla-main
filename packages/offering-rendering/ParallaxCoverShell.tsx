@@ -100,9 +100,16 @@ export const COVER_Z = 1;
 export const CONTENT_Z = 2;
 export const CHROME_Z = 70;
 // issue #1023 — the full-screen theme motion: over the cover AND the details
-// sheet, under the chrome. (Desktop web uses DESKTOP_MOTION_Z: its chrome sits
-// in the hero at z 5, so the overlay must stay below that.)
-export const MOTION_Z = CHROME_Z - 1;
+// sheet (CONTENT_Z), but under EVERY interactive layer: the floating Buy /
+// Reserve bars (z 6 — TripReserveBar, the event and RSVP float wraps), the
+// chrome (CHROME_Z) and modals. It must be lower than the floating bars even
+// though they are rendered by the PAGE outside this shell: React Native's
+// view flattening lifts these children into the page's own child list, so the
+// overlay's zIndex is compared with the bar's directly. (Desktop web uses
+// DESKTOP_MOTION_Z: its chrome sits in the hero at z 5.)
+export const MOTION_Z = 5;
+/** The lowest zIndex any floating CTA bar uses; MOTION_Z must stay below it. */
+export const FLOATING_CTA_MIN_Z = 6;
 export const DESKTOP_MOTION_Z = 4;
 
 export interface ParallaxCoverShellProps {

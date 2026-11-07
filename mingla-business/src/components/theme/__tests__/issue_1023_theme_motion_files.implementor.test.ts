@@ -295,6 +295,28 @@ describe("#1023 — full-screen motion overlay on every public page", () => {
     expect(z("MOTION_Z")).toBeLessThan(z("CHROME_Z"));
     // desktop chrome lives in the hero at z 5
     expect(z("DESKTOP_MOTION_Z")).toBeLessThan(5);
+    // the floating Buy / Reserve bars are rendered by the page, outside the
+    // shell, but native view flattening compares them with the overlay directly
+    expect(z("MOTION_Z")).toBeLessThan(z("FLOATING_CTA_MIN_Z"));
+  });
+
+  test.each([
+    ["mingla-business/src/components/event/PublicEventPage.tsx", "floatWrap"],
+    ["mingla-business/src/components/event/FoundationRsvpPreview.tsx", "floatWrap"],
+    ["mingla-business/src/components/trip/TripReserveBar.tsx", "floatWrapper"],
+    ["packages/offering-rendering/TripReserveBar.tsx", "floatWrapper"],
+    ["packages/offering-rendering/TripReserveBar.tsx", "floatSplitWrapper"],
+    ["app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx", "nativeFloatWrap"],
+  ])("%s %s: the floating CTA paints above the motion layer", (file, style) => {
+    const src = read(file);
+    const block = src.slice(src.indexOf(`  ${style}: {`), src.indexOf("},", src.indexOf(`  ${style}: {`)));
+    const barZ = Number(/zIndex: (\d+)/.exec(block)![1]);
+    const shell = read("packages/offering-rendering/ParallaxCoverShell.tsx");
+    const motionZ = Number(/export const MOTION_Z = (\d+);/.exec(shell)![1]);
+    expect(barZ).toBeGreaterThan(motionZ);
+    const consumer = read("app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx");
+    const consumerMotionZ = Number(/motionOverlay: \{ \.\.\.StyleSheet\.absoluteFillObject, zIndex: (\d+) \}/.exec(consumer)![1]);
+    expect(barZ).toBeGreaterThan(consumerMotionZ);
   });
 
   test("the shell mounts the overlay after the scrolling body in all three layouts, never inside the cover", () => {
@@ -328,7 +350,7 @@ describe("#1023 — full-screen motion overlay on every public page", () => {
     const block = src.slice(src.lastIndexOf("<View", overlayAt), src.indexOf("</View>", overlayAt));
     expect(block).toContain('pointerEvents="none"');
     expect(block).toContain("textZoneTop={motionSheetTop}");
-    expect(src).toMatch(/motionOverlay: \{ \.\.\.StyleSheet\.absoluteFillObject, zIndex: 69 \}/);
+    expect(src).toMatch(/motionOverlay: \{ \.\.\.StyleSheet\.absoluteFillObject, zIndex: 5 \}/);
     expect(src).toMatch(/motionPause: \{ position: "absolute", right: 12, zIndex: 70 \}/);
     expect(src).toMatch(/nativeChrome: \{[\s\S]*?zIndex: 70/);
     // the cover itself no longer hosts the motion layer

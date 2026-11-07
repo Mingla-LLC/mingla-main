@@ -2174,8 +2174,9 @@ const styles = StyleSheet.create({
   coverSpacer: { width: "100%", aspectRatio: 4 / 5 },
   // issue #1023 — the entrance motion's pause control over the cover.
   motionPause: { position: "absolute", right: 12, zIndex: 70 },
-  // issue #1023 — full-screen motion: over the cover and the scroll, under the chrome (70)
-  motionOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 69 },
+  // issue #1023 — full-screen motion: over the cover and the scroll (2), under
+  // the floating Buy/Reserve bar (6+), the chrome (70) and overlays (100)
+  motionOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
   nativeBody: {
     zIndex: 2,
     marginTop: -SEAM,
