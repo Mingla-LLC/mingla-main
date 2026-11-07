@@ -462,6 +462,10 @@ export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";
 export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+export type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimation";
+// issue #1023 — text-safe zone + dev-only motion preview.
+export { setThemeMotionDevOverride } from "./themeMotion";
+export type { TextSafeZone, TextSafeZoneProp } from "./themeMotion";
 export {
   computeForeground,
   isThemeAnimationSlug,
@@ -472,9 +476,13 @@ export {
 export {
   FONT_FAMILY_MAP,
   MINGLA_DEFAULT_THEME,
+  SERVER_ACCEPTED_ANIMATION_SLUGS,
+  THEME_ANIMATION_CATALOG,
   THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
+  THEME_MOTION_GROUPS,
 } from "./designTokens";
+export type { ThemeMotionGroup } from "./designTokens";
 export type {
   EventCoverMediaErrorEvent,
   EventCoverMediaProps,

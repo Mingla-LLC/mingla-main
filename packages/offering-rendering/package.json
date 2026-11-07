@@ -16,6 +16,8 @@
     "expo-constants": "*",
     "expo-image": "*",
     "expo-linear-gradient": "*",
-    "lottie-react-native": "*"
+    "lottie-react-native": "*",
+    "lottie-web": "*",
+    "@react-native-async-storage/async-storage": "*"
   }
 }

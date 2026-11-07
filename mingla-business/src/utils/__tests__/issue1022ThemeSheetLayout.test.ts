@@ -164,23 +164,25 @@ describe("T-19 — browsing fonts loads ZERO typefaces (ORCH-1083)", () => {
   });
 });
 
-describe("motion — exactly one Lottie instance is ever alive", () => {
-  test("the sheet renders ThemeEntranceAnimation exactly once, in the preview band", () => {
+// issue #1023 — the contract changed: the sheet lists all 29 animations as
+// STILL tiles (a frame of each look in the brand colour) and the preview band
+// is still the ONE player that animates. The web-only "app-only" banner is gone
+// because shared web links now play motion.
+describe("motion — one live player, still tiles", () => {
+  test("the preview band is the only playing ThemeEntranceAnimation", () => {
     const s = src(SHEET);
-    const instances = s.match(/<ThemeEntranceAnimation/g) ?? [];
-    expect(instances).toHaveLength(1);
+    const band = s.slice(s.indexOf("styles.previewOverlay"), s.indexOf("Replay motion preview"));
+    expect(band).toContain("<ThemeEntranceAnimation");
+    expect(band).not.toMatch(/\bstill\b/);
+    // every other instance in the file is a tile still
+    const tile = s.slice(s.indexOf("const MotionTile"), s.indexOf("const styles = StyleSheet.create"));
+    expect(tile).toMatch(/<ThemeEntranceAnimation[\s\S]*?\bstill\b/);
+    expect((s.match(/<ThemeEntranceAnimation/g) ?? []).length).toBe(2);
   });
 
-  test("motion tiles are STATIC — no Lottie inside the grid", () => {
+  test("the web build no longer carries the app-only banner", () => {
     const s = src(SHEET);
-    const grid = s.slice(s.indexOf("styles.motionGrid"), s.indexOf("</View>\n      ) : null}\n      </ScrollView>"));
-    expect(grid).not.toContain("ThemeEntranceAnimation");
-  });
-
-  test("the web build shows the app-only truth banner", () => {
-    const s = src(SHEET);
-    expect(s).toContain('Platform.OS === "web"');
-    expect(s).toContain("Entrance motion plays in the Mingla apps");
+    expect(s).not.toContain("Entrance motion plays in the Mingla apps");
   });
 
   test("'none' renders as 'No motion', never 'None'", () => {

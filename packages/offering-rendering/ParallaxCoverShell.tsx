@@ -64,6 +64,7 @@ import { getPageFooterAccessory, type PageFooterAccessoryProps } from "./pageFoo
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { CoverGalleryRow } from "./CoverGalleryRow";
 import { type ResolvedTheme } from "./designTokens";
+import { type TextSafeZone } from "./themeMotion";
 import { type ThemePalette } from "./themePalette";
 import { type OfferingGalleryImage } from "./types";
 import {
@@ -352,12 +353,19 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     </View>
   );
   const coverRender = sequenceActive ? coverPager : coverMedia;
+  // issue #1023 — the entrance motion fades over the title + meta written ON
+  // the cover. The overlay reports where that text really is; until it has
+  // (first frame) the reference default zone applies. No overlay = no text on
+  // the cover = no zone.
+  const [coverTextRect, setCoverTextRect] = React.useState<TextSafeZone | null>(null);
   const directionCOverlay = directionCIdentity ? (
     <DirectionCIdentityOverlay
       title={directionCIdentity.title}
       meta={directionCIdentity.meta}
+      onTextRect={setCoverTextRect}
     />
   ) : null;
+  const textSafeZone = directionCIdentity ? (coverTextRect ?? "default") : undefined;
 
   // The beneath-cover card row (card 0 = the cover). Rendered as the body's FIRST
   // row inside the scrolling body so it scrolls away over the pinned pager. Returns
@@ -374,8 +382,31 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     />
   ) : null;
 
+  // Desktop: the hero is in the scroll flow, so the pause button sits on the
+  // layer itself, under the chrome row. Phone web + native: the cover is
+  // pinned BEHIND the scrolling body and cannot take touches, so the layer
+  // draws no button and `entrancePause` puts it in the scroll content, over
+  // the cover's top-right, where it scrolls away with the cover.
   const entrance = (
-    <ThemeEntranceAnimation theme={theme} sessionKey={entranceAnimationKey} />
+    <ThemeEntranceAnimation
+      theme={theme}
+      sessionKey={entranceAnimationKey}
+      textSafeZone={textSafeZone}
+      pauseButton={isDesktop ? "inline" : "none"}
+      pauseButtonTop={70}
+    />
+  );
+  const entrancePause = (
+    <View
+      style={[styles.entrancePause, { top: safeAreaTop + 64 }]}
+      pointerEvents="box-none"
+    >
+      <ThemeEntranceAnimation
+        theme={theme}
+        sessionKey={entranceAnimationKey}
+        part="pauseButton"
+      />
+    </View>
   );
 
   // ===================== DESKTOP (web ≥1024px) =====================
@@ -523,6 +554,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]}
             pointerEvents={sequenceActive ? "none" : undefined}
           />
+          {entrancePause}
           {/* body slides up over the cover (middle layer) */}
           <View
             style={webStyle({
@@ -589,6 +621,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]}
           pointerEvents={sequenceActive ? "none" : undefined}
         />
+        {entrancePause}
         <View
           style={[
             styles.nativeBody,
@@ -625,20 +658,52 @@ const S6_BOUNDARY = S6_PLATE_BOUNDARY;
 export interface DirectionCIdentityOverlayProps {
   title: string;
   meta?: string | null;
+  /**
+   * issue #1023 — the rect covering the title and the meta plate, relative
+   * to the cover (the overlay fills it), measured from the real text. The
+   * entrance motion uses it as its text-safe zone.
+   */
+  onTextRect?: (rect: TextSafeZone) => void;
 }
+
+type Box = { x: number; y: number; width: number; height: number };
 
 export const DirectionCIdentityOverlay = ({
   title,
   meta = null,
-}: DirectionCIdentityOverlayProps): React.ReactElement => (
-  <View pointerEvents="none" style={styles.directionCOverlay}>
-    <Text numberOfLines={2} style={styles.directionCTitle}>{title}</Text>
-    <View style={styles.directionCPlate}>
-      {meta ? <Text numberOfLines={2} style={styles.directionCMeta}>{meta}</Text> : <View />}
-      <Text style={styles.directionCBrand}>mingla</Text>
+  onTextRect,
+}: DirectionCIdentityOverlayProps): React.ReactElement => {
+  const boxes = React.useRef<{ title: Box | null; plate: Box | null }>({ title: null, plate: null });
+  const report = (which: "title" | "plate", box: Box): void => {
+    boxes.current[which] = box;
+    const t = boxes.current.title;
+    const p = boxes.current.plate;
+    if (onTextRect === undefined || t === null || p === null) return;
+    const x = Math.min(t.x, p.x);
+    const y = Math.min(t.y, p.y);
+    const right = Math.max(t.x + t.width, p.x + p.width);
+    const bottom = Math.max(t.y + t.height, p.y + p.height);
+    onTextRect({ x, y, width: right - x, height: bottom - y });
+  };
+  return (
+    <View pointerEvents="none" style={styles.directionCOverlay}>
+      <Text
+        numberOfLines={2}
+        style={styles.directionCTitle}
+        onLayout={onTextRect ? (e) => report("title", e.nativeEvent.layout) : undefined}
+      >
+        {title}
+      </Text>
+      <View
+        style={styles.directionCPlate}
+        onLayout={onTextRect ? (e) => report("plate", e.nativeEvent.layout) : undefined}
+      >
+        {meta ? <Text numberOfLines={2} style={styles.directionCMeta}>{meta}</Text> : <View />}
+        <Text style={styles.directionCBrand}>mingla</Text>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   // ---- desktop ----
@@ -802,6 +867,13 @@ const styles = StyleSheet.create({
   },
   phoneBannerWrap: {
     marginBottom: 12,
+  },
+  // issue #1023 — pause control over the pinned cover's top-right, inside the
+  // scroll content (absolute, so it never shifts the body).
+  entrancePause: {
+    position: "absolute",
+    right: 12,
+    zIndex: CHROME_Z - 1,
   },
 });
 

@@ -12,11 +12,17 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Gesture } from "react-native-gesture-handler";
 
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeAnimationSlug, ThemeInput } from "@mingla/offering-rendering";
 import {
   EventCoverMedia,
   ThemeEntranceAnimation,
 } from "@mingla/offering-rendering";
+import {
+  SERVER_ACCEPTED_ANIMATION_SLUGS,
+  THEME_ANIMATION_CATALOG,
+  THEME_MOTION_GROUPS,
+} from "../../../../packages/offering-rendering/designTokens";
+import { setThemeMotionDevOverride } from "../../../../packages/offering-rendering/themeMotion";
 import {
   boldFontFamily,
   createThemePalette,
@@ -48,9 +54,7 @@ import { FONT_SPECIMENS } from "./fontSpecimens";
 import { normalizeHexColor, normalizeHexColorOnBlur } from "./normalizeHexColor";
 import { THEME_PRESETS, presetForHex } from "./themePresets";
 import {
-  ALL_ANIMATION_SLUGS,
   FONT_GROUPS,
-  MOTION_DISPLAY_NAMES,
   hexToHsv,
   hsvToHex,
   hueName,
@@ -146,6 +150,8 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   const compact = screenHeight < COMPACT_SCREEN_HEIGHT;
   const [tab, setTab] = useState<TabKey>("colour");
   const [replayNonce, setReplayNonce] = useState(0);
+  // issue #1023 — a preview-only motion pick (not saved; see below).
+  const [previewSlug, setPreviewSlug] = useState<ThemeAnimationSlug | null>(null);
   const [screenReaderOn, setScreenReaderOn] = useState(false);
   const [numericMode, setNumericMode] = useState(false);
 
@@ -161,6 +167,10 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     [scope, value, brandTheme],
   );
   const palette = useMemo(() => createThemePalette(resolved), [resolved]);
+  const previewTheme = useMemo(
+    () => (previewSlug === null ? resolved : { ...resolved, animation: previewSlug }),
+    [resolved, previewSlug],
+  );
 
   // ORCH-1083 — the ONLY useThemeFont call site in this sheet. Browsing the
   // font list loads nothing; only the SELECTED family loads, for the preview.
@@ -214,9 +224,21 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     [onChange, value],
   );
 
+  // issue #1023 — production's database still accepts only the original nine
+  // slugs. A saveable pick commits as before. A preview-only pick is NEVER
+  // sent to onChange: it plays in the preview band and, in dev builds only,
+  // overrides every live entrance layer so the real public pages show it.
   const commitAnimation = useCallback(
     (slug: string | null): void => {
-      onChange(withAxis(value, "animation", slug));
+      const accepted = (SERVER_ACCEPTED_ANIMATION_SLUGS as readonly (string | null)[]).includes(slug);
+      if (slug === null || accepted) {
+        setPreviewSlug(null);
+        setThemeMotionDevOverride(null, typeof __DEV__ !== "undefined" && __DEV__);
+        onChange(withAxis(value, "animation", slug));
+      } else {
+        setPreviewSlug(slug as ThemeAnimationSlug);
+        setThemeMotionDevOverride(slug as ThemeAnimationSlug, typeof __DEV__ !== "undefined" && __DEV__);
+      }
       setReplayNonce((n) => n + 1);
     },
     [onChange, value],
@@ -393,9 +415,10 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
         </View>
         <View style={styles.previewOverlay} pointerEvents="none">
           <ThemeEntranceAnimation
-            theme={resolved}
-            sessionKey={`theme-picker:${resolved.animation}:${replayNonce}`}
+            theme={previewTheme}
+            sessionKey={`theme-picker:${previewTheme.animation}:${replayNonce}`}
             replayOnMount={true}
+            pauseButton="none"
           />
         </View>
       </View>
@@ -698,47 +721,42 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
 
         {tab === "motion" ? (
           <View style={styles.tabBody}>
-            {Platform.OS === "web" ? (
-              <View style={styles.webBanner}>
-                <Text style={styles.webBannerText}>
-                  Entrance motion plays in the Mingla apps. Shared web links don&apos;t
-                  show it yet.
-                </Text>
-              </View>
-            ) : null}
-
+            {/* issue #1023 — every animation, grouped as in the approved
+                reference. Tiles show a STILL of each look in the brand colour;
+                the one live player is the preview band above (29 looping
+                players would cost battery and frames). */}
             <View style={styles.motionGrid}>
-              {ALL_ANIMATION_SLUGS.map((slug) => {
-                const selected = motionInherited
-                  ? false
-                  : (value?.animation ?? null) === slug;
-                return (
-                  <Pressable
-                    key={slug}
-                    onPress={() => commitAnimation(slug)}
-                    style={[styles.motionTile, selected ? styles.motionTileSelected : null]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={MOTION_DISPLAY_NAMES[slug] ?? slug}
-                  >
-                    {/* STATIC poster only. Exactly ONE Lottie instance is ever
-                        alive, and it lives in the preview band above — 10
-                        looping tiles would be a battery and jank disaster. */}
-                    <Text style={styles.motionTileLabel} numberOfLines={1}>
-                      {slug === "none" ? "— No motion" : MOTION_DISPLAY_NAMES[slug]}
-                    </Text>
-                    <Text style={styles.motionTileHint}>
-                      {slug === "none" ? "" : "Play once"}
-                    </Text>
-                    {selected ? (
-                      <View style={styles.motionCheck}>
-                        <Icon name="check" size={16} color={accent.warm} />
-                      </View>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
+              <MotionTile
+                label="No motion"
+                selected={!motionInherited && (value?.animation ?? null) === "none" && previewSlug === null}
+                onPress={() => commitAnimation("none")}
+              />
             </View>
+            {THEME_MOTION_GROUPS.map((group) => (
+              <View key={group} style={styles.motionGroup}>
+                <Text style={styles.motionGroupLabel}>{group}</Text>
+                <View style={styles.motionGrid}>
+                  {(Object.keys(THEME_ANIMATION_CATALOG) as Array<keyof typeof THEME_ANIMATION_CATALOG>)
+                    .filter((slug) => THEME_ANIMATION_CATALOG[slug].group === group)
+                    .map((slug) => {
+                      const previewOnly = !(SERVER_ACCEPTED_ANIMATION_SLUGS as readonly string[]).includes(slug);
+                      const selected = previewOnly
+                        ? previewSlug === slug
+                        : previewSlug === null && !motionInherited && (value?.animation ?? null) === slug;
+                      return (
+                        <MotionTile
+                          key={slug}
+                          label={THEME_ANIMATION_CATALOG[slug].name}
+                          selected={selected}
+                          previewOnly={previewOnly}
+                          onPress={() => commitAnimation(slug)}
+                          stillTheme={{ ...resolved, animation: slug }}
+                        />
+                      );
+                    })}
+                </View>
+              </View>
+            ))}
           </View>
         ) : null}
       </ScrollView>
@@ -781,6 +799,49 @@ const SwatchDot: React.FC<{
   >
     {/* Selection is not colour-only — a check in a readable colour rides on top. */}
     {selected ? <Icon name="check" size={14} color={readableTextFor(hex)} /> : null}
+  </Pressable>
+);
+
+interface MotionTileProps {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  previewOnly?: boolean;
+  stillTheme?: ReturnType<typeof resolveTheme>;
+}
+
+const MotionTile: React.FC<MotionTileProps> = ({ label, selected, onPress, previewOnly = false, stillTheme }) => (
+  <Pressable
+    onPress={onPress}
+    style={[styles.motionTile, selected ? styles.motionTileSelected : null]}
+    accessibilityRole="button"
+    accessibilityState={{ selected }}
+    accessibilityLabel={previewOnly ? `${label}, preview only` : label}
+    accessibilityHint={previewOnly ? "Plays in the preview. Not saved yet." : undefined}
+  >
+    {stillTheme !== undefined ? (
+      <View style={styles.motionTileArt} pointerEvents="none">
+        <ThemeEntranceAnimation
+          theme={stillTheme}
+          sessionKey={`theme-tile:${stillTheme.animation}`}
+          still
+          pauseButton="none"
+        />
+      </View>
+    ) : null}
+    {previewOnly ? (
+      <View style={styles.previewChip}>
+        <Text style={styles.previewChipLabel}>Preview only</Text>
+      </View>
+    ) : null}
+    <Text style={styles.motionTileLabel} numberOfLines={1}>
+      {label}
+    </Text>
+    {selected ? (
+      <View style={styles.motionCheck}>
+        <Icon name="check" size={16} color={accent.warm} />
+      </View>
+    ) : null}
   </Pressable>
 );
 
@@ -926,15 +987,30 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: 6,
   },
-  webBanner: {
-    minHeight: 36,
-    borderRadius: radius.md,
-    backgroundColor: "rgba(59,130,246,0.15)",
-    paddingHorizontal: spacing.sm,
-    justifyContent: "center",
-  },
-  webBannerText: { fontSize: 12, lineHeight: 16, color: textTokens.secondary },
   motionGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  motionGroup: { marginTop: spacing.md },
+  motionGroupLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+    marginBottom: spacing.xs,
+  },
+  motionTileArt: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    backgroundColor: "#0c0e12",
+  },
+  previewChip: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.sm,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "rgba(12,14,18,0.72)",
+  },
+  previewChipLabel: { fontSize: 10, fontWeight: "700", color: "#ffffff" },
   motionTile: {
     // #1022 F-6 — 174 needed 356pt for two tiles + the 8pt gap, but the sheet
     // body is `screen - 32`: 343 on iPhone SE/8 and 352 on the tested Samsung.
@@ -952,7 +1028,6 @@ const styles = StyleSheet.create({
   },
   motionTileSelected: { backgroundColor: accent.tint, borderColor: accent.border },
   motionTileLabel: { fontSize: 13, fontWeight: "600", color: textTokens.primary },
-  motionTileHint: { fontSize: 11, color: textTokens.quaternary },
   motionCheck: { position: "absolute", top: spacing.sm, right: spacing.sm },
   footer: {
     height: 56,

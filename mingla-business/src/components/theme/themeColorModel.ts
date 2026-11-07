@@ -1,6 +1,7 @@
 import type { ThemeInput } from "@mingla/offering-rendering";
 
 import {
+  THEME_ANIMATION_CATALOG,
   THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
 } from "../../../../packages/offering-rendering/designTokens";
@@ -178,18 +179,13 @@ export const FONT_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   dancing_script: "Dancing Script",
 };
 
-/** `none` is "No motion", NEVER "None". */
+/** `none` is "No motion", NEVER "None". issue #1023 — all 29 names come
+ *  from the shared catalog (the reference page's names). */
 export const MOTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   none: "No motion",
-  confetti: "Confetti",
-  fireworks: "Fireworks",
-  balloons: "Balloons",
-  sparkles: "Sparkles",
-  glitter_shower: "Glitter shower",
-  snowfall: "Snowfall",
-  falling_petals: "Falling petals",
-  hearts: "Hearts",
-  shimmer_reveal: "Shimmer reveal",
+  ...Object.fromEntries(
+    Object.entries(THEME_ANIMATION_CATALOG).map(([slug, entry]) => [slug, entry.name]),
+  ),
 };
 
 export const FONT_GROUPS: readonly {

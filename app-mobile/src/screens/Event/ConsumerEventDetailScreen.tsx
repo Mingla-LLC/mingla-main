@@ -1796,7 +1796,15 @@ export default function ConsumerEventDetailScreen({
             coverMediaNode
           )}
           <View style={styles.coverScrim} pointerEvents="none" />
-          <ThemeEntranceAnimation theme={theme} sessionKey={`event:${seed.eventId}`} />
+          {/* issue #1023 — every visit plays the entrance then the loop. Nothing
+              is written on this cover (the title is in the body below), so
+              there is no text-safe zone. The cover sits behind the scroll and
+              cannot take taps: the pause button lives in the scroll content. */}
+          <ThemeEntranceAnimation
+            theme={theme}
+            sessionKey={`event:${seed.eventId}`}
+            pauseButton="none"
+          />
         </View>
 
         {/* (2) the gorhom scroll host — DIRECT child of <BaseBottomSheet>. */}
@@ -1820,6 +1828,16 @@ export default function ConsumerEventDetailScreen({
             style={styles.coverSpacer}
             pointerEvents={galleryActive ? "none" : undefined}
           />
+          <View
+            style={[styles.motionPause, { top: insets.top + 64 }]}
+            pointerEvents="box-none"
+          >
+            <ThemeEntranceAnimation
+              theme={theme}
+              sessionKey={`event:${seed.eventId}`}
+              part="pauseButton"
+            />
+          </View>
           <View
             style={[
               styles.nativeBody,
@@ -2126,6 +2144,8 @@ const styles = StyleSheet.create({
   nativeScroll: { zIndex: 2 },
   nativeScrollContent: { flexGrow: 1 },
   coverSpacer: { width: "100%", aspectRatio: 4 / 5 },
+  // issue #1023 — the entrance motion's pause control over the cover.
+  motionPause: { position: "absolute", right: 12, zIndex: 3 },
   nativeBody: {
     zIndex: 2,
     marginTop: -SEAM,

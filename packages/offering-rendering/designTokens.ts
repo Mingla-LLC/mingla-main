@@ -94,6 +94,8 @@ export const THEME_FONT_SLUGS = [
   "dancing_script",
 ] as const;
 
+// issue #1023 — 29 generated animations (9 original slugs keep their names),
+// in the reference page's group order: Celebrate, Glow, Nature, Night, Love.
 export const THEME_ANIMATION_SLUGS = [
   "none",
   "confetti",
@@ -105,7 +107,96 @@ export const THEME_ANIMATION_SLUGS = [
   "falling_petals",
   "hearts",
   "shimmer_reveal",
+  "streamers",
+  "party_shapes",
+  "bubbles",
+  "champagne",
+  "disco_glints",
+  "bokeh",
+  "golden_dust",
+  "neon_pulse",
+  "autumn_leaves",
+  "fireflies",
+  "rain",
+  "sun_rays",
+  "starry_sky",
+  "aurora",
+  "lanterns",
+  "embers",
+  "music_notes",
+  "love_burst",
+  "rose_petals",
+  "love_balloons",
 ] as const;
+
+/**
+ * [TRANSITIONAL] issue #1023 wave 1 — the animation slugs production's
+ * database accepts today (the table CHECKs and the theme RPC validations still
+ * list only these nine). The other 20 are preview-only in the Theme sheet and
+ * are never saved. Exit condition: the wave 2 migration
+ * `20280427001023_issue_1023_widen_theme_animation_slugs.sql` is applied to
+ * production; then delete this list and let every slug save.
+ */
+export const SERVER_ACCEPTED_ANIMATION_SLUGS = [
+  "none",
+  "confetti",
+  "fireworks",
+  "balloons",
+  "sparkles",
+  "glitter_shower",
+  "snowfall",
+  "falling_petals",
+  "hearts",
+  "shimmer_reveal",
+] as const satisfies readonly (typeof THEME_ANIMATION_SLUGS)[number][];
+
+export type ThemeMotionGroup = "Celebrate" | "Glow" | "Nature" | "Night" | "Love";
+
+/** Display name and picker group for every animation (reference page names). */
+export const THEME_ANIMATION_CATALOG: Readonly<
+  Record<
+    Exclude<(typeof THEME_ANIMATION_SLUGS)[number], "none">,
+    { name: string; group: ThemeMotionGroup }
+  >
+> = {
+  confetti: { name: "Confetti", group: "Celebrate" },
+  streamers: { name: "Streamers", group: "Celebrate" },
+  party_shapes: { name: "Party shapes", group: "Celebrate" },
+  fireworks: { name: "Fireworks", group: "Celebrate" },
+  balloons: { name: "Balloons", group: "Celebrate" },
+  bubbles: { name: "Bubbles", group: "Celebrate" },
+  champagne: { name: "Champagne", group: "Celebrate" },
+  sparkles: { name: "Sparkles", group: "Glow" },
+  glitter_shower: { name: "Glitter shower", group: "Glow" },
+  disco_glints: { name: "Disco glints", group: "Glow" },
+  bokeh: { name: "Bokeh lights", group: "Glow" },
+  golden_dust: { name: "Golden dust", group: "Glow" },
+  shimmer_reveal: { name: "Shimmer sweep", group: "Glow" },
+  neon_pulse: { name: "Neon pulse", group: "Glow" },
+  snowfall: { name: "Snowfall", group: "Nature" },
+  falling_petals: { name: "Falling petals", group: "Nature" },
+  autumn_leaves: { name: "Autumn leaves", group: "Nature" },
+  fireflies: { name: "Fireflies", group: "Nature" },
+  rain: { name: "Soft rain", group: "Nature" },
+  sun_rays: { name: "Sun rays", group: "Nature" },
+  starry_sky: { name: "Starry sky", group: "Night" },
+  aurora: { name: "Aurora", group: "Night" },
+  lanterns: { name: "Lanterns", group: "Night" },
+  embers: { name: "Embers", group: "Night" },
+  music_notes: { name: "Music notes", group: "Night" },
+  hearts: { name: "Hearts", group: "Love" },
+  love_burst: { name: "Love burst", group: "Love" },
+  rose_petals: { name: "Rose petals", group: "Love" },
+  love_balloons: { name: "Love balloons", group: "Love" },
+};
+
+export const THEME_MOTION_GROUPS: readonly ThemeMotionGroup[] = [
+  "Celebrate",
+  "Glow",
+  "Nature",
+  "Night",
+  "Love",
+];
 
 export type ThemeFontSlug = (typeof THEME_FONT_SLUGS)[number];
 export type ThemeAnimationSlug = (typeof THEME_ANIMATION_SLUGS)[number];

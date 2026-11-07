@@ -66,6 +66,7 @@ import {
   ticketSaleEnded,
 } from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+import type { TextSafeZone } from "./themeMotion";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // ORCH-1138 A1 — createThemePalette + the ThemePalette type + the color-math
@@ -433,6 +434,8 @@ const PublishedBody = ({
   // media reports its intrinsic aspect ratio. Clamp so a very tall/vertical
   // cover can't push the whole page below the fold.
   const [heroAspect, setHeroAspect] = useState<number>(16 / 9);
+  // issue #1023 — where the on-cover title/meta really sits (text-safe zone).
+  const [coverTextRect, setCoverTextRect] = useState<TextSafeZone | null>(null);
   const clampedHeroAspect = Math.min(Math.max(heroAspect, 0.75), 16 / 9);
 
   return (
@@ -489,11 +492,13 @@ const PublishedBody = ({
               <DirectionCIdentityOverlay
                 title={event.name}
                 meta={[event.dateLine, event.venueName].filter(Boolean).join(" · ")}
+                onTextRect={setCoverTextRect}
               />
             ) : null}
             <ThemeEntranceAnimation
               theme={theme}
               sessionKey={`event:${event.id}`}
+              textSafeZone={useDirectionCIdentity ? (coverTextRect ?? "default") : undefined}
             />
             {event.coverCredit !== null ? (
               <View style={styles.coverCreditBadge} pointerEvents="none">

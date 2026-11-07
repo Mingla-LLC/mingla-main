@@ -414,6 +414,9 @@ module.exports = {
     // The @mingla/offering-rendering barrel eagerly re-exports RN component .tsx —
     // map to a mock that re-exports the REAL pure helpers + stubs the components.
     "^@mingla/offering-rendering$": "<rootDir>/__manual_mocks__/offering-rendering.js",
+    // issue #1023 — the shared ThemeEntranceAnimation imports the motion package
+    // by name from packages/ (no node_modules there). Resolution repair only.
+    "^@mingla/theme-animations$": "<rootDir>/../packages/theme-animations/index.ts",
     // #3859 — this pure deep contract is new on the issue worktree. Resolve
     // it from THIS checkout instead of the workspace symlink's anchor checkout.
     "^@mingla/offering-rendering/publicParityContract$":
