@@ -45,6 +45,8 @@ jest.mock("react-native", () => ({
 }));
 jest.mock("@stripe/stripe-terminal-react-native", () => mockSdkFactory(), { virtual: false });
 jest.mock("../useTapToPayRelease", () => ({ useTapToPayRelease: () => ({ live: false }) }));
+// The full-brand read (auth + Supabase) is pinned by issue_4271_tap_slim_brand.
+jest.mock("../useTapToPayBrandFacts", () => ({ useTapToPayBrandFacts: () => null }));
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
   default: { getItem: jest.fn(async () => null), setItem: jest.fn(async () => undefined) },

@@ -39,6 +39,7 @@ import {
   type TapToPayAcceptance,
 } from "../services/terminal/tapToPaySession";
 import { useTapToPayRelease } from "./useTapToPayRelease";
+import { useTapToPayBrandFacts } from "./useTapToPayBrandFacts";
 import {
   currentTapToPayDevice,
   isIosBelowTapFloor,
@@ -128,6 +129,17 @@ export const resolveTapToPayAvailability = (
 };
 
 /**
+ * An event's server detail carries a slim brand (id, name) with no payment
+ * facts; read that way every brand looks unable to take cards and Tap to Pay
+ * never shows at the door (#4271, measured on a real iPhone). True when the
+ * object carries the facts isBrandChargeReady reads.
+ */
+export const hasTapToPayCardFacts = (brand: TapToPayBrandFacts): boolean =>
+  brand.paymentProvider !== undefined ||
+  brand.stripeStatus !== undefined ||
+  brand.chargesEnabled !== undefined;
+
+/**
  * iPhone: Apple's answer decides. The hint only stands in until Apple has been
  * asked, and it can never overrule "not accepted". Android has no Apple terms, so
  * the hint is its setup-done flag.
@@ -143,7 +155,12 @@ export const tapToPayNeedsSetup = (
 export const useTapToPayAvailability = (
   input: Omit<TapToPayAvailabilityInput, "released"> | null,
 ): TapToPayAvailability => {
-  const brandId = input?.brand?.id ?? null;
+  const givenBrand = input?.brand ?? null;
+  const brandId = givenBrand?.id ?? null;
+  // A slim brand is completed from the brand's own record (useBrand); a brand
+  // that already carries its card facts is used as is and fetches nothing.
+  const slimBrandId = givenBrand !== null && !hasTapToPayCardFacts(givenBrand) ? brandId : null;
+  const fullBrand = useTapToPayBrandFacts(slimBrandId);
   const [hint, setHint] = useState<boolean>(false);
 
   useEffect(() => {
@@ -166,7 +183,7 @@ export const useTapToPayAvailability = (
   const acceptance = tapToPayAcceptanceFor(session, brandId);
   const needsSetup = tapToPayNeedsSetup(Platform.OS, acceptance, hint);
 
-  const brand = input?.brand ?? null;
+  const brand = slimBrandId !== null ? fullBrand ?? givenBrand : givenBrand;
   const currency = input?.currency ?? null;
   const hasBrand = brand !== null;
   const { live } = useTapToPayRelease(brand?.id ?? null);
