@@ -394,7 +394,24 @@ describe("#4273 P2-3 Delete asks first", () => {
     expect(text).toContain("Delete this campaign?");
     expect(text).toContain("Friday flop");
     expect(text).toContain("This can't be undone.");
+    // Neutral for a failed send: it may have partly sent.
+    expect(text).toContain('"Friday flop" didn\'t finish sending. Deleting removes it from Campaigns.');
+    expect(text).not.toContain("didn't go out");
     expect(mockDeleteCampaign).not.toHaveBeenCalled();
+  });
+
+  it("a cancelled campaign says it was cancelled before it went out", async () => {
+    mockListRows = [{ ...failedRow, status: "cancelled", name: "Called off" }];
+    const renderer = await mountList();
+    const button = renderer.root.findAll((node: any) => node.props.accessibilityLabel === "Delete cancelled campaign Called off" && node.props.onPress)[0];
+    await act(async () => { button.props.onPress(); });
+    expect(treeText(renderer.toJSON())).toContain('"Called off" was cancelled before it went out. Deleting removes it from Campaigns. This can\'t be undone.');
+  });
+
+  it("a failed send the server counted as reaching people has no Delete", async () => {
+    mockListRows = [{ ...failedRow, recipient_count: 4 }];
+    const renderer = await mountList();
+    expect(deleteButton(renderer)).toBeUndefined();
   });
 
   it("Keep it closes the dialog without deleting", async () => {

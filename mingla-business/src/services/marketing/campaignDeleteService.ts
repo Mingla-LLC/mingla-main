@@ -16,12 +16,16 @@ import { supabase } from "../supabase";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The server's delete guard: something went out to someone. */
 export const KEPT_FOR_RECORDS_COPY =
   "Mingla keeps this send on record because it reached people. You can still send by this method again.";
+/** A confirmed send pins its row (23503), whether or not anyone got it. */
+export const KEPT_CONFIRMED_COPY =
+  "Mingla keeps this send on record. You can still send by this method again.";
 
 export class CampaignKeptForRecordsError extends Error {
-  constructor() {
-    super(KEPT_FOR_RECORDS_COPY);
+  constructor(message: string = KEPT_FOR_RECORDS_COPY) {
+    super(message);
     this.name = "CampaignKeptForRecordsError";
   }
 }
@@ -39,8 +43,11 @@ export async function deleteCampaign(campaignId: string): Promise<void> {
   if (error) {
     const code = (error as { code?: string }).code;
     const message = (error as { message?: string }).message ?? "";
-    if (code === "23503" || message.includes("campaign_kept_for_records")) {
-      throw new CampaignKeptForRecordsError();
+    if (message.includes("campaign_kept_for_records")) {
+      throw new CampaignKeptForRecordsError(KEPT_FOR_RECORDS_COPY);
+    }
+    if (code === "23503") {
+      throw new CampaignKeptForRecordsError(KEPT_CONFIRMED_COPY);
     }
     throw error;
   }

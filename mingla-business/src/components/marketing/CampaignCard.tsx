@@ -90,6 +90,9 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
   const sent = group.members.filter((row) => row.status === "sent");
   const allDraft = group.members.every((row) => row.status === "draft");
   const deletable = group.members.filter((row) => row.status === "failed" || row.status === "cancelled");
+  // #4273 — a send the server counted as reaching people stays on record:
+  // no Delete for it (the server refuses it anyway).
+  const reachedSomeone = deletable.some((row) => (row.recipient_count ?? 0) > 0);
   const recipients = single && campaign.recipient_count !== null
     ? ` · ${campaign.recipient_count} recipients`
     : "";
@@ -160,7 +163,7 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
         </Pressable>
       );
     }
-    if ((group.status === "failed" || group.status === "cancelled") && deletable.length > 0) {
+    if ((group.status === "failed" || group.status === "cancelled") && deletable.length > 0 && !reachedSomeone) {
       return (
         <Pressable
           onPress={() => onDelete(deletable.map((row) => row.id))}

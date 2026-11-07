@@ -86,13 +86,17 @@ describe("#4273 extra (b) Delete on a failed campaign works", () => {
   it("the server's kept-on-record refusal reads in plain words", async () => {
     result = { data: null, error: { code: "42501", message: "campaign_kept_for_records" } };
     await expect(deleteCampaign(ID)).rejects.toBeInstanceOf(CampaignKeptForRecordsError);
+    await expect(deleteCampaign(ID)).rejects.toThrow(
+      "Mingla keeps this send on record because it reached people. You can still send by this method again.",
+    );
   });
 
   it("a confirmed send the database keeps on record reads in plain words", async () => {
     result = { data: null, error: { code: "23503", message: "violates foreign key constraint" } };
     await expect(deleteCampaign(ID)).rejects.toBeInstanceOf(CampaignKeptForRecordsError);
+    // A confirmed send may have failed before anyone got it: no "reached people".
     await expect(deleteCampaign(ID)).rejects.toThrow(
-      "Mingla keeps this send on record because it reached people. You can still send by this method again.",
+      /^Mingla keeps this send on record\. You can still send by this method again\.$/,
     );
   });
 

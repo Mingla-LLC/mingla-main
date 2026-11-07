@@ -91,14 +91,16 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
   );
 
   // #4273 — Delete asks first: it names the campaign and says it can't be undone.
-  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; name: string; cancelled: boolean } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleDelete = useCallback((ids: string[]) => {
     const group = groups.find((row) => row.members.some((member) => ids.includes(member.id)));
     setDeleteError(null);
-    setPendingDelete({ ids, name: group?.primary.name ?? "This campaign" });
+    const cancelled = group !== undefined &&
+      group.members.filter((member) => ids.includes(member.id)).every((member) => member.status === "cancelled");
+    setPendingDelete({ ids, name: group?.primary.name ?? "This campaign", cancelled });
   }, [groups]);
 
   const closeDelete = useCallback(() => {
@@ -181,7 +183,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
         title="Delete this campaign?"
         description={
           pendingDelete !== null
-            ? `"${pendingDelete.name}" didn't go out. Deleting removes it from Campaigns. This can't be undone.`
+            ? `"${pendingDelete.name}" ${pendingDelete.cancelled ? "was cancelled before it went out" : "didn't finish sending"}. Deleting removes it from Campaigns. This can't be undone.`
             : ""
         }
         variant="simple"
