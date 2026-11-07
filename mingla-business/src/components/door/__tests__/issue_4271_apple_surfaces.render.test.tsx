@@ -1169,6 +1169,59 @@ describe("#4271 door polish: Tap to Pay states", () => {
     expect(raw).not.toBe(named);
   });
 
+  // Retest P2: tax added at checkout refuses a tap AND a pay code for this
+  // event, so the failed screen offers only the way back (the Close's action).
+  test("tax refusal: neutral, the tax copy, one Back to door sales that does what Close does", async () => {
+    const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as {
+      createDoorTapIntent: jest.Mock;
+      createDoorPayCodeForLines: jest.Mock;
+      DoorTapError: new (code: string, detail?: string | null) => Error;
+    };
+    edge.createDoorTapIntent.mockRejectedValueOnce(new edge.DoorTapError("door_tax_added_at_checkout"));
+    edge.createDoorPayCodeForLines.mockClear();
+    const { root } = await sale(client());
+    expect(tone(root)).toBe("neutral");
+    expect(textOf(root)).toContain("tax is added at checkout");
+    expect(buttonLabels(root)).toEqual(["Back to door sales"]);
+    expect(root.findAll((n) => n.props.testID === "tap-show-pay-code")).toHaveLength(0);
+    const back = byTestId(root, "tap-back-to-door");
+    const close = root.findAll((n) => n.props.accessibilityLabel === "Close" && typeof n.props.onPress === "function")[0];
+    expect(back.props.onPress).toBe(close?.props.onPress);
+    expect(textOf(root)).not.toContain("Check your connection");
+    expect(edge.createDoorPayCodeForLines).not.toHaveBeenCalled();
+  });
+
+  test("other start failures still offer Try again and a pay code", async () => {
+    const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as {
+      createDoorTapIntent: jest.Mock;
+      DoorTapError: new (code: string, detail?: string | null) => Error;
+    };
+    edge.createDoorTapIntent.mockRejectedValueOnce(new edge.DoorTapError("door_ticket_capacity_exceeded"));
+    const { root } = await sale(client());
+    expect(buttonLabels(root)).toEqual(["Try again", "Show a pay code instead"]);
+  });
+
+  test("a pay code refused for tax says the tax copy, never Check your connection", async () => {
+    const edge = jest.requireMock("../../../services/terminal/doorTapEdge") as {
+      createDoorPayCodeForLines: jest.Mock;
+      DoorTapError: new (code: string, detail?: string | null) => Error;
+    };
+    edge.createDoorPayCodeForLines.mockRejectedValueOnce(new edge.DoorTapError("door_tax_added_at_checkout"));
+    const { root } = await sale(
+      client({
+        confirmPaymentIntent: async () => ({
+          error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { id: "pi_1", status: "requires_payment_method" } },
+        }),
+      }),
+    );
+    await act(async () => {
+      byTestId(root, "tap-show-pay-code").props.onPress();
+    });
+    await settleSale();
+    expect(textOf(root)).toContain("tax is added at checkout");
+    expect(textOf(root)).not.toContain("Check your connection");
+  });
+
   test("ready: the instruction sits in the shared status pill", async () => {
     let pending: ((r: unknown) => void) | null = null;
     const { root } = await sale(

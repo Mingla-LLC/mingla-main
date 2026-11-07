@@ -105,7 +105,9 @@ import {
   doorTapBlockReason,
   doorTapDockTotal,
   doorTicketCountLabel,
+  doorPayCodeCreateErrorCopy,
   DOOR_BUYER_DETAILS_ROW,
+  DOOR_CARD_TAX_REFUSAL,
   DOOR_NOTES_PLACEHOLDER,
   DOOR_PAY_CODE_BUYER_NOTE,
   DOOR_PAYMENTS_NOT_ALLOWED,
@@ -152,30 +154,6 @@ const makeDoorCartLine = (
   isFree: tier.isFree,
   quantity,
 });
-
-/** issue #4271 — tax on top of the price isn't known until checkout (US pass-tax). */
-export const DOOR_CARD_TAX_REFUSAL =
-  "Card payments at the door aren't available for this event yet because tax is added at checkout. Take cash, or send guests to the event page.";
-
-/** issue #4271 — every refusal says what happened; nothing was charged yet. */
-export const doorPayCodeCreateErrorCopy = (code: string): string => {
-  switch (code) {
-    case "door_ticket_capacity_exceeded":
-      return "Not enough tickets left for this sale.";
-    case "ticket_not_valid_on_chosen_days":
-      return "One of these tickets isn't valid on that date.";
-    case "door_access_denied":
-      return DOOR_PAYMENTS_NOT_ALLOWED;
-    case "stripe_account_not_ready":
-      return "Card payments aren't set up for this brand yet. Take cash or manual instead.";
-    case "door_tax_added_at_checkout":
-      return DOOR_CARD_TAX_REFUSAL;
-    case "invalid_lines":
-      return "Pick at least one ticket.";
-    default:
-      return "Couldn't make a pay code. Check your connection and try again.";
-  }
-};
 
 // ---- Props ----------------------------------------------------------
 
@@ -415,7 +393,17 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     // currency; a sale must never freeze a fabricated GBP.
     eventCurrencyCode !== null;
 
+  // Two presses in one frame (the slim button and the dock button, or a double
+  // tap) must open the Tap to Pay screen once. Set only when the push happens;
+  // a blocked press keeps the sheet open and leaves it clear. Cleared whenever
+  // the sheet is shown or hidden.
+  const tapStartedRef = useRef(false);
+  useEffect(() => {
+    tapStartedRef.current = false;
+  }, [visible]);
+
   const startTapSale = useCallback((): void => {
+    if (tapStartedRef.current) return;
     // The tax refusal already shows in the dock; never print it twice.
     if (taxRefused) return;
     const blocked = doorTapBlockReason({
@@ -430,6 +418,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     setTapBlockedMessage(blocked);
     if (blocked !== null) return;
     // The Tap to Pay route owns the card read; we only hand over the basket.
+    tapStartedRef.current = true;
     postHogService.capture("door_sale_tap_started", { ticket_count: totalQty });
     markDoorTapPress(getTapToPaySession().readerReady);
     onClose();

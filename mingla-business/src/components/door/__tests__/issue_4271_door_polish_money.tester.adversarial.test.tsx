@@ -23,7 +23,7 @@
  *       for a tax refusal or a sale in flight; a blocked reason survives
  *       re-renders that are not edits; cash cannot pre-know a tax refusal).
  *   T6-T9  retest: a tax refusal on the tap screen reads no card and says why;
- *       DEFECT T7 (test.failing): its pay code fallback blames the connection;
+ *       T7: its pay code fallback never blames the connection;
  *       VoiceOver hears a repeated unknown once; Android gets no direct call.
  */
 import React from "react";
@@ -699,11 +699,10 @@ describe("Retest: Tap to Pay screen refusals and VoiceOver", () => {
     expect(close[0].props.disabled).not.toBe(true);
   });
 
-  // DEFECT (P2, retest of 6981d7956e): on that tax refusal the screen still
-  // offers "Show a pay code instead". The pay code server refuses the same event
-  // for the same reason, and the screen then blames the connection. Marked
-  // failing so CI stays green; when fixed, this flips red: drop `.failing`.
-  test.failing("DEFECT T7 tax refusal: Show a pay code instead never blames the connection", async () => {
+  // Retest of 6981d7956e (P2, fixed): on that tax refusal the screen offered
+  // "Show a pay code instead"; the pay code server refuses the same event for
+  // the same reason, and the screen then blamed the connection.
+  test("T7 tax refusal: Show a pay code instead never blames the connection", async () => {
     const { DoorTapError } = edge as unknown as { DoorTapError: new (code: string) => Error };
     edge.createDoorTapIntent.mockRejectedValueOnce(new DoorTapError("door_tax_added_at_checkout"));
     edge.createDoorPayCodeForLines.mockRejectedValueOnce(new Error("door_tax_added_at_checkout"));

@@ -4,7 +4,7 @@
  * this one drives the REAL host pay code screen from "waiting" to "guest is
  * paying" and counts what VoiceOver is told.
  *
- *   A1  (DEFECT, test.failing) iOS: the pay code screen's waiting -> paying change is announced once;
+ *   A1  iOS: the pay code screen's waiting -> paying change is announced once;
  *       the first render and the countdown ticks are not.
  *   A2  Android: nothing is announced through announceForAccessibility (the
  *       live region does that job there).
@@ -185,11 +185,10 @@ describe("#4271 retest: the pay code screen tells VoiceOver when the guest start
     jest.useRealTimers();
   });
 
-  // DEFECT (P3, retest of 6981d7956e): the paying pill sits inside a Fragment and
-  // the waiting pill does not, so React mounts a NEW pill on the change; its ref
-  // starts at "Guest is paying" and nothing is announced. Marked failing so CI
-  // stays green; when fixed this flips red: drop `.failing`.
-  test.failing("DEFECT A1 iOS: waiting -> paying is announced once; mount and countdown ticks are silent", () => {
+  // Retest of 6981d7956e (P3, fixed): the paying pill sat inside a Fragment and
+  // the waiting pill did not, so React mounted a NEW pill on the change; its ref
+  // started at "Guest is paying" and nothing was announced.
+  test("A1 iOS: waiting -> paying is announced once; mount and countdown ticks are silent", () => {
     Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
     mockRow = row("open");
     const tree = mount();

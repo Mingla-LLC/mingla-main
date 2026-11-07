@@ -110,6 +110,30 @@ export const doorMethodCollectsBuyerDetails = (
 export const DOOR_SALE_SUBHEAD = "Buyer is checked in as soon as they've paid.";
 export const DOOR_PAYMENTS_NOT_ALLOWED =
   "Ask the brand owner to let you take payments.";
+/** issue #4271 — tax on top of the price isn't known until checkout (US pass-tax). */
+export const DOOR_CARD_TAX_REFUSAL =
+  "Card payments at the door aren't available for this event yet because tax is added at checkout. Take cash, or send guests to the event page.";
+
+/** issue #4271 — every refusal says what happened; nothing was charged yet. */
+export const doorPayCodeCreateErrorCopy = (code: string): string => {
+  switch (code) {
+    case "door_ticket_capacity_exceeded":
+      return "Not enough tickets left for this sale.";
+    case "ticket_not_valid_on_chosen_days":
+      return "One of these tickets isn't valid on that date.";
+    case "door_access_denied":
+      return DOOR_PAYMENTS_NOT_ALLOWED;
+    case "stripe_account_not_ready":
+      return "Card payments aren't set up for this brand yet. Take cash or manual instead.";
+    case "door_tax_added_at_checkout":
+      return DOOR_CARD_TAX_REFUSAL;
+    case "invalid_lines":
+      return "Pick at least one ticket.";
+    default:
+      return "Couldn't make a pay code. Check your connection and try again.";
+  }
+};
+
 export const DOOR_PAY_CODE_BUYER_NOTE = "They type their own details on their phone.";
 
 /** Cash, manual and Tap to Pay: the collapsed row that opens the buyer fields in place. */

@@ -114,7 +114,12 @@ export type TapSaleState =
   | { kind: "needs_setup" }
   | { kind: "reader_problem"; problem: TapReaderProblem }
   | { kind: "save_failed"; amount: TapAmount; message: string }
-  | { kind: "failed"; message: string };
+  /**
+   * `refusal` marks a hard server refusal for this event (tax added at
+   * checkout): retrying or a pay code gets the same answer, so the screen only
+   * offers the way back.
+   */
+  | { kind: "failed"; message: string; refusal?: "tax_added_at_checkout" };
 
 /**
  * Ends the host has actually been told about. Not unknown_result or save_failed:
@@ -602,6 +607,10 @@ export class TapToPaySaleFlow {
       }
       if (error instanceof DoorTapError && error.code === "tap_not_available") {
         this.emit({ kind: "not_on_this_phone" });
+        return false;
+      }
+      if (error instanceof DoorTapError && error.code === "door_tax_added_at_checkout") {
+        this.emit({ kind: "failed", message: serverMessage(error), refusal: "tax_added_at_checkout" });
         return false;
       }
       this.emit({ kind: "failed", message: serverMessage(error) });

@@ -461,28 +461,23 @@ export default function DoorPayCodeRoute(): React.ReactElement {
             Guest's card was declined. They can try again.
           </Text>
         ) : null}
+        {/* One pill instance whose props change, so the waiting -> paying
+            change is announced on iOS (a remount would start at "paying"). */}
+        <DoorStatusPill
+          variant={paying ? "busy" : "waiting"}
+          text={paying ? "Guest is paying…" : doorPayWaitingPillText(formatDoorPayCountdown(row.expiresAt, nowMs))}
+          urgent={!paying && secondsLeft < DOOR_PAY_URGENT_SECONDS}
+          accessibilityLabel={
+            paying ? undefined : `Point your camera at the code. ${doorPayCountdownWords(secondsLeft)}`
+          }
+          stateLabel={paying ? "Guest is paying" : "Waiting for the guest to scan"}
+          testID="door-pay-status-pill"
+        />
         {paying ? (
-          <>
-            <DoorStatusPill
-              variant="busy"
-              text="Guest is paying…"
-              stateLabel="Guest is paying"
-              testID="door-pay-status-pill"
-            />
-            <Text style={styles.faint}>
-              Opened on their phone {openedAgoLabel(row.openedAt, nowMs)}. Keep this screen open.
-            </Text>
-          </>
-        ) : (
-          <DoorStatusPill
-            variant="waiting"
-            text={doorPayWaitingPillText(formatDoorPayCountdown(row.expiresAt, nowMs))}
-            urgent={secondsLeft < DOOR_PAY_URGENT_SECONDS}
-            accessibilityLabel={`Point your camera at the code. ${doorPayCountdownWords(secondsLeft)}`}
-            stateLabel="Waiting for the guest to scan"
-            testID="door-pay-status-pill"
-          />
-        )}
+          <Text style={styles.faint}>
+            Opened on their phone {openedAgoLabel(row.openedAt, nowMs)}. Keep this screen open.
+          </Text>
+        ) : null}
         <View style={styles.actions}>
           <Button
             label="Can't scan? Text them the link"

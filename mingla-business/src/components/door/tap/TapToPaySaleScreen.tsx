@@ -54,6 +54,7 @@ import {
   completeDoorTapIntent,
   createDoorPayCodeForLines,
   createDoorTapIntent,
+  DoorTapError,
   markDoorTapOutcomeSeen,
 } from "../../../services/terminal/doorTapEdge";
 import {
@@ -77,6 +78,7 @@ import { GlassCard } from "../../ui/GlassCard";
 import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
 import { DoorStatusPill } from "../DoorStatusPill";
+import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapStatusView, type TapStatusAction } from "./TapStatusView";
 import { TAP_SAVE_FAILED_PAID_LINE, tapSaleTone } from "./tapSaleTone";
 import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
@@ -257,10 +259,10 @@ export const TapToPaySaleScreen = ({
       });
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
-    } catch {
+    } catch (error) {
       // The tap screen stays: a tap may start again (on a fresh intent).
       flowRef.current?.reopen();
-      setPayCodeError("Couldn't make a pay code. Check your connection and try again.");
+      setPayCodeError(doorPayCodeCreateErrorCopy(error instanceof DoorTapError ? error.code : "unknown"));
     } finally {
       setPayCodeBusy(false);
     }
@@ -565,7 +567,17 @@ export const TapToPaySaleScreen = ({
           </TapStatusView>
         );
       case "failed":
-        return (
+        // Tax added at checkout refuses card AND pay code for this event: no
+        // retry and no pay code (both get the same refusal), only the way back.
+        return state.refusal === "tax_added_at_checkout" ? (
+          <TapStatusView
+            tone={tapSaleTone("failed")}
+            title="Payment didn't start"
+            body={state.message}
+            testID="tap-state-failed"
+            primary={{ label: "Back to door sales", onPress: handleClose, testID: "tap-back-to-door" }}
+          />
+        ) : (
           <TapStatusView
             tone={tapSaleTone("failed")}
             title="Payment didn't start"

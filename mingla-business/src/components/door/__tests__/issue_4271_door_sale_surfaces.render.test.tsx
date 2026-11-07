@@ -330,6 +330,39 @@ describe("#4271 B8 the Tap to Pay button", () => {
     expect(String(mockPush.mock.calls[0]?.[0])).toContain("/door/tap/new");
   });
 
+  // Retest P3: two presses in the same frame open the Tap to Pay screen once.
+  test("double press: two presses of the slim button in one act push /door/tap/new once", () => {
+    const { root } = mount(openSheet({ initialMethod: "cash" }));
+    const press = tapDock(root)[0].props.onPress;
+    act(() => {
+      press();
+      press();
+    });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(String(mockPush.mock.calls[0]?.[0])).toContain("/door/tap/new");
+  });
+
+  test("double press: two presses of the main Tap to Pay button in one act push once; reopening the sheet re-arms it", () => {
+    const tree = mount(openSheet());
+    const press = pressable(tree.root, "Tap to Pay on iPhone").props.onPress;
+    act(() => {
+      press();
+      press();
+    });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    // The host comes back and the sheet is shown again: one press starts again.
+    act(() => {
+      (tree as unknown as { update: (e: React.ReactElement) => void }).update(openSheet({ visible: false }));
+    });
+    act(() => {
+      (tree as unknown as { update: (e: React.ReactElement) => void }).update(openSheet());
+    });
+    act(() => {
+      pressable(tree.root, "Tap to Pay on iPhone").props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledTimes(2);
+  });
+
   test("the slim button is never greyed: a blocked press picks Tap to Pay and says why in the dock", () => {
     const { root } = mount(openSheet({ initialMethod: "cash" }, []));
     expect(tapDock(root)[0].props.disabled).toBe(false);

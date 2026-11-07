@@ -50,7 +50,7 @@ import {
   isIosBelowTapFloor,
   useTapToPayAvailability,
 } from "../../../hooks/useTapToPayAvailability";
-import { createDoorPayCodeForLines, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
+import { createDoorPayCodeForLines, DoorTapError, fetchDoorTapLocation } from "../../../services/terminal/doorTapEdge";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
@@ -58,6 +58,7 @@ import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
+import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapFactList } from "./TapFactList";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
@@ -162,8 +163,8 @@ export const TapToPaySetupScreen = ({
       });
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
-    } catch {
-      setError("Couldn't make a pay code. Check your connection and try again.");
+    } catch (error) {
+      setError(doorPayCodeCreateErrorCopy(error instanceof DoorTapError ? error.code : "unknown"));
     } finally {
       setPayCodeBusy(false);
     }
