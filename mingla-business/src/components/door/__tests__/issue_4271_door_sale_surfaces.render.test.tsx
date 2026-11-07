@@ -295,28 +295,70 @@ describe("#4271 B8 the Tap to Pay button", () => {
     expect(String(mockPush.mock.calls[0]?.[0])).toContain("/door/tap/new");
   });
 
-  // Door polish: the dock has exactly ONE button and it follows the picked row.
-  // Tap to Pay is the first row and the default pick, so it needs no second button.
-  test("with cash chosen, the one dock button completes the sale; Tap to Pay stays the top row", () => {
+  // Apple B8 + Seth's "slim second button": with another method picked, Tap to
+  // Pay stays one press away in the dock, outside the ScrollView (no scrolling).
+  const tapDock = (root: ReactTestInstance): ReactTestInstance[] =>
+    root.findAll((n) => n.props.testID === "door-sale-tap-dock" && typeof n.props.onPress === "function");
+  const scrollView = (root: ReactTestInstance): ReactTestInstance =>
+    root.findAll((n) => n.props.keyboardShouldPersistTaps === "handled")[0] as ReactTestInstance;
+
+  test("cash selected: door-sale-tap-dock is present outside the ScrollView, under the one-row dock", () => {
     const { root } = mount(openSheet({ initialMethod: "cash" }));
-    expect(root.findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
+    expect(tapDock(root)).toHaveLength(1);
+    expect(scrollView(root)).toBeTruthy();
+    expect(scrollView(root).findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
+    const dock = tapDock(root)[0];
+    expect(dock.props.accessibilityLabel).toBe("Tap to Pay on iPhone");
+    expect(dock.props.disabled).toBe(false);
+    const { StyleSheet } = jest.requireActual("react-native") as typeof import("react-native");
+    expect(StyleSheet.flatten(dock.props.style({ pressed: false }))).toMatchObject({ height: 44 });
+    expect(textOf(dock)).toContain("Tap to Pay on iPhone");
+    // The one-row dock still completes the cash sale; Tap to Pay stays the top row.
+    expect(textOf(root)).toContain("Complete sale");
     const rows = root.findAll(
       (n) => typeof n.props.testID === "string" && n.props.testID.startsWith("door-sale-method-") && typeof n.type === "string",
     );
     expect(rows[0]?.props.testID).toBe("door-sale-method-tap_to_pay");
-    expect(textOf(root)).toContain("Complete sale");
-    expect(root.findAll((n) => n.type === "Text" && n.children.includes("Tap to Pay on iPhone") && typeof n.props.onPress === "function")).toHaveLength(0);
-    // Picking the Tap to Pay row turns the one button into Tap to Pay.
-    const tapRow = root.findAll(
-      (n) => n.props.testID === "door-sale-method-tap_to_pay" && typeof n.props.onPress === "function",
-    )[0] as ReactTestInstance;
+  });
+
+  test("the slim Tap to Pay button picks Tap to Pay and starts the sale in one press", () => {
+    const { root } = mount(openSheet({ initialMethod: "manual" }));
     act(() => {
-      tapRow.props.onPress();
-    });
-    act(() => {
-      pressable(root, "Tap to Pay on iPhone").props.onPress();
+      tapDock(root)[0].props.onPress();
     });
     expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(String(mockPush.mock.calls[0]?.[0])).toContain("/door/tap/new");
+  });
+
+  test("the slim button is never greyed: a blocked press picks Tap to Pay and says why in the dock", () => {
+    const { root } = mount(openSheet({ initialMethod: "cash" }, []));
+    expect(tapDock(root)[0].props.disabled).toBe(false);
+    act(() => {
+      tapDock(root)[0].props.onPress();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(textOf(root)).toContain("Pick at least one ticket first.");
+    // Tap to Pay is now the pick, so the dock is one row again.
+    expect(tapDock(root)).toHaveLength(0);
+    expect(pressable(root, "Tap to Pay on iPhone")).toBeTruthy();
+  });
+
+  test("Tap to Pay picked: one row, no second button; picking cash brings the slim button back", () => {
+    const { root } = mount(openSheet());
+    expect(tapDock(root)).toHaveLength(0);
+    const cashRow = root.findAll(
+      (n) => n.props.testID === "door-sale-method-cash" && typeof n.props.onPress === "function",
+    )[0] as ReactTestInstance;
+    act(() => {
+      cashRow.props.onPress();
+    });
+    expect(tapDock(root)).toHaveLength(1);
+  });
+
+  test("Tap to Pay unavailable (Paystack or this phone): no slim button", () => {
+    mockTapAvailable = false;
+    const { root } = mount(openSheet({ initialMethod: "cash" }));
+    expect(root.findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
   });
 
   test("the host's own choice is not overridden when Tap to Pay resolves late", () => {
@@ -734,6 +776,39 @@ describe("#4271 door polish: the sale sheet", () => {
     expect(lines[0].props.testID).toBe("door-sale-tap-blocked");
     expect(lines[0].props.accessibilityRole).toBe("alert");
     expect(textOf(lines[0])).toContain("Pick at least one ticket first.");
+  });
+
+  // P3-1: the reason is about the sale as it was; any edit clears it.
+  test("a blocked-tap reason clears when the tickets change", () => {
+    const { root } = mount(polishSheet({}, []));
+    act(() => {
+      root.findAll((n) => n.props.testID === "door-sale-submit" && "label" in n.props)[0].props.onPress();
+    });
+    expect(textOf(root)).toContain("Pick at least one ticket first.");
+    act(() => {
+      byLabel(root, "Increase General")[0].props.onPress();
+    });
+    expect(textOf(root)).not.toContain("Pick at least one ticket first.");
+    expect(root.findAll((n) => n.props.testID === "door-sale-tap-blocked")).toHaveLength(0);
+  });
+
+  test("a blocked-tap reason clears when the buyer's details change", () => {
+    const { root } = mount(polishSheet({}, []));
+    act(() => {
+      root.findAll((n) => n.props.testID === "door-sale-submit" && "label" in n.props)[0].props.onPress();
+    });
+    expect(textOf(root)).toContain("Pick at least one ticket first.");
+    act(() => {
+      root.findAll(
+        (n) => n.props.testID === "door-sale-buyer-details-toggle" && typeof n.props.onPress === "function",
+      )[0].props.onPress();
+    });
+    // Opening the section alone is not an edit.
+    expect(textOf(root)).toContain("Pick at least one ticket first.");
+    act(() => {
+      root.findAll((n) => n.props.accessibilityLabel === "Buyer name" && typeof n.props.onChangeText === "function")[0].props.onChangeText("Ada");
+    });
+    expect(textOf(root)).not.toContain("Pick at least one ticket first.");
   });
 
   test("a tax refusal is the only line, even when other hints apply", () => {

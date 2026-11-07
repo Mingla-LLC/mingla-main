@@ -276,6 +276,11 @@ describe("#4271 refund reason countdown (rendered)", () => {
     expect(submit.mock.calls[0][0].reason).toBe("Guest could not attend");
   });
 
+  test("R4 RefundSheet's reason box tells a screen reader it is required, like the door one", () => {
+    const tree = mount(<RefundSheet visible mode="full" order={order} onClose={jest.fn()} onSuccess={jest.fn()} />);
+    expect(reasonBox(tree).props.accessibilityLabel).toBe("Refund reason, required, at least 10 characters");
+  });
+
   test("R3 RefundSheet starts a new refund after a failed one, and reuses the key otherwise", async () => {
     const tree = mount(<RefundSheet visible mode="full" order={order} onClose={jest.fn()} onSuccess={jest.fn()} />);
     type(tree, "Guest could not attend");

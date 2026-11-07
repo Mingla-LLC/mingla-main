@@ -11,6 +11,7 @@
  *   P6  buyer details, notes placeholder and counter copy
  *   P7  the pay code pill: countdown text, words for a screen reader, urgency
  *   P8  a typed buyer name rides the tap draft (any script), absent stays absent
+ *   P9  "Sell another" keeps tickets and date, drops the guest's name and phone
  *
  * FAILS-ON-REVERT: restoring the two-tone TapStatusView, the card reader row,
  * the stacked dock lines, the "Code expires in" footnote or btoa draft encoding
@@ -23,7 +24,7 @@ jest.mock("../../../constants/publicUrls", () => ({
 }));
 
 import { glass, semantic, text as textTokens } from "../../../constants/designSystem";
-import { parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
+import { encodeTapToPayDraft, parseTapToPayDraft, sellAnotherDraft } from "../../../services/terminal/tapToPayDraft";
 import {
   DOOR_PAY_URGENT_SECONDS,
   doorPayCountdownSeconds,
@@ -239,5 +240,26 @@ describe("P8 the typed name rides the tap draft", () => {
     );
     expect(plain).not.toBeNull();
     expect(plain).not.toHaveProperty("buyerName");
+  });
+});
+
+describe("P9 Sell another starts clean for the next guest", () => {
+  test("tickets and date stay; name, phone and phone country go", () => {
+    const next = sellAnotherDraft({
+      lines: [{ ticketTypeId: "t1", quantity: 3 }],
+      eventDateId: "date-1",
+      buyerPhone: "+447700900123",
+      phoneCountryIso: "GB",
+      buyerName: "Ada Obi",
+    });
+    expect(next).toEqual({
+      lines: [{ ticketTypeId: "t1", quantity: 3 }],
+      eventDateId: "date-1",
+      buyerPhone: null,
+      phoneCountryIso: null,
+    });
+    const roundTrip = parseTapToPayDraft(encodeTapToPayDraft(next));
+    expect(roundTrip).not.toHaveProperty("buyerName");
+    expect(roundTrip?.buyerPhone).toBeNull();
   });
 });

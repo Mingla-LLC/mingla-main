@@ -10,7 +10,17 @@
  * tone has its own icon, so colour is never the only signal.
  */
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { durations, spacing, text as textTokens, typography } from "../../../constants/designSystem";
 import { useReduceMotion } from "../../../hooks/useMotionPreferences";
@@ -83,6 +93,16 @@ export const TapStatusView = ({
       useNativeDriver: true,
     }).start();
   }, [tone, reduceMotion, scale, opacity]);
+
+  // iOS ignores `accessibilityLiveRegion`. Entering a caution or bad state is
+  // announced through VoiceOver once (keyed on tone and title, so a body that
+  // changes while the state holds is never re-read).
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (tone !== "caution" && tone !== "bad") return;
+    AccessibilityInfo.announceForAccessibility(body ? `${title}. ${body}` : title);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tone, title]);
 
   return (
     <View style={styles.host} testID={testID} accessibilityLiveRegion={style.liveRegion}>

@@ -314,7 +314,7 @@ describe("Tap to Pay money controls", () => {
     expect(textOf(root)).toContain("Paid £31.35");
   });
 
-  test("DEFECT M1 Paid, still saving: the body names the button the screen actually shows", async () => {
+  test("M1 Paid, still saving: the body names the button the screen actually shows", async () => {
     edge.completeDoorTapIntent.mockRejectedValueOnce(new Error("offline"));
     const { root } = await sale(terminal());
     const buttons = root
@@ -323,8 +323,11 @@ describe("Tap to Pay money controls", () => {
     expect(buttons).toEqual(["Save again"]);
     // The flow's message tells the host which button to press. It must be one that exists.
     const body = textOf(root);
+    // The body must name a button, and that button must be the one on screen.
     const named = body.match(/Tap (Try again|Save again|[A-Z][a-z]+ again)/)?.[1];
-    if (named !== undefined) expect(buttons).toContain(named);
+    expect(named).toBe("Save again");
+    expect(buttons).toContain(named);
+    expect(body).not.toContain("Try again");
   });
 
   test("M2 Checking the payment: Check again re-confirms only, and offers nothing that charges", async () => {

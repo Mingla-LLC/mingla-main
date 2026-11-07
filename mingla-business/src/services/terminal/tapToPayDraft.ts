@@ -133,3 +133,14 @@ export const encodeTapToPayDraft = (draft: TapToPayDraft): string =>
       ...(draft.buyerName != null ? { buyerName: draft.buyerName } : {}),
     }),
   );
+
+/**
+ * #4271 — "Sell another" keeps what was sold (tickets, date) for the next guest
+ * and drops everything about this guest (name, phone, phone country).
+ */
+export const sellAnotherDraft = (draft: TapToPayDraft): TapToPayDraft => ({
+  lines: draft.lines.map((line) => ({ ticketTypeId: line.ticketTypeId, quantity: line.quantity })),
+  eventDateId: draft.eventDateId,
+  buyerPhone: null,
+  phoneCountryIso: null,
+});

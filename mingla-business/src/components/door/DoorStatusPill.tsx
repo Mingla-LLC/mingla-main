@@ -8,11 +8,12 @@
  *
  * Accessibility: the pill reads its own `accessibilityLabel` on focus (a
  * countdown in words), and only a change of `stateLabel` is announced, never
- * every tick of the countdown. Motion: the fill crossfades over 200ms; none
+ * every tick of the countdown. iOS ignores `accessibilityLiveRegion`, so there
+ * a change of `stateLabel` is announced through VoiceOver directly. Motion: the fill crossfades over 200ms; none
  * under reduced motion.
  */
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -61,6 +62,17 @@ export const DoorStatusPill = ({
       useNativeDriver: true,
     }).start();
   }, [variant, reduceMotion, busy]);
+
+  // iOS has no live regions: announce a state change (never the first render,
+  // never a countdown tick, which changes `text` but not `stateLabel`).
+  const lastStateLabel = useRef(stateLabel);
+  useEffect(() => {
+    if (lastStateLabel.current === stateLabel) return;
+    lastStateLabel.current = stateLabel;
+    if (Platform.OS === "ios" && stateLabel !== undefined && stateLabel.length > 0) {
+      AccessibilityInfo.announceForAccessibility(stateLabel);
+    }
+  }, [stateLabel]);
 
   return (
     <View style={styles.wrap}>

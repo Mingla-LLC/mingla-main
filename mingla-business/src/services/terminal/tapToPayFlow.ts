@@ -872,7 +872,7 @@ export class TapToPaySaleFlow {
     }
     if (confirmed.paymentIntent.status !== "succeeded") {
       // processing, requires_capture or anything else Stripe hasn't settled: the
-      // result is unknown. Keep the collected intent so "Try again" confirms it.
+      // result is unknown. Keep the collected intent so "Check again" confirms it.
       this.emit({ kind: "unknown_result", amount });
       return;
     }
@@ -889,7 +889,7 @@ export class TapToPaySaleFlow {
     await this.complete();
   }
 
-  /** "Try again" on an unknown result: confirm the SAME intent. */
+  /** "Check again" on an unknown result: confirm the SAME intent. */
   async retryConfirm(): Promise<void> {
     if (this.busy || this.state.kind !== "unknown_result") return;
     const step = this.stepContext();
@@ -934,7 +934,7 @@ export class TapToPaySaleFlow {
       this.emit({
         kind: "save_failed",
         amount,
-        message: "The card was charged, but the sale didn't save yet. Don't charge again. Tap Try again to finish.",
+        message: "The card was charged, but the sale didn't save yet. Don't charge again. Tap Save again to finish.",
       });
       if (this.hostLeft) this.input.onPaidAfterClose?.({ amount, saved: false });
     }

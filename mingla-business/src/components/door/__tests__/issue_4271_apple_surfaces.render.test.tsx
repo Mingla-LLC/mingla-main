@@ -1094,6 +1094,81 @@ describe("#4271 door polish: Tap to Pay states", () => {
     expect(root.findAll((n) => n.props.testID === "tap-show-pay-code")).toHaveLength(0);
   });
 
+  // P3-3: the caution ring spins only while a re-check is actually running.
+  test("unknown result, idle: the caution icon, no spinner; still none after a re-check that comes back unknown", async () => {
+    const { ActivityIndicator } = jest.requireActual("react-native") as typeof import("react-native");
+    const unsettled = async () => ({ error: { code: "STRIPE_API_ERROR" } });
+    const { root } = await sale(client({ confirmPaymentIntent: unsettled }));
+    const ring = (): ReactTestInstance =>
+      root.findAll((n) => n.props.testID === "tap-tone-caution")[0] as ReactTestInstance;
+    expect(ring().findAll((n) => n.type === ActivityIndicator)).toHaveLength(0);
+    expect(mockIconNames).toContain("flag");
+    await act(async () => {
+      byTestId(root, "tap-unknown-retry").props.onPress();
+    });
+    await settleSale();
+    expect(tone(root)).toBe("caution");
+    expect(ring().findAll((n) => n.type === ActivityIndicator)).toHaveLength(0);
+  });
+
+  // P3-2: iOS ignores live regions, so caution and bad states are announced.
+  test("iOS: entering a caution or bad state is announced once; a paid state is not", async () => {
+    const { AccessibilityInfo } = jest.requireActual("react-native") as typeof import("react-native");
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility").mockImplementation(() => undefined);
+    // The preset's AccessibilityInfo is a shared mock: start from no calls.
+    announce.mockClear();
+    try {
+      await sale(client({ confirmPaymentIntent: async () => ({ error: { code: "STRIPE_API_ERROR" } }) }));
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce.mock.calls[0]?.[0]).toContain("Checking the payment");
+      announce.mockClear();
+      await sale(
+        client({
+          confirmPaymentIntent: async () => ({
+            error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { id: "pi_1", status: "requires_payment_method" } },
+          }),
+        }),
+      );
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce.mock.calls[0]?.[0]).toContain("Card declined");
+      announce.mockClear();
+      await sale(client());
+      expect(announce).not.toHaveBeenCalled();
+    } finally {
+      announce.mockRestore();
+    }
+  });
+
+  // P4-1: the next guest is someone else.
+  test("Sell another keeps the tickets and drops this guest's name and phone", async () => {
+    const named = encodeTapToPayDraft({
+      lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+      eventDateId: "date-1",
+      buyerPhone: "+447700900123",
+      phoneCountryIso: "GB",
+      buyerName: "Ada Obi",
+    });
+    mockReplace.mockClear();
+    const { root } = await sale(client(), named);
+    act(() => {
+      byTestId(root, "tap-sell-another").props.onPress();
+    });
+    const href = String(mockReplace.mock.calls[mockReplace.mock.calls.length - 1]?.[0]);
+    expect(href).toContain("sellAnother=1");
+    const raw = decodeURIComponent(href.split("draft=")[1] ?? "");
+    const { parseTapToPayDraft } = jest.requireActual("../../../services/terminal/tapToPayDraft") as {
+      parseTapToPayDraft: (value: string) => Record<string, unknown> | null;
+    };
+    const draft = parseTapToPayDraft(raw);
+    expect(draft).toEqual({
+      lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+      eventDateId: "date-1",
+      buyerPhone: null,
+      phoneCountryIso: null,
+    });
+    expect(raw).not.toBe(named);
+  });
+
   test("ready: the instruction sits in the shared status pill", async () => {
     let pending: ((r: unknown) => void) | null = null;
     const { root } = await sale(
@@ -1150,5 +1225,36 @@ describe("#4271 door polish: setup limits are grey, the facts are one list", () 
   test("the guide is one grouped list too", () => {
     const tree = mount(<TapToPayEducation pinRow={false} />);
     expect(tree.root.findAll((n) => n.props.testID === "tap-education-facts" && typeof n.type === "string")).toHaveLength(1);
+  });
+});
+
+// eslint-disable-next-line import/first
+import { DoorStatusPill } from "../DoorStatusPill";
+
+describe("#4271 door polish: the status pill on iOS (P3-2)", () => {
+  test("a state change is announced; the first render and countdown ticks are not", () => {
+    const { AccessibilityInfo } = jest.requireActual("react-native") as typeof import("react-native");
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility").mockImplementation(() => undefined);
+    // The preset's AccessibilityInfo is a shared mock: start from no calls.
+    announce.mockClear();
+    try {
+      const tree = mount(<DoorStatusPill text="Point your camera here · 9:42" variant="waiting" stateLabel="Waiting for the guest" />);
+      expect(announce).not.toHaveBeenCalled();
+      act(() => {
+        (tree as unknown as { update: (e: React.ReactElement) => void }).update(
+          <DoorStatusPill text="Point your camera here · 9:41" variant="waiting" stateLabel="Waiting for the guest" />,
+        );
+      });
+      expect(announce).not.toHaveBeenCalled();
+      act(() => {
+        (tree as unknown as { update: (e: React.ReactElement) => void }).update(
+          <DoorStatusPill text="Guest is paying…" variant="busy" stateLabel="Guest is paying" />,
+        );
+      });
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith("Guest is paying");
+    } finally {
+      announce.mockRestore();
+    }
   });
 });

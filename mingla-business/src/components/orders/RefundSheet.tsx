@@ -545,7 +545,8 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                 maxLength={REASON_MAX}
                 style={styles.reasonInput}
                 editable={!submitting}
-                accessibilityLabel="Refund reason"
+                // Same words as the door refund box: a screen reader hears it is required.
+                accessibilityLabel={`Refund reason, required, at least ${REASON_MIN} characters`}
               />
             </View>
             {/* #4271 door polish: one helper line, the same pattern as door refunds. */}

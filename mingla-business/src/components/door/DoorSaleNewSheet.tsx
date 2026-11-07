@@ -393,6 +393,11 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     quotesServerTotal &&
     (payCodeQuote.error as { code?: unknown } | null | undefined)?.code === "door_tax_added_at_checkout";
   const [tapBlockedMessage, setTapBlockedMessage] = useState<string | null>(null);
+  // A blocked tap's reason is about the sale as it was. Any change to the
+  // tickets, the date or the buyer's details makes it stale, so it goes.
+  useEffect(() => {
+    setTapBlockedMessage(null);
+  }, [lines, doorDateId, buyerName, buyerEmail, buyerPhone.text, buyerPhone.countryIso, notes]);
 
   const canSubmit =
     !submitting &&
@@ -453,6 +458,21 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     router,
     event.id,
   ]);
+
+  // Apple B8 (Seth's "slim second button"): with another method picked, Tap to
+  // Pay stays one press away under the dock. The press picks Tap to Pay and
+  // starts it; a press that can't start says why in the dock message line.
+  const showTapDock =
+    pickableTiers.length > 0 &&
+    paymentMethod !== "tap_to_pay" &&
+    paymentOptions.some((opt) => opt.id === "tap_to_pay");
+  const handleTapDock = useCallback((): void => {
+    if (submitting) return;
+    hostChoseMethodRef.current = true;
+    setPaymentMethod("tap_to_pay");
+    setSubmitError(null);
+    startTapSale();
+  }, [submitting, startTapSale]);
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (paymentMethod === "tap_to_pay") {
@@ -945,6 +965,26 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               </View>
             )}
           </View>
+          {showTapDock ? (
+            <Pressable
+              onPress={handleTapDock}
+              disabled={submitting || taxRefused}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: submitting || taxRefused }}
+              accessibilityLabel={tapToPayName(Platform.OS)}
+              testID="door-sale-tap-dock"
+              style={({ pressed }) => [
+                styles.tapDock,
+                pressed && styles.tapDockPressed,
+                (submitting || taxRefused) && styles.tapDockDisabled,
+              ]}
+            >
+              <TapToPayIcon size={18} />
+              <Text style={styles.tapDockLabel} numberOfLines={1}>
+                {tapToPayName(Platform.OS)}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
         </>
         )}
@@ -1313,6 +1353,31 @@ const styles = StyleSheet.create({
   },
   dockButton: {
     flex: 1,
+  },
+  // The slim second button: Tap to Pay one press away when another method is picked.
+  tapDock: {
+    height: 44,
+    marginTop: spacing.sm,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  tapDockPressed: {
+    opacity: 0.8,
+  },
+  tapDockDisabled: {
+    opacity: 0.5,
+  },
+  tapDockLabel: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
 });
 

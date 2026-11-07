@@ -58,6 +58,7 @@ import {
 } from "../../../services/terminal/doorTapEdge";
 import {
   encodeTapToPayDraft,
+  sellAnotherDraft,
   parseTapToPayDraft,
   type TapToPayDraft,
 } from "../../../services/terminal/tapToPayDraft";
@@ -116,6 +117,16 @@ export const TapToPaySaleScreen = ({
   const [payCodeError, setPayCodeError] = useState<string | null>(null);
   const clientRequestIdRef = useRef<string>(randomUuid());
   const flowRef = useRef<TapToPaySaleFlow | null>(null);
+  // "Check again" on an unknown result: true only while that re-check runs.
+  const [rechecking, setRechecking] = useState<boolean>(false);
+  const checkAgain = useCallback(async (): Promise<void> => {
+    setRechecking(true);
+    try {
+      await flowRef.current?.retryConfirm();
+    } finally {
+      setRechecking(false);
+    }
+  }, []);
 
   const lineSummary = useMemo(
     () => (draft === null ? "" : summarizeTapLines(draft.lines, route.event?.tickets ?? [])),
@@ -261,8 +272,10 @@ export const TapToPaySaleScreen = ({
       return;
     }
     // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
+    // The next guest is someone else: keep the tickets and date, never this
+    // guest's name or phone.
     router.replace(
-      `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
+      `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(sellAnotherDraft(draft)))}` as never,
     );
   }, [draft, eventId, router, goToDoor]);
 
@@ -477,13 +490,15 @@ export const TapToPaySaleScreen = ({
         return (
           <TapStatusView
             tone={tapSaleTone("unknown_result")}
-            busy
+            // A spinner only while a re-check is running; otherwise the caution icon.
+            busy={rechecking}
             title={TAP_UNKNOWN_RESULT_COPY.title}
             body={TAP_UNKNOWN_RESULT_COPY.body}
             primary={{
               // It re-checks the same payment; it never takes a new one.
               label: "Check again",
-              onPress: () => void flowRef.current?.retryConfirm(),
+              onPress: () => void checkAgain(),
+              loading: rechecking,
               testID: "tap-unknown-retry",
             }}
             testID="tap-state-unknown_result"
