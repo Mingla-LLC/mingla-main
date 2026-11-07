@@ -178,7 +178,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
-export const BOOTSTRAP_SHA256 = "db8b4eb626ba372641c4196edee3f2d02694976af641f5d9fb4a82f9f11d9eac";
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+export const BOOTSTRAP_SHA256 = "2890254082e0610093e4f9c20ccbae680773c8d45e3e18d98272478e173719ce";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

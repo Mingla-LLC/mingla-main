@@ -71,7 +71,9 @@ describe("#4271 tap-address: the door sheet still offers Tap to Pay", () => {
         tapToPay: { available: true, needsSetup },
         platform: "ios",
       });
-      expect(options[0]).toMatchObject({ id: "tap_to_pay", disabled: false });
+      // Door polish: rows have no disabled state at all now, so Tap to Pay can never be greyed.
+      expect(options[0]).toMatchObject({ id: "tap_to_pay" });
+      expect(options[0]).not.toHaveProperty("disabled");
     }
   });
 

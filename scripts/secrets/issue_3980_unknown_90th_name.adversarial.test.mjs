@@ -11,6 +11,9 @@
  * still rejects any unknown 91st name, and keeps remediation at exactly 90.
  *
  * [TEST-MOD-APPROVED #3645] The governed set is now 90, with an empty band.
+ *
+ * [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
+ * 91st name; any unknown 92nd name is still refused.
  */
 
 import assert from "node:assert/strict";
@@ -89,13 +92,13 @@ test("#3980 adversarial: without the manifest record the same live set is still 
   );
 });
 
-test("#3980 adversarial: the preflight rejects an unknown 91st name", () => {
+test("#3980 adversarial: the preflight rejects an unknown 92nd name", () => {
   const live = [...before3980, NAME];
   assert.throws(
     () => parity([...live, "UNKNOWN_NINETIETH_NAME"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNKNOWN_NINETIETH_NAME"),
   );
-  // A swap that keeps the count at 90 is refused in both directions.
+  // A swap that keeps the count at 91 is refused in both directions.
   assert.throws(
     () => parity([...before3980, "UNKNOWN_NINETIETH_NAME"]),
     (error) =>

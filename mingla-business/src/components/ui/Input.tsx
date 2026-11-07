@@ -384,6 +384,11 @@ export interface InputProps
     | "autoCorrect"
     | "style"
   > {
+  /**
+   * #4271 door polish — an explicit autofill hint (e.g. "name") for a field
+   * whose variant sets none. When set it wins over the variant's own hint.
+   */
+  autoComplete?: TextInputProps["autoComplete"];
   value: string;
   onChangeText: (next: string) => void;
   variant?: InputVariant;

@@ -1411,6 +1411,7 @@
         "supabase/functions/admin-seed-places/cityBox.ts",
         "supabase/functions/admin-seed-places/searchPipeline.ts",
         "supabase/functions/backfill-place-photos/index.ts",
+        "supabase/functions/_shared/seedingGoogleKey.ts",
         "supabase/functions/run-city-pipeline/conductor.ts",
         "supabase/functions/run-city-pipeline/function-policy.json",
         "supabase/functions/run-city-pipeline/gates.ts",
@@ -1496,18 +1497,25 @@
         "mingla-business/plugins/withAndroidMinSdk26.js",
         "mingla-business/src/components/brand/BrandOnboardView.tsx",
         "mingla-business/src/components/brand/BrandPaymentsView.tsx",
+        "mingla-business/src/components/door/DoorPayCodeScreen.tsx",
         "mingla-business/src/components/door/DoorPayQr.tsx",
         "mingla-business/src/components/door/DoorRefundSheet.tsx",
         "mingla-business/src/components/door/LazyDoorRefundSheet.tsx",
         "mingla-business/src/components/door/LazyDoorSaleScreens.tsx",
         "mingla-business/src/components/door/doorPayCodeState.ts",
         "mingla-business/src/components/door/doorPayGuestState.ts",
+        "mingla-business/src/components/door/doorPayGuestTone.ts",
         "mingla-business/src/components/door/doorPayUrl.ts",
         "mingla-business/src/components/door/doorPaymentOptions.ts",
         "mingla-business/src/components/door/doorSaleScreens.ts",
         "mingla-business/src/components/door/doorTapDraft.ts",
+        "mingla-business/src/components/door/doorTapDraftHref.ts",
+        "mingla-business/src/components/door/doorTone.ts",
+        "mingla-business/src/components/door/DoorStatusPill.tsx",
         "mingla-business/src/components/door/scannerDoorPaymentsCopy.ts",
         "mingla-business/src/components/door/tap/TapConfiguringView.tsx",
+        "mingla-business/src/components/door/tap/TapFactList.tsx",
+        "mingla-business/src/components/door/tap/tapSaleTone.ts",
         "mingla-business/src/components/door/tap/TapNotOnThisPhone.tsx",
         "mingla-business/src/components/door/tap/TapStatusView.tsx",
         "mingla-business/src/components/door/tap/TapToPayAwarenessModal.tsx",
@@ -1586,7 +1594,8 @@
       "capability_key": "payouts-timing",
       "paths": [
         "supabase/functions/payout-release-sweep/partnerRelease.ts",
-        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql"
+        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
+        "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql"
       ]
     },
     {
@@ -1595,6 +1604,7 @@
         "mingla-admin/src/hooks/useMinglaConnector.js",
         "mingla-admin/src/pages/CompanyToolsPage.jsx",
         "mingla-admin/src/services/minglaConnectorService.js",
+        "supabase/functions/_shared/minglaConnectorMetaGraph.ts",
         "supabase/functions/_shared/minglaConnectorProxy.ts",
         "supabase/functions/_shared/teamAgentMcp.ts",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"

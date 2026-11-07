@@ -288,7 +288,7 @@ describe("RS — the organiser refund sheet", () => {
     const startsAt = new Date(Date.now() + 10 * 86_400_000 + 3_600_000).toISOString();
     const tree = await mountSheet({ policy: EVENT_STANDARD_POLICY, offeringType: "event", startsAt });
     const reason = tree.root.findAll(
-      (node) => node.type === "TextInput" && node.props.accessibilityLabel === "Refund reason",
+      (node) => node.type === "TextInput" && node.props.accessibilityLabel === "Refund reason, required, at least 10 characters",
     )[0];
     await act(async () => {
       (reason.props.onChangeText as (v: string) => void)("Buyer can't make it any more");

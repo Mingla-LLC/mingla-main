@@ -320,7 +320,7 @@ describe("door-pay-code text_link refusals", () => {
   });
 
   test("the host screen uses that copy", () => {
-    expect(read("app/event/[id]/door/pay/[codeId].tsx")).toContain("setError(doorPayTextLinkErrorMessage(sendError));");
+    expect(read("src/components/door/DoorPayCodeScreen.tsx")).toContain("setError(doorPayTextLinkErrorMessage(sendError));");
   });
 });
 
