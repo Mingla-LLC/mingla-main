@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "door-tap-intent",
+  "verify_jwt": false,
+  "gateway_reason": "The bearer is verified in code and the caller must be allowed to take door money; the server prices the sale and records it only after Stripe reports the PaymentIntent succeeded.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY",
+      "app.qr_token_pepper"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

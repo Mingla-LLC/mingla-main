@@ -54,6 +54,11 @@ import {
 } from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
+  refundEverPermittedProviderCall,
+  settleStripeRefundThrow,
+  trackRefundCreate,
+} from "../_shared/ticketRefundStripeThrow.ts";
+import {
   dispatchTicketConfirmation,
   jsonResponse,
   serviceClient,
@@ -240,7 +245,22 @@ serve(async (req: Request): Promise<Response> => {
         idempotent_replay: true,
       });
     }
-    // If pending or failed: fall through to retry the Stripe call.
+    // Issue #4271: a 'failed' row never reached the provider and its tickets
+    // are free again. Never call the provider for it: the app starts a new
+    // refund under a new key instead.
+    if (existing?.status === "failed") {
+      return jsonResponse(
+        {
+          error: "refund_failed",
+          detail:
+            "This refund did not go through and nothing was refunded. Start a new refund.",
+          refund_id: refundId,
+          refund_outcome: "failed",
+        },
+        409,
+      );
+    }
+    // If pending: fall through to retry the provider call under the same key.
   }
 
   if (!paymentIntentId) {
@@ -330,6 +350,8 @@ serve(async (req: Request): Promise<Response> => {
   // caller-supplied idempotency key.
   let stripeRefund: StripeRefundResult;
   let stripeFeeTruth: ExecuteTicketRefundResult | null = null;
+  // Issue #4271: did this request reach refunds.create?
+  const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
     const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
     if (!transaction) {
@@ -396,6 +418,18 @@ serve(async (req: Request): Promise<Response> => {
     }
   } else {
     try {
+      // Issue #4271: record the Stripe key this refund is driven under before
+      // any provider call, so reconcile replays it under the same key.
+      const { error: bindError } = await supabase.rpc(
+        "issue_4271_bind_refund_provider_key",
+        {
+          p_refund_id: refundId,
+          p_provider_key: `ticket_refund:${refundId}`,
+        },
+      );
+      if (bindError) {
+        throw new Error(`provider_key_bind_failed: ${bindError.message}`);
+      }
       const stripe = stripeTicketRefund();
       stripeFeeTruth = await executeTicketRefundWithFeeTruth({
         supabase,
@@ -409,7 +443,7 @@ serve(async (req: Request): Promise<Response> => {
         expectedApplicationFeeAmount: applicationFeeAmountCents,
         requestedRefundAmount: amountCents,
         requestFingerprint: idempotencyKey,
-        createBuyerRefund: () =>
+        createBuyerRefund: refundCreate.track(() =>
           stripe.refunds.create(
             {
               payment_intent: paymentIntentId,
@@ -426,7 +460,8 @@ serve(async (req: Request): Promise<Response> => {
               idempotencyKey: `ticket_refund:${refundId}`,
               stripeAccount: connectedAccountId,
             },
-          ),
+          )
+        ),
       });
       stripeRefund = {
         id: stripeFeeTruth.buyerRefundId ?? "",
@@ -439,7 +474,31 @@ serve(async (req: Request): Promise<Response> => {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[refund-order] stripe.refunds.create failed", detail);
-      return jsonResponse({ error: "stripe_declined", detail }, 502);
+      // Issue #4271: a throw used to leave the row 'pending' forever, which the
+      // preview then counted as refunded. Commit it 'failed' (atomically, in SQL)
+      // only when Stripe provably never saw it; otherwise it stays pending for
+      // reconcile, exactly as before.
+      const refundOutcome = await settleStripeRefundThrow({
+        error: err,
+        tracker: refundCreate,
+        loadPermittedNow: () =>
+          refundEverPermittedProviderCall(supabase, refundId),
+        commitFailed: (providerCallReached) =>
+          supabase.rpc("issue_4271_commit_refund_failed", {
+            p_refund_id: refundId,
+            p_provider_call_reached: providerCallReached,
+          }),
+        logContext: "refund-order",
+      });
+      return jsonResponse(
+        {
+          error: "stripe_declined",
+          detail,
+          refund_id: refundId,
+          refund_outcome: refundOutcome,
+        },
+        502,
+      );
     }
   }
 

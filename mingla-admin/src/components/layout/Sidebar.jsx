@@ -37,6 +37,7 @@ import {
   MapPin,
   Scale,
   BrainCircuit,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -96,6 +97,8 @@ const ICON_MAP = {
   Flag,
   BrainCircuit,
   Settings,
+  // Issue #4294: Company tools.
+  KeyRound,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"

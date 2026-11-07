@@ -1,4 +1,8 @@
 import type { CheckoutPaymentMethod } from "../components/checkout/CartContext";
+import {
+  isCardDoorPaymentMethod,
+  type DoorPaymentMethod,
+} from "../types/doorSales";
 import { currencyCodeOrNull, normalizeCurrency } from "./currency";
 import {
   assertOrderCurrencyForMoney,
@@ -6,7 +10,7 @@ import {
 } from "./orderCurrencyContract";
 
 export type MoneySource = "order" | "door_sale" | "refund" | "legacy_brand";
-export type MoneyDoorPaymentMethod = "cash" | "card_reader" | "nfc" | "manual";
+export type MoneyDoorPaymentMethod = DoorPaymentMethod;
 
 type MoneyRefund = {
   amount?: number;
@@ -43,6 +47,8 @@ type MoneyDoorSaleRecord = {
   currency: string;
   paymentMethod: MoneyDoorPaymentMethod;
   refunds: MoneyRefund[];
+  /** issue #4271 — Mingla's fee on a card door sale (major units). */
+  minglaFeeAmount?: number | null;
 };
 
 export interface CurrencyMismatch {
@@ -89,6 +95,14 @@ export interface EventMoneySummary {
    * ORCH-0796.
    */
   expectedPayoutMajor: number | null;
+  /**
+   * issue #4271 — Mingla's fee on card door sales (Buyer's phone, Tap to Pay)
+   * in expected-currency major units. Cash and manual carry no fee. Card
+   * money is paid out with online sales.
+   */
+  doorCardMinglaFee: number;
+  /** Door revenue less that fee. Null while a card refund's fee is unconfirmed. */
+  doorNet: number | null;
   revenueByMethod: Partial<Record<CheckoutPaymentMethod | MoneyDoorPaymentMethod, number>>;
   byCurrency: CurrencyBreakdown[];
   mismatches: CurrencyMismatch[];
@@ -133,6 +147,74 @@ export const doorSaleLiveAmount = (sale: MoneyDoorSaleRecord): number =>
 
 export const refundAmount = (refund: { amount?: number; amountGbp: number }): number =>
   refund.amount ?? refund.amountGbp;
+
+const CARD_BRAND_NAMES: Record<string, string> = {
+  visa: "Visa",
+  mastercard: "Mastercard",
+  amex: "American Express",
+  discover: "Discover",
+  diners: "Diners Club",
+  jcb: "JCB",
+  unionpay: "UnionPay",
+  verve: "Verve",
+  eftpos: "EFTPOS",
+};
+
+/** "Visa ending 4242", or null when the provider supplied no last four. */
+export const doorSaleCardLine = (
+  brand: string | null | undefined,
+  last4: string | null | undefined,
+): string | null => {
+  if (typeof last4 !== "string" || last4.length === 0) return null;
+  const name = typeof brand === "string" ? CARD_BRAND_NAMES[brand] : undefined;
+  return `${name ?? "Card"} ending ${last4}`;
+};
+
+/**
+ * issue #4271 — the one money shape of a door sale, read from the server's own
+ * columns (charge, refunds, fee, and each refund's fee reversal as the provider
+ * reported it). Every surface reads this: sale detail, door list, hub,
+ * reconciliation and CSV.
+ *
+ * Net is what the host keeps before the provider's own cost: charge, less the
+ * refund, less the fee Mingla still holds. Null while a refund's fee reversal is
+ * unconfirmed: a guess here is a wrong number on an accountant's sheet.
+ */
+export interface DoorSaleMoney {
+  charged: number;
+  refunded: number;
+  /** Charge left after refunds. */
+  live: number;
+  /** Mingla's fee still held (the fee less what came back). 0 for cash/manual. */
+  minglaFee: number;
+  net: number | null;
+}
+
+export const doorSaleMoney = (sale: MoneyDoorSaleRecord): DoorSaleMoney => {
+  const charged = sale.totalAtSale ?? sale.totalGbpAtSale;
+  const refunded = sale.refundedAmount ?? sale.refundedAmountGbp;
+  const live = doorSaleLiveAmount(sale);
+  if (!isCardDoorPaymentMethod(sale.paymentMethod)) {
+    return { charged, refunded, live: round2(live), minglaFee: 0, net: round2(live) };
+  }
+  const feeCents = Math.round(Math.max(0, sale.minglaFeeAmount ?? 0) * 100);
+  let feeBackCents = 0;
+  let feeBackKnown = true;
+  for (const refund of sale.refunds) {
+    if (refund.applicationFeeRefundedCents === null && refundAmount(refund) > 0) {
+      feeBackKnown = false;
+    }
+    feeBackCents += refund.applicationFeeRefundedCents ?? 0;
+  }
+  const minglaFee = Math.max(0, feeCents - feeBackCents) / 100;
+  return {
+    charged,
+    refunded,
+    live: round2(live),
+    minglaFee,
+    net: feeBackKnown ? round2(Math.max(0, live - minglaFee)) : null,
+  };
+};
 
 const singleStoredMoneyCurrency = (
   orders: MoneyOrderRecord[],
@@ -190,6 +272,8 @@ export const summarizeEventMoney = (args: {
   let hasAnyOnlinePayment = false;
   let hasAnyDoorPayment = false;
   let hasUnknownApplicationFeeRefund = false;
+  let doorCardMinglaFee = 0;
+  let doorFeeUnknown = false;
 
   const addRevenue = (
     method: CheckoutPaymentMethod | MoneyDoorPaymentMethod,
@@ -298,6 +382,16 @@ export const summarizeEventMoney = (args: {
       addRevenue(sale.paymentMethod, live);
       hasAnyDoorPayment = true;
     }
+    if (isCardDoorPaymentMethod(sale.paymentMethod)) {
+      const money = doorSaleMoney(sale);
+      doorCardMinglaFee += money.minglaFee;
+      if (money.net === null) {
+        doorFeeUnknown = true;
+        hasUnknownApplicationFeeRefund = true;
+      }
+      // A fully refunded card sale still has a real payout: zero, not "no payments".
+      if (money.charged > 0) hasAnyDoorPayment = true;
+    }
   }
 
   const grossRevenue = round2(onlineRevenue + doorRevenue);
@@ -308,7 +402,10 @@ export const summarizeEventMoney = (args: {
   const minglaFeeOnlineMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(minglaFeeOnlineCents / 100) : null;
   const expectedPayoutMajor =
     (hasAnyOnlinePayment || hasAnyDoorPayment) && !hasUnknownApplicationFeeRefund
-      ? round2((onlineNetCents / 100) + (hasAnyDoorPayment ? doorRevenue : 0))
+      ? round2(
+          (onlineNetCents / 100) +
+            (hasAnyDoorPayment ? doorRevenue - doorCardMinglaFee : 0),
+        )
       : null;
 
   return {
@@ -323,6 +420,8 @@ export const summarizeEventMoney = (args: {
     stripeFeeOnlineMajor: minglaFeeOnlineMajor,
     minglaFeeOnlineMajor,
     expectedPayoutMajor,
+    doorCardMinglaFee: round2(doorCardMinglaFee),
+    doorNet: doorFeeUnknown ? null : round2(doorRevenue - doorCardMinglaFee),
     revenueByMethod,
     byCurrency: Array.from(byCurrency.values()).sort((a, b) =>
       a.currency.localeCompare(b.currency),

@@ -51,7 +51,7 @@ import { Button } from "../../../../src/components/ui/Button";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
 
-import { InviteScannerSheet } from "../../../../src/components/scanners/InviteScannerSheet";
+import { LazyInviteScannerSheet } from "../../../../src/components/scanners/LazyInviteScannerSheet";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -353,10 +353,11 @@ export default function EventScannersListRoute(): React.ReactElement {
 
       {/* Invite sheet */}
       {brand !== null ? (
-        <InviteScannerSheet
+        <LazyInviteScannerSheet
           visible={inviteSheetOpen}
           event={event}
           brandId={brand.id}
+          paymentProvider={brand.paymentProvider ?? "stripe"}
           operatorAccountId={operatorAccountId}
           onClose={() => setInviteSheetOpen(false)}
           onSuccess={handleInviteSuccess}

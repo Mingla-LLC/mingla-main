@@ -146,6 +146,17 @@ import {
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
+// Issue #4271 — door pay code: the guest pays a host-made code on their phone.
+import {
+  doorChargeMatchesCode,
+  type DoorPayCheckoutContext,
+  doorPayStripeUrls,
+  doorStripeExpiresAt,
+  isDoorCheckoutRequest,
+  linkDoorPaySession,
+  resolveDoorPayCheckout,
+} from "./doorPayCheckout.ts";
+import { doorPayReturnUrl } from "../_shared/doorPay.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -745,6 +756,21 @@ export const createTicketCheckoutCreateHandler = (
       body = await req.json();
     } catch {
       return jsonResponse({ error: "invalid_json" }, 400);
+    }
+
+    // Issue #4271 — a door pay code replaces the basket with the code's lines
+    // (the server priced them when the host made the code) and forces web.
+    let doorPay: DoorPayCheckoutContext | null = null;
+    if (isDoorCheckoutRequest(body)) {
+      const resolvedDoor = await resolveDoorPayCheckout(
+        deps.serviceClient(),
+        body,
+      );
+      if (!resolvedDoor.ok) {
+        return jsonResponse(resolvedDoor.body, resolvedDoor.status);
+      }
+      doorPay = resolvedDoor.door;
+      body = resolvedDoor.body;
     }
 
     // Issue #3827 — the bearer token is optional for every existing checkout,
@@ -1557,6 +1583,35 @@ export const createTicketCheckoutCreateHandler = (
     };
 
     const loadTicketQuote = async (): Promise<Record<string, unknown>> => {
+      // Issue #4271 — a door code's lines are priced by the door rule: the
+      // wrapper unlocks the code's own in-person-only tiers for this one
+      // call. Every other checkout keeps the online rule.
+      if (doorPay !== null) {
+        const { data, error } = await supabase.rpc(
+          "issue_4271_door_ticket_quote",
+          {
+            p_door_pay_code_id: doorPay.codeId,
+            p_event_id: eventId,
+            p_lines: lines,
+            p_event_date_ids: orderedEventDateIds.length > 0
+              ? orderedEventDateIds
+              : null,
+            p_booked_start_at: bookedStartAt,
+            p_booked_end_at: bookedEndAt,
+            p_booked_party_size: partySize,
+            p_payment_plan_choice: paymentPlanChoice,
+            p_discount_code: discountCode,
+            p_buyer_email: buyerEmail,
+            p_buyer_phone_e164: buyerPhoneE164,
+            p_buyer_user_id: userId,
+            p_queued: queueEngaged,
+          },
+        );
+        if (error !== null || data === null || typeof data !== "object") {
+          throw new Error(error?.message ?? "ticket_quote_failed");
+        }
+        return data as Record<string, unknown>;
+      }
       const { data, error } = await supabase.rpc("issue_3872_ticket_quote", {
         p_event_id: eventId,
         p_lines: lines,
@@ -2021,7 +2076,7 @@ export const createTicketCheckoutCreateHandler = (
     // request for event B can no longer be answered with event A's session. All
     // 179 live sessions already satisfy that relationship, so nothing legitimate
     // changes.
-    const idempotencyKey = isCheckoutV2
+    const baseIdempotencyKey = isCheckoutV2
       ? checkoutV2IdempotencyKey({
         eventId,
         checkoutAttemptId: checkoutAttemptId!,
@@ -2041,6 +2096,11 @@ export const createTicketCheckoutCreateHandler = (
         partySize,
         discountCode,
       });
+    // Issue #4271 — a session belongs to one code: the same buyer and basket on
+    // another code is another session, never a replay of the first.
+    const idempotencyKey = doorPay !== null
+      ? `${baseIdempotencyKey}:door:${doorPay.codeId}`
+      : baseIdempotencyKey;
     const buyerStatusToken = randomBuyerStatusToken();
 
     const resolvedAttempt = isCheckoutV2
@@ -2082,6 +2142,39 @@ export const createTicketCheckoutCreateHandler = (
         },
       )
       : null;
+    // Issue #4271 — a door code's session is created inside the door wrapper
+    // (same create-session, with the code's door-only tiers unlocked).
+    const doorSessionCall = resolvedAttempt.error === null &&
+        resolvedAttempt.data === null && ticketLinkSessionCall === null &&
+        doorPay !== null
+      ? await supabase.rpc(
+        "issue_4271_door_checkout_create_session",
+        {
+          p_door_pay_code_id: doorPay.codeId,
+          p_event_id: eventId,
+          p_buyer_user_id: userId,
+          p_buyer_name: buyerName,
+          p_buyer_email: buyerEmail,
+          p_buyer_phone_e164: buyerPhoneE164,
+          p_marketing_opt_in: marketingOptIn,
+          p_lines: lines,
+          p_idempotency_key: idempotencyKey,
+          p_expires_at: queueEngaged
+            ? "infinity"
+            : new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          p_application_fee_amount_cents: 0,
+          p_payment_plan_choice: paymentPlanChoice,
+          p_event_date_ids: orderedEventDateIds.length > 0
+            ? orderedEventDateIds
+            : null,
+          p_booked_start_at: bookedStartAt,
+          p_booked_end_at: bookedEndAt,
+          p_booked_party_size: partySize,
+          p_discount_code: discountCode,
+          p_expected_quote_digest: quoteDigest,
+        },
+      )
+      : null;
     // The literal call indentation is pinned by the append-only slice-1 source
     // regression that proves capability refusal still precedes session I/O.
     // deno-fmt-ignore
@@ -2090,6 +2183,8 @@ export const createTicketCheckoutCreateHandler = (
       ? resolvedAttempt
       : ticketLinkSessionCall !== null
       ? ticketLinkSessionCall
+      : doorSessionCall !== null
+      ? doorSessionCall
       : await supabase.rpc(
       "biz_ticket_checkout_create_session",
       {
@@ -2316,6 +2411,21 @@ export const createTicketCheckoutCreateHandler = (
     let session = sessionResult as Record<string, unknown>;
     await recordUnknownDiscountAttempt(session);
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
+    // Issue #4271 — one code pays once: a paid, cancelled or expired code
+    // refuses the session under the code's row lock.
+    if (doorPay !== null) {
+      const linked = await linkDoorPaySession(
+        supabase,
+        doorPay,
+        checkoutSessionId,
+      );
+      if (!linked.ok) {
+        return jsonResponse(
+          { error: "door_code_unavailable", status: linked.status },
+          409,
+        );
+      }
+    }
     let checkoutV2Fingerprint: string | null = null;
     let checkoutListSubtotalCents = Number(
       session.listSubtotalCents ?? session.totalCents ?? 0,
@@ -3597,6 +3707,10 @@ export const createTicketCheckoutCreateHandler = (
           pricing.vat_rate_bps ?? 0,
           psSwitches.pass_tax,
         );
+      // Issue #4271 — a door code charges exactly what it showed.
+      if (doorPay !== null && !doorChargeMatchesCode(doorPay, psBuyerTotalCents)) {
+        return refuse({ error: "door_code_unavailable", status: "failed" }, 409);
+      }
       const psBreakdown: PricingBreakdown = withDiscounts(
         buildPricingBreakdown({
           input: psEngineInput,
@@ -3737,6 +3851,11 @@ export const createTicketCheckoutCreateHandler = (
           encodeURIComponent(checkoutSessionId)
         }&bst=${encodeURIComponent(buyerStatusToken)}`;
 
+      // Issue #4271 — a door code returns to its own pay page.
+      const providerCallbackUrl = doorPay !== null
+        ? doorPayReturnUrl(PRODUCTION_BUSINESS_WEB_ORIGIN, doorPay.code)
+        : callbackUrl;
+
       // Channels: NG = card|bank|ussd|bank_transfer — NEVER mobile_money
       // (Ghana-only). https://paystack.com/docs/payments/payment-channels/
       const psChannels = paystackChannelsForCountry("NG");
@@ -3788,7 +3907,7 @@ export const createTicketCheckoutCreateHandler = (
           amountSubunits: psBuyerTotalCents,
           currency: "NGN",
           reference: psReference,
-          callbackUrl,
+          callbackUrl: providerCallbackUrl,
           channels: psChannels,
           metadata: {
             mingla_checkout_session_id: checkoutSessionId,
@@ -3869,7 +3988,7 @@ export const createTicketCheckoutCreateHandler = (
         checkoutSessionId,
         buyerStatusToken,
         authorizationUrl: psInit.authorization_url,
-        returnUrl: callbackUrl,
+        returnUrl: providerCallbackUrl,
         reference: psInit.reference,
         // buyer_total is the inclusive all-in NGN total (kobo).
         totalCents: psBuyerTotalCents,
@@ -4052,6 +4171,13 @@ export const createTicketCheckoutCreateHandler = (
       serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
     };
     const buyerSubtotal = computeBuyerSubtotal(engineInput);
+    // Issue #4271 — a door code charges exactly what it showed.
+    if (
+      doorPay !== null &&
+      !doorChargeMatchesCode(doorPay, buyerSubtotal.buyerSubtotalCents)
+    ) {
+      return refuse({ error: "door_code_unavailable", status: "failed" }, 409);
+    }
     // #3645 flat 4.5%: application_fee_amount = miglaFeeCents + serviceFeeCents,
     // ALWAYS (independent of pass/absorb — the switch only changes the
     // buyer-facing gross-up, not what Mingla collects). Mingla pays card
@@ -4135,6 +4261,13 @@ export const createTicketCheckoutCreateHandler = (
         successUrl =
           `${baseUrl}/${surfacePath}/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}&csi=${checkoutSessionId}&bst=${buyerStatusToken}`;
         cancelUrl = `${baseUrl}/${surfacePath}/${eventId}/payment`;
+        // Issue #4271 — a door code (always surface web) returns the guest to
+        // its own pay page, which polls door-pay-code until the webhook
+        // finalizes the order. Same validated origin as every web checkout
+        // (ISSUE-927: one canonical BUSINESS_WEB_ORIGIN read).
+        if (doorPay !== null) {
+          ({ successUrl, cancelUrl } = doorPayStripeUrls(baseUrl, doorPay));
+        }
       } else {
         // ORCH-0839-B: mobile-hosted Checkout returns to the native app via a
         // custom-scheme deep link. expo-web-browser.openAuthSessionAsync
@@ -4299,6 +4432,12 @@ export const createTicketCheckoutCreateHandler = (
                     // the correct basis. (OQ-1: corrects the dispatch's shorthand
                     // "bill buyer_total_cents" for the WEB hosted-Checkout path.)
                     unit_amount: buyerSubtotal.buyerSubtotalCents,
+                    // Issue #4271 — Stripe's automatic tax sits inside a door
+                    // code's total: the page never charges more than the code
+                    // showed. Exclusive passed tax refuses the code earlier.
+                    ...(doorPay !== null
+                      ? { tax_behavior: "inclusive" as const }
+                      : {}),
                     product_data: {
                       name: `Tickets — ${eventName}`,
                       ...(checkoutListSubtotalCents > totalCents
@@ -4355,6 +4494,11 @@ export const createTicketCheckoutCreateHandler = (
               customer_email: buyerEmail,
               success_url: successUrl,
               cancel_url: cancelUrl,
+              // Issue #4271 — a door code's page closes with the code (at
+              // least Stripe's 30-minute floor), never the 24-hour default.
+              ...(doorPay !== null
+                ? { expires_at: doorStripeExpiresAt(doorPay) }
+                : {}),
               metadata: {
                 mingla_checkout_session_id: checkoutSessionId,
                 mingla_event_id: eventId,

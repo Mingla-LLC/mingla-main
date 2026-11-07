@@ -37,11 +37,16 @@ import type {
 import { findFlowDefinition } from "../ariFlows/index.ts";
 import {
   publishArgumentsDigest,
+  resolveWebsiteFormAnswer,
   WEBSITE_BRAND_FIELD_ORDER,
   WEBSITE_DEFAULT_DESIGN,
   WEBSITE_SETUP_FLOW,
   websiteTextAnswer,
 } from "../ariFlows/websiteSetup.ts";
+import {
+  publishFindings,
+  publishFindingsCount,
+} from "../siteContracts/publishChecks.ts";
 import {
   decideFlowTurn,
   flowSideFailureText,
@@ -988,11 +993,73 @@ Deno.test("P4 adversarial: checks on a different digest, a failed validation and
   });
   store = new MemoryStore(OWNER);
   card = asArtefact(await step(warned, store, await startRun(store), {}));
-  assertMatch(card.text, /Words: Your About page is empty\./);
+  assertMatch(
+    card.text,
+    /found 1 thing to look at: Your About page is empty\. None of them stops you publishing\./,
+  );
   assertEquals(
     card.artefact.options.map((o) => o.id),
     ["open", "publish", "check", "not_now"],
   );
+});
+
+Deno.test("#2830 polish bug 3: Ari's publish list is the Host publish step's list (one count, same sentences, a route on this screen)", async () => {
+  const warnings = [
+    {
+      label: "Truth",
+      message:
+        "Check: '20' isn't backed by anything in Mingla (Home, Call to action block 2)",
+    },
+    {
+      label: "Truth",
+      message:
+        "Check: '30' isn't backed by anything in Mingla (Home, Call to action block 2)",
+    },
+  ];
+  const w = readyToPublish({ warnings });
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  const host = publishFindings(warnings.map((warning) => ({
+    key: "truth",
+    label: warning.label,
+    status: "warn",
+    items: [{ message: warning.message }],
+  })));
+  assertEquals(host.length, 2);
+  assertMatch(card.text, new RegExp(publishFindingsCount(host.length)));
+  for (const finding of host) assert(card.text.includes(finding.message));
+  const open = card.artefact.options.find((o) => o.id === "open");
+  assertEquals(open?.route, `/brand/${BRAND}/website/setup?step=publish`);
+});
+
+Deno.test("#2830 polish bug 3: a story answer with a claim nothing backs is re-asked, never saved", () => {
+  const plan = planOf(world(["story.who"]));
+  const refused = resolveWebsiteFormAnswer({
+    brandId: BRAND,
+    fieldKey: "story.who",
+    plan,
+    values: {
+      choices: [],
+      country: null,
+      response: "Young professionals in their late 20s and 30s",
+    },
+  });
+  assertEquals(refused.kind, "retry");
+  assertMatch(
+    (refused as { problem: string }).problem,
+    /can't say '20' and '30'.*Nothing was saved\./,
+  );
+  const saved = resolveWebsiteFormAnswer({
+    brandId: BRAND,
+    fieldKey: "story.who",
+    plan,
+    values: {
+      choices: [],
+      country: null,
+      response: "Young professionals who love slow weekends away",
+    },
+  });
+  assertEquals(saved.kind, "propose");
 });
 
 Deno.test("P4 adversarial: after the publish confirm the plan is read back; not live yet is said, not claimed", async () => {

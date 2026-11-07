@@ -57,6 +57,7 @@ import {
   useRemoveBrandTeamMember,
   useRevokeBrandInvitation,
 } from "../../../src/hooks/useBrandInvitations";
+import { useBrandTeamMemberDirectory } from "../../../src/hooks/useBrandTeamMemberDirectory";
 import { useUpdateBrandTeamMemberVenueGrants } from "../../../src/hooks/useBrandVenueAccessMutation";
 import {
   BrandInvitationServiceError,
@@ -79,6 +80,10 @@ import {
   type BrandRole,
 } from "../../../src/utils/brandRole";
 import { roleDisplayName } from "../../../src/utils/brandRoleCopy";
+import {
+  teamMemberIdentity,
+  type TeamMemberIdentity,
+} from "../../../src/utils/brandTeamMemberIdentity";
 import {
   canPerformAction,
   gateCaptionFor,
@@ -162,6 +167,12 @@ export default function BrandTeamRoute(): React.ReactElement {
 
   const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
   const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
+  // issue #4271 — names and emails for accepted members (never a raw user id).
+  const { data: directoryRows = [] } = useBrandTeamMemberDirectory(brandIdResolved);
+  const directoryByUserId = useMemo(
+    () => new Map(directoryRows.map((entry) => [entry.userId, entry])),
+    [directoryRows],
+  );
   const { data: venues = [] } = useVenueListings(brandIdResolved);
   const { mutateAsync: revokeAsync } = useRevokeBrandInvitation(brandIdResolved);
   const { mutateAsync: removeAsync, isPending: removePending } =
@@ -241,17 +252,23 @@ export default function BrandTeamRoute(): React.ReactElement {
           : 0;
         return bT - aT;
       })
-      .map<DisplayEntry>((row) => ({
+      .map<DisplayEntry>((row) => {
+        const identity = teamMemberIdentity(
+          row.user_id,
+          directoryByUserId.get(row.user_id),
+        );
+        return {
         id: row.id,
-        name: row.user_id,
-        email: row.user_id,
+        name: identity.name,
+        email: identity.email,
         role: row.role,
         status: "accepted",
         timestampIso: row.accepted_at ?? row.invited_at,
-        storeEntry: memberRowToEntry(row),
+        storeEntry: memberRowToEntry(row, identity),
         // ORCH-1384 — the Mingla-partner member row (badge + owner disconnect).
         partnerLinkId: partnerLinkByUserId.get(row.user_id) ?? null,
-      }));
+        };
+      });
     // Synthesize self-row at top — solo operator falls back here.
     const selfRow: DisplayEntry | null =
       currentRole !== null && userId !== null
@@ -267,7 +284,7 @@ export default function BrandTeamRoute(): React.ReactElement {
           }
         : null;
     return selfRow !== null ? [selfRow, ...fromServer] : fromServer;
-  }, [memberRows, currentRole, user, userId, partnerLinkByUserId]);
+  }, [memberRows, currentRole, user, userId, partnerLinkByUserId, directoryByUserId]);
 
   const canInvite = canPerformAction(currentRank, "INVITE_TEAM_MEMBER");
 
@@ -634,12 +651,16 @@ function invitationRowToEntry(row: BrandInvitationRow): BrandTeamEntry {
   };
 }
 
-function memberRowToEntry(row: BrandTeamMemberRow): BrandTeamEntry {
+function memberRowToEntry(
+  row: BrandTeamMemberRow,
+  identity: TeamMemberIdentity,
+): BrandTeamEntry {
   return {
     id: row.id,
     brandId: row.brand_id,
-    inviteeEmail: row.user_id,
-    inviteeName: row.user_id,
+    // issue #4271 — MemberDetailSheet renders these; never the raw user id.
+    inviteeEmail: identity.email,
+    inviteeName: identity.name,
     role: row.role,
     venueGrants: row.venueGrants,
     status: "accepted",

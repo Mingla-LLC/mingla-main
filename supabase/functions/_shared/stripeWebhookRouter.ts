@@ -94,6 +94,12 @@ import {
   handleVenueOrderStripeEvent,
   isVenueOrderStripeEvent,
 } from "./venueOrderWebhook.ts";
+// Issue #4271 — Tap to Pay door sales, discriminated by metadata.mingla_door_tap.
+import {
+  handleDoorTapStripeEvent,
+  isDoorTapStripeEvent,
+  recordDoorCodeDecline,
+} from "./doorTapWebhook.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
   "account.updated",
@@ -2283,6 +2289,11 @@ export async function routeStripeEvent(
         brandId = await handleStayStripePaymentEvent(supabase, event);
         break;
       }
+      // Issue #4271 — a Tap to Pay door sale (backstop for a lost `complete`).
+      if (isDoorTapStripeEvent(event)) {
+        brandId = await handleDoorTapStripeEvent(supabase, event);
+        break;
+      }
       // Issue #1790 — a venue menu order. Handles succeeded (finalize + fee
       // snapshot, idempotent) AND failed/canceled (mark the pending row failed,
       // so the guest's status card can say honestly that nothing was charged).
@@ -2341,6 +2352,11 @@ export async function routeStripeEvent(
         // installment PIs; cancellation is operator-driven via plan cancellation
         // which writes status='cancelled' directly on the ledger row).
       } else {
+        // Issue #4271 — a declined card on a door code tells the host. The
+        // code stays open: the guest can try again on the same page.
+        if (event.type === "payment_intent.payment_failed") {
+          await recordDoorCodeDecline(supabase, event);
+        }
         brandId = await handleTicketCheckoutPaymentIntent(supabase, event);
       }
       break;

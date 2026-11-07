@@ -379,6 +379,30 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       assert.doesNotMatch(sql.slice(unschedule, schedule), /\bCOMMIT\s*;/i, `${file} must keep ${job}'s unschedule and reschedule in one transaction`);
     }
   }
+  // [TEST-MOD-APPROVED #4271] Door card payments add two guarded
+  // unschedule-then-reschedule pairs, each inside its own DO block: the
+  // every-minute pay code sweep (issue_4271_door_pay_code_sweep) and the
+  // five-minute unfinished Tap to Pay sweep (issue_4271_door_tap_unfinished_sweep)
+  // (+2 → 21). A literal cron.unschedule('<name>') would raise when the job does
+  // not exist yet, so the jobid lookup stays. Each job's own unschedule is proven
+  // to sit in the same DO block, just before its reschedule.
+  {
+    const file = "supabase/migrations/20280404004271_issue_4271_door_pay.sql";
+    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    for (const job of ["issue_4271_door_pay_code_sweep", "issue_4271_door_tap_unfinished_sweep"]) {
+      const lookup = sql.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));
+      assert.ok(lookup >= 0, `${file} must look up ${job} by name before removing it`);
+      const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+      assert.ok(schedule > lookup, `${file} must reschedule ${job} after looking it up`);
+      const between = sql.slice(lookup, schedule);
+      assert.match(
+        between,
+        /cron\.unschedule\s*\(\s*v_job_id\s*\)/i,
+        `${file} must remove only the ${job} it looked up`,
+      );
+      assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
+    }
+  }
   // A NEW one must force a human to confirm it is not a permanent kill.
   const repo = cronReachability(loadMigrations());
   assert.ok(
@@ -387,7 +411,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    19,
+    21,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

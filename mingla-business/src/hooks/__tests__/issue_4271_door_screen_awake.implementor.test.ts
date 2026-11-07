@@ -1,0 +1,109 @@
+/**
+ * #4271 T10 — the phone stays awake and bright while a code shows, and goes back
+ * to how it was on leaving. A binary without a module simply goes without.
+ */
+import { createElement } from "react";
+
+const renderer = require("react-test-renderer") as {
+  create: (element: unknown) => { update: (element: unknown) => void; unmount: () => void };
+  act: (callback: () => void | Promise<void>) => Promise<void>;
+};
+
+const keepAwake = { activate: jest.fn(() => Promise.resolve()), deactivate: jest.fn(() => Promise.resolve()) };
+const brightness = {
+  getBrightnessAsync: jest.fn(() => Promise.resolve(0.4)),
+  setBrightnessAsync: jest.fn(() => Promise.resolve()),
+};
+let modules: Record<string, unknown> = {};
+
+jest.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+jest.mock(
+  "expo",
+  () => ({ requireOptionalNativeModule: (name: string) => modules[name] ?? null }),
+  { virtual: true },
+);
+
+// eslint-disable-next-line import/first
+import { useDoorScreenAwake } from "../useDoorScreenAwake";
+
+const Probe = ({ active }: { active: boolean }): null => {
+  useDoorScreenAwake(active);
+  return null;
+};
+
+describe("#4271 useDoorScreenAwake", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    modules = { ExpoKeepAwake: keepAwake, ExpoBrightness: brightness };
+  });
+
+  test("holds awake at full brightness while showing, restores on leaving", async () => {
+    let tree: { update: (element: unknown) => void; unmount: () => void } | undefined;
+    await renderer.act(async () => {
+      tree = renderer.create(createElement(Probe, { active: true }));
+    });
+    expect(keepAwake.activate).toHaveBeenCalledWith("door-pay-code");
+    expect(brightness.setBrightnessAsync).toHaveBeenLastCalledWith(1);
+    await renderer.act(async () => {
+      tree?.update(createElement(Probe, { active: false }));
+    });
+    expect(keepAwake.deactivate).toHaveBeenCalledWith("door-pay-code");
+    expect(brightness.setBrightnessAsync).toHaveBeenLastCalledWith(0.4);
+  });
+
+  test("a binary with neither module does nothing and does not throw", async () => {
+    modules = {};
+    await renderer.act(async () => {
+      renderer.create(createElement(Probe, { active: true }));
+    });
+    expect(keepAwake.activate).not.toHaveBeenCalled();
+    expect(brightness.setBrightnessAsync).not.toHaveBeenCalled();
+  });
+
+  test("stays quiet while no code is showing", async () => {
+    await renderer.act(async () => {
+      renderer.create(createElement(Probe, { active: false }));
+    });
+    expect(keepAwake.activate).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4271 the binary carries what the hook asks for", () => {
+  const pkg = JSON.parse(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "..", "..", "package.json"), "utf8"),
+  ) as {
+    dependencies: Record<string, string>;
+    expo?: { autolinking?: { android?: { exclude?: string[] } } };
+  };
+
+  test("expo-brightness is a dependency and is not excluded from Android autolinking", () => {
+    expect(pkg.dependencies["expo-brightness"]).toMatch(/^~14\./);
+    expect(pkg.expo?.autolinking?.android?.exclude ?? []).not.toContain("expo-brightness");
+  });
+
+  test("the screen's own brightness needs no permission, so WRITE_SETTINGS stays blocked", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("node:fs") as typeof import("node:fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("node:path") as typeof import("node:path");
+    const app = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "..", "app.json"), "utf8")) as {
+      expo: { android: { blockedPermissions: string[]; permissions: string[] } };
+    };
+    expect(app.expo.android.blockedPermissions).toContain("android.permission.WRITE_SETTINGS");
+    expect(app.expo.android.permissions).not.toContain("android.permission.WRITE_SETTINGS");
+    const source = fs.readFileSync(path.join(__dirname, "..", "useDoorScreenAwake.ts"), "utf8");
+    expect(source).not.toContain("setSystemBrightness");
+  });
+
+  test("it is only ever required lazily, by native module name", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const source = require("node:fs").readFileSync(
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("node:path").join(__dirname, "..", "useDoorScreenAwake.ts"),
+      "utf8",
+    ) as string;
+    expect(source).not.toMatch(/from "expo-brightness"/);
+    expect(source).toContain('optionalModule<BrightnessModule>("ExpoBrightness")');
+  });
+});

@@ -31,6 +31,9 @@ const M4 = "supabase/migrations/20280204003645_issue_3645_installment_refunds_di
 const BY_DATE_REEMIT =
   "supabase/migrations/20280216003282_issue_3281_by_date_quantities_paystack_reemit.sql";
 
+const STAY_NET =
+  "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql";
+
 const PS = "public.issue_3645_finalize_is_paystack(p_stripe_payment_intent_id, p_stripe_charge_id)";
 
 const PROJECTION_JOIN: Hunk = {
@@ -573,6 +576,68 @@ export const REEMITS: Reemit[] = [
 `,
       },
     ],
+  },
+  // #3645 A26 — stays follow the flat 4.5% rule; the Stripe fee make-good
+  // covers stay sales on legacy accounts.
+  {
+    fn: "issue_1389_attach_stay_payout_release",
+    source: "supabase/migrations/20271210013645_issue_3645_payout_gate_payment_plus_24h.sql",
+    target: STAY_NET,
+    hunks: [{ name: "stay host net excludes the provider fee", old: `  v_net := greatest(
+    0,
+    p_gross_cents - p_refunded_cents
+      - p_mingla_fee_cents - p_provider_fee_cents
+  );
+`, new: `  -- #3645 A26 / flat 4.5% (Seth 2026-10-20): Mingla pays provider processing.
+  -- Host net deducts only Mingla's fee; p_provider_fee_cents is kept on the
+  -- row for reporting. Same rule as attach_payout_release for events.
+  v_net := greatest(
+    0,
+    p_gross_cents - p_refunded_cents - p_mingla_fee_cents
+  );
+` }],
+  },
+  {
+    fn: "run_stay_payout_release_dark_sweep",
+    source: "supabase/migrations/20271210013645_issue_3645_payout_gate_payment_plus_24h.sql",
+    target: STAY_NET,
+    hunks: [{ name: "stay ledger amount excludes the provider fee", old: `      greatest(
+        0,
+        v_row.gross_cents - v_row.refunded_cents
+          - v_row.mingla_fee_cents - v_row.provider_fee_cents
+      ),
+`, new: `      -- #3645 A26: same net as the release row (no provider fee).
+      greatest(
+        0,
+        v_row.gross_cents - v_row.refunded_cents - v_row.mingla_fee_cents
+      ),
+` }],
+  },
+  {
+    fn: "stripe_fee_make_good_census",
+    source: "supabase/migrations/20271213003645_issue_3645_stripe_fee_make_good.sql",
+    target: STAY_NET,
+    hunks: [{ name: "account check accepts flat-rule stay sales", old: `        LEFT JOIN public.orders o ON i.source_type = 'order' AND o.id = i.source_id
+        WHERE i.release_id = rel.id
+          AND i.provider_fee_cents > 0
+          AND (o.id IS NULL OR o.stripe_transfer_destination IS DISTINCT FROM sca.stripe_account_id)
+`, new: `        WHERE i.release_id = rel.id
+          AND i.provider_fee_cents > 0
+          AND NOT public.issue_3645_fee_sale_on_account(i.source_type, i.source_id, sca.stripe_account_id)
+` }],
+  },
+  {
+    fn: "plan_stripe_fee_make_good",
+    source: "supabase/migrations/20271213003645_issue_3645_stripe_fee_make_good.sql",
+    target: STAY_NET,
+    hunks: [{ name: "account check accepts flat-rule stay sales", old: `    LEFT JOIN public.orders o ON i.source_type = 'order' AND o.id = i.source_id
+    WHERE i.release_id = p_release_id
+      AND i.provider_fee_cents > 0
+      AND (o.id IS NULL OR o.stripe_transfer_destination IS DISTINCT FROM v_account)
+`, new: `    WHERE i.release_id = p_release_id
+      AND i.provider_fee_cents > 0
+      AND NOT public.issue_3645_fee_sale_on_account(i.source_type, i.source_id, v_account)
+` }],
   },
 ];
 

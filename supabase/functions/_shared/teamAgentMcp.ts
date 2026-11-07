@@ -24,6 +24,12 @@
 //     the time taken. Never a header, an argument, a result or a body.
 //   * Text written by other people is handed to the agent as data, and says so.
 //
+// Issue #4294 adds two things here: sign-in for the Claude apps (the 401
+// says where to sign in; `_shared/minglaConnectorOAuth.ts` serves the
+// sign-in addresses) and company tools (`<slug>__<tool>`, offered and
+// forwarded by `_shared/minglaConnectorProxy.ts`). A company tool's failure
+// is a tool error, never this connector's 401 or 403 (I-4294-4).
+//
 // No client library is imported and the environment is not read, so the
 // whole file runs in a test with a stand-in gateway.
 
@@ -40,6 +46,20 @@ import {
   productTruthToolsForMe,
 } from "./teamAgentProductTruth.ts";
 import { findWorkTool, workToolsForMe } from "./teamAgentWorkTools.ts";
+import {
+  ADMIN_ISSUER,
+  handleAuthorize,
+  handleToken,
+  oauthRoute,
+  protectedResourceMetadata,
+  wwwAuthenticate,
+} from "./minglaConnectorOAuth.ts";
+import {
+  createConnectorProxy,
+  McpHttpTransport,
+  splitProxiedName,
+  type UpstreamTransport,
+} from "./minglaConnectorProxy.ts";
 
 /** Handshake revisions this server speaks, newest first. */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
@@ -180,8 +200,26 @@ export async function chatKey(
   return "";
 }
 
+/**
+ * Issue #4294: what sign-in and company tools need. Without it the
+ * connector works as before, and the sign-in and company-tool addresses
+ * answer that they are not available.
+ */
+export interface ConnectorDeps {
+  /** Calls one mingla_connector_ database function as the server role. */
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<unknown>;
+  /** The connector's own public address, exactly. */
+  resourceUrl?: string;
+  issuer?: string;
+  /** The network, for company tool servers. */
+  fetch?: (input: string, init: RequestInit) => Promise<Response>;
+  /** Replaces the MCP-over-HTTP transport (tests, a REST adapter later). */
+  transport?: UpstreamTransport;
+}
+
 export interface TeamAgentDeps {
   gateway: Gateway;
+  connector?: ConnectorDeps;
   /** One line per request. Defaults to nothing. */
   log?: (line: Record<string, unknown>) => void;
   now?: () => number;
@@ -317,14 +355,27 @@ function rpcError(
   );
 }
 
-function unauthorized(): Response {
+// Issue #4294: the 401 says where to find how to sign in (RFC 9728), so a
+// Claude app can start sign-in from it. Same answer for every refused key.
+function unauthorized(resourceUrl: string): Response {
   return new Response(UNAUTHORIZED_BODY, {
     status: 401,
     headers: {
       "Content-Type": "application/json",
-      "WWW-Authenticate": 'Bearer realm="mingla-team-agent"',
+      "WWW-Authenticate": wwwAuthenticate(resourceUrl),
     },
   });
+}
+
+/** The connector's own address as a request names it (tests; no deps). */
+function addressOf(url: string): string {
+  try {
+    const u = new URL(url);
+    const at = u.pathname.indexOf("/team-agent");
+    return u.origin + (at >= 0 ? u.pathname.slice(0, at + "/team-agent".length) : u.pathname);
+  } catch (_err) {
+    return "";
+  }
 }
 
 /** Reads a body up to a limit. `null` means it was larger. */
@@ -542,6 +593,16 @@ export function createTeamAgentHandler(
   const newId = deps.requestId ?? (() => crypto.randomUUID());
   const minRefusalMs = deps.minRefusalMs ?? MIN_REFUSAL_MS;
   const log = deps.log ?? (() => {});
+  const connector = deps.connector;
+  const proxy = connector
+    ? createConnectorProxy({
+      rpc: connector.rpc,
+      transport: connector.transport ??
+        new McpHttpTransport(connector.fetch ?? ((input, init) => fetch(input, init))),
+      now,
+      log,
+    })
+    : null;
 
   return async function handle(req: Request): Promise<Response> {
     const started = now();
@@ -565,10 +626,11 @@ export function createTeamAgentHandler(
     };
     // The one way a request whose key cannot be used is answered. Whatever
     // the cause, it is the same answer and takes the same minimum time.
+    const resourceUrl = connector?.resourceUrl ?? addressOf(req.url);
     const refuseKey = async (): Promise<Response> => {
       const wait = minRefusalMs - (now() - started);
       if (wait > 0) await sleep(wait);
-      return done("unauthorized", unauthorized());
+      return done("unauthorized", unauthorized(resourceUrl));
     };
     // The one way a setup code that cannot be used is answered.
     const refuseSetup = async (): Promise<Response> => {
@@ -588,6 +650,52 @@ export function createTeamAgentHandler(
 
     if (req.method === "OPTIONS") {
       return done("options", new Response(null, { status: 204 }));
+    }
+
+    // Issue #4294: the sign-in addresses. Nothing about a request to them
+    // (code, verifier, token, redirect) is logged.
+    const route = oauthRoute(req.url);
+    if (route !== null) {
+      method = "oauth:" + route;
+      const wanted = route === "token" ? "POST" : "GET";
+      if (req.method !== wanted) {
+        return done(
+          "method_not_allowed",
+          new Response(null, { status: 405, headers: { Allow: wanted } }),
+        );
+      }
+      if (route === "metadata") {
+        return done(
+          "ok",
+          new Response(
+            JSON.stringify(
+              protectedResourceMetadata(resourceUrl, connector?.issuer ?? ADMIN_ISSUER),
+            ),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control": "public, max-age=300",
+              },
+            },
+          ),
+        );
+      }
+      if (!connector) {
+        return done("not_available", new Response(null, { status: 404 }));
+      }
+      const oauth = {
+        rpc: connector.rpc,
+        resourceUrl,
+        issuer: connector.issuer,
+        now,
+        sleep,
+        minRefusalMs,
+      };
+      const answered = route === "authorize"
+        ? handleAuthorize(req, oauth)
+        : await handleToken(req, oauth);
+      return done(answered.outcome, answered.res);
     }
     if (req.method !== "POST") {
       return done(
@@ -735,6 +843,28 @@ export function createTeamAgentHandler(
     let workTool = false;
     if (isNotification) {
       gatewayTool = "mcp:notification";
+    } else if (
+      body.method === "tools/call" && proxy &&
+      splitProxiedName(params.name) !== null
+    ) {
+      // Issue #4294: a company tool. The database decides, in one step,
+      // who is asking and whether they may; the gateway is not asked.
+      tool = "company_tool";
+      let ran;
+      try {
+        ran = await proxy.call(
+          await sha256Hex(key),
+          params.name as string,
+          isObject(params.arguments) ? params.arguments : {},
+          clientLabel(req),
+        );
+      } catch (_err) {
+        return done("gateway_error", rpcError(200, id, -32603, SERVER_ERROR_WORDS));
+      }
+      if (ran.kind === "auth_invalid") return await refuseKey();
+      prefix = key.slice(0, 14);
+      tool = `${ran.slug}__${ran.tool}`;
+      return done(ran.outcome, rpcResult(id, ran.result));
     } else if (body.method === "tools/call") {
       known = findTool(params.name) ?? findProductTruthTool(params.name) ??
         findWorkTool(params.name);
@@ -847,18 +977,32 @@ export function createTeamAgentHandler(
       case "ping":
         if (failed) break;
         return done("ok", rpcResult(id, {}));
-      case "tools/list":
+      case "tools/list": {
         if (failed) break;
+        // Issue #4294: plus the company tools this person may use. A
+        // company server that fails is left out; the list never fails.
+        let company: unknown[] = [];
+        if (proxy) {
+          try {
+            company = await proxy.listFor(await sha256Hex(key), clientLabel(req));
+          } catch (_err) {
+            log({ fn: "team-agent", request_id: requestId, step: "company_tools_failed" });
+          }
+        }
         return done(
           "ok",
           rpcResult(id, {
             tools: [
-              ...toolsForRole(me.role),
-              ...productTruthToolsForMe(me),
-              ...workToolsForMe(me),
-            ].map(toolListing),
+              ...[
+                ...toolsForRole(me.role),
+                ...productTruthToolsForMe(me),
+                ...workToolsForMe(me),
+              ].map(toolListing),
+              ...company,
+            ],
           }),
         );
+      }
       case "resources/list":
         if (failed) break;
         return done(

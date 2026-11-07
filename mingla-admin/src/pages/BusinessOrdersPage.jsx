@@ -22,6 +22,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { listOrders, getOrder, getOrdersOverview } from "../services/adminMoneyService";
 import { formatMoneyMinor } from "../lib/moneyFormat";
+import { describeAdminRefundError } from "../lib/adminRefundError";
 import { LoadError } from "../components/ui/LoadError";
 import { Skeleton } from "../components/ui/Skeleton";
 import {
@@ -33,31 +34,6 @@ import { PageHeader } from "../components/ui/PageHeader";
 
 // Order payment_status values (DB enum) an admin may refund.
 const REFUNDABLE_STATUSES = ["paid", "partial_refund"];
-
-// Map admin-refund-order edge-fn error codes → user-facing copy.
-function refundErrorCopy(code) {
-  switch (code) {
-    case "refund_exceeds_remaining": return "Amount exceeds what's left to refund.";
-    case "line_overrefund": return "One or more items are already fully refunded.";
-    // #3281: the last tickets' refund also returns extras, so it waits for any other refund to settle.
-    case "refund_pending_on_order": return "Another refund on this order is still going through. Try again once it finishes.";
-    case "stripe_declined": return "Stripe declined — no money moved.";
-    // #4130: Paystack refunds (admin-refund-order maps these for Paystack brands).
-    case "paystack_refund_failed": return "Paystack refused the refund — no money moved.";
-    case "paystack_refund_retryable": return "Paystack is busy — nothing was refunded yet. Try again in a few minutes.";
-    case "paystack_refund_below_minimum": return "The amount is below Paystack's smallest refund. Refund a larger amount or the full order.";
-    case "paystack_refund_duplicate_ambiguous": return "Paystack may already have a refund for this order. Check Refund operations before trying again.";
-    case "paystack_refund_transaction_state_ambiguous": return "Paystack could not confirm the payment's state. Check Refund operations before trying again.";
-    case "order_not_refundable": return "This order can't be refunded.";
-    case "missing_connected_account": return "This brand has no Stripe account to refund from.";
-    case "missing_payment_intent": return "This order has no payment reference to refund.";
-    case "reason_invalid_length": return "Reason must be 10–200 characters.";
-    case "forbidden": return "Admin access required.";
-    case "unauthorized": return "Your session expired — sign in again.";
-    case "idempotency_key_required": return "Couldn't start the refund. Please retry.";
-    default: return null;
-  }
-}
 
 // ── Money formatter: the shared one (#4130; never falls back to USD) ─────────
 
@@ -494,7 +470,7 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
 // each open without a setState-in-effect.
 function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
   const [qtys, setQtys] = useState({});
-  const [idempotencyKey] = useState(createAdminRefundIdempotencyKey);
+  const [idempotencyKey, setIdempotencyKey] = useState(createAdminRefundIdempotencyKey);
 
   const rows = (lineItems || []).map((li) => {
     const remaining = Math.max(0, (li.quantity ?? 0) - (li.refunded_quantity ?? 0));
@@ -537,16 +513,16 @@ function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
       idempotencyKey,
     });
     if (error) {
-      let code = null;
-      let detail = null;
+      let body = null;
       try {
-        const b = await error.context?.json();
-        code = b?.error;
-        detail = b?.detail;
+        body = await error.context?.json();
       } catch {
         // non-JSON error body — fall through to the generic message.
       }
-      throw new Error(refundErrorCopy(code) || detail || error.message || "Refund failed.");
+      const described = describeAdminRefundError(body);
+      // #4271: a refund committed 'failed' spent its key; the next Refund starts a new one.
+      if (described.keySpent) setIdempotencyKey(createAdminRefundIdempotencyKey());
+      throw new Error(described.message || body?.detail || error.message || "Refund failed.");
     }
     onRefunded?.();
   };

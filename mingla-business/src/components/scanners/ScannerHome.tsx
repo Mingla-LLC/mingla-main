@@ -19,6 +19,10 @@
  *     `useUpcomingForBrand`), filtered to `event` kind only (scanners
  *     do not scan trips/experiences today).
  *
+ * issue #4271 — a scanner the server lets take door payments
+ * (rpc biz_can_take_door_payment) also gets "Sell at door" on each row,
+ * routing to `/event/[id]/door`.
+ *
  * Empty state: no upcoming events → quiet copy. Sign-out remains
  * reachable via the Account tab, which the rank-10 filter still allows.
  *
@@ -46,6 +50,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useCanTakeDoorPayment } from "../../hooks/useEventDoorSales";
 import { useUpcomingForBrand } from "../../hooks/useUpcomingForBrand";
 import type { UpcomingItem } from "../../utils/upcomingBuilder";
 
@@ -71,13 +76,19 @@ const formatStart = (item: UpcomingItem): string => {
 interface ScannerEventRowProps {
   item: UpcomingItem;
   onOpen: (item: UpcomingItem) => void;
+  onSell: (item: UpcomingItem) => void;
 }
 
-const ScannerEventRow: React.FC<ScannerEventRowProps> = ({ item, onOpen }) => {
+const ScannerEventRow: React.FC<ScannerEventRowProps> = ({ item, onOpen, onSell }) => {
   const handlePress = useCallback((): void => {
     onOpen(item);
   }, [item, onOpen]);
+  const handleSell = useCallback((): void => {
+    onSell(item);
+  }, [item, onSell]);
   const isRsvp = (item.source as { event_type?: string }).event_type === "rsvp";
+  // RSVPs take no money; only ticketed events can sell at the door.
+  const canSell = useCanTakeDoorPayment(isRsvp ? null : item.id).data === true;
   return (
     <Pressable
       onPress={handlePress}
@@ -97,6 +108,17 @@ const ScannerEventRow: React.FC<ScannerEventRowProps> = ({ item, onOpen }) => {
           </View>
           <View style={styles.rowCta}>
             <Pill variant="accent">{isRsvp ? "Scan guests" : "Scan"}</Pill>
+            {canSell ? (
+              <Pressable
+                onPress={handleSell}
+                accessibilityRole="button"
+                accessibilityLabel={`Sell at door for ${itemName(item)}`}
+                testID={`scanner-home-sell-${item.id}`}
+                hitSlop={8}
+              >
+                <Pill variant="accent">Sell at door</Pill>
+              </Pressable>
+            ) : null}
             <Icon name="chevR" size={20} color={accent.warm} />
           </View>
         </View>
@@ -125,6 +147,13 @@ export const ScannerHome: React.FC = () => {
     [router],
   );
 
+  const handleSell = useCallback(
+    (item: UpcomingItem): void => {
+      router.push(`/event/${item.id}/door` as never);
+    },
+    [router],
+  );
+
   return (
     <View style={[styles.host, { paddingTop: insets.top }]} testID="scanner-home">
       <View style={styles.header}>
@@ -144,7 +173,7 @@ export const ScannerHome: React.FC = () => {
           { paddingBottom: insets.bottom + spacing.xxl },
         ]}
         renderItem={({ item }) => (
-          <ScannerEventRow item={item} onOpen={handleOpen} />
+          <ScannerEventRow item={item} onOpen={handleOpen} onSell={handleSell} />
         )}
         ListEmptyComponent={
           <View style={styles.empty} testID="scanner-home-empty">

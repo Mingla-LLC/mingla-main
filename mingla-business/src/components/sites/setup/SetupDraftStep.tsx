@@ -6,13 +6,25 @@ import { BuildPart } from "../plan/BuildPart";
 import type { PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
 /** Design states 7, 8, 9 and the idle card. State 10 is drawn by the screen. */
-export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, nextStep, onStart, onRetry, onTellMingla, onDone }: {
+/** "a, b and c" — the way Ari lists what is still needed. */
+function listWords(items: readonly string[]): string {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+const lowerFirst = (value: string): string => value.charAt(0).toLowerCase() + value.slice(1);
+
+export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, blockers = [], nextStep, onStart, onRetry, onTellMingla, onDone }: {
   brandId: string;
   brandName: string;
   state: SetupDraftState;
   canManage: boolean;
   /** Core refused and said why, so it is not "on our side". */
   refusal?: string | null;
+  /**
+   * What still stands before Build, from the same rule Ari reads
+   * (`planBuildBlockers`). Shown before any press; Build stays off until empty.
+   */
+  blockers?: readonly { key: string; label: string }[];
   /** The first step still open, for "what's missing". */
   nextStep?: PlanPartKey | null;
   onStart: () => void;
@@ -32,6 +44,21 @@ export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, 
     </View>
   ) : null;
   if (refused && state.kind !== "ready" && state.kind !== "building" && state.kind !== "checking") return refused;
+  if (blockers.length > 0 && (state.kind === "not_ready" || state.kind === "can_start")) {
+    return (
+      <View style={styles.host} testID="setup-draft-blocked">
+        <Text style={styles.title}>Your draft can&apos;t be built yet.</Text>
+        <Text style={styles.body} testID="setup-draft-still-needed">
+          {`Still needed: ${listWords(blockers.map((item) => lowerFirst(item.label)))}. Nothing has been created.`}
+        </Text>
+        {nextStep ? (
+          <View style={styles.row}>
+            <WButton label="Go to what's missing" variant="primary" onPress={() => onDone(nextStep)} testID="setup-draft-missing" />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
   switch (state.kind) {
     case "not_ready":
     case "can_start":

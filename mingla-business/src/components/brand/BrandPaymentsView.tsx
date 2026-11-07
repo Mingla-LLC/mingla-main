@@ -71,6 +71,7 @@ import {
   useDisconnectPaystack,
 } from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../hooks/useTapToPaySettingsEntry";
 import { useBrandPayoutVisibility } from "../../hooks/useBrandPayoutVisibility";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
@@ -158,6 +159,11 @@ export interface BrandPaymentsViewProps {
    * Nigerian address straight back to Nigeria. Falls back to `onOpenOnboard`.
    */
   onChooseDifferentCountry?: () => void;
+  /**
+   * #4271 — opens Tap to Pay setup for this brand. The route owns navigation;
+   * without it the Tap to Pay button is not shown.
+   */
+  onOpenTapToPay?: () => void;
 }
 
 /**
@@ -217,6 +223,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   onOpenReports,
   onContactSupport = onOpenOnboard,
   onChooseDifferentCountry,
+  onOpenTapToPay,
 }) => {
   const insets = useSafeAreaInsets();
   // #3645 — the Nigerian status card's "Add bank" scrolls to the bank form
@@ -245,6 +252,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // V3 (Sub-C Session A): live status query gives access to requirements
   // shape for the KycRemediationCard. Sibling-pattern: cached + Realtime-fed.
   const stripeStatusQuery = useBrandStripeStatus(brand?.id ?? null);
+  const tapToPayEntry = useTapToPaySettingsEntry(brand?.id ?? null);
   const stripeStatus = getEffectiveBrandStripeStatus({
     liveStatus: stripeStatusQuery.data?.status,
     cachedStatus: brand?.stripeStatus,
@@ -717,6 +725,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           onDownloadPayouts={onOpenReports}
           suppressAttention={stripeStatus !== "active" || cardRailAddBank}
         />
+
+        {tapToPayEntry !== null && onOpenTapToPay !== undefined && tapToPayBrandEligible(brand) ? (
+          <Button
+            label={tapToPayEntry.label}
+            onPress={onOpenTapToPay}
+            variant="secondary"
+            size="md"
+            fullWidth
+            accessibilityLabel={tapToPayEntry.label}
+            testID="brand-payments-tap-to-pay"
+          />
+        ) : null}
 
         {brand && stripeStatusQuery.data?.detached_at != null
           ? <BrandStripeOrphanedRefundsSection brandId={brand.id} />

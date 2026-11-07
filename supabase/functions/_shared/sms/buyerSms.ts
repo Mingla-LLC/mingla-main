@@ -33,7 +33,8 @@ export type SmsTemplateKey =
   | "S17"
   | "S18"
   | "S18A"
-  | "S18N";
+  | "S18N"
+  | "S19";
 
 export type BuyerSmsNoun = "ticket" | "booking" | "pass" | "receipt";
 
@@ -257,6 +258,9 @@ function render(key: SmsTemplateKey, s: NormalizedSlots): string {
       return `Mingla: Action needed on your ${s.amount} refund for ${s.subjectLabel}: ${s.link}`;
     case "S18N":
       return `Mingla: Action needed on your ${s.amount} refund for ${s.subjectLabel}. Check your email to continue.`;
+    // Issue #4271 — the host texted the guest a door pay link.
+    case "S19":
+      return `Mingla: Pay for ${s.title} here: ${s.link}`;
   }
 }
 

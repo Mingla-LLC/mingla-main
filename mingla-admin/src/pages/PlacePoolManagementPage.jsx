@@ -17,7 +17,7 @@ import {
   Globe, Search, Camera, Clock, Plus, RefreshCw, Play, Pause,
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
   Download, ImageOff, Eye, Edit3, DollarSign, Layers,
-  Square, SkipForward, XCircle, Loader, RotateCcw, Zap, MinusCircle,
+  Square, SkipForward, XCircle, X, Loader, RotateCcw, Zap, MinusCircle,
   Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -28,10 +28,12 @@ import { Button } from "../components/ui/Button";
 import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { Drawer } from "../components/ui/Drawer";
 import { Input, Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { Breadcrumbs } from "../components/ui/Breadcrumbs";
 import { Spinner } from "../components/ui/Spinner";
+import { LoadError } from "../components/ui/LoadError";
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
 import {
   adminDeactivateError,
@@ -40,6 +42,7 @@ import {
   PLACE_LIST_COUNT_MODE,
   PLACE_MAP_COLUMNS,
 } from "../lib/placePoolQueries";
+import { placeStages, placeTypeLabel, reasonWords } from "../lib/cityPipeline";
 // ORCH-0553 — SeedTab + RefreshTab extracted to shared seeding components.
 // HARD_CAP_USD + formatCost + TILE_RADIUS_OPTIONS imported from shared lib so
 // both this page and AIValidationPage tabs use a single source of truth.
@@ -374,8 +377,15 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={place.name || "Place Detail"} size="lg">
-      <ModalBody>
+    // #4276 design pass: a place opens in a side panel beside the list, as the design draws it.
+    <Drawer open={open} onClose={onClose} title={place.name || "Place"}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={saving} onClick={handleSave}>Save</Button>
+        </div>
+      )}>
+
         <div className="space-y-6">
           {/* Identity */}
           <div>
@@ -714,12 +724,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
         </div>
         {/* #4130 (Wave 4b): the old Deck tuner, now on the place itself. */}
         <PlaceScoreOverride place={place} />
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} onClick={handleSave}>Save</Button>
-      </ModalFooter>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -727,7 +732,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
 
 // ORCH-0553 — TILE_RADIUS_OPTIONS moved to lib/seedingFormat.js (shared import above).
 
-function AddCityModal({ open, onClose, onSave }) {
+export function AddCityModal({ open, onClose, onSave }) {
   const [query, setQuery] = useState("");
   const [tileRadius, setTileRadius] = useState("1500");
   const [geocodeResult, setGeocodeResult] = useState(null);
@@ -954,12 +959,14 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
   const [places, setPlaces] = useState([]);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     if (!selectedCity) { setPlaces([]); return; }
     setMapLoading(true);
+    setMapError(null);
     let q = supabase.from("place_pool")
       .select(PLACE_MAP_COLUMNS)
       .eq("is_active", true)
@@ -972,12 +979,13 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
       setMapLoading(false);
     });
     return () => { mountedRef.current = false; };
-  }, [selectedCountry, selectedCity]);
+  }, [selectedCountry, selectedCity, reloadKey]);
 
-  if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city from the picker above to view the map.</div>;
-  if (mapLoading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading map data...</div>;
-  if (mapError) return <div className="text-center py-12 text-[var(--color-error-600)]">The map could not load places: {mapError}</div>;
-  if (places.length === 0) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No places found to display.</div>;
+  if (!selectedCity) return <div className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] py-12 text-center text-sm text-[var(--color-text-secondary)]">Pick a city above to see its box, tiles and places on the map.</div>;
+  if (mapLoading) return <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--color-text-secondary)]"><Spinner size="sm" /> Loading the map…</div>;
+  // A failed load says so, with Retry; it never reads as "no places" (#4276 fix e).
+  if (mapError) return <LoadError title="The map could not load places" message={mapError} onRetry={() => setReloadKey((k) => k + 1)} />;
+  if (places.length === 0) return <div className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] py-12 text-center text-sm text-[var(--color-text-secondary)]">No places Explorers can see in this city yet.</div>;
 
   // Compute center from places average
   const validPlaces = places.filter((p) => p.lat && p.lng);
@@ -1083,20 +1091,59 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
 
 // ── Tab 3: Browse Pool ───────────────────────────────────────────────────────
 
-function BrowseTab({ scope, onRefresh }) {
+// #4276 design pass: one filter card (search, city, what is missing, Explorers, and
+// the List / Map switch), the stages as plain words per place, and a failed load that
+// says so with Retry instead of falling through to "No places found" (fix e).
+const MISSING_FILTERS = [
+  { id: "", label: "Anything" },
+  { id: "pre_check", label: "Pre-check not run" },
+  { id: "pre_failed", label: "Failed the pre-check" },
+  { id: "photos", label: "Passed, no stored photos" },
+  { id: "final_check", label: "Final check not run" },
+  { id: "scores", label: "Servable, no scores" },
+];
+
+const EXPLORER_FILTERS = [
+  { id: "", label: "All" },
+  { id: "servable", label: "Explorers can see" },
+  { id: "excluded", label: "Left out" },
+  { id: "not_bounced", label: "Not checked yet" },
+];
+
+function stageWord(value, yes, no, none = "Not run") {
+  if (value === true) return <span className="font-medium text-[var(--color-success-700)]">{yes}</span>;
+  if (value === false) return <span className="font-medium text-[var(--color-error-700)]">{no}</span>;
+  return <span className="text-[var(--color-text-tertiary)]">{none}</span>;
+}
+
+const selectClass = "block h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)]";
+
+function FilterField({ label, children, className = "" }) {
+  return (
+    <label className={`flex min-w-0 flex-col gap-1 text-xs font-medium text-[var(--color-text-secondary)] ${className}`}>
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function BrowseTab({ scope, onRefresh, cities = [], onScopeChange, view = "list", onViewChange, registeredCity, tiles, seedingOps }) {
   const selectedCountry = scope?.countryCode;
   const selectedCity = scope?.cityId;
-  const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", servableStatus: "", nameSearch: "" });
+  const [loadError, setLoadError] = useState(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [picked, setPicked] = useState(null); // the place shown in the side panel
+  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", servableStatus: "", nameSearch: "", missing: "" });
   const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
 
   const fetchPlaces = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
 
     // For country scope, load city IDs first then filter
     let countryCityIds = null;
@@ -1125,134 +1172,219 @@ function BrowseTab({ scope, onRefresh }) {
     else if (filters.servableStatus === "excluded") q = q.eq("is_servable", false);
     else if (filters.servableStatus === "not_bounced") q = q.is("is_servable", null);
     if (filters.nameSearch) q = q.ilike("name", `%${filters.nameSearch}%`);
+    if (filters.missing === "pre_check") q = q.is("passes_pre_photo_check", null);
+    else if (filters.missing === "pre_failed") q = q.eq("passes_pre_photo_check", false);
+    else if (filters.missing === "photos") q = q.eq("passes_pre_photo_check", true).or("stored_photo_urls.is.null,stored_photo_urls.eq.{}");
+    else if (filters.missing === "final_check") q = q.is("is_servable", null).not("stored_photo_urls", "is", null);
+    else if (filters.missing === "scores") q = q.eq("is_servable", true).is("ai_signal_scores", null);
     q = q.order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     const { data, count, error } = await q;
-    if (error) { addToast({ variant: "error", title: "Failed to load places", description: error.message }); }
+    // A failed load is never an empty list: the rows and count are cleared and the
+    // error is shown with Retry (#4276 fix e).
+    if (error) { setPlaces([]); setTotal(0); setLoadError(error.message || "The place list did not load."); }
     else { setPlaces(data || []); setTotal(count || 0); }
     setLoading(false);
-  }, [selectedCountry, selectedCity, filters, page, addToast]);
+  }, [selectedCountry, selectedCity, filters, page]);
 
   useEffect(() => { fetchPlaces(); }, [fetchPlaces]);
   useEffect(() => { setPage(0); }, [selectedCountry, selectedCity]);
 
-  const relativeTime = (dateStr) => {
-    if (!dateStr) return "—";
-    const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
-    if (days === 0) return "Today";
-    if (days < 30) return `${days}d ago`;
-    return `${Math.floor(days / 30)}mo ago`;
-  };
-
   const columns = [
-    { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => setDetailPlace(r)}>{r.name}</button> },
-    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (
-      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.mingla_category] || "#6b7280" }}>
-        {CATEGORY_LABELS[r.mingla_category] || r.mingla_category}
-      </span>
-    ) : "—" },
-    { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[160px] truncate block">{r.address || "—"}</span> },
-    { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
-    { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
-    { key: "price_tiers", label: "Price", render: (_, r) => {
-      const range = r.place_discovery_price_ranges;
-      if (range?.status === "legacy_unresolved") return <Badge variant="warning">Needs review</Badge>;
-      if (range?.status !== "active") return "—";
-      return `${range.source_min_minor}–${range.source_max_minor ?? "open"} minor · ${range.source_currency_code}`;
-    }},
+    { key: "name", label: "Place", render: (_, r) => (
+      <button type="button" aria-pressed={picked?.id === r.id} className="flex min-h-11 cursor-pointer flex-col items-start justify-center text-left" onClick={() => setPicked(r)}>
+        <b className="text-[13px] font-semibold text-[var(--color-text-primary)] hover:underline">{r.name}</b>
+        <span className="text-[11px] text-[var(--color-text-tertiary)]">{placeTypeLabel(r)}</span>
+      </button>
+    ) },
+    { key: "city", label: "City", render: (_, r) => r.city || "—" },
+    { key: "rating", label: "Rating", width: "64px", render: (_, r) => r.rating ? Number(r.rating).toFixed(1) : "—" },
+    { key: "passes_pre_photo_check", label: "Pre-check", render: (_, r) => stageWord(r.passes_pre_photo_check, "Passed", "Failed") },
     { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;
-      return <Badge variant={n > 0 ? "success" : "error"}>{n}</Badge>;
+      if (n > 0) return <span className="font-medium text-[var(--color-success-700)]">{n} saved</span>;
+      return <span className="text-[var(--color-text-tertiary)]">{r.passes_pre_photo_check === false ? "–" : "Not run"}</span>;
     }},
-    { key: "is_servable", label: "Bouncer Status", render: (_, r) => {
-      if (r.is_servable === true) return <Badge variant="success">Servable</Badge>;
-      if (r.is_servable === false) return <Badge variant="error">Excluded</Badge>;
-      return <Badge variant="outline">Not Yet Bounced</Badge>;
-    }},
-    { key: "last_detail_refresh", label: "Refreshed", render: (_, r) => relativeTime(r.last_detail_refresh) },
-    { key: "is_active", label: "Status", render: (_, r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
-    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} onClick={() => setDetailPlace(r)} /> },
+    { key: "is_servable", label: "Final", render: (_, r) => stageWord(r.is_servable, "Passed", "Failed") },
+    { key: "ai_signal_scores", label: "Scores", render: (_, r) => r.is_servable !== true ? <span className="text-[var(--color-text-tertiary)]">Not run</span>
+      : r.ai_signal_scores ? <span className="font-medium text-[var(--color-success-700)]">Scored</span> : <span className="font-medium text-[var(--color-error-700)]">Missing</span> },
+    { key: "actions", label: "", width: "48px", className: "!px-1", cellClassName: "!px-1", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} aria-label={`Change ${r.name}`} onClick={() => setDetailPlace(r)} /> },
   ];
 
+  const setFilter = (key, value) => { setFilters((f) => ({ ...f, [key]: value })); setPage(0); };
+  const groups = {};
+  for (const c of cities) {
+    const k = c.country_name || "Other";
+    (groups[k] ??= []).push(c);
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 items-end">
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Category</label>
-          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(0); }}>
-            <option value="">All</option>
-            {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-          </select>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
+        <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto]">
+          <FilterField label="Search by name">
+            <input className={selectClass} value={filters.nameSearch} placeholder="Place name" onChange={(e) => setFilter("nameSearch", e.target.value)} />
+          </FilterField>
+          <FilterField label="City">
+            <select className={selectClass} value={selectedCity || (selectedCountry ? `country:${selectedCountry}` : "")}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!onScopeChange) return;
+                if (!v) onScopeChange({ countryCode: null, cityId: null });
+                else if (v.startsWith("country:")) onScopeChange({ countryCode: v.slice(8), cityId: null });
+                else onScopeChange({ countryCode: cities.find((c) => c.city_id === v)?.country_code ?? null, cityId: v });
+              }}>
+              <option value="">All cities</option>
+              {Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([country, list]) => (
+                <optgroup key={country} label={country}>
+                  <option value={`country:${list[0].country_code}`}>All of {country}</option>
+                  {list.map((c) => <option key={c.city_id} value={c.city_id}>{c.city_name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </FilterField>
+          <FilterField label="Missing">
+            <select className={selectClass} value={filters.missing} onChange={(e) => setFilter("missing", e.target.value)}>
+              {MISSING_FILTERS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </FilterField>
+          <FilterField label="Explorers">
+            <select className={selectClass} value={filters.servableStatus} onChange={(e) => setFilter("servableStatus", e.target.value)}>
+              {EXPLORER_FILTERS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </FilterField>
+          <div className="flex items-center gap-2">
+            {onViewChange && (
+              <div className="flex gap-2" role="group" aria-label="View">
+                {[["list", "List"], ["map", "Map"]].map(([id, label]) => (
+                  <button key={id} type="button" aria-pressed={view === id} onClick={() => onViewChange(id)}
+                    className={`inline-flex min-h-11 cursor-pointer items-center rounded-full border px-4 text-[13px] font-medium ${view === id ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] font-semibold text-[var(--color-brand-700)]" : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:border-[var(--color-brand-500)]"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Status</label>
-          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(0); }}>
-            <option value="">All</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Photos</label>
-          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.photoStatus} onChange={(e) => { setFilters((f) => ({ ...f, photoStatus: e.target.value })); setPage(0); }}>
-            <option value="">All</option>
-            <option value="has">Has Photos</option>
-            <option value="missing">Missing Photos</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Bouncer Status</label>
-          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.servableStatus} onChange={(e) => { setFilters((f) => ({ ...f, servableStatus: e.target.value })); setPage(0); }}>
-            <option value="">All</option>
-            <option value="servable">Servable</option>
-            <option value="excluded">Excluded</option>
-            <option value="not_bounced">Not Yet Bounced</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Price Tier</label>
-          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.priceTier} onChange={(e) => { setFilters((f) => ({ ...f, priceTier: e.target.value })); setPage(0); }}>
-            <option value="">All</option>
-            <option value="missing">Missing</option>
-            {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Price Level</label>
-          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.priceLevel} onChange={(e) => { setFilters((f) => ({ ...f, priceLevel: e.target.value })); setPage(0); }}>
-            <option value="">All</option>
-            <option value="missing">Missing</option>
-            <option value="PRICE_LEVEL_FREE">Free</option>
-            <option value="PRICE_LEVEL_INEXPENSIVE">Inexpensive</option>
-            <option value="PRICE_LEVEL_MODERATE">Moderate</option>
-            <option value="PRICE_LEVEL_EXPENSIVE">Expensive</option>
-            <option value="PRICE_LEVEL_VERY_EXPENSIVE">Very Expensive</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">Min Rating</label>
-          <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0"
-            className="block mt-1 w-20 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.minRating} onChange={(e) => { setFilters((f) => ({ ...f, minRating: e.target.value })); setPage(0); }} />
-        </div>
-        <div className="flex-1 min-w-[200px]">
-          <Input label="Search" value={filters.nameSearch} placeholder="Place name..."
-            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(0); }} />
-        </div>
+        {view === "list" && (
+          <details open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+            <summary className="min-h-9 cursor-pointer content-center text-xs font-medium text-[var(--color-text-secondary)]">More filters: category, status, photos, price, rating</summary>
+            <div className="mt-2 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <FilterField label="Category">
+                <select className={selectClass} value={filters.category} onChange={(e) => setFilter("category", e.target.value)}>
+                  <option value="">All</option>
+                  {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                </select>
+              </FilterField>
+              <FilterField label="Status">
+                <select className={selectClass} value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
+                  <option value="">All</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </FilterField>
+              <FilterField label="Photos">
+                <select className={selectClass} value={filters.photoStatus} onChange={(e) => setFilter("photoStatus", e.target.value)}>
+                  <option value="">All</option>
+                  <option value="has">Has photos</option>
+                  <option value="missing">Missing photos</option>
+                </select>
+              </FilterField>
+              <FilterField label="Price tier">
+                <select className={selectClass} value={filters.priceTier} onChange={(e) => setFilter("priceTier", e.target.value)}>
+                  <option value="">All</option>
+                  <option value="missing">Missing</option>
+                  {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </FilterField>
+              <FilterField label="Price level">
+                <select className={selectClass} value={filters.priceLevel} onChange={(e) => setFilter("priceLevel", e.target.value)}>
+                  <option value="">All</option>
+                  <option value="missing">Missing</option>
+                  <option value="PRICE_LEVEL_FREE">Free</option>
+                  <option value="PRICE_LEVEL_INEXPENSIVE">Inexpensive</option>
+                  <option value="PRICE_LEVEL_MODERATE">Moderate</option>
+                  <option value="PRICE_LEVEL_EXPENSIVE">Expensive</option>
+                  <option value="PRICE_LEVEL_VERY_EXPENSIVE">Very expensive</option>
+                </select>
+              </FilterField>
+              <FilterField label="Min rating">
+                <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0" className={selectClass}
+                  value={filters.minRating} onChange={(e) => setFilter("minRating", e.target.value)} />
+              </FilterField>
+            </div>
+          </details>
+        )}
       </div>
 
-      <DataTable columns={columns} rows={places} loading={loading}
-        emptyMessage="No places found" emptyIcon={Globe}
-        pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
+      {view === "map" ? (
+        <MapTab scope={scope} registeredCity={registeredCity} tiles={tiles || []} seedingOps={seedingOps || []} />
+      ) : loadError ? (
+        <LoadError title="Couldn't load the place list" message={loadError} onRetry={fetchPlaces} retrying={loading} />
+      ) : (
+        <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+            <p className="px-4 pt-3 text-xs text-[var(--color-text-secondary)]">{loading ? "Loading places…" : `${total.toLocaleString()} ${total === 1 ? "place" : "places"}, newest first. Totals over 1,000 are estimates.`}</p>
+            <DataTable columns={columns} rows={places} loading={loading} headerCase="sentence"
+              emptyMessage="No places match these filters" emptyIcon={Globe}
+              rowClassName={(r) => (picked?.id === r.id ? "bg-[var(--color-brand-50)]" : "")}
+              pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
+          </div>
+          <PlaceSidePanel place={picked} onEdit={() => setDetailPlace(picked)} onClose={() => setPicked(null)} />
+        </div>
+      )}
 
-      <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { fetchPlaces(); if (onRefresh) onRefresh(); }} />
+      <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { setPicked(null); fetchPlaces(); if (onRefresh) onRefresh(); }} />
     </div>
+  );
+}
+
+// #4276 design pass: the panel beside the place list. Nothing picked: what it is for.
+// A place picked: where it stands at each stage, with the full edit form one tap away.
+const STAGE_TONE = {
+  done: "text-[var(--color-success-700)]",
+  failed: "text-[var(--color-error-700)]",
+  waiting: "text-[var(--color-warning-700)]",
+  not_run: "text-[var(--color-text-tertiary)]",
+};
+
+export function PlaceSidePanel({ place, onEdit, onClose }) {
+  return (
+    <aside aria-label="Picked place" className="flex min-w-0 flex-col gap-4 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-5 shadow-[var(--shadow-sm)] xl:sticky xl:top-4">
+      {!place ? (
+        <p className="text-sm leading-5 text-[var(--color-text-secondary)]">Pick a place to see where it stands, and to change it.</p>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="break-words text-[15px] font-semibold text-[var(--color-text-primary)]">{place.name}</h3>
+              <p className="text-xs text-[var(--color-text-secondary)]">{placeTypeLabel(place)}{place.city ? ` · ${place.city}` : ""}{place.rating ? ` · ${Number(place.rating).toFixed(1)}` : ""}</p>
+            </div>
+            <Button size="sm" variant="ghost" icon={X} aria-label="Close" onClick={onClose} />
+          </div>
+          <dl className="flex flex-col divide-y divide-[var(--gray-100)] text-[13px]">
+            {placeStages(place).map((st) => (
+              <div key={st.id} className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-2">
+                <dt className="text-[var(--color-text-secondary)]">{st.label}</dt>
+                <dd className={`font-medium ${STAGE_TONE[st.state]}`}>{st.text}</dd>
+              </div>
+            ))}
+          </dl>
+          <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12px]">
+            <dt className="text-[var(--color-text-secondary)]">Category</dt>
+            <dd>{place.mingla_category ? (CATEGORY_LABELS[place.mingla_category] || place.mingla_category) : "None"}</dd>
+            <dt className="text-[var(--color-text-secondary)]">Price</dt>
+            <dd>{place.place_discovery_price_ranges?.status === "active"
+              ? `${place.place_discovery_price_ranges.source_min_minor}–${place.place_discovery_price_ranges.source_max_minor ?? "open"} minor · ${place.place_discovery_price_ranges.source_currency_code}`
+              : place.place_discovery_price_ranges?.status === "legacy_unresolved" ? "Needs review" : "Not set"}</dd>
+            <dt className="text-[var(--color-text-secondary)]">Refreshed</dt>
+            <dd>{place.last_detail_refresh ? new Date(place.last_detail_refresh).toLocaleDateString() : "Never"}</dd>
+            {place.address && <><dt className="text-[var(--color-text-secondary)]">Address</dt><dd className="break-words">{place.address}</dd></>}
+          </dl>
+          <Button variant="secondary" icon={Edit3} onClick={onEdit}>Edit place and scores</Button>
+        </>
+      )}
+    </aside>
   );
 }
 
@@ -2613,18 +2745,26 @@ function SeedingTab({ registeredCity, tiles, stats, seedingOps, refreshKey, onRe
 // override RPC. If override is ever needed, add a deliberate admin_override_servable
 // RPC with audit trail (deferred; not in ORCH-0646 scope).
 
-function ExcludedTab({ scope, onRefresh }) {
+// #4276 design pass: "Places left out", one row per place (name and type, city, reason
+// in words, Remove from active). There is deliberately no override here: the checks
+// decide what Explorers see. Removing goes through the audited admin_deactivate_place
+// and asks first. A failed load shows the error and Retry, never an empty list (fix e).
+function ExcludedTab({ scope, onRefresh, cities = [], onScopeChange }) {
   const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filterCat, setFilterCat] = useState(null); // category filter for the list
+  const [loadError, setLoadError] = useState(null);
+  const [filterCat, setFilterCat] = useState(""); // category filter for the list
   const [detailPlace, setDetailPlace] = useState(null);
+  const [removing, setRemoving] = useState(null);
+  const [busy, setBusy] = useState(false);
   const PAGE_SIZE = 20;
 
   const fetchExcluded = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     let q = supabase.from("place_pool")
       .select(PLACE_LIST_COLUMNS, { count: PLACE_LIST_COUNT_MODE })
       .eq("is_active", true)
@@ -2633,85 +2773,92 @@ function ExcludedTab({ scope, onRefresh }) {
     if (filterCat) q = q.eq(PLACE_CATEGORY_COLUMN, filterCat);
     q = q.order("name").range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     const { data, count, error } = await q;
-    if (error) addToast({ variant: "error", title: "Failed to load excluded places", description: error.message });
-    setPlaces(data || []);
-    setTotal(count || 0);
+    if (error) { setPlaces([]); setTotal(0); setLoadError(error.message || "The list did not load."); }
+    else { setPlaces(data || []); setTotal(count || 0); }
     setLoading(false);
-  }, [scope.cityId, page, filterCat, addToast]);
+  }, [scope.cityId, page, filterCat]);
 
   useEffect(() => { fetchExcluded(); }, [fetchExcluded]);
   useEffect(() => { setPage(0); }, [scope.cityId, filterCat]);
 
-  const handleDelete = async (place) => {
-    if (!confirm(`Delete "${place.name}"? This sets it to inactive.`)) return;
+  const handleRemove = async () => {
+    const place = removing;
+    if (!place) return;
+    setBusy(true);
     // #4276 U5: the audited path. It records who removed the place and why in
     // place_admin_actions; a direct table update left no trace.
     const result = await supabase.rpc("admin_deactivate_place", {
       p_place_id: place.id,
       p_reason: "Removed from the Excluded list",
     });
+    setBusy(false);
     const deactivateError = adminDeactivateError(result);
-    if (deactivateError) { addToast({ variant: "error", title: "Delete failed", description: deactivateError }); return; }
-    addToast({ variant: "success", title: `Deleted "${place.name}"` });
+    if (deactivateError) { addToast({ variant: "error", title: "It was not removed", description: deactivateError }); return; }
+    addToast({ variant: "success", title: `${place.name} removed from the active pool` });
+    setRemoving(null);
     fetchExcluded();
+    if (onRefresh) onRefresh();
   };
 
   const columns = [
-    { key: "name", label: "Name", sortable: true, render: (_, r) => (
-      <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left min-w-[200px]"
-        onClick={() => setDetailPlace(r)}>{r.name}</button>
+    { key: "name", label: "Place", render: (_, r) => (
+      <button type="button" className="flex min-h-11 min-w-[200px] cursor-pointer flex-col items-start justify-center text-left" onClick={() => setDetailPlace(r)}>
+        <b className="text-[13px] font-semibold text-[var(--color-text-primary)] hover:underline">{r.name}</b>
+        <span className="text-[11px] text-[var(--color-text-tertiary)]">{placeTypeLabel(r)}</span>
+      </button>
     )},
-    { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[250px] truncate block">{r.address || "—"}</span> },
-    { key: "bouncer_reason", label: "Bouncer Reason", render: (_, r) => <span className="text-xs max-w-[250px] truncate block text-[var(--color-error-600)]">{r.bouncer_reason || "—"}</span> },
-    { key: "mingla_category", label: "Category", render: (_, r) => r.mingla_category ? (
-      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.mingla_category] || "#6b7280" }}>
-        {CATEGORY_LABELS[r.mingla_category] || r.mingla_category}
-      </span>
-    ) : "—" },
-    { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
+    { key: "city", label: "City", render: (_, r) => r.city || "—" },
+    { key: "bouncer_reason", label: "Reason", render: (_, r) => <span className="text-[13px]">{reasonWords(r.bouncer_reason)}</span> },
     { key: "actions", label: "", render: (_, r) => (
-      <div className="flex gap-1">
-        <button onClick={() => handleDelete(r)}
-          className="p-1 rounded hover:bg-red-100 text-red-500 cursor-pointer" title="Delete (deactivate)">
-          <XCircle className="w-4 h-4" />
-        </button>
-      </div>
+      <Button size="sm" variant="secondary" onClick={() => setRemoving(r)}>Remove from active</Button>
     )},
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <StatCard icon={AlertTriangle} label="Total Bouncer-Excluded" value={total} />
-      </div>
+    <SectionCard
+      title="Places left out"
+      subtitle="There is deliberately no override here: the check decides what Explorers see. Removing takes a place out of the active pool."
+      action={
+        <div className="flex flex-wrap gap-2">
+          <select aria-label="City" className="h-10 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm"
+            value={scope.cityId || ""} onChange={(e) => onScopeChange?.({ countryCode: cities.find((c) => c.city_id === e.target.value)?.country_code ?? null, cityId: e.target.value || null })}>
+            <option value="">All cities</option>
+            {cities.map((c) => <option key={c.city_id} value={c.city_id}>{c.city_name}</option>)}
+          </select>
+          <select aria-label="Category" className="h-10 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm"
+            value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+            <option value="">All categories</option>
+            {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+          </select>
+        </div>
+      }
+      noPadding
+    >
+      {loadError ? (
+        <div className="p-4"><LoadError title="Couldn't load the places left out" message={loadError} onRetry={fetchExcluded} retrying={loading} /></div>
+      ) : (
+        <>
+          <p className="px-4 pt-3 text-xs text-[var(--color-text-secondary)]">{loading ? "Loading…" : `${total.toLocaleString()} ${total === 1 ? "place" : "places"} left out by the final check, by name. Totals over 1,000 are estimates.`}</p>
+          <DataTable columns={columns} rows={places} loading={loading} headerCase="sentence"
+            emptyMessage="No places were left out here" emptyIcon={CheckCircle}
+            pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
+        </>
+      )}
 
-      {/* Category filter pills */}
-      <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => setFilterCat(null)}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-            !filterCat ? "bg-[var(--color-text-primary)] text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)] hover:border-[var(--gray-400)]"
-          }`}>
-          All
-        </button>
-        {ALL_CATEGORIES.map((c) => (
-          <button key={c} onClick={() => setFilterCat(filterCat === c ? null : c)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-              filterCat === c ? "text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)] hover:border-[var(--gray-400)]"
-            }`}
-            style={filterCat === c ? { backgroundColor: CATEGORY_COLORS[c] } : {}}>
-            {CATEGORY_LABELS[c]}
-          </button>
-        ))}
-      </div>
-
-      <DataTable columns={columns} rows={places} loading={loading}
-        emptyMessage="No Bouncer-excluded places" emptyIcon={CheckCircle}
-        pagination={{ page, pageSize: PAGE_SIZE, total, from: total ? page * PAGE_SIZE + 1 : 0, to: Math.min((page + 1) * PAGE_SIZE, total), onChange: setPage }} />
+      <Modal open={!!removing} onClose={busy ? () => {} : () => setRemoving(null)} title={`Remove ${removing?.name ?? "this place"} from the active pool?`} size="sm" destructive>
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">It stops being searched, checked or scored. The removal is recorded with your name. Explorers never saw it, because the check left it out.</p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setRemoving(null)} disabled={busy}>Keep it</Button>
+          <Button variant="danger" onClick={handleRemove} loading={busy}>Remove from active</Button>
+        </ModalFooter>
+      </Modal>
 
       {/* Place detail modal — reuses the same modal as Browse tab */}
       <PlaceDetailModal place={detailPlace} open={!!detailPlace}
         onClose={() => setDetailPlace(null)} onSave={() => { fetchExcluded(); }} />
-    </div>
+    </SectionCard>
   );
 }
 
@@ -2729,13 +2876,14 @@ const SECTION_TABS = {
     { id: "photos", label: "Photos" },
     { id: "thumbnails", label: "Thumbnails" },
   ],
-  // #4276: Browse and Map are their own Place pool tabs.
+  // #4276: Browse and map is one Place pool tab; its List / Map switch is in the
+  // filter card, not a tab row.
   browse: [{ id: "browse", label: "List" }],
   map: [{ id: "map", label: "Map" }],
   excluded: [{ id: "excluded", label: "Excluded by Bouncer" }],
 };
 
-export function PlacePoolManagementPage({ section = "browse" }) {
+export function PlacePoolManagementPage({ section = "browse", initialView = "list" }) {
   const mountedRef = useRef(true);
   const { addToast } = useToast();
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -2747,6 +2895,7 @@ export function PlacePoolManagementPage({ section = "browse" }) {
   // Tab state
   const tabs = SECTION_TABS[section] || SECTION_TABS.browse;
   const [activeTab, setActiveTab] = useState(tabs[0].id);
+  const [browseView, setBrowseView] = useState(initialView === "map" ? "map" : "list");
   const [, setSeedingActive] = useState(false);
 
   // Seeding state (loaded when a city is selected)
@@ -2835,16 +2984,18 @@ export function PlacePoolManagementPage({ section = "browse" }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Place pool"
-        description={`${scopeLabel} · ${totalServable.toLocaleString()} servable places`}
-        actions={
-          <>
-            <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
-            <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>
-          </>
-        }
-      />
+      {section === "pipeline" && (
+        <PageHeader
+          title="Place pool"
+          description={`${scopeLabel} · ${totalServable.toLocaleString()} servable places`}
+          actions={
+            <>
+              <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
+              {section === "pipeline" && <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>}
+            </>
+          }
+        />
+      )}
 
       {/* Photo backfill job status bar — visible across all tabs */}
       {activePhotoRuns.length > 0 && (
@@ -2872,7 +3023,8 @@ export function PlacePoolManagementPage({ section = "browse" }) {
 
       <div className="mt-4" key={refreshKey}>
         {activeTab === "browse" && (
-          <BrowseTab scope={scope} onRefresh={refresh} />
+          <BrowseTab scope={scope} onRefresh={refresh} cities={pickerCities} onScopeChange={setScope}
+            view={browseView} onViewChange={setBrowseView} registeredCity={registeredCity} tiles={tiles} seedingOps={seedingOps} />
         )}
         {activeTab === "map" && (
           <MapTab scope={scope} registeredCity={registeredCity} tiles={tiles} seedingOps={seedingOps} />
@@ -2918,7 +3070,7 @@ export function PlacePoolManagementPage({ section = "browse" }) {
           <ThumbnailTab />
         )}
         {activeTab === "excluded" && (
-          <ExcludedTab scope={scope} onRefresh={refresh} />
+          <ExcludedTab scope={scope} onRefresh={refresh} cities={pickerCities} onScopeChange={setScope} />
         )}
       </div>
 
