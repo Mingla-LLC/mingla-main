@@ -17782,6 +17782,7 @@
         "supabase/migrations/20280421002830_issue_2830_website_setup_takeover.sql",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
         "supabase/migrations/20280422014273_issue_4273_quote_matches_send_and_honest_count.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19502,6 +19503,7 @@
         "supabase/migrations/20280421002830_issue_2830_website_setup_takeover.sql",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
         "supabase/migrations/20280422014273_issue_4273_quote_matches_send_and_honest_count.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20718,6 +20720,8 @@
         "supabase/migrations/__tests__/issue_4261_plan_places_and_link_previews.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_referral_credit_on_accept.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4261_referral_credit_on_accept.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4273_account_optout_and_full_quote.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4273_account_optout_and_full_quote.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql",
@@ -24466,6 +24470,7 @@
         "supabase/migrations/20280421002830_issue_2830_website_setup_takeover.sql",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
         "supabase/migrations/20280422014273_issue_4273_quote_matches_send_and_honest_count.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25682,6 +25687,8 @@
         "supabase/migrations/__tests__/issue_4261_plan_places_and_link_previews.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4261_referral_credit_on_accept.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4261_referral_credit_on_accept.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4273_account_optout_and_full_quote.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4273_account_optout_and_full_quote.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql",
@@ -53026,5 +53033,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "16825040e6b3aab87094aca7a3f02ded1b41af224ed7f3833f040e9a550ea632"
+  "phase3eContractSha256": "19a7c630ee4aeedcaf4894dcefcfd962d79aad5624171a693d12506b6cd7c39e"
 }
