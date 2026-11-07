@@ -165,6 +165,23 @@ describe("#1023 web entrance motion", () => {
     expect(tree.root.findAll((n) => n.props.testID === "theme-motion-pause")).toHaveLength(0);
   });
 
+  test("a Lottie file that fails to load renders nothing and never throws", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const motion = require("../../../../../packages/theme-animations/index") as {
+      loadThemeLottie: (...args: unknown[]) => Promise<object>;
+    };
+    const load = jest
+      .spyOn(motion, "loadThemeLottie")
+      .mockImplementation(() => Promise.reject(new Error("404 rain.loop.json")));
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tree = await mount(<ThemeEntranceAnimation theme={theme("rain")} sessionKey="b:9" />);
+    expect(created).toHaveLength(0);
+    expect(tree.toJSON()).not.toBeNull(); // the empty layer + pause button, no crash
+    expect(warn).toHaveBeenCalled();
+    load.mockRestore();
+    warn.mockRestore();
+  });
+
   test("a text-safe zone masks the motion with a soft-edged CSS mask", async () => {
     const tree = await mount(
       <ThemeEntranceAnimation theme={theme("confetti")} sessionKey="b:4" textSafeZone="default" />,

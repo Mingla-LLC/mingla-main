@@ -11,5 +11,7 @@ module.exports = {
     "**/src/components/theme/__tests__/issue_1023_theme_motion_files.implementor.test.ts",
     "**/src/components/theme/__tests__/issue_1023_theme_entrance_native.implementor.test.tsx",
     "**/src/components/theme/__tests__/issue_1023_theme_entrance_web.implementor.test.tsx",
+    "**/src/components/theme/__tests__/issue_1023_theme_entrance_web_chunk_failure.implementor.test.tsx",
+    "**/src/components/theme/__tests__/issue_1023_motion_metro_resolver.implementor.test.ts",
   ],
 };

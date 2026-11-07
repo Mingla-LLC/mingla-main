@@ -148,6 +148,7 @@ const REACT_NATIVE_REANIMATED_WEB_STUB = path.join(
 );
 
 const originalResolveRequest = config.resolver.resolveRequest;
+const WORKSPACE_LAZY_PACKAGES = ["offering-rendering", "theme-animations"];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Public offering pages lazy-load
@@ -186,6 +187,24 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       ),
       type: "sourceFile",
     };
+  }
+
+  // issue #1023 — every other lazy `import()` inside these two workspace
+  // packages (the web motion player, the 58 theme-motion Lottie files, the
+  // refund ladder's deferred pieces) reaches the dev server as an
+  // app-relative "./packages/<pkg>/<file>" request, which would 404 against
+  // mingla-business/. Re-root it at the workspace and let Metro's own resolver
+  // pick the extension and platform file. The two exact entries above keep
+  // their pinned results; this prefix rule only catches what they do not.
+  for (const pkg of WORKSPACE_LAZY_PACKAGES) {
+    const prefix = `./packages/${pkg}/`;
+    if (moduleName.startsWith(prefix)) {
+      return context.resolveRequest(
+        context,
+        path.join(WORKSPACE_ROOT, "packages", pkg, moduleName.slice(prefix.length)),
+        platform,
+      );
+    }
   }
 
   // Stripe embedded components are a web-only Connect surface opened via
