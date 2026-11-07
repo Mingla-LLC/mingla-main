@@ -119,9 +119,15 @@ BEGIN
     pg_temp.st(b, 'email', 'o01@example.test') || '/' || pg_temp.st(b, 'phone', '+2348031100001'));
   PERFORM pg_temp.chk('G-02 an unsubscribe from another brand does not withhold this one',
     pg_temp.st(b, 'email', 'o02@example.test') = 'granted', pg_temp.st(b, 'email', 'o02@example.test'));
-  -- G-03 / G-05 (account-scope unsubscribe, account-keyed suppression) are NOT
-  -- asserted here: the grader is called without the buyer's account, so both
-  -- grade 'granted' today. Reported on #4273 as a defect with its own probe.
+  PERFORM pg_temp.chk('G-03 account-scope unsubscribe on the buyer''s account withholds email',
+    pg_temp.st(b, 'email', 'o03@example.test') = 'withheld' AND pg_temp.autos('o03@example.test') = 0,
+    pg_temp.st(b, 'email', 'o03@example.test') || ' autos=' || pg_temp.autos('o03@example.test'));
+  PERFORM pg_temp.chk('G-05 an account-keyed suppression withholds the logged-in buyer''s email',
+    pg_temp.st(b, 'email', 'o05@example.test') = 'withheld' AND pg_temp.autos('o05@example.test') = 0,
+    pg_temp.st(b, 'email', 'o05@example.test') || ' autos=' || pg_temp.autos('o05@example.test'));
+  PERFORM pg_temp.chk('G-05b an email-only account opt-out leaves that buyer''s SMS opted in',
+    pg_temp.st(b, 'phone', '+2348031100003') = 'granted' AND pg_temp.st(b, 'phone', '+2348031100005') = 'granted',
+    pg_temp.st(b, 'phone', '+2348031100003') || '/' || pg_temp.st(b, 'phone', '+2348031100005'));
   PERFORM pg_temp.chk('G-04 STOP withholds the phone; an upper-case email suppression withholds the email',
     pg_temp.st(b, 'phone', '+2348031100004') = 'withheld' AND pg_temp.st(b, 'email', 'o04@example.test') = 'withheld'
     AND pg_temp.autos('+2348031100004') = 0 AND pg_temp.autos('o04@example.test') = 0,
@@ -205,6 +211,57 @@ BEGIN
 END;
 $again$;
 
+-- ── Accounts derived from orders: wide on the shared contact, never beyond it ─
+-- Account 03 (account-scope email unsubscribe) and a guest buy with ONE shared
+-- phone; account 05 (email suppression) and another account share ONE email.
+INSERT INTO auth.users(id, email) VALUES (pg_temp.u('31'), 't4273t-31@example.test'), (pg_temp.u('32'), 't4273t-32@example.test');
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, created_at, updated_at) VALUES
+  (pg_temp.u('b3'), pg_temp.u('01'), 'Optout Three', 'issue-4273t-three', 'USD', now(), now());
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone, theme) VALUES
+  (pg_temp.u('e3'), pg_temp.u('b3'), pg_temp.u('01'), 'Three', 't4273t-three', 'event', 'scheduled', 'public', 'UTC', '{}'::jsonb);
+INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, account_id, reason)
+VALUES ('elsewhere@example.test', 'sms', 'account', pg_temp.u('31'), 't');
+INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency, payment_status, source, confirmed_at) VALUES
+  -- 31 bought with a phone and an email; 32, a different account, later bought
+  -- with the SAME phone and its own email.
+  (pg_temp.u('31a'), pg_temp.u('e1'), pg_temp.u('31'), 'acct31@example.test', '+2348031100031', 'A31', 1000, 'USD', 'paid', 'legacy', now()),
+  (pg_temp.u('32a'), pg_temp.u('e1'), pg_temp.u('32'), 'acct32@example.test', '+2348031100031', 'A32', 1000, 'USD', 'paid', 'legacy', now()),
+  -- the same phone on ANOTHER brand's order never pulls account 31 into b2's view
+  (pg_temp.u('32b'), pg_temp.u('e3'), pg_temp.u('32'), 'acct32@example.test', '+2348031100031', 'A32', 1000, 'USD', 'paid', 'legacy', now());
+DO $acct$
+DECLARE b uuid := pg_temp.u('b1');
+BEGIN
+  PERFORM pg_temp.ingest(pg_temp.u('31a')); PERFORM pg_temp.ingest(pg_temp.u('32a')); PERFORM pg_temp.ingest(pg_temp.u('32b'));
+  PERFORM pg_temp.chk('A-01 an account-scope SMS opt-out withholds every phone that account bought with, made from any address',
+    pg_temp.st(b, 'phone', '+2348031100031') = 'withheld', pg_temp.st(b, 'phone', '+2348031100031'));
+  PERFORM pg_temp.chk('A-02 and never that account''s email (other channel)',
+    pg_temp.st(b, 'email', 'acct31@example.test') = 'granted', pg_temp.st(b, 'email', 'acct31@example.test'));
+  -- 32's order lands in a merge conflict (its phone is already 31's), so its
+  -- email is graded the way the ingest grades it.
+  PERFORM pg_temp.chk('A-03 another account sharing the phone keeps its own email opted in',
+    (SELECT g.state FROM public.issue_3524_grade_marketing_consent('order', b, 'email', 'acct32@example.test') g) = 'granted', '');
+  PERFORM pg_temp.chk('A-04 a brand that never saw account 31 on the phone is not touched by its opt-out',
+    pg_temp.st(pg_temp.u('b3'), 'phone', '+2348031100031') = 'granted'
+    AND NOT EXISTS (SELECT 1 FROM public.issue_4273_contact_accounts(pg_temp.u('b3'), 'sms', '+2348031100031') a WHERE a = pg_temp.u('31')),
+    pg_temp.st(pg_temp.u('b3'), 'phone', '+2348031100031'));
+  PERFORM pg_temp.chk('A-05 the account lookup is service-only',
+    NOT has_function_privilege('authenticated', 'public.issue_4273_contact_accounts(uuid,text,text)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.issue_4273_person_opted_out(uuid,text,text,uuid)', 'EXECUTE'), '');
+  -- Phone digits: a different country's number that merely ends the same way,
+  -- or a local short form, is not the same phone.
+  INSERT INTO public.venue_sms_opt_out(phone_e164, brand_id) VALUES ('+448031100041', NULL);
+  INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason) VALUES (NULL, '08031100042', 'sms', 'all', 'stop_keyword');
+  PERFORM pg_temp.chk('A-06 digit matching never crosses a country code or a short local form',
+    NOT public.issue_4273_marketing_opted_out(b, 'sms', '+2348031100041', NULL)
+    AND NOT public.issue_4273_marketing_opted_out(b, 'sms', '+2348031100042', NULL), '');
+  PERFORM pg_temp.chk('A-07 fixture: nothing on file for that number yet',
+    NOT public.issue_4273_marketing_opted_out(b, 'sms', '+2348031100043', NULL), '');
+  INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason) VALUES (NULL, '234 803 110 0043', 'sms', 'all', 'stop_keyword');
+  PERFORM pg_temp.chk('A-08 a STOP stored with spaces and no plus still withholds',
+    public.issue_4273_marketing_opted_out(b, 'sms', '+2348031100043', NULL), '');
+END;
+$acct$;
+
 -- ── Backfill: never moves an opted-out contact; idempotent ──────────────────
 DO $backfill$
 DECLARE b uuid := pg_temp.u('b1'); v1 integer; v2 integer; v_recs integer; v_opted integer;
@@ -220,8 +277,8 @@ BEGIN
   SELECT count(*) INTO v_recs FROM public.consent_records WHERE source = 'purchase_auto_optin' AND brand_id = b;
 
   SELECT count(*) INTO v_opted FROM (VALUES
-      ('email', 'o01@example.test'), ('phone', '+2348031100004'),
-      ('email', 'o04@example.test'), ('phone', '+2348031100006'),
+      ('email', 'o01@example.test'), ('email', 'o03@example.test'), ('phone', '+2348031100004'),
+      ('email', 'o04@example.test'), ('email', 'o05@example.test'), ('phone', '+2348031100006'),
       ('email', 'o08@example.test'), ('email', 'o10@example.test'),
       ('email', 'o14@example.test'), ('phone', '+2348031100015'), ('phone', '+12025550116'),
       ('email', 'o17@example.test')) v(ch, val)
@@ -360,20 +417,33 @@ CREATE FUNCTION pg_temp.snap(p_env jsonb) RETURNS jsonb LANGUAGE sql AS $f$
     'currency', 'USD', 'candidates', p_env -> 'candidates')
 $f$;
 INSERT INTO public.brand_people(id, brand_id, display_name, record_status)
-SELECT pg_temp.u('d' || x), pg_temp.u('b2'), 'Dup ' || x, 'active' FROM unnest(ARRAY['1', '2', '3']) x;
+SELECT pg_temp.u('d' || x), pg_temp.u('b2'), 'Dup ' || x, 'active' FROM unnest(ARRAY['1', '2', '3', '4']) x;
+-- 28 holds the phone typed into d4 and blocked the host: the send refuses it.
+INSERT INTO auth.users(id, email) VALUES (pg_temp.u('28'), 't4273t-28@example.test');
+INSERT INTO public.profiles(id, first_name, display_name, username, active, has_completed_onboarding, visibility_mode)
+VALUES (pg_temp.u('28'), 'B', 'B', 't4273t-28', true, true, 'friends');
+INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES (pg_temp.u('28'), '+2348031100094');
+INSERT INTO public.blocked_users(blocker_id, blocked_id) VALUES (pg_temp.u('28'), pg_temp.u('01'));
 INSERT INTO public.brand_person_contact_methods(brand_id, brand_person_id, channel, normalized_value, provenance_scope, is_exportable, is_primary, record_state, marketing_consent_state) VALUES
   (pg_temp.u('b2'), pg_temp.u('d1'), 'phone', '+2348031100091', 'brand_owned', true, true, 'active', 'unknown'),
   (pg_temp.u('b2'), pg_temp.u('d2'), 'phone', '+2348031100091', 'brand_owned', true, true, 'active', 'unknown'),
-  (pg_temp.u('b2'), pg_temp.u('d3'), 'phone', '+2348031100093', 'brand_owned', true, true, 'active', 'unknown');
+  (pg_temp.u('b2'), pg_temp.u('d3'), 'phone', '+2348031100093', 'brand_owned', true, true, 'active', 'unknown'),
+  (pg_temp.u('b2'), pg_temp.u('d4'), 'phone', '+2348031100094', 'brand_owned', true, true, 'active', 'unknown'),
+  (pg_temp.u('b2'), pg_temp.u('d1'), 'email', 'dup1@example.test', 'brand_owned', true, true, 'active', 'unknown');
 SELECT set_config('request.jwt.claim.sub', pg_temp.u('01')::text, true);
 DO $dup$
 DECLARE o1 uuid := pg_temp.u('01'); b uuid := pg_temp.u('b2'); a uuid; c uuid; e jsonb; send jsonb; v_st text;
+  v_before jsonb; v_after jsonb; e2 jsonb;
 BEGIN
+  v_before := public.biz_brand_blast_usage_v1(o1, b);
   a := (public.biz_get_or_create_marketing_combined_audience_v1(o1, b, '["book"]'::jsonb) ->> 'audienceId')::uuid;
   INSERT INTO public.marketing_campaigns(id, account_id, brand_id, audience_id, name, channel, channel_payload, status)
   VALUES (pg_temp.u('c1'), o1, b, a, 'Dup sms', 'sms', '{"kind":"sms","body":"Doors at 9."}'::jsonb, 'draft')
   RETURNING id INTO c;
   e := public.biz_marketing_combined_quote_candidates_v1(o1, c);
+  PERFORM pg_temp.chk('D-00 the blocker''s number typed into the Book is quoted as a plain unpriced suppression',
+    e -> 'candidates' @> '[{"normalizedContact":"+2348031100094","allowed":false,"safeReasonCode":"suppressed"}]'::jsonb
+    AND e::text !~* 'match|block', e::text);
   PERFORM public.biz_confirm_marketing_combined_send_v1(o1, c, pg_temp.u('c2'), pg_temp.snap(e), now() + interval '1 hour');
   INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason)
   VALUES (NULL, '+2348031100093', 'sms', 'all', 'stop_keyword');
@@ -391,6 +461,19 @@ BEGIN
     public.biz_marketing_combined_hidden_skips_v1(c) = 0
     AND (SELECT count(*) FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions x
           ON x.id = s.execution_id WHERE x.campaign_id = c AND s.host_visible) = 1, public.biz_marketing_combined_hidden_skips_v1(c)::text);
+  PERFORM pg_temp.chk('D-04 the quote refused what the send would: no contact-match skip at send',
+    NOT EXISTS (SELECT 1 FROM public.marketing_combined_send_skips s JOIN public.marketing_book_send_executions x
+                 ON x.id = s.execution_id WHERE x.campaign_id = c AND s.reason = 'contact_match_blocked'), '');
+  -- The email half of the same campaign counts once toward the week.
+  INSERT INTO public.marketing_campaigns(id, account_id, brand_id, audience_id, name, channel, channel_payload, status, campaign_group_id)
+  VALUES (pg_temp.u('c3'), o1, b, a, 'Dup email', 'email', '{"kind":"email","subject":"Doors","body_html":"<p>Doors at 9.</p>","body_text":"Doors at 9."}'::jsonb, 'draft', c);
+  e2 := public.biz_marketing_combined_quote_candidates_v1(o1, pg_temp.u('c3'));
+  PERFORM public.biz_confirm_marketing_combined_send_v1(o1, pg_temp.u('c3'), pg_temp.u('c4'), pg_temp.snap(e2), now() + interval '1 hour');
+  v_after := public.biz_brand_blast_usage_v1(o1, b);
+  PERFORM pg_temp.chk('W-01 two methods of one campaign count once toward the week',
+    (SELECT count(*) FROM public.marketing_book_send_executions x WHERE x.campaign_id IN (c, pg_temp.u('c3'))) = 2
+    AND (v_after ->> 'blastsThisWeek')::int = (v_before ->> 'blastsThisWeek')::int + 1,
+    v_before::text || ' -> ' || v_after::text);
 END;
 $dup$;
 
