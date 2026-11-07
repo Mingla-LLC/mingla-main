@@ -401,11 +401,10 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     tree.unmount();
   });
 
-  it("Home's Ask Ari field wears the same animated Ari orb as the Ari screen", async () => {
+  it("Home's Ask Ari field wears the animated Ari orb without loading Ari's screen code", async () => {
     const { HomeAskAri } = require("../../../components/home/HomeAskAri") as {
       HomeAskAri: React.ComponentType<{ onAskAri: (t: string) => void }>;
     };
-    const { AriOrb } = require("../../../components/ari/AriOrb") as { AriOrb: unknown };
     let tree: { root: HostNode & { findAllByType?: unknown }; unmount: () => void } | null = null;
     await TR.act(async () => {
       tree = TR.create(R.createElement(HomeAskAri, { onAskAri: jest.fn() })) as never;
@@ -415,9 +414,16 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
-    const orbHost = byTestId(tree!.root, "home-ask-ari-orb");
-    expect(orbHost).toBeDefined();
-    expect(all(tree!.root).some((node) => node.type === AriOrb)).toBe(true);
+    expect(byTestId(tree!.root, "home-ask-ari-orb")).toBeDefined();
+    // After first paint the animated three-ring orb replaces the still mark.
+    expect(byTestId(tree!.root, "home-ari-orb-animated")).toBeDefined();
+    // Home must not pull AriOrb (and reanimated) into a second web chunk:
+    // Metro would hoist it into the eager boot chunk.
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const src = fs.readFileSync(path.join(__dirname, "../../../components/home/HomeAriOrb.tsx"), "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).not.toMatch(/ari\/AriOrb|react-native-reanimated/);
     tree!.unmount();
   });
 });
