@@ -1,31 +1,28 @@
--- Issue #4271 follow-up (PR #4303) — TESTER ADVERSARIAL suite for
--- 20280426004271_issue_4271_resumable_stuck_refund.sql on the replayed PG17 schema.
+-- Issue #4271 follow-up (PR #4303) — TESTER ADVERSARIAL suite, reworked with the
+-- implementor after the tester FAIL. Covers
+-- 20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql on the
+-- replayed PG17 schema.
 --
--- Different angle from the implementor suite: it attacks WHO can be resumed,
--- what a 'failed' commit leaves behind, and what the preview prices, rather
--- than the single host happy path.
+-- Different angle from the implementor suite: it attacks what a 'failed' commit
+-- leaves behind and whether stuck rows are still counted, rather than the
+-- single host happy path.
 --
--- MINGLA-INVARIANT: I-4271-RESUME-NEVER-DOUBLES | issue #4271 | resuming or failing a stuck ticket refund never lets the same tickets be refunded twice: only a host-origin row is resumable by the host path, a refund committed 'failed' can never later reach Stripe or settle, and the preview prices a resumed refund at the amount the resume will actually send.
+-- MINGLA-INVARIANT: I-4271-RESUME-NEVER-DOUBLES | issue #4271 | failing a stuck ticket refund never lets the same tickets be refunded twice: a refund committed 'failed' can never later reach Stripe or settle, and a stuck pending refund keeps holding its tickets until it is settled or provably failed.
 --
--- Guards (must stay green):
---   G1  grants: both helpers are service-role only (anon AND authenticated),
---       SECURITY DEFINER with a pinned search_path; refund_preview not anon.
---   G2  two stuck rows for the same lines on a 4-ticket line: the preview skips
---       exactly one, never prices past capacity, and resume picks the oldest.
---   G3  a row Stripe already answered (stripe_refund_id set) or a succeeded row
---       is never resumable and always counted.
--- Defects found by the tester (RED until reworked):
---   D1  an ADMIN-origin stuck refund (admin_refund_order, Stripe key
---       admin_refund:<id>) is returned to the host resume path, which replays
---       it under ticket_refund:<id> — a different Stripe idempotency key, so a
---       refund that already landed at Stripe is made a second time.
---   D2  a row committed 'failed' keeps a live, claimable #2097 attempt: a later
---       claim + record + finalize settles it 'succeeded' after the freed
---       tickets were refunded again, so the order ends refunded twice
---       (refunded_amount_cents 4000 on a 2000 order).
---   D3  the preview passes NULL instead of the resumable row to the extras
---       rule, so a resumable full refund with extras is priced without them
---       (host sees 2000, the resume sends 2500).
+-- Rework (the conductor dropped the resume feature, PR #4303):
+--   G1  rewritten: the resume helpers are gone; the new failed-commit and
+--       key-binding helpers are service-role only, SECURITY DEFINER with a pinned
+--       search_path, and refund_preview is still not callable by anon.
+--   G2  rewritten: two stuck rows on a 4-ticket line are BOTH counted (nothing
+--       is resumable any more); a new key past capacity is refused.
+--   G3  rewritten: answered and succeeded rows are always counted.
+--   D1  removed: it only exercised the host resume path (issue_4271_resumable_refund),
+--       which no longer exists, so no admin row can be handed to it.
+--   D2  UNCHANGED: a row committed 'failed' must never settle later. Green now
+--       because issue_2097_claim_refund_attempt answers not-claimed for a refund
+--       that is not pending.
+--   D3  removed: it only priced a resumable row in refund_preview; refund_preview
+--       is no longer changed by this pull request.
 \set ON_ERROR_STOP on
 
 -- Session-scoped fixture builder (pg_temp; gone when the session ends).
@@ -76,10 +73,14 @@ BEGIN;
 DO $g1$
 DECLARE r record;
 BEGIN
+  IF to_regproc('public.issue_4271_resumable_refund') IS NOT NULL
+     OR to_regproc('public.issue_4271_resumable_refund_id') IS NOT NULL THEN
+    RAISE EXCEPTION 'G1: a dropped resume helper still exists';
+  END IF;
   FOR r IN SELECT unnest(ARRAY['anon', 'authenticated']) AS role_name LOOP
-    IF has_function_privilege(r.role_name, 'public.issue_4271_resumable_refund(uuid, jsonb)', 'EXECUTE')
-       OR has_function_privilege(r.role_name, 'public.issue_4271_resumable_refund_id(uuid, jsonb)', 'EXECUTE') THEN
-      RAISE EXCEPTION 'G1: % can execute a resume helper', r.role_name;
+    IF has_function_privilege(r.role_name, 'public.issue_4271_commit_refund_failed(uuid, boolean)', 'EXECUTE')
+       OR has_function_privilege(r.role_name, 'public.issue_4271_bind_refund_provider_key(uuid, text)', 'EXECUTE') THEN
+      RAISE EXCEPTION 'G1: % can execute a #4271 helper', r.role_name;
     END IF;
   END LOOP;
   IF has_function_privilege('anon', 'public.refund_preview(uuid, jsonb)', 'EXECUTE') THEN
@@ -88,7 +89,7 @@ BEGIN
   FOR r IN SELECT p.proname, p.prosecdef, p.proconfig FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
-      AND p.proname IN ('issue_4271_resumable_refund', 'issue_4271_resumable_refund_id', 'refund_preview') LOOP
+      AND p.proname IN ('issue_4271_commit_refund_failed', 'issue_4271_bind_refund_provider_key', 'refund_preview') LOOP
     IF NOT r.prosecdef OR r.proconfig IS NULL
        OR NOT EXISTS (SELECT 1 FROM unnest(r.proconfig) c WHERE c LIKE 'search_path=%') THEN
       RAISE EXCEPTION 'G1: % must be SECURITY DEFINER with a pinned search_path', r.proname;
@@ -98,41 +99,34 @@ END
 $g1$;
 ROLLBACK;
 
--- G2. Two identical stuck rows on a 4-ticket line.
+-- G2. Two identical stuck rows on a 4-ticket line are both counted.
 BEGIN;
 DO $g2$
 DECLARE
   f jsonb := pg_temp.t4303_fixture(2, 4, 1000, false);
   v_order uuid := (f->>'order')::uuid;
   v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 2));
-  v_lines3 jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 3));
-  v_first uuid; v_second uuid; v_r jsonb; v_raised text;
+  v_lines1 jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 1));
+  v_raised text;
 BEGIN
   PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
-  v_first := (public.biz_refund_order(v_order, v_lines, 'Guest asked for a refund', 'g2-key-one')->>'refund_id')::uuid;
-  -- Real requests commit separately; give the second row a later created_at.
-  v_second := (public.biz_refund_order(v_order, v_lines, 'Second guest asked too', 'g2-key-two')->>'refund_id')::uuid;
-  UPDATE public.refunds SET created_at = created_at + interval '1 minute' WHERE id = v_second;
-  v_r := public.refund_preview(v_order, v_lines);
-  IF (v_r->>'amount_cents')::int <> 2000 THEN RAISE EXCEPTION 'G2: preview must price 2000, got %', v_r; END IF;
+  PERFORM public.biz_refund_order(v_order, v_lines, 'Guest asked for a refund', 'g2-key-one');
+  PERFORM public.biz_refund_order(v_order, v_lines, 'Second guest asked too', 'g2-key-two');
   v_raised := NULL;
-  BEGIN PERFORM public.refund_preview(v_order, v_lines3); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  BEGIN PERFORM public.refund_preview(v_order, v_lines1); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
   IF v_raised NOT LIKE 'line_overrefund%' THEN
-    RAISE EXCEPTION 'G2: a 3-ticket preview over two stuck 2-ticket rows must overrefund, got %', coalesce(v_raised, 'success');
+    RAISE EXCEPTION 'G2: two stuck 2-ticket rows fill a 4-ticket line; a 1-ticket preview must overrefund, got %', coalesce(v_raised, 'success');
   END IF;
   v_raised := NULL;
   BEGIN PERFORM public.biz_refund_order(v_order, v_lines, 'A third attempt here', 'g2-key-three'); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
   IF v_raised NOT LIKE 'line_overrefund%' THEN
     RAISE EXCEPTION 'G2: a new key past capacity must refuse, got %', coalesce(v_raised, 'success');
   END IF;
-  IF (public.issue_4271_resumable_refund(v_order, v_lines)->>'refund_id')::uuid IS DISTINCT FROM v_first THEN
-    RAISE EXCEPTION 'G2: resume must pick the oldest stuck row';
-  END IF;
 END
 $g2$;
 ROLLBACK;
 
--- G3. Answered or settled rows are never resumable.
+-- G3. Answered or settled rows are always counted.
 BEGIN;
 DO $g3$
 DECLARE
@@ -144,16 +138,18 @@ BEGIN
   PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
   v_id := (public.biz_refund_order(v_order, v_lines, 'Guest asked for a refund', 'g3-key-one')->>'refund_id')::uuid;
   UPDATE public.refunds SET stripe_refund_id = 're_g3_answered' WHERE id = v_id;
-  IF public.issue_4271_resumable_refund(v_order, v_lines) IS NOT NULL THEN
-    RAISE EXCEPTION 'G3: a row Stripe answered must not be resumable';
+  v_raised := NULL;
+  BEGIN PERFORM public.refund_preview(v_order, v_lines); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  IF v_raised NOT LIKE 'line_overrefund%' THEN
+    RAISE EXCEPTION 'G3: a row Stripe answered must be counted, got %', coalesce(v_raised, 'success');
+  END IF;
+  IF public.issue_4271_commit_refund_failed(v_id, false)->>'outcome' <> 'unknown' THEN
+    RAISE EXCEPTION 'G3: a row Stripe answered must never be failed';
   END IF;
   -- (the #2097 fee truth settles the fee status before the commit)
   UPDATE public.refunds SET application_fee_refund_status = 'succeeded_positive',
     application_fee_refunded_cents = 30 WHERE id = v_id;
   PERFORM public.biz_refund_order_commit(v_id, 're_g3_answered', 30, 'succeeded');
-  IF public.issue_4271_resumable_refund(v_order, v_lines) IS NOT NULL THEN
-    RAISE EXCEPTION 'G3: a succeeded row must not be resumable';
-  END IF;
   v_raised := NULL;
   BEGIN PERFORM public.refund_preview(v_order, v_lines); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
   IF v_raised NOT LIKE 'line_overrefund%' THEN
@@ -161,37 +157,6 @@ BEGIN
   END IF;
 END
 $g3$;
-ROLLBACK;
-
--- D1. An admin-origin stuck refund must not be resumed by the host path.
-BEGIN;
-DO $d1$
-DECLARE
-  f jsonb := pg_temp.t4303_fixture(11, 1, 10000, true);
-  v_order uuid := (f->>'order')::uuid;
-  v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 1));
-  v_admin_refund uuid; v_raised text; v_resume jsonb;
-BEGIN
-  -- Admin refunds the 100.00 ticket (service context, no end-user JWT). Its
-  -- Stripe call uses admin_refund:<id>; the reply is lost, the row stays pending.
-  PERFORM pg_temp.t4303_as(NULL);
-  v_admin_refund := (public.admin_refund_order(v_order, v_lines, 'Admin refund for venue issue', 'd1-admin-key')->>'refund_id')::uuid;
-
-  -- The host retries the same ticket with a new key: biz_refund_order refuses,
-  -- which is exactly what triggers resumeStuckRefund in refund-order.
-  PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
-  v_raised := NULL;
-  BEGIN PERFORM public.biz_refund_order(v_order, v_lines, 'Host retry of the refund', 'd1-host-key'); EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
-  IF v_raised NOT LIKE 'line_overrefund%' THEN
-    RAISE EXCEPTION 'D1 setup: expected line_overrefund, got %', coalesce(v_raised, 'success');
-  END IF;
-  v_resume := public.issue_4271_resumable_refund(v_order, v_lines);
-  IF (v_resume->>'refund_id')::uuid IS NOT DISTINCT FROM v_admin_refund THEN
-    RAISE EXCEPTION 'DEFECT D1: the host resume path is handed the admin refund % (key %); refund-order would replay it under ticket_refund:<id> instead of admin_refund:<id>, a second Stripe refund',
-      v_admin_refund, v_resume->>'idempotency_key';
-  END IF;
-END
-$d1$;
 ROLLBACK;
 
 -- D2. A refund committed 'failed' must never settle later.
@@ -250,31 +215,4 @@ BEGIN
   IF v_errors <> '' THEN RAISE EXCEPTION 'DEFECT D2: %', v_errors; END IF;
 END
 $d2$;
-ROLLBACK;
-
--- D3. The preview prices a resumable refund at what the resume will send.
-BEGIN;
-DO $d3$
-DECLARE
-  f jsonb := pg_temp.t4303_fixture(13, 2, 1000, false);
-  v_order uuid := (f->>'order')::uuid;
-  v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 2));
-  v_stuck jsonb; v_preview jsonb;
-BEGIN
-  INSERT INTO public.order_add_on_line_items(order_id, ticket_type_id, add_on_name_at_order,
-    ticket_type_name_at_order, quantity, unit_price_cents, total_cents)
-  VALUES (v_order, (f->>'tt')::uuid, 'Parking', 'General', 1, 500, 500);
-  UPDATE public.orders SET total_cents = total_cents + 500 WHERE id = v_order;
-  PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
-  v_stuck := public.biz_refund_order(v_order, v_lines, 'Guest asked for a refund', 'd3-key-one');
-  IF (v_stuck->>'amount_cents')::int <> 2500 THEN
-    RAISE EXCEPTION 'D3 setup: the full refund should carry the extra (2500), got %', v_stuck;
-  END IF;
-  v_preview := public.refund_preview(v_order, v_lines);
-  IF (v_preview->>'amount_cents')::int <> (v_stuck->>'amount_cents')::int THEN
-    RAISE EXCEPTION 'DEFECT D3: preview prices the resumable refund at % but the resume sends %',
-      v_preview->>'amount_cents', v_stuck->>'amount_cents';
-  END IF;
-END
-$d3$;
 ROLLBACK;

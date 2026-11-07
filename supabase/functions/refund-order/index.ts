@@ -55,7 +55,6 @@ import {
 import { writeAudit } from "../_shared/audit.ts";
 import {
   refundEverPermittedProviderCall,
-  resumeStuckRefund,
   settleStripeRefundThrow,
   trackRefundCreate,
 } from "../_shared/ticketRefundStripeThrow.ts";
@@ -146,7 +145,7 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  let idempotencyKey = req.headers.get("Idempotency-Key") ??
+  const idempotencyKey = req.headers.get("Idempotency-Key") ??
     req.headers.get("idempotency-key");
   if (
     !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128
@@ -187,7 +186,7 @@ serve(async (req: Request): Promise<Response> => {
   const supabaseAsUser = userClient(req);
 
   // Step 1: validate + insert pending refund row.
-  let { data: pendingResult, error: pendingError } = await supabaseAsUser.rpc(
+  const { data: pendingResult, error: pendingError } = await supabaseAsUser.rpc(
     "biz_refund_order",
     {
       p_order_id: orderId,
@@ -196,26 +195,6 @@ serve(async (req: Request): Promise<Response> => {
       p_idempotency_key: idempotencyKey,
     },
   );
-
-  // Issue #4271: a refund left 'pending' by an earlier request whose Stripe
-  // outcome is unknown blocks a retry under a new key. When it asks for exactly
-  // these lines, resume it under its original key instead (same Stripe key, so
-  // Stripe returns the original result rather than a second refund).
-  if (pendingError) {
-    const resumed = await resumeStuckRefund({
-      errorMessage: pendingError.message ?? "",
-      orderId,
-      lines,
-      serviceRpc: (name, args) => supabase.rpc(name, args),
-      replay: (args) => supabaseAsUser.rpc("biz_refund_order", args),
-    });
-    if (resumed && !resumed.result.error && resumed.result.data) {
-      pendingResult = resumed.result.data;
-      pendingError = null;
-      // The stuck row's own key: its attempt fingerprint and Stripe request.
-      idempotencyKey = resumed.idempotencyKey;
-    }
-  }
 
   if (pendingError || !pendingResult) {
     const mapped = mapRpcErrorToHttp(pendingError?.message ?? "rpc_failed");
@@ -266,7 +245,22 @@ serve(async (req: Request): Promise<Response> => {
         idempotent_replay: true,
       });
     }
-    // If pending or failed: fall through to retry the Stripe call.
+    // Issue #4271: a 'failed' row never reached the provider and its tickets
+    // are free again. Never call the provider for it: the app starts a new
+    // refund under a new key instead.
+    if (existing?.status === "failed") {
+      return jsonResponse(
+        {
+          error: "refund_failed",
+          detail:
+            "This refund did not go through and nothing was refunded. Start a new refund.",
+          refund_id: refundId,
+          refund_outcome: "failed",
+        },
+        409,
+      );
+    }
+    // If pending: fall through to retry the provider call under the same key.
   }
 
   if (!paymentIntentId) {
@@ -356,11 +350,7 @@ serve(async (req: Request): Promise<Response> => {
   // caller-supplied idempotency key.
   let stripeRefund: StripeRefundResult;
   let stripeFeeTruth: ExecuteTicketRefundResult | null = null;
-  // Issue #4271: was refunds.create ever allowed for this row before this request?
-  const permittedBeforeRequest = paymentProvider === "stripe" &&
-      isIdempotentReplay
-    ? await refundEverPermittedProviderCall(supabase, refundId)
-    : false;
+  // Issue #4271: did this request reach refunds.create?
   const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
     const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
@@ -428,6 +418,18 @@ serve(async (req: Request): Promise<Response> => {
     }
   } else {
     try {
+      // Issue #4271: record the Stripe key this refund is driven under before
+      // any provider call, so reconcile replays it under the same key.
+      const { error: bindError } = await supabase.rpc(
+        "issue_4271_bind_refund_provider_key",
+        {
+          p_refund_id: refundId,
+          p_provider_key: `ticket_refund:${refundId}`,
+        },
+      );
+      if (bindError) {
+        throw new Error(`provider_key_bind_failed: ${bindError.message}`);
+      }
       const stripe = stripeTicketRefund();
       stripeFeeTruth = await executeTicketRefundWithFeeTruth({
         supabase,
@@ -473,20 +475,18 @@ serve(async (req: Request): Promise<Response> => {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[refund-order] stripe.refunds.create failed", detail);
       // Issue #4271: a throw used to leave the row 'pending' forever, which the
-      // preview then counted as refunded. Commit it 'failed' when Stripe provably
-      // made no refund; otherwise keep it pending and resumable (same Stripe key).
+      // preview then counted as refunded. Commit it 'failed' (atomically, in SQL)
+      // only when Stripe provably never saw it; otherwise it stays pending for
+      // reconcile, exactly as before.
       const refundOutcome = await settleStripeRefundThrow({
         error: err,
         tracker: refundCreate,
-        permittedBeforeRequest,
         loadPermittedNow: () =>
           refundEverPermittedProviderCall(supabase, refundId),
-        commitFailed: () =>
-          supabaseAsUser.rpc("biz_refund_order_commit", {
+        commitFailed: (providerCallReached) =>
+          supabase.rpc("issue_4271_commit_refund_failed", {
             p_refund_id: refundId,
-            p_stripe_refund_id: null,
-            p_application_fee_refunded_cents: 0,
-            p_status: "failed",
+            p_provider_call_reached: providerCallReached,
           }),
         logContext: "refund-order",
       });

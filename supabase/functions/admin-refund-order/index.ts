@@ -240,7 +240,18 @@ serve(async (req: Request): Promise<Response> => {
         idempotent_replay: true,
       });
     }
-    // pending / failed: fall through to (re)try the Stripe call.
+    // Issue #4271: a 'failed' row never reached the provider and its tickets
+    // are free again. Never call the provider for it; start a new refund.
+    if (existing?.status === "failed") {
+      return json({
+        error: "refund_failed",
+        detail:
+          "This refund did not go through and nothing was refunded. Start a new refund.",
+        refund_id: refundId,
+        refund_outcome: "failed",
+      }, 409);
+    }
+    // pending: fall through to (re)try the provider call under the same key.
   }
 
   if (!paymentIntentId) {
@@ -308,11 +319,7 @@ serve(async (req: Request): Promise<Response> => {
   // ── Step 3: provider refund. Stripe direct-charge payload stays unchanged. ─
   let stripeRefund: StripeRefundResult;
   let stripeFeeTruth: ExecuteTicketRefundResult | null = null;
-  // Issue #4271: was refunds.create ever allowed for this row before this request?
-  const permittedBeforeRequest = paymentProvider === "stripe" &&
-      isIdempotentReplay
-    ? await refundEverPermittedProviderCall(supabase, refundId)
-    : false;
+  // Issue #4271: did this request reach refunds.create?
   const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
     const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
@@ -374,6 +381,18 @@ serve(async (req: Request): Promise<Response> => {
     }
   } else {
     try {
+      // Issue #4271: record the Stripe key this refund is driven under before
+      // any provider call, so reconcile replays it under the same key.
+      const { error: bindError } = await supabase.rpc(
+        "issue_4271_bind_refund_provider_key",
+        {
+          p_refund_id: refundId,
+          p_provider_key: `admin_refund:${refundId}`,
+        },
+      );
+      if (bindError) {
+        throw new Error(`provider_key_bind_failed: ${bindError.message}`);
+      }
       const stripe = stripeTicketRefund();
       stripeFeeTruth = await executeTicketRefundWithFeeTruth({
         supabase,
@@ -423,20 +442,18 @@ serve(async (req: Request): Promise<Response> => {
         "[admin-refund-order] stripe.refunds.create failed",
         detail,
       );
-      // Issue #4271: commit 'failed' only when Stripe provably made no refund;
-      // otherwise the row stays pending for admin-reconcile-ticket-refund.
+      // Issue #4271: commit 'failed' (atomically, in SQL) only when Stripe
+      // provably never saw it; otherwise the row stays pending for
+      // admin-reconcile-ticket-refund, which replays it under admin_refund:<id>.
       const refundOutcome = await settleStripeRefundThrow({
         error: err,
         tracker: refundCreate,
-        permittedBeforeRequest,
         loadPermittedNow: () =>
           refundEverPermittedProviderCall(supabase, refundId),
-        commitFailed: () =>
-          supabase.rpc("admin_refund_order_commit", {
+        commitFailed: (providerCallReached) =>
+          supabase.rpc("issue_4271_commit_refund_failed", {
             p_refund_id: refundId,
-            p_stripe_refund_id: null,
-            p_application_fee_refunded_cents: 0,
-            p_status: "failed",
+            p_provider_call_reached: providerCallReached,
           }),
         logContext: "admin-refund-order",
       });
