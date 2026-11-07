@@ -34,6 +34,7 @@ import {
   safeNextUrl,
   UpstreamRouter,
 } from "../../_shared/minglaConnectorMetaGraph.ts";
+import { createTeamAgentHandler, sha256Hex } from "../../_shared/teamAgentMcp.ts";
 // MINGLA-INVARIANT: I-4294-6 | issue #4294 | The Meta Graph adapter sends the company key only as the Authorization header, never in an address, and never follows a redirect or a next page off graph.facebook.com.
 // MINGLA-INVARIANT: I-4294-7 | issue #4294 | Every Meta Graph tool input is validated before any request; a bad id, enum, date or field never reaches Meta.
 // MINGLA-INVARIANT: I-4294-8 | issue #4294 | Only an upstream whose host is exactly graph.facebook.com uses the Meta Graph adapter; every other upstream keeps MCP over HTTP.
@@ -396,4 +397,52 @@ Deno.test("end to end: the proxy offers allowed Meta tools as metaads__<tool> an
   assert(!texts.join("").includes(KEY.slice(0, 12)));
   assertEquals(seen.length, 1);
   assertEquals(META_GRAPH_TOOLS.every((t) => (t.tool.annotations as { readOnlyHint: boolean }).readOnlyHint), true);
+});
+
+Deno.test("the connector's default transport sends a graph.facebook.com row to the Graph API", async () => {
+  const OWNER = "mgla_c_" + "M".repeat(43);
+  const ownerHash = await sha256Hex(OWNER);
+  const seen: Seen[] = [];
+  const handler = createTeamAgentHandler({
+    minRefusalMs: 0,
+    gateway: (keyHash) =>
+      Promise.resolve(
+        keyHash === ownerHash ? { ok: true, me: { role: "owner", areas: ["crm"] }, result: {} } : { auth: "invalid" },
+      ),
+    connector: {
+      resourceUrl: "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent",
+      fetch: fakeGraph(seen, () => json({ data: [{ id: "120001", name: "Spring launch" }] })),
+      rpc: (fn, args) => {
+        if (args.p_key_hash !== undefined && args.p_key_hash !== ownerHash) return Promise.resolve({ auth: "invalid" });
+        if (fn === "mingla_connector_call_begin") {
+          return Promise.resolve(
+            args.p_slug === "metaads" && args.p_tool === "list_campaigns"
+              ? { ok: true, call_id: "call-1", mcp_url: GRAPH, version: "1" }
+              : { ok: false, token: "not_allowed", call_id: "call-x" },
+          );
+        }
+        if (fn === "mingla_connector_upstream_key") return Promise.resolve({ ok: true, key: KEY });
+        return Promise.resolve({ ok: true });
+      },
+    },
+  });
+  const res = await handler(
+    new Request("https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${OWNER}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "metaads__list_campaigns", arguments: { account_id: "act_42" } },
+      }),
+    }),
+  );
+  assertEquals(res.status, 200);
+  const result = (await res.json()).result;
+  assertEquals(result.isError, false);
+  assertEquals(JSON.parse(result.content[1].text).data[0].id, "120001");
+  assertEquals(seen.length, 1);
+  assertEquals(new URL(seen[0].url).pathname, "/v23.0/act_42/campaigns");
+  assertEquals(seen[0].init.method, "GET");
 });
