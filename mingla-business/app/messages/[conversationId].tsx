@@ -1083,7 +1083,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
 
       {optionsOpen ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setOptionsOpen(false)}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close options" style={styles.optionsScrim} onPress={() => setOptionsOpen(false)}>
+          {/* The scrim is a sibling behind the card, never its parent: a button inside a button is invalid on web. */}
+          <View style={styles.optionsScrim}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close options" style={StyleSheet.absoluteFill} onPress={() => setOptionsOpen(false)} />
             <View style={styles.optionsCard} testID="brand-group-options-menu">
               <Pressable accessibilityRole="button" accessibilityLabel="Show people" onPress={() => { setOptionsOpen(false); openPeople(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
                 <Icon name="users" size={18} color={brandGroupChat.textSecondary} />
@@ -1104,7 +1106,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
                 <Text style={styles.optionText}>{group?.muted ? "Unmute notifications" : "Mute notifications"}</Text>
               </Pressable>
             </View>
-          </Pressable>
+          </View>
         </Modal>
       ) : null}
 
