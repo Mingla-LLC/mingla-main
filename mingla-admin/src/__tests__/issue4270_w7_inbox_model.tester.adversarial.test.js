@@ -255,10 +255,8 @@ describe("M the inbox model at its edges", () => {
     assert.deepEqual(planPrefillFromMessages([]), { title: "", note: "" });
   });
 
-  // ── Known defects (todo until fixed) ─────────────────────────────────────
-  it("M-D1 matching prefers the exact title over a ' (2)' sibling listed earlier", {
-    todo: "#4270 W7 test report D-3: matchPlanLine returns the first loose match, so a line naming “Lineup reveal” opens “Lineup reveal (2)”",
-  }, () => {
+  // ── Defects found by the test pass, fixed in W7 rework 1 (were todo) ─────
+  it("M-D1 matching prefers the exact title over a ' (2)' sibling listed earlier", () => {
     const items = [
       { kind: "post", id: "dup", title: "Lineup reveal (2)", on: "2026-11-08" },
       { kind: "post", id: "exact", title: "Lineup reveal", on: "2026-11-09" },
@@ -266,20 +264,21 @@ describe("M the inbox model at its edges", () => {
     assert.equal(matchPlanLine("Seth added “Lineup reveal” to the plan.", items, "Harmattan Club")?.id, "exact");
   });
 
-  it("M-D2 a teammate whose display name is an address is never shown by that address", {
-    todo: "#4270 W7 test report D-4: previewWords and seenByWords print email-shaped names from the #4304 reads (2 of 113 brand teammates in production)",
-  }, () => {
+  it("M-D2 a teammate whose display name is an address is never shown by that address", () => {
     const preview = previewWords({ last_message_preview: "hi", last_message_sender_id: U1, last_message_sender_name: "ada@club.example" }, ME);
     assert.ok(!preview.includes("@"), preview);
     const seen = seenByWords([{ display_name: "kim@club.example", last_read_at: at(0) }], { created_at: at(MIN) });
     assert.ok(!seen.includes("@"), seen);
   });
 
-  it("M-D3 Try again treats a send as landed when the browser clock runs a little ahead of the server", {
-    todo: "#4270 W7 test report D-7: sendLanded compares the browser's send time with the server's created_at, so a clock 10 s fast resends a message that already landed",
-  }, () => {
+  it("M-D3 Try again treats a send as landed when the browser clock runs a little ahead of the server", () => {
     const browserAt = NOW + 10_000; // the browser's clock is 10 s fast
-    assert.equal(sendLanded([{ sender_id: ME, content: "On our way", created_at: new Date(NOW + 500).toISOString() }], { content: "On our way", at: browserAt }, ME), true);
+    // Rework 1 (D-7): a send carries the ids the thread held when it was sent;
+    // a new twin from me is the landed message, whatever the clocks say.
+    const landed = { id: "new", sender_id: ME, content: "On our way", created_at: new Date(NOW + 500).toISOString() };
+    assert.equal(sendLanded([landed], { content: "On our way", at: browserAt, knownIds: ["old"] }, ME), true);
+    const oldTwin = { id: "old", sender_id: ME, content: "On our way", created_at: new Date(NOW - 60_000).toISOString() };
+    assert.equal(sendLanded([oldTwin], { content: "On our way", at: browserAt, knownIds: ["old"] }, ME), false, "the same words sent earlier are not this send");
   });
 });
 

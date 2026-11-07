@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CalendarPlus, MoreHorizontal, Reply, Smile } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton";
 import { PlanActivityCard } from "./PlanActivityCard";
-import { REACTION_EMOJI, clockTime, initialsOf } from "../../lib/brandGroupInbox";
+import { REACTION_EMOJI, clockTime, initialsOf, personName } from "../../lib/brandGroupInbox";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-words [overflow-wrap:anywhere]";
@@ -61,7 +61,7 @@ function MoreMenu({ selected, hasText, onSelect, onSignal, onCopy, onClose }) {
 }
 
 /** One message with its actions, reactions and (my newest) Seen by. */
-function MessageRow({ message, mine, roleWords, pills, seenBy, selected, canPlan, onReact, onReply, onAddToPlan, onSelect, onSignal, onCopy, onPreview }) {
+function MessageRow({ message, mine, roleWords, pills, seenBy, nameFor, selected, canPlan, onReact, onReply, onAddToPlan, onSelect, onSignal, onCopy, onPreview }) {
   const [open, setOpen] = useState(null); // "react" | "more" | null
   const reactButton = useRef(null);
   const moreButton = useRef(null);
@@ -69,7 +69,8 @@ function MessageRow({ message, mine, roleWords, pills, seenBy, selected, canPlan
     setOpen(null);
     (which === "react" ? reactButton : moreButton).current?.focus();
   };
-  const name = message.sender_display_name || "Someone";
+  // D-4: never an address; the People tab's name for the same person first.
+  const name = personName(message.sender_display_name, nameFor?.(message.sender_id));
   const meta = [name, roleWords, clockTime(message.created_at)].filter(Boolean).join(" · ");
   return (
     <div data-message={message.id} className={`group relative flex gap-2.5 ${mine ? "justify-end" : ""}`}>
@@ -86,7 +87,7 @@ function MessageRow({ message, mine, roleWords, pills, seenBy, selected, canPlan
           : "rounded-[16px_16px_16px_4px] border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)]"} ${selected ? "ring-2 ring-[var(--color-brand-700)] ring-offset-2" : ""}`}>
           {message.reply_content && (
             <blockquote className={`rounded-md border-l-[3px] px-2 py-1 text-[12px] ${mine ? "border-white/60 bg-white/15 text-white/90" : "border-[var(--color-brand-300)] bg-[var(--color-brand-50)] text-[var(--color-text-secondary)]"}`}>
-              {(message.reply_sender_display_name || "Message")}: {message.reply_content}
+              {message.reply_sender_display_name ? personName(message.reply_sender_display_name) : "Message"}: {message.reply_content}
             </blockquote>
           )}
           {message.file_id ? (
@@ -152,7 +153,7 @@ function PendingBubble({ item, onRetry, onDelete }) {
 }
 
 export function BrandGroupThread({
-  group, entries, pending = [], loading, myUserId, roleWordsFor, reactions, seenBy, typing,
+  group, entries, pending = [], loading, myUserId, roleWordsFor, reactions, seenBy, nameFor = null, typing,
   planItems, onOpenSide, canPlan, selectedIds = [], onReact, onReply, onAddToPlan, onToggleSelect,
   onSignal, onCopy, onPreview, onRetrySend, onDeleteSend,
 }) {
@@ -215,6 +216,7 @@ export function BrandGroupThread({
                 roleWords={roleWordsFor(message)}
                 pills={reactions?.get?.(message.id)}
                 seenBy={seenBy?.messageId === message.id ? seenBy.text : ""}
+                nameFor={nameFor}
                 selected={selectedIds.includes(message.id)}
                 canPlan={canPlan}
                 onReact={(emoji) => onReact(message.id, emoji)}

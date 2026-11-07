@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Button } from "../ui/Button";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Skeleton } from "../ui/Skeleton";
+import { PageLink } from "../ui/PanelStack";
 import { CONTROL_CLASS } from "../crm/fields";
 import { useToast } from "../../context/ToastContext";
 import * as ops from "../../services/opsService";
@@ -21,7 +22,9 @@ const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 // #4130 (Wave 1): also opened inside a roadmap wording card's Work drawer.
-export function WordingCard({ card, myName, onDone }) {
+// #4270 W7 rework (D-1): inside the Brand group panel (`onOpenSide` set) the
+// link to Announcements, another page, is not shown.
+export function WordingCard({ card, myName, onDone, onOpenSide = null }) {
   const { addToast } = useToast();
   const draft = card.roadmap || {};
   const [title, setTitle] = useState(draft.public_title || "");
@@ -71,7 +74,7 @@ export function WordingCard({ card, myName, onDone }) {
         )}
         <div className="flex min-w-0 flex-wrap gap-2">
           {draft.id && <Button className="min-h-11" loading={busy === "publish"} disabled={!!busy || title.trim().length < 1} onClick={publish}>Publish</Button>}
-          <a href="#/community?tab=announcements" className={`inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-300)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Write an announcement</a>
+          <PageLink href="#/community?tab=announcements" onOpenSide={onOpenSide} hide className={`inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-300)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Write an announcement</PageLink>
           <Button variant="ghost" className="min-h-11" loading={busy === "decline"} disabled={!!busy} onClick={notNeeded}>Not needed</Button>
         </div>
       </div>

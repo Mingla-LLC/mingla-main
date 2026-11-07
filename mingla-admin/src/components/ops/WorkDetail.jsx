@@ -100,7 +100,9 @@ function Fold({ title, count, children, id }) {
   );
 }
 
-export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, inDrawer = false }) {
+// #4270 W7 rework (D-1): `onOpenSide` is set inside the Brand group panel, so
+// the wording card's link to another page is not shown there.
+export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, inDrawer = false, onOpenSide = null }) {
   const { addToast } = useToast();
   const read = useOpsCard(cardId);
   const card = read.data?.card || null;
@@ -328,7 +330,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         )}
         {/* #4130: what the old Needs you page did lives on the card itself. */}
         <CardDrafts card={card} />
-        <CardWording card={card} onChanged={refresh} />
+        <CardWording card={card} onChanged={refresh} onOpenSide={onOpenSide} />
       </section>
       {card.working && (
         <WorkingMark card={card} canClear={!!me.can_archive && !locked} onCleared={refresh} />

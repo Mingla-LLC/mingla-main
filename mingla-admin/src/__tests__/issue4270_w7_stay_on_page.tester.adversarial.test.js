@@ -12,7 +12,8 @@
 //
 // I-4270-W7-BRAND-GROUP-STAYS-ON-PAGE: nothing in a Brand group navigates away
 // (Seth, 2026-11-07 design rule). Known defects are pinned as `todo` tests
-// (they run and report but do not fail the suite) until the fix lands.
+// (they run and report but do not fail the suite) until the fix lands; S-D1
+// became a plain test in W7 rework 1.
 //
 // Run: node --no-experimental-websocket --test src/__tests__/issue4270_w7_stay_on_page.tester.adversarial.test.js
 // (from mingla-admin, after `npm ci`; without esbuild the test FAILS, never skips).
@@ -54,6 +55,7 @@ export { typingEntry, TYPING_TTL_MS } from "../hooks/useBrandGroupLive.js";
 const html = (el) => renderToStaticMarkup(el);
 const inPanel = (el) => <PanelLinksContext.Provider value={{ openSide: () => {} }}>{el}</PanelLinksContext.Provider>;
 export const team = (p, panel) => html(panel ? inPanel(<HostTeamSection {...p} />) : <HostTeamSection {...p} />);
+export const teamWith = (p) => html(<HostTeamSection {...p} />);
 export const rail = (p) => html(<BrandGroupRail onTab={() => {}} openFresh={() => {}} onPreview={() => {}} people={[]} staff={[]} {...p} />);
 export const header = (p) => html(<BrandGroupHeader onToggleMute={() => {}} {...p} />);
 export const strip = (p) => html(<BrandGroupStrip onShowList={() => {}} onOpen={() => {}} {...p} />);
@@ -139,14 +141,13 @@ describe("S stay on page", () => {
     assert.match(without, /2 plan updates|Seth added 2 items to the plan/);
   });
 
-  // ── Known defect (todo until fixed) ─────────────────────────────────────
-  it("S-D1 drawers that open inside the Brand group panel carry no plain link that leaves Community", {
-    todo: "#4270 W7 test report D-1: BrandDrawer (opened beside from the Host tab's Brand button and the host card's brand) links to #/people, #/business-offerings and #/brands tabs; the host card's Open Brand group and the drafts empty state also navigate",
-  }, () => {
+  // ── Defect found by the test pass, fixed in W7 rework 1 (was todo) ───────
+  it("S-D1 drawers that open inside the Brand group panel carry no plain link that leaves Community", () => {
     const reachable = [
       "components/brands/BrandDrawer.jsx",
       "components/crm/HostTeamSection.jsx",
       "pages/DraftsPage.jsx",
+      "components/ops/WordingQueue.jsx",
     ];
     const offenders = [];
     for (const rel of reachable) {
@@ -154,8 +155,22 @@ describe("S stay on page", () => {
       for (const m of src.matchAll(/<a\b[^>]*href=\{?[`"]#\/[^>]*>/g)) {
         if (!/data-full-page/.test(m[0])) offenders.push(`${rel}: ${m[0].slice(0, 90)}`);
       }
+      // Each link to another page goes through PageLink with the panel's opener.
+      for (const m of src.matchAll(/<PageLink\b[^>]*>/g)) {
+        if (!/onOpenSide=\{onOpenSide\}/.test(m[0])) offenders.push(`${rel}: PageLink without the opener: ${m[0].slice(0, 90)}`);
+      }
     }
     assert.deepEqual(offenders, []);
+    // The record's failed-save toast: inside the panel it reopens the card there.
+    const rd = code("components/crm/RecordDrawer.jsx");
+    for (const m of rd.matchAll(/window\.location\.hash\s*=/g)) {
+      assert.match(rd.slice(Math.max(0, m.index - 160), m.index), /if \(typeof onOpenSide === "function"\)[^\n]*\n\s*else $/, "RecordDrawer writes the address only without the panel's opener");
+    }
+    // Rendered: inside the panel the host card's team block links nowhere else.
+    const read = { data: { brand: { id: U1, name: "Harmattan Club", slug: "harmattan" }, team: { owners: [], brand_members: [] } } };
+    const opener = Object.assign(() => {}, { allows: () => true });
+    const inPanel = h.teamWith({ record: { id: U2 }, read, onOpenSide: opener });
+    assert.doesNotMatch(inPanel, /href="#\//);
   });
 });
 

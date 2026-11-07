@@ -20,7 +20,7 @@ import { listOfficialBrandGroupMedia, openOfficialBrandGroupFile } from "../../s
 import { errorWords, regionName, stageLabel } from "../../lib/crmModel";
 import { BRAND_ROLE_WORDS, todayIso } from "../../lib/opsModel";
 import { planDay } from "../../lib/brandPlan";
-import { initialsOf } from "../../lib/brandGroupInbox";
+import { initialsOf, personName } from "../../lib/brandGroupInbox";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
@@ -79,11 +79,30 @@ function RailError({ error, onRetry }) {
   );
 }
 
+/**
+ * #4270 W7 rework (D-6): no host card to show. Create / Link only when it is
+ * known there is none; while it is being read, a skeleton; when it cannot be
+ * read at all, plain words and Try again (never Create, which could make a
+ * second host card for a brand that has one).
+ */
+function NoHostCard({ group, hostStatus, online, onLinked, onRetryHost }) {
+  if (hostStatus === "loading") return <RailLoading />;
+  if (hostStatus === "unknown") {
+    return (
+      <div data-host-unknown="" role="status" className="flex flex-col items-start gap-2 rounded-xl bg-[var(--gray-100)] px-3 py-2">
+        <p className={`text-[12.5px] text-[var(--color-text-secondary)] ${WORDS}`}>{group.brand_name}&apos;s host card details can&apos;t be shown right now. The chat still works.</p>
+        {onRetryHost && <Button variant="secondary" size="sm" className="min-h-11" onClick={onRetryHost}>Try again</Button>}
+      </div>
+    );
+  }
+  return <HostCardEmptyState brandName={group.brand_name} brandId={group.brand_id} canHosts online={online} onLinked={onLinked} />;
+}
+
 /** Plan tab: the brand's plan (the host card's Plan block) and its Calendar. */
-function PlanTab({ group, host, online, openFresh, prefill, onChanged, onLinked }) {
+function PlanTab({ group, host, hostStatus, online, openFresh, prefill, onChanged, onLinked, onRetryHost }) {
   const rec = useHostRecord(host?.record_id || "");
   const links = useMemo(() => ({ openSide: openFresh }), [openFresh]);
-  if (!host) return <HostCardEmptyState brandName={group.brand_name} brandId={group.brand_id} canHosts online={online} onLinked={onLinked} />;
+  if (!host) return <NoHostCard group={group} hostStatus={hostStatus} online={online} onLinked={onLinked} onRetryHost={onRetryHost} />;
   if (rec.status === "loading") return <RailLoading />;
   if (rec.status === "error" || !rec.record) return <RailError error={rec.error} onRetry={rec.reload} />;
   const empty = host.plan && !host.plan.next && Number(host.plan.this_week) === 0;
@@ -153,13 +172,13 @@ function PipelineFields({ record, online, onSaved }) {
 }
 
 /** Host tab: who the brand is to us, the work on it, what it has on Mingla. */
-function HostTab({ group, host, online, canBrands, openFresh, workPrefill, canAssign, assigning, onAssign, onChanged, onLinked }) {
+function HostTab({ group, host, hostStatus, online, canBrands, openFresh, workPrefill, canAssign, assigning, onAssign, onChanged, onLinked, onRetryHost }) {
   const rec = useHostRecord(host?.record_id || "");
   const record = rec.record;
   const read = useHostOnMingla(record?.id || "", record?.brand_id || "");
   const { config } = useCrmConfig();
   const links = useMemo(() => ({ openSide: openFresh }), [openFresh]);
-  if (!host) return <HostCardEmptyState brandName={group.brand_name} brandId={group.brand_id} canHosts online={online} onLinked={onLinked} />;
+  if (!host) return <NoHostCard group={group} hostStatus={hostStatus} online={online} onLinked={onLinked} onRetryHost={onRetryHost} />;
   if (rec.status === "loading") return <RailLoading />;
   if (rec.status === "error" || !record) return <RailError error={rec.error} onRetry={rec.reload} />;
   const def = config?.pipelines?.hosts || null;
@@ -167,7 +186,8 @@ function HostTab({ group, host, online, canBrands, openFresh, workPrefill, canAs
   const events = (Array.isArray(read.data?.events) ? read.data.events : []).filter((e) => e?.start_on && (e.start_on >= today || e.live));
   const nextEvent = events.slice().sort((a, b) => String(a.start_on).localeCompare(String(b.start_on)))[0] || null;
   const openTodos = (Array.isArray(read.data?.todo) ? read.data.todo : []).filter((c) => c && c.status !== "done").length;
-  const owners = Array.isArray(host.owners) ? host.owners : [];
+  // Null when only the fallback lookup answered (D-6): no "No Mingla owner" claim then.
+  const owners = Array.isArray(host.owners) ? host.owners : null;
   const brand = read.data?.brand || null;
   const where = [brand?.slug ? `/${brand.slug}` : "", regionName(config?.regions, record.region_id)].filter(Boolean).join(" · ");
   const refresh = async () => { await rec.reload(); await read.retry(); onChanged?.(); };
@@ -193,7 +213,7 @@ function HostTab({ group, host, online, canBrands, openFresh, workPrefill, canAs
             {canBrands && group.brand_id && <button type="button" className={GHOST} onClick={() => openFresh({ kind: "brand", id: group.brand_id })}>Brand</button>}
           </div>
         </div>
-        {owners.length === 0 && (
+        {owners && owners.length === 0 && (
           <div data-no-owner-alert="" role="status" className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--color-error-50)] px-3 py-2">
             <p className={`min-w-0 flex-1 text-[12.5px] text-[var(--color-error-700)] ${WORDS}`}><strong>No Mingla owner.</strong> Nobody on the team gets this brand&apos;s follow-ups.</p>
             {canAssign && <button type="button" className={GHOST} disabled={!online || assigning} onClick={onAssign}>{assigning ? "Assigning…" : "Assign to me"}</button>}
@@ -299,16 +319,22 @@ function MediaTab({ conversationId, onPreview }) {
 }
 
 /** People tab: the brand team by name and role, and the Mingla staff here. */
-function PeopleTab({ people, peopleError, staff, memberCount }) {
+function PeopleTab({ people, peopleError, staff, memberCount, onRetryPeople }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">Brand team · {people.length || memberCount || 0}</p>
-      {peopleError ? <p role="alert" className="text-[12.5px] text-[var(--color-error-700)]">Couldn’t load the brand team. {peopleError}</p> : null}
+      {/* D-14: peopleError is the panel's plain sentence, never the database's text. */}
+      {peopleError ? (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-[12.5px] text-[var(--color-error-700)]">
+          <span className={`min-w-0 ${WORDS}`}>{peopleError}</span>
+          {onRetryPeople && <Button variant="secondary" size="sm" className="min-h-11" onClick={onRetryPeople}>Try again</Button>}
+        </div>
+      ) : null}
       <ul className="flex flex-col gap-1.5">
         {people.map((p) => (
           <li key={p.user_id} data-person="" className="flex items-center gap-2.5">
-            <span aria-hidden="true" className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--color-info-50)] text-[12px] font-bold text-[var(--color-info-700)]">{initialsOf(p.display_name).slice(0, 1)}</span>
-            <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{p.display_name}</span>
+            <span aria-hidden="true" className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--color-info-50)] text-[12px] font-bold text-[var(--color-info-700)]">{initialsOf(personName(p.display_name)).slice(0, 1)}</span>
+            <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{personName(p.display_name)}</span>
             <span className="shrink-0 text-[12px] text-[var(--color-text-tertiary)]">{BRAND_ROLE_WORDS[p.role] || "Team"}</span>
           </li>
         ))}
@@ -331,8 +357,8 @@ function PeopleTab({ people, peopleError, staff, memberCount }) {
 }
 
 export function BrandGroupRail({
-  group, tab, onTab, canHosts, canBrands, host, online, openFresh, planPrefill, workPrefill,
-  canAssign, assigning, onAssign, onChanged, onLinked, onPreview, people, peopleError, staff,
+  group, tab, onTab, canHosts, canBrands, host, hostStatus = "none", onRetryHost = null, online, openFresh, planPrefill, workPrefill,
+  canAssign, assigning, onAssign, onChanged, onLinked, onPreview, people, peopleError, onRetryPeople = null, staff,
 }) {
   const tabs = railTabs(canHosts);
   const active = tabs.includes(tab) ? tab : tabs[0];
@@ -355,10 +381,10 @@ export function BrandGroupRail({
         </div>
       </div>
       <div role="tabpanel" id={`rail-panel-${active}`} aria-labelledby={`rail-tab-${active}`} data-scroll="rail" className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-4">
-        {active === "plan" && <PlanTab key={group.conversation_id} group={group} host={host} online={online} openFresh={openFresh} prefill={planPrefill} onChanged={onChanged} onLinked={onLinked} />}
-        {active === "host" && <HostTab key={group.conversation_id} group={group} host={host} online={online} canBrands={canBrands} openFresh={openFresh} workPrefill={workPrefill} canAssign={canAssign} assigning={assigning} onAssign={onAssign} onChanged={onChanged} onLinked={onLinked} />}
+        {active === "plan" && <PlanTab key={group.conversation_id} group={group} host={host} hostStatus={hostStatus} onRetryHost={onRetryHost} online={online} openFresh={openFresh} prefill={planPrefill} onChanged={onChanged} onLinked={onLinked} />}
+        {active === "host" && <HostTab key={group.conversation_id} group={group} host={host} hostStatus={hostStatus} onRetryHost={onRetryHost} online={online} canBrands={canBrands} openFresh={openFresh} workPrefill={workPrefill} canAssign={canAssign} assigning={assigning} onAssign={onAssign} onChanged={onChanged} onLinked={onLinked} />}
         {active === "media" && <MediaTab key={group.conversation_id} conversationId={group.conversation_id} onPreview={onPreview} />}
-        {active === "people" && <PeopleTab people={people} peopleError={peopleError} staff={staff} memberCount={group.member_count} />}
+        {active === "people" && <PeopleTab people={people} peopleError={peopleError} staff={staff} memberCount={group.member_count} onRetryPeople={onRetryPeople} />}
       </div>
     </div>
   );

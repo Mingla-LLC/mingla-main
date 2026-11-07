@@ -17,7 +17,7 @@
 // the tab's capability contract lists them where the panel reaches them.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { reactionToggle, summariseReactions } from "../lib/brandGroupInbox";
+import { createAnswerGate, reactionToggle, summariseReactions } from "../lib/brandGroupInbox";
 
 export const TYPING_TTL_MS = 6_000;
 export const TYPING_THROTTLE_MS = 2_500;
@@ -64,12 +64,21 @@ export function useBrandGroupLive({ conversationId, viewerId, viewerName, messag
     return () => { active = false; };
   }, [conversationId, idsKey]);
 
+  // #4270 W7 rework (D-5): an answer for a group no longer open, or older than
+  // a later read of the same group, is dropped.
+  const readsGate = useRef(null);
+  if (readsGate.current === null) readsGate.current = createAnswerGate();
+  readsGate.current.open(conversationId);
   const refreshReads = useCallback(async () => {
     if (!conversationId) return;
+    const gate = readsGate.current;
+    const ticket = gate.begin(conversationId);
     try {
       const next = await apiRef.current.listReadState(conversationId);
+      if (!gate.applies(ticket)) return;
       setReads(Array.isArray(next) ? next : []);
     } catch (cause) {
+      if (!gate.applies(ticket)) return;
       onErrorRef.current?.(cause?.message || "Couldn't load who has seen this");
     }
   }, [conversationId]);

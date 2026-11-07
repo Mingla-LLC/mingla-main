@@ -4,10 +4,10 @@
 // team line and Mute only. Every button stays on this page.
 import { Bell, BellOff, PanelRight } from "lucide-react";
 import { useCrmConfig } from "../../hooks/useCrmConfig";
-import { setOwners } from "../../services/crmService";
+import { getRecord, setOwners } from "../../services/crmService";
 import { icpLabel, regionName, stageLabel } from "../../lib/crmModel";
 import { BRAND_ROLE_WORDS } from "../../lib/opsModel";
-import { teammatesWords } from "../../lib/brandGroupInbox";
+import { personName, teammatesWords } from "../../lib/brandGroupInbox";
 import { GroupAvatar } from "./BrandGroupList";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -28,20 +28,35 @@ function HostChips({ host }) {
   );
 }
 
+/** An owner as an address: the host card keeps addresses; the inbox sends { email, name }. */
+function ownerEmail(owner) {
+  return String((typeof owner === "string" ? owner : owner?.email) || "").trim().toLowerCase();
+}
+
 /**
  * Assign to me: add me to the host card's owners (the same crm path the host
  * card uses). Kept here, beside the button, so the Brand groups tab itself
  * reaches only Support RPCs (#3988 capability contract).
+ *
+ * #4270 W7 rework (D-9): crm_record_set_owners replaces the whole list, so the
+ * owners are read fresh from the host card right before the write; an owner
+ * someone added since this page loaded is kept. A failed read writes nothing.
+ * `api` is for tests.
  */
-export async function assignHostToMe(host, myEmail) {
-  const emails = [...new Set([...(host?.owners || []).map((o) => String(o.email || "").toLowerCase()).filter(Boolean), String(myEmail || "").toLowerCase()].filter(Boolean))].sort();
-  return setOwners(host.record_id, emails);
+export async function assignHostToMe(host, myEmail, api = { getRecord, setOwners }) {
+  const me = String(myEmail || "").trim().toLowerCase();
+  if (!host?.record_id || !me) throw new Error("Couldn't tell who you are or which host card this is.");
+  const fresh = await api.getRecord(host.record_id);
+  const current = fresh?.record?.owners;
+  if (!Array.isArray(current)) throw new Error("Couldn't read the host card's owners, so nothing was changed. Try again.");
+  const emails = [...new Set([...current.map(ownerEmail).filter(Boolean), me])].sort();
+  return api.setOwners(host.record_id, emails);
 }
 
 /** "1 teammate · info (Owner)". */
 export function teamLine(memberCount, people) {
   const named = (Array.isArray(people) ? people : []).slice(0, 2)
-    .map((p) => `${p.display_name} (${BRAND_ROLE_WORDS[p.role] || "Team"})`);
+    .map((p) => `${personName(p.display_name)} (${BRAND_ROLE_WORDS[p.role] || "Team"})`);
   return [teammatesWords(memberCount), ...named].join(" · ");
 }
 
@@ -50,7 +65,8 @@ export function BrandGroupHeader({
   canAssign, assigning, onAssign, onToggleMute, onRailButton, railButtonLabel,
 }) {
   if (!group) return null;
-  const owners = Array.isArray(host?.owners) ? host.owners : [];
+  // Owners are null when only the fallback lookup answered (D-6): say nothing then.
+  const owners = Array.isArray(host?.owners) ? host.owners : null;
   const showHost = canHosts && !!host;
   return (
     <div data-thread-header="" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--gray-100)] px-4 py-3 sm:px-[18px]">
@@ -62,17 +78,18 @@ export function BrandGroupHeader({
         </div>
         <p className="truncate text-[12px] text-[var(--color-text-tertiary)]">
           {teamLine(group.member_count, people)}
-          {showHost && (
+          {showHost && owners && (
             <>
               {" · Mingla owner: "}
               {owners.length
-                ? <span className="text-[var(--color-text-secondary)]">{owners.map((o) => o.name).join(", ")}</span>
+                ? <span className="text-[var(--color-text-secondary)]">{owners.map((o) => personName(o?.name)).join(", ")}</span>
                 : <span data-no-owner="" className="font-semibold text-[var(--color-error-700)]">No owner</span>}
             </>
           )}
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      {/* D-10: below sm the actions take their own line and wrap, so nothing is clipped at 375 px. */}
+      <div data-header-actions="" className="flex min-w-0 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto sm:shrink-0">
         {showHost && canAssign && (
           <button type="button" className={BUTTON} disabled={!online || assigning} onClick={onAssign}>
             {assigning ? "Assigning…" : "Assign to me"}

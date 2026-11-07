@@ -6,7 +6,10 @@
 //
 // The item itself is the same drawer every other page shows (SidePanel), drawn
 // docked through PanelSlotContext; links inside it come back through
-// PanelLinksContext as openInside.
+// PanelLinksContext as openInside. #4270 W7 rework (D-1): the drawers also get
+// `onOpenSide(kind, id)`, so their links to other pages open here or show as
+// plain words; nothing in the panel changes the page except the explicit
+// "Open full page" links.
 import { useCallback, useMemo, useState } from "react";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { PanelLinksContext, PanelSlotContext } from "../ui/PanelStack";
@@ -20,7 +23,7 @@ export function panelTrailWords(brandName, trail, currentTitle) {
   return [brandName || "Brand group", ...(Array.isArray(trail) ? trail : []).map((t) => t.title || "Item"), currentTitle || "Item"];
 }
 
-export function BrandGroupSidePanel({ stack, side, brandName, onClose, onChanged, onOpenInside, onBackToChat }) {
+export function BrandGroupSidePanel({ stack, side, brandName, onClose, onChanged, onOpenInside, onOpenSide = null, onBackToChat }) {
   const [currentTitle, setCurrentTitle] = useState("");
   const titles = stack?.titles;
   const register = useCallback((entry) => {
@@ -75,7 +78,7 @@ export function BrandGroupSidePanel({ stack, side, brandName, onClose, onChanged
           <PanelSlotContext.Provider value={slot}>
             {side.kind === "calendar"
               ? <BrandCalendarSide key={side.id} side={side} brandName={brandName} onClose={onClose} />
-              : <SidePanel side={side} onClose={onClose} onChanged={onChanged} />}
+              : <SidePanel side={side} onClose={onClose} onChanged={onChanged} onOpenSide={onOpenSide} />}
           </PanelSlotContext.Provider>
         </PanelLinksContext.Provider>
       </div>

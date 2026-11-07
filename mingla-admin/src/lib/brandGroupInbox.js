@@ -54,6 +54,8 @@ export function mergeInbox(groups, inboxRows, previousPlanByConversation = {}) {
       waiting_since: row?.waiting_since ?? null,
       last_staff_reply_at: row?.last_staff_reply_at ?? null,
       host,
+      // #4270 W7 rework (D-6): whether the inbox read covered this group at all.
+      inbox_known: !!row,
     };
   });
 }
@@ -114,6 +116,29 @@ function firstName(name) {
   return String(name || "").trim().split(/\s+/)[0] || "";
 }
 
+/**
+ * #4270 W7 rework (D-4): the one way the Brand group shows a person's name.
+ * Some accounts carry their email address as their display name; the screen
+ * never shows an address. Each candidate is tried in order (the name, then
+ * whatever first-name fallbacks the caller has, such as the People row for the
+ * same person); the first that is not an address wins, else "A teammate".
+ */
+export const NO_NAME_WORDS = "A teammate";
+export function personName(name, ...fallbacks) {
+  for (const candidate of [name, ...fallbacks]) {
+    if (typeof candidate !== "string") continue;
+    const clean = candidate.replace(/\s+/g, " ").trim();
+    if (clean && !clean.includes("@")) return clean;
+  }
+  return NO_NAME_WORDS;
+}
+
+/** The first name of `personName(...)`: "Ada" for "Ada Obi"; "A teammate" stays whole. */
+export function personFirstName(name, ...fallbacks) {
+  const full = personName(name, ...fallbacks);
+  return full === NO_NAME_WORDS ? full : firstName(full);
+}
+
 const TYPE_WORDS = { image: "Photo", video: "Video", file: "File", audio: "File" };
 
 /** The row's last line: "You: …", "Ada: …", "Photo"; the team size when empty. */
@@ -125,8 +150,8 @@ export function previewWords(group, myUserId) {
   const sender = group.last_message_sender_id;
   if (!sender) return body;
   if (myUserId && sender === myUserId) return `You: ${body}`;
-  const name = firstName(group.last_message_sender_name);
-  return name ? `${name}: ${body}` : body;
+  if (!String(group.last_message_sender_name || "").trim()) return body;
+  return `${personFirstName(group.last_message_sender_name)}: ${body}`;
 }
 
 function weekdayShort(iso) {
@@ -212,32 +237,41 @@ function norm(text) {
   return String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function titleForms(title, brandName) {
-  const forms = new Set();
+// How closely an item's title matches a plan line's words: 0 the exact title,
+// 1 the title without " · <brand>", 2 without a " (2)" count as well.
+// Infinity when it does not match at all.
+function titleRank(title, brandName, want) {
   const base = norm(title);
-  if (!base) return forms;
-  forms.add(base);
-  const noCount = base.replace(/\s\(\d+\)$/, "");
-  forms.add(noCount);
+  if (!base) return Infinity;
+  if (base === want) return 0;
   const brand = norm(brandName);
-  if (brand) {
-    for (const t of [base, noCount]) {
-      const tail = ` · ${brand}`;
-      if (t.endsWith(tail)) forms.add(t.slice(0, -tail.length));
-    }
-  }
-  return forms;
+  const tail = brand ? ` · ${brand}` : "";
+  const noBrand = tail && base.endsWith(tail) ? base.slice(0, -tail.length) : base;
+  if (noBrand === want) return 1;
+  const noCount = base.replace(/\s\(\d+\)$/, "");
+  const noCountBrand = tail && noCount.endsWith(tail) ? noCount.slice(0, -tail.length) : noCount;
+  const noBrandCount = noBrand.replace(/\s\(\d+\)$/, "");
+  return [noCount, noCountBrand, noBrandCount].includes(want) ? 2 : Infinity;
 }
 
-/** The post or task a plan line names, or null (an item removed since, or a name that no longer matches). */
+/**
+ * The post or task a plan line names, or null (an item removed since, or a
+ * name that no longer matches). #4270 W7 rework (D-3): the exact title wins
+ * over a loose form, so “Lineup reveal” never opens “Lineup reveal (2)” when
+ * both are on the plan; among equals the first listed wins.
+ */
 export function matchPlanLine(content, items, brandName = "") {
   const want = norm(planLineTitle(content));
   if (!want) return null;
+  let best = null;
+  let bestRank = Infinity;
   for (const item of Array.isArray(items) ? items : []) {
     if (!item || (item.kind !== "post" && item.kind !== "task")) continue;
-    if (titleForms(item.title, brandName).has(want)) return item;
+    const rank = titleRank(item.title, brandName, want);
+    if (rank < bestRank) { best = item; bestRank = rank; }
+    if (bestRank === 0) break;
   }
-  return null;
+  return best;
 }
 
 /** "Seth added 5 items to the plan", or "3 plan updates". */
@@ -275,26 +309,30 @@ export function quickReplies({ weekItems = [], nextEvent = null, brandName = "" 
 }
 
 function namesSummary(names, max) {
-  const clean = names.map(firstName).filter(Boolean);
+  const clean = names.filter(Boolean);
   if (!clean.length) return "";
   const shown = clean.slice(0, max).join(", ");
   return clean.length > max ? `${shown} +${clean.length - max}` : shown;
 }
 
-/** "Seen by Ada", "Seen by Ada, Kim", "Seen by Ada, Kim +1"; "" when nobody has. */
-export function seenByWords(reads, message) {
+/**
+ * "Seen by Ada", "Seen by Ada, Kim", "Seen by Ada, Kim +1"; "" when nobody has.
+ * `nameFor(userId)` (optional) is a fallback name for a reader whose display
+ * name is an address (D-4).
+ */
+export function seenByWords(reads, message, nameFor = null) {
   const sent = new Date(message?.created_at || "").getTime();
   if (!Number.isFinite(sent)) return "";
   const readers = (Array.isArray(reads) ? reads : [])
     .filter((read) => new Date(read?.last_read_at || "").getTime() >= sent)
-    .map((read) => read.display_name);
+    .map((read) => personFirstName(read?.display_name, typeof nameFor === "function" ? nameFor(read?.user_id) : null));
   const summary = namesSummary(readers, 2);
   return summary ? `Seen by ${summary}` : "";
 }
 
 /** "info is typing…", "info and Kim are typing…", "3 people are typing…"; null when nobody. */
 export function typingWords(names) {
-  const clean = (Array.isArray(names) ? names : []).map((n) => firstName(typeof n === "string" ? n : "")).filter(Boolean);
+  const clean = (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && n.trim()).map((n) => personFirstName(n));
   if (!clean.length) return null;
   if (clean.length === 1) return `${clean[0]} is typing…`;
   if (clean.length === 2) return `${clean[0]} and ${clean[1]} are typing…`;
@@ -345,7 +383,7 @@ export function planPrefillFromMessages(messages) {
   if (!list.length) return { title: "", note: "" };
   const oneLine = (text) => String(text || "").replace(/\s+/g, " ").trim();
   const title = cutAtWord(oneLine(list[0].content), 160);
-  const lines = list.map((m) => `${m.sender_display_name || "Someone"}: ${oneLine(m.content)}`);
+  const lines = list.map((m) => `${String(m.sender_display_name || "").trim() ? personName(m.sender_display_name) : "Someone"}: ${oneLine(m.content)}`);
   const note = cut(`From the Brand group: ${lines.join(" · ")}`, 500);
   return { title, note };
 }
@@ -358,16 +396,26 @@ export function sendFailureWords(error) {
 }
 
 /**
- * Try again: did a send that looked lost reach the server after all? True when
- * a message from me with the same words exists from five seconds before the
- * first try onwards.
+ * Try again: did a send that looked lost reach the server after all?
+ *
+ * #4270 W7 rework (D-7): when the send carries `knownIds` (the ids of the
+ * messages already in the thread when it was sent), a message from me with the
+ * same words that is NOT one of them landed; the browser's clock is only a
+ * wide guard (10 minutes) against an old twin read before the thread loaded.
+ * Without `knownIds` it falls back to the time window: from five seconds
+ * before the first try onwards.
  */
-export function sendLanded(messages, { content, at }, myUserId) {
-  const from = Number(at) - 5_000;
+export function sendLanded(messages, { content, at, knownIds }, myUserId) {
   const want = String(content || "").trim();
-  return (Array.isArray(messages) ? messages : []).some((m) => m && m.sender_id === myUserId
-    && String(m.content || "").trim() === want
-    && new Date(m.created_at).getTime() >= from);
+  const mine = (Array.isArray(messages) ? messages : []).filter((m) => m && m.sender_id === myUserId
+    && String(m.content || "").trim() === want);
+  if (Array.isArray(knownIds)) {
+    const known = new Set(knownIds);
+    const from = Number(at) - 10 * MINUTE;
+    return mine.some((m) => !known.has(m.id) && !(new Date(m.created_at).getTime() < from));
+  }
+  const from = Number(at) - 5_000;
+  return mine.some((m) => new Date(m.created_at).getTime() >= from);
 }
 
 /** "17:58" today, "Thu" this week, "4 Nov" before (the list's time column). */
@@ -386,4 +434,81 @@ export function initialsOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
   return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2)).toUpperCase();
+}
+
+// ── #4270 W7 rework: the controller's decisions, as plain functions ─────────
+
+/** D-13: a window focus reads the full inbox only when the last full read is a minute old. */
+export const FOCUS_REFRESH_MIN_MS = 60_000;
+export function focusRefreshDue(lastFullReadAt, nowMs = Date.now()) {
+  const last = Number(lastFullReadAt);
+  if (!Number.isFinite(last) || last <= 0) return true;
+  return Number(nowMs) - last >= FOCUS_REFRESH_MIN_MS;
+}
+
+/**
+ * D-8: tapping a group. On a phone or tablet the open thread is the address's
+ * `group`, not the selection, so the group selected by default (the first
+ * row) still opens when tapped. Nothing happens only when that group's thread
+ * is already showing with no side panel.
+ */
+export function openGroupStep(conversationId, { selectedId, viewGroup, sideOpen }) {
+  if (!conversationId) return "none";
+  return conversationId === selectedId && conversationId === viewGroup && !sideOpen ? "none" : "open";
+}
+
+/**
+ * D-6: what the Brand group knows about the brand's host card.
+ *   status "loading"  the inbox (or the fallback lookup) is still reading
+ *          "ready"    a host card; `host.owners` is null when only the
+ *                     fallback lookup answered (owners unknown)
+ *          "none"     no host card (a reliable answer): Create / Link
+ *          "unknown"  nothing could be read: never offer Create / Link
+ * `inboxStatus` is "loading" | "ready" | "error"; `fallback` is the pre-W7
+ * lookup (ops_brand_host_record) used while the inbox cannot answer for this
+ * group: { status: "idle" | "loading" | "ready" | "none" | "error", recordId, name }.
+ */
+export function hostCardFacts({ inboxStatus, group, fallback }) {
+  if (!group) return { status: "none", host: null, needsFallback: false };
+  if (inboxStatus === "loading" && !group.inbox_known) return { status: "loading", host: null, needsFallback: false };
+  if (inboxStatus === "ready" && group.inbox_known) {
+    return group.host ? { status: "ready", host: group.host, needsFallback: false } : { status: "none", host: null, needsFallback: false };
+  }
+  const fb = fallback || { status: "idle" };
+  if (fb.status === "ready" && fb.recordId) {
+    return { status: "ready", host: { record_id: fb.recordId, name: fb.name || "Host", owners: null, plan: null, stage: null, region_id: null, icp: null, mine: null }, needsFallback: true };
+  }
+  if (fb.status === "none") return { status: "none", host: null, needsFallback: true };
+  if (fb.status === "error") return { status: "unknown", host: null, needsFallback: true };
+  return { status: "loading", host: null, needsFallback: true };
+}
+
+/** D-6 / D-14: plain words when the brand team cannot be read (never the database's text). */
+export const PEOPLE_ERROR_WORDS = "The brand team can't be shown right now. The chat still works; try again in a moment.";
+/** D-6: plain words when who is waiting cannot be read. */
+export const INBOX_ERROR_WORDS = "Who is waiting and the host card details can't be shown right now. The groups and their messages still work.";
+
+/**
+ * D-5: answers that may land late. `open(key)` names the group on screen;
+ * `begin(key)` hands out a ticket for a read of that group; `applies(ticket)`
+ * is true only while that group is still the one open and no newer read of the
+ * SAME group has started. A read of another group (Try again on a group no
+ * longer open) never cancels the open group's read.
+ */
+export function createAnswerGate() {
+  let openKey = null;
+  let n = 0;
+  const latest = new Map();
+  return {
+    open(key) { openKey = key ?? null; },
+    isOpen(key) { return key != null && key === openKey; },
+    begin(key) {
+      n += 1;
+      latest.set(key, n);
+      return { key, n };
+    },
+    applies(ticket) {
+      return !!ticket && ticket.key != null && ticket.key === openKey && latest.get(ticket.key) === ticket.n;
+    },
+  };
 }

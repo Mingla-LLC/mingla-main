@@ -59,6 +59,16 @@ import {
   sideCloseStep,
   sideHref,
 } from "../lib/panelStack.js";
+import {
+  INBOX_ERROR_WORDS,
+  PEOPLE_ERROR_WORDS,
+  createAnswerGate,
+  focusRefreshDue,
+  hostCardFacts,
+  openGroupStep,
+  personName,
+} from "../lib/brandGroupInbox.js";
+import { createPanelHistory } from "../lib/brandGroupPanelHistory.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -94,6 +104,9 @@ import { BrandGroupHeader } from "../components/community/BrandGroupHeader.jsx";
 import { BrandGroupComposer } from "../components/community/BrandGroupComposer.jsx";
 import { HostCardEmptyState } from "../components/community/HostCardEmptyState.jsx";
 import { ToastProvider } from "../context/ToastContext.jsx";
+import { HostTeamSection } from "../components/crm/HostTeamSection.jsx";
+import { PageLink } from "../components/ui/PanelStack.jsx";
+export { assignHostToMe } from "../components/community/BrandGroupHeader.jsx";
 const html = (el) => renderToStaticMarkup(el);
 export const row = (p) => html(<BrandGroupRow onOpen={() => {}} {...p} />);
 export const list = (p) => html(<BrandGroupList onFilter={() => {}} onQuery={() => {}} onOpen={() => {}} {...p} />);
@@ -104,7 +117,9 @@ export const rail = (p) => html(<BrandGroupRail onTab={() => {}} openFresh={() =
 export const thread = (p) => html(<BrandGroupThread roleWordsFor={() => ""} onReact={() => {}} onReply={() => {}} onAddToPlan={() => {}} onToggleSelect={() => {}} onSignal={() => {}} onCopy={() => {}} onPreview={() => {}} onRetrySend={() => {}} onDeleteSend={() => {}} {...p} />);
 export const header = (p) => html(<BrandGroupHeader onToggleMute={() => {}} {...p} />);
 export const composer = (p) => html(<BrandGroupComposer onChange={() => {}} onSend={() => {}} onChip={() => {}} {...p} />);
-export const empty = (p) => html(<ToastProvider><HostCardEmptyState {...p} /></ToastProvider>);`,
+export const empty = (p) => html(<ToastProvider><HostCardEmptyState {...p} /></ToastProvider>);
+export const team = (p) => html(<HostTeamSection {...p} />);
+export const pageLink = (p) => html(<PageLink {...p} />);`,
       resolveDir: HERE, sourcefile: "issue4270.w7.harness.jsx", loader: "jsx",
     },
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
@@ -458,12 +473,13 @@ describe("E source contracts", () => {
     assert.match(esc, /if \(document\.querySelector\('\[aria-modal="true"\]'\)\) return;/);
     assert.ok(esc.indexOf("active.blur()") < esc.indexOf("closePanel()"), "a field lets go before the panel closes");
   });
-  it("closing uses sideCloseStep and never replaces history; a teammate who cannot open a kind gets nothing", () => {
+  it("closing uses the panel's own history tags and never replaces history; a teammate who cannot open a kind gets nothing", () => {
     const panel = code("components/community/BrandGroupsPanel.jsx");
-    const close = panel.slice(panel.indexOf("const closePanel = useCallback"), panel.indexOf("const onPop = () =>"));
+    const close = panel.slice(panel.indexOf("const closePanel = useCallback"), panel.indexOf("if (!sideOpen) return undefined;"));
     assert.ok(close.length > 40, "closePanel is found");
-    assert.match(close, /sideCloseStep\(pushesHere\.current\)/);
+    assert.match(close, /const step = history\.closeStep\(\);/);
     assert.match(close, /window\.history\.go\(step\.delta\)/);
+    assert.doesNotMatch(panel, /addEventListener\("popstate"/, "no popstate counting (Chrome fires popstate for the page's own pushes)");
     assert.doesNotMatch(close, /replace:\s*true/);
     assert.match(panel, /const side = sideAllowed\(view\.side, \{ canHosts, canBrands \}\) \? view\.side : null;/);
     assert.match(panel, /if \(side\.kind === "brand"\) return !!canBrands;/);
@@ -473,5 +489,294 @@ describe("E source contracts", () => {
     assert.match(panel, /void loadInbox\(\{ withPlan: false \}\);/);
     assert.match(panel, /const LIGHT_REFRESH_MS = 1_500;/);
     assert.match(code("pages/CommunitySupportPage.jsx"), /<BrandGroupsPanel onCounts=\{onBrandGroupCounts\} \/>/);
+  });
+});
+
+// ── #4270 W7 rework 1: each tester defect, fixed and pinned ─────────────────
+
+/**
+ * A browser history that behaves like Chrome's for this page: assigning
+ * location.hash adds an entry (with an empty state) and drops anything ahead
+ * of it; replaceState rewrites the current entry; go(n) moves along.
+ */
+function fakeWindow(start) {
+  const entries = [{ url: start, state: null }];
+  let at = 0;
+  const win = {
+    entries,
+    get index() { return at; },
+    location: {
+      get href() { return entries[at].url; },
+      get hash() { return entries[at].url.slice(entries[at].url.indexOf("#")); },
+      set hash(value) {
+        const url = `${entries[at].url.split("#")[0]}${value.startsWith("#") ? value : `#${value}`}`;
+        if (url === entries[at].url) return;
+        entries.splice(at + 1);
+        entries.push({ url, state: null });
+        at = entries.length - 1;
+      },
+    },
+    history: {
+      get state() { return entries[at].state; },
+      replaceState(state, _title, url) { entries[at] = { url: url ?? entries[at].url, state }; },
+      go(delta) { at = Math.max(0, Math.min(entries.length - 1, at + delta)); },
+    },
+  };
+  return win;
+}
+
+describe("R rework 1 (test report D-1 … D-14)", () => {
+  const BASE = "https://admin.test/#/community?tab=brand-groups&group=g1";
+  const sideHash = (side) => `#/community?tab=brand-groups&group=g1&side=${side}`;
+
+  it("D-2 Close returns to exactly the entry the panel opened from, after inside links, Back and the panel's own Back", () => {
+    const win = fakeWindow(BASE);
+    win.location.hash = "#/community?tab=brand-groups&group=g1&marker=base";
+    const opened = win.location.href;
+    const ph = createPanelHistory(win);
+    ph.begin();
+    ph.push(() => { win.location.hash = sideHash(`calendar:${U1}`); });
+    ph.push(() => { win.location.hash = sideHash(`content:${U2}`); });
+    assert.equal(ph.depth(), 2);
+    // The panel's Back rewrites the current entry (useHashQuery replaces with a null state).
+    ph.replace(() => win.history.replaceState(null, "", `https://admin.test/${sideHash(`calendar:${U1}`)}`));
+    assert.equal(ph.depth(), 2, "a replace keeps the entry's place");
+    const step = ph.closeStep();
+    assert.deepEqual(step, { kind: "go", delta: -2 });
+    win.history.go(step.delta);
+    assert.equal(win.location.href, opened, "lands on the entry the panel opened from, not one before it");
+  });
+
+  it("D-2 the browser's Back inside the panel, then a new inside link: Close still lands on the start", () => {
+    const win = fakeWindow(BASE);
+    const opened = win.location.href;
+    const ph = createPanelHistory(win);
+    ph.begin();
+    ph.push(() => { win.location.hash = sideHash(`calendar:${U1}`); });
+    ph.push(() => { win.location.hash = sideHash(`content:${U2}`); });
+    win.history.go(-1); // the browser's Back: no counting needed, the entry carries its own place
+    assert.equal(ph.depth(), 1);
+    ph.push(() => { win.location.hash = sideHash(`host:${U2}`); });
+    assert.equal(ph.depth(), 2);
+    win.history.go(ph.closeStep().delta);
+    assert.equal(win.location.href, opened);
+  });
+
+  it("D-2 a panel that arrived in the address (not this panel's entry) closes with a new entry; reopening the same side adds nothing", () => {
+    const win = fakeWindow(`https://admin.test/${sideHash(`brand:${U1}`)}`);
+    const ph = createPanelHistory(win);
+    ph.push(() => { win.location.hash = sideHash(`host:${U2}`); });
+    assert.deepEqual(ph.closeStep(), { kind: "push" });
+    const fresh = createPanelHistory(win);
+    fresh.begin();
+    const before = win.entries.length;
+    fresh.push(() => { win.location.hash = win.location.hash; });
+    assert.equal(win.entries.length, before);
+    assert.equal(fresh.depth(), 0);
+    fresh.reset();
+    assert.deepEqual(fresh.closeStep(), { kind: "push" }, "after reset nothing is ours");
+  });
+
+  it("D-2 the tag only rewrites the current entry's state, never its address", () => {
+    const win = fakeWindow(BASE);
+    const calls = [];
+    const real = win.history.replaceState;
+    win.history.replaceState = (state, title, url) => { calls.push(url); real(state, title, url); };
+    const ph = createPanelHistory(win);
+    ph.begin();
+    ph.push(() => { win.location.hash = sideHash(`calendar:${U1}`); });
+    assert.deepEqual(calls, [BASE, `https://admin.test/${sideHash(`calendar:${U1}`)}`]);
+  });
+
+  it("D-5 a slow answer for the group left behind never shows under the new one (delayed fixtures)", async () => {
+    const gate = createAnswerGate();
+    const wait = (ms, value) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
+    const shown = [];
+    const load = async (key, ms) => {
+      const ticket = gate.begin(key);
+      const rows = await wait(ms, `${key}-rows`);
+      if (gate.applies(ticket)) shown.push(rows);
+      return rows;
+    };
+    gate.open("harmattan");
+    const slow = load("harmattan", 40);       // Harmattan's read answers late
+    gate.open("lantern");                     // staff switch groups within a second
+    const fast = load("lantern", 5);
+    const retryElsewhere = load("ox", 1);     // Try again on a group no longer open
+    assert.equal(await retryElsewhere, "ox-rows", "the caller still gets its rows");
+    await Promise.all([slow, fast]);
+    assert.deepEqual(shown, ["lantern-rows"], "only Lantern's messages show under Lantern's header");
+    // An older read of the open group never overwrites a newer one.
+    const older = load("lantern", 30);
+    const newer = load("lantern", 5);
+    await Promise.all([older, newer]);
+    assert.deepEqual(shown, ["lantern-rows", "lantern-rows"]);
+  });
+
+  it("D-5 the thread, read state and plan loads go through their guards", () => {
+    const panel = code("components/community/BrandGroupsPanel.jsx");
+    const load = panel.slice(panel.indexOf("const loadThread = useCallback"), panel.indexOf("useEffect(() => { void loadGroups(); void loadInbox(); }"));
+    assert.ok(load.indexOf("if (!current()) return rows;") > -1 && load.indexOf("if (!current()) return rows;") < load.indexOf("setMessages(rows)"), "the answer is checked before it is shown");
+    assert.match(load, /const ticket = gate\.begin\(conversationId\);/);
+    assert.match(panel, /threadGate\.current\.open\(selectedId\);/);
+    assert.match(panel, /if \(item\.conversationId === selectedRef\.current\) await loadThread/);
+    const live = code("hooks/useBrandGroupLive.js");
+    assert.match(live, /if \(!gate\.applies\(ticket\)\) return;\s*setReads/);
+    const plan = code("hooks/useBrandGroupPlanItems.js");
+    assert.ok(plan.indexOf("const mine = ++seq.current;") < plan.indexOf("if (!recordId) { setItems([]);"), "a group without a host card still drops the last group's plan answer");
+  });
+
+  it("D-6 with the inbox read failing, a brand with a host card shows it (the pre-W7 lookup), never Create host card", () => {
+    const g = { conversation_id: "c1", brand_id: U1, brand_name: "Harmattan Club", inbox_known: false, host: null };
+    assert.deepEqual(hostCardFacts({ inboxStatus: "error", group: g, fallback: null }).needsFallback, true);
+    const ready = hostCardFacts({ inboxStatus: "error", group: g, fallback: { status: "ready", recordId: U2, name: "Ade" } });
+    assert.equal(ready.status, "ready");
+    assert.equal(ready.host.record_id, U2);
+    assert.equal(ready.host.owners, null, "owners unknown: no 'No owner' claim, no Assign to me");
+    assert.equal(hostCardFacts({ inboxStatus: "error", group: g, fallback: { status: "error" } }).status, "unknown");
+    assert.equal(hostCardFacts({ inboxStatus: "error", group: g, fallback: { status: "loading" } }).status, "loading");
+    assert.equal(hostCardFacts({ inboxStatus: "error", group: g, fallback: { status: "none" } }).status, "none", "the old lookup's 'no card' is reliable");
+    assert.equal(hostCardFacts({ inboxStatus: "loading", group: g, fallback: null }).status, "loading");
+    // The inbox answered for this group: its word is final, no extra lookup.
+    const known = { ...g, inbox_known: true };
+    assert.deepEqual(hostCardFacts({ inboxStatus: "ready", group: known, fallback: null }), { status: "none", host: null, needsFallback: false });
+    // The inbox answered but not for this group (a group created since): ask the old lookup.
+    assert.equal(hostCardFacts({ inboxStatus: "ready", group: g, fallback: null }).needsFallback, true);
+    assert.equal(mergeInbox([{ conversation_id: "c1" }], [])[0].inbox_known, false);
+    assert.equal(mergeInbox([{ conversation_id: "c1" }], [{ conversation_id: "c1", host: null }])[0].inbox_known, true);
+  });
+
+  it("D-6 the rail and header when the host card cannot be read: plain words and Try again, no Create, no owner claim", () => {
+    const g = { conversation_id: "c1", brand_id: U1, brand_name: "Harmattan Club", member_count: 2, unread_count: 0, muted: false };
+    // The Host tab reads the CRM config (an AuthProvider) first; it draws the same NoHostCard.
+    assert.match(code("components/community/BrandGroupRail.jsx"), /function HostTab[\s\S]*?if \(!host\) return <NoHostCard group=\{group\} hostStatus=\{hostStatus\}/);
+    for (const tab of ["plan"]) {
+      const unknown = harness.rail({ group: g, tab, canHosts: true, canBrands: true, host: null, hostStatus: "unknown", onRetryHost: () => {}, online: true });
+      assert.doesNotMatch(unknown, /Create host card|Link existing/, `${tab}: never Create when nothing could be read`);
+      assert.match(unknown, /data-host-unknown=""/);
+      assert.match(unknown, /can&#x27;t be shown right now/);
+      assert.match(unknown, />Try again</);
+      const loading = harness.rail({ group: g, tab, canHosts: true, canBrands: true, host: null, hostStatus: "loading", online: true });
+      assert.doesNotMatch(loading, /Create host card/);
+      assert.match(loading, /Loading the host card/);
+    }
+    const noCard = code("components/community/BrandGroupRail.jsx");
+    const fn = noCard.slice(noCard.indexOf("function NoHostCard"), noCard.indexOf("function PlanTab"));
+    assert.ok(fn.indexOf('hostStatus === "unknown"') < fn.indexOf("<HostCardEmptyState"), "Create / Link only after loading and unknown are ruled out");
+    // The header with Hosts access reads the CRM config (an AuthProvider): pinned in source.
+    const header = code("components/community/BrandGroupHeader.jsx");
+    assert.match(header, /const owners = Array\.isArray\(host\?\.owners\) \? host\.owners : null;/);
+    assert.match(header, /\{showHost && owners && \(/, "no owner line (and no 'No owner') when owners are unknown");
+    assert.match(code("components/community/BrandGroupRail.jsx"), /\{owners && owners\.length === 0 && \(/);
+    assert.match(code("components/community/BrandGroupsPanel.jsx"), /const canAssign = canHosts && ownersKnown && !isOwner && !!myEmail;/);
+  });
+
+  it("D-6 / D-14 the People tab and the inbox toast use plain words, never the database's text", () => {
+    const g = { conversation_id: "c1", brand_id: U1, brand_name: "Harmattan Club", member_count: 2, unread_count: 0, muted: false };
+    const html = harness.rail({ group: g, tab: "people", canHosts: false, canBrands: false, peopleError: PEOPLE_ERROR_WORDS, onRetryPeople: () => {} });
+    assert.match(html, /The brand team can&#x27;t be shown right now/);
+    assert.match(html, />Try again</);
+    assert.doesNotMatch(PEOPLE_ERROR_WORDS + INBOX_ERROR_WORDS, /function|schema|public\.|rpc/i);
+    const panel = code("components/community/BrandGroupsPanel.jsx");
+    assert.match(panel, /setPeople\(\{ conversationId: selectedId, rows: \[\], error: PEOPLE_ERROR_WORDS \}\)/);
+    assert.match(panel, /description: INBOX_ERROR_WORDS/);
+    assert.doesNotMatch(panel.slice(panel.indexOf("listBrandGroupPeople(selectedId)"), panel.indexOf("}, [selectedId, peopleTick]);")), /cause\?\.message \|\| ""/);
+    assert.match(panel, /setInboxStatus\(\(prev\) => \(prev === "ready" \? "ready" : "error"\)\)/);
+  });
+
+  it("D-8 tapping the group selected by default opens it on a phone; the open thread is the only no-op", () => {
+    assert.equal(openGroupStep("c1", { selectedId: "c1", viewGroup: "", sideOpen: false }), "open", "first load: c1 is selected but no thread is showing");
+    assert.equal(openGroupStep("c1", { selectedId: "c1", viewGroup: "c1", sideOpen: false }), "none");
+    assert.equal(openGroupStep("c1", { selectedId: "c1", viewGroup: "c1", sideOpen: true }), "open", "with the panel open, tapping closes it");
+    assert.equal(openGroupStep("c2", { selectedId: "c1", viewGroup: "c1", sideOpen: false }), "open");
+    assert.equal(openGroupStep("", { selectedId: "c1", viewGroup: "c1", sideOpen: false }), "none");
+    assert.match(code("components/community/BrandGroupsPanel.jsx"), /if \(openGroupStep\(conversationId, \{ selectedId, viewGroup: view\.group, sideOpen: !!view\.side \}\) === "none"\) return;/);
+  });
+
+  it("D-9 Assign to me keeps an owner added since the page loaded; a failed read writes nothing", async () => {
+    const writes = [];
+    const api = {
+      getRecord: async () => ({ record: { owners: ["kim@mingla.example", "ada@mingla.example"] } }),
+      setOwners: async (id, emails) => { writes.push([id, emails]); return { ok: true }; },
+    };
+    const stale = { record_id: U2, owners: [{ email: "ada@mingla.example", name: "Ada" }] }; // Kim was added after this page loaded
+    await harness.assignHostToMe(stale, "Seth@Mingla.example", api);
+    assert.deepEqual(writes, [[U2, ["ada@mingla.example", "kim@mingla.example", "seth@mingla.example"]]]);
+    const failing = { getRecord: async () => { throw new Error("offline"); }, setOwners: async () => { writes.push("wrote"); } };
+    await assert.rejects(harness.assignHostToMe(stale, "seth@mingla.example", failing), /offline/);
+    const shapeless = { getRecord: async () => ({ record: {} }), setOwners: async () => { writes.push("wrote"); } };
+    await assert.rejects(harness.assignHostToMe(stale, "seth@mingla.example", shapeless), /nothing was changed/);
+    assert.equal(writes.length, 1, "no write after a failed or shapeless read");
+  });
+
+  it("D-10 at 375 px the header's actions take their own line and wrap (nothing clipped)", () => {
+    const g = { conversation_id: "c1", brand_name: "Harmattan Club", member_count: 2, unread_count: 0, muted: false };
+    const html = harness.header({ group: g, host: null, canHosts: false, people: [], online: true, onRailButton: () => {}, railButtonLabel: "Plan and host" });
+    const actions = /<div data-header-actions="" class="([^"]*)"/.exec(html)?.[1] || "";
+    assert.ok(actions, "the actions group is marked");
+    const classes = actions.split(/\s+/);
+    assert.ok(classes.includes("basis-full") && classes.includes("flex-wrap") && classes.includes("min-w-0"), actions);
+    assert.ok(!classes.includes("shrink-0"), "no unprefixed shrink-0: below sm the group may narrow and wrap");
+    assert.ok(classes.includes("sm:shrink-0") && classes.includes("sm:basis-auto"), "from sm up it sits beside the name as before");
+  });
+
+  it("D-11 picking a rail tab drops a used prefill; D-12 Esc in the composer lets go first; D-13 focus refresh is throttled", () => {
+    const panel = code("components/community/BrandGroupsPanel.jsx");
+    assert.match(panel, /const pickRailTab = \(tab\) => \{ setPlanPrefill\(null\); setWorkPrefill\(null\); setRailTab\(tab\); \};/);
+    assert.match(panel, /onTab=\{pickRailTab\}/);
+    const esc = panel.slice(panel.indexOf("const onKeyDown = (e) => {"), panel.indexOf('document.addEventListener("keydown", onKeyDown)'));
+    assert.doesNotMatch(esc, /if \(!panel \|\| !panel\.contains\(active\)\) return;/, "a field outside the panel (the composer) is not ignored");
+    assert.ok(esc.indexOf("active.blur();") > -1 && esc.indexOf("active.blur();") < esc.indexOf("return;\n      }"), "the field lets go and this Esc stops there");
+    assert.equal(focusRefreshDue(0, NOW), true);
+    assert.equal(focusRefreshDue(NOW - 59_999, NOW), false);
+    assert.equal(focusRefreshDue(NOW - 60_000, NOW), true);
+    assert.equal(focusRefreshDue("x", NOW), true);
+    assert.match(panel, /const onFocus = \(\) => \{ if \(focusRefreshDue\(lastFullRead\.current\)\) void loadInbox\(\); \};/);
+    assert.match(panel, /if \(withPlan\) lastFullRead\.current = Date\.now\(\);/);
+  });
+
+  it("D-4 one name helper: an address never shows; the People row's name, else 'A teammate'", () => {
+    assert.equal(personName("Ada Obi"), "Ada Obi");
+    assert.equal(personName("ada@club.example"), "A teammate");
+    assert.equal(personName("ada@club.example", "Ada Obi"), "Ada Obi");
+    assert.equal(personName("  ", null, "kim@x.example"), "A teammate");
+    assert.equal(previewWords({ last_message_preview: "hi", last_message_sender_id: U1, last_message_sender_name: "ada@club.example" }, U2), "A teammate: hi");
+    assert.equal(seenByWords([{ user_id: U1, display_name: "kim@club.example", last_read_at: ago(0) }], { created_at: ago(MIN) }, (id) => (id === U1 ? "Kim Obi" : null)), "Seen by Kim");
+    assert.equal(typingWords(["kim@club.example"]), "A teammate is typing…");
+    const html = harness.thread({ group: { brand_name: "Harmattan Club" }, entries: [{ type: "message", key: "m1", message: text("m1", U1, "hello", ago(MIN), { sender_display_name: "ada@club.example" }) }], myUserId: U2, reactions: new Map(), nameFor: (id) => (id === U1 ? "Ada Obi" : null) });
+    assert.match(html, /Ada Obi/);
+    assert.doesNotMatch(html, /@club\.example/);
+    const people = harness.rail({ group: { conversation_id: "c1", brand_name: "H", member_count: 1 }, tab: "people", canHosts: false, people: [{ user_id: U1, display_name: "ada@club.example", role: "brand_owner" }] });
+    assert.doesNotMatch(people, /@club\.example/);
+  });
+
+  it("D-1 a link to another page: opens beside when it can, plain words otherwise, the plain link elsewhere", () => {
+    const opener = Object.assign(() => {}, { allows: (kind) => kind === "brand" });
+    assert.equal(harness.pageLink({ href: "#/people", children: "Ada" }), '<a href="#/people" class="">Ada</a>', "no opener: unchanged");
+    assert.equal(harness.pageLink({ href: "#/people", onOpenSide: opener, textClassName: "t", children: "Ada" }), '<span data-page-link-text="" class="t">Ada</span>');
+    assert.equal(harness.pageLink({ href: "#/brands?tab=claims", onOpenSide: opener, hide: true, children: "Review the claim" }), "");
+    assert.match(harness.pageLink({ href: "#/brands", side: { kind: "brand", id: U1 }, onOpenSide: opener, children: "H" }), new RegExp(`<button type="button" data-side-link="brand:${U1}"`));
+    assert.doesNotMatch(harness.pageLink({ href: "#/brands", side: { kind: "host", id: U1 }, onOpenSide: opener, children: "H" }), /<button|href=/, "a kind this teammate cannot open is words, not a dead button");
+    const read = { data: { brand: { id: U1, name: "Harmattan Club", slug: "harmattan" }, team: { owners: [], brand_members: [] } } };
+    const inPanel = harness.team({ record: { id: U2 }, read, onOpenSide: opener });
+    assert.doesNotMatch(inPanel, /href="#\//, "inside the Brand group panel nothing links to another page");
+    assert.doesNotMatch(inPanel, /Open Brand group/);
+    assert.match(inPanel, new RegExp(`data-side-link="brand:${U1}"`));
+    const outside = harness.team({ record: { id: U2 }, read });
+    assert.match(outside, /href="#\/community\?tab=brand-groups&amp;brand=/, "elsewhere Open Brand group is as before");
+    assert.match(outside, new RegExp(`href="#/brands\\?brandId=${U1}"`));
+  });
+
+  it("D-1 every drawer the panel can show gets the opener, and the record's toast stays on the page", () => {
+    const side = code("components/community/BrandGroupSidePanel.jsx");
+    assert.match(side, /<SidePanel side=\{side\} onClose=\{onClose\} onChanged=\{onChanged\} onOpenSide=\{onOpenSide\} \/>/);
+    assert.match(code("components/community/BrandGroupsPanel.jsx"), /onOpenSide=\{openSideInPanel\}/);
+    const sp = code("components/panels/SidePanel.jsx");
+    for (const re of [/<WorkDetail [^>]*onOpenSide=\{onOpenSide\}/, /onOpenSide=\{onOpenSide\}\s*\/>\s*\{reasonFor/, /<DraftsPage [^>]*onOpenSide=\{onOpenSide\}/, /<BrandDrawer [^>]*onOpenSide=\{onOpenSide\}/]) assert.match(sp, re);
+    const rd = code("components/crm/RecordDrawer.jsx");
+    const toast = rd.slice(rd.indexOf('label: "Open the card"'), rd.indexOf('label: "Open the card"') + 400);
+    assert.match(toast, /if \(typeof onOpenSide === "function"\) onOpenSide\(pipeline === "creators" \? "creator" : "host", recordId\);\s*else window\.location\.hash/);
+    assert.match(rd, /<HostTeamSection record=\{record\} read=\{hostRead\} onOpenSide=\{onOpenSide\} \/>/);
+    assert.match(code("components/ops/CardPersonPanels.jsx"), /<WordingCard card=\{wording\}[^\n]*onOpenSide=\{onOpenSide\} \/>/);
   });
 });

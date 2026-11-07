@@ -19,8 +19,10 @@ export function useBrandGroupPlanItems(recordId, { brandName = "", lines = [] } 
   useEffect(() => { linesRef.current = lines; });
 
   const load = useCallback(async () => {
-    if (!recordId) { setItems([]); setPlan(null); return; }
+    // #4270 W7 rework (D-5): every load takes a ticket first, so an answer for
+    // the previous group's host card is dropped even when this group has none.
     const mine = ++seq.current;
+    if (!recordId) { setItems([]); setPlan(null); return; }
     const today = todayIso();
     const seen = (Array.isArray(linesRef.current) ? linesRef.current : []).map((line) => line?.id).filter(Boolean);
     try {
