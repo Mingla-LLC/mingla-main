@@ -35,6 +35,9 @@
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
     { "source": "/accept-brand-invitation", "destination": "/accept-brand-invitation-entry" },
+    { "source": "/gfonts/css2", "destination": "https://fonts.googleapis.com/css2" },
+    { "source": "/gfonts/s/:path*", "destination": "https://fonts.gstatic.com/s/:path*" },
+    { "source": "/gfonts/l/:path*", "destination": "https://fonts.gstatic.com/l/:path*" },
     { "source": "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)", "destination": "/" }
   ],
   "headers": [
@@ -42,6 +45,12 @@
       "source": "/",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/gfonts/s/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {

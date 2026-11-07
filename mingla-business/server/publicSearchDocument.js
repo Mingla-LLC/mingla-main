@@ -429,7 +429,7 @@ const publicDocumentCspSources = () => [
   ["img-src", "https:", "cover, gallery and avatar images from public hosts; pixel images (unchanged)"],
   ["img-src", "data:", "inline images (unchanged)"],
   ["style-src", "'unsafe-inline'", "the document's own <style>, react-native-web and index.html styles injected at takeover (unchanged)"],
-  ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets"],
+  ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets, and a host's Google Fonts theme font through the same-origin /gfonts proxy"],
   ["media-src", "'self'", "the app's own bundled media"],
   ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
   ["media-src", BAMBOO_GUIDES_ORIGIN, "Host Guide HLS manifests and video segments (Bamboo Video)"],
@@ -450,7 +450,7 @@ const publicDocumentCspSources = () => [
   ["script-src", "https://sc-static.net", "Snap pixel script (scevent.min.js)"],
   ["script-src", "https://tr.snapchat.com", "Snap pixel configuration"],
   ["script-src", "https://www.redditstatic.com", "Reddit pixel"],
-  ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics"],
+  ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics, /gfonts theme-font CSS"],
   ["connect-src", supabaseOrigin(), "every public page's data, RPCs and edge functions"],
   ["connect-src", MINGLA_MARKETING_ORIGIN, "Host Guide caption sidecars under /help/captions/*.vtt"],
   // Conditional-spread like the Sentry row: a malformed SUPABASE_URL must add
