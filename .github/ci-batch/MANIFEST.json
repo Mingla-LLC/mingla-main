@@ -17770,6 +17770,7 @@
         "supabase/migrations/20280406004275_issue_4275_signal_rank_batch.sql",
         "supabase/migrations/20280406014275_issue_4275_cron_stagger.sql",
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
+        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
         "supabase/migrations/20280410004276_issue_4276_drift_modes_and_rescore_queue.sql",
         "supabase/migrations/20280410014276_issue_4276_place_merge_and_review_state.sql",
         "supabase/migrations/20280410024276_issue_4276_tile_completeness.sql",
@@ -19492,6 +19493,7 @@
         "supabase/migrations/20280406004275_issue_4275_signal_rank_batch.sql",
         "supabase/migrations/20280406014275_issue_4275_cron_stagger.sql",
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
+        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
         "supabase/migrations/20280410004276_issue_4276_drift_modes_and_rescore_queue.sql",
         "supabase/migrations/20280410014276_issue_4276_place_merge_and_review_state.sql",
         "supabase/migrations/20280410024276_issue_4276_tile_completeness.sql",
@@ -24470,6 +24472,7 @@
         "supabase/migrations/20280406004275_issue_4275_signal_rank_batch.sql",
         "supabase/migrations/20280406014275_issue_4275_cron_stagger.sql",
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
+        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
         "supabase/migrations/20280410004276_issue_4276_drift_modes_and_rescore_queue.sql",
         "supabase/migrations/20280410014276_issue_4276_place_merge_and_review_state.sql",
         "supabase/migrations/20280410024276_issue_4276_tile_completeness.sql",
@@ -53056,5 +53059,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "6d29b09f6604314fc99fad9f517ac28046e932c6c8bd9e298731229080178be5"
+  "phase3eContractSha256": "ba1d333539e988949c286a03bc7cff601b550d92a494075cc5a0ecabe3bc9177"
 }

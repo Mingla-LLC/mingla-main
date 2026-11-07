@@ -6,7 +6,8 @@ import { OfflineBanner } from "./OverviewSection";
 import { Banner, Card, CardTitle, CheckCircle, Chip, Hint, ListBox, Row, SectionHead, Spinner, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
-import { useDesignChecks, useDraftChanges, useWorkLog, type DesignCheck, type WorkLogEntry } from "../../../../sites/contentApi";
+import { useDesignChecks, useDraftChanges, useSitePages, useWorkLog, type DesignCheck, type WorkLogEntry } from "../../../../sites/contentApi";
+import { publishFindings, publishFindingsCount, type PublishFinding } from "../../../../../../packages/site-contracts/src/publishChecks.ts";
 import { BrandSitesError, SITES_ERROR_MESSAGES } from "../../../../services/brandSitesService";
 import { formatWebsiteDateTime } from "../../../../sites/websiteCopy";
 import { publicationReceiptLine } from "../../../../sites/publicationFlow";
@@ -92,11 +93,26 @@ export function PublishSection({ variant, onFix }: {
   const firstPublish = site.last_successful_publication_id === null;
   const checksRan = designChecks.data !== undefined && !designChecks.isFetching;
   const readyToPublish = validation.data !== undefined && blocker === null && (!firstPublish || checksRan);
+  // #2830 — a finding names a page; Fix opens that page in the editor.
+  const setupPages = useSitePages(site.id, variant === "setup");
 
   if (variant === "setup") {
-    const toFix = (designChecks.data?.checks ?? []).filter((check) => check.status === "warn");
+    // #2830 — the same list, count and sentences Ari gives (publishFindings).
+    // Every design check is a warning: only a failed validation blocks.
+    const findings = publishFindings(designChecks.data?.checks);
     const host = site.brand_site_hosts.find((entry) => entry.is_primary)?.hostname ?? null;
-    const problems = toFix.length + (blocker ? 1 : 0);
+    const problems = blocker ? 1 : 0;
+    const fixFinding = (finding: PublishFinding) => {
+      const page = finding.pagePath === null ? undefined : (setupPages.data?.pages ?? []).find((row) => row.path === finding.pagePath);
+      if (page) {
+        controller.actions.openStudio(page.id);
+        return;
+      }
+      const section = (WEBSITE_SECTIONS as readonly string[]).includes(finding.section ?? "")
+        ? finding.section as WebsiteSection
+        : CHECK_COPY[finding.check as DesignCheck["key"]]?.section ?? "pages";
+      onFix?.(section);
+    };
     return (
       <View testID="website-publish-setup" style={styles.setupHost}>
         <CardTitle>Ready to publish?</CardTitle>
@@ -124,16 +140,16 @@ export function PublishSection({ variant, onFix }: {
             <WButton label="Fix" size="sm" variant="ghost" onPress={() => onFix?.("pages")} testID="setup-fix-blocker" />
           </View>
         ) : null}
-        {toFix.map((check) => {
-          const copy = CHECK_COPY[check.key];
-          return (
-            <View key={check.key} style={styles.setupRow} testID={`setup-check-${check.key}`}>
-              <CheckCircle state="warn" />
-              <Text style={[styles.setupRowText, styles.grow]}>{copy.warn(check.items.length)}</Text>
-              <WButton label="Fix" size="sm" variant="ghost" onPress={() => onFix?.(copy.section)} testID={`setup-fix-${check.key}`} />
-            </View>
-          );
-        })}
+        {findings.length > 0 ? (
+          <Text style={styles.setupRowText} testID="setup-findings-count">{`${publishFindingsCount(findings.length)}. None of them stops you publishing.`}</Text>
+        ) : null}
+        {findings.map((finding, index) => (
+          <View key={`${finding.check}-${index}`} style={styles.setupRow} testID={`setup-check-${finding.check}-${index}`}>
+            <CheckCircle state="warn" />
+            <Text style={[styles.setupRowText, styles.grow]}>{finding.message}</Text>
+            <WButton label="Fix" size="sm" variant="ghost" onPress={() => fixFinding(finding)} testID={`setup-fix-${finding.check}-${index}`} />
+          </View>
+        ))}
         {designChecks.isError ? (
           <View style={styles.setupRow}>
             <CheckCircle state="warn" />

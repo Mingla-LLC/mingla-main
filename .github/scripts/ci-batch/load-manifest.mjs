@@ -167,8 +167,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4271: register the Apple build PostgreSQL proof the same way.
 // #4271: register the final tester PostgreSQL proof the same way.
 // #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
+// #3645: register the stay flat-net migration the same way.
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
-export const BOOTSTRAP_SHA256 = "62e88ffa0c39605fdc44a2979fa01cbed551147d3574508b7f2e8ad16f4fc42e";
+export const BOOTSTRAP_SHA256 = "c03fddece6411e699705376d5fb58003af49496abeb865bde6504e68c21a4b30";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
