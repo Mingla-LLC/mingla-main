@@ -254,6 +254,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const { t } = useBusinessMediaTranslation();
   const { isWideDesktop, width: layoutWidth } = useResponsiveLayout();
   const showRail = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
+  // #4304 — on a phone, Plan and Media in the header are icon-only so the
+  // group's name keeps its room (both carry an accessibility label).
+  const compactHeaderButtons = !showRail && (layoutWidth ?? 0) < 520;
   const { isAuthReady, user } = useAuth();
   const staff = useSupportStaff();
   const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
@@ -821,7 +824,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             testID="brand-plan-pill"
           >
             <Icon name="calendar" size={16} color={brandGroupChat.textPrimary} />
-            <Text style={styles.mediaButtonText}>{t("plan.pill")}</Text>
+            {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("plan.pill")}</Text>}
           </Pressable>
         ) : null}
         <Pressable
@@ -833,7 +836,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           style={[styles.mediaButton, showRail && detailTab === "media" && styles.mediaButtonActive]}
         >
           <Icon name="grid" size={16} color={brandGroupChat.textPrimary} />
-          <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>
+          {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>}
         </Pressable>
         <Pressable
           accessibilityRole="button"
