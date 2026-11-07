@@ -27,6 +27,7 @@ import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupS
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
+import { BrandGroupPendingUploadRow } from "../../src/components/messages/BrandGroupPendingUploadRow";
 import { BrandGroupPeoplePanel, BrandGroupPeopleSheet, memberRoleLabel } from "../../src/components/messages/BrandGroupPeoplePanel";
 import { BrandEnquiryCard } from "../../src/components/messages/BrandEnquiryCard";
 import { BrandGroupInboxList } from "../../src/components/messages/BrandGroupInboxList";
@@ -42,6 +43,7 @@ import { accent, spacing } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { useBrandGroupLive } from "../../src/hooks/useBrandGroupLive";
+import { useBrandGroupUploadQueue } from "../../src/hooks/useBrandGroupUploadQueue";
 import { brandGroupMediaKeys } from "../../src/hooks/brandGroupMediaKeys";
 import { brandEnquiryKeys } from "../../src/hooks/useBrandEnquiries";
 import { findBrandEnquiryIdForConversation } from "../../src/services/brandEnquiryList";
@@ -73,6 +75,7 @@ import {
   type SelectedBrandGroupMention,
 } from "../../src/utils/brandGroupMentions";
 import { isNearLatestBrandGroupMessage } from "../../src/utils/brandGroupScroll";
+import { visibleBrandGroupPendingUploads } from "../../src/utils/brandGroupPendingUploads";
 import {
   BRAND_GROUP_HEART,
   brandGroupHeaderSubtitle,
@@ -431,6 +434,19 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     setLoading(true);
     void refresh();
   }, [refresh]);
+
+  // #4304 — the sender's own files show in the thread while they send; the
+  // server message replaces each one in the same render (no duplicate).
+  const uploadQueue = useBrandGroupUploadQueue({ messages, onUploaded: refresh });
+  const pendingUploads = useMemo(
+    () => visibleBrandGroupPendingUploads(uploadQueue.uploads, messages),
+    [messages, uploadQueue.uploads],
+  );
+  const enqueueUploads = uploadQueue.enqueue;
+  const queueUploads = useCallback((prepared: Parameters<typeof enqueueUploads>[0]) => {
+    autoFollowLatest.current = true;
+    void enqueueUploads(prepared);
+  }, [enqueueUploads]);
 
   useEffect(() => {
     autoFollowLatest.current = requestedFocusMessageId === null;
@@ -815,7 +831,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           scrollEventThrottle={16}
           testID="brand-group-message-scroll"
         >
-          {messages.length === 0 ? (
+          {messages.length === 0 && pendingUploads.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : threadItems.map((item) => {
             if (item.kind === "day") {
@@ -894,6 +910,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
               </View>
             );
           })}
+          {pendingUploads.map((upload) => (
+            <BrandGroupPendingUploadRow key={`pending-${upload.fileId}`} upload={upload} onRetry={uploadQueue.retry} onDismiss={uploadQueue.dismiss} />
+          ))}
         </ScrollView>
       )}
 
@@ -1119,7 +1138,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           conversationId={conversationId}
           actorMode={actorMode}
           onClose={() => setFilePickerVisible(false)}
-          onUploaded={refresh}
+          onQueued={queueUploads}
         />
       ) : null}
       {filePreview}

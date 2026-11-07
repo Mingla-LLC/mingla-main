@@ -35,6 +35,7 @@ import { useAriSeedStore } from "../store/ariSeedStore";
 import { clearBrandPhoneSessionCountries } from "./brandPhoneSessionCountries";
 import { clearDraftServerCurrencies } from "./draftServerCurrency";
 import { clearAllPricesClearedNotes } from "./draftPricesClearedNote";
+import { clearBrandGroupImageCaches } from "./brandGroupImageCache";
 import { runSignOutCleanups } from "./signOutCleanups";
 
 export const clearAllStores = (): void => {
@@ -63,4 +64,9 @@ export const clearAllStores = (): void => {
   // #4114 — lazily loaded modules (the event chat's signed media links) clear
   // through their registered cleanups.
   runSignOutCleanups();
+  // #4304 — Brand-group photos are cached on disk by expo-image on phones;
+  // a shared phone must never show the previous account's media.
+  void clearBrandGroupImageCaches().catch((error: unknown) => {
+    console.warn("[clearAllStores] Brand-group image cache clear failed", error);
+  });
 };
