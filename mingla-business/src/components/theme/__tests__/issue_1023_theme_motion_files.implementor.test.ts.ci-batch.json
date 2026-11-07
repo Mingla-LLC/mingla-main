@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#1023",
+  "suite": {
+    "id": "issue-1023-theme-entrance-motion",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/jest.config.cjs",
+      "packages/offering-rendering/**",
+      "packages/theme-animations/**"
+    ],
+    "steps": [
+      {
+        "name": "Theme entrance motion contracts",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/theme/__tests__/jest.issue1023.cjs --runInBand",
+        "commandId": "assert:issue-1023-theme-entrance-motion:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/theme/__tests__/jest.issue1023.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#1023",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_motion_files.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_native.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_web.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/jest.issue1023.cjs"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 120,
+      "p95": 180,
+      "evidence": "Local targeted run 2026-11-07 (--maxWorkers=2, cold ts-jest cache)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 420
+  }
+}
