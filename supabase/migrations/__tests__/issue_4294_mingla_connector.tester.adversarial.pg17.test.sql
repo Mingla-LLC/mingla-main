@@ -290,7 +290,7 @@ begin
       ('code', 'http://LOCALHOST:5000/callback'),
       ('code', 'https://localhost:5000/callback'),
       ('code', 'http://user@localhost:5000/callback'),
-      ('code', 'http://localhost:5000@evil.com/callback'),
+      ('code', 'http://localhost:5000' || chr(64) || 'evil.com/callback'),
       ('code', 'http://127.1:5000/callback'),
       ('code', 'http://0x7f.0.0.1:5000/callback'),
       ('code', 'http://localhost:5000'),
