@@ -4,9 +4,9 @@
 -- Migration 20280428003645_issue_3645_sell_publish_integrity.sql.
 -- Run after the full migration chain on PostgreSQL 17. Everything rolls back.
 --
--- MINGLA-INVARIANT: I-3645-PAID-TICKET-HAS-A-PRICE — business_publish_event_draft and issue_1974_normalize_ticket_tiers refuse a paid ticket whose price is missing or rounds to 0 (paid_ticket_price_required); a live paid whole-price experience cannot be edited to 0 (experience_price_invalid).
--- MINGLA-INVARIANT: I-3645-EXPERIENCE-PUBLISH-ONE-UPDATE — biz_publish_experience moves an experience out of draft in the same UPDATE that writes its currency, and its tickets carry the currency the row ends up with.
--- MINGLA-INVARIANT: I-3281-CANCELLED-DATE-NOT-SOLD — cancelling a date revokes open checkouts on the event; a cancelled date is never authorised, checked out, counted as upcoming or auto-picked.
+-- MINGLA-INVARIANT: I-3645-PAID-TICKET-HAS-A-PRICE | issue #3645 | business_publish_event_draft and issue_1974_normalize_ticket_tiers refuse a paid ticket whose price is missing or rounds to 0 (paid_ticket_price_required); a live paid whole-price experience cannot be edited to 0 (experience_price_invalid).
+-- MINGLA-INVARIANT: I-3645-EXPERIENCE-PUBLISH-ONE-UPDATE | issue #3645 | biz_publish_experience publishes an experience in the same UPDATE that writes its currency, and its tickets carry the currency the row ends up with.
+-- MINGLA-INVARIANT: I-3281-CANCELLED-DATE-NOT-SOLD | issue #3281 | cancelling a date revokes open checkouts on the event; a cancelled date is never authorised, checked out, counted as upcoming or auto-picked.
 --
 -- Red before green: on main's bodies, T1, T2, T3, T4, T6, T7, T8 and T9 fail.
 
