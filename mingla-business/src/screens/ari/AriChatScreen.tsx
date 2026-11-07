@@ -541,15 +541,23 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const confirm = useConfirmPendingAction(chat.conversationId);
 
   // #4304 — Home's "Ask Ari to do something…" hands its text over in memory.
-  // It lands in the composer once; sending stays the host's tap.
+  // A request from Home is a new ask, so it opens a NEW conversation rather
+  // than landing in whatever thread was open last. It waits until the last
+  // thread has been restored (otherwise the restore would pull the old thread
+  // back over the new one), then clears the selection — which is also saved,
+  // so a later restore keeps the new chat. The text lands in the composer
+  // once; sending stays the host's tap.
   const ariSeed = useAriSeedStore((state) => state.seed);
+  const conversationRestored =
+    conversationScopeKey !== null && restoredConversationScope === conversationScopeKey;
   React.useEffect(() => {
-    if (ariSeed === null) return;
+    if (ariSeed === null || !conversationRestored) return;
     const seed = useAriSeedStore.getState().takeSeed();
     if (seed === null) return;
+    chat.setConversationId(null);
     setDraftText(seed);
     requestAnimationFrame(() => composerInputRef.current?.focus());
-  }, [ariSeed]);
+  }, [ariSeed, chat.setConversationId, conversationRestored]);
 
   // #4304 — State A's opening words come back in State B's composer, so the
   // first draft is made from what the host already said.
@@ -1503,6 +1511,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 disabled={firstRunChipsDisabled}
               />
             ) : (
+              <>
               <View
                 style={[
                   styles.firstRunOverlay,
@@ -1526,6 +1535,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   />
                 </View>
               </View>
+              {/* The greeting is an absolute overlay, so the column needs this
+                  spacer (as the plain empty state has) to keep the composer at
+                  the bottom; without it the composer rose to the top bar. */}
+              <View style={styles.flexSpacer} pointerEvents="none" testID="ari-first-run-spacer" />
+              </>
             )
           ) : noMessages ? (
             <>

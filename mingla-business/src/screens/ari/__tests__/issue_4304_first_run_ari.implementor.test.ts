@@ -32,6 +32,8 @@ scope.__ISSUE_4304__ = scope.__ISSUE_4304__ ?? {
 const STATE = scope.__ISSUE_4304__ as {
   brand: null | { id: string; displayName: string };
   sendMessage: jest.Mock | null;
+  setConversationId: jest.Mock;
+  conversations?: unknown[];
 };
 
 jest.mock("../../../wrappers/useKeyboardHeight", () => ({
@@ -161,7 +163,12 @@ jest.mock("../../../hooks/useAriPreferences", () => ({
   }),
 }));
 jest.mock("../../../hooks/useConversationList", () => ({
-  useConversationList: () => ({ conversations: [], isLoading: false, isError: false, refetch: jest.fn() }),
+  useConversationList: () => ({
+    conversations: ((globalThis as unknown as Scope).__ISSUE_4304__ as { conversations?: unknown[] }).conversations ?? [],
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  }),
 }));
 jest.mock("../../../hooks/useConfirmPendingAction", () => ({
   useConfirmPendingAction: () => ({
@@ -182,7 +189,7 @@ jest.mock("../../../hooks/useAgentChat", () => ({
       pendingAction: null,
       clearPendingAction: jest.fn(),
       conversationId: null,
-      setConversationId: jest.fn(),
+      setConversationId: s.setConversationId,
       brandId: null,
       errorMessage: null,
       clearErrorMessage: jest.fn(),
@@ -297,6 +304,8 @@ async function mount(stage: string): Promise<{ root: HostNode; unmount: () => vo
 }
 
 beforeEach(() => {
+  STATE.setConversationId = jest.fn();
+  STATE.conversations = [];
   STATE.brand = null;
   STATE.sendMessage = jest.fn(async () => ({ kind: "text", text: "ok" }));
   useFirstRunStore.getState().reset();
@@ -365,5 +374,50 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     expect(byTestId(tree.root, "ari-first-run-greeting")).toBeUndefined();
     expect(byTestId(tree.root, "ari-first-run-topbar")).toBeUndefined();
     tree.unmount();
+  });
+
+  it("State B on a phone keeps the composer at the bottom (spacer after the greeting overlay)", async () => {
+    // Smoke test 2026-11-07, 375px web: without the spacer the composer rose
+    // under the top bar and the greeting floated below it.
+    STATE.brand = { id: "brand-4304", displayName: "Wythe Hospitality" };
+    const tree = await mount("empty_brand");
+    expect(byTestId(tree.root, "ari-first-run-spacer")).toBeDefined();
+    tree.unmount();
+  });
+
+  it("text from Home's Ask Ari opens a NEW conversation instead of the last one", async () => {
+    // Smoke test 2026-11-07: typing on Home landed in the old WYTHE20 thread.
+    const { useAriSeedStore } = require("../../../store/ariSeedStore") as {
+      useAriSeedStore: { getState: () => { setSeed: (t: string | null) => void; seed: string | null } };
+    };
+    STATE.brand = { id: "brand-4304", displayName: "Wythe Hospitality" };
+    // The host's last thread with this brand — Ari would normally reopen it.
+    STATE.conversations = [{ id: "conv-old-wythe20", brand_id: "brand-4304", title: "WYTHE20", updated_at: "2026-11-06T17:19:00Z" }];
+    useAriSeedStore.getState().setSeed("Make a 10% code for Wythe Weekender");
+    const tree = await mount("pending");
+    expect(STATE.setConversationId).toHaveBeenCalledWith("conv-old-wythe20");
+    expect(STATE.setConversationId).toHaveBeenLastCalledWith(null);
+    expect(useAriSeedStore.getState().seed).toBeNull();
+    tree.unmount();
+  });
+
+  it("Home's Ask Ari field wears the same animated Ari orb as the Ari screen", async () => {
+    const { HomeAskAri } = require("../../../components/home/HomeAskAri") as {
+      HomeAskAri: React.ComponentType<{ onAskAri: (t: string) => void }>;
+    };
+    const { AriOrb } = require("../../../components/ari/AriOrb") as { AriOrb: unknown };
+    let tree: { root: HostNode & { findAllByType?: unknown }; unmount: () => void } | null = null;
+    await TR.act(async () => {
+      tree = TR.create(R.createElement(HomeAskAri, { onAskAri: jest.fn() })) as never;
+    });
+    for (let i = 0; i < 5; i += 1) {
+      await TR.act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    const orbHost = byTestId(tree!.root, "home-ask-ari-orb");
+    expect(orbHost).toBeDefined();
+    expect(all(tree!.root).some((node) => node.type === AriOrb)).toBe(true);
+    tree!.unmount();
   });
 });

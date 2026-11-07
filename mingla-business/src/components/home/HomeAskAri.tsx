@@ -11,17 +11,49 @@
  * is `HomeDraftLead` (no input), which does scroll.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
   accent,
-  ariPalette,
   radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+
+/** The orb at rest: AriOrb's own "sm" geometry and colours (24px, 3px halo),
+ *  drawn without animation. Shown while the animated orb loads, and wherever
+ *  the animation runtime is unavailable (Home's render suites). */
+function StaticAriMark(): React.ReactElement {
+  return (
+    <View style={mark.host} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={mark.outer} />
+      <View style={mark.middle} />
+      <View style={mark.core} />
+    </View>
+  );
+}
+
+type AriOrbComponent = typeof import("../ari/AriOrb").AriOrb;
+
+/** #4304 — the same animated three-ring orb as Ari's own screen, loaded after
+ *  first paint so reanimated stays out of Home's boot path. Until then — or
+ *  wherever its runtime cannot load (Home's render suites) — the still mark,
+ *  identical at rest, stays. */
+function HomeAriOrb(): React.ReactElement {
+  const [Orb, setOrb] = useState<AriOrbComponent | null>(null);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require("../ari/AriOrb") as typeof import("../ari/AriOrb");
+      setOrb(() => mod.AriOrb);
+    } catch {
+      // Keep the still mark.
+    }
+  }, []);
+  return Orb ? <Orb size="sm" decorative /> : <StaticAriMark />;
+}
 
 export interface HomeAskAriProps {
   onAskAri: (text: string) => void;
@@ -41,9 +73,11 @@ export function HomeAskAri({
   return (
     <View style={styles.host} testID={testID}>
       <View style={styles.askRow}>
-        {/* A still Ari mark: the animated orb would put reanimated in Home's
-            boot path and its render suites for a 22px decoration. */}
-        <View style={styles.mark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+        {/* #4304 — the same three-ring orb as Ari's own screen, so the field
+            reads as Ari rather than a generic search box. */}
+        <View style={styles.mark} testID="home-ask-ari-orb">
+          <HomeAriOrb />
+        </View>
         <TextInput
           value={text}
           onChangeText={setText}
@@ -89,12 +123,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   mark: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: ariPalette.flame,
-    borderWidth: 2,
-    borderColor: ariPalette.gold,
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   askInput: {
     flex: 1,
@@ -118,4 +150,37 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   pressed: { opacity: 0.72 },
+});
+
+const ORB = 24;
+const HALO = 3;
+const mark = StyleSheet.create({
+  host: { width: ORB, height: ORB, alignItems: "center", justifyContent: "center" },
+  outer: {
+    position: "absolute",
+    top: -HALO,
+    left: -HALO,
+    width: ORB + HALO * 2,
+    height: ORB + HALO * 2,
+    borderRadius: (ORB + HALO * 2) / 2,
+    borderWidth: 1.5,
+    borderColor: "#f07a3d",
+  },
+  middle: {
+    position: "absolute",
+    width: ORB,
+    height: ORB,
+    borderRadius: ORB / 2,
+    borderWidth: 2,
+    borderColor: "#f07a3d",
+  },
+  core: {
+    position: "absolute",
+    width: ORB * 0.46,
+    height: ORB * 0.46,
+    borderRadius: ORB * 0.23,
+    borderWidth: 1,
+    borderColor: "#ffb07c",
+    backgroundColor: "#f07a3d",
+  },
 });

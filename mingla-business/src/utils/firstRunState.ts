@@ -219,7 +219,7 @@ export function firstRunGreeting(args: {
   return {
     headline: `${brand} is set up. What are you hosting first?`,
     body: "Tell me the idea in a sentence. I'll draft it, and you check it before anything goes public.",
-    placeholder: "e.g. Rooftop party, Sat 15 Nov, $30",
+    placeholder: "e.g. Rooftop party, 15 Nov",
     chips: emptyBrandChips(args.remembered),
   };
 }
