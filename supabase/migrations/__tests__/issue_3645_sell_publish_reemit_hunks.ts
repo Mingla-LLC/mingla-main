@@ -110,6 +110,11 @@ export const SELL_PUBLISH_REEMITS: Reemit[] = [
         old: "                 WHERE d.id=i.event_date_id AND d.event_id=p_event_id\n                   AND d.end_at > now())) THEN RETURN false; END IF;\n",
         new: "                 WHERE d.id=i.event_date_id AND d.event_id=p_event_id\n                   AND d.end_at > now() AND d.status = 'active')) THEN RETURN false; END IF;  -- issue #3281\n",
       },
+      {
+        name: "a dateless checkout is not authorised once every upcoming date is cancelled",
+        old: "  RETURN true;\nEND $function$",
+        new: "  -- issue #3281: a checkout with no date of its own (a single-date event,\n  -- or one opened before a cancel) cannot complete once every upcoming date\n  -- of the event is cancelled.\n  IF NOT EXISTS(SELECT 1 FROM public.ticket_checkout_session_event_dates i\n                 WHERE i.checkout_session_id=p_session_id)\n     AND (v_session.metadata->>'event_date_id') IS NULL\n     AND NOT EXISTS(SELECT 1 FROM public.event_dates d\n                     WHERE d.event_id=p_event_id AND d.end_at > now() AND d.status = 'active')\n     AND EXISTS(SELECT 1 FROM public.event_dates d\n                 WHERE d.event_id=p_event_id AND d.end_at > now() AND d.status <> 'active')\n  THEN RETURN false; END IF;\n  RETURN true;\nEND $function$",
+      },
     ],
   },
   {

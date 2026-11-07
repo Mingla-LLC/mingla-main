@@ -881,7 +881,8 @@
         "supabase/migrations/20280310003355_issue_3355_paid_tier_terms_and_minimums.sql",
         "supabase/migrations/20280311003355_issue_3355_event_seed_truth.sql",
         "supabase/functions/_shared/payoutCountries.ts",
-        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
+        "mingla-business/src/utils/paidPublishGuards.ts"
       ]
     },
     {
@@ -1461,7 +1462,9 @@
     {
       "capability_key": "experiences-create",
       "paths": [
-        "mingla-business/app/experience/create.tsx"
+        "mingla-business/app/experience/create.tsx",
+        "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
       ]
     },
     {

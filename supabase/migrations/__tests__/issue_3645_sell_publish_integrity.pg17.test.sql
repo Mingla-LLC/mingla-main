@@ -514,6 +514,7 @@ DECLARE
   v_choice jsonb;
   v_ev uuid;
   v_err text;
+  v_dateless uuid;
 BEGIN
   PERFORM pg_temp.brand(v_brand, 'NGN');
   PERFORM pg_temp.dated_event(v_rec, v_brand, true);
@@ -553,6 +554,19 @@ BEGIN
    WHERE id = '36452b00-0000-4000-8000-0000000000ed';
   PERFORM public.business_cancel_event_date('36452b00-0000-4000-8000-0000000000ed',
     '36452b00-0000-4000-8000-00000000edd1', 'Venue closed for repairs', false);
+  -- A checkout with no date of its own (a single-date event's, or one
+  -- opened before this migration for a date already cancelled) is not
+  -- authorised once every upcoming date is cancelled.
+  v_dateless := gen_random_uuid();
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email,
+    buyer_phone_e164, expires_at, subtotal_cents, application_fee_amount_cents, total_cents,
+    currency, status, idempotency_key)
+  VALUES (v_dateless, '36452b00-0000-4000-8000-0000000000ed', v_brand, 'Dateless',
+    'b2b-dateless@example.test', '+2348000000001', now() + interval '1 hour', 250000, 0, 250000,
+    'NGN', 'requires_payment', 'b2b-dateless-' || v_dateless);
+  IF public.issue_1930_ticket_session_authorized(v_dateless, '36452b00-0000-4000-8000-0000000000ed') THEN
+    RAISE EXCEPTION 'T10 FAIL: a dateless checkout is authorised with its only date cancelled';
+  END IF;
   v_err := NULL;
   BEGIN
     PERFORM public.issue_3872_checkout_day_context('36452b00-0000-4000-8000-0000000000ed', NULL, NULL, NULL);
